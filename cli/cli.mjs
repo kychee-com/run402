@@ -48,6 +48,7 @@ Commands:
   service     Run402 service health and availability (status, health)
   cache       Inspect and invalidate the SSR origin cache (inspect, invalidate)
   doctor      Health and config diagnostics (machine-readable with --json)
+  dev         Run Astro dev with Run402 env + credentials in scope
   logs        Fetch function logs by request id (--request-id req_...)
 
 Run 'run402 <command> --help' for detailed usage of each command.
@@ -241,6 +242,11 @@ switch (cmd) {
   }
   case "logs": {
     const { run } = await import("./lib/logs.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "dev": {
+    const { run } = await import("./lib/dev.mjs");
     await run(sub, rest);
     break;
   }
