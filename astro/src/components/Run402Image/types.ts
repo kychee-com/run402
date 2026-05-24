@@ -144,7 +144,7 @@ export type DataAttributes = {
  * Brand applied to the Astro entry point's `Run402Image` symbol.
  *
  * The Astro entry exports a `.astro` component (compiled by Astro's Vite
- * plugin); the React entry exports a `React.FC<Run402ImageProps>`. Mixing
+ * plugin); the React entry exports a React function component. Mixing
  * them at the JSX use-site (e.g., importing from `@run402/astro/components`
  * inside a `.tsx` file) produces a TypeScript error at compile time because
  * the brands differ.
@@ -155,15 +155,41 @@ export type DataAttributes = {
  * The runtime guard in §7 catches JS consumers who bypass TypeScript by
  * checking for `Astro.locals` presence (Astro adapter) or `React.version`
  * (React adapter) and throwing `R402_ASTRO_IMAGE_WRONG_ENTRY_POINT`.
+ *
+ * **JSX compatibility note** (v1.0.1 fix per Kychon DX feedback #1): the
+ * earlier shape `(props: P) => unknown` broke JSX with TS2786 ("cannot be
+ * used as a JSX component") because TypeScript's JSX checker requires the
+ * return type to be assignable to `ReactNode` (for React) or
+ * `AstroBuiltinAttributes` (for Astro). Switching the return types to the
+ * framework-canonical shapes keeps the brand intact AND lets JSX accept
+ * the exported symbol directly. Type-only imports — no runtime cost,
+ * works fine on Astro-only consumers without React installed because
+ * `type` imports are erased at build.
  */
 declare const ASTRO_BRAND: unique symbol;
 declare const REACT_BRAND: unique symbol;
 
+// Astro's component shape from its public type surface. We don't import
+// `astro`'s types directly because the package's exported component
+// definitions vary across Astro 5 vs 6; the function signature is the
+// stable contract.
 export type AstroComponent<P> = ((props: P) => unknown) & {
   readonly [ASTRO_BRAND]: "astro";
 };
 
-export type ReactComponent<P> = ((props: P) => unknown) & {
+// Import React types only for the brand. `import type` is erased at
+// compile time, so React-only consumers see no runtime dependency on
+// React from Astro-only call sites.
+//
+// Note: we use `React.ReactElement | null` as the return type (matching
+// what `React.FC<P>` expands to in React 19's @types/react) rather than
+// `React.FC<P>` directly — using `React.FC` produces a TypeScript "type
+// produced by a module without proper imports" issue when consumers
+// don't have @types/react installed. The ReactElement | null shape is
+// what JSX expects + survives the brand intersection.
+import type { ReactElement } from "react";
+
+export type ReactComponent<P> = ((props: P) => ReactElement | null) & {
   readonly [REACT_BRAND]: "react";
 };
 

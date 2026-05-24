@@ -151,3 +151,26 @@ const Run402ImageInner: FC<Run402ImageProps & InternalTestProps> = (props) => {
  * accidental imports from inside `.astro` files at compile time.
  */
 export const Run402Image = Run402ImageInner as unknown as ReactComponent<Run402ImageProps>;
+
+// v1.0.1 — per Kychon DX feedback #2 + #3: re-export the prop interface
+// + AssetRef shape from the React entry so consumers building typed
+// wrappers (e.g., the spec's own `Pick<Run402ImageProps, "asset" | "alt"
+// | "class">` scenario) don't need to deep-import from a non-public
+// path AND don't need a separate `import type { AssetRef } from
+// "@run402/functions"` line. One import line covers the typical
+// project-specific wrapper:
+//
+//   import { Run402Image, type Run402ImageProps, type AssetRef } from "@run402/astro/react";
+//   type HeroProps = Pick<Run402ImageProps, "asset" | "alt" | "class">;
+
+export type { AssetRef } from "@run402/functions";
+export type {
+  Run402ImageProps,
+  DataAttributes,
+  ImageDefaults,
+  PreloadAttrs,
+  RenderContext,
+  RenderTreeNode,
+  DegradationEntry,
+} from "./types.js";
+export { Run402ImageError } from "./types.js";
