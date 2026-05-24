@@ -96,6 +96,81 @@ Behavior:
 
 For static template-literal images (e.g., `<Image src="./hero.jpg">`), use the build-time `<Image>` — same upload pipeline, build-time srcset emission, no runtime data needed.
 
+## `<Run402Image>` — pre-decoded placeholders + strict-mode degradation detection (v1.51+)
+
+`<Run402Image>` is the v1.51 sibling of `<Run402Picture>` — same shape (`asset={AssetRef}` + `alt` + `sizes`), but with three additions that matter at scale:
+
+1. **Pre-decoded blurhash placeholder.** The v1.54 gateway pipeline pre-computes the blurhash → PNG data URL at upload time and stamps it on `AssetRef.blurhash_data_url`. `<Run402Image>` emits it as the `<img>` element's `background-image` so the placeholder is visible during fetch with zero client-side decode + zero SSR-render CPU cost.
+2. **Strict mode.** `imageDefaults: { strict: { onSchema: ">=v1.49" } }` makes the component hard-fail when an AssetRef would render below the full v1.49+ target — catches the "28 of 30 assets render correctly and 2 silently degrade" failure mode at build time rather than at user-visible time. The schema-filter form skips legacy pre-v1.49 AssetRefs, so mixed-vintage CMS projects can adopt safely.
+3. **React entry point.** Same component shape, importable from `@run402/astro/react` for React islands or React-only consumers. Byte-identical HTML output to the Astro path.
+
+### Quick start
+
+```astro
+---
+// Astro entry
+import { Run402Image } from "@run402/astro/components";
+---
+<Run402Image asset={page.hero_asset} alt={page.title} sizes="100vw" priority />
+```
+
+```tsx
+// React entry
+import { Run402Image } from "@run402/astro/react";
+import type { AssetRef } from "@run402/functions";
+
+export function Hero({ asset }: { asset: AssetRef }) {
+  return <Run402Image asset={asset} alt="..." sizes="100vw" priority />;
+}
+```
+
+### When to use `<Run402Image>` vs `<Run402Picture>`
+
+| | `<Run402Picture>` (v1.0) | `<Run402Image>` (v1.51+) |
+|---|---|---|
+| Pre-decoded blurhash placeholder | ✗ | ✅ |
+| Strict-mode degradation detection | ✗ | ✅ |
+| React entry point | ✗ (Astro only) | ✅ Astro + React |
+| Default-mode degradation manifest | ✗ | ✅ |
+| Behavior on legacy AssetRefs | renders best-effort silently | renders best-effort + records to manifest (or hard-fails under strict) |
+
+If your tenant has heavy mixed-vintage data + you want a CI regression gate against silent degradation, use `<Run402Image>` with `imageDefaults: { strict: { onSchema: ">=v1.49" } }`. For simple existing pages where best-effort silent rendering is fine, `<Run402Picture>` stays the lighter choice.
+
+### Configuration
+
+```js
+// astro.config.mjs
+import run402 from "@run402/astro";
+
+export default run402({
+  imageDefaults: {
+    strict: { onSchema: ">=v1.49" },  // mixed-vintage projects (Kychon shape)
+    // OR: strict: true,              // greenfield, every render strict-checked
+    // OR: strict: false,             // explicit lenient (default)
+    placeholder: "auto",              // render placeholder if blurhash_data_url present
+  },
+});
+```
+
+### HEIC precondition
+
+If your tenant has legacy HEIC AssetRefs (uploaded before the v1.49 `display_jpeg` transcode landed) and you want to enable schema-filtered strict mode, run the `asset-image-variants-v1-51` backfill with `--regenerate-heic-transcodes` **first**. Without it, `<Run402Image>` hard-fails with `R402_ASTRO_IMAGE_HEIC_NO_TRANSCODE` on every legacy HEIC render. See the run402-private repo's `docs/migrations/asset-image-variants-v1-51-backfill.md` for the operator workflow.
+
+### Error codes
+
+All `R402_ASTRO_IMAGE_*` codes are documented at https://run402.com/errors/ — see the index for the full list including:
+
+- `_ASSET_MISSING` / `_ASSET_STRING_URL` / `_ASSET_WRONG_SHAPE` — input validation failures
+- `_NON_IMAGE_ASSET` — `content_type` is not `image/*`
+- `_ALT_REQUIRED` — `alt` prop missing
+- `_CONFLICTING_CLASS_PROPS` — both `class` and `className` passed
+- `_CONFLICTING_LOADING_PROPS` — `priority={true}` + `loading="lazy"`
+- `_HEIC_NO_TRANSCODE` — HEIC source missing `display_jpeg` (hard-fail floor)
+- `_SIZES_REQUIRED` — multi-variant AssetRef without `sizes` prop
+- `_STRICT_DEGRADED` — strict-mode hit a missing field (carries `subcode`)
+- `_RESERVED_DATA_ATTR` — caller passed reserved `data-run402-image`
+- `_WRONG_ENTRY_POINT` — JS consumer imported the wrong entry point
+
 ## CLI
 
 The Run402 CLI ships everything an agent needs to scaffold, develop, deploy, and debug an Astro project:

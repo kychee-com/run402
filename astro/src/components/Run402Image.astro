@@ -1,0 +1,89 @@
+---
+/**
+ * `<Run402Image>` — Astro adapter (§4 of run402-image-component-impl).
+ *
+ * Thin wrapper over the shared core (`Run402Image/core.ts`). The core
+ * produces a framework-agnostic RenderTreeNode; this `.astro` file
+ * serializes it to HTML via `Run402Image/render-html.ts` and injects
+ * it via `set:html` so the rendered output stays byte-deterministic
+ * across all Astro adapters (server.ts, static, prerender).
+ *
+ * Consumer usage:
+ *
+ *   ```astro
+ *   ---
+ *   import { Run402Image } from "@run402/astro/components";
+ *   import { r } from "../lib/run402";
+ *   const hero = await r.assets.fromRef(Astro.locals.row.hero);
+ *   ---
+ *   <Run402Image asset={hero} alt="..." sizes="100vw" priority />
+ *   ```
+ *
+ * **Wrong-entry-point detection** (§7): the inverse check (Astro entry
+ * being imported from inside `.tsx`) is caught at TypeScript compile
+ * time via the `AstroComponent<Run402ImageProps>` brand on the
+ * exported symbol. The runtime guard here catches the case where the
+ * component runs WITHOUT Astro's expected `Astro` global — meaning it
+ * was somehow invoked outside the Astro renderer.
+ *
+ * **`Astro.locals.run402` integration**:
+ *   - `Astro.locals.run402?.registerPreload` is threaded into the
+ *     RenderContext; when exposed (the SSR runtime sets it in v1.1+),
+ *     preload links are registered via the hook for head-injection
+ *     instead of adjacent placement. v1.0 of the SSR runtime doesn't
+ *     expose the hook — preload `<link>` goes adjacent in that case.
+ *   - `Astro.locals.run402?.imageDefaults` provides project-level
+ *     defaults for `strict` and `placeholder`. Per-call props win on
+ *     overlap per spec §"Strict mode + visible build-time warnings".
+ *   - `recordDegradation` is also threaded; the build-time accumulator
+ *     in §6 collects entries and writes the manifest at
+ *     `astro:build:done`.
+ */
+
+import { Run402ImageError, type RenderContext, type Run402ImageProps } from "./Run402Image/types.js";
+import { buildRun402ImageRenderTree } from "./Run402Image/core.js";
+import { serializeRenderTree } from "./Run402Image/render-html.js";
+
+const props = Astro.props as Run402ImageProps;
+
+// §7 runtime guard: if a consumer somehow renders `Run402Image` outside
+// an Astro context (e.g., compiled into a React app by mistake — won't
+// happen in practice because the .astro file fails to load in a React
+// build, but defense-in-depth), throw a structured error.
+if (typeof Astro === "undefined" || Astro === null) {
+  throw new Run402ImageError({
+    code: "R402_ASTRO_IMAGE_WRONG_ENTRY_POINT",
+    message:
+      "Run402Image from `@run402/astro/components` is an Astro component (`.astro` file). " +
+      "It can only be rendered inside Astro. For React, import from `@run402/astro/react`.",
+    suggestedFix:
+      'import { Run402Image } from "@run402/astro/components"; // Astro\n' +
+      'import { Run402Image } from "@run402/astro/react";      // React',
+    docs: "https://run402.com/errors/#R402_ASTRO_IMAGE_WRONG_ENTRY_POINT",
+  });
+}
+
+// Extract project-level config from Astro.locals.run402 (set by the
+// `@run402/astro` integration when the user enables it via
+// `astro.config.mjs`). Astro.locals is shaped per the SSR runtime spec;
+// `.run402` is the namespaced sub-bag.
+const run402Locals = (Astro.locals as { run402?: {
+  registerPreload?: RenderContext["registerPreload"];
+  imageDefaults?: RenderContext["imageDefaults"];
+  recordDegradation?: RenderContext["recordDegradation"];
+} }).run402;
+
+const context: RenderContext = {
+  isSSR: true, // Astro components render server-side by default; hydrated islands re-render in the browser but Run402Image itself isn't a client island
+  registerPreload: run402Locals?.registerPreload,
+  imageDefaults: run402Locals?.imageDefaults,
+  recordDegradation: run402Locals?.recordDegradation,
+};
+
+const { root, preload } = buildRun402ImageRenderTree(props, context);
+
+const preloadHtml = preload ? serializeRenderTree(preload) : "";
+const rootHtml = serializeRenderTree(root);
+const combined = preloadHtml + rootHtml;
+---
+<Fragment set:html={combined} />
