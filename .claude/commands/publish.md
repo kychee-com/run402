@@ -131,20 +131,62 @@ The workflow handles the publishes, the version-bump commit, the tag, and an aut
    - https://www.npmjs.com/package/@run402/sdk/v/<new_version>
    - GitHub release URL: `https://github.com/kychee-com/run402/releases/tag/v<new_version>`
 
-## Twitter summary
+## Social post (mini-article style)
 
-**Skip this step for patch releases.** Patch bumps are bug fixes / internal changes and don't warrant a tweet. If the user picked `patch` in the bump step, stop here — do not generate tweet options.
+**Skip for patch releases.** Patch bumps are bug fixes / internal changes and don't warrant a post. If the user picked `patch`, stop here — do not generate post options.
 
-For `minor` or `major` releases, write a tweet-ready summary of the release. This is the last thing you do.
+For `minor` or `major` releases, write a **mini-article social post on a related topic — NOT a tweet-sized release blurb, and NOT focused on what the release contains.** The release is the receipt, not the lede. This is the last thing you do.
 
-Guidelines:
-- **Focus on what developers can now build**, not what changed internally. "Your agents can now send HTML emails" not "Added raw HTML mode to email tool".
-- Lead with the big picture, not the release bookkeeping. Say "run402 adds GitHub Actions OIDC..." instead of "run402 v1.55.0 adds GitHub Actions OIDC..." because people care about the capability, not the exact version number.
-- Keep it under 280 characters. No hashtags. A small personal touch is welcome when it feels natural, including an emoji if it adds warmth.
-- If the release has multiple features, pick the 1-2 most compelling and lead with those.
-- Do not end with the exact version number. Version details belong in the release summary and npm/GitHub links, not in the tweet.
-- Example personal touch: "OIDC is really cool 😎"
-- Present 2-3 options so the user can pick or remix.
+### Why this shape
+
+A "tweet-sized" release announcement ("v2.12.0 ships X") is forgettable. People scroll past version numbers. They DO read a small story that takes them somewhere they hadn't been. So: pick a general DX puzzle, web-platform quirk, or industry trade-off that this release happens to embody, walk through it warmly, mention the release as a one-line closing receipt.
+
+### Structure — a 4-act mini-article
+
+1. **Relatable hook.** Open with something the reader has already seen on the open web (a Medium-style image fade-in, a button that feels wrong, a deploy that took 40 minutes). One or two sentences. No jargon yet.
+2. **Name the trick.** Give the underlying concept a name and explain it simply, enough for a beginner web dev to follow. Use plain numbers ("30 characters", "600 bytes", "~30ms"), not benchmarks. Avoid library namedrops beyond the one being named.
+3. **The catch.** The cost or footgun the standard implementation has — the "obvious in hindsight" tension. Frame as a trade-off most platforms accept and you didn't.
+4. **The fix + receipt.** The change in thinking, then ONE line of "shipped this in run402 today" as proof. Close on a general principle ("if you're decoding the same thing every render, you're doing it wrong"), not a feature.
+
+### Voice
+
+- **First person, sparingly.** One or two "I" beats land harder than constant ones — usually at the opener ("took me too long to see") or closer ("ship this once, save it forever"). Don't fabricate biographical details (specific years, project names, employers) — the reader can tell.
+- Curious + warm, not promotional. The reader should feel they're learning, not being sold to.
+- Concrete numbers beat vague claims. "30ms × 20 thumbnails = 600ms" beats "noticeable performance hit".
+- No emdashes (per the user's global rule). Use regular dashes ` - `.
+- No hashtags. No trailing version number. No "we just shipped" energy in the body — only as the small closing receipt.
+
+### Length
+
+Target ~1100-1400 chars (≈ 4x Twitter). Go shorter when the story is tight; up to ~1800 when substance earns it. Trim ruthlessly before sacrificing the arc.
+
+### Optional code-snippet image
+
+If a tight "what everyone does vs. what you should do" before/after fits the post, ship a carbon.now.sh image of it. Two short blocks, ~5 lines each, comments only where they earn the space. Skip imports and boilerplate that don't advance the contrast.
+
+To generate the URL the user can click → Export → PNG, write the snippet to a temp file and run:
+
+```bash
+node -e 'const fs = require("fs"); const code = fs.readFileSync("/tmp/post-snippet.ts", "utf8"); const url = "https://carbon.now.sh/?bg=rgba(74,144,226,1)&t=one-dark&wt=none&l=typescript&width=680&ds=true&dsyoff=20px&dsblur=68px&wc=true&wa=true&pv=56px&ph=56px&ln=false&fl=1&fm=Hack&fs=14px&lh=152%25&si=false&es=2x&wm=false&code=" + encodeURIComponent(code); console.log(url);'
+```
+
+Skip the image entirely if the post is about infrastructure or process rather than a developer-facing API change — code would distract from the story.
+
+### Delivery (per the user's global social-post rule)
+
+1. Write the post to `/tmp/tweet.txt`.
+2. Copy to clipboard with `pbcopy < /tmp/tweet.txt`.
+3. Print a one-line confirmation (char count + "on clipboard").
+4. **Do NOT render the post text inline in the chat** — the user pastes from the clipboard.
+5. If you generated a carbon image URL, print it as a single clickable line.
+
+### Options
+
+Present 2-3 options ONLY if the angle is genuinely ambiguous. If you have a clear read on what story this release embodies, write one and offer to remix from feedback — don't burn cycles producing three variants of a story you already know is the right one.
+
+### Example (what good looks like)
+
+For a release that added pre-decoded blurhash placeholders to the SDK's AssetRef, the post led with the Medium-style image fade everyone has seen, named the trick (blurhash), explained the 30-char hash and its decode cost (~30ms × 20 thumbnails = 600ms of CPU just to render placeholders), surfaced the "decode once at upload, store the 600-byte data URL" fix, and closed with one line about run402 shipping it. ~1300 chars. Personal opener ("there's a tiny DX puzzle hiding inside it that took me too long to see") and principled closer ("if you're decoding the same thing every render, you're doing it wrong"). The release itself appeared in exactly one sentence near the bottom. Carbon image showed a 4-line "what everyone does" block above a 3-line "what you should do" block.
 
 ## Troubleshooting
 
