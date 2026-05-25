@@ -240,6 +240,16 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
+  case "notifications": {
+    const { run } = await import("./lib/notifications.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "webhook-secret": {
+    const { runWebhookSecret } = await import("./lib/notifications.mjs");
+    await runWebhookSecret(sub, rest);
+    break;
+  }
   case "logs": {
     const { run } = await import("./lib/logs.mjs");
     await run(sub, rest);

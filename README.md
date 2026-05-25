@@ -527,6 +527,11 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `send_message` | Send feedback to the Run402 team. |
 | `set_agent_contact` / `get_agent_contact_status` / `verify_agent_contact_email` | Register agent contact info, read assurance status, and start the operator email reply challenge. |
 | `start_operator_passkey_enrollment` | Email a Run402 operator passkey enrollment link to the verified contact email. |
+| `get_operator_status` | Compact operator-health snapshot — contact assurance state, critical items, skipped notifications, billing accounts, projects, active thresholds. Read via `run402 doctor` or directly. |
+| `get_notification_preferences` / `set_notification_preferences` | Read/update operator notification preferences (cadence, channels, per-class toggles, locale, timezone). Cross-wallet effects require `email_verified`; webhook URL changes require `operator_passkey`. |
+| `list_notifications` | Per-delivery-attempt audit log. Paginated, filterable by event_type / since. |
+| `test_notification` | Fire a real test notification through the full worker pipeline. Audit row marked `is_test=true`. Rate-limited per wallet at 1/min. |
+| `rotate_webhook_secret` | Generate a new HMAC signing secret for the operator webhook (returned exactly once). Previous secret remains valid for 24h. Requires `operator_passkey`. |
 
 ### Service status (no auth)
 

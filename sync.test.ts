@@ -61,7 +61,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -80,7 +80,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci"]) {
+  for (const mod of ["allowance", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -294,6 +294,17 @@ const SURFACE: Capability[] = [
   { id: "get_agent_contact_status", endpoint: "GET /agent/v1/contact/status", mcp: "get_agent_contact_status", cli: "agent:status", openclaw: "agent:status" },
   { id: "verify_agent_contact_email", endpoint: "POST /agent/v1/contact/verify-email", mcp: "verify_agent_contact_email", cli: "agent:verify-email", openclaw: "agent:verify-email" },
   { id: "start_operator_passkey_enrollment", endpoint: "POST /agent/v1/contact/passkey/enroll", mcp: "start_operator_passkey_enrollment", cli: "agent:passkey", openclaw: "agent:passkey" },
+
+  // ── Operator health notifications (v1.55) ──────────────────────────────
+  { id: "get_operator_status",          endpoint: "GET /agent/v1/operator/status",                 mcp: "get_operator_status",          cli: null,                            openclaw: null },
+  { id: "list_notifications",           endpoint: "GET /agent/v1/notifications",                   mcp: "list_notifications",           cli: "notifications:list",            openclaw: "notifications:list" },
+  { id: "get_notification",             endpoint: "GET /agent/v1/notifications/:id",               mcp: null,                            cli: "notifications:get",             openclaw: "notifications:get" },
+  { id: "get_notification_preferences", endpoint: "GET /agent/v1/notifications/preferences",       mcp: "get_notification_preferences", cli: "notifications:preferences",     openclaw: "notifications:preferences" },
+  // CLI surfaces both get + set under one `notifications preferences` command
+  // (positional `set k=v...`). MCP keeps the read and write as separate tools.
+  { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     mcp: "set_notification_preferences", cli: null,                            openclaw: null },
+  { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             mcp: "test_notification",            cli: "notifications:test",            openclaw: "notifications:test" },
+  { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/webhook-secret/rotate",          mcp: "rotate_webhook_secret",        cli: "webhook-secret:rotate",         openclaw: "webhook-secret:rotate" },
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
@@ -518,6 +529,15 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   set_agent_contact: "admin.setAgentContact",
   get_agent_contact_status: "admin.getAgentContactStatus",
   verify_agent_contact_email: "admin.verifyAgentContactEmail",
+
+  // Operator health notifications (v1.55)
+  get_operator_status: "admin.getOperatorStatus",
+  list_notifications: "admin.listNotifications",
+  get_notification: "admin.getNotification",
+  get_notification_preferences: "admin.getNotificationPreferences",
+  set_notification_preferences: "admin.setNotificationPreferences",
+  test_notification: "admin.testNotification",
+  rotate_webhook_secret: "admin.rotateWebhookSecret",
   start_operator_passkey_enrollment: "admin.startOperatorPasskeyEnrollment",
 
   // Admin

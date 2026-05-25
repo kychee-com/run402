@@ -175,6 +175,12 @@ import {
   startOperatorPasskeyEnrollmentSchema,
   handleStartOperatorPasskeyEnrollment,
 } from "./tools/start-operator-passkey-enrollment.js";
+import { getOperatorStatusSchema, handleGetOperatorStatus } from "./tools/get-operator-status.js";
+import { getNotificationPreferencesSchema, handleGetNotificationPreferences } from "./tools/get-notification-preferences.js";
+import { setNotificationPreferencesSchema, handleSetNotificationPreferences } from "./tools/set-notification-preferences.js";
+import { listNotificationsSchema, handleListNotifications } from "./tools/list-notifications.js";
+import { testNotificationSchema, handleTestNotification } from "./tools/test-notification.js";
+import { rotateWebhookSecretSchema, handleRotateWebhookSecret } from "./tools/rotate-webhook-secret.js";
 import { createCheckoutSchema, handleCreateCheckout } from "./tools/create-checkout.js";
 import { billingHistorySchema, handleBillingHistory } from "./tools/billing-history.js";
 import { updateVersionSchema, handleUpdateVersion } from "./tools/update-version.js";
@@ -850,6 +856,50 @@ server.tool(
   "Email a short-lived Run402 operator passkey enrollment link to the verified contact email. Requires email_verified.",
   startOperatorPasskeyEnrollmentSchema,
   async (args) => handleStartOperatorPasskeyEnrollment(args),
+);
+
+// ─── Operator notifications (v1.55) ───────────────────────────────────────
+
+server.tool(
+  "get_operator_status",
+  "Compact operator-health snapshot: contact assurance, critical items, skipped notifications, billing accounts, projects, active thresholds. Read via run402 doctor.",
+  getOperatorStatusSchema,
+  async (args) => handleGetOperatorStatus(args),
+);
+
+server.tool(
+  "get_notification_preferences",
+  "Read the operator's notification preferences (channels, cadence, threshold/lifecycle/security toggles, locale, timezone).",
+  getNotificationPreferencesSchema,
+  async (args) => handleGetNotificationPreferences(args),
+);
+
+server.tool(
+  "set_notification_preferences",
+  "Update operator notification preferences. Cross-wallet effects require email_verified assurance; webhook URL changes require operator_passkey assurance.",
+  setNotificationPreferencesSchema,
+  async (args) => handleSetNotificationPreferences(args),
+);
+
+server.tool(
+  "list_notifications",
+  "List the operator's notification audit log (delivered, failed, and skipped attempts). Paginated; filter by event type or since timestamp.",
+  listNotificationsSchema,
+  async (args) => handleListNotifications(args),
+);
+
+server.tool(
+  "test_notification",
+  "Trigger a real test notification (audit row marked is_test=true). Rate-limited per wallet at 1/min. Verifies the full pipeline end-to-end.",
+  testNotificationSchema,
+  async (args) => handleTestNotification(args),
+);
+
+server.tool(
+  "rotate_webhook_secret",
+  "Generate a fresh HMAC signing secret for the operator's webhook endpoint. Returned EXACTLY once. Previous secret remains valid for 24h. Requires operator_passkey assurance.",
+  rotateWebhookSecretSchema,
+  async (args) => handleRotateWebhookSecret(args),
 );
 
 // ─── Billing tools ─────────────────────────────────────────────────────────

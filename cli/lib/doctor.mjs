@@ -165,7 +165,51 @@ export async function run(sub, args = []) {
     });
   }
 
-  const allOk = checks.every((c) => c.status === "ok");
+  // 6. Operator health snapshot (v1.55).
+  try {
+    const sdk = getSdk();
+    const status = await sdk.admin.getOperatorStatus();
+    const gaps = [];
+    if (status.operator_contact.email_status !== "verified") {
+      gaps.push(`operator email not verified (${status.operator_contact.email_status}) — run 'run402 agent contact --email ...' then reply to the challenge`);
+    }
+    if (status.operator_contact.passkey_status !== "verified") {
+      gaps.push("operator passkey not bound — run 'run402 agent passkey enroll' after email verification");
+    }
+    if (Array.isArray(status.skipped_notifications) && status.skipped_notifications.length > 0) {
+      gaps.push(`${status.skipped_notifications.length} notification(s) skipped due to missing verified recipient`);
+    }
+    if (Array.isArray(status.critical_items) && status.critical_items.length > 0) {
+      for (const item of status.critical_items) {
+        gaps.push(`${item.kind}: ${item.detail}`);
+      }
+    }
+    if (gaps.length > 0) {
+      checks.push({
+        name: "operator_health",
+        status: "warning",
+        value: { gaps },
+        hint: "Address the above gaps; they're what 'run402 notifications' is designed to surface.",
+      });
+    } else {
+      checks.push({ name: "operator_health", status: "ok" });
+    }
+  } catch (err) {
+    // Operator status endpoint may not be reachable if the operator-binding
+    // substrate isn't deployed yet on the target API. Don't fail the whole
+    // doctor over it — emit as a soft warning.
+    checks.push({
+      name: "operator_health",
+      status: "skipped",
+      message: err instanceof Error ? err.message : String(err),
+      ...(verbose && { hint: "GET /agent/v1/operator/status not reachable; requires v1.55+ gateway." }),
+    });
+  }
+
+  // 'warning' counts as ok for exit-code purposes — gaps are surfaced in
+  // output but don't fail the doctor. Only hard 'error' / 'missing' /
+  // 'empty' fail.
+  const allOk = checks.every((c) => c.status === "ok" || c.status === "warning" || c.status === "skipped");
 
   if (json) {
     console.log(JSON.stringify({ ok: allOk, checks }, null, 2));
@@ -175,12 +219,17 @@ export async function run(sub, args = []) {
     for (const c of checks) {
       const icon =
         c.status === "ok" ? "✓"
+        : c.status === "warning" ? "⚠"
+        : c.status === "skipped" ? "·"
         : c.status === "missing" || c.status === "empty" ? "⚠"
         : "✗";
       const status = c.status === "ok" ? "ok" : c.status;
       console.log(`  ${icon} ${c.name.padEnd(16)} ${status}`);
       if (c.hint) console.log(`     → ${c.hint}`);
       if (c.message) console.log(`     ${c.message}`);
+      if (c.value && c.value.gaps && Array.isArray(c.value.gaps)) {
+        for (const gap of c.value.gaps) console.log(`     • ${gap}`);
+      }
     }
   }
 
