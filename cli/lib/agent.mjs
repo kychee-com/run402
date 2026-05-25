@@ -122,7 +122,21 @@ async function status(args = []) {
   allowanceAuthHeaders("/agent/v1/contact/status");
 
   try {
-    const data = await getSdk().admin.getAgentContactStatus();
+    const sdk = getSdk();
+    const data = await sdk.admin.getAgentContactStatus();
+    // v1.56: augment the response with email_verification.last_challenge from
+    // /agent/v1/operator/status so the operator sees per-attempt status
+    // (trust_rejected with which verdicts, attempts remaining, hint) without
+    // a second command. Best-effort — older gateways without the v1.55+ route
+    // skip the augment silently.
+    try {
+      const opStatus = await sdk.admin.getOperatorStatus();
+      if (opStatus && opStatus.email_verification) {
+        data.email_verification = opStatus.email_verification;
+      }
+    } catch {
+      // Older gateway — keep the original response shape.
+    }
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

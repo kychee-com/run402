@@ -1254,7 +1254,7 @@ Every invalidate returns `{ deleted, generation, host, path? }`. `generation` is
 ### doctor
 Health + config diagnostics. Agent-DX entrypoint — agents run this first to verify environment before attempting anything else.
 
-- `run402 doctor [--json] [--verbose]` — checks: config dir presence, allowance + rail, keystore wallet count, API base reachability, active tier + lifecycle state. Exit 0 on all-pass, 1 on any failure. `--json` emits `{ ok: boolean, checks: [{ name, status, value?, hint?, message? }] }`.
+- `run402 doctor [--json] [--verbose]` — checks: config dir presence, allowance + rail, keystore wallet count, API base reachability, active tier + lifecycle state, operator health snapshot (binding state + per-attempt verification failure detail since v2.4 / gateway v1.56). Exit 0 on all-pass, 1 on any failure. `--json` emits `{ ok: boolean, checks: [{ name, status, value?, hint?, message? }] }`. When operator email verification is `pending`, the doctor surfaces the per-reason hint from `email_verification.last_challenge.hint` ("publish SPF/DMARC", "reply from registered address", "use Reply button not new message", etc.) along with `attempt_count` / `remaining_attempts` so the operator sees what to fix.
 
 ### dev
 Astro dev wrapper. Loads `.env.local`, verifies `RUN402_PROJECT_ID` + `RUN402_SERVICE_KEY`, then spawns `astro dev` with the env inherited.

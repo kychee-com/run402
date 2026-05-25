@@ -169,13 +169,25 @@ export async function run(sub, args = []) {
     });
   }
 
-  // 6. Operator health snapshot (v1.55).
+  // 6. Operator health snapshot (v1.55 + v1.56 verification attempt detail).
   try {
     const sdk = getSdk();
     const status = await sdk.admin.getOperatorStatus();
     const gaps = [];
     if (status.operator_contact.email_status !== "verified") {
-      gaps.push(`operator email not verified (${status.operator_contact.email_status}) — run 'run402 agent contact --email ...' then reply to the challenge`);
+      // v1.56: prefer the structured email_verification.last_challenge.hint
+      // over the generic "email not verified" message. The gateway computes
+      // a per-reason remediation hint that's actionable for the operator.
+      const ev = status.email_verification;
+      const ch = ev?.last_challenge;
+      if (ch && ch.hint) {
+        const attemptsLine = ch.attempt_count > 0
+          ? ` (${ch.attempt_count}/${ch.attempt_count + ch.remaining_attempts} attempts used, ${ch.remaining_attempts} remaining)`
+          : "";
+        gaps.push(`operator email not verified${attemptsLine}: ${ch.hint}`);
+      } else {
+        gaps.push(`operator email not verified (${status.operator_contact.email_status}) — run 'run402 agent contact --email ...' then reply to the challenge`);
+      }
     }
     if (status.operator_contact.passkey_status !== "verified") {
       gaps.push("operator passkey not bound — run 'run402 agent passkey enroll' after email verification");
