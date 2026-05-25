@@ -1325,3 +1325,218 @@ describe("assets.ls — v1.50 sort + filter surface", () => {
     assert.equal(row.blurhash, "L9AB*A%MfQ%M-;ofWBay~qof%Mt7");
   });
 });
+
+// ─── Issue #415 follow-up — re-plan merge drops v1.50 + v1.54 fields ─────────
+//
+// On a fresh image upload, the FIRST `/apply/v1/plans` happens before the blob
+// row exists, so the asset_ref has no image fields. After commit, the SDK
+// re-plans (`dry_run=true`) to pick up post-commit variant data — at which
+// point the gateway's read-side fix (kychee-com/run402-private #415) surfaces
+// all v1.50 + v1.54 fields. The SDK's merge then has to actually copy those
+// fields onto the existing manifest entry; otherwise they fall off and
+// `buildAssetRef`'s `?? null` widens them back to null in the final result.
+
+describe("assets.put — issue #415 — re-plan merge threads v1.50 + v1.54 fields", () => {
+  it("post-commit re-plan response surfacing image_format / image_info / image_exif_policy / metadata / blurhash_data_url / asset_schema is preserved on the returned AssetRef", async () => {
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    // The mock differentiates the two plan calls by `dry_run=true` in the URL:
+    //   - First plan (no dry_run): asset_ref has only base fields (the blob
+    //     row doesn't exist yet at plan time for a fresh upload).
+    //   - Re-plan (dry_run=true): asset_ref carries v1.49 + v1.50 + v1.54
+    //     fields because the gateway has now committed the row.
+    const handler = async (call: FetchCall): Promise<Response> => {
+      if (call.url.includes("/apply/v1/plans") && call.method === "POST" && !/\/commit$/.test(call.url)) {
+        const body = JSON.parse(call.body as string);
+        const putEntries = body.spec.assets.put as Array<{
+          key: string;
+          sha256: string;
+          size_bytes: number;
+          content_type: string;
+          visibility: "public" | "private";
+          immutable: boolean;
+        }>;
+        for (const e of putEntries) shas.set(e.key, e.sha256);
+        const isReplan = call.url.includes("dry_run=true");
+        const missing_content = isReplan
+          ? []
+          : putEntries.map((e) => ({
+              sha256: e.sha256,
+              size: e.size_bytes,
+              content_type: e.content_type,
+              present: false,
+            }));
+        const asset_entries = putEntries.map((e) => {
+          const sha = e.sha256;
+          const suffix = sha.slice(0, 8);
+          const dotIdx = e.key.lastIndexOf(".");
+          const suffixedKey =
+            dotIdx > 0
+              ? `${e.key.slice(0, dotIdx)}-${suffix}${e.key.slice(dotIdx)}`
+              : `${e.key}-${suffix}`;
+          const host = "pr-abc.run402.com";
+          const url = `https://${host}/_blob/${e.key}`;
+          const immutableUrl = `https://${host}/_blob/${suffixedKey}`;
+          const base: Record<string, unknown> = {
+            key: e.key,
+            sha256: sha,
+            size_bytes: e.size_bytes,
+            content_type: e.content_type,
+            visibility: e.visibility,
+            immutable: e.immutable,
+            url,
+            immutable_url: immutableUrl,
+            cdn_url: url,
+            cdn_immutable_url: immutableUrl,
+            sri: `sha256-${Buffer.from(sha, "hex").toString("base64")}`,
+            etag: `"sha256-${sha}"`,
+            content_digest: `sha-256=:${Buffer.from(sha, "hex").toString("base64")}:`,
+          };
+          if (isReplan) {
+            base.width_px = 1024;
+            base.height_px = 1024;
+            base.blurhash = "LcK-B.aK_Nt6~DR*-;xao}kCMyWC";
+            base.variant_spec_version = "v1";
+            base.display_url = url;
+            base.display_immutable_url = immutableUrl;
+            base.variants = {
+              thumb: {
+                url: `https://${host}/_blob/thumb.webp`,
+                cdn_url: `https://${host}/_blob/thumb.webp`,
+                width_px: 320,
+                height_px: 320,
+                format: "webp",
+                sha256: "1".repeat(64),
+              },
+              medium: {
+                url: `https://${host}/_blob/medium.webp`,
+                cdn_url: `https://${host}/_blob/medium.webp`,
+                width_px: 800,
+                height_px: 800,
+                format: "webp",
+                sha256: "2".repeat(64),
+              },
+              large: {
+                url: `https://${host}/_blob/large.webp`,
+                cdn_url: `https://${host}/_blob/large.webp`,
+                width_px: 1024,
+                height_px: 1024,
+                format: "webp",
+                sha256: "3".repeat(64),
+              },
+            };
+            base.image_format = "jpeg";
+            base.image_info = {
+              has_alpha: false,
+              color_space: "srgb",
+              animated: false,
+              orientation: 1,
+            };
+            base.image_exif = { Make: "Apple" };
+            base.image_exif_policy = "keep";
+            base.metadata = { caption: "rooftop", tags: ["sunset"] };
+            base.blurhash_data_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA";
+            base.asset_schema = "v1.54";
+          }
+          return {
+            key: e.key,
+            sha256: sha,
+            size_bytes: e.size_bytes,
+            content_type: e.content_type,
+            visibility: e.visibility,
+            immutable: e.immutable,
+            status: isReplan ? "present" : "upload_pending",
+            asset_ref: base,
+          };
+        });
+        return json({
+          plan_id: "plan_x",
+          operation_id: "op_x",
+          base_release_id: null,
+          manifest_digest: "digest_x",
+          missing_content,
+          asset_entries,
+          diff: { resources: {} },
+          warnings: [],
+        });
+      }
+      if (call.url.endsWith("/content/v1/plans") && call.method === "POST") {
+        const body = JSON.parse(call.body as string);
+        const content = body.content as Array<{
+          sha256: string;
+          size: number;
+          content_type?: string;
+        }>;
+        return json({
+          plan_id: "cplan_x",
+          expires_at: "2030-01-01T00:00:00Z",
+          missing: content.map((c) => ({
+            sha256: c.sha256,
+            mode: "single",
+            part_size_bytes: c.size,
+            part_count: 1,
+            parts: [
+              {
+                part_number: 1,
+                url: `https://s3.test/${c.sha256}/p1`,
+                byte_start: 0,
+                byte_end: c.size - 1,
+              },
+            ],
+            upload_id: `u_${c.sha256.slice(0, 8)}`,
+            staging_key: `_staging/u/${c.sha256}`,
+            expires_at: "2030-01-01T00:00:00Z",
+          })),
+          entries: content.map((c) => ({ sha256: c.sha256, missing: true })),
+        });
+      }
+      if (call.url.startsWith("https://s3.test/") && call.method === "PUT") {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (call.url.match(/\/content\/v1\/plans\/[^/]+\/commit$/) && call.method === "POST") {
+        return json({});
+      }
+      if (call.url.match(/\/apply\/v1\/plans\/[^/]+\/commit$/) && call.method === "POST") {
+        return json({
+          operation_id: "op_x",
+          status: "ready",
+          release_id: "rel_x",
+          urls: { project: "https://prj.run402.test", project_public_id: "abc" },
+        });
+      }
+      throw new Error("unexpected call: " + call.method + " " + call.url);
+    };
+    const { fetch, calls } = mockFetch((call) => handler(call));
+    outerCalls = calls;
+    void outerCalls;
+    const sdk = makeSdk(fetch);
+
+    const ref = await sdk.assets.put(
+      "prj_known",
+      "issue-415/portrait.jpg",
+      new Uint8Array([1, 2, 3, 4]),
+      { contentType: "image/jpeg" },
+    );
+
+    // The user's reported bug: these were all null on the returned AssetRef.
+    assert.equal(ref.image_format, "jpeg");
+    assert.deepEqual(ref.image_info, {
+      has_alpha: false,
+      color_space: "srgb",
+      animated: false,
+      orientation: 1,
+    });
+    assert.deepEqual(ref.image_exif, { Make: "Apple" });
+    assert.equal(ref.image_exif_policy, "keep");
+    assert.deepEqual(ref.metadata, { caption: "rooftop", tags: ["sunset"] });
+    assert.equal(
+      ref.blurhash_data_url,
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA",
+    );
+    assert.equal(ref.asset_schema, "v1.54");
+    // v1.49 regression guard — these already worked before the fix.
+    assert.equal(ref.width_px, 1024);
+    assert.equal(ref.blurhash, "LcK-B.aK_Nt6~DR*-;xao}kCMyWC");
+    assert.ok(ref.variants?.thumb, "thumb variant copied through");
+  });
+});

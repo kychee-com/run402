@@ -640,6 +640,7 @@ async function applyOnce(
             const existing = result.assets.byKey[recheckEntry.key];
             if (!existing) continue;
             const ref = recheckEntry.asset_ref;
+            // v1.49 — variants + intrinsics surfaced now that the encoder ran.
             if (ref.width_px !== undefined) existing.width_px = ref.width_px;
             if (ref.height_px !== undefined) existing.height_px = ref.height_px;
             if (ref.blurhash !== undefined) existing.blurhash = ref.blurhash;
@@ -651,6 +652,24 @@ async function applyOnce(
               existing.display_immutable_url = ref.display_immutable_url;
             }
             if (ref.variants !== undefined) existing.variants = ref.variants;
+            // v1.50 — image-intrinsic + caller-metadata columns surfaced by
+            // the gateway plan-path enrichment (kychee-com/run402-private #415).
+            // The first plan ran BEFORE the encoder; the re-plan picks them up.
+            // Without this merge, the SDK's buildAssetRef widens them back
+            // to null in the final result.
+            if (ref.image_format !== undefined) existing.image_format = ref.image_format;
+            if (ref.image_info !== undefined) existing.image_info = ref.image_info;
+            if (ref.image_exif !== undefined) existing.image_exif = ref.image_exif;
+            if (ref.image_exif_policy !== undefined) {
+              existing.image_exif_policy = ref.image_exif_policy;
+            }
+            if (ref.metadata !== undefined) existing.metadata = ref.metadata;
+            // v1.54 — shape-contract fields. `<Run402Image>` placeholder
+            // rendering + strict-mode schema filtering both key on these.
+            if (ref.blurhash_data_url !== undefined) {
+              existing.blurhash_data_url = ref.blurhash_data_url;
+            }
+            if (ref.asset_schema !== undefined) existing.asset_schema = ref.asset_schema;
           }
         }
       } catch {
