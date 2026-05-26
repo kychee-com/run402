@@ -346,7 +346,6 @@ async function linkGithub(args) {
     mkdirSync(dirname(absWorkflowPath), { recursive: true });
     writeFileSync(absWorkflowPath, workflow, { encoding: "utf8", mode: 0o644 });
     console.log(JSON.stringify({
-      status: "ok",
       binding_id: binding.id,
       project_id: projectId,
       provider: CI_GITHUB_ACTIONS_PROVIDER,
@@ -383,7 +382,7 @@ async function list(args) {
   const project = resolveProjectId(flags.project);
   try {
     const result = await getSdk({ disablePaidFetch: true }).ci.listBindings({ project });
-    console.log(JSON.stringify({ status: "ok", project_id: project, ...result }, null, 2));
+    console.log(JSON.stringify({ project_id: project, ...result }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -401,8 +400,8 @@ async function revoke(args) {
   try {
     const binding = await getSdk({ disablePaidFetch: true }).ci.revokeBinding(bindingId);
     console.log(JSON.stringify({
-      status: "ok",
       binding,
+      revoked: true,
       revocation_residuals: [
         "Revocation stops future CI gateway requests.",
         "Revocation does not undo already-deployed code, stop in-flight deploy operations, rotate exfiltrated keys, or remove deployed functions.",
@@ -435,7 +434,7 @@ async function setAssetScopes(args) {
       bindingId,
       scopes,
     );
-    console.log(JSON.stringify({ status: "ok", binding }, null, 2));
+    console.log(JSON.stringify({ binding }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }

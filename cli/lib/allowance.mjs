@@ -82,23 +82,24 @@ async function status() {
   try {
     const data = await getSdk().allowance.status();
     if (!data.configured) {
-      console.log(JSON.stringify({ status: "no_wallet", message: "No agent allowance found. Run: run402 allowance create" }));
-      process.exit(1);
+      console.log(JSON.stringify({ wallet: null, hint: "Run: run402 allowance create" }));
+      return;
     }
     // Preserve CLI's rail field (SDK doesn't surface it; read from local allowance).
     const w = readAllowance();
     console.log(JSON.stringify({
-      status: "ok",
-      address: data.address,
-      created: data.created,
-      configured: data.configured,
-      // GH-109: `funded` used to leak an on-disk marker that only tracks
-      // faucet invocation, not actual pay-readiness. Renamed to `faucet_used`
-      // to match its real semantics. For a true "can this account pay right
-      // now" check, use `run402 allowance balance`.
-      faucet_used: !!data.faucet_used,
-      rail: w?.rail || "x402",
-      path: data.path ?? ALLOWANCE_FILE,
+      wallet: {
+        address: data.address,
+        created: data.created,
+        configured: data.configured,
+        // GH-109: `funded` used to leak an on-disk marker that only tracks
+        // faucet invocation, not actual pay-readiness. Renamed to `faucet_used`
+        // to match its real semantics. For a true "can this account pay right
+        // now" check, use `run402 allowance balance`.
+        faucet_used: !!data.faucet_used,
+        rail: w?.rail || "x402",
+        path: data.path ?? ALLOWANCE_FILE,
+      },
     }));
   } catch (err) {
     reportSdkError(err);
@@ -109,9 +110,9 @@ async function create() {
   try {
     const result = await getSdk().allowance.create();
     console.log(JSON.stringify({
-      status: "ok",
       address: result.address,
-      message: `Agent allowance created. Stored locally at ${result.path ?? ALLOWANCE_FILE}`,
+      path: result.path ?? ALLOWANCE_FILE,
+      created: true,
     }));
   } catch (err) {
     const msg = (err instanceof Error) ? err.message : String(err);
@@ -199,7 +200,7 @@ async function fund() {
   }
 
   saveAllowance({ ...w, funded: true, lastFaucet: new Date().toISOString() });
-  console.log(JSON.stringify({ status: "ok", message: "Faucet request sent but balance not yet confirmed", ...data }));
+  console.log(JSON.stringify({ ...data, balance_confirmed: false, hint: "Faucet request sent but on-chain balance not yet confirmed" }));
 }
 
 async function readUsdcBalance(client, usdc, address) {

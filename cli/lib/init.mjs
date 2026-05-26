@@ -1,5 +1,6 @@
 import { readAllowance, saveAllowance, loadKeyStore, CONFIG_DIR } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
+import { fail } from "./sdk-errors.mjs";
 import { mkdirSync } from "fs";
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
@@ -67,13 +68,11 @@ export async function run(args = []) {
 
   const existingAllowance = readAllowance();
   if (existingAllowance?.rail && existingAllowance.rail !== requestedRail && !switchRailConfirmed) {
-    console.error(JSON.stringify({
-      status: "error",
+    fail({
       code: "RAIL_SWITCH_REQUIRES_CONFIRM",
       message: `Already on rail '${existingAllowance.rail}'. Pass --switch-rail to switch to '${requestedRail}'.`,
       details: { current_rail: existingAllowance.rail, requested_rail: requestedRail },
-    }));
-    process.exit(1);
+    });
   }
 
   // In --json mode, human-readable lines go to stderr so stdout stays clean for

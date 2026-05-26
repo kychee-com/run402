@@ -276,7 +276,7 @@ async function update(projectId, versionId, args) {
   if (parsedArgs.includes("--no-fork")) opts.fork_allowed = false;
   try {
     await getSdk().apps.updateVersion(positionals[0], positionals[1], opts);
-    console.log(JSON.stringify({ status: "ok", project_id: positionals[0], version_id: positionals[1] }));
+    console.log(JSON.stringify({ project_id: positionals[0], version_id: positionals[1], updated: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -294,7 +294,7 @@ async function deleteVersion(projectId, versionId, args = []) {
   }
   try {
     await getSdk().apps.deleteVersion(positionals[0], positionals[1]);
-    console.log(JSON.stringify({ status: "ok", message: `Version ${positionals[1]} deleted.` }));
+    console.log(JSON.stringify({ project_id: positionals[0], version_id: positionals[1], deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }

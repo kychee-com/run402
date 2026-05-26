@@ -346,7 +346,7 @@ async function validateExpose(args = []) {
       ...(project ? { project } : {}),
       ...(migration !== null && migration !== undefined ? { migrationSql: migration } : {}),
     });
-    console.log(JSON.stringify({ status: "ok", ...data }, null, 2));
+    console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -364,7 +364,7 @@ async function getExpose(projectId) {
 async function list() {
   const store = loadKeyStore();
   const entries = Object.entries(store.projects);
-  if (entries.length === 0) { console.log(JSON.stringify({ status: "ok", projects: [], message: "No projects yet." })); return; }
+  if (entries.length === 0) { console.log(JSON.stringify([])); return; }
   const activeId = store.active_project_id;
   console.log(JSON.stringify(entries.map(([id, p]) => ({ project_id: id, active: id === activeId, site_url: p.site_url })), null, 2));
 }
@@ -500,7 +500,7 @@ async function use(projectId) {
   }
   try {
     await getSdk().projects.use(projectId);
-    console.log(JSON.stringify({ status: "ok", active_project_id: projectId }));
+    console.log(JSON.stringify({ active_project_id: projectId, set: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -532,7 +532,7 @@ async function promoteUser(projectId, email) {
   }
   try {
     await getSdk().projects.promoteUser(projectId, email);
-    console.log(JSON.stringify({ status: "ok", email }));
+    console.log(JSON.stringify({ project_id: projectId, email, promoted: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -548,7 +548,7 @@ async function demoteUser(projectId, email) {
   }
   try {
     await getSdk().projects.demoteUser(projectId, email);
-    console.log(JSON.stringify({ status: "ok", email }));
+    console.log(JSON.stringify({ project_id: projectId, email, demoted: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -557,17 +557,15 @@ async function demoteUser(projectId, email) {
 async function deleteProject(projectId, args = []) {
   const confirmed = Array.isArray(args) && args.includes("--confirm");
   if (!confirmed) {
-    console.error(JSON.stringify({
-      status: "error",
+    fail({
       code: "CONFIRMATION_REQUIRED",
       message: `Destructive: deleting project ${projectId} drops all DB schemas, functions, subdomains, mailbox, blobs, and secrets. This is irreversible. Re-run with --confirm to proceed.`,
       details: { project_id: projectId, destroys: ["schemas", "functions", "subdomains", "mailbox", "blobs", "secrets"] },
-    }));
-    process.exit(1);
+    });
   }
   try {
     await getSdk().projects.delete(projectId);
-    console.log(JSON.stringify({ status: "ok", message: `Project ${projectId} deleted.` }));
+    console.log(JSON.stringify({ project_id: projectId, deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }

@@ -222,7 +222,7 @@ async function create(args) {
 
   try {
     const data = await getSdk().email.createMailbox(projectId, slug);
-    console.log(JSON.stringify({ status: "ok", mailbox_id: data.mailbox_id, address: data.address, slug: data.slug }));
+    console.log(JSON.stringify({ mailbox_id: data.mailbox_id, address: data.address, slug: data.slug, created: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -254,7 +254,7 @@ async function send(args) {
       text: text ?? undefined,
       from_name: fromName ?? undefined,
     });
-    console.log(JSON.stringify({ status: "ok", message_id: data.message_id, to: data.to, template: data.template, subject: data.subject }));
+    console.log(JSON.stringify({ message_id: data.message_id, to: data.to, template: data.template, subject: data.subject, sent: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -317,7 +317,7 @@ async function getRaw(args) {
     if (outputFile) {
       const { writeFileSync } = await import("node:fs");
       writeFileSync(outputFile, buf);
-      console.log(JSON.stringify({ status: "ok", message_id: messageId, bytes: buf.length, output: outputFile }));
+      console.log(JSON.stringify({ message_id: messageId, bytes: buf.length, output: outputFile }));
     } else {
       process.stdout.write(buf);
     }
@@ -375,7 +375,7 @@ async function reply(args) {
       from_name: fromName ?? undefined,
       in_reply_to: messageId,
     });
-    console.log(JSON.stringify({ status: "ok", message_id: data.message_id, to: data.to, subject: replySubject, in_reply_to: messageId }));
+    console.log(JSON.stringify({ message_id: data.message_id, to: data.to, subject: replySubject, in_reply_to: messageId, sent: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -396,7 +396,7 @@ async function deleteMailbox(args) {
 
   try {
     const data = await getSdk().email.deleteMailbox(projectId, positional ?? undefined);
-    console.log(JSON.stringify({ status: "ok", mailbox_id: data.mailbox_id, address: data.address, deleted: true }));
+    console.log(JSON.stringify({ mailbox_id: data.mailbox_id, address: data.address, deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -407,7 +407,7 @@ async function status(args) {
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   try {
     const mb = await getSdk().email.getMailbox(projectId);
-    console.log(JSON.stringify({ status: "ok", mailbox_id: mb.mailbox_id, address: mb.address, slug: mb.slug }));
+    console.log(JSON.stringify({ mailbox_id: mb.mailbox_id, address: mb.address, slug: mb.slug }));
   } catch (err) {
     reportSdkError(err);
   }

@@ -275,7 +275,7 @@ async function autoRecharge(args) {
       enabled: state === "on",
       threshold,
     });
-    console.log(JSON.stringify({ status: "ok", billing_account_id: accountId, enabled: state === "on" }));
+    console.log(JSON.stringify({ billing_account_id: accountId, enabled: state === "on", updated: true }));
   } catch (err) {
     reportSdkError(err);
   }

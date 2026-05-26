@@ -81,8 +81,8 @@ export async function run(args = []) {
   assertKnownFlags(args, ["--help", "-h"]);
   const allowance = readAllowance();
   if (!allowance) {
-    console.log(JSON.stringify({ status: "no_allowance", message: "No agent allowance found. Run: run402 init" }));
-    process.exit(1);
+    console.log(JSON.stringify({ allowance: null, hint: "Run: run402 init" }));
+    return;
   }
 
   const wallet = allowance.address.toLowerCase();

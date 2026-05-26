@@ -505,7 +505,7 @@ async function get(projectId, argv) {
 
   mkdirSync(dirname(resolvePath(opts.output)), { recursive: true });
   await pipeline(res.body, createWriteStream(opts.output));
-  console.log(JSON.stringify({ status: "ok", key, output: opts.output }));
+  console.log(JSON.stringify({ key, project_id: resolvedId, output: opts.output }));
 }
 
 // ---------------------------------------------------------------------------
@@ -548,7 +548,7 @@ async function rm(projectId, argv) {
 
   try {
     await getSdk().assets.rm(resolvedId, key);
-    console.log(JSON.stringify({ status: "ok", key }));
+    console.log(JSON.stringify({ key, project_id: resolvedId, deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }

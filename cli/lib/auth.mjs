@@ -351,7 +351,7 @@ async function magicLink(args) {
       intent: intent ?? undefined,
       clientState: state ?? undefined,
     });
-    console.log(JSON.stringify({ status: "ok", email, redirect_url: redirect, intent: intent || "signin" }));
+    console.log(JSON.stringify({ email, redirect_url: redirect, intent: intent || "signin", sent: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -380,7 +380,7 @@ async function createUser(args) {
       redirectUrl: redirectUrl ?? undefined,
       clientState: clientState ?? undefined,
     });
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);
   }
@@ -407,7 +407,7 @@ async function inviteUser(args) {
       isAdmin,
       clientState: clientState ?? undefined,
     });
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);
   }
@@ -423,7 +423,7 @@ async function verify(args) {
 
   try {
     const data = await getSdk().auth.verifyMagicLink(projectId, token);
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);
   }
@@ -448,7 +448,7 @@ async function setPassword(args) {
       newPassword,
       currentPassword: currentPassword ?? undefined,
     });
-    console.log(JSON.stringify({ status: "ok" }));
+    console.log(JSON.stringify({ project_id: projectId, password_set: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -496,7 +496,7 @@ async function settings(args) {
       require_passkey_for_project_admin: requireAdminPasskey,
     };
     const data = await getSdk().auth.settings(projectId, patch);
-    console.log(JSON.stringify({ status: "ok", ...patch, ...data }));
+    console.log(JSON.stringify({ ...patch, ...data }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -534,7 +534,7 @@ async function passkeyRegisterVerify(args) {
       response,
       label: label ?? undefined,
     });
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);
   }
@@ -566,7 +566,7 @@ async function passkeyLoginVerify(args) {
       challengeId,
       response,
     });
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);
   }
@@ -595,7 +595,7 @@ async function deletePasskey(args) {
       accessToken,
       passkeyId,
     });
-    console.log(JSON.stringify({ status: "ok", passkey_id: passkeyId }));
+    console.log(JSON.stringify({ passkey_id: passkeyId, deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }

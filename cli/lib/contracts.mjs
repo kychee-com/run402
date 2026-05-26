@@ -266,7 +266,7 @@ async function setRecovery(projectId, walletId, args) {
   if (address) validateEvmAddress(address, "--address");
   try {
     await getSdk().contracts.setRecovery(projectId, walletId, clear ? null : address);
-    console.log(JSON.stringify({ status: "ok", wallet_id: walletId, recovery_address: clear ? null : address }));
+    console.log(JSON.stringify({ wallet_id: walletId, recovery_address: clear ? null : address, updated: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -287,7 +287,7 @@ async function setAlert(projectId, walletId, args) {
   validateWeiFlag("--threshold-wei", threshold);
   try {
     await getSdk().contracts.setLowBalanceAlert(projectId, walletId, threshold);
-    console.log(JSON.stringify({ status: "ok", wallet_id: walletId, threshold_wei: threshold }));
+    console.log(JSON.stringify({ wallet_id: walletId, threshold_wei: threshold, updated: true }));
   } catch (err) {
     reportSdkError(err);
   }

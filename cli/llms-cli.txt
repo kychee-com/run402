@@ -33,17 +33,35 @@ Provision first, then write your frontend code with the real `anon_key` embedded
 - Allowance: `~/.config/run402/allowance.json` (0600). Projects: `~/.config/run402/projects.json` (0600)
 - Credentials saved automatically after provision or fork
 - `<id>` in commands = `project_id` from `run402 projects list`
-- All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, 1 = error
+- All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, non-zero = error. See **Output Contract** below.
 - The CLI handles x402 signing automatically — do not request private keys or set up payment libraries manually
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`, then the generated workflow calls the existing `run402 deploy apply` command with `permissions: id-token: write`
 - Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
 - Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`)
 
+## Output Contract
+
+Every CLI subcommand follows the same stdout/stderr/exit-code contract. Read this once; it applies uniformly to every command in the rest of this file.
+
+**Stdout (success)** — the natural JSON payload, never wrapped. No top-level `status` field. The payload's shape depends on the command:
+- **Reads / lists / info** — emit the resource directly (`projects info` returns `{ project_id, anon_key, ... }`; `projects list` returns an array).
+- **Mutations with no natural payload** — echo the affected resource identifiers plus an explicit boolean state field naming what happened, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`. Never an empty object.
+- **Local-state inspection** — `run402 status` and `run402 allowance status` use typed nullable payload fields: `{ allowance: null, hint: "Run: run402 init" }` when absent, `{ allowance: { address, funded, ... } }` when present. Absence exits 0 — it is an informational read, not an error.
+- **Plain text** — a small set of commands (e.g. `run402 allowance export` returning a wallet address) emit a plain-text value with a trailing newline; their help text documents this.
+
+**Stderr (failure)** — a structured JSON error envelope with `status: "error"` and non-zero exit. The `status` field is the sentinel that says "this is an error" — it is preserved on stderr only and never appears on stdout. The envelope's other canonical fields are described under **Error JSON and Safe Retry** below.
+
+**Exit code** — `0` means the subcommand completed; non-zero means it failed and the structured envelope is on stderr. Validation commands that find issues (e.g. `validate-expose` reporting `hasErrors: true`) still exit 0 — the command itself succeeded; agents read `hasErrors` from the payload to decide what to do.
+
+**Per-payload `status` fields are not envelopes.** `run402 doctor` reports per-check items inside a `checks[]` array, each of which has its own `status: "ok" | "warning" | "missing" | "skipped"` label. Those are payload contents, not the top-level envelope, and they are NOT the same as the (forbidden) top-level `status` wrapper.
+
+This contract is enforced by a drift-protection test (`cli-output-contract.test.mjs`) that fails CI on any new top-level `JSON.stringify({ status: ... })` emission outside `cli/lib/sdk-errors.mjs`. If you find a command violating this contract, file an issue — it is a regression, not a feature.
+
+**Breaking change in v3.0:** Earlier `run402` CLI versions wrapped many success payloads as `{ status: "ok", ...payload }`. v3.0 dropped the wrapper across every subcommand. Consumers should drop any `.status === "ok"` checks and gate on exit code instead. The stderr error envelope is unchanged.
+
 ## Error JSON and Safe Retry
 
 CLI errors are JSON on stderr with an outer `"status": "error"` sentinel. Run402-originated JSON bodies may be merged into that object with canonical fields. Branch on `code`, not English `message` or legacy `error` text.
-
-Exit codes follow the rule `status === "ok" ? 0 : 1` -- any payload whose `status` is not `"ok"` exits non-zero, including the `no_allowance` / `no_wallet` informational sentinels emitted by `run402 status` and `run402 allowance status` when no agent allowance is configured. Shell-driven workflows can therefore branch on `$?` without parsing JSON.
 
 Canonical fields:
 - `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON, unknown local project) default to `BAD_USAGE`; specific client-side cases use richer codes such as `UNKNOWN_FLAG`, `BAD_FLAG`, `PROJECT_NOT_FOUND` (with `details.source: "local_registry"`), `NO_DEPLOYMENT`, `NO_ALLOWANCE`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
@@ -309,9 +327,9 @@ run402 deploy resolve --project prj_123 --host example.com --path /events --meth
 
 `list` returns `{ operations: [...], cursor }`; the SDK and MCP `deploy_list` surface accept that cursor for pagination when it is non-null. `events` returns the same `DeployEvent` shapes that `apply` emits inline.
 
-`release active` and `release get` return `{ "status": "ok", "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), `static_public_paths` when returned, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, the release's `i18n` slice (object with `defaultLocale` / `locales` / `detect`, or `null` when the release has no slice), and inventory warnings when returned. `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `static_manifest_metadata: null` means unavailable, not zero; when present it includes `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, and `spa_fallback`. Use `i18n` as the positive verification readback after a deploy — `jq '.release.i18n'` confirms `spec.i18n` shipped, since `apply()` not throwing is necessary but not sufficient. Older gateways predating the inventory-i18n change may omit the field entirely; treat absent (not `null`) as "unknown on this gateway."
+`release active` and `release get` return `{ "release": ReleaseInventory }`. Inventories include release metadata, `state_kind` (`current_live`, `effective`, or `desired_manifest`), site paths (capped by `--site-limit`), `static_public_paths` when returned, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, the release's `i18n` slice (object with `defaultLocale` / `locales` / `detect`, or `null` when the release has no slice), and inventory warnings when returned. `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `static_manifest_metadata: null` means unavailable, not zero; when present it includes `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, and `spa_fallback`. Use `i18n` as the positive verification readback after a deploy — `jq '.release.i18n'` confirms `spec.i18n` shipped, since `apply()` not throwing is necessary but not sufficient. Older gateways predating the inventory-i18n change may omit the field entirely; treat absent (not `null`) as "unknown on this gateway."
 
-`release diff` returns `{ "status": "ok", "diff": ReleaseToReleaseDiff }`. `--from` accepts `empty`, `active`, or a release id. `--to` accepts `active` or a release id. Diff migrations use `migrations.applied_between_releases`; secrets and subdomains expose `added` / `removed` only; routes expose `added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed files, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
+`release diff` returns `{ "diff": ReleaseToReleaseDiff }`. `--from` accepts `empty`, `active`, or a release id. `--to` accepts `active` or a release id. Diff migrations use `migrations.applied_between_releases`; secrets and subdomains expose `added` / `removed` only; routes expose `added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed files, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 
 `deploy diagnose` is the URL-first public diagnostic: `run402 deploy diagnose --project prj_123 https://example.com/events --method GET`. `deploy resolve` is lower-level parity with the SDK/endpoint: pass `--url` or pass `--host` with optional `--path`; do not combine `--url` with `--host`/`--path`. Both commands print a structured JSON envelope with `status`, `would_serve`, `diagnostic_status`, `match`, `summary`, normalized `request`, `warnings`, full `resolution`, and structured `next_steps`. Query strings/fragments in URL mode are ignored for route/static lookup and reported under `request.ignored` and warnings. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Diagnostic misses such as host misses exit 0 when the resolver call succeeds; branch on `would_serve: false`.
 
@@ -448,7 +466,6 @@ Output on success:
 
 ```json
 {
-  "status": "ok",
   "binding_id": "cib_...",
   "project_id": "prj_...",
   "provider": "github-actions",
@@ -475,8 +492,8 @@ run402 ci list [--project <id>]
 run402 ci revoke <binding_id>
 ```
 
-`list` prints `{ "status": "ok", "project_id": "...", "bindings": [...] }`.
-`revoke` prints `{ "status": "ok", "binding": {...}, "revocation_residuals": [...] }`.
+`list` prints `{ "project_id": "...", "bindings": [...] }`.
+`revoke` prints `{ "binding": {...}, "revoked": true, "revocation_residuals": [...] }`.
 
 Intentional omissions in v1: no raw `--subject`, no wildcard flag, no `--allow-event`, no PR deploy flags, and no `--no-repository-id`. Use `--branch` or `--environment`; create a follow-up design before broadening trust.
 
@@ -658,7 +675,7 @@ JSON Schema: `https://run402.com/schemas/manifest.v1.json` — point your editor
 
 The preferred way to declare authorization is to ship a `manifest.json` file in the bundle's `files[]` (shown above). The platform reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table your migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation.
 
-For a non-mutating feedback loop before applying, run `run402 projects validate-expose [project_id] --file manifest.json [--migration-file setup.sql]`. It validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "status": "ok", "hasErrors": boolean, "errors": [...], "warnings": [...] }` and exits successfully even when `hasErrors` is true.
+For a non-mutating feedback loop before applying, run `run402 projects validate-expose [project_id] --file manifest.json [--migration-file setup.sql]`. It validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "hasErrors": boolean, "errors": [...], "warnings": [...] }` and exits 0 even when `hasErrors` is true — the validator ran, so the command succeeded; agents read `hasErrors` to decide what to do.
 
 Built-in policies (one per table):
 
@@ -1107,7 +1124,7 @@ To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 d
 
 **Dry-run**: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the gateway's `POST /apply/v1/plans?dry_run=true`, prints `{status:"ok", dry_run:true, plan_id:null, operation_id:null, manifest_digest, diff, warnings, expected_events, missing_content_count}`, and exits without uploading bytes or committing a release. Use it to preview the server-authoritative plan/diff envelope.
 
-**Progress events**: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to **stderr** by default; the final `{"status":"ok",...}` envelope still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result envelope).
+**Progress events**: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to **stderr** by default; the final result payload (release/deployment metadata, no `status` wrapper) still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result payload).
 
 ### subdomains
 - `run402 subdomains claim <name> [--deployment <id>] [--project <id>]`
@@ -1149,7 +1166,7 @@ $0.03 per image.
 
 - `run402 image generate "<prompt>" [--aspect <square|landscape|portrait>] [--output <file>]`
 
-Without `--output`, returns `{"status":"ok","aspect":"...","content_type":"image/png","image":"<base64>"}`.
+Without `--output`, returns `{"aspect":"...","content_type":"image/png","image":"<base64>"}`.
 
 ### ai
 Built-in AI helpers. Translation requires the AI Translation add-on on the project. Moderation is free for all projects.

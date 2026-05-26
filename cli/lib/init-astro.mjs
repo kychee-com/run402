@@ -250,9 +250,9 @@ export const POST: APIRoute = async ({ request }) => {
     console.log(
       JSON.stringify(
         {
-          status: "ok",
           dir: targetDir,
           files_created: files.map((f) => f.path),
+          created: true,
           next_steps: [
             `cd ${positionals[0] ?? "."}`,
             "npm install",

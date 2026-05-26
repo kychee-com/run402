@@ -129,7 +129,7 @@ async function set(projectId, key, args = []) {
   }
   try {
     await getSdk().secrets.set(projectId, key, val);
-    console.log(JSON.stringify({ status: "ok", message: `Secret '${key}' set for project ${projectId}.` }));
+    console.log(JSON.stringify({ key, project_id: projectId, set: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -200,7 +200,7 @@ async function deleteSecret(projectId, key, args = []) {
   }
   try {
     await getSdk().secrets.delete(projectId, key);
-    console.log(JSON.stringify({ status: "ok", message: `Secret '${key}' deleted.` }));
+    console.log(JSON.stringify({ key, project_id: projectId, deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }

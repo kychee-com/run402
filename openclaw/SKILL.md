@@ -372,7 +372,7 @@ Before applying, run:
 run402 projects validate-expose [id] --file manifest.json --migration-file migrations.sql
 ```
 
-This validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "status": "ok", "hasErrors": boolean, "errors": [...], "warnings": [...] }` and exits successfully even when `hasErrors` is true.
+This validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "hasErrors": boolean, "errors": [...], "warnings": [...] }` and exits 0 even when `hasErrors` is true — the validator ran, so the command succeeded; read `hasErrors` to decide what to do.
 
 ### Imperative escape hatch: `apply-expose`
 

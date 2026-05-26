@@ -193,7 +193,7 @@ async function deleteDomain(args) {
   const projectId = resolveProjectId(project);
   try {
     await getSdk().domains.remove(domain, { projectId });
-    console.log(JSON.stringify({ status: "ok", message: `Domain '${domain}' released.` }));
+    console.log(JSON.stringify({ domain, project_id: projectId, released: true }));
   } catch (err) {
     reportSdkError(err);
   }

@@ -151,7 +151,7 @@ async function translate(args) {
 
   try {
     const data = await getSdk().ai.translate(projectId, { text, to, from: from ?? undefined, context: context ?? undefined });
-    console.log(JSON.stringify({ status: "ok", text: data.text, from: data.from, to: data.to }));
+    console.log(JSON.stringify({ text: data.text, from: data.from, to: data.to }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -194,7 +194,7 @@ async function moderate(args) {
 
   try {
     const data = await getSdk().ai.moderate(projectId, text);
-    console.log(JSON.stringify({ status: "ok", flagged: data.flagged, categories: data.categories, category_scores: data.category_scores }));
+    console.log(JSON.stringify({ flagged: data.flagged, categories: data.categories, category_scores: data.category_scores }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -216,7 +216,7 @@ async function usage(args) {
 
   try {
     const data = await getSdk().ai.usage(projectId);
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);
   }

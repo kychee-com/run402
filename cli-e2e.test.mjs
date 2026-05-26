@@ -1051,7 +1051,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("create", []);
     captureStop();
-    assert.ok(captured().includes("ok"), "should output ok status");
+    assert.ok(captured().includes('"created":true'), "should report created:true");
     assert.ok(existsSync(join(tempDir, "allowance.json")), "allowance.json should exist");
   });
 
@@ -1060,7 +1060,8 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("status", []);
     captureStop();
-    assert.ok(captured().includes("ok"), "should show ok status");
+    assert.ok(captured().includes('"wallet"'), "should emit wallet payload");
+    assert.ok(captured().includes('"address"'), "should include address inside wallet");
   });
 
   it("allowance fund", async () => {
@@ -1391,7 +1392,7 @@ describe("CLI e2e happy path", () => {
     captureStop();
 
     const parsed = JSON.parse(capturedStdout());
-    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.status, undefined, "validate-expose must not emit a top-level status field");
     assert.equal(parsed.hasErrors, false);
     assert.equal(parsed.warnings[0]?.type, "validation-inconclusive");
   });
@@ -1405,7 +1406,7 @@ describe("CLI e2e happy path", () => {
     captureStop();
 
     const parsed = JSON.parse(capturedStdout());
-    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.status, undefined, "validate-expose must not emit a top-level status field");
     assert.equal(parsed.hasErrors, true);
     assert.equal(parsed.errors[0]?.type, "missing-table");
   });
@@ -1977,7 +1978,7 @@ describe("CLI e2e happy path", () => {
     await run(["apply", "--manifest", manifestPath, "--project", "prj_test123"]);
     captureStop();
     const body = JSON.parse(capturedStdout());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "deploy apply must not emit a top-level status field");
     assert.equal(body.release_id, "rel_v2_test");
     assert.equal(body.urls.deployment_id, "dpl_test456");
   });
@@ -2115,7 +2116,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(result.deployListCalled, true);
     assert.equal(result.seenLimit, "7");
     const body = JSON.parse(result.stdout);
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "deploy list must not emit a top-level status field");
     assert.equal(body.operations[0].operation_id, "op_list_test");
   });
 
@@ -2197,7 +2198,7 @@ describe("CLI e2e happy path", () => {
     await run(["release", "get", "rel_v2_test", "--project", "prj_test123", "--site-limit", "2"]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "deploy release get must not emit a top-level status field");
     assert.equal(body.release.kind, "release_inventory");
     assert.equal(body.release.release_id, "rel_v2_test");
     assert.equal(body.release.routes.entries[0].pattern, "/api/*");
@@ -2211,7 +2212,7 @@ describe("CLI e2e happy path", () => {
     await run(["release", "active", "--project", "prj_test123"]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "deploy release active must not emit a top-level status field");
     assert.equal(body.release.state_kind, "current_live");
     assert.equal(body.release.routes.entries.length, 1);
     assert.equal(body.release.static_public_paths[0].reachability_authority, "explicit_public_path");
@@ -2235,7 +2236,7 @@ describe("CLI e2e happy path", () => {
     ]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "deploy release diff must not emit a top-level status field");
     assert.equal(body.diff.kind, "release_diff");
     assert.deepEqual(body.diff.migrations.applied_between_releases, ["001_init"]);
     assert.equal(body.diff.routes.added[0].pattern, "/api/*");
@@ -2309,7 +2310,7 @@ describe("CLI e2e happy path", () => {
     ]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "stdout must not emit a top-level status field");
     assert.equal(body.would_serve, true);
     assert.equal(body.diagnostic_status, 200);
     assert.equal(body.match, "static_exact");
@@ -2329,7 +2330,7 @@ describe("CLI e2e happy path", () => {
     await run(["diagnose", "https://example.com/events"]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "stdout must not emit a top-level status field");
     assert.equal(body.request.project, TEST_PROJECT.project_id);
     assert.equal(body.match, "static_exact");
   });
@@ -2349,7 +2350,7 @@ describe("CLI e2e happy path", () => {
     ]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "stdout must not emit a top-level status field");
     assert.equal(body.would_serve, false);
     assert.equal(body.diagnostic_status, 404);
     assert.equal(body.match, "host_missing");
@@ -2371,7 +2372,7 @@ describe("CLI e2e happy path", () => {
     ]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "stdout must not emit a top-level status field");
     assert.equal(body.would_serve, false);
     assert.equal(body.match, "static_exact");
     assert.equal(body.resolution.authorization_result, "missing_cas_object");
@@ -2393,7 +2394,7 @@ describe("CLI e2e happy path", () => {
     ]);
     captureStop();
     const body = JSON.parse(captured());
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "stdout must not emit a top-level status field");
     assert.equal(body.would_serve, false);
     assert.equal(body.diagnostic_status, 405);
     assert.equal(body.match, "route_method_miss");
@@ -2806,7 +2807,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(threw, null, stderr);
     assert.equal(deployCalled, true, "allowed warning deploy must reach /apply/v1/plans");
     const body = JSON.parse(stdout);
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "stdout must not emit a top-level status field");
     assert.equal(body.warnings[0]?.code, "WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS");
   });
 
@@ -2818,7 +2819,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(threw, null);
     assert.equal(stderr.trim(), "", `--final-only should suppress event stderr, got: ${stderr}`);
     const body = JSON.parse(stdout);
-    assert.equal(body.status, "ok");
+    assert.equal(body.status, undefined, "stdout must not emit a top-level status field");
     assert.equal(body.release_id, "rel_v2_test");
   });
 
@@ -3055,7 +3056,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("set", ["prj_test123", "TEST_KEY", "secret_value"]);
     captureStop();
-    assert.ok(captured().includes("ok"), "should set secret");
+    assert.ok(captured().includes('"set":true'), "should report set:true");
   });
 
   it("secrets set --file", async () => {
@@ -3067,7 +3068,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("set", ["prj_test123", "FILE_KEY", "--file", valPath]);
     captureStop();
-    assert.ok(captured().includes("ok"), "should set secret from file");
+    assert.ok(captured().includes('"set":true'), "should report set:true");
   });
 
   it("secrets set with missing --file path returns structured JSON error (GH-233)", async () => {
@@ -3217,7 +3218,7 @@ describe("CLI e2e happy path", () => {
     await run("deploy-dir", [siteDir, "--project", "prj_test123", "--confirm-prune"]);
     captureStop();
     assert.ok(capturedStdout().includes("dpl_test456"), "should return deployment id from dir on stdout");
-    assert.ok(capturedStdout().includes("\"status\": \"ok\""), "should emit JSON envelope with status ok on stdout");
+    assert.ok(!capturedStdout().includes("\"status\": \"ok\""), "stdout must not contain status:ok wrapper");
 
     // Progress events are emitted as JSON-line on stderr by default.
     const stderr = capturedStderr();
@@ -3240,7 +3241,8 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("deploy-dir", [siteDir, "--project", "prj_test123", "--quiet", "--confirm-prune"]);
     captureStop();
-    assert.ok(capturedStdout().includes("\"status\": \"ok\""), "stdout still has the result envelope");
+    assert.ok(capturedStdout().includes("dpl_test456"), "stdout still has the result payload (deployment_id)");
+    assert.ok(!capturedStdout().includes("\"status\": \"ok\""), "stdout must not contain status:ok wrapper");
     // No JSON event lines on stderr.
     const stderr = capturedStderr();
     const eventLines = stderr.split("\n").filter(Boolean).filter((l) => {
@@ -3303,8 +3305,8 @@ describe("CLI e2e happy path", () => {
     captureStop();
     assert.ok(capturedStdout().includes("dpl_test456"),
       `should commit when --confirm-prune is set; stdout: ${capturedStdout()}`);
-    assert.ok(capturedStdout().includes("\"status\": \"ok\""),
-      `should emit ok envelope; stdout: ${capturedStdout()}`);
+    assert.ok(!capturedStdout().includes("\"status\": \"ok\""),
+      `stdout must not contain status:ok wrapper; stdout: ${capturedStdout()}`);
   });
 
   it("sites deploy-dir --dry-run plans without committing", async () => {
@@ -3317,10 +3319,10 @@ describe("CLI e2e happy path", () => {
     await run("deploy-dir", [siteDir, "--project", "prj_test123", "--dry-run"]);
     captureStop();
     const stdout = capturedStdout();
-    assert.ok(stdout.includes("\"status\": \"ok\""),
-      `dry-run should emit status ok; stdout: ${stdout}`);
+    assert.ok(!stdout.includes("\"status\": \"ok\""),
+      `dry-run stdout must not contain status:ok wrapper; stdout: ${stdout}`);
     assert.ok(stdout.includes("\"dry_run\": true"),
-      `dry-run envelope should include dry_run: true; stdout: ${stdout}`);
+      `dry-run payload should include dry_run: true; stdout: ${stdout}`);
     assert.ok(stdout.includes("\"plan_id\""),
       `dry-run envelope should include plan_id; stdout: ${stdout}`);
     // Must not have committed (no deployment_id from the commit handler).
@@ -3417,7 +3419,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("send", ["Hello", "from", "e2e", "test"]);
     captureStop();
-    assert.ok(captured().includes("ok") || captured().includes("delivered"), "should send message");
+    assert.ok(captured().includes('"sent":true'), "should report sent:true");
   });
 
   // ── Agent ───────────────────────────────────────────────────────────────
@@ -3528,7 +3530,7 @@ describe("CLI e2e happy path", () => {
       `Authorization header must be Bearer <user access_token>, not the anon_key; got headers: ${JSON.stringify(capturedHeaders)}`,
     );
     assert.equal(capturedBody?.new_password, "Secr3t!Pass", "body should carry new_password");
-    assert.ok(captured().includes("ok"), "should print ok status");
+    assert.ok(captured().includes('"password_set":true'), "should report password_set:true");
   });
 
   // ── auth settings --allow-password-set boolean validation (GH-204) ──────
@@ -3731,8 +3733,8 @@ describe("CLI e2e happy path", () => {
     }
     assert.equal(capturedBody?.allow_password_set, true, "must send allow_password_set:true");
     assert.ok(
-      capturedStdout().includes('"status":"ok"'),
-      `should print ok status, got stdout: ${capturedStdout()}`,
+      !capturedStdout().includes('"status":"ok"'),
+      `stdout must not contain status:ok wrapper, got: ${capturedStdout()}`,
     );
     assert.ok(
       capturedStdout().includes('"allow_password_set":true'),
@@ -3769,8 +3771,8 @@ describe("CLI e2e happy path", () => {
     }
     assert.equal(capturedBody?.allow_password_set, false, "must send allow_password_set:false");
     assert.ok(
-      capturedStdout().includes('"status":"ok"'),
-      `should print ok status, got stdout: ${capturedStdout()}`,
+      !capturedStdout().includes('"status":"ok"'),
+      `stdout must not contain status:ok wrapper, got: ${capturedStdout()}`,
     );
     assert.ok(
       capturedStdout().includes('"allow_password_set":false'),
@@ -3785,7 +3787,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("delete", ["prj_test123", "TEST_KEY"]);
     captureStop();
-    assert.ok(captured().includes("ok"), "should delete secret");
+    assert.ok(captured().includes('"deleted":true'), "should report deleted:true");
   });
 
   it("functions delete", async () => {
@@ -3793,7 +3795,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("delete", ["prj_test123", "hello"]);
     captureStop();
-    assert.ok(captured().includes("ok") || captured().includes("delete"), "should delete function");
+    assert.ok(captured().includes('"deleted":true'), "should report deleted:true");
   });
 
   it("subdomains delete", async () => {
@@ -3801,7 +3803,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("delete", ["my-app", "--confirm", "--project", "prj_test123"]);
     captureStop();
-    assert.ok(captured().includes("ok"), "should delete subdomain");
+    assert.ok(captured().includes('"released":true'), "should report released:true");
   });
 
   it("apps delete", async () => {
@@ -3809,7 +3811,7 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("delete", ["prj_test123", "ver_pub1"]);
     captureStop();
-    assert.ok(captured().includes("ok"), "should delete version");
+    assert.ok(captured().includes('"deleted":true'), "should report deleted:true");
   });
 
   it("projects delete", async () => {
@@ -4963,8 +4965,13 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
   });
 });
 
-describe("CLI status exit codes (GH-191)", () => {
-  it("status with no allowance exits 1 with status: no_allowance", async () => {
+describe("CLI status local-state inspection (cli-output-shape)", () => {
+  // Per cli-output-shape spec: absence of local state is an informational
+  // read, not an error. status exits 0 with `{ allowance: null, hint: "..." }`;
+  // allowance status exits 0 with `{ wallet: null, hint: "..." }`. The
+  // previous GH-191 contract (exit 1 + `status: "no_allowance"`) was retired
+  // in v3.0 as part of the CLI envelope normalization.
+  it("status with no allowance emits typed null allowance and exits 0", async () => {
     const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
     try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
     const { run } = await import("./cli/lib/status.mjs");
@@ -4975,17 +4982,17 @@ describe("CLI status exit codes (GH-191)", () => {
     } catch (e) { threw = e; } finally {
       captureStop();
     }
-    assert.equal(threw?.message, "process.exit(1)",
-      "status with no allowance must exit 1 (status !== 'ok' rule), got: " + (threw?.message || "no exit"));
+    assert.equal(threw, null, `status with no allowance must exit 0, got: ${threw?.message}`);
     const stdout = capturedStdout();
     const line = stdout.split("\n").find(s => s.trim().startsWith("{"));
-    assert.ok(line, `should emit status payload on stdout, got: ${stdout}`);
+    assert.ok(line, `should emit payload on stdout, got: ${stdout}`);
     const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "no_allowance",
-      `payload status should remain 'no_allowance' for shell sentinels, got: ${parsed.status}`);
+    assert.equal(parsed.status, undefined, "must not emit a top-level status field");
+    assert.equal(parsed.allowance, null, "allowance must be typed null when absent");
+    assert.ok(parsed.hint && /run402 init/.test(parsed.hint), `hint must guide to next step, got: ${parsed.hint}`);
   });
 
-  it("allowance status with no allowance exits 1 with status: no_wallet", async () => {
+  it("allowance status with no wallet emits typed null wallet and exits 0", async () => {
     const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
     try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
     const { run } = await import("./cli/lib/allowance.mjs");
@@ -5005,8 +5012,12 @@ describe("CLI status exit codes (GH-191)", () => {
         rail: "x402",
       });
     }
-    assert.equal(threw?.message, "process.exit(1)",
-      "allowance status with no wallet must exit 1, got: " + (threw?.message || "no exit"));
+    assert.equal(threw, null, `allowance status with no wallet must exit 0, got: ${threw?.message}`);
+    const stdout = capturedStdout();
+    const parsed = JSON.parse(stdout.split("\n").find(s => s.trim().startsWith("{")) || "{}");
+    assert.equal(parsed.status, undefined, "must not emit a top-level status field");
+    assert.equal(parsed.wallet, null, "wallet must be typed null when absent");
+    assert.ok(parsed.hint && /run402 allowance create/.test(parsed.hint), `hint must guide to next step, got: ${parsed.hint}`);
   });
 });
 
@@ -5097,7 +5108,7 @@ describe("CLI malformed allowance.json (GH-194)", () => {
       `message should mention privateKey; got: ${parsed.message}`);
   });
 
-  it("status with unparseable allowance.json still returns no_allowance (existing UX preserved)", async () => {
+  it("status with unparseable allowance.json still surfaces as typed null allowance (existing UX preserved)", async () => {
     const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
     const fs = await import("node:fs");
     fs.writeFileSync(ALLOWANCE_FILE, "not json");
@@ -5110,13 +5121,14 @@ describe("CLI malformed allowance.json (GH-194)", () => {
       captureStop();
       await restoreValidAllowance();
     }
-    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(threw, null, `status with unparseable allowance must exit 0, got: ${threw?.message}`);
     const stdout = capturedStdout();
     const line = stdout.split("\n").find(s => s.trim().startsWith("{"));
-    assert.ok(line, `should emit status payload on stdout, got: ${stdout}`);
+    assert.ok(line, `should emit payload on stdout, got: ${stdout}`);
     const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "no_allowance",
-      `unparseable JSON should still surface as no_allowance, not BAD_ALLOWANCE_FILE; got: ${parsed.status}`);
+    assert.equal(parsed.status, undefined, "must not emit a top-level status field");
+    assert.equal(parsed.allowance, null,
+      `unparseable JSON should surface as typed null allowance (no BAD_ALLOWANCE_FILE error envelope); got: ${JSON.stringify(parsed)}`);
   });
 });
 
@@ -5482,7 +5494,7 @@ describe("CLI message send size cap (GH-175)", () => {
     const line = stdout.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
     assert.ok(line, `expected JSON envelope on stdout, got: ${stdout}`);
     const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.sent, true);
     assert.equal(parsed.bytes_sent, 8192,
       `bytes_sent should echo payload size, got: ${parsed.bytes_sent}`);
   });
@@ -5504,7 +5516,7 @@ describe("CLI message send size cap (GH-175)", () => {
     const line = stdout.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
     assert.ok(line, `expected JSON envelope on stdout, got: ${stdout}`);
     const parsed = JSON.parse(line);
-    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.sent, true);
     assert.equal(parsed.bytes_sent, 2, `bytes_sent should be 2 for "hi", got: ${parsed.bytes_sent}`);
   });
 

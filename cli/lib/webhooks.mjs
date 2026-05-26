@@ -109,7 +109,7 @@ async function del(args) {
   }
   try {
     await getSdk().email.webhooks.delete(projectId, webhookId);
-    console.log(JSON.stringify({ status: "ok", webhook_id: webhookId, deleted: true }));
+    console.log(JSON.stringify({ webhook_id: webhookId, project_id: projectId, deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -143,7 +143,7 @@ async function update(args) {
       url: url ?? undefined,
       events: eventsRaw ? eventsRaw.split(",").map((e) => e.trim()) : undefined,
     });
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);
   }
@@ -179,7 +179,7 @@ async function register(args) {
   const events = eventsRaw.split(",").map((e) => e.trim());
   try {
     const data = await getSdk().email.webhooks.register(projectId, { url, events });
-    console.log(JSON.stringify({ status: "ok", ...data }));
+    console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);
   }

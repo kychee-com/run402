@@ -153,7 +153,7 @@ async function deleteSubdomain(allArgs) {
   const projectId = resolveProjectId(opts.project);
   try {
     await getSdk().subdomains.delete(name, { projectId });
-    console.log(JSON.stringify({ status: "ok", message: `Subdomain '${name}' released.` }));
+    console.log(JSON.stringify({ name, project_id: projectId, released: true }));
   } catch (err) {
     reportSdkError(err);
   }

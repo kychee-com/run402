@@ -411,7 +411,7 @@ async function deleteFunction(projectId, name, args = []) {
   assertNoExtraPositionals(args, "run402 functions delete <project_id> <name>");
   try {
     await getSdk().functions.delete(projectId, name);
-    console.log(JSON.stringify({ status: "ok", message: `Function '${name}' deleted.` }));
+    console.log(JSON.stringify({ name, project_id: projectId, deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }

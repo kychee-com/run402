@@ -69,9 +69,8 @@ async function send(text) {
   try {
     await getSdk().admin.sendMessage(text);
     console.log(JSON.stringify({
-      status: "ok",
-      message: "Message sent to Run402 developers.",
       bytes_sent: bytes,
+      sent: true,
     }));
   } catch (err) {
     reportSdkError(err);

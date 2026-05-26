@@ -207,11 +207,10 @@ async function deploy(args) {
   for (let i = 0; i < parsedArgs.length; i++) {
     if (parsedArgs[i] === "--help" || parsedArgs[i] === "-h") { console.log(HELP); process.exit(0); }
     if (parsedArgs[i] === "--inherit") {
-      console.error(JSON.stringify({
-        status: "error",
+      fail({
+        code: "BAD_FLAG",
         message: "--inherit is removed; the SDK now uploads only changed files automatically.",
-      }));
-      process.exit(1);
+      });
     }
   }
   if (opts.target !== undefined) failUnsupportedTarget();
@@ -304,8 +303,7 @@ async function deployDir(args) {
     !opts.confirmPrune &&
     !opts.dryRun
   ) {
-    console.error(JSON.stringify({
-      status: "error",
+    fail({
       code: "PRUNE_CONFIRMATION_REQUIRED",
       message:
         `sites deploy-dir would replace the entire site with ${fileCount} ` +
@@ -317,8 +315,7 @@ async function deployDir(args) {
         threshold: SMALL_DIR_THRESHOLD,
         dir: opts.dir,
       },
-    }));
-    process.exit(1);
+    });
   }
 
   if (opts.dryRun) {
@@ -328,7 +325,6 @@ async function deployDir(args) {
         site: { replace: fileSet },
       }, { dryRun: true });
       console.log(JSON.stringify({
-        status: "ok",
         dry_run: true,
         local_file_count: fileCount,
         plan_id: plan.plan_id,
@@ -355,7 +351,7 @@ async function deployDir(args) {
     if (data.deployment_id) {
       updateProject(projectId, { last_deployment_id: data.deployment_id });
     }
-    console.log(JSON.stringify({ status: "ok", ...data }, null, 2));
+    console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
   }

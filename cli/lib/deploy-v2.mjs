@@ -255,7 +255,7 @@ Options:
   --method <method>       HTTP method to diagnose (default: GET)
 
 Do not combine --url with --host or --path. Successful diagnostic misses still
-exit 0 with status: "ok"; inspect would_serve and diagnostic_status.
+exit 0; inspect would_serve and diagnostic_status in the result payload.
 `;
 
 export async function runDeployV2(sub, args) {
@@ -509,7 +509,7 @@ async function applyCmd(args) {
       allowWarnings: opts.allowWarnings,
       allowWarningCodes: opts.allowWarningCodes,
     });
-    console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
+    console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     reportDeployApplyError(err, useGithubActionsOidc);
   }
@@ -832,7 +832,7 @@ async function resumeCmd(args) {
     const result = await getSdk()._applyEngine.resume(opts.operationId, {
       onEvent: makeStderrEventWriter(opts.quiet),
     });
-    console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
+    console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -860,7 +860,7 @@ async function listCmd(args) {
     const sdkOpts = { project };
     if (opts.limit !== null) sdkOpts.limit = opts.limit;
     const result = await getSdk()._applyEngine.list(sdkOpts);
-    console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
+    console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -885,7 +885,7 @@ async function eventsCmd(args) {
 
   try {
     const result = await getSdk()._applyEngine.events(opts.operationId, { project });
-    console.log(JSON.stringify({ status: "ok", ...result }, null, 2));
+    console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -933,7 +933,7 @@ async function releaseGetCmd(args) {
     const sdkOpts = { project, releaseId: opts.releaseId };
     if (opts.siteLimit !== null) sdkOpts.siteLimit = opts.siteLimit;
     const release = await getSdk()._applyEngine.getRelease(sdkOpts);
-    console.log(JSON.stringify({ status: "ok", release }, null, 2));
+    console.log(JSON.stringify({ release }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -962,7 +962,7 @@ async function releaseActiveCmd(args) {
     const sdkOpts = { project };
     if (opts.siteLimit !== null) sdkOpts.siteLimit = opts.siteLimit;
     const release = await getSdk()._applyEngine.getActiveRelease(sdkOpts);
-    console.log(JSON.stringify({ status: "ok", release }, null, 2));
+    console.log(JSON.stringify({ release }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -1005,7 +1005,7 @@ async function releaseDiffCmd(args) {
     const sdkOpts = { project, from: opts.from, to: opts.to };
     if (opts.limit !== null) sdkOpts.limit = opts.limit;
     const diff = await getSdk()._applyEngine.diff(sdkOpts);
-    console.log(JSON.stringify({ status: "ok", diff }, null, 2));
+    console.log(JSON.stringify({ diff }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -1106,7 +1106,6 @@ async function printResolveEnvelope(input) {
     const resolution = await getSdk()._applyEngine.resolve(input);
     const summary = buildDeployResolveSummary(resolution, request);
     console.log(JSON.stringify({
-      status: "ok",
       would_serve: summary.would_serve,
       diagnostic_status: summary.diagnostic_status,
       match: summary.match,

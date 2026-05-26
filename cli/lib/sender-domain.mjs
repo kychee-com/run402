@@ -160,7 +160,7 @@ async function remove(args) {
   const projectId = resolveProjectId(parseFlag(args, "--project"));
   try {
     await getSdk().senderDomain.remove(projectId);
-    console.log(JSON.stringify({ status: "ok" }));
+    console.log(JSON.stringify({ project_id: projectId, removed: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -192,7 +192,7 @@ async function inboundToggle(action, args) {
       console.log(JSON.stringify(data, null, 2));
     } else {
       await getSdk().senderDomain.disableInbound(projectId, domain);
-      console.log(JSON.stringify({ status: "ok", domain }));
+      console.log(JSON.stringify({ project_id: projectId, domain, inbound_enabled: false }));
     }
   } catch (err) {
     reportSdkError(err);
