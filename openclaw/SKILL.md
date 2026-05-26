@@ -3,16 +3,16 @@ name: run402
 description: Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet.
 metadata:
   openclaw:
-  emoji: "🐘"
-  homepage: https://run402.com
-  requires:
-  bins:
-  - npx
-  install:
-  - kind: node
-  package: "run402"
-  bins: [run402]
-  primaryEnv: RUN402_API_BASE
+    emoji: "🐘"
+    homepage: https://run402.com
+    requires:
+      bins:
+        - npx
+    install:
+      - kind: node
+        package: "run402"
+        bins: [run402]
+    primaryEnv: RUN402_API_BASE
 ---
 
 # Run402 — Postgres, storage & deploys for AI agents
