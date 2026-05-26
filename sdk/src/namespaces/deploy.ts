@@ -2001,6 +2001,8 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "entrypoint",
   "config",
   "schedule",
+  "requireAuth",
+  "requireRole",
 ]);
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
 const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths"]);
@@ -3087,6 +3089,8 @@ async function normalizeFunction(
   if (fn.config) out.config = fn.config;
   if (fn.schedule !== undefined) out.schedule = fn.schedule;
   if (fn.entrypoint) out.entrypoint = fn.entrypoint;
+  if (fn.requireAuth !== undefined) out.requireAuth = fn.requireAuth;
+  if (fn.requireRole !== undefined) out.requireRole = fn.requireRole;
 
   if (fn.source !== undefined) {
     const resolved = await resolveContent(fn.source, "function source");

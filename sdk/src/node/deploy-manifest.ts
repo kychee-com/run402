@@ -60,6 +60,8 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "entrypoint",
   "config",
   "schedule",
+  "requireAuth",
+  "requireRole",
 ]);
 const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
@@ -475,6 +477,8 @@ function mapFunction(
   if (raw.entrypoint !== undefined) out.entrypoint = raw.entrypoint;
   if (raw.config !== undefined) out.config = raw.config;
   if (raw.schedule !== undefined) out.schedule = raw.schedule;
+  if (raw.requireAuth !== undefined) out.requireAuth = raw.requireAuth;
+  if (raw.requireRole !== undefined) out.requireRole = raw.requireRole;
   return out;
 }
 

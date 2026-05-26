@@ -423,4 +423,50 @@ describe("Node deploy manifest helpers", () => {
       );
     }
   });
+
+  it("passes function-level auth gates (requireAuth, requireRole) through manifest normalization", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      functions: {
+        replace: {
+          authed: {
+            runtime: "node22",
+            source: { data: "export default async () => new Response('ok')" },
+            requireAuth: true,
+          },
+          admins: {
+            runtime: "node22",
+            source: { data: "export default async () => new Response('ok')" },
+            requireRole: {
+              table: "members",
+              idColumn: "user_id",
+              roleColumn: "role",
+              allowed: ["admin"],
+              cacheTtl: 30,
+            },
+          },
+        },
+        patch: {
+          set: {
+            cleared: {
+              runtime: "node22",
+              source: { data: "export default async () => new Response('ok')" },
+              requireRole: null,
+            },
+          },
+        },
+      },
+    });
+
+    const replaced = normalized.spec.functions?.replace;
+    assert.equal(replaced?.authed.requireAuth, true);
+    assert.deepEqual(replaced?.admins.requireRole, {
+      table: "members",
+      idColumn: "user_id",
+      roleColumn: "role",
+      allowed: ["admin"],
+      cacheTtl: 30,
+    });
+    assert.equal(normalized.spec.functions?.patch?.set?.cleared.requireRole, null);
+  });
 });

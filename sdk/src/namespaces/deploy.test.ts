@@ -1228,6 +1228,76 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(JSON.stringify(plannedBody).includes("$schema"), false);
   });
 
+  it("passes function-level auth gates (requireAuth, requireRole) through validateSpec to the gateway", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "auth-gates",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      {
+        project: "prj_test",
+        functions: {
+          replace: {
+            authed: {
+              source: "export default async () => new Response('ok')",
+              requireAuth: true,
+            },
+            admins: {
+              source: "export default async () => new Response('ok')",
+              requireRole: {
+                table: "members",
+                idColumn: "user_id",
+                roleColumn: "role",
+                allowed: ["admin"],
+                cacheTtl: 30,
+              },
+            },
+          },
+          patch: {
+            set: {
+              cleared: {
+                source: "export default async () => new Response('ok')",
+                requireRole: null,
+              },
+            },
+          },
+        },
+      },
+      { dryRun: true },
+    );
+
+    const body = plannedBody as {
+      spec: {
+        functions: {
+          replace: Record<string, { requireAuth?: boolean; requireRole?: unknown }>;
+          patch: { set: Record<string, { requireRole?: unknown }> };
+        };
+      };
+    };
+    assert.equal(body.spec.functions.replace.authed.requireAuth, true);
+    assert.deepEqual(body.spec.functions.replace.admins.requireRole, {
+      table: "members",
+      idColumn: "user_id",
+      roleColumn: "role",
+      allowed: ["admin"],
+      cacheTtl: 30,
+    });
+    assert.equal(body.spec.functions.patch.set.cleared.requireRole, null);
+  });
+
   it("rejects invalid function config integers before issuing gateway calls", async () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);
