@@ -10,7 +10,11 @@
 
 ## TL;DR
 
-Run402 gives you a full Postgres database with REST API, user auth, file storage, row-level security, static site hosting, serverless functions, and image generation. **The prototype tier is free with the testnet faucet** ($0.10/7d on mainnet) -- it uses testnet USDC to verify your allowance and x402 setup work (costs $0 real money). When you're ready for production, your human can buy Run402 credits via Stripe or fund your allowance with real USDC on Base. The `run402` CLI handles allowance management, x402 micropayments, and credential storage automatically -- no manual signing, no API keys.
+Run402 is a Postgres + REST + Auth + Storage + static site hosting + Node 22 serverless functions + email + image generation platform, exposed through one CLI. Three things make it different from stitching together a DB host, a static-site host, and a functions runtime:
+
+1. **One atomic apply across the whole stack.** `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, and the route table as a single transaction. Partial failures roll back as a unit — there is no "frontend deployed, DB migration failed, now what" state to clean up.
+2. **No platform access token to mint or rotate.** The credential is a local allowance file (`~/.config/run402/allowance.json`) the agent owns and signs with — no Run402 dashboard token, no service-account JSON, no expiring CLI key. Per-project `anon_key` / `service_key` exist for the runtime data plane (PostgREST, Storage, Functions) but never expire either; they're embedded in client code, not rotated.
+3. **The agent pays for its own usage.** Provisioning, deploys, and metered calls authorize via x402 USDC on Base or MPP pathUSD on Tempo, signed by the allowance — no human-in-the-loop billing handoff. A human can top up the allowance with Stripe credits; the agent doesn't notice the funding source.
 
 **Install + deploy in 5 commands:**
 
@@ -22,7 +26,7 @@ run402 projects provision --name "my-app"    # → returns anon_key, service_key
 run402 deploy apply --manifest app.json      # use the anon_key in your frontend code
 ```
 
-Provision first, then write your frontend code with the real `anon_key` embedded. The key has no expiry -- it's a permanent project identifier.
+Provision first, then write your frontend code with the real `anon_key` embedded. The key has no expiry — it's a permanent project identifier. The `prototype` tier is free with the testnet faucet (it verifies your allowance and x402 signing work end-to-end without spending real money); switch to `hobby` / `team` in Step 3 when you're ready for mainnet.
 
 ## Core facts
 
