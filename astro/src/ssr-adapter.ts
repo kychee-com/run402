@@ -23,6 +23,7 @@
 
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { AstroIntegration } from "astro";
 
@@ -95,31 +96,31 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
 
       "astro:config:done": ({ setAdapter, config }) => {
         // Register as the deploy adapter so Astro emits a server build
-        // pointing at our runtime entry shim.
+        // pointing at our runtime entry shim. Astro 6+ contract:
+        //   - entrypointResolution: "auto" — runtime/server.ts directly
+        //     exports `handler` + `default`, so Astro resolves the
+        //     module by import (no legacy createExports/exports list).
+        //   - no adapterFeatures.buildOutput force: let Astro derive
+        //     the shape from `output` + per-page `prerender`. Static
+        //     sites stay static; routes that opt into `prerender = false`
+        //     pull the build into server shape.
         setAdapter({
           name: "@run402/astro",
+          entrypointResolution: "auto",
           serverEntrypoint: "@run402/astro/runtime/server",
-          previewEntrypoint: undefined,
-          exports: ["handler", "default"],
-          adapterFeatures: {
-            edgeMiddleware: false,
-            // Astro 5+ uses "Functions Per Route" or "Single Function"
-            // for serverless. We use "Single Function" — one Lambda
-            // handles every SSR route via the catchall.
-            buildOutput: "server",
-          },
           supportedAstroFeatures: {
             staticOutput: "stable",
             serverOutput: "stable",
             hybridOutput: "stable",
             i18nDomains: "experimental",
             envGetSecret: "stable",
+            sharpImageService: "stable",
           },
         });
 
-        manifest.astroVersion = "5.x"; // resolved at runtime in real impl
-        buildOutputDir = config.outDir.pathname;
-        serverDir = new URL("./run402/server/", config.outDir).pathname;
+        manifest.astroVersion = "6.x"; // resolved at runtime in real impl
+        buildOutputDir = fileURLToPath(config.outDir);
+        serverDir = fileURLToPath(new URL("./run402/server/", config.outDir));
       },
 
       "astro:build:setup": ({ logger }) => {
@@ -158,7 +159,7 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
       "astro:build:done": async ({ pages }) => {
         // Compose the final manifest and write to dist/run402/adapter.json.
         manifest.serverEntrypoint = path.join(serverDir, "entry.mjs");
-        manifest.clientDir = new URL("./run402/client/", buildOutputDir).pathname;
+        manifest.clientDir = path.join(buildOutputDir, "run402/client/");
         // Astro 5 exposes `pages` (each with a `pathname`) on the
         // build:done args; the prerender bool isn't directly available
         // here, so we treat every page as prerendered for now. The

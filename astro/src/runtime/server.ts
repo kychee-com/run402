@@ -108,34 +108,27 @@ interface SsrResponseEnvelope {
 }
 
 /**
- * The Astro App reference. Astro emits a "manifest" build artifact
- * containing the `App` instance; the build system replaces this
- * dynamic import at bundle time with a real reference. In dev/test,
- * this returns null and `handler` no-ops.
+ * The Astro App reference. Astro 6's auto-resolution contract bundles the
+ * adapter's `serverEntrypoint` together with a virtual `astro/app/entrypoint`
+ * module that exposes `createApp()` — the manifest is baked in at build
+ * time and emitted next to this file. In dev/test (no Astro bundle), the
+ * dynamic import throws and `handler` falls back to a stub.
  */
-async function getAstroApp(): Promise<{ render: (req: Request) => Promise<Response> } | null> {
+type AstroApp = { render: (req: Request) => Promise<Response> };
+
+async function getAstroApp(): Promise<AstroApp | null> {
   try {
-    // The actual bundled SSR entry exports a default `app` factory.
-    // This dynamic import resolves at runtime against the Astro build's
-    // manifest module. At build time, Astro's `serverEntrypoint`
-    // contract emits a manifest at `./manifest.mjs` next to the entry;
-    // see Astro's adapter docs.
-    const { manifest } = (await import(
-      // @ts-expect-error — resolved at Lambda runtime against Astro's emitted manifest
-      "./manifest.mjs"
-    )) as { manifest: unknown };
-    const { App } = (await import("astro/app")) as {
-      App: new (manifest: unknown) => { render: (req: Request) => Promise<Response> };
+    const { createApp } = (await import("astro/app/entrypoint")) as {
+      createApp: (opts?: { streaming?: boolean }) => AstroApp;
     };
-    return new App(manifest);
+    return createApp({ streaming: true });
   } catch {
-    // Missing in dev or unit tests — fall back to a stub.
     return null;
   }
 }
 
-let appPromise: Promise<Awaited<ReturnType<typeof getAstroApp>>> | null = null;
-function app(): Promise<Awaited<ReturnType<typeof getAstroApp>>> {
+let appPromise: Promise<AstroApp | null> | null = null;
+function app(): Promise<AstroApp | null> {
   if (!appPromise) appPromise = getAstroApp();
   return appPromise;
 }

@@ -394,15 +394,23 @@ function preset(options: Run402PresetOptions = {}): AstroUserConfig {
   if (options.images !== false) {
     integrations.push(run402Image(options) as RealAstroIntegration);
   }
-  if (options.ssr !== false) {
-    integrations.push(
-      createRun402Adapter({ projectId: options.projectId }) as RealAstroIntegration,
-    );
-  }
   if (options.integrations) integrations.push(...options.integrations);
+  // The SSR adapter MUST live on the `adapter:` field, not `integrations[]`.
+  // Astro 6's NoAdapterInstalled check looks at `settings.config.adapter`
+  // (the user's adapter field), not `settings.adapter` (what setAdapter()
+  // populates from within an integration hook). If we pushed the adapter
+  // into integrations[], static-output projects with no `prerender = false`
+  // routes still pass — but as soon as the first SSR route appears,
+  // buildOutput flips to 'server' and Astro throws NoAdapterInstalled
+  // because config.adapter is empty.
+  const adapter =
+    options.ssr === false
+      ? undefined
+      : (createRun402Adapter({ projectId: options.projectId }) as RealAstroIntegration);
   return {
     output: options.output ?? "server",
     integrations,
+    adapter,
     site: options.site,
   };
 }

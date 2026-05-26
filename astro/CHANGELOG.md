@@ -6,6 +6,34 @@ All notable changes to `@run402/astro`.
 
 ### Fixed
 
+- **`createRun402Adapter` incompatible with Astro 6** ([#403](https://github.com/kychee-com/run402/issues/403)). `astro build` on Astro 6.x previously aborted with `NoAdapterInstalled` even when the adapter was wired up, and printed a deprecation warning about `entrypointResolution: "explicit"` plus an `[ERROR] [config] adapter does not currently support sharp` line. Root cause was a mix of stale Astro-5-era adapter API usage: the adapter omitted `entrypointResolution` (defaulting to deprecated `"explicit"`), declared the legacy `exports: ["handler", "default"]` array, did not declare `sharpImageService` support, and the `run402()` preset pushed the adapter into `integrations[]` instead of the `adapter:` field — leaving `config.adapter` empty so Astro 6's check `!config.adapter && buildOutput === 'server'` threw `NoAdapterInstalled`. Fix:
+  - Adapter now declares `entrypointResolution: "auto"` (Astro 6 recommended path) and drops the deprecated `exports` array — `runtime/server.ts` already exports `handler` + `default` directly.
+  - Adapter declares `sharpImageService: "stable"` in `supportedAstroFeatures`.
+  - Adapter no longer forces `adapterFeatures.buildOutput: "server"` — Astro derives the build shape from `output` + per-page `prerender`.
+  - `run402()` preset returns `{ adapter: createRun402Adapter(...) }` on the top-level config (where Astro 6 looks for it) instead of pushing it into `integrations[]`.
+  - `runtime/server.ts` migrated from the Astro-5 `manifest.mjs` + `new App(manifest)` pattern to Astro 6's `createApp()` from `astro/app/entrypoint` — Vite no longer fails to resolve `./manifest.mjs` because the virtual entrypoint module bakes the manifest in.
+  - `astro:build:done` no longer uses `new URL("./...", pathnameString)` (invalid base) for the client dir — uses `path.join(buildOutputDir, "...")` against the resolved filesystem path instead.
+  Devdep bumped to `astro ^6.1.3` so the TypeScript types include `entrypointResolution`; peer dep range is unchanged (`>=5 <7`), but **the SSR adapter portion now requires Astro 6+ at runtime** (the image-only integration still works on Astro 5). Users on the integrations-array pattern should migrate to `adapter: createRun402Adapter()`:
+
+  ```ts
+  // Before (Astro 5, broken on Astro 6):
+  import { defineConfig } from "astro/config";
+  import { createRun402Adapter } from "@run402/astro";
+  export default defineConfig({
+    integrations: [createRun402Adapter()],
+  });
+
+  // After (Astro 6):
+  import { defineConfig } from "astro/config";
+  import { createRun402Adapter } from "@run402/astro";
+  export default defineConfig({
+    adapter: createRun402Adapter(),
+  });
+
+  // Or, with the preset (handles the above for you):
+  import run402 from "@run402/astro";
+  export default run402();
+  ```
 - **Stale `dist/_assets-manifest.json` entries missing v1.54 AssetRef fields.** The build cache at `node_modules/.run402/assetMap.json` stores AssetRefs verbatim by source SHA; when the gateway started emitting `blurhash_data_url` + `asset_schema` (v1.54), existing caches kept returning pre-v1.54 AssetRefs on hit, silently producing manifests that looked correct (legacy fields populated) but lacked the v1.54 additions. Bumped `CACHE_SCHEMA_VERSION` from `1` to `2` so existing caches invalidate on first run after upgrade. Reproducer: `rm -f node_modules/.run402/assetMap.json && npm run build` then `jq '.assets[<key>] | {blurhash_data_url, asset_schema}' dist/_assets-manifest.json` populates both fields.
 
 ### Changed
