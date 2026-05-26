@@ -12,9 +12,9 @@
 
 Run402 is a Postgres + REST + Auth + Storage + static site hosting + Node 22 serverless functions + email + image generation platform, exposed through one CLI. Three things make it different from stitching together a DB host, a static-site host, and a functions runtime:
 
-1. **One atomic apply across the whole stack.** `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, and the route table as a single transaction. Partial failures roll back as a unit — there is no "frontend deployed, DB migration failed, now what" state to clean up.
-2. **No platform access token to mint or rotate.** The credential is a local allowance file (`~/.config/run402/allowance.json`) the agent owns and signs with — no Run402 dashboard token, no service-account JSON, no expiring CLI key. Per-project `anon_key` / `service_key` exist for the runtime data plane (PostgREST, Storage, Functions) but never expire either; they're embedded in client code, not rotated.
-3. **The agent pays for its own usage.** Provisioning, deploys, and metered calls authorize via x402 USDC on Base or MPP pathUSD on Tempo, signed by the allowance — no human-in-the-loop billing handoff. A human can top up the allowance with Stripe credits; the agent doesn't notice the funding source.
+1. One atomic apply across the whole stack. `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, and the route table as a single transaction. Partial failures roll back as a unit — there is no "frontend deployed, DB migration failed, now what" state to clean up.
+2. No platform access token to mint or rotate. The credential is a local allowance file (`~/.config/run402/allowance.json`) the agent owns and signs with — no Run402 dashboard token, no service-account JSON, no expiring CLI key. Per-project `anon_key` / `service_key` exist for the runtime data plane (PostgREST, Storage, Functions) but never expire either; they're embedded in client code, not rotated.
+3. The agent pays for its own usage. Provisioning, deploys, and metered calls authorize via x402 USDC on Base or MPP pathUSD on Tempo, signed by the allowance — no human-in-the-loop billing handoff. A human can top up the allowance with Stripe credits; the agent doesn't notice the funding source.
 
 **Install + deploy in 5 commands:**
 
@@ -33,7 +33,7 @@ Provision first, then write your frontend code with the real `anon_key` embedded
 - Allowance: `~/.config/run402/allowance.json` (0600). Projects: `~/.config/run402/projects.json` (0600)
 - Credentials saved automatically after provision or fork
 - `<id>` in commands = `project_id` from `run402 projects list`
-- All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, non-zero = error. See **Output Contract** below.
+- All output is JSON on stdout; errors are JSON on stderr; exit 0 = success, non-zero = error. See Output Contract below.
 - The CLI handles x402 signing automatically — do not request private keys or set up payment libraries manually
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`, then the generated workflow calls the existing `run402 deploy apply` command with `permissions: id-token: write`
 - Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
@@ -43,17 +43,17 @@ Provision first, then write your frontend code with the real `anon_key` embedded
 
 Every CLI subcommand follows the same stdout/stderr/exit-code contract. Read this once; it applies uniformly to every command in the rest of this file.
 
-**Stdout (success)** — the natural JSON payload, never wrapped. No top-level `status` field. The payload's shape depends on the command:
-- **Reads / lists / info** — emit the resource directly (`projects info` returns `{ project_id, anon_key, ... }`; `projects list` returns an array).
-- **Mutations with no natural payload** — echo the affected resource identifiers plus an explicit boolean state field naming what happened, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`. Never an empty object.
-- **Local-state inspection** — `run402 status` and `run402 allowance status` use typed nullable payload fields: `{ allowance: null, hint: "Run: run402 init" }` when absent, `{ allowance: { address, funded, ... } }` when present. Absence exits 0 — it is an informational read, not an error.
-- **Plain text** — a small set of commands (e.g. `run402 allowance export` returning a wallet address) emit a plain-text value with a trailing newline; their help text documents this.
+Stdout (success) — the natural JSON payload, never wrapped. No top-level `status` field. The payload's shape depends on the command:
+- Reads / lists / info — emit the resource directly (`projects info` returns `{ project_id, anon_key, ... }`; `projects list` returns an array).
+- Mutations with no natural payload — echo the affected resource identifiers plus an explicit boolean state field naming what happened, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`. Never an empty object.
+- Local-state inspection — `run402 status` and `run402 allowance status` use typed nullable payload fields: `{ allowance: null, hint: "Run: run402 init" }` when absent, `{ allowance: { address, funded, ... } }` when present. Absence exits 0 — it is an informational read, not an error.
+- Plain text — a small set of commands (e.g. `run402 allowance export` returning a wallet address) emit a plain-text value with a trailing newline; their help text documents this.
 
-**Stderr (failure)** — a structured JSON error envelope with `status: "error"` and non-zero exit. The `status` field is the sentinel that says "this is an error" — it is preserved on stderr only and never appears on stdout. The envelope's other canonical fields are described under **Error JSON and Safe Retry** below.
+Stderr (failure) — a structured JSON error envelope with `status: "error"` and non-zero exit. The `status` field is the sentinel that says "this is an error" — it is preserved on stderr only and never appears on stdout. The envelope's other canonical fields are described under Error JSON and Safe Retry below.
 
-**Exit code** — `0` means the subcommand completed; non-zero means it failed and the structured envelope is on stderr. Validation commands that find issues (e.g. `validate-expose` reporting `hasErrors: true`) still exit 0 — the command itself succeeded; agents read `hasErrors` from the payload to decide what to do.
+Exit code — `0` means the subcommand completed; non-zero means it failed and the structured envelope is on stderr. Validation commands that find issues (e.g. `validate-expose` reporting `hasErrors: true`) still exit 0 — the command itself succeeded; agents read `hasErrors` from the payload to decide what to do.
 
-**Per-payload `status` fields are not envelopes.** `run402 doctor` reports per-check items inside a `checks[]` array, each of which has its own `status: "ok" | "warning" | "missing" | "skipped"` label. Those are payload contents, not the top-level envelope, and they are NOT the same as the (forbidden) top-level `status` wrapper.
+Per-payload `status` fields are not envelopes. `run402 doctor` reports per-check items inside a `checks[]` array, each of which has its own `status: "ok" | "warning" | "missing" | "skipped"` label. Those are payload contents, not the top-level envelope, and they are NOT the same as the (forbidden) top-level `status` wrapper.
 
 This contract is enforced by a drift-protection test (`cli-output-contract.test.mjs`) that fails CI on any new top-level `JSON.stringify({ status: ... })` emission outside `cli/lib/sdk-errors.mjs`. If you find a command violating this contract, file an issue — it is a regression, not a feature.
 
@@ -61,17 +61,17 @@ This contract is enforced by a drift-protection test (`cli-output-contract.test.
 
 ## Error JSON and Safe Retry
 
-CLI errors are JSON on stderr with an outer `"status": "error"` sentinel. Run402-originated JSON bodies may be merged into that object with canonical fields. Branch on `code`, not English `message` or legacy `error` text.
+CLI errors are JSON on stderr with an outer `"status": "error"` sentinel. Run402 JSON bodies may be merged into that object with canonical fields. Branch on `code`, not English `message` or legacy `error` text.
 
 Canonical fields:
-- `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON, unknown local project) default to `BAD_USAGE`; specific client-side cases use richer codes such as `UNKNOWN_FLAG`, `BAD_FLAG`, `PROJECT_NOT_FOUND` (with `details.source: "local_registry"`), `NO_DEPLOYMENT`, `NO_ALLOWANCE`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
+- `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON, unknown local project) default to `BAD_USAGE`; specific client-side cases use richer codes e.g. `UNKNOWN_FLAG`, `BAD_FLAG`, `PROJECT_NOT_FOUND` (with `details.source: "local_registry"`), `NO_DEPLOYMENT`, `NO_ALLOWANCE`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
 - `retryable`: the same request may succeed later
 - `safe_to_retry`: repeating the same request should not duplicate or corrupt a mutation
 - `mutation_state`: one of `none`, `not_started`, `committed`, `rolled_back`, `partial`, `unknown`
 - `trace_id`: include this when reporting the issue
 - `request_id`: routed/function failure handle; use `run402 functions logs <id> <name> --request-id <req_...>` for function diagnostics. This is distinct from gateway `trace_id`.
 - `details`: structured route-specific context
-- `next_actions`: advisory suggestions such as `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, or `deploy_site_first`; do not execute route-like suggestions without validating method/path/auth/safety
+- `next_actions`: advisory suggestions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, or `deploy_site_first`; do not execute route-like suggestions without validating method/path/auth/safety
 
 Retry policy:
 - If `retryable: true` and `safe_to_retry: true`, retry the same request; for mutating commands reuse the same idempotency key when available.
@@ -97,7 +97,6 @@ Examples:
 ```
 
 ---
-
 ## Step 1: Install
 
 Requires Node.js >= 22.
@@ -138,7 +137,7 @@ run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
 
-Tier is per **billing account**, not per project. One subscribe / renew / upgrade applies immediately to every project on the account, and `api_calls` / `storage_bytes` quotas are enforced against the pooled total across every project on the account. Multi-wallet accounts (via `run402 billing link-wallet`) share that same pool. Quota-denial error envelopes include `details.scope: "account" | "project"` -- `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
+Tier is per billing account, not per project. One subscribe / renew / upgrade applies immediately to every project on the account, and `api_calls` / `storage_bytes` quotas are enforced against the pooled total across every project on the account. Multi-wallet accounts (via `run402 billing link-wallet`) share that same pool. Quota-denial error envelopes include `details.scope: "account" | "project"` -- `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
 
 `run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed account-pool snapshot as `status_after` in the JSON output so you can see the new pooled `api_calls` / `storage_bytes` totals in one step.
 
@@ -154,12 +153,11 @@ Check your tier status:
 run402 tier status
 ```
 
-`tier status` `pool_usage` sums `api_calls` and `storage_bytes` across every project on the billing account (across every linked wallet), not just the requesting wallet's projects.
+`tier status` `pool_usage` sums `api_calls` and `storage_bytes` across every project on the billing account (across every linked wallet), not the requesting wallet's projects.
 
-**After subscribing**, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your allowance signature, subject to the account-pooled api_calls and storage_bytes caps for your tier. Only image generation ($0.03/image) has a per-call cost.
+After subscribing, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your allowance signature, subject to the account-pooled api_calls and storage_bytes caps for your tier. Only image generation ($0.03/image) has a per-call cost.
 
 ---
-
 ## Deploying Apps
 
 ### Unified Deploy (v1.34 → v2.0 unified apply, recommended)
@@ -228,7 +226,7 @@ File entries accept a bare UTF-8 string, `{ "data": "...", "encoding": "utf-8" |
 
 Function specs in unified deploy accept `runtime` (`"node22"`), exactly one code source (`source` for a single module, or `files` plus `entrypoint` for multi-file functions), `config.timeoutSeconds`, `config.memoryMb`, and `schedule` as a sibling of `config`. In patch mode, omit `schedule` to leave it unchanged and use `"schedule": null` to remove an existing schedule. Unified deploy manifests do not accept `deps` yet; bundle dependencies into the function files or use `run402 functions deploy --deps` for the standalone function path.
 
-Deploy preflights obvious tier function caps after manifest normalization but before CAS upload or `/apply/v1/plans`: timeout, memory, cron interval, and scheduled-function count. Structured local failures use `code: "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, the relevant limit such as `tier_max` or `min_interval_minutes`, and `details.limit_source` (`tier_status` or `local_static_fallback`). Current authoring caps: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. `run402 tier status` shows live function caps and current scheduled usage when the gateway returns them.
+Deploy preflights obvious tier function caps after manifest normalization but before CAS upload or `/apply/v1/plans`: timeout, memory, cron interval, and scheduled-function count. Structured local failures use `code: "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, the relevant limit e.g. `tier_max` or `min_interval_minutes`, and `details.limit_source` (`tier_status` or `local_static_fallback`). Current authoring caps: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. `run402 tier status` shows live function caps and current scheduled usage when the gateway returns them.
 
 Subdomain specs use one mode per deploy: `"set"` replaces the release's managed subdomain list, `"add"` appends without removing existing entries, and `"remove"` deletes named entries. Current gateway support allows at most one subdomain in `subdomains.set` for a project; multi-subdomain `set` fails locally with `SUBDOMAIN_MULTI_NOT_SUPPORTED`.
 
@@ -274,7 +272,7 @@ Static public paths:
 
 Route semantics:
 - Omit `routes` or pass `routes: null` to carry forward base routes. `routes: { "replace": [] }` clears dynamic routes. `routes: { "replace": [...] }` replaces the route table atomically with the release.
-- Route entries use `pattern`, optional non-empty `methods` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`), and a target. Function targets are `{ "type": "function", "name": "<materialized function name>" }`. Prefer `site.public_paths` for ordinary clean static URLs such as `/events -> events.html`. Static route targets are exact, method-aware route-table aliases such as `{ "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }`; the `file` is a release static asset path, not a public path, URL, CAS hash, rewrite, or redirect. Static targets require exact patterns only and methods `["GET"]` or `["GET","HEAD"]`; the file path is relative to deployed site content with no leading slash, wildcard, directory shorthand, query, or fragment. Path-keyed maps like `"routes": { "/api/*": { "function": "api" } }` are invalid.
+- Route entries use `pattern`, optional non-empty `methods` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`), and a target. Function targets are `{ "type": "function", "name": "<materialized function name>" }`. Prefer `site.public_paths` for ordinary clean static URLs e.g. `/events -> events.html`. Static route targets are exact, method-aware route-table aliases e.g. `{ "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }`; the `file` is a release static asset path, not a public path, URL, CAS hash, rewrite, or redirect. Static targets require exact patterns only and methods `["GET"]` or `["GET","HEAD"]`; the file path is relative to deployed site content with no leading slash, wildcard, directory shorthand, query, or fragment. Path-keyed maps like `"routes": { "/api/*": { "function": "api" } }` are invalid.
 - Exact patterns look like `/admin`; prefix wildcard patterns use final `/*`, like `/admin/*`. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a dynamic section root.
 - Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets.
 - A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, not SPA HTML. Matched dynamic route failures fail closed and do not fall back to static files.
@@ -289,7 +287,7 @@ run402 deploy apply --manifest app.json
 
 Stdout returns `{ status: "ok", release_id, operation_id, urls, ... }`. Stderr streams structured progress events as JSON-line (one event per line). Pass `--quiet` or `--final-only` to silence stderr while preserving the final stdout JSON envelope.
 
-**Patch semantics — only the listed file changes**:
+Patch semantics — only the listed file changes:
 
 ```json
 {
@@ -304,7 +302,7 @@ Or via `--spec` for a one-line CLI invocation:
 run402 deploy apply --spec '{"project_id":"prj_...","site":{"patch":{"delete":["old.html"]}}}'
 ```
 
-**Recovery from a stuck deploy**: when an `apply` ends in `activation_pending` (rare; transient gateway failure between SQL commit and the pointer-swap activation), the gateway auto-resumes on the hourly tick. Static spec/config activation failures are classified promptly and thrown as structured deploy errors instead of polling until timeout. For genuinely resumable operations, call resume explicitly:
+Recovery from a stuck deploy: when an `apply` ends in `activation_pending` (rare; transient gateway failure between SQL commit and the pointer-swap activation), the gateway auto-resumes on the hourly tick. Static spec/config activation failures are classified promptly and thrown as structured deploy errors instead of polling until timeout. For genuinely resumable operations, call resume explicitly:
 
 ```bash
 run402 deploy resume <operation_id>
@@ -312,7 +310,7 @@ run402 deploy resume <operation_id>
 
 The gateway re-runs only the failed phase forward — SQL is never replayed.
 
-**Inspect deploy history**: list recent operations for a project, or pull the recorded phase-event stream for a specific operation (after the fact — for live progress events during an in-flight deploy, the `apply` command already streams them on stderr):
+Inspect deploy history: list recent operations for a project, or pull the recorded phase-event stream for a specific operation (after the fact — for live progress events during an in-flight deploy, the `apply` command already streams them on stderr):
 
 ```bash
 run402 deploy list --project prj_... --limit 10
@@ -331,19 +329,19 @@ run402 deploy resolve --project prj_123 --host example.com --path /events --meth
 
 `release diff` returns `{ "diff": ReleaseToReleaseDiff }`. `--from` accepts `empty`, `active`, or a release id. `--to` accepts `active` or a release id. Diff migrations use `migrations.applied_between_releases`; secrets and subdomains expose `added` / `removed` only; routes expose `added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed files, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 
-`deploy diagnose` is the URL-first public diagnostic: `run402 deploy diagnose --project prj_123 https://example.com/events --method GET`. `deploy resolve` is lower-level parity with the SDK/endpoint: pass `--url` or pass `--host` with optional `--path`; do not combine `--url` with `--host`/`--path`. Both commands print a structured JSON envelope with `status`, `would_serve`, `diagnostic_status`, `match`, `summary`, normalized `request`, `warnings`, full `resolution`, and structured `next_steps`. Query strings/fragments in URL mode are ignored for route/static lookup and reported under `request.ignored` and warnings. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Diagnostic misses such as host misses exit 0 when the resolver call succeeds; branch on `would_serve: false`.
+`deploy diagnose` is the URL-first public diagnostic: `run402 deploy diagnose --project prj_123 https://example.com/events --method GET`. `deploy resolve` is lower-level parity with the SDK/endpoint: pass `--url` or pass `--host` with optional `--path`; do not combine `--url` with `--host`/`--path`. Both commands print a structured JSON envelope with `status`, `would_serve`, `diagnostic_status`, `match`, `summary`, normalized `request`, `warnings`, full `resolution`, and structured `next_steps`. Query strings/fragments in URL mode are ignored for route/static lookup and reported under `request.ignored` and warnings. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Diagnostic misses e.g. host misses exit 0 when the resolver call succeeds; branch on `would_serve: false`.
 
-Stable-host diagnostics may include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields such as `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Known current resolve `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not HTTP transport status. Do not treat resolve/diagnose as a fetch, cache purge, or cache-policy oracle; branch on structured JSON such as `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
+Stable-host diagnostics may include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Known current resolve `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not HTTP transport status. Do not treat resolve/diagnose as a fetch, cache purge, or cache-policy oracle; branch on structured JSON e.g. `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
 
 Route warning guidance:
 
 | Code | Meaning | Recover |
-|------|---------|---------|
+|---|---|---|
 | `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Prefer `--allow-warning PUBLIC_ROUTED_FUNCTION` after review; use `--allow-warnings` only after every warning was reviewed. |
 | `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect `run402 deploy release active` and deploy a replacement route table if needed. |
 | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows direct public static content. | Inspect warning details, active routes, `static_public_paths`, and resolve diagnostics; confirm only when intentional. |
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
-| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. `--allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` is a reviewed CLI escape hatch; broad `--allow-warnings` is last resort. |
+| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods e.g. `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. `--allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` is a reviewed CLI escape hatch; broad `--allow-warnings` is last resort. |
 | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
 | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
 | `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Route-only static alias conflicts with a direct public static path or has relative-asset risk. | Inspect active routes, `static_public_paths`, and the backing `asset_path`; prefer `site.public_paths` for ordinary clean URLs and confirm only when intentional. |
@@ -397,10 +395,9 @@ function setLanguage(lang) {
 
 Then deploy with `"detect": ["cookie:wl_locale", "accept-language"]` so the server honors the user's choice on the next request.
 
-**Migration registry**: each migration is identified by `(id, checksum)`. Re-shipping the same `id` + same SQL is a registry noop; same `id` + different SQL is a hard error (`MIGRATION_CHECKSUM_MISMATCH`). Ship idempotent migrations (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` in a `DO` block) and re-deploys are free.
+Migration registry: each migration is identified by `(id, checksum)`. Re-shipping the same `id` + same SQL is a registry noop; same `id` + different SQL is a hard error (`MIGRATION_CHECKSUM_MISMATCH`). Ship idempotent migrations (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` in a `DO` block) and re-deploys are free.
 
 ---
-
 ### GitHub Actions OIDC Deploys
 
 Use this when the same repo should deploy itself from GitHub Actions without storing Run402 service keys, allowance files, or API keys in GitHub secrets. KISS rule: link once locally, then CI runs the same `run402 deploy apply` command agents already know.
@@ -505,11 +502,10 @@ Common CI error codes:
 - `event_not_allowed`: v1 allows only `push` and `workflow_dispatch`
 - `repository_id_mismatch`: re-link from the current repo or pass the correct numeric `--repository-id`
 - `forbidden_spec_field` / `forbidden_plan`: remove disallowed CI manifest fields or run the deploy locally
-- `CI_ROUTE_SCOPE_DENIED`: re-link with covering `--route-scope` patterns such as `/admin` or `/api/*`, or run the route-changing deploy locally
+- `CI_ROUTE_SCOPE_DENIED`: re-link with covering `--route-scope` patterns e.g. `/admin` or `/api/*`, or run the route-changing deploy locally
 - `payment_required`: renew/upgrade/fund the project tier outside CI, then rerun the workflow
 
 ---
-
 ### Unified Deploy
 
 Use `run402 deploy apply --manifest app.json` for full-stack releases. The manifest is a v2 `ReleaseSpec` with explicit replace-vs-patch semantics per resource. Add top-level `"$schema": "https://run402.com/schemas/release-spec.v1.json"` for editor autocomplete; the CLI strips it before planning.
@@ -565,11 +561,11 @@ Create a manifest file `app.json` (use the `project_id` from provision):
 }
 ```
 
-`project_id` is required (from `run402 projects provision`). All other fields are optional; omitted top-level sections are carried forward from the current release. The adapter is strict: only top-level `$schema` metadata is ignored; typo fields such as `subdomain`, `site.replcae`, `functions.replace.my-fn.deps`, or `functions.replace.my-fn.config.schedule` fail before planning.
+`project_id` is required (from `run402 projects provision`). All other fields are optional; omitted top-level sections are carried forward from the current release. The adapter is strict: only top-level `$schema` metadata is ignored; typo fields e.g. `subdomain`, `site.replcae`, `functions.replace.my-fn.deps`, or `functions.replace.my-fn.config.schedule` fail before planning.
 
 Function specs accept `runtime: "node22"`, exactly one code source (`source`, or `files` plus `entrypoint`), `config.timeoutSeconds`, `config.memoryMb`, a sibling `schedule`, and the v1.51+ auth-gate fields `requireAuth` / `requireRole` (see "Function-level auth gates" below). Omit `schedule` in patch mode to leave it unchanged; set it to `null` to remove the schedule. Unified deploy manifests do not accept `deps`; bundle dependencies into the function files or use `run402 functions deploy --deps`.
 
-**Function-level auth gates (v1.51+).** Two optional declarative fields on each function spec:
+Function-level auth gates (v1.51+). Two optional declarative fields on each function spec:
 
 - `requireAuth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `requireRole`.
 - `requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? } | null` — gateway resolves the caller's role from the project-schema table (RLS-bypass) and rejects callers whose role is not in `allowed` with `403`. Implies authentication (no JWT → 401). Pass `null` in patch mode to remove an existing gate. `cacheTtl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
@@ -614,17 +610,17 @@ Worked example — manifest fragment:
 
 Validation rules:
 
-- **One role table per release.** All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
-- **Unqualified identifiers only.** Schema-qualified names (e.g. `"public.members"`) are rejected with `INVALID_SPEC`. The project schema is resolved server-side.
-- **`cacheTtl` range.** `0 ≤ cacheTtl ≤ 600`; out-of-range rejected with `INVALID_SPEC`.
-- **Empty `allowed`.** Rejected with `INVALID_SPEC` — set the role values explicitly.
-- **Deploy-time validation.** Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. `run402 deploy apply` surfaces the structured envelope on stderr.
+- One role table per release. All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
+- Unqualified identifiers only. Schema-qualified names (e.g. `"public.members"`) are rejected with `INVALID_SPEC`. The project schema is resolved server-side.
+- `cacheTtl` range. `0 ≤ cacheTtl ≤ 600`; out-of-range rejected with `INVALID_SPEC`.
+- Empty `allowed`. Rejected with `INVALID_SPEC` — set the role values explicitly.
+- Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. `run402 deploy apply` surfaces the structured envelope on stderr.
 
 The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key plus user JWT) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
-**Binary files (images, fonts, PDFs)**: Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
+Binary files (images, fonts, PDFs): Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
 
-**Assets slice (v2.0+, bulk content-addressed storage in the apply transaction).** `assets` is a top-level `ReleaseSpec` slice — the same atomic transaction promotes site bytes, function code, secrets, *and* asset entries. Two shapes:
+Assets slice (v2.0+, bulk content-addressed storage in the apply transaction). `assets` is a top-level `ReleaseSpec` slice — the same atomic transaction promotes site bytes, function code, secrets, *and* asset entries. Two shapes:
 
 ```json
 "assets": {
@@ -647,15 +643,15 @@ Additive batch. Each entry carries the locally-computed `sha256` so the gateway 
 }
 ```
 
-Declarative sync. `prune: true` deletes keys under `prefix` that aren't in the new `put` batch. **Requires an explicit `prefix` — no implicit project-root prune.** First apply without `confirm` returns the `asset_sync` block in the plan response (`base_revision`, `delete_set_digest`, `expected_delete_count`, `sample_keys`); surface those to the user, then re-run with `confirm` populated. Gateway activation re-checks via `ASSET_SYNC_DRIFT` if inventory mutates between commit and activation.
+Declarative sync. `prune: true` deletes keys under `prefix` that aren't in the new `put` batch. Requires an explicit `prefix` — no implicit project-root prune. First apply without `confirm` returns the `asset_sync` block in the plan response (`base_revision`, `delete_set_digest`, `expected_delete_count`, `sample_keys`); surface those to the user, then re-run with `confirm` populated. Gateway activation re-checks via `ASSET_SYNC_DRIFT` if inventory mutates between commit and activation.
 
 Why this exists: the SDK's Node helpers (`r.assets.uploadDir(path, { project })`, `syncDir`, `prepareDir`, `putMany`) walk a local directory, compute SHA-256s in streaming chunks, and submit through this same apply slice. The CLI doesn't ship a `run402 assets sync` subcommand — write the manifest and use `deploy apply`, or call the Node SDK directly from a script.
 
-**Migrations** can be inline (`sql`) or read from a file with `sql_path` / `sql_file` on each migration entry.
+Migrations can be inline (`sql`) or read from a file with `sql_path` / `sql_file` on each migration entry.
 
-**Make migrations idempotent**: Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`. If you redeploy to the same project, non-idempotent migrations will fail with a 422 error (e.g., `relation "items" already exists`).
+Make migrations idempotent: Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`. If you redeploy to the same project, non-idempotent migrations will fail with a 422 error (e.g., `relation "items" already exists`).
 
-**Evolving your schema**: `CREATE TABLE IF NOT EXISTS` only prevents "table already exists" errors — it will **not** add new columns to an existing table. When your app needs new columns, use `ALTER TABLE ... ADD COLUMN` wrapped in a DO block to make it idempotent:
+Evolving your schema: `CREATE TABLE IF NOT EXISTS` only prevents "table already exists" errors — it will not add new columns to an existing table. When your app needs new columns, use `ALTER TABLE ... ADD COLUMN` wrapped in a DO block to make it idempotent:
 
 ```sql
 CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL);
@@ -667,31 +663,31 @@ END $$;
 
 This pattern is safe to re-run on every deploy. Put your `CREATE TABLE IF NOT EXISTS` first, then one `DO` block per new column (or group them in a single block).
 
-**Authorization (the `manifest.json` file pattern)**
+Authorization (the `manifest.json` file pattern)
 
-Tables you create are **dark by default** — `anon` and `authenticated` can't read them until your manifest declares them with `expose: true`. Closes the "agent created a table, forgot to set RLS, data leaked" footgun.
+Tables you create are dark by default — `anon` and `authenticated` can't read them until your manifest declares them with `expose: true`. Closes the "agent created a table, forgot to set RLS, data leaked" footgun.
 
 JSON Schema: `https://run402.com/schemas/manifest.v1.json` — point your editor's `$schema` at it for autocomplete.
 
-The preferred way to declare authorization is to ship a `manifest.json` file in the bundle's `files[]` (shown above). The platform reads it, validates it against the migration SQL, applies it, and **strips it from `files[]` before the site deploys** so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table your migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing **every** violation.
+The preferred way to declare authorization is to ship a `manifest.json` file in the bundle's `files[]` (shown above). The platform reads it, validates it against the migration SQL, applies it, and strips it from `files[]` before the site deploys so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table your migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
 For a non-mutating feedback loop before applying, run `run402 projects validate-expose [project_id] --file manifest.json [--migration-file setup.sql]`. It validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "hasErrors": boolean, "errors": [...], "warnings": [...] }` and exits 0 even when `hasErrors` is true — the validator ran, so the command succeeded; agents read `hasErrors` to decide what to do.
 
 Built-in policies (one per table):
 
 - `user_owns_rows` — owner column matches `auth.uid()`. Requires `owner_column`. With `force_owner_on_insert: true`, a per-table `BEFORE INSERT` trigger named `<table>_set_owner` calls `<table>_set_owner_fn()` and fills the owner only when `NEW.<owner_column>` is `NULL`: `IF NEW."<owner_column>" IS NULL THEN NEW."<owner_column>" := auth.uid(); END IF;`. It does not overwrite explicit non-null owners; ordinary authenticated inserts with a different explicit owner still fail the `WITH CHECK (owner_column = auth.uid())` policy. `service_key` / service-role writes bypass RLS, but the trigger still runs; if no JWT subject is present then `auth.uid()` is null, so admin writes should set the owner explicitly when needed. Best for user-scoped data (todos, workouts, messages). `uuid` owner columns get index-friendly policies; other types fall back to a `::text` cast with a warning; a btree index is auto-created.
-- `public_read_authenticated_write` — anyone reads; **any authenticated user can INSERT/UPDATE/DELETE any row** (not just their own). For collaborative content (shared boards, announcements).
-- `public_read_write_UNRESTRICTED` — ⚠ fully open; `anon_key` can read AND write any row. For intentionally public tables only (guestbooks, waitlists, feedback forms). **Requires** `"i_understand_this_is_unrestricted": true` on the table entry.
+- `public_read_authenticated_write` — anyone reads; any authenticated user can INSERT/UPDATE/DELETE any row (not just their own). For collaborative content (shared boards, announcements).
+- `public_read_write_UNRESTRICTED` — ⚠ fully open; `anon_key` can read AND write any row. For intentionally public tables only (guestbooks, waitlists, feedback forms). Requires `"i_understand_this_is_unrestricted": true` on the table entry.
 - `custom` — escape hatch. Provide `custom_sql` containing `CREATE POLICY` statements; they run inside the apply transaction after RLS is enabled + forced.
 
 | Policy | anon SELECT | anon writes | auth SELECT | auth writes |
-|--------|:-----------:|:-----------:|:-----------:|:-----------:|
+|---|:---:|:---:|:---:|:---:|
 | (omitted from manifest) | — | — | — | — |
 | `user_owns_rows` | — | — | own rows | own rows |
 | `public_read_authenticated_write` | all | — | all | all rows |
 | `public_read_write_UNRESTRICTED` | all | yes | all | yes |
 
-`—` = denied. `service_key` bypasses all policies. **Views** are always created with `security_invoker=true` — they inherit the underlying table's RLS. **RPCs** require an entry in `rpcs[*]` with `grant_to` to be callable as `/rest/v1/rpc/<fn>` (since v1.30, `CREATE FUNCTION` revokes PUBLIC EXECUTE automatically).
+`—` = denied. `service_key` bypasses all policies. Views are always created with `security_invoker=true` — they inherit the underlying table's RLS. RPCs require an entry in `rpcs[*]` with `grant_to` to be callable as `/rest/v1/rpc/<fn>` (since v1.30, `CREATE FUNCTION` revokes PUBLIC EXECUTE automatically).
 
 Worked example covering all three slices (drop in as `manifest.json` or under `database.expose` in a deploy manifest):
 
@@ -717,7 +713,7 @@ Worked example covering all three slices (drop in as `manifest.json` or under `d
 
 **Imperative escape hatch:** for ad-hoc changes outside a deploy, use `run402 projects apply-expose <project_id> --file manifest.json`. Inspect current state with `run402 projects get-expose <project_id>` — `source: "applied"` means it came from a prior apply; `"introspected"` means it was reconstructed from live DB state.
 
-The manifest is **convergent**: applying the same manifest twice is a no-op; items removed between applies have their policies revoked, grants revoked, triggers dropped, views dropped. Include everything you want exposed in every apply.
+The manifest is convergent: applying the same manifest twice is a no-op; items removed between applies have their policies revoked, grants revoked, triggers dropped, views dropped. Include everything you want exposed in every apply.
 
 Deploy:
 
@@ -754,7 +750,6 @@ run402 subdomains claim my-app
 ```
 
 ---
-
 ## Command Reference
 
 ### init
@@ -770,7 +765,7 @@ run402 subdomains claim my-app
 - `run402 allowance history [--limit <n>]`
 
 ### tier
-Tier and quotas are per **billing account** (not per project) — `set` is account-wide, `status.pool_usage` is the pooled total across every project on the account. `set` refetches status after the call and includes it as `status_after`.
+Tier and quotas are per billing account (not per project) — `set` is account-wide, `status.pool_usage` is the pooled total across every project on the account. `set` refetches status after the call and includes it as `status_after`.
 
 - `run402 tier status`
 - `run402 tier set <prototype|hobby|team>`
@@ -788,14 +783,14 @@ Tier and quotas are per **billing account** (not per project) — `set` is accou
 - `run402 projects promote-user <id> <email>` — promote a user to project_admin role
 - `run402 projects demote-user <id> <email>` — demote a user from project_admin role
 - `run402 projects <usage|schema> <id>`
-- `run402 projects delete <id> --confirm` — **cascade deletes** all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible. `--confirm` is required.
+- `run402 projects delete <id> --confirm` — cascade deletes all project resources: Lambda functions, subdomains, S3 site files, deployments, secrets, and published app versions. The schema slot is dropped and recreated. This is irreversible. `--confirm` is required.
 - `run402 projects validate-expose [id] <manifest_json>` — validate an auth/expose manifest without applying it
 - `run402 projects validate-expose [id] --file manifest.json [--migration-file setup.sql]` — validate file input with optional migration-reference SQL
 - `run402 projects apply-expose <id> <manifest_json>` — apply a declarative authorization manifest
 - `run402 projects apply-expose <id> --file manifest.json` — apply from a JSON file
 - `run402 projects get-expose <id>` — print the current manifest (`source: applied | introspected`)
 
-Provisioning automatically sets the new project as the **active project**. Other commands that take `<id>` default to the active project when omitted.
+Provisioning automatically sets the new project as the active project. Other commands that take `<id>` default to the active project when omitted.
 
 SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`, `eq.`, `order=`, `limit=`).
 
@@ -834,10 +829,10 @@ Built-in helper: `import { db, adminDb, email, ai, assets, getUser } from '@run4
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions using project billing authority, not local allowance/x402 signing. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. Add app auth/rate limits before calling it from public routed functions.
 - `assets.put(key, source, opts?)` — upload bytes to the project's blob store from inside a deployed function. Uses the same CAS substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }` object. Options: `contentType`, `visibility` (`"public"` | `"private"`, default `"public"`), `immutable` (default `true`). Returns an `AssetRef` with `url`, `immutableUrl`, `cdnUrl`, `sha256`, `size_bytes`, etc. (camelCase aliases included). Use for user-uploaded content, generated images, runtime-produced files.
-- `assets.fromRef(raw)` (v2.7+) — re-hydrate a stored AssetRef (JSONB column read from your DB) into the typed `AssetRef` shape with camelCase aliases + variant map. Pure-local, no network — safe in SSR render paths. The recommended persistence pattern is to store the full `AssetRef` returned by `r.assets.put` as a JSONB column so variant SHAs + immutable URLs survive the round-trip (they can't be re-derived from `(source_sha, key)` alone). Tolerant of partial inputs: pre-v1.49 blobs come back without `variants` / `width_px` rather than synthesizing them. Throws only on null/undefined or non-object input.
+- `assets.fromRef(raw)` (v2.7+) — re-hydrate a stored AssetRef (JSONB column read from your DB) into the typed `AssetRef` shape with camelCase aliases + variant map. Pure-local, no network — safe in SSR render paths. The recommended persistence pattern is to store the full `AssetRef` returned by `r.assets.put` as a JSONB column so variant SHAs + immutable URLs survive the round-trip (they can't be re-derived from `(source_sha, key)` alone). Tolerant of partial inputs: pre-v1.49 blobs come back without `variants` / `width_px` than synthesizing them. Throws only on null/undefined or non-object input.
 - `getRun402Context(req)` (v2.7+) — zero-dependency reader for the full per-request context the gateway populates as `x-run402-*` headers. Returns `{ requestId, projectId, releaseId, host, locale, defaultLocale }` (all `string | null`). Use in non-Astro functions (plain webhook handlers, auth endpoints) instead of hand-rolling `req.headers.get('x-run402-...')` per field — the helper papers over `Request` / `Headers` / plain-object header shapes and any future gateway header renames. Same return shape as `Astro.locals.run402`. Never throws; missing headers come back as `null`.
 
-**TypeScript types**: `npm install @run402/functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `getUserId()`, `getRole()`, `getRun402Context()`, `email.send()`, `ai.translate()`, `ai.generateImage()`, `assets.put()`, and `assets.fromRef()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
+TypeScript types: `npm install @run402/functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `getUserId()`, `getRole()`, `getRun402Context()`, `email.send()`, `ai.translate()`, `ai.generateImage()`, `assets.put()`, and `assets.fromRef()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
 
 #### db(req).from(table) — caller-context, RLS applies
 
@@ -930,21 +925,21 @@ For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` fro
 `--deps` is a comma-separated list of npm specs that the gateway installs and bundles into the function zip alongside the user code:
 - Bare names (`lodash`) resolve to the latest published version at deploy time.
 - Pinned (`lodash@4.17.21`) and range (`date-fns@^3.6.0`) specs are honored verbatim.
-- Entries are trimmed; empty entries such as `--deps "lodash,,date-fns"` are rejected locally.
+- Entries are trimmed; empty entries e.g. `--deps "lodash,,date-fns"` are rejected locally.
 - `@run402/functions` (auto-bundled) and the legacy `run402-functions` name are rejected.
 - Limits: max 30 entries, max 200 chars per spec.
 - Native binary modules (sharp, canvas, native bcrypt, etc.) are rejected.
 
 The deploy / list / update responses include two fields populated under bundling-at-deploy:
-- `runtime_version` — the bundled `@run402/functions` version (e.g. `"1.48.0"`). Surface this as **"Functions runtime version"** — never bare "runtime", which already names the Node runtime (e.g. `node22`). `null` for legacy functions.
-- `deps_resolved` — map of each `--deps` name to the actually-installed concrete version (e.g. `{"date-fns": "3.7.0"}` for a `^3.6.0` spec). Direct deps only; this is **not** a lockfile. `{}` for an empty `--deps`; `null` for legacy functions.
+- `runtime_version` — the bundled `@run402/functions` version (e.g. `"1.48.0"`). Surface this as "Functions runtime version" — never bare "runtime", which already names the Node runtime (e.g. `node22`). `null` for legacy functions.
+- `deps_resolved` — map of each `--deps` name to the -installed concrete version (e.g. `{"date-fns": "3.7.0"}` for a `^3.6.0` spec). Direct deps only; this is not a lockfile. `{}` for an empty `--deps`; `null` for legacy functions.
 
-The deploy response also gains an optional top-level `warnings: string[]` (sibling to the function record, **not** inside it) for non-fatal deploy notes such as bundle-size advisories. Omitted or `[]` when there are no warnings.
+The deploy response also gains an optional top-level `warnings: string[]` (sibling to the function record, not inside it) for non-fatal deploy notes e.g. bundle-size advisories. Omitted or `[]` when there are no warnings.
 
 #### Function authoring limits by tier
 
 | | Prototype | Hobby | Team |
-|---|-----------|-------|------|
+|---|---|---|---|
 | Max timeout | 10s | 30s | 60s |
 | Max memory | 128 MB | 256 MB | 512 MB |
 | Max scheduled functions | 1 | 3 | 10 |
@@ -1045,11 +1040,11 @@ Image-variant fields (v1.49+ gateway, `@run402/sdk@2.3.0+`, populated for image 
 - `width_px`, `height_px` — display-oriented dimensions (post-EXIF rotate). `imgTag` emits these as `<img width height>` attributes when present (eliminates CLS).
 - `blurhash` — ~30-byte LQIP placeholder; decode client-side with the `blurhash` npm package to render a placeholder before the real image is ready.
 - `variant_spec_version` — pins URL identity to the encoder generation. Bumping (gateway-side) produces new URLs without invalidating older ones.
-- `display_url` / `display_immutable_url` — browser-displayable URL. For jpeg/png/webp/avif sources this equals `cdn_url`. For **HEIC/HEIF** sources this points at a JPEG `display_jpeg` variant so `<img src>` renders correctly without HEIC-specific app code. HEIC source bytes are preserved verbatim in CAS (uploaded SHA == stored SHA). The `imgTag` / `imgTagWithSrcSet` helpers default `<img src>` to `display_url` so HEIC just works.
+- `display_url` / `display_immutable_url` — browser-displayable URL. For jpeg/png/webp/avif sources this equals `cdn_url`. For HEIC/HEIF sources this points at a JPEG `display_jpeg` variant so `<img src>` renders correctly without HEIC-specific app code. HEIC source bytes are preserved verbatim in CAS (uploaded SHA == stored SHA). The `imgTag` / `imgTagWithSrcSet` helpers default `<img src>` to `display_url` so HEIC just works.
 - `variants.thumb` / `variants.medium` / `variants.large` — three WebP variants (320w / 800w / 1920w), each with `url`, `cdn_url`, `width_px`, `height_px`, `format: "webp"`, `sha256`. Use `variants.thumb.cdn_url` in MediaPicker-style admin grids to avoid downloading full-res originals.
 - `variants.display_jpeg` — only present for HEIC/HEIF sources. Full-res JPEG, quality 90, sRGB-converted.
-- `thumbUrl` (SDK convenience, v2.3+) — `variants.thumb.cdn_url ?? displayUrl` for image refs; **`undefined` for non-image AssetRefs**. Single field for grid thumbnails — TypeScript narrows so `<img src={pdfRef.thumbUrl}>` is a compile error rather than a broken thumbnail at runtime.
-- `displayUrl` (SDK convenience, v2.3+) — `display_url ?? cdn_url` for image refs; **`undefined` for non-images**. Use for hero / single-image render paths.
+- `thumbUrl` (SDK convenience, v2.3+) — `variants.thumb.cdn_url ?? displayUrl` for image refs; `undefined` for non-image AssetRefs. Single field for grid thumbnails — TypeScript narrows so `<img src={pdfRef.thumbUrl}>` is a compile error than a broken thumbnail at runtime.
+- `displayUrl` (SDK convenience, v2.3+) — `display_url ?? cdn_url` for image refs; `undefined` for non-images. Use for hero / single-image render paths.
 - `imgTagWithSrcSet(opts)` (SDK helper, v2.3+) — emits `<picture>` with WebP-only `<source>` (three sizes) and `display_url` as the `<img>` fallback. Throws at call time on missing `opts.sizes` (browsers over-fetch the largest candidate without it) OR missing `variants` (use `imgTag()` instead — no silent fallback). AVIF deferred from v1 (`<picture>` type-precedence footgun: AVIF must land at all three sizes simultaneously or via a separate `imgTagHero()` helper).
 - Both write paths produce identical `AssetRef` shapes: `r.assets.put(...)` and `r.project(id).apply({ assets: { put: [...] } })`. Pickers can use either entry point.
 - Encoder errors surface as HTTP 422 `IMAGE_DECODE_FAILED`, 413 `IMAGE_INPUT_TOO_LARGE` (>40 MP or >12000 px any axis), 504 `IMAGE_ENCODE_TIMEOUT`, 429 `TOO_MANY_ENCODES_QUEUED` (encoder semaphore full — retry after 2s).
@@ -1059,13 +1054,13 @@ Metadata + EXIF policy + intrinsics fields (v1.50+ gateway, `@run402/sdk@2.4.0+`
 - `image_format` — decoded image format (`jpeg`/`png`/`webp`/`avif`/`heic`/`tiff`/`svg`/`bmp`). `null` for non-image rows.
 - `image_info` — server-extracted intrinsics: `has_alpha`, `color_space`, `animated`, `frame_count`, `bit_depth`, `orientation`. `null` for non-image rows. Future gateway versions may add keys — treat as opaque.
 - `image_exif` — server-extracted EXIF block. `null` for non-image rows, for stripped uploads (`image_exif_policy === "strip"`), and for image formats without EXIF (SVG/BMP).
-- `image_exif_policy` — echo of the EXIF policy actually applied: `"keep"` (default) or `"strip"`. `null` for non-image rows.
+- `image_exif_policy` — echo of the EXIF policy applied: `"keep"` (default) or `"strip"`. `null` for non-image rows.
 - These fields ride alongside the v1.49 `width_px` / `height_px` / `blurhash` / `variants` additions — same FLAT shape, NOT wrapped under `image: {}`.
 
 Shape-contract fields (v1.54+ gateway, `@run402/sdk@2.12.0+`, populated atomically with variants at upload time):
 - `blurhash_data_url` — pre-decoded PNG data URL (~600-1200 bytes typical at 16×16) computed once at upload from the canonical pinned BlurHash decoder. Embed directly as `background-image` for the placeholder — zero render-time decode, no client-side blurhash library needed. `null` only when the decoder failed on otherwise-valid input (rare). Absent for pre-v1.54 uploads.
 - `asset_schema` — semver shape-contract stamp recording the highest contract this row's fields satisfy (`"v1.49"` | `"v1.50"` | `"v1.54"` | `null`). `null` marks partial-shape rows (e.g., HEIC sources missing `display_jpeg`). Strict-mode consumers read this to skip legacy rows without per-field existence branching. Absent for pre-v1.54 uploads.
-- The v1.54 substrate enables the **`<Run402Image>` component** in `@run402/astro@1.0+`: pre-decoded placeholder + WebP-ladder responsive `<picture>` + width/height for zero-CLS, with optional `imageDefaults.strict: { onSchema: ">=v1.49" }` to hard-fail on legacy rows during the rollout that follows every schema migration. Astro + React entries; byte-identical HTML output across both.
+- The v1.54 substrate enables the `<Run402Image>` component in `@run402/astro@1.0+`: pre-decoded placeholder + WebP-ladder responsive `<picture>` + width/height for zero-CLS, with optional `imageDefaults.strict: { onSchema: ">=v1.49" }` to hard-fail on legacy rows during the rollout that follows every schema migration. Astro + React entries; byte-identical HTML output across both.
 
 Typed errors a caller can branch on (`catch (e) { if (e.code === "...") }`):
 - `INVALID_ASSET_METADATA` (HTTP 400 or `LocalError` pre-network)
@@ -1075,7 +1070,7 @@ Typed errors a caller can branch on (`catch (e) { if (e.code === "...") }`):
 - `INVALID_CURSOR_FOR_SORT` (HTTP 400 — cross-sort cursor reuse)
 - `IMAGE_DECODE_FAILED` (HTTP 422 — no partial row written)
 
-**Agent loop pattern (mutable URL only):** if you must use a stable mutable URL across re-uploads, `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until the CDN serves the new SHA. **Don't call wait-fresh on immutable URLs** — they're correct from the moment of upload.
+**Agent loop pattern (mutable URL only):** if you must use a stable mutable URL across re-uploads, `run402 cdn wait-fresh <mutable-url> --sha <new-sha>` blocks until the CDN serves the new SHA. Don't call wait-fresh on immutable URLs — they're correct from the moment of upload.
 
 Resume: removed in v2.1.0. The CLI now delegates to `sdk.assets.put`, which routes through the unified-apply hero (`apply/v1/plans → content/v1/plans → S3 PUT → commit`). The `--concurrency` and `--no-resume` flags are accepted for backward compatibility but ignored — resume semantics now live at the apply-plan level (24h plan TTL).
 
@@ -1120,11 +1115,11 @@ await client.deploy.apply({
 
 To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 deploy list --project <id>` instead of polling a deployment artifact.
 
-**CAS-backed transport**: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
+CAS-backed transport: Both `sites deploy` and `sites deploy-dir` hash each file locally and only PUT bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
-**Dry-run**: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the gateway's `POST /apply/v1/plans?dry_run=true`, prints `{status:"ok", dry_run:true, plan_id:null, operation_id:null, manifest_digest, diff, warnings, expected_events, missing_content_count}`, and exits without uploading bytes or committing a release. Use it to preview the server-authoritative plan/diff envelope.
+Dry-run: `run402 sites deploy-dir ./dist --project prj_... --dry-run` calls the gateway's `POST /apply/v1/plans?dry_run=true`, prints `{status:"ok", dry_run:true, plan_id:null, operation_id:null, manifest_digest, diff, warnings, expected_events, missing_content_count}`, and exits without uploading bytes or committing a release. Use it to preview the server-authoritative plan/diff envelope.
 
-**Progress events**: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to **stderr** by default; the final result payload (release/deployment metadata, no `status` wrapper) still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result payload).
+Progress events: `sites deploy` and `sites deploy-dir` stream unified `DeployEvent` JSON lines to stderr by default; the final result payload (release/deployment metadata, no `status` wrapper) still goes to stdout. Pipe streams separately: `run402 sites deploy-dir ./dist --project p > result.json 2> events.log`. Pass `--quiet` to suppress events (stdout still gets the result payload).
 
 ### subdomains
 - `run402 subdomains claim <name> [--deployment <id>] [--project <id>]`
@@ -1133,7 +1128,7 @@ To inspect deploy status, use `run402 deploy events <operation_id>` or `run402 d
 
 All options default to the active project. `claim` also defaults to the project's last deployment. Names: 3-63 chars, lowercase alphanumeric + hyphens. Creates `<name>.run402.com`.
 
-**Subdomain auto-reassignment**: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
+Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### domains
 - `run402 domains add <domain> <subdomain_name> [--project <id>]`
@@ -1176,7 +1171,7 @@ Built-in AI helpers. Translation requires the AI Translation add-on on the proje
 - `run402 ai usage <id>` — check translation word quota for the current billing period (used, included, remaining).
 
 ### email
-One mailbox per project. Two send modes: **template** (predefined templates) and **raw HTML** (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
+One mailbox per project. Two send modes: template (predefined templates) and raw HTML (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
 
 Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 
@@ -1197,7 +1192,7 @@ Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-gener
 
 Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
 
-**Using email from functions**: Import `email` from `@run402/functions` — no need to manage mailbox IDs or service keys manually:
+Using email from functions: Import `email` from `@run402/functions` — no need to manage mailbox IDs or service keys manually:
 ```js
 import { email } from '@run402/functions';
 
@@ -1280,7 +1275,7 @@ KMS contract wallets — provision AWS KMS-backed Ethereum wallets per project f
 `contact` returns `email_verification_status`, `passkey_binding_status`, and `assurance_level`. New or changed emails start a reply challenge and stay `email_pending` until the mailbox owner replies. `passkey enroll` requires `email_verified` and emails the enrollment link to the verified contact email; the token is not printed.
 
 ### service
-Public service-level status. No allowance, no auth, no keystore required — works on a fresh install. Reports on the Run402 **service** (uptime, capabilities, operator); for your **account** state use `run402 status`.
+Public service-level status. No allowance, no auth, no keystore required — works on a fresh install. Reports on the Run402 service (uptime, capabilities, operator); for your account state use `run402 status`.
 - `run402 service status` — public availability report (24h/7d/30d uptime per capability, operator, deployment, schema `run402-status-v1`)
 - `run402 service health` — liveness check with per-dependency results (postgres, postgrest, s3, cloudfront) and service version
 
@@ -1319,7 +1314,6 @@ Fetch function logs by request id. Top-level shortcut — for fine-grained per-f
 When an SSR response returns a 5xx, the response headers include `x-run402-error-code: R402_SSR_RUNTIME_ERROR` and `x-run402-request-id: req_...`. Copy the request id and run `run402 logs --request-id req_...` to fetch the full stack trace. Scans every function in the project in parallel and aggregates entries timestamp-ascending unless `--function` narrows the scope.
 
 ---
-
 ## R402_* SSR Runtime Error Codes (cache + Astro adapter, gateway v1.52+)
 
 Stable error codes for the Astro SSR runtime. Each carries `code`, `message`, `suggestedFix`, `docs`, and (when statically determinable) `file`, `line`. Codes are protocol-stable and emitted as the exact uppercase string in JSON envelopes, response headers, logs, and CLI output.
@@ -1354,29 +1348,28 @@ Stable error codes for the Astro SSR runtime. Each carries `code`, `message`, `s
 - `R402_DEPLOY_STAGE_FAILED` — apply-v1 state machine failure at a specific stage (`validate` / `stage` / `migrate` / `schema_settling` / `activating` / `snapstart_validate`).
 
 ---
-
 ## REST API (for generated frontend code)
 
 The CLI's `run402 projects rest` command is great for terminal use. But when generating HTML/JS that runs in the browser, use the REST API directly:
 
-**Base URL**: `https://api.run402.com/rest/v1/{table}`
+Base URL: `https://api.run402.com/rest/v1/{table}`
 
-**Auth header**: `apikey: {key}` — the gateway auto-forwards as `Authorization: Bearer` to PostgREST. Any valid project JWT works:
-- `anon_key` → read-only by default (SELECT). Safe to embed in frontend code. **No expiry** -- permanent project identifier. If you apply `public_read_write_UNRESTRICTED` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table — use this for browser-side writes without login (only on intentionally public tables).
-- `service_key` → full admin (bypasses RLS). Server-side only. **No expiry** -- lease enforcement server-side.
+Auth header: `apikey: {key}` — the gateway auto-forwards as `Authorization: Bearer` to PostgREST. Any valid project JWT works:
+- `anon_key` → read-only by default (SELECT). Safe to embed in frontend code. No expiry -- permanent project identifier. If you apply `public_read_write_UNRESTRICTED` RLS to a table, anon_key gains INSERT/UPDATE/DELETE on that table — use this for browser-side writes without login (only on intentionally public tables).
+- `service_key` → full admin (bypasses RLS). Server-side only. No expiry -- lease enforcement server-side.
 - `access_token` (from login) → user-scoped read/write (subject to RLS).
 
 For explicit control, send both `apikey` (project key) and `Authorization: Bearer <access_token>`.
 
-**CORS**: The API allows all origins (`Access-Control-Allow-Origin: *`). Browser `fetch()` calls work from any domain -- no proxy needed.
+CORS: The API allows all origins (`Access-Control-Allow-Origin: *`). Browser `fetch()` calls work from any domain -- no proxy needed.
 
-**PostgREST query syntax**: `?select=col1,col2`, `?column=eq.value`, `?order=col.desc`, `?limit=N`, `?offset=N`
+PostgREST query syntax: `?select=col1,col2`, `?column=eq.value`, `?order=col.desc`, `?limit=N`, `?offset=N`
 
-**`Prefer` header** (controls write responses):
+`Prefer` header (controls write responses):
 - `Prefer: return=representation` → return the inserted/updated row(s) as JSON. Use this to get server-generated fields (`id`, `created_at`) without a second query.
 - `Prefer: return=minimal` → empty body (default). Faster when you don't need the result.
 
-**Frontend fetch examples**:
+Frontend fetch examples:
 
 ```javascript
 const API = 'https://api.run402.com';
@@ -1478,7 +1471,7 @@ A working single-file app. Uses `public_read_write_UNRESTRICTED` RLS so the `ano
 </html>
 ```
 
-**Setup for this example** (run once via CLI or service_key):
+Setup for this example (run once via CLI or service_key):
 ```bash
 # Create table
 run402 projects sql $PROJECT_ID "CREATE TABLE guestbook (id serial PRIMARY KEY, name text NOT NULL, message text NOT NULL, created_at timestamptz DEFAULT now())"
@@ -1491,10 +1484,9 @@ run402 projects apply-expose $PROJECT_ID --file manifest.json
 ```
 
 ---
-
 ## User Auth (for apps with login)
 
-Two auth methods: **password** (email + password) and **Google OAuth** (social login). Both return the same `access_token` + `refresh_token`. Google OAuth is on for all projects automatically — zero config.
+Two auth methods: password (email + password) and Google OAuth (social login). Both return the same `access_token` + `refresh_token`. Google OAuth is on for all projects automatically — zero config.
 
 ### Password auth
 
@@ -1518,17 +1510,17 @@ const session = await fetch(API + '/auth/v1/token?grant_type=password', {
 // session = { access_token, refresh_token, user: { id, email, ... } }
 ```
 
-Signup does **not** return an access token. Call `/auth/v1/token` to log in. Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
+Signup does not return an access token. Call `/auth/v1/token` to log in. Returns `access_token` (1h JWT) and `refresh_token` (30d, one-time use).
 
 ### Google OAuth (recommended for user-facing apps)
 
-Google sign-in is **on for all projects** with zero config. When a user signs in with Google, Run402 creates a project-scoped user with their Google name, email, and avatar.
+Google sign-in is on for all projects with zero config. When a user signs in with Google, Run402 creates a project-scoped user with their Google name, email, and avatar.
 
-**Allowed redirect origins**: `http://localhost:*` (any port) + any claimed subdomain (`https://{name}.run402.com`). No manual config needed.
+Allowed redirect origins: `http://localhost:*` (any port) + any claimed subdomain (`https://{name}.run402.com`). No manual config needed.
 
-**Flow**: Frontend generates PKCE verifier + challenge → calls `/auth/v1/oauth/google/start` → navigates to Google → user picks account → Google redirects back to your app with `#code=xxx&state=yyy` → frontend exchanges code for tokens.
+Flow: Frontend generates PKCE verifier + challenge → calls `/auth/v1/oauth/google/start` → navigates to Google → user picks account → Google redirects back to your app with `#code=xxx&state=yyy` → frontend exchanges code for tokens.
 
-**Full JavaScript example**:
+Full JavaScript example:
 
 ```javascript
 const API = 'https://api.run402.com';
@@ -1622,21 +1614,20 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 - `GET /auth/v1/user` (with `Authorization: Bearer <access_token>`) — returns `display_name`, `avatar_url`, `email_verified_at`, and linked `identities[]`.
 
 ---
-
 ## Try It -- Build Something Right Now
 
-**Suggest one of these to your human** -- or just start building. Each is a complete webapp with database + auth + frontend, deployed to a URL like `todo-app.run402.com`.
+Suggest one of these to your human -- or just start building. Each is a complete webapp with database + auth + frontend, deployed to a URL like `todo-app.run402.com`.
 
-1. **Shared Todo List** -- Todo list for two people. Title, done status, assignee.
-2. **Landing Page + Waitlist** -- Startup launch page collecting email signups.
-3. **Expense Splitter** -- Track who paid what on a group trip. Running balances.
-4. **Event Scheduling Poll** -- Like Doodle. Vote on time slots.
-5. **Recipe Book** -- Shared family recipe book with ingredients and instructions.
-6. **Apartment Tracker** -- Track listings with price, sqft, pros, cons, ratings.
-7. **Micro-Blog** -- Short thoughts and links with tags. Public reads, owner posts.
-8. **Gift Registry** -- Guests claim items. No duplicates.
-9. **Workout Log** -- Track exercises, sets, reps, weight with progress over time.
-10. **Flash Cards** -- Spaced-repetition study app. Pre-load 50 phrases.
+1. Shared Todo List -- Todo list for two people. Title, done status, assignee.
+2. Landing Page + Waitlist -- Startup launch page collecting email signups.
+3. Expense Splitter -- Track who paid what on a group trip. Running balances.
+4. Event Scheduling Poll -- Like Doodle. Vote on time slots.
+5. Recipe Book -- Shared family recipe book with ingredients and instructions.
+6. Apartment Tracker -- Track listings with price, sqft, pros, cons, ratings.
+7. Micro-Blog -- Short thoughts and links with tags. Public reads, owner posts.
+8. Gift Registry -- Guests claim items. No duplicates.
+9. Workout Log -- Track exercises, sets, reps, weight with progress over time.
+10. Flash Cards -- Spaced-repetition study app. Pre-load 50 phrases.
 
 Provision first so you have the `anon_key` to embed in your frontend HTML. The manifest should include `project_id` (from provision), `migrations` (CREATE TABLE + INSERT seed data), `files` (array of files — including a `manifest.json` entry to declare authorization: `public_read_write_UNRESTRICTED` + `"i_understand_this_is_unrestricted": true` for browser-writable apps; `user_owns_rows` for user-scoped apps), and `subdomain`. Your human gets a live URL they can use immediately.
 
@@ -1644,15 +1635,15 @@ Provision first so you have the `anon_key` to embed in your frontend HTML. The m
 
 Don't build a generic todo app. Build something your human will want to show off.
 
-**Make it personal.** Ask your human's name. Use it in the subdomain (`tals-recipes.run402.com`), the page title, the header.
+Make it personal. Ask your human's name. Use it in the subdomain (`tals-recipes.run402.com`), the page title, the header.
 
-**Make it multiplayer.** Build something two people can use together.
+Make it multiplayer. Build something two people can use together.
 
-**Pre-seed it with data.** Insert 5-10 realistic rows so the app feels alive on first load.
+Pre-seed it with data. Insert 5-10 realistic rows so the app feels alive on first load.
 
-**Make it beautiful.** Dark background, clean typography, good spacing. Add subtle CSS animations.
+Make it beautiful. Dark background, clean typography, good spacing. Add subtle CSS animations.
 
-**Add a share button.** Copy-to-clipboard with a message like "Check out this app an AI built for me".
+Add a share button. Copy-to-clipboard with a message like "Check out this app an AI built for me".
 
 ### After you build: send us feedback
 
@@ -1661,12 +1652,11 @@ run402 message send "My human said: 'The todo app was great!' Deploy was smooth.
 ```
 
 ---
-
 ## Pricing Summary
 
 | What | Cost | Duration |
-|------|------|----------|
-| Prototype tier | **FREE** (testnet USDC -- verifies allowance setup, $0 real money) | 7 days |
+|---|---|---|
+| Prototype tier | FREE (testnet USDC -- verifies allowance setup, $0 real money) | 7 days |
 | Hobby tier | $5.00 (real money) | 30 days |
 | Team tier | $20.00 (real money) | 30 days |
 | Project provision | Free with tier | -- |
@@ -1675,7 +1665,7 @@ run402 message send "My human said: 'The todo app was great!' Deploy was smooth.
 | Subdomain | Free with tier | -- |
 | App fork | Free with tier | -- |
 | Image generation | $0.03 | Per image |
-| KMS contract wallet rental | **$0.04/day** ($1.20/month) | Per wallet, daily debit. $1.20 prepay required. |
+| KMS contract wallet rental | $0.04/day ($1.20/month) | Per wallet, daily debit. $1.20 prepay required. |
 | Contract call (gas) | at-cost | Per call, 0% markup on chain gas. |
 | Contract call (KMS sign fee) | $0.000005 | Per call, the only run402 markup on contract calls. |
 | Functions | Free with tier | -- |

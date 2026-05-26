@@ -7,7 +7,7 @@
 
 The canonical agent-facing reference for the typed TypeScript SDK. Every Run402 capability is a method on a resource namespace; the CLI and MCP server are thin shims over this kernel.
 
-**The SDK is the recommended surface** when you're authoring code. Fewer process boundaries than the CLI, typed error envelopes, identical behavior. If you're already in TypeScript, prefer this.
+The SDK is the recommended surface when you're authoring code. Fewer process boundaries than the CLI, typed error envelopes, identical behavior. If you're already in TypeScript, prefer this.
 
 ## Install
 
@@ -54,11 +54,11 @@ const r = new Run402({
 });
 ```
 
-The `CredentialsProvider` interface has two **required** methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`).
+The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`).
 
 ## Mental model
 
-The SDK is the canonical kernel. **A single typed `Run402` class** with one namespace per resource group (`r.projects`, `r.assets`, …). The hero apply primitive is `r.project(id).apply(spec)` — the public `r.deploy` surface was retired in v2.0; an internal `_applyEngine` powers it. Every method:
+The SDK is the canonical kernel. A single typed `Run402` class with one namespace per resource group (`r.projects`, `r.assets`, …). The hero apply primitive is `r.project(id).apply(spec)` — the public `r.deploy` surface was retired in v2.0; an internal `_applyEngine` powers it. Every method:
 - Takes typed parameters (TS interfaces in `*.types.ts`)
 - Returns a typed `Promise<T>`
 - Throws a typed subclass of `Run402Error` on failure
@@ -70,13 +70,13 @@ The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappe
 
 Two casings coexist by design — classify a field by the shape it belongs to:
 
-- **Raw API result shapes preserve the gateway's snake_case fields.** Examples:
+- Raw API result shapes preserve the gateway's snake_case fields. Examples:
   `ProvisionResult.project_id`, `ProvisionResult.anon_key`,
   `ProvisionResult.service_key`, `ProvisionResult.schema_slot`,
   `ProjectInfo.project_id`, `ProjectSummary.lease_expires_at`,
   `UsageReport.api_calls`, `SchemaReport.schema`. These mirror the HTTP
   response bodies one-to-one.
-- **SDK-specific helper shapes use camelCase.** Examples:
+- SDK-specific helper shapes use camelCase. Examples:
   `AssetRef.cdnUrl` / `AssetRef.cacheKind` / `AssetRef.contentSha256`,
   `Run402DeployError.safeToRetry` / `operationId` / `mutationState`,
   every `DeployEvent` variant's discriminator (`type`, plus per-variant
@@ -91,8 +91,8 @@ visual scanning, are not runnable, and are exempt from type-checking.
 
 After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `service_key`, `schema_slot`. The Node entry's credentials provider auto-saves these to `~/.config/run402/projects.json`.
 
-- **`anon_key`** — read-only by default; safe in browser HTML. RLS policies apply.
-- **`service_key`** — server-side admin. **Never embed in browser code.**
+- `anon_key` — read-only by default; safe in browser HTML. RLS policies apply.
+- `service_key` — server-side admin. Never embed in browser code.
 
 Neither key expires. Lease enforcement happens server-side.
 
@@ -173,7 +173,7 @@ The SDK exports identity-free guards plus a single canonical "should I retry thi
 
 `withRetry` runs an async function with exponential backoff. Defaults: 3 attempts (1 + 2 retries), 250 ms base delay, 5 s cap. Uses `isRetryableRun402Error` as the default retry decision. Pair with the SDK method's own `idempotencyKey` so retried mutations dedup server-side — the closure carries the same key on every attempt.
 
-Do not wrap lifecycle-gated writes, auth token exchanges, or passkey verification in blind retry loops just because an error says `safeToRetry: true`. Use a custom `retryIf` when a caller-specific recovery action makes a retry meaningful.
+Do not wrap lifecycle-gated writes, auth token exchanges, or passkey verification in blind retry loops because an error says `safeToRetry: true`. Use a custom `retryIf` when a caller-specific recovery action makes a retry meaningful.
 
 For `r.project(id).apply()`, do not hand-roll the `BASE_RELEASE_CONFLICT` loop: the deploy namespace already re-plans and retries omitted/current-base specs when the gateway returns `safe_to_retry: true`. Default deploy budget is 2 retries after the initial attempt, `maxRetries: 0` opts out, each retry emits `deploy.retry`, and exhausted retries surface `attempts` / `maxRetries` / `lastRetryCode` on `Run402DeployError`.
 
@@ -196,7 +196,7 @@ logo.etag          // → strong "sha256-<hex>" ETag
 logo.cacheKind     // → "immutable" | "mutable" | "private"
 ```
 
-The URL is content-addressed and served through CloudFront. **No cache-invalidation choreography needed.** The browser refuses execution on byte mismatch via SRI.
+The URL is content-addressed and served through CloudFront. No cache-invalidation choreography needed. The browser refuses execution on byte mismatch via SRI.
 
 `immutable: true` is the default. The SDK always computes and sends the object SHA-256 because upload sessions require it; pass `false` only when you specifically need mutable URL/cache semantics (the returned `cdnUrl` and `sri` are then `null`).
 
@@ -215,7 +215,7 @@ const fresh = await (await r.project(projectId)).assets.waitFresh( {
 //   `fresh.fresh === false` on timeout — handle by switching to immutable
 ```
 
-**Don't call `waitFresh` on immutable URLs** — they're correct from upload time.
+Don't call `waitFresh` on immutable URLs — they're correct from upload time.
 
 ### Unified apply — `r.project(id).apply` (v1.34 unified deploy → v2.0 unified apply)
 
@@ -283,21 +283,21 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
 }
 ```
 
-- **Replace vs patch semantics per resource.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. `site.public_paths` is the browser reachability table and is separate from release asset paths: `{ mode: "explicit", replace: { "/events": { asset: "events.html", cache_class: "html" } } }` serves public `/events` from release asset `events.html`; in explicit mode `/events.html` is not public unless separately declared. `{ mode: "implicit" }` restores filename-derived public reachability and can widen access. Public-path-only site specs are deployable. Known static `cache_class` inputs are `html`, `immutable_versioned`, and `revalidating_asset`; preserve unknown strings returned by observability APIs. `functions` has the same replace/patch split. Secrets are declaration-only: use `r.secrets.set(project, key, value)` for values, then `secrets.require[]` to assert keys exist and `secrets.delete[]` to remove keys at activation. `subdomains` supports exactly one mode per spec: `set` replaces the release's managed subdomain list, `add` appends without removing existing entries, and `remove` deletes named entries. Today `subdomains.set` accepts at most one subdomain per project; multi-subdomain `set` is rejected locally with `SUBDOMAIN_MULTI_NOT_SUPPORTED`. Top-level absence = leave untouched.
-- **FunctionSpec.** `functions.replace` is the complete desired function map; `functions.patch.set` updates only listed functions, and `functions.patch.delete` removes listed names. Each function accepts `runtime?: "node22"`, exactly one code source (`source` for a single bundled module, or `files` plus `entrypoint` for multi-file functions), optional `config.timeoutSeconds`, optional `config.memoryMb`, optional `schedule`, and the v1.51+ auth-gate fields `requireAuth` and `requireRole`. `schedule` is a sibling of `config`, not `config.schedule`; it is a 5-field cron expression. In patch mode, omit `schedule` to leave the current schedule unchanged and pass `schedule: null` to remove it. Unified deploy `FunctionSpec` does not accept `deps` in this ReleaseSpec version; bundle dependencies into the function files or use the standalone `r.functions.deploy(..., { deps })` / CLI `run402 functions deploy --deps` path.
-- **Function-level auth gates (v1.51+).** Each `FunctionSpec` carries two optional declarative fields enforced by the gateway before invocation:
+- Replace vs patch semantics per resource. `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. `site.public_paths` is the browser reachability table and is separate from release asset paths: `{ mode: "explicit", replace: { "/events": { asset: "events.html", cache_class: "html" } } }` serves public `/events` from release asset `events.html`; in explicit mode `/events.html` is not public unless separately declared. `{ mode: "implicit" }` restores filename-derived public reachability and can widen access. Public-path-only site specs are deployable. Known static `cache_class` inputs are `html`, `immutable_versioned`, and `revalidating_asset`; preserve unknown strings returned by observability APIs. `functions` has the same replace/patch split. Secrets are declaration-only: use `r.secrets.set(project, key, value)` for values, then `secrets.require[]` to assert keys exist and `secrets.delete[]` to remove keys at activation. `subdomains` supports exactly one mode per spec: `set` replaces the release's managed subdomain list, `add` appends without removing existing entries, and `remove` deletes named entries. Today `subdomains.set` accepts at most one subdomain per project; multi-subdomain `set` is rejected locally with `SUBDOMAIN_MULTI_NOT_SUPPORTED`. Top-level absence = leave untouched.
+- FunctionSpec. `functions.replace` is the complete desired function map; `functions.patch.set` updates only listed functions, and `functions.patch.delete` removes listed names. Each function accepts `runtime?: "node22"`, exactly one code source (`source` for a single bundled module, or `files` plus `entrypoint` for multi-file functions), optional `config.timeoutSeconds`, optional `config.memoryMb`, optional `schedule`, and the v1.51+ auth-gate fields `requireAuth` and `requireRole`. `schedule` is a sibling of `config`, not `config.schedule`; it is a 5-field cron expression. In patch mode, omit `schedule` to leave the current schedule unchanged and pass `schedule: null` to remove it. Unified deploy `FunctionSpec` does not accept `deps` in this ReleaseSpec version; bundle dependencies into the function files or use the standalone `r.functions.deploy(..., { deps })` / CLI `run402 functions deploy --deps` path.
+- Function-level auth gates (v1.51+). Each `FunctionSpec` carries two optional declarative fields enforced by the gateway before invocation:
   - `requireAuth?: boolean` — when `true`, gateway rejects callers without a valid project user JWT with `Run402DeployError`-shaped envelope or `401` at request time. No DB lookup. Independent from `requireRole`.
   - `requireRole?: RequireRoleSpec | null` — gateway resolves the caller's role from the project-schema table and rejects callers whose role is not in `allowed` with `403`. Implies authentication (no JWT → 401). Pass `null` in patch mode to remove an existing gate. `RequireRoleSpec` is `{ table: string; idColumn: string; roleColumn: string; allowed: string[]; cacheTtl?: number }`. All identifiers are unqualified; `cacheTtl` is seconds (default 60, max 600, 0 disables caching for instant-revocation paths).
   When a gate passes, the gateway injects `x-run402-user-id` (always when any gate ran) and `x-run402-user-role` (only when `requireRole` ran) into the request. In-function code reads them with `getUserId(req)` / `getRole(req)` from `@run402/functions` 2.5+. All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple; mixed-table specs are rejected at plan time with `Run402DeployError.code === "INVALID_SPEC"`. The SDK does not validate gate shape — the gateway is authoritative. Missing table or column at activation throws `Run402DeployError.code === "DEPLOY_INVALID_ROLE_GATE"` (HTTP 422) before flipping the live release.
-- **Routes.** `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. Omitted and `null` carry forward base routes; `{ replace: [] }` clears dynamic routes; `{ replace: [...] }` replaces the route table. `RouteSpec` is one entry: `{ pattern: string, methods?: RouteHttpMethod[], target: RouteTarget }`. Function targets are `{ type: "function", name: string }`; static route targets are `{ type: "static", file: string }` for exact method-aware static aliases, not ordinary clean URLs, rewrites, or redirects. Prefer `site.public_paths` for clean static URLs such as `/events -> events.html`; use static routes for cases like static `GET /login` plus function `POST /login`. Static targets require exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and a relative deployed asset path with no leading slash, wildcard, directory shorthand, query, or fragment. `methods` omitted means all supported methods for function routes; `methods: []` is invalid. Supported methods are exported as `ROUTE_HTTP_METHODS` and `RouteHttpMethod` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`). Function target names are materialized release function names.
-- **Strict validation is SDK-owned.** `deploy.plan/start/apply` reject unknown raw `ReleaseSpec` fields before normalization can drop them; only top-level `$schema` metadata is tolerated and stripped before the plan request. `project_id`, `subdomain`, `site.replcae`, `functions.replace.api.deps`, `functions.replace.api.config.schedule`, and similar typos are `Run402DeployError.code === "INVALID_SPEC"` before any hash/upload/plan request. Use `loadDeployManifest` / `normalizeDeployManifest` for CLI/MCP JSON that legitimately uses `project_id`, `{ path }`, base64 file entries, or migration `sql_path`.
-- **No-op specs fail locally.** A spec with only `project` / `base`, or empty containers such as `site.replace: {}`, `functions.patch.delete: []`, `secrets.require: []`, or `subdomains.set: []`, throws `Run402DeployError.code === "MANIFEST_EMPTY"` before any network call. Delete-only patches with non-empty `delete` arrays still count as deployable.
-- **Tier preflight is local but gateway remains authoritative.** After normalization and before manifest CAS upload or `/apply/v1/plans`, `deploy.plan/start/apply` check literal function `config.timeoutSeconds`, `config.memoryMb`, cron minimum interval, and scheduled-function count when computable. Failures are `Run402DeployError.code === "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, `tier_max` or `min_interval_minutes`, and `details.limit_source` (`tier_status` or `local_static_fallback`). Current caps: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. `tier.status()` exposes `function_limits` / `limits.functions` when returned, including current scheduled usage.
-- **Plan warnings are structured.** `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless broad `allowWarnings` is set or every blocking warning code is listed in `allowWarningCodes`. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry. For `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS`, prefer route-level `acknowledge_readonly: true` on intentionally read-only GET/HEAD final-wildcard function routes; use code-level allowance only after inspecting all affected entries.
-- **Deploy summaries are derived SDK helpers.** `summarizeDeployResult(result: DeployResult): DeploySummary` is exported from `@run402/sdk` and `@run402/sdk/node`. It makes no gateway calls and summarizes only current reliable `DeployResult.diff` / `DeployResult.warnings` data: site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. Missing buckets are omitted, not zero-filled. It intentionally has no timings, client-side duration estimates, server phase estimates, or function old/new code hash fields.
-- **Safe release-race retries are automatic.** For omitted/current-base specs, `deploy.apply()` re-plans and retries `BASE_RELEASE_CONFLICT` only when the gateway marks the error `safe_to_retry: true`. Pinned `base.release_id` and `{ release: "empty" }` stay caller-owned. Static activation/spec failures inside `activation_pending` throw immediately with gateway metadata preserved instead of polling until timeout. Pass `maxRetries: 0` to opt out.
-- **Plan envelopes are normalized.** New gateways return `kind: "plan_response"` with `is_noop`, `summary`, `warnings`, `expected_events`, and resource buckets at top level. The SDK preserves those fields and also folds them into `PlanResponse.diff` for compatibility. Dry-run plans return `plan_id: null` and `operation_id: null` and cannot be uploaded or committed.
-- **Modern plan/diff types are split.** Deploy plans may expose `PlanDiffEnvelope` with migration buckets `{ new, noop }`; release-to-release diffs expose `{ applied_between_releases }`. Migration checksum mismatch is a hard deploy error (`Run402DeployError`), not a normal successful diff bucket. Legacy flag-off plan arrays remain represented by `DeployDiff` for compatibility.
+- Routes. `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. Omitted and `null` carry forward base routes; `{ replace: [] }` clears dynamic routes; `{ replace: [...] }` replaces the route table. `RouteSpec` is one entry: `{ pattern: string, methods?: RouteHttpMethod[], target: RouteTarget }`. Function targets are `{ type: "function", name: string }`; static route targets are `{ type: "static", file: string }` for exact method-aware static aliases, not ordinary clean URLs, rewrites, or redirects. Prefer `site.public_paths` for clean static URLs e.g. `/events -> events.html`; use static routes for cases like static `GET /login` plus function `POST /login`. Static targets require exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and a relative deployed asset path with no leading slash, wildcard, directory shorthand, query, or fragment. `methods` omitted means all supported methods for function routes; `methods: []` is invalid. Supported methods are exported as `ROUTE_HTTP_METHODS` and `RouteHttpMethod` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`). Function target names are materialized release function names.
+- Strict validation is SDK-owned. `deploy.plan/start/apply` reject unknown raw `ReleaseSpec` fields before normalization can drop them; only top-level `$schema` metadata is tolerated and stripped before the plan request. `project_id`, `subdomain`, `site.replcae`, `functions.replace.api.deps`, `functions.replace.api.config.schedule`, and similar typos are `Run402DeployError.code === "INVALID_SPEC"` before any hash/upload/plan request. Use `loadDeployManifest` / `normalizeDeployManifest` for CLI/MCP JSON that legitimately uses `project_id`, `{ path }`, base64 file entries, or migration `sql_path`.
+- No-op specs fail locally. A spec with only `project` / `base`, or empty containers e.g. `site.replace: {}`, `functions.patch.delete: []`, `secrets.require: []`, or `subdomains.set: []`, throws `Run402DeployError.code === "MANIFEST_EMPTY"` before any network call. Delete-only patches with non-empty `delete` arrays still count as deployable.
+- Tier preflight is local but gateway remains authoritative. After normalization and before manifest CAS upload or `/apply/v1/plans`, `deploy.plan/start/apply` check literal function `config.timeoutSeconds`, `config.memoryMb`, cron minimum interval, and scheduled-function count when computable. Failures are `Run402DeployError.code === "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, `tier_max` or `min_interval_minutes`, and `details.limit_source` (`tier_status` or `local_static_fallback`). Current caps: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. `tier.status()` exposes `function_limits` / `limits.functions` when returned, including current scheduled usage.
+- Plan warnings are structured. `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `deploy.apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless broad `allowWarnings` is set or every blocking warning code is listed in `allowWarningCodes`. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry. For `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS`, prefer route-level `acknowledge_readonly: true` on intentionally read-only GET/HEAD final-wildcard function routes; use code-level allowance only after inspecting all affected entries.
+- Deploy summaries are derived SDK helpers. `summarizeDeployResult(result: DeployResult): DeploySummary` is exported from `@run402/sdk` and `@run402/sdk/node`. It makes no gateway calls and summarizes only current reliable `DeployResult.diff` / `DeployResult.warnings` data: site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. Missing buckets are omitted, not zero-filled. It intentionally has no timings, client-side duration estimates, server phase estimates, or function old/new code hash fields.
+- Safe release-race retries are automatic. For omitted/current-base specs, `deploy.apply()` re-plans and retries `BASE_RELEASE_CONFLICT` only when the gateway marks the error `safe_to_retry: true`. Pinned `base.release_id` and `{ release: "empty" }` stay caller-owned. Static activation/spec failures inside `activation_pending` throw immediately with gateway metadata preserved instead of polling until timeout. Pass `maxRetries: 0` to opt out.
+- Plan envelopes are normalized. New gateways return `kind: "plan_response"` with `is_noop`, `summary`, `warnings`, `expected_events`, and resource buckets at top level. The SDK preserves those fields and also folds them into `PlanResponse.diff` for compatibility. Dry-run plans return `plan_id: null` and `operation_id: null` and cannot be uploaded or committed.
+- Modern plan/diff types are split. Deploy plans may expose `PlanDiffEnvelope` with migration buckets `{ new, noop }`; release-to-release diffs expose `{ applied_between_releases }`. Migration checksum mismatch is a hard deploy error (`Run402DeployError`), not a normal successful diff bucket. Legacy flag-off plan arrays remain represented by `DeployDiff` for compatibility.
 
 `WarningEntry` is a compatibility union. Legacy plan warnings used low/medium/high severity; deploy-observability warnings use info/warn/high severity with heuristic confidence. Shared fields:
 
@@ -312,8 +312,8 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
   confidence?: "low" | "medium" | "high" | "heuristic",
 }
 ```
-- **All bytes ride through CAS.** Plan request bodies never carry inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
-- **Server-authoritative manifest digest.** The gateway returns the canonical digest; the SDK no longer requires byte-for-byte canonicalize agreement.
+- All bytes ride through CAS. Plan request bodies never carry inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
+- Server-authoritative manifest digest. The gateway returns the canonical digest; the SDK no longer requires byte-for-byte canonicalize agreement.
 
 The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
 
@@ -381,9 +381,9 @@ await (await r.project(specWithRoutes.project)).apply(specWithRoutes);
 
 Route matching and routed HTTP contract:
 - Release static asset paths and public browser paths are distinct. In the example, `events.html` is a release asset and `/events` is the public static URL declared by `site.public_paths`. In explicit mode, `/events.html` is not public unless separately declared. `{ mode: "implicit" }` restores filename-derived public reachability and can widen access.
-- Exact patterns look like `/admin`; prefix wildcard patterns use a final `/*`, such as `/admin/*`.
+- Exact patterns look like `/admin`; prefix wildcard patterns use a final `/*`, e.g. `/admin/*`.
 - `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`; deploy both `/admin` and `/admin/*` for a dynamic section root. `/admin` and `/admin/` are trailing-slash equivalents for exact matching.
-- Prefer `site.public_paths` for ordinary clean static URLs such as `/events -> events.html`. Static route targets are exact, method-aware route-table aliases such as `{ pattern: "/events", methods: ["GET", "HEAD"], target: { type: "static", file: "events.html" } }`; `target.file` is a release asset path, not a public path, URL, CAS hash, rewrite, or redirect. In explicit public path mode, a route-only static alias can serve a private asset without making `/events.html` directly reachable.
+- Prefer `site.public_paths` for ordinary clean static URLs e.g. `/events -> events.html`. Static route targets are exact, method-aware route-table aliases e.g. `{ pattern: "/events", methods: ["GET", "HEAD"], target: { type: "static", file: "events.html" } }`; `target.file` is a release asset path, not a public path, URL, CAS hash, rewrite, or redirect. In explicit public path mode, a route-only static alias can serve a private asset without making `/events.html` directly reachable.
 - Avoid routing ordinary static files, wildcard static targets, leading-slash files, directory shorthand, broad method lists by default, and one-static-route-target-per-page route-table exhaustion.
 - Query strings are ignored for matching and preserved in the handler's full public `req.url`.
 - Exact routes beat prefix routes, longest prefix wins among prefixes, and method-compatible dynamic routes beat static assets.
@@ -422,18 +422,18 @@ console.log(summary.would_serve, summary.diagnostic_status, summary.match, reque
 void auth; void cas; void variant;
 ```
 
-`r.project(id).deploy.resolve({ url, method })` (the public scoped form; the bare `r.deploy.resolve` was retired in v2.0) also accepts lower-level `{ host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields such as `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Current known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle; branch on structured fields such as `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
+`r.project(id).deploy.resolve({ url, method })` (the public scoped form; the bare `r.deploy.resolve` was retired in v2.0) also accepts lower-level `{ host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Current known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle; branch on structured fields e.g. `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
 
 Known route warning codes and recovery:
 
 | Code | Meaning | Recovery |
-|------|---------|----------|
+|---|---|---|
 | `PUBLIC_ROUTED_FUNCTION` | A route makes the target function public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Prefer `allowWarningCodes: ["PUBLIC_ROUTED_FUNCTION"]` after review; broad `allowWarnings` only after every warning was reviewed. |
 | `ROUTE_TARGET_CARRIED_FORWARD` | A carried-forward route still points at a base-release function target. | Inspect active routes with release observability and deploy `routes.replace` if the target should change. |
 | `ROUTE_SHADOWS_STATIC_PATH` | A dynamic route shadows one static path. | Inspect warning details and active release routes; confirm only when intentional. |
 | `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | A prefix route shadows static paths. | Review affected paths, split exact routes if needed, and confirm only when intentional. |
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can fall back to static content. | Confirm static fallback is intended or add method coverage. |
-| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | A wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. `allowWarningCodes` is a reviewed escape hatch; broad `allowWarnings` is last resort. |
+| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | A wildcard function route only allows `GET`/`HEAD`. | Add mutation methods e.g. `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. `allowWarningCodes` is a reviewed escape hatch; broad `allowWarnings` is last resort. |
 | `ROUTE_TABLE_NEAR_LIMIT` | The route table is near the gateway/project limit. | Consolidate or remove routes before adding more. |
 | `ROUTES_NOT_ENABLED` | Routes are not enabled for this project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
 | `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Route-only static alias conflicts with a direct public static path or has relative-asset risk. | Inspect active routes, `static_public_paths`, and the backing `asset_path`; prefer `site.public_paths` for ordinary clean URLs and confirm only when intentional. |
@@ -577,13 +577,13 @@ export default async (req: Request) => {
 };
 ```
 
-- **`db(req)`** — caller-context. Forwards Authorization header. RLS applies.
-- **`adminDb()`** — bypass RLS. Routes to `/admin/v1/rest/*`.
-- **`adminDb().sql(query, params?)`** — raw parameterized SQL.
-- **`getUser(req)`** — decodes the JWT and returns `{ id, role, email } | null`. `role` is the JWT system role (`anon`/`authenticated`/`project_admin`), NOT the gate-resolved application role.
-- **`getUserId(req)` / `getRole(req)`** (v1.51+, `@run402/functions` 2.5+) — typed reads of the gateway-injected `x-run402-user-id` / `x-run402-user-role` headers for functions deployed with `requireAuth` / `requireRole`. Both return `string | null`; non-null when the corresponding gate ran through the gateway. Independent of `getUser` — these skip the JWT decode (the gateway already verified) and surface the application role from the `requireRole.allowed` set.
-- **`ai.generateImage({ prompt, aspect? })`** — project-billed runtime image generation for deployed functions. `aspect` is `"square" | "landscape" | "portrait"`; result is `{ image, content_type, aspect }` with base64 image bytes. Uses `RUN402_SERVICE_KEY` against `/ai/v1/generate-image`, not the wallet/x402 `/generate-image/v1` endpoint. Gateway rate limits and spend caps are project-owned; public routed functions should add app auth or their own rate limiting before calling it.
-- **`assets.put(key, source, opts?)`** — runtime asset upload through `/apply/v1/service-asset-put`. Uses `RUN402_SERVICE_KEY`, shares the deploy-time CAS/activation substrate, and returns an SDK-compatible `AssetRef`.
+- `db(req)` — caller-context. Forwards Authorization header. RLS applies.
+- `adminDb()` — bypass RLS. Routes to `/admin/v1/rest/*`.
+- `adminDb().sql(query, params?)` — raw parameterized SQL.
+- `getUser(req)` — decodes the JWT and returns `{ id, role, email } | null`. `role` is the JWT system role (`anon`/`authenticated`/`project_admin`), NOT the gate-resolved application role.
+- `getUserId(req)` / `getRole(req)` (v1.51+, `@run402/functions` 2.5+) — typed reads of the gateway-injected `x-run402-user-id` / `x-run402-user-role` headers for functions deployed with `requireAuth` / `requireRole`. Both return `string | null`; non-null when the corresponding gate ran through the gateway. Independent of `getUser` — these skip the JWT decode (the gateway already verified) and surface the application role from the `requireRole.allowed` set.
+- `ai.generateImage({ prompt, aspect? })` — project-billed runtime image generation for deployed functions. `aspect` is `"square" | "landscape" | "portrait"`; result is `{ image, content_type, aspect }` with base64 image bytes. Uses `RUN402_SERVICE_KEY` against `/ai/v1/generate-image`, not the wallet/x402 `/generate-image/v1` endpoint. Gateway rate limits and spend caps are project-owned; public routed functions should add app auth or their own rate limiting before calling it.
+- `assets.put(key, source, opts?)` — runtime asset upload through `/apply/v1/service-asset-put`. Uses `RUN402_SERVICE_KEY`, shares the deploy-time CAS/activation substrate, and returns an SDK-compatible `AssetRef`.
 
 The helper makes raw `fetch()` calls to the project's own gateway endpoints using ambient request context (`RUN402_PROJECT_ID` / `RUN402_SERVICE_KEY` baked at deploy time). It does NOT use `@run402/sdk`.
 
@@ -591,7 +591,7 @@ The helper makes raw `fetch()` calls to the project's own gateway endpoints usin
 
 The `Run402` class exposes 21 namespaces. Click into the SDK source for full method signatures.
 
-> **Reference tables below use plain fences, not `ts` fences.** They document the
+> Reference tables below use plain fences, not `ts` fences. They document the
 > type surface in compact form — they are not runnable programs. Runnable example
 > snippets in this document still use ```` ```ts ```` and are type-checked by CI
 > against the published `@run402/sdk` and `@run402/sdk/node` types.
@@ -614,14 +614,14 @@ pin(id: string): Promise<PinResult>
 getQuote(): Promise<QuoteResult>
 info(id: string): Promise<ProjectInfo>
 keys(id: string): Promise<ProjectKeys>
-use(id: string): Promise<void>             // sets the active project (sticky default)
+use(id: string): Promise<void> // sets the active project (sticky default)
 active(): Promise<string | null>
 
 // CLI-style aliases:
-usage(id): Promise<UsageReport>            // alias of getUsage
-schema(id): Promise<SchemaReport>          // alias of getSchema
-quote(): Promise<QuoteResult>              // alias of getQuote
-promoteUser(id, email): Promise<void>       // project-admin role helper
+usage(id): Promise<UsageReport> // alias of getUsage
+schema(id): Promise<SchemaReport> // alias of getSchema
+quote(): Promise<QuoteResult> // alias of getQuote
+promoteUser(id, email): Promise<void> // project-admin role helper
 demoteUser(id, email): Promise<void>
 ```
 
@@ -646,8 +646,8 @@ r.project(id).deploy.status(operationId, opts?): Promise<OperationSnapshot>
 r.project(id).deploy.list(opts?: { limit? }): Promise<DeployListResponse>
 r.project(id).deploy.events(operationId, opts?): Promise<DeployEventsResponse>
 r.project(id).deploy.resolve(opts: ScopedDeployResolveOptions): Promise<DeployResolveResponse>
-   // ScopedDeployResolveOptions is { url, method? } OR { host, path?, method? };
-   // the bare-r form r._applyEngine.resolve takes a top-level project plus DeployResolveOptions.
+  // ScopedDeployResolveOptions is { url, method? } OR { host, path?, method? };
+  // the bare-r form r._applyEngine.resolve takes a top-level project plus DeployResolveOptions.
 r.project(id).deploy.getRelease(releaseId, opts?: { siteLimit? }): Promise<ReleaseInventory>
 r.project(id).deploy.getActiveRelease(opts?: { siteLimit? }): Promise<ActiveReleaseInventory>
 r.project(id).deploy.diff(opts: { from, to, limit? }): Promise<ReleaseToReleaseDiff>
@@ -880,10 +880,10 @@ This is enforced by the wire-schema validator and verified by
 ```
 interface AssetManifest {
   list: AssetManifestEntry[]
-  byKey: Record<string, AssetManifestEntry>     // null-prototype
-  manifest: Record<string, AssetManifestEntry>  // null-prototype, plain-data copy
+  byKey: Record<string, AssetManifestEntry> // null-prototype
+  manifest: Record<string, AssetManifestEntry> // null-prototype, plain-data copy
   totals: { files, bytes_uploaded, bytes_reused, duration_ms }
-  pruned?: string[]                              // present when syncDir prune ran
+  pruned?: string[] // present when syncDir prune ran
 }
 
 interface AssetManifestEntry {
@@ -904,7 +904,7 @@ safety tests in `sdk/src/`.
 deploy(projectId, opts: {
   name: string, code: string, config?: { timeout?, memory? },
   deps?: string[], schedule?: string | null,
-}): Promise<FunctionDeployResult>      // result: { name, url, status, runtime, runtime_version, deps_resolved, warnings, ... }
+}): Promise<FunctionDeployResult> // result: { name, url, status, runtime, runtime_version, deps_resolved, warnings, ... }
 invoke(projectId, name, opts?: { method?, body?, headers? }): Promise<FunctionInvokeResult>
 logs(projectId, name, opts?: { tail?, since?, requestId? }): Promise<FunctionLogsResult>
 update(projectId, name, opts: { schedule?, timeout?, memory? }): Promise<FunctionUpdateResult>
@@ -939,7 +939,7 @@ The scoped client pre-binds the project id: `const p = await r.project(id); awai
 
 ```
 set(projectId, key, value): Promise<void>
-list(projectId): Promise<SecretListResult>      // { secrets: [{ key, created_at?, updated_at? }] }
+list(projectId): Promise<SecretListResult> // { secrets: [{ key, created_at?, updated_at? }] }
 delete(projectId, key): Promise<void>
 ```
 
@@ -962,23 +962,23 @@ Subdomain auto-reassignment: claim once. Every subsequent deploy to the same pro
 ### `r.domains`
 
 ```
-add(projectId, domain, subdomainName): Promise<DomainAddResult>      // returns DNS records
+add(projectId, domain, subdomainName): Promise<DomainAddResult> // returns DNS records
 list(projectId): Promise<DomainList>
-status(projectId, domain): Promise<DomainStatus>      // poll until "active"
+status(projectId, domain): Promise<DomainStatus> // poll until "active"
 remove(projectId, domain): Promise<void>
 ```
 
 ### `r.email`
 
 ```
-createMailbox(projectId, slug): Promise<CreateMailboxResult | MailboxInfo>     // idempotent
+createMailbox(projectId, slug): Promise<CreateMailboxResult | MailboxInfo> // idempotent
 getMailbox(projectId): Promise<MailboxInfo>
 deleteMailbox(projectId, mailboxId?): Promise<void>
 
 send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
 list(projectId, opts?: { limit?, after? }): Promise<EmailSummary[]>
 get(projectId, messageId): Promise<EmailDetail>
-getRaw(projectId, messageId): Promise<RawEmailResult>                          // bytes + content_type
+getRaw(projectId, messageId): Promise<RawEmailResult> // bytes + content_type
 
 // Webhooks (sub-namespace):
 webhooks.register(projectId, opts: { url, events }): Promise<MailboxWebhookSummary>
@@ -999,7 +999,7 @@ Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `
 ### `r.senderDomain`
 
 ```
-register(projectId, domain): Promise<SenderDomainSetup>      // returns DKIM CNAMEs
+register(projectId, domain): Promise<SenderDomainSetup> // returns DKIM CNAMEs
 status(projectId): Promise<SenderDomainStatus>
 remove(projectId): Promise<void>
 enableInbound(projectId, domain): Promise<{ mx_record }>
@@ -1014,7 +1014,7 @@ inboundDisable(projectId, domain): Promise<void>
 
 ```
 requestMagicLink(projectId, opts: { email, redirectUrl, intent?, clientState? }): Promise<void>
-verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult>      // { access_token, refresh_token, ... }
+verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult> // { access_token, refresh_token, ... }
 createUser(projectId, opts: { email, isAdmin?, sendInvite?, redirectUrl?, clientState? }): Promise<AuthUserAdminResult>
 inviteUser(projectId, opts: { email, isAdmin?, redirectUrl, clientState? }): Promise<AuthUserAdminResult>
 setUserPassword(projectId, opts: { accessToken, newPassword, currentPassword? }): Promise<void>
@@ -1096,7 +1096,7 @@ buyEmailPack(identifier: { email?: string, wallet?: string }): Promise<CreateChe
 setAutoRecharge(opts: { billingAccountId: string, enabled: boolean, threshold? }): Promise<void>
 checkBalance(identifier): Promise<BillingBalance>
 getAccount(identifier): Promise<BillingBalance>
-balance(identifier): Promise<BillingBalance>       // alias of checkBalance
+balance(identifier): Promise<BillingBalance> // alias of checkBalance
 history(identifier, limit?: number): Promise<BillingHistoryResult>
 getHistory(identifier, limit?: number): Promise<BillingHistoryResult>
 createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
@@ -1122,11 +1122,11 @@ setRecovery(projectId, walletId, recoveryAddress: string | null): Promise<void>
 setLowBalanceAlert(projectId, walletId, thresholdWei: string): Promise<void>
 
 call(projectId, opts: { walletId, chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args, value?, idempotencyKey? }): Promise<ContractCallResult>
-deploy(projectId, opts: { walletId, chain, bytecode, value?, idempotencyKey? }): Promise<ContractDeployResult>  // bytecode = full creation calldata (creation bytecode + ABI-encoded ctor args concatenated by caller); ≤ 128 KB. Returns deterministic CREATE address synchronously in `contract_address`.
+deploy(projectId, opts: { walletId, chain, bytecode, value?, idempotencyKey? }): Promise<ContractDeployResult> // bytecode = full creation calldata (creation bytecode + ABI-encoded ctor args concatenated by caller); ≤ 128 KB. Returns deterministic CREATE address synchronously in `contract_address`.
 read(opts: { chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args }): Promise<ContractReadResult>
 callStatus(projectId, callId): Promise<ContractCallResult>
 drain(projectId, walletId, destinationAddress): Promise<DrainResult>
-deleteWallet(projectId, walletId): Promise<DeleteWalletResult>     // refused if balance ≥ dust
+deleteWallet(projectId, walletId): Promise<DeleteWalletResult> // refused if balance ≥ dust
 
 // CLI-style aliases:
 setAlert(projectId, walletId, thresholdWei): Promise<void>
@@ -1142,7 +1142,7 @@ Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet 
 translate(projectId, opts: { text, to, from?, context? }): Promise<TranslateResult>
 moderate(projectId, text): Promise<ModerateResult>
 usage(projectId): Promise<AiUsageResult>
-generateImage(opts: { prompt, aspect? }): Promise<GenerateImageResult>  // $0.03 via x402, no projectId
+generateImage(opts: { prompt, aspect? }): Promise<GenerateImageResult> // $0.03 via x402, no projectId
 ```
 
 `r.image` is an alias of `r.ai`, so CLI readers can translate
@@ -1153,7 +1153,7 @@ generateImage(opts: { prompt, aspect? }): Promise<GenerateImageResult>  // $0.03
 ```
 status(): Promise<AllowanceStatusResult>
 create(): Promise<AllowanceCreateResult>
-export(): Promise<string>                     // address only, never the private key
+export(): Promise<string> // address only, never the private key
 faucet(address?: string): Promise<FaucetResult>
 ```
 
@@ -1164,8 +1164,8 @@ success — surfaced via `status().faucet_used`.
 ### `r.service`
 
 ```
-status(): Promise<ServiceStatus>      // 24h/7d/30d uptime per capability — no auth, no setup
-health(): Promise<ServiceHealth>      // per-dependency liveness — no auth, no setup
+status(): Promise<ServiceStatus> // 24h/7d/30d uptime per capability — no auth, no setup
+health(): Promise<ServiceHealth> // per-dependency liveness — no auth, no setup
 ```
 
 ### `r.cache` (gateway v1.52+, paired with `@run402/astro` v1.0+)
@@ -1229,7 +1229,7 @@ declare const title: string;
 declare const html: string;
 
 await db().from("pages").insert({ slug, title, html });
-await cache.invalidate(`/${slug}`);   // sub-second freshness
+await cache.invalidate(`/${slug}`); // sub-second freshness
 ```
 
 **From an admin-side function in a different host:**
@@ -1312,13 +1312,13 @@ OpenClaw skill packaging follows the same release train.
 
 ## Patterns & gotchas
 
-- **Provision before authoring HTML.** The `anon_key` is permanent and must be embedded in your frontend; provision first, then write the HTML.
-- **Use the manifest for access control**, never raw `GRANT/REVOKE`.
-- **`user_owns_rows` is the default for user-scoped data.** Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
-- **Use immutable `cdnUrl` from `r.assets.put`.** It's correct from the moment of upload — no `waitFresh` needed.
-- **Don't bake unconditional `r.allowance.faucet()` into deploy scripts** — the faucet rate-limits and breaks already-funded flows.
-- **Per-project rate limit is 100 req/sec.** On 429, back off using `retry_after`.
-- **`r.service.status()` works without auth.** Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
+- Provision before authoring HTML. The `anon_key` is permanent and must be embedded in your frontend; provision first, then write the HTML.
+- Use the manifest for access control, never raw `GRANT/REVOKE`.
+- `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
+- Use immutable `cdnUrl` from `r.assets.put`. It's correct from the moment of upload — no `waitFresh` needed.
+- Don't bake unconditional `r.allowance.faucet()` into deploy scripts — the faucet rate-limits and breaks already-funded flows.
+- Per-project rate limit is 100 req/sec. On 429, back off using `retry_after`.
+- `r.service.status()` works without auth. Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
 
 ## See also
 

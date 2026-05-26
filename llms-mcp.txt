@@ -6,7 +6,7 @@
 > Sibling references: SDK at https://run402.com/llms-sdk.txt · CLI at https://run402.com/llms-cli.txt · HTTP at https://run402.com/llms-full.txt
 > Source: cli/llms-mcp.txt in https://github.com/kychee-com/run402
 
-This file is the canonical, machine-readable reference for the `run402-mcp` MCP server's tool surface. Every action is an MCP tool call — natural-language framings work because the schemas are loaded into your context by the host.
+This file is canonical reference for the `run402-mcp` MCP server's tool surface. Every action is an MCP tool call — natural-language framings work because the schemas are loaded into your context by the host.
 
 If you're an MCP-host agent that already has the run402-mcp tools available, this is your reference. If you don't have the tools loaded, install the server first (instructions at the bottom).
 
@@ -14,33 +14,33 @@ If you're an MCP-host agent that already has the run402-mcp tools available, thi
 
 `run402-mcp` is a thin shim over [`@run402/sdk`](https://run402.com/llms-sdk.txt). Each MCP tool is an argv-parsing wrapper around an SDK method. The credential store at `~/.config/run402/projects.json` is shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to all of them.
 
-Tools that require **payment** (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as **informational text** (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
+Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
 ## Quickstart
 
 Six tool calls take you from zero to a deployed static site backed by a real Postgres:
 
-1. **`init`** — set up the local allowance, request the testnet faucet, snapshot tier + projects.
-2. **`set_tier`** with `tier: "prototype"` — free on testnet; verifies x402 setup end-to-end.
-3. **`provision_postgres_project`** with `name` — returns `project_id`, `anon_key`, `service_key`. Embed `anon_key` in your HTML before deploying.
-4. **`run_sql`** with `sql: "CREATE TABLE …"` — set up your schema. Make migrations idempotent.
-5. **`validate_manifest`**, then **`apply_expose`** with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
-6. **`deploy_site_dir`** with `dir` — incremental upload, only PUTs bytes the gateway doesn't already have. Auto-claims the subdomain on subsequent deploys.
+1. `init` — set up the local allowance, request the testnet faucet, snapshot tier + projects.
+2. `set_tier` with `tier: "prototype"` — free on testnet; verifies x402 setup end-to-end.
+3. `provision_postgres_project` with `name` — returns `project_id`, `anon_key`, `service_key`. Embed `anon_key` in your HTML before deploying.
+4. `run_sql` with `sql: "CREATE TABLE …"` — set up your schema. Make migrations idempotent.
+5. `validate_manifest`, then `apply_expose` with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
+6. `deploy_site_dir` with `dir` — incremental upload, only PUTs bytes the gateway doesn't already have. Auto-claims the subdomain on subsequent deploys.
 
-Optional next: **`deploy_function`** for server logic, **`assets_put`** for paste-and-go CDN assets, **`create_mailbox`** + **`send_email`** for transactional mail.
+Optional next: `deploy_function` for server logic, `assets_put` for paste-and-go CDN assets, `create_mailbox` + `send_email` for transactional mail.
 
 ## Project credentials
 
 After `provision_postgres_project`, two keys are saved automatically and reused by every subsequent tool call:
 
-- **`anon_key`** — read-only by default; safe in browser HTML. RLS policies apply.
-- **`service_key`** — server-side admin. **Never embed in browser code.** CORS is intentionally open for x402 clients, so a leaked service_key is exploitable from any origin. Use only inside functions or when calling tools as the agent.
+- `anon_key` — read-only by default; safe in browser HTML. RLS policies apply.
+- `service_key` — server-side admin. Never embed in browser code. CORS is intentionally open for x402 clients, so a leaked service_key is exploitable from any origin. Use only inside functions or when calling tools as the agent.
 
-Neither key expires. To inspect, call **`project_keys`**; to switch the active project for sticky-default tools, call **`project_use`**.
+Neither key expires. To inspect, call `project_keys`; to switch the active project for sticky-default tools, call `project_use`.
 
 ## Error envelopes and safe retry
 
-Run402-originated JSON errors carry a canonical envelope. **Branch on `code`, not English `message`.**
+Run402 JSON errors carry a canonical envelope. Branch on `code`, not English `message`.
 
 Important fields:
 - `code` — stable machine-readable reason: `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`, `RATE_LIMITED`, `INSUFFICIENT_FUNDS`, `CI_ROUTE_SCOPE_DENIED`
@@ -63,7 +63,7 @@ Safe retry policy:
 
 ### Paste-and-go assets — content-addressed URLs with SRI
 
-When you upload a file with **`assets_put`**, the response is an `AssetRef` with these fields:
+When you upload a file with `assets_put`, the response is an `AssetRef` with these fields:
 
 | Field | Use it for |
 |---|---|
@@ -74,7 +74,7 @@ When you upload a file with **`assets_put`**, the response is an `AssetRef` with
 
 `immutable: true` is the default. Pass `false` only on very large uploads where you don't need a content-hashed URL or SRI.
 
-If you suspect cache staleness, **`diagnose_public_url`** returns expected vs observed SHA, cache headers, invalidation status, and an actionable `hint`. For mutable URLs only, **`wait_for_cdn_freshness`** polls until the CDN serves the expected SHA. **Don't call `wait_for_cdn_freshness` on immutable URLs** — they're correct from upload time.
+If you suspect cache staleness, `diagnose_public_url` returns expected vs observed SHA, cache headers, invalidation status, and an actionable `hint`. For mutable URLs only, `wait_for_cdn_freshness` polls until the CDN serves the expected SHA. Don't call `wait_for_cdn_freshness` on immutable URLs — they're correct from upload time.
 
 ### Dark-by-default tables + the expose manifest
 
@@ -82,7 +82,7 @@ If you suspect cache staleness, **`diagnose_public_url`** returns expected vs ob
 
 JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest object and any editor gives autocomplete.
 
-**Preferred: declare `database.expose` in deploy.** When you call **`deploy`**, put this manifest object under `database.expose`. The gateway validates it against migration SQL and applies it atomically with the rest of the release.
+**Preferred: declare `database.expose` in deploy.** When you call `deploy`, put this manifest object under `database.expose`. The gateway validates it against migration SQL and applies it atomically with the rest of the release.
 
 ```json
 {
@@ -104,17 +104,17 @@ JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on you
 
 If the manifest references a table the migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
-**Non-mutating validation.** Use **`validate_manifest`** before applying to validate the auth/expose manifest used by `database.expose` and `apply_expose`. It accepts a manifest object or JSON string, optional `migration_sql`, and optional `project_id`. The SQL is used only for reference checks; it is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
+Non-mutating validation. Use `validate_manifest` before applying to validate the auth/expose manifest used by `database.expose` and `apply_expose`. It accepts a manifest object or JSON string, optional `migration_sql`, and optional `project_id`. The SQL is used only for reference checks; it is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
 
-**Imperative escape hatch.** For ad-hoc changes outside a deploy: **`apply_expose`** with `project_id` + `manifest`. **`get_expose`** returns the live state, with `source: "applied"` (came from a prior apply) or `"introspected"` (no manifest applied; reconstructed from DB state).
+Imperative escape hatch. For ad-hoc changes outside a deploy: `apply_expose` with `project_id` + `manifest`. `get_expose` returns the live state, with `source: "applied"` (came from a prior apply) or `"introspected"` (no manifest applied; reconstructed from DB state).
 
-**Convergent**: applying the same manifest twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped. Always include everything you want exposed.
+Convergent: applying the same manifest twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped. Always include everything you want exposed.
 
 #### Built-in policies
 
 | Policy | Allows |
 |---|---|
-| `user_owns_rows` | Rows where `owner_column = auth.uid()`. With `force_owner_on_insert: true`, a BEFORE INSERT trigger sets it automatically. **Default for user-scoped data.** |
+| `user_owns_rows` | Rows where `owner_column = auth.uid()`. With `force_owner_on_insert: true`, a BEFORE INSERT trigger sets it automatically. Default for user-scoped data. |
 | `public_read_authenticated_write` | Anyone reads. Any authenticated user writes any row. For shared boards / collaborative content. |
 | `public_read_write_UNRESTRICTED` | Fully open. Requires `i_understand_this_is_unrestricted: true`. Only for guestbooks / waitlists / feedback forms. |
 | `custom` | Escape hatch. Provide `custom_sql` with `CREATE POLICY` statements. |
@@ -123,11 +123,11 @@ Views always run with `security_invoker=true` — they inherit the underlying ta
 
 ### Slick Deploys
 
-Prefer **`deploy_site_dir`** over `deploy_site` whenever you have a directory path. It walks the directory, hashes each file client-side, asks the gateway _which_ bytes it doesn't already have, and only uploads those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
+Prefer `deploy_site_dir` over `deploy_site` whenever you have a directory path. It walks the directory, hashes each file client-side, asks the gateway _which_ bytes it doesn't already have, and only uploads those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
 The response's `content` array includes a fenced `json` block of buffered unified `DeployEvent` objects you can `JSON.parse`.
 
-For full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use **`deploy`** / **`deploy_resume`**. Set secret values first with **`set_secret`**, then deploy with `secrets.require[]`; never put secret values in a deploy spec.
+For full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use `deploy` / `deploy_resume`. Set secret values first with `set_secret`, then deploy with `secrets.require[]`; never put secret values in a deploy spec.
 
 The `deploy` tool also accepts `site.public_paths` for clean static browser URLs and deploy-v2 web routes to functions or exact method-aware static aliases. Release static asset paths and public browser paths are distinct: `events.html` can be a private release asset while `/events` is the public static URL.
 
@@ -166,23 +166,23 @@ The `deploy` tool also accepts `site.public_paths` for clean static browser URLs
 
 `site.public_paths.mode: "explicit"` means only the complete `public_paths.replace` table is directly reachable as static URLs. In the example, `/events` serves release asset `events.html`, while `/events.html` is not public unless separately declared. `{ "mode": "implicit" }` restores filename-derived public reachability and can widen access; review gateway warnings before confirming that switch. Public-path-only site specs are meaningful deploy content.
 
-Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear the route table. Route activation is atomic with the release. Function targets use `{ "type": "function", "name": "<materialized function name>" }`. Prefer `site.public_paths` for ordinary clean static URLs such as `/events -> events.html`. Static route targets use exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and `{ "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }` for route-only aliases; `file` is a release static asset path, not a public path, URL, CAS hash, rewrite, or redirect. Direct `/functions/v1/:name` invocation remains API-key protected; routed browser paths are public same-origin ingress, so function code owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
+Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear the route table. Route activation is atomic with the release. Function targets use `{ "type": "function", "name": "<materialized function name>" }`. Prefer `site.public_paths` for ordinary clean static URLs e.g. `/events -> events.html`. Static route targets use exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and `{ "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }` for route-only aliases; `file` is a release static asset path, not a public path, URL, CAS hash, rewrite, or redirect. Direct `/functions/v1/:name` invocation remains API-key protected; routed browser paths are public same-origin ingress, so function code owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
 
 Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`; use both `/admin` and `/admin/*` for a dynamic section root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact routes beat prefix routes, longest prefix wins, and method-compatible dynamic routes beat static assets. `POST /login` can route to a function while `GET /login` serves static HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
 
 Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
 
-Use `deploy_diagnose_url` before mutating deploy state when the question is "what would this public URL serve?" The tool accepts `project_id`, either `url` or `host`/`path`, and optional `method`; URL query strings/fragments are disclosed in `request.ignored` and `warnings`. It returns `would_serve`, `diagnostic_status`, `match`, normalized request data, deterministic summary, warnings, structured next steps, full structured response when supported, and a fenced JSON fallback. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields such as `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not MCP transport status, so host misses can be successful tool calls with `would_serve: false`. Do not treat diagnose as a fetch or cache purge, parse the prose instead of the fenced JSON, or hard-code `cache_policy` strings; branch on structured JSON such as `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
+Use `deploy_diagnose_url` before mutating deploy state when the question is "what would this public URL serve?" The tool accepts `project_id`, either `url` or `host`/`path`, and optional `method`; URL query strings/fragments are disclosed in `request.ignored` and `warnings`. It returns `would_serve`, `diagnostic_status`, `match`, normalized request data, deterministic summary, warnings, structured next steps, full structured response when supported, and a fenced JSON fallback. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not MCP transport status, so host misses can be successful tool calls with `would_serve: false`. Do not treat diagnose as a fetch or cache purge, parse the prose instead of the fenced JSON, or hard-code `cache_policy` strings; branch on structured JSON e.g. `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
 
 Route warning recovery:
 
 | Code | Meaning | Recover |
-|------|---------|---------|
+|---|---|---|
 | `PUBLIC_ROUTED_FUNCTION` | Function becomes public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains protected. Prefer `allow_warning_codes: ["PUBLIC_ROUTED_FUNCTION"]` after review; broad `allow_warnings: true` only after every warning was reviewed. |
 | `ROUTE_TARGET_CARRIED_FORWARD` | Carried-forward route still targets a base-release function. | Inspect `deploy_release_active` and deploy a replacement route table if needed. |
 | `ROUTE_SHADOWS_STATIC_PATH` / `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | Dynamic route shadows direct public static content. | Inspect warning details, active routes, `static_public_paths`, and resolve diagnostics; confirm only when intentional. |
 | `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can serve static content. | Confirm fallback is intended or add method coverage. |
-| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods such as `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. Use `allow_warning_codes` as a reviewed escape hatch; broad `allow_warnings` is last resort. |
+| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | Wildcard function route only allows `GET`/`HEAD`. | Add mutation methods e.g. `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. Use `allow_warning_codes` as a reviewed escape hatch; broad `allow_warnings` is last resort. |
 | `ROUTE_TABLE_NEAR_LIMIT` | Route table is near a limit. | Consolidate or remove routes. |
 | `ROUTES_NOT_ENABLED` | Routes are disabled for the project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
 | `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Route-only static alias conflicts with a direct public static path or has relative-asset risk. | Inspect active routes, `static_public_paths`, and the backing `asset_path`; prefer `site.public_paths` for ordinary clean URLs and confirm only when intentional. |
@@ -216,12 +216,12 @@ export default async (req: Request) => {
 };
 ```
 
-- **`db(req)`** — caller-context. Default choice.
-- **`adminDb()`** — bypass RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
-- **`adminDb().sql(query, params?)`** — raw parameterized SQL, always bypass RLS.
-- **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
-- **`assets.put(key, source, opts?)`** — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
-- **`getUserId(req)` / `getRole(req)`** (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passes. Both return `string | null`. Use inside a gated function instead of re-decoding the JWT. The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them. See "Function-level auth gates" below for declaring the gate on the deploy spec.
+- `db(req)` — caller-context. Default choice.
+- `adminDb()` — bypass RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
+- `adminDb().sql(query, params?)` — raw parameterized SQL, always bypass RLS.
+- `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
+- `assets.put(key, source, opts?)` — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
+- `getUserId(req)` / `getRole(req)` (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passes. Both return `string | null`. Use inside a gated function instead of re-decoding the JWT. The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them. See "Function-level auth gates" below for declaring the gate on the deploy spec.
 
 Fluent surface on both: `.select() / .eq() / .neq() / .gt() / .lt() / .gte() / .lte() / .like() / .ilike() / .in() / .order() / .limit() / .offset()` for reads; `.insert(obj | obj[]) / .update(obj) / .delete()` for writes (chain with `.eq()` to scope; return arrays of affected rows).
 
@@ -233,8 +233,8 @@ Declare auth requirements directly on each function spec — the gateway enforce
 
 Two independent optional fields on each `FunctionSpec` inside `deploy`'s `spec.functions.replace` / `spec.functions.patch.set`:
 
-- **`requireAuth: true`** — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `requireRole`.
-- **`requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? } | null`** — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary) and rejects callers whose role is not in `allowed` with `403`. Implies authentication. Pass `null` in patch mode to remove an existing gate. `cacheTtl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
+- `requireAuth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `requireRole`.
+- `requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? } | null` — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary) and rejects callers whose role is not in `allowed` with `403`. Implies authentication. Pass `null` in patch mode to remove an existing gate. `cacheTtl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
 
 Worked spec fragment for the `deploy` tool — three common shapes:
 
@@ -276,86 +276,86 @@ Worked spec fragment for the `deploy` tool — three common shapes:
 
 Validation rules (gateway-authoritative):
 
-- **One role table per release.** All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
-- **Unqualified identifiers only.** Schema-qualified names (e.g. `"public.members"`) are rejected with `INVALID_SPEC`. The project schema is resolved server-side.
-- **`cacheTtl` range.** `0 ≤ cacheTtl ≤ 600`. Out-of-range → `INVALID_SPEC`.
-- **Empty `allowed`.** Rejected with `INVALID_SPEC`.
-- **Deploy-time validation.** Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. The `deploy` tool surfaces the structured envelope.
+- One role table per release. All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
+- Unqualified identifiers only. Schema-qualified names (e.g. `"public.members"`) are rejected with `INVALID_SPEC`. The project schema is resolved server-side.
+- `cacheTtl` range. `0 ≤ cacheTtl ≤ 600`. Out-of-range → `INVALID_SPEC`.
+- Empty `allowed`. Rejected with `INVALID_SPEC`.
+- Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. The `deploy` tool surfaces the structured envelope.
 
-The gate applies to **both** routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key plus user JWT) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
+The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key plus user JWT) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
 ## Tools by category
 
 ### Database
 
-- **`provision_postgres_project`** — provision a new database. Auto-handles x402 payment. Params: `tier?` (default `"prototype"`), `name?`. Returns `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`.
-- **`run_sql`** — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id`, `sql`. Returns markdown table.
-- **`rest_query`** — query/mutate via PostgREST. Params: `project_id`, `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypass).
-- **`apply_expose`** — apply the declarative authorization manifest. Params: `project_id`, `manifest` (`{ version: "1", tables: [...], views: [...], rpcs: [...] }`).
-- **`validate_manifest`** — validate the auth/expose manifest without applying it. Params: `manifest` (object or JSON string), `migration_sql?`, `project_id?`. Returns fenced JSON with `hasErrors`, `errors`, and `warnings`; validation findings are data, not MCP errors.
-- **`get_expose`** — return the current manifest. Params: `project_id`. Returns the manifest plus `source: "applied" | "introspected"`.
-- **`get_schema`** — introspect tables, columns, types, constraints, RLS policies. Params: `project_id`.
-- **`get_usage`** — per-project usage counters (API calls, storage, lease expiry). Params: `project_id`. The reported tier and capacity limits are **account-level** (pooled across every project on the same billing account); use `tier_status` for the pooled total.
-- **`promote_user`** / **`demote_user`** — manage `project_admin` role on a project user. Params: `project_id`, `email`.
-- **`delete_project`** — cascade purge. Params: `project_id`. Irreversible.
+- `provision_postgres_project` — provision a new database. Auto-handles x402 payment. Params: `tier?` (default `"prototype"`), `name?`. Returns `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`.
+- `run_sql` — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id`, `sql`. Returns markdown table.
+- `rest_query` — query/mutate via PostgREST. Params: `project_id`, `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypass).
+- `apply_expose` — apply the declarative authorization manifest. Params: `project_id`, `manifest` (`{ version: "1", tables: [...], views: [...], rpcs: [...] }`).
+- `validate_manifest` — validate the auth/expose manifest without applying it. Params: `manifest` (object or JSON string), `migration_sql?`, `project_id?`. Returns fenced JSON with `hasErrors`, `errors`, and `warnings`; validation findings are data, not MCP errors.
+- `get_expose` — return the current manifest. Params: `project_id`. Returns the manifest plus `source: "applied" | "introspected"`.
+- `get_schema` — introspect tables, columns, types, constraints, RLS policies. Params: `project_id`.
+- `get_usage` — per-project usage counters (API calls, storage, lease expiry). Params: `project_id`. The reported tier and capacity limits are account-level (pooled across every project on the same billing account); use `tier_status` for the pooled total.
+- `promote_user` / `demote_user` — manage `project_admin` role on a project user. Params: `project_id`, `email`.
+- `delete_project` — cascade purge. Params: `project_id`. Irreversible.
 
 ### Asset storage (content-addressed CDN)
 
-Single-asset MCP tools below. For bulk directory work, the **`deploy`** tool
+Single-asset MCP tools below. For bulk directory work, the `deploy` tool
 accepts an `assets` slice (`assets: { put: [...] }` for additive batch and
 `assets: { put: [...], sync: { prefix, prune, confirm? } }` for declarative
 sync with a prune confirmation token — see [Slick Deploys](#slick-deploys)
 and "Bulk asset directories" below).
 
-- **`assets_put`** — upload (any size up to 5 TiB) via direct-to-S3. Params: `project_id`, `key`, `local_path?` OR `content?` (≤ 1 MB inline), `content_type?`, `visibility?` (`"public"` / `"private"`), `immutable?` (default `true`), `sha256?` (auto-computed when `immutable: true`). Returns `AssetRef`.
-- **`assets_get`** — download to a local file. Params: `project_id`, `key`, `local_path`.
-- **`assets_ls`** — keyset-paginated list. Params: `project_id`, `prefix?`, `limit?` (default 100, max 1000), `cursor?`.
-- **`assets_rm`** — delete and decrement project storage usage. Params: `project_id`, `key`.
-- **`assets_sign`** — time-boxed presigned GET URL. Params: `project_id`, `key`, `ttl_seconds?` (default 3600, max 604800).
-- **`diagnose_public_url`** — live CDN state. Params: `project_id`, `url`. Returns `expectedSha256`, `observedSha256`, `cache.{xCache,ageSeconds,cacheKind}`, `invalidation.{id,status}`, `vantage`, `hint`. Vantage is single-region (us-east-1).
-- **`wait_for_cdn_freshness`** — poll a mutable URL until it serves the expected SHA. Params: `project_id`, `url`, `sha256`, `timeout_ms?` (default 60_000, max 600_000). `isError: true` on timeout.
+- `assets_put` — upload (any size up to 5 TiB) via direct-to-S3. Params: `project_id`, `key`, `local_path?` OR `content?` (≤ 1 MB inline), `content_type?`, `visibility?` (`"public"` / `"private"`), `immutable?` (default `true`), `sha256?` (auto-computed when `immutable: true`). Returns `AssetRef`.
+- `assets_get` — download to a local file. Params: `project_id`, `key`, `local_path`.
+- `assets_ls` — keyset-paginated list. Params: `project_id`, `prefix?`, `limit?` (default 100, max 1000), `cursor?`.
+- `assets_rm` — delete and decrement project storage usage. Params: `project_id`, `key`.
+- `assets_sign` — time-boxed presigned GET URL. Params: `project_id`, `key`, `ttl_seconds?` (default 3600, max 604800).
+- `diagnose_public_url` — live CDN state. Params: `project_id`, `url`. Returns `expectedSha256`, `observedSha256`, `cache.{xCache,ageSeconds,cacheKind}`, `invalidation.{id,status}`, `vantage`, `hint`. Vantage is single-region (us-east-1).
+- `wait_for_cdn_freshness` — poll a mutable URL until it serves the expected SHA. Params: `project_id`, `url`, `sha256`, `timeout_ms?` (default 60_000, max 600_000). `isError: true` on timeout.
 
 #### Bulk asset directories — via the `deploy` tool's `assets` slice
 
 `assets` is a top-level `ReleaseSpec` slice the gateway treats with the same atomic guarantees as `site` / `functions` / `database`. Two shapes:
 
-- **Additive batch**: `assets: { put: [{ key, sha256, size_bytes, content_type, visibility, immutable }, ...] }`. Existing keys outside the batch are left untouched. Use this for incremental adds.
-- **Declarative sync**: `assets: { put: [...], sync: { prefix, prune: true, confirm?: { base_revision, delete_set_digest, expected_delete_count } } }`. Without `confirm`, the gateway returns the sync `asset_sync` block in the plan response — surface the delete count and sample keys to the user, then re-call with `confirm` populated. `prune: true` **requires an explicit `prefix`** — there's no implicit project-root prune.
+- Additive batch: `assets: { put: [{ key, sha256, size_bytes, content_type, visibility, immutable }, ...] }`. Existing keys outside the batch are left untouched. Use this for incremental adds.
+- Declarative sync: `assets: { put: [...], sync: { prefix, prune: true, confirm?: { base_revision, delete_set_digest, expected_delete_count } } }`. Without `confirm`, the gateway returns the sync `asset_sync` block in the plan response — surface the delete count and sample keys to the user, then re-call with `confirm` populated. `prune: true` requires an explicit `prefix` — there's no implicit project-root prune.
 
 Each `AssetPutEntry` carries the locally-computed `sha256` so the gateway can deduplicate against the CAS substrate; bytes for new shas are uploaded via the same direct-to-S3 presigned URL flow as `assets_put`.
 
 ### Sites & subdomains
 
-- **`deploy_site`** — deploy from inline file bytes. Params: `project`, `target?`, `files: [{ file, data, encoding? }]`. Free with active tier.
-- **`deploy_site_dir`** — deploy from a local directory. Routes through the unified deploy primitive (CAS-backed) — only uploads bytes the gateway doesn't have. Params: `project`, `dir`, `target?`. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
-- **`claim_subdomain`** — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
-- **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
-- **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
-- **`deploy`** — the unified apply primitive (v1.34 unified deploy → v2.0 unified apply with first-class assets slice). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource, value-free `secrets.require` / `secrets.delete`, and optional `assets: { put: [...], sync?: { prefix, prune, confirm? } }` for batch/declarative-sync asset directories. Returns the apply operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
-- **`deploy_resume`** — resume a deploy operation by `operation_id`.
-- **`deploy_list`** — list recent deploy operations. Params: `project_id`, `limit?`, `cursor?`.
-- **`deploy_events`** — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
-- **`deploy_release_get`** — fetch release inventory by id. Params: `project_id`, `release_id`, `site_limit?`. Returns release metadata, state kind, site paths, `static_public_paths` browser reachability entries, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and warnings when returned. `site.paths` is release static assets; `static_public_paths[]` carries `public_path`, `asset_path`, `reachability_authority`, and `direct`.
-- **`deploy_release_active`** — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
-- **`deploy_release_diff`** — diff release targets. Params: `project_id`, `from` (`empty` / `active` / release id), `to` (`active` / release id), `limit?`. Returns `migrations.applied_between_releases`; secret and subdomain diffs expose `added` / `removed` only; route diffs expose `added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed, newly uploaded CAS bytes, reused CAS bytes, eliminated deployment-copy bytes, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
-- **`deploy_diagnose_url`** — URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`. Returns `would_serve`, `diagnostic_status`, `match`, summary, warnings, next steps, and fenced JSON with the full resolution.
+- `deploy_site` — deploy from inline file bytes. Params: `project`, `target?`, `files: [{ file, data, encoding? }]`. Free with active tier.
+- `deploy_site_dir` — deploy from a local directory. Routes through the unified deploy primitive (CAS-backed) — only uploads bytes the gateway doesn't have. Params: `project`, `dir`, `target?`. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
+- `claim_subdomain` — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
+- `list_subdomains` / `delete_subdomain` — manage subdomains.
+- `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` — point your own domain at a Run402 subdomain.
+- `deploy` — the unified apply primitive (v1.34 unified deploy → v2.0 unified apply with first-class assets slice). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource, value-free `secrets.require` / `secrets.delete`, and optional `assets: { put: [...], sync?: { prefix, prune, confirm? } }` for batch/declarative-sync asset directories. Returns the apply operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
+- `deploy_resume` — resume a deploy operation by `operation_id`.
+- `deploy_list` — list recent deploy operations. Params: `project_id`, `limit?`, `cursor?`.
+- `deploy_events` — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
+- `deploy_release_get` — fetch release inventory by id. Params: `project_id`, `release_id`, `site_limit?`. Returns release metadata, state kind, site paths, `static_public_paths` browser reachability entries, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and warnings when returned. `site.paths` is release static assets; `static_public_paths[]` carries `public_path`, `asset_path`, `reachability_authority`, and `direct`.
+- `deploy_release_active` — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
+- `deploy_release_diff` — diff release targets. Params: `project_id`, `from` (`empty` / `active` / release id), `to` (`active` / release id), `limit?`. Returns `migrations.applied_between_releases`; secret and subdomain diffs expose `added` / `removed` only; route diffs expose `added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed, newly uploaded CAS bytes, reused CAS bytes, eliminated deployment-copy bytes, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
+- `deploy_diagnose_url` — URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`. Returns `would_serve`, `diagnostic_status`, `match`, summary, warnings, next steps, and fenced JSON with the full resolution.
 
 ### CI/OIDC bindings
 
-- **`ci_create_binding`** — create a GitHub Actions CI deploy binding by sending a locally signed delegation to the SDK. Params: `project_id`, `provider?` (`github-actions`), `subject_match`, `allowed_actions`, `allowed_events`, `route_scopes?`, `github_repository_id?`, `expires_at?`, `nonce`, `signed_delegation`. The MCP tool does not sign; the signed delegation is the authority boundary.
-- **`ci_list_bindings`** — list project CI bindings, including `route_scopes`. Params: `project_id`.
-- **`ci_get_binding`** — fetch one binding by id. Params: `binding_id`.
-- **`ci_revoke_binding`** — revoke one binding by id. Params: `binding_id`. Revocation stops future CI requests only.
+- `ci_create_binding` — create a GitHub Actions CI deploy binding by sending a locally signed delegation to the SDK. Params: `project_id`, `provider?` (`github-actions`), `subject_match`, `allowed_actions`, `allowed_events`, `route_scopes?`, `github_repository_id?`, `expires_at?`, `nonce`, `signed_delegation`. The MCP tool does not sign; the signed delegation is the authority boundary.
+- `ci_list_bindings` — list project CI bindings, including `route_scopes`. Params: `project_id`.
+- `ci_get_binding` — fetch one binding by id. Params: `binding_id`.
+- `ci_revoke_binding` — revoke one binding by id. Params: `binding_id`. Revocation stops future CI requests only.
 
 No `route_scopes` means no CI route-declaration authority. Route scopes are exact paths like `/admin` or final wildcard prefixes like `/api/*`. Gateway deploy planning returns `CI_ROUTE_SCOPE_DENIED` when CI tries to ship a route outside the delegated scopes; re-create the binding with covering scopes or run the route-changing deploy locally.
 
 ### Functions
 
-- **`deploy_function`** — deploy a Node 22 serverless function. Params: `project_id`, `name`, `code`, `config?` (`{ timeout?, memory? }`), `deps?` (npm specs: bare names → latest; pinned `lodash@4.17.21`; ranges `date-fns@^3.0.0`; max 30 entries / 200 chars; native binaries rejected; **don't list `@run402/functions`**), `schedule?` (5-field cron). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
-- **`invoke_function`** — invoke for testing over the direct `/functions/v1/:name` API-key-protected path. Params: `project_id`, `name`, `method?`, `body?`, `headers?`.
-- **`get_function_logs`** — recent logs (CloudWatch). Params: `project_id`, `name`, `tail?` (default 50, max 1000), `since?` (ISO 8601, locally validated), `request_id?` (`req_...`, for routed/function correlation). Returned lines include optional metadata such as `request_id`, `event_id`, log stream, and ingestion time.
-- **`update_function`** — change schedule / timeout / memory without redeploying code. Params: `project_id`, `name`, `schedule?` (`null` to remove), `timeout?`, `memory?`.
-- **`list_functions`** / **`delete_function`** — list / remove.
+- `deploy_function` — deploy a Node 22 serverless function. Params: `project_id`, `name`, `code`, `config?` (`{ timeout?, memory? }`), `deps?` (npm specs: bare names → latest; pinned `lodash@4.17.21`; ranges `date-fns@^3.0.0`; max 30 entries / 200 chars; native binaries rejected; don't list `@run402/functions`), `schedule?` (5-field cron). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
+- `invoke_function` — invoke for testing over the direct `/functions/v1/:name` API-key-protected path. Params: `project_id`, `name`, `method?`, `body?`, `headers?`.
+- `get_function_logs` — recent logs (CloudWatch). Params: `project_id`, `name`, `tail?` (default 50, max 1000), `since?` (ISO 8601, locally validated), `request_id?` (`req_...`, for routed/function correlation). Returned lines include optional metadata e.g. `request_id`, `event_id`, log stream, and ingestion time.
+- `update_function` — change schedule / timeout / memory without redeploying code. Params: `project_id`, `name`, `schedule?` (`null` to remove), `timeout?`, `memory?`.
+- `list_functions` / `delete_function` — list / remove.
 
 For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` from the response and call `get_function_logs` with that `request_id`. If the incident is older than the default recent lookup window, also pass `since`.
 
@@ -363,104 +363,104 @@ Scheduled function tier limits: prototype 1 / 15 min, hobby 3 / 5 min, team 10 /
 
 ### Secrets
 
-- **`set_secret`** — set a secret as `process.env.<KEY>` inside every function. Params: `project_id`, `key` (uppercase alphanumeric + underscores), `value`.
-- **`list_secrets`** — list secret keys and timestamps. Values and value-derived hashes are write-only and never returned.
-- **`delete_secret`** — params: `project_id`, `key`.
+- `set_secret` — set a secret as `process.env.<KEY>` inside every function. Params: `project_id`, `key` (uppercase alphanumeric + underscores), `value`.
+- `list_secrets` — list secret keys and timestamps. Values and value-derived hashes are write-only and never returned.
+- `delete_secret` — params: `project_id`, `key`.
 
 ### Managed jobs
 
 Fixed platform-managed jobs. These tools do not run arbitrary Docker images; they submit the delivered gateway `job_type` with a JSON `input["input.json"]` object and a hard `max_cost_usd_micros` cap. The SDK supplies the required idempotency header.
 
-- **`jobs_submit`** — submit a managed job. Params: `project_id`, `request` (`job_type`, `input`, `max_cost_usd_micros`).
-- **`jobs_get`** — get a job run. Params: `project_id`, `job_id`.
-- **`jobs_logs`** — read runner logs. Params: `project_id`, `job_id`, `tail?` (max 1000), `since?` (epoch ms).
-- **`jobs_cancel`** — cancel a queued or running job. Params: `project_id`, `job_id`.
+- `jobs_submit` — submit a managed job. Params: `project_id`, `request` (`job_type`, `input`, `max_cost_usd_micros`).
+- `jobs_get` — get a job run. Params: `project_id`, `job_id`.
+- `jobs_logs` — read runner logs. Params: `project_id`, `job_id`, `tail?` (max 1000), `since?` (epoch ms).
+- `jobs_cancel` — cancel a queued or running job. Params: `project_id`, `job_id`.
 
 ### Auth & email
 
-- **`request_magic_link`** — passwordless login, trusted invite, claim, or recovery link. Params: `project_id`, `email`, `redirect_url`, `intent?`, `client_state?`. `intent=invite` requires service key state.
-- **`verify_magic_link`** — exchange token for `access_token` + `refresh_token`. Params: `project_id`, `token`. Magic-link metadata is included when present.
-- **`create_auth_user`** / **`invite_auth_user`** — service-key create/update auth users and optionally send trusted invite links. Params include `project_id`, `email`, `is_admin?`, `redirect_url?`, `client_state?`.
-- **`set_user_password`** — change / reset / set. Params: `project_id`, `access_token`, `new_password`, `current_password?`.
-- **`auth_settings`** — update auth controls. Params: `project_id`, `allow_password_set?`, `preferred_sign_in_method?`, `public_signup?`, `require_passkey_for_project_admin?`.
-- **`passkey_register_options`** / **`passkey_register_verify`** — WebAuthn passkey registration. Params: `project_id`, `access_token`, `app_origin` then `challenge_id`, `response`, `label?`.
-- **`passkey_login_options`** / **`passkey_login_verify`** — WebAuthn passkey login. Params: `project_id`, `app_origin`, `email?` then `challenge_id`, `response`.
-- **`list_passkeys`** / **`delete_passkey`** — list or delete the authenticated user's passkeys. Params: `project_id`, `access_token`, `passkey_id?`.
-- **`create_mailbox`** / **`get_mailbox`** / **`delete_mailbox`** — per-project mailbox at `<slug>@mail.run402.com`. `delete_mailbox` requires `confirm: true`.
-- **`send_email`** — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Params: `project_id`, `to`, `template?` + `variables?` OR `subject?` + `html?` + `text?`, `from_name?`, `in_reply_to?`.
-- **`list_emails`** / **`get_email`** — read messages.
-- **`get_email_raw`** — return raw RFC-822 bytes for DKIM / zk-email verification (inbound only). Params: `project_id`, `message_id`.
-- **`register_mailbox_webhook`** / **`list_mailbox_webhooks`** / **`get_mailbox_webhook`** / **`update_mailbox_webhook`** / **`delete_mailbox_webhook`** — email-event webhooks (events: `delivery`, `bounced`, `complained`, `reply_received`).
-- **`register_sender_domain`** / **`sender_domain_status`** / **`remove_sender_domain`** — send from your own DKIM-verified domain.
-- **`enable_sender_domain_inbound`** / **`disable_sender_domain_inbound`** — receive replies on your custom sender domain. Returns the MX record to add.
+- `request_magic_link` — passwordless login, trusted invite, claim, or recovery link. Params: `project_id`, `email`, `redirect_url`, `intent?`, `client_state?`. `intent=invite` requires service key state.
+- `verify_magic_link` — exchange token for `access_token` + `refresh_token`. Params: `project_id`, `token`. Magic-link metadata is included when present.
+- `create_auth_user` / `invite_auth_user` — service-key create/update auth users and optionally send trusted invite links. Params include `project_id`, `email`, `is_admin?`, `redirect_url?`, `client_state?`.
+- `set_user_password` — change / reset / set. Params: `project_id`, `access_token`, `new_password`, `current_password?`.
+- `auth_settings` — update auth controls. Params: `project_id`, `allow_password_set?`, `preferred_sign_in_method?`, `public_signup?`, `require_passkey_for_project_admin?`.
+- `passkey_register_options` / `passkey_register_verify` — WebAuthn passkey registration. Params: `project_id`, `access_token`, `app_origin` then `challenge_id`, `response`, `label?`.
+- `passkey_login_options` / `passkey_login_verify` — WebAuthn passkey login. Params: `project_id`, `app_origin`, `email?` then `challenge_id`, `response`.
+- `list_passkeys` / `delete_passkey` — list or delete the authenticated user's passkeys. Params: `project_id`, `access_token`, `passkey_id?`.
+- `create_mailbox` / `get_mailbox` / `delete_mailbox` — per-project mailbox at `<slug>@mail.run402.com`. `delete_mailbox` requires `confirm: true`.
+- `send_email` — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Params: `project_id`, `to`, `template?` + `variables?` OR `subject?` + `html?` + `text?`, `from_name?`, `in_reply_to?`.
+- `list_emails` / `get_email` — read messages.
+- `get_email_raw` — return raw RFC-822 bytes for DKIM / zk-email verification (inbound only). Params: `project_id`, `message_id`.
+- `register_mailbox_webhook` / `list_mailbox_webhooks` / `get_mailbox_webhook` / `update_mailbox_webhook` / `delete_mailbox_webhook` — email-event webhooks (events: `delivery`, `bounced`, `complained`, `reply_received`).
+- `register_sender_domain` / `sender_domain_status` / `remove_sender_domain` — send from your own DKIM-verified domain.
+- `enable_sender_domain_inbound` / `disable_sender_domain_inbound` — receive replies on your custom sender domain. Returns the MX record to add.
 
 Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients per lease: 25 / 200 / 1000. Google OAuth is on for all projects with zero config.
 
 ### AI helpers
 
-- **`generate_image`** — text-to-PNG. $0.03 via x402. Params: `prompt`, `aspect?` (`square` / `landscape` / `portrait`).
-- **`ai_translate`** — translate text. Metered per project (requires AI Translation add-on). Params: `project_id`, `text`, `to`, `from?`, `context?`.
-- **`ai_moderate`** — moderate text. Free. Params: `project_id`, `text`.
-- **`ai_usage`** — translation quota.
+- `generate_image` — text-to-PNG. $0.03 via x402. Params: `prompt`, `aspect?` (`square` / `landscape` / `portrait`).
+- `ai_translate` — translate text. Metered per project (requires AI Translation add-on). Params: `project_id`, `text`, `to`, `from?`, `context?`.
+- `ai_moderate` — moderate text. Free. Params: `project_id`, `text`.
+- `ai_usage` — translation quota.
 
 ### Apps marketplace
 
-- **`browse_apps`** — list public forkable apps. Params: `tag?`.
-- **`get_app`** — inspect app metadata, including expected `bootstrap_variables`. Params: `version_id`.
-- **`fork_app`** — clone schema + site + functions into a new project. If the source has a `bootstrap` function, it runs automatically with the variables you pass. Params: `version_id`, `name`, `subdomain?`, `bootstrap?`. Response includes `bootstrap_result` or `bootstrap_error`.
-- **`publish_app`** — publish a project as a forkable app. Params: `project_id`, `description?`, `tags?`, `visibility?`, `fork_allowed?`.
-- **`list_versions`** / **`update_version`** / **`delete_version`** — manage published versions.
+- `browse_apps` — list public forkable apps. Params: `tag?`.
+- `get_app` — inspect app metadata, including expected `bootstrap_variables`. Params: `version_id`.
+- `fork_app` — clone schema + site + functions into a new project. If the source has a `bootstrap` function, it runs automatically with the variables you pass. Params: `version_id`, `name`, `subdomain?`, `bootstrap?`. Response includes `bootstrap_result` or `bootstrap_error`.
+- `publish_app` — publish a project as a forkable app. Params: `project_id`, `description?`, `tags?`, `visibility?`, `fork_allowed?`.
+- `list_versions` / `update_version` / `delete_version` — manage published versions.
 
 ### Tier & billing
 
-Tier is per **billing account**, not per project. `set_tier` applies immediately to every project on the account. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project on the account; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet accounts (via `link_wallet_to_account`) share the same pool. Quota-denial error envelopes include `details.scope: "account" | "project"` — `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
+Tier is per billing account, not per project. `set_tier` applies immediately to every project on the account. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project on the account; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet accounts (via `link_wallet_to_account`) share the same pool. Quota-denial error envelopes include `details.scope: "account" | "project"` — `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
 
-- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Params: `tier` (`prototype` / `hobby` / `team`). Account-wide effect.
-- **`tier_status`** — current account tier, lease, and `pool_usage` pooled across every project on the account; function authoring caps when returned.
-- **`get_quote`** — pricing (free, no auth).
-- **`tier_checkout`** — Stripe checkout (alternative to x402). Params: `tier`, `email?` OR `wallet?`.
-- **`create_email_billing_account`** — Stripe-only billing account by email (no wallet). Params: `email`. Idempotent.
-- **`link_wallet_to_account`** — link a wallet to an email account for hybrid Stripe + x402. Response surfaces a `pool_implications` block (account `tier`, `projects_in_pool_count`, `account_api_calls_current`, `account_storage_bytes_current`, `tier_limits`, `over_limit`) so an agent can warn before merging a wallet whose existing usage would push the pool past the cap.
-- **`billing_history`** — ledger.
-- **`buy_email_pack`** — $5 / 10,000 emails (never expire). Activates only when the tier daily limit is exhausted AND a verified custom sender domain exists.
-- **`set_auto_recharge`** — auto-buy email packs when credits run low.
-- **`create_checkout`** — Stripe top-up to billing balance.
+- `set_tier` — subscribe / renew / upgrade. Auto-detects action. x402 payment. Params: `tier` (`prototype` / `hobby` / `team`). Account-wide effect.
+- `tier_status` — current account tier, lease, and `pool_usage` pooled across every project on the account; function authoring caps when returned.
+- `get_quote` — pricing (free, no auth).
+- `tier_checkout` — Stripe checkout (alternative to x402). Params: `tier`, `email?` OR `wallet?`.
+- `create_email_billing_account` — Stripe-only billing account by email (no wallet). Params: `email`. Idempotent.
+- `link_wallet_to_account` — link a wallet to an email account for hybrid Stripe + x402. Response surfaces a `pool_implications` block (account `tier`, `projects_in_pool_count`, `account_api_calls_current`, `account_storage_bytes_current`, `tier_limits`, `over_limit`) so an agent can warn before merging a wallet whose existing usage would push the pool past the cap.
+- `billing_history` — ledger.
+- `buy_email_pack` — $5 / 10,000 emails (never expire). Activates only when the tier daily limit is exhausted AND a verified custom sender domain exists.
+- `set_auto_recharge` — auto-buy email packs when credits run low.
+- `create_checkout` — Stripe top-up to billing balance.
 
 ### KMS contract wallets (on-chain signing)
 
-For agents that sign Ethereum transactions. Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit (30 days prepaid). **Non-custodial.**
+For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0.04/day rental + $0.000005/call. Wallet creation requires $1.20 cash credit (30 days prepaid). Non-custodial.
 
-- **`provision_contract_wallet`** — params: `project_id`, `chain` (`base-mainnet` / `base-sepolia`), `recovery_address?`.
-- **`get_contract_wallet`** / **`list_contract_wallets`** — metadata + live native balance + USD value.
-- **`set_recovery_address`** — set/clear the optional auto-drain address used at day-90 deletion.
-- **`set_low_balance_alert`** — wei threshold; email alerts on drop (24h cooldown).
-- **`contract_call`** — submit a write call. Idempotent on `idempotency_key`. Params: `project_id`, `wallet_id`, `chain`, `contract_address`, `abi_fragment`, `function_name`, `args`, `value_wei?`, `idempotency_key?`.
-- **`contract_deploy`** — deploy a contract from the wallet (signs `to: null + data: bytecode` creation tx). Same pricing + idempotency as `contract_call`. Params: `project_id`, `wallet_id`, `chain`, `bytecode` (0x-prefixed hex; full creation calldata = creation bytecode + ABI-encoded constructor args, concatenated client-side; ≤ 128 KB), `value?`, `idempotency_key?`. Returns `contract_address` synchronously (deterministic CREATE address from `(wallet, nonce)`). run402 does NOT compile Solidity — bring your own bytecode.
-- **`contract_read`** — read-only call (free).
-- **`get_contract_call_status`** — lifecycle, gas, receipt.
-- **`drain_contract_wallet`** — drain native balance. Works on suspended wallets — the safety valve. Requires `X-Confirm-Drain` header equivalent.
-- **`delete_contract_wallet`** — schedule KMS key deletion (7-day window). Refused if balance ≥ dust.
+- `provision_contract_wallet` — params: `project_id`, `chain` (`base-mainnet` / `base-sepolia`), `recovery_address?`.
+- `get_contract_wallet` / `list_contract_wallets` — metadata + live native balance + USD value.
+- `set_recovery_address` — set/clear the optional auto-drain address used at day-90 deletion.
+- `set_low_balance_alert` — wei threshold; email alerts on drop (24h cooldown).
+- `contract_call` — submit a write call. Idempotent on `idempotency_key`. Params: `project_id`, `wallet_id`, `chain`, `contract_address`, `abi_fragment`, `function_name`, `args`, `value_wei?`, `idempotency_key?`.
+- `contract_deploy` — deploy a contract from the wallet (signs `to: null + data: bytecode` creation tx). Same pricing + idempotency as `contract_call`. Params: `project_id`, `wallet_id`, `chain`, `bytecode` (0x-prefixed hex; full creation calldata = creation bytecode + ABI-encoded constructor args, concatenated client-side; ≤ 128 KB), `value?`, `idempotency_key?`. Returns `contract_address` synchronously (deterministic CREATE address from `(wallet, nonce)`). run402 does NOT compile Solidity — bring your own bytecode.
+- `contract_read` — read-only call (free).
+- `get_contract_call_status` — lifecycle, gas, receipt.
+- `drain_contract_wallet` — drain native balance. Works on suspended wallets — the safety valve. Requires `X-Confirm-Drain` header equivalent.
+- `delete_contract_wallet` — schedule KMS key deletion (7-day window). Refused if balance ≥ dust.
 
 ### Allowance & account
 
-- **`init`** — one-shot setup: allowance + faucet + tier check + project list.
-- **`status`** — full account snapshot.
-- **`allowance_status`** / **`allowance_create`** / **`allowance_export`** — local allowance management.
-- **`request_faucet`** — Base Sepolia testnet USDC.
-- **`check_balance`** — USDC for an allowance address.
-- **`list_projects`** — active projects for a wallet.
-- **`pin_project`** — pin a project (admin-only — uses the configured admin allowance wallet).
-- **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
-- **`send_message`** — feedback to the Run402 team. Free with active tier.
-- **`set_agent_contact`** — register agent contact info. New or changed emails start an operator reply challenge and return `assurance_level`.
-- **`get_agent_contact_status`** — current contact fields plus `email_verification_status`, `passkey_binding_status`, `assurance_level`, and proof timestamps.
-- **`verify_agent_contact_email`** — start or resend the operator email reply challenge. The challenge secret is never returned.
-- **`start_operator_passkey_enrollment`** — email a short-lived passkey enrollment link to the verified contact email. Requires `email_verified`.
+- `init` — one-shot setup: allowance + faucet + tier check + project list.
+- `status` — full account snapshot.
+- `allowance_status` / `allowance_create` / `allowance_export` — local allowance management.
+- `request_faucet` — Base Sepolia testnet USDC.
+- `check_balance` — USDC for an allowance address.
+- `list_projects` — active projects for a wallet.
+- `pin_project` — pin a project (admin-only — uses the configured admin allowance wallet).
+- `project_info` / `project_keys` / `project_use` — inspect / set the active project.
+- `send_message` — feedback to the Run402 team. Free with active tier.
+- `set_agent_contact` — register agent contact info. New or changed emails start an operator reply challenge and return `assurance_level`.
+- `get_agent_contact_status` — current contact fields plus `email_verification_status`, `passkey_binding_status`, `assurance_level`, and proof timestamps.
+- `verify_agent_contact_email` — start or resend the operator email reply challenge. The challenge secret is never returned.
+- `start_operator_passkey_enrollment` — email a short-lived passkey enrollment link to the verified contact email. Requires `email_verified`.
 
 ### Service status (no auth, no setup)
 
-- **`service_status`** — public availability report (24h/7d/30d uptime per capability, operator, deployment topology, schema `run402-status-v1`). Cache: server-side 30s.
-- **`service_health`** — liveness probe with per-dependency results (postgres, postgrest, s3, cloudfront).
+- `service_status` — public availability report (24h/7d/30d uptime per capability, operator, deployment topology, schema `run402-status-v1`). Cache: server-side 30s.
+- `service_health` — liveness probe with per-dependency results (postgres, postgrest, s3, cloudfront).
 
 These work before `init` — useful for evaluating Run402 or distinguishing platform problems from your own.
 
@@ -479,14 +479,14 @@ These work before `init` — useful for evaluating Run402 or distinguishing plat
 
 Deploy preflights literal unified-deploy timeout, memory, cron interval, and scheduled-count values before plan/upload when caps are known; failures are structured `BAD_FIELD` errors with field/value/tier/limit details.
 
-Project rate limit: **100 req/sec**. Exceeding returns 429 with `retry_after`. Each project runs in its own Postgres schema; cross-schema access is blocked.
+Project rate limit: 100 req/sec. Exceeding returns 429 with `retry_after`. Each project runs in its own Postgres schema; cross-schema access is blocked.
 
 ## Project lifecycle (~104-day soft delete)
 
 After lease expires, projects go through a state machine. The live data plane keeps serving the whole time — only the owner's control plane gets gated:
 
 | State | When | What happens |
-|-------|------|--------------|
+|---|---|---|
 | `active` | — | Full read/write |
 | `past_due` | day 0 | Site, REST, email keep serving. Owner gets first email. |
 | `frozen` | +14d | Control plane returns 402 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved. |
@@ -517,14 +517,14 @@ The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`,
 
 Two payment rails work with the same wallet key:
 
-- **x402** (default): USDC on Base. Prototype = Base Sepolia testnet (free from faucet). Hobby/team = Base mainnet.
-- **MPP**: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Switch rails via `run402 init mpp` in the user's shell.
+- x402 (default): USDC on Base. Prototype = Base Sepolia testnet (free from faucet). Hobby/team = Base mainnet.
+- MPP: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Switch rails via `run402 init mpp` in the user's shell.
 
-The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as **informational text** — guide the user through funding, then retry the same tool call.
+The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as informational text — guide the user through funding, then retry the same tool call.
 
 For real-money tiers, two paths to fund:
-- **Path A — fund the agent allowance**: human sends USDC on Base mainnet to the address from `allowance_export`. Agent pays autonomously via x402 from then on.
-- **Path B — Stripe credits**: `create_email_billing_account` with the human's email, then `tier_checkout` returns a Stripe URL the human pays once.
+- Path A — fund the agent allowance: human sends USDC on Base mainnet to the address from `allowance_export`. Agent pays autonomously via x402 from then on.
+- Path B — Stripe credits: `create_email_billing_account` with the human's email, then `tier_checkout` returns a Stripe URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
 

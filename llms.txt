@@ -10,68 +10,68 @@
 
 ## Hello, agent
 
-If you're reading this, you're probably evaluating how to build something with Run402. This file is the **wayfinder**: it tells you what we offer, who we are, and which reference doc to fetch next based on what you're trying to do. Don't read everything — pick your integration surface and go to the matching `llms-*.txt` below.
+If you're reading this, you're probably evaluating how to build something with Run402. This file is the wayfinder: it tells you what we offer, who we are, and which reference doc to fetch next based on what you're trying to do. Don't read everything — pick your integration surface and go to the matching `llms-*.txt` below.
 
-If you have an active wallet allowance and want to ship now, the **30-second start** is at the bottom of this file.
+If you have an active wallet allowance and want to ship now, the 30-second start is at the bottom of this file.
 
 ## What Run402 offers
 
-A platform that an AI agent can fully provision, operate, and pay for **on its own**. No human signup, no API keys to copy out of a web dashboard, no human in the payment loop:
+A platform that an AI agent can fully provision, operate, and pay for on its own. No human signup, no API keys to copy out of a web dashboard, no human in the payment loop:
 
-- **Postgres databases** with PostgREST REST API and user auth (passwords + Google OAuth, zero-config)
-- **Content-addressed CDN file storage** — paste-and-go URLs with SRI integrity baked in
-- **Static site hosting** at `<name>.run402.com` plus custom domains, with `site.public_paths` for clean browser URLs such as `/events` backed by release asset `events.html`
-- **Same-origin web routes** with `routes.replace` mapping `/admin` and `/admin/*` to Node 22 Fetch Request -> Response functions, plus exact method-aware static aliases when a route table is the right tool. `req.url` is the full public URL on managed and custom domains; direct `/functions/v1/:name` remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, and `ROUTED_RESPONSE_TOO_LARGE`.
-- **Node 22 serverless functions** with cron scheduling and an in-handler helper library
-- **Email** — transactional sending, inbound parsing, custom sender domains, raw RFC-822 access for DKIM / zk-email
-- **AI helpers** — image generation, text translation, content moderation
-- **KMS-backed Ethereum signing** — provision contract wallets where private keys never leave AWS KMS
+- Postgres databases with PostgREST REST API and user auth (passwords + Google OAuth, zero-config)
+- Content-addressed CDN file storage — paste-and-go URLs with SRI integrity baked in
+- Static site hosting at `<name>.run402.com` plus custom domains, with `site.public_paths` for clean browser URLs e.g. `/events` backed by release asset `events.html`
+- Same-origin web routes with `routes.replace` mapping `/admin` and `/admin/*` to Node 22 Fetch Request -> Response functions, plus exact method-aware static aliases when a route table is the right tool. `req.url` is the full public URL on managed and custom domains; direct `/functions/v1/:name` remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, and `ROUTED_RESPONSE_TOO_LARGE`.
+- Node 22 serverless functions with cron scheduling and an in-handler helper library
+- Email — transactional sending, inbound parsing, custom sender domains, raw RFC-822 access for DKIM / zk-email
+- AI helpers — image generation, text translation, content moderation
+- KMS-backed Ethereum signing — provision contract wallets where private keys never leave AWS KMS
 
-**Prototype tier is FREE on testnet** — uses Base Sepolia USDC from the Run402 faucet to verify your x402 setup end-to-end. No real money, instantly available, no human approval. When you're ready for production, hobby ($5/30d) and team ($20/30d) tiers pay with real USDC on Base, pathUSD on Tempo, or Stripe credits.
+Prototype tier is FREE on testnet — uses Base Sepolia USDC from the Run402 faucet to verify your x402 setup end-to-end. No real money, instantly available, no human approval. When you're ready for production, hobby ($5/30d) and team ($20/30d) tiers pay with real USDC on Base, pathUSD on Tempo, or Stripe credits.
 
 ## Vision — agents as first-class customers
 
 Most platforms treat AI agents as second-class clients of human-shaped products. Run402 inverts this: the platform is shaped *for* agents.
 
-- **Autonomous payment.** x402 (the HTTP 402 micropayment protocol) lets an agent settle a bill directly from its allowance without asking a human to click through a checkout. MPP (Stripe's Machine Payments Protocol) is the same pattern on Tempo.
-- **Dark-by-default safety.** A table you create is unreachable from PostgREST until you declare it in the manifest with `expose: true`. This eliminates the "agent created a table, forgot to set RLS, data leaked" footgun.
-- **Content-addressed storage.** `blob put` returns a URL bound to the bytes' SHA-256 — no cache-invalidation choreography, no dangling references after redeploy.
-- **One operation = one declarative spec.** `r.project(id).apply` takes a single `ReleaseSpec` and converges the project (database + manifest + value-free secret declarations + functions + site + public static paths + subdomain) toward it; surgical patches and full replaces are first-class. Set secret values out-of-band with the secrets API, then use `secrets.require[]` as a dependency gate.
-- **Known-safe deploy contention is absorbed.** For omitted/current-base specs, `deploy.apply` re-plans and retries `BASE_RELEASE_CONFLICT` only when the gateway marks it `safe_to_retry: true`, emitting `deploy.retry` so agents can see the recovery.
-- **CI without shared secrets.** `run402 ci link github` binds a GitHub repo/branch or environment through OIDC, optionally with `--route-scope` exact/final-wildcard route authority, then the workflow calls the same `run402 deploy apply` primitive with `id-token: write` instead of storing Run402 service keys in GitHub secrets.
-- **Lifecycle that doesn't lose work.** Lease expiry triggers a ~104-day soft-delete state machine; the live data plane keeps serving end users throughout. Subdomains are reserved for the original owner so a missed renewal can't lose a brand to a squatter.
-- **Agent-operable errors.** Run402-originated JSON errors carry a canonical envelope with stable `code`, `retryable`, `safe_to_retry`, `mutation_state`, and `next_actions` so you can branch on machine-readable fields, not English message text.
-- **Astro SSR + ISR cache (v1.52+).** `export default run402();` in `astro.config.mjs` (the `@run402/astro` 1.0+ preset) wires SSR to AWS Lambda with SnapStart and an origin ISR cache — sub-second `r.cache.invalidate(url)` for admin-edit flows, generation-guarded so in-flight MISS renders cannot clobber a freshly-cleared state, bypass-by-default unless `Cache-Control` explicitly allows it. `getUser()` / `getUserId()` / `getRole()` from `@run402/functions` 2.5+ automatically taint per-request caching so personalized renders never get stored.
+- Autonomous payment. x402 (the HTTP 402 micropayment protocol) lets an agent settle a bill directly from its allowance without asking a human to click through a checkout. MPP (Stripe's Machine Payments Protocol) is the same pattern on Tempo.
+- Dark-by-default safety. A table you create is unreachable from PostgREST until you declare it in the manifest with `expose: true`. This eliminates the "agent created a table, forgot to set RLS, data leaked" footgun.
+- Content-addressed storage. `blob put` returns a URL bound to the bytes' SHA-256 — no cache-invalidation choreography, no dangling references after redeploy.
+- One operation = one declarative spec. `r.project(id).apply` takes a single `ReleaseSpec` and converges the project (database + manifest + value-free secret declarations + functions + site + public static paths + subdomain) toward it; surgical patches and full replaces are first-class. Set secret values out-of-band with the secrets API, then use `secrets.require[]` as a dependency gate.
+- Known-safe deploy contention is absorbed. For omitted/current-base specs, `deploy.apply` re-plans and retries `BASE_RELEASE_CONFLICT` only when the gateway marks it `safe_to_retry: true`, emitting `deploy.retry` so agents can see the recovery.
+- CI without shared secrets. `run402 ci link github` binds a GitHub repo/branch or environment through OIDC, optionally with `--route-scope` exact/final-wildcard route authority, then the workflow calls the same `run402 deploy apply` primitive with `id-token: write` instead of storing Run402 service keys in GitHub secrets.
+- Lifecycle that doesn't lose work. Lease expiry triggers a ~104-day soft-delete state machine; the live data plane keeps serving end users throughout. Subdomains are reserved for the original owner so a missed renewal can't lose a brand to a squatter.
+- Agent-operable errors. Run402 JSON errors carry a canonical envelope with stable `code`, `retryable`, `safe_to_retry`, `mutation_state`, and `next_actions` so you can branch on machine-readable fields, not English message text.
+- Astro SSR + ISR cache (v1.52+). `export default run402();` in `astro.config.mjs` (the `@run402/astro` 1.0+ preset) wires SSR to AWS Lambda with SnapStart and an origin ISR cache — sub-second `r.cache.invalidate(url)` for admin-edit flows, generation-guarded so in-flight MISS renders cannot clobber a freshly-cleared state, bypass-by-default unless `Cache-Control` explicitly allows it. `getUser()` / `getUserId()` / `getRole()` from `@run402/functions` 2.5+ automatically taint per-request caching so personalized renders never get stored.
 
 ## Integration surfaces — pick one
 
-Run402 ships **four wrappers around the same HTTP API**. Pick the one matching your runtime; they all share the same kernel and credential store.
+Run402 ships four wrappers around the same HTTP API. Pick the one matching your runtime; they all share the same kernel and credential store.
 
 | Surface | Use when… | Reference |
-|---------|-----------|-----------|
-| **`@run402/sdk`** ⭐ recommended | You're authoring TypeScript / JavaScript code (server, edge, sandbox, code-mode agent). Typed every method. The kernel everything else wraps. | <https://run402.com/llms-sdk.txt> |
-| **`run402` CLI** | You're a shell-based / scripted agent. JSON in, JSON out, exit code on failure. Also the GitHub Actions OIDC setup path (`run402 ci link github`). | <https://run402.com/llms-cli.txt> |
-| **`run402-mcp`** | You're an MCP-host agent (Claude Desktop, Cursor, Cline, Claude Code) — the tools land in your context automatically. | <https://run402.com/llms-mcp.txt> |
-| **HTTP API (raw)** | You're in a language without an SDK or doing low-level work. | <https://run402.com/llms-full.txt> |
+|---|---|---|
+| `@run402/sdk` ⭐ recommended | You're authoring TypeScript / JavaScript code (server, edge, sandbox, code-mode agent). Typed every method. The kernel everything else wraps. | <https://run402.com/llms-sdk.txt> |
+| `run402` CLI | You're a shell-based / scripted agent. JSON in, JSON out, exit code on failure. Also the GitHub Actions OIDC setup path (`run402 ci link github`). | <https://run402.com/llms-cli.txt> |
+| `run402-mcp` | You're an MCP-host agent (Claude Desktop, Cursor, Cline, Claude Code) — the tools land in your context automatically. | <https://run402.com/llms-mcp.txt> |
+| HTTP API (raw) | You're in a language without an SDK or doing low-level work. | <https://run402.com/llms-full.txt> |
 
-**The CLI and MCP are thin shims over the SDK.** Each subcommand and each MCP tool is just an argv/schema-parsing wrapper around an SDK method. If you're already in TypeScript, prefer the SDK directly — fewer process boundaries, typed errors, identical behavior.
+The CLI and MCP are thin shims over the SDK. Each subcommand and each MCP tool is an argv/schema-parsing wrapper around an SDK method. If you're already in TypeScript, prefer the SDK directly — fewer process boundaries, typed errors, identical behavior.
 
-A fifth distribution — the **OpenClaw skill** — is a script-based wrapper that re-exports from the CLI. Pick this only if you're inside the OpenClaw runtime.
+A fifth distribution — the OpenClaw skill — is a script-based wrapper that re-exports from the CLI. Pick this only if you're inside the OpenClaw runtime.
 
 ## Pricing summary
 
 | Tier | Cost | Lease | Storage | API calls | Functions |
-|------|------|-------|---------|-----------|-----------|
-| Prototype | **FREE** (testnet USDC) | 7 days | 250 MB | 500K | 5 |
+|---|---|---|---|---|---|
+| Prototype | FREE (testnet USDC) | 7 days | 250 MB | 500K | 5 |
 | Hobby | $5 | 30 days | 1 GB | 5M | 25 |
 | Team | $20 | 30 days | 10 GB | 50M | 100 |
 
 Add-ons:
-- **Image generation** — $0.03/image via x402
-- **Email pack** — $5 / 10,000 emails (never expire; require a verified custom sender domain)
-- **KMS contract wallet** — $0.04/day rental + $0.000005/call sign fee. Chain gas at-cost, 0% markup. $1.20 prepay required at creation (30 days of rent).
+- Image generation — $0.03/image via x402
+- Email pack — $5 / 10,000 emails (never expire; require a verified custom sender domain)
+- KMS contract wallet — $0.04/day rental + $0.000005/call sign fee. Chain gas at-cost, 0% markup. $1.20 prepay required at creation (30 days of rent).
 
-Sites, subdomains, custom domains, function deploys, blob storage, secret management, mailbox creation, app forking — all **free with active tier**. Only image generation and per-call paid surfaces (image, contract calls) are metered separately.
+Sites, subdomains, custom domains, function deploys, blob storage, secret management, mailbox creation, app forking — all free with active tier. Only image generation and per-call paid surfaces (image, contract calls) are metered separately.
 
 ## 30-second start
 
@@ -92,9 +92,9 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 
 You need a wallet with USDC on Base (real or testnet) to pay Run402. Three paths:
 
-- **Coinbase AgentKit** — MPC wallet on Base with built-in x402 support (`npm create onchain-agent@latest`).
-- **AgentPayy** — auto-bootstraps an MPC wallet on Base via Coinbase CDP.
-- **Generate one yourself with `viem`**:
+- Coinbase AgentKit — MPC wallet on Base with built-in x402 support (`npm create onchain-agent@latest`).
+- AgentPayy — auto-bootstraps an MPC wallet on Base via Coinbase CDP.
+- Generate one yourself with `viem`:
 
   ```bash
   npm install viem
@@ -111,8 +111,8 @@ For testnet, `run402 allowance fund` requests 0.25 USDC from the Base Sepolia fa
 
 ## Two payment rails — same wallet key
 
-- **x402** (default): USDC on Base. Standard HTTP 402 protocol.
-- **MPP**: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Stripe's Machine Payments Protocol.
+- x402 (default): USDC on Base. Standard HTTP 402 protocol.
+- MPP: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Stripe's Machine Payments Protocol.
 
 The same wallet key works on both chains; switching rails just changes which chain pays. Initialize MPP with `run402 init mpp` instead of `run402 init`.
 
