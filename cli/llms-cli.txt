@@ -1275,6 +1275,8 @@ Email-based billing accounts, Stripe tier checkout, and email packs. Pay run402 
 - `run402 billing balance <email-or-wallet>` — balance + email_credits_remaining + tier + lease + auto_recharge state
 - `run402 billing history <email-or-wallet> [--limit <n>]` — ledger history (both identifier types supported)
 
+Auth (v2.19.1+): `balance`, `history`, `link-wallet`, and `auto-recharge` require SIWX signed by the relevant wallet (the path wallet for reads, the body wallet for link, a linked wallet for auto-recharge). The CLI signs automatically from the local allowance, so these only work when the agent's allowance wallet is the one being queried/linked/billed. Email-identifier reads require an admin key. Checkout-creation commands (`create-email`, `tier-checkout`, `buy-email-pack`) remain unauthenticated.
+
 Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
 
 ### contracts
