@@ -49,6 +49,7 @@ export async function run(args) {
 
   switch (sub) {
     case "apply":
+    case "promote":
     case "resume":
     case "list":
     case "events":

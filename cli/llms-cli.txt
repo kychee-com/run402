@@ -322,6 +322,16 @@ run402 deploy resume <operation_id>
 
 The gateway re-runs only the failed phase forward — SQL is never replayed.
 
+Recovery from a destructive apply (v1.58+): when an `apply` shipped content the operator regrets (accidental destructive prune, content overwrite, broken release), `run402 deploy promote <release-id>` re-points the project's live release at a prior release row WITHOUT re-running the apply pipeline. No bytes-upload, no bundling, no migration — just a pointer swap on `internal.projects.live_release_id` plus an ssr_cache flush. Designed for "oops on a real project ID" recovery in seconds rather than re-deploying.
+
+```bash
+# rel_old (good)  →  rel_new (bad, destructive)  →  promote back
+run402 deploy promote rel_old_abc123 --project prj_xyz \
+  --allow-warning MIGRATIONS_NOT_REVERSIBLE
+```
+
+Surfaces structured warnings. `MIGRATIONS_NOT_REVERSIBLE` (requires_confirmation: true) fires when the target release predates migrations applied since — the migrations remain applied, so the post-promote release runs against the current schema. Ack with `--allow-warning MIGRATIONS_NOT_REVERSIBLE`. `FUNCTION_VERSION_MISMATCH` (informational) fires when overlapping function names have different code_hashes; the Lambda code is whatever's currently `$LATEST`. Rejected codes: `PROMOTE_TARGET_NOT_FOUND` (release id doesn't exist), `PROMOTE_PROJECT_MISMATCH` (release belongs to another project), `PROMOTE_RELEASE_NOT_READY` (release status not promotable: must be `ready`, `active`, or `superseded`), `PROMOTE_NO_OP` (target IS already the current live; use `cache.invalidateAll` to refresh cache instead), `PROMOTE_WARNING_REQUIRES_ACK` (at least one blocking warning unacked).
+
 Inspect deploy history: list recent operations for a project, or pull the recorded phase-event stream for a specific operation (after the fact — for live progress events during an in-flight deploy, the `apply` command already streams them on stderr):
 
 ```bash
@@ -817,6 +827,7 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 ### deploy
 - `run402 deploy apply --manifest app.json [--project <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive (v1.34 unified deploy → v2.0 unified apply with `assets` slice support)
 - `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
+- `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline); v1.58+
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
 - `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
 - `run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]` — fetch release inventory

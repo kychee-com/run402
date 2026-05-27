@@ -267,6 +267,7 @@ exit 0; inspect would_serve and diagnostic_status in the result payload.
 
 export async function runDeployV2(sub, args) {
   if (sub === "apply") return await applyCmd(args);
+  if (sub === "promote") return await promoteCmd(args);
   if (sub === "resume") return await resumeCmd(args);
   if (sub === "list") return await listCmd(args);
   if (sub === "events") return await eventsCmd(args);
@@ -278,6 +279,189 @@ export async function runDeployV2(sub, args) {
     message: `Unknown deploy subcommand: ${sub}`,
     details: { subcommand: sub },
   });
+}
+
+const PROMOTE_HELP = `run402 deploy promote — Operator pointer-swap recovery (v1.58+)
+
+Usage:
+  run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings] [--quiet]
+
+Re-points the project's live release at an existing release row without
+re-running the apply pipeline. Designed for "oops on a real project ID"
+recovery — when an apply shipped content the operator regrets, promote
+back to the prior release in seconds instead of re-deploying.
+
+Promotable statuses: ready, active, superseded. Releases with status
+'failed' or 'staging' are rejected (they never fully landed).
+
+Surfaces structured warnings:
+
+  MIGRATIONS_NOT_REVERSIBLE (requires_confirmation: true)
+    The target release predates migrations applied since. Those
+    migrations remain applied — the post-promote release runs against
+    the current schema. Ack with --allow-warning MIGRATIONS_NOT_REVERSIBLE.
+
+  FUNCTION_VERSION_MISMATCH (informational, no ack needed)
+    Overlapping function names have different code_hashes. The Lambda
+    code is whatever's currently $LATEST.
+
+Worked example: recover from a destructive apply
+
+  # rel_old (good)  →  rel_new (bad, destructive)  →  promote back
+  run402 deploy promote rel_old_abc123 --project prj_xyz \\
+    --allow-warning MIGRATIONS_NOT_REVERSIBLE
+
+Options:
+  <release-id>            Required positional. The release to promote to.
+                          Format: rel_*
+  --project <id>          Project id. Falls back to active project, then
+                          RUN402_PROJECT_ID env var.
+  --allow-warning <code>  Acknowledge a specific blocking warning
+                          (repeatable).
+  --allow-warnings        Acknowledge ALL blocking promote warnings.
+                          Use this for full recovery mode when you've
+                          already inspected the diff.
+  --quiet | --final-only  Suppress per-event stderr; only print the
+                          final JSON envelope on stdout.
+
+Output:
+  stdout: {
+    "status": "ok",
+    "release_id": "rel_old_abc123",
+    "operation_id": "op_...",
+    "previous_release_id": "rel_new_xxx",
+    "diff": { "functions": {...}, "migrations": {...}, "site_paths": {...} },
+    "warnings": [...]
+  }
+
+  Errors map to structured envelopes with codes:
+    PROMOTE_TARGET_NOT_FOUND        404 — release id doesn't exist
+    PROMOTE_PROJECT_MISMATCH        400 — release belongs to another project
+    PROMOTE_RELEASE_NOT_READY       409 — release status not promotable
+    PROMOTE_NO_OP                   409 — target = current live (use
+                                          cache.invalidateAll instead)
+    PROMOTE_WARNING_REQUIRES_ACK    409 — at least one blocking warning
+                                          unacked; details list codes`;
+
+function parsePromoteArgs(args) {
+  const opts = {
+    releaseId: null,
+    project: null,
+    allowWarnings: false,
+    allowWarningCodes: [],
+    quiet: false,
+  };
+  const allowedFlags = [
+    "--project",
+    "--allow-warning",
+    "--allow-warnings",
+    "--quiet",
+    "--final-only",
+    "--help",
+    "-h",
+  ];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") {
+      console.log(PROMOTE_HELP);
+      process.exit(0);
+    }
+    if (arg === "--project" || arg === "--allow-warning") {
+      const value = args[i + 1];
+      if (value === undefined || (typeof value === "string" && value.startsWith("--"))) {
+        fail({
+          code: "BAD_USAGE",
+          message: `${arg} requires a value`,
+          details: { flag: arg },
+        });
+      }
+      if (arg === "--project") {
+        opts.project = value;
+      } else {
+        opts.allowWarningCodes.push(value);
+      }
+      i += 1;
+      continue;
+    }
+    if (arg === "--quiet" || arg === "--final-only") {
+      opts.quiet = true;
+      continue;
+    }
+    if (arg === "--allow-warnings") {
+      opts.allowWarnings = true;
+      continue;
+    }
+    if (typeof arg === "string" && arg.startsWith("-")) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Unknown flag for deploy promote: ${arg}`,
+        details: { flag: arg, allowed_flags: allowedFlags },
+      });
+    }
+    // Positional: the release id
+    if (opts.releaseId !== null) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Unexpected positional argument for deploy promote: ${arg}`,
+        details: { argument: arg, already_have: opts.releaseId },
+      });
+    }
+    opts.releaseId = arg;
+  }
+
+  if (opts.releaseId === null) {
+    fail({
+      code: "BAD_USAGE",
+      message: "deploy promote requires a release id (positional argument)",
+      details: { example: "run402 deploy promote rel_abc123" },
+    });
+  }
+  if (typeof opts.releaseId !== "string" || !opts.releaseId.startsWith("rel_")) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Invalid release id: '${opts.releaseId}' (expected rel_*)`,
+      details: { release_id: opts.releaseId },
+    });
+  }
+
+  return opts;
+}
+
+async function promoteCmd(args) {
+  const opts = parsePromoteArgs(args);
+  const projectId = opts.project ?? resolveProjectId(null);
+
+  // Preserve the aggressive early-exit when no allowance is configured
+  // — same as apply.
+  allowanceAuthHeaders("/apply/v1/releases");
+
+  try {
+    // Call the engine directly (matches the pattern used by apply / resume
+    // in this file). The `r.project(id).apply.promote` hero exists for
+    // direct-SDK consumers; the CLI's `getSdk()` returns the unwrapped
+    // Run402 instance whose `project()` method is async, so going through
+    // the hero here would require an extra `await`.
+    const result = await getSdk()._applyEngine.promote(projectId, opts.releaseId, {
+      allowWarnings: opts.allowWarnings,
+      allowWarningCodes: opts.allowWarningCodes,
+    });
+    if (!opts.quiet) {
+      // Emit a single structured stderr event so observers can pick it up
+      // alongside the regular deploy event stream. Promote is a one-shot
+      // operation; there are no intermediate phase events.
+      console.error(JSON.stringify({
+        type: "promote.committed",
+        release_id: result.release_id,
+        previous_release_id: result.previous_release_id,
+        operation_id: result.operation_id,
+        warnings: result.warnings,
+      }));
+    }
+    console.log(JSON.stringify(result, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function readStdin() {

@@ -235,6 +235,7 @@ const SURFACE: Capability[] = [
   // ── Unified deploy (v1.34+) ──────────────────────────────────────────────
   { id: "deploy",            endpoint: "POST /deploy/v2/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
   { id: "deploy_resume",     endpoint: "POST /deploy/v2/operations/:id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
+  { id: "deploy_promote",    endpoint: "POST /apply/v1/releases/:id/promote",              mcp: null,                cli: "deploy:promote",    openclaw: "deploy:promote" },
   { id: "deploy_list",       endpoint: "GET /deploy/v2/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
   { id: "deploy_events",     endpoint: "GET /deploy/v2/operations/:id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
   { id: "deploy_release_get",    endpoint: "GET /deploy/v2/releases/:id",                  mcp: "deploy_release_get",    cli: "deploy:release:get",    openclaw: "deploy:release:get" },
@@ -467,6 +468,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // at r._applyEngine internally; the public hero is r.project(id).apply.
   // SDK_BY_CAPABILITY targets the engine instance for resolution checks.
   deploy: "_applyEngine.apply",
+  deploy_promote: "_applyEngine.promote",
   deploy_resume: "_applyEngine.resume",
   deploy_list: "_applyEngine.list",
   deploy_events: "_applyEngine.events",

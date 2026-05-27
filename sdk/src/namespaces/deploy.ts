@@ -71,6 +71,8 @@ import type {
   OperationStatus,
   PlanRequest,
   PlanResponse,
+  PromoteOptions,
+  PromoteResult,
   ReleaseDiffOptions,
   ReleaseInventory,
   ReleaseInventoryByIdOptions,
@@ -295,6 +297,81 @@ export class Deploy {
       throw translateDeployError(err, "resume", null, operationId);
     }
     return await pollSnapshotUntilReady(this.client, snapshot, {}, [], emit, opts.project);
+  }
+
+  /**
+   * Promote an existing release to be the project's current live release —
+   * a pointer swap on `internal.projects.live_release_id` without re-running
+   * the apply pipeline. Designed for operator recovery from a destructive
+   * apply ("oops on a real project ID"). The prior release's bytes,
+   * functions, and migrations remain persisted; this just routes traffic
+   * back to them.
+   *
+   * Surfaces structured warnings via the result envelope:
+   *
+   *   - `MIGRATIONS_NOT_REVERSIBLE` (requires_confirmation: true) when the
+   *     target release predates migrations applied since. The migrations
+   *     remain applied; the new live release runs against the current
+   *     schema. Ack via `opts.allowWarningCodes`.
+   *
+   *   - `FUNCTION_VERSION_MISMATCH` (informational) when overlapping
+   *     function names have different code_hashes. The Lambda code is
+   *     whatever's currently $LATEST.
+   *
+   * Rejected cases:
+   *   - `PROMOTE_TARGET_NOT_FOUND` — releaseId doesn't exist
+   *   - `PROMOTE_PROJECT_MISMATCH` — releaseId belongs to a different project
+   *   - `PROMOTE_RELEASE_NOT_READY` — release status isn't promotable
+   *   - `PROMOTE_NO_OP` — releaseId IS already the project's current live
+   *   - `PROMOTE_WARNING_REQUIRES_ACK` — at least one blocking warning unacked
+   *
+   * Capability: unified-deploy (v1.58+, release-promote).
+   */
+  async promote(
+    project: string,
+    releaseId: string,
+    opts: PromoteOptions = {},
+  ): Promise<PromoteResult> {
+    if (!project || typeof project !== "string") {
+      throw new Run402DeployError(`Invalid project id: "${String(project)}"`, {
+        code: "BAD_REQUEST",
+        retryable: false,
+        context: "promoting release",
+      });
+    }
+    if (!releaseId || !releaseId.startsWith("rel_")) {
+      throw new Run402DeployError(`Invalid release id: "${releaseId}"`, {
+        code: "BAD_REQUEST",
+        retryable: false,
+        context: "promoting release",
+      });
+    }
+    // Note: `allowWarnings: true` is implemented client-side by enumerating
+    // every known blocking warning code, since the gateway expects a precise
+    // list per warning code (no wildcard accept). v1.58 has exactly one
+    // blocking promote warning (MIGRATIONS_NOT_REVERSIBLE); if more land,
+    // expand this list.
+    const ALL_BLOCKING_PROMOTE_WARNINGS = ["MIGRATIONS_NOT_REVERSIBLE"];
+    const allowCodes =
+      opts.allowWarnings === true
+        ? ALL_BLOCKING_PROMOTE_WARNINGS
+        : (opts.allowWarningCodes ?? []);
+    try {
+      return await this.client.request<PromoteResult>(
+        `/apply/v1/releases/${encodeURIComponent(releaseId)}/promote`,
+        {
+          method: "POST",
+          context: "promoting release",
+          headers: { "content-type": "application/json" },
+          body: {
+            project,
+            allow_warning_codes: allowCodes,
+          },
+        },
+      );
+    } catch (err) {
+      throw translateDeployError(err, "promote", null, releaseId);
+    }
   }
 
   /**

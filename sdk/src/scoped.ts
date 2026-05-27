@@ -152,6 +152,8 @@ import type {
   DeployResult,
   OperationSnapshot,
   PlanResponse,
+  PromoteOptions,
+  PromoteResult,
   ReleaseDiffOptions,
   ReleaseInventory,
   ReleaseInventoryOptions,
@@ -422,6 +424,15 @@ export interface ScopedApplyHero {
     operationId: string,
     opts?: { onEvent?: (event: DeployEvent) => void; project?: string },
   ): Promise<DeployResult>;
+  /**
+   * Operator pointer-swap: promote an existing release to be the project's
+   * current live release without re-running the apply pipeline. v1.58+.
+   * See `Deploy.promote` for full semantics + warning surface.
+   */
+  promote(
+    releaseId: string,
+    opts?: PromoteOptions,
+  ): Promise<PromoteResult>;
 }
 
 function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHero {
@@ -437,6 +448,8 @@ function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHe
       ...opts,
       project: opts.project ?? projectId,
     });
+  hero.promote = (releaseId, opts = {}) =>
+    parent._applyEngine.promote(projectId, releaseId, opts);
   return hero;
 }
 

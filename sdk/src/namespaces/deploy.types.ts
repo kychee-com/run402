@@ -2368,6 +2368,49 @@ export interface StartOptions {
   allowWarningCodes?: string[];
 }
 
+/**
+ * Options for the `r.project(id).apply.promote(releaseId, opts?)` operator
+ * pointer-swap operation. Mirrors `ApplyOptions` for the parts that apply
+ * (`allowWarnings`, `allowWarningCodes`); skips the parts that don't
+ * (`onEvent` — promote is a single-shot operation, no per-phase events;
+ * `idempotencyKey` — gateway derives idempotency from `(project, release_id)`;
+ * `maxRetries` — no plan-time race window).
+ */
+export interface PromoteOptions {
+  /** Continue past confirmation-required warnings (e.g. MIGRATIONS_NOT_REVERSIBLE).
+   *  Default false: the gateway aborts before the pointer swap when a
+   *  blocking warning isn't covered. */
+  allowWarnings?: boolean;
+  /** Cover specific confirmation-required warning codes. Every blocking
+   *  warning must be covered by this list or by `allowWarnings`. */
+  allowWarningCodes?: string[];
+}
+
+/**
+ * Result envelope returned by `r.project(id).apply.promote(releaseId, opts?)`.
+ * The promote operation is a single-shot pointer swap; no phase events,
+ * no payment-required hook (promote uses existing-release content).
+ */
+export interface PromoteResult {
+  status: "ok";
+  /** The release id now live on the project. Equal to the input releaseId. */
+  release_id: string;
+  /** The new `internal.apply_operations` row id (created with kind='promote'). */
+  operation_id: string;
+  /** The release that was live BEFORE the swap. */
+  previous_release_id: string;
+  /** Structured diff between previous and new live release. */
+  diff: PromoteDiff;
+  /** Any structured warnings produced — including ones the caller acked. */
+  warnings: WarningEntry[];
+}
+
+export interface PromoteDiff {
+  functions: { only_in_current: string[]; only_in_target: string[]; changed: string[] };
+  migrations: { only_in_current: string[]; only_in_target: string[] };
+  site_paths: { added_in_current: number; removed_in_current: number };
+}
+
 export interface DeployOperation {
   /** The operation id (also exposed via the snapshot). */
   readonly id: string;
