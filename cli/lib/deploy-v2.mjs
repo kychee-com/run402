@@ -40,6 +40,7 @@ const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 Usage:
   run402 deploy apply --manifest <path> [--project <id>] [--quiet|--final-only] [--allow-warning <code>] [--allow-warnings]
   run402 deploy apply --spec '<json>' [--project <id>] [--quiet|--final-only] [--allow-warning <code>] [--allow-warnings]
+  run402 deploy apply --dir <build-output> [--manifest <path>] [--project <id>]
   cat spec.json | run402 deploy apply [--project <id>]
 
 Manifest format mirrors the MCP \`deploy\` tool's ReleaseSpec:
@@ -79,6 +80,12 @@ Complete static site + function + route manifest:
 Options:
   --manifest <path>       Read the spec from this JSON file
   --spec '<json>'         Inline JSON spec (single-quote in shell)
+  --dir <path>            Read \`dist/run402/adapter.json\` from this directory and
+                          merge the Astro release slice (site + functions + routes)
+                          into the spec. Combine with --manifest to declare
+                          database/secrets/subdomains/i18n in the manifest while
+                          the slice carries the build output. Requires
+                          @run402/astro installed in the project.
   --project <id>          Override project_id from the manifest
   --quiet                 Suppress per-event JSON-line stderr (final result still on stdout)
   --final-only            Alias for --quiet; final success/error envelope is still preserved
@@ -296,8 +303,8 @@ function makeStderrEventWriter(quiet) {
 }
 
 function parseApplyArgs(args) {
-  const opts = { manifest: null, spec: null, project: null, quiet: false, allowWarnings: false, allowWarningCodes: [] };
-  const allowedFlags = ["--manifest", "--spec", "--project", "--quiet", "--final-only", "--allow-warning", "--allow-warnings", "--help", "-h"];
+  const opts = { manifest: null, spec: null, dir: null, project: null, quiet: false, allowWarnings: false, allowWarningCodes: [] };
+  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--allow-warning", "--allow-warnings", "--help", "-h"];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -305,7 +312,7 @@ function parseApplyArgs(args) {
       console.log(APPLY_HELP);
       process.exit(0);
     }
-    if (arg === "--manifest" || arg === "--spec" || arg === "--project" || arg === "--allow-warning") {
+    if (arg === "--manifest" || arg === "--spec" || arg === "--dir" || arg === "--project" || arg === "--allow-warning") {
       const value = args[i + 1];
       if (value === undefined || (typeof value === "string" && value.startsWith("--"))) {
         fail({
@@ -332,6 +339,15 @@ function parseApplyArgs(args) {
           });
         }
         opts.spec = value;
+      } else if (arg === "--dir") {
+        if (opts.dir !== null) {
+          fail({
+            code: "BAD_USAGE",
+            message: "--dir may only be provided once",
+            details: { flag: "--dir" },
+          });
+        }
+        opts.dir = value;
       } else if (arg === "--project") {
         opts.project = value;
       } else {
@@ -362,7 +378,61 @@ function parseApplyArgs(args) {
 function applySourceField(opts) {
   if (opts.manifest !== null) return "manifest";
   if (opts.spec !== null) return "spec";
+  if (opts.dir !== null && !hasStdinSource()) return "dir";
   return "stdin";
+}
+
+async function mergeAstroReleaseSlice(spec, dirArg) {
+  let buildAstroReleaseSlice;
+  try {
+    ({ buildAstroReleaseSlice } = await import("@run402/astro/release-slice"));
+  } catch (err) {
+    fail({
+      code: "BAD_USAGE",
+      message:
+        "--dir requires @run402/astro to be installed in this project. Add it as a dependency (e.g., `npm install -D @run402/astro`).",
+      details: { flag: "--dir", import_error: err?.message ?? String(err) },
+    });
+  }
+
+  const distDirAbs = isAbsolute(dirArg) ? dirArg : resolve(process.cwd(), dirArg);
+
+  let slice;
+  try {
+    slice = await buildAstroReleaseSlice(distDirAbs);
+  } catch (err) {
+    if (err && typeof err === "object" && typeof err.code === "string" &&
+      err.code.startsWith("R402_ASTRO_ADAPTER_MANIFEST_")) {
+      fail({
+        code: err.code,
+        message: err.message,
+        hint: err.suggestedFix,
+        docs: err.docs,
+        details: {
+          flag: "--dir",
+          dir: distDirAbs,
+          file: err.file,
+          ...(err.observedVersion ? { observed_version: err.observedVersion } : {}),
+        },
+      });
+    }
+    throw err;
+  }
+
+  // Slice owns site/functions/routes. The caller's manifest can declare
+  // cross-cutting slices (database, secrets, i18n, subdomains) that the
+  // slice doesn't touch. On collision in `functions.replace`, the slice
+  // wins for its own function name; the caller's other functions are
+  // preserved. `site` and `routes` are whole-resource replacements — slice
+  // wins entirely on those.
+  spec.site = slice.site;
+  spec.routes = slice.routes;
+  const sliceFns = slice.functions?.replace ?? {};
+  const existingFns =
+    spec.functions && typeof spec.functions === "object" && spec.functions.replace
+      ? spec.functions.replace
+      : {};
+  spec.functions = { replace: { ...existingFns, ...sliceFns } };
 }
 
 function validateApplySources(opts) {
@@ -398,6 +468,10 @@ async function applyCmd(args) {
         details: { flag: "--manifest", path: opts.manifest },
       });
     }
+  } else if (opts.dir !== null && !hasStdinSource()) {
+    // --dir without any other source: start from an empty spec and let the
+    // Astro release-slice fill in site/functions/routes below.
+    raw = "{}";
   } else {
     raw = await readStdin();
   }
@@ -416,6 +490,10 @@ async function applyCmd(args) {
     source: applySourceField(opts),
     ...(manifestPath ? { path: manifestPath } : {}),
   });
+
+  if (opts.dir !== null) {
+    await mergeAstroReleaseSlice(spec, opts.dir);
+  }
 
   // GH-232: Reject empty specs client-side. Without this guard,
   // `run402 deploy apply --spec '{}'` (and `--manifest <empty>`) would silently

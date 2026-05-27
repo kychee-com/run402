@@ -22,6 +22,7 @@
  */
 
 import { writeFile, mkdir } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,8 +37,9 @@ export interface CreateRun402AdapterOptions {
 
 /**
  * Run402 SSR adapter manifest — written to `dist/run402/adapter.json`
- * after build. The Run402 CLI (`run402 deploy`) reads this file to
- * assemble the multi-slice ReleaseSpec.
+ * after build. The Run402 CLI (`run402 deploy`) and the
+ * `@run402/astro/release-slice` SDK helper read this file to assemble
+ * the multi-slice ReleaseSpec.
  */
 export interface Run402AdapterManifest {
   /** Manifest version — bumped on breaking changes. */
@@ -52,11 +54,23 @@ export interface Run402AdapterManifest {
   /** Path of the client-assets directory (CSS, JS, public/). */
   clientDir: string;
   /** Per-route metadata — which routes are prerendered (static site
-   *  slice) vs which go through the SSR catchall. */
+   *  slice) vs which go through the SSR catchall.
+   *
+   *  `pattern` is Astro's route definition (e.g. `/about`, `/[slug]`).
+   *  `pathname` is the materialized URL path for prerendered routes
+   *  (populated by Astro from `pages[]`); absent for SSR-only routes.
+   *  `prerender` is the truth from Astro's RouteData — the release-slice
+   *  helper maps `prerender: true` routes into `site` slice static
+   *  aliases and lets `prerender: false` routes fall through the SSR
+   *  catchall.
+   *
+   *  For redirect/fallback route types (rare), `type` is set so the
+   *  helper can skip them when emitting routes. */
   routes: Array<{
     pattern: string;
     prerender: boolean;
     pathname?: string;
+    type?: "page" | "endpoint" | "redirect" | "fallback";
   }>;
   /** Astro feature support assessment captured at build time. */
   features: {
@@ -65,6 +79,17 @@ export interface Run402AdapterManifest {
     sessions: boolean;
     mdx: boolean;
   };
+}
+
+function resolveAstroVersion(): string {
+  try {
+    const req = createRequire(import.meta.url);
+    const pkg = req("astro/package.json") as { version?: unknown };
+    if (pkg && typeof pkg.version === "string") return pkg.version;
+  } catch {
+    // fall through
+  }
+  return "unknown";
 }
 
 export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): AstroIntegration {
@@ -118,7 +143,7 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
           },
         });
 
-        manifest.astroVersion = "6.x"; // resolved at runtime in real impl
+        manifest.astroVersion = resolveAstroVersion();
         buildOutputDir = fileURLToPath(config.outDir);
         serverDir = fileURLToPath(new URL("./run402/server/", config.outDir));
       },
@@ -156,21 +181,46 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
         }
       },
 
-      "astro:build:done": async ({ pages }) => {
-        // Compose the final manifest and write to dist/run402/adapter.json.
+      "astro:build:done": async (args: {
+        pages: Array<{ pathname: string }>;
+        routes?: Array<{
+          route?: string;
+          pathname?: string;
+          prerender?: boolean;
+          type?: string;
+        }>;
+      }) => {
+        const { pages, routes } = args;
         manifest.serverEntrypoint = path.join(serverDir, "entry.mjs");
         manifest.clientDir = path.join(buildOutputDir, "run402/client/");
-        // Astro 5 exposes `pages` (each with a `pathname`) on the
-        // build:done args; the prerender bool isn't directly available
-        // here, so we treat every page as prerendered for now. The
-        // `run402 deploy` CLI uses a separate Astro routing manifest
-        // (parsed from the server bundle) to determine SSR vs static
-        // at deploy time; the adapter manifest is a hint, not truth.
-        manifest.routes = pages.map((p) => ({
-          pattern: p.pathname,
-          prerender: true,
-          pathname: p.pathname,
-        }));
+
+        if (Array.isArray(routes) && routes.length > 0) {
+          // Astro 5+ — routes carry per-entry `prerender` truth.
+          manifest.routes = routes
+            .filter((r) => r.type === undefined || r.type === "page" || r.type === "endpoint")
+            .map((r) => {
+              const entry: Run402AdapterManifest["routes"][number] = {
+                pattern: r.route ?? r.pathname ?? "/",
+                prerender: r.prerender === true,
+              };
+              if (r.pathname) entry.pathname = r.pathname;
+              if (r.type === "page" || r.type === "endpoint" || r.type === "redirect" || r.type === "fallback") {
+                entry.type = r.type;
+              }
+              return entry;
+            });
+        } else {
+          // Older Astro shape — `pages[]` only. Every entry in `pages`
+          // is a materialized prerendered page (Astro doesn't emit
+          // pages[] entries for SSR-only routes), so prerender:true
+          // here is correct for this code path.
+          manifest.routes = pages.map((p) => ({
+            pattern: p.pathname,
+            prerender: true,
+            pathname: p.pathname,
+            type: "page" as const,
+          }));
+        }
         manifest.features = {
           middleware: true,
           serverIslands: false,

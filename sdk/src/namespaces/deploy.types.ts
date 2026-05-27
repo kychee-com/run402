@@ -283,6 +283,15 @@ export interface FunctionSpec {
    *  omit to leave it unchanged in `patch` mode. */
   schedule?: string | null;
   /**
+   * v1.52+: function class. When `"ssr"`, the gateway provisions the
+   * Lambda with SnapStart enabled and routes invocations through the
+   * origin ISR cache. Defaults to `"standard"` when omitted. Set by
+   * `@run402/astro` (and other framework adapters) for server-rendering
+   * entry functions; user-authored functions should usually omit this
+   * and let the gateway default.
+   */
+  class?: "ssr" | "standard";
+  /**
    * v1.51+: when `true`, the Run402 gateway rejects callers without a
    * valid project user JWT with `401` before invoking the function.
    * Independent from `requireRole` — set `requireRole` alone to imply
@@ -2138,6 +2147,8 @@ export interface NormalizedFunctionSpec {
   requireAuth?: boolean;
   /** v1.51+ — see `FunctionSpec.requireRole`. */
   requireRole?: RequireRoleSpec | null;
+  /** v1.52+ — see `FunctionSpec.class`. */
+  class?: "ssr" | "standard";
 }
 
 export type NormalizedSiteSpec =

@@ -31,6 +31,10 @@
       "types": "./dist/ssr-detectors.d.ts",
       "import": "./dist/ssr-detectors.js"
     },
+    "./release-slice": {
+      "types": "./dist/release-slice.d.ts",
+      "import": "./dist/release-slice.js"
+    },
     "./runtime/server": {
       "types": "./dist/runtime/server.d.ts",
       "import": "./dist/runtime/server.js"
@@ -54,7 +58,7 @@
   ],
   "scripts": {
     "build": "tsc && cp src/Image.astro dist/Image.astro && mkdir -p dist/components && cp src/components/Run402Picture.astro dist/components/Run402Picture.astro && cp src/components/Run402Image.astro dist/components/Run402Image.astro",
-    "test": "node --experimental-test-module-mocks --test --import tsx src/resolver.test.ts src/cache.test.ts src/scanner.test.ts src/uploader.test.ts src/component.test.ts src/manifest.test.ts src/blurhash-decoder.test.ts src/build-manifest.test.ts src/ssr-adapter.test.ts src/components/Run402Image/types.test.ts src/components/Run402Image/core.test.ts src/components/Run402Image/react.test.tsx src/components/Run402Image/byte-identity.test.tsx src/components/Run402Image/degradation-manifest.test.ts src/components/Run402Image/wrong-entry-point.test.tsx src/components/Run402Image/avif-deferral.test.ts src/components/Run402Image/jsx-smoke.test.tsx"
+    "test": "node --experimental-test-module-mocks --test --import tsx src/resolver.test.ts src/cache.test.ts src/scanner.test.ts src/uploader.test.ts src/component.test.ts src/manifest.test.ts src/blurhash-decoder.test.ts src/build-manifest.test.ts src/ssr-adapter.test.ts src/release-slice.test.ts src/components/Run402Image/types.test.ts src/components/Run402Image/core.test.ts src/components/Run402Image/react.test.tsx src/components/Run402Image/byte-identity.test.tsx src/components/Run402Image/degradation-manifest.test.ts src/components/Run402Image/wrong-entry-point.test.tsx src/components/Run402Image/avif-deferral.test.ts src/components/Run402Image/jsx-smoke.test.tsx"
   },
   "engines": {
     "node": ">=18"

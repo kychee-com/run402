@@ -16,10 +16,20 @@ import type {
   FileSet,
   FunctionSpec,
   I18nSpec,
+  LocalDirRef,
   ReleaseRoutesSpec,
   ReleaseSpec,
   SitePublicPathsSpec,
 } from "../namespaces/deploy.types.js";
+
+function isLocalDirRef(value: unknown): value is LocalDirRef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { __source?: unknown }).__source === "local-dir" &&
+    typeof (value as { path?: unknown }).path === "string"
+  );
+}
 
 const CONTEXT = "normalizing deploy manifest";
 
@@ -62,6 +72,7 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "schedule",
   "requireAuth",
   "requireRole",
+  "class",
 ]);
 const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
@@ -479,6 +490,7 @@ function mapFunction(
   if (raw.schedule !== undefined) out.schedule = raw.schedule;
   if (raw.requireAuth !== undefined) out.requireAuth = raw.requireAuth;
   if (raw.requireRole !== undefined) out.requireRole = raw.requireRole;
+  if (raw.class !== undefined) out.class = raw.class;
   return out;
 }
 
@@ -509,17 +521,21 @@ function mapSite(
       throw new LocalError("Deploy manifest site.replace is undefined", CONTEXT);
     }
     return {
-      replace: mapFileSet(raw.replace as DeployManifestFileSet, opts),
+      replace: isLocalDirRef(raw.replace)
+        ? raw.replace
+        : mapFileSet(raw.replace as DeployManifestFileSet, opts),
       ...(publicPaths ? { public_paths: publicPaths } : {}),
     };
   }
   if (Object.prototype.hasOwnProperty.call(raw, "patch")) {
-    const patch: { put?: FileSet; delete?: string[] } = {};
+    const patch: { put?: FileSet | LocalDirRef; delete?: string[] } = {};
     assertPlainRecord(raw.patch, "Deploy manifest site.patch");
     const rawPatch = raw.patch as { put?: unknown; delete?: unknown };
     assertKnownFields(rawPatch, "Deploy manifest site.patch", MANIFEST_SITE_PATCH_FIELDS);
     if (rawPatch.put !== undefined) {
-      patch.put = mapFileSet(rawPatch.put as DeployManifestFileSet, opts);
+      patch.put = isLocalDirRef(rawPatch.put)
+        ? rawPatch.put
+        : mapFileSet(rawPatch.put as DeployManifestFileSet, opts);
     }
     if (rawPatch.delete !== undefined) {
       if (!Array.isArray(rawPatch.delete)) {
