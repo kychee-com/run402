@@ -105,6 +105,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build @run402/sdk + core
+        # The astro package imports types from `@run402/sdk` (e.g. the
+        # release-slice helper, v1.1.0+). `@run402/sdk`'s `types` entry
+        # points at `sdk/dist/` which doesn't exist after a fresh `npm ci`,
+        # so the subsequent `tsc -p astro` would fail to resolve those
+        # imports. Building core + sdk first stages the dist tree the
+        # workspace symlink hands to TypeScript's module resolver.
+        run: |
+          npm run build:core
+          npm run build:sdk
+
       - name: Lint + type-check
         run: npx tsc --noEmit -p astro
 
