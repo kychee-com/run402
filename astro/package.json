@@ -87,6 +87,9 @@
       "optional": true
     }
   },
+  "dependencies": {
+    "esbuild": "^0.24.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.14",

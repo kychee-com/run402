@@ -32,9 +32,9 @@ import type {
   SiteSpec,
   StaticCacheClass,
 } from "@run402/sdk";
-import { fileSetFromDir } from "@run402/sdk/node";
 
 import type { Run402AdapterManifest } from "./ssr-adapter.js";
+import { bundleSsrEntry } from "./ssr-bundler.js";
 
 const SUPPORTED_MANIFEST_VERSIONS = new Set<string>(["1.0"]);
 const DEFAULT_FUNCTION_NAME = "ssr";
@@ -244,19 +244,29 @@ export async function buildAstroReleaseSlice(
 
   const site: SiteSpec = { replace: siteDir };
 
+  // Bundle the Astro server output into a single ESM source. The
+  // gateway's `validateFunctionSpec` rejects multi-file function specs
+  // ("multi-file function spec (files + entrypoint) is not yet supported
+  // by the gateway; bundle locally with esbuild and pass `source`
+  // instead"). esbuild collapses entry.mjs + chunks/ + reachable
+  // node_modules into one string we can ship as `FunctionSpec.source`.
   const serverDirAbs = path.resolve(distDir, SERVER_DIR_RELATIVE);
-  const serverFiles = await fileSetFromDir(serverDirAbs);
-  const entrypointRel = resolveEntrypointRelative(
-    manifest.serverEntrypoint,
-    serverDirAbs,
-    serverFiles,
-  );
+  const entrypointRel = path
+    .relative(serverDirAbs, path.resolve(manifest.serverEntrypoint))
+    .split(path.sep)
+    .join("/");
+  const entrypoint =
+    entrypointRel && !entrypointRel.startsWith("..") ? entrypointRel : DEFAULT_ENTRYPOINT_REL;
+
+  const bundle = await bundleSsrEntry({
+    serverDir: serverDirAbs,
+    entrypoint,
+  });
 
   const functionSpec: FunctionSpec = {
     runtime: "node22",
     class: "ssr",
-    files: serverFiles,
-    entrypoint: entrypointRel,
+    source: bundle.code,
   };
 
   if (opts.requireAuth !== undefined) functionSpec.requireAuth = opts.requireAuth;
@@ -266,27 +276,21 @@ export async function buildAstroReleaseSlice(
     replace: { [functionName]: functionSpec },
   };
 
+  // No explicit routes are emitted by default. The gateway (v1.52+,
+  // capability `astro-ssr-runtime`) routes every unmatched-path request
+  // to the project's single class:'ssr' function automatically — so
+  // the helper does not need to declare a /* catchall (which the route
+  // validator rejects anyway: "prefix wildcard must include a path
+  // segment before /*"). Prerendered routes are reachable via the
+  // gateway's implicit public-paths mode against the static manifest;
+  // we do not emit static-route aliases, which previously conflicted
+  // with the implicit-mode declaration for the same path.
+  //
+  // Callers who want explicit prefix routes (e.g. `/api/*` → a dedicated
+  // function) can still declare them on top of the slice; the slice's
+  // own `routes.replace: []` is intentionally empty so it doesn't
+  // clobber that pattern.
   const routes: RouteSpec[] = [];
-  for (const r of manifest.routes ?? []) {
-    if (r.type && r.type !== "page" && r.type !== "endpoint") continue;
-    if (!r.prerender) continue;
-    const raw = r.pathname ?? r.pattern;
-    if (raw === undefined || raw === null) continue;
-    // Astro emits the root index as `pathname: ""` (empty string); treat
-    // empty / missing prefix as `/` so the gateway gets a valid route
-    // pattern.
-    const pattern = raw === "" ? "/" : raw.startsWith("/") ? raw : `/${raw}`;
-    const file = prerenderedHtmlPath(pattern);
-    routes.push({
-      pattern,
-      methods: ["GET", "HEAD"],
-      target: { type: "static", file },
-    });
-  }
-  routes.push({
-    pattern: "/*",
-    target: { type: "function", name: functionName },
-  });
 
   // `cacheClass` is plumbed into `site.public_paths` for prerendered routes
   // when a caller cares about overriding the default html cache class. The
@@ -328,31 +332,3 @@ function prerenderedHtmlPath(pattern: string): string {
   return `${p}/index.html`;
 }
 
-/**
- * Normalize the manifest's `serverEntrypoint` (which the adapter writes as
- * an absolute path on the build host) to a `FileSet`-relative entrypoint
- * key. Falls back to the conventional `"entry.mjs"` when the manifest's
- * path no longer resolves cleanly into the server dir (e.g., the dist tree
- * was moved between build and helper invocation, or the entry filename
- * differs from the Astro-emitted convention).
- */
-function resolveEntrypointRelative(
-  manifestEntrypoint: string,
-  serverDirAbs: string,
-  files: Record<string, unknown>,
-): string {
-  if (manifestEntrypoint) {
-    const rel = path
-      .relative(serverDirAbs, path.resolve(manifestEntrypoint))
-      .split(path.sep)
-      .join("/");
-    if (rel && !rel.startsWith("..") && files[rel] !== undefined) return rel;
-  }
-  if (files[DEFAULT_ENTRYPOINT_REL] !== undefined) return DEFAULT_ENTRYPOINT_REL;
-  // Last resort: the first key alphabetically. The adapter guarantees a
-  // non-empty server dir, so this branch is defensive — but we'd rather
-  // ship an entrypoint string than throw here, since the gateway's plan
-  // step will catch a wrong entrypoint with a precise diagnostic.
-  const keys = Object.keys(files).sort();
-  return keys[0] ?? DEFAULT_ENTRYPOINT_REL;
-}

@@ -66,6 +66,16 @@ type AstroIntegration = {
       command: "dev" | "build" | "preview";
       logger?: { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
     }) => void | Promise<void>;
+    "astro:config:done"?: (params: {
+      config: {
+        root: URL | string;
+        // The build triple is fully resolved by config:done time. Both
+        // `client` and `server` are URLs in Astro 5+; the integration only
+        // reads `build.client` to colocate `_assets-manifest.json` with
+        // the deploy slice's client dir.
+        build: { client: URL | string; server: URL | string; serverEntry: string };
+      };
+    }) => void | Promise<void>;
     "astro:build:setup"?: (params: unknown) => void | Promise<void>;
     "astro:server:setup"?: (params: unknown) => void | Promise<void>;
   };
@@ -121,6 +131,13 @@ export function run402Image(options: Run402AstroOptions = {}): AstroIntegration 
   const dryRun = options.dryRun ?? false;
   const prefix = options.assetPrefix ?? DEFAULT_PREFIX;
 
+  // Shared across hooks. `astro:config:setup` runs first and creates the
+  // state + registers the Vite plugin; `astro:config:done` runs after
+  // every adapter / integration has mutated config (notably build.client),
+  // so it's the right moment to finalize manifestPath against the actual
+  // client output dir.
+  let state: VitePluginState | null = null;
+
   return {
     name: "@run402/astro",
     hooks: {
@@ -131,7 +148,7 @@ export function run402Image(options: Run402AstroOptions = {}): AstroIntegration 
 
         const projectRoot = configRootToPath(config.root);
 
-        const state: VitePluginState = {
+        state = {
           projectRoot,
           aliases: loadAliasConfig(projectRoot),
           client: null,
@@ -145,6 +162,12 @@ export function run402Image(options: Run402AstroOptions = {}): AstroIntegration 
           // v0.2 data-driven path. Resolve assetsDir(s) to absolute paths
           // against the project root so the walker doesn't depend on cwd.
           assetsDirs: resolveAssetsDirs(projectRoot, options.assetsDir),
+          // Provisional manifest path — replaced in `astro:config:done`
+          // unless the user explicitly set `options.manifestPath`. The
+          // provisional value is what older releases shipped (defaulting
+          // to `<projectRoot>/dist/_assets-manifest.json`), so a build
+          // that for some reason never reaches `astro:config:done` still
+          // writes a manifest to a sane path.
           manifestPath: resolveManifestPath(projectRoot, options.manifestPath),
           assetExtensions: options.assetExtensions ?? DEFAULT_ASSET_EXTENSIONS,
           manifestKeyByAbsPath: new Map(),
@@ -163,6 +186,28 @@ export function run402Image(options: Run402AstroOptions = {}): AstroIntegration 
             plugins: [createVitePlugin(state)],
           },
         });
+      },
+
+      // Capability `astro-ssr-runtime` coordination (v1.1+). When the
+      // Run402 SSR adapter is also active, it relocates `build.client`
+      // from the default `dist/` to `dist/run402/client/`. Writing the
+      // manifest to `<projectRoot>/dist/_assets-manifest.json` would
+      // then leave the manifest OUTSIDE the deploy slice's client dir,
+      // and the gateway's release validator would reject the missing
+      // file ("site.public_paths.inherited./_assets-manifest.json").
+      //
+      // Fix: write the manifest INTO the resolved `build.client` dir.
+      // This is universally correct:
+      //   - With the Run402 SSR adapter:    dist/run402/client/_assets-manifest.json
+      //   - With no adapter (static-only):  dist/_assets-manifest.json
+      //   - With a different SSR adapter:   <their client dir>/_assets-manifest.json
+      //
+      // Users who explicitly set `options.manifestPath` keep their
+      // override (escape hatch for non-standard layouts).
+      "astro:config:done": ({ config }) => {
+        if (!state || options.manifestPath) return;
+        const clientDir = configRootToPath(config.build.client);
+        state.manifestPath = path.join(clientDir, "_assets-manifest.json");
       },
     },
   };
