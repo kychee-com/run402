@@ -247,15 +247,24 @@ describe("buildAstroReleaseSlice — explicit cacheClass option", () => {
     });
   });
 
-  it("does not emit public_paths when cacheClass is not provided", async () => {
+  it("defaults to public_paths { mode: 'implicit' } so the release opts out of inherited explicit paths", async () => {
     const { distDir } = writeFixture(root, {
       routes: [{ pattern: "/about", pathname: "/about", prerender: true, type: "page" }],
     });
     const slice = await buildAstroReleaseSlice(distDir);
+    const publicPaths = (slice.site as { public_paths?: unknown }).public_paths as {
+      mode: string;
+      replace?: unknown;
+    };
     assert.equal(
-      (slice.site as { public_paths?: unknown }).public_paths,
+      publicPaths?.mode,
+      "implicit",
+      "default mode must be 'implicit' to avoid carry-forward of prior explicit public_paths",
+    );
+    assert.equal(
+      publicPaths.replace,
       undefined,
-      "public_paths must remain implicit unless the caller asked for cacheClass overrides",
+      "implicit mode must NOT carry a replace map",
     );
   });
 
