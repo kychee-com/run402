@@ -69,6 +69,18 @@ await cache.invalidate(`/${slug}`);   // sub-second freshness
 
 Every SSR response includes `x-run402-request-id`, `x-run402-release-id`, `x-run402-function`, `x-run402-cache` (`HIT` / `MISS` / `BYPASS`), `x-run402-cache-reason` (on bypass), `x-run402-cache-age` (on hit), `x-run402-locale`. When the function throws an uncaught exception, the response carries `x-run402-error-code: R402_SSR_RUNTIME_ERROR` and `x-run402-request-id` that you pass to `run402 logs --request-id <req>` for the full stack.
 
+### Build-time env vars do NOT propagate to the SSR runtime
+
+The SSR Lambda runs in a separate process from your build step. Anything exported in your `astro build` shell (e.g. `KYCHON_ANON_KEY`, `STRIPE_PUBLISHABLE_KEY`, a CI-injected secret) is visible during the build only — `process.env.YOUR_VAR` from inside an SSR-rendered page returns an empty string at request time. This is the correct security posture (build secrets shouldn't ship to a multi-tenant runtime), but it's surprising in retrospect.
+
+Three options if your SSR route needs request-time config:
+
+1. **Run402 secrets** — values you store via `run402 secrets set <key>` are injected into the Lambda env as `process.env.<KEY>` at deploy activation. This is the canonical request-time secret path.
+2. **Request headers** — for per-tenant / per-request values that the gateway already knows (project_id, release_id, locale, user_id, role), read them directly from the Web `Request` headers: `request.headers.get("x-run402-project-id")`, `getUserId(request)` / `getRole(request)` from `@run402/functions`.
+3. **Bake into the bundle at build** — for values that are public and stable across the lifetime of a release (e.g. an analytics site ID), import them in the page module so they get inlined into the bundled SSR source.
+
+The Run402 anon key + service key + project ID + JWT secret + API base ARE auto-injected at deploy time (you'll see `RUN402_ANON_KEY`, `RUN402_SERVICE_KEY`, `RUN402_PROJECT_ID`, `RUN402_JWT_SECRET`, `RUN402_API_BASE` in `process.env` from inside the SSR runtime — those are the platform-managed channel).
+
 ## `<Run402Picture>` — runtime CMS images
 
 For images coming from a DB row at SSR time (the common CMS pattern), use `<Run402Picture asset={page.hero_asset}>`. The `asset` prop is the `AssetRef` JSONB that `r.assets.put()` returned at upload time — store the whole object, not just the URL, then render directly.
