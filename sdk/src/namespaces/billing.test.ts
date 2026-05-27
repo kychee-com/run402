@@ -86,7 +86,7 @@ describe("billing.checkBalance", () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${WALLET_LOWER}`);
     assert.equal(calls[0]!.method, "GET");
-    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
     assert.equal(result.identifier_type, "wallet");
     assert.equal(result.available_usd_micros, 0);
@@ -184,6 +184,7 @@ describe("billing.history", () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${WALLET_LOWER}/history`);
     assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
     assert.equal(result.identifier, WALLET_LOWER);
     assert.equal(result.identifier_type, "wallet");
@@ -371,6 +372,7 @@ describe("billing.linkWallet", () => {
       calls[0]!.url,
       "https://api.example.test/billing/v1/accounts/acct%2F..%2Ftiers/link-wallet",
     );
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { wallet: WALLET_LOWER });
   });
 
@@ -557,6 +559,8 @@ describe("billing.setAutoRecharge", () => {
     });
 
     assert.equal(calls.length, 2);
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
       billing_account_id: "acct_zero",
       enabled: true,

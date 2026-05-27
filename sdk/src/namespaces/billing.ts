@@ -1,7 +1,8 @@
 /**
  * `billing` namespace — wallet-scoped billing accounts and Stripe checkouts.
- * All operations are public (no service key required); they identify the
- * account by wallet address or email.
+ * Identifies accounts by wallet address or email. Reads of an existing account
+ * and mutations such as link-wallet / auto-recharge require SIWX (or an admin
+ * key); checkout-creation endpoints remain unauthenticated by design.
  */
 
 import type { Client } from "../kernel.js";
@@ -183,17 +184,16 @@ export class Billing {
     this.autoRecharge = this.setAutoRecharge.bind(this);
   }
 
-  /** Check a billing account by wallet or email identifier. Public, no auth. */
+  /** Check a billing account by wallet or email identifier. */
   async checkBalance(identifier: BillingAccountIdentifier): Promise<BillingBalance> {
     return this.getAccount(identifier);
   }
 
-  /** Check a billing account by wallet or email identifier. Public, no auth. */
+  /** Check a billing account by wallet or email identifier. */
   async getAccount(identifier: BillingAccountIdentifier): Promise<BillingBalance> {
     const encoded = encodeBillingIdentifier(identifier, "checking balance");
     return this.client.request<BillingBalance>(`/billing/v1/accounts/${encoded}`, {
       context: "checking balance",
-      withAuth: false,
     });
   }
 
@@ -213,7 +213,6 @@ export class Billing {
       : `/billing/v1/accounts/${encoded}/history`;
     return this.client.request<BillingHistoryResult>(path, {
       context: "fetching billing history",
-      withAuth: false,
     });
   }
 
@@ -259,7 +258,6 @@ export class Billing {
         method: "POST",
         body: { wallet: wallet.toLowerCase() },
         context: "linking wallet",
-        withAuth: false,
       },
     );
   }
@@ -304,7 +302,6 @@ export class Billing {
       method: "POST",
       body,
       context: "setting auto-recharge",
-      withAuth: false,
     });
   }
 }
