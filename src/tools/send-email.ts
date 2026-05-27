@@ -25,6 +25,10 @@ export const sendEmailSchema = {
     .describe(
       "ID of a prior message (typically inbound) to thread this one under. The server uses it to set RFC-822 In-Reply-To and References headers. Usually set via reply flows; leave empty for new threads.",
     ),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox (otherwise the send returns an ambiguity error naming the slugs)."),
 };
 
 export async function handleSendEmail(args: {
@@ -37,6 +41,7 @@ export async function handleSendEmail(args: {
   text?: string;
   from_name?: string;
   in_reply_to?: string;
+  mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const body = await getSdk().email.send(args.project_id, {
@@ -48,6 +53,7 @@ export async function handleSendEmail(args: {
       text: args.text,
       from_name: args.from_name,
       in_reply_to: args.in_reply_to,
+      mailbox: args.mailbox,
     });
 
     const mode = body.template ? `**Template:** ${body.template}` : `**Subject:** ${body.subject}`;

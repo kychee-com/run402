@@ -8,7 +8,7 @@ export const deleteMailboxSchema = {
     .string()
     .optional()
     .describe(
-      "Mailbox ID to delete (mbx_...). If omitted, resolves the project's mailbox from the keystore or via GET /mailboxes/v1.",
+      "Mailbox to delete — slug or id (mbx_...). If omitted, deletes the project's only mailbox; on a project with more than one mailbox, omitting it returns an ambiguity error naming the slugs.",
     ),
   confirm: z
     .boolean()

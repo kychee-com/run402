@@ -9,13 +9,15 @@ Usage:
   run402 email webhooks <action> [args...]
 
 Actions:
-  list     [--project <id>]                                  List webhooks
-  get      <webhook_id> [--project <id>]                     Get a webhook
-  delete   <webhook_id> [--project <id>]                     Delete a webhook
-  update   <webhook_id> [--url <url>] [--events <e1,e2>]     Update a webhook
-  register --url <url> --events <e1,e2> [--project <id>]     Register a new webhook
+  list     [--mailbox <slug|id>] [--project <id>]            List webhooks
+  get      <webhook_id> [--mailbox <slug|id>] [--project <id>]   Get a webhook
+  delete   <webhook_id> [--mailbox <slug|id>] [--project <id>]   Delete a webhook
+  update   <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>]  Update a webhook
+  register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]  Register a new webhook
 
 Valid events: delivery, bounced, complained, reply_received
+
+Pass --mailbox <slug|id> to target a specific mailbox when the project has more than one.
 
 Examples:
   run402 email webhooks list
@@ -67,10 +69,12 @@ function validateArgs(args, knownFlags, flagsWithValues = knownFlags) {
 }
 
 async function list(args) {
-  validateArgs(args, ["--project"]);
+  const valueFlags = ["--project", "--mailbox"];
+  validateArgs(args, valueFlags);
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const mailbox = strictFlagValue(args, "--mailbox");
   try {
-    const data = await getSdk().email.webhooks.list(projectId);
+    const data = await getSdk().email.webhooks.list(projectId, { mailbox: mailbox ?? undefined });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -78,9 +82,11 @@ async function list(args) {
 }
 
 async function get(args) {
-  validateArgs(args, ["--project"]);
-  const webhookId = positionalArgs(args, ["--project"])[0] ?? null;
+  const valueFlags = ["--project", "--mailbox"];
+  validateArgs(args, valueFlags);
+  const webhookId = positionalArgs(args, valueFlags)[0] ?? null;
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const mailbox = strictFlagValue(args, "--mailbox");
   if (!webhookId) {
     fail({
       code: "BAD_USAGE",
@@ -89,7 +95,7 @@ async function get(args) {
     });
   }
   try {
-    const data = await getSdk().email.webhooks.get(projectId, webhookId);
+    const data = await getSdk().email.webhooks.get(projectId, webhookId, { mailbox: mailbox ?? undefined });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -97,9 +103,11 @@ async function get(args) {
 }
 
 async function del(args) {
-  validateArgs(args, ["--project"]);
-  const webhookId = positionalArgs(args, ["--project"])[0] ?? null;
+  const valueFlags = ["--project", "--mailbox"];
+  validateArgs(args, valueFlags);
+  const webhookId = positionalArgs(args, valueFlags)[0] ?? null;
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const mailbox = strictFlagValue(args, "--mailbox");
   if (!webhookId) {
     fail({
       code: "BAD_USAGE",
@@ -108,7 +116,7 @@ async function del(args) {
     });
   }
   try {
-    await getSdk().email.webhooks.delete(projectId, webhookId);
+    await getSdk().email.webhooks.delete(projectId, webhookId, { mailbox: mailbox ?? undefined });
     console.log(JSON.stringify({ webhook_id: webhookId, project_id: projectId, deleted: true }));
   } catch (err) {
     reportSdkError(err);
@@ -116,11 +124,12 @@ async function del(args) {
 }
 
 async function update(args) {
-  const valueFlags = ["--project", "--url", "--events"];
+  const valueFlags = ["--project", "--url", "--events", "--mailbox"];
   validateArgs(args, valueFlags);
   const webhookId = positionalArgs(args, valueFlags)[0] ?? null;
   const url = strictFlagValue(args, "--url");
   const eventsRaw = strictFlagValue(args, "--events");
+  const mailbox = strictFlagValue(args, "--mailbox");
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   if (!webhookId) {
     fail({
@@ -142,6 +151,7 @@ async function update(args) {
     const data = await getSdk().email.webhooks.update(projectId, webhookId, {
       url: url ?? undefined,
       events: eventsRaw ? eventsRaw.split(",").map((e) => e.trim()) : undefined,
+      mailbox: mailbox ?? undefined,
     });
     console.log(JSON.stringify(data));
   } catch (err) {
@@ -150,10 +160,11 @@ async function update(args) {
 }
 
 async function register(args) {
-  const valueFlags = ["--project", "--url", "--events"];
+  const valueFlags = ["--project", "--url", "--events", "--mailbox"];
   validateArgs(args, valueFlags);
   const url = strictFlagValue(args, "--url");
   const eventsRaw = strictFlagValue(args, "--events");
+  const mailbox = strictFlagValue(args, "--mailbox");
   const projectOpt = strictFlagValue(args, "--project");
   const projectId = resolveProjectId(projectOpt);
 
@@ -178,7 +189,7 @@ async function register(args) {
 
   const events = eventsRaw.split(",").map((e) => e.trim());
   try {
-    const data = await getSdk().email.webhooks.register(projectId, { url, events });
+    const data = await getSdk().email.webhooks.register(projectId, { url, events, mailbox: mailbox ?? undefined });
     console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);

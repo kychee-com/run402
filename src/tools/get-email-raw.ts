@@ -5,6 +5,10 @@ import { mapSdkError } from "../errors.js";
 export const getEmailRawSchema = {
   project_id: z.string().describe("The project ID"),
   message_id: z.string().describe("The message ID to retrieve raw bytes for (must be an inbound message)"),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox."),
 };
 
 /**
@@ -21,9 +25,10 @@ export const getEmailRawSchema = {
 export async function handleGetEmailRaw(args: {
   project_id: string;
   message_id: string;
+  mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const result = await getSdk().email.getRaw(args.project_id, args.message_id);
+    const result = await getSdk().email.getRaw(args.project_id, args.message_id, { mailbox: args.mailbox });
     const bytes = Buffer.from(result.bytes);
     const base64 = bytes.toString("base64");
 

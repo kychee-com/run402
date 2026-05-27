@@ -4,13 +4,18 @@ import { mapSdkError } from "../errors.js";
 
 export const listMailboxWebhooksSchema = {
   project_id: z.string().describe("The project ID"),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox."),
 };
 
 export async function handleListMailboxWebhooks(args: {
   project_id: string;
+  mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().email.webhooks.list(args.project_id);
+    const body = await getSdk().email.webhooks.list(args.project_id, { mailbox: args.mailbox });
     if (!body.webhooks || body.webhooks.length === 0) {
       return { content: [{ type: "text", text: "No webhooks registered on this mailbox." }] };
     }

@@ -7,8 +7,22 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { LocalError } from "../errors.js";
+import { ApiError, LocalError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
+
+function mailboxRecord(slug: string, id = `mbx_${slug}`) {
+  return {
+    mailbox_id: id,
+    address: `${slug}@mail.run402.com`,
+    slug,
+    project_id: "prj_known",
+    status: "active" as const,
+    sends_today: 0,
+    unique_recipients: 0,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-01T00:00:00.000Z",
+  };
+}
 
 interface FetchCall {
   url: string;
@@ -144,7 +158,7 @@ describe("email.deleteMailbox", () => {
       jsonResponse({ mailbox_id: "mbx_known", address: "old@mail.run402.com" }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.email.deleteMailbox("prj_known");
+    const result = await sdk.email.deleteMailbox("prj_known", "mbx_known");
 
     assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1/mbx_known");
     assert.equal(calls[0]!.method, "DELETE");
@@ -170,6 +184,7 @@ describe("email.send", () => {
       to: "user@example.invalid",
       subject: "test",
       html: "<p>hi</p>",
+      mailbox: "mbx_known",
     });
 
     assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1/mbx_known/messages");
@@ -202,8 +217,11 @@ describe("email.send", () => {
       text: "",
       from_name: "",
       in_reply_to: "",
+      mailbox: "mbx_known",
     });
 
+    // The `mailbox` selector is used only for resolution; it MUST NOT leak
+    // into the send body.
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
       to: "user@example.invalid",
       subject: "test",
@@ -245,8 +263,8 @@ describe("email message ids", () => {
     });
     const sdk = makeSdk(makeCreds(), fetch);
 
-    await sdk.email.get("prj_known", "msg_1/../../webhooks");
-    await sdk.email.getRaw("prj_known", "msg_1/../../webhooks");
+    await sdk.email.get("prj_known", "msg_1/../../webhooks", { mailbox: "mbx_known" });
+    await sdk.email.getRaw("prj_known", "msg_1/../../webhooks", { mailbox: "mbx_known" });
 
     assert.equal(
       calls[0]!.url,
@@ -271,11 +289,12 @@ describe("email.webhooks", () => {
     );
     const sdk = makeSdk(makeCreds(), fetch);
 
-    await sdk.email.webhooks.get("prj_known", "whk_1/../../messages");
+    await sdk.email.webhooks.get("prj_known", "whk_1/../../messages", { mailbox: "mbx_known" });
     await sdk.email.webhooks.update("prj_known", "whk_1/../../messages", {
       events: ["delivery"],
+      mailbox: "mbx_known",
     });
-    await sdk.email.webhooks.delete("prj_known", "whk_1/../../messages");
+    await sdk.email.webhooks.delete("prj_known", "whk_1/../../messages", { mailbox: "mbx_known" });
 
     assert.equal(
       calls[0]!.url,
@@ -317,7 +336,7 @@ describe("email.list", () => {
   it("GETs mailbox messages with limit and after query params", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse([]));
     const sdk = makeSdk(makeCreds(), fetch);
-    await sdk.email.list("prj_known", { limit: 1, after: "msg_prev" });
+    await sdk.email.list("prj_known", { limit: 1, after: "msg_prev", mailbox: "mbx_known" });
 
     const url = new URL(calls[0]!.url);
     assert.equal(url.pathname, "/mailboxes/v1/mbx_known/messages");
@@ -343,5 +362,158 @@ describe("email.list", () => {
       );
       assert.equal(calls.length, 0, `limit ${String(limit)} should not request`);
     }
+  });
+});
+
+describe("email mailbox selector (multi-mailbox)", () => {
+  it("send with a mailbox id selector targets it directly without a list call", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/messages")) {
+        return jsonResponse({ message_id: "msg_1", to: "u@example.com", template: null, subject: "s", status: "sent", sent_at: "now" });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>", mailbox: "mbx_sign" });
+
+    // Exactly one call — no GET /mailboxes/v1 list — and it targets the id.
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1/mbx_sign/messages");
+  });
+
+  it("send with a slug selector lists, then sends from the matching mailbox", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({ mailboxes: [mailboxRecord("notifications"), mailboxRecord("sign")] });
+      }
+      if (call.url.endsWith("/messages")) {
+        return jsonResponse({ message_id: "msg_1", to: "u@example.com", template: null, subject: "s", status: "sent", sent_at: "now" });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>", mailbox: "sign" });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1");
+    assert.equal(calls[1]!.url, "https://api.example.test/mailboxes/v1/mbx_sign/messages");
+  });
+
+  it("send with no selector and multiple mailboxes throws an ambiguity error and does not send", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({ mailboxes: [mailboxRecord("sign"), mailboxRecord("notifications"), mailboxRecord("support")] });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>" }),
+      (err: unknown) =>
+        err instanceof ApiError &&
+        err.status === 409 &&
+        /sign/.test(err.message) && /notifications/.test(err.message) && /support/.test(err.message),
+    );
+    // Listed once to detect ambiguity; never POSTed a send.
+    assert.equal(calls.filter((c) => c.url.endsWith("/messages")).length, 0);
+  });
+
+  it("send with no selector and a single mailbox uses it", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({ mailboxes: [mailboxRecord("only", "mbx_only")] });
+      }
+      if (call.url.endsWith("/messages")) {
+        return jsonResponse({ message_id: "msg_1", to: "u@example.com", template: null, subject: "s", status: "sent", sent_at: "now" });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds({ async getProject() { return { anon_key: "a", service_key: "s" }; } }), fetch);
+
+    await sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>" });
+    assert.equal(calls[1]!.url, "https://api.example.test/mailboxes/v1/mbx_only/messages");
+  });
+
+  it("send with no selector and no mailbox tells the caller to create one", async () => {
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({ mailboxes: [] });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds({ async getProject() { return { anon_key: "a", service_key: "s" }; } }), fetch);
+
+    await assert.rejects(
+      sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>" }),
+      (err: unknown) => err instanceof ApiError && err.status === 404 && /create_mailbox/.test(err.message),
+    );
+  });
+
+  it("rejects an unknown slug selector with a 404 and does not send", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({ mailboxes: [mailboxRecord("sign"), mailboxRecord("support")] });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>", mailbox: "nope" }),
+      (err: unknown) => err instanceof ApiError && err.status === 404 && /nope/.test(err.message),
+    );
+    assert.equal(calls.filter((c) => c.url.endsWith("/messages")).length, 0);
+  });
+
+  it("getMailbox with no selector and multiple mailboxes throws the ambiguity error", async () => {
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({ mailboxes: [mailboxRecord("sign"), mailboxRecord("support")] });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds({ async getProject() { return { anon_key: "a", service_key: "s" }; } }), fetch);
+
+    await assert.rejects(
+      sdk.email.getMailbox("prj_known"),
+      (err: unknown) => err instanceof ApiError && err.status === 409 && /sign/.test(err.message),
+    );
+  });
+
+  it("getMailbox with a slug selector returns that mailbox", async () => {
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({ mailboxes: [mailboxRecord("sign"), mailboxRecord("support")] });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds({ async getProject() { return { anon_key: "a", service_key: "s" }; } }), fetch);
+
+    const mb = await sdk.email.getMailbox("prj_known", "support");
+    assert.equal(mb.mailbox_id, "mbx_support");
+    assert.equal(mb.slug, "support");
+  });
+});
+
+describe("email.createMailbox 409 handling", () => {
+  it("surfaces a 409 verbatim and does NOT recover by returning another mailbox", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.method === "POST" && call.url.endsWith("/mailboxes/v1")) {
+        return jsonResponse({ error: "Slug already in use" }, 409);
+      }
+      // A list call here would indicate the old (now removed) recovery path.
+      throw new Error(`unexpected call (recovery attempt?): ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.email.createMailbox("prj_known", "taken-slug"),
+      (err: unknown) => err instanceof ApiError && err.status === 409,
+    );
+    // Exactly one call — the POST. No follow-up list/recovery.
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.method, "POST");
   });
 });

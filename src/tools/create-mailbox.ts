@@ -18,20 +18,10 @@ export async function handleCreateMailbox(args: {
   try {
     const body = await getSdk().email.createMailbox(args.project_id, args.slug);
 
-    // When the SDK returned the existing mailbox on 409, `status`/`slug` are absent.
-    const bodyWithStatus = body as { mailbox_id: string; address: string; slug?: string; status?: string };
-    if (bodyWithStatus.status) {
-      return {
-        content: [{
-          type: "text",
-          text: `## Mailbox Created\n\n- **Address:** ${bodyWithStatus.address}\n- **Mailbox ID:** \`${bodyWithStatus.mailbox_id}\`\n- **Status:** ${bodyWithStatus.status}\n\nUse \`send_email\` to send template-based emails from this mailbox.`,
-        }],
-      };
-    }
     return {
       content: [{
         type: "text",
-        text: `## Mailbox Already Exists\n\n- **Address:** ${bodyWithStatus.address}\n- **Mailbox ID:** \`${bodyWithStatus.mailbox_id}\`\n\nThe project already has a mailbox. Use \`send_email\` to send template-based emails from this mailbox.`,
+        text: `## Mailbox Created\n\n- **Address:** ${body.address}\n- **Mailbox ID:** \`${body.mailbox_id}\`\n- **Status:** ${body.status}\n\nUse \`send_email\` to send template-based emails from this mailbox.`,
       }],
     };
   } catch (err) {

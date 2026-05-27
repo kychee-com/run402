@@ -7,6 +7,10 @@ export const updateMailboxWebhookSchema = {
   webhook_id: z.string().describe("The webhook ID (whk_...)"),
   url: z.string().optional().describe("New webhook URL"),
   events: z.array(z.string()).optional().describe("New events array (full replacement). Valid: delivery, bounced, complained, reply_received"),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox."),
 };
 
 export async function handleUpdateMailboxWebhook(args: {
@@ -14,11 +18,13 @@ export async function handleUpdateMailboxWebhook(args: {
   webhook_id: string;
   url?: string;
   events?: string[];
+  mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const w = await getSdk().email.webhooks.update(args.project_id, args.webhook_id, {
       url: args.url,
       events: args.events,
+      mailbox: args.mailbox,
     });
     return {
       content: [{

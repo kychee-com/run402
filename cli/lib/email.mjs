@@ -20,7 +20,7 @@ Subcommands:
                                       Fetch raw RFC-822 bytes (inbound only)
   reply  <message_id> --html "..." [--text "..."] [--subject "..."] [--from-name "..."] [--project <id>]
                                       Reply to an inbound message (threads via In-Reply-To)
-  delete [<mailbox_id>] --confirm [--project <id>]
+  delete [<slug|mailbox_id>] --confirm [--project <id>]
                                       Delete the project's mailbox (irreversible)
   webhooks <action> [args...]        Manage webhooks (see below)
 
@@ -37,6 +37,13 @@ Send modes:
   Template:  --template <name> --var key=value [--var ...]  OR --vars '{"k":"v",...}'
   Raw HTML:  --subject "..." --html "..." [--text "..."]    (both --subject and --html required)
   Both modes support: --from-name "Display Name" --project <id>
+
+Choosing a mailbox:
+  --mailbox <slug|id>  Target a specific mailbox. Accepted by send, list, get,
+                       get-raw, reply, info, and webhooks. Required when the
+                       project has more than one mailbox; omit it only when the
+                       project has exactly one. (delete takes the target as its
+                       positional <slug|mailbox_id>.)
 
 Templates:
   project_invite  — requires --var project_name=... --var invite_url=...
@@ -58,7 +65,7 @@ Examples:
   run402 email webhooks register --url https://example.com/hook --events delivery,bounced
 
 Notes:
-  - One mailbox per project
+  - Up to 5 mailboxes per project — pass --mailbox <slug|id> to pick one
   - Single recipient per send (no CC/BCC)
   - Slug: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
   - --project defaults to the active project
@@ -82,12 +89,13 @@ Options:
   --html "..."        HTML body (raw HTML mode; required with --subject)
   --text "..."        Plain-text body (raw HTML mode; optional)
   --from-name "..."   Display name for the From header
+  --mailbox <slug|id> Target mailbox (required if the project has more than one)
   --project <id>      Project ID (defaults to the active project)
 `,
   list: `run402 email list — List messages in the mailbox
 
 Usage:
-  run402 email list [--limit <n>] [--after <cursor>] [--project <id>]
+  run402 email list [--mailbox <slug|id>] [--limit <n>] [--after <cursor>] [--project <id>]
 `,
   reply: `run402 email reply — Reply to an inbound message (threaded via In-Reply-To)
 
@@ -97,7 +105,7 @@ Usage:
   delete: `run402 email delete — Delete the project's mailbox (irreversible)
 
 Usage:
-  run402 email delete [<mailbox_id>] --confirm [--project <id>]
+  run402 email delete [<slug|mailbox_id>] --confirm [--project <id>]
 `,
   info: `run402 email info — Show mailbox info (ID, address, slug)
 
@@ -131,7 +139,7 @@ Options:
   --project <id>      Project ID (defaults to the active project)
 
 Notes:
-  - One mailbox per project
+  - Up to 5 mailboxes per project (create distinct slugs, e.g. sign, support)
 
 Examples:
   run402 email create my-app
@@ -229,7 +237,7 @@ async function create(args) {
 }
 
 async function send(args) {
-  const valueFlags = ["--template", "--to", "--subject", "--html", "--text", "--from-name", "--project", "--vars", "--var"];
+  const valueFlags = ["--template", "--to", "--subject", "--html", "--text", "--from-name", "--project", "--vars", "--var", "--mailbox"];
   validateArgs(args, valueFlags);
   const template = strictFlagValue(args, "--template");
   const to = strictFlagValue(args, "--to");
@@ -237,6 +245,7 @@ async function send(args) {
   const html = strictFlagValue(args, "--html");
   const text = strictFlagValue(args, "--text");
   const fromName = strictFlagValue(args, "--from-name");
+  const mailbox = strictFlagValue(args, "--mailbox");
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const variables = parseVars(args);
 
@@ -253,6 +262,7 @@ async function send(args) {
       html: html ?? undefined,
       text: text ?? undefined,
       from_name: fromName ?? undefined,
+      mailbox: mailbox ?? undefined,
     });
     console.log(JSON.stringify({ message_id: data.message_id, to: data.to, template: data.template, subject: data.subject, sent: true }));
   } catch (err) {
@@ -261,15 +271,17 @@ async function send(args) {
 }
 
 async function list(args) {
-  const valueFlags = ["--project", "--limit", "--after"];
+  const valueFlags = ["--project", "--limit", "--after", "--mailbox"];
   validateArgs(args, valueFlags);
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const limit = strictFlagValue(args, "--limit");
   const after = strictFlagValue(args, "--after");
+  const mailbox = strictFlagValue(args, "--mailbox");
   try {
     const data = await getSdk().email.list(projectId, {
       limit: limit ? parseIntegerFlag("--limit", limit) : undefined,
       after: after ?? undefined,
+      mailbox: mailbox ?? undefined,
     });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
@@ -278,9 +290,11 @@ async function list(args) {
 }
 
 async function get(args) {
-  validateArgs(args, ["--project"]);
-  const messageId = positionalArgs(args, ["--project"])[0] ?? null;
+  const valueFlags = ["--project", "--mailbox"];
+  validateArgs(args, valueFlags);
+  const messageId = positionalArgs(args, valueFlags)[0] ?? null;
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const mailbox = strictFlagValue(args, "--mailbox");
   if (!messageId) {
     fail({
       code: "BAD_USAGE",
@@ -289,7 +303,7 @@ async function get(args) {
     });
   }
   try {
-    const data = await getSdk().email.get(projectId, messageId);
+    const data = await getSdk().email.get(projectId, messageId, { mailbox: mailbox ?? undefined });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -297,10 +311,11 @@ async function get(args) {
 }
 
 async function getRaw(args) {
-  const valueFlags = ["--project", "--output"];
+  const valueFlags = ["--project", "--output", "--mailbox"];
   validateArgs(args, valueFlags);
   const messageId = positionalArgs(args, valueFlags)[0] ?? null;
   const outputFile = strictFlagValue(args, "--output");
+  const mailbox = strictFlagValue(args, "--mailbox");
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   if (!messageId) {
     fail({
@@ -311,7 +326,7 @@ async function getRaw(args) {
   }
 
   try {
-    const result = await getSdk().email.getRaw(projectId, messageId);
+    const result = await getSdk().email.getRaw(projectId, messageId, { mailbox: mailbox ?? undefined });
     const buf = Buffer.from(result.bytes);
 
     if (outputFile) {
@@ -327,13 +342,14 @@ async function getRaw(args) {
 }
 
 async function reply(args) {
-  const valueFlags = ["--project", "--html", "--text", "--subject", "--from-name"];
+  const valueFlags = ["--project", "--html", "--text", "--subject", "--from-name", "--mailbox"];
   validateArgs(args, valueFlags);
   const messageId = positionalArgs(args, valueFlags)[0] ?? null;
   const html = strictFlagValue(args, "--html");
   const text = strictFlagValue(args, "--text");
   const subjectOverride = strictFlagValue(args, "--subject");
   const fromName = strictFlagValue(args, "--from-name");
+  const mailbox = strictFlagValue(args, "--mailbox");
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
 
   if (!messageId) {
@@ -352,7 +368,7 @@ async function reply(args) {
 
   try {
     // Fetch the original message to derive the reply-to address and subject.
-    const original = await getSdk().email.get(projectId, messageId);
+    const original = await getSdk().email.get(projectId, messageId, { mailbox: mailbox ?? undefined });
     const replyTo = original.from || original.from_address || original.sender || null;
     if (!replyTo) {
       fail({
@@ -374,6 +390,7 @@ async function reply(args) {
       text: text ?? undefined,
       from_name: fromName ?? undefined,
       in_reply_to: messageId,
+      mailbox: mailbox ?? undefined,
     });
     console.log(JSON.stringify({ message_id: data.message_id, to: data.to, subject: replySubject, in_reply_to: messageId, sent: true }));
   } catch (err) {
@@ -403,10 +420,12 @@ async function deleteMailbox(args) {
 }
 
 async function status(args) {
-  validateArgs(args, ["--project"]);
+  const valueFlags = ["--project", "--mailbox"];
+  validateArgs(args, valueFlags);
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const mailbox = strictFlagValue(args, "--mailbox");
   try {
-    const mb = await getSdk().email.getMailbox(projectId);
+    const mb = await getSdk().email.getMailbox(projectId, mailbox ?? undefined);
     console.log(JSON.stringify({ mailbox_id: mb.mailbox_id, address: mb.address, slug: mb.slug }));
   } catch (err) {
     reportSdkError(err);

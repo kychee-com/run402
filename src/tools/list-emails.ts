@@ -15,15 +15,20 @@ export const listEmailsSchema = {
     .string()
     .optional()
     .describe("Pagination cursor (message id from prior page)"),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox."),
 };
 
 export async function handleListEmails(args: {
   project_id: string;
   limit?: number;
   after?: string;
+  mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().email.list(args.project_id, { limit: args.limit, after: args.after });
+    const body = await getSdk().email.list(args.project_id, { limit: args.limit, after: args.after, mailbox: args.mailbox });
 
     if (!Array.isArray(body) || body.length === 0) {
       return { content: [{ type: "text", text: `## Sent Emails\n\n_No emails sent yet._` }] };

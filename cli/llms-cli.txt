@@ -1211,22 +1211,24 @@ Built-in AI helpers. Translation requires the AI Translation add-on on the proje
 - `run402 ai usage <id>` — check translation word quota for the current billing period (used, included, remaining).
 
 ### email
-One mailbox per project. Two send modes: template (predefined templates) and raw HTML (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
+Up to 5 mailboxes per project (flat across tiers). When a project has more than one mailbox, pass `--mailbox <slug|id>` to pick which one (slug or `mbx_…` id); omitting it on a multi-mailbox project returns an ambiguity error naming the available slugs. Two send modes: template (predefined templates) and raw HTML (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
 
 Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 
-- `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com` (idempotent: returns existing mailbox on conflict)
-- `run402 email status [--project <id>]` — show mailbox info (ID, address, slug)
-- `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--project <id>]`
-- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--from-name <name>] [--project <id>]`
-- `run402 email list [--project <id>]`
-- `run402 email get <message_id> [--project <id>]`
-- `run402 email get-raw <message_id> [--project <id>] [--output <file>]` — fetch raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification). Writes to stdout or `--output` file. Inbound only; outbound returns 404.
-- `run402 email webhooks list [--project <id>]` — list all webhooks registered on the project's mailbox
-- `run402 email webhooks get <webhook_id> [--project <id>]` — get webhook details
-- `run402 email webhooks delete <webhook_id> [--project <id>]` — delete a webhook (idempotent)
-- `run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <id>]` — update webhook URL and/or events
-- `run402 email webhooks register --url <url> --events <e1,e2> [--project <id>]` — register a new webhook. Valid events: delivery, bounced, complained, reply_received
+- `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com`. NOT idempotent: a conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
+- `run402 email status [--mailbox <slug|id>] [--project <id>]` — show mailbox info (ID, address, slug)
+- `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
+- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
+- `run402 email list [--mailbox <slug|id>] [--project <id>]`
+- `run402 email get <message_id> [--mailbox <slug|id>] [--project <id>]`
+- `run402 email reply <message_id> --html <html> [--text <text>] [--subject <subject>] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]` — reply to an inbound message (threads via In-Reply-To)
+- `run402 email get-raw <message_id> [--mailbox <slug|id>] [--project <id>] [--output <file>]` — fetch raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification). Writes to stdout or `--output` file. Inbound only; outbound returns 404.
+- `run402 email delete [<slug|mailbox_id>] --confirm [--project <id>]` — delete a mailbox (irreversible). Target a specific mailbox by slug or id; on a project with one mailbox the target may be omitted.
+- `run402 email webhooks list [--mailbox <slug|id>] [--project <id>]` — list all webhooks registered on the mailbox
+- `run402 email webhooks get <webhook_id> [--mailbox <slug|id>] [--project <id>]` — get webhook details
+- `run402 email webhooks delete <webhook_id> [--mailbox <slug|id>] [--project <id>]` — delete a webhook
+- `run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>] [--project <id>]` — update webhook URL and/or events
+- `run402 email webhooks register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]` — register a new webhook. Valid events: delivery, bounced, complained, reply_received
 
 Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`.
 

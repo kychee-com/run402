@@ -107,48 +107,20 @@ describe("create_mailbox tool", () => {
     assert.ok(result.content[0]!.text.includes("500"));
   });
 
-  it("recovers on 409 by discovering existing mailbox", async () => {
+  it("surfaces a 409 (slug already in use) as an error without attempting recovery", async () => {
+    // Post multi-mailbox: a 409 means slug-in-use / cooldown / limit-reached —
+    // NOT "you already have this mailbox" — so the SDK must NOT recover by
+    // returning some other existing mailbox. Exactly one call (the POST).
     let callCount = 0;
     globalThis.fetch = (async (_url: string, opts?: RequestInit) => {
       callCount++;
       if (opts?.method === "POST") {
         return new Response(
-          JSON.stringify({ error: "Project already has a mailbox" }),
+          JSON.stringify({ error: "Slug already in use" }),
           { status: 409, headers: { "Content-Type": "application/json" } },
         );
       }
-      // GET /mailboxes/v1 — discovery
-      return new Response(
-        JSON.stringify({ mailboxes: [{ mailbox_id: "mbx-existing", address: "existing@mail.run402.com", slug: "existing" }] }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
-
-    const result = await handleCreateMailbox({
-      project_id: "proj-001",
-      slug: "existing",
-    });
-
-    assert.equal(result.isError, undefined);
-    assert.ok(result.content[0]!.text.includes("Already Exists"));
-    assert.ok(result.content[0]!.text.includes("mbx-existing"));
-    assert.ok(result.content[0]!.text.includes("existing@mail.run402.com"));
-    assert.equal(callCount, 2);
-  });
-
-  it("falls through to error on 409 when discovery returns empty", async () => {
-    globalThis.fetch = (async (_url: string, opts?: RequestInit) => {
-      if (opts?.method === "POST") {
-        return new Response(
-          JSON.stringify({ error: "Project already has a mailbox" }),
-          { status: 409, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      // GET /mailboxes/v1 — empty
-      return new Response(
-        JSON.stringify({ mailboxes: [] }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
+      throw new Error("unexpected recovery call — create must not list on 409");
     }) as typeof fetch;
 
     const result = await handleCreateMailbox({
@@ -157,30 +129,27 @@ describe("create_mailbox tool", () => {
     });
 
     assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("already has a mailbox"));
+    assert.ok(result.content[0]!.text.includes("Slug already in use"));
+    assert.equal(callCount, 1);
   });
 
-  it("falls through to error on 409 when discovery fails", async () => {
+  it("surfaces a 409 (project mailbox limit reached) as an error", async () => {
     globalThis.fetch = (async (_url: string, opts?: RequestInit) => {
       if (opts?.method === "POST") {
         return new Response(
-          JSON.stringify({ error: "Project already has a mailbox" }),
+          JSON.stringify({ error: "Project mailbox limit reached (5)" }),
           { status: 409, headers: { "Content-Type": "application/json" } },
         );
       }
-      // GET /mailboxes/v1 — fails
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
-      );
+      throw new Error("unexpected recovery call — create must not list on 409");
     }) as typeof fetch;
 
     const result = await handleCreateMailbox({
       project_id: "proj-001",
-      slug: "taken-slug",
+      slug: "sixth-box",
     });
 
     assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("already has a mailbox"));
+    assert.ok(result.content[0]!.text.includes("mailbox limit reached"));
   });
 });

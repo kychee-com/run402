@@ -44,6 +44,9 @@ export interface DeleteMailboxResult {
 
 export type EmailTemplate = "project_invite" | "magic_link" | "notification";
 
+/** Selects a target mailbox on a multi-mailbox project: a mailbox id (`mbx_…`) or a slug. */
+export type MailboxSelector = string;
+
 export interface SendEmailOptions {
   to: string;
   template?: EmailTemplate;
@@ -53,6 +56,17 @@ export interface SendEmailOptions {
   text?: string;
   from_name?: string;
   in_reply_to?: string;
+  /**
+   * Target mailbox (slug or `mbx_…` id) on a project that has more than one.
+   * Omit only when the project has exactly one mailbox — otherwise the call
+   * throws an ambiguity error naming the available slugs.
+   */
+  mailbox?: MailboxSelector;
+}
+
+/** Options carrying just a mailbox selector, for `get` / `getRaw` / webhook reads. */
+export interface MailboxScopedOptions {
+  mailbox?: MailboxSelector;
 }
 
 export interface SendEmailResult {
@@ -90,6 +104,8 @@ export interface EmailDetail {
 export interface ListEmailsOptions {
   limit?: number;
   after?: string;
+  /** Target mailbox (slug or `mbx_…` id); omit only on single-mailbox projects. */
+  mailbox?: MailboxSelector;
 }
 
 export interface RawEmailResult {
@@ -111,22 +127,29 @@ export interface MailboxWebhooksResult {
 export interface RegisterWebhookOptions {
   url: string;
   events: string[];
+  /** Target mailbox (slug or `mbx_…` id); omit only on single-mailbox projects. */
+  mailbox?: MailboxSelector;
 }
 
 export interface UpdateWebhookOptions {
   url?: string;
   events?: string[];
+  /** Target mailbox (slug or `mbx_…` id); omit only on single-mailbox projects. */
+  mailbox?: MailboxSelector;
 }
 
 export class Webhooks {
   constructor(
     private readonly client: Client,
-    private readonly resolveMailbox: (projectId: string) => Promise<{ id: string; serviceKey: string }>,
+    private readonly resolveMailbox: (
+      projectId: string,
+      selector?: MailboxSelector,
+    ) => Promise<{ id: string; serviceKey: string }>,
   ) {}
 
   async register(projectId: string, opts: RegisterWebhookOptions): Promise<MailboxWebhookSummary> {
     validateRegisterWebhookOptions(opts);
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     return this.client.request<MailboxWebhookSummary>(`/mailboxes/v1/${id}/webhooks`, {
       method: "POST",
       headers: { Authorization: `Bearer ${serviceKey}` },
@@ -135,16 +158,20 @@ export class Webhooks {
     });
   }
 
-  async list(projectId: string): Promise<MailboxWebhooksResult> {
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+  async list(projectId: string, opts: MailboxScopedOptions = {}): Promise<MailboxWebhooksResult> {
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     return this.client.request<MailboxWebhooksResult>(`/mailboxes/v1/${id}/webhooks`, {
       headers: { Authorization: `Bearer ${serviceKey}` },
       context: "listing webhooks",
     });
   }
 
-  async get(projectId: string, webhookId: string): Promise<MailboxWebhookSummary> {
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+  async get(
+    projectId: string,
+    webhookId: string,
+    opts: MailboxScopedOptions = {},
+  ): Promise<MailboxWebhookSummary> {
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const encodedWebhookId = encodePathSegment(webhookId, "webhookId", "getting webhook");
     return this.client.request<MailboxWebhookSummary>(
       `/mailboxes/v1/${id}/webhooks/${encodedWebhookId}`,
@@ -167,7 +194,7 @@ export class Webhooks {
         "updating webhook",
       );
     }
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const encodedWebhookId = encodePathSegment(webhookId, "webhookId", "updating webhook");
     const body: Record<string, unknown> = {};
     if (patch.hasUrl) body.url = opts.url;
@@ -183,8 +210,12 @@ export class Webhooks {
     );
   }
 
-  async delete(projectId: string, webhookId: string): Promise<void> {
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+  async delete(
+    projectId: string,
+    webhookId: string,
+    opts: MailboxScopedOptions = {},
+  ): Promise<void> {
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const encodedWebhookId = encodePathSegment(webhookId, "webhookId", "deleting webhook");
     await this.client.request<unknown>(`/mailboxes/v1/${id}/webhooks/${encodedWebhookId}`, {
       method: "DELETE",
@@ -197,12 +228,12 @@ export class Webhooks {
 export class Email {
   readonly webhooks: Webhooks;
   readonly create: (projectId: string, slug: string) => Promise<CreateMailboxResult>;
-  readonly status: (projectId: string) => Promise<MailboxInfo>;
-  readonly info: (projectId: string) => Promise<MailboxInfo>;
-  readonly delete: (projectId: string, mailboxId?: string) => Promise<DeleteMailboxResult>;
+  readonly status: (projectId: string, mailbox?: MailboxSelector) => Promise<MailboxInfo>;
+  readonly info: (projectId: string, mailbox?: MailboxSelector) => Promise<MailboxInfo>;
+  readonly delete: (projectId: string, mailbox?: MailboxSelector) => Promise<DeleteMailboxResult>;
 
   constructor(private readonly client: Client) {
-    this.webhooks = new Webhooks(client, (projectId) => this.resolveMailbox(projectId));
+    this.webhooks = new Webhooks(client, (projectId, selector) => this.resolveMailbox(projectId, selector));
     this.create = this.createMailbox.bind(this);
     this.status = this.getMailbox.bind(this);
     this.info = this.getMailbox.bind(this);
@@ -210,40 +241,92 @@ export class Email {
   }
 
   /**
-   * Resolve the project's mailbox id + service key. Prefers the provider's
-   * cached value; falls back to a discovery GET and persists the result
-   * when the provider supports `updateProject`.
+   * Resolve a project mailbox to `{ id, serviceKey }` for an operation.
+   *
+   * - `selector` is a mailbox id (`mbx_…`) → used directly; the gateway 403s
+   *   if the id belongs to a different project, so no list call is needed.
+   * - `selector` is a slug → the project's mailboxes are listed and matched.
+   * - `selector` omitted → the project's mailboxes are listed:
+   *     0 → "create one first"; exactly 1 → that one (cache refreshed);
+   *     2+ → an ambiguity error naming the slugs (never a silent pick).
+   *
+   * The cached `mailbox_id` is intentionally NOT used to resolve when a
+   * selector is omitted — trusting it would silently target an arbitrary
+   * mailbox on a multi-mailbox project. It remains a best-effort convenience
+   * cache, refreshed only on the single-mailbox path.
    */
-  private async resolveMailbox(projectId: string): Promise<{ id: string; serviceKey: string }> {
+  private async resolveMailbox(
+    projectId: string,
+    selector?: MailboxSelector,
+  ): Promise<{ id: string; serviceKey: string }> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "resolving mailbox");
 
-    if (project.mailbox_id) {
-      return { id: project.mailbox_id, serviceKey: project.service_key };
+    if (selector && /^mbx_/.test(selector)) {
+      return { id: selector, serviceKey: project.service_key };
     }
 
     const list = await this.listMailboxes(project.service_key);
+    const mb = this.pickMailbox(list, selector, "resolving mailbox");
+    if (!selector && list.length === 1) await this.cacheMailbox(projectId, mb);
+    return { id: mb.mailbox_id, serviceKey: project.service_key };
+  }
+
+  /**
+   * Choose a mailbox from a project's list given an optional selector.
+   * `selector` matches by exact mailbox id or slug. With no selector: 0 →
+   * "create one first" (404), 1 → that one, 2+ → ambiguity error (409) naming
+   * the available slugs.
+   */
+  private pickMailbox(
+    list: MailboxRecord[],
+    selector: MailboxSelector | undefined,
+    context: string,
+  ): MailboxRecord {
+    if (selector) {
+      const hit = list.find((m) => m.mailbox_id === selector || m.slug === selector);
+      if (!hit) {
+        throw new ApiError(
+          `No mailbox matching "${selector}" (slug or id) in this project.`,
+          404,
+          null,
+          context,
+        );
+      }
+      return hit;
+    }
     if (list.length === 0) {
       throw new ApiError(
         "No mailbox found for this project. Use `create_mailbox` to create one first.",
         404,
         null,
-        "resolving mailbox",
+        context,
       );
     }
-    const first = list[0]!;
-    const updater = this.client.credentials.updateProject;
-    if (updater) {
-      try {
-        await updater.call(this.client.credentials, projectId, {
-          mailbox_id: first.mailbox_id,
-          mailbox_address: first.address,
-        });
-      } catch {
-        // best-effort cache — ignore failures
-      }
+    if (list.length > 1) {
+      const slugs = list.map((m) => m.slug).join(", ");
+      throw new ApiError(
+        `Project has ${list.length} mailboxes (${slugs}). Specify which one via the "mailbox" parameter (slug or id).`,
+        409,
+        null,
+        context,
+      );
     }
-    return { id: first.mailbox_id, serviceKey: project.service_key };
+    return list[0]!;
+  }
+
+  /** Best-effort refresh of the single-mailbox convenience cache. */
+  private async cacheMailbox(projectId: string, mb: MailboxRecord): Promise<void> {
+    const updater = this.client.credentials.updateProject;
+    if (!updater) return;
+    try {
+      await updater.call(this.client.credentials, projectId, {
+        mailbox_id: mb.mailbox_id,
+        mailbox_address: mb.address,
+      });
+    } catch {
+      // best-effort cache — ignore failures
+    }
   }
 
   private async listMailboxes(serviceKey: string): Promise<MailboxRecord[]> {
@@ -254,7 +337,15 @@ export class Email {
     return raw.mailboxes ?? [];
   }
 
-  /** Create a mailbox for a project. Idempotent: returns the existing one on 409. */
+  /**
+   * Create a mailbox for a project.
+   *
+   * NOT idempotent. A 409 from the gateway now means `Slug already in use`,
+   * `Address is in cooldown period`, or `Project mailbox limit reached (5)` —
+   * none of which mean "you already own this slug" — so the 409 is surfaced
+   * verbatim rather than silently returning some other existing mailbox.
+   * Callers that want create-or-get should `list`/`getMailbox` explicitly.
+   */
   async createMailbox(projectId: string, slug: string): Promise<CreateMailboxResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "creating mailbox");
@@ -275,46 +366,15 @@ export class Email {
       );
     }
 
-    try {
-      const result = await this.client.request<CreateMailboxResult>("/mailboxes/v1", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${project.service_key}` },
-        body: { slug, project_id: projectId },
-        context: "creating mailbox",
-      });
+    const result = await this.client.request<CreateMailboxResult>("/mailboxes/v1", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${project.service_key}` },
+      body: { slug, project_id: projectId },
+      context: "creating mailbox",
+    });
 
-      const updater = this.client.credentials.updateProject;
-      if (updater) {
-        await updater.call(this.client.credentials, projectId, {
-          mailbox_id: result.mailbox_id,
-          mailbox_address: result.address,
-        });
-      }
-      return result;
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        // Existing mailbox — try to discover and cache it. If discovery
-        // fails or returns empty, re-throw the original 409 so the caller
-        // sees the server's "already has a mailbox" message.
-        try {
-          const list = await this.listMailboxes(project.service_key);
-          if (list.length > 0) {
-            const existing = list[0]!;
-            const updater = this.client.credentials.updateProject;
-            if (updater) {
-              await updater.call(this.client.credentials, projectId, {
-                mailbox_id: existing.mailbox_id,
-                mailbox_address: existing.address,
-              });
-            }
-            return existing;
-          }
-        } catch {
-          // fall through to re-throw the original 409
-        }
-      }
-      throw err;
-    }
+    await this.cacheMailbox(projectId, result);
+    return result;
   }
 
   /** Send an email via template or raw (subject + html) mode. */
@@ -350,7 +410,7 @@ export class Email {
       );
     }
 
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const body: Record<string, unknown> = { to: opts.to };
     if (isTemplate) {
       body.template = opts.template;
@@ -377,7 +437,7 @@ export class Email {
       assertPositiveSafeInteger(opts.limit, "limit", "listing emails");
     }
 
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const qs = new URLSearchParams();
     if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
     if (opts.after) qs.set("after", opts.after);
@@ -389,8 +449,12 @@ export class Email {
   }
 
   /** Get a single message by id, including any replies. */
-  async get(projectId: string, messageId: string): Promise<EmailDetail> {
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+  async get(
+    projectId: string,
+    messageId: string,
+    opts: MailboxScopedOptions = {},
+  ): Promise<EmailDetail> {
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const encodedMessageId = encodePathSegment(messageId, "messageId", "getting email");
     return this.client.request<EmailDetail>(`/mailboxes/v1/${id}/messages/${encodedMessageId}`, {
       headers: { Authorization: `Bearer ${serviceKey}` },
@@ -402,8 +466,12 @@ export class Email {
    * Fetch the raw RFC-822 bytes of an inbound message. Returns `Uint8Array`
    * so the consumer can decode / store / forward without re-encoding.
    */
-  async getRaw(projectId: string, messageId: string): Promise<RawEmailResult> {
-    const { id, serviceKey } = await this.resolveMailbox(projectId);
+  async getRaw(
+    projectId: string,
+    messageId: string,
+    opts: MailboxScopedOptions = {},
+  ): Promise<RawEmailResult> {
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const encodedMessageId = encodePathSegment(messageId, "messageId", "fetching raw MIME");
     const url = `${this.client.apiBase}/mailboxes/v1/${id}/messages/${encodedMessageId}/raw`;
     const res = await this.client.fetch(url, {
@@ -426,31 +494,17 @@ export class Email {
     };
   }
 
-  /** Get the project's mailbox info. Uses the cached mailbox_id when available. */
-  async getMailbox(projectId: string): Promise<MailboxInfo> {
+  /**
+   * Get a project mailbox's info. With a `selector` (slug or `mbx_…` id),
+   * returns that mailbox; without one, returns the project's only mailbox or
+   * throws an ambiguity error when it has more than one.
+   */
+  async getMailbox(projectId: string, selector?: MailboxSelector): Promise<MailboxInfo> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "getting mailbox");
     const list = await this.listMailboxes(project.service_key);
-    if (list.length === 0) {
-      throw new ApiError(
-        "No mailbox found for this project. Use `create_mailbox` to create one first.",
-        404,
-        null,
-        "getting mailbox",
-      );
-    }
-    const mb = list[0]!;
-    const updater = this.client.credentials.updateProject;
-    if (updater) {
-      try {
-        await updater.call(this.client.credentials, projectId, {
-          mailbox_id: mb.mailbox_id,
-          mailbox_address: mb.address,
-        });
-      } catch {
-        // best-effort
-      }
-    }
+    const mb = this.pickMailbox(list, selector, "getting mailbox");
+    if (!selector && list.length === 1) await this.cacheMailbox(projectId, mb);
     return mb;
   }
 
@@ -460,26 +514,24 @@ export class Email {
    * mailbox; otherwise the project's current mailbox is resolved. Returns
    * the deleted record echoed by the gateway.
    */
-  async deleteMailbox(projectId: string, mailboxId?: string): Promise<DeleteMailboxResult> {
+  async deleteMailbox(projectId: string, selector?: MailboxSelector): Promise<DeleteMailboxResult> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deleting mailbox");
 
-    let id = mailboxId;
-    if (!id) {
-      if (project.mailbox_id) {
-        id = project.mailbox_id;
-      } else {
-        const list = await this.listMailboxes(project.service_key);
-        if (list.length === 0) {
-          throw new ApiError(
-            "No mailbox found for this project — nothing to delete.",
-            404,
-            null,
-            "deleting mailbox",
-          );
-        }
-        id = list[0]!.mailbox_id;
+    let id: string;
+    if (selector && /^mbx_/.test(selector)) {
+      id = selector;
+    } else {
+      const list = await this.listMailboxes(project.service_key);
+      if (!selector && list.length === 0) {
+        throw new ApiError(
+          "No mailbox found for this project — nothing to delete.",
+          404,
+          null,
+          "deleting mailbox",
+        );
       }
+      id = this.pickMailbox(list, selector, "deleting mailbox").mailbox_id;
     }
 
     const result = await this.client.request<DeleteMailboxResult>(`/mailboxes/v1/${id}`, {

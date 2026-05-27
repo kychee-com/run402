@@ -8,6 +8,30 @@ import { handleSendEmail } from "./send-email.js";
 const originalFetch = globalThis.fetch;
 let tempDir: string;
 
+/** The single mailbox the SDK resolves when no selector is given (one mailbox → use it). */
+function mailboxListResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      mailboxes: [{
+        mailbox_id: "mbx-001",
+        address: "my-app@mail.run402.com",
+        slug: "my-app",
+        project_id: "proj-001",
+        status: "active",
+        sends_today: 0,
+        unique_recipients: 0,
+        created_at: "2026-05-01T00:00:00.000Z",
+        updated_at: "2026-05-01T00:00:00.000Z",
+      }],
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+function isMailboxListGet(url: string | URL | Request, init?: RequestInit): boolean {
+  return String(url).endsWith("/mailboxes/v1") && (!init?.method || init.method === "GET");
+}
+
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-sendemail-test-"));
   process.env.RUN402_CONFIG_DIR = tempDir;
@@ -35,11 +59,13 @@ afterEach(() => {
 
 describe("send_email tool", () => {
   it("returns success on 200", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (isMailboxListGet(url, init)) return mailboxListResponse();
+      return new Response(
         JSON.stringify({ message_id: "msg-001", status: "sent", to: "user@example.com", template: "project_invite", subject: null, sent_at: "2026-05-01T00:00:00.000Z" }),
         { status: 200, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
+      );
+    }) as typeof fetch;
 
     const result = await handleSendEmail({
       project_id: "proj-001",
@@ -97,7 +123,8 @@ describe("send_email tool", () => {
 
   it("sends raw HTML email with subject and html", async () => {
     let capturedBody: string | undefined;
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (isMailboxListGet(url, init)) return mailboxListResponse();
       capturedBody = init?.body as string;
       return new Response(
         JSON.stringify({ message_id: "msg-002", status: "sent", to: "user@example.com", subject: "Welcome!", template: null, sent_at: "2026-05-01T00:00:00.000Z" }),
@@ -123,7 +150,8 @@ describe("send_email tool", () => {
 
   it("sends from_name when provided", async () => {
     let capturedBody: string | undefined;
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (isMailboxListGet(url, init)) return mailboxListResponse();
       capturedBody = init?.body as string;
       return new Response(
         JSON.stringify({ message_id: "msg-003", status: "sent", to: "user@example.com", subject: "Hi", template: null, sent_at: "2026-05-01T00:00:00.000Z" }),

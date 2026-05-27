@@ -4,13 +4,18 @@ import { mapSdkError } from "../errors.js";
 
 export const getMailboxSchema = {
   project_id: z.string().describe("The project ID"),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox (otherwise returns an ambiguity error naming the slugs)."),
 };
 
 export async function handleGetMailbox(args: {
   project_id: string;
+  mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const mb = await getSdk().email.getMailbox(args.project_id);
+    const mb = await getSdk().email.getMailbox(args.project_id, args.mailbox);
     return {
       content: [{
         type: "text",

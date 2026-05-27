@@ -6,17 +6,23 @@ export const registerMailboxWebhookSchema = {
   project_id: z.string().describe("The project ID"),
   url: z.string().describe("Webhook callback URL"),
   events: z.array(z.string()).describe("Events to subscribe to. Valid: delivery, bounced, complained, reply_received"),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox."),
 };
 
 export async function handleRegisterMailboxWebhook(args: {
   project_id: string;
   url: string;
   events: string[];
+  mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const w = await getSdk().email.webhooks.register(args.project_id, {
       url: args.url,
       events: args.events,
+      mailbox: args.mailbox,
     });
     return {
       content: [{

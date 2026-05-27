@@ -8,6 +8,30 @@ import { handleGetEmail } from "./get-email.js";
 const originalFetch = globalThis.fetch;
 let tempDir: string;
 
+/** The single mailbox the SDK resolves when no selector is given. */
+function mailboxListResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      mailboxes: [{
+        mailbox_id: "mbx-001",
+        address: "my-app@mail.run402.com",
+        slug: "my-app",
+        project_id: "proj-001",
+        status: "active",
+        sends_today: 0,
+        unique_recipients: 0,
+        created_at: "2026-05-01T00:00:00.000Z",
+        updated_at: "2026-05-01T00:00:00.000Z",
+      }],
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+function isMailboxListGet(url: string | URL | Request, init?: RequestInit): boolean {
+  return String(url).endsWith("/mailboxes/v1") && (!init?.method || init.method === "GET");
+}
+
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-getemail-test-"));
   process.env.RUN402_CONFIG_DIR = tempDir;
@@ -35,8 +59,9 @@ afterEach(() => {
 
 describe("get_email tool", () => {
   it("returns message details on success", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (isMailboxListGet(url, init)) return mailboxListResponse();
+      return new Response(
         JSON.stringify({
           id: "msg-001",
           template: "project_invite",
@@ -47,7 +72,8 @@ describe("get_email tool", () => {
           replies: [],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
+      );
+    }) as typeof fetch;
 
     const result = await handleGetEmail({
       project_id: "proj-001",
@@ -61,8 +87,9 @@ describe("get_email tool", () => {
   });
 
   it("shows replies when present", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (isMailboxListGet(url, init)) return mailboxListResponse();
+      return new Response(
         JSON.stringify({
           id: "msg-001",
           template: "project_invite",
@@ -75,7 +102,8 @@ describe("get_email tool", () => {
           ],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
+      );
+    }) as typeof fetch;
 
     const result = await handleGetEmail({
       project_id: "proj-001",

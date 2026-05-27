@@ -5,14 +5,19 @@ import { mapSdkError } from "../errors.js";
 export const getEmailSchema = {
   project_id: z.string().describe("The project ID"),
   message_id: z.string().describe("The message ID to retrieve"),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox."),
 };
 
 export async function handleGetEmail(args: {
   project_id: string;
   message_id: string;
+  mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().email.get(args.project_id, args.message_id);
+    const body = await getSdk().email.get(args.project_id, args.message_id, { mailbox: args.mailbox });
 
     const lines = [
       `## Email: \`${body.id}\``,

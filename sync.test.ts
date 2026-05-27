@@ -842,6 +842,8 @@ describe("SDK surface alignment", () => {
     const SDK_ONLY_METHODS = new Set([
       "email.listMailboxes",   // private helper
       "email.resolveMailbox",  // private helper
+      "email.pickMailbox",     // private helper
+      "email.cacheMailbox",    // private helper
       "projects.active",       // returns active project id from the provider
       "projects.restResponse", // REST proxy with HTTP status for CLI/MCP formatters
       "assets.initUploadSession", // low-level resumable upload primitive for CLI UX

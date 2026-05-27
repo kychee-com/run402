@@ -505,8 +505,8 @@ Function authoring limits per tier: prototype 10s / 128 MB / 1 scheduled fn / 15
 - **`passkey_register_options`** / **`passkey_register_verify`** — create and verify WebAuthn passkey registration ceremonies.
 - **`passkey_login_options`** / **`passkey_login_verify`** — create and verify WebAuthn passkey login ceremonies.
 - **`list_passkeys`** / **`delete_passkey`** — list or delete the authenticated user's passkeys.
-- **`create_mailbox`** / **`get_mailbox`** / **`delete_mailbox`** — per-project mailbox at `<slug>@mail.run402.com`.
-- **`send_email`** — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient.
+- **`create_mailbox`** / **`get_mailbox`** / **`delete_mailbox`** — up to 5 mailboxes per project at `<slug>@mail.run402.com`. Read/send/webhook tools take an optional `mailbox` (slug or `mbx_…` id) when a project has more than one; `create_mailbox` is not idempotent (a 409 — slug taken / cooldown / 5-mailbox limit — is surfaced, not recovered).
+- **`send_email`** — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Optional `mailbox` selector.
 - **`list_emails`** / **`get_email`** / **`get_email_raw`** — read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification.
 - **`register_mailbox_webhook`** / **`list_mailbox_webhooks`** / **`get_mailbox_webhook`** / **`update_mailbox_webhook`** / **`delete_mailbox_webhook`** — email-event webhooks (delivery, bounced, complained, reply_received).
 - **`register_sender_domain`** / **`sender_domain_status`** / **`remove_sender_domain`** — send from your own domain (DKIM verified).
