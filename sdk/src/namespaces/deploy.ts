@@ -33,6 +33,7 @@ import {
   PaymentRequired,
   Run402DeployError,
   Unauthorized,
+  isTransferFreezeError,
   type Run402DeployErrorCode,
   type Run402DeployErrorFix,
 } from "../errors.js";
@@ -3916,6 +3917,32 @@ function translateDeployError(
       code: "INTERNAL_ERROR",
       phase,
       retryable: err.status !== null && err.status >= 500,
+      operationId,
+      planId,
+      status: err.status,
+      body: err.body,
+      context: err.context,
+    });
+  }
+  // 409 transfer-freeze (PROJECT_HAS_PENDING_TRANSFER) arrives as a dedicated
+  // TransferFreezeError, not an ApiError. Route it through the same
+  // gateway-envelope path so the structured code, details (transfer_id), and
+  // next_actions (cancel/view transfer) survive instead of flattening to
+  // INTERNAL_ERROR. Use the structural guard so the check holds across
+  // duplicate SDK copies / realm boundaries (V8-isolate code-mode).
+  if (isTransferFreezeError(err)) {
+    const body =
+      err.body && typeof err.body === "object" && !Array.isArray(err.body)
+        ? (err.body as Record<string, unknown>)
+        : null;
+    const gw = body ? extractGatewayError(body) : null;
+    if (gw) {
+      return translateGatewayError(gw, phase, planId, operationId);
+    }
+    return new Run402DeployError(err.message, {
+      code: "PROJECT_HAS_PENDING_TRANSFER" as Run402DeployErrorCode,
+      phase,
+      retryable: false,
       operationId,
       planId,
       status: err.status,

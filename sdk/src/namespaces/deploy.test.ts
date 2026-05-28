@@ -30,7 +30,13 @@ import type {
   OperationSnapshot,
   PlanResponse,
 } from "./deploy.types.js";
-import { ApiError, LocalError, NetworkError, Run402DeployError } from "../errors.js";
+import {
+  ApiError,
+  LocalError,
+  NetworkError,
+  Run402DeployError,
+  TransferFreezeError,
+} from "../errors.js";
 import { fileSetFromDir } from "../node/files.js";
 import { dir } from "../node/assets-node.js";
 
@@ -545,6 +551,66 @@ describe("Deploy.apply (happy path)", () => {
         assert.equal(err.code, "CI_ROUTE_SCOPE_DENIED");
         assert.equal(err.resource, "site.public_paths.replace./admin");
         assert.match(err.message, /cannot declare this public path/);
+        return true;
+      },
+    );
+    assert.equal(w.requests.length, 1);
+  });
+
+  it("preserves gateway code/details/next_actions for a 409 PROJECT_HAS_PENDING_TRANSFER at plan", async () => {
+    const w = makeWiring();
+    const envelope = {
+      code: "PROJECT_HAS_PENDING_TRANSFER",
+      category: "validation",
+      message: "This project has a pending transfer.",
+      details: {
+        project_id: "prj_x",
+        transfer_id: "dc0d7500-0000-0000-0000-000000000000",
+      },
+      next_actions: [
+        {
+          type: "cancel_transfer",
+          method: "POST",
+          path: "/agent/v1/transfers/dc0d7500/cancel",
+          auth: "siwx",
+        },
+        {
+          type: "view_transfer",
+          method: "GET",
+          path: "/agent/v1/transfers/dc0d7500",
+        },
+      ],
+    };
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        throw new TransferFreezeError(
+          "This project has a pending transfer. while planning deploy",
+          409,
+          envelope,
+          "planning deploy",
+        );
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_x",
+          site: { patch: { delete: ["old.html"] } },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        // Not flattened to INTERNAL_ERROR.
+        assert.equal(err.code, "PROJECT_HAS_PENDING_TRANSFER");
+        // The raw gateway envelope survives so transfer_id / next_actions
+        // remain accessible to the consumer.
+        const body = err.body as typeof envelope;
+        assert.equal(body.details.transfer_id, "dc0d7500-0000-0000-0000-000000000000");
+        assert.equal(body.next_actions.length, 2);
+        assert.equal(body.next_actions[0].type, "cancel_transfer");
+        assert.equal(body.next_actions[1].type, "view_transfer");
         return true;
       },
     );
