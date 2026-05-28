@@ -52,7 +52,9 @@ Options:
   --meta <k=v>        v1.50: attach caller-supplied metadata to the upload (repeatable). Number
                       coercion on pure digits; comma-split into string[]; "true"/"false" → boolean.
   --exif-policy keep|strip  v1.50: EXIF retention policy for image uploads (default keep).
-  --json              NDJSON progress events (for agent consumption)
+  --stream            NDJSON per-file progress events (for agent consumption).
+                      Without --stream, only the final results array is
+                      printed. --json is a deprecated alias for --stream.
   --prefix <p>        Prefix filter (ls only)
   --limit <n>         Max results (ls only; default 100, max 1000)
   --sort <key>        v1.50 ls only: key:asc | createdAt:asc | createdAt:desc (default key:asc).
@@ -99,7 +101,10 @@ Options:
                       Examples: --meta uploaded_by=agent_abc --meta version=3 --meta tags=hero,banner
   --exif-policy keep|strip  v1.50: EXIF retention policy. Default 'keep'. 'strip' discards EXIF
                       from the stored bytes and the image_exif response field.
-  --json              Emit NDJSON progress events on stdout (for agent consumption)
+  --stream            Emit NDJSON per-file progress events on stdout (for
+                      agent consumption). Default: emit only the final
+                      results array (also JSON). --json is a deprecated
+                      alias for --stream.
 
 Examples:
   run402 assets put ./artifact.tgz --project prj_abc123
@@ -223,6 +228,7 @@ function parseArgs(rawArgs) {
     "--immutable",
     "--concurrency",
     "--no-resume",
+    "--stream",
     "--json",
     "--prefix",
     "--limit",
@@ -237,7 +243,7 @@ function parseArgs(rawArgs) {
     "-h",
   ], valueFlags);
   const out = { positional: [], project: null, key: null, private: false, immutable: false,
-                 concurrency: 4, resume: true, json: false, prefix: null, limit: null,
+                 concurrency: 4, resume: true, stream: false, prefix: null, limit: null,
                  output: null, ttl: null, contentType: null,
                  metadata: null, exifPolicy: null, sort: null, filter: null };
   for (let i = 0; i < args.length; i++) {
@@ -249,7 +255,13 @@ function parseArgs(rawArgs) {
     else if (a === "--immutable") out.immutable = true;
     else if (a === "--concurrency") out.concurrency = parseIntegerFlag("--concurrency", args[++i], { min: 1 });
     else if (a === "--no-resume") out.resume = false;
-    else if (a === "--json") out.json = true;
+    else if (a === "--stream") out.stream = true;
+    else if (a === "--json") {
+      out.stream = true;
+      process.stderr.write(
+        "# warning: `--json` on `assets put` is deprecated and will be removed in a future release. Use `--stream` (alias means the same thing — NDJSON progress events on stdout).\n",
+      );
+    }
     else if (a === "--prefix") out.prefix = args[++i];
     else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];
@@ -478,7 +490,7 @@ async function put(projectId, argv) {
       reportSdkError(err);
     }
   }
-  if (!opts.json) console.log(JSON.stringify(results, null, 2));
+  if (!opts.stream) console.log(JSON.stringify(results, null, 2));
 }
 
 // ---------------------------------------------------------------------------
@@ -622,7 +634,7 @@ function guessContentType(key) {
 }
 
 function log(opts, event) {
-  if (opts.json) console.log(JSON.stringify(event));
+  if (opts.stream) console.log(JSON.stringify(event));
 }
 
 // ---------------------------------------------------------------------------

@@ -16,8 +16,11 @@ Subcommands:
   list   [--limit <n>] [--after <cursor>] [--project <id>]
                                       List sent/received messages (paginated)
   get    <message_id> [--project <id>]  Get a message with replies
-  get-raw <message_id> [--project <id>] [--output <file>]
-                                      Fetch raw RFC-822 bytes (inbound only)
+  get-raw <message_id> --output <file> [--project <id>]
+                                      Fetch raw RFC-822 bytes (inbound only).
+                                      --output is required: bytes are written
+                                      to the file; stdout receives a JSON
+                                      envelope { message_id, bytes, output }.
   reply  <message_id> --html "..." [--text "..."] [--subject "..."] [--from-name "..."] [--project <id>]
                                       Reply to an inbound message (threads via In-Reply-To)
   delete [<slug|mailbox_id>] --confirm [--project <id>]
@@ -123,7 +126,19 @@ compatibility; new code should use 'info'.
   "get-raw": `run402 email get-raw — Fetch raw RFC-822 bytes for an inbound message
 
 Usage:
-  run402 email get-raw <message_id> [--output <file>] [--project <id>]
+  run402 email get-raw <message_id> --output <file> [--project <id>]
+
+Arguments:
+  <message_id>        Inbound message ID
+
+Options:
+  --output <file>     Required: destination file for the raw RFC-822 bytes.
+                      stdout receives a JSON envelope
+                      { message_id, bytes, output } — the MIME body is never
+                      written to stdout, so the CLI stays pipeable.
+  --project <id>      Project ID (defaults to the active project)
+  --mailbox <slug|id> Target a specific mailbox (required when the project
+                      has more than one)
 `,
   create: `run402 email create — Create a project mailbox
 
@@ -321,21 +336,24 @@ async function getRaw(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing message_id.",
-      hint: "run402 email get-raw <message_id> [--output <file>]",
+      hint: "run402 email get-raw <message_id> --output <file>",
+    });
+  }
+  if (!outputFile) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --output <file>. Raw MIME bytes must be written to a file, not stdout.",
+      hint: "run402 email get-raw <message_id> --output <file>",
+      details: { flag: "--output" },
     });
   }
 
   try {
     const result = await getSdk().email.getRaw(projectId, messageId, { mailbox: mailbox ?? undefined });
     const buf = Buffer.from(result.bytes);
-
-    if (outputFile) {
-      const { writeFileSync } = await import("node:fs");
-      writeFileSync(outputFile, buf);
-      console.log(JSON.stringify({ message_id: messageId, bytes: buf.length, output: outputFile }));
-    } else {
-      process.stdout.write(buf);
-    }
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(outputFile, buf);
+    console.log(JSON.stringify({ message_id: messageId, bytes: buf.length, output: outputFile }));
   } catch (err) {
     reportSdkError(err);
   }

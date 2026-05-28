@@ -959,8 +959,8 @@ const res = await fetch('https://api.run402.com/functions/v1/my-function', {
 ```
 
 - `run402 functions deploy <id> <name> --file <file> [--deps "<spec,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
-- `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>]`
-- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--request-id <req_...>] [--follow]` — `--tail` defaults to 50 and is capped at 1000.
+- `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>] [--raw]` — default emits a JSON envelope `{ http_status, body, duration_ms }` (HTTP status surfaced as `http_status` to avoid colliding with the reserved top-level `status` sentinel on stderr). Safe to pipe to jq even when the function returns `text/plain`. `--raw` skips the envelope: string body → text + newline, JSON body → pretty-printed JSON. Useful when piping a CSV / binary-blob response straight to a file.
+- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--request-id <req_...>] [--follow]` — `--tail` defaults to 50 and is capped at 1000. Non-follow mode emits a single `{ logs: [...] }` JSON object; `--follow` mode emits **NDJSON** (one log entry per line) so streaming consumers can parse incrementally without a wrapping envelope.
 - `run402 functions update <id> <name> [--schedule "<cron>"] [--schedule-remove] [--timeout <s>] [--memory <mb>]`
 - `run402 functions <list|delete> <id> [<name>]`
 
@@ -1027,7 +1027,7 @@ Direct-to-S3 asset storage. Works for any size from 1 byte up to 5 TiB. No bucke
 
 For bulk directory work, use `run402 deploy apply` with an `assets` slice in the manifest (see [Unified Deploy](#unified-deploy)) — additive batches via `assets: { put: [...] }`, declarative sync with confirm-token semantics via `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. There is no `run402 assets sync` subcommand — the apply path is the canonical bulk surface so a single transaction can stage HTML + new asset URLs together.
 
-- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--json]`
+- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--stream]` — without `--stream`, stdout is the final results array (JSON). With `--stream`, stdout is NDJSON per-file progress events. `--json` is a deprecated alias for `--stream` (writes a deprecation warning to stderr).
 - `run402 assets get <key> --output <file> [--project <id>]`
 - `run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
 - `run402 assets rm <key> [--project <id>]`
@@ -1229,7 +1229,7 @@ Templates: `project_invite` (project_name, invite_url), `magic_link` (project_na
 - `run402 email list [--mailbox <slug|id>] [--project <id>]`
 - `run402 email get <message_id> [--mailbox <slug|id>] [--project <id>]`
 - `run402 email reply <message_id> --html <html> [--text <text>] [--subject <subject>] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]` — reply to an inbound message (threads via In-Reply-To)
-- `run402 email get-raw <message_id> [--mailbox <slug|id>] [--project <id>] [--output <file>]` — fetch raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification). Writes to stdout or `--output` file. Inbound only; outbound returns 404.
+- `run402 email get-raw <message_id> --output <file> [--mailbox <slug|id>] [--project <id>]` — fetch raw RFC-822 bytes of an inbound message (for DKIM/zk-email verification). `--output` is required: bytes are written to the file; stdout receives a JSON envelope `{ message_id, bytes, output }` so the CLI stays pipeable. Inbound only; outbound returns 404.
 - `run402 email delete [<slug|mailbox_id>] --confirm [--project <id>]` — delete a mailbox (irreversible). Target a specific mailbox by slug or id; on a project with one mailbox the target may be omitted.
 - `run402 email webhooks list [--mailbox <slug|id>] [--project <id>]` — list all webhooks registered on the mailbox
 - `run402 email webhooks get <webhook_id> [--mailbox <slug|id>] [--project <id>]` — get webhook details

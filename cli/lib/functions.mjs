@@ -15,8 +15,12 @@ Usage:
 Subcommands:
   deploy <id> <name> --file <file> [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
                                        Deploy a function to a project
-  invoke <id> <name> [--method <M>] [--body <json>]
-                                       Invoke a deployed function
+  invoke <id> <name> [--method <M>] [--body <json>] [--raw]
+                                       Invoke a deployed function. Default
+                                       wraps the SDK result as JSON on stdout.
+                                       --raw prints the response body verbatim
+                                       (string body → text + newline, JSON
+                                       body → pretty-printed JSON).
   logs   <id> <name> [--tail <n>] [--since <ts>] [--request-id <req_...>] [--follow]
                                        Get function logs
   update <id> <name> [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
@@ -99,10 +103,22 @@ Arguments:
 Options:
   --method <M>        HTTP method (default POST)
   --body <json>       Request body (ignored for GET/HEAD)
+  --raw               Skip JSON wrapping. Prints the response body verbatim:
+                      string body → text + trailing newline; JSON body →
+                      pretty-printed JSON. Useful when piping a text/plain
+                      function response to another tool.
+
+Output (default — without --raw):
+  Stdout is a single JSON envelope { http_status, body, duration_ms }.
+  Safe to pipe to jq even when the function returns a plain string.
+  The HTTP status is exposed as http_status (not status) so the payload
+  stays clean of the reserved top-level "status" field used in error
+  envelopes on stderr.
 
 Examples:
   run402 functions invoke prj_abc123 stripe-webhook --body '{"event":"test"}'
   run402 functions invoke prj_abc123 ping --method GET
+  run402 functions invoke prj_abc123 csv --raw > export.csv
 `,
   logs: `run402 functions logs — Fetch or tail function logs
 
@@ -117,7 +133,10 @@ Options:
   --tail <n>          Number of most-recent entries (default 50, max 1000)
   --since <ts>        ISO timestamp or epoch ms; only entries after this
   --request-id <id>   Only entries correlated to this req_... request id
-  --follow            Poll every 3s and stream new entries (Ctrl-C to stop)
+  --follow            Poll every 3s and stream new entries (Ctrl-C to stop).
+                      Emits NDJSON: one JSON log entry per line, no wrapping
+                      "logs:" envelope (the wrapping object is only used in
+                      the non-follow batch mode).
 
 Examples:
   run402 functions logs prj_abc123 stripe-webhook --tail 100
@@ -208,12 +227,13 @@ async function deploy(projectId, name, args) {
 }
 
 async function invoke(projectId, name, args) {
-  assertRequiredProjectAndName(projectId, name, "run402 functions invoke <project_id> <name> [--method <M>] [--body <json>]");
-  assertKnownFlags(args, ["--method", "--body", "--help", "-h"], ["--method", "--body"]);
-  const opts = { method: "POST", body: undefined };
+  assertRequiredProjectAndName(projectId, name, "run402 functions invoke <project_id> <name> [--method <M>] [--body <json>] [--raw]");
+  assertKnownFlags(args, ["--method", "--body", "--raw", "--help", "-h"], ["--method", "--body"]);
+  const opts = { method: "POST", body: undefined, raw: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--method" && args[i + 1]) opts.method = args[++i];
     if (args[i] === "--body" && args[i + 1]) opts.body = args[++i];
+    if (args[i] === "--raw") opts.raw = true;
   }
   const invokeOpts = { method: opts.method };
   if (opts.body !== undefined && opts.method !== "GET" && opts.method !== "HEAD") {
@@ -221,12 +241,17 @@ async function invoke(projectId, name, args) {
   }
   try {
     const result = await getSdk().functions.invoke(projectId, name, invokeOpts);
-    const body = result.body;
-    if (typeof body === "string") {
-      process.stdout.write(body + "\n");
-    } else {
-      console.log(JSON.stringify(body, null, 2));
+    if (opts.raw) {
+      const body = result.body;
+      if (typeof body === "string") {
+        process.stdout.write(body + "\n");
+      } else {
+        console.log(JSON.stringify(body, null, 2));
+      }
+      return;
     }
+    const { status, ...rest } = result;
+    console.log(JSON.stringify({ http_status: status, ...rest }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -310,7 +335,7 @@ async function logs(projectId, name, args) {
     }
 
     for (const { entry } of fresh) {
-      console.log(`[${entry.timestamp}] ${entry.message}`);
+      console.log(JSON.stringify(entry));
     }
     if (fresh.length === 0 || !Number.isFinite(nextHighWaterMs)) return;
 

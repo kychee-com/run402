@@ -216,6 +216,16 @@ describe("email argv validation", () => {
     assert.equal(calls.length, 0, "invalid argv must not hit the network");
   });
 
+  it("email get-raw requires --output entirely (no binary on stdout)", async () => {
+    const { run } = await import("./cli/lib/email.mjs");
+    const err = await expectExit1(() => run("get-raw", ["msg_1"]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(err.details.flag, "--output");
+    assert.match(err.message, /Missing --output/);
+    assert.equal(calls.length, 0, "missing --output must not hit the network");
+  });
+
   it("email reply rejects missing --html value before network (GH-277)", async () => {
     const { run } = await import("./cli/lib/email.mjs");
     const err = await expectExit1(() => run("reply", ["msg_1", "--html"]));
@@ -1276,5 +1286,189 @@ describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issu
     assert.equal(err.code, "BAD_FLAG");
     assert.match(err.message, /is_image must be 'true' or 'false'/);
     assert.equal(calls.length, 0);
+  });
+});
+
+describe("CLI JSON-only output contract (v3.x cleanup)", () => {
+  it("functions invoke default emits {http_status, body, duration_ms} envelope (no top-level status)", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path.startsWith("/functions/v1/") && info.method === "POST") {
+        return Promise.resolve(json({ hello: "world" }));
+      }
+      return mockFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("invoke", ["prj_test123", "hello"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const out = stdout.join("\n");
+    const parsed = JSON.parse(out);
+    assert.equal(typeof parsed.http_status, "number", "must expose HTTP status as http_status");
+    assert.equal(parsed.status, undefined, "must NOT have top-level status (reserved for stderr error envelope)");
+    assert.deepEqual(parsed.body, { hello: "world" });
+    assert.equal(typeof parsed.duration_ms, "number");
+  });
+
+  it("functions invoke --raw emits the body verbatim (object → JSON, string → text+newline)", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path.startsWith("/functions/v1/") && info.method === "POST") {
+        return Promise.resolve(json({ hello: "world" }));
+      }
+      return mockFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("invoke", ["prj_test123", "hello", "--raw"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const out = stdout.join("\n");
+    const parsed = JSON.parse(out);
+    assert.deepEqual(parsed, { hello: "world" }, "--raw should print the body directly with no envelope");
+  });
+
+  it("functions logs --follow emits NDJSON (one JSON entry per line, no wrapping envelope)", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const prevFetch = globalThis.fetch;
+    const prevSetTimeout = globalThis.setTimeout;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (/\/logs\?/.test(info.path) && info.method === "GET") {
+        return Promise.resolve(json({
+          logs: [
+            { timestamp: "2026-05-01T00:00:00Z", message: "alpha", event_id: "e1" },
+            { timestamp: "2026-05-01T00:00:01Z", message: "beta",  event_id: "e2" },
+          ],
+        }));
+      }
+      return mockFetch(input, init);
+    };
+    let sleeps = 0;
+    globalThis.setTimeout = (fn, _ms, ...args) => {
+      sleeps += 1;
+      queueMicrotask(() => {
+        if (sleeps >= 1) process.emit("SIGINT");
+        fn(...args);
+      });
+      return 0;
+    };
+
+    try {
+      captureStart();
+      await run("logs", ["prj_test123", "hello", "--follow"]);
+      captureStop();
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+      globalThis.setTimeout = prevSetTimeout;
+    }
+
+    const lines = stdout.join("\n").split("\n").filter(Boolean);
+    assert.ok(lines.length >= 2, `expected >= 2 NDJSON lines, got ${lines.length}: ${lines.join(" | ")}`);
+    for (const line of lines) {
+      const parsed = JSON.parse(line);
+      assert.equal(typeof parsed.message, "string", `every NDJSON line must be a log entry, got: ${line}`);
+      assert.equal(typeof parsed.timestamp, "string");
+    }
+    const messages = lines.map((l) => JSON.parse(l).message);
+    assert.ok(messages.includes("alpha"));
+    assert.ok(messages.includes("beta"));
+  });
+
+  it("email get-raw success path emits {message_id, bytes, output} envelope (no binary on stdout)", async () => {
+    const { run } = await import("./cli/lib/email.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (/\/mailboxes\/v1\/mbx_test1\/messages\/[^/]+\/raw$/.test(info.path) && info.method === "GET") {
+        return Promise.resolve(new Response(Buffer.from("From: a@b\r\n\r\nbody"), {
+          status: 200,
+          headers: { "Content-Type": "message/rfc822" },
+        }));
+      }
+      return mockFetch(input, init);
+    };
+    const outFile = join(tempDir, "raw-msg.eml");
+    captureStart();
+    try {
+      await run("get-raw", ["msg_1", "--output", outFile, "--project", "prj_test123", "--mailbox", "mbx_test1"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const out = stdout.join("\n").trim();
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.message_id, "msg_1");
+    assert.equal(parsed.output, outFile);
+    assert.equal(typeof parsed.bytes, "number");
+    assert.equal(parsed.status, undefined, "no top-level status field");
+    assert.ok(existsSync(outFile), "MIME bytes must land in --output, never stdout");
+  });
+
+  it("assets put --json is a deprecated alias for --stream (warns on stderr, still streams NDJSON)", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const file = join(tempDir, "deprecated-json.txt");
+    writeFileSync(file, "hi");
+    const prevFetch = globalThis.fetch;
+    const prevStderrWrite = process.stderr.write.bind(process.stderr);
+    let stderrCapture = "";
+    process.stderr.write = (chunk) => { stderrCapture += String(chunk); return true; };
+    globalThis.fetch = applyMockFetch();
+    captureStart();
+    try {
+      await run("put", [file, "--project", "prj_test123", "--json"]);
+    } finally {
+      captureStop();
+      process.stderr.write = prevStderrWrite;
+      globalThis.fetch = prevFetch;
+    }
+    assert.match(stderrCapture, /--json.*deprecated/i,
+      `expected deprecation warning on stderr, got: ${JSON.stringify(stderrCapture)}`);
+    const lines = stdout.join("\n").split("\n").filter(Boolean);
+    assert.ok(lines.length >= 1, "should emit at least one NDJSON event");
+    for (const line of lines) {
+      const parsed = JSON.parse(line);
+      assert.equal(typeof parsed.event, "string", `each NDJSON line must have event field, got: ${line}`);
+    }
+  });
+
+  it("assets put --stream emits NDJSON without a deprecation warning", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const file = join(tempDir, "stream-flag.txt");
+    writeFileSync(file, "hi");
+    const prevFetch = globalThis.fetch;
+    const prevStderrWrite = process.stderr.write.bind(process.stderr);
+    let stderrCapture = "";
+    process.stderr.write = (chunk) => { stderrCapture += String(chunk); return true; };
+    globalThis.fetch = applyMockFetch();
+    captureStart();
+    try {
+      await run("put", [file, "--project", "prj_test123", "--stream"]);
+    } finally {
+      captureStop();
+      process.stderr.write = prevStderrWrite;
+      globalThis.fetch = prevFetch;
+    }
+    assert.doesNotMatch(stderrCapture, /deprecated/i,
+      `--stream should not warn, got: ${JSON.stringify(stderrCapture)}`);
+    const lines = stdout.join("\n").split("\n").filter(Boolean);
+    assert.ok(lines.length >= 1);
+    for (const line of lines) {
+      JSON.parse(line);
+    }
   });
 });
