@@ -281,6 +281,64 @@ export function scanFileContent(content, opts = {}) {
     });
   }
 
+  // 7) Redundant `.eq("user_id", user.id)` against RLS-bound tables.
+  //    db() propagates the actor via the run402.actor.* settings — PostgREST
+  //    enforces ownership in RLS. Filtering on user_id again is at best a
+  //    no-op and at worst a code smell that suggests the developer doesn't
+  //    trust RLS. Catch the most common shapes:
+  //
+  //      .eq("user_id", user.id)
+  //      .eq('user_id', actor.id)
+  //      .eq("user_id", await auth.user()).id   (rare; covered by the suffix)
+  //
+  //    Opt-out via inline annotation comment on the preceding or same line:
+  //      // run402-allow-user-filter: <reason>
+  //      .eq("user_id", joinedRowOwner)
+  //
+  //    Pattern is intentionally narrow (`user_id` literal column name + a
+  //    value expression matching `<ident>.id`) to keep the false-positive
+  //    rate low. Heuristic — RLS-binding is unknown at scan time; the rule
+  //    fires on the shape, and the operator either annotates or fixes.
+  const redundantFilterRegex =
+    /\.eq\s*\(\s*['"]user_id['"]\s*,\s*([a-zA-Z_$][\w$]*)\.id\s*\)/g;
+  const lines = content.split(/\r?\n/);
+  const cumulativeOffsets = (() => {
+    const offsets = [0];
+    for (let i = 0; i < lines.length; i++) {
+      // +1 for the trailing newline we split on
+      offsets.push(offsets[i] + lines[i].length + 1);
+    }
+    return offsets;
+  })();
+  function lineIndexFor(charIndex) {
+    // Binary search would be faster; lines are typically <2k.
+    for (let i = 0; i < cumulativeOffsets.length - 1; i++) {
+      if (charIndex < cumulativeOffsets[i + 1]) return i;
+    }
+    return cumulativeOffsets.length - 2;
+  }
+  let f;
+  while ((f = redundantFilterRegex.exec(content)) !== null) {
+    const lineIdx = lineIndexFor(f.index);
+    const thisLine = lines[lineIdx] ?? "";
+    const prevLine = lineIdx > 0 ? (lines[lineIdx - 1] ?? "") : "";
+    const annotated =
+      /\/\/\s*run402-allow-user-filter/i.test(thisLine) ||
+      /\/\/\s*run402-allow-user-filter/i.test(prevLine);
+    if (annotated) continue;
+    findings.push({
+      code: "R402_AUTH_REDUNDANT_USER_FILTER",
+      severity: SCAN_SEVERITY.WARN,
+      file: filePath,
+      line: lineIdx + 1,
+      message:
+        `Redundant '.eq(\"user_id\", ${f[1]}.id)'. db() propagates the actor — PostgREST RLS enforces ownership server-side. ` +
+        `If this is intentional (e.g., the table's RLS scopes on something else and you want to filter additionally), ` +
+        `silence with: // run402-allow-user-filter: <reason>`,
+      docs: "https://run402.com/errors/#R402_AUTH_REDUNDANT_USER_FILTER",
+    });
+  }
+
   return findings;
 }
 

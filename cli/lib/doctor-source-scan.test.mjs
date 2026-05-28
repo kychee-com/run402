@@ -231,6 +231,68 @@ describe("scanFileContent — direct authz_version mutation", () => {
   });
 });
 
+describe("scanFileContent — redundant user_id filter (R402_AUTH_REDUNDANT_USER_FILTER)", () => {
+  it("flags `.eq(\"user_id\", user.id)`", () => {
+    const content = [
+      'import { db, auth } from "@run402/functions";',
+      "const user = await auth.requireUser();",
+      'const rows = await db().from("posts").select("*").eq("user_id", user.id);',
+    ].join("\n");
+    const findings = scanFileContent(content);
+    const f = findings.find((x) => x.code === "R402_AUTH_REDUNDANT_USER_FILTER");
+    assert.ok(f, "expected a R402_AUTH_REDUNDANT_USER_FILTER finding");
+    assert.equal(f.severity, SCAN_SEVERITY.WARN);
+    assert.match(f.docs, /R402_AUTH_REDUNDANT_USER_FILTER/);
+    assert.equal(f.line, 3);
+  });
+
+  it("flags `.eq('user_id', actor.id)` with single quotes + different identifier", () => {
+    const content = "const r = q.eq('user_id', actor.id);";
+    const findings = scanFileContent(content);
+    assert.ok(findings.some((f) => f.code === "R402_AUTH_REDUNDANT_USER_FILTER"));
+  });
+
+  it("is silenced by `// run402-allow-user-filter:` on the same line", () => {
+    const content = [
+      'import { db, auth } from "@run402/functions";',
+      "const user = await auth.requireUser();",
+      'const rows = await db().from("posts").select("*").eq("user_id", user.id); // run402-allow-user-filter: explicit filter for analytics export',
+    ].join("\n");
+    const findings = scanFileContent(content);
+    assert.ok(
+      !findings.some((f) => f.code === "R402_AUTH_REDUNDANT_USER_FILTER"),
+      "annotated line should not produce a finding",
+    );
+  });
+
+  it("is silenced by `// run402-allow-user-filter:` on the preceding line", () => {
+    const content = [
+      'import { db, auth } from "@run402/functions";',
+      "const user = await auth.requireUser();",
+      "// run402-allow-user-filter: this table's RLS scopes on org_id, not user_id",
+      'const rows = await db().from("posts").select("*").eq("user_id", user.id);',
+    ].join("\n");
+    const findings = scanFileContent(content);
+    assert.ok(
+      !findings.some((f) => f.code === "R402_AUTH_REDUNDANT_USER_FILTER"),
+      "preceding annotation should silence",
+    );
+  });
+
+  it("does NOT flag `.eq(\"org_id\", user.org_id)` or `.eq(\"team_id\", ...)`", () => {
+    const content = [
+      'const rows1 = q.eq("org_id", user.id);', // non-user_id column
+      "const rows2 = q.eq(\"team_id\", actor.team_id);",
+      'const rows3 = q.eq("user_id", "fixed-uuid-literal");', // literal string, not <ident>.id
+    ].join("\n");
+    const findings = scanFileContent(content);
+    assert.ok(
+      !findings.some((f) => f.code === "R402_AUTH_REDUNDANT_USER_FILTER"),
+      "non-matching patterns should not fire",
+    );
+  });
+});
+
 describe("scanFileContent — line numbers + file paths", () => {
   it("reports the line of the violation, not always line 1", () => {
     const content = [
