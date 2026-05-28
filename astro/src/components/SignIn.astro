@@ -1,0 +1,114 @@
+---
+/**
+ * `<SignIn />` — Renders a form that POSTs to the platform's hosted
+ * `/auth/sign-in` route. The platform mints the browser session +
+ * 303-redirects to `returnTo` on success.
+ *
+ * Anonymous visitors see the email/password form. Already-signed-in
+ * visitors get a redirect back to `returnTo` (no point re-rendering
+ * sign-in for someone with an active session).
+ *
+ * The component carries NO client-side JavaScript — it's a plain HTML
+ * form that submits to the platform. CSRF protection comes from the
+ * gateway's Origin enforcement; for hosted routes the gateway is also
+ * the authoritative double-submit verifier (no token visible to anon
+ * visitors — sign-in has no session to derive from).
+ *
+ * Capability `auth-aware-ssr` / spec `hosted-auth-ui`.
+ *
+ * Usage:
+ *   ```astro
+ *   ---
+ *   import { SignIn } from "@run402/astro/components";
+ *   ---
+ *   <SignIn returnTo="/dashboard" />
+ *   ```
+ */
+
+interface Props {
+  /** Where to send the visitor after a successful sign-in. Must be a
+   *  path-relative URL (begins `/` but not `//`) or a same-origin
+   *  absolute URL — the gateway validates this server-side and returns
+   *  R402_AUTH_RETURN_TO_INVALID for everything else. */
+  returnTo?: string;
+  /** Optional extra class applied to the form wrapper. */
+  class?: string;
+}
+
+const { returnTo = "/", class: className = "" } = Astro.props;
+---
+
+<form
+  method="POST"
+  action="/auth/sign-in"
+  autocomplete="on"
+  class={`r402-sign-in ${className}`.trim()}
+  data-r402-sign-in
+>
+  <input type="hidden" name="returnTo" value={returnTo} />
+
+  <label class="r402-field">
+    <span class="r402-label">Email</span>
+    <input
+      type="email"
+      name="email"
+      required
+      autocomplete="email"
+      class="r402-input"
+    />
+  </label>
+
+  <label class="r402-field">
+    <span class="r402-label">Password</span>
+    <input
+      type="password"
+      name="password"
+      required
+      autocomplete="current-password"
+      class="r402-input"
+    />
+  </label>
+
+  <button type="submit" class="r402-submit">Sign in</button>
+</form>
+
+<style>
+  /* Styling is intentionally minimal — consumers override via the
+     `class` prop or by re-styling `.r402-*` selectors in their global
+     CSS. The defaults render a usable form without any host CSS. */
+  .r402-sign-in {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 24rem;
+    margin: 0 auto;
+  }
+  .r402-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .r402-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .r402-input {
+    padding: 0.5rem 0.75rem;
+    font-size: 1rem;
+    border: 1px solid var(--r402-border, #ccc);
+    border-radius: var(--r402-radius, 0.375rem);
+  }
+  .r402-submit {
+    padding: 0.625rem 1rem;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--r402-button-fg, #fff);
+    background: var(--r402-button-bg, #111);
+    border: 0;
+    border-radius: var(--r402-radius, 0.375rem);
+    cursor: pointer;
+  }
+  .r402-submit:hover {
+    background: var(--r402-button-hover-bg, #333);
+  }
+</style>

@@ -2,6 +2,35 @@
 
 All notable changes to `@run402/astro`.
 
+## 2.0.0 (paired with `@run402/functions` v3.0 + gateway v1.60/v1.61 — `auth-aware-ssr`)
+
+### Added
+
+- **Hosted-auth chrome components** at `@run402/astro/components`:
+  - `<SignIn />` — anonymous-only email/password form posting to
+    `/auth/sign-in`. Carries no client-side JS; the platform mints the
+    cookie + 303-redirects on success.
+  - `<SignUp />` — mirror of `<SignIn />`, posts to `/auth/sign-up`.
+  - `<UserButton />` — signed-in chrome rendering the user's email
+    alongside a POST sign-out form. Embeds the platform's double-submit
+    CSRF token derived from `auth.csrfToken()`.
+  - `<SignedIn>…</SignedIn>` / `<SignedOut>…</SignedOut>` — conditional
+    render gates. SSR-only: read the actor from `await auth.user()`.
+    Calling either from a prerendered page throws
+    `R402_AUTH_PRERENDERED`.
+
+- Per-component `./components/SignIn.astro` etc. subpath exports for
+  consumers who want direct file imports.
+
+### Changed
+
+- **BREAKING** — `peerDependencies["@run402/functions"]` bumped to
+  `^3.0.0`. The component implementations import `auth.user()` /
+  `auth.csrfToken()` from the new SDK namespace.
+
+- Description + keywords updated to surface the auth-aware-SSR
+  capability alongside the image-optimization story.
+
 ## Unreleased
 
 ### Fixed

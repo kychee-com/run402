@@ -1,0 +1,102 @@
+---
+/**
+ * `<UserButton />` — Signed-in chrome with an embedded POST form for
+ * sign-out + the double-submit CSRF token.
+ *
+ * Renders nothing when the visitor is anonymous (the parent template
+ * is expected to gate on `<SignedIn>` / `<SignedOut>` for the
+ * pre-sign-in surface). When signed in, renders the user's email or
+ * display name with a POST sign-out form.
+ *
+ * Capability `auth-aware-ssr` / spec `hosted-auth-ui`.
+ *
+ * Usage:
+ *   ```astro
+ *   ---
+ *   import { UserButton } from "@run402/astro/components";
+ *   ---
+ *   <header>
+ *     <SignedIn><UserButton /></SignedIn>
+ *     <SignedOut><a href="/auth/sign-in">Sign in</a></SignedOut>
+ *   </header>
+ *   ```
+ */
+
+// @ts-ignore — `@run402/functions`' `auth` namespace is resolved at
+// build/runtime in the consumer project. The Vite plugin handles the
+// dependency.
+import { auth } from "@run402/functions";
+
+interface Props {
+  /** Where to send the visitor after sign-out succeeds. Validated by
+   *  the gateway — protocol-relative, foreign-origin, embedded-creds
+   *  values are rejected with R402_AUTH_RETURN_TO_INVALID. */
+  returnTo?: string;
+  /** Override the visible label. Default: user's email or "Signed in". */
+  label?: string;
+  class?: string;
+}
+
+const { returnTo = "/", label, class: className = "" } = Astro.props;
+
+// auth.user() returns Actor | null. Triggers the cache-bypass taint —
+// the SSR cache layer will mark this response non-cacheable, which is
+// correct because the rendered HTML depends on the visitor's identity.
+const user = await auth.user();
+const displayLabel = label ?? (user?.email ?? "Signed in");
+
+// Derive the double-submit CSRF token. The hosted /auth/sign-out route
+// re-derives the same value from the visitor's session and rejects any
+// POST that doesn't match. Throws AuthRequiredError if there's no
+// active session — but the parent template should already gate this
+// component on `<SignedIn>`, so we'd only reach this branch on a
+// concurrent sign-out / cookie-expiry race.
+let csrfToken: string | null = null;
+try {
+  csrfToken = user ? auth.csrfToken() : null;
+} catch {
+  // Session disappeared between the auth.user() above and the token
+  // derivation. Render nothing — the next request will see anonymous
+  // state and the parent template's `<SignedOut>` branch will activate.
+  csrfToken = null;
+}
+---
+
+{user && csrfToken && (
+  <form
+    method="POST"
+    action="/auth/sign-out"
+    class={`r402-user-button ${className}`.trim()}
+    data-r402-user-button
+  >
+    <input type="hidden" name="returnTo" value={returnTo} />
+    <input type="hidden" name="_csrf" value={csrfToken} />
+    <span class="r402-user-label">{displayLabel}</span>
+    <button type="submit" class="r402-sign-out">Sign out</button>
+  </form>
+)}
+
+<style>
+  .r402-user-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+  }
+  .r402-user-label {
+    font-size: 0.875rem;
+    color: var(--r402-user-fg, #333);
+  }
+  .r402-sign-out {
+    padding: 0.375rem 0.625rem;
+    font-size: 0.8125rem;
+    color: var(--r402-button-fg, #fff);
+    background: var(--r402-button-bg, #111);
+    border: 0;
+    border-radius: var(--r402-radius, 0.25rem);
+    cursor: pointer;
+  }
+  .r402-sign-out:hover {
+    background: var(--r402-button-hover-bg, #333);
+  }
+</style>

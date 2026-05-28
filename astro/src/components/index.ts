@@ -24,6 +24,28 @@ export { default as Run402Picture } from "./Run402Picture.astro";
 // @ts-expect-error — same reason as Run402Picture above.
 export { default as Run402Image } from "./Run402Image.astro";
 
+// auth-aware-ssr (v2.0). The five hosted-auth chrome components.
+// `<SignIn />` and `<SignUp />` are anonymous-only forms posting to
+// the platform-hosted routes (`/auth/sign-in`, `/auth/sign-up`).
+// `<UserButton />` embeds the signed-in chrome + double-submit CSRF
+// token. `<SignedIn>` / `<SignedOut>` are conditional-render gates
+// that read the actor from `await auth.user()` server-side.
+
+// @ts-expect-error — .astro file, see Run402Picture comment.
+export { default as SignIn } from "./SignIn.astro";
+
+// @ts-expect-error — .astro file, see Run402Picture comment.
+export { default as SignUp } from "./SignUp.astro";
+
+// @ts-expect-error — .astro file, see Run402Picture comment.
+export { default as UserButton } from "./UserButton.astro";
+
+// @ts-expect-error — .astro file, see Run402Picture comment.
+export { default as SignedIn } from "./SignedIn.astro";
+
+// @ts-expect-error — .astro file, see Run402Picture comment.
+export { default as SignedOut } from "./SignedOut.astro";
+
 // Re-export the prop interface + AssetRef shape + error class so
 // consumers can compose project-specific wrappers (e.g., a `<HeroImage>`
 // that wraps `<Run402Image>` with project-default `sizes`) without

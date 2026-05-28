@@ -753,6 +753,44 @@ async function applyCmd(args) {
   const releaseSpec = normalizedManifest.spec;
   const idempotencyKey = normalizedManifest.idempotencyKey;
 
+  // Pre-flight source scan (auth-aware-ssr Section 9). Bypass via
+  // RUN402_DEPLOY_SKIP_SCAN=1 — useful for forcing a deploy when
+  // the scanner has a false positive that the operator has confirmed
+  // is fine. Hits with severity `error` fail the deploy.
+  if (process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
+    try {
+      const { resolveScanRoot, scanSourceTree, SCAN_SEVERITY } = await import(
+        "./doctor-source-scan.mjs"
+      );
+      const scanRoot = opts.dir
+        ? (isAbsolute(opts.dir) ? opts.dir : resolve(process.cwd(), opts.dir))
+        : resolveScanRoot(process.cwd());
+      const findings = scanSourceTree(scanRoot, { cwd: process.cwd() });
+      const errorFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.ERROR);
+      if (errorFindings.length > 0) {
+        const summary = errorFindings.slice(0, 10).map((f) => {
+          const loc = f.line ? `${f.file}:${f.line}` : f.file;
+          return `  ${f.code} ${loc}\n    ${f.message}${f.canonical_name ? `\n    fix: ${f.canonical_name}` : ""}`;
+        }).join("\n");
+        const more = errorFindings.length > 10 ? `\n  ...and ${errorFindings.length - 10} more` : "";
+        fail({
+          code: "R402_AUTH_PREFLIGHT_FAILED",
+          message: `Source scan blocked deploy: ${errorFindings.length} R402_AUTH_* finding(s). Run \`run402 doctor\` for the full list. Bypass with RUN402_DEPLOY_SKIP_SCAN=1 if you're sure.`,
+          details: { findings: errorFindings, summary: `${summary}${more}` },
+        });
+      }
+    } catch (err) {
+      if (err && typeof err === "object" && err.code === "R402_AUTH_PREFLIGHT_FAILED") {
+        throw err;
+      }
+      // Scanner crashed — warn but don't block. The scanner is a safety
+      // net; the deploy should proceed if it can't read the source tree.
+      console.warn(
+        `[deploy] source scan skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   let sdkOpts;
   if (useGithubActionsOidc) {
     sdkOpts = {

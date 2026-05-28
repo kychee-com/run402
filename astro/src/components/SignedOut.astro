@@ -1,0 +1,19 @@
+---
+/**
+ * `<SignedOut>...</SignedOut>` — Renders the slot ONLY when the
+ * active SSR request has no verified actor.
+ *
+ * Pairs with `<SignedIn>`. Together they give the canonical
+ * conditional-render pattern without consumer code touching
+ * cookies or session state directly.
+ *
+ * Capability `auth-aware-ssr` / spec `hosted-auth-ui`.
+ */
+
+// @ts-ignore — resolved in consumer project at build time.
+import { auth } from "@run402/functions";
+
+const user = await auth.user();
+---
+
+{!user && <slot />}

@@ -860,19 +860,26 @@ What does NOT transfer: tier lease (stays with the original owner's billing acco
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
-Built-in helper: `import { db, adminDb, email, ai, assets, getUser } from '@run402/functions'`
-- `db(req)` — caller-context DB client. Forwards the caller's `Authorization` header to PostgREST; RLS policies apply to the caller's role. Routes to `/rest/v1/*`. Use this by default.
+Built-in helper: `import { auth, db, adminDb, email, ai, assets } from '@run402/functions'`
+- `auth.user()` — `Actor | null`. Triggers cache-bypass taint. `Actor` carries `{ id, projectId, sessionId, email, emailVerified, authTime, amr, amrTimes }`; note `id`, NOT `userId`, as the canonical public field. Hallucinated names (`getUser`, `getSession`, `currentUser`, `getServerSession`, `auth.protect`, `auth.signIn`, `auth.logout`, …) throw `R402_AUTH_UNKNOWN_EXPORT` at runtime AND fail `run402 doctor` source scan at deploy.
+- `auth.requireUser()` — `Actor`. 303 → `/auth/sign-in?returnTo=` (HTML) or 401 envelope (JSON) on anonymous. Don't catch — the platform handles redirect-vs-envelope automatically.
+- `auth.requireRole<const R>(role: R)` / `auth.requireMembership<const M>(m: M)` — gate helpers; imply `requireUser`; return `{ user, role }` / `{ user, membership }`. Always read fresh server-side grant state (no positive cache, so revocation is instant across tasks).
+- `auth.requireFresh({ maxAge, amr? })` — per-AMR step-up. Reads `Actor.amrTimes`; a recent password proof does NOT satisfy `{amr: ["passkey"]}`.
+- `auth.fetch(input, init?)` — same-origin-only fetch with synchronous URL validation; `redirect: "manual"` default; never forwards cookies or actor headers across origin hops.
+- `auth.csrfToken()` / `auth.csrfField()` — double-submit token for hosted forms (renders `<input type="hidden" name="_csrf" value="...">`).
+- `auth.sessions.createResponseFromIdentity({ provider, subject, proof, amr, createUser? })` — custom identity proof bridge. Platform verifies the proof end-to-end; raw-userId session minting is NOT in the public API.
+- `auth.sessions.endResponse()` — sign-out: revokes the active session row + returns Set-Cookie clear.
+- `auth.identities.link({ provider, subject, proof })` — atomic nonce consumption + identity INSERT; 409 R402_AUTH_IDENTITY_LINK_CONFLICT on duplicate.
+- `db(req?)` — caller-context DB client. Inside an SSR request with a verified actor, mints a 60s actor JWT (`sub`, `project_id`, `session_id`, `authz_version`) so `run402.current_user_id()` resolves in RLS without any client-side header plumbing. Routes to `/rest/v1/*`. Use this by default; RLS handles `WHERE user_id = current` automatically — adding `.eq("user_id", user.id)` deploy-fails with `R402_AUTH_REDUNDANT_USER_FILTER` unless `// run402-allow-user-filter:` annotated.
 - `adminDb()` — BYPASSRLS DB client. Uses the project's service_key. Routes to `/admin/v1/rest/*` (the gateway rejects `role=service_role` on `/rest/v1/*`). Use ONLY when the function acts on behalf of the platform, not the caller — audit logs, webhook handlers, cron cleanup.
-- `getUser(req)` — verify caller's JWT, returns `{ id, role, email }` or `null`. The `role` is the JWT system role (`anon`/`authenticated`/`project_admin`), NOT the application role from a `requireRole` gate.
-- `getUserId(req)` (v1.51+) — read the gateway-injected `x-run402-user-id` header. Non-null when a `requireAuth` or `requireRole` gate ran successfully. Use this inside a gated function instead of re-decoding the JWT.
-- `getRole(req)` (v1.51+) — read the gateway-injected `x-run402-user-role` header. Non-null only when a `requireRole` gate ran. The value is guaranteed to be in `requireRole.allowed`.
+- `getUserId(req)` / `getRole(req)` — gateway-injected `x-run402-user-id` / `x-run402-user-role` header readers for the function-level `requireAuth` / `requireRole` gate flow (v1.51+, distinct from the v3.0 `auth.*` cookie-session flow above). Both throw `R402_AUTH_UNKNOWN_EXPORT` if imported from `@run402/functions` directly — they were removed as bare exports in v3.0; use `auth.*` for the cookie-session flow or read the headers manually for the gate flow.
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions using project billing authority, not local allowance/x402 signing. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. Add app auth/rate limits before calling it from public routed functions.
 - `assets.put(key, source, opts?)` — upload bytes to the project's blob store from inside a deployed function. Uses the same CAS substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }` object. Options: `contentType`, `visibility` (`"public"` | `"private"`, default `"public"`), `immutable` (default `true`). Returns an `AssetRef` with `url`, `immutableUrl`, `cdnUrl`, `sha256`, `size_bytes`, etc. (camelCase aliases included). Use for user-uploaded content, generated images, runtime-produced files.
 - `assets.fromRef(raw)` (v2.7+) — re-hydrate a stored AssetRef (JSONB column read from your DB) into the typed `AssetRef` shape with camelCase aliases + variant map. Pure-local, no network — safe in SSR render paths. The recommended persistence pattern is to store the full `AssetRef` returned by `r.assets.put` as a JSONB column so variant SHAs + immutable URLs survive the round-trip (they can't be re-derived from `(source_sha, key)` alone). Tolerant of partial inputs: pre-v1.49 blobs come back without `variants` / `width_px` than synthesizing them. Throws only on null/undefined or non-object input.
 - `getRun402Context(req)` (v2.7+) — zero-dependency reader for the full per-request context the gateway populates as `x-run402-*` headers. Returns `{ requestId, projectId, releaseId, host, locale, defaultLocale }` (all `string | null`). Use in non-Astro functions (plain webhook handlers, auth endpoints) instead of hand-rolling `req.headers.get('x-run402-...')` per field — the helper papers over `Request` / `Headers` / plain-object header shapes and any future gateway header renames. Same return shape as `Astro.locals.run402`. Never throws; missing headers come back as `null`.
 
-TypeScript types: `npm install @run402/functions` to get full autocomplete for `db(req)`, `adminDb()`, `getUser()`, `getUserId()`, `getRole()`, `getRun402Context()`, `email.send()`, `ai.translate()`, `ai.generateImage()`, `assets.put()`, and `assets.fromRef()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
+TypeScript types: `npm install @run402/functions@^3` to get full autocomplete for the `auth.*` namespace, `db(req?)`, `adminDb()`, `getRun402Context()`, `email.send()`, `ai.translate()`, `ai.generateImage()`, `assets.put()`, and `assets.fromRef()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
 
 #### db(req).from(table) — caller-context, RLS applies
 
@@ -1336,7 +1343,7 @@ Every invalidate returns `{ deleted, generation, host, path? }`. `generation` is
 ### doctor
 Health + config diagnostics. Agent-DX entrypoint — agents run this first to verify environment before attempting anything else.
 
-- `run402 doctor [--json] [--verbose]` — checks: config dir presence, allowance + rail, keystore wallet count, API base reachability, active tier + lifecycle state, operator health snapshot (binding state + per-attempt verification failure detail since v2.4 / gateway v1.56). Exit 0 on all-pass, 1 on any failure. `--json` emits `{ ok: boolean, checks: [{ name, status, value?, hint?, message? }] }`. When operator email verification is `pending`, the doctor surfaces the per-reason hint from `email_verification.last_challenge.hint` ("publish SPF/DMARC", "reply from registered address", "use Reply button not new message", etc.) along with `attempt_count` / `remaining_attempts` so the operator sees what to fix.
+- `run402 doctor [--json] [--verbose] [--no-scan] [--scan-dir <D>]` — checks: config dir presence, allowance + rail, keystore wallet count, API base reachability, active tier + lifecycle state, operator health snapshot (binding state + per-attempt verification failure detail since v2.4 / gateway v1.56), **source scan** (auth-aware-ssr). Exit 0 on all-pass, 1 on any failure. `--json` emits `{ ok: boolean, checks: [{ name, status, value?, hint?, message? }] }`. When operator email verification is `pending`, the doctor surfaces the per-reason hint from `email_verification.last_challenge.hint` along with `attempt_count` / `remaining_attempts` so the operator sees what to fix. The source scan walks `<cwd>/src` and flags hallucinated SDK auth names (`R402_AUTH_UNKNOWN_EXPORT`), state-changing GET handlers (`R402_AUTH_STATE_CHANGING_GET`), `auth.*` calls in `export const prerender = true` pages (`R402_AUTH_PRERENDERED`), and direct mutation of `internal.sessions.authz_version` (`R402_AUTH_AUTHZ_VERSION_PROHIBITED`). `--no-scan` skips the scan (config-only checks). `--scan-dir <D>` overrides the scan root. `run402 deploy apply` runs the scan as pre-flight and refuses to deploy on any `error`-severity finding (bypass with `RUN402_DEPLOY_SKIP_SCAN=1`).
 
 ### dev
 Astro dev wrapper. Loads `.env.local`, verifies `RUN402_PROJECT_ID` + `RUN402_SERVICE_KEY`, then spawns `astro dev` with the env inherited.
@@ -1383,7 +1390,30 @@ Stable error codes for the Astro SSR runtime. Each carries `code`, `message`, `s
 **Cache layer:**
 
 - `R402_CACHE_UNSUPPORTED_VARY` — response `Vary` references something other than `Accept-Language`. Bypass header emitted; response delivered normally but not cached.
-- `R402_CACHE_AUTH_TAINTED` — informational diagnostic (not an `ok: false` error). Emitted via `x-run402-cache-reason: auth` when render called `getUser()` or a payment primitive. This is the expected uncacheable-by-design behavior.
+- `R402_CACHE_AUTH_TAINTED` — informational diagnostic (not an `ok: false` error). Emitted via `x-run402-cache-reason: auth` when render called `auth.user()` (or any other `auth.*` helper) or a payment primitive. This is the expected uncacheable-by-design behavior.
+
+**Auth-aware SSR (auth-aware-ssr, v3.0):**
+
+22 codes covering the browser-session / actor-context / hosted-UI / SDK surface. See run402.com/llms-full.txt for the full table with per-code fix-it hints. Highlights:
+
+- `R402_AUTH_REQUIRED` — 401 (JSON) / 303 → `/auth/sign-in?returnTo=` (HTML). Auth helper called from an anonymous request.
+- `R402_AUTH_INSUFFICIENT_ROLE` / `R402_AUTH_INSUFFICIENT_MEMBERSHIP` — 403. Authenticated user lacks the named grant; platform does NOT redirect to sign-in (the user IS signed in).
+- `R402_AUTH_FRESHNESS_REQUIRED` — 401 / 303 → `/auth/re-auth`. Per-AMR step-up needed.
+- `R402_AUTH_SESSION_EXPIRED` / `R402_AUTH_SESSION_INVALID` — cookie cleared on response; user re-signs-in.
+- `R402_AUTH_CSRF_ORIGIN_MISMATCH` — 403. Cookie-authenticated unsafe-method request with mismatched / missing Origin and Referer.
+- `R402_AUTH_CSRF_TOKEN_MISMATCH` — 403. Hosted-auth form missing or mismatching the platform CSRF token.
+- `R402_AUTH_BEARER_COOKIE_MISMATCH` / `R402_AUTH_INVALID_BEARER` — 400 / 401. Cookie + Bearer disagree, or valid cookie + malformed Bearer.
+- `R402_AUTH_UNKNOWN_EXPORT` — 500. Hallucinated SDK name (`getUser`, `getSession`, `auth.protect`, …). `details.canonical_name` carries the replacement.
+- `R402_AUTH_PRERENDERED` — 500. `auth.*` called from a prerendered page. Convert to SSR or use a server island.
+- `R402_AUTH_FETCH_ABSOLUTE_URL` — 500. `auth.fetch` rejected a cross-origin / embedded-creds / javascript:/data: / protocol-relative / subdomain-spoof / port-mismatch URL.
+- `R402_AUTH_RETURN_TO_INVALID` — 400. Hosted-auth route got a `returnTo` that's not path-relative or same-origin absolute.
+- `R402_AUTH_IDENTITY_LINK_CONFLICT` — 409. `(project_id, provider, subject)` already linked to another user.
+- `R402_AUTH_SESSION_BRIDGE_UNVERIFIED` — 401. Custom identity proof failed verification, OR consumer accessed the internal-only session-creation primitive.
+- `R402_AUTH_UNKNOWN_IDENTITY` — 401. `createResponseFromIdentity` couldn't resolve identity AND `createUser: true` not set.
+- `R402_AUTH_TENANT_SUFFIX_REQUIRED` — gateway refuses session cookies on `*.run402.com` for non-allowlisted projects. PSL-registered `*.run402.app` + verified custom domains are always allowed.
+- `R402_AUTH_ACTOR_HEADER_SPOOF` — client-supplied reserved actor header was stripped at ingress; diagnostic only.
+- `R402_AUTH_REDUNDANT_USER_FILTER` — deploy-fail (or runtime warn). `.eq("user_id", user.id)` against an RLS-bound table. Add `// run402-allow-user-filter: <reason>` if intentional.
+- `R402_AUTH_AUTHZ_VERSION_PROHIBITED` — deploy-fail. Consumer migration mutates `internal.sessions.authz_version` directly.
 - `R402_CACHE_INVALIDATION_HOST_REQUIRED` — `cache.invalidate('/path')` called outside a request context. Use absolute URL form OR move into a request handler.
 - `R402_CACHE_INVALIDATION_HOST_FORBIDDEN` — cross-project host. Use a host attached to your project (`run402 domains list`).
 

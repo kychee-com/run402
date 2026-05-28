@@ -1,0 +1,38 @@
+---
+/**
+ * `<SignedIn>...</SignedIn>` — Renders the slot ONLY when the active
+ * SSR request has a verified actor. Pairs with `<SignedOut>` for the
+ * conditional-rendering pattern.
+ *
+ * Capability `auth-aware-ssr` / spec `hosted-auth-ui`.
+ *
+ * Rendering-mode awareness:
+ *
+ *   - **SSR** (default for routes that opt out of prerender): the
+ *     component calls `await auth.user()` at server-render time and
+ *     branches in the HTML. Taints the cache so the response isn't
+ *     stored in ISR. This is the common path.
+ *
+ *   - **Prerendered** (`export const prerender = true` on the page):
+ *     `auth.user()` throws `R402_AUTH_PRERENDERED` — the `run402 doctor`
+ *     scan + the `@run402/astro` Vite plugin both fail the build at
+ *     this seam. Convert the page to SSR or use a server island.
+ *
+ * Usage:
+ *   ```astro
+ *   <SignedIn>
+ *     <UserButton />
+ *   </SignedIn>
+ *   <SignedOut>
+ *     <a href="/auth/sign-in">Sign in</a>
+ *   </SignedOut>
+ *   ```
+ */
+
+// @ts-ignore — resolved in consumer project at build time.
+import { auth } from "@run402/functions";
+
+const user = await auth.user();
+---
+
+{user && <slot />}

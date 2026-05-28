@@ -14,6 +14,11 @@
 import { existsSync, statSync } from "node:fs";
 import { CONFIG_DIR, readAllowance, loadKeyStore } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
+import {
+  resolveScanRoot,
+  scanSourceTree,
+  SCAN_SEVERITY,
+} from "./doctor-source-scan.mjs";
 
 const HELP = `run402 doctor — Health and config diagnostics
 
@@ -21,8 +26,10 @@ Usage:
   run402 doctor [--json] [--verbose]
 
 Options:
-  --json       Emit a structured JSON report on stdout
-  --verbose    Include extra detail (timing, error messages)
+  --json         Emit a structured JSON report on stdout
+  --verbose      Include extra detail (timing, error messages)
+  --no-scan      Skip the source-tree scan (config / health checks only)
+  --scan-dir D   Scan a custom directory instead of \`<cwd>/src\`
 
 Checks performed:
   - Config directory exists and is writable
@@ -30,6 +37,11 @@ Checks performed:
   - Keystore has at least one wallet
   - API_BASE is reachable (network check via /health)
   - Active tier resolves and is not 'past_due' / 'frozen'
+  - Source scan: hallucinated SDK auth names (R402_AUTH_UNKNOWN_EXPORT),
+    state-changing GET handlers (R402_AUTH_STATE_CHANGING_GET),
+    auth.* calls in prerendered pages (R402_AUTH_PRERENDERED),
+    direct mutation of internal.sessions.authz_version
+    (R402_AUTH_AUTHZ_VERSION_PROHIBITED).
 
 Exit codes:
   0  — all checks pass
@@ -44,6 +56,9 @@ export async function run(sub, args = []) {
   }
   const json = all.includes("--json");
   const verbose = all.includes("--verbose");
+  const skipScan = all.includes("--no-scan");
+  const scanDirArgIdx = all.indexOf("--scan-dir");
+  const scanDirOverride = scanDirArgIdx >= 0 ? all[scanDirArgIdx + 1] : null;
 
   const checks = [];
 
@@ -222,6 +237,44 @@ export async function run(sub, args = []) {
     });
   }
 
+  // 7. Source-tree scan (auth-aware-ssr Section 9). Detects hallucinated
+  // SDK names, state-changing GETs, auth.* in prerendered pages, and
+  // direct mutation of internal.sessions.authz_version. Hits with severity
+  // `error` block deploy (`run402 deploy` wraps doctor and respects exit
+  // code). Skipped via --no-scan when the user wants config-only checks.
+  if (!skipScan) {
+    try {
+      const scanRoot = scanDirOverride ?? resolveScanRoot(process.cwd());
+      const findings = scanSourceTree(scanRoot, { cwd: process.cwd() });
+      const errorFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.ERROR);
+      const warnFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.WARN);
+      if (findings.length === 0) {
+        checks.push({ name: "source_scan", status: "ok", value: { scan_root: scanRoot, file_count_with_findings: 0 } });
+      } else {
+        checks.push({
+          name: "source_scan",
+          status: errorFindings.length > 0 ? "error" : "warning",
+          value: {
+            scan_root: scanRoot,
+            findings: errorFindings.length + warnFindings.length,
+            errors: errorFindings.length,
+            warnings: warnFindings.length,
+            details: findings,
+          },
+          hint: errorFindings.length > 0
+            ? "Fix the R402_AUTH_* findings above. `run402 deploy` will refuse to ship until these are resolved."
+            : "Source scan emitted warnings (non-blocking). Review and address when convenient.",
+        });
+      }
+    } catch (err) {
+      checks.push({
+        name: "source_scan",
+        status: "skipped",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   // 'warning' counts as ok for exit-code purposes — gaps are surfaced in
   // output but don't fail the doctor. Only hard 'error' / 'missing' /
   // 'empty' fail.
@@ -245,6 +298,17 @@ export async function run(sub, args = []) {
       if (c.message) console.log(`     ${c.message}`);
       if (c.value && c.value.gaps && Array.isArray(c.value.gaps)) {
         for (const gap of c.value.gaps) console.log(`     • ${gap}`);
+      }
+      // Source-scan details — print every finding with file:line + canonical fix-it.
+      if (c.name === "source_scan" && c.value && Array.isArray(c.value.details)) {
+        for (const f of c.value.details) {
+          const sev = f.severity === "error" ? "✗" : "⚠";
+          const location = f.line ? `${f.file}:${f.line}` : f.file;
+          console.log(`     ${sev} ${f.code} ${location}`);
+          console.log(`         ${f.message}`);
+          if (f.canonical_name) console.log(`         fix: ${f.canonical_name}`);
+          if (f.docs) console.log(`         docs: ${f.docs}`);
+        }
       }
     }
   }

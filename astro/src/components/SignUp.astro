@@ -1,0 +1,90 @@
+---
+/**
+ * `<SignUp />` — Mirror of `<SignIn />` but POSTs to `/auth/sign-up`.
+ *
+ * Same security contract: anonymous-only form, no client JS, server
+ * Origin enforcement, server-mints-session-and-303s on success.
+ *
+ * Capability `auth-aware-ssr` / spec `hosted-auth-ui`.
+ */
+
+interface Props {
+  returnTo?: string;
+  class?: string;
+}
+
+const { returnTo = "/", class: className = "" } = Astro.props;
+---
+
+<form
+  method="POST"
+  action="/auth/sign-up"
+  autocomplete="on"
+  class={`r402-sign-up ${className}`.trim()}
+  data-r402-sign-up
+>
+  <input type="hidden" name="returnTo" value={returnTo} />
+
+  <label class="r402-field">
+    <span class="r402-label">Email</span>
+    <input
+      type="email"
+      name="email"
+      required
+      autocomplete="email"
+      class="r402-input"
+    />
+  </label>
+
+  <label class="r402-field">
+    <span class="r402-label">Password</span>
+    <input
+      type="password"
+      name="password"
+      required
+      autocomplete="new-password"
+      minlength="8"
+      class="r402-input"
+    />
+  </label>
+
+  <button type="submit" class="r402-submit">Create account</button>
+</form>
+
+<style>
+  .r402-sign-up {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 24rem;
+    margin: 0 auto;
+  }
+  .r402-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .r402-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .r402-input {
+    padding: 0.5rem 0.75rem;
+    font-size: 1rem;
+    border: 1px solid var(--r402-border, #ccc);
+    border-radius: var(--r402-radius, 0.375rem);
+  }
+  .r402-submit {
+    padding: 0.625rem 1rem;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--r402-button-fg, #fff);
+    background: var(--r402-button-bg, #111);
+    border: 0;
+    border-radius: var(--r402-radius, 0.375rem);
+    cursor: pointer;
+  }
+  .r402-submit:hover {
+    background: var(--r402-button-hover-bg, #333);
+  }
+</style>

@@ -1,7 +1,7 @@
 {
   "name": "@run402/astro",
-  "version": "1.2.2",
-  "description": "Astro integration + <Image> component for Run402. One-line wiring for pre-encoded image variants (3-width WebP ladder + HEIC display_jpeg + blurhash + width/height) with zero runtime function cost.",
+  "version": "2.0.0",
+  "description": "Astro integration for Run402. Auth-aware SSR (<SignIn /> / <UserButton /> / <SignedIn> / <SignedOut> + cookie-session integration), pre-encoded image variants (3-width WebP ladder + HEIC display_jpeg + blurhash), and one-line wiring for run402-hosted projects.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -45,6 +45,11 @@
     },
     "./components/Run402Picture.astro": "./dist/components/Run402Picture.astro",
     "./components/Run402Image.astro": "./dist/components/Run402Image.astro",
+    "./components/SignIn.astro": "./dist/components/SignIn.astro",
+    "./components/SignUp.astro": "./dist/components/SignUp.astro",
+    "./components/UserButton.astro": "./dist/components/UserButton.astro",
+    "./components/SignedIn.astro": "./dist/components/SignedIn.astro",
+    "./components/SignedOut.astro": "./dist/components/SignedOut.astro",
     "./react": {
       "types": "./dist/components/Run402Image/react.d.ts",
       "import": "./dist/components/Run402Image/react.js"
@@ -57,14 +62,14 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc && cp src/Image.astro dist/Image.astro && mkdir -p dist/components && cp src/components/Run402Picture.astro dist/components/Run402Picture.astro && cp src/components/Run402Image.astro dist/components/Run402Image.astro",
+    "build": "tsc && cp src/Image.astro dist/Image.astro && mkdir -p dist/components && cp src/components/Run402Picture.astro dist/components/Run402Picture.astro && cp src/components/Run402Image.astro dist/components/Run402Image.astro && cp src/components/SignIn.astro dist/components/SignIn.astro && cp src/components/SignUp.astro dist/components/SignUp.astro && cp src/components/UserButton.astro dist/components/UserButton.astro && cp src/components/SignedIn.astro dist/components/SignedIn.astro && cp src/components/SignedOut.astro dist/components/SignedOut.astro",
     "test": "node --experimental-test-module-mocks --test --import tsx src/resolver.test.ts src/cache.test.ts src/scanner.test.ts src/uploader.test.ts src/component.test.ts src/manifest.test.ts src/blurhash-decoder.test.ts src/build-manifest.test.ts src/ssr-adapter.test.ts src/release-slice.test.ts src/components/Run402Image/types.test.ts src/components/Run402Image/core.test.ts src/components/Run402Image/react.test.tsx src/components/Run402Image/byte-identity.test.tsx src/components/Run402Image/degradation-manifest.test.ts src/components/Run402Image/wrong-entry-point.test.tsx src/components/Run402Image/avif-deferral.test.ts src/components/Run402Image/jsx-smoke.test.tsx"
   },
   "engines": {
     "node": ">=18"
   },
   "peerDependencies": {
-    "@run402/functions": "^2.7.0",
+    "@run402/functions": "^3.0.0",
     "@run402/sdk": ">=2.18.0",
     "astro": ">=5 <7",
     "react": ">=18.0.0",
@@ -113,6 +118,10 @@
     "run402",
     "astro",
     "astro-integration",
+    "auth",
+    "auth-ssr",
+    "session",
+    "sign-in",
     "image",
     "image-optimization",
     "webp",
