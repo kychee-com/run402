@@ -187,8 +187,7 @@ Quick reference of the public surface (full API lives in the private repo's `pac
 - **`db(req?)`** — caller-context PostgREST client. Inside an SSR request with a verified actor, mints a 60s actor JWT (`sub`, `project_id`, `session_id`, `authz_version`) so `run402.current_user_id()` resolves in RLS without any client-side header plumbing.
 - **`adminDb()`** — service-key client. Routes to `/admin/v1/rest/*`. Use only when the function acts on behalf of the platform, not the caller.
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL, always BYPASSRLS.
-- **`getUserId(req)`** (v1.51+) — read the gateway-injected `x-run402-user-id` header. Non-null when a `requireAuth` or `requireRole` gate ran successfully on this dispatch.
-- **`getRole(req)`** (v1.51+) — read the gateway-injected `x-run402-user-role` header. Non-null when a `requireRole` gate ran successfully (value is guaranteed to be in `requireRole.allowed`).
+- For per-user gating in functions OUTSIDE the cookie-session flow: read `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")` directly (the gateway injects these when a `requireAuth` / `requireRole` deploy-spec gate ran). The legacy `getUser(req)` / `getUserId(req)` / `getRole(req)` bare exports were retired in v3.0 — they now throw `R402_AUTH_UNKNOWN_EXPORT`. For the canonical cookie-session flow, use `auth.*` above.
 - **`email.send(opts)`** — send email from the project's mailbox (raw HTML or template).
 - **`ai.translate(text, to, opts?)`**, **`ai.moderate(text)`**, **`ai.generateImage({ prompt, aspect? })`** — project-billed AI helpers using the function's service-key auth.
 - **`assets.put(key, source, opts?)`** — in-function asset upload through the service-key `/apply/v1/service-asset-put` path. Uses the same CAS/activation substrate as deploy-time assets and returns SDK-compatible `AssetRef` snake_case + camelCase fields.
