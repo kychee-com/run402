@@ -30,27 +30,17 @@ export async function handleListProjects(args: {
     const lines = [
       `## Projects for ${wallet} (${body.projects.length})`,
       ``,
-      `Tier is per billing account, not per project — every row below shares`,
-      `the same account-level tier and quota pool. Use \`tier_status\` to see`,
-      `the pooled api_calls / storage_bytes across all of these projects.`,
+      `Tier and lifecycle live on the billing account, not on each project.`,
+      `Call \`tier_status\` for the wallet's account tier, lifecycle state, and`,
+      `pooled api_calls / storage_bytes across every project below.`,
       ``,
-      `Status fields (gateway v1.57+):`,
-      `- **Effective status**: derived state for serving — \`active\` /`,
-      `  \`past_due\` / \`frozen\` / \`dormant\` / \`archived\` / \`deleted\`.`,
-      `- **Account lifecycle**: shared across every project on the same`,
-      `  billing account. Differs from effective status when a single project`,
-      `  is archived or deleted while siblings keep serving.`,
-      `- **Lease perpetual**: operator escape hatch (mirrors the account's`,
-      `  \`lease_perpetual\` flag). When \`true\`, the account never advances`,
-      `  past \`active\` regardless of lease expiry — replaces the v1.56 pin.`,
-      ``,
-      `| ID | Name | Account tier | Effective status | Account lifecycle | Lease perpetual |`,
-      `|----|------|--------------|------------------|-------------------|-----------------|`,
+      `| ID | Name | API calls | Storage (bytes) | Created |`,
+      `|----|------|----------:|----------------:|---------|`,
     ];
 
     for (const p of body.projects) {
       lines.push(
-        `| \`${p.id}\` | ${p.name} | ${p.tier} | ${p.effective_status} | ${p.account_lifecycle_state} | ${p.lease_perpetual ? "yes" : "no"} |`,
+        `| \`${p.id}\` | ${p.name} | ${p.api_calls} | ${p.storage_bytes} | ${p.created_at} |`,
       );
     }
 
