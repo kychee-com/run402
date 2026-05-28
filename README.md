@@ -22,7 +22,7 @@ This monorepo ships every surface an agent can pick up:
 | [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells — JSON in, JSON out, exit code on failure |
 | [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code — core Run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
-| [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) | Imported _inside_ deployed functions (`db(req)`, `adminDb()`, `getUser()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor. Source lives in the private gateway monorepo (it's bundled into your function zip at deploy time, so it co-evolves with the gateway). |
+| [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) | Imported _inside_ deployed functions (`db(req?)`, `adminDb()`, `auth.user()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor. Source lives in the private gateway monorepo (it's bundled into your function zip at deploy time, so it co-evolves with the gateway). |
 
 All five interfaces share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. `@run402/functions` is the in-function helper that runs inside deployed code; the npm package on the registry stays in lockstep with what the gateway bundles, even though its source ships from the private monorepo. Pick whichever interface fits your runtime.
 
@@ -222,14 +222,15 @@ CI deploys are intentionally narrow: `site`, `functions`, `database`, absent/cur
 Inside a deployed function, import from `@run402/functions`. Two distinct DB clients keep RLS clean:
 
 ```ts
-import { db, adminDb, getUser, email, ai } from "@run402/functions";
+import { db, adminDb, auth, email, ai } from "@run402/functions";
 
 export default async (req: Request) => {
-  const user = await getUser(req);
-  if (!user) return new Response("unauthorized", { status: 401 });
+  const user = await auth.requireUser();
 
-  // Caller-context — Authorization header is forwarded; RLS evaluates against the caller's role.
-  const mine = await db(req).from("items").select("*").eq("user_id", user.id);
+  // Caller-context — db() mints a 60s actor JWT so run402.current_user_id() resolves in RLS.
+  // No .eq("user_id", user.id) needed — RLS already binds the visitor's rows; the redundant
+  // filter is a deploy-fail (R402_AUTH_REDUNDANT_USER_FILTER) under @run402/functions v3.0+.
+  const mine = await db().from("items").select("*");
 
   // BYPASSRLS — for platform-authored writes (audit logs, cron cleanup, webhook handlers).
   await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
@@ -246,11 +247,10 @@ export default async (req: Request) => {
 `adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS. It returns a flat `Promise<Record<string, unknown>[]>` (just the rows — no envelope):
 
 ```ts
-import { adminDb, getUser } from "@run402/functions";
+import { adminDb, auth } from "@run402/functions";
 
 export default async (req: Request) => {
-  const user = await getUser(req);
-  if (!user) return new Response("unauthorized", { status: 401 });
+  const user = await auth.requireUser();
 
   const rows = await adminDb().sql(
     "SELECT count(*)::int AS n FROM items WHERE user_id = $1",
@@ -298,7 +298,7 @@ await p.assets.put("hello.txt", { content: "hi" });
 
 The SDK is organised as 22 namespaces: `projects`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
 
-**Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+ — `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `getUser()` / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
+**Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+ — `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `auth.*` helpers / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 
 ## CLI — `run402`
 
