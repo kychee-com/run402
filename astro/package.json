@@ -1,6 +1,6 @@
 {
   "name": "@run402/astro",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Astro integration for Run402. Auth-aware SSR (<SignIn /> / <UserButton /> / <SignedIn> / <SignedOut> + cookie-session integration), pre-encoded image variants (3-width WebP ladder + HEIC display_jpeg + blurhash), and one-line wiring for run402-hosted projects.",
   "type": "module",
   "main": "dist/index.js",
