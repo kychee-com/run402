@@ -70,6 +70,10 @@ const { returnTo = "/", class: className = "" } = Astro.props;
   </label>
 
   <button type="submit" class="r402-submit">Sign in</button>
+  <!-- Slot for consumer-supplied extras (OAuth buttons, a magic-link link,
+       a "forgot password" link, extra fields). Empty by default, so the
+       zero-config render preserves the prior DOM (§6.1/§6.3). -->
+  <slot />
 </form>
 
 <style>

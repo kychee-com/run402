@@ -160,6 +160,9 @@ const show = (s: Section): boolean =>
         <a class="r402-as-link" href="/auth/sign-in/oauth/google/start?intent=link">Connect Google</a>
       </section>
     )}
+    <!-- Consumer-supplied extra panels; empty by default (prior DOM
+         preserved). §6.1/§6.3. -->
+    <slot />
   </div>
 )}
 

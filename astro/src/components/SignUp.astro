@@ -49,6 +49,9 @@ const { returnTo = "/", class: className = "" } = Astro.props;
   </label>
 
   <button type="submit" class="r402-submit">Create account</button>
+  <!-- Consumer-supplied extras (terms checkbox, OAuth buttons, etc.); empty
+       by default, so the zero-config render preserves the prior DOM (§6.1/§6.3). -->
+  <slot />
 </form>
 
 <style>

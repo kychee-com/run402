@@ -73,6 +73,9 @@ try {
     <input type="hidden" name="_csrf" value={csrfToken} />
     <span class="r402-user-label">{displayLabel}</span>
     <button type="submit" class="r402-sign-out">Sign out</button>
+    <!-- Consumer extras (menu items, account links); empty by default so the
+         zero-config render preserves the prior DOM (§6.1/§6.3). -->
+    <slot />
   </form>
 )}
 
