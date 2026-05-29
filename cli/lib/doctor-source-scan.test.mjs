@@ -1,8 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   scanFileContent,
+  scanSourceTree,
+  readDeclaredCapabilities,
   SCAN_SEVERITY,
   _testOnly_hallucinatedNames,
   _testOnly_authProperties,
@@ -314,5 +319,99 @@ describe("scanFileContent — line numbers + file paths", () => {
       filePath: "src/pages/account.astro",
     });
     assert.equal(findings[0].file, "src/pages/account.astro");
+  });
+});
+
+describe("scanFileContent — tenant-assertion session-mint capability (#8, §5.3 / 7.9)", () => {
+  const MINT = 'auth.sessions.createResponseFromTenantAssertion({ tenant, user, method: "password" });';
+
+  it("flags a mint call when no capability is declared (default opts)", () => {
+    const content = [
+      'import { auth } from "@run402/functions";',
+      "export default async (req) =>",
+      `  ${MINT}`,
+    ].join("\n");
+    const findings = scanFileContent(content, { filePath: "src/pages/api/login.ts" });
+    const f = findings.find(
+      (x) => x.code === "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING",
+    );
+    assert.ok(f, "should flag the mint call");
+    assert.equal(f.severity, SCAN_SEVERITY.WARN);
+    assert.equal(f.line, 3);
+    assert.equal(f.file, "src/pages/api/login.ts");
+    assert.match(f.fix, /auth\.sessionMint/);
+    assert.match(f.message, /R402_AUTH_UNTRUSTED_CONTEXT/);
+  });
+
+  it("suppresses when declaredCapabilities (array) includes auth.sessionMint", () => {
+    const findings = scanFileContent(MINT, {
+      declaredCapabilities: ["auth.sessionMint"],
+    });
+    assert.ok(
+      !findings.some((f) => f.code === "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING"),
+    );
+  });
+
+  it("suppresses when declaredCapabilities (Set) includes auth.sessionMint", () => {
+    const findings = scanFileContent(MINT, {
+      declaredCapabilities: new Set(["auth.sessionMint"]),
+    });
+    assert.ok(
+      !findings.some((f) => f.code === "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING"),
+    );
+  });
+
+  it("does NOT flag the distinct createResponseFromIdentity proof path", () => {
+    const content =
+      "auth.sessions.createResponseFromIdentity({ provider, subject, proof, amr });";
+    const findings = scanFileContent(content);
+    assert.ok(
+      !findings.some((f) => f.code === "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING"),
+    );
+  });
+});
+
+describe("readDeclaredCapabilities — run402.config.json capability union", () => {
+  function writeConfig(obj) {
+    const dir = mkdtempSync(join(tmpdir(), "r402-doctor-cap-"));
+    writeFileSync(join(dir, "run402.config.json"), JSON.stringify(obj));
+    return dir;
+  }
+
+  it("collects capabilities across functions.replace + functions.set", () => {
+    const dir = writeConfig({
+      functions: {
+        replace: { api: { capabilities: ["auth.sessionMint"] } },
+        set: { cron: { capabilities: ["other.cap"] } },
+      },
+    });
+    const caps = readDeclaredCapabilities(dir);
+    assert.ok(caps.has("auth.sessionMint"));
+    assert.ok(caps.has("other.cap"));
+  });
+
+  it("returns an empty set when no config / no capabilities", () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), "r402-doctor-nocfg-"));
+    assert.equal(readDeclaredCapabilities(emptyDir).size, 0);
+    const noCapDir = writeConfig({ functions: { replace: { api: { config: {} } } } });
+    assert.equal(readDeclaredCapabilities(noCapDir).size, 0);
+  });
+
+  it("scanSourceTree suppresses the mint warning when the config declares it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "r402-doctor-tree-"));
+    mkdirSync(join(dir, "src"));
+    writeFileSync(
+      join(dir, "src", "login.ts"),
+      "export default async () => auth.sessions.createResponseFromTenantAssertion({});",
+    );
+    writeFileSync(
+      join(dir, "run402.config.json"),
+      JSON.stringify({ functions: { replace: { api: { capabilities: ["auth.sessionMint"] } } } }),
+    );
+    const findings = scanSourceTree(join(dir, "src"), { cwd: dir });
+    assert.ok(
+      !findings.some((f) => f.code === "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING"),
+      "config-declared capability should suppress the tree-scan warning",
+    );
   });
 });

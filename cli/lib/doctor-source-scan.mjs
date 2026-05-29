@@ -339,6 +339,49 @@ export function scanFileContent(content, opts = {}) {
     });
   }
 
+  // 8) Tenant-assertion session-mint call without the declared capability.
+  //    `auth.sessions.createResponseFromTenantAssertion(...)` mints a browser
+  //    session from a tenant's vouching. It works ONLY in a function whose
+  //    deploy/apply spec declares `capabilities: ["auth.sessionMint"]`
+  //    (FunctionSpec.capabilities — sibling to `config`, since the platform
+  //    has no code-export metadata channel). Service-key presence is NOT
+  //    sufficient. Without the capability the gateway returns
+  //    R402_AUTH_UNTRUSTED_CONTEXT at runtime and mints no session.
+  //
+  //    The pure file scanner can't see the per-function spec, so the caller
+  //    threads `opts.declaredCapabilities` (the union of capabilities declared
+  //    across run402.config.json function entries — see readDeclaredCapabilities).
+  //    We suppress the finding when "auth.sessionMint" is present anywhere in
+  //    that union. Global-union (not per-file) is a deliberate precision
+  //    trade-off: the file→function-entry mapping isn't reliable from source,
+  //    and the runtime gate catches the rare "function A declared it, function
+  //    B forgot" case. WARN severity (never block deploy): an inline/SDK spec
+  //    the doctor can't read might declare the capability.
+  const declaredCaps =
+    opts.declaredCapabilities instanceof Set
+      ? opts.declaredCapabilities
+      : new Set(Array.isArray(opts.declaredCapabilities) ? opts.declaredCapabilities : []);
+  if (!declaredCaps.has("auth.sessionMint")) {
+    const mintCallRegex = /\bcreateResponseFromTenantAssertion\s*\(/g;
+    let mintMatch;
+    while ((mintMatch = mintCallRegex.exec(content)) !== null) {
+      findings.push({
+        code: "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING",
+        severity: SCAN_SEVERITY.WARN,
+        file: filePath,
+        line: lineNumberFor(content, mintMatch.index),
+        message:
+          "createResponseFromTenantAssertion (tenant-assertion session mint) requires the " +
+          '"auth.sessionMint" capability, which no function declares in run402.config.json. ' +
+          "Without it the gateway returns R402_AUTH_UNTRUSTED_CONTEXT at runtime and mints no session.",
+        fix:
+          'Add "capabilities": ["auth.sessionMint"] to this function\'s entry in run402.config.json ' +
+          '(under functions.replace.<name>, a sibling to "config"). A service key is NOT sufficient.',
+        docs: "https://docs.run402.com/auth/tenant-assertion#capability",
+      });
+    }
+  }
+
   return findings;
 }
 
@@ -347,6 +390,10 @@ export function scanFileContent(content, opts = {}) {
  *  line for stable output. */
 export function scanSourceTree(srcDir, opts = {}) {
   const findings = [];
+  // Capability picture for the tenant-assertion mint check (#8). Read from
+  // run402.config.json unless the caller passed it explicitly (tests do).
+  const declaredCapabilities =
+    opts.declaredCapabilities ?? readDeclaredCapabilities(opts.cwd ?? srcDir);
   walk(srcDir, (filePath) => {
     if (!SCANNED_EXTENSIONS.has(extname(filePath))) return;
     let content;
@@ -362,7 +409,10 @@ export function scanSourceTree(srcDir, opts = {}) {
       return;
     }
     findings.push(
-      ...scanFileContent(content, { filePath: relative(opts.cwd ?? srcDir, filePath) }),
+      ...scanFileContent(content, {
+        filePath: relative(opts.cwd ?? srcDir, filePath),
+        declaredCapabilities,
+      }),
     );
   });
   findings.sort((a, b) => {
@@ -408,6 +458,38 @@ export function _testOnly_hallucinatedNames() {
 
 export function _testOnly_authProperties() {
   return HALLUCINATED_AUTH_PROPERTIES.slice();
+}
+
+/** Read the union of `capabilities` declared across all function entries in
+ *  `run402.config.json` (the apply spec). Used by the tenant-assertion mint
+ *  check (#8) to suppress the warning when "auth.sessionMint" is declared.
+ *
+ *  Functions live under `functions.replace.<name>` / `functions.set.<name>`
+ *  with `capabilities?: string[]` as a sibling to `config`. Best-effort:
+ *  a missing or malformed config returns an empty set (the scanner then
+ *  warns, which is the safe default — the runtime gate is the hard
+ *  enforcement). Returns a `Set<string>`. */
+export function readDeclaredCapabilities(cwd = process.cwd()) {
+  const caps = new Set();
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(join(cwd, "run402.config.json"), "utf8"));
+  } catch {
+    return caps; // no config / unreadable / malformed → nothing declared
+  }
+  const fns = parsed?.functions;
+  if (!fns || typeof fns !== "object") return caps;
+  for (const bucket of ["replace", "set", "patch"]) {
+    const entries = fns[bucket];
+    if (!entries || typeof entries !== "object") continue;
+    for (const entry of Object.values(entries)) {
+      const declared = entry?.capabilities;
+      if (Array.isArray(declared)) {
+        for (const cap of declared) if (typeof cap === "string") caps.add(cap);
+      }
+    }
+  }
+  return caps;
 }
 
 /** Resolve the project's src/ directory. Astro convention is `<root>/src`;
