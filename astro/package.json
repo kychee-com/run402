@@ -63,7 +63,7 @@
   ],
   "scripts": {
     "build": "tsc && cp src/Image.astro dist/Image.astro && mkdir -p dist/components && cp src/components/Run402Picture.astro dist/components/Run402Picture.astro && cp src/components/Run402Image.astro dist/components/Run402Image.astro && cp src/components/SignIn.astro dist/components/SignIn.astro && cp src/components/SignUp.astro dist/components/SignUp.astro && cp src/components/UserButton.astro dist/components/UserButton.astro && cp src/components/SignedIn.astro dist/components/SignedIn.astro && cp src/components/SignedOut.astro dist/components/SignedOut.astro && cp src/components/AccountSecurity.astro dist/components/AccountSecurity.astro",
-    "test": "node --experimental-test-module-mocks --test --import tsx src/resolver.test.ts src/cache.test.ts src/scanner.test.ts src/uploader.test.ts src/component.test.ts src/manifest.test.ts src/blurhash-decoder.test.ts src/build-manifest.test.ts src/ssr-adapter.test.ts src/release-slice.test.ts src/components/Run402Image/types.test.ts src/components/Run402Image/core.test.ts src/components/Run402Image/react.test.tsx src/components/Run402Image/byte-identity.test.tsx src/components/Run402Image/degradation-manifest.test.ts src/components/Run402Image/wrong-entry-point.test.tsx src/components/Run402Image/avif-deferral.test.ts src/components/Run402Image/jsx-smoke.test.tsx"
+    "test": "node --experimental-test-module-mocks --test --import tsx src/resolver.test.ts src/cache.test.ts src/scanner.test.ts src/uploader.test.ts src/component.test.ts src/manifest.test.ts src/blurhash-decoder.test.ts src/build-manifest.test.ts src/ssr-adapter.test.ts src/release-slice.test.ts src/components/SignIn.test.ts src/components/Run402Image/types.test.ts src/components/Run402Image/core.test.ts src/components/Run402Image/react.test.tsx src/components/Run402Image/byte-identity.test.tsx src/components/Run402Image/degradation-manifest.test.ts src/components/Run402Image/wrong-entry-point.test.tsx src/components/Run402Image/avif-deferral.test.ts src/components/Run402Image/jsx-smoke.test.tsx"
   },
   "engines": {
     "node": ">=18"
@@ -96,6 +96,7 @@
     "esbuild": "^0.24.0"
   },
   "devDependencies": {
+    "@astrojs/compiler": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

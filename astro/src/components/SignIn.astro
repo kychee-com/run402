@@ -8,13 +8,37 @@
  * visitors get a redirect back to `returnTo` (no point re-rendering
  * sign-in for someone with an active session).
  *
- * The component carries NO client-side JavaScript — it's a plain HTML
+ * The default render carries NO client-side JavaScript — it's a plain HTML
  * form that submits to the platform. CSRF protection comes from the
  * gateway's Origin enforcement; for hosted routes the gateway is also
  * the authoritative double-submit verifier (no token visible to anon
  * visitors — sign-in has no session to derive from).
  *
- * Capability `auth-aware-ssr` / spec `hosted-auth-ui`.
+ * ## `methods` — declarative multi-method sign-in
+ *
+ * Pass `methods` to render more than the built-in email/password form. The
+ * methods render in the order given, separated by an "or" divider:
+ *
+ *   - `"password"`   (default) — the email/password `<form action="/auth/sign-in">`. **No JS.**
+ *   - `"magic_link"` — a separate form posting to `/auth/magic-link/send`
+ *                      (the gateway emails a link + returns a non-enumerating 200). **No JS.**
+ *   - `"google"`     — a link to `/auth/sign-in/oauth/google/start?returnTo=…`
+ *                      (the gateway 303s through Google + mints the cookie on callback). **No JS.**
+ *   - `"passkey"`    — a button + a small WebAuthn `<script>` that drives the
+ *                      hosted `/auth/passkeys/login/options` → `/verify` ceremony.
+ *                      This is the ONLY method that ships client JS — WebAuthn
+ *                      (`navigator.credentials.get`) is a browser-only API. The
+ *                      button hides itself when `window.PublicKeyCredential` is
+ *                      unavailable. The `<script>` is bundled/hoisted by Astro.
+ *
+ * **Additive-minor DOM contract (§6.1/§6.3 "Non-breaking no-slot upgrade").**
+ * When `methods` is omitted/undefined OR exactly `["password"]`, the rendered
+ * DOM, class names, `<slot/>`, and `<style>` are BYTE-IDENTICAL to the prior
+ * component. Existing consumers upgrading see zero change. The extra method
+ * entries + the extended `.r402-*` styles render only when other methods are
+ * present.
+ *
+ * Capability `auth-aware-ssr` / `auth-hosted-surface-parity` / spec `hosted-auth-ui`.
  *
  * Usage:
  *   ```astro
@@ -22,8 +46,19 @@
  *   import { SignIn } from "@run402/astro/components";
  *   ---
  *   <SignIn returnTo="/dashboard" />
+ *   <SignIn returnTo="/dashboard" methods={["password", "google", "passkey"]} />
  *   ```
  */
+
+import {
+  type SignInMethod,
+  isDefaultOnly,
+  normalizeMethods,
+  includesPassword,
+  buildExtraMethodsHtml,
+  EXTRA_METHOD_CSS,
+  PASSKEY_SCRIPT,
+} from "./sign-in-methods.js";
 
 interface Props {
   /** Where to send the visitor after a successful sign-in. Must be a
@@ -33,11 +68,31 @@ interface Props {
   returnTo?: string;
   /** Optional extra class applied to the form wrapper. */
   class?: string;
+  /** Which sign-in methods to render, in this order. Defaults to
+   *  `["password"]`. `"password"` / `"magic_link"` / `"google"` are no-JS;
+   *  `"passkey"` ships a small WebAuthn script. Omitting it (or passing
+   *  exactly `["password"]`) keeps the byte-identical default render. */
+  methods?: Array<SignInMethod>;
 }
 
-const { returnTo = "/", class: className = "" } = Astro.props;
----
+const { returnTo = "/", class: className = "", methods } = Astro.props;
 
+// §6.1/§6.3: the default case renders the verbatim original markup below.
+const defaultOnly = isDefaultOnly(methods);
+const resolved = normalizeMethods(methods);
+const hasPassword = includesPassword(resolved);
+const hasPasskey = resolved.includes("passkey");
+// Extra (non-password) method markup, divider-interleaved. A leading divider
+// is added when the password form was rendered just above (so "or" sits
+// between password and the next method).
+const extraMethodsHtml = buildExtraMethodsHtml(resolved, returnTo, hasPassword);
+
+// §6.1/§6.3 byte-identical default: when `methods` is omitted or exactly
+// ["password"], the `defaultOnly` branch below renders the verbatim
+// pre-change component (same DOM, classes, slot, surrounding whitespace).
+// The multi-method `<div>` branch renders only when other methods are present.
+---
+{defaultOnly ? (
 <form
   method="POST"
   action="/auth/sign-in"
@@ -75,7 +130,49 @@ const { returnTo = "/", class: className = "" } = Astro.props;
        zero-config render preserves the prior DOM (§6.1/§6.3). -->
   <slot />
 </form>
+) : (
+  <div class={`r402-sign-in-methods ${className}`.trim()} data-r402-sign-in-methods>
+    {hasPassword && (
+      <form
+        method="POST"
+        action="/auth/sign-in"
+        autocomplete="on"
+        class="r402-sign-in"
+        data-r402-sign-in
+      >
+        <input type="hidden" name="returnTo" value={returnTo} />
 
+        <label class="r402-field">
+          <span class="r402-label">Email</span>
+          <input
+            type="email"
+            name="email"
+            required
+            autocomplete="email"
+            class="r402-input"
+          />
+        </label>
+
+        <label class="r402-field">
+          <span class="r402-label">Password</span>
+          <input
+            type="password"
+            name="password"
+            required
+            autocomplete="current-password"
+            class="r402-input"
+          />
+        </label>
+
+        <button type="submit" class="r402-submit">Sign in</button>
+      </form>
+    )}
+    <Fragment set:html={extraMethodsHtml} />
+    {hasPasskey && <script set:html={PASSKEY_SCRIPT} is:inline />}
+    <!-- Slot for consumer-supplied extras; empty by default. §6.1/§6.3. -->
+    <slot />
+  </div>
+)}
 <style>
   /* Styling is intentionally minimal — consumers override via the
      `class` prop or by re-styling `.r402-*` selectors in their global
@@ -116,3 +213,22 @@ const { returnTo = "/", class: className = "" } = Astro.props;
     background: var(--r402-button-hover-bg, #333);
   }
 </style>
+
+{!defaultOnly && (
+  <!-- Extra method chrome. is:global because the method markup is spliced via
+       set:html and therefore carries no scoped-style attribute; these rules
+       target the .r402-* method classes the same way the consumer would. -->
+  <style is:global set:html={`
+  .r402-sign-in-methods {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 24rem;
+    margin: 0 auto;
+  }
+  .r402-sign-in-methods .r402-sign-in {
+    margin: 0;
+    max-width: none;
+  }
+${EXTRA_METHOD_CSS}`} />
+)}

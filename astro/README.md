@@ -138,6 +138,180 @@ import { SignedIn, SignedOut, SignIn, UserButton } from "@run402/astro";
 </SignedOut>
 ```
 
+## Authentication
+
+Run402 ships a complete multi-tenant auth surface — password, OAuth (Google), passkeys, magic-link, hosted sign-up, and full account management — every ceremony minting a host-only session cookie on the tenant origin. **In an Astro project you almost never touch a route or a fetch: you render a component.** The four headless components (`<SignIn>`, `<SignUp>`, `<UserButton>`, `<AccountSecurity>`) own CSRF, freshness step-up, re-auth redirects, session rotation, and the passkey/OAuth ceremonies for you.
+
+Requires `@run402/astro@2.1.0+` (the components) and `@run402/functions@3.2.0+` (the server-side `auth.*` namespace, bundled into your SSR runtime automatically).
+
+### Which auth tier do I use? (decision tree)
+
+Pick the FIRST row that matches. The everyday Astro answer is always a component — stop at row 1.
+
+1. **Browser auth in an Astro site → use the components.** `<SignIn>` / `<SignUp>` / `<UserButton>` / `<AccountSecurity>`. Zero route code, zero fetch, no client JS by default. This covers sign-in, sign-up, sign-out, password change, passkeys, sessions, and identity link/unlink. **This is the lede — reach for anything below only when a component genuinely can't express your case.**
+2. **Browser auth, but NOT Astro (React-only, vanilla, another framework) → drive the hosted `/auth/*` routes directly** (the documented-advanced contract). The same hosted ceremonies the components POST to: `/auth/sign-in`, `/auth/sign-up`, `/auth/sign-out`, `/auth/magic-link/send` → `/auth/magic-link` → `/auth/magic-link/confirm`, `/auth/passkeys/{login,register}/options` + `/verify`, `/auth/account/*`. _(A framework-neutral `@run402/browser-auth` helper that wraps these is a planned future follow-up — not shipped yet; the hosted routes are the contract until then.)_
+3. **Machine / server-to-server / mobile (no browser, no cookie) → use the HTTP `/auth/v1/*` API** with a Bearer JWT. This is the classic non-browser path and is unchanged.
+4. **You verify credentials against your OWN store (bcrypt, a custom users table, an external IdP) and want a Run402 browser session → `auth.sessions.createResponseFromTenantAssertion(...)`** from inside a routed function, gated by the `auth.sessionMint` capability. Your app *vouches* for the user after its own check. See [Tenant assertion vs cryptographic proof](#two-mint-primitives-tenant-assertion-vs-cryptographic-proof) below.
+5. **You hold a verifiable cryptographic proof (a wallet SIWX signature, an OIDC JWT, an admin-registered provider proof) → `auth.sessions.createResponseFromIdentity(...)`.** Run402 itself verifies the proof. This is a *distinct* trust class from row 4 — not sugar over it.
+
+> The components are the answer to the common case. Never hand-roll a `fetch("/auth/...")` as your happy path — if you find yourself writing one in an Astro page, you've skipped row 1.
+
+### The four components
+
+```astro
+---
+import { SignIn, SignUp, UserButton, AccountSecurity, SignedIn, SignedOut } from "@run402/astro/components";
+---
+<!-- Sign-in. `methods` renders the email/password form plus any of OAuth,
+     magic-link, and passkey — each wired to its hosted ceremony for you.
+     The default <slot/> stays available for white-label extras (e.g. a
+     "forgot password" link). -->
+<SignedOut>
+  <SignIn returnTo="/portal" methods={["password", "google", "magic_link", "passkey"]} />
+</SignedOut>
+
+<!-- Signed-in chrome with a sign-out form (CSRF token embedded for you). -->
+<SignedIn>
+  <UserButton returnTo="/" />
+</SignedIn>
+
+<!-- Account-management panel — render only the sections you want, in order. -->
+<SignedIn>
+  <AccountSecurity sections={["password", "passkeys", "sessions", "identities"]} />
+</SignedIn>
+```
+
+> **Shipped component surface (v2.2.0).** `<SignIn>` accepts `returnTo`, `class`, a default `<slot/>`, and **`methods?: Array<"password" | "magic_link" | "google" | "passkey">`** (default `["password"]`); `<SignUp>` accepts `returnTo` + `class` + `<slot/>`; `<UserButton>` accepts `returnTo`, `label`, `class`; `<AccountSecurity>` accepts `sections` and `class`. `methods` renders each requested ceremony wired to its hosted route — `password`/`magic_link`/`google` are no-JS forms/links (`/auth/sign-in`, `/auth/magic-link/send`, `/auth/sign-in/oauth/google/start`); `passkey` ships a small encapsulated WebAuthn `<script>` that drives `/auth/passkeys/login/{options,verify}`. **Omitting `methods` (or passing exactly `["password"]`) renders the prior email/password form byte-identically — a non-breaking minor upgrade** (§6.1/§6.3). The default `<slot/>` remains for white-label extras (e.g. a "forgot password" link). Never a hand-rolled fetch.
+
+- **`<SignIn>`** — anonymous-only sign-in. Pass `methods={[…]}` to render the email/password form plus any of OAuth / magic-link / passkey, each wired to its hosted ceremony (no hand-rolled fetch); the default `<slot/>` remains for white-label extras (e.g. a "forgot password" link). `returnTo` is server-validated (relative path or same-origin absolute; everything else → `R402_AUTH_RETURN_TO_INVALID`).
+- **`<SignUp>`** — mirror of `<SignIn>`, posts to `/auth/sign-up`. Duplicate-email is non-enumerating (same response shape as a fresh sign-up).
+- **`<UserButton>`** — signed-in chrome: the user's email/label + a POST sign-out form carrying the double-submit CSRF token. Renders nothing when anonymous (gate it inside `<SignedIn>`).
+- **`<AccountSecurity sections={[…]} />`** — the component-first account panel. Each requested section is a plain-HTML form POSTing to the hosted `/auth/account/*` routes; the gateway enforces freshness step-up, session rotation, and host-gating server-side. Sections:
+  - `"password"` — set or change the Run402 password (renders "Set" vs "Change" from `has_run402_password`). Freshness-gated; rotates other sessions on success.
+  - `"passkeys"` — show the registered-passkey count + remove one; **Add** links to the hosted register ceremony (WebAuthn `navigator.credentials` runs on the hosted page, not in the server-rendered form).
+  - `"sessions"` — revoke a single session or **Sign out everywhere**.
+  - `"identities"` — list linked OAuth identities + unlink; **Connect** runs the link-to-existing-account OAuth ceremony (the `startLink` redirect+proof flow) against the already-signed-in account — this is link-to-existing, NOT sign-in-with.
+
+`<SignedIn>` / `<SignedOut>` are conditional-render gates that read `await auth.user()` server-side; use them to choose the pre- vs post-sign-in surface.
+
+**Cold-prompt answers** (the canonical one-liners):
+- "Add passkey sign-in" → `<SignIn returnTo="/portal" methods={["password", "passkey"]} />` — the component renders the passkey button and drives the WebAuthn `/options` → `/verify` round-trip for you.
+- "Let users change their password" → `<AccountSecurity sections={["password"]} />`
+- "Sign out everywhere" → `<AccountSecurity sections={["sessions"]} />`
+- "Sign in against our own users table after bcrypt" → declare `"capabilities": ["auth.sessionMint"]` on the function + `throw auth.invalidCredentials()` on a bad password + `return auth.sessions.createResponseFromTenantAssertion({ tenant, user, method: "password" })`.
+
+### Reading the actor in a page
+
+```astro
+---
+import { auth } from "@run402/functions";
+const user = await auth.user();          // Actor | null — the cheap per-request read
+// const user = await auth.requireUser(); // 303 to sign-in (HTML) / 401 (JSON) if anonymous
+---
+{user ? <p>Hello, {user.email}</p> : <a href="/auth/sign-in">Sign in</a>}
+```
+
+`auth.user()` is the minimal per-request actor (`id`, `email`, `sessionId`, `authTime`, `amr`, …). For the rich *settings* read — the ownership-qualified account state your account UI branches on — use `auth.account.getSecurity()` (below). Don't call `getSecurity()` on every request; `auth.user()` is the hot-path read.
+
+> **Authority-aware reality.** Credential ownership is not just "is there a session." There are three distinct concerns: a **browser session** (the cookie that says who's signed in), **account-security** state (Run402-OWNED credentials — the user's Run402 password, Run402 passkeys, Run402-verified OAuth identities), and **tenant-vouched assertions** (a subject your *app* vouched for via `createResponseFromTenantAssertion`, which Run402 did NOT itself verify). `getSecurity()` keeps these separate by construction.
+
+### `auth.account.getSecurity()` — ownership-qualified account state
+
+The everyday server-side read for a custom account UI (the `<AccountSecurity>` component reads it for you). Returns `AccountSecurity | null` (null when anonymous). Every credential field is **qualified to Run402 ownership** so there's no ambiguous "has_password":
+
+| Field | Meaning |
+|---|---|
+| `has_run402_password` | The user has a Run402-owned password set. Drives "Set password" vs "Change password". A tenant-vouched user with no Run402 password reads `false`. |
+| `run402_passkey_count` | Number of Run402-registered passkeys across all this user's rpIds. Drives "Add a passkey" / "you have N passkeys". |
+| `has_run402_passkey_for_current_rp` | `true` / `false` / `null` — whether the user has a passkey registered for THIS exact host's rpId (passkeys are per-host; see below). `null` when not determinable. |
+| `run402_identities` | `Run402Identity[]` — OAuth/cryptographic identities Run402 itself verified and linked (`provider`, `provider_sub`, `provider_email`, `created_at`). These are "connected accounts". |
+| `current_rp_id` | The rpId (host) of the current request. |
+| `passkey_rp_scope` | Always `"host"` today (the forward-compatible `"realm"` value is reserved but not shipped — see rpId policy below). |
+| `tenant_assertions` | `TenantAssertionRef[]` — the tenant-vouched links (`issuer`, `last_amr` e.g. `["tenant_password"]`). **Deliberately separate from `run402_identities`**: a tenant-vouched identity is NOT a Run402-verified credential. The `tenant_*` amr prefix makes the provenance visible. |
+
+**Why "ownership-qualified."** A flat `has_password` / `identities` shape can't distinguish "Run402 verified this credential" from "the app told us about this user." That ambiguity is a real footgun: an account-security UI that offers "remove password" against a tenant-vouched user (who never had a Run402 password) is broken. The qualified fields make every UI branch unambiguous and keep tenant provenance from masquerading as a Run402-verified identity.
+
+```astro
+---
+import { auth } from "@run402/functions";
+const sec = await auth.account.getSecurity();
+---
+{sec && (
+  <ul>
+    <li>{sec.has_run402_password ? "Password set" : "No password yet"}</li>
+    <li>{sec.run402_passkey_count} passkey(s){sec.has_run402_passkey_for_current_rp ? " (one for this site)" : ""}</li>
+    <li>{sec.run402_identities.length} connected account(s)</li>
+  </ul>
+)}
+```
+
+> The mutation primitives that back the panel (`auth.account.setPassword`, `auth.account.passkeys.{list,remove}`, `auth.account.identities.{list,unlink,startLink}`, `auth.account.sessions.{list,revoke}`, `auth.account.signOutEverywhere()`) exist as an **advanced tier** for non-Astro / power-user flows, with callee-enforced freshness. They are not the everyday path — render `<AccountSecurity>` instead. They're documented in the comprehensive SDK reference, not here.
+
+### Passkey rpId policy — per-tenant isolation
+
+Run402 passkeys are bound to the **exact request host** as their WebAuthn rpId. A passkey registered on `tenant-a.run402.app` is **unusable** on `tenant-b.run402.app` — distinct portals are distinct credential realms. This is the shipped behavior and it is intentional: distinct tenants are distinct communities.
+
+- The rpId is the literal host: `tenant-a.run402.app`, `myportal.run402.com`, or a verified custom domain like `kychon.com`.
+- Managed subdomains under `*.run402.com` and `*.run402.app` are supported, as are verified custom domains attached to the project.
+- **Public / platform suffixes are rejected** as an rpId: bare `run402.com`, `api.run402.com`, `www`, and `pr-*` preview hosts all fail origin validation (you can't register a passkey that would span every tenant).
+- A **shared "realm"** rpId (one passkey usable across a verified parent domain's children) is **out of scope** — not shipped. `passkey_rp_scope` always reports `"host"`. It's reserved as a possible future opt-in project config if a real consumer ever needs it; today there's no realm.
+
+If a passkey ceremony 400s with `R402_AUTH_PASSKEY_CHALLENGE_INVALID`, you almost certainly tried to verify on a different host than you minted the challenge on, or skipped the `/options` call — drive it through the hosted passkey ceremony (linked from the `<SignIn>` slot, or `/auth/passkeys/login`) so `/options` always precedes `/verify` on the same host.
+
+### Two mint primitives: tenant assertion vs cryptographic proof
+
+Both produce a host-bound session cookie, but they encode fundamentally different trust and must not be confused:
+
+| | `auth.sessions.createResponseFromTenantAssertion(...)` | `auth.sessions.createResponseFromIdentity(...)` |
+|---|---|---|
+| Trust model | **The app vouches.** You verified the credential against your OWN store (bcrypt, custom DB, external IdP); Run402 trusts your assertion. | **Run402 verifies.** You hand Run402 a verifiable cryptographic proof; the platform checks it against the project's registered verifier. |
+| Use it for | bcrypt / custom-DB credential bridges, external IdP you've already validated | wallet SIWX signatures, OIDC JWTs, admin-registered custom-provider proofs |
+| Gate | **Capability-gated**: the function must declare `"capabilities": ["auth.sessionMint"]` in its apply-spec entry. A service key alone is **not** sufficient (→ `R402_AUTH_UNTRUSTED_CONTEXT`). Audited (function id, route, host, issuer, subject, amr, IP, UA, request id). | Proof verification is the gate; no `auth.sessionMint` capability needed. |
+| Resulting `amr` | Platform-derived from `method`: `"password"` → `tenant_password`, `"sso"` → `tenant_sso`. The `tenant_` prefix marks the provenance. | The `amr` you pass (the methods the proof attests). |
+| Shape | `{ tenant, user: { id, email, emailVerified, displayName?, avatarUrl? }, method: "password" | "sso" }`. `user.id` must be a **stable primary key, not a bare email** (→ `R402_AUTH_TENANT_SUBJECT_INVALID`). | `{ provider: "wallet" | "oidc" | "custom", subject, proof, amr, createUser? }`. |
+
+**Rule of thumb:** if you ran `bcrypt.compare(...)` (or any check Run402 can't re-verify), reach for the **tenant assertion**. If you hold bytes Run402 can cryptographically verify itself (a signature, a JWT), reach for **`createResponseFromIdentity`**. `createResponseFromIdentity` is *not* sugar over the tenant assertion — it's the verifiable-proof class and stays distinct.
+
+Tenant-assertion bcrypt sign-in, end to end:
+
+```ts
+// run402.config.json — declare the capability on this function's entry:
+// { "functions": [{ "name": "sign-in", "capabilities": ["auth.sessionMint"] }] }
+
+import { auth } from "@run402/functions";
+
+export default async (req) => {
+  const { email, password } = await req.json();
+  const row = await lookupUser(email);                 // your own users table
+  if (!row || !(await bcrypt.compare(password, row.password_hash))) {
+    throw auth.invalidCredentials();                    // → R402_AUTH_INVALID_CREDENTIALS
+  }
+  // The app vouches; Run402 mints the host-bound cookie + writes an audit row.
+  return auth.sessions.createResponseFromTenantAssertion({
+    tenant: "acme",                                     // → issuer "tenant:acme"
+    user: { id: row.id, email: row.email, emailVerified: true },
+    method: "password",                                 // → amr ["tenant_password"]
+  });
+};
+```
+
+`throw auth.invalidCredentials()` is a **function call, not a constructor** — never `new auth.InvalidCredentialsError()`. It renders the canonical `R402_AUTH_INVALID_CREDENTIALS` envelope without minting a session.
+
+### Auth error codes & fixes
+
+Every auth error carries a structured envelope with a `next_actions[].fix` payload — a component snippet, an apply-spec snippet, or a one-line runtime fix — so the failure teaches the exact edit. Full reference for the whole `R402_AUTH_*` family lives at **<https://run402.com/errors/>**. The codes introduced with hosted-surface-parity:
+
+| Code | HTTP | Fires when | Fix |
+|---|---|---|---|
+| `R402_AUTH_INVALID_CREDENTIALS` | 401 | A tenant-owned credential check failed (your bcrypt/custom verify returned false). | `if (!ok) throw auth.invalidCredentials();` |
+| `R402_AUTH_MAGIC_LINK_INVALID` | 400/410 | The magic-link token is unknown, expired, or already consumed (uniform body — single-use replay looks identical to unknown). | Re-send a fresh link: `<SignIn methods={["magic_link"]} />`. |
+| `R402_AUTH_UNTRUSTED_CONTEXT` | 403 | `createResponseFromTenantAssertion` ran in a function that didn't declare the `auth.sessionMint` capability (a service key is NOT sufficient). | Add `"capabilities": ["auth.sessionMint"]` to the function's apply-spec entry. |
+| `R402_AUTH_PASSKEY_CHALLENGE_INVALID` | 400 | A passkey `/verify` ran without a valid, same-origin, actor-or-pending-signup-bound challenge (skipped `/options`, or wrong host). | Drive the ceremony through the component: `<SignIn methods={["passkey"]} />`. |
+| `R402_AUTH_TENANT_SUBJECT_INVALID` | 400 | A tenant assertion was missing `tenant`/`user`, or `user.id` was a bare email instead of a stable primary key. | Pass a structured user: `createResponseFromTenantAssertion({ tenant, user: { id: user.id, email: user.email, emailVerified: true }, method: "password" })`. |
+| `R402_AUTH_RENAMED_EXPORT` | 400 | Called the removed `auth.identities.link`. Identity link/unlink moved under `auth.account.identities.*`; linking is the `startLink` ceremony. | `auth.account.identities.startLink({ provider: "google", redirectUrl: "/settings/security" })` or `<AccountSecurity sections={["identities"]} />`. |
+
+Two pre-existing codes were enriched with `fix` payloads in this release (names unchanged): `R402_AUTH_CSRF_ORIGIN_MISMATCH` (submit from a Run402 component / same-origin form) and `R402_AUTH_PRERENDERED` (`export const prerender = false;`). At deploy time, `run402 doctor` statically detects a `createResponseFromTenantAssertion` call whose function lacks the `auth.sessionMint` capability and emits `R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING` with the exact spec edit — catching the footgun before it becomes a runtime 403.
+
 ## `<Run402Picture>` — runtime CMS images
 
 For images coming from a DB row at SSR time (the common CMS pattern), use `<Run402Picture asset={page.hero_asset}>`. The `asset` prop is the `AssetRef` JSONB that `r.assets.put()` returned at upload time — store the whole object, not just the URL, then render directly.
