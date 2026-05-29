@@ -291,6 +291,32 @@ describe("email webhooks argv validation", () => {
     assert.equal(err.details.flag, "--url");
     assert.equal(calls.length, 0, "invalid argv must not hit the network");
   });
+
+  it("webhooks redrive rejects missing delivery_id before network", async () => {
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const err = await expectExit1(() => run("redrive", ["--project", "prj_test123"]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("webhooks deliveries rejects unknown flag before network", async () => {
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const err = await expectExit1(() => run("deliveries", ["--statuz", "pending"]));
+
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--statuz");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("webhooks deliveries rejects missing --status value before network", async () => {
+    const { run } = await import("./cli/lib/webhooks.mjs");
+    const err = await expectExit1(() => run("deliveries", ["--status"]));
+
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--status");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
 });
 
 describe("ai argv validation (GH-280)", () => {

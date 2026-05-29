@@ -9,13 +9,22 @@ Usage:
   run402 email webhooks <action> [args...]
 
 Actions:
-  list     [--mailbox <slug|id>] [--project <id>]            List webhooks
-  get      <webhook_id> [--mailbox <slug|id>] [--project <id>]   Get a webhook
-  delete   <webhook_id> [--mailbox <slug|id>] [--project <id>]   Delete a webhook
-  update   <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>]  Update a webhook
-  register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]  Register a new webhook
+  list       [--mailbox <slug|id>] [--project <id>]            List webhooks
+  get        <webhook_id> [--mailbox <slug|id>] [--project <id>]   Get a webhook
+  delete     <webhook_id> [--mailbox <slug|id>] [--project <id>]   Delete a webhook
+  update     <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>]  Update a webhook
+  register   --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]  Register a new webhook
+  deliveries [--status <s>] [--mailbox <slug|id>] [--project <id>]  List durable delivery rows (DLQ visibility)
+  redrive    <delivery_id> [--mailbox <slug|id>] [--project <id>]   Re-queue a dead-lettered delivery
 
 Valid events: delivery, bounced, complained, reply_received
+Delivery statuses: pending, in_flight, delivered, failed_permanent (the DLQ)
+
+Webhook delivery is durable + at-least-once: failures retry with backoff, then
+land in failed_permanent (the dead-letter queue). The delivered body is the
+canonical envelope { id, type, created_at, schema_version, idempotency_key,
+payload } — consumers MUST dedupe on idempotency_key. Use 'deliveries' to
+inspect what was lost and 'redrive' to replay a dead-lettered delivery.
 
 Pass --mailbox <slug|id> to target a specific mailbox when the project has more than one.
 
@@ -24,6 +33,8 @@ Examples:
   run402 email webhooks register --url https://example.com/hook --events delivery,bounced
   run402 email webhooks update whk_123 --url https://new.example.com/hook
   run402 email webhooks delete whk_123
+  run402 email webhooks deliveries --status failed_permanent
+  run402 email webhooks redrive wd_123
 `;
 
 const SUB_HELP = {
@@ -196,16 +207,60 @@ async function register(args) {
   }
 }
 
+async function deliveries(args) {
+  const valueFlags = ["--project", "--mailbox", "--status", "--limit", "--after"];
+  validateArgs(args, valueFlags);
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const mailbox = strictFlagValue(args, "--mailbox");
+  const status = strictFlagValue(args, "--status");
+  const limitRaw = strictFlagValue(args, "--limit");
+  const after = strictFlagValue(args, "--after");
+  try {
+    const data = await getSdk().email.webhooks.listDeliveries(projectId, {
+      status: status ?? undefined,
+      limit: limitRaw ? Number(limitRaw) : undefined,
+      after: after ?? undefined,
+      mailbox: mailbox ?? undefined,
+    });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function redrive(args) {
+  const valueFlags = ["--project", "--mailbox"];
+  validateArgs(args, valueFlags);
+  const deliveryId = positionalArgs(args, valueFlags)[0] ?? null;
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const mailbox = strictFlagValue(args, "--mailbox");
+  if (!deliveryId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing delivery_id.",
+      hint: "run402 email webhooks redrive <delivery_id>",
+    });
+  }
+  try {
+    const data = await getSdk().email.webhooks.redriveDelivery(projectId, deliveryId, { mailbox: mailbox ?? undefined });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 export async function run(sub, args) {
   args = normalizeArgv(args);
   if (!sub || sub === '--help' || sub === '-h') { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
-    case "list":     await list(args); break;
-    case "get":      await get(args); break;
-    case "delete":   await del(args); break;
-    case "update":   await update(args); break;
-    case "register": await register(args); break;
+    case "list":       await list(args); break;
+    case "get":        await get(args); break;
+    case "delete":     await del(args); break;
+    case "update":     await update(args); break;
+    case "register":   await register(args); break;
+    case "deliveries": await deliveries(args); break;
+    case "redrive":    await redrive(args); break;
     default:
       console.error(`Unknown webhooks action: ${sub}\n`);
       console.log(HELP);

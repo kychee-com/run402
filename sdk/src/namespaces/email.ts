@@ -16,6 +16,13 @@ import {
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const WEBHOOK_EVENTS = ["delivery", "bounced", "complained", "reply_received"] as const;
+const MESSAGE_DIRECTIONS = ["inbound", "outbound"] as const;
+const DELIVERY_STATUSES = ["pending", "in_flight", "delivered", "failed_permanent"] as const;
+
+/** Direction filter for `email.list`. Omit to list both sent + received. */
+export type MessageDirection = (typeof MESSAGE_DIRECTIONS)[number];
+/** Durable webhook delivery lifecycle status. `failed_permanent` is the DLQ. */
+export type WebhookDeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 
 export interface MailboxRecord {
   mailbox_id: string;
@@ -80,7 +87,9 @@ export interface SendEmailResult {
 
 export interface EmailSummary {
   id: string;
-  template: string;
+  /** "inbound" (received) or "outbound" (sent). */
+  direction: string;
+  template: string | null;
   to: string;
   status: string;
   created_at: string;
@@ -104,6 +113,12 @@ export interface EmailDetail {
 export interface ListEmailsOptions {
   limit?: number;
   after?: string;
+  /**
+   * Filter to one direction. Omit to list BOTH sent (outbound) and received
+   * (inbound) messages — `inbound` is the reconciliation backstop for a lost
+   * `reply_received` webhook.
+   */
+  direction?: MessageDirection;
   /** Target mailbox (slug or `mbx_…` id); omit only on single-mailbox projects. */
   mailbox?: MailboxSelector;
 }
@@ -138,6 +153,44 @@ export interface UpdateWebhookOptions {
   mailbox?: MailboxSelector;
 }
 
+/**
+ * A single durable webhook delivery row. Delivery is at-least-once: the same
+ * event may arrive more than once, so consumers MUST dedupe on the envelope's
+ * `idempotency_key` (also sent as the `Run402-Webhook-Id` header).
+ */
+export interface WebhookDeliverySummary {
+  delivery_id: string;
+  webhook_id: string | null;
+  event_type: string;
+  status: WebhookDeliveryStatus;
+  attempts: number;
+  last_status: number | null;
+  last_error: string | null;
+  next_attempt_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+}
+
+export interface WebhookDeliveriesResult {
+  deliveries: WebhookDeliverySummary[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+export interface ListDeliveriesOptions {
+  /** Filter by lifecycle status. `failed_permanent` is the dead-letter queue. */
+  status?: WebhookDeliveryStatus;
+  limit?: number;
+  after?: string;
+  /** Target mailbox (slug or `mbx_…` id); omit only on single-mailbox projects. */
+  mailbox?: MailboxSelector;
+}
+
+export interface RedriveDeliveryResult {
+  status: "requeued";
+  delivery: WebhookDeliverySummary;
+}
+
 export class Webhooks {
   constructor(
     private readonly client: Client,
@@ -146,6 +199,48 @@ export class Webhooks {
       selector?: MailboxSelector,
     ) => Promise<{ id: string; serviceKey: string }>,
   ) {}
+
+  /**
+   * List durable webhook delivery rows for the mailbox, optionally filtered by
+   * status. `failed_permanent` is the dead-letter queue. Delivery is
+   * at-least-once — consumers MUST dedupe on the envelope `idempotency_key`.
+   */
+  async listDeliveries(projectId: string, opts: ListDeliveriesOptions = {}): Promise<WebhookDeliveriesResult> {
+    if (opts.status !== undefined) {
+      assertStringInSet(opts.status, DELIVERY_STATUSES, "status", "listing webhook deliveries");
+    }
+    if (opts.limit !== undefined) {
+      assertPositiveSafeInteger(opts.limit, "limit", "listing webhook deliveries");
+    }
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
+    const qs = new URLSearchParams();
+    if (opts.status !== undefined) qs.set("status", opts.status);
+    if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+    if (opts.after) qs.set("after", opts.after);
+    const path = `/mailboxes/v1/${id}/webhooks/deliveries${qs.toString() ? "?" + qs.toString() : ""}`;
+    return this.client.request<WebhookDeliveriesResult>(path, {
+      headers: { Authorization: `Bearer ${serviceKey}` },
+      context: "listing webhook deliveries",
+    });
+  }
+
+  /** Re-queue a dead-lettered (`failed_permanent`) delivery for another attempt. */
+  async redriveDelivery(
+    projectId: string,
+    deliveryId: string,
+    opts: MailboxScopedOptions = {},
+  ): Promise<RedriveDeliveryResult> {
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
+    const encodedDeliveryId = encodePathSegment(deliveryId, "deliveryId", "redriving webhook delivery");
+    return this.client.request<RedriveDeliveryResult>(
+      `/mailboxes/v1/${id}/webhooks/deliveries/${encodedDeliveryId}/redrive`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${serviceKey}` },
+        context: "redriving webhook delivery",
+      },
+    );
+  }
 
   async register(projectId: string, opts: RegisterWebhookOptions): Promise<MailboxWebhookSummary> {
     validateRegisterWebhookOptions(opts);
@@ -437,10 +532,15 @@ export class Email {
       assertPositiveSafeInteger(opts.limit, "limit", "listing emails");
     }
 
+    if (opts.direction !== undefined) {
+      assertStringInSet(opts.direction, MESSAGE_DIRECTIONS, "direction", "listing emails");
+    }
+
     const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const qs = new URLSearchParams();
     if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
     if (opts.after) qs.set("after", opts.after);
+    if (opts.direction !== undefined) qs.set("direction", opts.direction);
     const path = `/mailboxes/v1/${id}/messages${qs.toString() ? "?" + qs.toString() : ""}`;
     return this.client.request<EmailSummary[]>(path, {
       headers: { Authorization: `Bearer ${serviceKey}` },

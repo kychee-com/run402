@@ -509,6 +509,7 @@ Function authoring limits per tier: prototype 10s / 128 MB / 1 scheduled fn / 15
 - **`send_email`** — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Optional `mailbox` selector.
 - **`list_emails`** / **`get_email`** / **`get_email_raw`** — read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification.
 - **`register_mailbox_webhook`** / **`list_mailbox_webhooks`** / **`get_mailbox_webhook`** / **`update_mailbox_webhook`** / **`delete_mailbox_webhook`** — email-event webhooks (delivery, bounced, complained, reply_received).
+- **`list_mailbox_webhook_deliveries`** / **`redrive_mailbox_webhook_delivery`** — durable-delivery visibility + replay. Delivery is at-least-once (bounded retries + exponential backoff); failures land in `failed_permanent`, the dead-letter queue. The delivered body is the canonical envelope `{ id, type, created_at, schema_version, idempotency_key, payload }` — consumers MUST dedupe on `idempotency_key`. `list_emails` accepts an optional `direction` (`inbound`|`outbound`); `inbound` lists received replies as the reconciliation backstop if a `reply_received` webhook is lost.
 - **`register_sender_domain`** / **`sender_domain_status`** / **`remove_sender_domain`** — send from your own domain (DKIM verified).
 - **`enable_sender_domain_inbound`** / **`disable_sender_domain_inbound`** — receive replies on your custom sender domain.
 

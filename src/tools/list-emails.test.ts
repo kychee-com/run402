@@ -73,9 +73,21 @@ describe("list_emails tool", () => {
     const result = await handleListEmails({ project_id: "proj-001" });
 
     assert.equal(result.isError, undefined);
-    assert.ok(result.content[0]!.text.includes("Sent Emails (2)"));
+    assert.ok(result.content[0]!.text.includes("Messages (2)"));
     assert.ok(result.content[0]!.text.includes("msg-001"));
     assert.ok(result.content[0]!.text.includes("msg-002"));
+  });
+
+  it("passes direction=inbound through to the messages query", async () => {
+    let seenUrl = "";
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (isMailboxListGet(url, init)) return mailboxListResponse();
+      seenUrl = String(url);
+      return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+
+    await handleListEmails({ project_id: "proj-001", direction: "inbound" });
+    assert.ok(seenUrl.includes("direction=inbound"), `expected direction=inbound in ${seenUrl}`);
   });
 
   it("returns empty message when no emails", async () => {
@@ -90,7 +102,7 @@ describe("list_emails tool", () => {
     const result = await handleListEmails({ project_id: "proj-001" });
 
     assert.equal(result.isError, undefined);
-    assert.ok(result.content[0]!.text.includes("No emails sent yet"));
+    assert.ok(result.content[0]!.text.includes("No messages"));
   });
 
   it("returns isError when no mailbox exists", async () => {

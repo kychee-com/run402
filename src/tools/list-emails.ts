@@ -15,6 +15,10 @@ export const listEmailsSchema = {
     .string()
     .optional()
     .describe("Pagination cursor (message id from prior page)"),
+  direction: z
+    .enum(["inbound", "outbound"])
+    .optional()
+    .describe("Filter to received (inbound) or sent (outbound) messages. Omit for both. 'inbound' is the reconciliation backstop for a missed reply_received webhook."),
   mailbox: z
     .string()
     .optional()
@@ -25,25 +29,26 @@ export async function handleListEmails(args: {
   project_id: string;
   limit?: number;
   after?: string;
+  direction?: "inbound" | "outbound";
   mailbox?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().email.list(args.project_id, { limit: args.limit, after: args.after, mailbox: args.mailbox });
+    const body = await getSdk().email.list(args.project_id, { limit: args.limit, after: args.after, direction: args.direction, mailbox: args.mailbox });
 
     if (!Array.isArray(body) || body.length === 0) {
-      return { content: [{ type: "text", text: `## Sent Emails\n\n_No emails sent yet._` }] };
+      return { content: [{ type: "text", text: `## Messages\n\n_No messages._` }] };
     }
 
     const lines = [
-      `## Sent Emails (${body.length})`,
+      `## Messages (${body.length})`,
       ``,
-      `| ID | Template | To | Status | Sent |`,
-      `|----|----------|----|--------|------|`,
+      `| ID | Direction | Template | To | Status | Date |`,
+      `|----|-----------|----------|----|--------|------|`,
     ];
 
     for (const msg of body) {
       lines.push(
-        `| \`${msg.id}\` | ${msg.template} | ${msg.to} | ${msg.status} | ${msg.created_at} |`,
+        `| \`${msg.id}\` | ${msg.direction ?? ""} | ${msg.template ?? ""} | ${msg.to} | ${msg.status} | ${msg.created_at} |`,
       );
     }
 

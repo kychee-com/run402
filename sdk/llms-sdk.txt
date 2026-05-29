@@ -987,7 +987,10 @@ getMailbox(projectId): Promise<MailboxInfo>
 deleteMailbox(projectId, mailboxId?): Promise<void>
 
 send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
-list(projectId, opts?: { limit?, after? }): Promise<EmailSummary[]>
+list(projectId, opts?: { limit?, after?, direction? }): Promise<EmailSummary[]>
+  // direction?: "inbound" | "outbound" — omit for BOTH. direction:"inbound" lists
+  // received replies (each EmailSummary carries `direction`) and is the
+  // reconciliation backstop if a reply_received webhook is ever lost.
 get(projectId, messageId): Promise<EmailDetail>
 getRaw(projectId, messageId): Promise<RawEmailResult> // bytes + content_type
 
@@ -997,6 +1000,16 @@ webhooks.list(projectId): Promise<MailboxWebhooksResult>
 webhooks.get(projectId, webhookId): Promise<MailboxWebhookSummary>
 webhooks.update(projectId, webhookId, opts: { url?, events? }): Promise<MailboxWebhookSummary>
 webhooks.delete(projectId, webhookId): Promise<void>
+webhooks.listDeliveries(projectId, opts?: { status?, limit?, after? }): Promise<WebhookDeliveriesResult>
+  // Durable delivery is AT-LEAST-ONCE with bounded retries + exponential backoff.
+  // Failures that exhaust the budget (or fail permanently) become status
+  // "failed_permanent" — the dead-letter queue. status?: pending | in_flight |
+  // delivered | failed_permanent. The delivered body is the canonical envelope
+  // { id, type, created_at, schema_version, idempotency_key, payload }; consumers
+  // MUST dedupe on idempotency_key (also the Run402-Webhook-Id header). Mailbox
+  // webhooks are unsigned (verifyWebhook is for operator notifications only).
+webhooks.redriveDelivery(projectId, deliveryId): Promise<RedriveDeliveryResult>
+  // Re-queue a dead-lettered delivery for another attempt (after fixing the consumer).
 
 // CLI-style aliases:
 create(projectId, slug): Promise<CreateMailboxResult | MailboxInfo>

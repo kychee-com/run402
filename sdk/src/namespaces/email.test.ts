@@ -363,6 +363,77 @@ describe("email.list", () => {
       assert.equal(calls.length, 0, `limit ${String(limit)} should not request`);
     }
   });
+
+  it("omits the direction param by default (both inbound + outbound)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse([]));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.email.list("prj_known", { mailbox: "mbx_known" });
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.searchParams.get("direction"), null);
+  });
+
+  it("passes direction=inbound through as a query param", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse([]));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.email.list("prj_known", { direction: "inbound", mailbox: "mbx_known" });
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.searchParams.get("direction"), "inbound");
+  });
+
+  it("rejects an invalid direction without requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      // @ts-expect-error — exercising runtime validation of a bad value
+      sdk.email.list("prj_known", { direction: "sideways", mailbox: "mbx_known" }),
+      (err: unknown) => err instanceof LocalError && err.context === "listing emails",
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("email.webhooks deliveries", () => {
+  it("lists deliveries with a status filter", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ deliveries: [{ delivery_id: "d1", status: "failed_permanent" }], has_more: false, next_cursor: null }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const res = await sdk.email.webhooks.listDeliveries("prj_known", {
+      status: "failed_permanent",
+      mailbox: "mbx_known",
+    });
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.pathname, "/mailboxes/v1/mbx_known/webhooks/deliveries");
+    assert.equal(url.searchParams.get("status"), "failed_permanent");
+    assert.equal(res.deliveries[0]!.delivery_id, "d1");
+  });
+
+  it("rejects an invalid status without requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      // @ts-expect-error — bad status value
+      sdk.email.webhooks.listDeliveries("prj_known", { status: "nope", mailbox: "mbx_known" }),
+      (err: unknown) => err instanceof LocalError && err.context === "listing webhook deliveries",
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("redrives a delivery via POST", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ status: "requeued", delivery: { delivery_id: "d1", status: "pending" } }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const res = await sdk.email.webhooks.redriveDelivery("prj_known", "d1", { mailbox: "mbx_known" });
+    assert.equal(calls[0]!.method, "POST");
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.pathname, "/mailboxes/v1/mbx_known/webhooks/deliveries/d1/redrive");
+    assert.equal(res.status, "requeued");
+  });
 });
 
 describe("email mailbox selector (multi-mailbox)", () => {

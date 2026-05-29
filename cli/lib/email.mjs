@@ -13,8 +13,10 @@ Subcommands:
   info   [--project <id>]            Show mailbox info (ID, address, slug)
   status [--project <id>]            Alias for 'info' (prefer 'info')
   send   --to <email> [mode flags]   Send an email (template or raw HTML)
-  list   [--limit <n>] [--after <cursor>] [--project <id>]
-                                      List sent/received messages (paginated)
+  list   [--limit <n>] [--after <cursor>] [--direction <inbound|outbound>] [--project <id>]
+                                      List messages (paginated). Returns BOTH
+                                      sent + received by default; --direction
+                                      inbound is the reconciliation backstop.
   get    <message_id> [--project <id>]  Get a message with replies
   get-raw <message_id> --output <file> [--project <id>]
                                       Fetch raw RFC-822 bytes (inbound only).
@@ -35,6 +37,10 @@ Webhook subcommands:
                                                   Update a webhook
   webhooks register --url <url> --events <e1,e2> [--project <id>]
                                                   Register a new webhook
+  webhooks deliveries [--status <s>] [--project <id>]
+                                                  List durable delivery rows (DLQ visibility)
+  webhooks redrive <delivery_id> [--project <id>]
+                                                  Re-queue a dead-lettered delivery
 
 Send modes:
   Template:  --template <name> --var key=value [--var ...]  OR --vars '{"k":"v",...}'
@@ -286,16 +292,18 @@ async function send(args) {
 }
 
 async function list(args) {
-  const valueFlags = ["--project", "--limit", "--after", "--mailbox"];
+  const valueFlags = ["--project", "--limit", "--after", "--mailbox", "--direction"];
   validateArgs(args, valueFlags);
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const limit = strictFlagValue(args, "--limit");
   const after = strictFlagValue(args, "--after");
   const mailbox = strictFlagValue(args, "--mailbox");
+  const direction = strictFlagValue(args, "--direction");
   try {
     const data = await getSdk().email.list(projectId, {
       limit: limit ? parseIntegerFlag("--limit", limit) : undefined,
       after: after ?? undefined,
+      direction: direction ?? undefined,
       mailbox: mailbox ?? undefined,
     });
     console.log(JSON.stringify(data, null, 2));

@@ -100,15 +100,18 @@ import type {
   DeleteMailboxResult,
   EmailDetail,
   EmailSummary,
+  ListDeliveriesOptions,
   ListEmailsOptions,
   MailboxInfo,
   MailboxWebhookSummary,
   MailboxWebhooksResult,
   RawEmailResult,
+  RedriveDeliveryResult,
   RegisterWebhookOptions,
   SendEmailOptions,
   SendEmailResult,
   UpdateWebhookOptions,
+  WebhookDeliveriesResult,
 } from "./namespaces/email.js";
 import type {
   DeleteFunctionResult,
@@ -583,6 +586,12 @@ class ScopedEmailWebhooks {
   }
   delete(webhookId: string): Promise<void> {
     return this.parent.email.webhooks.delete(this.projectId, webhookId);
+  }
+  listDeliveries(opts?: ListDeliveriesOptions): Promise<WebhookDeliveriesResult> {
+    return this.parent.email.webhooks.listDeliveries(this.projectId, opts);
+  }
+  redriveDelivery(deliveryId: string): Promise<RedriveDeliveryResult> {
+    return this.parent.email.webhooks.redriveDelivery(this.projectId, deliveryId);
   }
 }
 

@@ -149,6 +149,8 @@ import { getMailboxWebhookSchema, handleGetMailboxWebhook } from "./tools/get-ma
 import { deleteMailboxWebhookSchema, handleDeleteMailboxWebhook } from "./tools/delete-mailbox-webhook.js";
 import { updateMailboxWebhookSchema, handleUpdateMailboxWebhook } from "./tools/update-mailbox-webhook.js";
 import { registerMailboxWebhookSchema, handleRegisterMailboxWebhook } from "./tools/register-mailbox-webhook.js";
+import { listMailboxWebhookDeliveriesSchema, handleListMailboxWebhookDeliveries } from "./tools/list-mailbox-webhook-deliveries.js";
+import { redriveMailboxWebhookDeliverySchema, handleRedriveMailboxWebhookDelivery } from "./tools/redrive-mailbox-webhook-delivery.js";
 
 // New tools — magic link auth
 import { requestMagicLinkSchema, handleRequestMagicLink } from "./tools/request-magic-link.js";
@@ -883,6 +885,20 @@ server.tool(
   "Update a webhook's URL and/or events. At least one field required. Events is a full replacement, not a merge.",
   updateMailboxWebhookSchema,
   async (args) => handleUpdateMailboxWebhook(args),
+);
+
+server.tool(
+  "list_mailbox_webhook_deliveries",
+  "List durable webhook delivery rows for the project's mailbox. Webhook delivery is at-least-once with bounded retries + backoff; failures land in 'failed_permanent' (the dead-letter queue). Filter by status to inspect what was lost. Consumers must dedupe on the envelope idempotency_key.",
+  listMailboxWebhookDeliveriesSchema,
+  async (args) => handleListMailboxWebhookDeliveries(args),
+);
+
+server.tool(
+  "redrive_mailbox_webhook_delivery",
+  "Re-queue a dead-lettered (failed_permanent) webhook delivery so the worker attempts delivery again. Use after fixing the consumer endpoint.",
+  redriveMailboxWebhookDeliverySchema,
+  async (args) => handleRedriveMailboxWebhookDelivery(args),
 );
 
 // ─── AI tools ──────────────────────────────────────────────────────────────

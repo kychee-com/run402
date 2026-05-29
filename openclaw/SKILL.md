@@ -734,6 +734,16 @@ run402 email webhooks register --url https://… --events delivery,bounced,reply
 run402 email webhooks list
 run402 email webhooks update <id> --events delivery,bounced,complained,reply_received
 run402 email webhooks delete <id>
+
+# Durable delivery is at-least-once (bounded retries + exponential backoff);
+# failures land in failed_permanent — the dead-letter queue. The delivered body
+# is the canonical envelope { id, type, created_at, schema_version,
+# idempotency_key, payload } — dedupe on idempotency_key.
+run402 email webhooks deliveries --status failed_permanent   # inspect the DLQ
+run402 email webhooks redrive <delivery_id>                  # replay a dead-lettered delivery
+
+# Reconciliation backstop if a reply_received webhook is ever lost:
+run402 email list --direction inbound
 ```
 
 ### Custom sender domain

@@ -283,6 +283,8 @@ const SURFACE: Capability[] = [
   { id: "get_mailbox_webhook",      endpoint: "GET /mailboxes/v1/:id/webhooks/:webhook_id",   mcp: "get_mailbox_webhook",      cli: "webhooks:get",      openclaw: "webhooks:get" },
   { id: "delete_mailbox_webhook",   endpoint: "DELETE /mailboxes/v1/:id/webhooks/:webhook_id", mcp: "delete_mailbox_webhook",  cli: "webhooks:delete",   openclaw: "webhooks:delete" },
   { id: "update_mailbox_webhook",   endpoint: "PATCH /mailboxes/v1/:id/webhooks/:webhook_id", mcp: "update_mailbox_webhook",   cli: "webhooks:update",   openclaw: "webhooks:update" },
+  { id: "list_mailbox_webhook_deliveries", endpoint: "GET /mailboxes/v1/:id/webhooks/deliveries", mcp: "list_mailbox_webhook_deliveries", cli: "webhooks:deliveries", openclaw: "webhooks:deliveries" },
+  { id: "redrive_mailbox_webhook_delivery", endpoint: "POST /mailboxes/v1/:id/webhooks/deliveries/:deliveryId/redrive", mcp: "redrive_mailbox_webhook_delivery", cli: "webhooks:redrive", openclaw: "webhooks:redrive" },
 
   // ── AI ──────────────────────────────────────────────────────────────────
   { id: "ai_translate",    endpoint: "POST /ai/v1/translate",      mcp: "ai_translate",    cli: "ai:translate",  openclaw: "ai:translate" },
@@ -538,6 +540,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_mailbox_webhook: "email.webhooks.get",
   delete_mailbox_webhook: "email.webhooks.delete",
   update_mailbox_webhook: "email.webhooks.update",
+  list_mailbox_webhook_deliveries: "email.webhooks.listDeliveries",
+  redrive_mailbox_webhook_delivery: "email.webhooks.redriveDelivery",
 
   // Messaging & agent contact
   send_message: "admin.sendMessage",
