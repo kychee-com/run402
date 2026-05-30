@@ -79,6 +79,47 @@ describe("jobs", () => {
     assert.deepEqual(JSON.parse(calls[0]!.body as string), submitRequest());
   });
 
+  it("submit forwards an optional callback_url verbatim", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json(
+        {
+          job_id: "job_cb",
+          job_type: "kysigned.fflonk_prove.v0_17_0",
+          status: "queued",
+          created_at: "2026-05-18T00:00:00.000Z",
+        },
+        202,
+      ),
+    );
+
+    await sdk(fetch).jobs.submit("prj_k", {
+      ...submitRequest(),
+      callback_url: "https://hooks.example.com/jobs",
+    });
+
+    const body = JSON.parse(calls[0]!.body as string);
+    assert.equal(body.callback_url, "https://hooks.example.com/jobs");
+  });
+
+  it("submit omits callback_url from the body when not provided", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json(
+        {
+          job_id: "job_nocb",
+          job_type: "kysigned.fflonk_prove.v0_17_0",
+          status: "queued",
+          created_at: "2026-05-18T00:00:00.000Z",
+        },
+        202,
+      ),
+    );
+
+    await sdk(fetch).jobs.submit("prj_k", submitRequest());
+
+    const body = JSON.parse(calls[0]!.body as string);
+    assert.equal("callback_url" in body, false);
+  });
+
   it("get reads a job run by id", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({

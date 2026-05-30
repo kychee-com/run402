@@ -21,6 +21,13 @@ const managedJobSubmitRequestSchema = z
       .int()
       .nonnegative()
       .describe("Hard customer charge ceiling in micro-USD"),
+    callback_url: z
+      .string()
+      .url()
+      .optional()
+      .describe(
+        "Optional HTTPS URL pushed once on terminal state (completed/failed/cancelled), so you need not poll. Durable at-least-once + unsigned: dedupe on the Run402-Webhook-Id header and re-fetch with get_managed_job before acting.",
+      ),
   })
   .strict();
 
@@ -63,6 +70,7 @@ export async function handleJobsSubmit(args: {
     job_type: "kysigned.fflonk_prove.v0_17_0";
     input: { "input.json": Record<string, unknown> };
     max_cost_usd_micros: number;
+    callback_url?: string;
   };
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {

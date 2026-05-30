@@ -21,6 +21,14 @@ export interface ManagedJobSubmitRequest {
     "input.json": Record<string, unknown>;
   };
   max_cost_usd_micros: number;
+  /**
+   * Optional HTTPS URL pushed once when the job reaches a terminal state
+   * (completed/failed/cancelled), so you need not poll. Delivery is durable
+   * (at-least-once, retried) and unsigned: dedupe on the `Run402-Webhook-Id`
+   * header and re-fetch authoritative state with `get()` before acting — the
+   * callback is a trigger, not the source of truth.
+   */
+  callback_url?: string;
 }
 
 export interface ManagedJobError {

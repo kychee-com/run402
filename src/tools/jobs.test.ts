@@ -74,6 +74,35 @@ describe("jobs MCP tools", () => {
     assert.match(calls[0]!.headers["Idempotency-Key"], /^job-/);
   });
 
+  it("forwards an optional callback_url in the POST body", async () => {
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = init?.body as string | undefined;
+      return new Response(
+        JSON.stringify({
+          job_id: "job_cb",
+          job_type: "kysigned.fflonk_prove.v0_17_0",
+          status: "queued",
+          created_at: "2026-05-18T00:00:00.000Z",
+        }),
+        { status: 202, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleJobsSubmit({
+      project_id: "prj_k",
+      request: {
+        job_type: "kysigned.fflonk_prove.v0_17_0",
+        input: { "input.json": { envelopeId: "env_1" } },
+        max_cost_usd_micros: 50_000,
+        callback_url: "https://hooks.example.com/jobs",
+      },
+    });
+
+    assert.ok(capturedBody, "expected a request body");
+    assert.equal(JSON.parse(capturedBody!).callback_url, "https://hooks.example.com/jobs");
+  });
+
   it("gets a job and reads logs", async () => {
     const urls: string[] = [];
     globalThis.fetch = (async (input) => {

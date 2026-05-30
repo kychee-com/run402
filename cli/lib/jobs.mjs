@@ -51,8 +51,14 @@ Example request:
   {
     "job_type": "kysigned.fflonk_prove.v0_17_0",
     "input": { "input.json": {} },
-    "max_cost_usd_micros": 50000
+    "max_cost_usd_micros": 50000,
+    "callback_url": "https://hooks.example.com/jobs"
   }
+
+  callback_url (optional) is an HTTPS URL pushed once on terminal state
+  (completed/failed/cancelled), so you need not poll. Durable + unsigned:
+  dedupe on the Run402-Webhook-Id header and re-fetch with 'jobs get'
+  before acting.
 `,
   get: `run402 jobs get — Get a managed job run
 
