@@ -17,8 +17,12 @@
  *                    browser WebAuthn `navigator.credentials` call lives on
  *                    the hosted page, not in this server-rendered form).
  *   - "sessions"   — revoke a single browser session or sign out everywhere.
- *   - "identities" — list linked OAuth identities + unlink. LINK uses the
- *                    hosted OAuth start route (the §4.5 startLink redirect).
+ *   - "identities" — list linked OAuth identities + unlink. CONNECT links a
+ *                    provider to the already-signed-in account via the hosted
+ *                    OAuth start route with `?intent=link` (honored server-side
+ *                    from the browser-session cookie; the SDK analog is
+ *                    `auth.account.identities.startLink`). Link-to-existing,
+ *                    NOT sign-in-with and NOT a new account.
  *
  * Reads `auth.account.getSecurity()` for the ownership-qualified state
  * (`has_run402_password`, `run402_passkey_count`, `run402_identities`, …)
@@ -71,6 +75,18 @@ try {
 
 const show = (s: Section): boolean =>
   security !== null && csrfToken !== null && sections.includes(s);
+
+// "Connect Google" runs the link-to-existing-account ceremony on the gateway's
+// hosted OAuth start route. `intent=link` is honored server-side by resolving
+// the browser-session cookie (the gateway stamps the signed-in actor as the
+// transaction's `linkingUserId` — see `resolveOAuthStartIntent` / §D8 — so the
+// API-origin callback attaches Google to the EXISTING account, not a new one).
+// `returnTo` is the current page, so the user lands back on this settings panel
+// after the Google round-trip; it is path-relative, which the gateway's
+// same-origin returnTo validation accepts.
+const connectGoogleHref =
+  "/auth/sign-in/oauth/google/start?intent=link&returnTo=" +
+  encodeURIComponent(Astro.url.pathname + Astro.url.search);
 ---
 
 {security && csrfToken && (
@@ -150,14 +166,17 @@ const show = (s: Section): boolean =>
                 <form method="POST" action="/auth/account/identities/unlink" class="r402-as-inline">
                   <input type="hidden" name="_csrf" value={csrfToken} />
                   <input type="hidden" name="provider" value={id.provider} />
-                  <input type="hidden" name="provider_sub" value={id.provider_sub} />
+                  {/* Wire field is `subject` (the provider's subject id, i.e.
+                      provider_sub) — matches the hosted route + the SDK's
+                      auth.account.identities.unlink({ provider, subject }). */}
+                  <input type="hidden" name="subject" value={id.provider_sub} />
                   <button type="submit">Unlink</button>
                 </form>
               </li>
             ))}
           </ul>
         )}
-        <a class="r402-as-link" href="/auth/sign-in/oauth/google/start?intent=link">Connect Google</a>
+        <a class="r402-as-link" href={connectGoogleHref}>Connect Google</a>
       </section>
     )}
     <!-- Consumer-supplied extra panels; empty by default (prior DOM
