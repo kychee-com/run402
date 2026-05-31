@@ -21,7 +21,7 @@
  */
 
 import assert from "node:assert/strict";
-import { describe, it, mock } from "node:test";
+import { describe, it, beforeEach, mock } from "node:test";
 import { transform } from "@astrojs/compiler";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -29,27 +29,40 @@ import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import ts from "typescript";
 
 // `<AccountSecurity>` calls `auth.account.getSecurity()` (rich read) and
-// `auth.csrfToken()` in its frontmatter. Stub both: a signed-in user with no
-// linked identities renders the "identities" panel — "No connected accounts."
-// plus the Connect Google control.
+// `auth.csrfToken()` in its frontmatter. We stub both. `securityState` is a
+// mutable so individual tests can vary `run402_identities` (empty → "No
+// connected accounts." + Connect Google; non-empty → an Unlink control per
+// connected identity). `beforeEach` resets it to the no-identities default.
+type Run402Identity = { provider: string; provider_sub: string; provider_email: string | null };
+
+function makeSecurity(run402_identities: Run402Identity[] = []) {
+  return {
+    user: { id: "u1", email: "u@test.com", email_verified: true, display_name: null, avatar_url: null },
+    has_run402_password: true,
+    run402_passkey_count: 0,
+    has_run402_passkey_for_current_rp: null,
+    run402_identities,
+    current_rp_id: null,
+    passkey_rp_scope: "host",
+    tenant_assertions: [],
+  };
+}
+
+let securityState: ReturnType<typeof makeSecurity> = makeSecurity();
+
 mock.module("@run402/functions", {
   namedExports: {
     auth: {
       account: {
-        getSecurity: async () => ({
-          user: { id: "u1", email: "u@test.com", email_verified: true, display_name: null, avatar_url: null },
-          has_run402_password: true,
-          run402_passkey_count: 0,
-          has_run402_passkey_for_current_rp: null,
-          run402_identities: [],
-          current_rp_id: null,
-          passkey_rp_scope: "host",
-          tenant_assertions: [],
-        }),
+        getSecurity: async () => securityState,
       },
       csrfToken: () => "0123456789abcdef0123456789abcdef",
     },
   },
+});
+
+beforeEach(() => {
+  securityState = makeSecurity();
 });
 
 // ---------------------------------------------------------------------------
@@ -125,5 +138,41 @@ describe("AccountSecurity.astro — Connect Google control (link-to-existing)", 
   it("is NOT the pre-fix bare anchor (?intent=link with no returnTo)", async () => {
     const html = await renderIdentities("https://kychon.run402.app/settings/security");
     assert.doesNotMatch(html, /href="\/auth\/sign-in\/oauth\/google\/start\?intent=link"/);
+  });
+});
+
+describe("AccountSecurity.astro — Unlink control (OAuth identities)", () => {
+  beforeEach(() => {
+    securityState = makeSecurity([
+      { provider: "google", provider_sub: "google-sub-xyz", provider_email: "u@test.com" },
+    ]);
+  });
+
+  it("renders an Unlink form per connected identity posting to the hosted route", async () => {
+    const html = await renderIdentities("https://kychon.run402.app/settings/security");
+    assert.match(html, /action="\/auth\/account\/identities\/unlink"/);
+    assert.match(html, />Unlink</);
+    // The provider label is shown alongside the unlink control.
+    assert.match(html, /google — u@test\.com/);
+  });
+
+  it("posts the provider's subject id under name=\"subject\" (the field the route reads)", async () => {
+    const html = await renderIdentities("https://kychon.run402.app/settings/security");
+    // The wire field is `subject`, carrying the row's provider_sub value — this
+    // matches the hosted route + SDK `unlink({ provider, subject })`.
+    assert.match(html, /name="provider"[^>]*value="google"/);
+    assert.match(html, /name="subject"[^>]*value="google-sub-xyz"/);
+  });
+
+  it("does NOT use the pre-fix name=\"provider_sub\" (which the route ignored → 400)", async () => {
+    const html = await renderIdentities("https://kychon.run402.app/settings/security");
+    // The old form posted `provider_sub`; the route reads `subject`, so the
+    // OAuth subject arrived as undefined and every unlink 400'd.
+    assert.doesNotMatch(html, /name="provider_sub"/);
+  });
+
+  it("includes the CSRF token in the unlink form", async () => {
+    const html = await renderIdentities("https://kychon.run402.app/settings/security");
+    assert.match(html, /name="_csrf"[^>]*value="0123456789abcdef0123456789abcdef"/);
   });
 });
