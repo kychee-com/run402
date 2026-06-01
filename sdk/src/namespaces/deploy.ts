@@ -2237,6 +2237,79 @@ function validateFunctionMap(value: unknown, resource: string): void {
   }
 }
 
+/**
+ * Detect a site path key that belongs to the `@run402/astro` SSR adapter's
+ * build tree rather than to deployable static content. The adapter writes
+ * `dist/run402/{adapter.json, server/**, client/**}`; only `client/**` is
+ * servable. `adapter.json` and `server/**` are build internals — their
+ * presence in a site spec means the caller rooted their file source at the
+ * build root (`dist/`) instead of `dist/run402/client/`.
+ */
+function isAstroAdapterTreeSitePath(path: string): boolean {
+  return path === "run402/adapter.json" || path.startsWith("run402/server/");
+}
+
+/**
+ * Return the synchronously-knowable keys of a site file container. Plain
+ * path-keyed `FileSet`s expose their keys directly; a `LocalDirRef`
+ * (`dir(path)`) or any future source sentinel carries an `__source` marker
+ * and is only knowable after expansion — those return `[]` here and are
+ * re-checked post-normalization.
+ */
+function siteFileSetKeysForGuard(container: unknown): string[] {
+  if (
+    !container ||
+    typeof container !== "object" ||
+    Array.isArray(container) ||
+    (container as { __source?: unknown }).__source !== undefined
+  ) {
+    return [];
+  }
+  return Object.keys(container as Record<string, unknown>);
+}
+
+/**
+ * Reject a site slice that ships the `@run402/astro` adapter build tree as
+ * static content. This is the mis-rooting behind kychee-com/run402#411: a
+ * deploy pointed `fileSetFromDir`/`dir()` at `dist/` (not `dist/run402/client/`),
+ * so every page landed under a `run402/client/` path prefix while
+ * `run402/adapter.json` + `run402/server/**` leaked in as assets — producing a
+ * release that 404'd every URL and exposed the SSR bundle. Fail fast, locally,
+ * with the fix, before any CAS upload or plan.
+ */
+function assertNoAstroAdapterTreeInSite(
+  paths: Iterable<string>,
+  resource: string,
+): void {
+  const offenders: string[] = [];
+  for (const p of paths) {
+    if (isAstroAdapterTreeSitePath(p)) offenders.push(p);
+    if (offenders.length >= 3) break;
+  }
+  if (offenders.length === 0) return;
+  throw new Run402DeployError(
+    `${resource} ships the @run402/astro adapter build tree (e.g. ${offenders
+      .map((p) => `\`${p}\``)
+      .join(", ")}) as static content. Only \`dist/run402/client/\` is deployable; ` +
+      `\`run402/adapter.json\` and \`run402/server/**\` are build internals. You likely ` +
+      `rooted your file source at the build root (\`dist/\`) instead of \`dist/run402/client/\`. ` +
+      `Use \`buildAstroReleaseSlice("dist")\` from @run402/astro (it roots the site and bundles ` +
+      `the SSR function correctly), or point your dir at \`dist/run402/client\`.`,
+    {
+      code: "ASTRO_ADAPTER_TREE_IN_SITE",
+      phase: "validate",
+      resource,
+      retryable: false,
+      fix: {
+        action: "reroot_site_to_astro_client_dir",
+        path: resource,
+        expected_dir: "dist/run402/client",
+      },
+      context: "validating spec",
+    },
+  );
+}
+
 function validateSiteSpec(site: unknown): void {
   if (site === undefined) return;
   const obj = requireObject(site, "site");
@@ -2249,11 +2322,15 @@ function validateSiteSpec(site: unknown): void {
   }
   if (obj.replace !== undefined) {
     requireObject(obj.replace, "site.replace");
+    assertNoAstroAdapterTreeInSite(siteFileSetKeysForGuard(obj.replace), "site.replace");
   }
   if (obj.patch !== undefined) {
     const patch = requireObject(obj.patch, "site.patch");
     validateKnownFields(patch, "site.patch", SITE_PATCH_FIELDS);
-    if (patch.put !== undefined) requireObject(patch.put, "site.patch.put");
+    if (patch.put !== undefined) {
+      requireObject(patch.put, "site.patch.put");
+      assertNoAstroAdapterTreeInSite(siteFileSetKeysForGuard(patch.put), "site.patch.put");
+    }
     if (patch.delete !== undefined) validateStringArray(patch.delete, "site.patch.delete");
   }
   if (obj.public_paths !== undefined) {
@@ -3113,6 +3190,9 @@ async function normalizeReleaseSpec(
       "public_paths" in spec.site ? spec.site.public_paths : undefined;
     if ("replace" in spec.site && spec.site.replace) {
       const map = await normalizeFileSet(spec.site.replace, rememberRelease);
+      // Re-check post-expansion so `dir("dist")` (a LocalDirRef whose keys are
+      // unknown at validateSpec time) is caught too, not just literal FileSets.
+      assertNoAstroAdapterTreeInSite(Object.keys(map), "site.replace");
       normalized.site = {
         replace: map,
         ...(publicPaths ? { public_paths: publicPaths } : {}),
@@ -3121,6 +3201,7 @@ async function normalizeReleaseSpec(
       const patch: { put?: Record<string, ContentRef>; delete?: string[] } = {};
       if (spec.site.patch.put) {
         patch.put = await normalizeFileSet(spec.site.patch.put, rememberRelease);
+        assertNoAstroAdapterTreeInSite(Object.keys(patch.put), "site.patch.put");
       }
       if (spec.site.patch.delete) patch.delete = spec.site.patch.delete;
       normalized.site = {

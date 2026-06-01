@@ -11,7 +11,7 @@
 import { describe, it, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -5101,4 +5101,106 @@ describe("Deploy release observability", () => {
     }
   });
 
+});
+
+describe("Deploy.apply (Astro adapter build-tree guard — gh#411)", () => {
+  it("rejects a site.replace FileSet that ships the adapter build tree", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          site: {
+            replace: {
+              "run402/adapter.json": "{}",
+              "run402/server/entry.mjs": "export {}",
+              "run402/client/index.html": "<html></html>",
+            },
+          },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "ASTRO_ADAPTER_TREE_IN_SITE");
+        assert.equal(err.resource, "site.replace");
+        assert.match(err.message, /dist\/run402\/client/);
+        assert.match(err.message, /buildAstroReleaseSlice/);
+        assert.equal(err.fix?.expected_dir, "dist/run402/client");
+        return true;
+      },
+    );
+    assert.equal(w.requests.length, 0, "fails before any gateway request");
+    assert.equal(w.puts.length, 0, "fails before any S3 upload");
+  });
+
+  it("rejects a site.patch.put FileSet that ships the adapter build tree", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          site: { patch: { put: { "run402/server/chunks/x.mjs": "export {}" } } },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "ASTRO_ADAPTER_TREE_IN_SITE");
+        assert.equal(err.resource, "site.patch.put");
+        return true;
+      },
+    );
+    assert.equal(w.requests.length, 0, "fails before any gateway request");
+  });
+
+  it("rejects a mis-rooted dir() (LocalDirRef) post-expansion", async () => {
+    const root = mkdtempSync(join(tmpdir(), "astro-misroot-"));
+    try {
+      mkdirSync(join(root, "run402", "server"), { recursive: true });
+      mkdirSync(join(root, "run402", "client"), { recursive: true });
+      writeFileSync(join(root, "run402", "adapter.json"), "{}");
+      writeFileSync(join(root, "run402", "server", "entry.mjs"), "export {}");
+      writeFileSync(join(root, "run402", "client", "index.html"), "<html></html>");
+
+      const w = makeWiring();
+      const deploy = new Deploy(w.client);
+      await assert.rejects(
+        () =>
+          deploy.apply({
+            project: "prj_test",
+            site: { replace: dir(root) },
+          }),
+        (err: unknown) => {
+          assert(err instanceof Run402DeployError);
+          assert.equal(err.code, "ASTRO_ADAPTER_TREE_IN_SITE");
+          assert.equal(err.resource, "site.replace");
+          return true;
+        },
+      );
+      assert.equal(w.requests.length, 0, "fails before any gateway request");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does NOT flag a correctly client-rooted site (no run402/ prefix)", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return noContentPlan("plan_ok", "op_ok");
+      if (req.path === "/apply/v1/plans/plan_ok/commit") return readyCommit("op_ok", "rel_ok");
+      throw new Error(`unexpected path ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    const result = await deploy.apply({
+      project: "prj_test",
+      site: {
+        replace: {
+          "index.html": "<html></html>",
+          "events.html": "<html></html>",
+          "_astro/app.css": "body{}",
+        },
+        public_paths: { mode: "implicit" },
+      },
+    });
+    assert.equal(result.release_id, "rel_ok");
+  });
 });

@@ -603,14 +603,16 @@ async function mergeAstroReleaseSlice(spec, dirArg) {
     throw err;
   }
 
-  // Slice owns site/functions/routes. The caller's manifest can declare
-  // cross-cutting slices (database, secrets, i18n, subdomains) that the
-  // slice doesn't touch. On collision in `functions.replace`, the slice
-  // wins for its own function name; the caller's other functions are
-  // preserved. `site` and `routes` are whole-resource replacements — slice
-  // wins entirely on those.
+  // Slice owns site/functions. The caller's manifest can declare cross-cutting
+  // slices (database, secrets, i18n, subdomains, routes) that the slice doesn't
+  // touch. On collision in `functions.replace`, the slice wins for its own
+  // function name; the caller's other functions are preserved. `site` is a
+  // whole-resource replacement — slice wins entirely. The slice omits `routes`
+  // by default (the SSR catchall is implicit; base routes carry forward), so we
+  // only set `spec.routes` if the slice explicitly provides one; otherwise the
+  // caller's manifest `routes` (if any) is preserved.
   spec.site = slice.site;
-  spec.routes = slice.routes;
+  if (slice.routes !== undefined) spec.routes = slice.routes;
   const sliceFns = slice.functions?.replace ?? {};
   const existingFns =
     spec.functions && typeof spec.functions === "object" && spec.functions.replace
