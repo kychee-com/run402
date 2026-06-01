@@ -211,7 +211,17 @@ export interface BuildAstroReleaseSliceOptions {
 export interface AstroReleaseSlice {
   site: SiteSpec;
   functions: { replace: Record<string, FunctionSpec> };
-  routes: { replace: RouteSpec[] };
+  /**
+   * Intentionally **omitted** by {@link buildAstroReleaseSlice} (the field is
+   * optional, not `{ replace: [] }`). An Astro hybrid release needs no explicit
+   * route table: prerendered pages resolve through the static manifest and
+   * every other path falls through to the gateway's implicit `class: "ssr"`
+   * fallback. Omitting `routes` carries forward any base-release routes (e.g. a
+   * separately-declared `/api/*` function) instead of clearing them, and keeps
+   * the slice safe to submit from a CI OIDC session that lacks route scopes.
+   * Callers who need explicit routes declare them on top of the slice.
+   */
+  routes?: { replace: RouteSpec[] };
 }
 
 /**
@@ -320,9 +330,14 @@ export async function loadAstroAdapterManifest(
  * - `functions.replace[functionName]` describes the SSR Lambda entry from
  *   `manifest.serverEntrypoint` and carries `class: "ssr"` (gateway v1.52+)
  *   so the gateway enables SnapStart + ISR-cache routing.
- * - `routes.replace` emits one `{ type: "static", file }` alias per
- *   prerendered route, followed by a final wildcard `/* → function:ssr`
- *   catchall. Order matters at the gateway: explicit > prefix > catchall.
+ * - `routes` is intentionally **omitted** from the returned slice (not
+ *   `{ replace: [] }`). An Astro hybrid release needs no explicit route table:
+ *   prerendered pages resolve through the static manifest (implicit
+ *   `public_paths`), and every unmatched path falls through to the gateway's
+ *   implicit `class: "ssr"` fallback (v1.52+). Omitting `routes` carries
+ *   forward any base-release routes (e.g. a separately-declared `/api/*`
+ *   function) instead of clearing them, and keeps the slice CI-safe — a CI
+ *   OIDC session without route scopes is rejected if the spec sets `routes`.
  */
 export async function buildAstroReleaseSlice(
   distDir: string,
@@ -396,21 +411,15 @@ export async function buildAstroReleaseSlice(
     replace: { [functionName]: functionSpec },
   };
 
-  // No explicit routes are emitted by default. The gateway (v1.52+,
-  // capability `astro-ssr-runtime`) routes every unmatched-path request
-  // to the project's single class:'ssr' function automatically — so
-  // the helper does not need to declare a /* catchall (which the route
-  // validator rejects anyway: "prefix wildcard must include a path
-  // segment before /*"). Prerendered routes are reachable via the
-  // gateway's implicit public-paths mode against the static manifest;
-  // we do not emit static-route aliases, which previously conflicted
-  // with the implicit-mode declaration for the same path.
-  //
-  // Callers who want explicit prefix routes (e.g. `/api/*` → a dedicated
-  // function) can still declare them on top of the slice; the slice's
-  // own `routes.replace: []` is intentionally empty so it doesn't
-  // clobber that pattern.
-  const routes: RouteSpec[] = [];
+  // `routes` is intentionally OMITTED from the returned slice (see the doc
+  // comment above) — not emitted as `{ replace: [] }`. The gateway (v1.52+,
+  // capability `astro-ssr-runtime`) routes every unmatched-path request to the
+  // project's single `class: "ssr"` function automatically, and prerendered
+  // pages resolve through `site.public_paths`. Omitting `routes` (rather than
+  // sending an empty replace, which CLEARS the route table) carries forward any
+  // caller-declared base routes (e.g. `/api/*` → a dedicated function) and
+  // keeps the slice safe to submit from a CI OIDC session without route scopes.
+  // Callers who need explicit routes declare them on top of the slice.
 
   // `cacheClass` is plumbed into `site.public_paths` for prerendered routes
   // when a caller cares about overriding the default html cache class. The
@@ -436,7 +445,7 @@ export async function buildAstroReleaseSlice(
     };
   }
 
-  return { site, functions, routes: { replace: routes } };
+  return { site, functions };
 }
 
 /**

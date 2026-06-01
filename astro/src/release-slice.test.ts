@@ -137,7 +137,7 @@ describe("buildAstroReleaseSlice — happy path", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("emits site (LocalDirRef), functions (bundled source), empty routes", async () => {
+  it("emits site (LocalDirRef), functions (bundled source), and omits routes", async () => {
     const { distDir } = writeFixture(root, {
       output: "server",
       routes: [
@@ -181,19 +181,23 @@ describe("buildAstroReleaseSlice — happy path", () => {
       "v1.2 slice must NOT emit entrypoint — the bundle is self-contained",
     );
 
-    // routes — empty by default. The gateway's class:'ssr' auto-fallback
-    // routes unmatched paths to the ssr function automatically. Prerendered
-    // routes are reachable via the static manifest's implicit public-paths
-    // mode — no explicit aliases needed (and emitting them would conflict
-    // with the implicit declaration for the same path).
-    assert.deepEqual(slice.routes.replace, []);
+    // routes — OMITTED (not `{ replace: [] }`). The gateway's class:'ssr'
+    // auto-fallback routes unmatched paths to the ssr function automatically,
+    // and prerendered pages resolve via the static manifest's implicit
+    // public-paths mode. Omitting `routes` carries forward any base-release
+    // routes instead of clearing them, and keeps the slice CI-safe.
+    assert.equal(
+      slice.routes,
+      undefined,
+      "slice must omit routes so base routes carry forward and CI sessions aren't rejected",
+    );
   });
 
   it("functionName option flows through to functions key", async () => {
     const { distDir } = writeFixture(root, { routes: [] });
     const slice = await buildAstroReleaseSlice(distDir, { functionName: "render" });
     assert.deepEqual(Object.keys(slice.functions.replace), ["render"]);
-    assert.deepEqual(slice.routes.replace, []);
+    assert.equal(slice.routes, undefined);
   });
 
   it("passes requireAuth + requireRole through verbatim onto the ssr function", async () => {

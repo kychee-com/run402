@@ -430,6 +430,32 @@ run402 logs --request-id req_xyz123 --json          # debug a failed render
 
 `run402 init astro` creates a working project with `package.json` (dev/deploy scripts), `astro.config.mjs` (one-line preset), sample `[slug].astro` with the full DB-fetch + cache pattern, an admin save endpoint demonstrating cache invalidation, and `.env.example`. See `run402 init astro --help`.
 
+### Deploying with the SDK directly (and from CI)
+
+Most projects deploy with `run402 deploy` (above) or `run402 deploy apply --dir dist`. If you write your own deploy script with `@run402/sdk` — e.g. a CI job that assembles a custom `ReleaseSpec` — turn the build into a deploy slice with the one canonical helper. **Do not hand-roll `site` / `public_paths`.**
+
+```ts
+import { run402 } from "@run402/sdk";
+import { buildAstroReleaseSlice } from "@run402/astro/release-slice";
+
+const slice = await buildAstroReleaseSlice("dist");   // point at the BUILD ROOT, not dist/run402/client
+await run402().project(projectId).apply({
+  database: { migrations },     // your own cross-cutting slices
+  ...slice,                     // site + functions (routes intentionally omitted)
+});
+```
+
+`buildAstroReleaseSlice` is the only supported way to map an Astro build to a `ReleaseSpec`. It:
+
+- roots the site at `dist/run402/client/` (the served output) — **not** `dist/`;
+- sets `site.public_paths: { mode: "implicit" }` so prerendered pages are reachable by filename;
+- bundles the SSR entry into a single `class: "ssr"` function;
+- **omits `routes`** (it is not in the returned object) so base-release routes — e.g. a separately-declared `/api/*` function — carry forward instead of being cleared, and the slice stays safe to submit from a CI OIDC session that has no route scopes.
+
+**Anti-pattern (the cause of [kychee-com/run402#411](https://github.com/kychee-com/run402/issues/411)):** do not point `fileSetFromDir`/`dir()` at `dist/` and build `public_paths` by hand. That ships the adapter build tree (`run402/adapter.json`, `run402/server/**`) as static assets and lands every page under a `run402/client/` path prefix — so the static manifest has no reachable pages, every URL falls through to the SSR catchall and 404s, and the SSR bundle becomes publicly downloadable. The SDK now rejects this locally with `ASTRO_ADAPTER_TREE_IN_SITE` before any upload, and the gateway warns (`SITE_NO_REACHABLE_HTML`) when a release ships HTML that isn't reachable at any public path.
+
+**Full vs CI/patch deploys use the same slice.** CI sessions are content-only (no subdomains/routes/i18n) — the slice already omits `routes`, so just don't add `routes`/`subdomains`/`i18n` to the spec in CI. The CAS substrate dedupes unchanged bytes, so a `site.replace` from the slice uploads only what actually changed; you don't need a hand-rolled `site.patch` diff to get incremental uploads.
+
 ## R402_* error codes
 
 Build / deploy / runtime / cache failures all return a structured envelope:
