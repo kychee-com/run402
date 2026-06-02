@@ -61,7 +61,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -80,7 +80,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -325,6 +325,16 @@ const SURFACE: Capability[] = [
   { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     mcp: "set_notification_preferences", cli: null,                            openclaw: null },
   { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             mcp: "test_notification",            cli: "notifications:test",            openclaw: "notifications:test" },
   { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/webhook-secret/rotate",          mcp: "rotate_webhook_secret",        cli: "webhook-secret:rotate",         openclaw: "webhook-secret:rotate" },
+
+  // ── Operator session (human/email principal, RFC 8628 device-auth) ──────
+  // The operator is the human (email), distinct from the agent (wallet/SIWX).
+  // Human-only surface → MCP null by design (MCP authenticates as the agent;
+  // the human device-login must not hand the email-union session to the agent).
+  // The wallet's own account view is `run402 status`, not an operator command.
+  { id: "operator_login",    endpoint: "POST /agent/v1/operator/session/device (+ /device/token)", mcp: null, cli: "operator:login",    openclaw: "operator:login" },
+  { id: "operator_overview", endpoint: "GET /agent/v1/operator/overview (operator-session bearer)", mcp: null, cli: "operator:overview", openclaw: "operator:overview" },
+  { id: "operator_logout",   endpoint: "POST /agent/v1/operator/session/revoke",                   mcp: null, cli: "operator:logout",   openclaw: "operator:logout" },
+  { id: "operator_whoami",   endpoint: "(local)",                                                  mcp: null, cli: "operator:whoami",   openclaw: "operator:whoami" },
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
@@ -587,6 +597,14 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   test_notification: "admin.testNotification",
   rotate_webhook_secret: "admin.rotateWebhookSecret",
   start_operator_passkey_enrollment: "admin.startOperatorPasskeyEnrollment",
+
+  // Operator session (human/email, RFC 8628 device-auth). `operator login`
+  // brokers deviceStart + devicePoll; devicePoll has no dedicated capability
+  // (it shares the `login` verb) and is listed in SDK_ONLY_METHODS below.
+  operator_login: "operator.deviceStart",
+  operator_overview: "operator.overview",
+  operator_logout: "operator.revoke",
+  operator_whoami: null, // local-only cache read (core/operator-session.ts)
 
   // Admin (v1.57)
   admin_set_lease_perpetual: "admin.setLeasePerpetual",
@@ -910,6 +928,11 @@ describe("SDK surface alignment", () => {
       // shares the `run402 functions rebuild --all` CLI verb (and the
       // name-less `functions_rebuild` MCP tool), so it has no dedicated leaf command.
       "functions.rebuildAll",
+      // ─── operator session (human/email, RFC 8628) ────────────────────────
+      // `operator login` brokers the device flow via deviceStart + devicePoll;
+      // devicePoll shares the `login` verb (no dedicated capability), like the
+      // cache.invalidate* variants above.
+      "operator.devicePoll",
     ]);
 
     const sdkMethods = await listSdkMethods();

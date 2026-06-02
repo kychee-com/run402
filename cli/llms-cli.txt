@@ -1345,6 +1345,16 @@ KMS contract wallets — provision AWS KMS-backed Ethereum wallets per project f
 
 `contact` returns `email_verification_status`, `passkey_binding_status`, and `assurance_level`. New or changed emails start a reply challenge and stay `email_pending` until the mailbox owner replies. `passkey enroll` requires `email_verified` and emails the enrollment link to the verified contact email; the token is not printed.
 
+### operator
+The **operator** is YOU, the human, identified by email — distinct from the **agent** (your wallet / SIWX identity). One browser login spans every wallet that verified your email, so `operator overview` returns the cross-wallet union. For a single wallet's account state, use `run402 status` (that IS the wallet's view; there is no `operator status`).
+
+- `run402 operator login [--no-open]` — browser-delegated sign-in (device-authorization, RFC 8628, the `aws sso login` model). Prints a verification URL + short user code to stderr and (on a TTY) opens the browser; you approve via the existing magic-link OR passkey web flow. Polls until approved, then caches the session at `{base}/operator-session.json` (0600, base config dir — shared across named wallets). Stdout JSON on success: `{ logged_in, email, wallets, wallet_count, expires_at, absolute_expires_at, expires_in_seconds }`.
+- `run402 operator overview` — account view across ALL wallets controlling your email. Sends the cached operator-session bearer to `GET /agent/v1/operator/overview`. **Requires login** — returns `OPERATOR_LOGIN_REQUIRED` (no SIWX fallback) when there is no live session, and clears the cache + returns `OPERATOR_SESSION_INVALID` on a 401/403 (revoked or expired).
+- `run402 operator whoami` — local, no network. Prints the cached session (`logged_in`, email, wallets, expiry) or `{ logged_in: false, reason: "no_session" | "expired" }` with a non-zero exit.
+- `run402 operator logout` — revokes the session server-side (`POST /agent/v1/operator/session/revoke`) then clears the local cache. Idempotent; best-effort revoke (always clears locally). Stdout: `{ revoked, cleared }`.
+
+The session is email-scoped (~30m access TTL, ~12h absolute cap), so it is cached once at the base dir and reused regardless of the active `--wallet`. Login/overview/logout require the gateway device-authorization bridge (kychee-com/run402-private#443); `whoami` is local and works today. Not exposed as MCP tools by design — MCP authenticates as the agent (wallet), and the human session must not be handed to the agent.
+
 ### service
 Public service-level status. No allowance, no auth, no keystore required — works on a fresh install. Reports on the Run402 service (uptime, capabilities, operator); for your account state use `run402 status`.
 - `run402 service status` — public availability report (24h/7d/30d uptime per capability, operator, deployment, schema `run402-status-v1`)

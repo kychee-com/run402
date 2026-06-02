@@ -48,6 +48,7 @@ Commands:
   billing     Email billing accounts, Stripe tier checkout, email packs
   contracts   KMS contract wallets ($0.04/day rental + $0.000005/sign)
   agent       Manage agent identity (contact info)
+  operator    Operator (human/email) session — login, then overview across your wallets
   service     Run402 service health and availability (status, health)
   cache       Inspect and invalidate the SSR origin cache (inspect, invalidate)
   doctor      Health and config diagnostics (machine-readable with --json)
@@ -241,6 +242,11 @@ switch (cmd) {
   }
   case "agent": {
     const { run } = await import("./lib/agent.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "operator": {
+    const { run } = await import("./lib/operator.mjs");
     await run(sub, rest);
     break;
   }
