@@ -53,6 +53,13 @@ export interface AuthSettings {
   preferred_sign_in_method?: "password" | "magic_link" | "oauth_google" | "passkey" | null;
   public_signup?: "open" | "known_email" | "invite_only";
   require_passkey_for_project_admin?: boolean;
+  /**
+   * Restrict hosted Google sign-in to these email domains, enforced at token
+   * issuance. `[]` or omitted = unrestricted. Entries are normalized
+   * (lowercased, leading `@` stripped, trimmed, deduped) and domain-validated
+   * server-side; pass an explicit `[]` to clear an existing restriction.
+   */
+  allowed_email_domains?: string[];
 }
 
 export interface AuthSettingsResult {
@@ -60,6 +67,8 @@ export interface AuthSettingsResult {
   preferred_sign_in_method: "password" | "magic_link" | "oauth_google" | "passkey" | null;
   public_signup: "open" | "known_email" | "invite_only";
   require_passkey_for_project_admin: boolean;
+  /** Normalized email-domain allowlist for hosted Google sign-in; `[]` = unrestricted. */
+  allowed_email_domains: string[];
 }
 
 export interface CreateAuthUserOptions {
@@ -92,6 +101,7 @@ const AUTH_SETTINGS_FIELDS = [
   "preferred_sign_in_method",
   "public_signup",
   "require_passkey_for_project_admin",
+  "allowed_email_domains",
 ] as const;
 const SIGN_IN_METHODS = ["password", "magic_link", "oauth_google", "passkey"] as const;
 const PUBLIC_SIGNUP_POLICIES = ["open", "known_email", "invite_only"] as const;
@@ -133,6 +143,17 @@ function validateAuthSettings(settings: AuthSettings): void {
       "public_signup",
       "updating auth settings",
     );
+  }
+  if (raw.allowed_email_domains !== undefined) {
+    if (
+      !Array.isArray(raw.allowed_email_domains) ||
+      !raw.allowed_email_domains.every((d) => typeof d === "string")
+    ) {
+      throw new LocalError(
+        'allowed_email_domains must be an array of strings (e.g., ["example.com"]); pass [] to clear.',
+        "updating auth settings",
+      );
+    }
   }
 }
 

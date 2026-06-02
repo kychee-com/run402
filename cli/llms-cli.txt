@@ -1281,7 +1281,7 @@ Manage project user authentication: magic links, trusted invites, passwords, pas
 - `run402 auth create-user --email <addr> [--admin <true|false>] [--invite] [--redirect <url>] [--project <id>]` — service-key create/update auth user
 - `run402 auth invite-user --email <addr> --redirect <url> [--admin <true|false>] [--project <id>]` — create/update user and send trusted invite
 - `run402 auth set-password --token <bearer> --new <password> [--current <password>]` — change, reset, or set password
-- `run402 auth settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--project <id>]` — update auth settings (requires service_key)
+- `run402 auth settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--project <id>]` — update auth settings (requires service_key). `--allowed-email-domains` is a comma-separated list restricting hosted Google sign-in to those domains (enforced at token issuance); `none` clears it; empty = unrestricted.
 - `run402 auth passkey-register-options --token <bearer> --app-origin <origin> [--project <id>]` — create WebAuthn registration options
 - `run402 auth passkey-register-verify --token <bearer> --challenge <id> --response <json> [--label <text>] [--project <id>]` — verify and store passkey registration
 - `run402 auth passkey-login-options --app-origin <origin> [--email <addr>] [--project <id>]` — create WebAuthn login options
@@ -1430,6 +1430,7 @@ Stable error codes for the Astro SSR runtime. Each carries `code`, `message`, `s
 - `R402_AUTH_IDENTITY_LINK_CONFLICT` — 409. `(project_id, provider, subject)` already linked to another user.
 - `R402_AUTH_SESSION_BRIDGE_UNVERIFIED` — 401. Custom identity proof failed verification, OR consumer accessed the internal-only session-creation primitive.
 - `R402_AUTH_UNKNOWN_IDENTITY` — 401. `createResponseFromIdentity` couldn't resolve identity AND `createUser: true` not set.
+- `R402_AUTH_DOMAIN_NOT_ALLOWED` — 403. Hosted Google sign-in rejected at token issuance: the verified email's domain isn't in the project's `allowed_email_domains` (or the email is unverified). Set/clear the allowlist with `run402 auth settings --allowed-email-domains <csv|none>`. Empty allowlist = unrestricted.
 - `R402_AUTH_TENANT_SUFFIX_REQUIRED` — gateway refuses session cookies on `*.run402.com` for non-allowlisted projects. PSL-registered `*.run402.app` + verified custom domains are always allowed.
 - `R402_AUTH_ACTOR_HEADER_SPOOF` — client-supplied reserved actor header was stripped at ingress; diagnostic only.
 - `R402_AUTH_REDUNDANT_USER_FILTER` — deploy-fail (or runtime warn). `.eq("user_id", user.id)` against an RLS-bound table. Add `// run402-allow-user-filter: <reason>` if intentional.

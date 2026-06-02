@@ -24,7 +24,7 @@ Subcommands:
   set-password --token <bearer> --new <password> [--current <password>] [--project <id>]
     Change, reset, or set a user's password. Requires the user's access_token.
 
-  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--project <id>]
+  settings [--allow-password-set <true|false>] [--preferred <method|null>] [--public-signup <policy>] [--require-admin-passkey <true|false>] [--allowed-email-domains <csv|none>] [--project <id>]
     Update project auth settings (requires service_key).
 
   passkey-register-options --token <bearer> --app-origin <origin> [--project <id>]
@@ -147,14 +147,19 @@ Options:
   --preferred <method|null>             password, magic_link, oauth_google, passkey, or null
   --public-signup <policy>              open, known_email, or invite_only
   --require-admin-passkey <true|false>  Require passkey auth for project_admin sessions
+  --allowed-email-domains <csv|none>    Restrict hosted Google sign-in to these domains; 'none' clears (unrestricted)
   --project <id>                        Project ID (defaults to active project)
 
 Notes:
   Requires the project's service_key (admin-level).
+  --allowed-email-domains is comma-separated (e.g. kychee.com,example.com); pass 'none' to clear.
+  Domains are normalized + validated server-side; hosted Google sign-in from any
+  other domain is rejected at token issuance (R402_AUTH_DOMAIN_NOT_ALLOWED).
 
 Examples:
   run402 auth settings --allow-password-set true
   run402 auth settings --preferred passkey --require-admin-passkey true
+  run402 auth settings --allowed-email-domains kychee.com,example.com
 `,
   "passkey-register-options": `run402 auth passkey-register-options — Create passkey registration options
 
@@ -253,8 +258,8 @@ const AUTH_FLAGS = {
     values: ["--token", "--new", "--current", "--project"],
   },
   settings: {
-    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--project", "--help", "-h"],
-    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--project"],
+    known: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--project", "--help", "-h"],
+    values: ["--allow-password-set", "--preferred", "--public-signup", "--require-admin-passkey", "--allowed-email-domains", "--project"],
   },
   "passkey-register-options": {
     known: ["--token", "--app-origin", "--project", "--help", "-h"],
@@ -460,12 +465,14 @@ async function settings(args) {
   const requireAdminPasskey = parseOptionalBool(args, "--require-admin-passkey");
   const preferredRaw = parseFlag(args, "--preferred");
   const publicSignup = parseFlag(args, "--public-signup");
+  const domainsRaw = parseFlag(args, "--allowed-email-domains");
 
   if (
     allow === undefined &&
     requireAdminPasskey === undefined &&
     preferredRaw === null &&
-    publicSignup === null
+    publicSignup === null &&
+    domainsRaw === null
   ) {
     fail({
       code: "BAD_USAGE",
@@ -488,12 +495,23 @@ async function settings(args) {
     });
   }
 
+  // --allowed-email-domains: comma-separated list; the literal `none` clears the
+  // restriction (→ []); omitted preserves. Server normalizes + validates each entry.
+  let allowedEmailDomains;
+  if (domainsRaw !== null) {
+    allowedEmailDomains =
+      domainsRaw.trim().toLowerCase() === "none"
+        ? []
+        : domainsRaw.split(",").map((d) => d.trim()).filter((d) => d.length > 0);
+  }
+
   try {
     const patch = {
       allow_password_set: allow,
       preferred_sign_in_method: preferredRaw === "null" ? null : preferredRaw ?? undefined,
       public_signup: publicSignup ?? undefined,
       require_passkey_for_project_admin: requireAdminPasskey,
+      allowed_email_domains: allowedEmailDomains,
     };
     const data = await getSdk().auth.settings(projectId, patch);
     console.log(JSON.stringify({ ...patch, ...data }));

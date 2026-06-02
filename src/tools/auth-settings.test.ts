@@ -53,6 +53,39 @@ describe("auth_settings tool", () => {
     assert.equal(capturedHeaders["Authorization"], "Bearer sk-svc");
   });
 
+  it("passes allowed_email_domains through and renders it (hosted-auth-domain-allowlist)", async () => {
+    saveProject("proj-s2", {
+      anon_key: "ak-anon",
+      service_key: "sk-svc",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+
+    let capturedBody: Record<string, unknown> = {};
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedBody = JSON.parse(init?.body as string);
+      return new Response(
+        JSON.stringify({
+          allow_password_set: false,
+          preferred_sign_in_method: null,
+          public_signup: "open",
+          require_passkey_for_project_admin: false,
+          allowed_email_domains: ["kychee.com"],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleAuthSettings({
+      project_id: "proj-s2",
+      allowed_email_domains: ["kychee.com"],
+    });
+
+    assert.deepEqual(capturedBody.allowed_email_domains, ["kychee.com"]);
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[0]!.text.includes("allowed_email_domains:** kychee.com"));
+  });
+
   it("returns isError when project not in keystore", async () => {
     const result = await handleAuthSettings({
       project_id: "no-proj",

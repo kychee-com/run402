@@ -92,6 +92,57 @@ describe("auth.settings", () => {
     });
   });
 
+  it("PATCHes allowed_email_domains through to the body and returns it (hosted-auth-domain-allowlist)", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        allow_password_set: false,
+        preferred_sign_in_method: null,
+        public_signup: "open",
+        require_passkey_for_project_admin: false,
+        allowed_email_domains: ["kychee.com"],
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.auth.settings("prj_known", {
+      allowed_email_domains: ["kychee.com"],
+    });
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      allowed_email_domains: ["kychee.com"],
+    });
+    assert.deepEqual(result.allowed_email_domains, ["kychee.com"]);
+  });
+
+  it("rejects a non-array allowed_email_domains before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid allowed_email_domains");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sdk.auth.settings("prj_known", { allowed_email_domains: "kychee.com" as any }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "updating auth settings" &&
+        /allowed_email_domains must be an array of strings/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("rejects allowed_email_domains with a non-string entry before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid allowed_email_domains");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sdk.auth.settings("prj_known", { allowed_email_domains: ["ok.com", 42] as any }),
+      (err: unknown) =>
+        err instanceof LocalError && /array of strings/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("throws LocalError when settings arg is undefined (cast through any)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);

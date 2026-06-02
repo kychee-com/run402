@@ -8,6 +8,7 @@ export const authSettingsSchema = {
   preferred_sign_in_method: z.enum(["password", "magic_link", "oauth_google", "passkey"]).nullable().optional().describe("Project UI hint for the preferred sign-in method."),
   public_signup: z.enum(["open", "known_email", "invite_only"]).optional().describe("Public signup policy."),
   require_passkey_for_project_admin: z.boolean().optional().describe("Require eligible passkey login for project_admin sessions."),
+  allowed_email_domains: z.array(z.string()).optional().describe("Restrict hosted Google sign-in to these email domains, enforced at token issuance. [] or omitted = unrestricted; pass [] to clear. Normalized + domain-validated server-side."),
 };
 
 export async function handleAuthSettings(args: {
@@ -16,6 +17,7 @@ export async function handleAuthSettings(args: {
   preferred_sign_in_method?: "password" | "magic_link" | "oauth_google" | "passkey" | null;
   public_signup?: "open" | "known_email" | "invite_only";
   require_passkey_for_project_admin?: boolean;
+  allowed_email_domains?: string[];
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const updated = await getSdk().auth.settings(args.project_id, {
@@ -23,6 +25,7 @@ export async function handleAuthSettings(args: {
       preferred_sign_in_method: args.preferred_sign_in_method,
       public_signup: args.public_signup,
       require_passkey_for_project_admin: args.require_passkey_for_project_admin,
+      allowed_email_domains: args.allowed_email_domains,
     });
     return {
       content: [
@@ -35,6 +38,7 @@ export async function handleAuthSettings(args: {
             `- **preferred_sign_in_method:** ${updated.preferred_sign_in_method || ""}`,
             `- **public_signup:** ${updated.public_signup}`,
             `- **require_passkey_for_project_admin:** ${updated.require_passkey_for_project_admin}`,
+            `- **allowed_email_domains:** ${(updated.allowed_email_domains ?? []).join(", ") || "(unrestricted)"}`,
           ].join("\n"),
         },
       ],
