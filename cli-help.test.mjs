@@ -76,7 +76,7 @@ const MATRIX = {
     specific: ["deploy", "invoke", "logs", "update", "rebuild", "list", "delete"],
   },
   secrets: { shared: [], specific: ["set", "list", "delete"] },
-  jobs: { shared: [], specific: ["submit", "get", "logs", "cancel"] },
+  jobs: { shared: [], specific: ["submit", "get", "logs", "cancel", "artifacts"] },
   assets: {
     shared: [],
     specific: ["put", "get", "ls", "rm", "sign"],
@@ -132,6 +132,12 @@ const EMAIL_WEBHOOKS = {
 const DEPLOY_RELEASE = {
   shared: [],
   specific: ["get", "active", "diff"],
+};
+
+// `run402 jobs artifacts <action>` is a nested group dispatched in lib/jobs.mjs.
+const JOBS_ARTIFACTS = {
+  shared: [],
+  specific: ["get"],
 };
 
 // ─── Mock API server ────────────────────────────────────────────────────────
@@ -355,6 +361,21 @@ describe("CLI --help contract", () => {
         assertHelp(await runCli(["deploy", "release", action, "--help"]),
           `run402 deploy release ${action} --help`,
           { expectHeadingStartsWith: `run402 deploy release ${action}` });
+      });
+    }
+  });
+
+  describe("run402 jobs artifacts (nested)", () => {
+    it("jobs artifacts --help prints usage without side effects", async () => {
+      assertHelp(await runCli(["jobs", "artifacts", "--help"]),
+        "run402 jobs artifacts --help",
+        { expectHeadingStartsWith: "run402 jobs artifacts" });
+    });
+    for (const action of JOBS_ARTIFACTS.specific) {
+      it(`jobs artifacts ${action} --help prints PER-SUBCOMMAND help`, async () => {
+        assertHelp(await runCli(["jobs", "artifacts", action, "--help"]),
+          `run402 jobs artifacts ${action} --help`,
+          { expectHeadingStartsWith: `run402 jobs artifacts ${action}` });
       });
     }
   });

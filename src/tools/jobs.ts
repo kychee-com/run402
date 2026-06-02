@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { createWriteStream, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
 
 import { mapSdkError } from "../errors.js";
 import { getSdk } from "../sdk.js";
@@ -64,6 +68,19 @@ export const jobsCancelSchema = {
   job_id: z.string().describe("Managed job run ID"),
 };
 
+export const jobsDownloadArtifactSchema = {
+  project_id: z.string().describe("The project ID"),
+  job_id: z.string().describe("Managed job run ID (must be completed)"),
+  filename: z
+    .string()
+    .describe(
+      "Artifact filename to download, e.g. proof.json, public.json, prove-output.log. Discover the recorded set from the artifacts map returned by jobs_get.",
+    ),
+  output_path: z
+    .string()
+    .describe("Local filesystem path to write the artifact bytes to. Parent directories will be created."),
+};
+
 export async function handleJobsSubmit(args: {
   project_id: string;
   request: {
@@ -120,6 +137,41 @@ export async function handleJobsCancel(args: {
   } catch (err) {
     return mapSdkError(err, "cancelling job");
   }
+}
+
+export async function handleJobsDownloadArtifact(args: {
+  project_id: string;
+  job_id: string;
+  filename: string;
+  output_path: string;
+}): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  let res: Response;
+  try {
+    res = await getSdk().jobs.downloadArtifact(args.project_id, args.job_id, args.filename);
+  } catch (err) {
+    return mapSdkError(err, "downloading job artifact");
+  }
+
+  if (!res.body) {
+    return { content: [{ type: "text", text: "Empty response body" }], isError: true };
+  }
+
+  const outPath = resolve(args.output_path);
+  const contentType = res.headers.get("content-type");
+  const contentLength = Number(res.headers.get("content-length") ?? 0);
+
+  try {
+    mkdirSync(dirname(outPath), { recursive: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await pipeline(Readable.fromWeb(res.body as any), createWriteStream(outPath));
+  } catch (err) {
+    return mapSdkError(err, "writing job artifact to local file");
+  }
+
+  const lines: string[] = [`Downloaded **${args.filename}** (job ${args.job_id}) → ${outPath}`];
+  if (contentType) lines.push(`Content-Type: ${contentType}`);
+  if (contentLength > 0) lines.push(`Size: ${contentLength.toLocaleString()} bytes`);
+  return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
 function jsonResult(

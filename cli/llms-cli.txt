@@ -1028,6 +1028,7 @@ Fixed platform-managed jobs. This is not arbitrary Docker execution: submit a ga
 - `run402 jobs get <job_id> [--project <id>]`
 - `run402 jobs logs <job_id> [--project <id>] [--tail <n>] [--since <epoch_ms>]`
 - `run402 jobs cancel <job_id> [--project <id>]`
+- `run402 jobs artifacts get <job_id> <file> --output <path> [--project <id>]`
 
 Submit request shape:
 
@@ -1038,6 +1039,17 @@ Submit request shape:
   "max_cost_usd_micros": 50000
 }
 ```
+
+Artifacts: when a job completes, `jobs get` returns an `artifacts` map keyed by
+filename. Each value is an object — `{ "url", "content_type", "sha256",
+"size_bytes" }` — not a bare ref string (the old, never-resolvable
+`run402://storage/...` scheme was retired). `sha256`/`size_bytes` are omitted
+for jobs created before this change; the `url` still serves. Download the bytes
+with `run402 jobs artifacts get <job_id> <file> --output <path>` (auth is the
+project service key, same as the rest of the jobs API). The recorded filenames
+are `proof.json`, `public.json`, `prove-output.log`, `prove-time.log`, and
+`verify-output.log`; a 404 means the job has not completed or the filename was
+not recorded for that run.
 
 ### assets (primary storage API)
 

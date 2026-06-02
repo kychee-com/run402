@@ -685,6 +685,9 @@ class ScopedJobs {
   cancel(jobId: string): Promise<ManagedJobResponse> {
     return this.parent.jobs.cancel(this.projectId, jobId);
   }
+  downloadArtifact(jobId: string, filename: string): Promise<Response> {
+    return this.parent.jobs.downloadArtifact(this.projectId, jobId, filename);
+  }
 }
 
 class ScopedSenderDomain {

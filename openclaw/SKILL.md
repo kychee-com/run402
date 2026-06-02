@@ -722,7 +722,10 @@ run402 jobs submit --file job.json --project <id>
 run402 jobs get    <job_id> --project <id>
 run402 jobs logs   <job_id> --project <id> --tail 100
 run402 jobs cancel <job_id> --project <id>
+run402 jobs artifacts get <job_id> proof.json --output ./proof.json --project <id>
 ```
+
+When a job completes, `jobs get` returns an `artifacts` map keyed by filename, each value an object `{ url, content_type, sha256, size_bytes }` (the old `run402://` ref strings were retired; `sha256`/`size_bytes` are omitted for pre-change jobs). Download the bytes with `jobs artifacts get` — recorded files are `proof.json`, `public.json`, `prove-output.log`, `prove-time.log`, `verify-output.log`.
 
 ## Email
 

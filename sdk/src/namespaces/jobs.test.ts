@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { ProjectNotFound } from "../errors.js";
+import { ApiError, ProjectNotFound } from "../errors.js";
 import { Run402 } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type { ManagedJobSubmitRequest } from "./jobs.js";
@@ -179,6 +179,59 @@ describe("jobs", () => {
     assert.equal(result.status, "cancelled");
     assert.equal(calls[0]!.url, "https://api.test/jobs/v1/runs/job_123");
     assert.equal(calls[0]!.method, "DELETE");
+  });
+
+  it("downloadArtifact streams raw bytes with the service bearer", async () => {
+    const { fetch, calls } = mockFetch(
+      () =>
+        new Response('{"ok":true}', {
+          status: 200,
+          headers: { "content-type": "application/json", "content-length": "11" },
+        }),
+    );
+
+    const res = await sdk(fetch).jobs.downloadArtifact("prj_k", "job_123", "proof.json");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("content-type"), "application/json");
+    assert.equal(await res.text(), '{"ok":true}');
+    assert.equal(
+      calls[0]!.url,
+      "https://api.test/jobs/v1/runs/job_123/artifacts/proof.json",
+    );
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer s");
+  });
+
+  it("downloadArtifact percent-encodes the filename segment", async () => {
+    const { fetch, calls } = mockFetch(() => new Response("log", { status: 200 }));
+
+    await sdk(fetch).jobs.downloadArtifact("prj_k", "job_123", "prove output.log");
+
+    assert.equal(
+      calls[0]!.url,
+      "https://api.test/jobs/v1/runs/job_123/artifacts/prove%20output.log",
+    );
+  });
+
+  it("downloadArtifact throws ApiError on a 404 (uncompleted job or unknown file)", async () => {
+    const { fetch } = mockFetch(() => new Response("not found", { status: 404 }));
+
+    await assert.rejects(
+      sdk(fetch).jobs.downloadArtifact("prj_k", "job_123", "proof.json"),
+      (err: unknown) => err instanceof ApiError && err.status === 404,
+    );
+  });
+
+  it("downloadArtifact throws ProjectNotFound without fetch for unknown project", async () => {
+    const { fetch, calls } = mockFetch(() => json({}));
+
+    await assert.rejects(
+      sdk(fetch).jobs.downloadArtifact("prj_missing", "job_123", "proof.json"),
+      ProjectNotFound,
+    );
+
+    assert.equal(calls.length, 0);
   });
 
   it("throws ProjectNotFound without fetch for unknown project", async () => {
