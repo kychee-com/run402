@@ -101,11 +101,17 @@ export function magicLinkFormHtml(returnTo: string): string {
   );
 }
 
-/** `google` — a no-JS link/button to the hosted OAuth start route (GET). */
-export function googleOauthHtml(returnTo: string): string {
+/** `google` — a no-JS link/button to the hosted OAuth start route (GET).
+ *  `errorReturnTo` (hosted-auth-signin-error-ssr): the same-origin sign-in-page
+ *  URL the gateway returns to on a FAILED sign-in, with `?r402_auth_error=<code>`.
+ *  When provided it rides the start link so the error round-trip is zero-config. */
+export function googleOauthHtml(returnTo: string, errorReturnTo?: string): string {
   // The href is built with encodeURIComponent at render time; the resulting
   // string is then attribute-escaped so `&` becomes `&amp;` in the markup.
-  const href = escapeAttr(`/auth/sign-in/oauth/google/start?returnTo=${encodeURIComponent(returnTo)}`);
+  const qs =
+    `returnTo=${encodeURIComponent(returnTo)}` +
+    (errorReturnTo ? `&errorReturnTo=${encodeURIComponent(errorReturnTo)}` : "");
+  const href = escapeAttr(`/auth/sign-in/oauth/google/start?${qs}`);
   return `<a class="r402-oauth r402-oauth-google" href="${href}">Continue with Google</a>`;
 }
 
@@ -127,7 +133,7 @@ export function passkeyButtonHtml(returnTo: string): string {
  * between every adjacent pair across the full ordered method list (including
  * the password form, which the component owns).
  */
-export function buildMethodBlocks(methods: SignInMethod[], returnTo: string): string[] {
+export function buildMethodBlocks(methods: SignInMethod[], returnTo: string, errorReturnTo?: string): string[] {
   const out: string[] = [];
   for (const m of methods) {
     switch (m) {
@@ -135,7 +141,7 @@ export function buildMethodBlocks(methods: SignInMethod[], returnTo: string): st
         out.push(magicLinkFormHtml(returnTo));
         break;
       case "google":
-        out.push(googleOauthHtml(returnTo));
+        out.push(googleOauthHtml(returnTo, errorReturnTo));
         break;
       case "passkey":
         out.push(passkeyButtonHtml(returnTo));
@@ -161,8 +167,9 @@ export function buildExtraMethodsHtml(
   methods: SignInMethod[],
   returnTo: string,
   passwordIsFirst: boolean,
+  errorReturnTo?: string,
 ): string {
-  const blocks = buildMethodBlocks(methods, returnTo);
+  const blocks = buildMethodBlocks(methods, returnTo, errorReturnTo);
   if (blocks.length === 0) return "";
   const divider = dividerHtml();
   const joined = blocks.join(divider);
@@ -303,4 +310,47 @@ export const EXTRA_METHOD_CSS = `
   .r402-passkey[hidden] {
     display: none;
   }
+  .r402-auth-error {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--r402-error-fg, #8a1c1c);
+    background: var(--r402-error-bg, #fdecea);
+    border: 1px solid var(--r402-error-border, #f5c2c0);
+    border-radius: var(--r402-radius, 0.375rem);
+  }
 `;
+
+/**
+ * hosted-auth-signin-error-ssr: surfacing hosted sign-in errors in <SignIn>.
+ *
+ * On a FAILED hosted OAuth sign-in the gateway returns the visitor to the
+ * sign-in page with `?<AUTH_ERROR_PARAM>=<code>` — a SERVER-READABLE query param
+ * (not the legacy URL hash), so the no-JS SSR component renders a message with
+ * zero consumer code. The codes mirror the gateway callback's recoverable
+ * reasons (see the gateway's `redirectError`).
+ */
+export const AUTH_ERROR_PARAM = "r402_auth_error";
+
+/** Specific, user-actionable copy for codes a visitor can act on. Infra /
+ *  transient codes intentionally fall through to the generic message. */
+export const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  domain_not_allowed:
+    "This site is restricted to approved email domains. Sign in with your work account.",
+  account_exists_requires_link:
+    "An account with this email already exists. Sign in with your original method, then link Google from your account settings.",
+  identity_already_linked:
+    "This Google account is already linked to a different account.",
+};
+
+const GENERIC_AUTH_ERROR = "Sign-in could not be completed. Please try again.";
+
+/**
+ * Map a delivered `r402_auth_error` code to user-facing copy. Returns null for
+ * no/empty code (nothing to show). Known user-actionable codes get specific
+ * copy; anything else (incl. infra codes like `token_exchange_failed`) gets a
+ * safe generic message rather than leaking a raw code or rendering blank.
+ */
+export function messageForAuthError(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return AUTH_ERROR_MESSAGES[code] ?? GENERIC_AUTH_ERROR;
+}

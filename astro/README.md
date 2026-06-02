@@ -312,6 +312,19 @@ Every auth error carries a structured envelope with a `next_actions[].fix` paylo
 
 Two pre-existing codes were enriched with `fix` payloads in this release (names unchanged): `R402_AUTH_CSRF_ORIGIN_MISMATCH` (submit from a Run402 component / same-origin form) and `R402_AUTH_PRERENDERED` (`export const prerender = false;`). At deploy time, `run402 doctor` statically detects a `createResponseFromTenantAssertion` call whose function lacks the `auth.sessionMint` capability and emits `R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING` with the exact spec edit — catching the footgun before it becomes a runtime 403.
 
+### Hosted sign-in errors render themselves (`<SignIn>`)
+
+A failed hosted OAuth sign-in — e.g. a Google account whose domain is not in the project's `allowed_email_domains` (set via `run402 auth settings --allowed-email-domains …`) — is returned to your sign-in page with a **server-readable** `?r402_auth_error=<code>` query param, and `<SignIn>` renders the message for you. Server-side, **no client JS, zero extra code**:
+
+```astro
+---
+import { SignIn } from "@run402/astro/components";
+---
+<SignIn returnTo="/admin" methods={["google"]} />
+```
+
+A `@gmail.com` user rejected from a Workspace-restricted admin tool lands back on this page with "This site is restricted to approved email domains. Sign in with your work account." rendered above the form. `<SignIn>` emits its own URL as the error-return target on the OAuth start link, so the round-trip is automatic — you never touch a query param or the URL hash. Known codes (`domain_not_allowed`, `account_exists_requires_link`, `identity_already_linked`) get specific copy; anything else (transient/infra) falls back to a generic "Sign-in could not be completed. Please try again." The block carries `role="alert"` and the `.r402-auth-error` class — restyle via your own CSS or the `--r402-error-fg` / `--r402-error-bg` / `--r402-error-border` custom properties. With no error param the render is byte-identical to before — nothing extra ships.
+
 ## `<Run402Picture>` — runtime CMS images
 
 For images coming from a DB row at SSR time (the common CMS pattern), use `<Run402Picture asset={page.hero_asset}>`. The `asset` prop is the `AssetRef` JSONB that `r.assets.put()` returned at upload time — store the whole object, not just the URL, then render directly.
