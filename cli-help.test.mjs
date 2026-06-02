@@ -119,6 +119,7 @@ const MATRIX = {
     ],
   },
   agent: { shared: [], specific: ["contact"] },
+  operator: { shared: ["login", "logout", "overview", "whoami"], specific: [] },
   service: { shared: [], specific: ["status", "health"] },
 };
 
