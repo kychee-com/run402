@@ -58,6 +58,8 @@ import {
   buildExtraMethodsHtml,
   EXTRA_METHOD_CSS,
   PASSKEY_SCRIPT,
+  messageForAuthError,
+  AUTH_ERROR_PARAM,
 } from "./sign-in-methods.js";
 
 interface Props {
@@ -82,10 +84,22 @@ const defaultOnly = isDefaultOnly(methods);
 const resolved = normalizeMethods(methods);
 const hasPassword = includesPassword(resolved);
 const hasPasskey = resolved.includes("passkey");
+// hosted-auth-signin-error-ssr: a FAILED hosted OAuth sign-in returns the
+// visitor here with `?r402_auth_error=<code>` (a server-readable query param —
+// see the @run402/astro README). Render it server-side; no client JS. When the
+// param is absent nothing renders, and the default (password-only) branch never
+// touches it, so the byte-identical default contract (§6.1/§6.3) holds.
+const authErrorMessage = messageForAuthError(Astro.url.searchParams.get(AUTH_ERROR_PARAM));
+// Where the gateway returns a FAILED OAuth sign-in: this same sign-in page
+// (path only, so the error code can't accumulate across attempts). The gateway
+// validates it same-origin and delivers `?r402_auth_error=` there. Rides the
+// google start link below.
+const errorReturnTo = Astro.url.pathname;
+
 // Extra (non-password) method markup, divider-interleaved. A leading divider
 // is added when the password form was rendered just above (so "or" sits
 // between password and the next method).
-const extraMethodsHtml = buildExtraMethodsHtml(resolved, returnTo, hasPassword);
+const extraMethodsHtml = buildExtraMethodsHtml(resolved, returnTo, hasPassword, errorReturnTo);
 
 // §6.1/§6.3 byte-identical default: when `methods` is omitted or exactly
 // ["password"], the `defaultOnly` branch below renders the verbatim
@@ -132,6 +146,9 @@ const extraMethodsHtml = buildExtraMethodsHtml(resolved, returnTo, hasPassword);
 </form>
 ) : (
   <div class={`r402-sign-in-methods ${className}`.trim()} data-r402-sign-in-methods>
+    {authErrorMessage && (
+      <div class="r402-auth-error" role="alert">{authErrorMessage}</div>
+    )}
     {hasPassword && (
       <form
         method="POST"

@@ -38,6 +38,7 @@ import {
   dividerHtml,
   PASSKEY_SCRIPT,
   DEFAULT_METHODS,
+  messageForAuthError,
 } from "./sign-in-methods.js";
 
 // ---------------------------------------------------------------------------
@@ -78,10 +79,15 @@ async function loadAstroComponent(astroFileUrl: URL): Promise<unknown> {
 async function render(
   astroFileUrl: URL,
   props: Record<string, unknown> = {},
+  requestUrl?: string,
 ): Promise<string> {
   const Component = await loadAstroComponent(astroFileUrl);
   const container = await AstroContainer.create();
-  return container.renderToString(Component as never, { props });
+  const opts: Record<string, unknown> = { props };
+  // Drives `Astro.url` so errorReturnTo emission + the ?r402_auth_error read are
+  // deterministic in tests (hosted-auth-signin-error-ssr).
+  if (requestUrl) opts.request = new Request(requestUrl);
+  return container.renderToString(Component as never, opts as never);
 }
 
 /** Astro derives the `astro-xxxxxxxx` scope hash from component source and
@@ -193,12 +199,18 @@ describe("SignIn.astro — methods rendering", () => {
     assert.doesNotMatch(dom, /<script/);
   });
 
-  it("(c) methods=['google'] renders an anchor href containing /auth/sign-in/oauth/google/start", async () => {
-    const html = await render(SIGNIN_URL, { returnTo: "/portal", methods: ["google"] });
+  it("(c) methods=['google'] renders an anchor href containing /auth/sign-in/oauth/google/start (+ errorReturnTo)", async () => {
+    const html = await render(
+      SIGNIN_URL,
+      { returnTo: "/portal", methods: ["google"] },
+      "https://app.example/auth/sign-in",
+    );
     const dom = markup(html);
+    // The start link carries returnTo AND errorReturnTo (this sign-in page), so
+    // a domain-rejected sign-in is delivered back here server-readably.
     assert.match(
       dom,
-      /<a class="r402-oauth r402-oauth-google" href="\/auth\/sign-in\/oauth\/google\/start\?returnTo=%2Fportal">Continue with Google<\/a>/,
+      /<a class="r402-oauth r402-oauth-google" href="\/auth\/sign-in\/oauth\/google\/start\?returnTo=%2Fportal&amp;errorReturnTo=%2Fauth%2Fsign-in">Continue with Google<\/a>/,
     );
     assert.doesNotMatch(dom, /action="\/auth\/sign-in"/);
     assert.doesNotMatch(dom, /<script/);
@@ -262,14 +274,56 @@ describe("SignIn.astro — methods rendering", () => {
   });
 
   it("returnTo is HTML-attribute-escaped where interpolated", async () => {
-    const html = await render(SIGNIN_URL, {
-      returnTo: '/a&b"c',
-      methods: ["magic_link", "google"],
-    });
+    const html = await render(
+      SIGNIN_URL,
+      { returnTo: '/a&b"c', methods: ["magic_link", "google"] },
+      "https://app.example/login",
+    );
     // magic-link hidden input value escaped
     assert.match(html, /name="returnTo" value="\/a&amp;b&quot;c"/);
-    // google href: encodeURIComponent then attribute-escape (& → &amp;)
-    assert.match(html, /href="\/auth\/sign-in\/oauth\/google\/start\?returnTo=%2Fa%26b%22c"/);
+    // google href: encodeURIComponent then attribute-escape (& → &amp;), plus the
+    // errorReturnTo (this page) appended as a second query param.
+    assert.match(html, /href="\/auth\/sign-in\/oauth\/google\/start\?returnTo=%2Fa%26b%22c&amp;errorReturnTo=%2Flogin"/);
+  });
+
+  // hosted-auth-signin-error-ssr: a failed hosted OAuth sign-in returns here with
+  // ?r402_auth_error=<code>; <SignIn> renders it server-side, no client JS.
+  it("renders an auth-error alert from ?r402_auth_error (server-side, no JS)", async () => {
+    const html = await render(
+      SIGNIN_URL,
+      { returnTo: "/admin", methods: ["google"] },
+      "https://app.example/auth/sign-in?r402_auth_error=domain_not_allowed",
+    );
+    const dom = stripScope(markup(html));
+    assert.match(
+      dom,
+      /<div class="r402-auth-error" role="alert">This site is restricted to approved email domains[^<]*<\/div>/,
+    );
+    // The message is in the SSR HTML — no script required to display it.
+    assert.doesNotMatch(dom, /<script/);
+  });
+
+  it("renders NO auth-error alert when ?r402_auth_error is absent", async () => {
+    const html = await render(
+      SIGNIN_URL,
+      { returnTo: "/admin", methods: ["google"] },
+      "https://app.example/auth/sign-in",
+    );
+    // The alert DIV is absent from the markup (the .r402-auth-error CSS rule
+    // still ships in the stylesheet, hence checking markup() not the full html).
+    assert.doesNotMatch(markup(html), /r402-auth-error/);
+  });
+
+  it("an unknown auth-error code falls back to the generic message", async () => {
+    const html = await render(
+      SIGNIN_URL,
+      { returnTo: "/admin", methods: ["google"] },
+      "https://app.example/auth/sign-in?r402_auth_error=token_exchange_failed",
+    );
+    assert.match(
+      stripScope(markup(html)),
+      /<div class="r402-auth-error" role="alert">Sign-in could not be completed[^<]*<\/div>/,
+    );
   });
 });
 
@@ -338,6 +392,13 @@ describe("sign-in-methods — markup builders", () => {
     );
   });
 
+  it("googleOauthHtml appends errorReturnTo when provided (hosted-auth-signin-error-ssr)", () => {
+    assert.equal(
+      googleOauthHtml("/portal", "/auth/sign-in"),
+      '<a class="r402-oauth r402-oauth-google" href="/auth/sign-in/oauth/google/start?returnTo=%2Fportal&amp;errorReturnTo=%2Fauth%2Fsign-in">Continue with Google</a>',
+    );
+  });
+
   it("passkeyButtonHtml emits the data hooks + escaped returnTo", () => {
     assert.equal(
       passkeyButtonHtml('/x"y'),
@@ -389,5 +450,26 @@ describe("sign-in-methods — markup builders", () => {
     assert.match(PASSKEY_SCRIPT, /\[data-r402-passkey\]/);
     // try/catch so a failed ceremony does nothing destructive.
     assert.match(PASSKEY_SCRIPT, /catch \(_err\)/);
+  });
+});
+
+describe("sign-in-methods — messageForAuthError (hosted-auth-signin-error-ssr)", () => {
+  it("returns null for no/empty code", () => {
+    assert.equal(messageForAuthError(null), null);
+    assert.equal(messageForAuthError(undefined), null);
+    assert.equal(messageForAuthError(""), null);
+  });
+
+  it("returns specific copy for user-actionable codes", () => {
+    assert.match(messageForAuthError("domain_not_allowed")!, /approved email domains/);
+    assert.match(messageForAuthError("account_exists_requires_link")!, /already exists/);
+    assert.match(messageForAuthError("identity_already_linked")!, /already linked/);
+  });
+
+  it("falls back to a generic message for infra/unknown codes", () => {
+    const generic = /could not be completed/;
+    assert.match(messageForAuthError("token_exchange_failed")!, generic);
+    assert.match(messageForAuthError("id_token_invalid")!, generic);
+    assert.match(messageForAuthError("totally_unknown_code")!, generic);
   });
 });
