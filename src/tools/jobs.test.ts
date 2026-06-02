@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { _resetSdk } from "../sdk.js";
-import { handleJobsGet, handleJobsLogs, handleJobsSubmit } from "./jobs.js";
+import {
+  handleJobsDownloadArtifact,
+  handleJobsGet,
+  handleJobsLogs,
+  handleJobsSubmit,
+} from "./jobs.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -133,5 +138,69 @@ describe("jobs MCP tools", () => {
       urls[1],
       "https://test-api.run402.com/jobs/v1/runs/job_123/logs?tail=10&since=1710000000000",
     );
+  });
+
+  it("downloads an artifact through the SDK and writes it to disk", async () => {
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    globalThis.fetch = (async (input, init) => {
+      calls.push({
+        url: String(input),
+        headers: (init?.headers ?? {}) as Record<string, string>,
+      });
+      return new Response('{"ok":true}', {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Content-Length": "11" },
+      });
+    }) as typeof fetch;
+
+    const outPath = join(tempDir, "artifacts", "proof.json");
+    const result = await handleJobsDownloadArtifact({
+      project_id: "prj_k",
+      job_id: "job_123",
+      filename: "proof.json",
+      output_path: outPath,
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[0]!.text.includes("proof.json"));
+    assert.equal(readFileSync(outPath, "utf-8"), '{"ok":true}');
+    assert.equal(
+      calls[0]!.url,
+      "https://test-api.run402.com/jobs/v1/runs/job_123/artifacts/proof.json",
+    );
+    assert.equal(calls[0]!.headers.Authorization, "Bearer svc_test");
+  });
+
+  it("returns a structured error when the local output path can't be written", async () => {
+    globalThis.fetch = (async () =>
+      new Response("bytes", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+
+    // Pointing at the temp dir (a directory) makes the file write fail.
+    const result = await handleJobsDownloadArtifact({
+      project_id: "prj_k",
+      job_id: "job_123",
+      filename: "proof.json",
+      output_path: tempDir,
+    });
+
+    assert.equal(result.isError, true);
+    assert.match(result.content[0]!.text, /Error writing job artifact to local file/);
+  });
+
+  it("surfaces a 404 as a structured error (uncompleted job or unknown file)", async () => {
+    globalThis.fetch = (async () =>
+      new Response("not found", { status: 404 })) as typeof fetch;
+
+    const result = await handleJobsDownloadArtifact({
+      project_id: "prj_k",
+      job_id: "job_123",
+      filename: "proof.json",
+      output_path: join(tempDir, "proof.json"),
+    });
+
+    assert.equal(result.isError, true);
   });
 });

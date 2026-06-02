@@ -3,7 +3,7 @@
  * All methods require the project's service key.
  */
 
-import { ProjectNotFound } from "../errors.js";
+import { ApiError, ProjectNotFound } from "../errors.js";
 import type { Client } from "../kernel.js";
 
 export type ManagedJobType = "kysigned.fflonk_prove.v0_17_0";
@@ -53,6 +53,31 @@ export interface ManagedJobMetadata {
   [key: string]: unknown;
 }
 
+/**
+ * A recorded output file from a completed job run.
+ *
+ * Returned as the values of the `artifacts` map on {@link ManagedJobResponse}
+ * (and in the terminal-completion webhook). The legacy `run402://storage/...`
+ * ref strings — which were never resolvable — have been retired: `url` is an
+ * absolute HTTPS endpoint that streams the raw bytes under the project's
+ * service key (the same auth as the rest of `/jobs/v1`). Fetch it with
+ * {@link Jobs.downloadArtifact} (which resolves the service key for you) or
+ * directly with an `Authorization: Bearer <service_key>` header.
+ *
+ * `content_type`, `sha256`, and `size_bytes` are absent for jobs created before
+ * the artifact-ref change; `url` still serves in that case.
+ */
+export interface ManagedJobArtifact {
+  /** Absolute HTTPS URL that streams the raw artifact bytes (service-key auth). */
+  url: string;
+  /** MIME type of the artifact bytes (e.g. `application/json`, `text/plain`). */
+  content_type?: string;
+  /** Lowercase-hex SHA-256 of the bytes. */
+  sha256?: string;
+  /** Size of the artifact in bytes. */
+  size_bytes?: number;
+}
+
 export interface ManagedJobResponse {
   job_id: string;
   job_type: ManagedJobType;
@@ -60,7 +85,14 @@ export interface ManagedJobResponse {
   created_at: string;
   started_at?: string;
   completed_at?: string;
-  artifacts?: Record<string, string>;
+  /**
+   * Recorded outputs for a completed run, keyed by filename — e.g.
+   * `proof.json`, `public.json`, `prove-output.log`, `prove-time.log`,
+   * `verify-output.log`. Each value is a {@link ManagedJobArtifact} object
+   * (the pre-retirement `run402://` ref strings are gone). Absent until the
+   * job reaches a terminal state with recorded artifacts.
+   */
+  artifacts?: Record<string, ManagedJobArtifact>;
   metadata?: ManagedJobMetadata;
   error?: ManagedJobError;
 }
@@ -112,6 +144,39 @@ export class Jobs {
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "getting job",
     });
+  }
+
+  /**
+   * Download a completed job's artifact by filename. Returns the raw `Response`
+   * so callers can stream to disk or buffer with `.bytes()` / `.text()` —
+   * this avoids forcing large artifacts through a JS string.
+   *
+   * Discover the available filenames from the `artifacts` map on {@link get}
+   * (the recorded set is e.g. `proof.json`, `public.json`, `prove-output.log`,
+   * `prove-time.log`, `verify-output.log`).
+   *
+   * @throws {ProjectNotFound} if `projectId` is not in the provider.
+   * @throws {ApiError} on non-2xx — notably `404` when the job has not
+   *   completed or the filename was not recorded for the run.
+   */
+  async downloadArtifact(projectId: string, jobId: string, filename: string): Promise<Response> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "downloading job artifact");
+
+    const url = `${this.client.apiBase}${jobRunPath(jobId)}/artifacts/${encodeURIComponent(filename)}`;
+    const res = await this.client.fetch(url, {
+      headers: { Authorization: `Bearer ${project.service_key}` },
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new ApiError(
+        `Downloading job artifact failed (HTTP ${res.status})`,
+        res.status,
+        errText,
+        "downloading job artifact",
+      );
+    }
+    return res;
   }
 
   /** Read job runner logs. */

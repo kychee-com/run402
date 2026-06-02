@@ -1,4 +1,7 @@
-import { readFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import { getSdk } from "./sdk.mjs";
 import { resolveProjectId } from "./config.mjs";
@@ -8,6 +11,7 @@ import {
   flagValue,
   normalizeArgv,
   parseIntegerFlag,
+  positionalArgs,
   requirePositionalCount,
   validateRegularFile,
 } from "./argparse.mjs";
@@ -18,10 +22,11 @@ Usage:
   run402 jobs <subcommand> [args...] [options]
 
 Subcommands:
-  submit   --file <path>|--stdin   Submit a managed job request
-  get      <job_id>                Get a job run
-  logs     <job_id>                Read job logs
-  cancel   <job_id>                Cancel a queued or running job
+  submit          --file <path>|--stdin   Submit a managed job request
+  get             <job_id>                Get a job run
+  logs            <job_id>                Read job logs
+  cancel          <job_id>                Cancel a queued or running job
+  artifacts get   <job_id> <file>         Download a completed job's artifact
 
 Examples:
   run402 jobs submit --file job.json
@@ -29,6 +34,7 @@ Examples:
   run402 jobs get job_abc123
   run402 jobs logs job_abc123 --tail 100
   run402 jobs cancel job_abc123
+  run402 jobs artifacts get job_abc123 proof.json --output ./proof.json
 
 Notes:
   - --project defaults to the active project from 'run402 projects use'
@@ -85,6 +91,35 @@ Usage:
 
 Options:
   --project <id>    Project ID (defaults to the active project)
+`,
+  artifacts: `run402 jobs artifacts — Download outputs from a completed managed job
+
+Usage:
+  run402 jobs artifacts get <job_id> <file> --output <path> [--project <id>]
+
+Actions:
+  get <job_id> <file>   Download the named artifact to a local file
+
+Recorded artifact filenames (per run): proof.json, public.json,
+prove-output.log, prove-time.log, verify-output.log. Use 'run402 jobs get
+<job_id>' and read the 'artifacts' map for the exact set on a given run.
+`,
+  "artifacts get": `run402 jobs artifacts get — Download a completed job's artifact
+
+Usage:
+  run402 jobs artifacts get <job_id> <file> --output <path> [--project <id>]
+
+Options:
+  --output, -o <path>   Local destination path (required)
+  --project <id>        Project ID (defaults to the active project)
+
+The job must be completed and the filename must be in its recorded artifact
+set (see the 'artifacts' map from 'run402 jobs get <job_id>'); otherwise the
+gateway returns 404. Prints a JSON envelope { job_id, filename, project_id,
+output, ... } on success.
+
+Example:
+  run402 jobs artifacts get job_abc123 proof.json --output ./proof.json
 `,
 };
 
@@ -257,6 +292,83 @@ async function cancel(jobId, args = []) {
   }
 }
 
+async function artifactsGet(args = []) {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(SUB_HELP["artifacts get"]);
+    process.exit(0);
+  }
+  const parsed = normalizeArgv(args);
+  const valueFlags = ["--project", "--output", "-o"];
+  assertKnownFlags(parsed, ["--project", "--output", "-o", "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsed, valueFlags);
+  if (positionals.length < 2) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing job_id and/or artifact filename.",
+      hint: "Use `run402 jobs artifacts get <job_id> <file> --output <path>`.",
+    });
+  }
+  if (positionals.length > 2) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument: ${positionals[2]}`,
+      hint: "Use `run402 jobs artifacts get <job_id> <file> --output <path>`.",
+    });
+  }
+  const [jobId, filename] = positionals;
+  const output = flagValue(parsed, "--output") ?? flagValue(parsed, "-o");
+  if (!output) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--output <file> required",
+      hint: "Use `run402 jobs artifacts get <job_id> <file> --output <path>`.",
+    });
+  }
+  const projectId = resolveProjectId(flagValue(parsed, "--project"));
+
+  let res;
+  try {
+    res = await getSdk().jobs.downloadArtifact(projectId, jobId, filename);
+  } catch (err) {
+    reportSdkError(err);
+    return;
+  }
+  if (!res.body) {
+    fail({ code: "EMPTY_BODY", message: "Empty response body" });
+  }
+
+  const outPath = resolve(output);
+  const contentType = res.headers.get("content-type");
+  const contentLength = Number(res.headers.get("content-length") ?? 0);
+  mkdirSync(dirname(outPath), { recursive: true });
+  await pipeline(Readable.fromWeb(res.body), createWriteStream(outPath));
+  console.log(
+    JSON.stringify({
+      job_id: jobId,
+      filename,
+      project_id: projectId,
+      output: outPath,
+      ...(contentType ? { content_type: contentType } : {}),
+      ...(contentLength > 0 ? { size_bytes: contentLength } : {}),
+    }),
+  );
+}
+
+async function artifacts(args = []) {
+  const action = args[0];
+  if (!action || action === "--help" || action === "-h") {
+    console.log(SUB_HELP.artifacts);
+    process.exit(0);
+  }
+  if (action === "get") {
+    await artifactsGet(args.slice(1));
+    return;
+  }
+  console.error(`Unknown jobs artifacts action: ${action}\n`);
+  console.log(SUB_HELP.artifacts);
+  process.exit(1);
+}
+
 function splitJobIdArg(args = [], valueFlags = []) {
   const flagsWithValues = new Set(valueFlags);
   for (let i = 0; i < args.length; i += 1) {
@@ -278,6 +390,13 @@ export async function run(sub, args = []) {
   if (!sub || sub === "--help" || sub === "-h") {
     console.log(HELP);
     process.exit(0);
+  }
+  // Nested group: route before the flat-help interceptor so per-action --help
+  // (e.g. `jobs artifacts get --help`) resolves to the action's own help,
+  // mirroring `deploy release`.
+  if (sub === "artifacts") {
+    await artifacts(Array.isArray(args) ? args : []);
+    return;
   }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
     console.log(SUB_HELP[sub] || HELP);

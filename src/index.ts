@@ -71,10 +71,12 @@ import { listSecretsSchema, handleListSecrets } from "./tools/list-secrets.js";
 import { deleteSecretSchema, handleDeleteSecret } from "./tools/delete-secret.js";
 import {
   handleJobsCancel,
+  handleJobsDownloadArtifact,
   handleJobsGet,
   handleJobsLogs,
   handleJobsSubmit,
   jobsCancelSchema,
+  jobsDownloadArtifactSchema,
   jobsGetSchema,
   jobsLogsSchema,
   jobsSubmitSchema,
@@ -458,6 +460,13 @@ server.tool(
   "Cancel a queued or running managed job.",
   jobsCancelSchema,
   async (args) => handleJobsCancel(args),
+);
+
+server.tool(
+  "jobs_download_artifact",
+  "Download a completed managed job's artifact by filename (e.g. proof.json, public.json, prove-output.log) to a local file. Discover the recorded filenames from the artifacts map returned by jobs_get; the legacy run402:// refs were retired in favor of these gateway URLs.",
+  jobsDownloadArtifactSchema,
+  async (args) => handleJobsDownloadArtifact(args),
 );
 
 // ─── Deployment & subdomain tools ───────────────────────────────────────────

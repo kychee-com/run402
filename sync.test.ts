@@ -69,6 +69,9 @@ function parseCliCommands(): string[] {
   for (const action of parseDeployReleaseActions()) {
     cmds.push(`deploy:release:${action}`);
   }
+  for (const action of parseJobsArtifactsActions()) {
+    cmds.push(`jobs:artifacts:${action}`);
+  }
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
@@ -88,6 +91,9 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseDeployReleaseActions()) {
     cmds.push(`deploy:release:${action}`);
   }
+  for (const action of parseJobsArtifactsActions()) {
+    cmds.push(`jobs:artifacts:${action}`);
+  }
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
@@ -98,6 +104,21 @@ function parseOpenClawCommands(): string[] {
 
 function parseDeployReleaseActions(): string[] {
   const filePath = join(__dirname, "cli/lib/deploy-v2.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = /if\s*\(\s*action\s*===\s*"([\w-]+)"\s*\)/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
+/** Parse the nested `jobs artifacts <action>` leaf actions from cli/lib/jobs.mjs.
+ *  The `artifacts` group is dispatched via an `if (sub === "artifacts")` branch
+ *  (not a switch case) so per-action `--help` resolves correctly; its actions
+ *  are matched on `if (action === "...")`, mirroring `deploy release`. */
+function parseJobsArtifactsActions(): string[] {
+  const filePath = join(__dirname, "cli/lib/jobs.mjs");
   if (!existsSync(filePath)) return [];
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
@@ -235,6 +256,7 @@ const SURFACE: Capability[] = [
   { id: "jobs_get",          endpoint: "GET /jobs/v1/runs/:job_id",          mcp: "jobs_get",    cli: "jobs:get",    openclaw: "jobs:get" },
   { id: "jobs_logs",         endpoint: "GET /jobs/v1/runs/:job_id/logs",     mcp: "jobs_logs",   cli: "jobs:logs",   openclaw: "jobs:logs" },
   { id: "jobs_cancel",       endpoint: "DELETE /jobs/v1/runs/:job_id",       mcp: "jobs_cancel", cli: "jobs:cancel", openclaw: "jobs:cancel" },
+  { id: "jobs_download_artifact", endpoint: "GET /jobs/v1/runs/:job_id/artifacts/:filename", mcp: "jobs_download_artifact", cli: "jobs:artifacts:get", openclaw: "jobs:artifacts:get" },
 
   // ── Sites / Subdomains ───────────────────────────────────────────────────
   { id: "deploy_site",       endpoint: "POST /deploy/v2/plans",             mcp: "deploy_site",       cli: "sites:deploy",       openclaw: "sites:deploy" },
@@ -499,6 +521,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   jobs_get: "jobs.get",
   jobs_logs: "jobs.logs",
   jobs_cancel: "jobs.cancel",
+  jobs_download_artifact: "jobs.downloadArtifact",
 
   // Sites / Subdomains
   deploy_site: null, // MCP stages files to a temp dir and composes deployDir
