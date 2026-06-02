@@ -12,7 +12,7 @@
  */
 
 import { existsSync, statSync } from "node:fs";
-import { CONFIG_DIR, readAllowance, loadKeyStore } from "./config.mjs";
+import { configDir, readAllowance, loadKeyStore } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import {
   resolveScanRoot,
@@ -62,6 +62,7 @@ export async function run(sub, args = []) {
   const scanDirOverride = scanDirArgIdx >= 0 ? all[scanDirArgIdx + 1] : null;
 
   const checks = [];
+  const CONFIG_DIR = configDir();
 
   // 1. Config directory.
   try {

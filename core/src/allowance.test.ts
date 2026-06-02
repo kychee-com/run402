@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, statSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readAllowance, saveAllowance } from "./allowance.js";
@@ -49,6 +49,30 @@ describe("allowance", () => {
   it("handles corrupt JSON gracefully", () => {
     writeFileSync(allowancePath, "NOT VALID JSON{{{");
     assert.equal(readAllowance(allowancePath), null);
+  });
+
+  it("self-heals a world-readable allowance file on read", { skip: process.platform === "win32" ? "POSIX file modes not enforced on Windows NTFS" : false }, () => {
+    // Simulate a legacy wallet.json (mode 0644) migrated to allowance.json.
+    writeFileSync(allowancePath, JSON.stringify({ address: VALID_ADDRESS, privateKey: VALID_PRIVATE_KEY }));
+    chmodSync(allowancePath, 0o644);
+    assert.equal(statSync(allowancePath).mode & 0o777, 0o644);
+
+    const origWrite = process.stderr.write.bind(process.stderr);
+    let captured = "";
+    // @ts-expect-error monkey-patch for test
+    process.stderr.write = (chunk: string | Uint8Array) => {
+      captured += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      return true;
+    };
+    try {
+      const loaded = readAllowance(allowancePath);
+      assert.equal(loaded?.address, VALID_ADDRESS);
+    } finally {
+      process.stderr.write = origWrite;
+    }
+    // tightened to 0600 + warned
+    assert.equal(statSync(allowancePath).mode & 0o777, 0o600);
+    assert.match(captured, /tightened permissions/i);
   });
 
   it("atomic write produces valid JSON", () => {

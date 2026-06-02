@@ -9,9 +9,24 @@ import { loadKeyStore, getProject, saveProject, updateProject, removeProject, sa
 import { getAllowanceAuthHeaders as coreGetAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
 import { fail } from "./sdk-errors.mjs";
 
+// Wallet-dependent paths are exposed as getters (preferred — they always
+// reflect the active profile, even if some future code path imports this module
+// before wallet resolution). Production code (init/doctor/allowance) uses these.
+export function configDir() { return getConfigDir(); }
+export function allowanceFile() { return getAllowancePath(); }
+export function projectsFile() { return getKeystorePath(); }
+
+// Snapshot constants, retained for backward compatibility (tests, the OpenClaw
+// config re-export). These are evaluated when this module is first imported.
+// That is safe in every real flow because the CLI resolves the active wallet
+// (publishing RUN402_WALLET) in cli.mjs BEFORE any subcommand imports this
+// module, and tests set RUN402_CONFIG_DIR before importing. New code should
+// prefer the getters above.
 export const CONFIG_DIR = getConfigDir();
 export const ALLOWANCE_FILE = getAllowancePath();
 export const PROJECTS_FILE = getKeystorePath();
+
+// API base is independent of the active wallet, so a module-load snapshot is safe.
 export const API = getApiBase();
 
 /**
@@ -32,7 +47,7 @@ export function readAllowance() {
       code: "BAD_ALLOWANCE_FILE",
       message: err?.message ?? "allowance.json is malformed",
       hint: "Back up ~/.config/run402/allowance.json and run 'run402 init' to recreate it.",
-      details: { path: ALLOWANCE_FILE },
+      details: { path: allowanceFile() },
     });
   }
 }

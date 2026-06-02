@@ -561,7 +561,9 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 ### Allowance & account
 
 - **`init`** — one-shot setup: allowance + faucet + tier check + project list.
-- **`status`** — full account snapshot.
+- **`status`** — full account snapshot. Includes a `wallet` object naming the active named wallet.
+
+**Multiple wallets.** A user can hold several named wallets (profiles) on one machine — keys never leave the machine. The MCP server picks its wallet from the `RUN402_WALLET` environment variable in your server config (default `default`); set it to a wallet name (e.g. `kychon`) to operate that wallet's projects. The `status` tool surfaces which wallet is active. Wallet creation/selection/binding is done from the CLI (`run402 wallets …`), not via MCP tools.
 - **`allowance_status`** / **`allowance_create`** / **`allowance_export`** — local allowance management.
 - **`request_faucet`** — testnet USDC.
 - **`check_balance`** — USDC for an allowance address.

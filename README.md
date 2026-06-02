@@ -545,7 +545,8 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `RUN402_API_BASE`        | `https://api.run402.com`         | API base URL (override for staging) |
-| `RUN402_CONFIG_DIR`      | `~/.config/run402`               | Local credential storage directory |
+| `RUN402_CONFIG_DIR`      | `~/.config/run402`               | Local credential storage base directory (named wallets live under `profiles/<name>/`) |
+| `RUN402_WALLET`          | `default`                        | Active named wallet (profile). Overridden by `--wallet <name>` and per-directory `.run402.json`; `RUN402_PROFILE` is an alias. See `run402 wallets`. |
 | `RUN402_ALLOWANCE_PATH`  | `{config_dir}/allowance.json`    | Custom allowance file path |
 
 Local state lives at:

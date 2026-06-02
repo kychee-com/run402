@@ -1,4 +1,4 @@
-import { readAllowance, saveAllowance, ALLOWANCE_FILE } from "./config.mjs";
+import { readAllowance, saveAllowance, allowanceFile } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
@@ -98,7 +98,7 @@ async function status() {
         // now" check, use `run402 allowance balance`.
         faucet_used: !!data.faucet_used,
         rail: w?.rail || "x402",
-        path: data.path ?? ALLOWANCE_FILE,
+        path: data.path ?? allowanceFile(),
       },
     }));
   } catch (err) {
@@ -111,7 +111,7 @@ async function create() {
     const result = await getSdk().allowance.create();
     console.log(JSON.stringify({
       address: result.address,
-      path: result.path ?? ALLOWANCE_FILE,
+      path: result.path ?? allowanceFile(),
       created: true,
     }));
   } catch (err) {

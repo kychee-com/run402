@@ -37,7 +37,8 @@ Provision first, then write your frontend code with the real `anon_key` embedded
 - The CLI handles x402 signing automatically — do not request private keys or set up payment libraries manually
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`, then the generated workflow calls the existing `run402 deploy apply` command with `permissions: id-token: write`
 - Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
-- Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (default `~/.config/run402`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`)
+- Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`)
+- Multiple wallets on one machine: `run402 wallets` manages named wallets (profiles). Select per-command with `--wallet <name>` (alias `--profile`), `RUN402_WALLET`, or a per-directory `.run402.json` binding (walk-up, commit-safe — holds only a name). Precedence: `--wallet` > `RUN402_WALLET` > `.run402.json`/`.run402.local.json` > `wallets use` default > `default`. A `RUN402_WALLET` that conflicts with a `.run402.json` binding is a hard error unless `--wallet` is passed. The `default` wallet stays at the config-dir root (zero migration); named wallets live under `{base}/profiles/<name>/`. The active wallet name is echoed on stderr for non-default selections and appears in `run402 status` / `run402 wallets current`.
 
 ## Output Contract
 
@@ -779,7 +780,21 @@ run402 subdomains claim my-app
 - `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
 
 ### status
-`run402 status` — show full account state in one shot (allowance, balance, tier, projects, active project). Read-only, JSON output.
+`run402 status` — show full account state in one shot (allowance, balance, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { name, address, label }` object naming the active named wallet.
+
+### wallets
+Manage multiple named wallets (profiles) on one machine. Keys never leave the machine (non-custodial). The `default` wallet lives at the config-dir root; named wallets live under `{config_dir}/profiles/<name>/`.
+- `run402 wallets list` — JSON array of `{ name, label, address, address_short, rail, active }`. Reads non-secret `meta.json`; never loads private keys.
+- `run402 wallets current` — the resolved active wallet `{ name, source, source_detail, address, label, warnings }`. `source` ∈ flag|env|binding|config|default. `warnings` surfaces env-vs-binding conflicts and local-name-vs-server-label drift.
+- `run402 wallets new <name> [--mpp]` — create a new named wallet (generates a key). `{ name, address, rail, created: true }`.
+- `run402 wallets use <name>` — set the global default wallet (`config.json` `active_wallet`). `{ name, active: true }`.
+- `run402 wallets rename <old> <new>` — rename a wallet; renaming `default` migrates its root files into `profiles/<new>/`. `{ from, to, renamed: true }`.
+- `run402 wallets bind [<name>]` — write `./.run402.json` binding this directory to a wallet (defaults to the active one). Safe to commit (holds only a name). `{ wallet, file, bound: true, safe_to_commit: true }`.
+- `run402 wallets unbind` — remove `./.run402.json`. `{ file, unbound }`.
+- `run402 wallets import <name> --key <path|->` — adopt an existing 0x-prefixed 64-hex private key (file path or `-` for stdin) as a named wallet. `{ name, address, imported: true }`.
+- `run402 wallets rm <name> --yes` — delete a wallet and its keys. Requires `--yes` (agent-first: no interactive prompt). Refuses to remove `default`. `{ name, removed: true }`.
+- Server-side display label: `new`/`rename`/`import` push the wallet's name to a server-side label (signed by the wallet — proof of control) so the same name shows cross-machine and in the operator console (WEB). Best-effort and on by default; `RUN402_WALLET_LABEL_SYNC=0` opts out (fully offline wallet ops). The local folder name is the source of truth; the label is a mirror, and `wallets current` flags any drift.
+- Selection for ANY command: `--wallet <name>` (alias `--profile`) > `RUN402_WALLET` > nearest `./.run402.json`/`.run402.local.json` > `wallets use` default > `default`. A conflicting env + binding errors with `WALLET_SELECTION_CONFLICT` (resolve via `--wallet`, `unset RUN402_WALLET`, or `wallets unbind`). Selecting a non-existent wallet errors with `WALLET_NOT_FOUND`.
 
 ### allowance
 - `run402 allowance <create|status|fund|balance|export>`

@@ -6,7 +6,7 @@
 
 import { readFileSync } from "node:fs";
 
-const [,, cmd, sub, ...rest] = process.argv;
+const rawArgv = process.argv.slice(2);
 
 const { version } = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8")
@@ -22,6 +22,7 @@ Commands:
   init        Set up allowance, funding, and check tier status (x402 default)
   init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
   status      Show full account state (allowance, balance, tier, projects)
+  wallets     Manage multiple named wallets (list, new, use, rename, bind, import)
   allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
   projects    Manage projects (provision, list, query, inspect, delete)
@@ -53,6 +54,10 @@ Commands:
   dev         Run Astro dev with Run402 env + credentials in scope
   logs        Fetch function logs by request id (--request-id req_...)
 
+Global options (any command):
+  --wallet <name>   Select a named wallet for this command (see 'run402 wallets')
+                    Also: RUN402_WALLET env, or a ./.run402.json directory binding.
+
 Run 'run402 <command> --help' for detailed usage of each command.
 
 Examples:
@@ -74,22 +79,39 @@ Getting started:
   run402 ci link github --project prj_... --manifest run402.deploy.json
 `;
 
-if (cmd === '--version' || cmd === '-v') {
+const first = rawArgv[0];
+
+if (first === '--version' || first === '-v') {
   console.log(version);
   process.exit(0);
 }
 
-if (!cmd || cmd === '--help' || cmd === '-h') {
+if (first === undefined || first === '--help' || first === '-h') {
   console.log(HELP);
   process.exit(0);
 }
 
+// Resolve the active wallet/profile from the global --wallet/--profile flag,
+// env, and any per-directory .run402.json binding BEFORE dispatch loads a
+// subcommand (whose config.mjs snapshots credential paths). splitWalletFlag
+// also strips the global flag so subcommands never see it.
+const { splitWalletFlag, applyWalletSelection } = await import("./lib/wallet-context.mjs");
+const { argv, walletFlag } = splitWalletFlag(rawArgv);
+const [cmd, sub, ...rest] = argv;
+
 try {
+  applyWalletSelection({
+    walletFlag,
+    cmd,
+    cwd: process.cwd(),
+    env: process.env,
+    quiet: rawArgv.includes("--quiet"),
+  });
   await dispatch();
 } catch (err) {
-  // Surface env/config errors (e.g. invalid RUN402_API_BASE) as a clean
-  // JSON envelope on stderr instead of a raw stack trace. We import the
-  // helper lazily so a broken env doesn't fail this catch handler too.
+  // Surface env/config errors (e.g. invalid RUN402_API_BASE, bad RUN402_WALLET)
+  // as a clean JSON envelope on stderr instead of a raw stack trace. We import
+  // the helper lazily so a broken env doesn't fail this catch handler too.
   const { fail } = await import("./lib/sdk-errors.mjs");
   fail({
     code: "BAD_ENV",
@@ -110,6 +132,11 @@ switch (cmd) {
   case "status": {
     const { run } = await import("./lib/status.mjs");
     await run([sub, ...rest].filter(Boolean));
+    break;
+  }
+  case "wallets": {
+    const { run } = await import("./lib/wallets.mjs");
+    await run(sub, rest);
     break;
   }
   case "allowance": {

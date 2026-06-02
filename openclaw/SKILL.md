@@ -52,9 +52,24 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 
 The active project is sticky — `run402 projects use <id>` makes it the default for every subsequent `<id>`-taking command. Most commands work without an explicit `<id>` once a project is active.
 
+## Multiple wallets (profiles)
+
+Hold several wallets on one machine - per-client isolation, personal vs work, blast-radius containment. Keys never leave the machine (non-custodial). The `default` wallet stays at `~/.config/run402/`; named wallets live under `~/.config/run402/profiles/<name>/`.
+
+```bash
+run402 wallets new kychon            # create a named wallet
+run402 wallets list                  # name, label, address, rail, active
+run402 wallets use kychon            # set the global default wallet
+run402 wallets bind kychon           # write ./.run402.json - this repo uses kychon (safe to commit)
+run402 wallets current               # which wallet is active + how it was selected
+run402 --wallet kychon projects list # one-off override for a single command
+```
+
+Selection precedence for every command: `--wallet <name>` flag > `RUN402_WALLET` env > nearest `./.run402.json` directory binding > `wallets use` default > `default`. A `RUN402_WALLET` that disagrees with a `.run402.json` binding is a hard error - pass `--wallet`, `unset RUN402_WALLET`, or `run402 wallets unbind`. Non-default selections echo the wallet name on stderr so you always know which wallet you are on.
+
 ## Project credentials
 
-After `provision`, two keys land in `~/.config/run402/projects.json`:
+After `provision`, two keys land in `~/.config/run402/projects.json` (per active wallet):
 
 - `anon_key` — for the browser. Read-only by default; safe to embed in HTML. RLS still applies.
 - `service_key` — server-side admin. Never embed in browser code. CORS is intentionally open for x402 clients, so a leaked service_key is exploitable from any origin. Use only inside functions or when running CLI as the agent.

@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { getApiBase, getDeployApiBase, getConfigDir, getKeystorePath, getAllowancePath } from "./config.js";
+import { getApiBase, getDeployApiBase, getConfigDir, getConfigBaseDir, getProfilesDir, getActiveProfile, isValidProfileName, getKeystorePath, getAllowancePath } from "./config.js";
 
 const origApiBase = process.env.RUN402_API_BASE;
 const origDeployApiBase = process.env.RUN402_DEPLOY_API_BASE;
 const origConfigDir = process.env.RUN402_CONFIG_DIR;
 const origAllowancePath = process.env.RUN402_ALLOWANCE_PATH;
+const origWallet = process.env.RUN402_WALLET;
+const origProfile = process.env.RUN402_PROFILE;
 
 afterEach(() => {
   if (origApiBase !== undefined) process.env.RUN402_API_BASE = origApiBase;
@@ -20,6 +22,10 @@ afterEach(() => {
   else delete process.env.RUN402_CONFIG_DIR;
   if (origAllowancePath !== undefined) process.env.RUN402_ALLOWANCE_PATH = origAllowancePath;
   else delete process.env.RUN402_ALLOWANCE_PATH;
+  if (origWallet !== undefined) process.env.RUN402_WALLET = origWallet;
+  else delete process.env.RUN402_WALLET;
+  if (origProfile !== undefined) process.env.RUN402_PROFILE = origProfile;
+  else delete process.env.RUN402_PROFILE;
 });
 
 describe("config", () => {
@@ -159,5 +165,68 @@ describe("config", () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("config — wallet profiles", () => {
+  beforeEach(() => {
+    process.env.RUN402_CONFIG_DIR = "/tmp/test-config";
+    delete process.env.RUN402_WALLET;
+    delete process.env.RUN402_PROFILE;
+    delete process.env.RUN402_ALLOWANCE_PATH;
+  });
+
+  it("default profile resolves to the base config dir (zero migration)", () => {
+    assert.equal(getActiveProfile(), "default");
+    assert.equal(getConfigDir(), "/tmp/test-config");
+    assert.equal(getConfigBaseDir(), "/tmp/test-config");
+    assert.equal(getKeystorePath(), join("/tmp/test-config", "projects.json"));
+    assert.equal(getAllowancePath(), join("/tmp/test-config", "allowance.json"));
+  });
+
+  it("RUN402_WALLET nests the config dir under profiles/<name>", () => {
+    process.env.RUN402_WALLET = "kychon";
+    assert.equal(getActiveProfile(), "kychon");
+    assert.equal(getConfigDir(), join("/tmp/test-config", "profiles", "kychon"));
+    assert.equal(getKeystorePath(), join("/tmp/test-config", "profiles", "kychon", "projects.json"));
+    assert.equal(getAllowancePath(), join("/tmp/test-config", "profiles", "kychon", "allowance.json"));
+    // base dir + profiles dir are unaffected by the active profile
+    assert.equal(getConfigBaseDir(), "/tmp/test-config");
+    assert.equal(getProfilesDir(), join("/tmp/test-config", "profiles"));
+  });
+
+  it("RUN402_PROFILE is accepted as an alias", () => {
+    process.env.RUN402_PROFILE = "client-a";
+    assert.equal(getActiveProfile(), "client-a");
+    assert.equal(getConfigDir(), join("/tmp/test-config", "profiles", "client-a"));
+  });
+
+  it("RUN402_WALLET takes precedence over RUN402_PROFILE", () => {
+    process.env.RUN402_WALLET = "wins";
+    process.env.RUN402_PROFILE = "loses";
+    assert.equal(getActiveProfile(), "wins");
+  });
+
+  it("empty/whitespace profile env falls back to default", () => {
+    process.env.RUN402_WALLET = "   ";
+    assert.equal(getActiveProfile(), "default");
+    assert.equal(getConfigDir(), "/tmp/test-config");
+  });
+
+  it("rejects path-traversal profile names (defense in depth)", () => {
+    for (const evil of ["../evil", "a/b", "..", "Foo", "with space", "/abs"]) {
+      process.env.RUN402_WALLET = evil;
+      assert.throws(() => getConfigDir(), /Invalid wallet\/profile name/, `expected ${evil} to throw`);
+    }
+  });
+
+  it("isValidProfileName enforces the filesystem-safe pattern", () => {
+    assert.ok(isValidProfileName("kychon"));
+    assert.ok(isValidProfileName("client-a"));
+    assert.ok(isValidProfileName("a1_b-2"));
+    assert.ok(!isValidProfileName("Foo"));
+    assert.ok(!isValidProfileName("-leading"));
+    assert.ok(!isValidProfileName(""));
+    assert.ok(!isValidProfileName("../x"));
   });
 });

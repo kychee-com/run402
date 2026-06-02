@@ -1,6 +1,8 @@
 import { readAllowance, loadKeyStore, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
+import { getActiveProfile } from "../core-dist/config.js";
+import { readMeta } from "../core-dist/profiles.js";
 
 const HELP = `run402 status — Show full account state in one shot
 
@@ -104,7 +106,18 @@ export async function run(args = []) {
     ? remote.projects.map(normalizeProject)
     : Object.keys(store.projects).map(id => ({ project_id: id }));
 
+  // Which named wallet this state belongs to. `name` is the active profile
+  // (default for single-wallet installs); `label` is the cached server-side
+  // display name (null until set / when offline).
+  const walletName = getActiveProfile();
+  const walletMeta = readMeta(walletName);
+
   const result = {
+    wallet: {
+      name: walletName,
+      address: allowance.address,
+      label: walletMeta?.label ?? null,
+    },
     allowance: {
       address: allowance.address,
       funded: allowance.funded || false,

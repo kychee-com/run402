@@ -193,8 +193,18 @@ Local state lives at:
 
 - `~/.config/run402/projects.json` (`0600`) — project credentials (`anon_key`, `service_key`, `tier`, `lease_expires_at`)
 - `~/.config/run402/allowance.json` (`0600`) — wallet for x402 signing
+- `~/.config/run402/config.json` (`0600`) — global default wallet pointer (`active_wallet`)
+- `~/.config/run402/profiles/<name>/` (`0700`) — named wallets, each with its own `allowance.json` + `projects.json` + non-secret `meta.json`
 
-Override with `RUN402_CONFIG_DIR` or `RUN402_ALLOWANCE_PATH`. Override the API base with `RUN402_API_BASE`.
+Override the base directory with `RUN402_CONFIG_DIR` or the allowance file with `RUN402_ALLOWANCE_PATH`. Override the API base with `RUN402_API_BASE`.
+
+### Named wallets (profiles)
+
+Hold several wallets on one machine and select between them:
+
+- `run402 wallets list | new <name> | use <name> | rename <old> <new> | bind [<name>] | unbind | import <name> --key <path|-> | rm <name> --yes`
+- Select per-command with `--wallet <name>` (alias `--profile`), the `RUN402_WALLET` env var, or a per-directory `.run402.json` (commit-safe — holds only a name) resolved by walking up the tree. Precedence: flag > env > binding > `wallets use` default > `default`. A conflicting env + binding is a hard error.
+- The active wallet name shows in `run402 status` and `run402 wallets current`.
 
 The CLI handles all x402 payment signing automatically — never ask the human for a private key or set up payment libraries by hand.
 

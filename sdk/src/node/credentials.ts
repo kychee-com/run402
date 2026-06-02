@@ -17,8 +17,9 @@ import {
 } from "../../core-dist/keystore.js";
 import { getAllowanceAuthHeaders } from "../../core-dist/allowance-auth.js";
 import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance } from "../../core-dist/allowance.js";
-import { getAllowancePath as coreGetAllowancePath } from "../../core-dist/config.js";
-import type { AllowanceData, CredentialsProvider, ProjectKeys } from "../credentials.js";
+import { getAllowancePath as coreGetAllowancePath, getActiveProfile } from "../../core-dist/config.js";
+import { readMeta } from "../../core-dist/profiles.js";
+import type { AllowanceData, CredentialsProvider, ProjectKeys, WalletIdentity } from "../credentials.js";
 
 export class NodeCredentialsProvider implements CredentialsProvider {
   constructor(private readonly options: { allowancePath?: string; keystorePath?: string } = {}) {}
@@ -84,5 +85,15 @@ export class NodeCredentialsProvider implements CredentialsProvider {
 
   getAllowancePath(): string {
     return this.options.allowancePath ?? coreGetAllowancePath();
+  }
+
+  async getWalletIdentity(): Promise<WalletIdentity | null> {
+    const name = getActiveProfile();
+    const meta = readMeta(name);
+    let address = meta?.address ?? null;
+    if (!address) {
+      address = coreReadAllowance(this.options.allowancePath)?.address ?? null;
+    }
+    return { name, address, label: meta?.label ?? null };
   }
 }

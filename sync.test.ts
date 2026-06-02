@@ -61,7 +61,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -80,7 +80,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -161,6 +161,17 @@ const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
   { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
+
+  // ── Named wallets / profiles (local-only management; selection via --wallet) ─
+  { id: "wallets_list",      endpoint: "(local)",                              mcp: null, cli: "wallets:list",     openclaw: "wallets:list" },
+  { id: "wallets_current",   endpoint: "(local)",                              mcp: null, cli: "wallets:current",  openclaw: "wallets:current" },
+  { id: "wallets_new",       endpoint: "(local)",                              mcp: null, cli: "wallets:new",      openclaw: "wallets:new" },
+  { id: "wallets_use",       endpoint: "(local)",                              mcp: null, cli: "wallets:use",      openclaw: "wallets:use" },
+  { id: "wallets_rename",    endpoint: "(local)",                              mcp: null, cli: "wallets:rename",   openclaw: "wallets:rename" },
+  { id: "wallets_bind",      endpoint: "(local)",                              mcp: null, cli: "wallets:bind",     openclaw: "wallets:bind" },
+  { id: "wallets_unbind",    endpoint: "(local)",                              mcp: null, cli: "wallets:unbind",   openclaw: "wallets:unbind" },
+  { id: "wallets_import",    endpoint: "(local)",                              mcp: null, cli: "wallets:import",   openclaw: "wallets:import" },
+  { id: "wallets_rm",        endpoint: "(local)",                              mcp: null, cli: "wallets:rm",       openclaw: "wallets:rm" },
 
   // ── SSR Runtime DX (v1.52, local-only / CLI-only) ──────────────────────
   // doctor / dev / logs are agent-DX shortcuts: no MCP/SDK tool, just CLI parity with OpenClaw.
@@ -406,6 +417,17 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Local-only compound flows — MCP handlers compose SDK calls internally.
   init: null,
   status: null,
+
+  // Named wallets — local profile management (no SDK gateway method).
+  wallets_list: null,
+  wallets_current: null,
+  wallets_new: null,
+  wallets_use: null,
+  wallets_rename: null,
+  wallets_bind: null,
+  wallets_unbind: null,
+  wallets_import: null,
+  wallets_rm: null,
 
   // SSR Runtime DX (v1.52) — local/CLI-only; no MCP, no SDK
   doctor: null,
@@ -871,6 +893,11 @@ describe("SDK surface alignment", () => {
       "cache.invalidatePrefix",
       "cache.invalidateAll",
       "cache.invalidateMany",
+      // ─── Named-wallet server label sync (best-effort; private gateway companion) ─
+      // Used internally by `run402 wallets new|rename|import` (gated) and by
+      // direct SDK consumers; no dedicated MCP/CLI verb.
+      "wallets.getLabel",
+      "wallets.setLabel",
     ]);
 
     const sdkMethods = await listSdkMethods();

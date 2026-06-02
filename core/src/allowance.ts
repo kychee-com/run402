@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { getAllowancePath } from "./config.js";
@@ -37,9 +37,33 @@ const PRIVATE_KEY_RE = /^0x[a-fA-F0-9]{64}$/;
  * `src/tools/{status,init}.ts` callers translate the throw into their own
  * structured envelopes (`code: BAD_ALLOWANCE_FILE`).
  */
+/**
+ * If an allowance file is readable by group or other (any of the low 0o077
+ * bits set), tighten it to 0600 and warn once on stderr. This self-heals the
+ * historical case where a legacy world-readable `wallet.json` (mode 0644) was
+ * migrated to `allowance.json` via a mode-preserving rename, leaving the
+ * private key exposed on a shared machine. Best-effort: POSIX-only and silent
+ * on platforms without meaningful Unix modes (e.g. Windows).
+ */
+function selfHealPermissions(p: string): void {
+  if (process.platform === "win32") return;
+  try {
+    const mode = statSync(p).mode & 0o777;
+    if ((mode & 0o077) !== 0) {
+      chmodSync(p, 0o600);
+      process.stderr.write(
+        `warning: tightened permissions on ${p} from ${mode.toString(8)} to 600 (was readable by other users).\n`,
+      );
+    }
+  } catch {
+    // Best-effort; never block a read on a chmod/stat failure.
+  }
+}
+
 export function readAllowance(path?: string): AllowanceData | null {
   const p = path ?? getAllowancePath();
   if (!existsSync(p)) return null;
+  selfHealPermissions(p);
   let raw: string;
   try {
     raw = readFileSync(p, "utf-8");

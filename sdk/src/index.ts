@@ -23,6 +23,7 @@ import { Ai } from "./namespaces/ai.js";
 import { Auth } from "./namespaces/auth.js";
 import { SenderDomain } from "./namespaces/sender-domain.js";
 import { Billing } from "./namespaces/billing.js";
+import { Wallets } from "./namespaces/wallets.js";
 import { Apps } from "./namespaces/apps.js";
 import { Email } from "./namespaces/email.js";
 import { Contracts } from "./namespaces/contracts.js";
@@ -64,6 +65,7 @@ export class Run402 {
   readonly auth: Auth;
   readonly senderDomain: SenderDomain;
   readonly billing: Billing;
+  readonly wallets: Wallets;
   readonly apps: Apps;
   readonly email: Email;
   readonly contracts: Contracts;
@@ -135,6 +137,7 @@ export class Run402 {
     this.auth = new Auth(client);
     this.senderDomain = new SenderDomain(client);
     this.billing = new Billing(client);
+    this.wallets = new Wallets(client);
     this.apps = new Apps(client);
     this.email = new Email(client);
     this.contracts = new Contracts(client);
@@ -199,6 +202,46 @@ export class Run402 {
     await this.projects.use(id);
     return this.project(id);
   }
+
+  /**
+   * Identify the active wallet and project: `{ name, address, label,
+   * activeProject }`. `name` is the local wallet/profile selector (e.g.
+   * "kychon", or "default"); `label` is the server-side display name (null
+   * when unknown/offline); `address` is the wallet address; `activeProject` is
+   * the currently-selected project id (null if none).
+   *
+   * Degrades gracefully: providers that don't implement `getWalletIdentity`
+   * (sandbox/session) still get `address` from `readAllowance` when available.
+   */
+  async whoami(): Promise<WhoAmI> {
+    const creds = this.#client.credentials;
+    const identity = creds.getWalletIdentity ? await creds.getWalletIdentity.call(creds) : null;
+    let address = identity?.address ?? null;
+    if (address == null && creds.readAllowance) {
+      address = (await creds.readAllowance.call(creds))?.address ?? null;
+    }
+    const activeProject = creds.getActiveProject
+      ? await creds.getActiveProject.call(creds)
+      : null;
+    return {
+      name: identity?.name ?? null,
+      address,
+      label: identity?.label ?? null,
+      activeProject: activeProject ?? null,
+    };
+  }
+}
+
+/** Result of {@link Run402.whoami}. */
+export interface WhoAmI {
+  /** Local wallet/profile selector name (e.g. "kychon", "default"), or null. */
+  name: string | null;
+  /** Wallet address, or null when no allowance is configured. */
+  address: string | null;
+  /** Server-side display label, cached locally; null when unknown/offline. */
+  label: string | null;
+  /** Active project id, or null when none is selected. */
+  activeProject: string | null;
 }
 
 /**

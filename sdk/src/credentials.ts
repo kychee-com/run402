@@ -35,6 +35,17 @@ export interface AllowanceData {
   rail?: "x402" | "mpp";
 }
 
+/**
+ * The active wallet's display identity. `name` is the local profile/selector
+ * name (e.g. "kychon", or "default" for the root wallet); `label` is the
+ * server-side display name, cached locally and `null` when unknown or offline.
+ */
+export interface WalletIdentity {
+  name: string;
+  address: string | null;
+  label: string | null;
+}
+
 export interface CredentialsProvider {
   /**
    * Return per-request auth headers for the given API path, or null if none
@@ -79,4 +90,11 @@ export interface CredentialsProvider {
 
   /** Return the absolute path to the local allowance file, for diagnostic output. Optional. */
   getAllowancePath?(): string;
+
+  /**
+   * Return the active wallet's display identity (local name + address + cached
+   * server label). The Node provider derives this from the active profile;
+   * sandbox/session providers may omit it. Used by {@link Run402.whoami}.
+   */
+  getWalletIdentity?(): Promise<WalletIdentity | null>;
 }

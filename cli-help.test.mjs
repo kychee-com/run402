@@ -53,6 +53,10 @@ const MATRIX = {
     shared: ["status", "create", "fund", "balance", "export"],
     specific: ["checkout", "history"],
   },
+  wallets: {
+    shared: ["list", "current", "new", "use", "rename", "bind", "unbind", "import", "rm"],
+    specific: [],
+  },
   tier: { shared: [], specific: ["status", "set"] },
   projects: {
     shared: [

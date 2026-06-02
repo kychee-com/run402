@@ -1,5 +1,6 @@
 import { readAllowance } from "../allowance.js";
 import { loadKeyStore, getActiveProjectId } from "../keystore.js";
+import { getActiveProfile, readMeta } from "../config.js";
 import { getSdk } from "../sdk.js";
 
 export const statusSchema = {};
@@ -54,12 +55,21 @@ export async function handleStatus(
   const activeId = getActiveProjectId();
   const projects = remote?.projects || Object.keys(store.projects).map((id) => ({ id }));
 
+  // Active named wallet (from RUN402_WALLET in the MCP server env, else default).
+  const walletName = getActiveProfile();
+  const walletMeta = readMeta(walletName);
+  const walletDisplay =
+    walletMeta?.label && walletMeta.label !== walletName
+      ? `${walletName} (label: ${walletMeta.label})`
+      : walletName;
+
   // Build summary
   const lines: string[] = [
     `## Account Status`,
     ``,
     `| Field | Value |`,
     `|-------|-------|`,
+    `| wallet | ${walletDisplay} |`,
     `| allowance | \`${allowance.address}\` |`,
     `| funded | ${allowance.funded ? "yes" : "no"} |`,
     `| rail | ${allowance.rail || "x402"} |`,

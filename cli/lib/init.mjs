@@ -1,4 +1,4 @@
-import { readAllowance, saveAllowance, loadKeyStore, CONFIG_DIR } from "./config.mjs";
+import { readAllowance, saveAllowance, loadKeyStore, configDir } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { mkdirSync } from "fs";
@@ -63,6 +63,10 @@ export async function run(args = []) {
   }
 
   if (args.includes("--help") || args.includes("-h")) { console.log(HELP); process.exit(0); }
+
+  // Resolve once for this invocation — reflects the active wallet/profile that
+  // cli.mjs published to RUN402_WALLET before this module loaded.
+  const CONFIG_DIR = configDir();
 
   const isMpp = args[0] === "mpp";
   const requestedRail = isMpp ? "mpp" : "x402";
