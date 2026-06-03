@@ -639,7 +639,20 @@ Validation rules:
 - Empty `allowed`. Rejected with `INVALID_SPEC` — set the role values explicitly.
 - Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. `run402 deploy apply` surfaces the structured envelope on stderr.
 
-Reading the role in-function (`@run402/functions` 3.4.0+). `await auth.requireRole("operator")` returns `{ user, role }` or throws — and throws a *distinct* `RoleGateNotConfiguredError` (server-class 500) when the function declares no `requireRole` gate, vs `InsufficientRoleError` (403) for a real role mismatch. When a gate allows more than one role, read `await auth.role()` (returns the resolved role or `null`, never throws) and branch instead of re-asserting — `requireRole(x)` requires `x` to be one of `allowed`.
+Reading the role in-function — TWO topologies (`@run402/functions` 3.4.0+; `{ from }` since 3.5.0). Role gating has two non-interchangeable forms; pick by how the caller authenticates.
+
+1. Bearer/API callers → the deploy-spec `requireRole` EDGE gate (above). With a gate declared, `await auth.requireRole("operator")` returns `{ user, role }`, throwing a *distinct* `RoleGateNotConfiguredError` (server-class 500) if no gate is declared vs `InsufficientRoleError` (403) for a real mismatch. For multi-role gates, read `await auth.role()` (resolved role or `null`, never throws) and branch — `requireRole(x)` requires `x` in `allowed`. IMPORTANT: the edge gate authenticates via `Authorization: Bearer` JWT ONLY — it does NOT see the browser cookie session, and it is per-function.
+
+2. Cookie-session SSR (Astro/Next consoles, dashboards) → the in-function `{ from }` guard. The edge gate does not apply here (no Bearer → it 401s every cookie browser; per-function → one catch-all function can't gate just `/admin/*`; it returns a JSON 403, not a redirect). Pass `{ from }` and the helper is self-contained: it resolves the cookie user (`auth.user()`) and reads their role from your tenant table directly (RLS-bypass), no gate required:
+
+```ts
+const { user } = await auth.requireRole("operator", { from: { table: "staff", idColumn: "user_id", roleColumn: "role" } });
+// or, for an .astro page (a throw in frontmatter renders a 500, not a redirect) use the non-throwing read:
+const role = await auth.role({ from: { table: "staff", idColumn: "user_id", roleColumn: "role" } });
+if (role !== "operator") return Astro.redirect("/admin/login", 303);
+```
+
+Worked example — an Astro SSR hybrid where ONE ssr function serves `/admin/*` AND the public catch-all/404 fallback: use the in-function `{ from }` guard. An edge gate there would also gate public 404s + the public `/admin/login`, and would 401 every cookie browser. `{ from }` scopes the check to your admin pages, in-app, where the cookie identity is available.
 
 Scaffolding + first-operator bootstrap. `run402 auth scaffold-roles --roles operator` emits the conventional `app_roles(user_id uuid, role text)` migration, the matching `requireRole` snippet, and a service-role `INSERT` to grant the FIRST role — the table starts empty, so the first grant must bypass RLS with the service key. The gate keys on the tenant user id (`internal.users.id` / JWT `sub`), NOT a wallet. The conventional table is a default — `requireRole` accepts any `(table, idColumn, roleColumn)`.
 
