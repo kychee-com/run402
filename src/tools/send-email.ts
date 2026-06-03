@@ -29,6 +29,16 @@ export const sendEmailSchema = {
     .string()
     .optional()
     .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox (otherwise the send returns an ambiguity error naming the slugs)."),
+  attachments: z
+    .array(
+      z.object({
+        filename: z.string().describe("Attachment filename, e.g. \"receipt.pdf\""),
+        content_base64: z.string().describe("The file's bytes, base64-encoded"),
+        content_type: z.string().describe("MIME type, e.g. \"application/pdf\""),
+      }),
+    )
+    .optional()
+    .describe("Binary attachments — RAW HTML MODE ONLY (with subject + html, not template). Max 5; ≤ 7 MB total (decoded)."),
 };
 
 export async function handleSendEmail(args: {
@@ -42,6 +52,7 @@ export async function handleSendEmail(args: {
   from_name?: string;
   in_reply_to?: string;
   mailbox?: string;
+  attachments?: Array<{ filename: string; content_base64: string; content_type: string }>;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const body = await getSdk().email.send(args.project_id, {
@@ -54,6 +65,7 @@ export async function handleSendEmail(args: {
       from_name: args.from_name,
       in_reply_to: args.in_reply_to,
       mailbox: args.mailbox,
+      attachments: args.attachments,
     });
 
     const mode = body.template ? `**Template:** ${body.template}` : `**Subject:** ${body.subject}`;
@@ -65,7 +77,7 @@ export async function handleSendEmail(args: {
     };
   } catch (err) {
     const msg = (err as Error)?.message ?? "";
-    if (/Provide either/.test(msg) || /Provide `template` OR raw/.test(msg) || /Raw mode requires/.test(msg)) {
+    if (/Provide either/.test(msg) || /Provide `template` OR raw/.test(msg) || /Raw mode requires/.test(msg) || /Attachments are only supported/.test(msg)) {
       return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
     }
     if (/No mailbox found/.test(msg)) {

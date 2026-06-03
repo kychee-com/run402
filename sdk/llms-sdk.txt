@@ -1022,6 +1022,9 @@ getMailbox(projectId): Promise<MailboxInfo>
 deleteMailbox(projectId, mailboxId?): Promise<void>
 
 send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
+  // opts.attachments?: { filename, content_base64, content_type }[] — RAW MODE
+  // ONLY (subject + html, not template). Max 5; ≤ 7 MB total decoded. Sent as a
+  // multipart/mixed MIME. Sent messages echo attachments_meta (names/types/sizes).
 list(projectId, opts?: { limit?, after?, direction? }): Promise<EmailSummary[]>
   // direction?: "inbound" | "outbound" — omit for BOTH. direction:"inbound" lists
   // received replies (each EmailSummary carries `direction`) and is the
@@ -1053,7 +1056,7 @@ info(projectId): Promise<MailboxInfo>
 delete(projectId, mailboxId?): Promise<void>
 ```
 
-Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
+Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Raw mode also accepts `attachments` (max 5, ≤ 7 MB total) — a multipart/mixed MIME is sent. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
 
 ### `r.senderDomain`
 

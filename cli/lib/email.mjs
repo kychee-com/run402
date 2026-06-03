@@ -1,7 +1,71 @@
+import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
+
+// Extension → content-type for `--attach <path>` without an explicit `:type`.
+const ATTACH_EXT_CONTENT_TYPES = {
+  pdf: "application/pdf",
+  csv: "text/csv",
+  txt: "text/plain",
+  json: "application/json",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  zip: "application/zip",
+  html: "text/html",
+  xml: "application/xml",
+};
+const ATTACH_MIME_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
+
+function inferAttachmentContentType(path) {
+  const ext = (path.split(".").pop() ?? "").toLowerCase();
+  return ATTACH_EXT_CONTENT_TYPES[ext] ?? "application/octet-stream";
+}
+
+/**
+ * Parse repeatable `--attach <path>[:content-type]` flags into the SDK
+ * attachment shape. The `:content-type` suffix is recognized only when the tail
+ * after the last `:` looks like a MIME type, so paths containing a colon (e.g. a
+ * Windows drive) are not mis-split.
+ */
+export function parseAttachments(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== "--attach") continue;
+    const raw = args[++i];
+    if (typeof raw !== "string" || raw.length === 0 || raw.startsWith("--")) {
+      fail({ code: "BAD_USAGE", message: "--attach requires a <path>[:content-type] value" });
+    }
+    let path = raw;
+    let contentType;
+    const colon = raw.lastIndexOf(":");
+    if (colon > 0 && ATTACH_MIME_RE.test(raw.slice(colon + 1))) {
+      path = raw.slice(0, colon);
+      contentType = raw.slice(colon + 1).toLowerCase();
+    }
+    let bytes;
+    try {
+      bytes = readFileSync(path);
+    } catch (err) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Cannot read attachment file: ${path}`,
+        details: { error: String((err && err.message) || err) },
+      });
+    }
+    out.push({
+      filename: basename(path),
+      content_base64: bytes.toString("base64"),
+      content_type: contentType ?? inferAttachmentContentType(path),
+    });
+  }
+  return out;
+}
 
 const HELP = `run402 email — Send emails from your project
 
@@ -45,6 +109,7 @@ Webhook subcommands:
 Send modes:
   Template:  --template <name> --var key=value [--var ...]  OR --vars '{"k":"v",...}'
   Raw HTML:  --subject "..." --html "..." [--text "..."]    (both --subject and --html required)
+  Raw HTML also supports: --attach <path>[:content-type] (repeatable; max 5, 7 MB total)
   Both modes support: --from-name "Display Name" --project <id>
 
 Choosing a mailbox:
@@ -65,6 +130,8 @@ Examples:
     --var project_name="My App" --var invite_url="https://example.com/invite/abc"
   run402 email send --to user@example.com --subject "Welcome!" \\
     --html "<h1>Hello</h1>" --from-name "My App"
+  run402 email send --to user@example.com --subject "Your receipt" \\
+    --html "<p>Attached.</p>" --attach ./receipt.pdf
   run402 email list --limit 50
   run402 email info
   run402 email get msg_abc123
@@ -86,7 +153,7 @@ const SUB_HELP = {
 Usage:
   run402 email send --to <email> --template <name> --var key=value [--var ...]
   run402 email send --to <email> --template <name> --vars '{"k":"v",...}'
-  run402 email send --to <email> --subject "..." --html "..." [--text "..."]
+  run402 email send --to <email> --subject "..." --html "..." [--text "..."] [--attach <path> ...]
 
 Options:
   --to <email>        Recipient email address (required; single recipient)
@@ -97,6 +164,9 @@ Options:
   --subject "..."     Subject line (raw HTML mode; required with --html)
   --html "..."        HTML body (raw HTML mode; required with --subject)
   --text "..."        Plain-text body (raw HTML mode; optional)
+  --attach <path>[:content-type]  Attach a file (raw HTML mode only; repeatable;
+                      max 5, ≤ 7 MB total). Content-type is inferred from the
+                      extension when the :content-type suffix is omitted.
   --from-name "..."   Display name for the From header
   --mailbox <slug|id> Target mailbox (required if the project has more than one)
   --project <id>      Project ID (defaults to the active project)
@@ -258,7 +328,7 @@ async function create(args) {
 }
 
 async function send(args) {
-  const valueFlags = ["--template", "--to", "--subject", "--html", "--text", "--from-name", "--project", "--vars", "--var", "--mailbox"];
+  const valueFlags = ["--template", "--to", "--subject", "--html", "--text", "--from-name", "--project", "--vars", "--var", "--mailbox", "--attach"];
   validateArgs(args, valueFlags);
   const template = strictFlagValue(args, "--template");
   const to = strictFlagValue(args, "--to");
@@ -269,6 +339,7 @@ async function send(args) {
   const mailbox = strictFlagValue(args, "--mailbox");
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
   const variables = parseVars(args);
+  const attachments = parseAttachments(args);
 
   if (!to) {
     fail({ code: "BAD_USAGE", message: "Missing --to <email>" });
@@ -284,6 +355,7 @@ async function send(args) {
       text: text ?? undefined,
       from_name: fromName ?? undefined,
       mailbox: mailbox ?? undefined,
+      attachments: attachments.length ? attachments : undefined,
     });
     console.log(JSON.stringify({ message_id: data.message_id, to: data.to, template: data.template, subject: data.subject, sent: true }));
   } catch (err) {

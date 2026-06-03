@@ -1628,3 +1628,57 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.ok(Array.isArray(parsed.checks), "doctor stdout should have checks array");
   });
 });
+
+describe("email --attach parsing", () => {
+  let attachDir;
+  before(() => {
+    attachDir = mkdtempSync(join(tmpdir(), "run402-attach-test-"));
+  });
+  after(() => {
+    rmSync(attachDir, { recursive: true, force: true });
+  });
+
+  it("parses a single --attach and infers content-type from the extension", async () => {
+    const { parseAttachments } = await import("./cli/lib/email.mjs");
+    const p = join(attachDir, "foo.pdf");
+    writeFileSync(p, "PDFDATA");
+    const out = parseAttachments(["--attach", p]);
+    assert.deepEqual(out, [
+      { filename: "foo.pdf", content_base64: Buffer.from("PDFDATA").toString("base64"), content_type: "application/pdf" },
+    ]);
+  });
+
+  it("parses repeated --attach flags into multiple entries", async () => {
+    const { parseAttachments } = await import("./cli/lib/email.mjs");
+    const a = join(attachDir, "a.csv");
+    const b = join(attachDir, "b.png");
+    writeFileSync(a, "x,y");
+    writeFileSync(b, "PNG");
+    const out = parseAttachments(["--attach", a, "--attach", b]);
+    assert.equal(out.length, 2);
+    assert.equal(out[0].content_type, "text/csv");
+    assert.equal(out[1].content_type, "image/png");
+  });
+
+  it("honors an explicit :content-type suffix over the extension", async () => {
+    const { parseAttachments } = await import("./cli/lib/email.mjs");
+    const p = join(attachDir, "data.bin");
+    writeFileSync(p, "raw");
+    const out = parseAttachments(["--attach", `${p}:text/csv`]);
+    assert.equal(out[0].filename, "data.bin");
+    assert.equal(out[0].content_type, "text/csv");
+  });
+
+  it("rejects an unreadable attachment path before sending", async () => {
+    const { parseAttachments } = await import("./cli/lib/email.mjs");
+    const env = await expectExit1(() => parseAttachments(["--attach", join(attachDir, "nope.pdf")]));
+    assert.equal(env.code, "BAD_USAGE");
+    assert.match(env.message, /Cannot read attachment file/);
+  });
+
+  it("rejects --attach with no value", async () => {
+    const { parseAttachments } = await import("./cli/lib/email.mjs");
+    const env = await expectExit1(() => parseAttachments(["--attach"]));
+    assert.equal(env.code, "BAD_USAGE");
+  });
+});

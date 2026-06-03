@@ -1272,7 +1272,7 @@ Templates: `project_invite` (project_name, invite_url), `magic_link` (project_na
 - `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com`. NOT idempotent: a conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
 - `run402 email status [--mailbox <slug|id>] [--project <id>]` — show mailbox info (ID, address, slug)
 - `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
-- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
+- `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--attach <path>[:content-type] ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
 - `run402 email list [--direction <inbound|outbound>] [--mailbox <slug|id>] [--project <id>]` — lists BOTH sent + received by default; `--direction inbound` lists received replies (the reconciliation backstop if a reply_received webhook is lost)
 - `run402 email get <message_id> [--mailbox <slug|id>] [--project <id>]`
 - `run402 email reply <message_id> --html <html> [--text <text>] [--subject <subject>] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]` — reply to an inbound message (threads via In-Reply-To)
@@ -1286,7 +1286,7 @@ Templates: `project_invite` (project_name, invite_url), `magic_link` (project_na
 - `run402 email webhooks deliveries [--status <pending|in_flight|delivered|failed_permanent>] [--mailbox <slug|id>] [--project <id>]` — list durable delivery rows. Delivery is at-least-once with bounded retries + backoff; `failed_permanent` is the dead-letter queue. The delivered body is the canonical envelope `{ id, type, created_at, schema_version, idempotency_key, payload }` — consumers MUST dedupe on `idempotency_key`.
 - `run402 email webhooks redrive <delivery_id> [--mailbox <slug|id>] [--project <id>]` — re-queue a dead-lettered (failed_permanent) delivery for another attempt
 
-Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`.
+Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--attach <path>[:content-type]` attaches a file (raw HTML mode only; repeatable, max 5, ≤ 7 MB total; content-type inferred from the extension when the suffix is omitted). `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`.
 
 Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
 
