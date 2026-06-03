@@ -400,6 +400,7 @@ const SURFACE: Capability[] = [
   { id: "list_passkeys",            endpoint: "GET /auth/v1/passkeys",                   mcp: "list_passkeys",            cli: "auth:passkeys",                 openclaw: "auth:passkeys" },
   { id: "delete_passkey",           endpoint: "DELETE /auth/v1/passkeys/:id",             mcp: "delete_passkey",           cli: "auth:delete-passkey",           openclaw: "auth:delete-passkey" },
   { id: "auth_providers",    endpoint: "GET /auth/v1/providers",              mcp: null,                 cli: "auth:providers",     openclaw: "auth:providers" },
+  { id: "auth_scaffold_roles", endpoint: "(local)",                           mcp: "scaffold_roles",     cli: "auth:scaffold-roles", openclaw: "auth:scaffold-roles" },
 
   // ── Custom sender domains ─────────────────────────────────────────────
   { id: "register_sender_domain", endpoint: "POST /email/v1/domains",    mcp: "register_sender_domain", cli: "sender-domain:register", openclaw: "sender-domain:register" },
@@ -659,6 +660,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   list_passkeys: "auth.listPasskeys",
   delete_passkey: "auth.deletePasskey",
   auth_providers: "auth.providers",
+  auth_scaffold_roles: null, // offline CLI/MCP generator — no SDK method
 
   // Sender domains
   register_sender_domain: "senderDomain.register",

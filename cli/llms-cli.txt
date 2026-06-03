@@ -639,6 +639,10 @@ Validation rules:
 - Empty `allowed`. Rejected with `INVALID_SPEC` — set the role values explicitly.
 - Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. `run402 deploy apply` surfaces the structured envelope on stderr.
 
+Reading the role in-function (`@run402/functions` 3.4.0+). `await auth.requireRole("operator")` returns `{ user, role }` or throws — and throws a *distinct* `RoleGateNotConfiguredError` (server-class 500) when the function declares no `requireRole` gate, vs `InsufficientRoleError` (403) for a real role mismatch. When a gate allows more than one role, read `await auth.role()` (returns the resolved role or `null`, never throws) and branch instead of re-asserting — `requireRole(x)` requires `x` to be one of `allowed`.
+
+Scaffolding + first-operator bootstrap. `run402 auth scaffold-roles --roles operator` emits the conventional `app_roles(user_id uuid, role text)` migration, the matching `requireRole` snippet, and a service-role `INSERT` to grant the FIRST role — the table starts empty, so the first grant must bypass RLS with the service key. The gate keys on the tenant user id (`internal.users.id` / JWT `sub`), NOT a wallet. The conventional table is a default — `requireRole` accepts any `(table, idColumn, roleColumn)`.
+
 The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key plus user JWT) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
 Binary files (images, fonts, PDFs): Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
@@ -1301,6 +1305,7 @@ Manage project user authentication: magic links, trusted invites, passwords, pas
 - `run402 auth passkeys --token <bearer> [--project <id>]` — list authenticated user's passkeys
 - `run402 auth delete-passkey --token <bearer> --id <passkey_id> [--project <id>]` — delete one passkey
 - `run402 auth providers [--project <id>]` — list available auth providers
+- `run402 auth scaffold-roles [--table <name>] [--user-col <col>] [--role-col <col>] [--roles <csv>] [--cache-ttl <secs>]` — offline generator: emits a role-table migration + `requireRole` gate snippet + first-operator bootstrap (JSON out; no project/network). Pipe through `jq` (e.g. `| jq -r .migration`).
 
 Magic link flow: request → user clicks email link → frontend extracts token → verify → authenticated. Token expires in 15 minutes, single-use. Rate limited: 5 per email/hour, plus per-project limits by tier.
 
