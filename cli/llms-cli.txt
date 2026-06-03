@@ -639,11 +639,11 @@ Validation rules:
 - Empty `allowed`. Rejected with `INVALID_SPEC` — set the role values explicitly.
 - Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. `run402 deploy apply` surfaces the structured envelope on stderr.
 
-Reading the role in-function — TWO topologies (`@run402/functions` 3.4.0+; `{ from }` since 3.5.0). Role gating has two non-interchangeable forms; pick by how the caller authenticates.
+Reading the role in-function — TWO approaches (`@run402/functions` 3.4.0+; `{ from }` since 3.5.0). The edge gate now authenticates BOTH `Authorization: Bearer` callers and cookie-session SSR browsers (capability `ssr-aware-role-gate`), so pick by your function TOPOLOGY, not by how the caller authenticates.
 
-1. Bearer/API callers → the deploy-spec `requireRole` EDGE gate (above). With a gate declared, `await auth.requireRole("operator")` returns `{ user, role }`, throwing a *distinct* `RoleGateNotConfiguredError` (server-class 500) if no gate is declared vs `InsufficientRoleError` (403) for a real mismatch. For multi-role gates, read `await auth.role()` (resolved role or `null`, never throws) and branch — `requireRole(x)` requires `x` in `allowed`. IMPORTANT: the edge gate authenticates via `Authorization: Bearer` JWT ONLY — it does NOT see the browser cookie session, and it is per-function.
+1. Dedicated function / route → the deploy-spec `requireRole` EDGE gate (above). It authenticates Bearer JWT AND the browser cookie session, enforces before dispatch, and caches the role lookup (TTL). In-function, `await auth.requireRole("operator")` returns `{ user, role }` (throwing a *distinct* `RoleGateNotConfiguredError` (500) if no gate is declared vs `InsufficientRoleError` (403) for a mismatch); for multi-role gates read `await auth.role()` and branch — `requireRole(x)` requires `x` in `allowed`. For a browser console, add `onDeny: "redirect"` + `signInPath` (a same-origin path) to the gate so an unauthenticated HTML request gets a `303` to sign-in (401-class only — an authenticated wrong-role 403 stays a JSON envelope, no redirect loop). The gate is PER-FUNCTION.
 
-2. Cookie-session SSR (Astro/Next consoles, dashboards) → the in-function `{ from }` guard. The edge gate does not apply here (no Bearer → it 401s every cookie browser; per-function → one catch-all function can't gate just `/admin/*`; it returns a JSON 403, not a redirect). Pass `{ from }` and the helper is self-contained: it resolves the cookie user (`auth.user()`) and reads their role from your tenant table directly (RLS-bypass), no gate required:
+2. Catch-all SSR function, or finer per-path control → the in-function `{ from }` guard. Because the edge gate is per-function, a single catch-all function (one ssr function = `/admin/*` console AND the public 404 fallback) can't gate just `/admin/*` — an edge gate would also gate the public 404s and the public `/admin/login`. Use `{ from }`: it resolves the cookie user (`auth.user()`) and reads their role from your tenant table (RLS-bypass), scoped in-app to your admin pages, no gate required:
 
 ```ts
 const { user } = await auth.requireRole("operator", { from: { table: "staff", idColumn: "user_id", roleColumn: "role" } });
@@ -652,7 +652,7 @@ const role = await auth.role({ from: { table: "staff", idColumn: "user_id", role
 if (role !== "operator") return Astro.redirect("/admin/login", 303);
 ```
 
-Worked example — an Astro SSR hybrid where ONE ssr function serves `/admin/*` AND the public catch-all/404 fallback: use the in-function `{ from }` guard. An edge gate there would also gate public 404s + the public `/admin/login`, and would 401 every cookie browser. `{ from }` scopes the check to your admin pages, in-app, where the cookie identity is available.
+Worked example — an Astro SSR hybrid where ONE ssr function serves `/admin/*` AND the public catch-all/404 fallback: use the in-function `{ from }` guard (an edge gate, being per-function, would also gate the public 404s + `/admin/login`). If your console is instead a DEDICATED function/route, prefer the edge gate — it's cookie-aware, supports `onDeny: "redirect"` to sign-in, and caches the role lookup.
 
 Scaffolding + first-operator bootstrap. `run402 auth scaffold-roles --roles operator` emits the conventional `app_roles(user_id uuid, role text)` migration, the matching `requireRole` snippet, and a service-role `INSERT` to grant the FIRST role — the table starts empty, so the first grant must bypass RLS with the service key. The gate keys on the tenant user id (`internal.users.id` / JWT `sub`), NOT a wallet. The conventional table is a default — `requireRole` accepts any `(table, idColumn, roleColumn)`.
 
