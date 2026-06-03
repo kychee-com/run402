@@ -301,13 +301,26 @@
       });
     }
 
+    // Decode the handful of HTML entities the authored data-code lines use, so we
+    // can render them as textContent (never innerHTML) — no DOM-text→HTML sink.
+    function decodeCodeEntities(s) {
+      return s
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#8594;/g, '→')
+        .replace(/&amp;/g, '&');
+    }
+
     // Code lines: fade in
     function initCodeLines(scene) {
       scene.querySelectorAll('.s2-code-line[data-code]').forEach(function(el) {
         var code = el.getAttribute('data-code');
         var delay = parseInt(el.getAttribute('data-delay')) || 0;
         el.style.opacity = '0';
-        el.innerHTML = code || '&nbsp;';
+        el.textContent = code ? decodeCodeEntities(code) : ' ';
         setTimeout(function() {
           el.style.transition = 'opacity 0.3s';
           el.style.opacity = '1';
@@ -348,12 +361,9 @@
 
       var scene = document.getElementById(scenes[index]);
 
-      // Reset and init typewriters
-      scene.querySelectorAll('.tw').forEach(function(el) {
-        var text = el.getAttribute('data-text');
-        el.innerHTML = '<span class="visible"></span><span class="hidden">' + text + '</span>';
-      });
-
+      // Reset and init typewriters. initTypewriters rebuilds each .tw's
+      // .visible/.hidden spans safely (createElement + textContent), so no
+      // innerHTML pre-seed is needed here.
       if (index === 0) initTypewriters(scene);
       if (index === 1) { initTypewriters(scene); initCodeLines(scene); }
       if (index === 2) { initChips(); initTypewriters(scene); }
