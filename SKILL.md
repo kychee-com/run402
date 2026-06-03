@@ -411,6 +411,8 @@ Rules and footnotes:
 - **Deploy-time validation.** Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (422) *before* flipping the live release.
 - **Cache TTL.** Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cacheTtl: 0` (fresh lookup per request).
 - **Gate applies to both** routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
+- **Reading the role (`@run402/functions` 3.4.0+).** `await auth.requireRole("operator")` returns `{ user, role }`; it throws a distinct `RoleGateNotConfiguredError` (500) when no `requireRole` gate is declared (vs `InsufficientRoleError` 403 for a real mismatch). For multi-role gates, `await auth.role()` returns the resolved role (or `null`, never throws) so you branch instead of re-asserting.
+- **Scaffold + first-operator bootstrap.** `run402 auth scaffold-roles --roles operator` emits the `app_roles` migration, the `requireRole` snippet, and a service-role `INSERT` for the FIRST operator — the table starts empty, so the first grant bypasses RLS with the service key. The gate keys on the tenant user id (JWT `sub`), not a wallet.
 
 ### Astro SSR runtime + ISR cache (v1.52+)
 

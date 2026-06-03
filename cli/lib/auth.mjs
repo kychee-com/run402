@@ -48,6 +48,9 @@ Subcommands:
   providers [--project <id>]
     List available auth providers for the project.
 
+  scaffold-roles [--table <name>] [--user-col <col>] [--role-col <col>] [--roles <csv>] [--cache-ttl <secs>]
+    Generate a role-table migration + requireRole gate snippet (offline; no project or network).
+
 Examples:
   run402 auth magic-link --email user@example.com --redirect https://myapp.run402.com/cb
   run402 auth verify --token abc123def456
@@ -55,6 +58,7 @@ Examples:
   run402 auth set-password --token eyJ... --new "new-pass" --current "old-pass"
   run402 auth settings --preferred passkey --require-admin-passkey true
   run402 auth providers
+  run402 auth scaffold-roles --roles operator,editor | jq -r .migration
 `;
 
 const SUB_HELP = {
@@ -234,6 +238,31 @@ Examples:
   run402 auth providers
   run402 auth providers --project prj_abc123
 `,
+  "scaffold-roles": `run402 auth scaffold-roles — Generate a role-table migration + requireRole gate snippet
+
+Usage:
+  run402 auth scaffold-roles [options]
+
+Generates (offline — no project or network):
+  - migration: idempotent CREATE TABLE for the conventional role table
+  - gate:      a requireRole deploy-spec snippet pointing at it
+  - bootstrap: a service-role INSERT to grant the first role
+
+Options:
+  --table <name>      Role table name (default: app_roles)
+  --user-col <col>    User-id column (default: user_id) — matches the tenant user id (JWT 'sub')
+  --role-col <col>    Role column (default: role)
+  --roles <csv>       Allowed roles, comma-separated (default: operator)
+  --cache-ttl <secs>  Role-lookup cache seconds, 0-600 (default: 60; 0 = instant revocation)
+
+Output is a single JSON object; pipe through jq to extract a part:
+  run402 auth scaffold-roles --roles operator | jq -r .migration
+  run402 auth scaffold-roles --roles operator,editor | jq .gate
+
+Notes:
+  requireRole(x) requires x in 'allowed'; for multi-role gates read auth.role() and branch.
+  The gate accepts any table/columns — this is just the blessed default.
+`,
 };
 
 const AUTH_FLAGS = {
@@ -288,6 +317,10 @@ const AUTH_FLAGS = {
   providers: {
     known: ["--project", "--help", "-h"],
     values: ["--project"],
+  },
+  "scaffold-roles": {
+    known: ["--table", "--user-col", "--role-col", "--roles", "--cache-ttl", "--help", "-h"],
+    values: ["--table", "--user-col", "--role-col", "--roles", "--cache-ttl"],
   },
 };
 
@@ -629,6 +662,74 @@ async function providers(args) {
   }
 }
 
+const ROLE_SCAFFOLD_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function scaffoldIdent(args, flag, def) {
+  const value = parseFlag(args, flag) || def;
+  if (!ROLE_SCAFFOLD_IDENT.test(value)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `${flag} must be an unquoted SQL identifier matching ${ROLE_SCAFFOLD_IDENT.source}`,
+    });
+  }
+  return value;
+}
+
+// Pure, offline generator — no SDK / network / project. Emits the conventional
+// role-table migration, the matching requireRole gate snippet, and a
+// first-operator bootstrap. (Keep in sync with the MCP `scaffold_roles` tool in
+// src/tools/scaffold-roles.ts — same artifacts, different presentation.)
+function scaffoldRoles(args) {
+  const table = scaffoldIdent(args, "--table", "app_roles");
+  const userCol = scaffoldIdent(args, "--user-col", "user_id");
+  const roleCol = scaffoldIdent(args, "--role-col", "role");
+  const allowed = (parseFlag(args, "--roles") || "operator")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  if (allowed.length === 0) {
+    fail({ code: "BAD_FLAG", message: "--roles must list at least one role (comma-separated)" });
+  }
+  let cacheTtl = 60;
+  const ttlRaw = parseFlag(args, "--cache-ttl");
+  if (ttlRaw !== null) {
+    const n = Number(ttlRaw);
+    if (!Number.isInteger(n) || n < 0 || n > 600) {
+      fail({ code: "BAD_FLAG", message: "--cache-ttl must be an integer in [0, 600]" });
+    }
+    cacheTtl = n;
+  }
+  const firstRole = allowed[0];
+  const migration = `-- Conventional Run402 role table: single role per user, keyed on the tenant user id.
+CREATE TABLE IF NOT EXISTS ${table} (
+  ${userCol} uuid NOT NULL,
+  ${roleCol} text NOT NULL,
+  PRIMARY KEY (${userCol})
+);`;
+  const gate = { table, idColumn: userCol, roleColumn: roleCol, allowed, cacheTtl };
+  const bootstrap = `-- First-operator bootstrap: run ONCE with the SERVICE key (bypasses RLS).
+-- Replace <FIRST_OPERATOR_USER_ID> with the tenant user id (internal.users.id /
+-- the JWT 'sub') of the first '${firstRole}' — NOT a wallet address.
+INSERT INTO ${table} (${userCol}, ${roleCol})
+VALUES ('<FIRST_OPERATOR_USER_ID>', '${firstRole}')
+ON CONFLICT (${userCol}) DO NOTHING;`;
+  console.log(
+    JSON.stringify({
+      table,
+      migration,
+      gate,
+      bootstrap,
+      notes: [
+        `Put 'gate' on the function's requireRole deploy-spec field, then call auth.requireRole('${firstRole}') in the function — or auth.role() to branch when 'allowed' has multiple roles.`,
+        "requireRole(x) requires x in 'allowed'; for multi-role gates read auth.role() and branch instead of re-asserting.",
+        "cacheTtl is the role-lookup cache in seconds; set it to 0 for instant revocation (fresh DB read per request).",
+        "The gate keys on the tenant USER id (internal.users.id / JWT 'sub'), NOT a wallet address.",
+        `The gate accepts any table/columns — '${table}'(${userCol},${roleCol}) is the blessed default; point requireRole at your own table if you already have one.`,
+      ],
+    }),
+  );
+}
+
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
   args = normalizeArgv(args);
@@ -654,6 +755,7 @@ export async function run(sub, args) {
     case "passkeys": await passkeys(args); break;
     case "delete-passkey": await deletePasskey(args); break;
     case "providers": await providers(args); break;
+    case "scaffold-roles": scaffoldRoles(args); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

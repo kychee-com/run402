@@ -160,6 +160,7 @@ import { requestMagicLinkSchema, handleRequestMagicLink } from "./tools/request-
 import { verifyMagicLinkSchema, handleVerifyMagicLink } from "./tools/verify-magic-link.js";
 import { setUserPasswordSchema, handleSetUserPassword } from "./tools/set-user-password.js";
 import { authSettingsSchema, handleAuthSettings } from "./tools/auth-settings.js";
+import { scaffoldRolesSchema, handleScaffoldRoles } from "./tools/scaffold-roles.js";
 import {
   createAuthUserSchema,
   handleCreateAuthUser,
@@ -1144,6 +1145,13 @@ server.tool(
   "Update project auth settings: allow_password_set, preferred_sign_in_method, public_signup, and require_passkey_for_project_admin. Requires service_key.",
   authSettingsSchema,
   async (args) => handleAuthSettings(args),
+);
+
+server.tool(
+  "scaffold_roles",
+  "Generate a role-table migration + requireRole gate snippet + first-operator bootstrap for Run402 function role gates. Offline and deterministic (no project or network). Inputs: table, user_col, role_col, roles[], cache_ttl.",
+  scaffoldRolesSchema,
+  async (args) => handleScaffoldRoles(args),
 );
 
 server.tool(

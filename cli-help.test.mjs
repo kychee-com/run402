@@ -101,6 +101,7 @@ const MATRIX = {
       "magic-link", "verify", "create-user", "invite-user", "set-password", "settings",
       "passkey-register-options", "passkey-register-verify", "passkey-login-options",
       "passkey-login-verify", "passkeys", "delete-passkey", "providers",
+      "scaffold-roles",
     ],
   },
   "sender-domain": {
