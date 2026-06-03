@@ -28,6 +28,7 @@ jobs:
       # systems where globstar isn't enabled.)
       - run: node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts' 'core/src/**/*.test.ts' 'sdk/src/**/*.test.ts'
       - run: npm run test:e2e
+      - run: npm run test:demos
       - run: npm run test:integration
       # Type-check every TypeScript fenced block in sdk/README.md,
       # sdk/llms-sdk.txt, and the top-level README.md against the
