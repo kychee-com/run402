@@ -267,13 +267,49 @@ jobs:
           }
           publish_idempotent "@run402/sdk"
 
-      - name: Commit version bump
+      - name: Commit version bump (rebase-safe — retries against a moving main)
         if: ${{ !inputs.dry_run }}
         run: |
           set -euo pipefail
-          git add package.json cli/package.json sdk/package.json package-lock.json
-          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }}"
-          git push origin main
+          NEW="${{ steps.bump.outputs.new }}"
+          # All three packages are already published at v$NEW (irreversible).
+          # This step only records the lockstep bump on main. A bare
+          # `git push origin main` loses a push race with ANY concurrent merge,
+          # leaving npm ahead of main with no version-bump commit and no
+          # tag/release. So rebuild the bump on top of the LATEST main each
+          # attempt — reset, re-set the exact published version across all three
+          # package.json, re-sync the lockfile — which is conflict-free, and
+          # retry the push.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            npm version "$NEW" --no-git-tag-version --allow-same-version >/dev/null
+            node -e "
+              const fs = require('fs');
+              for (const path of ['cli/package.json', 'sdk/package.json']) {
+                const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+                pkg.version = '$NEW';
+                fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+              }
+            "
+            npm install --package-lock-only >/dev/null
+            git add package.json cli/package.json sdk/package.json package-lock.json
+            if git diff --cached --quiet; then
+              echo "main is already at v$NEW — nothing to commit."
+              break
+            fi
+            git commit -m "chore: bump version to v$NEW"
+            if git push origin HEAD:main; then
+              echo "Pushed v$NEW lockstep bump on attempt $attempt."
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::Could not push the v$NEW bump to main after 5 attempts. All three packages ARE published; main needs a manual commit-back (set package.json + cli/package.json + sdk/package.json to $NEW + npm install --package-lock-only)."
+              exit 1
+            fi
+            echo "Push rejected (main advanced); rebuilding on fresh main and retrying ($attempt/5)…"
+            sleep "$((attempt * 2))"
+          done
 
       - name: Tag and push
         if: ${{ !inputs.dry_run }}
