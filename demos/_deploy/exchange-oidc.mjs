@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /*
  * Exchange the GitHub Actions OIDC token for a Run402 CI session
- * (internal-apps-cicd → internal-apps-deploy).
+ * (demos keyless CI/CD).
  *
- *   node apps/_deploy/exchange-oidc.mjs <app-name>
+ *   node demos/_deploy/exchange-oidc.mjs <demo-name>
  *
- * Reads the app's `project_id` from apps/<name>/app.json, requests a GitHub OIDC
+ * Reads the demo's `project_id` from demos/<name>/app.json, requests a GitHub OIDC
  * token with audience = the Run402 CI audience, POSTs it to
  * `/ci/v1/token-exchange`, and writes the resulting short-lived CI-session
  * bearer to $GITHUB_ENV as RUN402_CI_SESSION (masked). The wallet that signed
@@ -27,12 +27,12 @@ function die(msg) {
 }
 
 const name = process.argv[2];
-if (!name) die("usage: node apps/_deploy/exchange-oidc.mjs <app-name>");
+if (!name) die("usage: node demos/_deploy/exchange-oidc.mjs <demo-name>");
 
 const baseUrl = process.env.BASE_URL || "https://api.run402.com";
-const appsDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const entry = loadRegistry(appsDir).find((e) => e.name === name);
-if (!entry || !entry.valid) die(`no valid registered app '${name}' (apps/**/app.json)`);
+const demosDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+const entry = loadRegistry(demosDir).find((e) => e.name === name);
+if (!entry || !entry.valid) die(`no valid registered demo '${name}' (demos/**/app.json)`);
 const config = entry.config;
 if (!config.project_id || String(config.project_id).startsWith("<")) {
   die(`${name} is not provisioned (no project_id) — cannot exchange a CI session.`);

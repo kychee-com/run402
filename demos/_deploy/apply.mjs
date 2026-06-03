@@ -1,13 +1,13 @@
 /*
- * Shared deploy engine for on-platform internal apps
- * (internal-apps-cicd → internal-apps-deploy).
+ * Shared deploy engine for the on-platform demos
+ * (demos keyless CI/CD).
  *
  * Drives the CAS upload (`/content/v1`) + unified apply (`/apply/v1`) flow for a
  * DEPLOY-ONLY ReleaseSpec (site / functions / database / routes — never
  * `subdomains` or `secrets`, which are provisioning-time only and forbidden to
  * CI sessions). Auth-agnostic: works under a wallet SIWX identity (local /
  * provisioning) OR an exchanged Run402 CI-session bearer (CI), so the SAME code
- * path runs in both. No dependency on the gateway source tree (apps/ boundary).
+ * path runs in both. No dependency on the gateway source tree (demos/ boundary).
  *
  *   auth = { mode: "ci",     token }                         // CI-session bearer
  *        | { mode: "wallet", serviceKey, siwxHeaders }       // local / provision
@@ -35,7 +35,7 @@ export function readStaticDir(dir) {
   if (existsSync(publicDir) && statSync(publicDir).isDirectory()) {
     return readdirSync(publicDir)
       .filter((n) => !n.startsWith("."))
-      .map((n) => ({ file: n, data: readFileSync(join(publicDir, n), "utf-8") }));
+      .map((n) => ({ file: n, data: readFileSync(join(publicDir, n)) }));
   }
   return readdirSync(dir)
     .filter(
@@ -46,15 +46,19 @@ export function readStaticDir(dir) {
         !n.endsWith(".sql") &&
         !n.startsWith("function."),
     )
-    .map((n) => ({ file: n, data: readFileSync(join(dir, n), "utf-8") }));
+    .map((n) => ({ file: n, data: readFileSync(join(dir, n)) }));
 }
 
 function sha256Hex(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function utf8(s) {
-  const bytes = new TextEncoder().encode(s);
+// Normalize a string (function code, SQL) or a raw Buffer (static asset bytes)
+// to { bytes, size, sha256 }. Static files are read as Buffers so binary assets
+// (images, fonts, favicons, video) stay byte-exact instead of being mangled by
+// a utf-8 round-trip.
+function content(data) {
+  const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data, "utf-8");
   return { bytes, size: bytes.byteLength, sha256: sha256Hex(bytes) };
 }
 
@@ -65,6 +69,15 @@ function contentTypeFor(file) {
   if (file.endsWith(".css")) return "text/css; charset=utf-8";
   if (file.endsWith(".svg")) return "image/svg+xml";
   if (file.endsWith(".txt")) return "text/plain; charset=utf-8";
+  if (file.endsWith(".ico")) return "image/x-icon";
+  if (file.endsWith(".png")) return "image/png";
+  if (file.endsWith(".jpg") || file.endsWith(".jpeg")) return "image/jpeg";
+  if (file.endsWith(".gif")) return "image/gif";
+  if (file.endsWith(".webp")) return "image/webp";
+  if (file.endsWith(".woff2")) return "font/woff2";
+  if (file.endsWith(".woff")) return "font/woff";
+  if (file.endsWith(".mp4")) return "video/mp4";
+  if (file.endsWith(".webm")) return "video/webm";
   return "application/octet-stream";
 }
 
@@ -136,7 +149,7 @@ export function buildDeploySpec(body) {
   if (body.files?.length) {
     const fileRefs = {};
     for (const f of body.files) {
-      const u = utf8(f.data);
+      const u = content(f.data);
       const ct = contentTypeFor(f.file);
       fileRefs[f.file] = { sha256: u.sha256, size: u.size, contentType: ct };
       pending.push({ sha256: u.sha256, size: u.size, contentType: ct, bytes: u.bytes });
@@ -147,7 +160,7 @@ export function buildDeploySpec(body) {
   if (body.functions?.length) {
     const fnSpecs = {};
     for (const fn of body.functions) {
-      const u = utf8(fn.code);
+      const u = content(fn.code);
       const ct = "text/javascript; charset=utf-8";
       fnSpecs[fn.name] = { runtime: "node22", entrypoint: fn.entrypoint, source: { sha256: u.sha256, size: u.size, contentType: ct } };
       pending.push({ sha256: u.sha256, size: u.size, contentType: ct, bytes: u.bytes });
@@ -156,7 +169,7 @@ export function buildDeploySpec(body) {
   }
 
   if (typeof body.migrations === "string" && body.migrations.length > 0) {
-    const u = utf8(body.migrations);
+    const u = content(body.migrations);
     spec.database = {
       migrations: [{ id: `app_${u.sha256.slice(0, 16)}`, checksum: u.sha256, sql: body.migrations }],
       ...(body.expose !== undefined ? { expose: body.expose } : {}),
