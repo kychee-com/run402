@@ -1,9 +1,9 @@
 ## 1. One-time provisioning (manual prerequisite, not code)
 
 - [x] 1.1 Provision the dedicated docs run402 project — DONE: `run402-docs` = `prj_1780488560350_0018`, owned by the default wallet (`0xaD17…8874`), under the Team billing account (tier is account-level). (Currently serving placeholder probe content; replaced in 2.2.)
-- [ ] 1.2 Run `run402 domains add docs.run402.com <subdomain>` and capture the returned DNS instructions. Custom domains are a billing-account capability (your account is Team), so this should succeed without a tier change (O1).
-- [ ] 1.3 Resolve O2 (where `run402.com` DNS is administered), add the CNAME `docs → domains.run402.com`, and confirm `docs.run402.com` resolves to the run402 subdomain.
-- [ ] 1.4 Run `run402 ci link github --project prj_1780488560350_0018 --route-scope /llms-cli.txt --route-scope /llms-sdk.txt --route-scope /llms-mcp.txt --route-scope /SKILL.md` to mint the OIDC binding and generate `.github/workflows/deploy-docs.yml`.
+- [ ] 1.2 Bind `docs.run402.com`. FINDING: `*.run402.com` is wildcard-routed to the platform (verified — `docs.run402.com` already resolves and returns 404 = unclaimed), so this is a plain subdomain claim — **no custom domain, no manual DNS**. BUT `docs` is a **reserved** subdomain (gateway). Decide: un-reserve `docs` in the gateway reserved list (operator-side), then `run402 subdomains claim docs --project prj_1780488560350_0018`; OR claim a non-reserved alternative.
+- [x] 1.3 ~~DNS CNAME~~ — N/A: `docs.run402.com` rides run402's own `*.run402.com` wildcard; no external/registrar DNS record needed (O2 dissolved).
+- [x] 1.4 Minted the OIDC binding (`bnd_85854647d23be56336860d795c34d002`, subject `repo:kychee-com/run402:ref:refs/heads/main`, 4 route-scopes, repo id 1173507078) and generated `.github/workflows/deploy-docs.yml` via `run402 ci link github --branch main --manifest run402.docs.deploy.json`.
 
 ## 2. Docs-site manifest (public repo)
 
@@ -18,7 +18,7 @@
 
 ## 4. CI deploy workflow (public repo)
 
-- [ ] 4.1 Finalize `.github/workflows/deploy-docs.yml`: push-to-`main` path filter on `cli/llms-cli.txt`, `sdk/llms-sdk.txt`, `llms-mcp.txt`, `SKILL.md`, and the manifest → `run402 deploy apply`. `permissions: id-token: write`, no run402 secret.
+- [x] 4.1 Finalized `.github/workflows/deploy-docs.yml`: renamed "Deploy Docs Site", added push-to-`main` path filter (`cli/llms-cli.txt`, `sdk/llms-sdk.txt`, `llms-mcp.txt`, `SKILL.md`, manifest, workflow) → `run402 deploy apply`. `permissions: id-token: write`, no run402 secret.
 - [ ] 4.2 Verify a push-to-main docs edit triggers the workflow and updates the stable paths end-to-end via OIDC (no stored secret used).
 
 ## 5. Cutover PR — flip the apex-facing surface (public repo; only AFTER 2–4 verify the docs site is live)

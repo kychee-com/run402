@@ -35,7 +35,7 @@ A dedicated run402 project hosts the docs site. **Provisioned: `run402-docs` = `
 
 - **Alternatives considered:** a step inside `/publish` (rejected — couples docs liveness to the release flow and the operator's local `gh`/wallet); a hand-run `deploy.ts` SDK script like the private repo's `apps/console`/demos (rejected — those are manual, not push-triggered, and the console's own comment flags it as a launch-time shortcut to harden later; for the *public* repo, deploying via `run402 ci link github` OIDC is a live dogfood of the exact CI flow we ship to external devs). Path-filtered push-to-main is self-serve and fires on doc edits that aren't releases.
 - **Why:** matches `ci-github-actions-dx` (a capability we already ship); zero long-lived secrets; the public repo is fully self-sufficient.
-- **Trade-offs:** the OIDC binding is signed by one human's allowance wallet at link time — document the owning wallet so it can be re-linked. Docs availability now tracks run402 uptime (acceptable for deep refs; discovery stays on apex). Custom domains are a billing-account capability (tier is account-level; your account is Team), so `docs.run402.com` should bind without any tier change — confirm when running `domains add` (O1).
+- **Trade-offs:** the OIDC binding is signed by one human's allowance wallet at link time — document the owning wallet so it can be re-linked. Docs availability now tracks run402 uptime (acceptable for deep refs; discovery stays on apex). `docs.run402.com` is a reserved `*.run402.com` subdomain (O1): bind it by un-reserving `docs` (operator-side) then claiming, or via a non-reserved alternative — no custom domain or external DNS involved.
 
 ### D3 — Stable paths only; immutable version pins come from git tags, not the docs site
 
@@ -70,7 +70,7 @@ The gateway's static MIME table maps `.md → text/markdown` and `.txt → text/
 
 ## Migration Plan
 
-1. **Provision (one-time, manual):** ✅ docs project provisioned (`run402-docs` = `prj_1780488560350_0018`, default wallet). Remaining: `run402 domains add docs.run402.com <subdomain>`; add the DNS CNAME `docs → domains.run402.com`; `run402 ci link github` to mint the binding + workflow.
+1. **Provision (one-time):** ✅ docs project (`run402-docs` = `prj_1780488560350_0018`, default wallet). ✅ OIDC binding + `deploy-docs.yml` via `run402 ci link github` (branch `main`, docs manifest, 4 route-scopes). Remaining: bind `docs.run402.com` — a plain subdomain claim (no custom domain / DNS), but `docs` is reserved, so un-reserve it (operator) then `run402 subdomains claim docs`, or pick a non-reserved alternative.
 2. **Add manifest + index generator + workflow** in this repo (no URL flips yet). Content-type is already confirmed (D5) — keep a `curl -I` smoke check.
 3. **First real docs deploy** → stable paths live at `docs.run402.com`, replacing the probe content. Verify all four docs + content-types.
 4. **Flip the apex-facing surface in one PR:** rewrite the `llms.txt` wayfinder to point at `docs.run402.com`; update the ~27 in-repo self-refs per the moved-vs-discovery rule; set `index.json` `url → https://docs.run402.com/SKILL.md` and regenerate the digest; update `documentation.md` canonicality rows; update/repoint `sync.test.ts`.
@@ -81,8 +81,8 @@ The gateway's static MIME table maps `.md → text/markdown` and `.txt → text/
 
 ## Open Questions
 
-- **O1 — Custom-domain availability on the Team account.** Tier is a billing-account property (not per-project, not per-wallet); your account is on Team (per `run402 status`). Confirm `run402 domains add docs.run402.com` succeeds (expected on Team). Surfaces immediately when running `domains add`.
-- **O2 — DNS ownership.** Confirm where `run402.com` DNS is administered (registrar vs Route 53 in the private infra account) so the `docs` CNAME can be added.
+- **O1 — `docs` subdomain is reserved.** Empirically `*.run402.com` is wildcard-routed to the platform (`docs.run402.com` already resolves, returns 404 = unclaimed), so `docs.run402.com` is a plain subdomain claim — no custom domain, no manual DNS. But `docs` is a gateway-**reserved** subdomain. Resolve by un-reserving `docs` (operator-side gateway config) then `run402 subdomains claim docs`, or by claiming a non-reserved alternative subdomain.
+- **O2 — DNS ownership.** Dissolved. `docs.run402.com` rides run402's own `*.run402.com` wildcard (run402-managed zone); no external/registrar DNS record is needed.
 - **O3 — `sync.test.ts` MCP-coverage assertion.** It currently keys off a `run402-private` `site/llms.txt` path (now stale — private moved to `apps/marketing/`). Repoint it to verify the public repo's own `llms-mcp.txt` tool coverage instead of reaching into a sibling checkout.
 
 **Resolved during proposal:** content-type for `.md`/`.txt` on run402 static hosting (D5).
