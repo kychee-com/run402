@@ -591,7 +591,7 @@ The helper makes raw `fetch()` calls to the project's own gateway endpoints usin
 
 ## Namespaces — full surface
 
-The `Run402` class exposes 21 namespaces. Click into the SDK source for full method signatures.
+The `Run402` class exposes 22 namespaces. Click into the SDK source for full method signatures.
 
 > Reference tables below use plain fences, not `ts` fences. They document the
 > type surface in compact form — they are not runnable programs. Runnable example
@@ -782,6 +782,37 @@ isCiSessionCredentials(credentials): boolean
 ```
 
 CI error-code unions include binding errors (`invalid_route_scopes`, `nonce_replay`, `delegation_statement_mismatch`, `signer_mismatch`, `duplicate`), token-exchange errors (`invalid_token`, `access_denied`, `event_not_allowed`, `repository_id_mismatch`, `ambiguous_binding`), and CI deploy errors (`payment_required`, `insufficient_scope`, `forbidden_spec_field`, `forbidden_plan`, `CI_ROUTE_SCOPE_DENIED`). Preserve unknown future strings as opaque gateway codes.
+
+### `r.operator`
+
+The **human / email principal** — the *operator session* — distinct from the agent's per-wallet SIWX identity (and from the platform-`admin` "operator" endpoints, which are a different thing). A wallet signature can only ever return one wallet's slice; the operator session proves control of the *email* and returns the union across every wallet that verified it.
+
+Authentication is browser-delegated via an OAuth 2.0 device-authorization grant (RFC 8628, the `aws sso login` model): the SDK never performs WebAuthn — the browser does, via the existing magic-link or passkey web flow — and the SDK brokers the resulting operator-session token (a read-only `operator.read` bearer, ~30-min TTL, ~12h absolute cap, revocable).
+
+```
+operator.deviceStart({ clientName? }): Promise<DeviceAuthStart>
+  // POST /agent/v1/operator/session/device (unauthenticated). Returns
+  // { device_code, user_code, verification_uri, verification_uri_complete?, expires_in, interval }.
+
+operator.devicePoll(deviceCode): Promise<DevicePollResult>
+  // POST /agent/v1/operator/session/device/token. RFC 8628 states are returned as
+  // DATA, not thrown: { kind: "approved", session } | { kind: "authorization_pending" }
+  // | { kind: "slow_down" } | { kind: "access_denied" } | { kind: "expired_token" }.
+  // `session` is the OperatorSessionToken { operator_session_token, token_type,
+  // expires_in, absolute_expires_at, email, wallets[] }.
+
+operator.overview({ token? }): Promise<OperatorOverview>
+  // GET /agent/v1/operator/overview. With `token` (the operator-session bearer) →
+  // the email-union (scope.kind "email"): rollup, billing_accounts[], wallets[]
+  // (each with projects + email_binding), advisories[]. Without `token` it falls
+  // back to the provider's default auth (SIWX) → that one wallet's slice.
+
+operator.revoke({ token }): Promise<void>
+  // POST /agent/v1/operator/session/revoke (operator-session bearer). Idempotent,
+  // 204. Server-side revoke is instant (no positive-validity cache).
+```
+
+The session cache is Node-only and lives in `core` (`{base}/operator-session.json`, mode 0600, base config dir — email-scoped, so it is shared across local named wallets). The CLI (`run402 operator login/logout/overview/whoami`) brokers it; `whoami` is a pure local-cache read with no SDK method. No MCP tool by design — MCP authenticates as the agent, not the human.
 
 ### `r.sites`
 

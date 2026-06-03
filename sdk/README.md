@@ -54,7 +54,7 @@ const r = new Run402({
 
 The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readAllowance`, `saveAllowance`, …) for hosts that want full sticky-default behavior.
 
-## Namespaces (22)
+## Namespaces (23)
 
 | Namespace | Highlights |
 |---|---|
@@ -81,6 +81,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `allowance` | `status`, `create`, `export`, `faucet` |
 | `service` | `status`, `health` (no auth, no setup — works on a fresh install) |
 | `admin` | Operator/admin endpoints: messages/contact, per-project finance (`getProjectFinance`) |
+| `operator` | **The human / email principal** — the *operator session*, distinct from the agent's per-wallet SIWX identity (and from platform-`admin`). `deviceStart`, `devicePoll`, `overview({ token })`, `revoke({ token })`: browser-delegated device-authorization (RFC 8628, the `aws sso login` model). `overview` returns the email-union across every wallet that verified the email; a single wallet's own view stays `run402 status`. Drives `run402 operator login/overview/whoami/logout`. No MCP tool by design — MCP authenticates as the agent, not the human. |
 
 CLI-style aliases are available for agent ergonomics: `r.image` aliases `r.ai`,
 and common command names such as `r.billing.balance`, `r.auth.magicLink`,

@@ -68,7 +68,7 @@ When adding a new tool/command, add it to the `SURFACE` array **and** `SDK_BY_CA
 ## Architecture
 
 ```
-@run402/sdk  (typed TypeScript kernel — 22 namespaces, ~100 methods)
+@run402/sdk  (typed TypeScript kernel — 23 namespaces, ~100 methods)
    │
    │   /index.ts    (isomorphic: Node + sandbox)
    │   /node        (Node-only: keystore + allowance + x402-wrapped fetch + fileSetFromDir)
@@ -155,6 +155,7 @@ The `core/` module contains shared logic imported by all interfaces:
 - **`allowance.ts`** — `readAllowance()`, `saveAllowance()` with atomic writes (temp-file + rename, mode 0600).
 - **`allowance-auth.ts`** — EIP-191 signing with `@noble/curves`. `getAllowanceAuthHeaders()` returns headers or null.
 - **`keystore.ts`** — Unified project credential store. Object schema: `{projects: {id: {anon_key, service_key, tier, lease_expires_at}}}`. Auto-migrates legacy array format and `expires_at` → `lease_expires_at`. Functions: `loadKeyStore()`, `saveKeyStore()`, `getProject()`, `saveProject()`, `removeProject()`.
+- **`operator-session.ts`** — Operator-session cache for the **human/email** principal (distinct from the per-wallet allowance/keystore). `readOperatorSession()`, `saveOperatorSession()`, `clearOperatorSession()`, `isOperatorSessionExpired()`, `loadLiveOperatorSession()`, `operatorSessionFromTokenResponse()` over `{base}/operator-session.json` (mode 0600, **base** config dir — email-scoped, so it is shared across named wallets, not per-profile). Backs `r.operator` and `run402 operator login/logout/overview/whoami`.
 
 Core functions return `null` or throw — they never call `process.exit()`. Each interface wraps with its own error behavior.
 
