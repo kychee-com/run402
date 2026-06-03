@@ -1,0 +1,53 @@
+## 1. One-time provisioning (manual prerequisite, not code)
+
+- [x] 1.1 Provision the dedicated docs run402 project — DONE: `run402-docs` = `prj_1780488560350_0018`, owned by the default wallet (`0xaD17…8874`), under the Team billing account (tier is account-level). (Currently serving placeholder probe content; replaced in 2.2.)
+- [ ] 1.2 Run `run402 domains add docs.run402.com <subdomain>` and capture the returned DNS instructions. Custom domains are a billing-account capability (your account is Team), so this should succeed without a tier change (O1).
+- [ ] 1.3 Resolve O2 (where `run402.com` DNS is administered), add the CNAME `docs → domains.run402.com`, and confirm `docs.run402.com` resolves to the run402 subdomain.
+- [ ] 1.4 Run `run402 ci link github --project prj_1780488560350_0018 --route-scope /llms-cli.txt --route-scope /llms-sdk.txt --route-scope /llms-mcp.txt --route-scope /SKILL.md` to mint the OIDC binding and generate `.github/workflows/deploy-docs.yml`.
+
+## 2. Docs-site manifest (public repo)
+
+- [x] 2.1 Add the docs deploy manifest with `site.replace` for the four moved docs and `site.public_paths` (explicit mode) mapping the stable paths `/llms-cli.txt`, `/llms-sdk.txt`, `/llms-mcp.txt`, `/SKILL.md`.
+- [x] 2.2 First real deploy to `docs.run402.com` (replaces the probe content); `curl -I`-verify all four docs return 200 with the right content types (`text/markdown` for `SKILL.md`, `text/plain` for the `.txt` refs — already confirmed live in design D5, this is the smoke check).
+
+## 3. Discovery index becomes public-repo-authoritative (public repo)
+
+- [x] 3.1 Port the index generator into `scripts/build-agent-skills-index.mjs`: read `SKILL.md`, compute `sha256`, write `.well-known/agent-skills/index.json` with `skills[0].url = https://docs.run402.com/SKILL.md` and `digest = sha256:<hex>`.
+- [x] 3.2 Commit the generated `.well-known/agent-skills/index.json` to the repo. (Generated; staged with the change — not yet `git commit`ed.)
+- [x] 3.3 Add a `sync.test.ts` assertion that `index.json` digest equals `sha256(SKILL.md)` so drift fails CI in the authoritative repo. (Passing: `test:sync` 32/32.)
+
+## 4. CI deploy workflow (public repo)
+
+- [ ] 4.1 Finalize `.github/workflows/deploy-docs.yml`: push-to-`main` path filter on `cli/llms-cli.txt`, `sdk/llms-sdk.txt`, `llms-mcp.txt`, `SKILL.md`, and the manifest → `run402 deploy apply`. `permissions: id-token: write`, no run402 secret.
+- [ ] 4.2 Verify a push-to-main docs edit triggers the workflow and updates the stable paths end-to-end via OIDC (no stored secret used).
+
+## 5. Cutover PR — flip the apex-facing surface (public repo; only AFTER 2–4 verify the docs site is live)
+
+- [ ] 5.1 Rewrite the `llms.txt` wayfinder so the deep-reference links use `https://docs.run402.com/<doc>`, keeping the wayfinder's own location and the discovery-index link on `run402.com`.
+- [ ] 5.2 Update the ~27 in-repo self-references: links to the moved docs (`llms-cli/sdk/mcp.txt`, `SKILL.md`) → `docs.run402.com`; links to the wayfinder/discovery index → `run402.com`. Audit the exact occurrences (llms.txt ×8, mcp ×7, sdk ×6, cli ×3, SKILL ×3) and apply the moved-vs-discovery rule to each.
+- [ ] 5.3 Update `documentation.md`: the canonicality notes and the per-surface "Served at run402.com/…" rows now state the four moved docs are canonical at `docs.run402.com` and the wayfinder/index at `run402.com`.
+- [ ] 5.4 Repoint the stale `sync.test.ts` MCP-coverage assertion (O3) to verify the public repo's own `llms-mcp.txt` tool coverage instead of a `run402-private` path.
+- [ ] 5.5 Add a self-reference lint test: moved docs MUST NOT link to `run402.com/<moved-doc>`, and the wayfinder MUST use `docs.run402.com` for the deep refs.
+- [ ] 5.6 Run `npm test` (skill + sync + unit + e2e) and get it green.
+
+## 6. Publish wiring + apex refresh (public repo + /publish skill)
+
+- [ ] 6.1 Confirm `/publish` still fires `repository_dispatch: public-docs-updated` (apex refresh of `llms.txt` + verbatim `index.json`) and note in the skill that it no longer owns the deep references.
+- [ ] 6.2 Trigger an apex refresh and verify `run402.com/llms.txt` is the new wayfinder and `run402.com/.well-known/agent-skills/index.json` has `url = docs.run402.com/SKILL.md` with a digest matching the served `SKILL.md`.
+
+## 7. Spec verification (public repo)
+
+- [ ] 7.1 Verify canonical serving locations: apex serves the wayfinder + index; `docs.run402.com` serves the four deep refs.
+- [ ] 7.2 Verify the discovery-index digest matches the served `SKILL.md` (fetch both, compare sha256) — the no-drift scenario.
+- [ ] 7.3 Verify content-types on the wire (`text/markdown` for `SKILL.md`, `text/plain` for the `.txt` refs).
+- [ ] 7.4 Verify the stable paths return the latest published bytes.
+
+## 8. Tracked follow-up — run402-private (SEPARATE, out-of-band PR; NOT merged as part of this change)
+
+> External dependency. This change can merge and the docs site can go live before this PR lands; until then, hard-coded old apex URLs 404 (the wayfinder + npm READMEs already route live agents to the new URLs).
+
+- [ ] 8.1 Trim `scripts/sync-agent-docs.mjs`: drop the four moved docs from `SOURCES`; fetch `.well-known/agent-skills/index.json` verbatim from the public repo instead of recomputing the digest.
+- [ ] 8.2 Add an apex CloudFront redirect (301/308) for the four old `run402.com/<doc>` paths → `docs.run402.com/<doc>` (satisfies the back-compat spec requirement).
+- [ ] 8.3 Remove the moved-file rows from `docs/agent-docs-sync.md` and reflect the new verbatim-index flow.
+- [ ] 8.4 Verify old apex URLs redirect to their `docs.run402.com` canonical locations.
+- [ ] 8.5 Update the cross-repo integration record (e.g. the `project_last_integration` memory / sync point) once both PRs land.
