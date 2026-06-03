@@ -1,0 +1,30 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { adminDb } from "@run402/functions";
+import type { VillainRow } from "../lib/types";
+
+export const prerender = false;
+
+const top = (await adminDb().sql(
+  "select id, villain_name, threat_level, elo from villains order by elo desc, created_at desc limit 20",
+)) as unknown as VillainRow[];
+---
+
+<Layout title="Leaderboard — EvilMe">
+  <h1>Most Feared</h1>
+  {
+    top.length === 0 ? (
+      <p class="empty">No villains ranked yet.</p>
+    ) : (
+      <ol class="board">
+        {top.map((v, i) => (
+          <li>
+            <span class="rank">#{i + 1}</span>
+            <a href={`/villain/${v.id}`}>{v.villain_name}</a>
+            <span class="elo">{v.elo}</span>
+          </li>
+        ))}
+      </ol>
+    )
+  }
+</Layout>

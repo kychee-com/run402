@@ -1,0 +1,24 @@
+---
+import Run402Picture from "@run402/astro/components/Run402Picture.astro";
+import type { VillainRow } from "../lib/types";
+
+interface Props {
+  v: VillainRow;
+}
+const { v } = Astro.props;
+---
+
+<article class="card">
+  <a href={`/villain/${v.id}`}>
+    {
+      v.portrait ? (
+        <Run402Picture asset={v.portrait} alt={v.villain_name} class="portrait" />
+      ) : (
+        <div class="portrait noimg">portrait pending</div>
+      )
+    }
+  </a>
+  <h3><a href={`/villain/${v.id}`} style="color:inherit;">{v.villain_name}</a></h3>
+  <p>☠ {v.threat_level}</p>
+  <p>Elo {v.elo}</p>
+</article>

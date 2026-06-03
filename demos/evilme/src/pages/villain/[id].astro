@@ -1,0 +1,43 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Run402Picture from "@run402/astro/components/Run402Picture.astro";
+import { db } from "@run402/functions";
+import type { VillainRow } from "../../lib/types";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect("/gallery");
+// Caller-context read through db(req): RLS `villains_public_read` (USING true)
+// makes this readable by anyone, signed in or not.
+const rows = (await db(Astro.request).from("villains").select("*").eq("id", id)) as unknown as VillainRow[];
+const v = rows?.[0];
+if (!v) return Astro.redirect("/gallery");
+
+const portrait = v.portrait as { cdn_url?: string; url?: string } | null;
+const og = portrait?.cdn_url ?? portrait?.url ?? null;
+---
+
+<Layout title={`${v.villain_name} — EvilMe`} description={v.catchphrase} ogImage={og}>
+  <article class="villain">
+    {
+      v.portrait ? (
+        <Run402Picture asset={v.portrait} alt={v.villain_name} class="hero-portrait" />
+      ) : (
+        <div class="hero-portrait noimg">portrait pending</div>
+      )
+    }
+    <div>
+      <h1>{v.villain_name}</h1>
+      <p class="catch">{v.catchphrase}</p>
+      <p>{v.origin_story}</p>
+      <ul class="stats">
+        <li><b>Power</b>{v.power}</li>
+        <li><b>Weakness</b>{v.weakness}</li>
+        <li><b>Threat</b>{v.threat_level}</li>
+        <li><b>Elo</b>{v.elo}</li>
+      </ul>
+      <a class="btn" href="/arena">Vote in the arena →</a>
+    </div>
+  </article>
+</Layout>

@@ -1,0 +1,39 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Run402Picture from "@run402/astro/components/Run402Picture.astro";
+import { adminDb, auth } from "@run402/functions";
+import type { VillainRow } from "../lib/types";
+
+export const prerender = false;
+
+const user = await auth.user();
+const pair = (await adminDb().sql(
+  "select id, villain_name, threat_level, elo, portrait from villains where portrait is not null order by random() limit 2",
+)) as unknown as VillainRow[];
+---
+
+<Layout title="Arena — EvilMe">
+  <h1>The Arena</h1>
+  {
+    pair.length < 2 ? (
+      <p class="empty">Need at least two portrait'd villains to hold a match. Forge more!</p>
+    ) : !user ? (
+      <p class="empty">
+        Sign in to cast your vote. <a href="/auth/sign-in?returnTo=/arena">Sign in →</a>
+      </p>
+    ) : (
+      <div class="arena">
+        {pair.map((v, i) => (
+          <form method="POST" action="/api/vote" class="fighter">
+            <input type="hidden" name="winner" value={v.id} />
+            <input type="hidden" name="loser" value={pair[1 - i]!.id} />
+            {v.portrait && <Run402Picture asset={v.portrait} alt={v.villain_name} class="portrait" />}
+            <h3>{v.villain_name}</h3>
+            <p>☠ {v.threat_level} · Elo {v.elo}</p>
+            <button type="submit">More evil →</button>
+          </form>
+        ))}
+      </div>
+    )
+  }
+</Layout>

@@ -1,0 +1,27 @@
+---
+import Layout from "../layouts/Layout.astro";
+import VillainCard from "../components/VillainCard.astro";
+import { adminDb } from "@run402/functions";
+import type { VillainRow } from "../lib/types";
+
+export const prerender = false;
+
+const villains = (await adminDb().sql(
+  "select id, villain_name, threat_level, elo, portrait from villains order by created_at desc limit 48",
+)) as unknown as VillainRow[];
+---
+
+<Layout title="Gallery — EvilMe">
+  <h1>The Rogues' Gallery</h1>
+  {
+    villains.length === 0 ? (
+      <p class="empty">No villains yet. Be the first to forge one.</p>
+    ) : (
+      <div class="grid">
+        {villains.map((v) => (
+          <VillainCard v={v} />
+        ))}
+      </div>
+    )
+  }
+</Layout>

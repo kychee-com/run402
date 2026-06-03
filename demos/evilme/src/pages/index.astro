@@ -1,0 +1,48 @@
+---
+import Layout from "../layouts/Layout.astro";
+import VillainCard from "../components/VillainCard.astro";
+import { SignedIn, SignedOut, SignIn } from "@run402/astro/components";
+import { adminDb } from "@run402/functions";
+import type { VillainRow } from "../lib/types";
+
+export const prerender = false;
+
+const recent = (await adminDb().sql(
+  "select id, villain_name, threat_level, elo, portrait from villains order by created_at desc limit 6",
+)) as unknown as VillainRow[];
+---
+
+<Layout>
+  <section class="hero">
+    <h1>Forge your villain origin story</h1>
+    <p>Hand over your name and one mundane fact. We'll forge your supervillain alter-ego — manga portrait included.</p>
+  </section>
+
+  <SignedIn>
+    <form class="forge" method="POST" action="/api/generate">
+      <label>Your name<input name="name" maxlength="60" required placeholder="Tal" /></label>
+      <label>One mundane fact<input name="fact" maxlength="200" required placeholder="I alphabetize my spice rack" /></label>
+      <label>Appearance (optional)<input name="appearance" maxlength="200" placeholder="tall, glasses, perpetually tired" /></label>
+      <button type="submit">Forge my villain →</button>
+    </form>
+  </SignedIn>
+  <SignedOut>
+    <div class="signin-wrap">
+      <p>Sign in to forge a villain — passkey, Google, magic-link, or password:</p>
+      <SignIn methods={["password", "google", "magic_link", "passkey"]} returnTo="/" />
+    </div>
+  </SignedOut>
+
+  {
+    recent.length > 0 && (
+      <section>
+        <h2>Freshly forged</h2>
+        <div class="grid">
+          {recent.map((v) => (
+            <VillainCard v={v} />
+          ))}
+        </div>
+      </section>
+    )
+  }
+</Layout>

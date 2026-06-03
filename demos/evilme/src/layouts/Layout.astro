@@ -1,0 +1,68 @@
+---
+import Nav from "../components/Nav.astro";
+
+interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: string | null;
+}
+const {
+  title = "EvilMe — Villain Origin Story Generator",
+  description = "Forge your supervillain alter-ego — manga portrait included. Built 100% on run402.",
+  ogImage = null,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    {ogImage && <meta property="og:image" content={ogImage} />}
+    <meta name="twitter:card" content={ogImage ? "summary_large_image" : "summary"} />
+    <style is:global>
+      :root { color-scheme: dark; --bg:#0b0b10; --panel:#15151f; --line:#2a2a3a; --ink:#e7e7f0; --dim:#9a9ab0; --acc:#ff4d6d; --acc2:#8a7dff; }
+      * { box-sizing: border-box; }
+      body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+      a { color:var(--acc2); text-decoration:none; } a:hover { text-decoration:underline; }
+      main { max-width:980px; margin:0 auto; padding:24px 18px 64px; }
+      h1 { font-size:2rem; margin:.2em 0; } h2 { margin-top:2rem; }
+      .hero { text-align:center; padding:24px 0 8px; }
+      .hero p { color:var(--dim); max-width:44ch; margin:.4em auto; }
+      .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); }
+      .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; padding-bottom:10px; }
+      .card h3 { margin:.5em 10px .1em; font-size:1rem; } .card p { margin:0 10px; color:var(--dim); font-size:.8rem; }
+      .portrait { display:block; width:100%; aspect-ratio:1/1; object-fit:cover; background:#1d1d2a; }
+      .noimg { display:flex; align-items:center; justify-content:center; color:var(--dim); font-size:.8rem; }
+      form.forge { display:grid; gap:12px; max-width:520px; margin:18px auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; }
+      form.forge label { display:grid; gap:4px; font-size:.85rem; color:var(--dim); }
+      input { background:#0e0e16; border:1px solid var(--line); color:var(--ink); border-radius:9px; padding:10px 12px; font-size:1rem; }
+      button, .btn { background:var(--acc); color:#fff; border:0; border-radius:9px; padding:10px 16px; font-size:1rem; font-weight:600; cursor:pointer; display:inline-block; }
+      .btn:hover, button:hover { filter:brightness(1.08); text-decoration:none; }
+      .signin-wrap { max-width:460px; margin:18px auto; text-align:center; }
+      .signin-wrap p { color:var(--dim); }
+      .villain { display:grid; grid-template-columns:minmax(0,320px) 1fr; gap:24px; align-items:start; }
+      .hero-portrait { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:16px; border:1px solid var(--line); background:#1d1d2a; }
+      .catch { font-style:italic; color:var(--acc2); font-size:1.1rem; }
+      .stats { list-style:none; padding:0; display:grid; gap:6px; } .stats b { color:var(--dim); font-weight:600; margin-right:6px; }
+      .arena { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+      .fighter { text-align:center; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
+      .board { list-style:none; padding:0; max-width:560px; } .board li { display:flex; gap:12px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--line); }
+      .board .rank { color:var(--acc); font-weight:700; width:2.5em; } .board .elo { margin-left:auto; color:var(--dim); }
+      .empty { color:var(--dim); text-align:center; padding:32px; }
+      footer { text-align:center; color:var(--dim); font-size:.85rem; padding:24px; border-top:1px solid var(--line); }
+      @media (max-width:640px){ .villain,.arena{grid-template-columns:1fr;} }
+    </style>
+  </head>
+  <body>
+    <Nav />
+    <main><slot /></main>
+    <footer>
+      Forged on <a href="https://run402.com">run402</a> — Postgres + RLS, AI portraits, and hosted auth, shipped in one apply.
+    </footer>
+  </body>
+</html>

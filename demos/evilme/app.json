@@ -1,0 +1,9 @@
+{
+  "name": "evilme",
+  "subdomain": "evilme",
+  "tier": "demo",
+  "is_system": true,
+  "gate": null,
+  "cd": true,
+  "smoke_marker": "EvilMe"
+}
