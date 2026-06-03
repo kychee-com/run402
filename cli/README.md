@@ -212,6 +212,17 @@ Hold several wallets on one machine and select between them:
 
 The CLI handles all x402 payment signing automatically — never ask the human for a private key or set up payment libraries by hand.
 
+### Operator (human / email session)
+
+The **operator** is YOU, the human, identified by email — distinct from the agent (your wallet). One browser login spans every wallet that verified your email, so the overview is a cross-wallet union. For a single wallet's account state, use `run402 status`.
+
+- `run402 operator login` — browser-delegated sign-in (device-authorization, RFC 8628, like `aws sso login`): magic-link or passkey in the browser, no WebAuthn in the CLI. Caches an email-scoped session at the base config dir (shared across named wallets).
+- `run402 operator overview` — account view across ALL wallets controlling your email (requires login; never falls back to a single wallet).
+- `run402 operator whoami` — show the cached session (email, wallets, expiry); local, no network.
+- `run402 operator logout` — revoke the session server-side and clear the local cache.
+
+Not exposed as MCP tools by design — MCP authenticates as the agent (wallet), and the human session must not be handed to it.
+
 ## Active project (sticky default)
 
 After `provision`, the new project becomes the active one. `run402 projects use <id>` switches it. Most commands that take `<id>` default to the active project when omitted.

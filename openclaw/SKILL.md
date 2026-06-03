@@ -1066,6 +1066,19 @@ Other allowance options:
 - Coinbase AgentKit — MPC wallet on Base with built-in x402.
 - AgentPayy — auto-bootstraps an MPC wallet on Base via Coinbase CDP.
 
+## Operator session (human / email)
+
+The **operator** is the human, identified by email — distinct from the **agent** (your wallet). One browser login spans every wallet that verified your email, so `operator overview` returns the cross-wallet union. For a single wallet's state, use `run402 status` (there is no `operator status`).
+
+```bash
+run402 operator login            # browser device-auth (RFC 8628, like `aws sso login`): magic-link OR passkey
+run402 operator overview         # account view across ALL wallets controlling your email (requires login)
+run402 operator whoami           # cached session: email, wallets, expiry - local, no network
+run402 operator logout           # revoke server-side + clear the local cache
+```
+
+`login` prints a verification URL + short code (and opens the browser on a TTY); you approve in the browser, and the CLI brokers the resulting session token (cached at the base config dir, ~30m TTL, shared across named wallets). `overview` requires login and never falls back to a single wallet's slice. These are CLI-only (no MCP tool) by design — MCP authenticates as the agent, not the human.
+
 ## Troubleshooting
 
 | You see | Likely cause / fix |
