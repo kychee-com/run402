@@ -19,6 +19,8 @@ import type { ProjectTier } from "./projects.types.js";
 export interface BillingBalance {
   identifier_type: "wallet" | "email";
   available_usd_micros: number;
+  /** Held/reserved portion of the balance; absent on gateways that predate the field. */
+  held_usd_micros?: number;
   email_credits_remaining: number;
   tier: ProjectTier | null;
   lease_expires_at: string | null;

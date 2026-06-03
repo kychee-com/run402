@@ -1576,7 +1576,7 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     if (out.length > 0) {
       const parsed = JSON.parse(out);
       assert.equal(typeof parsed.config_dir, "string", "stdout JSON should include config_dir");
-      assert.equal(typeof parsed.allowance, "object", "stdout JSON should include allowance object");
+      assert.equal(typeof parsed.wallet, "object", "stdout JSON should include wallet object");
     }
     const err = stderr.join("\n");
     assert.match(err, /\bConfig\b/, `human banner should be on stderr, got: ${err.slice(0, 300)}`);

@@ -310,7 +310,7 @@ Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on succes
 
 ```bash
 run402 init                              # one-shot allowance + faucet + tier check
-run402 status                            # account snapshot (allowance, balance, tier, projects)
+run402 status                            # account snapshot (wallet, rail, balances, tier, projects)
 run402 projects provision --name my-app
 run402 projects sql <id> "CREATE TABLE …"
 run402 projects validate-expose <id> --file manifest.json

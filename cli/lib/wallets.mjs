@@ -38,7 +38,7 @@ const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 const HELP = `run402 wallets — manage named wallets (profiles)
 
 Usage:
-  run402 wallets list                 List all wallets (name, label, address, rail, active)
+  run402 wallets list                 List all wallets (local_label, server_label, address, rail, active)
   run402 wallets current              Show the resolved active wallet + how it was selected
   run402 wallets new <name>           Create a new named wallet (key stays local)
   run402 wallets use <name>           Set the global default wallet
@@ -97,7 +97,7 @@ function walletInfo(name, active) {
       /* best-effort */
     }
   }
-  return { name, label, address, address_short: shortAddr(address), rail, active: name === active };
+  return { local_label: name, server_label: label, address, address_short: shortAddr(address), rail, active: name === active };
 }
 
 function activeContext() {
@@ -127,19 +127,19 @@ function cmdCurrent() {
       hint: "Resolve with: --wallet <name>, unset RUN402_WALLET, or run402 wallets unbind.",
     });
   }
-  if (info.label && info.label !== name) {
+  if (info.server_label && info.server_label !== name) {
     warnings.push({
       code: "WALLET_LABEL_DRIFT",
-      message: `Local name '${name}' differs from the server label '${info.label}'.`,
+      message: `Local label '${name}' differs from the server label '${info.server_label}'.`,
       hint: "Run 'run402 wallets rename' to reconcile.",
     });
   }
   out({
-    name,
+    local_label: name,
     source: ctx?.source ?? "unknown",
     source_detail: ctx?.sourceDetail ?? null,
     address: info.address,
-    label: info.label,
+    server_label: info.server_label,
     warnings,
   });
 }
@@ -161,7 +161,7 @@ async function cmdNew(args) {
   saveAllowance({ address, privateKey, created, funded: false, rail }, join(profileDir(name), "allowance.json"));
   writeMeta(name, { name, address, label: name, rail, created });
   await maybePushLabel(name, name, address);
-  out({ name, address, rail, created: true, next: `run402 wallets use ${name}  (or --wallet ${name} <command>)` });
+  out({ local_label: name, address, rail, created: true, next: `run402 wallets use ${name}  (or --wallet ${name} <command>)` });
 }
 
 function cmdUse(args) {
@@ -170,7 +170,7 @@ function cmdUse(args) {
     fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${name}'.`, hint: "run402 wallets list", details: { name } });
   }
   setDefaultWallet(name);
-  out({ name, active: true });
+  out({ local_label: name, active: true });
 }
 
 async function cmdRename(args) {
@@ -262,7 +262,7 @@ async function cmdImport(args) {
   saveAllowance({ address, privateKey, created, funded: false, rail: "x402" }, join(profileDir(name), "allowance.json"));
   writeMeta(name, { name, address, label: name, rail: "x402", created });
   await maybePushLabel(name, name, address);
-  out({ name, address, imported: true });
+  out({ local_label: name, address, imported: true });
 }
 
 function cmdRm(args) {
@@ -283,7 +283,7 @@ function cmdRm(args) {
   }
   removeProfile(name);
   if (getDefaultWallet() === name) setDefaultWallet(DEFAULT);
-  out({ name, removed: true });
+  out({ local_label: name, removed: true });
 }
 
 function flagVal(args, flag) {

@@ -47,7 +47,7 @@ Every CLI subcommand follows the same stdout/stderr/exit-code contract. Read thi
 Stdout (success) — the natural JSON payload, never wrapped. No top-level `status` field. The payload's shape depends on the command:
 - Reads / lists / info — emit the resource directly (`projects info` returns `{ project_id, anon_key, ... }`; `projects list` returns an array).
 - Mutations with no natural payload — echo the affected resource identifiers plus an explicit boolean state field naming what happened, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`. Never an empty object.
-- Local-state inspection — `run402 status` and `run402 allowance status` use typed nullable payload fields: `{ allowance: null, hint: "Run: run402 init" }` when absent, `{ allowance: { address, funded, ... } }` when present. Absence exits 0 — it is an informational read, not an error.
+- Local-state inspection — `run402 status` and `run402 allowance status` use typed nullable payload fields: `{ wallet: null, hint: "Run: run402 init" }` when absent, and the populated account/wallet payload when present. Absence exits 0 — it is an informational read, not an error.
 - Plain text — a small set of commands (e.g. `run402 allowance export` returning a wallet address) emit a plain-text value with a trailing newline; their help text documents this.
 
 Stderr (failure) — a structured JSON error envelope with `status: "error"` and non-zero exit. The `status` field is the sentinel that says "this is an error" — it is preserved on stderr only and never appears on stdout. The envelope's other canonical fields are described under Error JSON and Safe Retry below.
@@ -797,11 +797,11 @@ run402 subdomains claim my-app
 - `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
 
 ### status
-`run402 status` — show full account state in one shot (allowance, balance, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { name, address, label }` object naming the active named wallet.
+`run402 status` — show full account state in one shot (wallet, rail, balances, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { local_label, server_label, address }` object naming the active named wallet (`local_label` is the local selector, `server_label` the server-synced display name or null), a top-level `rail`, and a `balances: { on_chain_usd_micros, on_chain_token, prepaid_credit_usd_micros, held_usd_micros }` object. The on-chain token tracks the rail (USDC on x402, pathUSD on mpp); prepaid credit is rail-independent.
 
 ### wallets
 Manage multiple named wallets (profiles) on one machine. Keys never leave the machine (non-custodial). The `default` wallet lives at the config-dir root; named wallets live under `{config_dir}/profiles/<name>/`.
-- `run402 wallets list` — JSON array of `{ name, label, address, address_short, rail, active }`. Reads non-secret `meta.json`; never loads private keys.
+- `run402 wallets list` — JSON array of `{ local_label, server_label, address, address_short, rail, active }`. Reads non-secret `meta.json`; never loads private keys.
 - `run402 wallets current` — the resolved active wallet `{ name, source, source_detail, address, label, warnings }`. `source` ∈ flag|env|binding|config|default. `warnings` surfaces env-vs-binding conflicts and local-name-vs-server-label drift.
 - `run402 wallets new <name> [--mpp]` — create a new named wallet (generates a key). `{ name, address, rail, created: true }`.
 - `run402 wallets use <name>` — set the global default wallet (`config.json` `active_wallet`). `{ name, active: true }`.

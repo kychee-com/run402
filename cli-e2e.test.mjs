@@ -3888,10 +3888,16 @@ describe("CLI e2e happy path", () => {
     }
     assert.ok(typeof parsed === "object" && parsed !== null, "stdout must be a JSON object");
     assert.ok(typeof parsed.config_dir === "string", "should include config_dir");
-    assert.ok(typeof parsed.allowance === "object" && parsed.allowance?.address, "should include allowance.address");
+    assert.ok(typeof parsed.wallet === "object" && parsed.wallet?.address, "should include wallet.address");
+    assert.ok(typeof parsed.wallet.local_label === "string", "wallet should include local_label");
+    assert.ok(Object.prototype.hasOwnProperty.call(parsed.wallet, "server_label"), "wallet should include server_label");
+    assert.ok(!Object.prototype.hasOwnProperty.call(parsed.wallet, "funded"), "wallet should not include stale funded");
     assert.ok(parsed.rail === "x402" || parsed.rail === "mpp", `should include rail, got: ${parsed.rail}`);
     assert.ok(typeof parsed.network === "string", "should include network");
-    assert.ok(Object.prototype.hasOwnProperty.call(parsed, "balance"), "should include balance field");
+    assert.ok(typeof parsed.balances === "object" && parsed.balances !== null, "should include balances object");
+    assert.equal(parsed.balances.on_chain_token, parsed.rail === "mpp" ? "pathUSD" : "USDC", "on_chain_token should track rail");
+    assert.ok(!Object.prototype.hasOwnProperty.call(parsed, "balance"), "should not expose ambiguous balance field");
+    assert.ok(!Object.prototype.hasOwnProperty.call(parsed, "allowance"), "should not expose allowance block");
     assert.ok(Object.prototype.hasOwnProperty.call(parsed, "tier"), "should include tier field");
     assert.equal(typeof parsed.projects_saved, "number", "should include projects_saved (number)");
     assert.ok(typeof parsed.next_step === "string", "should include next_step");
@@ -3900,27 +3906,44 @@ describe("CLI e2e happy path", () => {
     assert.ok(stderr.includes("Config"), `stderr should contain human lines, got: ${stderr}`);
   });
 
-  it("status has billing, wallet_balance_usd_micros, and project_id fields (GH-32)", async () => {
+  it("status exposes wallet identity, grouped balances, and project_id fields", async () => {
     const { run } = await import("./cli/lib/status.mjs");
     captureStart();
     await run();
     captureStop();
     const out = captured();
     const data = JSON.parse(out);
-    assert.ok(data.allowance, "should include allowance");
-    assert.ok(data.allowance.address, "should include allowance address");
+    // Wallet identity uses local_label / server_label (not name / label).
+    assert.ok(data.wallet, "should include wallet");
+    assert.ok(data.wallet.address, "should include wallet.address");
+    assert.ok(typeof data.wallet.local_label === "string", "wallet should include local_label");
+    assert.ok(Object.prototype.hasOwnProperty.call(data.wallet, "server_label"), "wallet should include server_label");
+    assert.ok(!Object.prototype.hasOwnProperty.call(data.wallet, "name"), "wallet should not use legacy name field");
+    assert.ok(!Object.prototype.hasOwnProperty.call(data.wallet, "label"), "wallet should not use legacy label field");
     assert.ok(Array.isArray(data.projects), "should include projects array");
-    // GH-32 sub-issue 2: rename balance → billing, add wallet_balance_usd_micros
+    // The duplicate allowance block and the stale funded boolean are gone.
+    assert.ok(!Object.prototype.hasOwnProperty.call(data, "allowance"),
+      `status should not expose duplicate "allowance" block; got: ${JSON.stringify(data)}`);
+    assert.ok(!Object.prototype.hasOwnProperty.call(data, "funded"),
+      `status should not expose stale "funded" boolean; got: ${JSON.stringify(data)}`);
+    // Balances are grouped; no ambiguous top-level balance / wallet_balance_usd_micros / billing.
     assert.ok(!Object.prototype.hasOwnProperty.call(data, "balance"),
       `status should not expose ambiguous "balance" field; got: ${JSON.stringify(data)}`);
-    assert.ok(Object.prototype.hasOwnProperty.call(data, "billing"),
-      `status should expose "billing" field; got: ${JSON.stringify(data)}`);
-    assert.ok(Object.prototype.hasOwnProperty.call(data, "wallet_balance_usd_micros"),
-      `status should expose "wallet_balance_usd_micros"; got: ${JSON.stringify(data)}`);
-    const wb = data.wallet_balance_usd_micros;
+    assert.ok(!Object.prototype.hasOwnProperty.call(data, "wallet_balance_usd_micros"),
+      `status should fold on-chain balance into balances; got: ${JSON.stringify(data)}`);
+    assert.ok(!Object.prototype.hasOwnProperty.call(data, "billing"),
+      `status should fold prepaid credit into balances; got: ${JSON.stringify(data)}`);
+    assert.ok(typeof data.balances === "object" && data.balances !== null, "should include balances object");
+    const wb = data.balances.on_chain_usd_micros;
     assert.ok(wb === null || typeof wb === "number",
-      `wallet_balance_usd_micros must be number or null; got: ${JSON.stringify(wb)}`);
-    // GH-32 sub-issue 4: projects entries must use project_id
+      `balances.on_chain_usd_micros must be number or null; got: ${JSON.stringify(wb)}`);
+    assert.equal(data.balances.on_chain_token, data.rail === "mpp" ? "pathUSD" : "USDC",
+      `on_chain_token should track rail; got: ${JSON.stringify(data.balances)}`);
+    assert.ok(Object.prototype.hasOwnProperty.call(data.balances, "prepaid_credit_usd_micros"),
+      "balances should include prepaid_credit_usd_micros");
+    assert.ok(Object.prototype.hasOwnProperty.call(data.balances, "held_usd_micros"),
+      "balances should include held_usd_micros");
+    // projects entries must use project_id
     for (const p of data.projects) {
       assert.ok(typeof p.project_id === "string" && p.project_id.length > 0,
         `each project should have a project_id; got: ${JSON.stringify(p)}`);
@@ -4049,11 +4072,12 @@ describe("CLI e2e happy path", () => {
     assert.equal(allowance.rail, "mpp", "rail should be mpp");
   });
 
-  // GH-81: after MPP faucet succeeds, the JSON summary must reflect funded=true
-  // and the polled balance. Previously `summary.allowance` was captured before
-  // the faucet branch ran, so the JSON reported `funded: false` and
-  // `usd_micros: 0` even when the human-readable lines said "funded".
-  it("init mpp reports funded=true after faucet settles (GH-81)", async () => {
+  // GH-81: after MPP faucet succeeds, the JSON summary must reflect the polled
+  // on-chain balance. Previously the balance was captured before the faucet
+  // branch ran, so the JSON reported `usd_micros: 0` even when the
+  // human-readable lines said "funded". On-chain balance now lives under
+  // `balances.on_chain_usd_micros` (the old `funded` boolean was removed).
+  it("init mpp reflects polled on-chain balance after faucet settles (GH-81)", async () => {
     tempoRpcCallCount = 0; // first eth_call returns 0 → triggers faucet path
     const { run } = await import("./cli/lib/init.mjs");
     captureStart();
@@ -4062,11 +4086,9 @@ describe("CLI e2e happy path", () => {
     const stdout = capturedStdout();
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.rail, "mpp", `rail must be mpp; got: ${parsed.rail}`);
-    assert.equal(parsed.allowance.funded, true,
-      `summary.allowance.funded must be true after successful faucet; got: ${JSON.stringify(parsed.allowance)}`);
-    assert.equal(parsed.balance.symbol, "pathUSD");
-    assert.ok(parsed.balance.usd_micros > 0,
-      `summary.balance.usd_micros must reflect polled balance (>0); got: ${parsed.balance.usd_micros}`);
+    assert.equal(parsed.balances.on_chain_token, "pathUSD");
+    assert.ok(parsed.balances.on_chain_usd_micros > 0,
+      `balances.on_chain_usd_micros must reflect polled balance (>0) after faucet; got: ${parsed.balances.on_chain_usd_micros}`);
   });
 
   it("allowance status (MPP rail)", async () => {
@@ -5020,11 +5042,11 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
 
 describe("CLI status local-state inspection (cli-output-shape)", () => {
   // Per cli-output-shape spec: absence of local state is an informational
-  // read, not an error. status exits 0 with `{ allowance: null, hint: "..." }`;
+  // read, not an error. status exits 0 with `{ wallet: null, hint: "..." }`;
   // allowance status exits 0 with `{ wallet: null, hint: "..." }`. The
   // previous GH-191 contract (exit 1 + `status: "no_allowance"`) was retired
   // in v3.0 as part of the CLI envelope normalization.
-  it("status with no allowance emits typed null allowance and exits 0", async () => {
+  it("status with no allowance emits typed null wallet and exits 0", async () => {
     const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
     try { rmSync(ALLOWANCE_FILE, { force: true }); } catch {}
     const { run } = await import("./cli/lib/status.mjs");
@@ -5041,7 +5063,7 @@ describe("CLI status local-state inspection (cli-output-shape)", () => {
     assert.ok(line, `should emit payload on stdout, got: ${stdout}`);
     const parsed = JSON.parse(line);
     assert.equal(parsed.status, undefined, "must not emit a top-level status field");
-    assert.equal(parsed.allowance, null, "allowance must be typed null when absent");
+    assert.equal(parsed.wallet, null, "wallet must be typed null when absent");
     assert.ok(parsed.hint && /run402 init/.test(parsed.hint), `hint must guide to next step, got: ${parsed.hint}`);
   });
 
@@ -5161,7 +5183,7 @@ describe("CLI malformed allowance.json (GH-194)", () => {
       `message should mention privateKey; got: ${parsed.message}`);
   });
 
-  it("status with unparseable allowance.json still surfaces as typed null allowance (existing UX preserved)", async () => {
+  it("status with unparseable allowance.json still surfaces as typed null wallet (existing UX preserved)", async () => {
     const { ALLOWANCE_FILE } = await import("./cli/lib/config.mjs");
     const fs = await import("node:fs");
     fs.writeFileSync(ALLOWANCE_FILE, "not json");
@@ -5180,8 +5202,8 @@ describe("CLI malformed allowance.json (GH-194)", () => {
     assert.ok(line, `should emit payload on stdout, got: ${stdout}`);
     const parsed = JSON.parse(line);
     assert.equal(parsed.status, undefined, "must not emit a top-level status field");
-    assert.equal(parsed.allowance, null,
-      `unparseable JSON should surface as typed null allowance (no BAD_ALLOWANCE_FILE error envelope); got: ${JSON.stringify(parsed)}`);
+    assert.equal(parsed.wallet, null,
+      `unparseable JSON should surface as typed null wallet (no BAD_ALLOWANCE_FILE error envelope); got: ${JSON.stringify(parsed)}`);
   });
 });
 

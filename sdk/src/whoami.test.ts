@@ -21,9 +21,9 @@ describe("Run402.whoami", () => {
       async getActiveProject() { return "prj_123"; },
     });
     assert.deepEqual(await r.whoami(), {
-      name: "kychon",
+      local_label: "kychon",
+      server_label: "kychon",
       address: "0xabc",
-      label: "kychon",
       activeProject: "prj_123",
     });
   });
@@ -36,13 +36,13 @@ describe("Run402.whoami", () => {
     });
     const who = await r.whoami();
     assert.equal(who.address, "0xdef");
-    assert.equal(who.name, null);
-    assert.equal(who.label, null);
+    assert.equal(who.local_label, null);
+    assert.equal(who.server_label, null);
     assert.equal(who.activeProject, null);
   });
 
   it("degrades to all-null when the provider implements neither", async () => {
     const r = makeSdk({});
-    assert.deepEqual(await r.whoami(), { name: null, address: null, label: null, activeProject: null });
+    assert.deepEqual(await r.whoami(), { local_label: null, server_label: null, address: null, activeProject: null });
   });
 });

@@ -211,11 +211,11 @@ export class Run402 {
   }
 
   /**
-   * Identify the active wallet and project: `{ name, address, label,
-   * activeProject }`. `name` is the local wallet/profile selector (e.g.
-   * "kychon", or "default"); `label` is the server-side display name (null
-   * when unknown/offline); `address` is the wallet address; `activeProject` is
-   * the currently-selected project id (null if none).
+   * Identify the active wallet and project: `{ local_label, server_label,
+   * address, activeProject }`. `local_label` is the local wallet/profile
+   * selector (e.g. "kychon", or "default"); `server_label` is the server-side
+   * display name (null when unknown/offline); `address` is the wallet address;
+   * `activeProject` is the currently-selected project id (null if none).
    *
    * Degrades gracefully: providers that don't implement `getWalletIdentity`
    * (sandbox/session) still get `address` from `readAllowance` when available.
@@ -231,9 +231,9 @@ export class Run402 {
       ? await creds.getActiveProject.call(creds)
       : null;
     return {
-      name: identity?.name ?? null,
+      local_label: identity?.name ?? null,
+      server_label: identity?.label ?? null,
       address,
-      label: identity?.label ?? null,
       activeProject: activeProject ?? null,
     };
   }
@@ -242,11 +242,11 @@ export class Run402 {
 /** Result of {@link Run402.whoami}. */
 export interface WhoAmI {
   /** Local wallet/profile selector name (e.g. "kychon", "default"), or null. */
-  name: string | null;
+  local_label: string | null;
+  /** Server-side display label, cached locally; null when unknown/offline. */
+  server_label: string | null;
   /** Wallet address, or null when no allowance is configured. */
   address: string | null;
-  /** Server-side display label, cached locally; null when unknown/offline. */
-  label: string | null;
   /** Active project id, or null when none is selected. */
   activeProject: string | null;
 }

@@ -141,7 +141,7 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
     `| Field | Value |`,
     `|-------|-------|`,
     `| config | \`${configDir}\` |`,
-    `| allowance | \`${short(allowance.address)}\`${allowanceCreated ? " (created)" : ""} |`,
+    `| address | \`${short(allowance.address)}\`${allowanceCreated ? " (created)" : ""} |`,
     `| network | ${rail === "mpp" ? "Tempo Moderato (testnet)" : "Base Sepolia (testnet)"} |`,
     `| rail | ${rail} |`,
     `| faucet | ${faucetStatus} |`,

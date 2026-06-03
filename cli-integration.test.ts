@@ -510,7 +510,9 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
     await run();
     captureStop();
     const data = capturedJson();
-    assert.ok(data.allowance, "should include allowance");
+    assert.ok(data.wallet, "should include wallet");
+    assert.ok(data.wallet.address, "should include wallet.address");
+    assert.ok(data.balances, "should include balances");
     assert.ok(Array.isArray(data.projects), "should include projects");
   });
 
