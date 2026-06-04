@@ -846,8 +846,8 @@ run402 billing link-wallet <account_id> <wallet>   # response includes pool_impl
 run402 billing tier-checkout hobby --email user@example.com
 run402 billing buy-email-pack       --email user@example.com   # $5 / 10k emails (never expire)
 run402 billing auto-recharge <account_id> on --threshold 2000
-run402 billing balance <email-or-wallet>
-run402 billing history <email-or-wallet>
+run402 billing balance <account-id | wallet | email>   # wallet/email resolved to the account; SIWX must be linked to it (email lookups admin-only)
+run402 billing history <account-id | wallet | email>
 ```
 
 `run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed account-pool snapshot as `status_after` in the JSON output, so the new pooled `api_calls` / `storage_bytes` totals come back in one step.

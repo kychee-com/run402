@@ -768,14 +768,14 @@ server.tool(
 
 server.tool(
   "check_balance",
-  "Check billing account balance for an agent allowance address. Shows available and held funds.",
+  "Check the billing account balance for the agent's allowance wallet — available and held funds. The wallet is resolved to its billing account over SIWX (signed automatically); reading a wallet that is not linked to yours requires an admin key.",
   checkBalanceSchema,
   async (args) => handleCheckBalance(args),
 );
 
 server.tool(
   "list_projects",
-  "List all active projects for an agent allowance address.",
+  "List active projects for the agent's allowance wallet. Owner-only: requires SIWX matching the wallet (signed automatically), so you can list only your own projects (an admin key bypasses).",
   listProjectsSchema,
   async (args) => handleListProjects(args),
 );
@@ -1034,7 +1034,7 @@ server.tool(
 
 server.tool(
   "billing_history",
-  "View billing transaction history for an agent allowance address.",
+  "View billing ledger history for the agent's allowance wallet. The wallet is resolved to its billing account over SIWX (signed automatically); a wallet not linked to yours requires an admin key.",
   billingHistorySchema,
   async (args) => handleBillingHistory(args),
 );

@@ -1342,10 +1342,10 @@ Email-based billing accounts, Stripe tier checkout, and email packs. Pay run402 
 - `run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]` — subscribe/renew/upgrade a tier (prototype $0.10 / hobby $5 / team $20) via Stripe. Returns a checkout URL.
 - `run402 billing buy-email-pack [--email <e> | --wallet <w>]` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
 - `run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]` — auto-repurchase $5 packs when credits drop below threshold. Requires saved Stripe payment method.
-- `run402 billing balance <email-or-wallet>` — balance + email_credits_remaining + tier + lease + auto_recharge state
-- `run402 billing history <email-or-wallet> [--limit <n>]` — ledger history (both identifier types supported)
+- `run402 billing balance <account-id | wallet | email>` — balance + email_credits_remaining + tier + lease + auto_recharge state (response includes `billing_account_id`). A wallet/email is resolved to its account via `GET /billing/v1/accounts?wallet=|?email=`; an account id (UUID) reads `GET /billing/v1/accounts/:account_id` directly.
+- `run402 billing history <account-id | wallet | email> [--limit <n>]` — ledger history. Keyed by account id: a wallet/email is resolved to its `billing_account_id` first, then `GET /billing/v1/accounts/:account_id/history`.
 
-Auth (v2.19.1+): `balance`, `history`, `link-wallet`, and `auto-recharge` require SIWX signed by the relevant wallet (the path wallet for reads, the body wallet for link, a linked wallet for auto-recharge). The CLI signs automatically from the local allowance, so these only work when the agent's allowance wallet is the one being queried/linked/billed. Email-identifier reads require an admin key. Checkout-creation commands (`create-email`, `tier-checkout`, `buy-email-pack`) remain unauthenticated.
+Auth: account reads (`balance`, `history`) require SIWX from a wallet **linked to** the account (membership), or an admin key; the wallet→account lookup requires SIWX matching the queried wallet (email lookups are admin-only). `link-wallet` requires the body wallet's SIWX (or admin); `auto-recharge` a linked wallet's SIWX. The CLI signs automatically from the local allowance, so these only work when the agent's allowance wallet is on the account being queried/linked/billed. A non-member (or someone guessing an account id) gets 403 with no existence leak. Checkout-creation commands (`create-email`, `tier-checkout`, `buy-email-pack`) remain unauthenticated.
 
 Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
 

@@ -66,29 +66,47 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const WALLET_UPPER = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
 const WALLET_LOWER = "0xabcdef0123456789abcdef0123456789abcdef01";
+const ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
 
-describe("billing.checkBalance", () => {
-  it("GETs /billing/v1/accounts/:wallet without auth and returns the runtime shape", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({
-        available_usd_micros: 0,
-        email_credits_remaining: 0,
-        tier: "prototype",
-        lease_expires_at: "2026-05-07T14:49:10.884Z",
-        auto_recharge_enabled: false,
-        auto_recharge_threshold: 2000,
-        identifier_type: "wallet",
-      }),
-    );
+/** The canonical account-detail projection the gateway returns (accountDetailJson). */
+function accountDetail(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    billing_account_id: ACCOUNT_ID,
+    available_usd_micros: 0,
+    email_credits_remaining: 0,
+    tier: "prototype",
+    lease_expires_at: "2026-05-07T14:49:10.884Z",
+    auto_recharge_enabled: false,
+    auto_recharge_threshold: 2000,
+    ...overrides,
+  };
+}
+
+/**
+ * Mock for history flows: a wallet/email identifier first hits the
+ * `?wallet=`/`?email=` lookup (→ account detail), then `/history` (→ the
+ * ledger envelope). An account-id identifier skips straight to `/history`.
+ */
+function historyMock(entries: unknown[] = []) {
+  return mockFetch((call) =>
+    call.url.includes("/history")
+      ? jsonResponse({ billing_account_id: ACCOUNT_ID, entries })
+      : jsonResponse(accountDetail()),
+  );
+}
+
+describe("billing.checkBalance / getAccount", () => {
+  it("resolves a wallet through the ?wallet= lookup, sends SIWX, and returns the detail", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
     const sdk = makeSdk(fetch);
     const result = await sdk.billing.checkBalance(WALLET_UPPER);
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${WALLET_LOWER}`);
+    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts?wallet=${WALLET_LOWER}`);
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
-    assert.equal(result.identifier_type, "wallet");
+    assert.equal(result.billing_account_id, ACCOUNT_ID);
     assert.equal(result.available_usd_micros, 0);
     assert.equal(result.email_credits_remaining, 0);
     assert.equal(result.tier, "prototype");
@@ -97,43 +115,36 @@ describe("billing.checkBalance", () => {
     assert.equal(result.auto_recharge_threshold, 2000);
   });
 
-  it("preserves null tier and lease_expires_at for unleased accounts", async () => {
+  it("resolves an email through the ?email= lookup and preserves null tier/lease", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({
-        available_usd_micros: 1000000,
-        email_credits_remaining: 0,
-        tier: null,
-        lease_expires_at: null,
-        auto_recharge_enabled: false,
-        auto_recharge_threshold: 0,
-        identifier_type: "email",
-      }),
+      jsonResponse(accountDetail({ available_usd_micros: 1000000, tier: null, lease_expires_at: null, auto_recharge_threshold: 0 })),
     );
     const sdk = makeSdk(fetch);
-    const result = await sdk.billing.checkBalance("user@example.com");
+    const result = await sdk.billing.getAccount("user@example.com");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/user%40example.com");
+    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts?email=user%40example.com");
     assert.equal(result.tier, null);
     assert.equal(result.lease_expires_at, null);
-    assert.equal(result.identifier_type, "email");
+    assert.equal(result.billing_account_id, ACCOUNT_ID);
   });
 
-  it("offers getAccount as a generic identifier alias", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({
-        available_usd_micros: 1000000,
-        email_credits_remaining: 0,
-        tier: null,
-        lease_expires_at: null,
-        auto_recharge_enabled: false,
-        auto_recharge_threshold: 0,
-        identifier_type: "email",
-      }),
-    );
+  it("reads an account id (UUID) directly without a lookup", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
+    const sdk = makeSdk(fetch);
+    await sdk.billing.getAccount(ACCOUNT_ID);
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}`);
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+  });
+
+  it("URL-encodes email identifiers with reserved characters", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
     const sdk = makeSdk(fetch);
     await sdk.billing.getAccount("billing+team@example.com");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/billing%2Bteam%40example.com");
+    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts?email=billing%2Bteam%40example.com");
   });
 
   it("rejects malformed balance identifiers before requesting", async () => {
@@ -156,38 +167,79 @@ describe("billing.checkBalance", () => {
   });
 });
 
-describe("billing.history", () => {
-  it("GETs /billing/v1/accounts/:wallet/history and returns identifier-keyed envelope", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({
-        identifier: WALLET_LOWER,
-        identifier_type: "wallet",
-        entries: [
-          {
-            id: "ent_1",
-            direction: "credit",
-            kind: "stripe_topup",
-            amount_usd_micros: 5000000,
-            balance_after_available: 5000000,
-            balance_after_held: 0,
-            reference_type: "stripe_session",
-            reference_id: "cs_test_123",
-            metadata: { source: "checkout" },
-            created_at: "2026-04-30T10:00:00.000Z",
-          },
-        ],
-      }),
+describe("billing.lookupAccount", () => {
+  it("resolves a wallet to its account via ?wallet=", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
+    const sdk = makeSdk(fetch);
+    const result = await sdk.billing.lookupAccount(WALLET_UPPER);
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts?wallet=${WALLET_LOWER}`);
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(result.billing_account_id, ACCOUNT_ID);
+  });
+
+  it("resolves an email to its account via ?email=", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
+    const sdk = makeSdk(fetch);
+    await sdk.billing.lookupAccount("user@example.com");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts?email=user%40example.com");
+  });
+
+  it("reads an account id (UUID) directly", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
+    const sdk = makeSdk(fetch);
+    await sdk.billing.lookupAccount(ACCOUNT_ID);
+
+    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}`);
+  });
+
+  it("rejects malformed identifiers before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for malformed lookup identifier");
+    });
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.billing.lookupAccount("nonsense" as any),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "looking up billing account",
     );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("billing.history / getHistory", () => {
+  it("resolves a wallet to its account id, then reads history by id with SIWX on both", async () => {
+    const { fetch, calls } = historyMock([
+      {
+        id: "ent_1",
+        direction: "credit",
+        kind: "stripe_topup",
+        amount_usd_micros: 5000000,
+        balance_after_available: 5000000,
+        balance_after_held: 0,
+        reference_type: "stripe_session",
+        reference_id: "cs_test_123",
+        metadata: { source: "checkout" },
+        created_at: "2026-04-30T10:00:00.000Z",
+      },
+    ]);
     const sdk = makeSdk(fetch);
     const result = await sdk.billing.history(WALLET_UPPER);
 
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${WALLET_LOWER}/history`);
-    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls.length, 2);
+    // 1) lookup wallet → billing_account_id
+    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts?wallet=${WALLET_LOWER}`);
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    // 2) history keyed by the resolved account id
+    assert.equal(calls[1]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history`);
+    assert.equal(calls[1]!.method, "GET");
+    assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
-    assert.equal(result.identifier, WALLET_LOWER);
-    assert.equal(result.identifier_type, "wallet");
+    assert.equal(result.billing_account_id, ACCOUNT_ID);
     assert.equal(result.entries.length, 1);
 
     const entry = result.entries[0]!;
@@ -203,24 +255,29 @@ describe("billing.history", () => {
     assert.equal(entry.created_at, "2026-04-30T10:00:00.000Z");
   });
 
-  it("appends ?limit=N when limit is provided", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ identifier: WALLET_LOWER, identifier_type: "wallet", entries: [] }),
-    );
+  it("reads history by account id (UUID) in a single request", async () => {
+    const { fetch, calls } = historyMock([]);
+    const sdk = makeSdk(fetch);
+    await sdk.billing.getHistory(ACCOUNT_ID);
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history`);
+  });
+
+  it("appends ?limit=N on the history request (wallet flow)", async () => {
+    const { fetch, calls } = historyMock([]);
     const sdk = makeSdk(fetch);
     await sdk.billing.history(WALLET_UPPER, 50);
 
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${WALLET_LOWER}/history?limit=50`);
+    assert.equal(calls[1]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history?limit=50`);
   });
 
-  it("appends ?limit=1 when the minimum valid limit is provided", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ identifier: WALLET_LOWER, identifier_type: "wallet", entries: [] }),
-    );
+  it("appends ?limit=1 on the by-id history request", async () => {
+    const { fetch, calls } = historyMock([]);
     const sdk = makeSdk(fetch);
-    await sdk.billing.history(WALLET_UPPER, 1);
+    await sdk.billing.getHistory(ACCOUNT_ID, 1);
 
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${WALLET_LOWER}/history?limit=1`);
+    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history?limit=1`);
   });
 
   it("throws LocalError and does not request for invalid limits", async () => {
@@ -243,39 +300,32 @@ describe("billing.history", () => {
     }
   });
 
-  it("offers getHistory as a generic identifier alias", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ identifier: "user@example.com", identifier_type: "email", entries: [] }),
-    );
+  it("offers getHistory as a generic identifier alias (email flow)", async () => {
+    const { fetch, calls } = historyMock([]);
     const sdk = makeSdk(fetch);
     await sdk.billing.getHistory("user@example.com", 25);
 
-    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts/user%40example.com/history?limit=25");
+    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts?email=user%40example.com");
+    assert.equal(calls[1]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history?limit=25`);
   });
 
   it("preserves null reference_type and reference_id for entries without references", async () => {
-    const { fetch } = mockFetch(() =>
-      jsonResponse({
-        identifier: WALLET_LOWER,
-        identifier_type: "wallet",
-        entries: [
-          {
-            id: "ent_2",
-            direction: "debit",
-            kind: "api_call",
-            amount_usd_micros: 100,
-            balance_after_available: 999900,
-            balance_after_held: 0,
-            reference_type: null,
-            reference_id: null,
-            metadata: {},
-            created_at: "2026-04-30T10:01:00.000Z",
-          },
-        ],
-      }),
-    );
+    const { fetch } = historyMock([
+      {
+        id: "ent_2",
+        direction: "debit",
+        kind: "api_call",
+        amount_usd_micros: 100,
+        balance_after_available: 999900,
+        balance_after_held: 0,
+        reference_type: null,
+        reference_id: null,
+        metadata: {},
+        created_at: "2026-04-30T10:01:00.000Z",
+      },
+    ]);
     const sdk = makeSdk(fetch);
-    const result = await sdk.billing.history(WALLET_UPPER);
+    const result = await sdk.billing.getHistory(ACCOUNT_ID);
 
     const entry = result.entries[0]!;
     assert.equal(entry.reference_type, null);

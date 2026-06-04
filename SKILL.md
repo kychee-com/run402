@@ -722,7 +722,7 @@ The MCP server manages a local agent allowance — a wallet key dedicated to pay
 - **`init`** — composes `allowance_create` + `request_faucet` + `tier_status` + `list_projects`. Use this on a fresh install.
 - **`allowance_create`** / **`allowance_status`** / **`allowance_export`** — granular allowance ops.
 - **`request_faucet`** — Base Sepolia testnet USDC.
-- **`check_balance`** — mainnet + testnet + billing balance for an address.
+- **`check_balance`** — run402 billing account balance (available + held) for the agent's wallet; resolves the wallet to its account over SIWX.
 
 Other allowance options:
 - **Coinbase AgentKit** — MPC wallet on Base with built-in x402.

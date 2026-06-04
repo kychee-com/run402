@@ -113,8 +113,11 @@ export class Projects {
   }
 
   /**
-   * List active projects for a wallet address. Public endpoint — no auth
-   * required, no payment.
+   * List active projects for a wallet address. Project ids/names/usage are
+   * private, so this requires SIWX from the wallet itself (or an admin key) —
+   * a wallet may list only its own projects. The kernel signs the SIWX header
+   * from the credential provider; a caller listing a different wallet's
+   * projects gets a 403.
    *
    * When `wallet` is omitted, the SDK resolves it from the credential
    * provider's local allowance via `credentials.readAllowance()`. This mirrors
@@ -148,7 +151,6 @@ export class Projects {
     const w = resolvedWallet.toLowerCase();
     return this.client.request<ListProjectsResult>(`/wallets/v1/${w}/projects`, {
       context: "listing projects",
-      withAuth: false,
     });
   }
 
