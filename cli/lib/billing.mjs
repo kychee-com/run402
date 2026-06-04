@@ -13,8 +13,8 @@ Subcommands:
   tier-checkout <tier> [--email <e> | --wallet <w>]    Stripe tier checkout
   buy-email-pack [--email <e> | --wallet <w>]  Buy \$5 email pack (10,000 emails)
   auto-recharge <account_id> <on|off> [--threshold <n>]
-  balance <identifier>                     Balance by email or wallet (0x...)
-  history <identifier> [--limit <n>]       Ledger history by email or wallet
+  balance <identifier>                     Balance by account id (UUID), wallet (0x...), or email
+  history <identifier> [--limit <n>]       Ledger history by account id (UUID), wallet, or email
 
 Examples:
   run402 billing create-email user@example.com
@@ -70,32 +70,44 @@ Examples:
   run402 billing auto-recharge acct_abc on --threshold 2000
   run402 billing auto-recharge acct_abc off
 `,
-  history: `run402 billing history — Show ledger history for an email or wallet
+  history: `run402 billing history — Show ledger history for a billing account
 
 Usage:
   run402 billing history <identifier> [--limit <n>]
 
 Arguments:
-  <identifier>        Email address or wallet (0x...)
+  <identifier>        Billing account id (UUID), wallet (0x...), or email.
+                      Wallet/email are resolved to the account id first.
 
 Options:
   --limit <n>         Max entries to return (default: 50)
 
+Auth:
+  Requires SIWX from a wallet linked to the account (signed automatically from
+  the local allowance), or an admin key. Email lookups require an admin key.
+
 Examples:
   run402 billing history user@example.com
   run402 billing history 0x1234... --limit 100
+  run402 billing history 00000000-0000-4000-8000-000000000001
 `,
-  balance: `run402 billing balance — Show balance for an email or wallet
+  balance: `run402 billing balance — Show balance for a billing account
 
 Usage:
   run402 billing balance <identifier>
 
 Arguments:
-  <identifier>        Email address or wallet (0x...)
+  <identifier>        Billing account id (UUID), wallet (0x...), or email.
+                      Wallet/email are resolved via the accounts lookup.
+
+Auth:
+  Requires SIWX from a wallet linked to the account (signed automatically from
+  the local allowance), or an admin key. Email lookups require an admin key.
 
 Examples:
   run402 billing balance user@example.com
   run402 billing balance 0x1234abcd...
+  run402 billing balance 00000000-0000-4000-8000-000000000001
 `,
   "create-email": `run402 billing create-email — Create an email billing account
 
@@ -292,8 +304,8 @@ async function balance(args) {
   if (!id) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <email-or-wallet>.",
-      hint: "run402 billing balance <email-or-wallet>",
+      message: "Missing <identifier>.",
+      hint: "run402 billing balance <account-id | wallet | email>",
     });
   }
   try {
@@ -316,8 +328,8 @@ async function history(args) {
   if (!id) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <email-or-wallet>.",
-      hint: "run402 billing history <email-or-wallet> [--limit <n>]",
+      message: "Missing <identifier>.",
+      hint: "run402 billing history <account-id | wallet | email> [--limit <n>]",
     });
   }
   const limit = parsedArgs.includes("--limit")

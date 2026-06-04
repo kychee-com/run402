@@ -297,7 +297,7 @@ const SURFACE: Capability[] = [
   { id: "list_versions",     endpoint: "GET /projects/v1/admin/:id/versions",       mcp: "list_versions", cli: "apps:versions", openclaw: "apps:versions" },
 
   // ── Billing ──────────────────────────────────────────────────────────────
-  { id: "check_balance",     endpoint: "GET /billing/v1/accounts/:wallet",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
+  { id: "check_balance",     endpoint: "GET /billing/v1/accounts?wallet=",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
   { id: "list_projects",     endpoint: "GET /wallets/v1/:wallet/projects",           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
   { id: "project_info",      endpoint: "(local)",                                    mcp: "project_info",   cli: "projects:info",  openclaw: "projects:info" },
   { id: "project_use",       endpoint: "(local)",                                    mcp: "project_use",    cli: "projects:use",   openclaw: "projects:use" },
@@ -360,7 +360,7 @@ const SURFACE: Capability[] = [
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
-  { id: "billing_history",   endpoint: "GET /billing/v1/accounts/:wallet/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
+  { id: "billing_history",   endpoint: "GET /billing/v1/accounts/:account_id/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
 
   // ── Version management ─────────────────────────────────────────────────
   { id: "update_version",    endpoint: "PATCH /projects/v1/admin/:id/versions/:version_id", mcp: "update_version", cli: "apps:update", openclaw: "apps:update" },
@@ -411,12 +411,12 @@ const SURFACE: Capability[] = [
 
   // ── Email billing accounts + Stripe tier checkout + email packs ───────
   { id: "create_email_billing_account", endpoint: "POST /billing/v1/accounts",                   mcp: "create_email_billing_account", cli: "billing:create-email",   openclaw: "billing:create-email" },
-  { id: "link_wallet_to_account",       endpoint: "POST /billing/v1/accounts/:id/link-wallet",   mcp: "link_wallet_to_account",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
+  { id: "link_wallet_to_account",       endpoint: "POST /billing/v1/accounts/:account_id/link-wallet",   mcp: "link_wallet_to_account",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
   { id: "tier_checkout",                endpoint: "POST /billing/v1/tiers/:tier/checkout",       mcp: "tier_checkout",                cli: "billing:tier-checkout",  openclaw: "billing:tier-checkout" },
   { id: "buy_email_pack",               endpoint: "POST /billing/v1/email-packs/checkout",       mcp: "buy_email_pack",               cli: "billing:buy-email-pack", openclaw: "billing:buy-email-pack" },
   { id: "set_auto_recharge",            endpoint: "POST /billing/v1/email-packs/auto-recharge",  mcp: "set_auto_recharge",            cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
-  { id: "billing_balance",              endpoint: "GET /billing/v1/accounts/:id",                mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
-  { id: "billing_history_cli",          endpoint: "GET /billing/v1/accounts/:id/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
+  { id: "billing_balance",              endpoint: "GET /billing/v1/accounts/:account_id",        mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
+  { id: "billing_history_cli",          endpoint: "GET /billing/v1/accounts/:account_id/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
 
   // ── Tier management ────────────────────────────────────────────────────
   { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },
@@ -920,6 +920,12 @@ describe("SDK surface alignment", () => {
       "email.resolveMailbox",  // private helper
       "email.pickMailbox",     // private helper
       "email.cacheMailbox",    // private helper
+      // billing.lookupAccount resolves a wallet/email → billing_account_id via
+      // GET /billing/v1/accounts?wallet=|?email=. It's an SDK primitive used by
+      // getAccount/getHistory and exposed for consumers that only need the id;
+      // no dedicated MCP/CLI verb (the wallet/email-keyed balance/history
+      // commands resolve internally).
+      "billing.lookupAccount",
       "projects.active",       // returns active project id from the provider
       "projects.restResponse", // REST proxy with HTTP status for CLI/MCP formatters
       "assets.initUploadSession", // low-level resumable upload primitive for CLI UX

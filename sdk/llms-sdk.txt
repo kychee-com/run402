@@ -632,7 +632,7 @@ demoteUser(id, email): Promise<void>
 - `lease_perpetual: boolean | null` — operator escape hatch flag. When `true`, the account never advances past `active` regardless of lease expiry.
 - `tier: "prototype" | "hobby" | "team" | null` — the account's active tier.
 
-`r.projects.list(wallet)` returns per-project facts only (`id`, `name`, `api_calls`, `storage_bytes`, `created_at`). The v1.56 `status` / `pinned` / `tier` mirrors and the v1.57 `effective_status` / `account_lifecycle_state` / `lease_perpetual` per-project mirrors were dropped. The v1.56 `projects.pin(id)` SDK method was removed alongside the endpoint — use `r.admin.setLeasePerpetual(ba_id, true)`.
+`r.projects.list(wallet)` returns per-project facts only (`id`, `name`, `api_calls`, `storage_bytes`, `created_at`). It now requires SIWX from the wallet itself (or an admin key) — `GET /wallets/v1/:wallet/projects` was hardened from public to owner-only, since project ids/names/usage are private; the kernel signs the header from the provider, and listing another wallet's projects returns 403. The v1.56 `status` / `pinned` / `tier` mirrors and the v1.57 `effective_status` / `account_lifecycle_state` / `lease_perpetual` per-project mirrors were dropped. The v1.56 `projects.pin(id)` SDK method was removed alongside the endpoint — use `r.admin.setLeasePerpetual(ba_id, true)`.
 
 `r.projects.getUsage(id)` still surfaces `effective_status` and `account_lifecycle_state` because that endpoint scopes to a single project and the derivation collapses per-project `archived_at` / `deleted_at` together with the account's lifecycle.
 
@@ -1159,13 +1159,14 @@ gateways.
 
 ```
 createEmailAccount(email): Promise<EmailBillingAccount>
-linkWallet(billingAccountId, wallet): Promise<LinkWalletResult>
+linkWallet(billingAccountId, wallet): Promise<LinkWalletResult>  // billingAccountId = UUID; POST /billing/v1/accounts/:account_id/link-wallet
 tierCheckout(tier, identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
 buyEmailPack(identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
 setAutoRecharge(opts: { billingAccountId: string, enabled: boolean, threshold? }): Promise<void>
-checkBalance(identifier): Promise<BillingBalance>
-getAccount(identifier): Promise<BillingBalance>
-balance(identifier): Promise<BillingBalance> // alias of checkBalance
+checkBalance(identifier): Promise<BillingAccountDetail>  // identifier = account id (UUID) | wallet | email
+getAccount(identifier): Promise<BillingAccountDetail>
+lookupAccount(identifier): Promise<BillingAccountDetail>  // resolve wallet/email → account (incl. billing_account_id)
+balance(identifier): Promise<BillingAccountDetail> // alias of checkBalance
 history(identifier, limit?: number): Promise<BillingHistoryResult>
 getHistory(identifier, limit?: number): Promise<BillingHistoryResult>
 createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
@@ -1174,6 +1175,17 @@ createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
 createEmail(email): Promise<EmailBillingAccount>
 autoRecharge(opts): Promise<void>
 ```
+
+Accounts are addressed by their canonical `billing_account_id` (UUID).
+`getAccount` / `checkBalance` / `history` accept an account id, wallet, or email:
+an account id reads `GET /billing/v1/accounts/:account_id` directly, while a
+wallet/email is resolved through the `GET /billing/v1/accounts?wallet=|?email=`
+lookup (also exposed as `lookupAccount`). The detail shape dropped
+`identifier_type` and added `billing_account_id`; `BillingBalance` is a
+deprecated alias of `BillingAccountDetail`. Account reads require SIWX from a
+wallet **linked to** the account (or matching the looked-up `?wallet`), or an
+admin key — email lookups are admin-only; `history` resolves to the account id
+first, then reads `GET /billing/v1/accounts/:account_id/history`.
 
 `linkWallet` merges a wallet into an existing billing account's pool. On v1.46+
 gateways the response includes a `pool_implications` block (`tier`,

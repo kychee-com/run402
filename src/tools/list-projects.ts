@@ -5,7 +5,11 @@ import { mapSdkError } from "../errors.js";
 export const listProjectsSchema = {
   wallet: z
     .string()
-    .describe("Wallet address (0x...) to list projects for"),
+    .describe(
+      "Wallet address (0x...) to list projects for. Must be your own wallet — " +
+        "the gateway requires SIWX matching this address (signed automatically " +
+        "from the local allowance), so listing another wallet's projects returns 403.",
+    ),
 };
 
 export async function handleListProjects(args: {

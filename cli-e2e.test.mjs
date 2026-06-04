@@ -688,8 +688,22 @@ async function mockFetch(input, init) {
   }
 
   // Billing
+  // Account lookup: GET /billing/v1/accounts?wallet=|?email= → resolve to a
+  // billing_account_id (and return the same detail shape as the by-id read).
+  if (pathNoQuery === "/billing/v1/accounts" && method === "GET") {
+    return Promise.resolve(json({
+      billing_account_id: "00000000-0000-4000-8000-0000000000e2",
+      available_usd_micros: 150000,
+      held_usd_micros: 0,
+      email_credits_remaining: 0,
+      tier: null,
+      lease_expires_at: null,
+      auto_recharge_enabled: false,
+      auto_recharge_threshold: 0,
+    }));
+  }
   if (path.match(/^\/billing\/v1\/accounts\/[^/]+$/) && method === "GET") {
-    return Promise.resolve(json({ available_usd_micros: 150000, held_usd_micros: 0 }));
+    return Promise.resolve(json({ billing_account_id: "00000000-0000-4000-8000-0000000000e2", available_usd_micros: 150000, held_usd_micros: 0 }));
   }
   if (path.match(/\/history/) && method === "GET") {
     return Promise.resolve(json({ transactions: [{ id: "tx1", amount: -100000, description: "Tier subscription" }] }));
