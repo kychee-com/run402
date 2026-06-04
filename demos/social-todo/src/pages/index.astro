@@ -1,0 +1,86 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { SignIn, SignedOut } from "@run402/astro/components";
+import { auth, db } from "@run402/functions";
+import type { TodoRow } from "../lib/types";
+
+export const prerender = false;
+
+// auth.user() resolves the cookie-session actor (null when anonymous) and taints
+// the response so this personalized page is never served from cache.
+const user = await auth.user();
+
+let todos: TodoRow[] = [];
+if (user) {
+  // Caller-context read through db(req). RLS `todos_shared_read` (USING true)
+  // returns the whole shared list to any signed-in user; we sort in JS so the
+  // demo stays on the plainest verified query surface.
+  todos = (await db(Astro.request).from("todos").select("*")) as unknown as TodoRow[];
+  todos.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+}
+---
+
+<Layout>
+  <SignedOut>
+    <section class="hero">
+      <h1>Sign in, any way you like</h1>
+      <p>One shared to-do list. Pick a method below — password, Google, magic-link, or passkey all land you in the same cookie session.</p>
+      <div class="panel">
+        <SignIn methods={["password", "google", "magic_link", "passkey"]} returnTo="/" />
+      </div>
+      <p class="alt">New here? <a href="/sign-up">Create an account →</a></p>
+    </section>
+  </SignedOut>
+
+  {
+    user && (
+      <section>
+        <div class="head">
+          <h1>The shared list</h1>
+          <p>
+            Signed in{user.amr?.length ? ` via ${user.amr.join(", ")}` : ""}. Everyone signed in sees
+            every item — but RLS means you can only check off or delete your own.
+          </p>
+        </div>
+
+        <form class="add" method="POST" action="/api/todos/add">
+          <input name="text" maxlength="200" required placeholder="Add something to do…" autocomplete="off" />
+          <button type="submit">Add</button>
+        </form>
+
+        {todos.length === 0 ? (
+          <p class="empty">Nothing here yet. Add the first item.</p>
+        ) : (
+          <ul class="todos">
+            {todos.map((t) => (
+              <li class={t.done ? "done" : ""}>
+                {t.user_id === user.id ? (
+                  <>
+                    <form method="POST" action="/api/todos/toggle" class="inline">
+                      <input type="hidden" name="id" value={t.id} />
+                      <button type="submit" class="check" aria-label="toggle done">
+                        {t.done ? "☑" : "☐"}
+                      </button>
+                    </form>
+                    <span class="text">{t.text}</span>
+                    <span class="who you">you</span>
+                    <form method="POST" action="/api/todos/delete" class="inline">
+                      <input type="hidden" name="id" value={t.id} />
+                      <button type="submit" class="del" aria-label="delete">✕</button>
+                    </form>
+                  </>
+                ) : (
+                  <>
+                    <span class="check ro">{t.done ? "☑" : "☐"}</span>
+                    <span class="text">{t.text}</span>
+                    <span class="who">shared</span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    )
+  }
+</Layout>

@@ -1,33 +1,43 @@
--- Social Todo: shared todo list with Google login
--- Users get their name + avatar from Google. Todos are shared (anyone logged in can see all).
+-- Shared to-do list — schema + Row-Level Security.
+--
+-- The modern run402 RLS model: policies key off run402.current_user_id() (the
+-- cookie-session user the gateway resolves per request), NOT the legacy
+-- `current_setting('request.jwt.claims', …)->>'sub'` claim plumbing. db(req)
+-- mints a short-lived actor JWT so current_user_id() resolves; you never thread a
+-- user id by hand, and never add a redundant `.eq("user_id", …)` filter
+-- (that deploy-fails with R402_AUTH_REDUNDANT_USER_FILTER).
 
-CREATE TABLE todos (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL,
-  text TEXT NOT NULL,
-  done BOOLEAN NOT NULL DEFAULT false,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+create table if not exists todos (
+  id          uuid primary key default gen_random_uuid(),
+  -- Owner is filled by the column DEFAULT, so inserts never carry user_id and
+  -- the WITH CHECK policy still binds the row to the signed-in user.
+  user_id     uuid not null default run402.current_user_id(),
+  text        text not null,
+  done        boolean not null default false,
+  created_at  timestamptz not null default now()
 );
 
--- RLS: any authenticated user can read all todos, but only the owner can modify
-ALTER TABLE todos ENABLE ROW LEVEL SECURITY;
+alter table todos enable row level security;
 
-CREATE POLICY "Anyone can read todos"
-  ON todos FOR SELECT
-  TO authenticated
-  USING (true);
+-- Shared: ANY signed-in user reads the whole list...
+create policy todos_shared_read on todos
+  for select to authenticated
+  using (true);
 
-CREATE POLICY "Users can insert their own todos"
-  ON todos FOR INSERT
-  TO authenticated
-  WITH CHECK (user_id = (current_setting('request.jwt.claims', true)::json->>'sub')::uuid);
+-- ...but you can only add / edit / remove your OWN items. The owner-only UPDATE
+-- and DELETE policies are what make "I can see your todo but can't touch it"
+-- true at the database, not just in the UI.
+create policy todos_owner_insert on todos
+  for insert to authenticated
+  with check (user_id = run402.current_user_id());
 
-CREATE POLICY "Users can update their own todos"
-  ON todos FOR UPDATE
-  TO authenticated
-  USING (user_id = (current_setting('request.jwt.claims', true)::json->>'sub')::uuid);
+create policy todos_owner_update on todos
+  for update to authenticated
+  using (user_id = run402.current_user_id())
+  with check (user_id = run402.current_user_id());
 
-CREATE POLICY "Users can delete their own todos"
-  ON todos FOR DELETE
-  TO authenticated
-  USING (user_id = (current_setting('request.jwt.claims', true)::json->>'sub')::uuid);
+create policy todos_owner_delete on todos
+  for delete to authenticated
+  using (user_id = run402.current_user_id());
+
+create index if not exists todos_created_idx on todos (created_at desc);

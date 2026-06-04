@@ -1,0 +1,22 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { AccountSecurity } from "@run402/astro/components";
+import { auth } from "@run402/functions";
+
+export const prerender = false;
+
+const user = await auth.user();
+if (!user) return Astro.redirect("/auth/sign-in?returnTo=/account");
+---
+
+<Layout title="Your account — Shared List">
+  <h1>Your account</h1>
+  <p style="color:var(--dim);">
+    Everything below is run402's hosted account surface — set or change a password, add and remove
+    passkeys, review and revoke sessions, link or unlink Google. Each form posts to a hosted
+    <code>/auth/account/*</code> route that enforces freshness step-up server-side.
+  </p>
+  <div class="panel" style="margin-top:16px;">
+    <AccountSecurity sections={["password", "passkeys", "sessions", "identities"]} />
+  </div>
+</Layout>

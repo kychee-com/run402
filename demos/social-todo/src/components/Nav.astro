@@ -1,0 +1,21 @@
+---
+// Hosted-auth chrome from @run402/astro: <SignedIn>/<SignedOut> read the
+// cookie-session actor server-side; <UserButton> renders the email + a
+// CSRF-protected sign-out form. No fetch, no client auth code.
+import { SignedIn, SignedOut, UserButton } from "@run402/astro/components";
+---
+
+<header
+  style="display:flex;align-items:center;gap:16px;max-width:680px;margin:0 auto;padding:14px 18px;border-bottom:1px solid var(--line);"
+>
+  <a href="/" style="font-weight:800;font-size:1.05rem;color:var(--ink);">✓ Shared List</a>
+  <nav style="display:flex;gap:14px;font-size:.92rem;margin-left:auto;">
+    <SignedIn>
+      <a href="/account">Account</a>
+      <UserButton returnTo="/" />
+    </SignedIn>
+    <SignedOut>
+      <a class="btn" href="/auth/sign-in?returnTo=/">Sign in</a>
+    </SignedOut>
+  </nav>
+</header>

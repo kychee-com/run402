@@ -1,0 +1,59 @@
+---
+import Nav from "../components/Nav.astro";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+const {
+  title = "Shared List — sign in any way you like",
+  description = "One shared to-do list behind run402 hosted auth + Postgres RLS. Password, Google, magic-link, or passkey — same session.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <style is:global>
+      :root { color-scheme: light dark; --bg:#f7f7fb; --panel:#fff; --line:#e4e4ee; --ink:#1a1a24; --dim:#6b6b80; --acc:#5b5bd6; --good:#1f9d55; }
+      @media (prefers-color-scheme: dark){ :root{ --bg:#0f0f16; --panel:#181822; --line:#2a2a3a; --ink:#e9e9f2; --dim:#9a9ab0; --acc:#8a8aff; } }
+      * { box-sizing: border-box; }
+      body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+      a { color:var(--acc); text-decoration:none; } a:hover { text-decoration:underline; }
+      main { max-width:680px; margin:0 auto; padding:24px 18px 64px; }
+      h1 { font-size:1.7rem; margin:.2em 0; }
+      .hero { text-align:center; padding:18px 0; }
+      .hero > p { color:var(--dim); max-width:46ch; margin:.4em auto 1.2em; }
+      .alt { margin-top:14px; font-size:.9rem; color:var(--dim); }
+      .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; }
+      .head p { color:var(--dim); font-size:.92rem; }
+      form.add { display:flex; gap:8px; margin:14px 0 18px; }
+      form.add input { flex:1; background:var(--bg); border:1px solid var(--line); color:var(--ink); border-radius:9px; padding:11px 13px; font-size:1rem; }
+      button, .btn { background:var(--acc); color:#fff; border:0; border-radius:9px; padding:10px 16px; font-size:.95rem; font-weight:600; cursor:pointer; display:inline-block; }
+      .btn:hover, button:hover { filter:brightness(1.07); text-decoration:none; }
+      ul.todos { list-style:none; padding:0; margin:0; }
+      ul.todos li { display:flex; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line); }
+      ul.todos li.done .text { text-decoration:line-through; color:var(--dim); }
+      .text { flex:1; }
+      .who { font-size:.72rem; color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:1px 8px; }
+      .who.you { color:var(--good); border-color:color-mix(in srgb, var(--good) 40%, transparent); }
+      form.inline { display:inline; margin:0; }
+      button.check, button.del, .check.ro { background:none; border:0; padding:0 2px; font-size:1.15rem; cursor:pointer; color:var(--ink); }
+      .check.ro { color:var(--dim); cursor:default; }
+      button.del { color:var(--dim); } button.del:hover { color:#d23; }
+      .empty { color:var(--dim); text-align:center; padding:26px; }
+      footer { text-align:center; color:var(--dim); font-size:.85rem; padding:24px; }
+    </style>
+  </head>
+  <body>
+    <Nav />
+    <main><slot /></main>
+    <footer>
+      Hosted auth + Postgres RLS on <a href="https://run402.com">run402</a> — sign-in cookie, zero token plumbing.
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "social-todo",
+  "subdomain": "social-todo",
+  "tier": "demo",
+  "is_system": true,
+  "gate": null,
+  "cd": true,
+  "smoke_marker": "Shared List"
+}

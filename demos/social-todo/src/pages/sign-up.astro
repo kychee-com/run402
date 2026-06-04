@@ -1,0 +1,22 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { SignUp, SignedIn, SignedOut } from "@run402/astro/components";
+
+export const prerender = false;
+---
+
+<Layout title="Create your account — Shared List">
+  <SignedOut>
+    <section class="hero">
+      <h1>Create your account</h1>
+      <p>Start with an email + password — you can add Google, a magic-link, or a passkey later from your account page.</p>
+      <div class="panel">
+        <SignUp returnTo="/" />
+      </div>
+      <p class="alt">Already have one? <a href="/auth/sign-in?returnTo=/">Sign in →</a></p>
+    </section>
+  </SignedOut>
+  <SignedIn>
+    <p class="empty">You're already signed in. <a href="/">Go to your list →</a></p>
+  </SignedIn>
+</Layout>

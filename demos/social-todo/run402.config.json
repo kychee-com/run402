@@ -1,0 +1,8 @@
+{
+  "$schema": "https://run402.com/schemas/release-spec.v1.json",
+  "database": {
+    "migrations": [
+      { "id": "social_todo_0001_init", "sql_file": "schema.sql" }
+    ]
+  }
+}
