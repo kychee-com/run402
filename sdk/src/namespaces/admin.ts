@@ -432,14 +432,14 @@ export class Admin {
    * `reactivated: true`.
    *
    * Platform-admin only. Calls
-   * `POST /billing-accounts/v1/admin/:id/lease-perpetual`.
+   * `POST /billing/v1/admin/accounts/:account_id/lease-perpetual`.
    */
   async setLeasePerpetual(
     billingAccountId: string,
     perpetual: boolean,
   ): Promise<SetLeasePerpetualResult> {
     return this.client.request<SetLeasePerpetualResult>(
-      `/billing-accounts/v1/admin/${encodeURIComponent(billingAccountId)}/lease-perpetual`,
+      `/billing/v1/admin/accounts/${encodeURIComponent(billingAccountId)}/lease-perpetual`,
       {
         method: "POST",
         headers: { "X-Admin-Mode": "1" },

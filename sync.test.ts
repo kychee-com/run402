@@ -371,7 +371,7 @@ const SURFACE: Capability[] = [
   // v1.57: pin/unpin endpoints removed. Per-project pin is superseded by the
   // account-level escape hatch (admin_set_lease_perpetual). archive and
   // reactivate are operator moderation actions, scoped to a single project.
-  { id: "admin_set_lease_perpetual", endpoint: "POST /billing-accounts/v1/admin/:id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
+  { id: "admin_set_lease_perpetual", endpoint: "POST /billing/v1/admin/accounts/:account_id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
   { id: "admin_archive_project",     endpoint: "POST /projects/v1/admin/:id/archive",                 mcp: "admin_archive_project",     cli: "admin:archive",          openclaw: "admin:archive" },
   { id: "admin_reactivate_project",  endpoint: "POST /projects/v1/admin/:id/reactivate",              mcp: "admin_reactivate_project",  cli: "admin:reactivate",       openclaw: "admin:reactivate" },
   { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
