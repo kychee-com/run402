@@ -687,7 +687,7 @@ server.tool(
 
 server.tool(
   "admin_set_lease_perpetual",
-  "Toggle a billing account's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the account never advances past `active` regardless of lease expiry; every project on the account inherits the pinned state. Enabling on a grace-state account (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured allowance wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /billing-accounts/v1/admin/:id/lease-perpetual.",
+  "Toggle a billing account's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the account never advances past `active` regardless of lease expiry; every project on the account inherits the pinned state. Enabling on a grace-state account (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured allowance wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /billing/v1/admin/accounts/:account_id/lease-perpetual.",
   adminSetLeasePerpetualSchema,
   async (args) => handleAdminSetLeasePerpetual(args),
 );

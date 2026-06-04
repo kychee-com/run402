@@ -190,7 +190,7 @@ async function mockFetch(input, init) {
   if (path.match(/^\/projects\/v1\/[^/]+$/) && method === "DELETE") {
     return Promise.resolve(noContent());
   }
-  if (path.match(/^\/billing-accounts\/v1\/admin\/[^/]+\/lease-perpetual$/) && method === "POST") {
+  if (path.match(/^\/billing\/v1\/admin\/accounts\/[^/]+\/lease-perpetual$/) && method === "POST") {
     const accountId = path.split("/").at(-2);
     const desired = Boolean(body?.lease_perpetual);
     return Promise.resolve(json({
@@ -1880,7 +1880,7 @@ describe("CLI e2e happy path", () => {
     const prevFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      if (url.includes("/billing-accounts/v1/admin/ba_external/lease-perpetual")) {
+      if (url.includes("/billing/v1/admin/accounts/ba_external/lease-perpetual")) {
         seenUrl = url;
         if (input instanceof Request) {
           seenMethod = input.method;
@@ -1905,7 +1905,7 @@ describe("CLI e2e happy path", () => {
       globalThis.fetch = prevFetch;
     }
     assert.ok(
-      seenUrl && seenUrl.includes("/billing-accounts/v1/admin/ba_external/lease-perpetual"),
+      seenUrl && seenUrl.includes("/billing/v1/admin/accounts/ba_external/lease-perpetual"),
       `lease-perpetual should hit the admin endpoint; got: ${seenUrl}`,
     );
     assert.equal(seenMethod, "POST");

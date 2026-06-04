@@ -211,7 +211,7 @@ describe("admin.getProjectFinance", () => {
 });
 
 describe("admin.setLeasePerpetual (v1.57)", () => {
-  it("POSTs to /billing-accounts/v1/admin/:id/lease-perpetual with admin headers", async () => {
+  it("POSTs to /billing/v1/admin/accounts/:account_id/lease-perpetual with admin headers", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         status: "ok",
@@ -226,7 +226,7 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
     assert.equal(calls[0]!.method, "POST");
     assert.equal(
       calls[0]!.url,
-      "https://api.test/billing-accounts/v1/admin/ba_known/lease-perpetual",
+      "https://api.test/billing/v1/admin/accounts/ba_known/lease-perpetual",
     );
     assert.equal(calls[0]!.headers["X-Admin-Mode"], "1");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
@@ -253,7 +253,7 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
     await sdk(fetch).admin.setLeasePerpetual("ba/has space", true);
     assert.equal(
       calls[0]!.url,
-      "https://api.test/billing-accounts/v1/admin/ba%2Fhas%20space/lease-perpetual",
+      "https://api.test/billing/v1/admin/accounts/ba%2Fhas%20space/lease-perpetual",
     );
   });
 });
