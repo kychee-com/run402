@@ -22,18 +22,30 @@ export const POST: APIRoute = async ({ request }) => {
   // Owner-gated insert through db(req). user_id is supplied by the column
   // DEFAULT run402.current_user_id(), so we never pass it (and must never add a
   // redundant `.eq("user_id", …)` — that deploy-fails R402_AUTH_REDUNDANT_USER_FILTER).
-  const inserted = await db(request).from("villains").insert({
-    real_name: realName,
-    fact,
-    appearance,
-    villain_name: villain.villainName,
-    origin_story: villain.originStory,
-    catchphrase: villain.catchphrase,
-    weakness: villain.weakness,
-    power: villain.power,
-    threat_level: villain.threatLevel,
-  });
-  const row = (Array.isArray(inserted) ? inserted[0] : inserted) as { id: string };
+  // Surface the real cause instead of a swallowed generic 500 (the SSR runtime
+  // also stamps x-run402-request-id, so a thrown error is traceable via
+  // `run402 logs --request-id <id>`).
+  let row: { id?: string } | undefined;
+  try {
+    const inserted = await db(request).from("villains").insert({
+      real_name: realName,
+      fact,
+      appearance,
+      villain_name: villain.villainName,
+      origin_story: villain.originStory,
+      catchphrase: villain.catchphrase,
+      weakness: villain.weakness,
+      power: villain.power,
+      threat_level: villain.threatLevel,
+    });
+    row = (Array.isArray(inserted) ? inserted[0] : inserted) as { id?: string } | undefined;
+  } catch (err) {
+    console.error("villain insert failed:", err);
+    return new Response("Could not save your villain — the database insert failed.", { status: 500 });
+  }
+  if (!row?.id) {
+    return new Response("Villain insert returned no id (is the villains table migrated?).", { status: 500 });
+  }
 
   // Generate the portrait ON run402 (ai.generateImage → base64) and store the
   // bytes in the project's CAS blob store (assets.put → AssetRef). Persist the
