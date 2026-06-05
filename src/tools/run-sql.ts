@@ -38,12 +38,26 @@ export async function handleRunSql(args: {
     return mapSdkError(err, "running SQL");
   }
 
-  const table = formatMarkdownTable(body.rows);
-  const lines = [
-    `**${body.rows.length} row${body.rows.length !== 1 ? "s" : ""} returned** (schema: ${body.schema})`,
-    ``,
-    table,
-  ];
+  const { rows, rowCount, schema } = body;
 
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+  // The gateway distinguishes statement kinds by `rowCount`: a result set
+  // (SELECT / ... RETURNING) populates `rows`; an INSERT/UPDATE/DELETE returns
+  // `rows: []` with a numeric affected-row count; DDL returns `rowCount: null`.
+  // Surface each kind explicitly — never report a mutation that changed rows
+  // as "0 rows returned", which reads to an agent like the statement no-op'd.
+  let text: string;
+  if (rows.length > 0) {
+    text = `**${rows.length} row${rows.length !== 1 ? "s" : ""} returned** (schema: ${schema})\n\n${formatMarkdownTable(rows)}`;
+  } else if (typeof rowCount === "number" && rowCount > 0) {
+    text = `**${rowCount} row${rowCount !== 1 ? "s" : ""} affected** (schema: ${schema})`;
+  } else if (rowCount === 0) {
+    // A mutation that matched nothing, or an empty result set — indistinguishable
+    // here (both are rows: [], rowCount: 0), so stay neutral.
+    text = `**0 rows** (schema: ${schema})`;
+  } else {
+    // DDL and other statements with no row semantics (rowCount === null).
+    text = `**Statement executed** (schema: ${schema})`;
+  }
+
+  return { content: [{ type: "text", text }] };
 }

@@ -343,6 +343,45 @@ describe("formatApiError", () => {
     assert.ok(!text.includes("lease may have expired"));
     assert.ok(!text.includes("set_tier"));
   });
+
+  it("maps 403 FORBIDDEN to permission guidance, not the generic lease-expired text", () => {
+    const result = formatApiError(
+      {
+        status: 403,
+        body: {
+          error: "Blocked SQL pattern: \\bCREATE\\s+ROLE\\b",
+          code: "FORBIDDEN",
+          category: "auth",
+        },
+      },
+      "running SQL",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("Code: `FORBIDDEN`"));
+    assert.ok(text.includes("not permitted"));
+    assert.ok(text.includes("CREATE ROLE"));
+    // a blocked-SQL 403 has nothing to do with the lease
+    assert.ok(!text.includes("lease may have expired"));
+  });
+
+  it("maps 403 ADMIN_REQUIRED to admin-path guidance, not the generic lease-expired text", () => {
+    const result = formatApiError(
+      {
+        status: 403,
+        body: {
+          message: "service_role is not permitted on /rest/v1/*",
+          code: "ADMIN_REQUIRED",
+          category: "auth",
+          hint: "Use /admin/v1/rest/* with Bearer <service_key>",
+        },
+      },
+      "querying REST API",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("Code: `ADMIN_REQUIRED`"));
+    assert.ok(text.includes("/admin/v1/rest/*"));
+    assert.ok(!text.includes("lease may have expired"));
+  });
 });
 
 describe("projectNotFound", () => {

@@ -2,6 +2,15 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the private gateway monorepo and publishes on its own cadence.
 
+## Unreleased — `run402-mcp` SQL feedback + 403 hint fixes
+
+Two `run402-mcp` tool fixes surfaced while benchmarking the MCP server against MCPMark. `@run402/sdk` and `run402` (CLI) have **no code changes** — the CLI already emits the raw `{ rows, rowCount }` JSON.
+
+- **`run_sql` no longer reports "0 rows returned" for mutations and DDL.** The handler built its summary from `rows.length` and ignored the `rowCount` the gateway returns, so an `INSERT`/`UPDATE`/`DELETE` that changed N rows — and every `CREATE TABLE`/`CREATE INDEX` — printed "0 rows returned", which reads to an agent like the statement no-op'd (and burns round-trips re-checking). Now keyed on the gateway's row semantics: a result set → "N rows returned" + table; a mutation without `RETURNING` → "N rows affected" (singularized); a no-match mutation or empty result → "0 rows"; DDL (`rowCount: null`) → "Statement executed". (`src/tools/run-sql.ts`)
+- **403 errors no longer claim "the project lease may have expired" for blocked operations.** `FORBIDDEN` (blocked SQL such as `CREATE ROLE`/`CREATE SCHEMA`/`CREATE EXTENSION`/`GRANT`) and `ADMIN_REQUIRED` (e.g. `service_role` on `/rest/v1/*`) now get accurate, code-specific next-step guidance instead of the generic lease-expiry text that sent agents on a dead-end `get_usage`/`set_tier` detour. Code-less 403s (e.g. with a `renew_url`) keep the lease hint. (`src/errors.ts`)
+
+Drift-protection tests added in `src/tools/run-sql.test.ts` and `src/errors.test.ts`.
+
 ## Unreleased — Pre-launch JSON-only cleanup, part 2 (6 commands)
 
 Follow-up to the 2.23.0 cleanup. Closes the remaining "text-by-default with `--json` opt-in" violations across 6 commands. Since there are no users yet, this is pre-launch cleanup shipped as a minor — no migration guidance needed. `@run402/sdk` and `run402-mcp` have **no code changes**.
