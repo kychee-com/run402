@@ -32,6 +32,8 @@ import { Deploy } from "./namespaces/deploy.js";
 import { Ci } from "./namespaces/ci.js";
 import { Jobs } from "./namespaces/jobs.js";
 import { Operator } from "./namespaces/operator.js";
+import { Org } from "./namespaces/org.js";
+import { Grants } from "./namespaces/grants.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -86,6 +88,18 @@ export class Run402 {
    * 8628 device flow), distinct from the agent's per-wallet SIWX identity.
    */
   readonly operator: Operator;
+  /**
+   * Org-owned control plane (gateway v1.77+): resolve the principal +
+   * memberships (`org.whoami()`) and manage org membership (`list`, `members`,
+   * `addMember`, `setRole`, `removeMember` — owner-gated). Distinct from the
+   * local, network-free {@link Run402.whoami}.
+   */
+  readonly org: Org;
+  /**
+   * Per-project capability grants for agent/CI principals. Also available
+   * project-scoped as `r.project(id).grants`.
+   */
+  readonly grants: Grants;
 
   readonly #client: Client;
 
@@ -152,6 +166,8 @@ export class Run402 {
     this.ci = new Ci(client);
     this.jobs = new Jobs(client);
     this.operator = new Operator(client);
+    this.org = new Org(client);
+    this.grants = new Grants(client);
   }
 
   /**
@@ -368,6 +384,10 @@ export type * from "./namespaces/email.js";
 export type * from "./namespaces/functions.types.js";
 export type * from "./namespaces/jobs.js";
 export type * from "./namespaces/operator.js";
+export { Org } from "./namespaces/org.js";
+export type * from "./namespaces/org.types.js";
+export { Grants } from "./namespaces/grants.js";
+export type * from "./namespaces/grants.types.js";
 export type * from "./namespaces/projects.types.js";
 export type * from "./namespaces/secrets.js";
 export type * from "./namespaces/sender-domain.js";

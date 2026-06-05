@@ -30,6 +30,8 @@ Commands:
   deploy      Unified deploy operations (requires active tier)
   ci          Link GitHub Actions OIDC deploy bindings
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
+  org         Org membership + roles (whoami, list, members, add-member, set-role, remove-member)
+  grants      Per-project capability grants for agent/CI principals (create, revoke)
   jobs        Submit and inspect fixed platform-managed jobs
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
@@ -172,6 +174,16 @@ switch (cmd) {
   }
   case "transfer": {
     const { run } = await import("./lib/transfer.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "org": {
+    const { run } = await import("./lib/org.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "grants": {
+    const { run } = await import("./lib/grants.mjs");
     await run(sub, rest);
     break;
   }

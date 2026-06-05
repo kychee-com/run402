@@ -122,6 +122,8 @@ const MATRIX = {
   agent: { shared: [], specific: ["contact"] },
   operator: { shared: ["login", "logout", "overview", "whoami"], specific: [] },
   service: { shared: [], specific: ["status", "health"] },
+  org: { shared: [], specific: ["whoami", "list", "members", "add-member", "set-role", "remove-member"] },
+  grants: { shared: [], specific: ["create", "revoke"] },
 };
 
 // `run402 email webhooks <action>` delegates to lib/webhooks.mjs.

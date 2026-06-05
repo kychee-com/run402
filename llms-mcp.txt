@@ -479,6 +479,19 @@ What does NOT transfer: tier lease (stays with the original owner's billing acco
 
 After accept, `tier_status` surfaces `projects[].secrets_rotation_advised: { advised_at, reason }` on the transferred project, and `incoming_transfers[]` at the top level lists pending offers (each with `preview_path`) so the inbox is visible without a separate `list_incoming_transfers` fetch.
 
+### Organization, membership & grants (v1.77+ org-owned control plane)
+
+A wallet **authenticates**; the **org (billing account)** owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant. Member/grant mutations require an active `owner`.
+
+- `whoami` — resolve YOUR control-plane principal + every org membership (role + status) + `authenticator_id` (GET `/agent/v1/whoami`). The remote identity; for local wallet/profile state use `status`.
+- `list_orgs` — orgs you are a member of, with your role + membership status.
+- `list_org_members` — members + roles of an org. Params: `billing_account_id`.
+- `add_org_member` — add a member BY WALLET (a new wallet is provisioned as a `human` principal). Params: `billing_account_id`, `wallet`, optional `role` (default `developer`). Owner-gated. (Email-first invite is a separate, not-yet-shipped flow.)
+- `set_org_member_role` — change a member's role. Params: `billing_account_id`, `principal_id`, `role`. Owner-gated. Demoting the only active owner → `409 LAST_OWNER`.
+- `remove_org_member` — remove a member. Params: `billing_account_id`, `principal_id`. Owner-gated. Removing the only active owner → `409 LAST_OWNER`.
+- `create_project_grant` — issue a per-project capability grant to a wallet (agent/CI principals). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Requires owner of the project's org.
+- `revoke_project_grant` — revoke a grant. Params: `project_id`, `grant_id`. Requires owner of the project's org.
+
 ### Service status (no auth, no setup)
 
 - `service_status` — public availability report (24h/7d/30d uptime per capability, operator, deployment topology, schema `run402-status-v1`). Cache: server-side 30s.
@@ -564,6 +577,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 | `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
 | `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
+| `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
 | `409 PROJECT_HAS_PENDING_TRANSFER` on an owner-side mutation | A pending project transfer is freezing the control plane. `details.transfer_id` carries the id; `next_actions[]` has the cancel route. Run `cancel_project_transfer` to unblock, or `preview_project_transfer` to view what's pending. The freeze auto-clears 72h after init. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |

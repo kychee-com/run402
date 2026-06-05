@@ -204,6 +204,11 @@ function addCodeGuidance(
     case "ADMIN_REQUIRED":
       lines.push(`\nNext step: Use the admin path for this operation — the admin REST endpoint (\`/admin/v1/rest/*\` with the service key) or \`run_sql\` for SQL.`);
       return true;
+    case "LAST_OWNER":
+      lines.push(
+        `\nNext step: An org must keep at least one active \`owner\`. This change would remove or demote the last one. Promote another member to \`owner\` first (\`set_org_member_role\`), then retry.`,
+      );
+      return true;
     case "PAYMENT_REQUIRED":
     case "INSUFFICIENT_FUNDS":
       lines.push(`\nNext step: Submit payment or fund the allowance, then retry the request.`);

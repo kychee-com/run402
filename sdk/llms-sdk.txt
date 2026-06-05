@@ -1421,6 +1421,19 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 
 What does NOT transfer: tier lease (stays with the original owner's billing account; no Phase 1A proration), KMS contract wallets (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
+## Org membership & project grants (`r.org`, `r.grants` — v1.77+ org-owned control plane)
+
+A wallet **authenticates** (SIWX → a control-plane *principal*); the **org (billing account)** owns projects, and what a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet_address == signer`.
+
+- **`r.org.whoami()`** → `{ principal, memberships[], authenticator_id }` (GET `/agent/v1/whoami`). This is the REMOTE, gateway-resolved identity. It is distinct from **`r.whoami()`**, which stays local + network-free (wallet address + profile label, used by `run402 status`).
+- **`r.org.list()`** → the orgs you are an active member of (as `OrgMembership[]`).
+- **`r.org.members(billingAccountId)`** → `OrgMember[]`.
+- **`r.org.addMember(billingAccountId, { wallet, role? })`** — add BY WALLET (a new wallet is provisioned as a `human` principal); `role` defaults to `developer`. Owner-gated. (Email-first invite is a separate, not-yet-shipped flow — there is no `invite` method.)
+- **`r.org.setRole(billingAccountId, principalId, role)`** / **`r.org.removeMember(billingAccountId, principalId)`** — owner-gated. Removing or demoting the org's only active owner throws `ApiError` with `code: "LAST_OWNER"` (409) — promote another member to `owner` first.
+- **`r.grants.create(projectId, { wallet, capability, policy?, expiresAt? })`** / **`r.grants.revoke(projectId, grantId)`** — per-project capability grants for agent/CI principals; requires owner of the project's org. Also project-scoped: **`r.project(id).grants.create({...})`** / `.revoke(grantId)`. `capability` examples: `"deploy"`, `"functions:write"`.
+
+Control-plane denials throw `NotAuthorizedError` (403 `NOT_AUTHORIZED`, carrying `requiredRole` / `requiredCapability` / `reason`). Bad input is `ApiError` `code: "VALIDATION_ERROR"` (400). Exported types: `OrgRole`, `Principal`, `OrgMembership`, `OrgMember`, `WhoAmIResult`, `ProjectGrant`, plus input/result types.
+
 ## Resource limits
 
 | | Prototype | Hobby | Team |
