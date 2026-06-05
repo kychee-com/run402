@@ -14,6 +14,7 @@ import {
   ApiError,
   LocalError,
   NetworkError,
+  NotAuthorizedError,
   PaymentRequired,
   ProjectNotFound,
   Run402DeployError,
@@ -24,6 +25,7 @@ import {
   isDeployError,
   isLocalError,
   isNetworkError,
+  isNotAuthorized,
   isPaymentRequired,
   isProjectNotFound,
   isRetryableRun402Error,
@@ -45,6 +47,10 @@ describe("Run402Error kind discriminators", () => {
   it("Unauthorized carries kind='unauthorized'", () => {
     const e = new Unauthorized("nope", 401, null, "ctx");
     assert.equal(e.kind, "unauthorized");
+  });
+  it("NotAuthorizedError carries kind='not_authorized'", () => {
+    const e = new NotAuthorizedError("nope", 403, null, "ctx");
+    assert.equal(e.kind, "not_authorized");
   });
   it("ApiError carries kind='api_error'", () => {
     const e = new ApiError("nope", 500, null, "ctx");
@@ -115,6 +121,15 @@ describe("subclass type guards narrow correctly", () => {
   it("isUnauthorized matches only Unauthorized", () => {
     assert.equal(isUnauthorized(new Unauthorized("a", 401, null, "c")), true);
     assert.equal(isUnauthorized(new ApiError("a", 401, null, "c")), false);
+    // NotAuthorizedError is a distinct kind, not a generic Unauthorized.
+    assert.equal(isUnauthorized(new NotAuthorizedError("a", 403, null, "c")), false);
+  });
+
+  it("isNotAuthorized matches only NotAuthorizedError", () => {
+    assert.equal(isNotAuthorized(new NotAuthorizedError("a", 403, null, "c")), true);
+    assert.equal(isNotAuthorized(new Unauthorized("a", 403, null, "c")), false);
+    assert.equal(isNotAuthorized(new ApiError("a", 403, null, "c")), false);
+    assert.equal(isNotAuthorized(new Error("nope")), false);
   });
 
   it("isApiError matches only ApiError", () => {
@@ -154,6 +169,62 @@ describe("subclass type guards narrow correctly", () => {
     } else {
       assert.fail("guard should have narrowed");
     }
+  });
+});
+
+// ─── NotAuthorizedError structured fields ────────────────────────────────────
+
+describe("NotAuthorizedError lifts org control-plane details", () => {
+  const body = {
+    code: "NOT_AUTHORIZED",
+    category: "auth",
+    message: "Not authorized for this project action",
+    details: {
+      action: "membership.set_role",
+      required_role: "owner",
+      required_capability: null,
+      reason: "forbidden",
+    },
+  };
+
+  it("extracts action/requiredRole/requiredCapability/reason from details", () => {
+    const e = new NotAuthorizedError("denied", 403, body, "changing role");
+    assert.equal(e.action, "membership.set_role");
+    assert.equal(e.requiredRole, "owner");
+    assert.equal(e.requiredCapability, null);
+    assert.equal(e.reason, "forbidden");
+    assert.equal(e.code, "NOT_AUTHORIZED");
+    assert.equal(e.category, "auth");
+  });
+
+  it("lifts a capability-based denial", () => {
+    const e = new NotAuthorizedError("denied", 403, {
+      code: "NOT_AUTHORIZED",
+      details: { action: "deploy", required_role: null, required_capability: "deploy", reason: "grant" },
+    }, "deploying");
+    assert.equal(e.requiredRole, null);
+    assert.equal(e.requiredCapability, "deploy");
+    assert.equal(e.reason, "grant");
+  });
+
+  it("defaults every field to null when details are absent or malformed", () => {
+    const e = new NotAuthorizedError("denied", 403, { code: "NOT_AUTHORIZED" }, "ctx");
+    assert.equal(e.action, null);
+    assert.equal(e.requiredRole, null);
+    assert.equal(e.requiredCapability, null);
+    assert.equal(e.reason, null);
+    const bad = new NotAuthorizedError("denied", 403, "not-json", "ctx");
+    assert.equal(bad.requiredRole, null);
+  });
+
+  it("toJSON surfaces the structured fields for agent triage", () => {
+    const e = new NotAuthorizedError("denied", 403, body, "changing role");
+    const json = e.toJSON();
+    assert.equal(json.kind, "not_authorized");
+    assert.equal(json.action, "membership.set_role");
+    assert.equal(json.requiredRole, "owner");
+    assert.equal(json.requiredCapability, null);
+    assert.equal(json.reason, "forbidden");
   });
 });
 

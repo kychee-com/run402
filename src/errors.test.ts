@@ -313,6 +313,36 @@ describe("formatApiError", () => {
     // code-specific guidance suppresses the misleading generic 409 message
     assert.ok(!text.includes("already in use or reserved"));
   });
+
+  it("maps 403 NOT_AUTHORIZED to org-authorization guidance, not the generic lease-expired text", () => {
+    const result = formatApiError(
+      {
+        status: 403,
+        body: {
+          code: "NOT_AUTHORIZED",
+          category: "auth",
+          message: "Not authorized for this project action",
+          details: {
+            action: "project.delete",
+            required_role: "owner",
+            required_capability: null,
+            reason: "forbidden",
+          },
+        },
+      },
+      "deleting project",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("403"));
+    assert.ok(text.includes("Code: `NOT_AUTHORIZED`"));
+    // echoes the missing role and the reason from details
+    assert.ok(text.includes("required role `owner`"));
+    assert.ok(text.includes("reason `forbidden`"));
+    assert.ok(/owner.*membership/i.test(text));
+    // must NOT fall through to the generic 403 lease-expired guidance
+    assert.ok(!text.includes("lease may have expired"));
+    assert.ok(!text.includes("set_tier"));
+  });
 });
 
 describe("projectNotFound", () => {

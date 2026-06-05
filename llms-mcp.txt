@@ -451,7 +451,7 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0
 - `allowance_status` / `allowance_create` / `allowance_export` — local allowance management.
 - `request_faucet` — Base Sepolia testnet USDC.
 - `check_balance` — USDC for an allowance address.
-- `list_projects` — active projects for a wallet. Each entry carries v1.57 lifecycle fields: `effective_status`, `account_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`.
+- `list_projects` — active projects the wallet's principal can reach (org-owned control plane, v1.77+): a wallet *authenticates* but does not *own* — this lists projects owned by orgs (billing accounts) the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Each entry carries v1.57 lifecycle fields: `effective_status`, `account_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`. The canonical project object exposes `billing_account_id` (owning org) + `created_by` (provisioning principal) instead of `wallet_address`.
 - `admin_set_lease_perpetual` — operator escape hatch (v1.57+). Toggles `lease_perpetual` on a billing account; when `true`, the account never advances past `active`. Replaces the v1.56 per-project pin tool (gateway endpoint /projects/v1/admin/:id/pin was removed). Platform-admin only.
 - `admin_archive_project` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; siblings on the same account keep serving. Platform-admin only.
 - `admin_reactivate_project` — un-archive a project (flips `archived_at` to NULL). In v1.57 this no longer touches account lifecycle. Platform-admin only.
@@ -563,6 +563,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 | `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
 | `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
+| `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
 | `409 PROJECT_HAS_PENDING_TRANSFER` on an owner-side mutation | A pending project transfer is freezing the control plane. `details.transfer_id` carries the id; `next_actions[]` has the cancel route. Run `cancel_project_transfer` to unblock, or `preview_project_transfer` to view what's pending. The freeze auto-clears 72h after init. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |

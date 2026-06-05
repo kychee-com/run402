@@ -76,7 +76,7 @@ export function formatApiError(
   }
 
   const code = stringField(body, "code");
-  const usedCodeGuidance = addCodeGuidance(lines, code);
+  const usedCodeGuidance = addCodeGuidance(lines, code, body);
 
   // Actionable guidance based on HTTP status when no canonical code-specific
   // guidance applied, or when legacy lifecycle fields need their old text.
@@ -166,12 +166,38 @@ export function formatCanonicalErrorContext(
   return lines;
 }
 
-function addCodeGuidance(lines: string[], code: string | undefined): boolean {
+function addCodeGuidance(
+  lines: string[],
+  code: string | undefined,
+  body?: Record<string, unknown> | null,
+): boolean {
   switch (code) {
     case "AUTHENTICATION_REQUIRED":
     case "UNAUTHORIZED":
       lines.push(`\nNext step: Authenticate again or check the project key used for this request.`);
       return true;
+    case "NOT_AUTHORIZED": {
+      // Org-owned control plane (gateway v1.77+): the wallet authenticated, but
+      // the resolved principal lacks the org membership/role or per-project
+      // grant the action needs. This is NOT a payment, lease, or
+      // re-authentication problem — surface it distinctly from the generic 403.
+      const details =
+        body && typeof body.details === "object" && body.details !== null && !Array.isArray(body.details)
+          ? (body.details as Record<string, unknown>)
+          : null;
+      const requiredRole = stringField(details, "required_role");
+      const requiredCapability = stringField(details, "required_capability");
+      const reason = stringField(details, "reason");
+      const req: string[] = [];
+      if (requiredRole) req.push(`required role \`${requiredRole}\``);
+      if (requiredCapability) req.push(`required capability \`${requiredCapability}\``);
+      if (reason) req.push(`reason \`${reason}\``);
+      const reqStr = req.length > 0 ? ` (${req.join(", ")})` : "";
+      lines.push(
+        `\nNext step: Authorization denied${reqStr} — not a payment or lease issue. A wallet authenticates; ownership is the org (billing account), and what you may do is decided by your org membership role (\`owner > admin > developer > billing > viewer\`) or a per-project grant. Obtain a covering membership/role or grant; high-stakes actions (delete, transfer, membership changes) require an active \`owner\` membership. Note: control-plane denials return 403 even when the project does not exist, so this can also mean the project id is wrong.`,
+      );
+      return true;
+    }
     case "PAYMENT_REQUIRED":
     case "INSUFFICIENT_FUNDS":
       lines.push(`\nNext step: Submit payment or fund the allowance, then retry the request.`);

@@ -66,6 +66,19 @@ export interface ProjectSummary {
   api_calls: number;
   storage_bytes: number;
   created_at: string;
+  /**
+   * Owning org (billing account) id — v1.77 org-owned control plane. A wallet
+   * authenticates; the org owns the project. Present on the canonical project
+   * object (`GET /projects/v1`); the wallet-scoped list
+   * (`GET /wallets/v1/:address/projects`, the source of {@link ListProjectsResult})
+   * does not include it today, so it is optional and forward-compatible.
+   */
+  billing_account_id?: string;
+  /**
+   * Provisioning principal id — provenance for who created the project (v1.77).
+   * Optional for the same reason as {@link ProjectSummary.billing_account_id}.
+   */
+  created_by?: string;
 }
 
 export interface ListProjectsResult {
