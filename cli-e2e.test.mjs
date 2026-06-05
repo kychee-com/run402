@@ -955,6 +955,40 @@ describe("CLI SDK error reporting", () => {
     assert.equal(parsed.admin_required, true);
   });
 
+  it("adds an org-authorization hint for 403 NOT_AUTHORIZED", async () => {
+    const parsed = await reportAndParse({
+      name: "NotAuthorizedError",
+      message: "Not authorized for this project action while deleting project (HTTP 403)",
+      status: 403,
+      code: "NOT_AUTHORIZED",
+      body: {
+        code: "NOT_AUTHORIZED",
+        category: "auth",
+        message: "Not authorized for this project action",
+        details: {
+          action: "project.delete",
+          required_role: "owner",
+          required_capability: null,
+          reason: "forbidden",
+        },
+      },
+    });
+
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.http, 403);
+    assert.equal(parsed.code, "NOT_AUTHORIZED");
+    assert.deepEqual(parsed.details, {
+      action: "project.delete",
+      required_role: "owner",
+      required_capability: null,
+      reason: "forbidden",
+    });
+    // actionable, control-plane-specific hint — not a payment/lease/auth retry
+    assert.match(parsed.hint, /Authorization denied/);
+    assert.match(parsed.hint, /role `owner`/);
+    assert.match(parsed.hint, /`owner` membership/);
+  });
+
   it("emits structured JSON for status-null deploy errors", async () => {
     const parsed = await reportAndParse({
       name: "Run402DeployError",

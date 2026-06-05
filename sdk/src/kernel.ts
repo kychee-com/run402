@@ -14,6 +14,7 @@
 import {
   ApiError,
   NetworkError,
+  NotAuthorizedError,
   PaymentRequired,
   TransferFreezeError,
   Unauthorized,
@@ -127,6 +128,17 @@ export async function requestWithResponse<T>(
     throw new PaymentRequired(
       `${displayMessage(resBody, "Payment required")} while ${context}`,
       402,
+      resBody,
+      context,
+    );
+  }
+  if (res.status === 403 && envelopeCode(resBody) === "NOT_AUTHORIZED") {
+    // Org-owned control-plane denial (gateway v1.77+): authenticated but lacks
+    // the required org membership/role or per-project grant. Distinct from a
+    // generic 401/403 so callers can prompt for access, not re-authentication.
+    throw new NotAuthorizedError(
+      `${displayMessage(resBody, "Not authorized")} while ${context} (HTTP ${res.status})`,
+      res.status,
       resBody,
       context,
     );

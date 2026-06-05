@@ -99,6 +99,24 @@ export function reportSdkError(err) {
     mergeStructuredErrorFields(payload, err);
   }
 
+  // Org-owned control plane (gateway v1.77+): a NOT_AUTHORIZED denial means the
+  // wallet authenticated but the resolved principal lacks the org role/grant for
+  // this control-plane action — distinct from a missing-auth or payment error.
+  // The structured `code` + `details` already pass through; add an actionable
+  // hint so the JSON envelope explains the fix without re-reading docs.
+  if (payload.code === "NOT_AUTHORIZED" && payload.hint === undefined) {
+    const d = payload.details && typeof payload.details === "object" ? payload.details : null;
+    const need = [];
+    if (d?.required_role) need.push(`role \`${d.required_role}\``);
+    if (d?.required_capability) need.push(`capability \`${d.required_capability}\``);
+    const needStr = need.length > 0 ? ` (needs ${need.join(" or ")})` : "";
+    payload.hint =
+      `Authorization denied${needStr}: a wallet authenticates, but the owning org (billing account) ` +
+      "decides access via membership role (owner > admin > developer > billing > viewer) or a per-project grant. " +
+      "High-stakes actions (delete, transfer, membership change) require an active `owner` membership. " +
+      "Returned as 403 even when the project does not exist, so verify the project id too.";
+  }
+
   // Keep `status: "error"` as the outer envelope even if the response body
   // happened to contain its own `status` field (e.g. `{"status":"degraded"}`
   // from /health 503 responses). Downstream scripts match on this sentinel.

@@ -35,6 +35,15 @@ export interface TierStatusProject {
   account_lifecycle_state?: string;
   lease_perpetual?: boolean;
   /**
+   * v1.77 (org-owned control plane): owning org (billing account) id and the
+   * provisioning principal. A wallet authenticates; the org owns the project.
+   * Present on the canonical project object (`GET /projects/v1`); the
+   * tier-status list does not include them today, so both are optional and
+   * forward-compatible (preserved via the index signature regardless).
+   */
+  billing_account_id?: string;
+  created_by?: string;
+  /**
    * v1.59 (add-project-transfer): set on a project after an accepted transfer
    * stamped `projects.secrets_rotation_advised_at`. Clears automatically once
    * B has re-written every previously-inherited secret name (or via the

@@ -116,14 +116,15 @@ single-copy single-realm callers as a back-compat path.
 |---|---|---|---|
 | `PaymentRequired` | `"payment_required"` | HTTP 402 | x402 payment requirements in `body` |
 | `ProjectNotFound` | `"project_not_found"` | Project ID not in the credential provider | `projectId` |
-| `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 | — |
+| `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 — authentication missing or invalid | — |
+| `NotAuthorizedError` | `"not_authorized"` | HTTP 403 with `code: "NOT_AUTHORIZED"` — org-owned control-plane denial (gateway v1.77+): authenticated, but the principal lacks the required org membership/role or per-project grant | `requiredRole`, `requiredCapability`, `reason`, `action` |
 | `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
 | `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 | `TransferFreezeError` | `"transfer_freeze"` | HTTP 409 with `code: "PROJECT_HAS_PENDING_TRANSFER"` from the v1.59 transfer-freeze middleware blocking owner-side mutations during a pending transfer | `transferId`, `projectId`, `cancelPath`, `previewPath` |
 
-The exported `Run402ErrorKind` union type (`"payment_required" | "project_not_found" | "unauthorized" | "api_error" | "network_error" | "local_error" | "deploy_error" | "transfer_freeze"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
+The exported `Run402ErrorKind` union type (`"payment_required" | "project_not_found" | "unauthorized" | "not_authorized" | "api_error" | "network_error" | "local_error" | "deploy_error" | "transfer_freeze"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
 
 ```ts
 import {
@@ -164,7 +165,7 @@ try {
 The SDK exports identity-free guards plus a single canonical "should I retry this?" function:
 
 - `isRun402Error(e)` — true for any `Run402Error` subclass instance, regardless of which SDK copy created it.
-- `isPaymentRequired(e)`, `isProjectNotFound(e)`, `isUnauthorized(e)`, `isApiError(e)`, `isNetworkError(e)`, `isLocalError(e)`, `isDeployError(e)`, `isTransferFreezeError(e)` — narrow `unknown` to the named subclass.
+- `isPaymentRequired(e)`, `isProjectNotFound(e)`, `isUnauthorized(e)`, `isNotAuthorized(e)`, `isApiError(e)`, `isNetworkError(e)`, `isLocalError(e)`, `isDeployError(e)`, `isTransferFreezeError(e)` — narrow `unknown` to the named subclass. `isUnauthorized` (authentication missing/invalid) and `isNotAuthorized` (org control-plane denial — authenticated but under-privileged) are distinct: the first calls for re-auth, the second for obtaining an org membership/role or grant.
 - `isRetryableRun402Error(e)` — encapsulates the retry policy: `e.retryable || kind === "network_error" || status in {408, 425, 429} || status >= 500`, unless the gateway explicitly sets `retryable: false`. `safeToRetry` alone is not a retry signal; it means a repeated mutation should not duplicate/corrupt state, not that lifecycle/payment/auth gates will become allowed without an action. Returns `false` for non-Run402 inputs so it's safe to call from any `catch` block.
 - `getQuotaScope(e)` — returns `"account"` for pooled billing-account quota denials, `"project"` for the orphan-project fallback when a billing-account row has been purged but cascade has not yet run, and `undefined` for non-quota errors or pre-v1.46 gateways. Safe to call with any `unknown`; reads `Run402Error.quotaScope`, which is lifted from `details.scope` on the gateway envelope.
 
@@ -632,7 +633,7 @@ demoteUser(id, email): Promise<void>
 - `lease_perpetual: boolean | null` — operator escape hatch flag. When `true`, the account never advances past `active` regardless of lease expiry.
 - `tier: "prototype" | "hobby" | "team" | null` — the account's active tier.
 
-`r.projects.list(wallet)` returns per-project facts only (`id`, `name`, `api_calls`, `storage_bytes`, `created_at`). It now requires SIWX from the wallet itself (or an admin key) — `GET /wallets/v1/:wallet/projects` was hardened from public to owner-only, since project ids/names/usage are private; the kernel signs the header from the provider, and listing another wallet's projects returns 403. The v1.56 `status` / `pinned` / `tier` mirrors and the v1.57 `effective_status` / `account_lifecycle_state` / `lease_perpetual` per-project mirrors were dropped. The v1.56 `projects.pin(id)` SDK method was removed alongside the endpoint — use `r.admin.setLeasePerpetual(ba_id, true)`.
+`r.projects.list(wallet)` returns per-project facts only (`id`, `name`, `api_calls`, `storage_bytes`, `created_at`). It requires SIWX from the wallet itself (or an admin key) — `GET /wallets/v1/:wallet/projects` is owner-scoped, since project ids/names/usage are private; the kernel signs the header from the provider, and a wallet whose principal has no membership/grant on the listed projects gets an empty list. Org-owned control plane (v1.77+): a wallet *authenticates* but does not *own* — this lists projects owned by orgs (billing accounts) the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant (was: `wallet_address = signer`). The canonical project object (`GET /projects/v1`) carries `billing_account_id` (owning org) + `created_by` (provisioning principal) instead of `wallet_address`; `ProjectSummary` / `TierStatusProject` expose both as optional, forward-compatible fields. The v1.56 `status` / `pinned` / `tier` mirrors and the v1.57 `effective_status` / `account_lifecycle_state` / `lease_perpetual` per-project mirrors were dropped. The v1.56 `projects.pin(id)` SDK method was removed alongside the endpoint — use `r.admin.setLeasePerpetual(ba_id, true)`.
 
 `r.projects.getUsage(id)` still surfaces `effective_status` and `account_lifecycle_state` because that endpoint scopes to a single project and the derivation collapses per-project `archived_at` / `deleted_at` together with the account's lifecycle.
 
