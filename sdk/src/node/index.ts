@@ -151,6 +151,8 @@ export {
   Ci,
   CI_SESSION_CREDENTIALS,
   Deploy,
+  Org,
+  Grants,
   files,
   CI_AUDIENCE,
   CI_GITHUB_ACTIONS_ISSUER,

@@ -61,7 +61,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -83,7 +83,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -386,6 +386,16 @@ const SURFACE: Capability[] = [
   { id: "list_incoming_transfers",   endpoint: "GET /agent/v1/transfers/incoming",              mcp: "list_incoming_transfers",   cli: "transfer:list",    openclaw: "transfer:list" },
   { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              mcp: "list_outgoing_transfers",   cli: null,               openclaw: null },
 
+  // ── Org-owned control plane: identity, membership, grants (v1.77+) ──────
+  { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "org:whoami",        openclaw: "org:whoami" },
+  { id: "list_orgs",           endpoint: "GET /orgs/v1",                                  mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
+  { id: "list_org_members",    endpoint: "GET /orgs/v1/:ba/members",                      mcp: "list_org_members",      cli: "org:members",       openclaw: "org:members" },
+  { id: "add_org_member",      endpoint: "POST /orgs/v1/:ba/members",                     mcp: "add_org_member",        cli: "org:add-member",    openclaw: "org:add-member" },
+  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:ba/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:set-role",      openclaw: "org:set-role" },
+  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:ba/members/:principal_id",     mcp: "remove_org_member",     cli: "org:remove-member", openclaw: "org:remove-member" },
+  { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
+  { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
+
   // ── Auth (project user) ────────────────────────────────────────────────
   { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           mcp: "request_magic_link", cli: "auth:magic-link",    openclaw: "auth:magic-link" },
   { id: "verify_magic_link",  endpoint: "POST /auth/v1/token?grant_type=magic_link", mcp: "verify_magic_link", cli: "auth:verify", openclaw: "auth:verify" },
@@ -645,6 +655,16 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   cancel_project_transfer: "admin.transfers.cancel",
   list_incoming_transfers: "admin.transfers.listIncoming",
   list_outgoing_transfers: "admin.transfers.listOutgoing",
+
+  // Org-owned control plane (v1.77+) — r.org.* + r.grants.*
+  whoami: "org.whoami",
+  list_orgs: "org.list",
+  list_org_members: "org.members",
+  add_org_member: "org.addMember",
+  set_org_member_role: "org.setRole",
+  remove_org_member: "org.removeMember",
+  create_project_grant: "grants.create",
+  revoke_project_grant: "grants.revoke",
 
   // Auth
   request_magic_link: "auth.requestMagicLink",

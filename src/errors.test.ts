@@ -382,6 +382,26 @@ describe("formatApiError", () => {
     assert.ok(text.includes("/admin/v1/rest/*"));
     assert.ok(!text.includes("lease may have expired"));
   });
+
+  it("maps 409 LAST_OWNER to promote-another-owner guidance, not the generic reserved-name text", () => {
+    const result = formatApiError(
+      {
+        status: 409,
+        body: {
+          code: "LAST_OWNER",
+          category: "validation",
+          message: "An org must keep at least one active owner.",
+        },
+      },
+      "removing org member",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("409"));
+    assert.ok(text.includes("Code: `LAST_OWNER`"));
+    assert.ok(text.includes("set_org_member_role"));
+    assert.ok(/at least one active .?owner/i.test(text));
+    assert.ok(!text.includes("already in use or reserved"));
+  });
 });
 
 describe("projectNotFound", () => {

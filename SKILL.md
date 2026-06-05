@@ -671,6 +671,16 @@ A project can be transferred to a different wallet without redeploying. Both sid
 
 `list_incoming_transfers` is also surfaced on the top-level `tier_status` response as `incoming_transfers[]` (each entry carries `preview_path`), so a single `tier_status` call shows pending offers without a separate fetch.
 
+## Organization, membership & grants (v1.77+)
+
+A wallet **authenticates**; the **org (billing account)** owns projects. What a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant - never by `wallet == signer`. A fresh wallet that subscribes + provisions auto-owns its org-of-one, so this layer stays invisible until a second principal joins.
+
+- **`whoami`** - resolve your control-plane principal + every org membership (role + status). The remote identity; for local wallet/profile state use `status`.
+- **`list_orgs`** / **`list_org_members`** - read your orgs, and an org's members + roles.
+- **`add_org_member`** - add a member BY WALLET (a new wallet is provisioned as a `human` principal); role defaults to `developer`. Owner-gated. Email-first invite is a separate, not-yet-shipped flow.
+- **`set_org_member_role`** / **`remove_org_member`** - owner-gated. Removing or demoting the org's only active owner fails with `409 LAST_OWNER` - promote another member to `owner` first.
+- **`create_project_grant`** / **`revoke_project_grant`** - per-project capability grants (e.g. `deploy`, `functions:write`) for agent/CI principals that aren't broad org members. Requires owner of the project's org.
+
 ## Standard Workflow
 
 ```
@@ -736,6 +746,7 @@ Other allowance options:
 | `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
 | `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist, so also re-check the project id. |
+| `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |
 | `409 reserved` from `claim_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |

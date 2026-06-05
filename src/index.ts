@@ -115,6 +115,26 @@ import {
   listOutgoingTransfersSchema,
   previewProjectTransferSchema,
 } from "./tools/transfers.js";
+import {
+  whoamiSchema,
+  handleWhoami,
+  listOrgsSchema,
+  handleListOrgs,
+  listOrgMembersSchema,
+  handleListOrgMembers,
+  addOrgMemberSchema,
+  handleAddOrgMember,
+  setOrgMemberRoleSchema,
+  handleSetOrgMemberRole,
+  removeOrgMemberSchema,
+  handleRemoveOrgMember,
+} from "./tools/orgs.js";
+import {
+  createProjectGrantSchema,
+  handleCreateProjectGrant,
+  revokeProjectGrantSchema,
+  handleRevokeProjectGrant,
+} from "./tools/grants.js";
 
 // New tools — user role management
 import { promoteUserSchema, handlePromoteUser } from "./tools/promote-user.js";
@@ -1363,6 +1383,64 @@ server.tool(
   "Liveness check for the Run402 SERVICE — not your account. For your account status (allowance, tier, projects), use `status`. Reads public GET /health with per-dependency check results. No auth required.",
   serviceHealthSchema,
   async (args) => handleServiceHealth(args),
+);
+
+// ─── Org-owned control plane: identity, membership, grants (v1.77+) ──────────
+
+server.tool(
+  "whoami",
+  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami). A wallet authenticates; ownership is the org. Returns the principal (id/type/display_name), authenticator_id, and every org membership with its role + status. This is the REMOTE identity — for the local wallet/profile state use `status`.",
+  whoamiSchema,
+  async () => handleWhoami(),
+);
+
+server.tool(
+  "list_orgs",
+  "List the orgs (billing accounts) you are a member of, with your role and membership status in each.",
+  listOrgsSchema,
+  async () => handleListOrgs(),
+);
+
+server.tool(
+  "list_org_members",
+  "List the members of an org (billing account) and their roles. Params: `billing_account_id`.",
+  listOrgMembersSchema,
+  async (args) => handleListOrgMembers(args),
+);
+
+server.tool(
+  "add_org_member",
+  "Add a member to an org BY WALLET (POST /orgs/v1/:ba/members). A brand-new wallet is provisioned as a `human` principal. `role` defaults to `developer`. Requires you to hold an active `owner` membership. (Email-first invite is a separate, not-yet-shipped flow.)",
+  addOrgMemberSchema,
+  async (args) => handleAddOrgMember(args),
+);
+
+server.tool(
+  "set_org_member_role",
+  "Change a member's role (owner > admin > developer > billing > viewer). Requires an active `owner` membership. Demoting the org's only active owner fails with `409 LAST_OWNER`.",
+  setOrgMemberRoleSchema,
+  async (args) => handleSetOrgMemberRole(args),
+);
+
+server.tool(
+  "remove_org_member",
+  "Remove a member from an org. Requires an active `owner` membership. Removing the org's only active owner fails with `409 LAST_OWNER`.",
+  removeOrgMemberSchema,
+  async (args) => handleRemoveOrgMember(args),
+);
+
+server.tool(
+  "create_project_grant",
+  "Issue a per-project capability grant to a wallet (for agent/CI principals that aren't broad org members). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Requires you to be an owner of the project's org.",
+  createProjectGrantSchema,
+  async (args) => handleCreateProjectGrant(args),
+);
+
+server.tool(
+  "revoke_project_grant",
+  "Revoke a per-project capability grant by id. Params: `project_id`, `grant_id`. Requires you to be an owner of the project's org.",
+  revokeProjectGrantSchema,
+  async (args) => handleRevokeProjectGrant(args),
 );
 
 const transport = new StdioServerTransport();
