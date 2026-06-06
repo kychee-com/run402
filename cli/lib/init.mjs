@@ -1,6 +1,8 @@
 import { readAllowance, saveAllowance, loadKeyStore, configDir } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
+import { getActiveProfile } from "../core-dist/config.js";
+import { readMeta } from "../core-dist/profiles.js";
 import { mkdirSync } from "fs";
 
 const USDC_ABI = [{ name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
@@ -25,7 +27,7 @@ Options:
                   idempotent and does not need this flag.
 
 Output:
-  Stdout is a JSON summary { config_dir, allowance, rail, network, balance,
+  Stdout is a JSON summary { config_dir, wallet, rail, network, balances,
   tier, projects_saved, next_step }. Progress lines (Config / Allowance /
   Balance / Tier / Next) go to stderr so a human re-running interactively
   sees what's happening while a script piping stdout to jq stays clean.
@@ -87,10 +89,10 @@ export async function run(args = []) {
   const line = (label, value) => write(`  ${label.padEnd(10)} ${value}`);
   const summary = {
     config_dir: CONFIG_DIR,
-    allowance: null,
+    wallet: null,
     rail: null,
     network: null,
-    balance: null,
+    balances: null,
     tier: null,
     projects_saved: 0,
     next_step: null,
@@ -124,7 +126,9 @@ export async function run(args = []) {
     line("Allowance", short(allowance.address));
   }
 
-  summary.allowance = { address: allowance.address, funded: allowance.funded || false };
+  const walletName = getActiveProfile();
+  const walletMeta = readMeta(walletName);
+  summary.wallet = { local_label: walletName, server_label: walletMeta?.label ?? null, address: allowance.address };
   summary.network = isMpp ? "tempo-moderato" : "base-sepolia";
   summary.rail = isMpp ? "mpp" : "x402";
 
@@ -172,7 +176,6 @@ export async function run(args = []) {
             } catch {}
           }
           saveAllowance({ ...allowance, funded: true, lastFaucet: new Date().toISOString() });
-          summary.allowance.funded = true;
           if (balance > 0) {
             line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD (funded)`);
           } else {
@@ -186,9 +189,7 @@ export async function run(args = []) {
       }
     } else {
       line("Balance", `${(balance / 1e6).toFixed(2)} pathUSD`);
-      summary.allowance.funded = balance > 0;
     }
-    summary.balance = { symbol: "pathUSD", usd_micros: balance };
   } else {
     // Base Sepolia: read USDC balance (existing behavior)
     const { createPublicClient, http } = await import("viem");
@@ -214,7 +215,6 @@ export async function run(args = []) {
           } catch {}
         }
         saveAllowance({ ...allowance, funded: true, lastFaucet: new Date().toISOString() });
-        summary.allowance.funded = true;
         if (balance > 0) {
           line("Balance", `${(balance / 1e6).toFixed(2)} USDC (funded)`);
         } else {
@@ -225,10 +225,20 @@ export async function run(args = []) {
       }
     } else {
       line("Balance", `${(balance / 1e6).toFixed(2)} USDC`);
-      summary.allowance.funded = balance > 0;
     }
-    summary.balance = { symbol: "USDC", usd_micros: balance };
   }
+
+  // Balances mirror `run402 status`: the on-chain figure above plus the
+  // Run402-held prepaid credit (rail-independent). Prepaid credit is fetched
+  // best-effort so a billing read failure never blocks setup.
+  const billing = await getSdk().billing.checkBalance(allowance.address).catch(() => null);
+  const hasBilling = billing && billing.exists !== false;
+  summary.balances = {
+    on_chain_usd_micros: balance,
+    on_chain_token: isMpp ? "pathUSD" : "USDC",
+    prepaid_credit_usd_micros: hasBilling ? billing.available_usd_micros : null,
+    held_usd_micros: hasBilling ? (billing.held_usd_micros ?? 0) : null,
+  };
 
   // Show note if switching rails
   if (previousRail && previousRail !== (isMpp ? "mpp" : "x402")) {

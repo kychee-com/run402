@@ -56,10 +56,11 @@ When the inspected resource is absent, the payload SHALL contain the resource's 
 
 The `hint` field SHALL use the same name as the existing stderr error envelope's `hint` so agents see consistent guidance-field naming across success and error channels.
 
-#### Scenario: Status with no allowance reports null allowance and hint
+#### Scenario: Status with no wallet reports null wallet and hint
 
 - **WHEN** a user runs `run402 status` and no allowance file exists
-- **THEN** stdout SHALL contain a JSON object with `allowance: null` and `hint: "Run: run402 init"` (or equivalent next-step guidance)
+- **THEN** stdout SHALL contain a JSON object with `wallet: null` and `hint: "Run: run402 init"` (or equivalent next-step guidance)
+- **AND** stdout SHALL NOT contain an `allowance` block
 - **AND** exit code SHALL be 0
 - **AND** stdout SHALL NOT contain a top-level `status` field
 
@@ -274,7 +275,10 @@ The progress-on-stderr split SHALL NOT use the stderr error envelope format (no 
 #### Scenario: init emits JSON summary on stdout, progress on stderr
 
 - **WHEN** a user runs `run402 init`
-- **THEN** stdout SHALL be a JSON object of shape `{ config_dir, allowance, rail, network, balance, tier, projects_saved, next_step }`
+- **THEN** stdout SHALL be a JSON object of shape `{ config_dir, wallet, rail, network, balances, tier, projects_saved, next_step }`
+- **AND** the `wallet` object SHALL carry `local_label`, `server_label`, and `address`, and SHALL NOT carry a `funded` field
+- **AND** the `balances` object SHALL match the `run402 status` shape (`on_chain_usd_micros`, `on_chain_token`, `prepaid_credit_usd_micros`, `held_usd_micros`)
+- **AND** stdout SHALL NOT contain an `allowance` block or a top-level `balance` field
 - **AND** stderr SHALL contain human progress lines including labels such as `Config`, `Allowance`, `Balance`, `Tier`, `Next`
 - **AND** stderr SHALL NOT contain a structured error envelope (no JSON object starting with `{ "status": "error"`)
 

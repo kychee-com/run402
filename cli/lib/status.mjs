@@ -10,9 +10,9 @@ Usage:
   run402 status
 
 Displays:
-  - Allowance address and funding status
-  - Wallet on-chain USDC/pathUSD balance (wallet_balance_usd_micros)
-  - Billing balance (available + held)
+  - Wallet identity (local_label, server_label, address)
+  - Payment rail (x402 | mpp)
+  - Balances (on_chain_usd_micros + on_chain_token, prepaid_credit_usd_micros, held_usd_micros)
   - Tier subscription (name, status, expiry)
   - Projects (from server, with fallback to local keystore)
   - Active project ID
@@ -83,7 +83,7 @@ export async function run(args = []) {
   assertKnownFlags(args, ["--help", "-h"]);
   const allowance = readAllowance();
   if (!allowance) {
-    console.log(JSON.stringify({ allowance: null, hint: "Run: run402 init" }));
+    console.log(JSON.stringify({ wallet: null, hint: "Run: run402 init" }));
     return;
   }
 
@@ -106,23 +106,32 @@ export async function run(args = []) {
     ? remote.projects.map(normalizeProject)
     : Object.keys(store.projects).map(id => ({ project_id: id }));
 
-  // Which named wallet this state belongs to. `name` is the active profile
-  // (default for single-wallet installs); `label` is the cached server-side
-  // display name (null until set / when offline).
+  // Which named wallet this state belongs to. `local_label` is the active
+  // profile (default for single-wallet installs); `server_label` is the
+  // cached server-side display name (null until set / when offline).
   const walletName = getActiveProfile();
   const walletMeta = readMeta(walletName);
 
+  // GH-32 follow-up: balances are grouped under one object so the on-chain and
+  // prepaid-credit numbers are unambiguous and rail-legible.
+  //   - on_chain_usd_micros / on_chain_token: on-chain USDC (x402) or pathUSD
+  //     (mpp), null if the RPC read failed
+  //   - prepaid_credit_usd_micros / held_usd_micros: Run402-held credits,
+  //     rail-independent, null when no billing account exists
+  const hasBilling = billing && billing.exists !== false;
   const result = {
     wallet: {
-      name: walletName,
+      local_label: walletName,
+      server_label: walletMeta?.label ?? null,
       address: allowance.address,
-      label: walletMeta?.label ?? null,
-    },
-    allowance: {
-      address: allowance.address,
-      funded: allowance.funded || false,
     },
     rail,
+    balances: {
+      on_chain_usd_micros: walletBalance,
+      on_chain_token: rail === "mpp" ? "pathUSD" : "USDC",
+      prepaid_credit_usd_micros: hasBilling ? billing.available_usd_micros : null,
+      held_usd_micros: hasBilling ? (billing.held_usd_micros ?? 0) : null,
+    },
     tier: tier && tier.tier
       ? { name: tier.tier, status: tier.status, expires: tier.lease_expires_at }
       : null,
@@ -131,15 +140,6 @@ export async function run(args = []) {
     // dig into the projects array to read them.
     account_lifecycle_state: tier?.account_lifecycle_state ?? null,
     lease_perpetual: tier?.lease_perpetual ?? null,
-    // GH-32: `balance` used to mean the billing-account balance, which
-    // confused people who expected their on-chain wallet balance. Split into
-    // two unambiguous fields:
-    //   - billing: credits held by Run402 (available + held), null if no account
-    //   - wallet_balance_usd_micros: on-chain USDC/pathUSD, null if RPC fails
-    billing: billing && billing.exists !== false
-      ? { available_usd_micros: billing.available_usd_micros, held_usd_micros: billing.held_usd_micros ?? 0 }
-      : null,
-    wallet_balance_usd_micros: walletBalance,
     projects,
     active_project: activeId || null,
   };

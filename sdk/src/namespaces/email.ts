@@ -54,6 +54,20 @@ export type EmailTemplate = "project_invite" | "magic_link" | "notification";
 /** Selects a target mailbox on a multi-mailbox project: a mailbox id (`mbx_…`) or a slug. */
 export type MailboxSelector = string;
 
+/** A single binary attachment (raw mode only). `content_base64` is the file's bytes, base64-encoded. */
+export interface EmailAttachment {
+  filename: string;
+  content_base64: string;
+  content_type: string;
+}
+
+/** Attachment metadata recorded on a sent message (names/types/sizes — never the bytes). */
+export interface EmailAttachmentMeta {
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+}
+
 export interface SendEmailOptions {
   to: string;
   template?: EmailTemplate;
@@ -62,6 +76,12 @@ export interface SendEmailOptions {
   html?: string;
   text?: string;
   from_name?: string;
+  /**
+   * Binary attachments — RAW MODE ONLY (with `subject` + `html`, not `template`).
+   * At most 5; each ≤ 7 MB and ≤ 7 MB total (decoded). The platform sends a
+   * multipart/mixed MIME when present.
+   */
+  attachments?: EmailAttachment[];
   in_reply_to?: string;
   /**
    * Target mailbox (slug or `mbx_…` id) on a project that has more than one.
@@ -93,6 +113,8 @@ export interface EmailSummary {
   to: string;
   status: string;
   created_at: string;
+  /** Present (non-null) when the send carried attachments; names/types/sizes only. */
+  attachments_meta?: EmailAttachmentMeta[] | null;
 }
 
 export interface EmailDetail {
@@ -102,6 +124,8 @@ export interface EmailDetail {
   status: string;
   variables: Record<string, string>;
   created_at: string;
+  /** Present (non-null) when the send carried attachments; names/types/sizes only. */
+  attachments_meta?: EmailAttachmentMeta[] | null;
   replies?: Array<{
     id: string;
     from: string;
@@ -504,6 +528,13 @@ export class Email {
         "sending email",
       );
     }
+    const hasAttachments = Array.isArray(opts.attachments) && opts.attachments.length > 0;
+    if (hasAttachments && isTemplate) {
+      throw new LocalError(
+        "Attachments are only supported in raw mode (`subject` + `html`), not with `template`.",
+        "sending email",
+      );
+    }
 
     const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const body: Record<string, unknown> = { to: opts.to };
@@ -514,6 +545,7 @@ export class Email {
       body.subject = opts.subject;
       body.html = opts.html;
       if (opts.text !== undefined) body.text = opts.text;
+      if (hasAttachments) body.attachments = opts.attachments;
     }
     if (opts.from_name !== undefined) body.from_name = opts.from_name;
     if (opts.in_reply_to !== undefined) body.in_reply_to = opts.in_reply_to;

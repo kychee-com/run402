@@ -451,6 +451,7 @@ describe("ScopedRun402 drift protection", () => {
     secrets: new Set(),
     senderDomain: new Set(),
     subdomains: new Set(),
+    grants: new Set(),
   };
 
   // Namespaces that exist on Run402 but are NOT exposed on ScopedRun402:
@@ -480,6 +481,9 @@ describe("ScopedRun402 drift protection", () => {
     "projects",
     "sites", // Sites class is empty — intentionally not exposed on ScopedRun402
     "ci", // CI binding lifecycle is intentionally unscoped in v1.
+    "operator", // human/email principal session — not project-scoped.
+    "org", // org membership is billing-account-scoped, not project-scoped.
+    // `grants` IS project-scoped (exposed as r.project(id).grants) — checked below.
   ]);
 
   it("every project-scoped method on Run402 has a ScopedRun402 wrapper", async () => {
@@ -501,6 +505,7 @@ describe("ScopedRun402 drift protection", () => {
       "secrets",
       "senderDomain",
       "subdomains",
+      "grants",
     ];
 
     const missing: string[] = [];

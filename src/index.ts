@@ -115,6 +115,26 @@ import {
   listOutgoingTransfersSchema,
   previewProjectTransferSchema,
 } from "./tools/transfers.js";
+import {
+  whoamiSchema,
+  handleWhoami,
+  listOrgsSchema,
+  handleListOrgs,
+  listOrgMembersSchema,
+  handleListOrgMembers,
+  addOrgMemberSchema,
+  handleAddOrgMember,
+  setOrgMemberRoleSchema,
+  handleSetOrgMemberRole,
+  removeOrgMemberSchema,
+  handleRemoveOrgMember,
+} from "./tools/orgs.js";
+import {
+  createProjectGrantSchema,
+  handleCreateProjectGrant,
+  revokeProjectGrantSchema,
+  handleRevokeProjectGrant,
+} from "./tools/grants.js";
 
 // New tools — user role management
 import { promoteUserSchema, handlePromoteUser } from "./tools/promote-user.js";
@@ -687,7 +707,7 @@ server.tool(
 
 server.tool(
   "admin_set_lease_perpetual",
-  "Toggle a billing account's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the account never advances past `active` regardless of lease expiry; every project on the account inherits the pinned state. Enabling on a grace-state account (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured allowance wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /billing-accounts/v1/admin/:id/lease-perpetual.",
+  "Toggle a billing account's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the account never advances past `active` regardless of lease expiry; every project on the account inherits the pinned state. Enabling on a grace-state account (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured allowance wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /billing/v1/admin/accounts/:account_id/lease-perpetual.",
   adminSetLeasePerpetualSchema,
   async (args) => handleAdminSetLeasePerpetual(args),
 );
@@ -768,14 +788,14 @@ server.tool(
 
 server.tool(
   "check_balance",
-  "Check billing account balance for an agent allowance address. Shows available and held funds.",
+  "Check the billing account balance for the agent's allowance wallet — available and held funds. The wallet is resolved to its billing account over SIWX (signed automatically); reading a wallet that is not linked to yours requires an admin key.",
   checkBalanceSchema,
   async (args) => handleCheckBalance(args),
 );
 
 server.tool(
   "list_projects",
-  "List all active projects for an agent allowance address.",
+  "List active projects for the agent's allowance wallet. Owner-only: requires SIWX matching the wallet (signed automatically), so you can list only your own projects (an admin key bypasses).",
   listProjectsSchema,
   async (args) => handleListProjects(args),
 );
@@ -1034,7 +1054,7 @@ server.tool(
 
 server.tool(
   "billing_history",
-  "View billing transaction history for an agent allowance address.",
+  "View billing ledger history for the agent's allowance wallet. The wallet is resolved to its billing account over SIWX (signed automatically); a wallet not linked to yours requires an admin key.",
   billingHistorySchema,
   async (args) => handleBillingHistory(args),
 );
@@ -1363,6 +1383,64 @@ server.tool(
   "Liveness check for the Run402 SERVICE — not your account. For your account status (allowance, tier, projects), use `status`. Reads public GET /health with per-dependency check results. No auth required.",
   serviceHealthSchema,
   async (args) => handleServiceHealth(args),
+);
+
+// ─── Org-owned control plane: identity, membership, grants (v1.77+) ──────────
+
+server.tool(
+  "whoami",
+  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami). A wallet authenticates; ownership is the org. Returns the principal (id/type/displayName/createdAt), authenticator_id, and every org membership with its role + status. This is the REMOTE identity — for the local wallet/profile state use `status`.",
+  whoamiSchema,
+  async () => handleWhoami(),
+);
+
+server.tool(
+  "list_orgs",
+  "List the orgs (billing accounts) you are a member of, with your role and membership status in each.",
+  listOrgsSchema,
+  async () => handleListOrgs(),
+);
+
+server.tool(
+  "list_org_members",
+  "List the members of an org (billing account) and their roles. Params: `billing_account_id`.",
+  listOrgMembersSchema,
+  async (args) => handleListOrgMembers(args),
+);
+
+server.tool(
+  "add_org_member",
+  "Add a member to an org BY WALLET (POST /orgs/v1/:ba/members). A brand-new wallet is provisioned as a `human` principal. `role` defaults to `developer`. Requires you to hold an active `owner` membership. (Email-first invite is a separate, not-yet-shipped flow.)",
+  addOrgMemberSchema,
+  async (args) => handleAddOrgMember(args),
+);
+
+server.tool(
+  "set_org_member_role",
+  "Change a member's role (owner > admin > developer > billing > viewer). Requires an active `owner` membership. Demoting the org's only active owner fails with `409 LAST_OWNER`.",
+  setOrgMemberRoleSchema,
+  async (args) => handleSetOrgMemberRole(args),
+);
+
+server.tool(
+  "remove_org_member",
+  "Remove a member from an org. Requires an active `owner` membership. Removing the org's only active owner fails with `409 LAST_OWNER`.",
+  removeOrgMemberSchema,
+  async (args) => handleRemoveOrgMember(args),
+);
+
+server.tool(
+  "create_project_grant",
+  "Issue a per-project capability grant to a wallet (for agent/CI principals that aren't broad org members). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Requires you to be an owner of the project's org.",
+  createProjectGrantSchema,
+  async (args) => handleCreateProjectGrant(args),
+);
+
+server.tool(
+  "revoke_project_grant",
+  "Revoke a per-project capability grant by id. Params: `project_id`, `grant_id`. Requires you to be an owner of the project's org.",
+  revokeProjectGrantSchema,
+  async (args) => handleRevokeProjectGrant(args),
 );
 
 const transport = new StdioServerTransport();

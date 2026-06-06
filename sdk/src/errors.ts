@@ -20,6 +20,7 @@ export type Run402ErrorKind =
   | "payment_required"
   | "project_not_found"
   | "unauthorized"
+  | "not_authorized"
   | "api_error"
   | "network_error"
   | "local_error"
@@ -183,6 +184,76 @@ export class Unauthorized extends Run402Error {
   static readonly DEFAULT_CATEGORY = "auth";
   static readonly DEFAULT_RETRYABLE = false;
   readonly kind = "unauthorized" as const;
+}
+
+/**
+ * HTTP 403 `NOT_AUTHORIZED` — the org-owned control plane (gateway v1.77+)
+ * denied a control-plane action. A wallet *authenticates* (SIWX resolves it to
+ * a principal); *authorization* is an org (billing-account) membership in the
+ * role lattice `owner > admin > developer > billing > viewer`, or a per-project
+ * grant for agent/CI principals — never `wallet_address == signer`. High-stakes
+ * ops (delete, transfer-of-ownership, membership change) require an active
+ * `owner` membership.
+ *
+ * Distinct from {@link Unauthorized} (authentication missing/invalid): here the
+ * caller IS authenticated but lacks the required role/capability, so the fix is
+ * to obtain access (a membership/grant), not to re-authenticate. The gateway
+ * returns 403 — never 404 — even when the project does not exist, so existence
+ * is not leaked to a non-authorized caller (surfaced as `reason:
+ * "project_not_found"`). Branch on `kind === "not_authorized"` (or
+ * {@link isNotAuthorized}).
+ */
+export class NotAuthorizedError extends Run402Error {
+  static readonly DEFAULT_CODE = "NOT_AUTHORIZED";
+  static readonly DEFAULT_CATEGORY = "auth";
+  static readonly DEFAULT_RETRYABLE = false;
+  readonly kind = "not_authorized" as const;
+  /** The control-plane action that was denied, when the gateway named one. */
+  readonly action: string | null;
+  /** Org role required for the action (e.g. `"owner"`), or null when the denial is capability-based. */
+  readonly requiredRole: string | null;
+  /** Per-project capability required (e.g. `"deploy"`), or null when the denial is role-based. */
+  readonly requiredCapability: string | null;
+  /**
+   * Why authorization failed. Known values: `"member"` (no active membership),
+   * `"grant"` (no per-project grant), `"forbidden"` (role/grant too low), and
+   * `"project_not_found"` (returned as 403 to avoid leaking existence). Future
+   * strings pass through unchanged.
+   */
+  readonly reason: string | null;
+
+  constructor(message: string, status: number, body: unknown, context: string) {
+    super(message, status, body, context);
+    const envelope =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : null;
+    const details =
+      envelope &&
+      typeof envelope.details === "object" &&
+      envelope.details !== null &&
+      !Array.isArray(envelope.details)
+        ? (envelope.details as Record<string, unknown>)
+        : null;
+    this.action = typeof details?.action === "string" ? (details.action as string) : null;
+    this.requiredRole =
+      typeof details?.required_role === "string" ? (details.required_role as string) : null;
+    this.requiredCapability =
+      typeof details?.required_capability === "string"
+        ? (details.required_capability as string)
+        : null;
+    this.reason = typeof details?.reason === "string" ? (details.reason as string) : null;
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      action: this.action,
+      requiredRole: this.requiredRole,
+      requiredCapability: this.requiredCapability,
+      reason: this.reason,
+    };
+  }
 }
 
 /** Any other non-2xx HTTP response from the gateway. */
@@ -441,6 +512,11 @@ export function isProjectNotFound(e: unknown): e is ProjectNotFound {
 /** True if `e` is an {@link Unauthorized}. */
 export function isUnauthorized(e: unknown): e is Unauthorized {
   return isRun402Error(e) && e.kind === "unauthorized";
+}
+
+/** True if `e` is a {@link NotAuthorizedError} (org-owned control-plane denial, gateway v1.77+). */
+export function isNotAuthorized(e: unknown): e is NotAuthorizedError {
+  return isRun402Error(e) && e.kind === "not_authorized";
 }
 
 /** True if `e` is an {@link ApiError}. */

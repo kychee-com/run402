@@ -251,6 +251,42 @@ describe("email.send", () => {
     );
     assert.equal(calls.length, 0);
   });
+
+  it("includes attachments in the raw-mode send body", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ message_id: "msg_1", to: "user@example.invalid", template: null, subject: "test", status: "sent", sent_at: "2026-05-01T18:30:14.904Z" }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const attachments = [{ filename: "a.pdf", content_base64: "JVBERi0=", content_type: "application/pdf" }];
+    await sdk.email.send("prj_known", {
+      to: "user@example.invalid",
+      subject: "test",
+      html: "<p>hi</p>",
+      attachments,
+      mailbox: "mbx_known",
+    });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string).attachments, attachments);
+  });
+
+  it("rejects attachments in template mode before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for template+attachments");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.email.send("prj_known", {
+        to: "user@example.invalid",
+        template: "notification",
+        variables: { project_name: "X", message: "hi" },
+        attachments: [{ filename: "a.pdf", content_base64: "JVBERi0=", content_type: "application/pdf" }],
+      }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "sending email" &&
+        /raw mode/i.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe("email message ids", () => {

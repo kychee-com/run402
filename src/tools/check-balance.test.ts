@@ -37,7 +37,7 @@ describe("check_balance tool", () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          identifier_type: "wallet",
+          billing_account_id: "00000000-0000-4000-8000-000000000001",
           available_usd_micros: 2500000,
           email_credits_remaining: 42,
           tier: "prototype",
@@ -62,7 +62,7 @@ describe("check_balance tool", () => {
       capturedUrl = input instanceof Request ? input.url : String(input);
       return new Response(
         JSON.stringify({
-          identifier_type: "wallet",
+          billing_account_id: "00000000-0000-4000-8000-000000000001",
           available_usd_micros: 0,
           email_credits_remaining: 0,
           tier: null,
@@ -82,7 +82,7 @@ describe("check_balance tool", () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          identifier_type: "wallet",
+          billing_account_id: "00000000-0000-4000-8000-000000000001",
           available_usd_micros: 0,
           email_credits_remaining: 0,
           tier: null,

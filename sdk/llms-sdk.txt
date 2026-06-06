@@ -116,14 +116,15 @@ single-copy single-realm callers as a back-compat path.
 |---|---|---|---|
 | `PaymentRequired` | `"payment_required"` | HTTP 402 | x402 payment requirements in `body` |
 | `ProjectNotFound` | `"project_not_found"` | Project ID not in the credential provider | `projectId` |
-| `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 | — |
+| `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 — authentication missing or invalid | — |
+| `NotAuthorizedError` | `"not_authorized"` | HTTP 403 with `code: "NOT_AUTHORIZED"` — org-owned control-plane denial (gateway v1.77+): authenticated, but the principal lacks the required org membership/role or per-project grant | `requiredRole`, `requiredCapability`, `reason`, `action` |
 | `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
 | `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 | `TransferFreezeError` | `"transfer_freeze"` | HTTP 409 with `code: "PROJECT_HAS_PENDING_TRANSFER"` from the v1.59 transfer-freeze middleware blocking owner-side mutations during a pending transfer | `transferId`, `projectId`, `cancelPath`, `previewPath` |
 
-The exported `Run402ErrorKind` union type (`"payment_required" | "project_not_found" | "unauthorized" | "api_error" | "network_error" | "local_error" | "deploy_error" | "transfer_freeze"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
+The exported `Run402ErrorKind` union type (`"payment_required" | "project_not_found" | "unauthorized" | "not_authorized" | "api_error" | "network_error" | "local_error" | "deploy_error" | "transfer_freeze"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
 
 ```ts
 import {
@@ -164,7 +165,7 @@ try {
 The SDK exports identity-free guards plus a single canonical "should I retry this?" function:
 
 - `isRun402Error(e)` — true for any `Run402Error` subclass instance, regardless of which SDK copy created it.
-- `isPaymentRequired(e)`, `isProjectNotFound(e)`, `isUnauthorized(e)`, `isApiError(e)`, `isNetworkError(e)`, `isLocalError(e)`, `isDeployError(e)`, `isTransferFreezeError(e)` — narrow `unknown` to the named subclass.
+- `isPaymentRequired(e)`, `isProjectNotFound(e)`, `isUnauthorized(e)`, `isNotAuthorized(e)`, `isApiError(e)`, `isNetworkError(e)`, `isLocalError(e)`, `isDeployError(e)`, `isTransferFreezeError(e)` — narrow `unknown` to the named subclass. `isUnauthorized` (authentication missing/invalid) and `isNotAuthorized` (org control-plane denial — authenticated but under-privileged) are distinct: the first calls for re-auth, the second for obtaining an org membership/role or grant.
 - `isRetryableRun402Error(e)` — encapsulates the retry policy: `e.retryable || kind === "network_error" || status in {408, 425, 429} || status >= 500`, unless the gateway explicitly sets `retryable: false`. `safeToRetry` alone is not a retry signal; it means a repeated mutation should not duplicate/corrupt state, not that lifecycle/payment/auth gates will become allowed without an action. Returns `false` for non-Run402 inputs so it's safe to call from any `catch` block.
 - `getQuotaScope(e)` — returns `"account"` for pooled billing-account quota denials, `"project"` for the orphan-project fallback when a billing-account row has been purged but cascade has not yet run, and `undefined` for non-quota errors or pre-v1.46 gateways. Safe to call with any `unknown`; reads `Run402Error.quotaScope`, which is lifted from `details.scope` on the gateway envelope.
 
@@ -632,7 +633,7 @@ demoteUser(id, email): Promise<void>
 - `lease_perpetual: boolean | null` — operator escape hatch flag. When `true`, the account never advances past `active` regardless of lease expiry.
 - `tier: "prototype" | "hobby" | "team" | null` — the account's active tier.
 
-`r.projects.list(wallet)` returns per-project facts only (`id`, `name`, `api_calls`, `storage_bytes`, `created_at`). The v1.56 `status` / `pinned` / `tier` mirrors and the v1.57 `effective_status` / `account_lifecycle_state` / `lease_perpetual` per-project mirrors were dropped. The v1.56 `projects.pin(id)` SDK method was removed alongside the endpoint — use `r.admin.setLeasePerpetual(ba_id, true)`.
+`r.projects.list(wallet)` returns per-project facts only (`id`, `name`, `api_calls`, `storage_bytes`, `created_at`). It requires SIWX from the wallet itself (or an admin key) — `GET /wallets/v1/:wallet/projects` is owner-scoped, since project ids/names/usage are private; the kernel signs the header from the provider, and a wallet whose principal has no membership/grant on the listed projects gets an empty list. Org-owned control plane (v1.77+): a wallet *authenticates* but does not *own* — this lists projects owned by orgs (billing accounts) the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant (was: `wallet_address = signer`). The canonical project object (`GET /projects/v1`) carries `billing_account_id` (owning org) + `created_by` (provisioning principal) instead of `wallet_address`; `ProjectSummary` / `TierStatusProject` expose both as optional, forward-compatible fields. The v1.56 `status` / `pinned` / `tier` mirrors and the v1.57 `effective_status` / `account_lifecycle_state` / `lease_perpetual` per-project mirrors were dropped. The v1.56 `projects.pin(id)` SDK method was removed alongside the endpoint — use `r.admin.setLeasePerpetual(ba_id, true)`.
 
 `r.projects.getUsage(id)` still surfaces `effective_status` and `account_lifecycle_state` because that endpoint scopes to a single project and the derivation collapses per-project `archived_at` / `deleted_at` together with the account's lifecycle.
 
@@ -1022,6 +1023,9 @@ getMailbox(projectId): Promise<MailboxInfo>
 deleteMailbox(projectId, mailboxId?): Promise<void>
 
 send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
+  // opts.attachments?: { filename, content_base64, content_type }[] — RAW MODE
+  // ONLY (subject + html, not template). Max 5; ≤ 7 MB total decoded. Sent as a
+  // multipart/mixed MIME. Sent messages echo attachments_meta (names/types/sizes).
 list(projectId, opts?: { limit?, after?, direction? }): Promise<EmailSummary[]>
   // direction?: "inbound" | "outbound" — omit for BOTH. direction:"inbound" lists
   // received replies (each EmailSummary carries `direction`) and is the
@@ -1053,7 +1057,7 @@ info(projectId): Promise<MailboxInfo>
 delete(projectId, mailboxId?): Promise<void>
 ```
 
-Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
+Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Raw mode also accepts `attachments` (max 5, ≤ 7 MB total) — a multipart/mixed MIME is sent. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
 
 ### `r.senderDomain`
 
@@ -1156,13 +1160,14 @@ gateways.
 
 ```
 createEmailAccount(email): Promise<EmailBillingAccount>
-linkWallet(billingAccountId, wallet): Promise<LinkWalletResult>
+linkWallet(billingAccountId, wallet): Promise<LinkWalletResult>  // billingAccountId = UUID; POST /billing/v1/accounts/:account_id/link-wallet
 tierCheckout(tier, identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
 buyEmailPack(identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
 setAutoRecharge(opts: { billingAccountId: string, enabled: boolean, threshold? }): Promise<void>
-checkBalance(identifier): Promise<BillingBalance>
-getAccount(identifier): Promise<BillingBalance>
-balance(identifier): Promise<BillingBalance> // alias of checkBalance
+checkBalance(identifier): Promise<BillingAccountDetail>  // identifier = account id (UUID) | wallet | email
+getAccount(identifier): Promise<BillingAccountDetail>
+lookupAccount(identifier): Promise<BillingAccountDetail>  // resolve wallet/email → account (incl. billing_account_id)
+balance(identifier): Promise<BillingAccountDetail> // alias of checkBalance
 history(identifier, limit?: number): Promise<BillingHistoryResult>
 getHistory(identifier, limit?: number): Promise<BillingHistoryResult>
 createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
@@ -1171,6 +1176,17 @@ createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
 createEmail(email): Promise<EmailBillingAccount>
 autoRecharge(opts): Promise<void>
 ```
+
+Accounts are addressed by their canonical `billing_account_id` (UUID).
+`getAccount` / `checkBalance` / `history` accept an account id, wallet, or email:
+an account id reads `GET /billing/v1/accounts/:account_id` directly, while a
+wallet/email is resolved through the `GET /billing/v1/accounts?wallet=|?email=`
+lookup (also exposed as `lookupAccount`). The detail shape dropped
+`identifier_type` and added `billing_account_id`; `BillingBalance` is a
+deprecated alias of `BillingAccountDetail`. Account reads require SIWX from a
+wallet **linked to** the account (or matching the looked-up `?wallet`), or an
+admin key — email lookups are admin-only; `history` resolves to the account id
+first, then reads `GET /billing/v1/accounts/:account_id/history`.
 
 `linkWallet` merges a wallet into an existing billing account's pool. On v1.46+
 gateways the response includes a `pool_implications` block (`tier`,
@@ -1404,6 +1420,19 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 `r.tier.status()` also surfaces `incoming_transfers[]` at the top level (each entry includes `preview_path` and the full pending summary) so a single status call shows pending offers without a separate `listIncoming` fetch.
 
 What does NOT transfer: tier lease (stays with the original owner's billing account; no Phase 1A proration), KMS contract wallets (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
+
+## Org membership & project grants (`r.org`, `r.grants` — v1.77+ org-owned control plane)
+
+A wallet **authenticates** (SIWX → a control-plane *principal*); the **org (billing account)** owns projects, and what a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet_address == signer`.
+
+- **`r.org.whoami()`** → `{ principal, memberships[], authenticator_id }` (GET `/agent/v1/whoami`). This is the REMOTE, gateway-resolved identity. It is distinct from **`r.whoami()`**, which stays local + network-free (wallet address + profile label, used by `run402 status`).
+- **`r.org.list()`** → the orgs you are an active member of (as `OrgMembership[]`).
+- **`r.org.members(billingAccountId)`** → `OrgMember[]`.
+- **`r.org.addMember(billingAccountId, { wallet, role? })`** — add BY WALLET (a new wallet is provisioned as a `human` principal); `role` defaults to `developer`. Owner-gated. (Email-first invite is a separate, not-yet-shipped flow — there is no `invite` method.)
+- **`r.org.setRole(billingAccountId, principalId, role)`** / **`r.org.removeMember(billingAccountId, principalId)`** — owner-gated. Removing or demoting the org's only active owner throws `ApiError` with `code: "LAST_OWNER"` (409) — promote another member to `owner` first.
+- **`r.grants.create(projectId, { wallet, capability, policy?, expiresAt? })`** / **`r.grants.revoke(projectId, grantId)`** — per-project capability grants for agent/CI principals; requires owner of the project's org. Also project-scoped: **`r.project(id).grants.create({...})`** / `.revoke(grantId)`. `capability` examples: `"deploy"`, `"functions:write"`.
+
+Control-plane denials throw `NotAuthorizedError` (403 `NOT_AUTHORIZED`, carrying `requiredRole` / `requiredCapability` / `reason`). Bad input is `ApiError` `code: "VALIDATION_ERROR"` (400). Exported types: `OrgRole`, `Principal`, `OrgMembership`, `OrgMember`, `WhoAmIResult`, `ProjectGrant`, plus input/result types.
 
 ## Resource limits
 

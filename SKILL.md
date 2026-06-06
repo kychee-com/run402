@@ -570,7 +570,7 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`allowance_status`** / **`allowance_create`** / **`allowance_export`** — local allowance management.
 - **`request_faucet`** — testnet USDC.
 - **`check_balance`** — USDC for an allowance address.
-- **`list_projects`** — active projects for a wallet. Each row carries v1.57 lifecycle fields: `effective_status`, `account_lifecycle_state` (same value across every project on the billing account), `lease_perpetual`, `deleted_at`, `archived_at`.
+- **`list_projects`** — projects the wallet's principal can reach. Org-owned control plane (v1.77+): a wallet *authenticates* but does not *own* — this lists projects owned by orgs (billing accounts) the wallet's resolved principal is an active member of, plus any with an active per-project grant. Each row carries v1.57 lifecycle fields: `effective_status`, `account_lifecycle_state` (same value across every project on the billing account), `lease_perpetual`, `deleted_at`, `archived_at`. The owning org is `billing_account_id` and the provisioning principal is `created_by` (these replaced `wallet_address`).
 - **`admin_set_lease_perpetual`** — operator escape hatch (v1.57+). Toggles the billing account's `lease_perpetual` flag so the account never advances past `active` regardless of lease expiry. Replaces the v1.56 per-project pin tool (gateway endpoint was removed). Enabling on a grace-state account reactivates inline.
 - **`admin_archive_project`** / **`admin_reactivate_project`** — operator moderation actions on a single project (`projects.archived_at`). Independent of account-level lifecycle.
 - **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
@@ -671,6 +671,16 @@ A project can be transferred to a different wallet without redeploying. Both sid
 
 `list_incoming_transfers` is also surfaced on the top-level `tier_status` response as `incoming_transfers[]` (each entry carries `preview_path`), so a single `tier_status` call shows pending offers without a separate fetch.
 
+## Organization, membership & grants (v1.77+)
+
+A wallet **authenticates**; the **org (billing account)** owns projects. What a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant - never by `wallet == signer`. A fresh wallet that subscribes + provisions auto-owns its org-of-one, so this layer stays invisible until a second principal joins.
+
+- **`whoami`** - resolve your control-plane principal + every org membership (role + status). The remote identity; for local wallet/profile state use `status`.
+- **`list_orgs`** / **`list_org_members`** - read your orgs, and an org's members + roles.
+- **`add_org_member`** - add a member BY WALLET (a new wallet is provisioned as a `human` principal); role defaults to `developer`. Owner-gated. Email-first invite is a separate, not-yet-shipped flow.
+- **`set_org_member_role`** / **`remove_org_member`** - owner-gated. Removing or demoting the org's only active owner fails with `409 LAST_OWNER` - promote another member to `owner` first.
+- **`create_project_grant`** / **`revoke_project_grant`** - per-project capability grants (e.g. `deploy`, `functions:write`) for agent/CI principals that aren't broad org members. Requires owner of the project's org.
+
 ## Standard Workflow
 
 ```
@@ -722,7 +732,7 @@ The MCP server manages a local agent allowance — a wallet key dedicated to pay
 - **`init`** — composes `allowance_create` + `request_faucet` + `tier_status` + `list_projects`. Use this on a fresh install.
 - **`allowance_create`** / **`allowance_status`** / **`allowance_export`** — granular allowance ops.
 - **`request_faucet`** — Base Sepolia testnet USDC.
-- **`check_balance`** — mainnet + testnet + billing balance for an address.
+- **`check_balance`** — run402 billing account balance (available + held) for the agent's wallet; resolves the wallet to its account over SIWX.
 
 Other allowance options:
 - **Coinbase AgentKit** — MPC wallet on Base with built-in x402.
@@ -735,6 +745,8 @@ Other allowance options:
 | `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
 | `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
+| `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist, so also re-check the project id. |
+| `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |
 | `409 reserved` from `claim_subdomain` | Original owner's grace period — subdomain held until +118 days from lease expiry. |

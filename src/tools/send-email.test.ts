@@ -171,6 +171,30 @@ describe("send_email tool", () => {
     assert.equal(parsed.from_name, "My App");
   });
 
+  it("forwards attachments in the raw-mode send body", async () => {
+    let capturedBody: string | undefined;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (isMailboxListGet(url, init)) return mailboxListResponse();
+      capturedBody = init?.body as string;
+      return new Response(
+        JSON.stringify({ message_id: "msg-004", status: "sent", to: "user@example.com", subject: "Receipt", template: null, sent_at: "2026-05-01T00:00:00.000Z" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const attachments = [{ filename: "receipt.pdf", content_base64: "JVBERi0=", content_type: "application/pdf" }];
+    const result = await handleSendEmail({
+      project_id: "proj-001",
+      to: "user@example.com",
+      subject: "Receipt",
+      html: "<p>Attached.</p>",
+      attachments,
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(JSON.parse(capturedBody!).attachments, attachments);
+  });
+
   it("returns error when neither template nor subject/html provided", async () => {
     const result = await handleSendEmail({
       project_id: "proj-001",

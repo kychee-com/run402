@@ -289,12 +289,12 @@ The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/
 ### Database
 
 - `provision_postgres_project` — provision a new database. Auto-handles x402 payment. Params: `tier?` (default `"prototype"`), `name?`. Returns `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`.
-- `run_sql` — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id`, `sql`. Returns markdown table.
-- `rest_query` — query/mutate via PostgREST. Params: `project_id`, `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypass).
+- `run_sql` — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id?` (defaults to the active project), `sql`. Returns a markdown table for result sets; mutations report "N rows affected" and DDL reports "Statement executed".
+- `rest_query` — query/mutate via PostgREST. Params: `project_id?` (defaults to the active project), `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypasses RLS via the admin REST path).
 - `apply_expose` — apply the declarative authorization manifest. Params: `project_id`, `manifest` (`{ version: "1", tables: [...], views: [...], rpcs: [...] }`).
 - `validate_manifest` — validate the auth/expose manifest without applying it. Params: `manifest` (object or JSON string), `migration_sql?`, `project_id?`. Returns fenced JSON with `hasErrors`, `errors`, and `warnings`; validation findings are data, not MCP errors.
 - `get_expose` — return the current manifest. Params: `project_id`. Returns the manifest plus `source: "applied" | "introspected"`.
-- `get_schema` — introspect tables, columns, types, constraints, RLS policies. Params: `project_id`.
+- `get_schema` — introspect tables, columns, types, constraints, RLS policies. Params: `project_id?` (defaults to the active project).
 - `get_usage` — per-project usage counters (API calls, storage, lease expiry). Params: `project_id`. The reported tier and capacity limits are account-level (pooled across every project on the same billing account); use `tier_status` for the pooled total.
 - `promote_user` / `demote_user` — manage `project_admin` role on a project user. Params: `project_id`, `email`.
 - `delete_project` — cascade purge. Params: `project_id`. Irreversible.
@@ -388,7 +388,7 @@ Fixed platform-managed jobs. These tools do not run arbitrary Docker images; the
 - `passkey_login_options` / `passkey_login_verify` — WebAuthn passkey login. Params: `project_id`, `app_origin`, `email?` then `challenge_id`, `response`.
 - `list_passkeys` / `delete_passkey` — list or delete the authenticated user's passkeys. Params: `project_id`, `access_token`, `passkey_id?`.
 - `create_mailbox` / `get_mailbox` / `delete_mailbox` — up to 5 mailboxes per project at `<slug>@mail.run402.com`. Read/send/webhook tools take an optional `mailbox` (slug or `mbx_…` id) to choose one; omitting it on a project with more than one mailbox returns an ambiguity error naming the slugs. `create_mailbox` is NOT idempotent — a 409 (slug in use / cooldown / project at its 5-mailbox limit) is surfaced as an error, not recovered. `delete_mailbox` requires `confirm: true` and takes the target via `mailbox_id` (slug or id).
-- `send_email` — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Params: `project_id`, `to`, `template?` + `variables?` OR `subject?` + `html?` + `text?`, `from_name?`, `in_reply_to?`, `mailbox?`.
+- `send_email` — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Params: `project_id`, `to`, `template?` + `variables?` OR `subject?` + `html?` + `text?` + `attachments?`, `from_name?`, `in_reply_to?`, `mailbox?`. `attachments?` (raw mode only): `{ filename, content_base64, content_type }[]`, max 5, ≤ 7 MB total.
 - `list_emails` / `get_email` — read messages. Both take an optional `mailbox`.
 - `get_email_raw` — return raw RFC-822 bytes for DKIM / zk-email verification (inbound only). Params: `project_id`, `message_id`, `mailbox?`.
 - `register_mailbox_webhook` / `list_mailbox_webhooks` / `get_mailbox_webhook` / `update_mailbox_webhook` / `delete_mailbox_webhook` — email-event webhooks (events: `delivery`, `bounced`, `complained`, `reply_received`). Each takes an optional `mailbox`.
@@ -451,7 +451,7 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0
 - `allowance_status` / `allowance_create` / `allowance_export` — local allowance management.
 - `request_faucet` — Base Sepolia testnet USDC.
 - `check_balance` — USDC for an allowance address.
-- `list_projects` — active projects for a wallet. Each entry carries v1.57 lifecycle fields: `effective_status`, `account_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`.
+- `list_projects` — active projects the wallet's principal can reach (org-owned control plane, v1.77+): a wallet *authenticates* but does not *own* — this lists projects owned by orgs (billing accounts) the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Each entry carries v1.57 lifecycle fields: `effective_status`, `account_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`. The canonical project object exposes `billing_account_id` (owning org) + `created_by` (provisioning principal) instead of `wallet_address`.
 - `admin_set_lease_perpetual` — operator escape hatch (v1.57+). Toggles `lease_perpetual` on a billing account; when `true`, the account never advances past `active`. Replaces the v1.56 per-project pin tool (gateway endpoint /projects/v1/admin/:id/pin was removed). Platform-admin only.
 - `admin_archive_project` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; siblings on the same account keep serving. Platform-admin only.
 - `admin_reactivate_project` — un-archive a project (flips `archived_at` to NULL). In v1.57 this no longer touches account lifecycle. Platform-admin only.
@@ -478,6 +478,19 @@ The freeze covers owner-side mutations (deploy, secret CRUD, function CRUD, cust
 What does NOT transfer: tier lease (stays with the original owner's billing account; no Phase 1A proration), KMS contract wallets (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
 After accept, `tier_status` surfaces `projects[].secrets_rotation_advised: { advised_at, reason }` on the transferred project, and `incoming_transfers[]` at the top level lists pending offers (each with `preview_path`) so the inbox is visible without a separate `list_incoming_transfers` fetch.
+
+### Organization, membership & grants (v1.77+ org-owned control plane)
+
+A wallet **authenticates**; the **org (billing account)** owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant. Member/grant mutations require an active `owner`.
+
+- `whoami` — resolve YOUR control-plane principal + every org membership (role + status) + `authenticator_id` (GET `/agent/v1/whoami`). The remote identity; for local wallet/profile state use `status`.
+- `list_orgs` — orgs you are a member of, with your role + membership status.
+- `list_org_members` — members + roles of an org. Params: `billing_account_id`.
+- `add_org_member` — add a member BY WALLET (a new wallet is provisioned as a `human` principal). Params: `billing_account_id`, `wallet`, optional `role` (default `developer`). Owner-gated. (Email-first invite is a separate, not-yet-shipped flow.)
+- `set_org_member_role` — change a member's role. Params: `billing_account_id`, `principal_id`, `role`. Owner-gated. Demoting the only active owner → `409 LAST_OWNER`.
+- `remove_org_member` — remove a member. Params: `billing_account_id`, `principal_id`. Owner-gated. Removing the only active owner → `409 LAST_OWNER`.
+- `create_project_grant` — issue a per-project capability grant to a wallet (agent/CI principals). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Requires owner of the project's org.
+- `revoke_project_grant` — revoke a grant. Params: `project_id`, `grant_id`. Requires owner of the project's org.
 
 ### Service status (no auth, no setup)
 
@@ -563,6 +576,8 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 | `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
 | `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
+| `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
+| `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
 | `409 PROJECT_HAS_PENDING_TRANSFER` on an owner-side mutation | A pending project transfer is freezing the control plane. `details.transfer_id` carries the id; `next_actions[]` has the cancel route. Run `cancel_project_transfer` to unblock, or `preview_project_transfer` to view what's pending. The freeze auto-clears 72h after init. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |
 | `403 forbidden_function` calling an RPC | Function not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }` and re-apply. |

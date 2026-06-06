@@ -10,6 +10,7 @@ import { request, type KernelConfig } from "./kernel.js";
 import {
   ApiError,
   NetworkError,
+  NotAuthorizedError,
   PaymentRequired,
   Unauthorized,
 } from "./errors.js";
@@ -227,6 +228,62 @@ describe("kernel request", () => {
     await assert.rejects(
       request(kernel, "/admin/thing", { context: "admin op" }),
       (err: unknown) => err instanceof Unauthorized && (err as Unauthorized).status === 403,
+    );
+    exitSpy.restore();
+  });
+
+  it("throws NotAuthorizedError on 403 NOT_AUTHORIZED, lifting role/capability/reason", async () => {
+    const body = {
+      code: "NOT_AUTHORIZED",
+      category: "auth",
+      message: "Not authorized for this project action",
+      details: {
+        action: "project.delete",
+        required_role: "owner",
+        required_capability: null,
+        reason: "forbidden",
+      },
+    };
+    const kernel = makeKernel(async () => makeRes(body, { status: 403 }));
+    await assert.rejects(
+      request(kernel, "/projects/v1/prj_1", { method: "DELETE", context: "deleting project" }),
+      (err: unknown) => {
+        assert.ok(err instanceof NotAuthorizedError);
+        const e = err as NotAuthorizedError;
+        assert.equal(e.kind, "not_authorized");
+        assert.ok(!(err instanceof Unauthorized), "NOT_AUTHORIZED must not be a generic Unauthorized");
+        assert.equal(e.status, 403);
+        assert.equal(e.code, "NOT_AUTHORIZED");
+        assert.equal(e.category, "auth");
+        assert.equal(e.action, "project.delete");
+        assert.equal(e.requiredRole, "owner");
+        assert.equal(e.requiredCapability, null);
+        assert.equal(e.reason, "forbidden");
+        assert.equal(e.message, "Not authorized for this project action while deleting project (HTTP 403)");
+        assert.deepEqual(e.body, body);
+        // toJSON surfaces the structured fields for agent triage.
+        const json = e.toJSON();
+        assert.equal(json.requiredRole, "owner");
+        assert.equal(json.reason, "forbidden");
+        return true;
+      },
+    );
+    exitSpy.restore();
+  });
+
+  it("keeps non-NOT_AUTHORIZED 403s as generic Unauthorized", async () => {
+    // A 403 carrying a different canonical code (e.g. admin-only) must NOT
+    // become NotAuthorizedError — only the org control-plane code diverts.
+    const kernel = makeKernel(async () =>
+      makeRes({ code: "ADMIN_REQUIRED", error: "admin only" }, { status: 403 }),
+    );
+    await assert.rejects(
+      request(kernel, "/admin/thing", { context: "admin op" }),
+      (err: unknown) => {
+        assert.ok(err instanceof Unauthorized);
+        assert.ok(!(err instanceof NotAuthorizedError));
+        return true;
+      },
     );
     exitSpy.restore();
   });

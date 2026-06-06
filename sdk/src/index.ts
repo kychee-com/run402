@@ -32,6 +32,8 @@ import { Deploy } from "./namespaces/deploy.js";
 import { Ci } from "./namespaces/ci.js";
 import { Jobs } from "./namespaces/jobs.js";
 import { Operator } from "./namespaces/operator.js";
+import { Org } from "./namespaces/org.js";
+import { Grants } from "./namespaces/grants.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -86,6 +88,18 @@ export class Run402 {
    * 8628 device flow), distinct from the agent's per-wallet SIWX identity.
    */
   readonly operator: Operator;
+  /**
+   * Org-owned control plane (gateway v1.77+): resolve the principal +
+   * memberships (`org.whoami()`) and manage org membership (`list`, `members`,
+   * `addMember`, `setRole`, `removeMember` — owner-gated). Distinct from the
+   * local, network-free {@link Run402.whoami}.
+   */
+  readonly org: Org;
+  /**
+   * Per-project capability grants for agent/CI principals. Also available
+   * project-scoped as `r.project(id).grants`.
+   */
+  readonly grants: Grants;
 
   readonly #client: Client;
 
@@ -152,6 +166,8 @@ export class Run402 {
     this.ci = new Ci(client);
     this.jobs = new Jobs(client);
     this.operator = new Operator(client);
+    this.org = new Org(client);
+    this.grants = new Grants(client);
   }
 
   /**
@@ -211,11 +227,11 @@ export class Run402 {
   }
 
   /**
-   * Identify the active wallet and project: `{ name, address, label,
-   * activeProject }`. `name` is the local wallet/profile selector (e.g.
-   * "kychon", or "default"); `label` is the server-side display name (null
-   * when unknown/offline); `address` is the wallet address; `activeProject` is
-   * the currently-selected project id (null if none).
+   * Identify the active wallet and project: `{ local_label, server_label,
+   * address, activeProject }`. `local_label` is the local wallet/profile
+   * selector (e.g. "kychon", or "default"); `server_label` is the server-side
+   * display name (null when unknown/offline); `address` is the wallet address;
+   * `activeProject` is the currently-selected project id (null if none).
    *
    * Degrades gracefully: providers that don't implement `getWalletIdentity`
    * (sandbox/session) still get `address` from `readAllowance` when available.
@@ -231,9 +247,9 @@ export class Run402 {
       ? await creds.getActiveProject.call(creds)
       : null;
     return {
-      name: identity?.name ?? null,
+      local_label: identity?.name ?? null,
+      server_label: identity?.label ?? null,
       address,
-      label: identity?.label ?? null,
       activeProject: activeProject ?? null,
     };
   }
@@ -242,11 +258,11 @@ export class Run402 {
 /** Result of {@link Run402.whoami}. */
 export interface WhoAmI {
   /** Local wallet/profile selector name (e.g. "kychon", "default"), or null. */
-  name: string | null;
+  local_label: string | null;
+  /** Server-side display label, cached locally; null when unknown/offline. */
+  server_label: string | null;
   /** Wallet address, or null when no allowance is configured. */
   address: string | null;
-  /** Server-side display label, cached locally; null when unknown/offline. */
-  label: string | null;
   /** Active project id, or null when none is selected. */
   activeProject: string | null;
 }
@@ -284,6 +300,7 @@ export {
   PaymentRequired,
   ProjectNotFound,
   Unauthorized,
+  NotAuthorizedError,
   ApiError,
   NetworkError,
   LocalError,
@@ -293,6 +310,7 @@ export {
   isPaymentRequired,
   isProjectNotFound,
   isUnauthorized,
+  isNotAuthorized,
   isApiError,
   isNetworkError,
   isLocalError,
@@ -366,6 +384,10 @@ export type * from "./namespaces/email.js";
 export type * from "./namespaces/functions.types.js";
 export type * from "./namespaces/jobs.js";
 export type * from "./namespaces/operator.js";
+export { Org } from "./namespaces/org.js";
+export type * from "./namespaces/org.types.js";
+export { Grants } from "./namespaces/grants.js";
+export type * from "./namespaces/grants.types.js";
 export type * from "./namespaces/projects.types.js";
 export type * from "./namespaces/secrets.js";
 export type * from "./namespaces/sender-domain.js";

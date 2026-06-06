@@ -192,7 +192,7 @@ describe("projects.delete", () => {
 });
 
 describe("projects.list", () => {
-  it("GETs /wallets/v1/:wallet/projects without auth when wallet is explicit", async () => {
+  it("GETs /wallets/v1/:wallet/projects with SIWX when wallet is explicit", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         wallet: WALLET_LOWER,
@@ -205,8 +205,8 @@ describe("projects.list", () => {
 
     assert.equal(calls[0]!.url, `https://api.example.test/wallets/v1/${WALLET_LOWER}/projects`);
     assert.equal(calls[0]!.method, "GET");
-    // Public endpoint — no SIWX header injected.
-    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    // Owner-only endpoint (hardened from public) — SIWX header injected.
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.deepEqual(result, { wallet: WALLET_LOWER, projects: [] });
   });
 
@@ -224,7 +224,7 @@ describe("projects.list", () => {
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.url, `https://api.example.test/wallets/v1/${FEED_WALLET_LOWER}/projects`);
-    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.deepEqual(result, { wallet: FEED_WALLET_LOWER, projects: [] });
   });
 
@@ -520,7 +520,9 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
       keyType: "service",
     });
 
-    assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/todos");
+    // service key routes through the admin REST path (the gateway rejects
+    // service_role on /rest/v1/*); anon keys keep the public /rest/v1/ path.
+    assert.equal(calls[0]!.url, "https://api.example.test/admin/v1/rest/todos");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["apikey"], "service_xxx");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");

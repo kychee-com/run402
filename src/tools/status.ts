@@ -58,10 +58,7 @@ export async function handleStatus(
   // Active named wallet (from RUN402_WALLET in the MCP server env, else default).
   const walletName = getActiveProfile();
   const walletMeta = readMeta(walletName);
-  const walletDisplay =
-    walletMeta?.label && walletMeta.label !== walletName
-      ? `${walletName} (label: ${walletMeta.label})`
-      : walletName;
+  const rail = allowance.rail || "x402";
 
   // Build summary
   const lines: string[] = [
@@ -69,18 +66,21 @@ export async function handleStatus(
     ``,
     `| Field | Value |`,
     `|-------|-------|`,
-    `| wallet | ${walletDisplay} |`,
-    `| allowance | \`${allowance.address}\` |`,
-    `| funded | ${allowance.funded ? "yes" : "no"} |`,
-    `| rail | ${allowance.rail || "x402"} |`,
+    `| local_label | ${walletName} |`,
+    `| server_label | ${walletMeta?.label ?? "(none)"} |`,
+    `| address | \`${allowance.address}\` |`,
+    `| rail | ${rail} |`,
   ];
 
-  // Balance
+  // Prepaid credit (Run402-held, rail-independent). The on-chain wallet
+  // balance is not read here — use `run402 status` (CLI) for that figure.
   if (billing) {
     const available = (billing.available_usd_micros / 1_000_000).toFixed(2);
-    lines.push(`| balance | $${available} available |`);
+    const held = ((billing.held_usd_micros ?? 0) / 1_000_000).toFixed(2);
+    lines.push(`| prepaid_credit | $${available} |`);
+    lines.push(`| held | $${held} |`);
   } else {
-    lines.push(`| balance | (unavailable) |`);
+    lines.push(`| prepaid_credit | (unavailable) |`);
   }
 
   // Tier

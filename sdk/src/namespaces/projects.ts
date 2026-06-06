@@ -113,8 +113,11 @@ export class Projects {
   }
 
   /**
-   * List active projects for a wallet address. Public endpoint — no auth
-   * required, no payment.
+   * List active projects for a wallet address. Project ids/names/usage are
+   * private, so this requires SIWX from the wallet itself (or an admin key) —
+   * a wallet may list only its own projects. The kernel signs the SIWX header
+   * from the credential provider; a caller listing a different wallet's
+   * projects gets a 403.
    *
    * When `wallet` is omitted, the SDK resolves it from the credential
    * provider's local allowance via `credentials.readAllowance()`. This mirrors
@@ -148,7 +151,6 @@ export class Projects {
     const w = resolvedWallet.toLowerCase();
     return this.client.request<ListProjectsResult>(`/wallets/v1/${w}/projects`, {
       context: "listing projects",
-      withAuth: false,
     });
   }
 
@@ -221,7 +223,8 @@ export class Projects {
         ? { query: queryOrOptions }
         : queryOrOptions ?? {};
     const method = opts.method ?? "GET";
-    const key = opts.keyType === "service" ? keys.service_key : keys.anon_key;
+    const useService = opts.keyType === "service";
+    const key = useService ? keys.service_key : keys.anon_key;
     const query = formatRestQuery(opts.query);
     const headers: Record<string, string> = {
       apikey: key,
@@ -229,7 +232,14 @@ export class Projects {
     };
     if (method !== "GET") headers.Prefer = "return=representation";
 
-    return this.client.requestWithResponse<T>(`/rest/v1/${encodeURIComponent(table)}${query}`, {
+    // The gateway rejects the service_role on the public PostgREST path
+    // (/rest/v1/*), so service-key REST is routed through the admin REST
+    // route (/admin/v1/rest/*). Anon keys use the public path.
+    const path = useService
+      ? `/admin/v1/rest/${encodeURIComponent(table)}${query}`
+      : `/rest/v1/${encodeURIComponent(table)}${query}`;
+
+    return this.client.requestWithResponse<T>(path, {
       method,
       headers,
       body: opts.body,

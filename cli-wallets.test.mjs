@@ -60,8 +60,8 @@ describe("wallets — lifecycle", () => {
   it("new → list → rm", () => {
     assert.equal(run(["wallets", "new", "kychon"]).status, 0);
     const list = jsonOut(run(["wallets", "list"]));
-    assert.deepEqual(list.map((w) => w.name).sort(), ["kychon"]);
-    assert.equal(list[0].label, "kychon");
+    assert.deepEqual(list.map((w) => w.local_label).sort(), ["kychon"]);
+    assert.equal(list[0].server_label, "kychon");
     // rm requires --yes
     const noConfirm = run(["wallets", "rm", "kychon"]);
     assert.notEqual(noConfirm.status, 0);
@@ -76,7 +76,7 @@ describe("wallets — lifecycle", () => {
     assert.equal(run(["wallets", "rename", "default", "kychon"]).status, 0);
     assert.ok(!existsSync(join(configDir, "allowance.json")), "root allowance.json migrated away");
     assert.ok(existsSync(join(configDir, "profiles", "kychon", "allowance.json")));
-    assert.deepEqual(jsonOut(run(["wallets", "list"])).map((w) => w.name), ["kychon"]);
+    assert.deepEqual(jsonOut(run(["wallets", "list"])).map((w) => w.local_label), ["kychon"]);
   });
 });
 
@@ -88,20 +88,20 @@ describe("wallets — selection precedence", () => {
 
   it("flag wins and reports source=flag", () => {
     const cur = jsonOut(run(["--wallet", "kychon", "wallets", "current"]));
-    assert.equal(cur.name, "kychon");
+    assert.equal(cur.local_label, "kychon");
     assert.equal(cur.source, "flag");
   });
 
   it("env selects when no flag", () => {
     const cur = jsonOut(run(["wallets", "current"], { env: { RUN402_WALLET: "client-a" } }));
-    assert.equal(cur.name, "client-a");
+    assert.equal(cur.local_label, "client-a");
     assert.equal(cur.source, "env");
   });
 
   it("directory binding selects when no flag/env", () => {
     writeFileSync(join(workDir, ".run402.json"), JSON.stringify({ wallet: "client-a" }));
     const cur = jsonOut(run(["wallets", "current"]));
-    assert.equal(cur.name, "client-a");
+    assert.equal(cur.local_label, "client-a");
     assert.equal(cur.source, "binding");
   });
 
@@ -111,19 +111,19 @@ describe("wallets — selection precedence", () => {
     const sub = join(workDir, "api");
     mkdirSync(sub);
     const cur = jsonOut(run(["wallets", "current"], { cwd: sub }));
-    assert.equal(cur.name, "kychon");
+    assert.equal(cur.local_label, "kychon");
   });
 
   it("global `wallets use` applies when no flag/env/binding", () => {
     assert.equal(run(["wallets", "use", "kychon"]).status, 0);
     const cur = jsonOut(run(["wallets", "current"]));
-    assert.equal(cur.name, "kychon");
+    assert.equal(cur.local_label, "kychon");
     assert.equal(cur.source, "config");
   });
 
   it("falls back to default when nothing selects", () => {
     const cur = jsonOut(run(["wallets", "current"]));
-    assert.equal(cur.name, "default");
+    assert.equal(cur.local_label, "default");
     assert.equal(cur.source, "default");
   });
 });

@@ -1,8 +1,14 @@
 /**
- * `billing` namespace — wallet-scoped billing accounts and Stripe checkouts.
- * Identifies accounts by wallet address or email. Reads of an existing account
- * and mutations such as link-wallet / auto-recharge require SIWX (or an admin
- * key); checkout-creation endpoints remain unauthenticated by design.
+ * `billing` namespace — billing accounts and Stripe checkouts.
+ *
+ * Accounts are addressed by their canonical `billing_account_id` (UUID). A
+ * wallet or email is resolved to that id through the
+ * `GET /billing/v1/accounts?wallet=|?email=` lookup; `getAccount` / `history`
+ * accept any of the three identifier forms and resolve internally. Account
+ * reads require SIWX from a wallet linked to the account (or matching the
+ * looked-up `?wallet`), or an admin key; email lookups are admin-only.
+ * Mutations such as link-wallet / auto-recharge require SIWX (or admin);
+ * checkout-creation endpoints remain unauthenticated by design.
  */
 
 import type { Client } from "../kernel.js";
@@ -16,15 +22,25 @@ import {
 } from "../validation.js";
 import type { ProjectTier } from "./projects.types.js";
 
-export interface BillingBalance {
-  identifier_type: "wallet" | "email";
+export interface BillingAccountDetail {
+  /** Canonical billing account id (UUID). */
+  billing_account_id: string;
   available_usd_micros: number;
+  /** Held/reserved portion of the balance; absent on gateways that predate the field. */
+  held_usd_micros?: number;
   email_credits_remaining: number;
   tier: ProjectTier | null;
   lease_expires_at: string | null;
   auto_recharge_enabled: boolean;
   auto_recharge_threshold: number;
 }
+
+/**
+ * @deprecated Renamed to {@link BillingAccountDetail}. The account read now
+ * returns the canonical `billing_account_id` and no longer carries
+ * `identifier_type` (accounts are addressed by id, not by wallet/email).
+ */
+export type BillingBalance = BillingAccountDetail;
 
 export interface BillingHistoryEntry {
   id: string;
@@ -40,8 +56,8 @@ export interface BillingHistoryEntry {
 }
 
 export interface BillingHistoryResult {
-  identifier: string;
-  identifier_type: "wallet" | "email";
+  /** Canonical billing account id (UUID) the entries belong to. */
+  billing_account_id: string;
   entries: BillingHistoryEntry[];
 }
 
@@ -97,25 +113,80 @@ export interface AutoRechargeOptions {
 
 const BILLING_TIERS = ["prototype", "hobby", "team"] as const;
 
-function encodeBillingIdentifier(
-  identifier: BillingAccountIdentifier,
-  context: string,
-): string {
-  const normalized = normalizeBillingIdentifier(identifier, context);
-  return encodeURIComponent(normalized);
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type BillingIdentifierKind = "account_id" | "wallet" | "email";
+
+interface ClassifiedBillingIdentifier {
+  kind: BillingIdentifierKind;
+  value: string;
 }
 
-function normalizeBillingIdentifier(
+/**
+ * Classify a billing identifier as a canonical account id (UUID), an EVM
+ * wallet address, or an email. Wallets are lowercased; account ids and emails
+ * are returned verbatim. Throws {@link LocalError} for anything else.
+ */
+function classifyBillingIdentifier(
   identifier: unknown,
   context: string,
-): string {
+): ClassifiedBillingIdentifier {
   assertNonEmptyString(identifier, "identifier", context);
+  if (UUID_RE.test(identifier)) {
+    return { kind: "account_id", value: identifier };
+  }
   if (/^0x/i.test(identifier)) {
     assertEvmAddress(identifier, "identifier", context);
-    return identifier.toLowerCase();
+    return { kind: "wallet", value: identifier.toLowerCase() };
   }
   assertEmailAddress(identifier, "identifier", context);
-  return identifier;
+  return { kind: "email", value: identifier };
+}
+
+/** Read account detail by canonical id: `GET /billing/v1/accounts/:account_id`. */
+function fetchAccountById(
+  client: Client,
+  accountId: string,
+  context: string,
+): Promise<BillingAccountDetail> {
+  return client.request<BillingAccountDetail>(
+    `/billing/v1/accounts/${encodeURIComponent(accountId)}`,
+    { context },
+  );
+}
+
+/**
+ * Resolve a wallet / email to its account detail via the lookup endpoint
+ * `GET /billing/v1/accounts?wallet=|?email=`. The lookup returns the same
+ * detail shape as the by-id read, including the resolved `billing_account_id`.
+ */
+function fetchAccountByLookup(
+  client: Client,
+  kind: "wallet" | "email",
+  value: string,
+  context: string,
+): Promise<BillingAccountDetail> {
+  return client.request<BillingAccountDetail>(
+    `/billing/v1/accounts?${kind}=${encodeURIComponent(value)}`,
+    { context },
+  );
+}
+
+/**
+ * Resolve any identifier form (account id / wallet / email) to the account
+ * detail. Account ids hit the canonical by-id read; wallet/email go through
+ * the `?wallet=`/`?email=` lookup. All paths send SIWX via the kernel default.
+ */
+async function resolveAccountDetail(
+  client: Client,
+  identifier: BillingAccountIdentifier,
+  context: string,
+): Promise<BillingAccountDetail> {
+  const id = classifyBillingIdentifier(identifier, context);
+  return id.kind === "account_id"
+    ? fetchAccountById(client, id.value, context)
+    : fetchAccountByLookup(client, id.kind, id.value, context);
 }
 
 function assertNonNegativeSafeInteger(
@@ -174,7 +245,7 @@ function checkoutIdentifierBody(
 }
 
 export class Billing {
-  readonly balance: (identifier: BillingAccountIdentifier) => Promise<BillingBalance>;
+  readonly balance: (identifier: BillingAccountIdentifier) => Promise<BillingAccountDetail>;
   readonly createEmail: (email: string) => Promise<EmailBillingAccount>;
   readonly autoRecharge: (opts: AutoRechargeOptions) => Promise<void>;
 
@@ -184,33 +255,57 @@ export class Billing {
     this.autoRecharge = this.setAutoRecharge.bind(this);
   }
 
-  /** Check a billing account by wallet or email identifier. */
-  async checkBalance(identifier: BillingAccountIdentifier): Promise<BillingBalance> {
+  /** Check a billing account by account id (UUID), wallet, or email. */
+  async checkBalance(identifier: BillingAccountIdentifier): Promise<BillingAccountDetail> {
     return this.getAccount(identifier);
   }
 
-  /** Check a billing account by wallet or email identifier. */
-  async getAccount(identifier: BillingAccountIdentifier): Promise<BillingBalance> {
-    const encoded = encodeBillingIdentifier(identifier, "checking balance");
-    return this.client.request<BillingBalance>(`/billing/v1/accounts/${encoded}`, {
-      context: "checking balance",
-    });
+  /**
+   * Read a billing account's financial detail by account id (UUID), wallet,
+   * or email. An account id reads `GET /billing/v1/accounts/:account_id`
+   * directly; a wallet/email is resolved through the
+   * `GET /billing/v1/accounts?wallet=|?email=` lookup. Requires SIWX from a
+   * wallet linked to the account (or matching the looked-up `?wallet`), or an
+   * admin key; email lookups are admin-only.
+   */
+  async getAccount(identifier: BillingAccountIdentifier): Promise<BillingAccountDetail> {
+    return resolveAccountDetail(this.client, identifier, "checking balance");
   }
 
-  /** Fetch billing history by wallet or email identifier. */
+  /**
+   * Resolve a wallet or email to its billing account detail — including the
+   * canonical `billing_account_id` — via `GET /billing/v1/accounts?wallet=|?email=`.
+   * An account-id (UUID) argument is read directly instead. SIWX must match the
+   * `?wallet`; email lookups are admin-only.
+   */
+  async lookupAccount(identifier: BillingAccountIdentifier): Promise<BillingAccountDetail> {
+    return resolveAccountDetail(this.client, identifier, "looking up billing account");
+  }
+
+  /** Fetch billing history by account id (UUID), wallet, or email. */
   async history(identifier: BillingAccountIdentifier, limit?: number): Promise<BillingHistoryResult> {
     return this.getHistory(identifier, limit);
   }
 
-  /** Fetch billing history by wallet or email identifier. */
+  /**
+   * Fetch ledger history for a billing account. History is keyed by account id
+   * (UUID): a wallet/email identifier is first resolved to its account via the
+   * lookup, then `GET /billing/v1/accounts/:account_id/history` is read.
+   * Requires SIWX from a wallet linked to the account, or an admin key.
+   */
   async getHistory(identifier: BillingAccountIdentifier, limit?: number): Promise<BillingHistoryResult> {
-    const encoded = encodeBillingIdentifier(identifier, "fetching billing history");
     if (limit !== undefined) {
       assertPositiveSafeInteger(limit, "limit", "fetching billing history");
     }
+    const id = classifyBillingIdentifier(identifier, "fetching billing history");
+    const accountId = id.kind === "account_id"
+      ? id.value
+      : (await fetchAccountByLookup(this.client, id.kind, id.value, "fetching billing history"))
+          .billing_account_id;
+    const base = `/billing/v1/accounts/${encodeURIComponent(accountId)}/history`;
     const path = limit !== undefined
-      ? `/billing/v1/accounts/${encoded}/history?limit=${encodeURIComponent(String(limit))}`
-      : `/billing/v1/accounts/${encoded}/history`;
+      ? `${base}?limit=${encodeURIComponent(String(limit))}`
+      : base;
     return this.client.request<BillingHistoryResult>(path, {
       context: "fetching billing history",
     });
@@ -241,10 +336,13 @@ export class Billing {
 
   /**
    * Link a wallet to an existing email billing account to enable hybrid
-   * Stripe + x402 payments. Returns the gateway response; v1.46+ gateways
-   * include a {@link LinkWalletPoolImplications} block describing the
-   * freshly-shared pool's tier, current usage, and limits so callers can
-   * warn before the merge pushes usage `over_limit`.
+   * Stripe + x402 payments. `billingAccountId` is the canonical
+   * `billing_account_id` (UUID) returned by `createEmailAccount` /
+   * `lookupAccount`; the gateway addresses the route as
+   * `POST /billing/v1/accounts/:account_id/link-wallet`. Returns the gateway
+   * response; v1.46+ gateways include a {@link LinkWalletPoolImplications}
+   * block describing the freshly-shared pool's tier, current usage, and limits
+   * so callers can warn before the merge pushes usage `over_limit`.
    */
   async linkWallet(
     billingAccountId: string,

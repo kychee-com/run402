@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleRunSql } from "./run-sql.js";
 import { saveProject } from "../keystore.js";
-import { _resetSdk } from "../sdk.js";
+import { _resetSdk, getSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -92,25 +92,61 @@ describe("run_sql tool", () => {
     assert.ok(text.includes("| 2 | Bob |"));
   });
 
-  it("shows 0 rows for DDL", async () => {
-    saveProject("proj-3", {
+  // Helper: save a project and stub fetch to return a fixed SQL response body.
+  async function runWithResponse(body: unknown, sql: string) {
+    saveProject("proj-rc", {
       anon_key: "ak",
       service_key: "sk",
       tier: "prototype",
       lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
-
     globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({ status: "ok", schema: "p0001", rows: [], rowCount: 0 }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+    return handleRunSql({ project_id: "proj-rc", sql });
+  }
 
-    const result = await handleRunSql({
-      project_id: "proj-3",
-      sql: "CREATE TABLE test (id INT)",
-    });
-    assert.ok(result.content[0]!.text.includes("0 rows returned"));
+  it("reports rows affected for a mutation with no returned rows", async () => {
+    // INSERT/UPDATE/DELETE without RETURNING: rows: [], rowCount: N>0.
+    const result = await runWithResponse(
+      { status: "ok", schema: "p0001", rows: [], rowCount: 3 },
+      "INSERT INTO t (id) VALUES (1),(2),(3)",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("3 rows affected"));
+    assert.ok(!text.includes("0 rows returned")); // the old, misleading output
+  });
+
+  it("uses singular 'row' for a single affected row", async () => {
+    const result = await runWithResponse(
+      { status: "ok", schema: "p0001", rows: [], rowCount: 1 },
+      "DELETE FROM t WHERE id = 1",
+    );
+    assert.ok(result.content[0]!.text.includes("1 row affected"));
+  });
+
+  it("reports 'Statement executed' for DDL (rowCount null)", async () => {
+    // Real gateway returns rowCount: null for CREATE TABLE / CREATE INDEX / etc.
+    const result = await runWithResponse(
+      { status: "ok", schema: "p0001", rows: [], rowCount: null },
+      "CREATE TABLE test (id INT)",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("Statement executed"));
+    assert.ok(!text.includes("0 rows"));
+  });
+
+  it("reports neutral '0 rows' for a no-match mutation or empty result (rowCount 0)", async () => {
+    const result = await runWithResponse(
+      { status: "ok", schema: "p0001", rows: [], rowCount: 0 },
+      "UPDATE t SET x = 1 WHERE false",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("0 rows"));
+    assert.ok(!text.includes("affected"));
+    assert.ok(!text.includes("returned"));
   });
 
   it("sends JSON body with params when params provided", async () => {
@@ -211,5 +247,35 @@ describe("run_sql tool", () => {
     assert.equal(result.isError, true);
     assert.ok(result.content[0]!.text.includes("GRANT"));
     assert.ok(result.content[0]!.text.includes("Permissions are managed automatically"));
+  });
+
+  it("defaults to the active project when project_id is omitted (F-7)", async () => {
+    saveProject("proj-active", {
+      anon_key: "ak",
+      service_key: "sk-active",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+    await getSdk().projects.use("proj-active"); // mark active in local state
+
+    let capturedUrl = "";
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      capturedUrl = typeof url === "string" ? url : url.toString();
+      return new Response(
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [], rowCount: 3 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleRunSql({ sql: "INSERT INTO t (id) VALUES (1),(2),(3)" });
+    assert.ok(!result.isError);
+    assert.ok(result.content[0]!.text.includes("3 rows affected"));
+    assert.ok(capturedUrl.includes("/projects/v1/admin/proj-active/sql"));
+  });
+
+  it("errors clearly when project_id is omitted and no active project is set (F-7)", async () => {
+    const result = await handleRunSql({ sql: "SELECT 1" });
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0]!.text.includes("active project"));
   });
 });

@@ -135,6 +135,11 @@ import type {
 } from "./namespaces/jobs.js";
 import type { DeleteSecretResult, SecretListResult } from "./namespaces/secrets.js";
 import type {
+  CreateGrantInput,
+  GrantCreateResult,
+  GrantRevokeResult,
+} from "./namespaces/grants.types.js";
+import type {
   DisableInboundResult,
   InboundEnableResult,
   SenderDomainRegisterResult,
@@ -274,6 +279,17 @@ class ScopedAi {
   // Pass-through.
   generateImage(opts: GenerateImageOptions): Promise<GenerateImageResult> {
     return this.parent.ai.generateImage(opts);
+  }
+}
+
+class ScopedGrants {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(input: CreateGrantInput): Promise<GrantCreateResult> {
+    return this.parent.grants.create(this.projectId, input);
+  }
+  revoke(grantId: string): Promise<GrantRevokeResult> {
+    return this.parent.grants.revoke(this.projectId, grantId);
   }
 }
 
@@ -762,6 +778,8 @@ export class ScopedRun402 {
   readonly secrets: ScopedSecrets;
   readonly senderDomain: ScopedSenderDomain;
   readonly subdomains: ScopedSubdomains;
+  /** Per-project capability grants (agent/CI principals), project-id pre-bound. */
+  readonly grants: ScopedGrants;
 
   constructor(parent: Run402, _client: Client, projectId: string) {
     this.projectId = projectId;
@@ -780,5 +798,6 @@ export class ScopedRun402 {
     this.secrets = new ScopedSecrets(parent, projectId);
     this.senderDomain = new ScopedSenderDomain(parent, projectId);
     this.subdomains = new ScopedSubdomains(parent, projectId);
+    this.grants = new ScopedGrants(parent, projectId);
   }
 }

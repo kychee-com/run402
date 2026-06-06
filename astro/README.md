@@ -575,7 +575,7 @@ Compared to Next.js's `<Image>` model: Vercel transforms images lazily via Lambd
 npm install @run402/astro @run402/sdk
 ```
 
-Astro 5 or 6 (peer dependency, optional declaration so install never blocks).
+Astro 6 (peer dependency, optional declaration so install never blocks). The SSR adapter requires Astro 6 at runtime (its server entry imports `astro/app/entrypoint`, an Astro-6-only export); the build-time image integration alone also runs on Astro 5, though Astro 5 is outside the supported peer range.
 
 ## Configure
 

@@ -62,7 +62,7 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -84,7 +84,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -298,7 +298,7 @@ const SURFACE: Capability[] = [
   { id: "list_versions",     endpoint: "GET /projects/v1/admin/:id/versions",       mcp: "list_versions", cli: "apps:versions", openclaw: "apps:versions" },
 
   // ── Billing ──────────────────────────────────────────────────────────────
-  { id: "check_balance",     endpoint: "GET /billing/v1/accounts/:wallet",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
+  { id: "check_balance",     endpoint: "GET /billing/v1/accounts?wallet=",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
   { id: "list_projects",     endpoint: "GET /wallets/v1/:wallet/projects",           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
   { id: "project_info",      endpoint: "(local)",                                    mcp: "project_info",   cli: "projects:info",  openclaw: "projects:info" },
   { id: "project_use",       endpoint: "(local)",                                    mcp: "project_use",    cli: "projects:use",   openclaw: "projects:use" },
@@ -361,7 +361,7 @@ const SURFACE: Capability[] = [
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
-  { id: "billing_history",   endpoint: "GET /billing/v1/accounts/:wallet/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
+  { id: "billing_history",   endpoint: "GET /billing/v1/accounts/:account_id/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
 
   // ── Version management ─────────────────────────────────────────────────
   { id: "update_version",    endpoint: "PATCH /projects/v1/admin/:id/versions/:version_id", mcp: "update_version", cli: "apps:update", openclaw: "apps:update" },
@@ -372,7 +372,7 @@ const SURFACE: Capability[] = [
   // v1.57: pin/unpin endpoints removed. Per-project pin is superseded by the
   // account-level escape hatch (admin_set_lease_perpetual). archive and
   // reactivate are operator moderation actions, scoped to a single project.
-  { id: "admin_set_lease_perpetual", endpoint: "POST /billing-accounts/v1/admin/:id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
+  { id: "admin_set_lease_perpetual", endpoint: "POST /billing/v1/admin/accounts/:account_id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
   { id: "admin_archive_project",     endpoint: "POST /projects/v1/admin/:id/archive",                 mcp: "admin_archive_project",     cli: "admin:archive",          openclaw: "admin:archive" },
   { id: "admin_reactivate_project",  endpoint: "POST /projects/v1/admin/:id/reactivate",              mcp: "admin_reactivate_project",  cli: "admin:reactivate",       openclaw: "admin:reactivate" },
   { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
@@ -386,6 +386,16 @@ const SURFACE: Capability[] = [
   { id: "cancel_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/cancel",  mcp: "cancel_project_transfer",   cli: "transfer:cancel",  openclaw: "transfer:cancel" },
   { id: "list_incoming_transfers",   endpoint: "GET /agent/v1/transfers/incoming",              mcp: "list_incoming_transfers",   cli: "transfer:list",    openclaw: "transfer:list" },
   { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              mcp: "list_outgoing_transfers",   cli: null,               openclaw: null },
+
+  // ── Org-owned control plane: identity, membership, grants (v1.77+) ──────
+  { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "org:whoami",        openclaw: "org:whoami" },
+  { id: "list_orgs",           endpoint: "GET /orgs/v1",                                  mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
+  { id: "list_org_members",    endpoint: "GET /orgs/v1/:ba/members",                      mcp: "list_org_members",      cli: "org:members",       openclaw: "org:members" },
+  { id: "add_org_member",      endpoint: "POST /orgs/v1/:ba/members",                     mcp: "add_org_member",        cli: "org:add-member",    openclaw: "org:add-member" },
+  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:ba/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:set-role",      openclaw: "org:set-role" },
+  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:ba/members/:principal_id",     mcp: "remove_org_member",     cli: "org:remove-member", openclaw: "org:remove-member" },
+  { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
+  { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
 
   // ── Auth (project user) ────────────────────────────────────────────────
   { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           mcp: "request_magic_link", cli: "auth:magic-link",    openclaw: "auth:magic-link" },
@@ -412,12 +422,12 @@ const SURFACE: Capability[] = [
 
   // ── Email billing accounts + Stripe tier checkout + email packs ───────
   { id: "create_email_billing_account", endpoint: "POST /billing/v1/accounts",                   mcp: "create_email_billing_account", cli: "billing:create-email",   openclaw: "billing:create-email" },
-  { id: "link_wallet_to_account",       endpoint: "POST /billing/v1/accounts/:id/link-wallet",   mcp: "link_wallet_to_account",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
+  { id: "link_wallet_to_account",       endpoint: "POST /billing/v1/accounts/:account_id/link-wallet",   mcp: "link_wallet_to_account",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
   { id: "tier_checkout",                endpoint: "POST /billing/v1/tiers/:tier/checkout",       mcp: "tier_checkout",                cli: "billing:tier-checkout",  openclaw: "billing:tier-checkout" },
   { id: "buy_email_pack",               endpoint: "POST /billing/v1/email-packs/checkout",       mcp: "buy_email_pack",               cli: "billing:buy-email-pack", openclaw: "billing:buy-email-pack" },
   { id: "set_auto_recharge",            endpoint: "POST /billing/v1/email-packs/auto-recharge",  mcp: "set_auto_recharge",            cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
-  { id: "billing_balance",              endpoint: "GET /billing/v1/accounts/:id",                mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
-  { id: "billing_history_cli",          endpoint: "GET /billing/v1/accounts/:id/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
+  { id: "billing_balance",              endpoint: "GET /billing/v1/accounts/:account_id",        mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
+  { id: "billing_history_cli",          endpoint: "GET /billing/v1/accounts/:account_id/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
 
   // ── Tier management ────────────────────────────────────────────────────
   { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },
@@ -646,6 +656,16 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   cancel_project_transfer: "admin.transfers.cancel",
   list_incoming_transfers: "admin.transfers.listIncoming",
   list_outgoing_transfers: "admin.transfers.listOutgoing",
+
+  // Org-owned control plane (v1.77+) — r.org.* + r.grants.*
+  whoami: "org.whoami",
+  list_orgs: "org.list",
+  list_org_members: "org.members",
+  add_org_member: "org.addMember",
+  set_org_member_role: "org.setRole",
+  remove_org_member: "org.removeMember",
+  create_project_grant: "grants.create",
+  revoke_project_grant: "grants.revoke",
 
   // Auth
   request_magic_link: "auth.requestMagicLink",
@@ -921,6 +941,12 @@ describe("SDK surface alignment", () => {
       "email.resolveMailbox",  // private helper
       "email.pickMailbox",     // private helper
       "email.cacheMailbox",    // private helper
+      // billing.lookupAccount resolves a wallet/email → billing_account_id via
+      // GET /billing/v1/accounts?wallet=|?email=. It's an SDK primitive used by
+      // getAccount/getHistory and exposed for consumers that only need the id;
+      // no dedicated MCP/CLI verb (the wallet/email-keyed balance/history
+      // commands resolve internally).
+      "billing.lookupAccount",
       "projects.active",       // returns active project id from the provider
       "projects.restResponse", // REST proxy with HTTP status for CLI/MCP formatters
       "assets.initUploadSession", // low-level resumable upload primitive for CLI UX
