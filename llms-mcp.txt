@@ -289,12 +289,12 @@ The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/
 ### Database
 
 - `provision_postgres_project` — provision a new database. Auto-handles x402 payment. Params: `tier?` (default `"prototype"`), `name?`. Returns `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`.
-- `run_sql` — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id`, `sql`. Returns markdown table.
-- `rest_query` — query/mutate via PostgREST. Params: `project_id`, `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypass).
+- `run_sql` — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id?` (defaults to the active project), `sql`. Returns a markdown table for result sets; mutations report "N rows affected" and DDL reports "Statement executed".
+- `rest_query` — query/mutate via PostgREST. Params: `project_id?` (defaults to the active project), `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypasses RLS via the admin REST path).
 - `apply_expose` — apply the declarative authorization manifest. Params: `project_id`, `manifest` (`{ version: "1", tables: [...], views: [...], rpcs: [...] }`).
 - `validate_manifest` — validate the auth/expose manifest without applying it. Params: `manifest` (object or JSON string), `migration_sql?`, `project_id?`. Returns fenced JSON with `hasErrors`, `errors`, and `warnings`; validation findings are data, not MCP errors.
 - `get_expose` — return the current manifest. Params: `project_id`. Returns the manifest plus `source: "applied" | "introspected"`.
-- `get_schema` — introspect tables, columns, types, constraints, RLS policies. Params: `project_id`.
+- `get_schema` — introspect tables, columns, types, constraints, RLS policies. Params: `project_id?` (defaults to the active project).
 - `get_usage` — per-project usage counters (API calls, storage, lease expiry). Params: `project_id`. The reported tier and capacity limits are account-level (pooled across every project on the same billing account); use `tier_status` for the pooled total.
 - `promote_user` / `demote_user` — manage `project_admin` role on a project user. Params: `project_id`, `email`.
 - `delete_project` — cascade purge. Params: `project_id`. Irreversible.
