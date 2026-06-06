@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleRunSql } from "./run-sql.js";
 import { saveProject } from "../keystore.js";
-import { _resetSdk } from "../sdk.js";
+import { _resetSdk, getSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -247,5 +247,35 @@ describe("run_sql tool", () => {
     assert.equal(result.isError, true);
     assert.ok(result.content[0]!.text.includes("GRANT"));
     assert.ok(result.content[0]!.text.includes("Permissions are managed automatically"));
+  });
+
+  it("defaults to the active project when project_id is omitted (F-7)", async () => {
+    saveProject("proj-active", {
+      anon_key: "ak",
+      service_key: "sk-active",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+    await getSdk().projects.use("proj-active"); // mark active in local state
+
+    let capturedUrl = "";
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      capturedUrl = typeof url === "string" ? url : url.toString();
+      return new Response(
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [], rowCount: 3 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleRunSql({ sql: "INSERT INTO t (id) VALUES (1),(2),(3)" });
+    assert.ok(!result.isError);
+    assert.ok(result.content[0]!.text.includes("3 rows affected"));
+    assert.ok(capturedUrl.includes("/projects/v1/admin/proj-active/sql"));
+  });
+
+  it("errors clearly when project_id is omitted and no active project is set (F-7)", async () => {
+    const result = await handleRunSql({ sql: "SELECT 1" });
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0]!.text.includes("active project"));
   });
 });

@@ -2,7 +2,16 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the private gateway monorepo and publishes on its own cadence.
 
-## Unreleased — `run402-mcp` SQL feedback + 403 hint fixes
+## Unreleased — agent ergonomics: optional project_id + working service-key REST
+
+Public-repo quick wins surfaced by the MCPMark run (no backend changes).
+
+- **DB tools default to the active project.** `run_sql`, `get_schema`, and `rest_query` now take an **optional** `project_id`; when omitted they resolve the active project (set by provisioning or `run402 projects use <id>`). Removes the per-call id tax for an agent working against one project — an explicit id still wins, and a clear error is returned when neither is available. (`src/active-project.ts`, `src/tools/{run-sql,get-schema,rest-query}.ts`)
+- **`rest_query` `key_type: "service"` works again.** The SDK was sending the service key to the public PostgREST path (`/rest/v1/*`), which the gateway rejects with `ADMIN_REQUIRED`. Service-key REST now routes through the admin REST route (`/admin/v1/rest/*`), so RLS-bypassing reads/writes succeed; the tool's path label reflects the route actually used. Anon keys are unchanged. (`sdk/src/namespaces/projects.ts`, `src/tools/rest-query.ts`)
+
+Tests: active-project fallback in `src/tools/run-sql.test.ts`; admin REST routing in `sdk/src/namespaces/projects.test.ts`.
+
+## 2.38.1 — `run402-mcp` SQL feedback + 403 hint fixes
 
 Two `run402-mcp` tool fixes surfaced while benchmarking the MCP server against MCPMark. `@run402/sdk` and `run402` (CLI) have **no code changes** — the CLI already emits the raw `{ rows, rowCount }` JSON.
 

@@ -223,7 +223,8 @@ export class Projects {
         ? { query: queryOrOptions }
         : queryOrOptions ?? {};
     const method = opts.method ?? "GET";
-    const key = opts.keyType === "service" ? keys.service_key : keys.anon_key;
+    const useService = opts.keyType === "service";
+    const key = useService ? keys.service_key : keys.anon_key;
     const query = formatRestQuery(opts.query);
     const headers: Record<string, string> = {
       apikey: key,
@@ -231,7 +232,14 @@ export class Projects {
     };
     if (method !== "GET") headers.Prefer = "return=representation";
 
-    return this.client.requestWithResponse<T>(`/rest/v1/${encodeURIComponent(table)}${query}`, {
+    // The gateway rejects the service_role on the public PostgREST path
+    // (/rest/v1/*), so service-key REST is routed through the admin REST
+    // route (/admin/v1/rest/*). Anon keys use the public path.
+    const path = useService
+      ? `/admin/v1/rest/${encodeURIComponent(table)}${query}`
+      : `/rest/v1/${encodeURIComponent(table)}${query}`;
+
+    return this.client.requestWithResponse<T>(path, {
       method,
       headers,
       body: opts.body,

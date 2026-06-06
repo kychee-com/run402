@@ -520,7 +520,9 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
       keyType: "service",
     });
 
-    assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/todos");
+    // service key routes through the admin REST path (the gateway rejects
+    // service_role on /rest/v1/*); anon keys keep the public /rest/v1/ path.
+    assert.equal(calls[0]!.url, "https://api.example.test/admin/v1/rest/todos");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["apikey"], "service_xxx");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");

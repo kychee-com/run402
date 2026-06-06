@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { resolveProjectId } from "../active-project.js";
 import type { ProjectRestMethod } from "../../sdk/dist/index.js";
 
 export const restQuerySchema = {
-  project_id: z.string().describe("The project ID"),
+  project_id: z.string().optional().describe("The project ID (defaults to the active project)"),
   table: z.string().describe("Table name to query"),
   method: z
     .enum(["GET", "POST", "PATCH", "DELETE"])
@@ -25,18 +26,20 @@ export const restQuerySchema = {
 };
 
 export async function handleRestQuery(args: {
-  project_id: string;
+  project_id?: string;
   table: string;
   method?: string;
   params?: Record<string, string>;
   body?: unknown;
   key_type?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  const project = await resolveProjectId(args.project_id);
+  if (typeof project !== "string") return project;
   const method = (args.method || "GET") as ProjectRestMethod;
   let status: number;
   let body: unknown;
   try {
-    const response = await getSdk().projects.restResponse(args.project_id, args.table, {
+    const response = await getSdk().projects.restResponse(project, args.table, {
       method,
       query: args.params,
       body: args.body,
@@ -53,11 +56,17 @@ export async function handleRestQuery(args: {
       ? body
       : JSON.stringify(body, null, 2);
 
+  // Service keys hit the admin REST route; reflect the real path in the label.
+  const restPath =
+    args.key_type === "service"
+      ? `/admin/v1/rest/${args.table}`
+      : `/rest/v1/${args.table}`;
+
   return {
     content: [
       {
         type: "text",
-        text: `**${method} /rest/v1/${args.table}** → ${status}\n\n\`\`\`json\n${text}\n\`\`\``,
+        text: `**${method} ${restPath}** → ${status}\n\n\`\`\`json\n${text}\n\`\`\``,
       },
     ],
   };

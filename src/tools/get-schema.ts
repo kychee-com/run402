@@ -1,16 +1,19 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { resolveProjectId } from "../active-project.js";
 
 export const getSchemaSchema = {
-  project_id: z.string().describe("The project ID"),
+  project_id: z.string().optional().describe("The project ID (defaults to the active project)"),
 };
 
 export async function handleGetSchema(args: {
-  project_id: string;
+  project_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  const project = await resolveProjectId(args.project_id);
+  if (typeof project !== "string") return project;
   try {
-    const body = await getSdk().projects.getSchema(args.project_id);
+    const body = await getSdk().projects.getSchema(project);
 
     if (body.tables.length === 0) {
       return {

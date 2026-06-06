@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { resolveProjectId } from "../active-project.js";
 
 export const runSqlSchema = {
-  project_id: z.string().describe("The project ID to run SQL against"),
+  project_id: z.string().optional().describe("The project ID to run SQL against (defaults to the active project)"),
   sql: z.string().describe("SQL statement to execute (DDL or DML)"),
   params: z.array(z.unknown()).optional().describe("Bind parameters for parameterized queries (e.g. [42, \"hello\"])"),
 };
@@ -22,10 +23,13 @@ function formatMarkdownTable(rows: Record<string, unknown>[]): string {
 }
 
 export async function handleRunSql(args: {
-  project_id: string;
+  project_id?: string;
   sql: string;
   params?: unknown[];
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  const project = await resolveProjectId(args.project_id);
+  if (typeof project !== "string") return project;
+
   let body: {
     status: string;
     schema: string;
@@ -33,7 +37,7 @@ export async function handleRunSql(args: {
     rowCount: number | null;
   };
   try {
-    body = await getSdk().projects.sql(args.project_id, args.sql, args.params) as typeof body;
+    body = await getSdk().projects.sql(project, args.sql, args.params) as typeof body;
   } catch (err) {
     return mapSdkError(err, "running SQL");
   }
