@@ -22,7 +22,7 @@ export async function handleWhoami(): Promise<ToolResult> {
   try {
     const me = await getSdk().org.whoami();
     const lines = [
-      `Principal \`${me.principal.id}\` (${me.principal.type}${me.principal.display_name ? `, ${me.principal.display_name}` : ""}).`,
+      `Principal \`${me.principal.id}\` (${me.principal.type}${me.principal.displayName ? `, ${me.principal.displayName}` : ""}).`,
       `- authenticator_id: \`${me.authenticator_id}\``,
       `- memberships (${me.memberships.length}):`,
       ...me.memberships.map(
