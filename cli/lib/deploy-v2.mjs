@@ -559,11 +559,35 @@ function parseApplyArgs(args) {
   return opts;
 }
 
-function applySourceField(opts) {
-  if (opts.manifest !== null) return "manifest";
-  if (opts.spec !== null) return "spec";
-  if (opts.dir !== null && !hasStdinSource()) return "dir";
-  return "stdin";
+// Resolve the single manifest source from parsed opts + whether stdin actually
+// has data (a pipe/file on fd 0). Explicit --manifest/--spec/--dir take
+// precedence over incidental stdin: a CI runner (e.g. GitHub Actions) hands the
+// step a FIFO/file stdin, which must NOT be mistaken for a piped manifest when a
+// source flag is given. Exported for unit testing. Returns { source } | { error }.
+export function resolveApplySource(opts, stdinPresent) {
+  const explicit = [];
+  if (opts.manifest !== null) explicit.push("--manifest");
+  if (opts.spec !== null) explicit.push("--spec");
+  if (explicit.length > 1) {
+    return {
+      error: {
+        code: "BAD_USAGE",
+        message: "Only one deploy manifest source may be provided: --manifest or --spec.",
+        details: { sources: explicit },
+      },
+    };
+  }
+  if (opts.manifest !== null) return { source: "manifest" };
+  if (opts.spec !== null) return { source: "spec" };
+  if (opts.dir !== null) return { source: "dir" };
+  if (stdinPresent) return { source: "stdin" };
+  return {
+    error: {
+      code: "BAD_USAGE",
+      message: "No deploy manifest provided. Use --manifest <path>, --spec '<json>', --dir <build>, or pipe a manifest on stdin.",
+      details: {},
+    },
+  };
 }
 
 async function mergeAstroReleaseSlice(spec, dirArg) {
@@ -621,29 +645,16 @@ async function mergeAstroReleaseSlice(spec, dirArg) {
   spec.functions = { replace: { ...existingFns, ...sliceFns } };
 }
 
-function validateApplySources(opts) {
-  const sources = [];
-  if (opts.manifest !== null) sources.push("--manifest");
-  if (opts.spec !== null) sources.push("--spec");
-  if (hasStdinSource()) sources.push("stdin");
-  if (sources.length > 1) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Only one deploy manifest source may be provided: --spec, --manifest, or stdin.",
-      details: { sources },
-    });
-  }
-}
-
 async function applyCmd(args) {
   const opts = parseApplyArgs(args);
-  validateApplySources(opts);
+  const { source, error: sourceError } = resolveApplySource(opts, hasStdinSource());
+  if (sourceError) fail(sourceError);
 
   let raw;
   let manifestPath = null;
-  if (opts.spec !== null) {
+  if (source === "spec") {
     raw = opts.spec;
-  } else if (opts.manifest !== null) {
+  } else if (source === "manifest") {
     try {
       manifestPath = isAbsolute(opts.manifest) ? opts.manifest : resolve(process.cwd(), opts.manifest);
       raw = readFileSync(manifestPath, "utf-8");
@@ -654,11 +665,12 @@ async function applyCmd(args) {
         details: { flag: "--manifest", path: opts.manifest },
       });
     }
-  } else if (opts.dir !== null && !hasStdinSource()) {
-    // --dir without any other source: start from an empty spec and let the
+  } else if (source === "dir") {
+    // --dir without --manifest/--spec: start from an empty spec and let the
     // Astro release-slice fill in site/functions/routes below.
     raw = "{}";
   } else {
+    // source === "stdin": a manifest piped on stdin.
     raw = await readStdin();
   }
 
@@ -669,11 +681,11 @@ async function applyCmd(args) {
     fail({
       code: "BAD_USAGE",
       message: `Manifest is not valid JSON: ${err.message}`,
-      details: { source: applySourceField(opts), parse_error: err.message },
+      details: { source, parse_error: err.message },
     });
   }
   rejectLegacySecretManifest(spec, {
-    source: applySourceField(opts),
+    source,
     ...(manifestPath ? { path: manifestPath } : {}),
   });
 
@@ -720,7 +732,7 @@ async function applyCmd(args) {
       message: `Manifest contains no deployable sections. Expected at least one of: ${meaningful.join(", ")}`,
       hint: "Did you mean to write a 'site.replace' or 'database.migrations' block? See https://run402.com/schemas/manifest.v1.json",
       details: {
-        field: applySourceField(opts),
+        field: source,
         ...(manifestPath ? { path: manifestPath } : {}),
         meaningful_keys: meaningful,
       },

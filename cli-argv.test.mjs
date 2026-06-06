@@ -1682,3 +1682,48 @@ describe("email --attach parsing", () => {
     assert.equal(env.code, "BAD_USAGE");
   });
 });
+
+describe("deploy apply manifest source precedence", () => {
+  // Regression: `run402 ci link github` workflows run `deploy apply --manifest`
+  // in GitHub Actions, where the runner's stdin is a FIFO/file. An explicit
+  // source flag must win over that incidental stdin (else BAD_USAGE: "Only one
+  // deploy manifest source").
+  it("explicit --manifest wins over incidental stdin (CI FIFO)", async () => {
+    const { resolveApplySource } = await import("./cli/lib/deploy-v2.mjs");
+    assert.deepEqual(
+      resolveApplySource({ manifest: "m.json", spec: null, dir: null }, true),
+      { source: "manifest" },
+    );
+  });
+
+  it("--dir wins over incidental stdin (CI)", async () => {
+    const { resolveApplySource } = await import("./cli/lib/deploy-v2.mjs");
+    assert.deepEqual(
+      resolveApplySource({ manifest: null, spec: null, dir: "dist" }, true),
+      { source: "dir" },
+    );
+  });
+
+  it("--manifest + --spec is a genuine conflict", async () => {
+    const { resolveApplySource } = await import("./cli/lib/deploy-v2.mjs");
+    const r = resolveApplySource({ manifest: "m.json", spec: "{}", dir: null }, false);
+    assert.equal(r.source, undefined);
+    assert.equal(r.error.code, "BAD_USAGE");
+    assert.match(r.error.message, /Only one deploy manifest source/);
+  });
+
+  it("piped stdin with no source flag resolves to stdin", async () => {
+    const { resolveApplySource } = await import("./cli/lib/deploy-v2.mjs");
+    assert.deepEqual(
+      resolveApplySource({ manifest: null, spec: null, dir: null }, true),
+      { source: "stdin" },
+    );
+  });
+
+  it("no source flag and no stdin is a clear error, not a hang", async () => {
+    const { resolveApplySource } = await import("./cli/lib/deploy-v2.mjs");
+    const r = resolveApplySource({ manifest: null, spec: null, dir: null }, false);
+    assert.equal(r.error.code, "BAD_USAGE");
+    assert.match(r.error.message, /No deploy manifest provided/);
+  });
+});

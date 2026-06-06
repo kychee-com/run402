@@ -240,7 +240,9 @@ jobs:
 ${environmentLine}    steps:
       - uses: actions/checkout@v4
       - name: Deploy to run402
-        run: npx --yes run402@${RUN402_VERSION} deploy apply --manifest ${shellQuote(manifest)} --project ${shellQuote(projectId)}
+        # Redirect stdin from /dev/null: a CI runner's stdin is a FIFO/file that
+        # older run402 CLIs counted as a second manifest source alongside --manifest.
+        run: npx --yes run402@${RUN402_VERSION} deploy apply --manifest ${shellQuote(manifest)} --project ${shellQuote(projectId)} < /dev/null
 `;
 }
 

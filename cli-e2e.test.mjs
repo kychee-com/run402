@@ -2665,7 +2665,13 @@ describe("CLI e2e happy path", () => {
     );
   });
 
-  it("deploy apply rejects redirected stdin combined with an explicit source (GH-268)", async () => {
+  it("explicit --spec wins over redirected stdin; stdin is ignored (GH-268 reversed for CI)", async () => {
+    // GH-268 originally REJECTED an explicit source + redirected stdin. But a CI
+    // runner (e.g. GitHub Actions) hands the step a FIFO/file stdin, so that
+    // strictness broke every `ci link github` OIDC deploy. The explicit flag now
+    // wins and stdin is ignored. Proof: pass `--spec '{}'` (empty) while a
+    // NON-empty manifest is redirected on stdin — the empty --spec is used
+    // (MANIFEST_EMPTY), NOT the stdin spec, and there is no source-conflict error.
     const { closeSync, openSync, writeFileSync: wf } = await import("node:fs");
     const { spawnSync } = await import("node:child_process");
     const stdinPath = join(tempDir, "gh268-stdin.json");
@@ -2692,8 +2698,8 @@ describe("CLI e2e happy path", () => {
     }
     assert.notEqual(result.status, 0, `should exit non-zero, stdout: ${result.stdout}, stderr: ${result.stderr}`);
     const parsed = parseStderrEnvelope(result.stderr);
-    assert.equal(parsed.code, "BAD_USAGE");
-    assert.match(parsed.message, /Only one deploy manifest source/);
+    assert.equal(parsed.code, "MANIFEST_EMPTY");
+    assert.doesNotMatch(parsed.message, /Only one deploy manifest source/);
   });
 
   it("deploy apply rejects empty manifest file (GH-232)", async () => {

@@ -173,7 +173,7 @@ describe("run402 ci", () => {
     assert.match(workflow, /id-token: write/);
     assert.match(workflow, /contents: read/);
     assert.match(workflow, /branches: \["main"\]/);
-    assert.match(workflow, /npx --yes run402@\d+\.\d+\.\d+ deploy apply --manifest 'run402\.deploy\.json' --project 'prj_ci'/);
+    assert.match(workflow, /npx --yes run402@\d+\.\d+\.\d+ deploy apply --manifest 'run402\.deploy\.json' --project 'prj_ci' < \/dev\/null/);
 
     const output = JSON.parse(stdout.join("\n"));
     assert.equal(output.status, "ok");
