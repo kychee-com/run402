@@ -24,4 +24,4 @@ jobs:
       - name: Deploy to run402
         # Manifest via stdin (one source). Passing --manifest in CI trips the
         # CLI's stdin detection ("Only one deploy manifest source"), so pipe it.
-        run: npx --yes run402@2.33.1 deploy apply --project 'prj_1780488560350_0018' < run402.docs.deploy.json
+        run: npx --yes run402@latest deploy apply --project 'prj_1780488560350_0018' < run402.docs.deploy.json
