@@ -480,7 +480,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to run402
-        run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
+        run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...' < /dev/null
 ```
 
 Output on success:
