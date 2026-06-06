@@ -1,0 +1,21 @@
+{
+  "$schema": "https://run402.com/schemas/release-spec.v1.json",
+  "project_id": "prj_1780488560350_0018",
+  "site": {
+    "replace": {
+      "llms-cli.txt": { "path": "cli/llms-cli.txt" },
+      "llms-sdk.txt": { "path": "sdk/llms-sdk.txt" },
+      "llms-mcp.txt": { "path": "llms-mcp.txt" },
+      "SKILL.md": { "path": "SKILL.md" }
+    },
+    "public_paths": {
+      "mode": "explicit",
+      "replace": {
+        "/llms-cli.txt": { "asset": "llms-cli.txt", "cache_class": "revalidating_asset" },
+        "/llms-sdk.txt": { "asset": "llms-sdk.txt", "cache_class": "revalidating_asset" },
+        "/llms-mcp.txt": { "asset": "llms-mcp.txt", "cache_class": "revalidating_asset" },
+        "/SKILL.md": { "asset": "SKILL.md", "cache_class": "revalidating_asset" }
+      }
+    }
+  }
+}

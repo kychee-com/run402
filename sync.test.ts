@@ -9,6 +9,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -1715,5 +1716,31 @@ describe("coverage summary", () => {
     // This test always passes — it's purely informational
     console.log(lines.join("\n"));
     assert.ok(true);
+  });
+});
+
+describe("agent-skills discovery index", () => {
+  // The public repo is authoritative for the skill digest. The committed
+  // .well-known/agent-skills/index.json must match the current SKILL.md bytes
+  // (regenerate with `node scripts/build-agent-skills-index.mjs`) and advertise
+  // the canonical docs.run402.com SKILL.md URL (Option C — agent-docs-self-host).
+  it("index.json digest matches SKILL.md and points at the docs host", () => {
+    const skill = readFileSync(join(__dirname, "SKILL.md"), "utf-8");
+    const expected = "sha256:" + createHash("sha256").update(skill, "utf8").digest("hex");
+    const index = JSON.parse(
+      readFileSync(join(__dirname, ".well-known/agent-skills/index.json"), "utf-8"),
+    );
+    const entry = index.skills?.[0];
+    assert.ok(entry, "discovery index must list the run402 skill");
+    assert.equal(
+      entry.digest,
+      expected,
+      "index digest must equal sha256(SKILL.md) — run `node scripts/build-agent-skills-index.mjs`",
+    );
+    assert.equal(
+      entry.url,
+      "https://docs.run402.com/SKILL.md",
+      "index url must be the canonical docs.run402.com SKILL.md",
+    );
   });
 });

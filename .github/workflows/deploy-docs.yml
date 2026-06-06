@@ -1,0 +1,25 @@
+name: Deploy Docs Site
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "cli/llms-cli.txt"
+      - "sdk/llms-sdk.txt"
+      - "llms-mcp.txt"
+      - "SKILL.md"
+      - "run402.docs.deploy.json"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to run402
+        run: npx --yes run402@2.33.1 deploy apply --manifest 'run402.docs.deploy.json' --project 'prj_1780488560350_0018'
