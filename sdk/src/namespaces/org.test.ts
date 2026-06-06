@@ -47,8 +47,10 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
 
 describe("org.whoami", () => {
   it("GETs /agent/v1/whoami and returns the resolved principal + memberships", async () => {
+    // The gateway serializes `principal` in camelCase (displayName/createdAt),
+    // unlike the snake_case memberships[] and authenticator_id.
     const payload = {
-      principal: { id: "prn_1", type: "human", display_name: "Tal" },
+      principal: { id: "prn_1", type: "human", displayName: "Tal", createdAt: "2026-01-01T00:00:00Z" },
       memberships: [{ billing_account_id: "ba_1", role: "owner", status: "active" }],
       authenticator_id: "auth_1",
     };
@@ -59,7 +61,23 @@ describe("org.whoami", () => {
     });
     const r = await makeSdk(fetch).org.whoami();
     assert.deepEqual(r, payload);
+    // typed camelCase fields resolve (would not compile if the type used snake_case)
+    assert.equal(r.principal.displayName, "Tal");
+    assert.equal(r.principal.createdAt, "2026-01-01T00:00:00Z");
+    assert.equal(r.memberships[0]!.billing_account_id, "ba_1");
     assert.equal(calls.length, 1);
+  });
+
+  it("omits displayName when the gateway does (null → absent)", async () => {
+    const payload = {
+      principal: { id: "prn_1", type: "ci", createdAt: "2026-01-01T00:00:00Z" },
+      memberships: [],
+      authenticator_id: "auth_2",
+    };
+    const { fetch } = mockFetch(() => jsonResponse(payload));
+    const r = await makeSdk(fetch).org.whoami();
+    assert.equal(r.principal.displayName, undefined);
+    assert.equal(r.principal.createdAt, "2026-01-01T00:00:00Z");
   });
 });
 

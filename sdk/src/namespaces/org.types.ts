@@ -13,11 +13,21 @@ export type OrgRole = "owner" | "admin" | "developer" | "billing" | "viewer";
  * A resolved control-plane principal. `type` is the principal kind
  * (`"human"` / `"agent"` / `"ci"` — future kinds pass through). Unknown future
  * fields are preserved via the index signature.
+ *
+ * NOTE: the `principal` sub-object is serialized in **camelCase** by the gateway
+ * (`displayName` / `createdAt` / `disabledAt`), unlike the snake_case
+ * `memberships[]` and top-level `authenticator_id`. The gateway OMITS
+ * `displayName` and `disabledAt` when they are null, so both are optional.
  */
 export interface Principal {
   id: string;
   type: string;
-  display_name: string | null;
+  /** Human-readable label (e.g. the wallet address for a SIWX human). Omitted when unset. */
+  displayName?: string;
+  /** ISO-8601 creation time. */
+  createdAt: string;
+  /** ISO-8601 timestamp present only when the principal is disabled (and thus fails auth); omitted otherwise. */
+  disabledAt?: string;
   [key: string]: unknown;
 }
 

@@ -45,7 +45,7 @@ const SUB_HELP = {
 Usage:
   run402 org whoami
 
-Calls GET /agent/v1/whoami. Returns the control-plane principal (id/type/display_name),
+Calls GET /agent/v1/whoami. Returns the control-plane principal (id/type/displayName/createdAt),
 authenticator_id, and every org membership with role + status. This is the REMOTE
 identity; for local wallet/profile state use \`run402 status\`.
 `,

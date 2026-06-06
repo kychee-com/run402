@@ -1389,7 +1389,7 @@ server.tool(
 
 server.tool(
   "whoami",
-  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami). A wallet authenticates; ownership is the org. Returns the principal (id/type/display_name), authenticator_id, and every org membership with its role + status. This is the REMOTE identity — for the local wallet/profile state use `status`.",
+  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami). A wallet authenticates; ownership is the org. Returns the principal (id/type/displayName/createdAt), authenticator_id, and every org membership with its role + status. This is the REMOTE identity — for the local wallet/profile state use `status`.",
   whoamiSchema,
   async () => handleWhoami(),
 );
