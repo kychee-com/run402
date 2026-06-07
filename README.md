@@ -306,7 +306,7 @@ The SDK is organised as 23 namespaces: `projects`, `assets`, `cache`, `ci`, `sit
 npm install -g run402
 ```
 
-Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure — designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://run402.com/llms-cli.txt>).
+Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure — designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://docs.run402.com/llms-cli.txt>).
 
 ```bash
 run402 init                              # one-shot allowance + faucet + tier check
@@ -572,7 +572,7 @@ Architecture: every tool / subcommand / skill script is a thin shim over an `@ru
 
 - Web: <https://run402.com>
 - API docs (HTTP): <https://run402.com/llms.txt> · <https://run402.com/openapi.json>
-- CLI docs: <https://run402.com/llms-cli.txt>
+- CLI docs: <https://docs.run402.com/llms-cli.txt>
 - Status: <https://api.run402.com/status>
 - Health: <https://api.run402.com/health>
 

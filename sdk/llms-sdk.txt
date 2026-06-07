@@ -2,7 +2,7 @@
 
 > Package: `@run402/sdk` (npm)
 > Wayfinder: https://run402.com/llms.txt
-> Sibling references: CLI at https://run402.com/llms-cli.txt · MCP at https://run402.com/llms-mcp.txt · HTTP at https://run402.com/llms-full.txt
+> Sibling references: CLI at https://docs.run402.com/llms-cli.txt · MCP at https://docs.run402.com/llms-mcp.txt · HTTP at https://run402.com/llms-full.txt
 > Source: sdk/llms-sdk.txt in https://github.com/kychee-com/run402
 
 The canonical agent-facing reference for the typed TypeScript SDK. Every Run402 capability is a method on a resource namespace; the CLI and MCP server are thin shims over this kernel.
@@ -1490,8 +1490,8 @@ OpenClaw skill packaging follows the same release train.
 ## See also
 
 - Wayfinder: <https://run402.com/llms.txt>
-- CLI reference: <https://run402.com/llms-cli.txt>
-- MCP reference: <https://run402.com/llms-mcp.txt>
+- CLI reference: <https://docs.run402.com/llms-cli.txt>
+- MCP reference: <https://docs.run402.com/llms-mcp.txt>
 - HTTP API reference: <https://run402.com/llms-full.txt>
 - npm: <https://www.npmjs.com/package/@run402/sdk>
 - Source: <https://github.com/kychee-com/run402>

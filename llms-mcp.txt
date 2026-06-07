@@ -3,7 +3,7 @@
 > Package: `run402-mcp` (npm)
 > Connect via: Claude Desktop / Cursor / Cline / Claude Code
 > Wayfinder: https://run402.com/llms.txt
-> Sibling references: SDK at https://run402.com/llms-sdk.txt · CLI at https://run402.com/llms-cli.txt · HTTP at https://run402.com/llms-full.txt
+> Sibling references: SDK at https://docs.run402.com/llms-sdk.txt · CLI at https://docs.run402.com/llms-cli.txt · HTTP at https://run402.com/llms-full.txt
 > Source: cli/llms-mcp.txt in https://github.com/kychee-com/run402
 
 This file is canonical reference for the `run402-mcp` MCP server's tool surface. Every action is an MCP tool call — natural-language framings work because the schemas are loaded into your context by the host.
@@ -12,7 +12,7 @@ If you're an MCP-host agent that already has the run402-mcp tools available, thi
 
 ## Mental model
 
-`run402-mcp` is a thin shim over [`@run402/sdk`](https://run402.com/llms-sdk.txt). Each MCP tool is an argv-parsing wrapper around an SDK method. The credential store at `~/.config/run402/projects.json` is shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to all of them.
+`run402-mcp` is a thin shim over [`@run402/sdk`](https://docs.run402.com/llms-sdk.txt). Each MCP tool is an argv-parsing wrapper around an SDK method. The credential store at `~/.config/run402/projects.json` is shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to all of them.
 
 Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
@@ -626,7 +626,7 @@ claude mcp add run402 -- npx -y run402-mcp
 ## See also
 
 - Wayfinder: <https://run402.com/llms.txt>
-- SDK reference: <https://run402.com/llms-sdk.txt>
-- CLI reference: <https://run402.com/llms-cli.txt>
+- SDK reference: <https://docs.run402.com/llms-sdk.txt>
+- CLI reference: <https://docs.run402.com/llms-cli.txt>
 - HTTP API reference: <https://run402.com/llms-full.txt>
 - Site: <https://run402.com>

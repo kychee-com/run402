@@ -2,7 +2,7 @@
 
 Command-line interface for [Run402](https://run402.com) — provision Postgres databases, deploy static sites, run Node 22 serverless functions, host content-addressed CDN assets, send email, sign on-chain. Paid autonomously with x402 USDC on Base. **Prototype tier is free on testnet.**
 
-For the full CLI reference (every flag, every subcommand) see **<https://run402.com/llms-cli.txt>**.
+For the full CLI reference (every flag, every subcommand) see **<https://docs.run402.com/llms-cli.txt>**.
 
 ## Install
 
@@ -243,7 +243,7 @@ run402 functions --help
 
 The canonical, comprehensive CLI reference — every flag, every subcommand, edge cases, troubleshooting — lives at:
 
-**<https://run402.com/llms-cli.txt>**
+**<https://docs.run402.com/llms-cli.txt>**
 
 Same content also at [`cli/llms-cli.txt`](./llms-cli.txt) in the repo. Treat that file as authoritative; this README is a quick-orientation landing page.
 

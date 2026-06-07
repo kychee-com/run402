@@ -581,7 +581,7 @@ All five release in lockstep.
 ## Links
 
 - HTTP API reference: <https://run402.com/llms.txt>
-- CLI reference: <https://run402.com/llms-cli.txt>
+- CLI reference: <https://docs.run402.com/llms-cli.txt>
 - Run402: <https://run402.com>
 
 ## License

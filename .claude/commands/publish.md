@@ -103,7 +103,7 @@ The workflow handles the publishes, the version-bump commit, the tag, and an aut
 
 2. **Close linked GitHub issues.** If any commit in the release references a GitHub issue (e.g. `Fixes #20`, `Closes #42`), verify the issue is closed. If not, close it with `gh issue close <number> --reason completed`.
 
-3. **Update `cli/llms-cli.txt`** if any CLI commands, manifest fields, or user-facing behavior changed since the last release. This is the CLI reference served at `https://run402.com/llms-cli.txt`. Same applies to `SKILL.md` (MCP server skill) if tool signatures changed. The private `run402-private` repo pulls both files from here at site-deploy time — do **not** edit the copies under `run402-private/site/`.
+3. **Update `cli/llms-cli.txt`** if any CLI commands, manifest fields, or user-facing behavior changed since the last release. This is the CLI reference served at `https://docs.run402.com/llms-cli.txt`. Same applies to `SKILL.md` (MCP server skill) if tool signatures changed. The private `run402-private` repo pulls both files from here at site-deploy time — do **not** edit the copies under `run402-private/site/`.
 
    After the docs commit lands on `main`, trigger a private-repo site redeploy so the fresh docs go live immediately:
    ```
