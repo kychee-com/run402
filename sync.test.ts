@@ -1403,6 +1403,10 @@ describe("deploy route surface alignment", () => {
 
 // ─── llms.txt alignment (conditional — only if the main repo is available) ───
 
+// NOTE (agent-docs-self-host): this still reads the private site copy. Post-cutover
+// the public llms.txt is a high-level wayfinder (not a comprehensive surface dump),
+// so repointing here needs the alignment checks retargeted at llms-mcp.txt / the
+// per-surface refs — tracked as a follow-up, not a simple path swap.
 const LLMS_TXT_PATH = join(homedir(), "Developer/run402-private/site/llms.txt");
 const llmsTxtAvailable = existsSync(LLMS_TXT_PATH);
 
@@ -1742,5 +1746,41 @@ describe("agent-skills discovery index", () => {
       "https://docs.run402.com/SKILL.md",
       "index url must be the canonical docs.run402.com SKILL.md",
     );
+  });
+});
+
+describe("agent-docs URL split (agent-docs-self-host cutover guard)", () => {
+  // The deep references (llms-cli/sdk/mcp.txt + SKILL.md) are served at
+  // docs.run402.com; the llms.txt wayfinder + the agent-skills discovery index
+  // stay on the apex run402.com. Guard against any doc routing agents to the
+  // apex for a moved deep reference.
+  const MOVED_AT_APEX = /\/\/run402\.com\/(?:llms-cli|llms-sdk|llms-mcp)\.txt|\/\/run402\.com\/SKILL\.md/;
+  const AGENT_DOCS = [
+    "llms.txt", "llms-mcp.txt", "SKILL.md",
+    "cli/llms-cli.txt", "sdk/llms-sdk.txt",
+    "README.md", "cli/README.md", "sdk/README.md",
+    "openclaw/README.md", "openclaw/SKILL.md",
+  ];
+
+  it("no agent doc links a moved deep-reference at the apex (must be docs.run402.com)", () => {
+    for (const f of AGENT_DOCS) {
+      const text = readFileSync(join(__dirname, f), "utf-8");
+      assert.doesNotMatch(
+        text,
+        MOVED_AT_APEX,
+        `${f} links a moved deep-reference at run402.com — use docs.run402.com`,
+      );
+    }
+  });
+
+  it("the llms.txt wayfinder points to the CLI/SDK/MCP deep references on docs.run402.com", () => {
+    const wayfinder = readFileSync(join(__dirname, "llms.txt"), "utf-8");
+    for (const doc of ["llms-cli", "llms-sdk", "llms-mcp"]) {
+      assert.match(
+        wayfinder,
+        new RegExp(`//docs\\.run402\\.com/${doc}\\.txt`),
+        `wayfinder must link ${doc}.txt on docs.run402.com`,
+      );
+    }
   });
 });

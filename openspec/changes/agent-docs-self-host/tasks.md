@@ -23,12 +23,12 @@
 
 ## 5. Cutover PR — flip the apex-facing surface (public repo; only AFTER 2–4 verify the docs site is live)
 
-- [ ] 5.1 Rewrite the `llms.txt` wayfinder so the deep-reference links use `https://docs.run402.com/<doc>`, keeping the wayfinder's own location and the discovery-index link on `run402.com`.
-- [ ] 5.2 Update the ~27 in-repo self-references: links to the moved docs (`llms-cli/sdk/mcp.txt`, `SKILL.md`) → `docs.run402.com`; links to the wayfinder/discovery index → `run402.com`. Audit the exact occurrences (llms.txt ×8, mcp ×7, sdk ×6, cli ×3, SKILL ×3) and apply the moved-vs-discovery rule to each.
-- [ ] 5.3 Update `documentation.md`: the canonicality notes and the per-surface "Served at run402.com/…" rows now state the four moved docs are canonical at `docs.run402.com` and the wayfinder/index at `run402.com`.
-- [ ] 5.4 Repoint the stale `sync.test.ts` MCP-coverage assertion (O3) to verify the public repo's own `llms-mcp.txt` tool coverage instead of a `run402-private` path.
-- [ ] 5.5 Add a self-reference lint test: moved docs MUST NOT link to `run402.com/<moved-doc>`, and the wayfinder MUST use `docs.run402.com` for the deep refs.
-- [ ] 5.6 Run `npm test` (skill + sync + unit + e2e) and get it green.
+- [x] 5.1 Rewrite the `llms.txt` wayfinder so the deep-reference links use `https://docs.run402.com/<doc>`, keeping the wayfinder's own location and the discovery-index link on `run402.com`.
+- [x] 5.2 Update the ~27 in-repo self-references (33 flipped via host-anchored substitution): links to the moved docs (`llms-cli/sdk/mcp.txt`, `SKILL.md`) → `docs.run402.com`; links to the wayfinder/discovery index → `run402.com`. Audit the exact occurrences (llms.txt ×8, mcp ×7, sdk ×6, cli ×3, SKILL ×3) and apply the moved-vs-discovery rule to each.
+- [x] 5.3 Update `documentation.md`: the canonicality notes and the per-surface "Served at run402.com/…" rows now state the four moved docs are canonical at `docs.run402.com` and the wayfinder/index at `run402.com`.
+- [ ] 5.4 (DEFERRED) Repoint the stale `sync.test.ts` "llms.txt alignment" assertion (O3). It expects a *comprehensive* llms.txt; post-cutover the public llms.txt is a high-level wayfinder, so the MCP-tools/endpoint checks must be retargeted at `llms-mcp.txt` / the per-surface refs — a redesign, not a path swap. Left reading the private path (skips when absent) for now.
+- [x] 5.5 Add a self-reference lint test: moved docs MUST NOT link to `run402.com/<moved-doc>`, and the wayfinder MUST use `docs.run402.com` for the deep refs.
+- [x] 5.6 Run `npm test` (skill + sync + unit + e2e) and get it green. (0 fail.)
 
 ## 6. Publish wiring + apex refresh (public repo + /publish skill)
 

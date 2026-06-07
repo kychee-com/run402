@@ -759,12 +759,12 @@ Other allowance options:
 
 This skill is `run402-mcp` — every action above is an MCP tool. Full parameter schemas live in each tool's MCP description; the skill body teaches you when to reach for which.
 
-For the corresponding HTTP API reference, see <https://run402.com/llms.txt>. For the CLI shape (terminal / shell / CI use cases), see <https://run402.com/llms-cli.txt>.
+For the corresponding HTTP API reference, see <https://run402.com/llms.txt>. For the CLI shape (terminal / shell / CI use cases), see <https://docs.run402.com/llms-cli.txt>.
 
 ## Links
 
 - HTTP API reference: <https://run402.com/llms.txt>
-- CLI reference: <https://run402.com/llms-cli.txt>
+- CLI reference: <https://docs.run402.com/llms-cli.txt>
 - Status: <https://api.run402.com/status>
 - Health: <https://api.run402.com/health>
 - npm: [`run402-mcp`](https://www.npmjs.com/package/run402-mcp) · [`run402`](https://www.npmjs.com/package/run402) · [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) · [`@run402/functions`](https://www.npmjs.com/package/@run402/functions)

@@ -2,7 +2,7 @@
 
 > CLI: npm install -g run402
 > SDK: npm install @run402/sdk (typed TS client for custom code — same namespaces as the CLI, works in Node/Deno/Bun/V8 isolates)
-> Docs URL: https://run402.com/llms-cli.txt
+> Docs URL: https://docs.run402.com/llms-cli.txt
 > API Docs: https://run402.com/llms.txt
 > Operator: Kychee, Inc.
 > Terms: https://run402.com/humans/terms.html

@@ -49,9 +49,9 @@ Run402 ships four wrappers around the same HTTP API. Pick the one matching your 
 
 | Surface | Use when… | Reference |
 |---|---|---|
-| `@run402/sdk` ⭐ recommended | You're authoring TypeScript / JavaScript code (server, edge, sandbox, code-mode agent). Typed every method. The kernel everything else wraps. | <https://run402.com/llms-sdk.txt> |
-| `run402` CLI | You're a shell-based / scripted agent. JSON in, JSON out, exit code on failure. Also the GitHub Actions OIDC setup path (`run402 ci link github`). | <https://run402.com/llms-cli.txt> |
-| `run402-mcp` | You're an MCP-host agent (Claude Desktop, Cursor, Cline, Claude Code) — the tools land in your context automatically. | <https://run402.com/llms-mcp.txt> |
+| `@run402/sdk` ⭐ recommended | You're authoring TypeScript / JavaScript code (server, edge, sandbox, code-mode agent). Typed every method. The kernel everything else wraps. | <https://docs.run402.com/llms-sdk.txt> |
+| `run402` CLI | You're a shell-based / scripted agent. JSON in, JSON out, exit code on failure. Also the GitHub Actions OIDC setup path (`run402 ci link github`). | <https://docs.run402.com/llms-cli.txt> |
+| `run402-mcp` | You're an MCP-host agent (Claude Desktop, Cursor, Cline, Claude Code) — the tools land in your context automatically. | <https://docs.run402.com/llms-mcp.txt> |
 | HTTP API (raw) | You're in a language without an SDK or doing low-level work. | <https://run402.com/llms-full.txt> |
 
 The CLI and MCP are thin shims over the SDK. Each subcommand and each MCP tool is an argv/schema-parsing wrapper around an SDK method. If you're already in TypeScript, prefer the SDK directly — fewer process boundaries, typed errors, identical behavior.
@@ -126,8 +126,8 @@ Free with active tier. The team reads every message. Or email `tal+402@kychee.co
 
 ## Where to go next
 
-- Building in TypeScript? → <https://run402.com/llms-sdk.txt>
-- Shell / CI / GitHub Actions / scripted agent? → <https://run402.com/llms-cli.txt>
-- Claude Desktop / Cursor / Cline / Claude Code? → <https://run402.com/llms-mcp.txt>
+- Building in TypeScript? → <https://docs.run402.com/llms-sdk.txt>
+- Shell / CI / GitHub Actions / scripted agent? → <https://docs.run402.com/llms-cli.txt>
+- Claude Desktop / Cursor / Cline / Claude Code? → <https://docs.run402.com/llms-mcp.txt>
 - Direct HTTP? → <https://run402.com/llms-full.txt>
 - Latest changes? → <https://run402.com/updates.txt>

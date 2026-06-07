@@ -479,7 +479,7 @@ Build / deploy / runtime / cache failures all return a structured envelope:
   "code": "R402_ASTRO_DYNAMIC_IMAGE_UNSUPPORTED",
   "message": "...",
   "suggestedFix": "Store the AssetRef returned by assets.put() and render with <Run402Picture asset={...}>",
-  "docs": "https://run402.com/llms-cli.txt#r402_astro_dynamic_image_unsupported",
+  "docs": "https://docs.run402.com/llms-cli.txt#r402_astro_dynamic_image_unsupported",
   "file": "src/pages/[slug].astro",
   "line": 14
 }

@@ -73,7 +73,7 @@ Every script prints **JSON to stdout**, **JSON errors to stderr**, and exits **0
 
 ## Full reference
 
-Treat [`https://run402.com/llms-cli.txt`](https://run402.com/llms-cli.txt) as the authoritative CLI reference (every flag, every subcommand, every flow, troubleshooting). The skill body teaches when to reach for which verb; the llms-cli file is the manual.
+Treat [`https://docs.run402.com/llms-cli.txt`](https://docs.run402.com/llms-cli.txt) as the authoritative CLI reference (every flag, every subcommand, every flow, troubleshooting). The skill body teaches when to reach for which verb; the llms-cli file is the manual.
 
 ## License
 

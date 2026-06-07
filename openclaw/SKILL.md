@@ -792,7 +792,7 @@ run402 auth providers
 
 Magic-link tokens are single-use, expire in 15 min, and are rate-limited. The `access_token` works as `apikey` for user-scoped REST calls subject to RLS. Use `run402 auth settings --preferred passkey --require-admin-passkey true` to require eligible passkey auth for `project_admin` sessions.
 
-For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https://run402.com/llms-cli.txt>.
+For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https://docs.run402.com/llms-cli.txt>.
 
 ## Subdomains and custom domains
 
@@ -1096,7 +1096,7 @@ run402 operator logout           # revoke server-side + clear the local cache
 
 ## Tools Reference
 
-This skill is the CLI — every action above is `run402 <verb>`. The full command reference (every flag, every subcommand) lives at <https://run402.com/llms-cli.txt>. Treat that file as canonical when this body is silent on detail.
+This skill is the CLI — every action above is `run402 <verb>`. The full command reference (every flag, every subcommand) lives at <https://docs.run402.com/llms-cli.txt>. Treat that file as canonical when this body is silent on detail.
 
 Top-level command groups:
 
@@ -1114,7 +1114,7 @@ Renewal: `run402 tier set <same-tier>` extends the lease in place and clears any
 
 ## Links
 
-- Full CLI reference: <https://run402.com/llms-cli.txt>
+- Full CLI reference: <https://docs.run402.com/llms-cli.txt>
 - HTTP API reference: <https://run402.com/llms.txt>
 - Status: <https://api.run402.com/status>
 - Health: <https://api.run402.com/health>
