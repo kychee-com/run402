@@ -386,7 +386,7 @@ export type * from "./namespaces/email.js";
 export type * from "./namespaces/functions.types.js";
 export type * from "./namespaces/jobs.js";
 export type * from "./namespaces/operator.js";
-export { Org } from "./namespaces/org.js";
+export { Org, OrgMembers, OrgInvites } from "./namespaces/org.js";
 export type * from "./namespaces/org.types.js";
 export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";

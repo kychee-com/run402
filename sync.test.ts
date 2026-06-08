@@ -73,6 +73,8 @@ function parseCliCommands(): string[] {
   for (const action of parseJobsArtifactsActions()) {
     cmds.push(`jobs:artifacts:${action}`);
   }
+  for (const action of parseOrgGroupActions("memberAction")) cmds.push(`org:member:${action}`);
+  for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
@@ -95,6 +97,8 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseJobsArtifactsActions()) {
     cmds.push(`jobs:artifacts:${action}`);
   }
+  for (const action of parseOrgGroupActions("memberAction")) cmds.push(`org:member:${action}`);
+  for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
@@ -127,6 +131,21 @@ function parseJobsArtifactsActions(): string[] {
   let m;
   while ((m = re.exec(src))) actions.push(m[1]);
   return [...new Set(actions)].sort();
+}
+
+/** Parse the nested `org member <action>` / `org invite <action>` leaf actions
+ *  from cli/lib/org.mjs (matched on `memberAction === "..."` / `inviteAction ===
+ *  "..."`), mirroring `jobs artifacts`. The groups dispatch via `if (sub === ...)`
+ *  so parseSubcommands skips them; these surface their leaves instead. */
+function parseOrgGroupActions(varName: "memberAction" | "inviteAction"): string[] {
+  const filePath = join(__dirname, "cli/lib/org.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = new RegExp(`${varName}\\s*===\\s*"([\\w-]+)"`, "g");
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].filter((c) => c !== "help" && !c.startsWith("-")).sort();
 }
 
 // ─── Canonical API surface ───────────────────────────────────────────────────
@@ -364,10 +383,14 @@ const SURFACE: Capability[] = [
   // ── Org-owned control plane: identity, membership, grants (v1.77+) ──────
   { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "org:whoami",        openclaw: "org:whoami" },
   { id: "list_orgs",           endpoint: "GET /orgs/v1",                                  mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
-  { id: "list_org_members",    endpoint: "GET /orgs/v1/:ba/members",                      mcp: "list_org_members",      cli: "org:members",       openclaw: "org:members" },
-  { id: "add_org_member",      endpoint: "POST /orgs/v1/:ba/members",                     mcp: "add_org_member",        cli: "org:add-member",    openclaw: "org:add-member" },
-  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:ba/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:set-role",      openclaw: "org:set-role" },
-  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:ba/members/:principal_id",     mcp: "remove_org_member",     cli: "org:remove-member", openclaw: "org:remove-member" },
+  { id: "list_org_members",    endpoint: "GET /orgs/v1/:ba/members",                      mcp: "list_org_members",      cli: "org:member:list",   openclaw: "org:member:list" },
+  { id: "add_org_member",      endpoint: "POST /orgs/v1/:ba/members",                     mcp: "add_org_member",        cli: "org:member:add",    openclaw: "org:member:add" },
+  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:ba/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:member:role",   openclaw: "org:member:role" },
+  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:ba/members/:principal_id",     mcp: "remove_org_member",     cli: "org:member:rm",     openclaw: "org:member:rm" },
+  { id: "org_audit",           endpoint: "GET /orgs/v1/:ba/audit",                        mcp: null,                    cli: "org:audit",         openclaw: "org:audit" },
+  { id: "org_invite_list",     endpoint: "GET /orgs/v1/:ba/invites",                      mcp: null,                    cli: "org:invite:list",   openclaw: "org:invite:list" },
+  { id: "org_invite_create",   endpoint: "POST /orgs/v1/:ba/invites",                     mcp: null,                    cli: "org:invite:create", openclaw: "org:invite:create" },
+  { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:ba/invites/:principal_id",     mcp: null,                    cli: "org:invite:rm",     openclaw: "org:invite:rm" },
   { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
   { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
 
@@ -634,10 +657,14 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Org-owned control plane (v1.77+) — r.org.* + r.grants.*
   whoami: "org.whoami",
   list_orgs: "org.list",
-  list_org_members: "org.members",
-  add_org_member: "org.addMember",
-  set_org_member_role: "org.setRole",
-  remove_org_member: "org.removeMember",
+  list_org_members: "org.members.list",
+  add_org_member: "org.members.add",
+  set_org_member_role: "org.members.setRole",
+  remove_org_member: "org.members.revoke",
+  org_audit: "org.audit",
+  org_invite_list: "org.invites.list",
+  org_invite_create: "org.invites.create",
+  org_invite_rm: "org.invites.revoke",
   create_project_grant: "grants.create",
   revoke_project_grant: "grants.revoke",
 

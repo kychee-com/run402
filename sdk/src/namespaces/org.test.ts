@@ -104,12 +104,12 @@ describe("org.members", () => {
       assert.equal(call.url, "https://api.example.test/orgs/v1/ba%2F1/members");
       return jsonResponse({ members });
     });
-    assert.deepEqual(await makeSdk(fetch).org.members("ba/1"), members);
+    assert.deepEqual(await makeSdk(fetch).org.members.list("ba/1"), members);
   });
 
   it("throws LocalError without a billing account id", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
-    await assert.rejects(makeSdk(fetch).org.members(""), (e: unknown) => isLocalError(e));
+    await assert.rejects(makeSdk(fetch).org.members.list(""), (e: unknown) => isLocalError(e));
     assert.equal(calls.length, 0, "no network call on local validation failure");
   });
 });
@@ -122,7 +122,7 @@ describe("org.addMember", () => {
       assert.deepEqual(JSON.parse(String(call.body)), { wallet: "0xABC" });
       return jsonResponse({ status: "ok", principal_id: "prn_3", role: "developer" }, 201);
     });
-    const res = await makeSdk(fetch).org.addMember("ba_1", { wallet: "0xABC" });
+    const res = await makeSdk(fetch).org.members.add("ba_1", { wallet: "0xABC" });
     assert.equal(res.principal_id, "prn_3");
     assert.equal(res.role, "developer");
   });
@@ -132,13 +132,13 @@ describe("org.addMember", () => {
       assert.deepEqual(JSON.parse(String(call.body)), { wallet: "0xABC", role: "admin" });
       return jsonResponse({ status: "ok", principal_id: "prn_3", role: "admin" }, 201);
     });
-    await makeSdk(fetch).org.addMember("ba_1", { wallet: "0xABC", role: "admin" });
+    await makeSdk(fetch).org.members.add("ba_1", { wallet: "0xABC", role: "admin" });
   });
 
   it("throws LocalError without a wallet", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     // @ts-expect-error intentionally missing wallet
-    await assert.rejects(makeSdk(fetch).org.addMember("ba_1", {}), (e: unknown) => isLocalError(e));
+    await assert.rejects(makeSdk(fetch).org.members.add("ba_1", {}), (e: unknown) => isLocalError(e));
     assert.equal(calls.length, 0);
   });
 });
@@ -151,7 +151,7 @@ describe("org.setRole", () => {
       assert.deepEqual(JSON.parse(String(call.body)), { role: "owner" });
       return jsonResponse({ status: "ok", principal_id: "prn_2", role: "owner" });
     });
-    const res = await makeSdk(fetch).org.setRole("ba_1", "prn_2", "owner");
+    const res = await makeSdk(fetch).org.members.setRole("ba_1", "prn_2", "owner");
     assert.equal(res.role, "owner");
   });
 
@@ -160,7 +160,7 @@ describe("org.setRole", () => {
       jsonResponse({ code: "LAST_OWNER", message: "The org must keep one active owner." }, 409),
     );
     await assert.rejects(
-      makeSdk(fetch).org.setRole("ba_1", "prn_2", "viewer"),
+      makeSdk(fetch).org.members.setRole("ba_1", "prn_2", "viewer"),
       (e: unknown) => e instanceof ApiError && e.status === 409 && e.code === "LAST_OWNER",
     );
   });
@@ -173,13 +173,13 @@ describe("org.removeMember", () => {
       assert.equal(call.url, "https://api.example.test/orgs/v1/ba_1/members/prn_2");
       return jsonResponse({ status: "revoked", principal_id: "prn_2" });
     });
-    const res = await makeSdk(fetch).org.removeMember("ba_1", "prn_2");
+    const res = await makeSdk(fetch).org.members.revoke("ba_1", "prn_2");
     assert.equal(res.status, "revoked");
   });
 
   it("throws LocalError without a principal id", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
-    await assert.rejects(makeSdk(fetch).org.removeMember("ba_1", ""), (e: unknown) => isLocalError(e));
+    await assert.rejects(makeSdk(fetch).org.members.revoke("ba_1", ""), (e: unknown) => isLocalError(e));
     assert.equal(calls.length, 0);
   });
 });

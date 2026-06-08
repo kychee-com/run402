@@ -84,9 +84,50 @@ export interface MemberMutationResult {
   [key: string]: unknown;
 }
 
-/** Result of {@link Org.removeMember} (`{ status:"revoked", principal_id }`). */
+/** Result of {@link OrgMembers.revoke} (`{ status:"revoked", principal_id }`). */
 export interface MemberRevokeResult {
   status: string;
   principal_id: string;
+  [key: string]: unknown;
+}
+
+/** Input to {@link OrgInvites.create} — invite a person by email at a role. */
+export interface CreateInviteInput {
+  email: string;
+  role: OrgRole;
+  /** Optional invite lifetime in hours; gateway default applies when omitted. */
+  inviteTtlHours?: number;
+}
+
+/**
+ * A pending email invite from {@link OrgInvites.list} (`GET /orgs/v1/:ba/invites`).
+ * Represented by a pending `principal_id` — pass it to {@link OrgInvites.revoke}.
+ */
+export interface OrgInvite {
+  principal_id: string;
+  email: string;
+  role: OrgRole;
+  status: string;
+  expires_at?: string;
+  [key: string]: unknown;
+}
+
+/** Result of {@link OrgInvites.revoke} (`{ status:"revoked", principal_id }`). */
+export interface OrgInviteRevokeResult {
+  status: string;
+  principal_id: string;
+  [key: string]: unknown;
+}
+
+/** Options for {@link Org.audit}. */
+export interface AuditOptions {
+  /** Page size; gateway default applies when omitted. */
+  limit?: number;
+  /** Cursor — return events before this opaque marker. */
+  before?: string;
+}
+
+/** One control-plane audit event from {@link Org.audit}. Shape is gateway-owned (forward-compatible). */
+export interface AuditEvent {
   [key: string]: unknown;
 }

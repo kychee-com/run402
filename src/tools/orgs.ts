@@ -64,7 +64,7 @@ export const listOrgMembersSchema = {
 
 export async function handleListOrgMembers(args: { billing_account_id: string }): Promise<ToolResult> {
   try {
-    const members = await getSdk().org.members(args.billing_account_id);
+    const members = await getSdk().org.members.list(args.billing_account_id);
     if (members.length === 0) {
       return { content: [{ type: "text", text: `No members in \`${args.billing_account_id}\`.` }] };
     }
@@ -92,7 +92,7 @@ export async function handleAddOrgMember(args: {
   role?: OrgRole;
 }): Promise<ToolResult> {
   try {
-    const res = await getSdk().org.addMember(args.billing_account_id, {
+    const res = await getSdk().org.members.add(args.billing_account_id, {
       wallet: args.wallet,
       role: args.role,
     });
@@ -123,7 +123,7 @@ export async function handleSetOrgMemberRole(args: {
   role: OrgRole;
 }): Promise<ToolResult> {
   try {
-    const res = await getSdk().org.setRole(args.billing_account_id, args.principal_id, args.role);
+    const res = await getSdk().org.members.setRole(args.billing_account_id, args.principal_id, args.role);
     return {
       content: [{ type: "text", text: `Principal \`${res.principal_id}\` is now ${res.role}.` }],
     };
@@ -144,7 +144,7 @@ export async function handleRemoveOrgMember(args: {
   principal_id: string;
 }): Promise<ToolResult> {
   try {
-    const res = await getSdk().org.removeMember(args.billing_account_id, args.principal_id);
+    const res = await getSdk().org.members.revoke(args.billing_account_id, args.principal_id);
     return {
       content: [{ type: "text", text: `Removed principal \`${res.principal_id}\` from \`${args.billing_account_id}\`.` }],
     };
