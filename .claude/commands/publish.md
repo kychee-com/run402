@@ -103,13 +103,13 @@ The workflow handles the publishes, the version-bump commit, the tag, and an aut
 
 2. **Close linked GitHub issues.** If any commit in the release references a GitHub issue (e.g. `Fixes #20`, `Closes #42`), verify the issue is closed. If not, close it with `gh issue close <number> --reason completed`.
 
-3. **Update `cli/llms-cli.txt`** if any CLI commands, manifest fields, or user-facing behavior changed since the last release. This is the CLI reference served at `https://docs.run402.com/llms-cli.txt`. Same applies to `SKILL.md` (MCP server skill) if tool signatures changed. The private `run402-private` repo pulls both files from here at site-deploy time — do **not** edit the copies under `run402-private/site/`.
+3. **The deep references deploy themselves.** Since `agent-docs-self-host`, `cli/llms-cli.txt`, `sdk/llms-sdk.txt`, `llms-mcp.txt`, and `SKILL.md` are served from `docs.run402.com` by this repo's own OIDC workflow (`.github/workflows/deploy-docs.yml`): a push to `main` touching any of them (or `run402.docs.deploy.json`) auto-deploys. `/publish` does **not** own them — just commit the doc edit to `main` and the deploy fires. (Don't edit the `run402-private` copies.)
 
-   After the docs commit lands on `main`, trigger a private-repo site redeploy so the fresh docs go live immediately:
+   The apex `run402.com/llms.txt` wayfinder + the `.well-known/agent-skills/index.json` discovery index are still served by `run402-private`. Only if you changed **those** (e.g. the wayfinder), trigger a private-repo site redeploy so the apex refreshes:
    ```
    gh workflow run deploy-site.yml -R kychee-com/run402-private
    ```
-   (Or `gh api repos/kychee-com/run402-private/dispatches -f event_type=public-docs-updated` if you want the trigger to show up in the audit log as a `repository_dispatch`.)
+   (Old `run402.com/<deep-ref>` URLs 301-redirect to `docs.run402.com`. Or `gh api repos/kychee-com/run402-private/dispatches -f event_type=public-docs-updated` for a `repository_dispatch`.)
 
 4. **Install the new CLI version locally and smoke-test it** so `run402` on the command line uses the just-published version, and so a broken publish gets caught immediately, not when the user next runs a command:
    ```
