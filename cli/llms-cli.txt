@@ -81,6 +81,7 @@ Retry policy:
 - If a mutating command returns 5xx with `safe_to_retry: false`, or `mutation_state` is `committed`, `partial`, or `unknown`, inspect/poll/reconcile state before retrying. For deploys, prefer `run402 deploy events <operation_id>` or `run402 deploy resume <operation_id>` over starting a duplicate operation.
 - Lifecycle/payment errors usually need an action: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `run402 projects usage <id>` or `run402 tier set <tier>`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit payment or fund allowance.
 - `NOT_AUTHORIZED` (HTTP 403) is an org-owned-control-plane authorization denial (v1.77+), distinct from auth or payment: the wallet *authenticated*, but its resolved principal lacks the org role or per-project grant the action needs. `details` carries `required_role` / `required_capability` / `reason`. Not retryable without obtaining a covering org membership/role or grant; high-stakes ops (delete, transfer-of-ownership, membership change) require an active `owner` membership. The gateway returns 403 even when the project does not exist (so existence isn't leaked) — re-check the `<id>` too. The CLI envelope adds an actionable `hint`.
+- `STEP_UP_REQUIRED` (HTTP 403) is a freshness/provenance demand for a high-stakes control-plane op: the session is valid but not fresh enough, or was minted by a read/device-flow path that can't satisfy a passkey step-up. `details` carries `required_amr` / `max_age_seconds` / `challenge_url` / `reason`, plus `next_actions[]`. The SDK raises a typed `StepUpRequiredError` (`isStepUpRequired()` guard). Resolve with `run402 operator login --step-up` on the same client, then retry. Distinct from `NOT_AUTHORIZED` (a role/grant gap, not a freshness gap).
 - Client-side `BAD_JSON_FLAG` errors include `details.flag` (the offending flag, e.g. `--abi`) and `details.value_preview` (truncated value) so callers know which flag value to fix.
 - CLI commands reject unknown flags and missing flag values locally with `UNKNOWN_FLAG` or `BAD_FLAG` before network work. Numeric and wei-like flags are strict decimal integers: malformed, fractional, negative, and scientific-notation values fail locally instead of being forwarded to the API.
 - Commands with fixed positional shapes also reject extra positional arguments locally. This includes deploy resume/list/events/release subcommands, functions list/delete, and blob get/rm/sign/diagnose.
@@ -880,29 +881,35 @@ Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `
 
 `link github` requires a local allowance because it signs the delegation. The generated workflow does not require an allowance file or service key in GitHub; it uses GitHub's OIDC token with `id-token: write`. Use repeatable `--route-scope` only when CI should deploy route declarations; no scopes means no CI route authority.
 
-### transfer (v1.59, two-party project handoff)
-- `run402 transfer init --to <wallet> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>]` — initiate (owner-only). Returns `{ transfer_id, expires_at, project_summary, your_unused_lease_days, lease_refundable: false, terms_sha256 }`.
-- `run402 transfer preview <transfer_id>` — fetch the preview document (either party). Lists custom domains, subdomains, function names, secret NAMES (never values), CI bindings that will be revoked on accept, mailbox summary, billing implications.
-- `run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]` — `--incoming` (default) shows transfers OFFERED TO your wallet; `--outgoing` shows transfers you initiated. Each entry includes `preview_path`.
-- `run402 transfer accept <transfer_id>` — accept (recipient). Atomically flips ownership, revokes the previous owner's CI bindings on the project, and stamps a `secrets_rotation_advised` advisory. Secret VALUES are inherited; the response returns `secret_names_inherited[]`.
-- `run402 transfer cancel <transfer_id> [--reason <text>]` — cancel (either party).
+### transfer (v1.59 two-party wallet handoff; v1.78 email->org handoff)
+One noun, two rails: a **wallet** recipient is a two-party wallet transfer; an **email** recipient is an email->org handoff (the recipient claims it into an org). Both ride the same transfer rail and share a `transfer_id`.
+- `run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>]` — initiate (owner-only). `--to` routes by recipient kind: a wallet starts a transfer, an email starts a handoff. Returns `{ transfer_id, expires_at, ... }`.
+- `run402 transfer preview <transfer_id> [--handoff]` — fetch the preview document (either party); `--handoff` previews an email->org handoff. Lists custom domains, subdomains, function names, secret NAMES (never values), CI bindings that will be revoked on accept, mailbox summary, billing implications.
+- `run402 transfer list [--incoming | --outgoing | --handoffs] [--limit N] [--offset N]` — `--incoming` (default) shows wallet transfers OFFERED TO you; `--outgoing` shows transfers you initiated; `--handoffs` shows incoming email->org handoffs. Each entry includes `preview_path`.
+- `run402 transfer accept <transfer_id>` — accept a WALLET transfer (recipient). Atomically flips ownership, revokes the previous owner's CI bindings on the project, and stamps a `secrets_rotation_advised` advisory. Secret VALUES are inherited; the response returns `secret_names_inherited[]`.
+- `run402 transfer claim <transfer_id> [--into <billing_account_id>]` — claim an incoming EMAIL handoff into an org you own (omit `--into` to claim into a brand-new org). The handoff analog of `accept`.
+- `run402 transfer cancel <transfer_id> [--reason <text>] [--handoff]` — cancel (either party); `--handoff` cancels an email->org handoff.
 
 While a transfer is `pending` (72h TTL), owner-side mutations on the project return `409 PROJECT_HAS_PENDING_TRANSFER` with `details.transfer_id` and a `next_actions[]` cancel route. Data-plane (`/rest/v1/*`, function invocation, mailbox send/receive) keeps serving; payment-path routes (tier renew, billing) keep working; the `transfer cancel` route is intentionally unblocked so the owner can always recover. After accept, rotate every inherited secret with `run402 secrets set <project> <name> <value>` — the `secrets_rotation_advised` advisory on `tier status` clears once every previously-inherited name has been re-written.
 
 What does NOT transfer: tier lease (stays with the original owner's billing account; no Phase 1A proration), KMS contract wallets (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet. Phase 1A supports only `--billing-policy migrate` — the project moves into the recipient's billing account; if they have no active billing account yet, accept returns `409 RECIPIENT_ACCOUNT_NOT_ACTIVE`.
 
 ### org / grants (v1.77+ org-owned control plane)
-A wallet AUTHENTICATES; the org (billing account) owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet == signer`. Member/grant changes require an active `owner`.
+A wallet AUTHENTICATES; the org (billing account) owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet == signer`. Member/invite changes require an active `owner`. Members and invites are grouped sub-resources (`org member …`, `org invite …`).
 - `run402 org whoami` — resolve your control-plane principal + org memberships (GET `/agent/v1/whoami`). The REMOTE identity; for local wallet/profile state use `run402 status`.
 - `run402 org list` — orgs you are a member of (role + status each).
-- `run402 org members <billing_account>` — members + roles of an org.
-- `run402 org add-member <billing_account> <wallet> [--role <role>]` — add a member BY WALLET (a new wallet is provisioned as a `human` principal); `--role` defaults to `developer`. (Email-first invite is a separate, not-yet-shipped flow.)
-- `run402 org set-role <billing_account> <principal_id> <role>` — change a member's role.
-- `run402 org remove-member <billing_account> <principal_id>` — remove a member.
+- `run402 org audit <billing_account> [--limit N] [--before <cursor>]` — control-plane audit trail for the org (admin+); newest-first, page with `--before`.
+- `run402 org member list <billing_account>` — members + roles of an org.
+- `run402 org member add <billing_account> <wallet> [--role <role>]` — add a member BY WALLET (a new wallet is provisioned as a `human` principal); `--role` defaults to `developer`.
+- `run402 org member role <billing_account> <principal_id> <role>` — change a member's role.
+- `run402 org member rm <billing_account> <principal_id>` — revoke a member.
+- `run402 org invite list <billing_account>` — pending email invites.
+- `run402 org invite create <billing_account> <email> [--role <role>] [--ttl-hours N]` — invite a person by email, claimed at their first login; `--role` defaults to `developer`.
+- `run402 org invite rm <billing_account> <principal_id>` — revoke a pending invite.
 - `run402 grants create <project_id> <wallet> <capability> [--policy <json>] [--expires <iso8601>]` — issue a per-project capability grant (e.g. `deploy`, `functions:write`) to an agent/CI principal. Requires owner of the project's org.
 - `run402 grants revoke <project_id> <grant_id>` — revoke a grant.
 
-`set-role`/`remove-member` that would drop the org's only active owner fail with `409 LAST_OWNER` — promote another member to `owner` first. `add-member` order is `<billing_account> <wallet>`; `set-role` is `<billing_account> <principal_id> <role>` (a `prn_…` principal id, from `run402 org members`).
+`org member role`/`org member rm` that would drop the org's only active owner fail with `409 LAST_OWNER` — promote another member to `owner` first. Principal ids (`prn_…`) come from `run402 org member list`.
 
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
@@ -1392,7 +1399,8 @@ KMS contract wallets — provision AWS KMS-backed Ethereum wallets per project f
 ### operator
 The **operator** is YOU, the human, identified by email — distinct from the **agent** (your wallet / SIWX identity). One browser login spans every wallet that verified your email, so `operator overview` returns the cross-wallet union. For a single wallet's account state, use `run402 status` (that IS the wallet's view; there is no `operator status`).
 
-- `run402 operator login [--no-open]` — browser-delegated sign-in (device-authorization, RFC 8628, the `aws sso login` model). Prints a verification URL + short user code to stderr and (on a TTY) opens the browser; you approve via the existing magic-link OR passkey web flow. Polls until approved, then caches the session at `{base}/operator-session.json` (0600, base config dir — shared across named wallets). Stdout JSON on success: `{ logged_in, email, wallets, wallet_count, expires_at, absolute_expires_at, expires_in_seconds }`.
+- `run402 operator login [--no-open]` — browser-delegated sign-in for the **read** session (device-authorization, RFC 8628, the `aws sso login` model). Prints a verification URL + short user code to stderr and (on a TTY) opens the browser; you approve via the existing magic-link OR passkey web flow. Polls until approved, then caches the session at `{base}/operator-session.json` (0600, base config dir — shared across named wallets). Stdout JSON on success: `{ logged_in, email, wallets, wallet_count, expires_at, absolute_expires_at, expires_in_seconds }`.
+- `run402 operator login --loopback [--no-open]` / `run402 operator login --step-up` — the **write-capable** control-plane login (loopback-PKCE, RFC 8252). Starts a `127.0.0.1` server, opens the browser to the passkey ceremony on run402's origin, and on approval mints a passkey-fresh, write-capable session (`provenance=loopback_pkce`) cached at `{base}/control-plane-session.json` (0600; stdout is metadata-only — the token is never printed). `--step-up` re-mints a fresh session to satisfy a `STEP_UP_REQUIRED` challenge on this same client. `operator whoami` surfaces it and `operator logout` clears it.
 - `run402 operator overview` — account view across ALL wallets controlling your email. Sends the cached operator-session bearer to `GET /agent/v1/operator/overview`. **Requires login** — returns `OPERATOR_LOGIN_REQUIRED` (no SIWX fallback) when there is no live session, and clears the cache + returns `OPERATOR_SESSION_INVALID` on a 401/403 (revoked or expired).
 - `run402 operator whoami` — local, no network. Prints the cached session (`logged_in`, email, wallets, expiry) or `{ logged_in: false, reason: "no_session" | "expired" }` with a non-zero exit.
 - `run402 operator logout` — revokes the session server-side (`POST /agent/v1/operator/session/revoke`) then clears the local cache. Idempotent; best-effort revoke (always clears locally). Stdout: `{ revoked, cleared }`.
