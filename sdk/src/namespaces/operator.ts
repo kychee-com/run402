@@ -70,6 +70,50 @@ export interface OperatorOverview {
   [key: string]: unknown;
 }
 
+/**
+ * A write-capable control-plane session minted by the loopback-PKCE flow
+ * (`POST /agent/v1/control-plane/cli/token`). Distinct from the device-flow
+ * {@link OperatorSessionToken} (read-only): this carries `provenance` and
+ * `amr`, and is accepted everywhere a SIWX wallet is. Forward-compatible.
+ */
+export interface ControlPlaneSession {
+  control_plane_session_token: string;
+  token_type?: string;
+  /** Relative lifetime in seconds. */
+  expires_in?: number;
+  /** How it was minted — `loopback_pkce` for the CLI write-login. */
+  provenance?: string;
+  /** The control-plane principal id. */
+  principal_id?: string;
+  /** Auth methods satisfied (e.g. `["passkey"]`). */
+  amr?: string[];
+  [key: string]: unknown;
+}
+
+/** Parameters for {@link Operator.buildCliAuthorizeUrl}. */
+export interface CliAuthorizeParams {
+  /** The CLI's loopback redirect, e.g. `http://127.0.0.1:54321/callback`. */
+  redirectUri: string;
+  /** PKCE S256 challenge = base64url(sha256(verifier)). */
+  codeChallenge: string;
+  /** Opaque CSRF state echoed back on the redirect. */
+  state: string;
+  /** Replay nonce. */
+  nonce: string;
+}
+
+/** Parameters for {@link Operator.exchangeCliToken}. */
+export interface CliTokenExchange {
+  /** Authorization code received on the loopback redirect. */
+  code: string;
+  /** The PKCE verifier whose hash was sent as `codeChallenge`. */
+  codeVerifier: string;
+  /** Must match the `redirectUri` used at authorize time. */
+  redirectUri: string;
+  /** Must match the `state` used at authorize time. */
+  state: string;
+}
+
 const POLL_ERROR_CODES = new Set([
   "authorization_pending",
   "slow_down",
@@ -163,6 +207,49 @@ export class Operator {
       headers: { Authorization: `Bearer ${opts.token}` },
       withAuth: false,
       context: "revoking operator session",
+    });
+  }
+
+  // ── Loopback-PKCE write-login (v1.78, RFC 8252 §7.3) ──────────────────────
+  // The aws-sso-style write login: the CLI starts a `127.0.0.1` server, opens
+  // the browser to the authorize URL (the console runs the passkey ceremony +
+  // approves), receives the code on the loopback redirect, then exchanges it
+  // here for a write-capable, passkey-fresh control-plane session
+  // (`provenance=loopback_pkce`). PKCE generation + the loopback server live in
+  // the Node CLI; these two methods are the isomorphic SDK seam.
+
+  /**
+   * Build the loopback-PKCE authorize URL the CLI opens in the browser. Pure —
+   * no network, no Node APIs — so it is safe in any runtime. The caller
+   * generates `codeChallenge`/`state`/`nonce` and runs the redirect server.
+   */
+  buildCliAuthorizeUrl(params: CliAuthorizeParams): string {
+    const q = new URLSearchParams({
+      redirect_uri: params.redirectUri,
+      code_challenge: params.codeChallenge,
+      code_challenge_method: "S256",
+      state: params.state,
+      nonce: params.nonce,
+    });
+    return `${this.client.apiBase}/agent/v1/control-plane/cli/authorize?${q.toString()}`;
+  }
+
+  /**
+   * Exchange the loopback authorization code (+ PKCE verifier) for a
+   * write-capable {@link ControlPlaneSession}. Unauthenticated — the code +
+   * verifier are the credential.
+   */
+  async exchangeCliToken(params: CliTokenExchange): Promise<ControlPlaneSession> {
+    return this.client.request<ControlPlaneSession>("/agent/v1/control-plane/cli/token", {
+      method: "POST",
+      body: {
+        code: params.code,
+        code_verifier: params.codeVerifier,
+        redirect_uri: params.redirectUri,
+        state: params.state,
+      },
+      withAuth: false,
+      context: "exchanging CLI authorization code",
     });
   }
 }

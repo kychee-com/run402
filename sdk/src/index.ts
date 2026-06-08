@@ -306,6 +306,7 @@ export {
   LocalError,
   Run402DeployError,
   TransferFreezeError,
+  StepUpRequiredError,
   isRun402Error,
   isPaymentRequired,
   isProjectNotFound,
@@ -316,6 +317,7 @@ export {
   isLocalError,
   isDeployError,
   isTransferFreezeError,
+  isStepUpRequired,
   isRetryableRun402Error,
   getQuotaScope,
 } from "./errors.js";

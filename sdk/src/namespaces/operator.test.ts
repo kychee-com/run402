@@ -173,3 +173,57 @@ describe("operator.revoke", () => {
     assert.equal(calls[0]!.headers["Authorization"], "Bearer ops_tok");
   });
 });
+
+describe("operator loopback-PKCE write-login (v1.78)", () => {
+  it("buildCliAuthorizeUrl composes the authorize URL with S256 + params (no network)", () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const url = makeSdk(fetch).operator.buildCliAuthorizeUrl({
+      redirectUri: "http://127.0.0.1:54321/callback",
+      codeChallenge: "chal_abc",
+      state: "st_1",
+      nonce: "nn_1",
+    });
+    assert.equal(calls.length, 0, "URL build must not touch the network");
+    const u = new URL(url);
+    assert.equal(u.origin + u.pathname, "https://api.example.test/agent/v1/control-plane/cli/authorize");
+    assert.equal(u.searchParams.get("redirect_uri"), "http://127.0.0.1:54321/callback");
+    assert.equal(u.searchParams.get("code_challenge"), "chal_abc");
+    assert.equal(u.searchParams.get("code_challenge_method"), "S256");
+    assert.equal(u.searchParams.get("state"), "st_1");
+    assert.equal(u.searchParams.get("nonce"), "nn_1");
+  });
+
+  it("exchangeCliToken POSTs code + verifier to /cli/token, unauthenticated", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "POST");
+      assert.equal(call.url, "https://api.example.test/agent/v1/control-plane/cli/token");
+      // The code + verifier ARE the credential — no SIWX/bearer header is sent.
+      assert.equal(call.headers["SIGN-IN-WITH-X"], undefined);
+      assert.equal(call.headers["Authorization"], undefined);
+      assert.deepEqual(JSON.parse(String(call.body)), {
+        code: "code_1",
+        code_verifier: "ver_1",
+        redirect_uri: "http://127.0.0.1:54321/callback",
+        state: "st_1",
+      });
+      return jsonResponse({
+        control_plane_session_token: "cps_tok",
+        token_type: "Bearer",
+        expires_in: 900,
+        provenance: "loopback_pkce",
+        principal_id: "prn_1",
+        amr: ["passkey"],
+      });
+    });
+    const session = await makeSdk(fetch).operator.exchangeCliToken({
+      code: "code_1",
+      codeVerifier: "ver_1",
+      redirectUri: "http://127.0.0.1:54321/callback",
+      state: "st_1",
+    });
+    assert.equal(session.control_plane_session_token, "cps_tok");
+    assert.equal(session.provenance, "loopback_pkce");
+    assert.deepEqual(session.amr, ["passkey"]);
+    assert.equal(calls.length, 1);
+  });
+});

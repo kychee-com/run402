@@ -16,6 +16,7 @@ import {
   NetworkError,
   NotAuthorizedError,
   PaymentRequired,
+  StepUpRequiredError,
   TransferFreezeError,
   Unauthorized,
 } from "./errors.js";
@@ -128,6 +129,14 @@ export async function requestWithResponse<T>(
     throw new PaymentRequired(
       `${displayMessage(resBody, "Payment required")} while ${context}`,
       402,
+      resBody,
+      context,
+    );
+  }
+  if (res.status === 403 && envelopeCode(resBody) === "STEP_UP_REQUIRED") {
+    throw new StepUpRequiredError(
+      `${displayMessage(resBody, "Step-up authentication required")} while ${context}`,
+      res.status,
       resBody,
       context,
     );

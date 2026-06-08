@@ -25,7 +25,8 @@ export type Run402ErrorKind =
   | "network_error"
   | "local_error"
   | "deploy_error"
-  | "transfer_freeze";
+  | "transfer_freeze"
+  | "step_up_required";
 
 /**
  * Quota-denial scope discriminator (v1.46+). Indicates whether a quota-related
@@ -482,6 +483,66 @@ function pickNextActionPath(actions: unknown[], type: string): string | null {
   return null;
 }
 
+/**
+ * HTTP 403 `STEP_UP_REQUIRED` — the gateway requires a fresh, same-client
+ * step-up (a recent `passkey` AMR) before this high-stakes control-plane
+ * operation (delete / transfer / membership / invite / payment drain·rotate)
+ * may proceed. A `device_flow`-minted session can never satisfy it; the caller
+ * must complete the challenge at {@link challengeUrl} (e.g. via
+ * `run402 operator login --step-up`) on the same client and retry.
+ *
+ * Typed fields are lifted from the gateway `details` envelope; the same
+ * remediation pointer is also present in {@link Run402Error.nextActions} as an
+ * `authenticate` action.
+ */
+export class StepUpRequiredError extends Run402Error {
+  static readonly DEFAULT_CODE = "STEP_UP_REQUIRED";
+  static readonly DEFAULT_CATEGORY = "auth";
+  static readonly DEFAULT_RETRYABLE = false;
+  readonly kind = "step_up_required" as const;
+  /** AMRs that would satisfy the step-up (e.g. `["passkey"]`). Empty when the gateway omitted it. */
+  readonly requiredAmr: string[];
+  /** Max age in seconds the satisfying auth may be; null when the gateway omitted it. */
+  readonly maxAgeSeconds: number | null;
+  /** Where to run the step-up challenge; null when the gateway omitted it. */
+  readonly challengeUrl: string | null;
+  /** Why the step-up was demanded (e.g. `"device_flow_forbidden"`); null when absent. */
+  readonly reason: string | null;
+
+  constructor(message: string, status: number, body: unknown, context: string) {
+    super(message, status, body, context);
+    const envelope =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : null;
+    const details =
+      envelope &&
+      typeof envelope.details === "object" &&
+      envelope.details !== null &&
+      !Array.isArray(envelope.details)
+        ? (envelope.details as Record<string, unknown>)
+        : null;
+    this.requiredAmr = Array.isArray(details?.required_amr)
+      ? (details!.required_amr as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    this.maxAgeSeconds =
+      typeof details?.max_age_seconds === "number" ? (details.max_age_seconds as number) : null;
+    this.challengeUrl =
+      typeof details?.challenge_url === "string" ? (details.challenge_url as string) : null;
+    this.reason = typeof details?.reason === "string" ? (details.reason as string) : null;
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      requiredAmr: this.requiredAmr,
+      maxAgeSeconds: this.maxAgeSeconds,
+      challengeUrl: this.challengeUrl,
+      reason: this.reason,
+    };
+  }
+}
+
 // ─── Type guards ─────────────────────────────────────────────────────────────
 //
 // Identity-free guards. Each one checks the structural brand and (for subclass
@@ -542,6 +603,11 @@ export function isDeployError(e: unknown): e is Run402DeployError {
 /** True if `e` is a {@link TransferFreezeError}. */
 export function isTransferFreezeError(e: unknown): e is TransferFreezeError {
   return isRun402Error(e) && e.kind === "transfer_freeze";
+}
+
+/** True if `e` is a {@link StepUpRequiredError}. Survives duplicate SDK copies and realms. */
+export function isStepUpRequired(e: unknown): e is StepUpRequiredError {
+  return isRun402Error(e) && e.kind === "step_up_required";
 }
 
 /**

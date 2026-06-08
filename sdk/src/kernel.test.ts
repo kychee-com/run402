@@ -12,6 +12,7 @@ import {
   NetworkError,
   NotAuthorizedError,
   PaymentRequired,
+  StepUpRequiredError,
   Unauthorized,
 } from "./errors.js";
 import type { CredentialsProvider } from "./credentials.js";
@@ -265,6 +266,35 @@ describe("kernel request", () => {
         const json = e.toJSON();
         assert.equal(json.requiredRole, "owner");
         assert.equal(json.reason, "forbidden");
+        return true;
+      },
+    );
+    exitSpy.restore();
+  });
+
+  it("throws StepUpRequiredError on 403 with code STEP_UP_REQUIRED", async () => {
+    const body = {
+      error: "step up required",
+      code: "STEP_UP_REQUIRED",
+      details: {
+        required_amr: ["passkey"],
+        max_age_seconds: 300,
+        challenge_url: "https://run402.com/step-up",
+        reason: "device_flow_forbidden",
+      },
+    };
+    const kernel = makeKernel(async () => makeRes(body, { status: 403 }));
+    await assert.rejects(
+      request(kernel, "/projects/v1/prj_1/transfers", { method: "POST", context: "transferring a project" }),
+      (err: unknown) => {
+        assert.ok(err instanceof StepUpRequiredError);
+        const e = err as StepUpRequiredError;
+        assert.equal(e.kind, "step_up_required");
+        assert.equal(e.status, 403);
+        assert.deepEqual(e.requiredAmr, ["passkey"]);
+        assert.equal(e.maxAgeSeconds, 300);
+        assert.equal(e.challengeUrl, "https://run402.com/step-up");
+        assert.equal(e.reason, "device_flow_forbidden");
         return true;
       },
     );

@@ -19,6 +19,7 @@ import {
   ProjectNotFound,
   Run402DeployError,
   Run402Error,
+  StepUpRequiredError,
   Unauthorized,
   getQuotaScope,
   isApiError,
@@ -30,6 +31,7 @@ import {
   isProjectNotFound,
   isRetryableRun402Error,
   isRun402Error,
+  isStepUpRequired,
   isUnauthorized,
 } from "./errors.js";
 
@@ -67,6 +69,61 @@ describe("Run402Error kind discriminators", () => {
   it("Run402DeployError carries kind='deploy_error'", () => {
     const e = new Run402DeployError("nope", { code: "MIGRATION_FAILED", context: "deploying" });
     assert.equal(e.kind, "deploy_error");
+  });
+});
+
+// ─── StepUpRequiredError ─────────────────────────────────────────────────────
+
+describe("StepUpRequiredError", () => {
+  const body = {
+    error: "step up required",
+    code: "STEP_UP_REQUIRED",
+    details: {
+      required_amr: ["passkey"],
+      max_age_seconds: 300,
+      challenge_url: "https://run402.com/operator/step-up",
+      reason: "device_flow_forbidden",
+    },
+    next_actions: [{ type: "authenticate", path: "https://run402.com/operator/step-up" }],
+  };
+
+  it("carries kind='step_up_required', DEFAULT_CODE, and status", () => {
+    const e = new StepUpRequiredError("nope", 403, body, "transferring a project");
+    assert.equal(e.kind, "step_up_required");
+    assert.equal(e.code, "STEP_UP_REQUIRED");
+    assert.equal(e.status, 403);
+  });
+
+  it("lifts typed fields from details", () => {
+    const e = new StepUpRequiredError("nope", 403, body, "ctx");
+    assert.deepEqual(e.requiredAmr, ["passkey"]);
+    assert.equal(e.maxAgeSeconds, 300);
+    assert.equal(e.challengeUrl, "https://run402.com/operator/step-up");
+    assert.equal(e.reason, "device_flow_forbidden");
+  });
+
+  it("defaults fields safely when details is absent or malformed", () => {
+    const e = new StepUpRequiredError("nope", 403, { code: "STEP_UP_REQUIRED" }, "ctx");
+    assert.deepEqual(e.requiredAmr, []);
+    assert.equal(e.maxAgeSeconds, null);
+    assert.equal(e.challengeUrl, null);
+    assert.equal(e.reason, null);
+  });
+
+  it("isStepUpRequired matches only StepUpRequiredError", () => {
+    const e = new StepUpRequiredError("nope", 403, body, "ctx");
+    assert.equal(isStepUpRequired(e), true);
+    assert.equal(isStepUpRequired(new Unauthorized("x", 403, null, "ctx")), false);
+    assert.equal(isStepUpRequired(new Error("x")), false);
+  });
+
+  it("toJSON includes the typed fields + nextActions", () => {
+    const e = new StepUpRequiredError("nope", 403, body, "ctx");
+    const j = e.toJSON();
+    assert.equal(j.kind, "step_up_required");
+    assert.equal(j.challengeUrl, "https://run402.com/operator/step-up");
+    assert.deepEqual(j.requiredAmr, ["passkey"]);
+    assert.ok(Array.isArray(j.nextActions));
   });
 });
 
