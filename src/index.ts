@@ -1,6 +1,30 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import packageJson from "../package.json" with { type: "json" };
+
+function handleCliMetadata(argv = process.argv.slice(2)): boolean {
+  const flags = new Set(argv);
+  if (flags.has("--version") || flags.has("-v")) {
+    console.log(packageJson.version);
+    return true;
+  }
+  if (flags.has("--help") || flags.has("-h")) {
+    console.log(`Usage: run402-mcp [options]
+
+Options:
+  -v, --version  Print the package version.
+  -h, --help     Print this help message.
+
+Run without options to start the Run402 MCP server over stdio.`);
+    return true;
+  }
+  return false;
+}
+
+if (handleCliMetadata()) {
+  process.exit(0);
+}
 
 // Existing tools
 import { provisionSchema, handleProvision } from "./tools/provision.js";
