@@ -19,6 +19,8 @@
 
 import { setTimeout as sleep } from "node:timers/promises";
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { randomBytes, createHash } from "node:crypto";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
 import { getSdk } from "./sdk.mjs";
 import { normalizeArgv, hasHelp, assertKnownFlags } from "./argparse.mjs";
@@ -30,6 +32,13 @@ import {
   isOperatorSessionExpired,
   operatorSessionFromTokenResponse,
 } from "../core-dist/operator-session.js";
+import {
+  saveControlPlaneSession,
+  clearControlPlaneSession,
+  readControlPlaneSession,
+  isControlPlaneSessionExpired,
+  controlPlaneSessionFromTokenResponse,
+} from "../core-dist/control-plane-session.js";
 
 const CLIENT_NAME = "run402 CLI";
 
@@ -40,19 +49,25 @@ The operator is YOU, the human, identified by email — distinct from the agent
 For a single wallet's account state, use 'run402 status'.
 
 Usage:
-  run402 operator login [--no-open]
+  run402 operator login [--no-open]              (read session, device-flow)
+  run402 operator login --loopback [--no-open]   (write session, loopback-PKCE)
+  run402 operator login --step-up                (fresh write session for high-stakes ops)
   run402 operator overview
   run402 operator whoami
   run402 operator logout
 
 Subcommands:
-  login      Sign in via the browser (device-authorization, like 'aws sso login')
+  login      Sign in via the browser. Default = device-flow READ session (powers
+             'overview'). --loopback = write-capable control-plane session
+             (aws-sso-style, passkey-fresh). --step-up = re-mint a fresh write session.
   overview   Account view across ALL wallets controlling your email (requires login)
-  whoami     Show the cached session (email, wallets, expiry) — local, no network
-  logout     Revoke the session server-side and clear the local cache
+  whoami     Show the cached session(s) — local, no network
+  logout     Revoke the session server-side and clear the local cache(s)
 
 Options:
-  --no-open  (login) Do not auto-open the browser; just print the URL + code.
+  --no-open  (login) Do not auto-open the browser; just print the URL.
+  --loopback (login) Use the loopback-PKCE write login instead of the device flow.
+  --step-up  (login) Re-mint a fresh write session (implies --loopback).
 
 Notes:
   - The session is cached at the base config dir, shared across named wallets.
@@ -96,8 +111,154 @@ function openBrowser(url) {
   }
 }
 
+/** Output shape for the write (control-plane) session. NEVER includes the token. */
+function controlPlaneView(session, nowMs = Date.now()) {
+  return {
+    logged_in: true,
+    kind: "control_plane_session",
+    provenance: session.provenance,
+    principal_id: session.principal_id || null,
+    amr: session.amr,
+    expires_at: new Date(session.expires_at).toISOString(),
+    expires_in_seconds: Math.max(0, Math.round((session.expires_at - nowMs) / 1000)),
+    write_capable: true,
+  };
+}
+
+const base64url = (buf) => buf.toString("base64url");
+
+/** Generate PKCE (S256) + CSRF state + replay nonce for the loopback flow. */
+function pkce() {
+  const codeVerifier = base64url(randomBytes(32));
+  const codeChallenge = base64url(createHash("sha256").update(codeVerifier).digest());
+  return { codeVerifier, codeChallenge, state: base64url(randomBytes(16)), nonce: base64url(randomBytes(16)) };
+}
+
+/**
+ * Start a 127.0.0.1 loopback server (RFC 8252) that captures exactly one
+ * redirect. Returns the bound port (via `ready`), a promise for the auth code,
+ * and a `close()`. State is validated here to reject CSRF before exchange.
+ */
+function startLoopbackServer({ expectedState, timeoutMs }) {
+  let resolveCode;
+  let rejectCode;
+  const codePromise = new Promise((res, rej) => {
+    resolveCode = res;
+    rejectCode = rej;
+  });
+  let timer;
+  const server = createServer((req, res) => {
+    let u;
+    try {
+      u = new URL(req.url, "http://127.0.0.1");
+    } catch {
+      res.writeHead(400).end("bad request");
+      return;
+    }
+    if (u.pathname !== "/callback") {
+      res.writeHead(404).end("not found");
+      return;
+    }
+    const code = u.searchParams.get("code");
+    const gotState = u.searchParams.get("state");
+    const errParam = u.searchParams.get("error");
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(
+      "<!doctype html><html><body style=\"font-family:system-ui;padding:3rem\">" +
+        "<h2>run402 - you're signed in.</h2><p>You can close this window and return to your terminal.</p></body></html>",
+    );
+    cleanup();
+    if (errParam) rejectCode(new Error(`authorization error: ${errParam}`));
+    else if (!code) rejectCode(new Error("no authorization code on the loopback redirect"));
+    else if (gotState !== expectedState) rejectCode(new Error("state mismatch on the loopback redirect (possible CSRF) - aborted"));
+    else resolveCode(code);
+  });
+  function cleanup() {
+    clearTimeout(timer);
+    try {
+      server.close();
+    } catch {
+      // already closing
+    }
+  }
+  timer = setTimeout(() => {
+    cleanup();
+    rejectCode(new Error("timed out waiting for browser approval"));
+  }, timeoutMs);
+  server.on("error", (e) => {
+    cleanup();
+    rejectCode(e);
+  });
+  const ready = new Promise((res, rej) => {
+    server.once("error", rej);
+    server.listen(0, "127.0.0.1", () => res(server.address().port));
+  });
+  return { ready, codePromise, close: cleanup };
+}
+
+/**
+ * Loopback-PKCE write-login (RFC 8252, the aws-sso-style flow). Mints a
+ * write-capable control-plane session via the browser passkey ceremony, caches
+ * it (mode 0600), and prints metadata only - never the token.
+ */
+async function loopbackLogin(args, { stepUp }) {
+  const noOpen = args.includes("--no-open");
+  const sdk = getSdk();
+  const { codeVerifier, codeChallenge, state, nonce } = pkce();
+  const { ready, codePromise, close } = startLoopbackServer({ expectedState: state, timeoutMs: 300_000 });
+
+  let port;
+  try {
+    port = await ready;
+  } catch (err) {
+    close();
+    return fail({ code: "OPERATOR_LOOPBACK_FAILED", message: `Could not start the loopback server: ${err.message}` });
+  }
+  const redirectUri = `http://127.0.0.1:${port}/callback`;
+  const authorizeUrl = sdk.operator.buildCliAuthorizeUrl({ redirectUri, codeChallenge, state, nonce });
+
+  process.stderr.write(
+    `\nTo ${stepUp ? "re-authenticate (step-up)" : "sign in (write-capable)"}, open:\n  ${authorizeUrl}\n\n`,
+  );
+  if (!noOpen && process.stderr.isTTY) {
+    openBrowser(authorizeUrl);
+    process.stderr.write("(opening your browser…)\n\n");
+  }
+  process.stderr.write("Waiting for approval…\n");
+
+  let code;
+  try {
+    code = await codePromise;
+  } catch (err) {
+    close();
+    return fail({
+      code: "OPERATOR_LOGIN_FAILED",
+      message: err.message,
+      hint: "Run 'run402 operator login --loopback' to try again.",
+    });
+  }
+
+  let session;
+  try {
+    session = await sdk.operator.exchangeCliToken({ code, codeVerifier, redirectUri, state });
+  } catch (err) {
+    return reportSdkError(err);
+  }
+
+  const cached = controlPlaneSessionFromTokenResponse(session);
+  saveControlPlaneSession(cached);
+  process.stderr.write(`\nSigned in (write-capable, provenance=${cached.provenance}).\n`);
+  console.log(JSON.stringify(controlPlaneView(cached)));
+}
+
 async function login(args) {
-  assertKnownFlags(args, ["--help", "-h", "--no-open"]);
+  assertKnownFlags(args, ["--help", "-h", "--no-open", "--loopback", "--device", "--step-up"]);
+  // Loopback-PKCE = the write-capable control-plane login (--loopback/--step-up).
+  // The default stays the device-flow READ session (which powers 'overview');
+  // --device forces it explicitly.
+  if (args.includes("--loopback") || args.includes("--step-up")) {
+    return loopbackLogin(args, { stepUp: args.includes("--step-up") });
+  }
   const noOpen = args.includes("--no-open");
   const sdk = getSdk();
 
@@ -184,6 +345,7 @@ async function logout(args) {
     }
   }
   clearOperatorSession();
+  clearControlPlaneSession();
   console.log(JSON.stringify({ revoked, cleared: true }));
 }
 
@@ -219,17 +381,27 @@ async function whoami(args) {
   assertKnownFlags(args, ["--help", "-h"]);
   const now = Date.now();
   const session = readOperatorSession();
+  const cp = readControlPlaneSession();
+  const liveCp = cp && !isControlPlaneSessionExpired(cp, now) ? cp : null;
+
+  if (session && !isOperatorSessionExpired(session, now)) {
+    const view = sessionView(session, now);
+    if (liveCp) view.control_plane = controlPlaneView(liveCp, now);
+    console.log(JSON.stringify(view));
+    return;
+  }
+  // No live device-flow READ session — fall back to the write session if present.
+  if (liveCp) {
+    console.log(JSON.stringify(controlPlaneView(liveCp, now)));
+    return;
+  }
   if (!session) {
     console.log(JSON.stringify({ logged_in: false, reason: "no_session", hint: "Run 'run402 operator login' to sign in." }));
     process.exitCode = 1;
     return;
   }
-  if (isOperatorSessionExpired(session, now)) {
-    console.log(JSON.stringify({ logged_in: false, reason: "expired", email: session.email, hint: "Run 'run402 operator login' to sign in again." }));
-    process.exitCode = 1;
-    return;
-  }
-  console.log(JSON.stringify(sessionView(session, now)));
+  console.log(JSON.stringify({ logged_in: false, reason: "expired", email: session.email, hint: "Run 'run402 operator login' to sign in again." }));
+  process.exitCode = 1;
 }
 
 export async function run(sub, args = []) {

@@ -348,3 +348,64 @@ describe("TransferFreezeError", () => {
     }
   });
 });
+
+describe("admin.transfers — email->org handoff (v1.78)", () => {
+  it("initiateHandoff POSTs /handoffs with snake_case to_email", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "POST");
+      assert.equal(call.url, "https://api.example.test/projects/v1/prj_abc/handoffs");
+      assert.deepEqual(JSON.parse(String(call.body)), { to_email: "x@y.z", message: "hi" });
+      return jsonResponse({ transfer_id: "hof_1", expires_at: "2026-06-10T00:00:00Z" });
+    });
+    const res = await makeSdk(fetch).admin.transfers.initiateHandoff({
+      projectId: "prj_abc",
+      toEmail: "x@y.z",
+      message: "hi",
+    });
+    assert.equal(res.transfer_id, "hof_1");
+    assert.equal(calls.length, 1);
+  });
+
+  it("listIncomingHandoffs unwraps { handoffs }, falls back to { transfers } then []", async () => {
+    const r1 = makeSdk(mockFetch(() => jsonResponse({ handoffs: [{ transfer_id: "hof_1", project_id: "prj_abc" }] })).fetch);
+    assert.equal((await r1.admin.transfers.listIncomingHandoffs())[0].transfer_id, "hof_1");
+    const r2 = makeSdk(mockFetch(() => jsonResponse({ transfers: [{ transfer_id: "hof_2", project_id: "prj_x" }] })).fetch);
+    assert.equal((await r2.admin.transfers.listIncomingHandoffs())[0].transfer_id, "hof_2");
+    const r3 = makeSdk(mockFetch(() => jsonResponse({})).fetch);
+    assert.deepEqual(await r3.admin.transfers.listIncomingHandoffs(), []);
+  });
+
+  it("previewHandoff GETs /agent/v1/handoffs/:id", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ transfer_id: "hof_1", project_id: "prj_abc", status: "pending" }),
+    );
+    const p = await makeSdk(fetch).admin.transfers.previewHandoff("hof_1");
+    assert.equal(calls[0].url, "https://api.example.test/agent/v1/handoffs/hof_1");
+    assert.equal(p.project_id, "prj_abc");
+  });
+
+  it("claimHandoff POSTs /claim with billing_account_id when given, {} otherwise", async () => {
+    const r1 = mockFetch((call) => {
+      assert.equal(call.url, "https://api.example.test/agent/v1/handoffs/hof_1/claim");
+      assert.deepEqual(JSON.parse(String(call.body)), { billing_account_id: "ba_9" });
+      return jsonResponse({ project_id: "prj_abc", new_billing_account_id: "ba_9" });
+    });
+    await makeSdk(r1.fetch).admin.transfers.claimHandoff("hof_1", { billingAccountId: "ba_9" });
+
+    const r2 = mockFetch((call) => {
+      assert.deepEqual(JSON.parse(String(call.body)), {});
+      return jsonResponse({ project_id: "prj_abc", new_billing_account_id: "ba_new" });
+    });
+    const res = await makeSdk(r2.fetch).admin.transfers.claimHandoff("hof_1");
+    assert.equal(res.new_billing_account_id, "ba_new");
+  });
+
+  it("cancelHandoff POSTs /agent/v1/handoffs/:id/cancel", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ transfer_id: "hof_1", status: "cancelled", cancelled_by: "from_wallet", cancellation_reason: null, cancelled_at: "2026-06-08T00:00:00Z" }),
+    );
+    await makeSdk(fetch).admin.transfers.cancelHandoff("hof_1");
+    assert.equal(calls[0].url, "https://api.example.test/agent/v1/handoffs/hof_1/cancel");
+    assert.equal(calls[0].method, "POST");
+  });
+});

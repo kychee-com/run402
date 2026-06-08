@@ -122,7 +122,7 @@ const MATRIX = {
   agent: { shared: [], specific: ["contact"] },
   operator: { shared: ["login", "logout", "overview", "whoami"], specific: [] },
   service: { shared: [], specific: ["status", "health"] },
-  org: { shared: [], specific: ["whoami", "list", "members", "add-member", "set-role", "remove-member"] },
+  org: { shared: [], specific: ["whoami", "list", "audit", "member", "invite"] },
   grants: { shared: [], specific: ["create", "revoke"] },
 };
 

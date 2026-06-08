@@ -30,7 +30,7 @@ Commands:
   deploy      Unified deploy operations (requires active tier)
   ci          Link GitHub Actions OIDC deploy bindings
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
-  org         Org membership + roles (whoami, list, members, add-member, set-role, remove-member)
+  org         Org membership, invites & audit (whoami, list, member, invite, audit)
   grants      Per-project capability grants for agent/CI principals (create, revoke)
   jobs        Submit and inspect fixed platform-managed jobs
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)

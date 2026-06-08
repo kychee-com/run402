@@ -182,6 +182,54 @@ export interface ProjectTransferPreview {
   billing_implications: BillingImplications;
 }
 
+// ─── Email→org handoff (v1.78) — same rail, email recipient ────────────────────
+
+/** Inputs to {@link Transfers.initiateHandoff}. */
+export interface InitiateHandoffInput {
+  /** Project id to hand off. Caller must currently own it. */
+  projectId: string;
+  /** Recipient email; claimed at the recipient's first login. */
+  toEmail: string;
+  /** Optional note shown to the recipient (HTML-escaped server-side). */
+  message?: string;
+}
+
+/** Result of {@link Transfers.initiateHandoff}. Forward-compatible (gateway owns the exact shape). */
+export interface HandoffResult {
+  transfer_id: string;
+  expires_at?: string;
+  [key: string]: unknown;
+}
+
+/** Summary row from `GET /agent/v1/handoffs/incoming`. Forward-compatible. */
+export interface HandoffSummary {
+  transfer_id: string;
+  project_id: string;
+  to_email?: string;
+  [key: string]: unknown;
+}
+
+/** Preview from `GET /agent/v1/handoffs/:transfer_id`. Forward-compatible. */
+export interface ProjectHandoffPreview {
+  transfer_id: string;
+  project_id: string;
+  status?: TransferStatus | string;
+  [key: string]: unknown;
+}
+
+/** Inputs to {@link Transfers.claimHandoff}. */
+export interface ClaimHandoffInput {
+  /** Org (billing account) to claim into. Omit to claim into a brand-new org. */
+  billingAccountId?: string;
+}
+
+/** Result of {@link Transfers.claimHandoff}. Forward-compatible. */
+export interface ClaimHandoffResult {
+  project_id: string;
+  new_billing_account_id?: string | null;
+  [key: string]: unknown;
+}
+
 // ─── Class ───────────────────────────────────────────────────────────────────
 
 export class Transfers {
@@ -276,6 +324,65 @@ export class Transfers {
       context: "listing outgoing transfers",
     });
     return res.transfers;
+  }
+
+  // ── Email→org handoff (v1.78) ─────────────────────────────────────────────
+  // Same transfer rail, but the recipient is an EMAIL (resolved to an org at
+  // claim time) rather than a wallet. The caller must own the project; the
+  // recipient claims into an org they own (or a brand-new one). Exposed under
+  // the same `transfer` noun on the CLI (`transfer init --to <email>`).
+
+  /**
+   * Initiate an email→org handoff of `projectId` to `toEmail`. Like a wallet
+   * transfer, freezes owner-side mutations until the recipient claims, the
+   * sender cancels, or it expires.
+   */
+  async initiateHandoff(input: InitiateHandoffInput): Promise<HandoffResult> {
+    const body: Record<string, unknown> = { to_email: input.toEmail };
+    if (input.message !== undefined) body.message = input.message;
+    return this.client.request<HandoffResult>(
+      `/projects/v1/${encodeURIComponent(input.projectId)}/handoffs`,
+      { method: "POST", body, context: "initiating project handoff" },
+    );
+  }
+
+  /** Pending handoffs addressed to the authenticated principal's email. */
+  async listIncomingHandoffs(): Promise<HandoffSummary[]> {
+    const res = await this.client.request<{ handoffs?: HandoffSummary[]; transfers?: HandoffSummary[] }>(
+      "/agent/v1/handoffs/incoming",
+      { context: "listing incoming handoffs" },
+    );
+    return res.handoffs ?? res.transfers ?? [];
+  }
+
+  /** Preview a handoff (sender, or the addressed recipient). */
+  async previewHandoff(transferId: string): Promise<ProjectHandoffPreview> {
+    return this.client.request<ProjectHandoffPreview>(
+      `/agent/v1/handoffs/${encodeURIComponent(transferId)}`,
+      { context: "previewing project handoff" },
+    );
+  }
+
+  /**
+   * Claim an incoming handoff into an org. Omit `billingAccountId` to claim
+   * into a brand-new org. The claim atomically flips ownership (the handoff
+   * analog of {@link Transfers.accept}).
+   */
+  async claimHandoff(transferId: string, input: ClaimHandoffInput = {}): Promise<ClaimHandoffResult> {
+    const body: Record<string, unknown> = {};
+    if (input.billingAccountId !== undefined) body.billing_account_id = input.billingAccountId;
+    return this.client.request<ClaimHandoffResult>(
+      `/agent/v1/handoffs/${encodeURIComponent(transferId)}/claim`,
+      { method: "POST", body, context: "claiming project handoff" },
+    );
+  }
+
+  /** Cancel a pending handoff (sender or recipient). */
+  async cancelHandoff(transferId: string): Promise<CancelTransferResult> {
+    return this.client.request<CancelTransferResult>(
+      `/agent/v1/handoffs/${encodeURIComponent(transferId)}/cancel`,
+      { method: "POST", body: {}, context: "cancelling project handoff" },
+    );
   }
 }
 

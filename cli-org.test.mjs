@@ -116,39 +116,39 @@ describe("run402 org", () => {
   });
 
   it("members GETs the members route", async () => {
-    capture(); await runOrg("members", ["ba_1"]); uncapture();
+    capture(); await runOrg("member", ["list", "ba_1"]); uncapture();
     assert.equal(lastCall().url, `${API}/orgs/v1/ba_1/members`);
     assert.equal(lastCall().method, "GET");
   });
 
   it("add-member POSTs { wallet } and omits role by default", async () => {
-    capture(); await runOrg("add-member", ["ba_1", TEST_ADDRESS]); uncapture();
+    capture(); await runOrg("member", ["add", "ba_1", TEST_ADDRESS]); uncapture();
     assert.equal(lastCall().url, `${API}/orgs/v1/ba_1/members`);
     assert.equal(lastCall().method, "POST");
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS });
   });
 
   it("add-member maps --role into the body", async () => {
-    capture(); await runOrg("add-member", ["ba_1", TEST_ADDRESS, "--role", "admin"]); uncapture();
+    capture(); await runOrg("member", ["add", "ba_1", TEST_ADDRESS, "--role", "admin"]); uncapture();
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS, role: "admin" });
   });
 
   it("set-role PATCHes .../members/:principal with positional order (ba, principal, role)", async () => {
-    capture(); await runOrg("set-role", ["ba_1", "prn_2", "owner"]); uncapture();
+    capture(); await runOrg("member", ["role", "ba_1", "prn_2", "owner"]); uncapture();
     assert.equal(lastCall().url, `${API}/orgs/v1/ba_1/members/prn_2`);
     assert.equal(lastCall().method, "PATCH");
     assert.deepEqual(lastCall().body, { role: "owner" });
   });
 
   it("remove-member DELETEs .../members/:principal", async () => {
-    capture(); await runOrg("remove-member", ["ba_1", "prn_2"]); uncapture();
+    capture(); await runOrg("member", ["rm", "ba_1", "prn_2"]); uncapture();
     assert.equal(lastCall().url, `${API}/orgs/v1/ba_1/members/prn_2`);
     assert.equal(lastCall().method, "DELETE");
   });
 
   it("members without an arg fails locally (no network call)", async () => {
     capture();
-    await assert.rejects(runOrg("members", []), (e) => /process\.exit\(1\)/.test(e.message));
+    await assert.rejects(runOrg("member", ["list"]), (e) => /process\.exit\(1\)/.test(e.message));
     uncapture();
     assert.equal(calls.length, 0);
   });
