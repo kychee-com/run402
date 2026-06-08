@@ -813,7 +813,51 @@ operator.revoke({ token }): Promise<void>
   // 204. Server-side revoke is instant (no positive-validity cache).
 ```
 
-The session cache is Node-only and lives in `core` (`{base}/operator-session.json`, mode 0600, base config dir — email-scoped, so it is shared across local named wallets). The CLI (`run402 operator login/logout/overview/whoami`) brokers it; `whoami` is a pure local-cache read with no SDK method. No MCP tool by design — MCP authenticates as the agent, not the human.
+**Write-capable control-plane session (v1.78 — `passkey-principals-onboarding`).** A second, *write*-capable human session (the gateway's 5th principal, `control_plane_session`) accepted everywhere a SIWX wallet is. Distinct from the read-only operator session above. High-stakes writes (invite, membership, handoff, delete) require a **fresh passkey** — a magic-link/OAuth session raises `StepUpRequiredError` until it runs a step-up ceremony.
+
+The CLI mints it headlessly via loopback-PKCE (RFC 8252, the `aws sso login` localhost-redirect model). The SDK exposes the two isomorphic seams:
+
+```
+operator.buildCliAuthorizeUrl({ redirectUri, codeChallenge, state, nonce }): string
+  // Pure (no network). GET /agent/v1/control-plane/cli/authorize — the URL the CLI
+  // opens in the browser; the console runs the passkey ceremony + approves.
+operator.exchangeCliToken({ code, codeVerifier, redirectUri, state }): Promise<ControlPlaneSession>
+  // POST /agent/v1/control-plane/cli/token (unauth — code + verifier ARE the credential).
+  // ControlPlaneSession { control_plane_session_token, token_type, expires_in,
+  // provenance:"loopback_pkce", principal_id, amr[] }.
+```
+
+The **hosted/browser** session surface — the front door the console (and any browser app) drives — is `r.operator.session.*`. Public *mint* methods send no auth; *session-bound* methods take `{ token }` (the `control_plane_session` bearer) and fall back to the credential provider when omitted (mirrors `overview`). WebAuthn option/assertion payloads are opaque passthroughs — the browser runs the ceremony.
+
+```
+// mint (public — no auth)
+operator.session.email({ email }): Promise<MagicLinkSendResult>            // non-enumerating magic-link send
+operator.session.verifyEmail({ token }): Promise<ControlPlaneSession>      // verifies email, AUTO-CLAIMS invites, mints (amr ["email"])
+operator.session.passkeyOptions({ email }) / passkeyVerify({ email, response })  // WebAuthn login → session
+operator.session.oauthUrl("google" | "github"): string                    // pure; GET …/oauth/:provider/start (browser 302)
+operator.session.consumeRecoveryCode({ code }): Promise<RecoveryConsumeResult>  // session + must_enroll_passkey
+
+// session-bound ({ token } → bearer; omit → provider auth)
+operator.session.whoami({ token? }): Promise<ControlPlaneWhoAmI>           // { principal, memberships, amr, amr_times }
+operator.session.refresh({ token? }) / revoke({ token? })
+operator.session.enrollPasskeyOptions({ token? }) / enrollPasskeyVerify({ token?, response, label? })
+operator.session.stepUpOptions({ token?, opClass? }) / stepUpVerify({ token?, response, opClass?, objectKind?, objectId? })
+  // satisfy a StepUpRequiredError (amr passkey), then retry the gated write
+operator.session.issueRecoveryCodes({ token? })                           // one-time codes (shown once)
+operator.session.listAuthenticators({ token? }) / revokeAuthenticator({ token?, id })
+```
+
+Carry a minted session as the whole SDK's credential with `controlPlaneSessionCredentials({ token | getToken })` — `r.org.*` / `r.admin.transfers.*` then act as that principal (it carries no project keys, so DB/project-key ops still need the wallet/keystore):
+
+```
+import { run402, controlPlaneSessionCredentials } from "@run402/sdk/node";
+const r = run402({ credentials: controlPlaneSessionCredentials({ token }) });
+await r.org.whoami();   // resolves the principal + memberships
+```
+
+**Invite → claim at first login.** An owner invites by email (`r.org.invites.create`); the invitee's pending memberships are claimed *automatically* when they log in via that verified email (email / OAuth / loopback) and surface as active rows in `session.whoami().memberships` (and in `run402 operator login --loopback` output). Owner/admin invites only claim once the invitee has enrolled a passkey; lower roles claim on any login. There is no invitee-side "list my invites" call — the claim is the surfacing.
+
+The session caches are Node-only and live in `core`: the read session at `{base}/operator-session.json` and the write-capable control-plane session at `{base}/control-plane-session.json` (both mode 0600, base config dir — email-scoped, shared across local named wallets). The CLI (`run402 operator login[/--loopback]/logout/overview/whoami`) brokers them; read `whoami` is a pure local-cache read. No MCP tool by design — MCP authenticates as the agent, not the human; the hosted login is browser-interactive and console-side.
 
 ### `r.sites`
 

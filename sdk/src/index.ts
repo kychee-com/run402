@@ -338,6 +338,12 @@ export {
   isCiSessionCredentials,
 } from "./ci-credentials.js";
 export type * from "./ci-credentials.js";
+export {
+  CONTROL_PLANE_SESSION_CREDENTIALS,
+  controlPlaneSessionCredentials,
+  isControlPlaneSessionCredentials,
+} from "./control-plane-credentials.js";
+export type * from "./control-plane-credentials.js";
 export { Deploy } from "./namespaces/deploy.js";
 export {
   EMPTY_STATIC_MANIFEST_METADATA,
@@ -386,6 +392,8 @@ export type * from "./namespaces/email.js";
 export type * from "./namespaces/functions.types.js";
 export type * from "./namespaces/jobs.js";
 export type * from "./namespaces/operator.js";
+export { OperatorSession } from "./namespaces/operator-session.js";
+export type * from "./namespaces/operator-session.js";
 export { Org, OrgMembers, OrgInvites } from "./namespaces/org.js";
 export type * from "./namespaces/org.types.js";
 export { Grants } from "./namespaces/grants.js";

@@ -248,7 +248,26 @@ async function loopbackLogin(args, { stepUp }) {
   const cached = controlPlaneSessionFromTokenResponse(session);
   saveControlPlaneSession(cached);
   process.stderr.write(`\nSigned in (write-capable, provenance=${cached.provenance}).\n`);
-  console.log(JSON.stringify(controlPlaneView(cached)));
+
+  // Surface org memberships — newly-active rows are invites auto-claimed at this
+  // login (owner/admin invites only claim once a passkey is enrolled). Best-effort:
+  // login already succeeded, so a whoami hiccup must not fail the command.
+  const view = controlPlaneView(cached);
+  try {
+    const who = await sdk.operator.session.whoami({ token: session.control_plane_session_token });
+    const memberships = Array.isArray(who?.memberships) ? who.memberships : [];
+    view.memberships = memberships;
+    if (memberships.length) {
+      process.stderr.write(
+        `Member of ${memberships.length} org(s):\n` +
+          memberships.map((m) => `  - ${m.billing_account_id} (${m.role}, ${m.status})`).join("\n") +
+          "\n",
+      );
+    }
+  } catch {
+    /* best-effort — the session is valid regardless of the whoami result */
+  }
+  console.log(JSON.stringify(view));
 }
 
 async function login(args) {

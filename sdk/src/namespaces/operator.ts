@@ -20,6 +20,7 @@
 
 import type { Client } from "../kernel.js";
 import { ApiError, NetworkError } from "../errors.js";
+import { OperatorSession } from "./operator-session.js";
 
 /** RFC 8628 device-authorization start response. */
 export interface DeviceAuthStart {
@@ -122,7 +123,19 @@ const POLL_ERROR_CODES = new Set([
 ]);
 
 export class Operator {
-  constructor(private readonly client: Client) {}
+  /**
+   * The hosted/browser control-plane **session** surface (gateway v1.78):
+   * `r.operator.session.email`, `verifyEmail`, `passkeyVerify`, `whoami`,
+   * `refresh`, `revoke`, and the step-up / authenticator helpers.
+   * The write-capable human login + step-up + authenticators, distinct from the
+   * read-only device/overview methods on this class and the loopback-PKCE
+   * CLI write-login below. See {@link OperatorSession}.
+   */
+  readonly session: OperatorSession;
+
+  constructor(private readonly client: Client) {
+    this.session = new OperatorSession(client);
+  }
 
   /**
    * Begin the device-authorization flow. Unauthenticated. Returns the codes the

@@ -999,6 +999,28 @@ describe("SDK surface alignment", () => {
       // `operator login --loopback` ceremony, with no dedicated capability.
       "operator.buildCliAuthorizeUrl",
       "operator.exchangeCliToken",
+      // ─── hosted control-plane session (v1.78, passkey-principals-onboarding) ─
+      // `r.operator.session.*` is the browser/console session-login client
+      // surface (email magic-link / passkey / OAuth / lifecycle / step-up /
+      // recovery / authenticators). Browser-interactive by design — no MCP tool
+      // and no dedicated CLI verb (the CLI write-login is the loopback ceremony
+      // above; `whoami` is also called internally to surface claimed invites).
+      "operator.session.email",
+      "operator.session.verifyEmail",
+      "operator.session.passkeyOptions",
+      "operator.session.passkeyVerify",
+      "operator.session.oauthUrl",
+      "operator.session.consumeRecoveryCode",
+      "operator.session.whoami",
+      "operator.session.refresh",
+      "operator.session.revoke",
+      "operator.session.enrollPasskeyOptions",
+      "operator.session.enrollPasskeyVerify",
+      "operator.session.stepUpOptions",
+      "operator.session.stepUpVerify",
+      "operator.session.issueRecoveryCodes",
+      "operator.session.listAuthenticators",
+      "operator.session.revokeAuthenticator",
     ]);
 
     const sdkMethods = await listSdkMethods();
