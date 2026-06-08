@@ -176,7 +176,7 @@ describe("run402 ci", () => {
     assert.match(workflow, /npx --yes run402@\d+\.\d+\.\d+ deploy apply --manifest 'run402\.deploy\.json' --project 'prj_ci' < \/dev\/null/);
 
     const output = JSON.parse(stdout.join("\n"));
-    assert.equal(output.status, "ok");
+    assert.equal(output.status, undefined, "ci link must not emit a top-level status field");
     assert.equal(output.binding_id, "cib_123");
     assert.equal(output.github_repository_id_status, "verified");
     assert.equal(output.delegation_chain_id, "eip155:84532");
@@ -304,7 +304,7 @@ describe("run402 ci", () => {
     await run("list", ["--project", "prj_ci"]);
     captureStop();
     const listed = JSON.parse(stdout.join("\n"));
-    assert.equal(listed.status, "ok");
+    assert.equal(listed.status, undefined, "ci list must not emit a top-level status field");
     assert.equal(listed.bindings[0].id, "cib_123");
     assert.deepEqual(listed.bindings[0].route_scopes, ["/admin/*"]);
 
@@ -312,7 +312,8 @@ describe("run402 ci", () => {
     await run("revoke", ["cib_123"]);
     captureStop();
     const revoked = JSON.parse(stdout.join("\n"));
-    assert.equal(revoked.status, "ok");
+    assert.equal(revoked.status, undefined, "ci revoke must not emit a top-level status field");
+    assert.equal(revoked.revoked, true);
     assert.equal(revoked.binding.id, "cib_123");
     assert.deepEqual(revoked.binding.route_scopes, ["/admin/*"]);
     assert.ok(revoked.revocation_residuals.length > 0);

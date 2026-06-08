@@ -20,7 +20,7 @@ Examples:
   run402 image generate "portrait of a cat CEO" --aspect portrait --output cat.png
 
 Output (without --output):
-  { "status": "ok", "aspect": "square", "content_type": "image/png", "image": "<base64>" }
+  { "aspect": "square", "content_type": "image/png", "image": "<base64>" }
 
 Notes:
   - Requires a funded allowance (run402 allowance create && run402 allowance fund)

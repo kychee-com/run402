@@ -179,7 +179,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     assert.equal(plan.body.spec.project, "prj_ci_env");
 
     const parsedStdout = JSON.parse(stdout.join("\n"));
-    assert.equal(parsedStdout.status, "ok");
+    assert.equal(parsedStdout.status, undefined, "deploy apply must not emit a top-level status field");
     assert.equal(parsedStdout.release_id, "rel_ci_test");
   });
 
@@ -274,7 +274,8 @@ describe("deploy apply GitHub Actions OIDC", () => {
       assert.ok(plan, "should ask the gateway to authorize route scope");
       assert.deepEqual(plan.body.spec.routes, routes);
       const parsedStdout = JSON.parse(stdout.join("\n"));
-      assert.equal(parsedStdout.status, "ok");
+      assert.equal(parsedStdout.status, undefined, "deploy apply must not emit a top-level status field");
+      assert.equal(parsedStdout.release_id, "rel_ci_test");
     }
   });
 

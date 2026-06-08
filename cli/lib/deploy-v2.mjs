@@ -93,7 +93,7 @@ Options:
   --allow-warnings        Continue past plan warnings that require confirmation
 
 Output:
-  stdout: { "status": "ok", "release_id": "rel_...", "operation_id": "op_...", "urls": {...}, "warnings": [...] }
+  stdout: { "release_id": "rel_...", "operation_id": "op_...", "urls": {...}, "warnings": [...] }
   stderr: one JSON event per line (suppressed with --quiet or --final-only)
 
 Secrets:
@@ -141,7 +141,7 @@ the pointer-swap activation). The gateway re-runs only the failed phase
 forward — SQL is never replayed.
 
 Output:
-  stdout: { "status": "ok", "release_id": "...", "operation_id": "...", "urls": {...} }
+  stdout: { "release_id": "...", "operation_id": "...", "urls": {...} }
   stderr: one JSON event per line (suppressed with --quiet)
 `;
 
@@ -155,7 +155,7 @@ Options:
   --limit <n>             Maximum number of operations to return
 
 Output:
-  stdout: { "status": "ok", "operations": [...], "cursor": "..." | null }
+  stdout: { "operations": [...], "cursor": "..." | null }
 `;
 
 const EVENTS_HELP = `run402 deploy events — Fetch the recorded event stream for a deploy operation
@@ -167,7 +167,7 @@ Options:
   --project <id>          Project ID that owns the operation (default: active project)
 
 Output:
-  stdout: { "status": "ok", "events": [...] }
+  stdout: { "events": [...] }
 `;
 
 const RELEASE_HELP = `run402 deploy release — Inspect deploy release inventory and diffs
@@ -183,8 +183,8 @@ Subcommands:
   diff      Diff two release targets
 
 Output:
-  get/active: { "status": "ok", "release": {...} }  # includes route inventory and inventory warnings when returned
-  diff:       { "status": "ok", "diff": {...} }     # includes route added/removed/changed diff buckets
+  get/active: { "release": {...} }  # includes route inventory and inventory warnings when returned
+  diff:       { "diff": {...} }     # includes route added/removed/changed diff buckets
 `;
 
 const RELEASE_GET_HELP = `run402 deploy release get — Fetch a release inventory by id
@@ -197,7 +197,7 @@ Options:
   --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
 
 Output:
-  stdout: { "status": "ok", "release": {...} }  # preserves full routes inventory and warnings
+  stdout: { "release": {...} }  # preserves full routes inventory and warnings
 `;
 
 const RELEASE_ACTIVE_HELP = `run402 deploy release active — Fetch the active release inventory
@@ -210,7 +210,7 @@ Options:
   --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
 
 Output:
-  stdout: { "status": "ok", "release": {...} }  # preserves full routes inventory and warnings
+  stdout: { "release": {...} }  # preserves full routes inventory and warnings
 `;
 
 const RELEASE_DIFF_HELP = `run402 deploy release diff — Diff two release targets
@@ -225,7 +225,7 @@ Options:
   --limit <n>             Maximum entries per site diff bucket (gateway default: 1000)
 
 Output:
-  stdout: { "status": "ok", "diff": {...} }  # preserves routes.added/removed/changed
+  stdout: { "diff": {...} }  # preserves routes.added/removed/changed
 `;
 
 const DIAGNOSE_HELP = `run402 deploy diagnose — Diagnose a Run402 public URL
@@ -244,7 +244,7 @@ Options:
   --method <method>       HTTP method to diagnose (default: GET)
 
 Output:
-  stdout: { "status": "ok", "would_serve": true|false, "diagnostic_status": 200|404|..., "match": "...", "summary": "...", "request": {...}, "warnings": [...], "resolution": {...}, "next_steps": [...] }
+  stdout: { "would_serve": true|false, "diagnostic_status": 200|404|..., "match": "...", "summary": "...", "request": {...}, "warnings": [...], "resolution": {...}, "next_steps": [...] }
 `;
 
 const RESOLVE_HELP = `run402 deploy resolve — Low-level deploy URL diagnostics
@@ -326,7 +326,6 @@ Options:
 
 Output:
   stdout: {
-    "status": "ok",
     "release_id": "rel_old_abc123",
     "operation_id": "op_...",
     "previous_release_id": "rel_new_xxx",
