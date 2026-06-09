@@ -131,6 +131,8 @@ export type {
 } from "./deploy-manifest.js";
 export { signCiDelegation } from "./ci.js";
 export type { SignCiDelegationOptions } from "./ci.js";
+export { signWalletOrgClaim, claimWalletOrg } from "./operator-claim.js";
+export type { SignWalletOrgClaimOptions, ClaimWalletOrgOptions } from "./operator-claim.js";
 export { NodeCredentialsProvider } from "./credentials.js";
 export { setupPaidFetch, createLazyPaidFetch } from "./paid-fetch.js";
 export type * from "../index.js";
@@ -142,6 +144,7 @@ export {
   ProjectNotFound,
   Unauthorized,
   NotAuthorizedError,
+  StepUpRequiredError,
   ApiError,
   NetworkError,
   LocalError,
@@ -151,7 +154,8 @@ export {
   Ci,
   CI_SESSION_CREDENTIALS,
   Deploy,
-  Org,
+  Orgs,
+  ScopedOrg,
   Grants,
   files,
   CI_AUDIENCE,
@@ -171,6 +175,7 @@ export {
   isProjectNotFound,
   isUnauthorized,
   isNotAuthorized,
+  isStepUpRequired,
   isApiError,
   isNetworkError,
   isLocalError,

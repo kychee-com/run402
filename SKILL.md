@@ -673,8 +673,9 @@ A project can be transferred to a different wallet without redeploying. Both sid
 
 ## Organization, membership & grants (v1.77+)
 
-A wallet **authenticates**; the **org (billing account)** owns projects. What a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant - never by `wallet == signer`. A fresh wallet that subscribes + provisions auto-owns its org-of-one, so this layer stays invisible until a second principal joins.
+A wallet **authenticates**; an **org** owns projects. What a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant - never by `wallet == signer`. A fresh wallet that subscribes + provisions auto-owns its org-of-one, so this layer stays invisible until a second principal joins. Memberships carry `org_id` + `display_name`.
 
+- **`create_org`** / **`get_org`** / **`rename_org`** - create an empty org (prototype tier; you become owner; optional `display_name`, no tier at create), read one org (`org_id`, `display_name`, `tier`, your `role`), or set/clear its label (owner-only). The free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
 - **`whoami`** - resolve your control-plane principal + every org membership (role + status). The remote identity; for local wallet/profile state use `status`.
 - **`list_orgs`** / **`list_org_members`** - read your orgs, and an org's members + roles.
 - **`add_org_member`** - add a member BY WALLET (a new wallet is provisioned as a `human` principal); role defaults to `developer`. Owner-gated. Email-first invite is a separate, not-yet-shipped flow.

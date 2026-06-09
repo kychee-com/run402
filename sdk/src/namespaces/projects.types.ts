@@ -18,6 +18,14 @@ export interface ProvisionOptions {
   tier?: ProjectTier;
   /** Optional display name. Auto-generated when omitted. */
   name?: string;
+  /**
+   * Provision into an EXISTING org by id (v1.82). The caller must hold a
+   * `developer`+ membership on that org (a project-scoped grant cannot authorize
+   * creating a new project). Omit for the cold-start path — the wallet's billing
+   * account is used or auto-created exactly as before. Note: tier is governed by
+   * the org/billing account, not the project — the gateway ignores a client tier.
+   */
+  orgId?: string;
 }
 
 export interface ProvisionResult {

@@ -350,6 +350,7 @@ const SURFACE: Capability[] = [
   { id: "operator_overview", endpoint: "GET /agent/v1/operator/overview (operator-session bearer)", mcp: null, cli: "operator:overview", openclaw: "operator:overview" },
   { id: "operator_logout",   endpoint: "POST /agent/v1/operator/session/revoke",                   mcp: null, cli: "operator:logout",   openclaw: "operator:logout" },
   { id: "operator_whoami",   endpoint: "(local)",                                                  mcp: null, cli: "operator:whoami",   openclaw: "operator:whoami" },
+  { id: "claim_wallet_org",  endpoint: "POST /agent/v1/operator/claim-wallet-org (+ /challenge)",   mcp: null, cli: "operator:claim-wallet-org", openclaw: "operator:claim-wallet-org" },
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
@@ -381,16 +382,19 @@ const SURFACE: Capability[] = [
   { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              mcp: "list_outgoing_transfers",   cli: null,               openclaw: null },
 
   // ── Org-owned control plane: identity, membership, grants (v1.77+) ──────
+  { id: "create_org",          endpoint: "POST /orgs/v1",                                 mcp: "create_org",            cli: "org:create",        openclaw: "org:create" },
+  { id: "get_org",             endpoint: "GET /orgs/v1/:org_id",                          mcp: "get_org",               cli: "org:get",           openclaw: "org:get" },
+  { id: "rename_org",          endpoint: "PATCH /orgs/v1/:org_id",                        mcp: "rename_org",            cli: "org:rename",        openclaw: "org:rename" },
   { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "org:whoami",        openclaw: "org:whoami" },
   { id: "list_orgs",           endpoint: "GET /orgs/v1",                                  mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
-  { id: "list_org_members",    endpoint: "GET /orgs/v1/:ba/members",                      mcp: "list_org_members",      cli: "org:member:list",   openclaw: "org:member:list" },
-  { id: "add_org_member",      endpoint: "POST /orgs/v1/:ba/members",                     mcp: "add_org_member",        cli: "org:member:add",    openclaw: "org:member:add" },
-  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:ba/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:member:role",   openclaw: "org:member:role" },
-  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:ba/members/:principal_id",     mcp: "remove_org_member",     cli: "org:member:rm",     openclaw: "org:member:rm" },
-  { id: "org_audit",           endpoint: "GET /orgs/v1/:ba/audit",                        mcp: null,                    cli: "org:audit",         openclaw: "org:audit" },
-  { id: "org_invite_list",     endpoint: "GET /orgs/v1/:ba/invites",                      mcp: null,                    cli: "org:invite:list",   openclaw: "org:invite:list" },
-  { id: "org_invite_create",   endpoint: "POST /orgs/v1/:ba/invites",                     mcp: null,                    cli: "org:invite:create", openclaw: "org:invite:create" },
-  { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:ba/invites/:principal_id",     mcp: null,                    cli: "org:invite:rm",     openclaw: "org:invite:rm" },
+  { id: "list_org_members",    endpoint: "GET /orgs/v1/:org_id/members",                      mcp: "list_org_members",      cli: "org:member:list",   openclaw: "org:member:list" },
+  { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     mcp: "add_org_member",        cli: "org:member:add",    openclaw: "org:member:add" },
+  { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:member:role",   openclaw: "org:member:role" },
+  { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     mcp: "remove_org_member",     cli: "org:member:rm",     openclaw: "org:member:rm" },
+  { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        mcp: null,                    cli: "org:audit",         openclaw: "org:audit" },
+  { id: "org_invite_list",     endpoint: "GET /orgs/v1/:org_id/invites",                      mcp: null,                    cli: "org:invite:list",   openclaw: "org:invite:list" },
+  { id: "org_invite_create",   endpoint: "POST /orgs/v1/:org_id/invites",                     mcp: null,                    cli: "org:invite:create", openclaw: "org:invite:create" },
+  { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     mcp: null,                    cli: "org:invite:rm",     openclaw: "org:invite:rm" },
   { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
   { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
 
@@ -637,6 +641,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   operator_overview: "operator.overview",
   operator_logout: "operator.revoke",
   operator_whoami: null, // local-only cache read (core/operator-session.ts)
+  // Claim maps to the submit step; the challenge step is in SDK_ONLY_METHODS and
+  // the full dance is the Node convenience `claimWalletOrg` (a standalone export).
+  claim_wallet_org: "operator.claimWalletOrg.submit",
 
   // Admin (v1.57)
   admin_set_lease_perpetual: "admin.setLeasePerpetual",
@@ -655,8 +662,11 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   list_outgoing_transfers: "admin.transfers.listOutgoing",
 
   // Org-owned control plane (v1.77+) — r.org.* + r.grants.*
-  whoami: "org.whoami",
-  list_orgs: "org.list",
+  create_org: "orgs.create",
+  get_org: "org.get",
+  rename_org: "org.rename",
+  whoami: "orgs.whoami",
+  list_orgs: "orgs.list",
   list_org_members: "org.members.list",
   add_org_member: "org.members.add",
   set_org_member_role: "org.members.setRole",
@@ -775,8 +785,15 @@ async function listSdkMethods(): Promise<string[]> {
   // e.g. NodeSites adds deployDir on top of Sites. Walk their class
   // prototypes directly and expose them as "namespace.method" so they can be
   // referenced from SDK_BY_CAPABILITY like any other method.
+  // Also covers classes that are NOT walkable from the instance: the org
+  // instance methods live on `r.org(id)` (a callable, not an enumerable
+  // object), so ScopedOrg/OrgMembers/OrgInvites prototypes are registered here
+  // under the `org` / `org.members` / `org.invites` path prefixes.
   const nodeAugments: Array<{ namespace: string; modulePath: string; exportName: string }> = [
     { namespace: "sites", modulePath: "./sdk/dist/node/sites-node.js", exportName: "NodeSites" },
+    { namespace: "org", modulePath: "./sdk/dist/index.js", exportName: "ScopedOrg" },
+    { namespace: "org.members", modulePath: "./sdk/dist/index.js", exportName: "OrgMembers" },
+    { namespace: "org.invites", modulePath: "./sdk/dist/index.js", exportName: "OrgInvites" },
   ];
   for (const aug of nodeAugments) {
     const mod = (await import(aug.modulePath)) as Record<string, unknown>;
@@ -947,6 +964,10 @@ describe("SDK surface alignment", () => {
     // runtime-enforced), plus convenience methods consumers can compose
     // without needing their own MCP tool.
     const SDK_ONLY_METHODS = new Set([
+      // Claim challenge is the first step of the claim-wallet-org flow; the
+      // `claim_wallet_org` capability maps to the submit step, and the Node
+      // convenience `claimWalletOrg` composes challenge + sign + submit.
+      "operator.claimWalletOrg.challenge",
       "email.listMailboxes",   // private helper
       "email.resolveMailbox",  // private helper
       "email.pickMailbox",     // private helper

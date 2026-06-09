@@ -847,15 +847,15 @@ operator.session.issueRecoveryCodes({ token? })                           // one
 operator.session.listAuthenticators({ token? }) / revokeAuthenticator({ token?, id })
 ```
 
-Carry a minted session as the whole SDK's credential with `controlPlaneSessionCredentials({ token | getToken })` — `r.org.*` / `r.admin.transfers.*` then act as that principal (it carries no project keys, so DB/project-key ops still need the wallet/keystore):
+Carry a minted session as the whole SDK's credential with `controlPlaneSessionCredentials({ token | getToken })` — `r.orgs.*` / `r.org(id).*` / `r.admin.transfers.*` then act as that principal (it carries no project keys, so DB/project-key ops still need the wallet/keystore):
 
 ```
 import { run402, controlPlaneSessionCredentials } from "@run402/sdk/node";
 const r = run402({ credentials: controlPlaneSessionCredentials({ token }) });
-await r.org.whoami();   // resolves the principal + memberships
+await r.orgs.whoami();   // resolves the principal + memberships
 ```
 
-**Invite → claim at first login.** An owner invites by email (`r.org.invites.create`); the invitee's pending memberships are claimed *automatically* when they log in via that verified email (email / OAuth / loopback) and surface as active rows in `session.whoami().memberships` (and in `run402 operator login --loopback` output). Owner/admin invites only claim once the invitee has enrolled a passkey; lower roles claim on any login. There is no invitee-side "list my invites" call — the claim is the surfacing.
+**Invite → claim at first login.** An owner invites by email (`r.org(id).invites.create`); the invitee's pending memberships are claimed *automatically* when they log in via that verified email (email / OAuth / loopback) and surface as active rows in `session.whoami().memberships` (and in `run402 operator login --loopback` output). Owner/admin invites only claim once the invitee has enrolled a passkey; lower roles claim on any login. There is no invitee-side "list my invites" call — the claim is the surfacing.
 
 The session caches are Node-only and live in `core`: the read session at `{base}/operator-session.json` and the write-capable control-plane session at `{base}/control-plane-session.json` (both mode 0600, base config dir — email-scoped, shared across local named wallets). The CLI (`run402 operator login[/--loopback]/logout/overview/whoami`) brokers them; read `whoami` is a pure local-cache read. No MCP tool by design — MCP authenticates as the agent, not the human; the hosted login is browser-interactive and console-side.
 
@@ -1465,18 +1465,21 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 
 What does NOT transfer: tier lease (stays with the original owner's billing account; no Phase 1A proration), KMS contract wallets (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
-## Org membership & project grants (`r.org`, `r.grants` — v1.77+ org-owned control plane)
+## Org membership & project grants (`r.orgs`, `r.org(id)`, `r.grants` — v1.77+ org-owned control plane; first-class orgs v1.82)
 
-A wallet **authenticates** (SIWX → a control-plane *principal*); the **org (billing account)** owns projects, and what a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet_address == signer`.
+A wallet **authenticates** (SIWX → a control-plane *principal*); an **org** owns projects, and what a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet_address == signer`. The collection + identity lives on `r.orgs`; per-org operations on the scoped sub-client **`r.org(id)`** (the org analog of `r.project(id)` — the id is bound once). Memberships carry `org_id` + `display_name`.
 
-- **`r.org.whoami()`** → `{ principal, memberships[], authenticator_id }` (GET `/agent/v1/whoami`). This is the REMOTE, gateway-resolved identity. It is distinct from **`r.whoami()`**, which stays local + network-free (wallet address + profile label, used by `run402 status`).
-- **`r.org.list()`** → the orgs you are an active member of (as `OrgMembership[]`).
-- **`r.org.members(billingAccountId)`** → `OrgMember[]`.
-- **`r.org.addMember(billingAccountId, { wallet, role? })`** — add BY WALLET (a new wallet is provisioned as a `human` principal); `role` defaults to `developer`. Owner-gated. (Email-first invite is a separate, not-yet-shipped flow — there is no `invite` method.)
-- **`r.org.setRole(billingAccountId, principalId, role)`** / **`r.org.removeMember(billingAccountId, principalId)`** — owner-gated. Removing or demoting the org's only active owner throws `ApiError` with `code: "LAST_OWNER"` (409) — promote another member to `owner` first.
+- **`r.orgs.create({ displayName? })`** → `{ org_id, display_name, tier }` (POST `/orgs/v1`). Creates an empty org on the prototype tier; you become owner. Accepts only `displayName` — no tier at create. Step-up gated; may throw `ApiError code: "FREE_ORG_OWNER_LIMIT_EXCEEDED"` (429).
+- **`r.orgs.list()`** → orgs you are an active member of (`OrgMembership[]`, each `{ org_id, display_name, role, status }`).
+- **`r.orgs.whoami()`** → `{ principal, memberships[], authenticator_id }` (GET `/agent/v1/whoami`). The REMOTE, gateway-resolved identity — distinct from **`r.whoami()`** (local + network-free wallet/profile label, used by `run402 status`).
+- **`r.org(id).get()`** → `{ org_id, display_name, tier, role }`. Any active member; a non-member (incl. a guessed id) gets the same non-revealing 403.
+- **`r.org(id).rename(displayName | null)`** → owner-only; set or clear the label (`null`/`""` clears). Step-up gated.
+- **`r.org(id).members.list()` / `.add({ wallet, role? })` / `.setRole(principalId, role)` / `.revoke(principalId)`** — owner-gated; a new wallet is provisioned as a `human` principal, `role` defaults to `developer`. Removing/demoting the org's only active owner throws `ApiError code: "LAST_OWNER"` (409).
+- **`r.org(id).invites.list()` / `.create({ email, role, inviteTtlHours? })` / `.revoke(principalId)`** — email invites, claimed automatically at the invitee's first login.
+- **`r.org(id).audit({ limit?, before? })`** → control-plane audit trail (admin+), newest-first; page with `before`.
 - **`r.grants.create(projectId, { wallet, capability, policy?, expiresAt? })`** / **`r.grants.revoke(projectId, grantId)`** — per-project capability grants for agent/CI principals; requires owner of the project's org. Also project-scoped: **`r.project(id).grants.create({...})`** / `.revoke(grantId)`. `capability` examples: `"deploy"`, `"functions:write"`.
 
-Control-plane denials throw `NotAuthorizedError` (403 `NOT_AUTHORIZED`, carrying `requiredRole` / `requiredCapability` / `reason`). Bad input is `ApiError` `code: "VALIDATION_ERROR"` (400). Exported types: `OrgRole`, `Principal`, `OrgMembership`, `OrgMember`, `WhoAmIResult`, `ProjectGrant`, plus input/result types.
+Control-plane denials throw `NotAuthorizedError` (403 `NOT_AUTHORIZED`, carrying `requiredRole` / `requiredCapability` / `reason`). Bad input is `ApiError` `code: "VALIDATION_ERROR"` (400). Exported types: `OrgRole`, `Principal`, `OrgMembership`, `OrgMember`, `WhoAmIResult`, `OrgSummary`, `OrgDetail`, `CreateOrgInput`, `ProjectGrant`, plus input/result types.
 
 ## Resource limits
 

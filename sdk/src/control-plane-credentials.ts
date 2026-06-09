@@ -9,7 +9,7 @@
  * / `passkeyVerify` / the loopback-PKCE `exchangeCliToken`, then:
  *
  *   const r = run402({ credentials: controlPlaneSessionCredentials({ token }) });
- *   await r.org.whoami();            // resolves the principal + memberships
+ *   await r.orgs.whoami();           // resolves the principal + memberships
  *
  * High-stakes writes still require a fresh passkey — an `email`/`oauth` session
  * gets {@link StepUpRequiredError}; run the step-up ceremony

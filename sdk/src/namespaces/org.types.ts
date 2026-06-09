@@ -1,12 +1,15 @@
 /**
- * Request/response types for the `org` namespace — the org-owned control plane
- * (gateway v1.77+ / `org-member-management`). A wallet *authenticates* (SIWX
+ * Request/response types for the org namespace — the org-owned control plane
+ * (gateway v1.77+ / v1.82 `first-class-orgs`). A wallet *authenticates* (SIWX
  * resolves it to a control-plane principal); *authorization* is an org
- * (billing-account) membership in the role lattice below, or a per-project
- * grant. These shapes map to `/agent/v1/whoami` and `/orgs/v1*`.
+ * membership in the role lattice below, or a per-project grant. These shapes map
+ * to `/agent/v1/whoami` and `/orgs/v1*`.
+ *
+ * Public vocabulary is `org` / `org_id` (v1.82): the internal `billing_account`
+ * substrate never appears on the wire.
  */
 
-/** Org (billing-account) role lattice: `owner > admin > developer > billing > viewer`. */
+/** Org role lattice: `owner > admin > developer > billing > viewer`. */
 export type OrgRole = "owner" | "admin" | "developer" | "billing" | "viewer";
 
 /**
@@ -34,17 +37,22 @@ export interface Principal {
 /**
  * A principal's membership in an org. `status` is the membership lifecycle
  * (`"active"` is the only state that authorizes; `"invited"` / `"suspended"` /
- * `"revoked"` do not). Returned by {@link Org.whoami} and {@link Org.list}.
+ * `"revoked"` do not). Returned by {@link Orgs.whoami} and {@link Orgs.list}.
+ *
+ * v1.82: carries `org_id` + `display_name` (the public vocabulary), replacing
+ * the pre-v1.82 `billing_account_id`.
  */
 export interface OrgMembership {
-  billing_account_id: string;
+  org_id: string;
+  /** The org's free-text label; `null` when the org has no display name. */
+  display_name: string | null;
   role: OrgRole;
   status: string;
   [key: string]: unknown;
 }
 
 /**
- * Result of {@link Org.whoami} (`GET /agent/v1/whoami`) — the remote, gateway-
+ * Result of {@link Orgs.whoami} (`GET /agent/v1/whoami`) — the remote, gateway-
  * resolved identity. Distinct from the local, network-free `r.whoami()` (wallet
  * address + profile label): this returns the control-plane principal and every
  * org it is a member of.
@@ -52,11 +60,41 @@ export interface OrgMembership {
 export interface WhoAmIResult {
   principal: Principal;
   memberships: OrgMembership[];
-  authenticator_id: string;
+  authenticator_id: string | null;
   [key: string]: unknown;
 }
 
-/** A member row from {@link Org.members} (`GET /orgs/v1/:ba/members`). */
+/** Input to {@link Orgs.create} — create an empty org on the prototype tier. */
+export interface CreateOrgInput {
+  /**
+   * Optional free-text label (e.g. "Kychee"). Non-unique, not an identifier,
+   * validated server-side. Omit for an unlabeled org. No `tier` — paid tiers are
+   * a separate flow.
+   */
+  displayName?: string | null;
+}
+
+/**
+ * An org summary as returned by {@link Orgs.create} and {@link ScopedOrg.rename}
+ * (`{ org_id, display_name, tier }`). `display_name` is `null` when unset.
+ */
+export interface OrgSummary {
+  org_id: string;
+  display_name: string | null;
+  tier: string;
+  [key: string]: unknown;
+}
+
+/**
+ * A single-org read from {@link ScopedOrg.get} (`GET /orgs/v1/:org_id`) — the
+ * {@link OrgSummary} plus the caller's `role` (`null` for an admin who is not a
+ * member).
+ */
+export interface OrgDetail extends OrgSummary {
+  role: OrgRole | null;
+}
+
+/** A member row from {@link OrgMembers.list} (`GET /orgs/v1/:org_id/members`). */
 export interface OrgMember {
   principal_id: string;
   role: OrgRole;
@@ -65,9 +103,8 @@ export interface OrgMember {
 }
 
 /**
- * Input to {@link Org.addMember}. Membership-add is *by wallet* today — the
- * gateway resolves/provisions the wallet to a principal. (Email-first invite is
- * the separate Layer-2 `passkey-principals-onboarding` flow, not yet a route.)
+ * Input to {@link OrgMembers.add}. Membership-add is *by wallet* — the gateway
+ * resolves/provisions the wallet to a principal.
  */
 export interface AddMemberInput {
   /** EVM address (or named wallet) to add. */
@@ -76,7 +113,7 @@ export interface AddMemberInput {
   role?: OrgRole;
 }
 
-/** Result of {@link Org.addMember} / {@link Org.setRole} (`{ status:"ok", principal_id, role }`). */
+/** Result of {@link OrgMembers.add} / {@link OrgMembers.setRole} (`{ status:"ok", principal_id, role }`). */
 export interface MemberMutationResult {
   status: string;
   principal_id: string;
@@ -100,7 +137,7 @@ export interface CreateInviteInput {
 }
 
 /**
- * A pending email invite from {@link OrgInvites.list} (`GET /orgs/v1/:ba/invites`).
+ * A pending email invite from {@link OrgInvites.list} (`GET /orgs/v1/:org_id/invites`).
  * Represented by a pending `principal_id` — pass it to {@link OrgInvites.revoke}.
  */
 export interface OrgInvite {
@@ -119,7 +156,7 @@ export interface OrgInviteRevokeResult {
   [key: string]: unknown;
 }
 
-/** Options for {@link Org.audit}. */
+/** Options for {@link ScopedOrg.audit}. */
 export interface AuditOptions {
   /** Page size; gateway default applies when omitted. */
   limit?: number;
@@ -127,7 +164,7 @@ export interface AuditOptions {
   before?: string;
 }
 
-/** One control-plane audit event from {@link Org.audit}. Shape is gateway-owned (forward-compatible). */
+/** One control-plane audit event from {@link ScopedOrg.audit}. Shape is gateway-owned (forward-compatible). */
 export interface AuditEvent {
   [key: string]: unknown;
 }

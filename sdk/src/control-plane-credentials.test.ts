@@ -2,7 +2,7 @@
  * Unit tests for {@link controlPlaneSessionCredentials} — the control-plane
  * session bearer credential provider. Verifies the `getAuth` bearer header
  * (static + lazy), the brand guard, the no-project-keys contract, and that the
- * whole SDK authenticates as the session end-to-end (org.whoami → bearer).
+ * whole SDK authenticates as the session end-to-end (orgs.whoami → bearer).
  */
 
 import { describe, it } from "node:test";
@@ -53,7 +53,7 @@ describe("controlPlaneSessionCredentials", () => {
     );
   });
 
-  it("authenticates the whole SDK as the session (org.whoami sends the bearer)", async () => {
+  it("authenticates the whole SDK as the session (orgs.whoami sends the bearer)", async () => {
     const calls: Array<Record<string, string>> = [];
     const fetchImpl: typeof globalThis.fetch = async (_input, init) => {
       calls.push((init?.headers ?? {}) as Record<string, string>);
@@ -67,7 +67,7 @@ describe("controlPlaneSessionCredentials", () => {
       credentials: controlPlaneSessionCredentials({ token: "cps_tok" }),
       fetch: fetchImpl,
     });
-    await r.org.whoami();
+    await r.orgs.whoami();
     assert.equal(calls[0]!["Authorization"], "Bearer cps_tok");
   });
 });

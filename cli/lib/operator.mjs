@@ -23,7 +23,8 @@ import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
 import { getSdk } from "./sdk.mjs";
-import { normalizeArgv, hasHelp, assertKnownFlags } from "./argparse.mjs";
+import { claimWalletOrg, isStepUpRequired } from "#sdk/node";
+import { normalizeArgv, hasHelp, assertKnownFlags, flagValue } from "./argparse.mjs";
 import {
   saveOperatorSession,
   clearOperatorSession,
@@ -55,19 +56,25 @@ Usage:
   run402 operator overview
   run402 operator whoami
   run402 operator logout
+  run402 operator claim-wallet-org [--org <id>] [--name <label>]
 
 Subcommands:
-  login      Sign in via the browser. Default = device-flow READ session (powers
-             'overview'). --loopback = write-capable control-plane session
-             (aws-sso-style, passkey-fresh). --step-up = re-mint a fresh write session.
-  overview   Account view across ALL wallets controlling your email (requires login)
-  whoami     Show the cached session(s) — local, no network
-  logout     Revoke the session server-side and clear the local cache(s)
+  login            Sign in via the browser. Default = device-flow READ session (powers
+                   'overview'). --loopback = write-capable control-plane session
+                   (aws-sso-style, passkey-fresh). --step-up = re-mint a fresh write session.
+  overview         Account view across ALL wallets controlling your email (requires login)
+  whoami           Show the cached session(s) — local, no network
+  logout           Revoke the session server-side and clear the local cache(s)
+  claim-wallet-org Claim an org owned by your wallet's agent into your human identity
+                   (ownership transfer). Dual proof: your write-capable session
+                   ('login --loopback' first) + a fresh signature from the active wallet.
 
 Options:
   --no-open  (login) Do not auto-open the browser; just print the URL.
   --loopback (login) Use the loopback-PKCE write login instead of the device flow.
   --step-up  (login) Re-mint a fresh write session (implies --loopback).
+  --org <id> (claim-wallet-org) Pick which org to claim (only when the wallet owns several).
+  --name <s> (claim-wallet-org) Optional label to set on the claimed org.
 
 Notes:
   - The session is cached at the base config dir, shared across named wallets.
@@ -445,6 +452,64 @@ async function whoami(args) {
   process.exitCode = 1;
 }
 
+/**
+ * Claim a wallet-owned org into your human (console) identity — an ownership
+ * transfer (v1.82). Dual proof: your write-capable control-plane session (run
+ * 'operator login --loopback' first) PLUS a fresh SIWX signature from the active
+ * wallet over a server nonce. The Node convenience runs the whole dance
+ * (read session → challenge → sign → submit). Step-up failures and the
+ * multi-org `select_org` round-trip are surfaced here, not thrown to the user.
+ */
+async function claimWalletOrgCmd(args) {
+  assertKnownFlags(args, ["--help", "-h", "--org", "--name"], ["--org", "--name"]);
+  const orgId = flagValue(args, "--org");
+  const name = flagValue(args, "--name");
+  try {
+    const result = await claimWalletOrg(getSdk(), {
+      orgId: orgId ?? undefined,
+      displayName: name ?? undefined,
+    });
+    // CLI output contract (cli-output-shape): no top-level `status` envelope.
+    // The gateway's discriminator becomes an explicit `claimed` boolean.
+    if (result && result.status === "select_org") {
+      console.log(
+        JSON.stringify(
+          {
+            claimed: false,
+            selectable_orgs: result.selectable_orgs,
+            hint: "Your wallet's agent owns more than one org. Re-run with --org <id> to claim one.",
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+    console.log(
+      JSON.stringify(
+        {
+          claimed: true,
+          org_id: result.org_id,
+          display_name: result.display_name,
+          role: result.role,
+          already_owned: result.already_owned ?? false,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (err) {
+    if (isStepUpRequired(err)) {
+      return fail({
+        code: "STEP_UP_REQUIRED",
+        message: "Claiming a wallet org needs a fresh passkey step-up.",
+        hint: "Run 'run402 operator login --step-up', then re-run 'run402 operator claim-wallet-org'.",
+      });
+    }
+    reportSdkError(err);
+  }
+}
+
 export async function run(sub, args = []) {
   args = normalizeArgv(args);
   if (!sub || sub === "--help" || sub === "-h" || hasHelp(args)) {
@@ -463,6 +528,9 @@ export async function run(sub, args = []) {
       break;
     case "whoami":
       await whoami(args);
+      break;
+    case "claim-wallet-org":
+      await claimWalletOrgCmd(args);
       break;
     default:
       fail({

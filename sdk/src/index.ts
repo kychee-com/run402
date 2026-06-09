@@ -32,7 +32,7 @@ import { Deploy } from "./namespaces/deploy.js";
 import { Ci } from "./namespaces/ci.js";
 import { Jobs } from "./namespaces/jobs.js";
 import { Operator } from "./namespaces/operator.js";
-import { Org } from "./namespaces/org.js";
+import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
@@ -89,12 +89,13 @@ export class Run402 {
    */
   readonly operator: Operator;
   /**
-   * Org-owned control plane (gateway v1.77+): resolve the principal +
-   * memberships (`org.whoami()`) and manage org membership (`list`, `members`,
-   * `addMember`, `setRole`, `removeMember` — owner-gated). Distinct from the
-   * local, network-free {@link Run402.whoami}.
+   * Org collection + identity (gateway v1.77+, first-class in v1.82):
+   * `r.orgs.create()` / `list()` / `whoami()`. For operations on a single org by
+   * id use the scoped sub-client {@link Run402.org} (`r.org(id).get()` /
+   * `rename()` / `members.*` / `invites.*` / `audit()`). Distinct from the local,
+   * network-free {@link Run402.whoami}.
    */
-  readonly org: Org;
+  readonly orgs: Orgs;
   /**
    * Per-project capability grants for agent/CI principals. Also available
    * project-scoped as `r.project(id).grants`.
@@ -166,7 +167,7 @@ export class Run402 {
     this.ci = new Ci(client);
     this.jobs = new Jobs(client);
     this.operator = new Operator(client);
-    this.org = new Org(client);
+    this.orgs = new Orgs(client);
     this.grants = new Grants(client);
   }
 
@@ -224,6 +225,17 @@ export class Run402 {
   async useProject(id: string): Promise<ScopedRun402> {
     await this.projects.use(id);
     return this.project(id);
+  }
+
+  /**
+   * Return an org-scoped sub-client with `id` pre-bound — the org analog of
+   * {@link Run402.project}. Instance operations (`get`, `rename`, `members.*`,
+   * `invites.*`, `audit`) drop their org-id argument. Synchronous: an org id is
+   * always explicit (there is no "active org" fallback). Collection/identity
+   * operations (`create`, `list`, `whoami`) live on {@link Run402.orgs}.
+   */
+  org(id: string): ScopedOrg {
+    return new ScopedOrg(this.#client, id);
   }
 
   /**
@@ -394,7 +406,7 @@ export type * from "./namespaces/jobs.js";
 export type * from "./namespaces/operator.js";
 export { OperatorSession } from "./namespaces/operator-session.js";
 export type * from "./namespaces/operator-session.js";
-export { Org, OrgMembers, OrgInvites } from "./namespaces/org.js";
+export { Orgs, ScopedOrg, OrgMembers, OrgInvites } from "./namespaces/org.js";
 export type * from "./namespaces/org.types.js";
 export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";

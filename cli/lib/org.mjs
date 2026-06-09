@@ -10,64 +10,99 @@ import {
 
 const ROLE_LIST = "owner | admin | developer | billing | viewer";
 
-const HELP = `run402 org — org-owned control plane: identity, membership, invites
+const HELP = `run402 org — organizations: create, label, membership, invites
 
 Usage:
-  run402 org whoami
+  run402 org create [--name <label>]
   run402 org list
-  run402 org audit <billing_account> [--limit N] [--before <cursor>]
-  run402 org member list <billing_account>
-  run402 org member add  <billing_account> <wallet> [--role <role>]
-  run402 org member role <billing_account> <principal_id> <role>
-  run402 org member rm   <billing_account> <principal_id>
-  run402 org invite list   <billing_account>
-  run402 org invite create <billing_account> <email> [--role <role>] [--ttl-hours N]
-  run402 org invite rm     <billing_account> <principal_id>
+  run402 org get    <org>
+  run402 org rename <org> <display_name>   (or: --clear to remove the label)
+  run402 org whoami
+  run402 org audit  <org> [--limit N] [--before <cursor>]
+  run402 org member list <org>
+  run402 org member add  <org> <wallet> [--role <role>]
+  run402 org member role <org> <principal_id> <role>
+  run402 org member rm   <org> <principal_id>
+  run402 org invite list   <org>
+  run402 org invite create <org> <email> [--role <role>] [--ttl-hours N]
+  run402 org invite rm     <org> <principal_id>
 
 Subcommands:
-  whoami      Resolved principal + org memberships (GET /agent/v1/whoami)
+  create      Create an empty org on the prototype tier (you become owner)
   list        Orgs you are a member of
+  get         Read one org (label + tier + your role)
+  rename      Set or clear an org's display label (owner-only)
+  whoami      Resolved principal + org memberships (GET /agent/v1/whoami)
   member      Manage members (list, add, role, rm) — mutations require owner
   invite      Manage email invites (list, create, rm) — mutations require owner
   audit       Control-plane audit trail for an org (admin+)
 
 Notes:
-  - A wallet AUTHENTICATES; the org (billing account) owns projects. Membership/role authorizes.
+  - A wallet AUTHENTICATES; an org owns projects. Membership/role authorizes.
   - Roles: ${ROLE_LIST}. Member/invite changes need an active owner.
+  - create/rename/member/invite are step-up gated for control-plane sessions.
   - Removing/demoting the org's only active owner fails with 409 LAST_OWNER.
   - JSON in, JSON out.
 
 Examples:
-  run402 org whoami
-  run402 org member list ba_abc
-  run402 org member add ba_abc 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --role admin
-  run402 org member role ba_abc prn_xyz owner
-  run402 org invite create ba_abc dev@example.com --role developer
-  run402 org audit ba_abc --limit 50
+  run402 org create --name "Kychee"
+  run402 org list
+  run402 org get org_abc
+  run402 org rename org_abc "New Name"
+  run402 org rename org_abc --clear
+  run402 org member add org_abc 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --role admin
+  run402 org invite create org_abc dev@example.com --role developer
+  run402 org audit org_abc --limit 50
 `;
 
 const SUB_HELP = {
-  whoami: `run402 org whoami — resolved principal + org memberships
+  create: `run402 org create — create an empty org (prototype tier; you become owner)
 
 Usage:
-  run402 org whoami
+  run402 org create [--name <label>]
 
-Calls GET /agent/v1/whoami. Returns the control-plane principal (id/type/displayName/createdAt),
-authenticator_id, and every org membership with role + status. REMOTE identity; for local
-wallet/profile state use 'run402 status'.
+The label is an optional free-text name (non-unique, not an id). Omit for an
+unlabeled org. There is no tier at create — paid tiers are a separate flow.
+Step-up gated for control-plane sessions; the free-org cap may apply.
 `,
   list: `run402 org list — orgs you are a member of
 
 Usage:
   run402 org list
 `,
+  get: `run402 org get — read one org (label + tier + your role)
+
+Usage:
+  run402 org get <org>
+
+Any active member may read. A non-member (including a guessed id) gets the same
+non-revealing 403.
+`,
+  rename: `run402 org rename — set or clear an org's display label (owner-only)
+
+Usage:
+  run402 org rename <org> <display_name>
+  run402 org rename <org> --clear
+
+Owner-only + step-up gated. Pass --clear (or an empty display_name) to remove
+the label.
+`,
+  whoami: `run402 org whoami — resolved principal + org memberships
+
+Usage:
+  run402 org whoami
+
+Calls GET /agent/v1/whoami. Returns the control-plane principal (id/type/displayName/createdAt),
+authenticator_id, and every org membership (org_id, display_name, role, status). REMOTE identity;
+for local wallet/profile state use 'run402 status'.
+`,
   member: `run402 org member — manage org members
 
 Usage:
-  run402 org member list <billing_account>
-  run402 org member add  <billing_account> <wallet> [--role <role>]
-  run402 org member role <billing_account> <principal_id> <role>
-  run402 org member rm   <billing_account> <principal_id>
+  run402 org member list <org>
+  run402 org member add  <org> <wallet> [--role <role>]
+  run402 org member role <org> <principal_id> <role>
+  run402 org member rm   <org> <principal_id>
 
 Roles: ${ROLE_LIST} (add defaults to developer). Mutations require an active owner.
 Demoting/removing the org's only active owner fails with 409 LAST_OWNER.
@@ -75,9 +110,9 @@ Demoting/removing the org's only active owner fails with 409 LAST_OWNER.
   invite: `run402 org invite — manage email invites
 
 Usage:
-  run402 org invite list   <billing_account>
-  run402 org invite create <billing_account> <email> [--role <role>] [--ttl-hours N]
-  run402 org invite rm     <billing_account> <principal_id>
+  run402 org invite list   <org>
+  run402 org invite create <org> <email> [--role <role>] [--ttl-hours N]
+  run402 org invite rm     <org> <principal_id>
 
 An invite is claimed at the recipient's first login. Mutations require an active owner
 (plus step-up when driven by a control-plane session).
@@ -85,20 +120,22 @@ An invite is claimed at the recipient's first login. Mutations require an active
   audit: `run402 org audit — control-plane audit trail
 
 Usage:
-  run402 org audit <billing_account> [--limit N] [--before <cursor>]
+  run402 org audit <org> [--limit N] [--before <cursor>]
 
 Requires an admin+ membership on the org. Newest-first; page with --before.
 `,
 };
 
-// ── Top-level: whoami / list / audit ───────────────────────────────────────────
+// ── Top-level: create / list / get / rename / whoami / audit ────────────────────
 
-async function whoami(args) {
+async function create(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, ["--help", "-h"]);
-  requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org whoami" });
+  const valueFlags = ["--name"];
+  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  requirePositionalCount(a, valueFlags, { min: 0, max: 0, command: "run402 org create [--name <label>]" });
+  const name = flagValue(a, "--name");
   try {
-    console.log(JSON.stringify(await getSdk().org.whoami(), null, 2));
+    console.log(JSON.stringify(await getSdk().orgs.create({ displayName: name ?? undefined }), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -109,7 +146,50 @@ async function list(args) {
   assertKnownFlags(a, ["--help", "-h"]);
   requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org list" });
   try {
-    console.log(JSON.stringify({ orgs: await getSdk().org.list() }, null, 2));
+    console.log(JSON.stringify({ orgs: await getSdk().orgs.list() }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function whoami(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--help", "-h"]);
+  requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org whoami" });
+  try {
+    console.log(JSON.stringify(await getSdk().orgs.whoami(), null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function get(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--help", "-h"]);
+  const [org] = requirePositionalCount(a, [], {
+    min: 1, max: 1, command: "run402 org get <org>", missing: "Missing <org>.",
+  });
+  try {
+    console.log(JSON.stringify(await getSdk().org(org).get(), null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function rename(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--clear", "--help", "-h"]);
+  const clear = a.includes("--clear");
+  const positionals = requirePositionalCount(a, [], {
+    min: clear ? 1 : 2,
+    max: clear ? 1 : 2,
+    command: "run402 org rename <org> <display_name>",
+    missing: clear ? "Missing <org>." : "Missing <org> and/or <display_name> (or pass --clear).",
+  });
+  const org = positionals[0];
+  const displayName = clear ? null : positionals[1];
+  try {
+    console.log(JSON.stringify(await getSdk().org(org).rename(displayName), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -119,17 +199,17 @@ async function audit(args) {
   const a = normalizeArgv(args);
   const valueFlags = ["--limit", "--before"];
   assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
-  const [ba] = requirePositionalCount(a, valueFlags, {
+  const [org] = requirePositionalCount(a, valueFlags, {
     min: 1,
     max: 1,
-    command: "run402 org audit <billing_account>",
-    missing: "Missing <billing_account>.",
+    command: "run402 org audit <org>",
+    missing: "Missing <org>.",
   });
   const limitFlag = flagValue(a, "--limit");
   const before = flagValue(a, "--before");
   const limit = limitFlag === null ? undefined : parseIntegerFlag("--limit", limitFlag, { min: 1, max: 1000 });
   try {
-    const events = await getSdk().org.audit(ba, { limit, before: before ?? undefined });
+    const events = await getSdk().org(org).audit({ limit, before: before ?? undefined });
     console.log(JSON.stringify({ events }, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -153,11 +233,11 @@ async function runMember(args) {
   if (memberAction === "list") {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--help", "-h"]);
-    const [ba] = requirePositionalCount(a, [], {
-      min: 1, max: 1, command: "run402 org member list <billing_account>", missing: "Missing <billing_account>.",
+    const [org] = requirePositionalCount(a, [], {
+      min: 1, max: 1, command: "run402 org member list <org>", missing: "Missing <org>.",
     });
     try {
-      console.log(JSON.stringify({ members: await getSdk().org.members.list(ba) }, null, 2));
+      console.log(JSON.stringify({ members: await getSdk().org(org).members.list() }, null, 2));
     } catch (err) {
       reportSdkError(err);
     }
@@ -168,12 +248,12 @@ async function runMember(args) {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--role", "--help", "-h"], ["--role"]);
     const role = flagValue(a, "--role");
-    const [ba, wallet] = requirePositionalCount(a, ["--role"], {
-      min: 2, max: 2, command: "run402 org member add <billing_account> <wallet> [--role <role>]",
-      missing: "Missing <billing_account> and/or <wallet>.",
+    const [org, wallet] = requirePositionalCount(a, ["--role"], {
+      min: 2, max: 2, command: "run402 org member add <org> <wallet> [--role <role>]",
+      missing: "Missing <org> and/or <wallet>.",
     });
     try {
-      const res = await getSdk().org.members.add(ba, { wallet, role: role || undefined });
+      const res = await getSdk().org(org).members.add({ wallet, role: role || undefined });
       console.log(JSON.stringify(res, null, 2));
     } catch (err) {
       reportSdkError(err);
@@ -184,12 +264,12 @@ async function runMember(args) {
   if (memberAction === "role") {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--help", "-h"]);
-    const [ba, principalId, role] = requirePositionalCount(a, [], {
-      min: 3, max: 3, command: "run402 org member role <billing_account> <principal_id> <role>",
-      missing: "Missing <billing_account>, <principal_id>, and/or <role>.",
+    const [org, principalId, role] = requirePositionalCount(a, [], {
+      min: 3, max: 3, command: "run402 org member role <org> <principal_id> <role>",
+      missing: "Missing <org>, <principal_id>, and/or <role>.",
     });
     try {
-      console.log(JSON.stringify(await getSdk().org.members.setRole(ba, principalId, role), null, 2));
+      console.log(JSON.stringify(await getSdk().org(org).members.setRole(principalId, role), null, 2));
     } catch (err) {
       reportSdkError(err);
     }
@@ -199,12 +279,12 @@ async function runMember(args) {
   if (memberAction === "rm") {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--help", "-h"]);
-    const [ba, principalId] = requirePositionalCount(a, [], {
-      min: 2, max: 2, command: "run402 org member rm <billing_account> <principal_id>",
-      missing: "Missing <billing_account> and/or <principal_id>.",
+    const [org, principalId] = requirePositionalCount(a, [], {
+      min: 2, max: 2, command: "run402 org member rm <org> <principal_id>",
+      missing: "Missing <org> and/or <principal_id>.",
     });
     try {
-      console.log(JSON.stringify(await getSdk().org.members.revoke(ba, principalId), null, 2));
+      console.log(JSON.stringify(await getSdk().org(org).members.revoke(principalId), null, 2));
     } catch (err) {
       reportSdkError(err);
     }
@@ -231,11 +311,11 @@ async function runInvite(args) {
   if (inviteAction === "list") {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--help", "-h"]);
-    const [ba] = requirePositionalCount(a, [], {
-      min: 1, max: 1, command: "run402 org invite list <billing_account>", missing: "Missing <billing_account>.",
+    const [org] = requirePositionalCount(a, [], {
+      min: 1, max: 1, command: "run402 org invite list <org>", missing: "Missing <org>.",
     });
     try {
-      console.log(JSON.stringify({ invites: await getSdk().org.invites.list(ba) }, null, 2));
+      console.log(JSON.stringify({ invites: await getSdk().org(org).invites.list() }, null, 2));
     } catch (err) {
       reportSdkError(err);
     }
@@ -248,13 +328,13 @@ async function runInvite(args) {
     assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
     const role = flagValue(a, "--role");
     const ttlFlag = flagValue(a, "--ttl-hours");
-    const [ba, email] = requirePositionalCount(a, valueFlags, {
-      min: 2, max: 2, command: "run402 org invite create <billing_account> <email> [--role <role>]",
-      missing: "Missing <billing_account> and/or <email>.",
+    const [org, email] = requirePositionalCount(a, valueFlags, {
+      min: 2, max: 2, command: "run402 org invite create <org> <email> [--role <role>]",
+      missing: "Missing <org> and/or <email>.",
     });
     const inviteTtlHours = ttlFlag === null ? undefined : parseIntegerFlag("--ttl-hours", ttlFlag, { min: 1, max: 8760 });
     try {
-      const res = await getSdk().org.invites.create(ba, { email, role: role || "developer", inviteTtlHours });
+      const res = await getSdk().org(org).invites.create({ email, role: role || "developer", inviteTtlHours });
       console.log(JSON.stringify(res, null, 2));
     } catch (err) {
       reportSdkError(err);
@@ -265,12 +345,12 @@ async function runInvite(args) {
   if (inviteAction === "rm") {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--help", "-h"]);
-    const [ba, principalId] = requirePositionalCount(a, [], {
-      min: 2, max: 2, command: "run402 org invite rm <billing_account> <principal_id>",
-      missing: "Missing <billing_account> and/or <principal_id>.",
+    const [org, principalId] = requirePositionalCount(a, [], {
+      min: 2, max: 2, command: "run402 org invite rm <org> <principal_id>",
+      missing: "Missing <org> and/or <principal_id>.",
     });
     try {
-      console.log(JSON.stringify(await getSdk().org.invites.revoke(ba, principalId), null, 2));
+      console.log(JSON.stringify(await getSdk().org(org).invites.revoke(principalId), null, 2));
     } catch (err) {
       reportSdkError(err);
     }
@@ -300,8 +380,11 @@ export async function run(sub, args) {
     process.exit(0);
   }
   switch (sub) {
-    case "whoami": await whoami(args); break;
+    case "create": await create(args); break;
     case "list": await list(args); break;
+    case "get": await get(args); break;
+    case "rename": await rename(args); break;
+    case "whoami": await whoami(args); break;
     case "audit": await audit(args); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);

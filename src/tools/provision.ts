@@ -13,11 +13,16 @@ export const provisionSchema = {
     .string()
     .optional()
     .describe("Optional project name (auto-generated if omitted)"),
+  org_id: z
+    .string()
+    .optional()
+    .describe("Provision into an EXISTING org (v1.82). You must hold a developer+ membership on it. Omit for the cold-start path. Tier is org-governed."),
 };
 
 export async function handleProvision(args: {
   tier?: string;
   name?: string;
+  org_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const auth = requireAllowanceAuth("/projects/v1");
   if ("error" in auth) return auth.error;
@@ -29,6 +34,7 @@ export async function handleProvision(args: {
     const body = await getSdk().projects.provision({
       tier: tier as "prototype" | "hobby" | "team",
       name,
+      orgId: args.org_id,
     });
 
     const lines = [

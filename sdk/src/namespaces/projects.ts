@@ -69,6 +69,7 @@ export class Projects {
     const body: Record<string, unknown> = {};
     if (opts.tier !== undefined) body.tier = opts.tier;
     if (opts.name !== undefined) body.name = opts.name;
+    if (opts.orgId !== undefined) body.org_id = opts.orgId;
 
     const result = await this.client.request<ProvisionResult>("/projects/v1", {
       method: "POST",

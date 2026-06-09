@@ -288,7 +288,7 @@ The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/
 
 ### Database
 
-- `provision_postgres_project` — provision a new database. Auto-handles x402 payment. Params: `tier?` (default `"prototype"`), `name?`. Returns `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`.
+- `provision_postgres_project` — provision a new database. Auto-handles x402 payment. Params: `tier?` (default `"prototype"`), `name?`, `org_id?` (provision into an EXISTING org — needs `developer`+ on it; omit for the cold-start path; tier is org-governed). Returns `project_id`, `anon_key`, `service_key`, `tier`, `schema_slot`, `lease_expires_at`.
 - `run_sql` — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id?` (defaults to the active project), `sql`. Returns a markdown table for result sets; mutations report "N rows affected" and DDL reports "Statement executed".
 - `rest_query` — query/mutate via PostgREST. Params: `project_id?` (defaults to the active project), `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypasses RLS via the admin REST path).
 - `apply_expose` — apply the declarative authorization manifest. Params: `project_id`, `manifest` (`{ version: "1", tables: [...], views: [...], rpcs: [...] }`).
@@ -484,11 +484,15 @@ After accept, `tier_status` surfaces `projects[].secrets_rotation_advised: { adv
 A wallet **authenticates**; the **org (billing account)** owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant. Member/grant mutations require an active `owner`.
 
 - `whoami` — resolve YOUR control-plane principal + every org membership (role + status) + `authenticator_id` (GET `/agent/v1/whoami`). The remote identity; for local wallet/profile state use `status`.
-- `list_orgs` — orgs you are a member of, with your role + membership status.
-- `list_org_members` — members + roles of an org. Params: `billing_account_id`.
-- `add_org_member` — add a member BY WALLET (a new wallet is provisioned as a `human` principal). Params: `billing_account_id`, `wallet`, optional `role` (default `developer`). Owner-gated. (Email-first invite is a separate, not-yet-shipped flow.)
-- `set_org_member_role` — change a member's role. Params: `billing_account_id`, `principal_id`, `role`. Owner-gated. Demoting the only active owner → `409 LAST_OWNER`.
-- `remove_org_member` — remove a member. Params: `billing_account_id`, `principal_id`. Owner-gated. Removing the only active owner → `409 LAST_OWNER`.
+- `list_orgs` — orgs you are a member of, with each org's `org_id`, `display_name`, your role + membership status.
+- `create_org` — create an empty org on the prototype tier; you become owner. Params: optional `display_name` (no tier at create). May return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
+- `get_org` — read one org: `{ org_id, display_name, tier, role }`. Any active member; a guessed id gets the same non-revealing 403. Params: `org_id`.
+- `rename_org` — set or clear an org's display label (owner-only). Params: `org_id`, `display_name` (`null`/`""` clears).
+- `list_org_members` — members + roles of an org. Params: `org_id`.
+- `add_org_member` — add a member BY WALLET (a new wallet is provisioned as a `human` principal). Params: `org_id`, `wallet`, optional `role` (default `developer`). Owner-gated. (Email-first invite is a separate, not-yet-shipped flow.)
+- `set_org_member_role` — change a member's role. Params: `org_id`, `principal_id`, `role`. Owner-gated. Demoting the only active owner → `409 LAST_OWNER`.
+- `remove_org_member` — remove a member. Params: `org_id`, `principal_id`. Owner-gated. Removing the only active owner → `409 LAST_OWNER`.
+The wallet-org CLAIM flow is CLI/SDK only (browser loopback login + step-up); there is no MCP claim tool.
 - `create_project_grant` — issue a per-project capability grant to a wallet (agent/CI principals). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Requires owner of the project's org.
 - `revoke_project_grant` — revoke a grant. Params: `project_id`, `grant_id`. Requires owner of the project's org.
 

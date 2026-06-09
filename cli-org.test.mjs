@@ -29,6 +29,8 @@ let calls = [];
 let stdout = [];
 let runOrg;
 let runGrants;
+let runOperator;
+let runProjects;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -53,6 +55,19 @@ async function mockFetch(input, init) {
     body = init?.body ? safeJson(String(init.body)) : null;
   }
   calls.push({ url, method, body });
+  // first-class-orgs (v1.82) routes — specific matches BEFORE the generic handlers below.
+  if (url.endsWith("/orgs/v1") && method === "POST") {
+    return Promise.resolve(json({ org_id: "org_new", display_name: body?.display_name ?? null, tier: "prototype" }, 201));
+  }
+  if (url.endsWith("/orgs/v1/org_abc") && method === "GET") {
+    return Promise.resolve(json({ org_id: "org_abc", display_name: "Kychee", tier: "prototype", role: "owner" }));
+  }
+  if (url.endsWith("/orgs/v1/org_abc") && method === "PATCH") {
+    return Promise.resolve(json({ org_id: "org_abc", display_name: body?.display_name ?? null, tier: "prototype" }));
+  }
+  if (url.endsWith("/projects/v1") && method === "POST") {
+    return Promise.resolve(json({ project_id: "prj_1", anon_key: "a", service_key: "s", schema_slot: "p1" }));
+  }
   // Echo-style canned responses; shape doesn't matter for these wiring assertions.
   if (method === "DELETE") return Promise.resolve(json({ status: "revoked" }));
   if (url.endsWith("/grants") && method === "POST") {
@@ -85,6 +100,8 @@ before(async () => {
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   ({ run: runOrg } = await import("./cli/lib/org.mjs"));
   ({ run: runGrants } = await import("./cli/lib/grants.mjs"));
+  ({ run: runOperator } = await import("./cli/lib/operator.mjs"));
+  ({ run: runProjects } = await import("./cli/lib/projects.mjs"));
 });
 
 after(() => {
@@ -151,6 +168,64 @@ describe("run402 org", () => {
     await assert.rejects(runOrg("member", ["list"]), (e) => /process\.exit\(1\)/.test(e.message));
     uncapture();
     assert.equal(calls.length, 0);
+  });
+
+  // ── first-class-orgs (v1.82): create / get / rename ──────────────────────
+  it("create POSTs display_name only (never a tier) and prints the new org", async () => {
+    capture(); await runOrg("create", ["--name", "Kychee"]); uncapture();
+    const post = calls.find((c) => c.url === `${API}/orgs/v1` && c.method === "POST");
+    assert.ok(post, "should POST /orgs/v1");
+    assert.deepEqual(post.body, { display_name: "Kychee" });
+    assert.match(stdout.join("\n"), /"org_id": "org_new"/);
+  });
+
+  it("get GETs /orgs/v1/:org and surfaces the caller role", async () => {
+    capture(); await runOrg("get", ["org_abc"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/org_abc`);
+    assert.equal(lastCall().method, "GET");
+    assert.match(stdout.join("\n"), /"role": "owner"/);
+  });
+
+  it("rename sets a new label", async () => {
+    capture(); await runOrg("rename", ["org_abc", "New Name"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/org_abc`);
+    assert.equal(lastCall().method, "PATCH");
+    assert.deepEqual(lastCall().body, { display_name: "New Name" });
+  });
+
+  it("rename --clear PATCHes display_name: null", async () => {
+    capture(); await runOrg("rename", ["org_abc", "--clear"]); uncapture();
+    assert.deepEqual(lastCall().body, { display_name: null });
+  });
+});
+
+describe("run402 provision --org", () => {
+  it("threads org_id into POST /projects/v1", async () => {
+    capture(); await runProjects("provision", ["--org", "org_abc"]); uncapture();
+    const post = calls.find((c) => c.url === `${API}/projects/v1` && c.method === "POST");
+    assert.ok(post, "should POST /projects/v1");
+    assert.equal(post.body.org_id, "org_abc");
+  });
+});
+
+describe("run402 operator claim-wallet-org", () => {
+  it("exits 1 with loopback-login guidance when no control-plane session is cached", async () => {
+    const stderr = [];
+    const origErr = console.error;
+    console.log = () => {};
+    console.error = (...a) => stderr.push(a.join(" "));
+    let exitCode = null;
+    try {
+      await runOperator("claim-wallet-org", []);
+    } catch (e) {
+      const m = /process\.exit\((\d+)\)/.exec(e.message);
+      exitCode = m ? Number(m[1]) : null;
+    } finally {
+      console.error = origErr;
+      console.log = originalLog;
+    }
+    assert.equal(exitCode, 1, "no control-plane session should exit 1");
+    assert.match(stderr.join("\n"), /operator login --loopback/);
   });
 });
 

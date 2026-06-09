@@ -19,7 +19,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ApiError, NetworkError } from "../errors.js";
+import { ApiError, LocalError, NetworkError } from "../errors.js";
 import { OperatorSession } from "./operator-session.js";
 
 /** RFC 8628 device-authorization start response. */
@@ -122,6 +122,133 @@ const POLL_ERROR_CODES = new Set([
   "expired_token",
 ]);
 
+// ── Wallet-owned org claim (v1.82, first-class-orgs) ──────────────────────────
+
+/**
+ * A claim challenge (`POST …/claim-wallet-org/challenge`). The wallet must sign a
+ * fresh SIWX message carrying {@link ClaimChallenge.nonce}; that signed message
+ * becomes the `SIGN-IN-WITH-X` header on {@link ClaimWalletOrg.submit}. Reveals
+ * nothing about the wallet's orgs — control is proven only at claim time.
+ */
+export interface ClaimChallenge {
+  challenge_id: string;
+  nonce: string;
+  expires_at: string;
+  sign_instructions?: { scheme?: string; nonce?: string; note?: string; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
+/** Input to {@link ClaimWalletOrg.challenge}. */
+export interface ClaimChallengeInput {
+  /** The wallet (0x EVM address) whose agent-owned org is being claimed. */
+  wallet: string;
+  /**
+   * The human's write-capable control-plane session bearer. Falls back to the
+   * client's default auth when omitted — pass it explicitly unless the client was
+   * constructed with control-plane-session credentials.
+   */
+  token?: string;
+}
+
+/** Input to {@link ClaimWalletOrg.submit}. */
+export interface ClaimSubmitInput {
+  /**
+   * The fresh SIWX proof over the challenge nonce — the value of the
+   * `SIGN-IN-WITH-X` header (the wallet proof). In Node, build it with
+   * `signWalletOrgClaim` from `@run402/sdk/node`.
+   */
+  siwx: string;
+  /** The human's control-plane session bearer (see {@link ClaimChallengeInput.token}). */
+  token?: string;
+  /**
+   * Target org id. Omit on the first submit; supply it on the second round when
+   * the first returned `select_org` (the wallet's agent owns more than one org).
+   * The same `token` + `siwx` are reused — no re-challenge, no re-sign.
+   */
+  orgId?: string;
+  /** Optional label to set on the claimed org at the same time. `null`/`""` clears. */
+  displayName?: string | null;
+}
+
+/** One org offered for selection when a wallet's agent owns more than one (`select_org`). */
+export interface SelectableOrg {
+  org_id: string;
+  display_name: string | null;
+  tier: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Result of {@link ClaimWalletOrg.submit}. A discriminated union: `"claimed"` on
+ * success, or `"select_org"` when the wallet's agent owns more than one org and
+ * the caller must re-submit with a chosen `orgId`. `select_org` is a normal
+ * (non-error) result — it is returned, never thrown.
+ */
+export type ClaimResult =
+  | {
+      status: "claimed";
+      org_id: string;
+      display_name: string | null;
+      role: string;
+      /** True when the human already owned the org (idempotent re-claim). */
+      already_owned?: boolean;
+      [key: string]: unknown;
+    }
+  | {
+      status: "select_org";
+      selectable_orgs: SelectableOrg[];
+      [key: string]: unknown;
+    };
+
+/**
+ * Wallet-owned org claim — `r.operator.claimWalletOrg.*`. The isomorphic
+ * (raw-proof) seam: `challenge` issues a nonce; `submit` posts the dual proof
+ * (control-plane session bearer + a fresh `SIGN-IN-WITH-X` wallet signature). The
+ * Node convenience `signWalletOrgClaim` / `claimWalletOrg` in `@run402/sdk/node`
+ * runs the whole dance (read session → challenge → sign → submit).
+ */
+export class ClaimWalletOrg {
+  constructor(private readonly client: Client) {}
+
+  /** Request a single-use challenge nonce the wallet must sign (`POST …/claim-wallet-org/challenge`). */
+  async challenge(input: ClaimChallengeInput): Promise<ClaimChallenge> {
+    if (!input?.wallet) {
+      throw new LocalError("claimWalletOrg.challenge requires { wallet }", "requesting wallet-org claim challenge");
+    }
+    return this.client.request<ClaimChallenge>("/agent/v1/operator/claim-wallet-org/challenge", {
+      method: "POST",
+      body: { wallet: input.wallet },
+      ...(input.token ? { headers: { Authorization: `Bearer ${input.token}` }, withAuth: false } : {}),
+      context: "requesting wallet-org claim challenge",
+    });
+  }
+
+  /**
+   * Execute the claim (`POST …/claim-wallet-org`) carrying both proofs: the
+   * control-plane session bearer (the human) and the `SIGN-IN-WITH-X` wallet
+   * signature. Returns a discriminated {@link ClaimResult}; a `select_org` result
+   * is returned (not thrown). Throws {@link StepUpRequiredError} when the session
+   * is not passkey-fresh, and `ApiError` (`WALLET_PROOF_INVALID`) on a bad proof.
+   */
+  async submit(input: ClaimSubmitInput): Promise<ClaimResult> {
+    if (!input?.siwx) {
+      throw new LocalError("claimWalletOrg.submit requires { siwx } (the SIGN-IN-WITH-X proof)", "claiming wallet org");
+    }
+    const headers: Record<string, string> = { "SIGN-IN-WITH-X": input.siwx };
+    if (input.token) headers.Authorization = `Bearer ${input.token}`;
+    const body: Record<string, unknown> = {};
+    if (input.orgId !== undefined) body.org_id = input.orgId;
+    if (input.displayName !== undefined) body.display_name = input.displayName;
+    return this.client.request<ClaimResult>("/agent/v1/operator/claim-wallet-org", {
+      method: "POST",
+      body,
+      headers,
+      withAuth: !input.token,
+      context: "claiming wallet org",
+    });
+  }
+}
+
 export class Operator {
   /**
    * The hosted/browser control-plane **session** surface (gateway v1.78):
@@ -133,8 +260,16 @@ export class Operator {
    */
   readonly session: OperatorSession;
 
+  /**
+   * Wallet-owned org claim (v1.82): `r.operator.claimWalletOrg.challenge()` +
+   * `.submit()`. The raw dual-proof seam; the Node convenience `claimWalletOrg`
+   * in `@run402/sdk/node` runs the full dance.
+   */
+  readonly claimWalletOrg: ClaimWalletOrg;
+
   constructor(private readonly client: Client) {
     this.session = new OperatorSession(client);
+    this.claimWalletOrg = new ClaimWalletOrg(client);
   }
 
   /**

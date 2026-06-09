@@ -828,7 +828,7 @@ Tier and quotas are per billing account (not per project) — `set` is account-w
 
 ### projects
 - `run402 projects <quote|list>`
-- `run402 projects provision [--name <name>]`
+- `run402 projects provision [--name <name>] [--org <id>]` — `--org` provisions into an EXISTING org (you need `developer`+ on it); omit for the cold-start path (the wallet's billing account). Tier is org-governed — a client-supplied `--tier` is ignored when targeting an org.
 - `run402 projects use <id>`
 - `run402 projects info <id>`
 - `run402 projects sql <id> "<sql>" [--file <path>] [--params '<json_array>']`
@@ -894,18 +894,21 @@ While a transfer is `pending` (72h TTL), owner-side mutations on the project ret
 
 What does NOT transfer: tier lease (stays with the original owner's billing account; no Phase 1A proration), KMS contract wallets (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet. Phase 1A supports only `--billing-policy migrate` — the project moves into the recipient's billing account; if they have no active billing account yet, accept returns `409 RECIPIENT_ACCOUNT_NOT_ACTIVE`.
 
-### org / grants (v1.77+ org-owned control plane)
-A wallet AUTHENTICATES; the org (billing account) owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet == signer`. Member/invite changes require an active `owner`. Members and invites are grouped sub-resources (`org member …`, `org invite …`).
+### org / grants (v1.77+ org-owned control plane; first-class orgs v1.82)
+A wallet AUTHENTICATES; an org owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet == signer`. Member/invite changes require an active `owner`. Members and invites are grouped sub-resources (`org member …`, `org invite …`). Memberships carry `org_id` + `display_name`. Create/rename/member/invite mutations are step-up gated for control-plane sessions.
+- `run402 org create [--name <label>]` — create an empty org on the prototype tier; you become owner. `--name` is an optional free-text label (non-unique, not an id; no tier at create). The soft per-owner free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
+- `run402 org get <org>` — read one org: `{ org_id, display_name, tier, role }`. Any active member; a non-member (incl. a guessed id) gets the same non-revealing 403.
+- `run402 org rename <org> <display_name>` (or `--clear`) — owner-only; set or clear the org's free-text label.
 - `run402 org whoami` — resolve your control-plane principal + org memberships (GET `/agent/v1/whoami`). The REMOTE identity; for local wallet/profile state use `run402 status`.
-- `run402 org list` — orgs you are a member of (role + status each).
-- `run402 org audit <billing_account> [--limit N] [--before <cursor>]` — control-plane audit trail for the org (admin+); newest-first, page with `--before`.
-- `run402 org member list <billing_account>` — members + roles of an org.
-- `run402 org member add <billing_account> <wallet> [--role <role>]` — add a member BY WALLET (a new wallet is provisioned as a `human` principal); `--role` defaults to `developer`.
-- `run402 org member role <billing_account> <principal_id> <role>` — change a member's role.
-- `run402 org member rm <billing_account> <principal_id>` — revoke a member.
-- `run402 org invite list <billing_account>` — pending email invites.
-- `run402 org invite create <billing_account> <email> [--role <role>] [--ttl-hours N]` — invite a person by email; `--role` defaults to `developer`. The invite is **claimed automatically** when the recipient first signs in via that verified email (`run402 operator login --loopback`, or any hosted email/OAuth login) — it then surfaces as an active membership in the login output and `org member list`. There's no invitee-side "accept" step. Owner/admin invites only claim once the recipient has enrolled a passkey; lower roles claim on any login.
-- `run402 org invite rm <billing_account> <principal_id>` — revoke a pending invite.
+- `run402 org list` — orgs you are a member of (`org_id`, `display_name`, role, status each).
+- `run402 org audit <org> [--limit N] [--before <cursor>]` — control-plane audit trail for the org (admin+); newest-first, page with `--before`.
+- `run402 org member list <org>` — members + roles of an org.
+- `run402 org member add <org> <wallet> [--role <role>]` — add a member BY WALLET (a new wallet is provisioned as a `human` principal); `--role` defaults to `developer`.
+- `run402 org member role <org> <principal_id> <role>` — change a member's role.
+- `run402 org member rm <org> <principal_id>` — revoke a member.
+- `run402 org invite list <org>` — pending email invites.
+- `run402 org invite create <org> <email> [--role <role>] [--ttl-hours N]` — invite a person by email; `--role` defaults to `developer`. The invite is **claimed automatically** when the recipient first signs in via that verified email (`run402 operator login --loopback`, or any hosted email/OAuth login) — it then surfaces as an active membership in the login output and `org member list`. There's no invitee-side "accept" step. Owner/admin invites only claim once the recipient has enrolled a passkey; lower roles claim on any login.
+- `run402 org invite rm <org> <principal_id>` — revoke a pending invite.
 - `run402 grants create <project_id> <wallet> <capability> [--policy <json>] [--expires <iso8601>]` — issue a per-project capability grant (e.g. `deploy`, `functions:write`) to an agent/CI principal. Requires owner of the project's org.
 - `run402 grants revoke <project_id> <grant_id>` — revoke a grant.
 
@@ -1404,6 +1407,7 @@ The **operator** is YOU, the human, identified by email — distinct from the **
 - `run402 operator overview` — account view across ALL wallets controlling your email. Sends the cached operator-session bearer to `GET /agent/v1/operator/overview`. **Requires login** — returns `OPERATOR_LOGIN_REQUIRED` (no SIWX fallback) when there is no live session, and clears the cache + returns `OPERATOR_SESSION_INVALID` on a 401/403 (revoked or expired).
 - `run402 operator whoami` — local, no network. Prints the cached session (`logged_in`, email, wallets, expiry) or `{ logged_in: false, reason: "no_session" | "expired" }` with a non-zero exit.
 - `run402 operator logout` — revokes the session server-side (`POST /agent/v1/operator/session/revoke`) then clears the local cache. Idempotent; best-effort revoke (always clears locally). Stdout: `{ revoked, cleared }`.
+- `run402 operator claim-wallet-org [--org <id>] [--name <label>]` — claim an org owned by your wallet's `agent` principal INTO your human (console) identity — an ownership transfer (v1.82). The wallet authenticator stays on the agent (no authority amplification); the agent is downgraded owner→developer. Dual proof: a **write-capable control-plane session** (`operator login --loopback` first) AND a fresh wallet signature over a server nonce from the active wallet. Runs challenge → sign → submit. Success → `{ claimed: true, org_id, display_name, role, already_owned }`. If your wallet's agent owns more than one org → `{ claimed: false, selectable_orgs: [{ org_id, display_name, tier }] }`; re-run with `--org <id>` (the server reuses the same nonce/proof). A stale session returns `STEP_UP_REQUIRED` — run `operator login --step-up`, then retry. `--name` optionally labels the claimed org.
 
 The session is email-scoped (~30m access TTL, ~12h absolute cap), so it is cached once at the base dir and reused regardless of the active `--wallet`. Login/overview/logout require the gateway device-authorization bridge (kychee-com/run402-private#443); `whoami` is local and works today. Not exposed as MCP tools by design — MCP authenticates as the agent (wallet), and the human session must not be handed to the agent.
 

@@ -116,6 +116,12 @@ import {
   previewProjectTransferSchema,
 } from "./tools/transfers.js";
 import {
+  createOrgSchema,
+  handleCreateOrg,
+  getOrgSchema,
+  handleGetOrg,
+  renameOrgSchema,
+  handleRenameOrg,
   whoamiSchema,
   handleWhoami,
   listOrgsSchema,
@@ -1388,29 +1394,50 @@ server.tool(
 // ─── Org-owned control plane: identity, membership, grants (v1.77+) ──────────
 
 server.tool(
+  "create_org",
+  "Create an empty organization on the prototype tier (POST /orgs/v1); you become its owner. Accepts only an optional `display_name` (no tier at create — paid tiers are a separate flow). Step-up gated; the soft per-owner free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.",
+  createOrgSchema,
+  async (args) => handleCreateOrg(args),
+);
+
+server.tool(
+  "get_org",
+  "Read one organization (GET /orgs/v1/:org_id) — its `org_id`, `display_name`, `tier`, and your `role`. Any active member may read; a non-member (including a guessed id) gets the same non-revealing 403. Params: `org_id`.",
+  getOrgSchema,
+  async (args) => handleGetOrg(args),
+);
+
+server.tool(
+  "rename_org",
+  "Set or clear an organization's display label (PATCH /orgs/v1/:org_id). Owner-only + step-up gated. Pass `display_name: null` (or `\"\"`) to clear. Params: `org_id`, `display_name`.",
+  renameOrgSchema,
+  async (args) => handleRenameOrg(args),
+);
+
+server.tool(
   "whoami",
-  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami). A wallet authenticates; ownership is the org. Returns the principal (id/type/displayName/createdAt), authenticator_id, and every org membership with its role + status. This is the REMOTE identity — for the local wallet/profile state use `status`.",
+  "Resolve the caller's control-plane principal and its org memberships (GET /agent/v1/whoami). A wallet authenticates; ownership is the org. Returns the principal (id/type/displayName/createdAt), authenticator_id, and every org membership (org_id, display_name, role, status). This is the REMOTE identity — for the local wallet/profile state use `status`.",
   whoamiSchema,
   async () => handleWhoami(),
 );
 
 server.tool(
   "list_orgs",
-  "List the orgs (billing accounts) you are a member of, with your role and membership status in each.",
+  "List the orgs you are a member of, with each org's id, display name, your role, and membership status.",
   listOrgsSchema,
   async () => handleListOrgs(),
 );
 
 server.tool(
   "list_org_members",
-  "List the members of an org (billing account) and their roles. Params: `billing_account_id`.",
+  "List the members of an org and their roles. Params: `org_id`.",
   listOrgMembersSchema,
   async (args) => handleListOrgMembers(args),
 );
 
 server.tool(
   "add_org_member",
-  "Add a member to an org BY WALLET (POST /orgs/v1/:ba/members). A brand-new wallet is provisioned as a `human` principal. `role` defaults to `developer`. Requires you to hold an active `owner` membership. (Email-first invite is a separate, not-yet-shipped flow.)",
+  "Add a member to an org BY WALLET (POST /orgs/v1/:org_id/members). A brand-new wallet is provisioned as a `human` principal. `role` defaults to `developer`. Requires you to hold an active `owner` membership. (Email-first invite is a separate, not-yet-shipped flow.)",
   addOrgMemberSchema,
   async (args) => handleAddOrgMember(args),
 );

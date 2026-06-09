@@ -11,7 +11,7 @@ Usage:
 
 Subcommands:
   quote                                   Show pricing tiers
-  provision [--tier <tier>] [--name <n>]  Provision a new Postgres project (pays via x402)
+  provision [--tier <tier>] [--name <n>] [--org <id>]  Provision a new Postgres project (pays via x402)
   use   <id>                              Set the active project (used as default for other commands)
   list                                    List all your projects (IDs, URLs, active marker)
   info  [id]                              Show project details: REST URL, keys
@@ -79,11 +79,13 @@ const SUB_HELP = {
   provision: `run402 projects provision — Provision a new Postgres project
 
 Usage:
-  run402 projects provision [--tier <tier>] [--name <name>]
+  run402 projects provision [--tier <tier>] [--name <name>] [--org <id>]
 
 Options:
   --tier <tier>       Tier for the new project (default: prototype)
   --name <name>       Human-readable name for the project
+  --org <id>          Provision into an EXISTING org (needs developer+ on it).
+                      Omit for the cold-start path. Tier is org-governed.
 
 Notes:
   - Payment is automatic via x402; requires a funded allowance
@@ -93,6 +95,7 @@ Examples:
   run402 projects provision
   run402 projects provision --tier prototype
   run402 projects provision --tier hobby --name my-app
+  run402 projects provision --org org_abc123
 `,
   sql: `run402 projects sql — Run a SQL query against a project's database
 
@@ -184,12 +187,24 @@ async function quote() {
 }
 
 async function provision(args) {
-  const opts = { tier: "prototype", name: undefined };
+  const opts = { tier: "prototype", name: undefined, orgId: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     // Use !== undefined so an empty-string value is captured (and rejected
     // below) rather than silently dropped by the falsy-check pattern (GH-176).
     if (args[i] === "--name" && args[i + 1] !== undefined) opts.name = args[++i];
+    // --org targets an EXISTING org (v1.82); caller needs developer+ on it.
+    // Omitted = cold-start. Tier is org-governed, so --tier is irrelevant here
+    // (the gateway ignores a client-supplied tier in all cases).
+    if (args[i] === "--org" && args[i + 1] !== undefined) opts.orgId = args[++i];
+  }
+  if (opts.orgId === "") {
+    fail({
+      code: "BAD_USAGE",
+      message: "--org must not be empty.",
+      details: { field: "--org" },
+      hint: "Pass an org id (run402 org list), or omit --org for the cold-start path.",
+    });
   }
   // Validate --name when provided. Omitted --name lets the server pick a
   // default. The same envelope should also be enforced server-side (GH-176).
@@ -225,7 +240,7 @@ async function provision(args) {
 
   const activeBefore = getActiveProjectId();
   try {
-    const data = await getSdk().projects.provision({ tier: opts.tier, name: opts.name });
+    const data = await getSdk().projects.provision({ tier: opts.tier, name: opts.name, orgId: opts.orgId });
     const activeAfter = getActiveProjectId();
     const out = { ...data };
     if (activeBefore && activeAfter && activeBefore !== activeAfter) {
@@ -555,7 +570,7 @@ async function deleteProject(projectId, args = []) {
 }
 
 const FLAGS_BY_SUB = {
-  provision: { known: ["--tier", "--name"], values: ["--tier", "--name"] },
+  provision: { known: ["--tier", "--name", "--org"], values: ["--tier", "--name", "--org"] },
   sql: { known: ["--file", "--params"], values: ["--file", "--params"] },
   costs: { known: ["--window"], values: ["--window"] },
   "apply-expose": { known: ["--file"], values: ["--file"] },
