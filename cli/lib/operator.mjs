@@ -147,6 +147,10 @@ function startLoopbackServer({ expectedState, timeoutMs }) {
     rejectCode = rej;
   });
   let timer;
+  // Track live sockets: server.close() alone stops NEW connections but leaves
+  // the browser's keep-alive socket open, which keeps Node's event loop alive
+  // and hangs the CLI after a successful login. close() must destroy them.
+  const sockets = new Set();
   const server = createServer((req, res) => {
     let u;
     try {
@@ -162,19 +166,32 @@ function startLoopbackServer({ expectedState, timeoutMs }) {
     const code = u.searchParams.get("code");
     const gotState = u.searchParams.get("state");
     const errParam = u.searchParams.get("error");
-    res.writeHead(200, { "content-type": "text/html" });
+    // `connection: close` so the browser does not keep the socket alive.
+    res.writeHead(200, { "content-type": "text/html", connection: "close" });
     res.end(
       "<!doctype html><html><body style=\"font-family:system-ui;padding:3rem\">" +
         "<h2>run402 - you're signed in.</h2><p>You can close this window and return to your terminal.</p></body></html>",
     );
-    cleanup();
+    // Do NOT tear down here — let the response flush. The caller calls close()
+    // once it has the code (or on any failure path).
     if (errParam) rejectCode(new Error(`authorization error: ${errParam}`));
     else if (!code) rejectCode(new Error("no authorization code on the loopback redirect"));
     else if (gotState !== expectedState) rejectCode(new Error("state mismatch on the loopback redirect (possible CSRF) - aborted"));
     else resolveCode(code);
   });
-  function cleanup() {
+  server.on("connection", (s) => {
+    sockets.add(s);
+    s.once("close", () => sockets.delete(s));
+  });
+  function close() {
     clearTimeout(timer);
+    for (const s of sockets) {
+      try {
+        s.destroy();
+      } catch {
+        // already gone
+      }
+    }
     try {
       server.close();
     } catch {
@@ -182,18 +199,18 @@ function startLoopbackServer({ expectedState, timeoutMs }) {
     }
   }
   timer = setTimeout(() => {
-    cleanup();
+    close();
     rejectCode(new Error("timed out waiting for browser approval"));
   }, timeoutMs);
   server.on("error", (e) => {
-    cleanup();
+    close();
     rejectCode(e);
   });
   const ready = new Promise((res, rej) => {
     server.once("error", rej);
     server.listen(0, "127.0.0.1", () => res(server.address().port));
   });
-  return { ready, codePromise, close: cleanup };
+  return { ready, codePromise, close };
 }
 
 /**
@@ -242,8 +259,13 @@ async function loopbackLogin(args, { stepUp }) {
   try {
     session = await sdk.operator.exchangeCliToken({ code, codeVerifier, redirectUri, state });
   } catch (err) {
+    close();
     return reportSdkError(err);
   }
+  // The loopback server has done its job. Tear it down (destroying any
+  // keep-alive socket) so Node's event loop drains and the CLI exits instead
+  // of hanging until Ctrl+C.
+  close();
 
   const cached = controlPlaneSessionFromTokenResponse(session);
   saveControlPlaneSession(cached);
