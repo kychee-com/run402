@@ -187,6 +187,46 @@ async function mockFetch(input, init) {
   if (path === "/projects/v1" && method === "POST") {
     return Promise.resolve(json(TEST_PROJECT));
   }
+  // project-findability: membership-scoped named inventory (GET /projects/v1).
+  if (pathNoQuery === "/projects/v1" && method === "GET") {
+    return Promise.resolve(json({
+      projects: [{
+        id: "prj_test123",
+        name: "test",
+        tier: "prototype",
+        site_url: "https://test.run402.com",
+        custom_domains: ["www.example.com"],
+        status: "active",
+        effective_status: "active",
+        account_lifecycle_state: "active",
+        billing_account_id: "11111111-2222-3333-4444-555555555555",
+        created_by: "99999999-8888-7777-6666-555555555555",
+        created_at: "2026-03-15T00:00:00.000Z",
+      }],
+      has_more: false,
+      next_cursor: null,
+    }));
+  }
+  // project-findability: operator email-union inventory for `--all`.
+  if (pathNoQuery === "/agent/v1/operator/projects" && method === "GET") {
+    return Promise.resolve(json({
+      projects: [{
+        id: "prj_test123",
+        name: "test",
+        site_url: "https://test.run402.com",
+        custom_domains: [],
+        status: "active",
+        billing_account_id: "11111111-2222-3333-4444-555555555555",
+        created_at: "2026-03-15T00:00:00.000Z",
+      }],
+      scope: "wallet",
+    }));
+  }
+  // project-findability: rename (PATCH /projects/v1/:id).
+  if (path.match(/^\/projects\/v1\/[^/]+$/) && method === "PATCH") {
+    const projectId = pathNoQuery.split("/").pop();
+    return Promise.resolve(json({ project_id: projectId, name: body?.name ?? "renamed" }));
+  }
   if (path.match(/^\/projects\/v1\/[^/]+$/) && method === "DELETE") {
     return Promise.resolve(noContent());
   }
@@ -1418,7 +1458,34 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("list", []);
     captureStop();
-    assert.ok(captured().includes("prj_test123"), "should list the provisioned project");
+    const out = captured();
+    assert.ok(out.includes("prj_test123"), "should list the project from the server inventory");
+    // project-findability: the named, domain-aware row shape.
+    assert.ok(out.includes("custom_domains"), "should surface custom_domains");
+    assert.ok(out.includes("www.example.com"), "should render the custom domain");
+    assert.ok(out.includes("org_id"), "should surface org_id (billing_account_id)");
+    assert.ok(out.includes("11111111-2222-3333-4444-555555555555"), "should render the owning org id");
+  });
+
+  it("projects list --all reads the operator inventory and echoes scope", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    captureStart();
+    await run("list", ["--all"]);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("prj_test123"), "should list the project from the operator inventory");
+    assert.ok(out.includes("\"scope\""), "should echo the resolved scope");
+  });
+
+  it("projects rename PATCHes the new name", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    captureStart();
+    await run("rename", ["prj_test123", "--name", "My Renamed Site"]);
+    captureStop();
+    const out = captured();
+    assert.ok(out.includes("prj_test123"), "should echo the project id");
+    assert.ok(out.includes("My Renamed Site"), "should echo the new name");
+    assert.ok(out.includes("\"renamed\": true") || out.includes("renamed"), "should confirm the rename");
   });
 
   it("projects sql", async () => {

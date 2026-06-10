@@ -60,10 +60,10 @@ const MATRIX = {
   tier: { shared: [], specific: ["status", "set"] },
   projects: {
     shared: [
-      "quote", "use", "list", "info", "keys", "rest",
+      "quote", "use", "info", "keys", "rest",
       "usage", "schema", "rls", "delete", "promote-user", "demote-user",
     ],
-    specific: ["provision", "sql", "costs", "validate-expose"],
+    specific: ["provision", "list", "rename", "sql", "costs", "validate-expose"],
   },
   admin: {
     shared: [],

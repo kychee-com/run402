@@ -291,7 +291,8 @@ const SURFACE: Capability[] = [
 
   // ── Billing ──────────────────────────────────────────────────────────────
   { id: "check_balance",     endpoint: "GET /billing/v1/accounts?wallet=",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
-  { id: "list_projects",     endpoint: "GET /wallets/v1/:wallet/projects",           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
+  { id: "list_projects",     endpoint: "GET /projects/v1",                           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
+  { id: "rename_project",    endpoint: "PATCH /projects/v1/:project_id",             mcp: "rename_project", cli: "projects:rename", openclaw: "projects:rename" },
   { id: "project_info",      endpoint: "(local)",                                    mcp: "project_info",   cli: "projects:info",  openclaw: "projects:info" },
   { id: "project_use",       endpoint: "(local)",                                    mcp: "project_use",    cli: "projects:use",   openclaw: "projects:use" },
   { id: "project_keys",      endpoint: "(local)",                                    mcp: "project_keys",   cli: "projects:keys",  openclaw: "projects:keys" },
@@ -580,6 +581,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Billing
   check_balance: "billing.checkBalance",
   list_projects: "projects.list",
+  rename_project: "projects.rename",
   project_info: "projects.info",
   project_use: "projects.use",
   project_keys: "projects.keys",

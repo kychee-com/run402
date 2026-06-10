@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
+import { loadLiveOperatorSession } from "../core-dist/operator-session.js";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject, validateRegularFile } from "./argparse.mjs";
@@ -13,7 +14,8 @@ Subcommands:
   quote                                   Show pricing tiers
   provision [--tier <tier>] [--name <n>] [--org <id>]  Provision a new Postgres project (pays via x402)
   use   <id>                              Set the active project (used as default for other commands)
-  list                                    List all your projects (IDs, URLs, active marker)
+  list [--org <id>] [--all]               List your projects from the server (name, site_url, custom domains, org_id, active marker)
+  rename <id> --name <label>              Rename a project (fix an auto-generated name)
   info  [id]                              Show project details: REST URL, keys
   keys  [id]                              Print anon_key and service_key as JSON
   sql   [id] "<query>" [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
@@ -36,6 +38,9 @@ Examples:
   run402 projects provision --tier hobby --name my-app
   run402 projects use prj_abc123
   run402 projects list
+  run402 projects list --org 11111111-2222-3333-4444-555555555555
+  run402 projects list --all
+  run402 projects rename prj_abc123 --name "My Site"
   run402 projects info prj_abc123
   run402 projects sql prj_abc123 "SELECT * FROM users LIMIT 5"
   run402 projects sql prj_abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
@@ -50,11 +55,25 @@ Examples:
   run402 projects keys prj_abc123
   run402 projects delete prj_abc123 --confirm
 
+Global options (any command):
+  --wallet <name>   Use a named wallet (profile) for this command. Precedence:
+                    --wallet > RUN402_WALLET env > nearest .run402.json binding >
+                    'run402 wallets use' default > 'default'. See 'run402 wallets'.
+
 Notes:
   - <id> is the project_id shown in 'run402 projects list' (prefix: 'prj_')
   - Most commands that take <id> default to the active project when omitted
     (set it with 'run402 projects use <id>'). Project IDs start with 'prj_';
     any first positional that doesn't is treated as the next argument instead.
+  - 'list' is a SERVER read, not the local keystore: it shows every project the
+    active wallet can reach (membership-scoped), with name, site_url, custom
+    domains, and org_id. '--org <id>' filters to one org; '--all' reads the
+    cross-wallet inventory for every wallet controlling your operator email
+    (run 'run402 operator login' first for the union, else it falls back to the
+    current wallet's slice). The 'active' marker still comes from local state.
+  - 'rename' fixes a project's display name. You must be an org admin (or hold a
+    project:write grant) on the owning org; it works even if the project was
+    never provisioned from this machine.
   - 'rest' uses PostgREST query syntax (table name + optional query string)
   - 'provision' requires a funded allowance — payment is automatic via x402
   - 'apply-expose' declares the full authorization surface (tables, views, RPCs)
@@ -76,6 +95,53 @@ Notes:
 `;
 
 const SUB_HELP = {
+  list: `run402 projects list — List your projects from the server
+
+Usage:
+  run402 projects list [--org <id>] [--all]
+
+Options:
+  --org <id>          Filter to projects owned by one org (billing account).
+                      Authorize-before-reveal: a non-member or guessed id is a
+                      403; a non-UUID id is a 400.
+  --all               Read the cross-wallet inventory across every wallet
+                      controlling your operator email. Run 'run402 operator
+                      login' first for the union; without a session it falls
+                      back to the current wallet's slice. Mutually exclusive
+                      with --org.
+
+Notes:
+  - This is a SERVER read (membership-scoped), not the local keystore. Each row
+    has project_id, name, site_url, custom_domains, org_id, status, and an
+    'active' marker derived from local state.
+  - Tier and lifecycle live on the billing account, not each project — use
+    'run402 status' or 'run402 tier status' for the account view.
+
+Examples:
+  run402 projects list
+  run402 projects list --org 11111111-2222-3333-4444-555555555555
+  run402 projects list --all
+  run402 projects list --wallet work
+`,
+  rename: `run402 projects rename — Rename a project
+
+Usage:
+  run402 projects rename <id> --name <label>
+
+Arguments:
+  <id>                Project ID (prefix: 'prj_'). Required.
+
+Options:
+  --name <label>      New display name (1-200 chars, no control characters).
+
+Notes:
+  - You must be an org admin (or hold a project:write grant) on the owning org.
+    Authorize-before-reveal: an unauthorized or guessed id returns 403, never a
+    not-found oracle. Works even if the project isn't in the local keystore.
+
+Examples:
+  run402 projects rename prj_abc123 --name "My Site"
+`,
   provision: `run402 projects provision — Provision a new Postgres project
 
 Usage:
@@ -375,12 +441,71 @@ async function getExpose(projectId) {
   }
 }
 
-async function list() {
-  const store = loadKeyStore();
-  const entries = Object.entries(store.projects);
-  if (entries.length === 0) { console.log(JSON.stringify([])); return; }
-  const activeId = store.active_project_id;
-  console.log(JSON.stringify(entries.map(([id, p]) => ({ project_id: id, active: id === activeId, site_url: p.site_url })), null, 2));
+async function list(args = []) {
+  const org = flagValue(args, "--org");
+  const all = Array.isArray(args) && args.includes("--all");
+  if (all && org) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--all and --org are mutually exclusive.",
+      hint: "--all reads the cross-wallet operator inventory; --org filters the membership-scoped list to one org.",
+    });
+  }
+
+  // `--all` reads the operator email-union inventory across every wallet
+  // controlling your verified email. Pass the cached operator-session token
+  // when present (cross-wallet union); otherwise the SDK falls back to SIWX
+  // wallet auth and the gateway returns just this wallet's slice.
+  const opts = {};
+  if (all) {
+    opts.all = true;
+    const session = loadLiveOperatorSession();
+    if (session) opts.token = session.operator_session_token;
+  } else if (org) {
+    opts.org = org;
+  }
+
+  // Active marker comes from local state; the inventory itself is the server
+  // read (NOT the keystore), so it surfaces every project the wallet/email can
+  // reach — including ones never provisioned from this machine.
+  const activeId = getActiveProjectId();
+
+  try {
+    const data = await getSdk().projects.list(opts);
+    const rows = (data.projects || []).map((p) => ({
+      project_id: p.id,
+      name: p.name ?? null,
+      active: p.id === activeId,
+      site_url: p.site_url ?? null,
+      custom_domains: p.custom_domains ?? [],
+      org_id: p.billing_account_id ?? null,
+      status: p.status ?? p.effective_status ?? null,
+    }));
+    const out = { projects: rows };
+    if (data.scope !== undefined) out.scope = data.scope;
+    if (data.has_more !== undefined) out.has_more = data.has_more;
+    if (data.next_cursor !== undefined && data.next_cursor !== null) out.next_cursor = data.next_cursor;
+    console.log(JSON.stringify(out, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function rename(projectId, args = []) {
+  const name = flagValue(args, "--name");
+  if (!name) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --name.",
+      hint: "run402 projects rename <id> --name \"My Site\"",
+    });
+  }
+  try {
+    const data = await getSdk().projects.rename(projectId, name);
+    console.log(JSON.stringify({ project_id: data.project_id, name: data.name, renamed: true }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function info(projectId) {
@@ -571,6 +696,8 @@ async function deleteProject(projectId, args = []) {
 
 const FLAGS_BY_SUB = {
   provision: { known: ["--tier", "--name", "--org"], values: ["--tier", "--name", "--org"] },
+  list: { known: ["--org", "--all"], values: ["--org"] },
+  rename: { known: ["--name"], values: ["--name"] },
   sql: { known: ["--file", "--params"], values: ["--file", "--params"] },
   costs: { known: ["--window"], values: ["--window"] },
   "apply-expose": { known: ["--file"], values: ["--file"] },
@@ -610,7 +737,8 @@ export async function run(sub, args) {
     case "quote":     await quote(); break;
     case "provision": await provision(args); break;
     case "use":       await use(args[0]); break;
-    case "list":      await list(); break;
+    case "list":      await list(args); break;
+    case "rename":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.rename.values }); await rename(projectId, rest); break; }
     case "info":      { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await info(projectId); break; }
     case "keys":      { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await keys(projectId); break; }
     case "sql":       { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB.sql.values, rejectBareFirstWhenFlagPresent: ["--file"] }); await sqlCmd(projectId, rest); break; }

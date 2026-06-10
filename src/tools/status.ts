@@ -47,7 +47,10 @@ export async function handleStatus(
   const [tier, billing, remote] = await Promise.all([
     sdk.tier.status().catch(() => null),
     sdk.billing.checkBalance(wallet).catch(() => null),
-    sdk.projects.list(wallet).catch(() => null),
+    // Membership-scoped named inventory (project-findability) — SIWX wallet auth
+    // is signed from the allowance. Best-effort: a missing allowance just yields
+    // null and falls back to the local keystore below.
+    sdk.projects.list().catch(() => null),
   ]);
 
   // Local keystore
