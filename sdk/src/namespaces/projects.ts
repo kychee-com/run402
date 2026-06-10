@@ -14,11 +14,11 @@
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
-import { assertEvmAddress } from "../validation.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
   ExposeManifestValidationInput,
   ExposeManifestValidationResult,
+  ListProjectsOptions,
   ListProjectsResult,
   ProjectInfo,
   ProjectRestOptions,
@@ -26,6 +26,7 @@ import type {
   ProvisionOptions,
   ProvisionResult,
   QuoteResult,
+  RenameProjectResult,
   SchemaReport,
   UsageReport,
   ValidateExposeOptions,
@@ -114,44 +115,84 @@ export class Projects {
   }
 
   /**
-   * List active projects for a wallet address. Project ids/names/usage are
-   * private, so this requires SIWX from the wallet itself (or an admin key) —
-   * a wallet may list only its own projects. The kernel signs the SIWX header
-   * from the credential provider; a caller listing a different wallet's
-   * projects gets a 403.
+   * List projects in the named, domain-aware inventory (gateway
+   * `project-findability`). Each row carries `name`, `site_url`,
+   * `custom_domains`, `billing_account_id` (the owning org), `status`, and
+   * `created_at`.
    *
-   * When `wallet` is omitted, the SDK resolves it from the credential
-   * provider's local allowance via `credentials.readAllowance()`. This mirrors
-   * the optional-argument shape of {@link Allowance.faucet}.
+   * Membership-scoped by default (`GET /projects/v1`): returns every project
+   * owned by an org the caller's principal is an active member of. This is the
+   * cold-start lone-agent path — `list()` with no options, authenticated with
+   * SIWX wallet auth from the credential provider.
    *
-   * @throws {Run402Error} with `context: "listing projects"` when the
-   *   argument is omitted and the provider does not implement
-   *   `readAllowance` (typical for sandbox providers), or when
-   *   `readAllowance()` returns `null` (no local allowance configured).
+   * - `{ org }` narrows to one owning org (authorize-before-reveal: a non-member
+   *   or guessed id is a 403, a non-UUID id a 400).
+   * - `{ all: true }` reads the operator email-union inventory across every
+   *   wallet controlling the operator's verified email
+   *   (`GET /agent/v1/operator/projects`). Pass `{ all: true, token }` with an
+   *   operator-session token for the cross-wallet union; without `token`, `all`
+   *   uses SIWX wallet auth and returns only that wallet's slice. The response
+   *   echoes the resolved `scope` (`"email"` or `"wallet"`) and is unpaged.
+   * - `{ limit, cursor }` paginate the membership-scoped read (server default
+   *   50, max 200).
+   *
+   * @throws {Run402Error} with `context: "listing projects"` on the usual
+   *   auth/network failures (e.g. `Unauthorized` when no allowance is
+   *   configured and the gateway rejects the missing SIWX header).
    */
-  async list(wallet?: string): Promise<ListProjectsResult> {
-    let resolvedWallet = wallet;
-    if (resolvedWallet === undefined) {
-      const reader = this.client.credentials.readAllowance;
-      if (!reader) {
-        throw new LocalError(
-          "projects.list() with no wallet requires a credential provider that implements readAllowance(). Pass an explicit wallet, or use @run402/sdk/node.",
-          "listing projects",
-        );
-      }
-      const data = await reader.call(this.client.credentials);
-      if (!data) {
-        throw new LocalError(
-          "No local allowance configured. Run `run402 allowance create`, or pass an explicit wallet.",
-          "listing projects",
-        );
-      }
-      resolvedWallet = data.address;
+  async list(opts: ListProjectsOptions = {}): Promise<ListProjectsResult> {
+    if (opts.all && opts.org !== undefined) {
+      throw new LocalError(
+        "projects.list({ all, org }): `all` (operator email-union) and `org` (single-org filter) are mutually exclusive.",
+        "listing projects",
+      );
     }
-    assertEvmAddress(resolvedWallet, "wallet", "listing projects");
-    const w = resolvedWallet.toLowerCase();
-    return this.client.request<ListProjectsResult>(`/wallets/v1/${w}/projects`, {
+
+    if (opts.all) {
+      // Operator email-union inventory (`--all`). With an operator-session
+      // token, the gateway returns the cross-wallet union; without one, it
+      // falls back to the SIWX wallet's own slice (same row shape either way).
+      const headers = opts.token ? { Authorization: `Bearer ${opts.token}` } : undefined;
+      return this.client.request<ListProjectsResult>("/agent/v1/operator/projects", {
+        context: "listing projects",
+        ...(headers ? { headers, withAuth: false } : {}),
+      });
+    }
+
+    // Membership-scoped named inventory (`GET /projects/v1`). SIWX wallet auth
+    // is mandatory server-side; the credential provider supplies the header.
+    const qs = new URLSearchParams();
+    if (opts.org !== undefined) qs.set("org_id", opts.org);
+    if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+    if (opts.cursor !== undefined) qs.set("after", opts.cursor);
+    const query = qs.toString();
+    return this.client.request<ListProjectsResult>(`/projects/v1${query ? `?${query}` : ""}`, {
       context: "listing projects",
+    });
+  }
+
+  /**
+   * Rename a project (gateway `project-findability`, `PATCH /projects/v1/:id`).
+   * Surfaces the project's `name` so a human can fix an auto-generated label.
+   *
+   * Authorization is org-membership based (`admin`+ on the owning org, or a
+   * `project:write` grant) and authorize-before-reveal — an unauthorized caller
+   * (including a guessed id) gets the same `Unauthorized` as a real-but-
+   * unauthorized project, never a not-found oracle. The server validates the
+   * name (non-empty, ≤ 200 chars, no control characters).
+   *
+   * Uses the caller's SIWX wallet auth (or a control-plane session) from the
+   * credential provider — not a project service key — so it works without the
+   * project being in the local keystore.
+   *
+   * @throws {Unauthorized} when the caller is not authorized for the project.
+   * @throws {ApiError} (HTTP 400) when the new name is invalid.
+   */
+  async rename(projectId: string, name: string): Promise<RenameProjectResult> {
+    return this.client.request<RenameProjectResult>(`/projects/v1/${projectId}`, {
+      method: "PATCH",
+      body: { name },
+      context: "renaming project",
     });
   }
 

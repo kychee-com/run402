@@ -68,30 +68,112 @@ export type EffectiveProjectStatus =
   | "archived"
   | "deleted";
 
+/**
+ * One project row from the named, domain-aware inventory (gateway
+ * `project-findability`). Returned by `GET /projects/v1` (membership-scoped)
+ * and `GET /agent/v1/operator/projects` (operator email-union, `--all`) — both
+ * share this shape.
+ *
+ * Tier and lifecycle live on the owning billing account, not the project; the
+ * row mirrors them for convenience but read `r.tier.status()` for the
+ * authoritative account view.
+ */
 export interface ProjectSummary {
   id: string;
   name: string;
-  api_calls: number;
-  storage_bytes: number;
-  created_at: string;
+  /** Account-derived tier (mirror; authoritative source is `r.tier.status()`). */
+  tier?: string;
+  /**
+   * Primary public URL: the first claimed run402.com subdomain, else the first
+   * custom domain, else null. Surfaced by the named inventory (`GET /projects/v1`
+   * and the operator `--all` read).
+   */
+  site_url?: string | null;
+  /**
+   * Every custom hostname mapped to this project (empty when none). The
+   * run402.com subdomain is reflected in `site_url`, not here.
+   */
+  custom_domains?: string[];
+  /** Derived effective status — see {@link EffectiveProjectStatus}. */
+  status?: EffectiveProjectStatus;
+  /** Alias of `status` (gateway v1.57 canonical field). */
+  effective_status?: EffectiveProjectStatus;
+  /** Owning billing account's lifecycle state. */
+  account_lifecycle_state?: BillingAccountLifecycleState;
+  /** Account-level lease-perpetual escape hatch (mirror). */
+  lease_perpetual?: boolean;
   /**
    * Owning org (billing account) id — v1.77 org-owned control plane. A wallet
-   * authenticates; the org owns the project. Present on the canonical project
-   * object (`GET /projects/v1`); the wallet-scoped list
-   * (`GET /wallets/v1/:address/projects`, the source of {@link ListProjectsResult})
-   * does not include it today, so it is optional and forward-compatible.
+   * authenticates; the org owns the project. Surfaced as `org_id` in CLI/MCP
+   * output. `null` for legacy rows; optional because the legacy wallet-scoped
+   * list (`GET /wallets/v1/:address/projects`) omits it.
    */
-  billing_account_id?: string;
+  billing_account_id?: string | null;
   /**
    * Provisioning principal id — provenance for who created the project (v1.77).
    * Optional for the same reason as {@link ProjectSummary.billing_account_id}.
    */
-  created_by?: string;
+  created_by?: string | null;
+  created_at: string;
+  deleted_at?: string | null;
+  archived_at?: string | null;
+  /**
+   * Legacy wallet-scoped list (`GET /wallets/v1/:address/projects`) only — the
+   * named inventory does not include per-project usage counters. Read
+   * `r.projects.getUsage(id)` for live usage.
+   */
+  api_calls?: number;
+  /** See {@link ProjectSummary.api_calls}. */
+  storage_bytes?: number;
+}
+
+/**
+ * Options for {@link Projects.list}.
+ *
+ * Membership-scoped by default (`GET /projects/v1` — every project owned by an
+ * org the caller's principal is an active member of). The cold-start lone-agent
+ * path is `list()` with no options.
+ */
+export interface ListProjectsOptions {
+  /**
+   * Narrow to projects owned by one org (billing account) id. Authorize-before-
+   * reveal: a non-member or guessed id returns the same 403 as a real-but-
+   * unauthorized org; a non-UUID id is a clean 400.
+   */
+  org?: string;
+  /**
+   * Read the operator email-union inventory across every wallet controlling the
+   * operator's verified email (`GET /agent/v1/operator/projects`) instead of the
+   * single membership-scoped slice. Supply `token` for the cross-wallet union;
+   * without it, `all` authenticates with SIWX wallet auth and returns only that
+   * wallet's slice. Mutually exclusive with `org`.
+   */
+  all?: boolean;
+  /**
+   * Operator-session bearer token for the `all` email-union read. When omitted,
+   * `all` uses SIWX wallet auth. Ignored when `all` is not set.
+   */
+  token?: string;
+  /** Page size. Server default 50, max 200. Ignored for `all` (union, unpaged). */
+  limit?: number;
+  /** Opaque pagination cursor from a previous response's `next_cursor`. */
+  cursor?: string;
 }
 
 export interface ListProjectsResult {
-  wallet: string;
   projects: ProjectSummary[];
+  /** True when more pages remain (membership-scoped reads). */
+  has_more?: boolean;
+  /** Cursor to fetch the next page, or null at the end. */
+  next_cursor?: string | null;
+  /** `all` reads echo the resolved scope: `"email"` (union) or `"wallet"` (slice). */
+  scope?: string;
+}
+
+/** Result of {@link Projects.rename}. */
+export interface RenameProjectResult {
+  project_id: string;
+  name: string;
 }
 
 // ─── usage ──────────────────────────────────────────────────────────────
