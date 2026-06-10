@@ -67,6 +67,7 @@ let serviceKey: string;
 let deploymentId: string;
 let versionId: string;
 let forkedProjectId: string;
+let mppProjectId: string; // module-scoped so after() can clean it up on failure
 
 // ─── Setup & teardown ────────────────────────────────────────────────────────
 
@@ -115,6 +116,28 @@ before(async () => {
 
 after(async () => {
   captureStop();
+
+  // Failure-surviving teardown: the "projects delete" test steps at the end of
+  // the suite only run when everything before them passed — a mid-suite
+  // failure/timeout used to leak `integ-test` / `mpp-test-app` projects on the
+  // production wallet forever. Delete here too (a 404/ProjectNotFound just
+  // means the test steps already did it). Runs BEFORE the env/keystore
+  // teardown below because the CLI needs RUN402_CONFIG_DIR, and BEFORE
+  // process.exit is restored so a CLI error throws instead of killing the
+  // runner.
+  for (const id of [forkedProjectId, mppProjectId, projectId]) {
+    if (!id) continue;
+    try {
+      const { run } = await import("./cli/lib/projects.mjs");
+      captureStart();
+      await run("delete", [id, "--confirm"]);
+      captureStop();
+    } catch {
+      captureStop();
+      // already deleted by the test steps, or not in the keystore — fine
+    }
+  }
+
   (process as { exit: (code?: number) => never }).exit = originalExit;
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
@@ -517,8 +540,7 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
   });
 
   // ── MPP rail — full lifecycle (real Tempo RPC + real gateway) ───────
-
-  let mppProjectId: string;
+  // (mppProjectId lives at module scope so the after() teardown can see it.)
 
   it("mpp: init mpp — switch to MPP rail, fund on Tempo", async () => {
     const { run } = await import("./cli/lib/init.mjs");

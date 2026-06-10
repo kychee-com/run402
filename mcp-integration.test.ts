@@ -90,7 +90,21 @@ before(async () => {
   _resetSdk();
 });
 
-after(() => {
+after(async () => {
+  // Failure-surviving teardown: the "cleanup — delete project" test step only
+  // runs when everything before it passed — a mid-suite failure/timeout used
+  // to leak `mcp-integ-test` projects on the production wallet forever.
+  // Deleting an already-deleted project is a tolerated error here. Runs
+  // BEFORE the env/keystore teardown because the tool needs RUN402_CONFIG_DIR.
+  if (projectId) {
+    try {
+      const { handleDeleteProject } = await import("./src/tools/delete-project.js");
+      await handleDeleteProject({ project_id: projectId });
+    } catch {
+      // already deleted by the cleanup test step — fine
+    }
+  }
+
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
   if (tempDir) rmSync(tempDir, { recursive: true, force: true });
