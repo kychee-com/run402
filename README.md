@@ -520,8 +520,8 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `allowance_status` / `allowance_create` / `allowance_export` | Local allowance management. |
 | `request_faucet` | Request testnet USDC. |
 | `check_balance` | USDC balance for an allowance address. |
-| `list_projects` | Active projects for a wallet. |
-| `pin_project` | Pin a project (admin only — uses the configured admin allowance wallet). |
+| `list_projects` | Named, domain-aware project inventory (name, site_url, custom_domains, org). Membership-scoped; supports `org_id` filter, `all` cross-wallet read, and pagination. |
+| `rename_project` | Rename a project to fix an auto-generated name (org admin / `project:write` grant). |
 | `project_info` / `project_keys` / `project_use` | Inspect / set the active project. |
 | `create_checkout` | Stripe checkout to add cash credit. |
 | `send_message` | Send feedback to the Run402 team. |

@@ -45,7 +45,7 @@ Provision first, then write your frontend code with the real `anon_key` embedded
 Every CLI subcommand follows the same stdout/stderr/exit-code contract. Read this once; it applies uniformly to every command in the rest of this file.
 
 Stdout (success) — the natural JSON payload, never wrapped. No top-level `status` field. The payload's shape depends on the command:
-- Reads / lists / info — emit the resource directly (`projects info` returns `{ project_id, anon_key, ... }`; `projects list` returns an array).
+- Reads / lists / info — emit the resource directly (`projects info` returns `{ project_id, anon_key, ... }`; `projects list` returns `{ projects: [...], scope?, has_more?, next_cursor? }`).
 - Mutations with no natural payload — echo the affected resource identifiers plus an explicit boolean state field naming what happened, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`. Never an empty object.
 - Local-state inspection — `run402 status` and `run402 allowance status` use typed nullable payload fields: `{ wallet: null, hint: "Run: run402 init" }` when absent, and the populated account/wallet payload when present. Absence exits 0 — it is an informational read, not an error.
 - Plain text — a small set of commands (e.g. `run402 allowance export` returning a wallet address) emit a plain-text value with a trailing newline; their help text documents this.
@@ -827,7 +827,9 @@ Tier and quotas are per billing account (not per project) — `set` is account-w
 - `run402 tier set <prototype|hobby|team>`
 
 ### projects
-- `run402 projects <quote|list>`
+- `run402 projects quote`
+- `run402 projects list [--org <id>] [--all]` — SERVER read of the named, domain-aware inventory (NOT the local keystore). Membership-scoped by default: every project owned by an org your wallet is an active member of, each row `{ project_id, name, site_url, custom_domains, org_id, status, active }` (`active` from local state). `--org <id>` filters to one org (authorize-before-reveal: non-member/guessed id -> 403, non-UUID -> 400). `--all` reads the cross-wallet inventory across every wallet controlling your operator email — run `run402 operator login` first for the union, else it falls back to the current wallet's slice and echoes `scope`. Bare `run402 projects list` is the cold-start path (no login needed). Tier/lifecycle live on the billing account — use `run402 status` / `run402 tier status`.
+- `run402 projects rename <id> --name <label>` — rename a project (fix an auto-generated name). Needs org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Works even if the project isn't in the local keystore. Server-validated name (1-200 chars, no control characters).
 - `run402 projects provision [--name <name>] [--org <id>]` — `--org` provisions into an EXISTING org (you need `developer`+ on it); omit for the cold-start path (the wallet's billing account). Tier is org-governed — a client-supplied `--tier` is ignored when targeting an org.
 - `run402 projects use <id>`
 - `run402 projects info <id>`
