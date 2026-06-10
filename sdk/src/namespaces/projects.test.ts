@@ -70,13 +70,6 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const WALLET_UPPER = "0xABCDEF0123456789ABCDEF0123456789ABCDEF01";
-const WALLET_LOWER = "0xabcdef0123456789abcdef0123456789abcdef01";
-const FEED_WALLET_UPPER = "0xFEED000000000000000000000000000000000000";
-const FEED_WALLET_LOWER = "0xfeed000000000000000000000000000000000000";
-const OTHER_WALLET_UPPER = "0xABC0000000000000000000000000000000000000";
-const OTHER_WALLET_LOWER = "0xabc0000000000000000000000000000000000000";
-
 describe("projects.provision", () => {
   it("POSTs /projects/v1 with the requested tier and name", async () => {
     const { fetch, calls } = mockFetch(() =>
@@ -192,162 +185,188 @@ describe("projects.delete", () => {
 });
 
 describe("projects.list", () => {
-  it("GETs /wallets/v1/:wallet/projects with SIWX when wallet is explicit", async () => {
+  it("GETs the membership-scoped /projects/v1 with SIWX by default (cold-start path)", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({
-        wallet: WALLET_LOWER,
-        projects: [],
-      }),
+      jsonResponse({ projects: [], has_more: false, next_cursor: null }),
     );
-    const creds = makeCreds();
-    const sdk = makeSdk(creds, fetch);
-    const result = await sdk.projects.list(WALLET_UPPER);
-
-    assert.equal(calls[0]!.url, `https://api.example.test/wallets/v1/${WALLET_LOWER}/projects`);
-    assert.equal(calls[0]!.method, "GET");
-    // Owner-only endpoint (hardened from public) — SIWX header injected.
-    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
-    assert.deepEqual(result, { wallet: WALLET_LOWER, projects: [] });
-  });
-
-  it("falls back to readAllowance().address when wallet is omitted", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ wallet: FEED_WALLET_LOWER, projects: [] }),
-    );
-    const creds = makeCreds({
-      async readAllowance() {
-        return { address: FEED_WALLET_UPPER, privateKey: "0xpriv" };
-      },
-    });
-    const sdk = makeSdk(creds, fetch);
+    const sdk = makeSdk(makeCreds(), fetch);
     const result = await sdk.projects.list();
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `https://api.example.test/wallets/v1/${FEED_WALLET_LOWER}/projects`);
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1");
+    assert.equal(calls[0]!.method, "GET");
+    // SIWX wallet auth from the credential provider (mandatory server-side).
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
-    assert.deepEqual(result, { wallet: FEED_WALLET_LOWER, projects: [] });
+    assert.deepEqual(result, { projects: [], has_more: false, next_cursor: null });
   });
 
-  it("rejects malformed explicit wallets before requesting", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch for malformed wallet");
-    });
-    const sdk = makeSdk(makeCreds(), fetch);
-
-    await assert.rejects(
-      sdk.projects.list("not-a-wallet" as any),
-      (err: unknown) =>
-        err instanceof LocalError &&
-        err.context === "listing projects" &&
-        /EVM address/.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("rejects malformed allowance wallets before requesting", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch for malformed allowance wallet");
-    });
-    const sdk = makeSdk(makeCreds({
-      async readAllowance() {
-        return { address: "not-a-wallet", privateKey: "0xpriv" };
-      },
-    }), fetch);
-
-    await assert.rejects(
-      sdk.projects.list(),
-      (err: unknown) =>
-        err instanceof LocalError &&
-        err.context === "listing projects" &&
-        /EVM address/.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("throws Run402Error when wallet omitted and provider lacks readAllowance", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({}));
-    const creds = makeCreds(); // no readAllowance
-    const sdk = makeSdk(creds, fetch);
-
-    await assert.rejects(
-      sdk.projects.list(),
-      (err: unknown) =>
-        err instanceof Run402Error &&
-        err.context === "listing projects" &&
-        /pass an explicit wallet/i.test(err.message) &&
-        /@run402\/sdk\/node/.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("throws Run402Error when readAllowance returns null", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({}));
-    const creds = makeCreds({
-      async readAllowance() {
-        return null;
-      },
-    });
-    const sdk = makeSdk(creds, fetch);
-
-    await assert.rejects(
-      sdk.projects.list(),
-      (err: unknown) =>
-        err instanceof Run402Error &&
-        err.context === "listing projects" &&
-        /run402 allowance create/.test(err.message) &&
-        /pass an explicit wallet/i.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("uses the explicit wallet when provided, even if local allowance differs", async () => {
+  it("passes ?org_id, ?limit, and ?after for the filtered, paginated read", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ wallet: OTHER_WALLET_LOWER, projects: [] }),
+      jsonResponse({ projects: [], has_more: true, next_cursor: "prj_cursor" }),
     );
-    let readAllowanceCalls = 0;
-    const creds = makeCreds({
-      async readAllowance() {
-        readAllowanceCalls++;
-        return { address: FEED_WALLET_UPPER, privateKey: "0xpriv" };
-      },
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.list({
+      org: "11111111-2222-3333-4444-555555555555",
+      limit: 25,
+      cursor: "prj_prev",
     });
-    const sdk = makeSdk(creds, fetch);
-    const result = await sdk.projects.list(OTHER_WALLET_UPPER);
 
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `https://api.example.test/wallets/v1/${OTHER_WALLET_LOWER}/projects`);
-    assert.equal(readAllowanceCalls, 0);
-    assert.deepEqual(result, { wallet: OTHER_WALLET_LOWER, projects: [] });
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.pathname, "/projects/v1");
+    assert.equal(url.searchParams.get("org_id"), "11111111-2222-3333-4444-555555555555");
+    assert.equal(url.searchParams.get("limit"), "25");
+    assert.equal(url.searchParams.get("after"), "prj_prev");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(result.has_more, true);
+    assert.equal(result.next_cursor, "prj_cursor");
   });
 
-  it("returns the project list with the wire shape from the gateway", async () => {
-    // Tier and lifecycle live on the billing account, not the project — read
-    // them from `r.tier.status()`. Per-project rows carry only project-scoped
-    // facts.
+  it("surfaces the named, domain-aware row shape", async () => {
     const { fetch } = mockFetch(() =>
       jsonResponse({
-        wallet: WALLET_LOWER,
         projects: [
           {
             id: "prj_1777563179844_1095",
             name: "kychon-port-olddominionboatclub-com",
-            api_calls: 212,
-            storage_bytes: 12376062,
+            tier: "prototype",
+            site_url: "https://port.run402.com",
+            custom_domains: ["www.olddominionboatclub.com"],
+            status: "active",
+            effective_status: "active",
+            account_lifecycle_state: "active",
+            lease_perpetual: false,
+            billing_account_id: "11111111-2222-3333-4444-555555555555",
+            created_by: "99999999-8888-7777-6666-555555555555",
             created_at: "2026-04-30T15:32:59.891Z",
+            deleted_at: null,
+            archived_at: null,
           },
         ],
+        has_more: false,
+        next_cursor: null,
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.projects.list(WALLET_LOWER);
+    const result = await sdk.projects.list();
 
     assert.equal(result.projects.length, 1);
     const item = result.projects[0]!;
     assert.equal(item.id, "prj_1777563179844_1095");
     assert.equal(item.name, "kychon-port-olddominionboatclub-com");
-    assert.equal(item.api_calls, 212);
-    assert.equal(item.storage_bytes, 12376062);
+    assert.equal(item.site_url, "https://port.run402.com");
+    assert.deepEqual(item.custom_domains, ["www.olddominionboatclub.com"]);
+    assert.equal(item.status, "active");
+    assert.equal(item.billing_account_id, "11111111-2222-3333-4444-555555555555");
     assert.equal(item.created_at, "2026-04-30T15:32:59.891Z");
+  });
+
+  it("reads the operator email-union inventory with a token for { all: true }", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        projects: [
+          {
+            id: "prj_a",
+            name: "alpha",
+            site_url: null,
+            custom_domains: [],
+            status: "active",
+            billing_account_id: "11111111-2222-3333-4444-555555555555",
+            created_at: "2026-04-30T15:32:59.891Z",
+          },
+        ],
+        scope: "email",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.list({ all: true, token: "op_sess_tok" });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/operator/projects");
+    assert.equal(calls[0]!.method, "GET");
+    // Operator-session bearer overrides SIWX; provider auth is not injected.
+    assert.equal(calls[0]!.headers["Authorization"], "Bearer op_sess_tok");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
+    assert.equal(result.scope, "email");
+    assert.equal(result.projects[0]!.name, "alpha");
+  });
+
+  it("{ all: true } without a token falls back to SIWX wallet auth (single-wallet slice)", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ projects: [], scope: "wallet" }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.list({ all: true });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/operator/projects");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.headers["Authorization"], undefined);
+    assert.equal(result.scope, "wallet");
+  });
+
+  it("rejects { all, org } together before requesting (mutually exclusive)", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for mutually-exclusive all+org");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.projects.list({ all: true, org: "11111111-2222-3333-4444-555555555555" }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "listing projects" &&
+        /mutually exclusive/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("propagates Unauthorized from the gateway (e.g. no allowance configured)", async () => {
+    const { fetch } = mockFetch(() => jsonResponse({ message: "auth required" }, 401));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.projects.list(),
+      (err: unknown) => err instanceof Run402Error && err.context === "listing projects",
+    );
+  });
+});
+
+describe("projects.rename", () => {
+  it("PATCHes /projects/v1/:id with the new name and SIWX auth", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ project_id: "prj_known", name: "My Site" }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.rename("prj_known", "My Site");
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known");
+    assert.equal(calls[0]!.method, "PATCH");
+    // Authorize-before-reveal endpoint — caller auth (not a service key).
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "My Site" });
+    assert.deepEqual(result, { project_id: "prj_known", name: "My Site" });
+  });
+
+  it("propagates Unauthorized (authorize-before-reveal 403) without a keystore lookup", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ message: "not authorized" }, 403));
+    // Note: prj_missing is NOT in the keystore — rename must still hit the wire
+    // (caller-authed), unlike delete which short-circuits on a missing key.
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.projects.rename("prj_missing", "x"),
+      (err: unknown) => err instanceof Run402Error && err.context === "renaming project",
+    );
+    assert.equal(calls.length, 1);
+  });
+
+  it("propagates a 400 on an invalid name", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({ error: { code: "VALIDATION_ERROR", message: "name too long" } }, 400),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.projects.rename("prj_known", "x".repeat(500)),
+      (err: unknown) => err instanceof Run402Error && err.context === "renaming project",
+    );
   });
 });
 

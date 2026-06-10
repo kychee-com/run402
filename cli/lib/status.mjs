@@ -90,11 +90,14 @@ export async function run(args = []) {
   const wallet = allowance.address.toLowerCase();
   const rail = allowance.rail || "x402";
 
-  // Parallel API calls: tier + billing balance + server-side projects + on-chain wallet balance
+  // Parallel API calls: tier + billing balance + server-side projects + on-chain wallet balance.
+  // projects.list() is the membership-scoped named inventory (project-findability);
+  // SIWX wallet auth is signed from the allowance. Best-effort — a missing
+  // allowance yields null and we fall back to the local keystore below.
   const [tier, billing, remote, walletBalance] = await Promise.all([
     getSdk().tier.status().catch(() => null),
     getSdk().billing.checkBalance(wallet).catch(() => null),
-    getSdk().projects.list(wallet).catch(() => null),
+    getSdk().projects.list().catch(() => null),
     readWalletBalanceUsdMicros(rail, allowance.address),
   ]);
 

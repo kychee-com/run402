@@ -353,12 +353,16 @@ describe("ScopedRun402 wrapper routing", () => {
   });
 
   it("non-id-bearing methods pass through unchanged (projects.list)", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ projects: [] }));
+    const { fetch, calls } = mockFetch(() => jsonResponse({ projects: [], has_more: false }));
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_known");
-    await p.projects.list("0xAABBCCDDEEFF00112233445566778899AABBCCDD");
+    // list is membership-scoped and project-id-agnostic; the scope's id must
+    // not leak into the request (it's a pass-through, not a wrapper).
+    await p.projects.list({ org: "11111111-2222-3333-4444-555555555555" });
     assert.equal(calls.length, 1);
-    assert.match(calls[0]!.url, /\/wallets\/v1\/0xaabbccddeeff00112233445566778899aabbccdd\/projects$/);
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.pathname, "/projects/v1");
+    assert.equal(url.searchParams.get("org_id"), "11111111-2222-3333-4444-555555555555");
   });
 
   it("ProjectNotFound surfaces unchanged from the scoped client", async () => {

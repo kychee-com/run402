@@ -85,6 +85,7 @@ import {
 // New tools — subdomains & projects
 import { listSubdomainsSchema, handleListSubdomains } from "./tools/list-subdomains.js";
 import { deleteProjectSchema, handleDeleteProject } from "./tools/delete-project.js";
+import { renameProjectSchema, handleRenameProject } from "./tools/rename-project.js";
 
 // v1.57 — operator-only project + billing-account actions
 import {
@@ -709,6 +710,13 @@ server.tool(
   async (args) => handleDeleteProject(args),
 );
 
+server.tool(
+  "rename_project",
+  "Rename a project (PATCH /projects/v1/:id) — fix an auto-generated name. Authorization is org-membership based (admin+ on the owning org, or a project:write grant) and authorize-before-reveal: an unauthorized or guessed id returns the same 403 as a real-but-unauthorized project, never a not-found oracle. Uses the wallet's SIWX auth (not a project service key), so it works even if the project isn't in the local key store. The server validates the name (non-empty, ≤ 200 chars, no control characters).",
+  renameProjectSchema,
+  async (args) => handleRenameProject(args),
+);
+
 // ─── Admin tools ─────────────────────────────────────────────────────────────
 
 server.tool(
@@ -801,7 +809,7 @@ server.tool(
 
 server.tool(
   "list_projects",
-  "List active projects for the agent's allowance wallet. Owner-only: requires SIWX matching the wallet (signed automatically), so you can list only your own projects (an admin key bypasses).",
+  "List projects from the named, domain-aware inventory (GET /projects/v1). Membership-scoped by default: every project owned by an org the agent's wallet is an active member of, with name, site_url, custom_domains, org (billing_account_id), and status. SIWX wallet auth is signed automatically. Pass org_id to filter to one org (authorize-before-reveal: non-member/guessed → 403, non-UUID → 400), all:true to read the cross-wallet inventory across every wallet controlling your operator email, or limit/cursor to paginate.",
   listProjectsSchema,
   async (args) => handleListProjects(args),
 );

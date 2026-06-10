@@ -21,11 +21,13 @@ import type { ProjectKeys } from "./credentials.js";
 import type {
   ExposeManifestValidationInput,
   ExposeManifestValidationResult,
+  ListProjectsOptions,
   ListProjectsResult,
   ProjectInfo,
   ProjectRestOptions,
   ProjectRestResponse,
   QuoteResult,
+  RenameProjectResult,
   SchemaReport,
   UsageReport,
   ValidateExposeOptions,
@@ -213,6 +215,9 @@ class ScopedProjects {
   getExpose(): Promise<ExposeManifest> {
     return this.parent.projects.getExpose(this.projectId);
   }
+  rename(name: string): Promise<RenameProjectResult> {
+    return this.parent.projects.rename(this.projectId, name);
+  }
   promoteUser(email: string): Promise<void> {
     return this.parent.projects.promoteUser(this.projectId, email);
   }
@@ -226,8 +231,8 @@ class ScopedProjects {
     return this.parent.projects.keys(this.projectId);
   }
   // Pass-through for non-id-bearing methods.
-  list(wallet?: string): Promise<ListProjectsResult> {
-    return this.parent.projects.list(wallet);
+  list(opts?: ListProjectsOptions): Promise<ListProjectsResult> {
+    return this.parent.projects.list(opts);
   }
   getQuote(): Promise<QuoteResult> {
     return this.parent.projects.getQuote();
