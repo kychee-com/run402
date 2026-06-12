@@ -540,12 +540,10 @@ Tier is per **organization**, not per project. One subscribe / renew / upgrade a
 - **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Effect is organization-wide.
 - **`tier_status`** — current organization tier, lease, **pool_usage across every project in the organization**, and function caps when returned.
 - **`get_quote`** — pricing (free, no auth).
-- **`tier_checkout`** — Stripe checkout (alternative to x402).
 - **`create_email_organization`** / **`link_wallet_to_organization`** — email-based organizations; hybrid Stripe + x402. `link_wallet_to_organization` returns a `pool_implications` block (organization tier, current pooled api_calls/storage, tier_limits, `over_limit`) so agents can warn before merging a wallet into a pool that would exceed the cap.
 - **`billing_history`** — ledger.
-- **`buy_email_pack`** — $5 / 10,000 emails (never expire).
 - **`set_auto_recharge`** — auto-buy email packs when credits run low.
-- **`create_checkout`** — Stripe top-up to billing balance.
+- **`create_checkout`** — org checkout for balance top-ups, tiers, or email packs.
 
 ### KMS contract wallets (on-chain signing)
 
@@ -712,7 +710,7 @@ The MCP server handles all signing automatically. When a paid tool returns 402, 
 For real-money tiers, two paths to fund:
 
 - **Path A — fund the agent allowance**: human sends USDC on Base mainnet to the address from **`allowance_export`**. Agent pays autonomously via x402.
-- **Path B — Stripe credits**: **`create_email_organization`** with the human's email, then **`tier_checkout`** returns a Stripe URL the human pays once.
+- **Path B — Stripe credits**: create or pick the organization, then **`create_checkout`** with `product: "tier"` returns a Stripe URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
 

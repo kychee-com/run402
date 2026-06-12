@@ -216,11 +216,9 @@ import { removeSenderDomainSchema, handleRemoveSenderDomain } from "./tools/remo
 import { enableInboundSchema, handleEnableInbound } from "./tools/enable-inbound.js";
 import { disableInboundSchema, handleDisableInbound } from "./tools/disable-inbound.js";
 
-// New tools — email organizations + Stripe tier checkout + email packs
+// New tools — email organizations + org checkout
 import { createEmailOrganizationSchema, handleCreateEmailOrganization } from "./tools/create-email-organization.js";
 import { linkWalletToOrganizationSchema, handleLinkWalletToOrganization } from "./tools/link-wallet-to-organization.js";
-import { tierCheckoutSchema, handleTierCheckout } from "./tools/tier-checkout.js";
-import { buyEmailPackSchema, handleBuyEmailPack } from "./tools/buy-email-pack.js";
 import { setAutoRechargeSchema, handleSetAutoRecharge } from "./tools/set-auto-recharge.js";
 
 // New tools — AI
@@ -1061,7 +1059,7 @@ server.tool(
 
 server.tool(
   "create_checkout",
-  "Create a Stripe checkout URL for your human to fund your agent allowance with a credit card.",
+  "Create a Stripe checkout URL for an organization. Products: balance_topup, tier, email_pack.",
   createCheckoutSchema,
   async (args) => handleCreateCheckout(args),
 );
@@ -1267,7 +1265,7 @@ server.tool(
   async (args) => handleDisableInbound(args),
 );
 
-// --- Email organizations + Stripe tier checkout + email packs ---
+// --- Email organizations + org checkout ---
 
 server.tool(
   "create_email_organization",
@@ -1281,20 +1279,6 @@ server.tool(
   "Link a wallet to an existing email organization, enabling hybrid Stripe + x402 access. Fails if the wallet is already linked elsewhere.",
   linkWalletToOrganizationSchema,
   async (args) => handleLinkWalletToOrganization(args),
-);
-
-server.tool(
-  "tier_checkout",
-  "Subscribe/renew/upgrade to a run402 tier via Stripe credit card. Alternative to x402 on-chain payment. Supports wallet or email identifier. Returns a Stripe checkout URL.",
-  tierCheckoutSchema,
-  async (args) => handleTierCheckout(args),
-);
-
-server.tool(
-  "buy_email_pack",
-  "Buy a $5 email pack (10,000 emails, never expire). Pack credits activate when tier daily limit is exhausted AND a custom sender domain is verified. Returns a Stripe checkout URL.",
-  buyEmailPackSchema,
-  async (args) => handleBuyEmailPack(args),
 );
 
 server.tool(

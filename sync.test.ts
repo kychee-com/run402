@@ -354,7 +354,8 @@ const SURFACE: Capability[] = [
   { id: "claim_wallet_org",  endpoint: "POST /agent/v1/operator/claim-wallet-org (+ /challenge)",   mcp: null, cli: "operator:claim-wallet-org", openclaw: "operator:claim-wallet-org" },
 
   // ── Additional billing ─────────────────────────────────────────────────
-  { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
+  { id: "create_checkout",   endpoint: "POST /orgs/v1/:org_id/checkouts",        mcp: "create_checkout",     cli: "billing:checkout",  openclaw: "billing:checkout" },
+  { id: "allowance_checkout", endpoint: "POST /orgs/v1/:org_id/checkouts (local wallet convenience)", mcp: null, cli: "allowance:checkout", openclaw: "allowance:checkout" },
   { id: "billing_history",   endpoint: "GET /orgs/v1/:org_id/billing/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
 
   // ── Version management ─────────────────────────────────────────────────
@@ -422,12 +423,10 @@ const SURFACE: Capability[] = [
   { id: "enable_sender_domain_inbound",  endpoint: "POST /email/v1/domains/inbound",   mcp: "enable_sender_domain_inbound",  cli: "sender-domain:inbound-enable",  openclaw: "sender-domain:inbound-enable" },
   { id: "disable_sender_domain_inbound", endpoint: "DELETE /email/v1/domains/inbound", mcp: "disable_sender_domain_inbound", cli: "sender-domain:inbound-disable", openclaw: "sender-domain:inbound-disable" },
 
-  // ── Email organizations + Stripe tier checkout + email packs ───────
+  // ── Email organizations + org checkout ─────────────────────────────
   { id: "create_email_organization", endpoint: "POST /orgs/v1/email",                   mcp: "create_email_organization", cli: "billing:create-email",   openclaw: "billing:create-email" },
   { id: "link_wallet_to_organization",       endpoint: "POST /orgs/v1/:org_id/wallets",   mcp: "link_wallet_to_organization",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
-  { id: "tier_checkout",                endpoint: "POST /billing/v1/tiers/:tier/checkout",       mcp: "tier_checkout",                cli: "billing:tier-checkout",  openclaw: "billing:tier-checkout" },
-  { id: "buy_email_pack",               endpoint: "POST /billing/v1/email-packs/checkout",       mcp: "buy_email_pack",               cli: "billing:buy-email-pack", openclaw: "billing:buy-email-pack" },
-  { id: "set_auto_recharge",            endpoint: "POST /billing/v1/email-packs/auto-recharge",  mcp: "set_auto_recharge",            cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
+  { id: "set_auto_recharge",            endpoint: "PATCH /orgs/v1/:org_id/billing/auto-recharge",  mcp: "set_auto_recharge",            cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
   { id: "billing_balance",              endpoint: "GET /orgs/v1/:org_id/billing",        mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
   { id: "billing_history_cli",          endpoint: "GET /orgs/v1/:org_id/billing/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
 
@@ -586,11 +585,10 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   project_use: "projects.use",
   project_keys: "projects.keys",
   create_checkout: "billing.createCheckout",
+  allowance_checkout: "billing.createCheckout",
   billing_history: "billing.history",
   create_email_organization: "billing.createEmailOrganization",
   link_wallet_to_organization: "billing.linkWallet",
-  tier_checkout: "billing.tierCheckout",
-  buy_email_pack: "billing.buyEmailPack",
   set_auto_recharge: "billing.setAutoRecharge",
   billing_balance: "billing.getOrganization",
   billing_history_cli: "billing.getHistory",

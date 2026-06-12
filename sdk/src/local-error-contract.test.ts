@@ -31,9 +31,9 @@ test("local SDK validation failures throw structured LocalError", async () => {
     "This credential provider does not support allowance creation. Use @run402/sdk/node for local allowance management.",
   );
   await assertLocalError(
-    r.billing.tierCheckout("hobby", {}),
-    "creating tier checkout",
-    "Provide either `email` or `wallet` in identifier.",
+    r.billing.createCheckout("", { product: "tier", tier: "hobby" }),
+    "creating checkout",
+    "organizationId must be a non-empty string.",
   );
   await assertLocalError(
     r.email.createMailbox("prj_test", "ab"),

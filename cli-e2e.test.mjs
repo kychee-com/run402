@@ -748,8 +748,13 @@ async function mockFetch(input, init) {
   if (path.match(/\/history/) && method === "GET") {
     return Promise.resolve(json({ transactions: [{ id: "tx1", amount: -100000, description: "Tier subscription" }] }));
   }
-  if (path === "/billing/v1/checkouts" && method === "POST") {
-    return Promise.resolve(json({ checkout_url: "https://checkout.stripe.com/test", topup_id: "top_123" }));
+  if (path.match(/^\/orgs\/v1\/[^/]+\/checkouts$/) && method === "POST") {
+    return Promise.resolve(json({
+      organization_id: "00000000-0000-4000-8000-0000000000e2",
+      product: "balance_topup",
+      checkout_url: "https://checkout.stripe.com/test",
+      topup_id: "top_123",
+    }));
   }
 
   // Image
@@ -1109,29 +1114,26 @@ describe("CLI billing validation regressions", () => {
     return JSON.parse(line);
   }
 
-  it("billing tier-checkout rejects both --email and --wallet locally (GH-275)", async () => {
-    const parsed = await runBillingExpectingValidationError("tier-checkout", [
-      "hobby",
-      "--email",
-      "a@example.com",
-      "--wallet",
-      "0xabc",
+  it("billing checkout rejects unknown products locally", async () => {
+    const parsed = await runBillingExpectingValidationError("checkout", [
+      "00000000-0000-4000-8000-000000000001",
+      "--product",
+      "unknown",
     ]);
 
     assert.equal(parsed.code, "BAD_USAGE");
-    assert.match(parsed.message, /either --email or --wallet/i);
+    assert.match(parsed.message, /unknown checkout product/i);
   });
 
-  it("billing buy-email-pack rejects both --email and --wallet locally (GH-275)", async () => {
-    const parsed = await runBillingExpectingValidationError("buy-email-pack", [
-      "--email",
-      "a@example.com",
-      "--wallet",
-      "0xabc",
+  it("billing checkout rejects missing balance top-up amounts locally", async () => {
+    const parsed = await runBillingExpectingValidationError("checkout", [
+      "00000000-0000-4000-8000-000000000001",
+      "--product",
+      "balance-topup",
     ]);
 
     assert.equal(parsed.code, "BAD_USAGE");
-    assert.match(parsed.message, /either --email or --wallet/i);
+    assert.match(parsed.message, /missing --amount/i);
   });
 
   for (const threshold of ["abc", "1.5", "-1"]) {

@@ -1361,17 +1361,18 @@ Flow: register → add DKIM CNAME records to DNS → poll status until verified 
 Inbound (opt-in): inbound-enable → add MX record to DNS → replies to `<slug>@<your-domain>` route through run402.
 
 ### billing
-Email-based organizations, Stripe tier checkout, and email packs. Pay run402 with credit cards instead of crypto, or scale email sending beyond tier caps.
+Email-based organizations and org checkouts. Pay run402 with credit cards instead of crypto, or scale email sending beyond tier caps.
 
 - `run402 billing create-email <email>` — create an email-based organization (Stripe-only, no wallet). Sends a verification email. Idempotent.
 - `run402 billing link-wallet <org_id> <wallet>` — link a wallet to an email organization for hybrid Stripe + x402 access. Response includes a `pool_implications` block (organization `tier`, `projects_in_pool_count`, `organization_api_calls_current`, `organization_storage_bytes_current`, `tier_limits`, `over_limit`) — inspect `over_limit` before linking a wallet whose usage might push the merged pool past the tier cap.
-- `run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]` — subscribe/renew/upgrade a tier (prototype $0.10 / hobby $5 / team $20) via Stripe. Returns a checkout URL.
-- `run402 billing buy-email-pack [--email <e> | --wallet <w>]` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
+- `run402 billing checkout <org-id | wallet | email> --product tier --tier <prototype|hobby|team>` — subscribe/renew/upgrade a tier (prototype $0.10 / hobby $5 / team $20) via Stripe. Returns a checkout URL.
+- `run402 billing checkout <org-id | wallet | email> --product email-pack` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
+- `run402 billing checkout <org-id | wallet | email> --product balance-topup --amount <usd_micros>` — add cash credit to the organization. Returns a Stripe checkout URL.
 - `run402 billing auto-recharge <org_id> <on|off> [--threshold <n>]` — auto-repurchase $5 packs when credits drop below threshold. Requires saved Stripe payment method.
 - `run402 billing balance <org-id | wallet | email>` — balance + email_credits_remaining + tier + lease + auto_recharge state (response includes `organization_id`). A wallet/email is resolved to its organization via `GET /orgs/v1/lookup?wallet=|?email=`; an organization id (UUID) reads `GET /orgs/v1/:org_id/billing` directly.
 - `run402 billing history <org-id | wallet | email> [--limit <n>]` — ledger history. Keyed by organization id: a wallet/email is resolved to its `organization_id` first, then `GET /orgs/v1/:org_id/billing/history`.
 
-Auth: organization reads (`balance`, `history`) require SIWX from a wallet **linked to** the organization, or an admin key; the wallet→organization lookup requires SIWX matching the queried wallet (email lookups are admin-only). `link-wallet` requires the body wallet's SIWX (or admin); `auto-recharge` a linked wallet's SIWX. The CLI signs automatically from the local allowance, so these only work when the agent's allowance wallet is in the organization being queried/linked/billed. A non-member (or someone guessing an organization id) gets 403 with no existence leak. Checkout-creation commands (`create-email`, `tier-checkout`, `buy-email-pack`) remain unauthenticated.
+Auth: organization reads (`balance`, `history`) require SIWX from a wallet **linked to** the organization, or an admin key; the wallet→organization lookup requires SIWX matching the queried wallet (email lookups are admin-only). `link-wallet` requires the body wallet's SIWX (or admin); `checkout` / `auto-recharge` require a linked wallet's SIWX or admin. The CLI signs automatically from the local allowance, so these only work when the agent's allowance wallet is in the organization being queried/linked/billed. A non-member (or someone guessing an organization id) gets 403 with no existence leak. `create-email` is unauthenticated.
 
 Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
 

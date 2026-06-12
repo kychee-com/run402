@@ -638,9 +638,9 @@ describe("2026-05 CLI bug backlog argv validation", () => {
     },
     {
       issue: "GH-282",
-      name: "billing tier-checkout rejects missing flag values",
+      name: "billing checkout rejects missing flag values",
       module: "./cli/lib/billing.mjs",
-      call: (run) => run("tier-checkout", ["prototype", "--email"]),
+      call: (run) => run("checkout", ["00000000-0000-4000-8000-000000000001", "--product"]),
       code: "BAD_FLAG",
     },
   ];

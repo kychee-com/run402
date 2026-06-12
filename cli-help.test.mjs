@@ -110,7 +110,7 @@ const MATRIX = {
   },
   billing: {
     shared: [],
-    specific: ["tier-checkout", "buy-email-pack", "auto-recharge", "history", "create-email", "link-wallet", "balance"],
+    specific: ["checkout", "auto-recharge", "history", "create-email", "link-wallet", "balance"],
   },
   contracts: {
     shared: [],

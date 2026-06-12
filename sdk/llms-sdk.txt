@@ -1207,8 +1207,7 @@ gateways.
 ```
 createEmailOrganization(email): Promise<EmailOrganization>
 linkWallet(organizationId, wallet): Promise<LinkWalletResult>  // organizationId = UUID; POST /orgs/v1/:org_id/wallets
-tierCheckout(tier, identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
-buyEmailPack(identifier: { email?: string, wallet?: string }): Promise<CreateCheckoutResult>
+createCheckout(organizationId, checkout: { product: "balance_topup", amountUsdMicros: number } | { product: "tier", tier: "prototype" | "hobby" | "team" } | { product: "email_pack" }): Promise<CreateCheckoutResult>
 setAutoRecharge(opts: { organizationId: string, enabled: boolean, threshold? }): Promise<void>
 checkBalance(identifier): Promise<OrganizationDetail>  // identifier = organization id (UUID) | wallet | email
 getOrganization(identifier): Promise<OrganizationDetail>
@@ -1216,7 +1215,6 @@ lookupOrganization(identifier): Promise<OrganizationDetail>  // resolve wallet/e
 balance(identifier): Promise<OrganizationDetail> // alias of checkBalance
 history(identifier, limit?: number): Promise<BillingHistoryResult>
 getHistory(identifier, limit?: number): Promise<BillingHistoryResult>
-createCheckout(wallet, amountUsdMicros: number): Promise<CreateCheckoutResult>
 
 // CLI-style aliases:
 createEmail(email): Promise<EmailOrganization>
@@ -1458,7 +1456,7 @@ try {
 }
 ```
 
-Data-plane traffic (`/rest/v1/*`, `/storage/v1/*`, function invocation, mailbox send/receive) keeps serving during the freeze. Payment-path routes (`tier.set`, `/billing/v1/*`) keep working. `r.admin.transfers.cancel` is intentionally not blocked.
+Data-plane traffic (`/rest/v1/*`, `/storage/v1/*`, function invocation, mailbox send/receive) keeps serving during the freeze. Payment-path routes (`tier.set`, `/orgs/v1/:org_id/checkouts`, `/orgs/v1/:org_id/billing/auto-recharge`) keep working. `r.admin.transfers.cancel` is intentionally not blocked.
 
 After `accept`, the project carries a persistent `secrets_rotation_advised` advisory — visible on `r.tier.status()` as `projects[].secrets_rotation_advised: { advised_at, reason }`. Use `r.secrets.set(...)` to rotate every name in `secret_names_inherited`; the advisory clears once every previously-inherited name has been re-written.
 

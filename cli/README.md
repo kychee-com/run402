@@ -188,7 +188,7 @@ Private keys never leave AWS KMS. $0.04/day rental + $0.000005/call.
 ```bash
 run402 tier set prototype                                    # free on testnet
 run402 tier set hobby                                        # $5 / 30 days
-run402 billing tier-checkout hobby --email me@example.com    # Stripe alternative
+run402 billing checkout <org_id> --product tier --tier hobby  # Stripe alternative
 ```
 
 ## State

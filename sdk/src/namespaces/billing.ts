@@ -7,8 +7,8 @@
  * accept any of the three identifier forms and resolve internally. Organization
  * reads require SIWX from a wallet linked to the organization (or matching the
  * looked-up `?wallet`), or an admin key; email lookups are admin-only.
- * Mutations such as link-wallet / auto-recharge require SIWX (or admin);
- * checkout-creation endpoints remain unauthenticated by design.
+ * Mutations such as link-wallet, checkout creation, and auto-recharge require
+ * an org credential (or admin).
  */
 
 import type { Client } from "../kernel.js";
@@ -55,6 +55,8 @@ export interface BillingHistoryResult {
 }
 
 export interface CreateCheckoutResult {
+  organization_id: string;
+  product: CheckoutProduct;
   checkout_url: string;
   topup_id: string;
 }
@@ -91,12 +93,28 @@ export interface LinkWalletResult {
   pool_implications?: LinkWalletPoolImplications;
 }
 
-export interface OrganizationCheckoutIdentifier {
-  email?: string;
-  wallet?: string;
-}
-
 export type OrganizationIdentifier = string;
+
+export type CheckoutProduct = "balance_topup" | "tier" | "email_pack";
+
+export type CreateCheckoutOptions =
+  | {
+      product: "balance_topup";
+      amountUsdMicros: number;
+      successUrl?: string;
+      cancelUrl?: string;
+    }
+  | {
+      product: "tier";
+      tier: ProjectTier;
+      successUrl?: string;
+      cancelUrl?: string;
+    }
+  | {
+      product: "email_pack";
+      successUrl?: string;
+      cancelUrl?: string;
+    };
 
 export interface AutoRechargeOptions {
   organizationId: string;
@@ -205,36 +223,39 @@ function assertUsdMicrosAmount(
   }
 }
 
-function checkoutIdentifierBody(
-  identifier: OrganizationCheckoutIdentifier,
+function checkoutRequestBody(
+  request: CreateCheckoutOptions,
   context: string,
-): Record<string, string> {
-  if (!identifier || typeof identifier !== "object" || Array.isArray(identifier)) {
-    throw new LocalError(
-      "identifier must be an object with either `email` or `wallet`.",
-      context,
-    );
+): Record<string, unknown> {
+  if (!request || typeof request !== "object" || Array.isArray(request)) {
+    throw new LocalError("checkout must be an object with a product.", context);
   }
-  const hasEmail = identifier.email !== undefined;
-  const hasWallet = identifier.wallet !== undefined;
-  if (hasEmail && hasWallet) {
-    throw new LocalError(
-      "Provide either `email` or `wallet` in identifier, not both.",
-      context,
-    );
+  if (request.product === "balance_topup") {
+    assertUsdMicrosAmount(request.amountUsdMicros, "amountUsdMicros", context);
+    return {
+      product: "balance_topup",
+      amount_usd_micros: request.amountUsdMicros,
+      ...(request.successUrl !== undefined ? { success_url: request.successUrl } : {}),
+      ...(request.cancelUrl !== undefined ? { cancel_url: request.cancelUrl } : {}),
+    };
   }
-  if (hasWallet) {
-    assertEvmAddress(identifier.wallet, "identifier.wallet", context);
-    return { wallet: identifier.wallet.toLowerCase() };
+  if (request.product === "tier") {
+    assertStringInSet(request.tier, BILLING_TIERS, "tier", context);
+    return {
+      product: "tier",
+      tier: request.tier,
+      ...(request.successUrl !== undefined ? { success_url: request.successUrl } : {}),
+      ...(request.cancelUrl !== undefined ? { cancel_url: request.cancelUrl } : {}),
+    };
   }
-  if (hasEmail) {
-    assertEmailAddress(identifier.email, "identifier.email", context);
-    return { email: identifier.email };
+  if (request.product === "email_pack") {
+    return {
+      product: "email_pack",
+      ...(request.successUrl !== undefined ? { success_url: request.successUrl } : {}),
+      ...(request.cancelUrl !== undefined ? { cancel_url: request.cancelUrl } : {}),
+    };
   }
-  throw new LocalError(
-    "Provide either `email` or `wallet` in identifier.",
-    context,
-  );
+  throw new LocalError("product must be one of: balance_topup, tier, email_pack.", context);
 }
 
 export class Billing {
@@ -304,15 +325,17 @@ export class Billing {
     });
   }
 
-  /** Create a Stripe checkout URL to fund a wallet's billing balance. */
-  async createCheckout(wallet: string, amountUsdMicros: number): Promise<CreateCheckoutResult> {
-    assertEvmAddress(wallet, "wallet", "creating checkout");
-    assertUsdMicrosAmount(amountUsdMicros, "amountUsdMicros", "creating checkout");
-    return this.client.request<CreateCheckoutResult>("/billing/v1/checkouts", {
+  /** Create a Stripe checkout URL for an organization. */
+  async createCheckout(
+    organizationId: string,
+    checkout: CreateCheckoutOptions,
+  ): Promise<CreateCheckoutResult> {
+    assertNonEmptyString(organizationId, "organizationId", "creating checkout");
+    const body = checkoutRequestBody(checkout, "creating checkout");
+    return this.client.request<CreateCheckoutResult>(`/orgs/v1/${encodeURIComponent(organizationId)}/checkouts`, {
       method: "POST",
-      body: { wallet: wallet.toLowerCase(), amount_usd_micros: amountUsdMicros },
+      body,
       context: "creating checkout",
-      withAuth: false,
     });
   }
 
@@ -353,35 +376,10 @@ export class Billing {
     );
   }
 
-  /** Create a Stripe checkout for a tier subscription/renewal/upgrade. */
-  async tierCheckout(tier: string, identifier: OrganizationCheckoutIdentifier): Promise<CreateCheckoutResult> {
-    assertStringInSet(tier, BILLING_TIERS, "tier", "creating tier checkout");
-    const body = checkoutIdentifierBody(identifier, "creating tier checkout");
-
-    return this.client.request<CreateCheckoutResult>(`/billing/v1/tiers/${encodeURIComponent(tier)}/checkout`, {
-      method: "POST",
-      body,
-      context: "creating tier checkout",
-      withAuth: false,
-    });
-  }
-
-  /** Buy a $5 email pack (10,000 emails). */
-  async buyEmailPack(identifier: OrganizationCheckoutIdentifier): Promise<CreateCheckoutResult> {
-    const body = checkoutIdentifierBody(identifier, "creating email pack checkout");
-
-    return this.client.request<CreateCheckoutResult>("/billing/v1/email-packs/checkout", {
-      method: "POST",
-      body,
-      context: "creating email pack checkout",
-      withAuth: false,
-    });
-  }
-
   /** Enable/disable email-pack auto-recharge. */
   async setAutoRecharge(opts: AutoRechargeOptions): Promise<void> {
+    assertNonEmptyString(opts.organizationId, "organizationId", "setting auto-recharge");
     const body: Record<string, unknown> = {
-      organization_id: opts.organizationId,
       enabled: opts.enabled,
     };
     if (opts.threshold !== undefined) {
@@ -389,8 +387,8 @@ export class Billing {
       body.threshold = opts.threshold;
     }
 
-    await this.client.request<unknown>("/billing/v1/email-packs/auto-recharge", {
-      method: "POST",
+    await this.client.request<unknown>(`/orgs/v1/${encodeURIComponent(opts.organizationId)}/billing/auto-recharge`, {
+      method: "PATCH",
       body,
       context: "setting auto-recharge",
     });

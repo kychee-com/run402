@@ -14,7 +14,7 @@ Subcommands:
   fund      Request test funds from the faucet (Base Sepolia or Tempo)
   balance   Show on-chain balances and Run402 billing balance
   export    Print the allowance address (useful for scripting)
-  checkout  Create a billing checkout session (--amount <usd_micros>)
+  checkout  Create an org balance checkout session (--amount <usd_micros>)
   history   View billing transaction history (--limit <n>)
 
 Notes:
@@ -33,7 +33,7 @@ Examples:
 `;
 
 const SUB_HELP = {
-  checkout: `run402 allowance checkout — Create a billing checkout session
+  checkout: `run402 allowance checkout — Create an org balance checkout session
 
 Usage:
   run402 allowance checkout --amount <usd_micros>
@@ -280,7 +280,11 @@ async function checkout(args) {
   }
   const amount = parseIntegerFlag("--amount", amountRaw, { min: 1 });
   try {
-    const data = await getSdk().billing.createCheckout(w.address, amount);
+    const org = await getSdk().billing.lookupOrganization(w.address);
+    const data = await getSdk().billing.createCheckout(org.organization_id, {
+      product: "balance_topup",
+      amountUsdMicros: amount,
+    });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

@@ -2,57 +2,47 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
 
-const HELP = `run402 billing — Email organizations, Stripe tier checkout, email packs
+const HELP = `run402 billing — Email organizations and org checkouts
 
 Usage:
   run402 billing <subcommand> [args...]
 
 Subcommands:
   create-email <email>                     Create an email organization
-  link-wallet <org_id> <wallet>        Link a wallet to an email organization
-  tier-checkout <tier> [--email <e> | --wallet <w>]    Stripe tier checkout
-  buy-email-pack [--email <e> | --wallet <w>]  Buy \$5 email pack (10,000 emails)
+  link-wallet <org_id> <wallet>            Link a wallet to an email organization
+  checkout <identifier> --product <p>      Create an org checkout
   auto-recharge <org_id> <on|off> [--threshold <n>]
   balance <identifier>                     Balance by organization id (UUID), wallet (0x...), or email
   history <identifier> [--limit <n>]       Ledger history by organization id (UUID), wallet, or email
 
 Examples:
   run402 billing create-email user@example.com
-  run402 billing tier-checkout hobby --email user@example.com
-  run402 billing buy-email-pack --wallet 0x1234...
+  run402 billing checkout 00000000-0000-4000-8000-000000000001 --product tier --tier hobby
+  run402 billing checkout 0x1234... --product email-pack
+  run402 billing checkout 0x1234... --product balance-topup --amount 5000000
   run402 billing auto-recharge org_abc on --threshold 2000
   run402 billing balance user@example.com
 `;
 
 const SUB_HELP = {
-  "tier-checkout": `run402 billing tier-checkout — Create a Stripe tier checkout session
+  checkout: `run402 billing checkout — Create an org checkout
 
 Usage:
-  run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]
+  run402 billing checkout <identifier> --product <tier|email-pack|balance-topup> [options]
 
 Arguments:
-  <tier>              Tier name (e.g. hobby, pro)
+  <identifier>        Organization id (UUID), wallet (0x...), or email.
+                      Wallet/email are resolved to the organization id first.
 
 Options:
-  --email <e>         Email organization to charge
-  --wallet <w>        Wallet address (0x...) to associate with the checkout
+  --product <p>       tier, email-pack, or balance-topup
+  --tier <tier>       Tier name for --product tier
+  --amount <n>        USD micros for --product balance-topup
 
 Examples:
-  run402 billing tier-checkout hobby --email user@example.com
-  run402 billing tier-checkout pro --wallet 0x1234...
-`,
-  "buy-email-pack": `run402 billing buy-email-pack — Buy a $5 email pack (10,000 emails)
-
-Usage:
-  run402 billing buy-email-pack [--email <e> | --wallet <w>]
-
-Options:
-  --email <e>         Email organization to charge
-  --wallet <w>        Wallet address (0x...) to associate with the purchase
-
-Examples:
-  run402 billing buy-email-pack --email user@example.com
-  run402 billing buy-email-pack --wallet 0x1234...
+  run402 billing checkout 00000000-0000-4000-8000-000000000001 --product tier --tier hobby
+  run402 billing checkout 0x1234... --product email-pack
+  run402 billing checkout 0x1234... --product balance-topup --amount 5000000
 `,
   "auto-recharge": `run402 billing auto-recharge — Toggle email-pack auto-recharge
 
@@ -144,20 +134,75 @@ Examples:
 `,
 };
 
-function requireSingleBillingIdentifier(email, wallet) {
-  if (email && wallet) {
+function normalizeCheckoutProduct(raw) {
+  if (!raw) {
     fail({
       code: "BAD_USAGE",
-      message: "Provide either --email or --wallet, not both.",
-      hint: "[--email <e> | --wallet <w>]",
+      message: "Missing --product.",
+      hint: "Use --product tier, --product email-pack, or --product balance-topup.",
     });
   }
-  if (!email && !wallet) {
+  const product = String(raw).replace(/-/g, "_");
+  if (product === "tier" || product === "email_pack" || product === "balance_topup") {
+    return product;
+  }
+  fail({
+    code: "BAD_USAGE",
+    message: `Unknown checkout product: ${raw}`,
+    hint: "Use tier, email-pack, or balance-topup.",
+  });
+}
+
+async function checkout(args) {
+  const parsedArgs = normalizeArgv(args);
+  const valueFlags = ["--product", "--tier", "--amount"];
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
+  const identifier = positionals[0];
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing checkout: ${positionals[1]}` });
+  }
+  if (!identifier) {
     fail({
       code: "BAD_USAGE",
-      message: "Must provide --email or --wallet",
-      hint: "[--email <e> | --wallet <w>]",
+      message: "Missing <identifier>.",
+      hint: "run402 billing checkout <identifier> --product <tier|email-pack|balance-topup>",
     });
+  }
+  const product = normalizeCheckoutProduct(flagValue(parsedArgs, "--product"));
+  let checkoutRequest;
+  if (product === "tier") {
+    const tier = flagValue(parsedArgs, "--tier");
+    if (!tier) {
+      fail({
+        code: "BAD_USAGE",
+        message: "Missing --tier for tier checkout.",
+        hint: "run402 billing checkout <identifier> --product tier --tier hobby",
+      });
+    }
+    checkoutRequest = { product: "tier", tier };
+  } else if (product === "email_pack") {
+    checkoutRequest = { product: "email_pack" };
+  } else {
+    const amountRaw = flagValue(parsedArgs, "--amount");
+    if (amountRaw === null) {
+      fail({
+        code: "BAD_USAGE",
+        message: "Missing --amount for balance-topup checkout.",
+        hint: "run402 billing checkout <identifier> --product balance-topup --amount 5000000",
+      });
+    }
+    checkoutRequest = {
+      product: "balance_topup",
+      amountUsdMicros: parseIntegerFlag("--amount", amountRaw, { min: 1 }),
+    };
+  }
+  try {
+    const org = await getSdk().billing.lookupOrganization(identifier);
+    const data = await getSdk().billing.createCheckout(org.organization_id, checkoutRequest);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
   }
 }
 
@@ -209,52 +254,6 @@ async function linkWallet(args) {
       ...(data?.pool_implications ? { pool_implications: data.pool_implications } : {}),
     };
     console.log(JSON.stringify(output, null, 2));
-  } catch (err) {
-    reportSdkError(err);
-  }
-}
-
-async function tierCheckout(args) {
-  const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--email", "--wallet"];
-  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
-  const positionals = positionalArgs(parsedArgs, valueFlags);
-  const tier = positionals[0];
-  if (positionals.length > 1) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing tier-checkout: ${positionals[1]}` });
-  }
-  if (!tier) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <tier>.",
-      hint: "run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]",
-    });
-  }
-  const email = flagValue(parsedArgs, "--email");
-  const wallet = flagValue(parsedArgs, "--wallet");
-  requireSingleBillingIdentifier(email, wallet);
-  try {
-    const data = await getSdk().billing.tierCheckout(tier, { email: email ?? undefined, wallet: wallet ?? undefined });
-    console.log(JSON.stringify(data, null, 2));
-  } catch (err) {
-    reportSdkError(err);
-  }
-}
-
-async function buyPack(args) {
-  const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--email", "--wallet"];
-  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
-  const extra = positionalArgs(parsedArgs, valueFlags);
-  if (extra.length > 0) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing buy-email-pack: ${extra[0]}` });
-  }
-  const email = flagValue(parsedArgs, "--email");
-  const wallet = flagValue(parsedArgs, "--wallet");
-  requireSingleBillingIdentifier(email, wallet);
-  try {
-    const data = await getSdk().billing.buyEmailPack({ email: email ?? undefined, wallet: wallet ?? undefined });
-    console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -349,8 +348,7 @@ export async function run(sub, args) {
   switch (sub) {
     case "create-email": await createEmail(args); break;
     case "link-wallet": await linkWallet(args); break;
-    case "tier-checkout": await tierCheckout(args); break;
-    case "buy-email-pack": await buyPack(args); break;
+    case "checkout": await checkout(args); break;
     case "auto-recharge": await autoRecharge(args); break;
     case "balance": await balance(args); break;
     case "history": await history(args); break;

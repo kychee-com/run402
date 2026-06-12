@@ -351,35 +351,74 @@ describe("billing.history / getHistory", () => {
 });
 
 describe("billing.createCheckout", () => {
-  it("lowercases valid wallets and forwards whole-cent USD micros", async () => {
+  it("creates an org balance top-up checkout", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ checkout_url: "https://checkout.example.com", topup_id: "top_1" }),
+      jsonResponse({
+        organization_id: "org_123",
+        product: "balance_topup",
+        checkout_url: "https://checkout.example.com",
+        topup_id: "top_1",
+      }),
     );
     const sdk = makeSdk(fetch);
 
-    await sdk.billing.createCheckout(WALLET_UPPER, 500_000);
+    await sdk.billing.createCheckout("org/../tiers", {
+      product: "balance_topup",
+      amountUsdMicros: 500_000,
+    });
 
-    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/checkouts");
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/org%2F..%2Ftiers/checkouts");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      wallet: WALLET_LOWER,
+      product: "balance_topup",
       amount_usd_micros: 500_000,
     });
   });
 
-  it("rejects invalid wallet and amount values before requesting", async () => {
+  it("creates tier and email-pack checkouts through the same endpoint", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        organization_id: "org_123",
+        product: "tier",
+        checkout_url: "https://checkout.example.com",
+        topup_id: "top_1",
+      }),
+    );
+    const sdk = makeSdk(fetch);
+
+    await sdk.billing.createCheckout("org_123", {
+      product: "tier",
+      tier: "hobby",
+      successUrl: "https://run402.com/billing/success",
+    });
+    await sdk.billing.createCheckout("org_123", { product: "email_pack" });
+
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      product: "tier",
+      tier: "hobby",
+      success_url: "https://run402.com/billing/success",
+    });
+    assert.deepEqual(JSON.parse(calls[1]!.body as string), {
+      product: "email_pack",
+    });
+  });
+
+  it("rejects invalid checkout bodies before requesting", async () => {
     const { fetch, calls } = mockFetch(() => {
       throw new Error("unexpected fetch for invalid checkout");
     });
     const sdk = makeSdk(fetch);
     const invalidCalls = [
-      () => sdk.billing.createCheckout(null as any, 500_000),
-      () => sdk.billing.createCheckout("not-a-wallet", 500_000),
-      () => sdk.billing.createCheckout(WALLET_UPPER, -1),
-      () => sdk.billing.createCheckout(WALLET_UPPER, 0.5),
-      () => sdk.billing.createCheckout(WALLET_UPPER, Number.NaN),
-      () => sdk.billing.createCheckout(WALLET_UPPER, Number.MAX_SAFE_INTEGER + 1),
-      () => sdk.billing.createCheckout(WALLET_UPPER, 499_999),
-      () => sdk.billing.createCheckout(WALLET_UPPER, 500_001),
+      () => sdk.billing.createCheckout("", { product: "email_pack" }),
+      () => sdk.billing.createCheckout("org_123", null as any),
+      () => sdk.billing.createCheckout("org_123", { product: "balance_topup", amountUsdMicros: -1 }),
+      () => sdk.billing.createCheckout("org_123", { product: "balance_topup", amountUsdMicros: 0.5 }),
+      () => sdk.billing.createCheckout("org_123", { product: "balance_topup", amountUsdMicros: Number.NaN }),
+      () => sdk.billing.createCheckout("org_123", { product: "balance_topup", amountUsdMicros: Number.MAX_SAFE_INTEGER + 1 }),
+      () => sdk.billing.createCheckout("org_123", { product: "balance_topup", amountUsdMicros: 499_999 }),
+      () => sdk.billing.createCheckout("org_123", { product: "balance_topup", amountUsdMicros: 500_001 }),
+      () => sdk.billing.createCheckout("org_123", { product: "tier", tier: "../status" } as any),
+      () => sdk.billing.createCheckout("org_123", { product: "sku" } as any),
     ];
 
     for (const runInvalid of invalidCalls) {
@@ -483,91 +522,6 @@ describe("billing.linkWallet", () => {
   });
 });
 
-describe("billing tier checkout identifiers", () => {
-  it("rejects both email and wallet before requesting", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch for ambiguous tier checkout identifier");
-    });
-    const sdk = makeSdk(fetch);
-
-    await assert.rejects(
-      sdk.billing.tierCheckout("hobby", {
-        email: "user@example.com",
-        wallet: WALLET_UPPER,
-      }),
-      (err: unknown) =>
-        err instanceof LocalError &&
-        err.context === "creating tier checkout" &&
-        /either `email` or `wallet`/i.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("rejects null and non-object identifiers before requesting", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch for invalid tier checkout identifier");
-    });
-    const sdk = makeSdk(fetch);
-
-    await assert.rejects(
-      sdk.billing.tierCheckout("prototype", null as any),
-      (err: unknown) =>
-        err instanceof LocalError &&
-        err.context === "creating tier checkout" &&
-        /identifier must be an object/.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("rejects invalid tier path segments before requesting", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch for invalid tier checkout tier");
-    });
-    const sdk = makeSdk(fetch);
-
-    await assert.rejects(
-      sdk.billing.tierCheckout("../status", { wallet: WALLET_UPPER }),
-      (err: unknown) =>
-        err instanceof LocalError &&
-        err.context === "creating tier checkout" &&
-        /tier/.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("validates and lowercases wallet identifiers in checkout bodies", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ checkout_url: "https://checkout.example.com", topup_id: "top_1" }),
-    );
-    const sdk = makeSdk(fetch);
-
-    await sdk.billing.tierCheckout("hobby", { wallet: WALLET_UPPER });
-
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), { wallet: WALLET_LOWER });
-  });
-});
-
-describe("billing email pack checkout identifiers", () => {
-  it("rejects both email and wallet before requesting", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch for ambiguous email pack identifier");
-    });
-    const sdk = makeSdk(fetch);
-
-    await assert.rejects(
-      sdk.billing.buyEmailPack({
-        email: "user@example.com",
-        wallet: WALLET_UPPER,
-      }),
-      (err: unknown) =>
-        err instanceof LocalError &&
-        err.context === "creating email pack checkout" &&
-        /either `email` or `wallet`/i.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-});
-
 describe("billing.setAutoRecharge", () => {
   it("rejects invalid thresholds before requesting", async () => {
     const invalidThresholds = [Number.NaN, 1.5, -1, Number.POSITIVE_INFINITY];
@@ -611,13 +565,15 @@ describe("billing.setAutoRecharge", () => {
     assert.equal(calls.length, 2);
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/org_zero/billing/auto-recharge");
+    assert.equal(calls[1]!.url, "https://api.example.test/orgs/v1/org_positive/billing/auto-recharge");
+    assert.equal(calls[0]!.method, "PATCH");
+    assert.equal(calls[1]!.method, "PATCH");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      organization_id: "org_zero",
       enabled: true,
       threshold: 0,
     });
     assert.deepEqual(JSON.parse(calls[1]!.body as string), {
-      organization_id: "org_positive",
       enabled: true,
       threshold: 2000,
     });

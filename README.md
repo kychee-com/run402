@@ -492,10 +492,9 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `set_tier` | Subscribe / renew / upgrade a tier (auto-detects action). x402 payment. |
 | `tier_status` | Current tier, lease expiry, usage, and function authoring caps when returned. |
 | `get_quote` | Tier pricing (free, no auth). |
-| `tier_checkout` | Stripe checkout for a tier (alternative to x402). |
 | `create_email_organization` / `link_wallet_to_organization` | Email-based organizations; hybrid Stripe + x402. |
+| `create_checkout` | Org checkout for balance top-ups, tiers, or email packs. |
 | `billing_history` | Ledger history. |
-| `buy_email_pack` | $5 for 10,000 emails (never expire). |
 | `set_auto_recharge` | Auto-buy email packs when credits run low. |
 
 ### KMS contract wallets (on-chain signing)
@@ -523,7 +522,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `list_projects` | Named, domain-aware project inventory (name, site_url, custom_domains, org). Membership-scoped; supports `org_id` filter, `all` cross-wallet read, and pagination. |
 | `rename_project` | Rename a project to fix an auto-generated name (org admin / `project:write` grant). |
 | `project_info` / `project_keys` / `project_use` | Inspect / set the active project. |
-| `create_checkout` | Stripe checkout to add cash credit. |
+| `create_checkout` | Org checkout for balance top-ups, tiers, or email packs. |
 | `send_message` | Send feedback to the Run402 team. |
 | `set_agent_contact` / `get_agent_contact_status` / `verify_agent_contact_email` | Register agent contact info, read assurance status, and start the operator email reply challenge. |
 | `start_operator_passkey_enrollment` | Email a Run402 operator passkey enrollment link to the verified contact email. |

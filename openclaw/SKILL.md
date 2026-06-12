@@ -843,8 +843,9 @@ run402 tier status            # pool_usage sums across the whole organization
 # Pay with Stripe instead of x402
 run402 billing create-email user@example.com
 run402 billing link-wallet <org_id> <wallet>   # response includes pool_implications (over_limit warning)
-run402 billing tier-checkout hobby --email user@example.com
-run402 billing buy-email-pack       --email user@example.com   # $5 / 10k emails (never expire)
+run402 billing checkout <org_id> --product tier --tier hobby
+run402 billing checkout <org_id> --product email-pack           # $5 / 10k emails (never expire)
+run402 billing checkout <org_id> --product balance-topup --amount 5000000
 run402 billing auto-recharge <org_id> on --threshold 2000
 run402 billing balance <org-id | wallet | email>   # wallet/email resolved to the organization; SIWX must be linked to it (email lookups admin-only)
 run402 billing history <org-id | wallet | email>
@@ -1030,7 +1031,7 @@ The CLI handles all signing automatically — never ask the human for a private 
 For real-money tiers, two paths to fund:
 
 - Path A — fund the agent allowance: human sends USDC on Base mainnet to the address from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on.
-- Path B — Stripe credits: `run402 billing create-email <human@email>` → `run402 billing tier-checkout hobby --email <human@email>` returns a checkout URL the human pays once.
+- Path B — Stripe credits: create or pick the organization, then `run402 billing checkout <org_id> --product tier --tier hobby` returns a checkout URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
 
