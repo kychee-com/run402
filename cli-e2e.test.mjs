@@ -1514,6 +1514,7 @@ describe("CLI e2e happy path", () => {
     const { writeFileSync: wf } = await import("node:fs");
     const manifestPath = join(tempDir, "manifest.validate.json");
     const migrationPath = join(tempDir, "manifest.validate.sql");
+    await seedTestProject();
     wf(manifestPath, JSON.stringify({ version: "1", tables: [{ name: "items" }] }));
     wf(migrationPath, "create table items (id bigint primary key);");
 
@@ -1529,21 +1530,22 @@ describe("CLI e2e happy path", () => {
 
     const parsed = JSON.parse(capturedStdout());
     assert.equal(parsed.status, undefined, "validate-expose must not emit a top-level status field");
-    assert.equal(parsed.hasErrors, false);
+    assert.equal(parsed.has_errors, false);
     assert.equal(parsed.warnings[0]?.type, "validation-inconclusive");
   });
 
   it("projects validate-expose prints validation findings without exiting non-zero", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const manifest = JSON.stringify({ version: "1", tables: [{ name: "missing_items" }] });
+    await seedTestProject();
 
     captureStart();
-    await run("validate-expose", [manifest]);
+    await run("validate-expose", ["prj_test123", manifest]);
     captureStop();
 
     const parsed = JSON.parse(capturedStdout());
     assert.equal(parsed.status, undefined, "validate-expose must not emit a top-level status field");
-    assert.equal(parsed.hasErrors, true);
+    assert.equal(parsed.has_errors, true);
     assert.equal(parsed.errors[0]?.type, "missing-table");
   });
 
@@ -2846,7 +2848,7 @@ describe("CLI e2e happy path", () => {
           replace: {
             api: {
               source: { data: "export default { fetch() { return new Response('ok') } };" },
-              config: { timeoutSeconds: 20 },
+              config: { timeout_seconds: 20 },
             },
           },
         },
@@ -2871,7 +2873,7 @@ describe("CLI e2e happy path", () => {
           replace: {
             api: {
               source: { data: "export default { fetch() { return new Response('ok') } };" },
-              config: { memoryMb: 256 },
+              config: { memory_mb: 256 },
             },
           },
         },

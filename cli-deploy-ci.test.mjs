@@ -176,7 +176,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     assert.ok(plan, "should plan the deploy");
     assert.equal(plan.headers.authorization, "Bearer run402-ci-session");
     assert.equal(plan.headers.apikey, undefined);
-    assert.equal(plan.body.spec.project, "prj_ci_env");
+    assert.equal(plan.body.spec.project_id, "prj_ci_env");
 
     const parsedStdout = JSON.parse(stdout.join("\n"));
     assert.equal(parsedStdout.status, undefined, "deploy apply must not emit a top-level status field");
