@@ -240,9 +240,9 @@ const resumed = await (await r.project(projectId)).apply.resume(operationId);
 // Lower-level steps for CLI debugging:
 const pScoped = await r.project(spec.project);
 const { plan: lowPlan, byteReaders } = await pScoped.apply.plan(spec);
-await pScoped.deploy.upload(lowPlan, { byteReaders });
+await pScoped.apply.upload(lowPlan, { byteReaders });
 if (!lowPlan.plan_id) throw new Error("Dry-run plans cannot be committed");
-const committed = await pScoped.deploy.commit(lowPlan.plan_id);
+const committed = await pScoped.apply.commit(lowPlan.plan_id);
 
 // Server-authoritative dry-run: no bytes uploaded, no plan/operation rows.
 const { plan: preview } = await pScoped.apply.plan(spec, { dryRun: true });

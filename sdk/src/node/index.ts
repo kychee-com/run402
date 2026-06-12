@@ -152,6 +152,7 @@ export {
   EMPTY_STATIC_MANIFEST_METADATA,
   ROUTE_HTTP_METHODS,
   Ci,
+  Deploy,
   CI_SESSION_CREDENTIALS,
   Orgs,
   ScopedOrg,
