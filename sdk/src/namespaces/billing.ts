@@ -1,11 +1,11 @@
 /**
- * `billing` namespace — billing accounts and Stripe checkouts.
+ * `billing` namespace — organizations and Stripe checkouts.
  *
- * Accounts are addressed by their canonical `billing_account_id` (UUID). A
+ * Organizations are addressed by their canonical `organization_id` (UUID). A
  * wallet or email is resolved to that id through the
- * `GET /billing/v1/accounts?wallet=|?email=` lookup; `getAccount` / `history`
- * accept any of the three identifier forms and resolve internally. Account
- * reads require SIWX from a wallet linked to the account (or matching the
+ * `GET /orgs/v1/lookup?wallet=|?email=` lookup; `getOrganization` / `history`
+ * accept any of the three identifier forms and resolve internally. Organization
+ * reads require SIWX from a wallet linked to the organization (or matching the
  * looked-up `?wallet`), or an admin key; email lookups are admin-only.
  * Mutations such as link-wallet / auto-recharge require SIWX (or admin);
  * checkout-creation endpoints remain unauthenticated by design.
@@ -22,9 +22,9 @@ import {
 } from "../validation.js";
 import type { ProjectTier } from "./projects.types.js";
 
-export interface BillingAccountDetail {
-  /** Canonical billing account id (UUID). */
-  billing_account_id: string;
+export interface OrganizationDetail {
+  /** Canonical organization id (UUID). */
+  organization_id: string;
   available_usd_micros: number;
   /** Held/reserved portion of the balance; absent on gateways that predate the field. */
   held_usd_micros?: number;
@@ -34,13 +34,6 @@ export interface BillingAccountDetail {
   auto_recharge_enabled: boolean;
   auto_recharge_threshold: number;
 }
-
-/**
- * @deprecated Renamed to {@link BillingAccountDetail}. The account read now
- * returns the canonical `billing_account_id` and no longer carries
- * `identifier_type` (accounts are addressed by id, not by wallet/email).
- */
-export type BillingBalance = BillingAccountDetail;
 
 export interface BillingHistoryEntry {
   id: string;
@@ -56,8 +49,8 @@ export interface BillingHistoryEntry {
 }
 
 export interface BillingHistoryResult {
-  /** Canonical billing account id (UUID) the entries belong to. */
-  billing_account_id: string;
+  /** Canonical organization id (UUID) the entries belong to. */
+  organization_id: string;
   entries: BillingHistoryEntry[];
 }
 
@@ -66,7 +59,7 @@ export interface CreateCheckoutResult {
   topup_id: string;
 }
 
-export interface EmailBillingAccount {
+export interface EmailOrganization {
   id: string;
   email: string;
   email_credits_remaining: number;
@@ -81,8 +74,8 @@ export interface EmailBillingAccount {
 export interface LinkWalletPoolImplications {
   tier: ProjectTier | null;
   projects_in_pool_count: number;
-  account_api_calls_current: number;
-  account_storage_bytes_current: number;
+  organization_api_calls_current: number;
+  organization_storage_bytes_current: number;
   tier_limits: {
     api_calls: number;
     storage_bytes: number;
@@ -92,21 +85,21 @@ export interface LinkWalletPoolImplications {
 
 export interface LinkWalletResult {
   status: string;
-  billing_account_id: string;
+  organization_id: string;
   wallet: string;
   /** Present on v1.46+ gateways; undefined when the gateway predates the field. */
   pool_implications?: LinkWalletPoolImplications;
 }
 
-export interface AccountIdentifier {
+export interface OrganizationCheckoutIdentifier {
   email?: string;
   wallet?: string;
 }
 
-export type BillingAccountIdentifier = string;
+export type OrganizationIdentifier = string;
 
 export interface AutoRechargeOptions {
-  billingAccountId: string;
+  organizationId: string;
   enabled: boolean;
   threshold?: number;
 }
@@ -116,7 +109,7 @@ const BILLING_TIERS = ["prototype", "hobby", "team"] as const;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type BillingIdentifierKind = "account_id" | "wallet" | "email";
+type BillingIdentifierKind = "organization_id" | "wallet" | "email";
 
 interface ClassifiedBillingIdentifier {
   kind: BillingIdentifierKind;
@@ -124,8 +117,8 @@ interface ClassifiedBillingIdentifier {
 }
 
 /**
- * Classify a billing identifier as a canonical account id (UUID), an EVM
- * wallet address, or an email. Wallets are lowercased; account ids and emails
+ * Classify a billing identifier as a canonical organization id (UUID), an EVM
+ * wallet address, or an email. Wallets are lowercased; organization ids and emails
  * are returned verbatim. Throws {@link LocalError} for anything else.
  */
 function classifyBillingIdentifier(
@@ -134,7 +127,7 @@ function classifyBillingIdentifier(
 ): ClassifiedBillingIdentifier {
   assertNonEmptyString(identifier, "identifier", context);
   if (UUID_RE.test(identifier)) {
-    return { kind: "account_id", value: identifier };
+    return { kind: "organization_id", value: identifier };
   }
   if (/^0x/i.test(identifier)) {
     assertEvmAddress(identifier, "identifier", context);
@@ -144,49 +137,49 @@ function classifyBillingIdentifier(
   return { kind: "email", value: identifier };
 }
 
-/** Read account detail by canonical id: `GET /billing/v1/accounts/:account_id`. */
-function fetchAccountById(
+/** Read organization billing detail by canonical id: `GET /orgs/v1/:org_id/billing`. */
+function fetchOrganizationById(
   client: Client,
-  accountId: string,
+  organizationId: string,
   context: string,
-): Promise<BillingAccountDetail> {
-  return client.request<BillingAccountDetail>(
-    `/billing/v1/accounts/${encodeURIComponent(accountId)}`,
+): Promise<OrganizationDetail> {
+  return client.request<OrganizationDetail>(
+    `/orgs/v1/${encodeURIComponent(organizationId)}/billing`,
     { context },
   );
 }
 
 /**
- * Resolve a wallet / email to its account detail via the lookup endpoint
- * `GET /billing/v1/accounts?wallet=|?email=`. The lookup returns the same
- * detail shape as the by-id read, including the resolved `billing_account_id`.
+ * Resolve a wallet / email to its organization detail via the lookup endpoint
+ * `GET /orgs/v1/lookup?wallet=|?email=`. The lookup returns the same
+ * detail shape as the by-id read, including the resolved `organization_id`.
  */
-function fetchAccountByLookup(
+function fetchOrganizationByLookup(
   client: Client,
   kind: "wallet" | "email",
   value: string,
   context: string,
-): Promise<BillingAccountDetail> {
-  return client.request<BillingAccountDetail>(
-    `/billing/v1/accounts?${kind}=${encodeURIComponent(value)}`,
+): Promise<OrganizationDetail> {
+  return client.request<OrganizationDetail>(
+    `/orgs/v1/lookup?${kind}=${encodeURIComponent(value)}`,
     { context },
   );
 }
 
 /**
- * Resolve any identifier form (account id / wallet / email) to the account
- * detail. Account ids hit the canonical by-id read; wallet/email go through
+ * Resolve any identifier form (organization id / wallet / email) to the organization
+ * detail. Organization ids hit the canonical by-id read; wallet/email go through
  * the `?wallet=`/`?email=` lookup. All paths send SIWX via the kernel default.
  */
-async function resolveAccountDetail(
+async function resolveOrganizationDetail(
   client: Client,
-  identifier: BillingAccountIdentifier,
+  identifier: OrganizationIdentifier,
   context: string,
-): Promise<BillingAccountDetail> {
+): Promise<OrganizationDetail> {
   const id = classifyBillingIdentifier(identifier, context);
-  return id.kind === "account_id"
-    ? fetchAccountById(client, id.value, context)
-    : fetchAccountByLookup(client, id.kind, id.value, context);
+  return id.kind === "organization_id"
+    ? fetchOrganizationById(client, id.value, context)
+    : fetchOrganizationByLookup(client, id.kind, id.value, context);
 }
 
 function assertNonNegativeSafeInteger(
@@ -213,7 +206,7 @@ function assertUsdMicrosAmount(
 }
 
 function checkoutIdentifierBody(
-  identifier: AccountIdentifier,
+  identifier: OrganizationCheckoutIdentifier,
   context: string,
 ): Record<string, string> {
   if (!identifier || typeof identifier !== "object" || Array.isArray(identifier)) {
@@ -245,64 +238,64 @@ function checkoutIdentifierBody(
 }
 
 export class Billing {
-  readonly balance: (identifier: BillingAccountIdentifier) => Promise<BillingAccountDetail>;
-  readonly createEmail: (email: string) => Promise<EmailBillingAccount>;
+  readonly balance: (identifier: OrganizationIdentifier) => Promise<OrganizationDetail>;
+  readonly createEmail: (email: string) => Promise<EmailOrganization>;
   readonly autoRecharge: (opts: AutoRechargeOptions) => Promise<void>;
 
   constructor(private readonly client: Client) {
     this.balance = this.checkBalance.bind(this);
-    this.createEmail = this.createEmailAccount.bind(this);
+    this.createEmail = this.createEmailOrganization.bind(this);
     this.autoRecharge = this.setAutoRecharge.bind(this);
   }
 
-  /** Check a billing account by account id (UUID), wallet, or email. */
-  async checkBalance(identifier: BillingAccountIdentifier): Promise<BillingAccountDetail> {
-    return this.getAccount(identifier);
+  /** Check a organization by organization id (UUID), wallet, or email. */
+  async checkBalance(identifier: OrganizationIdentifier): Promise<OrganizationDetail> {
+    return this.getOrganization(identifier);
   }
 
   /**
-   * Read a billing account's financial detail by account id (UUID), wallet,
-   * or email. An account id reads `GET /billing/v1/accounts/:account_id`
+   * Read a organization's financial detail by organization id (UUID), wallet,
+   * or email. An organization id reads `GET /orgs/v1/:org_id/billing`
    * directly; a wallet/email is resolved through the
-   * `GET /billing/v1/accounts?wallet=|?email=` lookup. Requires SIWX from a
-   * wallet linked to the account (or matching the looked-up `?wallet`), or an
+   * `GET /orgs/v1/lookup?wallet=|?email=` lookup. Requires SIWX from a
+   * wallet linked to the organization (or matching the looked-up `?wallet`), or an
    * admin key; email lookups are admin-only.
    */
-  async getAccount(identifier: BillingAccountIdentifier): Promise<BillingAccountDetail> {
-    return resolveAccountDetail(this.client, identifier, "checking balance");
+  async getOrganization(identifier: OrganizationIdentifier): Promise<OrganizationDetail> {
+    return resolveOrganizationDetail(this.client, identifier, "checking balance");
   }
 
   /**
-   * Resolve a wallet or email to its billing account detail — including the
-   * canonical `billing_account_id` — via `GET /billing/v1/accounts?wallet=|?email=`.
-   * An account-id (UUID) argument is read directly instead. SIWX must match the
+   * Resolve a wallet or email to its organization detail — including the
+   * canonical `organization_id` — via `GET /orgs/v1/lookup?wallet=|?email=`.
+   * An org-id (UUID) argument is read directly instead. SIWX must match the
    * `?wallet`; email lookups are admin-only.
    */
-  async lookupAccount(identifier: BillingAccountIdentifier): Promise<BillingAccountDetail> {
-    return resolveAccountDetail(this.client, identifier, "looking up billing account");
+  async lookupOrganization(identifier: OrganizationIdentifier): Promise<OrganizationDetail> {
+    return resolveOrganizationDetail(this.client, identifier, "looking up organization");
   }
 
-  /** Fetch billing history by account id (UUID), wallet, or email. */
-  async history(identifier: BillingAccountIdentifier, limit?: number): Promise<BillingHistoryResult> {
+  /** Fetch billing history by organization id (UUID), wallet, or email. */
+  async history(identifier: OrganizationIdentifier, limit?: number): Promise<BillingHistoryResult> {
     return this.getHistory(identifier, limit);
   }
 
   /**
-   * Fetch ledger history for a billing account. History is keyed by account id
-   * (UUID): a wallet/email identifier is first resolved to its account via the
-   * lookup, then `GET /billing/v1/accounts/:account_id/history` is read.
-   * Requires SIWX from a wallet linked to the account, or an admin key.
+   * Fetch ledger history for a organization. History is keyed by organization id
+   * (UUID): a wallet/email identifier is first resolved to its organization via the
+   * lookup, then `GET /orgs/v1/:org_id/billing/history` is read.
+   * Requires SIWX from a wallet linked to the organization, or an admin key.
    */
-  async getHistory(identifier: BillingAccountIdentifier, limit?: number): Promise<BillingHistoryResult> {
+  async getHistory(identifier: OrganizationIdentifier, limit?: number): Promise<BillingHistoryResult> {
     if (limit !== undefined) {
       assertPositiveSafeInteger(limit, "limit", "fetching billing history");
     }
     const id = classifyBillingIdentifier(identifier, "fetching billing history");
-    const accountId = id.kind === "account_id"
+    const organizationId = id.kind === "organization_id"
       ? id.value
-      : (await fetchAccountByLookup(this.client, id.kind, id.value, "fetching billing history"))
-          .billing_account_id;
-    const base = `/billing/v1/accounts/${encodeURIComponent(accountId)}/history`;
+      : (await fetchOrganizationByLookup(this.client, id.kind, id.value, "fetching billing history"))
+          .organization_id;
+    const base = `/orgs/v1/${encodeURIComponent(organizationId)}/billing/history`;
     const path = limit !== undefined
       ? `${base}?limit=${encodeURIComponent(String(limit))}`
       : base;
@@ -323,35 +316,35 @@ export class Billing {
     });
   }
 
-  /** Create an email-only (no-wallet) billing account. Sends a verification email. */
-  async createEmailAccount(email: string): Promise<EmailBillingAccount> {
-    assertEmailAddress(email, "email", "creating email billing account");
-    return this.client.request<EmailBillingAccount>("/billing/v1/accounts", {
+  /** Create an email-only (no-wallet) organization. Sends a verification email. */
+  async createEmailOrganization(email: string): Promise<EmailOrganization> {
+    assertEmailAddress(email, "email", "creating email organization");
+    return this.client.request<EmailOrganization>("/orgs/v1/email", {
       method: "POST",
       body: { email },
-      context: "creating email billing account",
+      context: "creating email organization",
       withAuth: false,
     });
   }
 
   /**
-   * Link a wallet to an existing email billing account to enable hybrid
-   * Stripe + x402 payments. `billingAccountId` is the canonical
-   * `billing_account_id` (UUID) returned by `createEmailAccount` /
-   * `lookupAccount`; the gateway addresses the route as
-   * `POST /billing/v1/accounts/:account_id/link-wallet`. Returns the gateway
+   * Link a wallet to an existing email organization to enable hybrid
+   * Stripe + x402 payments. `organizationId` is the canonical
+   * `organization_id` (UUID) returned by `createEmailOrganization` /
+   * `lookupOrganization`; the gateway addresses the route as
+   * `POST /orgs/v1/:org_id/wallets`. Returns the gateway
    * response; v1.46+ gateways include a {@link LinkWalletPoolImplications}
    * block describing the freshly-shared pool's tier, current usage, and limits
    * so callers can warn before the merge pushes usage `over_limit`.
    */
   async linkWallet(
-    billingAccountId: string,
+    organizationId: string,
     wallet: string,
   ): Promise<LinkWalletResult> {
-    assertNonEmptyString(billingAccountId, "billingAccountId", "linking wallet");
+    assertNonEmptyString(organizationId, "organizationId", "linking wallet");
     assertEvmAddress(wallet, "wallet", "linking wallet");
     return this.client.request<LinkWalletResult>(
-      `/billing/v1/accounts/${encodeURIComponent(billingAccountId)}/link-wallet`,
+      `/orgs/v1/${encodeURIComponent(organizationId)}/wallets`,
       {
         method: "POST",
         body: { wallet: wallet.toLowerCase() },
@@ -361,7 +354,7 @@ export class Billing {
   }
 
   /** Create a Stripe checkout for a tier subscription/renewal/upgrade. */
-  async tierCheckout(tier: string, identifier: AccountIdentifier): Promise<CreateCheckoutResult> {
+  async tierCheckout(tier: string, identifier: OrganizationCheckoutIdentifier): Promise<CreateCheckoutResult> {
     assertStringInSet(tier, BILLING_TIERS, "tier", "creating tier checkout");
     const body = checkoutIdentifierBody(identifier, "creating tier checkout");
 
@@ -374,7 +367,7 @@ export class Billing {
   }
 
   /** Buy a $5 email pack (10,000 emails). */
-  async buyEmailPack(identifier: AccountIdentifier): Promise<CreateCheckoutResult> {
+  async buyEmailPack(identifier: OrganizationCheckoutIdentifier): Promise<CreateCheckoutResult> {
     const body = checkoutIdentifierBody(identifier, "creating email pack checkout");
 
     return this.client.request<CreateCheckoutResult>("/billing/v1/email-packs/checkout", {
@@ -388,7 +381,7 @@ export class Billing {
   /** Enable/disable email-pack auto-recharge. */
   async setAutoRecharge(opts: AutoRechargeOptions): Promise<void> {
     const body: Record<string, unknown> = {
-      billing_account_id: opts.billingAccountId,
+      organization_id: opts.organizationId,
       enabled: opts.enabled,
     };
     if (opts.threshold !== undefined) {

@@ -87,7 +87,7 @@ import { listSubdomainsSchema, handleListSubdomains } from "./tools/list-subdoma
 import { deleteProjectSchema, handleDeleteProject } from "./tools/delete-project.js";
 import { renameProjectSchema, handleRenameProject } from "./tools/rename-project.js";
 
-// v1.57 — operator-only project + billing-account actions
+// v1.57 — operator-only project + organization actions
 import {
   adminSetLeasePerpetualSchema,
   handleAdminSetLeasePerpetual,
@@ -216,9 +216,9 @@ import { removeSenderDomainSchema, handleRemoveSenderDomain } from "./tools/remo
 import { enableInboundSchema, handleEnableInbound } from "./tools/enable-inbound.js";
 import { disableInboundSchema, handleDisableInbound } from "./tools/disable-inbound.js";
 
-// New tools — email billing accounts + Stripe tier checkout + email packs
-import { createEmailBillingAccountSchema, handleCreateEmailBillingAccount } from "./tools/create-email-billing-account.js";
-import { linkWalletToAccountSchema, handleLinkWalletToAccount } from "./tools/link-wallet-to-account.js";
+// New tools — email organizations + Stripe tier checkout + email packs
+import { createEmailOrganizationSchema, handleCreateEmailOrganization } from "./tools/create-email-organization.js";
+import { linkWalletToOrganizationSchema, handleLinkWalletToOrganization } from "./tools/link-wallet-to-organization.js";
 import { tierCheckoutSchema, handleTierCheckout } from "./tools/tier-checkout.js";
 import { buyEmailPackSchema, handleBuyEmailPack } from "./tools/buy-email-pack.js";
 import { setAutoRechargeSchema, handleSetAutoRecharge } from "./tools/set-auto-recharge.js";
@@ -721,21 +721,21 @@ server.tool(
 
 server.tool(
   "admin_set_lease_perpetual",
-  "Toggle a billing account's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the account never advances past `active` regardless of lease expiry; every project on the account inherits the pinned state. Enabling on a grace-state account (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured allowance wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /billing/v1/admin/accounts/:account_id/lease-perpetual.",
+  "Toggle an organization's `lease_perpetual` escape hatch (v1.57+). When `lease_perpetual: true`, the organization never advances past `active` regardless of lease expiry; every project in the organization inherits the pinned state. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline and returns `reactivated: true`. Platform-admin only — uses the configured allowance wallet for admin auth. Replaces the v1.56 `pin_project` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57). Calls POST /orgs/v1/admin/:org_id/lease-perpetual.",
   adminSetLeasePerpetualSchema,
   async (args) => handleAdminSetLeasePerpetual(args),
 );
 
 server.tool(
   "admin_archive_project",
-  "Operator moderation action — archive a single project (sets `projects.archived_at = NOW()`). Independent of account-level lifecycle: sibling projects on the same billing account keep serving. No-op when the project is already archived. Platform-admin only. Calls POST /projects/v1/admin/:id/archive.",
+  "Operator moderation action — archive a single project (sets `projects.archived_at = NOW()`). Independent of organization-level lifecycle: sibling projects on the same organization keep serving. No-op when the project is already archived. Platform-admin only. Calls POST /projects/v1/admin/:id/archive.",
   adminArchiveProjectSchema,
   async (args) => handleAdminArchiveProject(args),
 );
 
 server.tool(
   "admin_reactivate_project",
-  "Operator un-archive — flips `projects.archived_at` back to NULL. In v1.57 this was narrowed: it no longer touches account-level lifecycle. To reactivate a grace-state account, subscribe a tier (`tier_set`) or enable lease-perpetual (`admin_set_lease_perpetual`). Platform-admin only. Calls POST /projects/v1/admin/:id/reactivate.",
+  "Operator un-archive — flips `projects.archived_at` back to NULL. In v1.57 this was narrowed: it no longer touches organization-level lifecycle. To reactivate a grace-state organization, subscribe a tier (`tier_set`) or enable lease-perpetual (`admin_set_lease_perpetual`). Platform-admin only. Calls POST /projects/v1/admin/:id/reactivate.",
   adminReactivateProjectSchema,
   async (args) => handleAdminReactivateProject(args),
 );
@@ -744,7 +744,7 @@ server.tool(
 
 server.tool(
   "initiate_project_transfer",
-  "Initiate a two-party project transfer (v1.59+). You must currently own the project (gateway verifies against fresh DB state). Creates a `pending` row with 72h expiry and freezes owner-side mutations on the project until accepted, cancelled, or expired. The recipient gets the project under the `migrate` billing policy (project moves into their billing account). Owner's tier lease is NOT refunded. GitHub repo ownership is NOT transferred. Calls POST /projects/v1/:project_id/transfers.",
+  "Initiate a two-party project transfer (v1.59+). You must currently own the project (gateway verifies against fresh DB state). Creates a `pending` row with 72h expiry and freezes owner-side mutations on the project until accepted, cancelled, or expired. The recipient gets the project under the `migrate` billing policy (project moves into their organization). Owner's tier lease is NOT refunded. GitHub repo ownership is NOT transferred. Calls POST /projects/v1/:project_id/transfers.",
   initiateProjectTransferSchema,
   async (args) => handleInitiateProjectTransfer(args),
 );
@@ -802,14 +802,14 @@ server.tool(
 
 server.tool(
   "check_balance",
-  "Check the billing account balance for the agent's allowance wallet — available and held funds. The wallet is resolved to its billing account over SIWX (signed automatically); reading a wallet that is not linked to yours requires an admin key.",
+  "Check the organization balance for the agent's allowance wallet — available and held funds. The wallet is resolved to its organization over SIWX (signed automatically); reading a wallet that is not linked to yours requires an admin key.",
   checkBalanceSchema,
   async (args) => handleCheckBalance(args),
 );
 
 server.tool(
   "list_projects",
-  "List projects from the named, domain-aware inventory (GET /projects/v1). Membership-scoped by default: every project owned by an org the agent's wallet is an active member of, with name, site_url, custom_domains, org (billing_account_id), and status. SIWX wallet auth is signed automatically. Pass org_id to filter to one org (authorize-before-reveal: non-member/guessed → 403, non-UUID → 400), all:true to read the cross-wallet inventory across every wallet controlling your operator email, or limit/cursor to paginate.",
+  "List projects from the named, domain-aware inventory (GET /projects/v1). Membership-scoped by default: every project owned by an org the agent's wallet is an active member of, with name, site_url, custom_domains, org (organization_id), and status. SIWX wallet auth is signed automatically. Pass org_id to filter to one org (authorize-before-reveal: non-member/guessed → 403, non-UUID → 400), all:true to read the cross-wallet inventory across every wallet controlling your operator email, or limit/cursor to paginate.",
   listProjectsSchema,
   async (args) => handleListProjects(args),
 );
@@ -1017,7 +1017,7 @@ server.tool(
 
 server.tool(
   "get_operator_status",
-  "Compact operator-health snapshot: contact assurance, critical items, skipped notifications, billing accounts, projects, active thresholds. Read via run402 doctor.",
+  "Compact operator-health snapshot: contact assurance, critical items, skipped notifications, organizations, projects, active thresholds. Read via run402 doctor.",
   getOperatorStatusSchema,
   async (args) => handleGetOperatorStatus(args),
 );
@@ -1068,7 +1068,7 @@ server.tool(
 
 server.tool(
   "billing_history",
-  "View billing ledger history for the agent's allowance wallet. The wallet is resolved to its billing account over SIWX (signed automatically); a wallet not linked to yours requires an admin key.",
+  "View billing ledger history for the agent's allowance wallet. The wallet is resolved to its organization over SIWX (signed automatically); a wallet not linked to yours requires an admin key.",
   billingHistorySchema,
   async (args) => handleBillingHistory(args),
 );
@@ -1109,7 +1109,7 @@ server.tool(
 
 server.tool(
   "status",
-  "Full account snapshot — allowance, billing balance, tier subscription, projects, and active project. Single-call overview.",
+  "Full organization snapshot — allowance, billing balance, tier subscription, projects, and active project. Single-call overview.",
   statusSchema,
   async (args) => handleStatus(args as Record<string, never>),
 );
@@ -1267,20 +1267,20 @@ server.tool(
   async (args) => handleDisableInbound(args),
 );
 
-// --- Email billing accounts + Stripe tier checkout + email packs ---
+// --- Email organizations + Stripe tier checkout + email packs ---
 
 server.tool(
-  "create_email_billing_account",
-  "Create an email-based billing account (Stripe-only, no wallet required). Sends a verification email. Idempotent — duplicate emails return the existing account.",
-  createEmailBillingAccountSchema,
-  async (args) => handleCreateEmailBillingAccount(args),
+  "create_email_organization",
+  "Create an email-based organization (Stripe-only, no wallet required). Sends a verification email. Idempotent — duplicate emails return the existing organization.",
+  createEmailOrganizationSchema,
+  async (args) => handleCreateEmailOrganization(args),
 );
 
 server.tool(
-  "link_wallet_to_account",
-  "Link a wallet to an existing email billing account, enabling hybrid Stripe + x402 access. Fails if the wallet is already linked elsewhere.",
-  linkWalletToAccountSchema,
-  async (args) => handleLinkWalletToAccount(args),
+  "link_wallet_to_organization",
+  "Link a wallet to an existing email organization, enabling hybrid Stripe + x402 access. Fails if the wallet is already linked elsewhere.",
+  linkWalletToOrganizationSchema,
+  async (args) => handleLinkWalletToOrganization(args),
 );
 
 server.tool(
@@ -1387,14 +1387,14 @@ server.tool(
 
 server.tool(
   "service_status",
-  "Reports on the Run402 SERVICE (availability, capabilities, operator, deployment) — not your account. For your account status (allowance, tier, projects), use `status`. Reads public GET /status. No auth, no allowance required.",
+  "Reports on the Run402 SERVICE (availability, capabilities, operator, deployment) — not your organization. For your organization status (allowance, tier, projects), use `status`. Reads public GET /status. No auth, no allowance required.",
   serviceStatusSchema,
   async (args) => handleServiceStatus(args),
 );
 
 server.tool(
   "service_health",
-  "Liveness check for the Run402 SERVICE — not your account. For your account status (allowance, tier, projects), use `status`. Reads public GET /health with per-dependency check results. No auth required.",
+  "Liveness check for the Run402 SERVICE — not your organization. For your organization status (allowance, tier, projects), use `status`. Reads public GET /health with per-dependency check results. No auth required.",
   serviceHealthSchema,
   async (args) => handleServiceHealth(args),
 );

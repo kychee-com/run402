@@ -47,7 +47,7 @@ Every CLI subcommand follows the same stdout/stderr/exit-code contract. Read thi
 Stdout (success) — the natural JSON payload, never wrapped. No top-level `status` field. The payload's shape depends on the command:
 - Reads / lists / info — emit the resource directly (`projects info` returns `{ project_id, anon_key, ... }`; `projects list` returns `{ projects: [...], scope?, has_more?, next_cursor? }`).
 - Mutations with no natural payload — echo the affected resource identifiers plus an explicit boolean state field naming what happened, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`. Never an empty object.
-- Local-state inspection — `run402 status` and `run402 allowance status` use typed nullable payload fields: `{ wallet: null, hint: "Run: run402 init" }` when absent, and the populated account/wallet payload when present. Absence exits 0 — it is an informational read, not an error.
+- Local-state inspection — `run402 status` and `run402 allowance status` use typed nullable payload fields: `{ wallet: null, hint: "Run: run402 init" }` when absent, and the populated organization/wallet payload when present. Absence exits 0 — it is an informational read, not an error.
 - Plain text — a small set of commands (e.g. `run402 allowance export` returning a wallet address) emit a plain-text value with a trailing newline; their help text documents this.
 
 Stderr (failure) — a structured JSON error envelope with `status: "error"` and non-zero exit. The `status` field is the sentinel that says "this is an error" — it is preserved on stderr only and never appears on stdout. The envelope's other canonical fields are described under Error JSON and Safe Retry below.
@@ -140,9 +140,9 @@ run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
 
-Tier is per billing account, not per project. One subscribe / renew / upgrade applies immediately to every project on the account, and `api_calls` / `storage_bytes` quotas are enforced against the pooled total across every project on the account. Multi-wallet accounts (via `run402 billing link-wallet`) share that same pool. Quota-denial error envelopes include `details.scope: "account" | "project"` -- `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
+Tier is per organization, not per project. One subscribe / renew / upgrade applies immediately to every project in the organization, and `api_calls` / `storage_bytes` quotas are enforced against the pooled total across every project in the organization. Multi-wallet organizations (via `run402 billing link-wallet`) share that same pool. Quota-denial error envelopes include `details.scope: "organization" | "project"` -- `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
 
-`run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed account-pool snapshot as `status_after` in the JSON output so you can see the new pooled `api_calls` / `storage_bytes` totals in one step.
+`run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed organization-pool snapshot as `status_after` in the JSON output so you can see the new pooled `api_calls` / `storage_bytes` totals in one step.
 
 The server auto-detects the action based on your allowance state:
 - No tier or expired -> subscribe
@@ -156,9 +156,9 @@ Check your tier status:
 run402 tier status
 ```
 
-`tier status` `pool_usage` sums `api_calls` and `storage_bytes` across every project on the billing account (across every linked wallet), not the requesting wallet's projects.
+`tier status` `pool_usage` sums `api_calls` and `storage_bytes` across every project on the organization (across every linked wallet), not the requesting wallet's projects.
 
-After subscribing, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your allowance signature, subject to the account-pooled api_calls and storage_bytes caps for your tier. Only image generation ($0.03/image) has a per-call cost.
+After subscribing, you can create unlimited projects, deploy unlimited sites, and fork apps -- all free with your allowance signature, subject to the organization-pooled api_calls and storage_bytes caps for your tier. Only image generation ($0.03/image) has a per-call cost.
 
 ---
 ## Deploying Apps
@@ -799,7 +799,7 @@ run402 subdomains claim my-app
 - `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
 
 ### status
-`run402 status` — show full account state in one shot (wallet, rail, balances, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { local_label, server_label, address }` object naming the active named wallet (`local_label` is the local selector, `server_label` the server-synced display name or null), a top-level `rail`, and a `balances: { on_chain_usd_micros, on_chain_token, prepaid_credit_usd_micros, held_usd_micros }` object. The on-chain token tracks the rail (USDC on x402, pathUSD on mpp); prepaid credit is rail-independent.
+`run402 status` — show full organization state in one shot (wallet, rail, balances, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { local_label, server_label, address }` object naming the active named wallet (`local_label` is the local selector, `server_label` the server-synced display name or null), a top-level `rail`, and a `balances: { on_chain_usd_micros, on_chain_token, prepaid_credit_usd_micros, held_usd_micros }` object. The on-chain token tracks the rail (USDC on x402, pathUSD on mpp); prepaid credit is rail-independent.
 
 ### wallets
 Manage multiple named wallets (profiles) on one machine. Keys never leave the machine (non-custodial). The `default` wallet lives at the config-dir root; named wallets live under `{config_dir}/profiles/<name>/`.
@@ -821,16 +821,16 @@ Manage multiple named wallets (profiles) on one machine. Keys never leave the ma
 - `run402 allowance history [--limit <n>]`
 
 ### tier
-Tier and quotas are per billing account (not per project) — `set` is account-wide, `status.pool_usage` is the pooled total across every project on the account. `set` refetches status after the call and includes it as `status_after`.
+Tier and quotas are per organization (not per project) — `set` is organization-wide, `status.pool_usage` is the pooled total across every project in the organization. `set` refetches status after the call and includes it as `status_after`.
 
 - `run402 tier status`
 - `run402 tier set <prototype|hobby|team>`
 
 ### projects
 - `run402 projects quote`
-- `run402 projects list [--org <id>] [--all]` — SERVER read of the named, domain-aware inventory (NOT the local keystore). Membership-scoped by default: every project owned by an org your wallet is an active member of, each row `{ project_id, name, site_url, custom_domains, org_id, status, active }` (`active` from local state). `--org <id>` filters to one org (authorize-before-reveal: non-member/guessed id -> 403, non-UUID -> 400). `--all` reads the cross-wallet inventory across every wallet controlling your operator email — run `run402 operator login` first for the union, else it falls back to the current wallet's slice and echoes `scope`. Bare `run402 projects list` is the cold-start path (no login needed). Tier/lifecycle live on the billing account — use `run402 status` / `run402 tier status`.
+- `run402 projects list [--org <id>] [--all]` — SERVER read of the named, domain-aware inventory (NOT the local keystore). Membership-scoped by default: every project owned by an org your wallet is an active member of, each row `{ project_id, name, site_url, custom_domains, org_id, status, active }` (`active` from local state). `--org <id>` filters to one org (authorize-before-reveal: non-member/guessed id -> 403, non-UUID -> 400). `--all` reads the cross-wallet inventory across every wallet controlling your operator email — run `run402 operator login` first for the union, else it falls back to the current wallet's slice and echoes `scope`. Bare `run402 projects list` is the cold-start path (no login needed). Tier/lifecycle live on the organization — use `run402 status` / `run402 tier status`.
 - `run402 projects rename <id> --name <label>` — rename a project (fix an auto-generated name). Needs org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Works even if the project isn't in the local keystore. Server-validated name (1-200 chars, no control characters).
-- `run402 projects provision [--name <name>] [--org <id>]` — `--org` provisions into an EXISTING org (you need `developer`+ on it); omit for the cold-start path (the wallet's billing account). Tier is org-governed — a client-supplied `--tier` is ignored when targeting an org.
+- `run402 projects provision [--name <name>] [--org <id>]` — `--org` provisions into an EXISTING org (you need `developer`+ on it); omit for the cold-start path (the wallet's organization). Tier is org-governed — a client-supplied `--tier` is ignored when targeting an org.
 - `run402 projects use <id>`
 - `run402 projects info <id>`
 - `run402 projects sql <id> "<sql>" [--file <path>] [--params '<json_array>']`
@@ -854,9 +854,9 @@ SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`,
 User auth: password + Google OAuth. See "User Auth" section below.
 
 ### admin (platform-admin only, v1.57+)
-- `run402 admin lease-perpetual <billing_account_id> --enable | --disable` — toggle the account-level escape hatch. When enabled, the account never advances past `active` regardless of lease expiry; every project on the account is pinned. Enabling on a grace-state account (past_due / frozen / dormant) reactivates inline (`reactivated: true` in the response). Replaces the v1.56 `run402 projects pin` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57).
-- `run402 admin archive <project_id> [--reason "..."]` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same billing account keep serving. No-op when already archived (returns `note: "already archived"`).
-- `run402 admin reactivate <project_id>` — un-archive a project (flips `archived_at` back to NULL). In v1.57 this was narrowed: it no longer touches account-level lifecycle. To reactivate a grace-state account, run `run402 tier set <tier>` (the tier flow runs the lifecycle advance inline) or enable `run402 admin lease-perpetual <ba_id> --enable`.
+- `run402 admin lease-perpetual <organization_id> --enable | --disable` — toggle the organization-level escape hatch. When enabled, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline (`reactivated: true` in the response). Replaces the v1.56 `run402 projects pin` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57).
+- `run402 admin archive <project_id> [--reason "..."]` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
+- `run402 admin reactivate <project_id>` — un-archive a project (flips `archived_at` back to NULL). In v1.57 this was narrowed: it no longer touches organization-level lifecycle. To reactivate a grace-state organization, run `run402 tier set <tier>` (the tier flow runs the lifecycle advance inline) or enable `run402 admin lease-perpetual <org_id> --enable`.
 
 All admin subcommands require a platform-admin allowance wallet (or an admin OAuth session). Project owners with a non-admin wallet receive `403 admin_required`.
 
@@ -889,12 +889,12 @@ One noun, two rails: a **wallet** recipient is a two-party wallet transfer; an *
 - `run402 transfer preview <transfer_id> [--handoff]` — fetch the preview document (either party); `--handoff` previews an email->org handoff. Lists custom domains, subdomains, function names, secret NAMES (never values), CI bindings that will be revoked on accept, mailbox summary, billing implications.
 - `run402 transfer list [--incoming | --outgoing | --handoffs] [--limit N] [--offset N]` — `--incoming` (default) shows wallet transfers OFFERED TO you; `--outgoing` shows transfers you initiated; `--handoffs` shows incoming email->org handoffs. Each entry includes `preview_path`.
 - `run402 transfer accept <transfer_id>` — accept a WALLET transfer (recipient). Atomically flips ownership, revokes the previous owner's CI bindings on the project, and stamps a `secrets_rotation_advised` advisory. Secret VALUES are inherited; the response returns `secret_names_inherited[]`.
-- `run402 transfer claim <transfer_id> [--into <billing_account_id>]` — claim an incoming EMAIL handoff into an org you own (omit `--into` to claim into a brand-new org). The handoff analog of `accept`.
+- `run402 transfer claim <transfer_id> [--into <organization_id>]` — claim an incoming EMAIL handoff into an org you own (omit `--into` to claim into a brand-new org). The handoff analog of `accept`.
 - `run402 transfer cancel <transfer_id> [--reason <text>] [--handoff]` — cancel (either party); `--handoff` cancels an email->org handoff.
 
 While a transfer is `pending` (72h TTL), owner-side mutations on the project return `409 PROJECT_HAS_PENDING_TRANSFER` with `details.transfer_id` and a `next_actions[]` cancel route. Data-plane (`/rest/v1/*`, function invocation, mailbox send/receive) keeps serving; payment-path routes (tier renew, billing) keep working; the `transfer cancel` route is intentionally unblocked so the owner can always recover. After accept, rotate every inherited secret with `run402 secrets set <project> <name> <value>` — the `secrets_rotation_advised` advisory on `tier status` clears once every previously-inherited name has been re-written.
 
-What does NOT transfer: tier lease (stays with the original owner's billing account; no Phase 1A proration), KMS contract wallets (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet. Phase 1A supports only `--billing-policy migrate` — the project moves into the recipient's billing account; if they have no active billing account yet, accept returns `409 RECIPIENT_ACCOUNT_NOT_ACTIVE`.
+What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS contract wallets (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet. Phase 1A supports only `--billing-policy migrate` — the project moves into the recipient's organization; if they have no active organization yet, accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
 
 ### org / grants (v1.77+ org-owned control plane; first-class orgs v1.82)
 A wallet AUTHENTICATES; an org owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet == signer`. Member/invite changes require an active `owner`. Members and invites are grouped sub-resources (`org member …`, `org invite …`). Memberships carry `org_id` + `display_name`. Create/rename/member/invite mutations are step-up gated for control-plane sessions.
@@ -1361,17 +1361,17 @@ Flow: register → add DKIM CNAME records to DNS → poll status until verified 
 Inbound (opt-in): inbound-enable → add MX record to DNS → replies to `<slug>@<your-domain>` route through run402.
 
 ### billing
-Email-based billing accounts, Stripe tier checkout, and email packs. Pay run402 with credit cards instead of crypto, or scale email sending beyond tier caps.
+Email-based organizations, Stripe tier checkout, and email packs. Pay run402 with credit cards instead of crypto, or scale email sending beyond tier caps.
 
-- `run402 billing create-email <email>` — create an email-based billing account (Stripe-only, no wallet). Sends a verification email. Idempotent.
-- `run402 billing link-wallet <account_id> <wallet>` — link a wallet to an email account for hybrid Stripe + x402 access. Response includes a `pool_implications` block (account `tier`, `projects_in_pool_count`, `account_api_calls_current`, `account_storage_bytes_current`, `tier_limits`, `over_limit`) — inspect `over_limit` before linking a wallet whose usage might push the merged pool past the tier cap.
+- `run402 billing create-email <email>` — create an email-based organization (Stripe-only, no wallet). Sends a verification email. Idempotent.
+- `run402 billing link-wallet <org_id> <wallet>` — link a wallet to an email organization for hybrid Stripe + x402 access. Response includes a `pool_implications` block (organization `tier`, `projects_in_pool_count`, `organization_api_calls_current`, `organization_storage_bytes_current`, `tier_limits`, `over_limit`) — inspect `over_limit` before linking a wallet whose usage might push the merged pool past the tier cap.
 - `run402 billing tier-checkout <tier> [--email <e> | --wallet <w>]` — subscribe/renew/upgrade a tier (prototype $0.10 / hobby $5 / team $20) via Stripe. Returns a checkout URL.
 - `run402 billing buy-email-pack [--email <e> | --wallet <w>]` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
-- `run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]` — auto-repurchase $5 packs when credits drop below threshold. Requires saved Stripe payment method.
-- `run402 billing balance <account-id | wallet | email>` — balance + email_credits_remaining + tier + lease + auto_recharge state (response includes `billing_account_id`). A wallet/email is resolved to its account via `GET /billing/v1/accounts?wallet=|?email=`; an account id (UUID) reads `GET /billing/v1/accounts/:account_id` directly.
-- `run402 billing history <account-id | wallet | email> [--limit <n>]` — ledger history. Keyed by account id: a wallet/email is resolved to its `billing_account_id` first, then `GET /billing/v1/accounts/:account_id/history`.
+- `run402 billing auto-recharge <org_id> <on|off> [--threshold <n>]` — auto-repurchase $5 packs when credits drop below threshold. Requires saved Stripe payment method.
+- `run402 billing balance <org-id | wallet | email>` — balance + email_credits_remaining + tier + lease + auto_recharge state (response includes `organization_id`). A wallet/email is resolved to its organization via `GET /orgs/v1/lookup?wallet=|?email=`; an organization id (UUID) reads `GET /orgs/v1/:org_id/billing` directly.
+- `run402 billing history <org-id | wallet | email> [--limit <n>]` — ledger history. Keyed by organization id: a wallet/email is resolved to its `organization_id` first, then `GET /orgs/v1/:org_id/billing/history`.
 
-Auth: account reads (`balance`, `history`) require SIWX from a wallet **linked to** the account (membership), or an admin key; the wallet→account lookup requires SIWX matching the queried wallet (email lookups are admin-only). `link-wallet` requires the body wallet's SIWX (or admin); `auto-recharge` a linked wallet's SIWX. The CLI signs automatically from the local allowance, so these only work when the agent's allowance wallet is on the account being queried/linked/billed. A non-member (or someone guessing an account id) gets 403 with no existence leak. Checkout-creation commands (`create-email`, `tier-checkout`, `buy-email-pack`) remain unauthenticated.
+Auth: organization reads (`balance`, `history`) require SIWX from a wallet **linked to** the organization, or an admin key; the wallet→organization lookup requires SIWX matching the queried wallet (email lookups are admin-only). `link-wallet` requires the body wallet's SIWX (or admin); `auto-recharge` a linked wallet's SIWX. The CLI signs automatically from the local allowance, so these only work when the agent's allowance wallet is in the organization being queried/linked/billed. A non-member (or someone guessing an organization id) gets 403 with no existence leak. Checkout-creation commands (`create-email`, `tier-checkout`, `buy-email-pack`) remain unauthenticated.
 
 Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
 
@@ -1402,11 +1402,11 @@ KMS contract wallets — provision AWS KMS-backed Ethereum wallets per project f
 `contact` returns `email_verification_status`, `passkey_binding_status`, and `assurance_level`. New or changed emails start a reply challenge and stay `email_pending` until the mailbox owner replies. `passkey enroll` requires `email_verified` and emails the enrollment link to the verified contact email; the token is not printed.
 
 ### operator
-The **operator** is YOU, the human, identified by email — distinct from the **agent** (your wallet / SIWX identity). One browser login spans every wallet that verified your email, so `operator overview` returns the cross-wallet union. For a single wallet's account state, use `run402 status` (that IS the wallet's view; there is no `operator status`).
+The **operator** is YOU, the human, identified by email — distinct from the **agent** (your wallet / SIWX identity). One browser login spans every wallet that verified your email, so `operator overview` returns the cross-wallet union. For a single wallet's organization state, use `run402 status` (that IS the wallet's view; there is no `operator status`).
 
 - `run402 operator login [--no-open]` — browser-delegated sign-in for the **read** session (device-authorization, RFC 8628, the `aws sso login` model). Prints a verification URL + short user code to stderr and (on a TTY) opens the browser; you approve via the existing magic-link OR passkey web flow. Polls until approved, then caches the session at `{base}/operator-session.json` (0600, base config dir — shared across named wallets). Stdout JSON on success: `{ logged_in, email, wallets, wallet_count, expires_at, absolute_expires_at, expires_in_seconds }`.
 - `run402 operator login --loopback [--no-open]` / `run402 operator login --step-up` — the **write-capable** control-plane login (loopback-PKCE, RFC 8252). Starts a `127.0.0.1` server, opens the browser to the passkey ceremony on run402's origin, and on approval mints a passkey-fresh, write-capable session (`provenance=loopback_pkce`) cached at `{base}/control-plane-session.json` (0600; stdout is metadata-only — the token is never printed). `--step-up` re-mints a fresh session to satisfy a `STEP_UP_REQUIRED` challenge on this same client. `operator whoami` surfaces it and `operator logout` clears it. Stdout also includes `memberships[]` — the orgs you belong to, including any **invites auto-claimed by this login** (best-effort; omitted if the post-login lookup fails). The browser-interactive hosted logins (email magic-link / passkey / Google / GitHub) are console-side and exposed in the SDK (`r.operator.session.*`), not the CLI — the loopback flow above delegates the whole browser ceremony, so the CLI never needs them.
-- `run402 operator overview` — account view across ALL wallets controlling your email. Sends the cached operator-session bearer to `GET /agent/v1/operator/overview`. **Requires login** — returns `OPERATOR_LOGIN_REQUIRED` (no SIWX fallback) when there is no live session, and clears the cache + returns `OPERATOR_SESSION_INVALID` on a 401/403 (revoked or expired).
+- `run402 operator overview` — organization view across ALL wallets controlling your email. Sends the cached operator-session bearer to `GET /agent/v1/operator/overview`. **Requires login** — returns `OPERATOR_LOGIN_REQUIRED` (no SIWX fallback) when there is no live session, and clears the cache + returns `OPERATOR_SESSION_INVALID` on a 401/403 (revoked or expired).
 - `run402 operator whoami` — local, no network. Prints the cached session (`logged_in`, email, wallets, expiry) or `{ logged_in: false, reason: "no_session" | "expired" }` with a non-zero exit.
 - `run402 operator logout` — revokes the session server-side (`POST /agent/v1/operator/session/revoke`) then clears the local cache. Idempotent; best-effort revoke (always clears locally). Stdout: `{ revoked, cleared }`.
 - `run402 operator claim-wallet-org [--org <id>] [--name <label>]` — claim an org owned by your wallet's `agent` principal INTO your human (console) identity — an ownership transfer (v1.82). The wallet authenticator stays on the agent (no authority amplification); the agent is downgraded owner→developer. Dual proof: a **write-capable control-plane session** (`operator login --loopback` first) AND a fresh wallet signature over a server nonce from the active wallet. Runs challenge → sign → submit. Success → `{ claimed: true, org_id, display_name, role, already_owned }`. If your wallet's agent owns more than one org → `{ claimed: false, selectable_orgs: [{ org_id, display_name, tier }] }`; re-run with `--org <id>` (the server reuses the same nonce/proof). A stale session returns `STEP_UP_REQUIRED` — run `operator login --step-up`, then retry. `--name` optionally labels the claimed org.
@@ -1414,7 +1414,7 @@ The **operator** is YOU, the human, identified by email — distinct from the **
 The session is email-scoped (~30m access TTL, ~12h absolute cap), so it is cached once at the base dir and reused regardless of the active `--wallet`. Login/overview/logout require the gateway device-authorization bridge (kychee-com/run402-private#443); `whoami` is local and works today. Not exposed as MCP tools by design — MCP authenticates as the agent (wallet), and the human session must not be handed to the agent.
 
 ### service
-Public service-level status. No allowance, no auth, no keystore required — works on a fresh install. Reports on the Run402 service (uptime, capabilities, operator); for your account state use `run402 status`.
+Public service-level status. No allowance, no auth, no keystore required — works on a fresh install. Reports on the Run402 service (uptime, capabilities, operator); for your organization state use `run402 status`.
 - `run402 service status` — public availability report (24h/7d/30d uptime per capability, operator, deployment, schema `run402-status-v1`)
 - `run402 service health` — liveness check with per-dependency results (postgres, postgrest, s3, cloudfront) and service version
 
@@ -1767,7 +1767,7 @@ const refreshed = await fetch(API + '/auth/v1/token?grant_type=refresh_token', {
 ### Account behavior
 
 - New Google user → new project user created (null password, Google name + avatar stored)
-- Returning Google user → signed in to existing account
+- Returning Google user -> signed in to existing user
 - Same email as existing password user → returns `account_exists_requires_link` error (no auto-merge for security)
 - Social-only users cannot use password login (helpful error message returned)
 

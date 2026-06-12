@@ -1,8 +1,8 @@
 ## Context
 
-The gateway shipped `first-class-orgs` (v1.82): `POST /orgs/v1` (create, empty, prototype, `display_name` only), `GET /orgs/v1/:org_id` (returns `role`), `PATCH /orgs/v1/:org_id` (rename), `POST /projects/v1 { org_id }` (provision into an org), and a wallet-org **claim** (`POST /agent/v1/operator/claim-wallet-org/challenge` + `…/claim-wallet-org`). The gateway also made `org` the public noun — `/orgs/v1` speaks `org_id`; `billing_account`/`billing_account_id` are now internal-only and MUST NOT appear on the wire.
+The gateway shipped `first-class-orgs` (v1.82): `POST /orgs/v1` (create, empty, prototype, `display_name` only), `GET /orgs/v1/:org_id` (returns `role`), `PATCH /orgs/v1/:org_id` (rename), `POST /projects/v1 { org_id }` (provision into an org), and a wallet-org **claim** (`POST /agent/v1/operator/claim-wallet-org/challenge` + `…/claim-wallet-org`). The gateway also made `org` the public noun — `/orgs/v1` speaks `org_id`; `organization`/`organization_id` are now internal-only and MUST NOT appear on the wire.
 
-The client today (`sdk/src/namespaces/org.ts`, `cli/lib/org.mjs`, `src/tools/orgs.ts`) is built entirely on `billing_account_id`: every method threads `billingAccountId` positionally, `OrgMembership.billing_account_id`, a `requireBa()` helper, CLI `<billing_account>` positionals with `ba_abc` examples. It is misaligned with the platform's own vocabulary and has no create/get/rename/claim verbs.
+The client org surface (`sdk/src/namespaces/org.ts`, `cli/lib/org.mjs`, `src/tools/orgs.ts`) exposes org identifiers consistently: collection methods live under `r.orgs`, instance methods live under `r.org(id)`, CLI positionals use `<org>`, and all examples use org-shaped identifiers.
 
 We are pre-launch with no users (the user has explicitly accepted breaking the shipped client surface). The gateway is already deployed, so the client ships independently with no coordination window.
 
@@ -19,14 +19,14 @@ The contract facts below were confirmed against the shipped v1.82 impl ([#451 co
 - Org *merge* (combining two real orgs) — deferred gateway-side; not a client concern here.
 - Paid-tier-at-create or a tier-change flow — create is prototype-only by contract.
 - Driving the WebAuthn step-up ceremony from the SDK — step-up is the browser/loopback login's job; the client *detects* `STEP_UP_REQUIRED` and points at the existing `operator login --step-up`.
-- Renaming the gateway's `/billing/v1/accounts/:account_id` route (the public-vocabulary collision is a gateway concern; out of scope for the client).
+- Renaming the gateway's `/orgs/v1/:org_id/billing` route (the public-vocabulary collision is a gateway concern; out of scope for the client).
 
 ## Decisions
 
 ### D1 — Full `org_id` rename, no compatibility shim
-`billing_account_id` is removed from the entire client surface (SDK params + types, CLI positionals, MCP inputs). `OrgMembership = { org_id, display_name, role, status }`.
-- **Why:** pre-launch, no users; a dual-read shim would permanently half-migrate the vocabulary and contradict the platform's own "`billing_account` never on the wire" rule.
-- **Alternative (rejected):** tolerant dual-read (`org_id` + optional `billing_account_id`) to survive a gateway-skew window. Rejected because the gateway is already deployed and there are no published consumers to protect.
+`organization_id` is removed from the entire client surface (SDK params + types, CLI positionals, MCP inputs). `OrgMembership = { org_id, display_name, role, status }`.
+- **Why:** pre-launch, no users; a dual-read shim would permanently half-migrate the vocabulary and contradict the platform's own "`organization` never on the wire" rule.
+- **Alternative (rejected):** tolerant dual-read (`org_id` + optional `organization_id`) to survive a gateway-skew window. Rejected because the gateway is already deployed and there are no published consumers to protect.
 
 ### D2 — SDK namespace = collection + instance (`r.orgs` / `r.org(id)`)
 `r.orgs.create` / `list` / `whoami` (collection + identity); `r.org(id).get` / `rename` / `members.*` / `invites.*` / `audit` (instance, id pre-bound). `r.org(id)` returns a resource-scoped sub-client.
@@ -35,7 +35,7 @@ The contract facts below were confirmed against the shipped v1.82 impl ([#451 co
 - **`whoami` stays on `r.orgs`** (continuity with today's `r.org.whoami`); it does not collide with the local network-free `r.whoami()`.
 
 ### D3 — CLI keeps a flat singular `org` group
-`run402 org <verb> <org_id>` — rename `<billing_account>` → `<org>`, add `create`/`get`/`rename`. The SDK's callable-scope idiom (`r.org(id)`) has no CLI analog; the CLI mirrors the existing `run402 <group> <verb>` shape.
+`run402 org <verb> <org_id>` — rename `<organization>` → `<org>`, add `create`/`get`/`rename`. The SDK's callable-scope idiom (`r.org(id)`) has no CLI analog; the CLI mirrors the existing `run402 <group> <verb>` shape.
 - **Consequence:** SDK says `r.orgs`/`r.org(id)`, CLI says `run402 org` — an intentional divergence, each idiomatic to its surface. Documented in `llms-cli.txt`.
 
 ### D4 — Claim seam: isomorphic raw steps + Node orchestration convenience
@@ -59,7 +59,7 @@ The gateway verifies the wallet proof through the same path as `walletAuth`: `do
 The Node convenience pulls specifically from the **control-plane session** cache (`core/control-plane-session.ts`, loopback-PKCE, carries `amr`). The read-only device-flow operator session is structurally rejected by the route, and a `device_flow`-provenance control-plane session fails step-up. The CLI surfaces a clear "run `run402 operator login --loopback` first" when no control-plane session is cached.
 
 ### D9 — `provision --org` threads `orgId`; tier is org-governed
-`ProvisionOptions.orgId?` → body `{ org_id }`; `run402 provision --org <id>`; MCP provision tool gains `org_id`. Caller authorization (`developer`+) is gateway-enforced; the client passes `org_id` and surfaces the `403`. Omitting `--org` sends no `org_id` and preserves the cold-start body byte-for-byte. Tier is governed by the org/billing account, and the shipped `POST /v1/projects` ignores any client-supplied `tier` ("account tier is authoritative" — confirmed in `routes/projects.ts`), so `--org` simply adds `org_id`; there is no `--tier`/`--org` conflict to guard. The CLI rejects an empty `--org` locally.
+`ProvisionOptions.orgId?` → body `{ org_id }`; `run402 provision --org <id>`; MCP provision tool gains `org_id`. Caller authorization (`developer`+) is gateway-enforced; the client passes `org_id` and surfaces the `403`. Omitting `--org` sends no `org_id` and preserves the cold-start body byte-for-byte. Tier is governed by the org/organization, and the shipped `POST /v1/projects` ignores any client-supplied `tier` ("account tier is authoritative" — confirmed in `routes/projects.ts`), so `--org` simply adds `org_id`; there is no `--tier`/`--org` conflict to guard. The CLI rejects an empty `--org` locally.
 
 ## Risks / Trade-offs
 

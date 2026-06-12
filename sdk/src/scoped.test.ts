@@ -486,7 +486,7 @@ describe("ScopedRun402 drift protection", () => {
     "sites", // Sites class is empty — intentionally not exposed on ScopedRun402
     "ci", // CI binding lifecycle is intentionally unscoped in v1.
     "operator", // human/email principal session — not project-scoped.
-    "org", // org membership is billing-account-scoped, not project-scoped.
+    "org", // org membership is organization-scoped, not project-scoped.
     // `grants` IS project-scoped (exposed as r.project(id).grants) — checked below.
   ]);
 

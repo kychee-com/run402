@@ -51,7 +51,7 @@ Not every network call should move into the SDK. Direct presigned storage PUTs d
 
    The SDK wallet aliases are enough for allowance wallet flows, but `run402 billing balance/history` accepts either an email or a wallet. Add or widen SDK methods so callers can pass either identifier without doing direct URL construction.
 
-   Alternative considered: keep email billing reads as CLI-only direct fetches. Rejected because email billing account lookup is public Run402 API behavior and belongs in the SDK.
+   Alternative considered: keep email billing reads as CLI-only direct fetches. Rejected because email organization lookup is public Run402 API behavior and belongs in the SDK.
 
 5. **Make the no-bypass rule mechanically enforced.**
 

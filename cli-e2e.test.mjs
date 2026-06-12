@@ -198,8 +198,8 @@ async function mockFetch(input, init) {
         custom_domains: ["www.example.com"],
         status: "active",
         effective_status: "active",
-        account_lifecycle_state: "active",
-        billing_account_id: "11111111-2222-3333-4444-555555555555",
+        organization_lifecycle_state: "active",
+        organization_id: "11111111-2222-3333-4444-555555555555",
         created_by: "99999999-8888-7777-6666-555555555555",
         created_at: "2026-03-15T00:00:00.000Z",
       }],
@@ -216,7 +216,7 @@ async function mockFetch(input, init) {
         site_url: "https://test.run402.com",
         custom_domains: [],
         status: "active",
-        billing_account_id: "11111111-2222-3333-4444-555555555555",
+        organization_id: "11111111-2222-3333-4444-555555555555",
         created_at: "2026-03-15T00:00:00.000Z",
       }],
       scope: "wallet",
@@ -230,12 +230,12 @@ async function mockFetch(input, init) {
   if (path.match(/^\/projects\/v1\/[^/]+$/) && method === "DELETE") {
     return Promise.resolve(noContent());
   }
-  if (path.match(/^\/billing\/v1\/admin\/accounts\/[^/]+\/lease-perpetual$/) && method === "POST") {
-    const accountId = path.split("/").at(-2);
+  if (path.match(/^\/orgs\/v1\/admin\/[^/]+\/lease-perpetual$/) && method === "POST") {
+    const organizationId = path.split("/").at(-2);
     const desired = Boolean(body?.lease_perpetual);
     return Promise.resolve(json({
       status: "ok",
-      billing_account_id: accountId,
+      organization_id: organizationId,
       lease_perpetual: desired,
       reactivated: desired,
     }));
@@ -728,11 +728,11 @@ async function mockFetch(input, init) {
   }
 
   // Billing
-  // Account lookup: GET /billing/v1/accounts?wallet=|?email= → resolve to a
-  // billing_account_id (and return the same detail shape as the by-id read).
-  if (pathNoQuery === "/billing/v1/accounts" && method === "GET") {
+  // Organization lookup: GET /orgs/v1/lookup?wallet=|?email= → resolve to a
+  // organization_id (and return the same detail shape as the by-id read).
+  if (pathNoQuery === "/orgs/v1/lookup" && method === "GET") {
     return Promise.resolve(json({
-      billing_account_id: "00000000-0000-4000-8000-0000000000e2",
+      organization_id: "00000000-0000-4000-8000-0000000000e2",
       available_usd_micros: 150000,
       held_usd_micros: 0,
       email_credits_remaining: 0,
@@ -742,8 +742,8 @@ async function mockFetch(input, init) {
       auto_recharge_threshold: 0,
     }));
   }
-  if (path.match(/^\/billing\/v1\/accounts\/[^/]+$/) && method === "GET") {
-    return Promise.resolve(json({ billing_account_id: "00000000-0000-4000-8000-0000000000e2", available_usd_micros: 150000, held_usd_micros: 0 }));
+  if (path.match(/^\/orgs\/v1\/[^/]+\/billing$/) && method === "GET") {
+    return Promise.resolve(json({ organization_id: "00000000-0000-4000-8000-0000000000e2", available_usd_micros: 150000, held_usd_micros: 0 }));
   }
   if (path.match(/\/history/) && method === "GET") {
     return Promise.resolve(json({ transactions: [{ id: "tx1", amount: -100000, description: "Tier subscription" }] }));
@@ -1137,7 +1137,7 @@ describe("CLI billing validation regressions", () => {
   for (const threshold of ["abc", "1.5", "-1"]) {
     it(`billing auto-recharge rejects malformed threshold ${threshold} locally (GH-274)`, async () => {
       const parsed = await runBillingExpectingValidationError("auto-recharge", [
-        "acct_abc",
+        "org_abc",
         "on",
         "--threshold",
         threshold,
@@ -1463,7 +1463,7 @@ describe("CLI e2e happy path", () => {
     // project-findability: the named, domain-aware row shape.
     assert.ok(out.includes("custom_domains"), "should surface custom_domains");
     assert.ok(out.includes("www.example.com"), "should render the custom domain");
-    assert.ok(out.includes("org_id"), "should surface org_id (billing_account_id)");
+    assert.ok(out.includes("org_id"), "should surface org_id (organization_id)");
     assert.ok(out.includes("11111111-2222-3333-4444-555555555555"), "should render the owning org id");
   });
 
@@ -1995,7 +1995,7 @@ describe("CLI e2e happy path", () => {
     const prevFetch = globalThis.fetch;
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
-      if (url.includes("/billing/v1/admin/accounts/ba_external/lease-perpetual")) {
+      if (url.includes("/orgs/v1/admin/org_external/lease-perpetual")) {
         seenUrl = url;
         if (input instanceof Request) {
           seenMethod = input.method;
@@ -2014,13 +2014,13 @@ describe("CLI e2e happy path", () => {
     };
     captureStart();
     try {
-      await run("lease-perpetual", ["ba_external", "--enable"]);
+      await run("lease-perpetual", ["org_external", "--enable"]);
     } finally {
       captureStop();
       globalThis.fetch = prevFetch;
     }
     assert.ok(
-      seenUrl && seenUrl.includes("/billing/v1/admin/accounts/ba_external/lease-perpetual"),
+      seenUrl && seenUrl.includes("/orgs/v1/admin/org_external/lease-perpetual"),
       `lease-perpetual should hit the admin endpoint; got: ${seenUrl}`,
     );
     assert.equal(seenMethod, "POST");
@@ -2028,7 +2028,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(seenAdminMode, "1", "lease-perpetual should explicitly request admin mode");
     assert.equal(seenAuthorization, null, "lease-perpetual must not use a service_key as Bearer auth");
     const parsed = JSON.parse(capturedStdout());
-    assert.equal(parsed.billing_account_id, "ba_external");
+    assert.equal(parsed.organization_id, "org_external");
     assert.equal(parsed.lease_perpetual, true,
       "mockFetch echoes the request body; if this is false, the body didn't carry lease_perpetual:true");
   });

@@ -30,12 +30,12 @@ export type Run402ErrorKind =
 
 /**
  * Quota-denial scope discriminator (v1.46+). Indicates whether a quota-related
- * denial was enforced against the pooled billing-account total (`"account"`)
- * or against an orphan project whose billing account row has been purged but
+ * denial was enforced against the pooled organization total (`"organization"`)
+ * or against an orphan project whose organization row has been purged but
  * cascade has not yet run (`"project"`). Lifted from `details.scope` on the
  * gateway envelope; absent for errors unrelated to quota.
  */
-export type Run402QuotaScope = "account" | "project";
+export type Run402QuotaScope = "organization" | "project";
 
 export abstract class Run402Error extends Error {
   /**
@@ -74,9 +74,9 @@ export abstract class Run402Error extends Error {
   /** Advisory next actions from the gateway. Rendering them must not execute them. */
   readonly nextActions?: unknown[];
   /**
-   * Quota-denial scope (v1.46+). `"account"` for pooled billing-account
-   * denials; `"project"` for the orphan fallback (project whose billing
-   * account row was purged but cascade has not yet run). Lifted from
+   * Quota-denial scope (v1.46+). `"organization"` for pooled organization
+   * denials; `"project"` for the orphan fallback (project whose organization
+   * row was purged but cascade has not yet run). Lifted from
    * `details.scope` when the gateway returned it. Undefined for errors
    * that are not quota-related.
    */
@@ -155,7 +155,7 @@ function extractQuotaScope(
   const details = envelope.details;
   if (!details || typeof details !== "object" || Array.isArray(details)) return undefined;
   const scope = (details as Record<string, unknown>).scope;
-  return scope === "account" || scope === "project" ? scope : undefined;
+  return scope === "organization" || scope === "project" ? scope : undefined;
 }
 
 /** HTTP 402 — the gateway requires payment (lease expired, insufficient balance, or x402 quote). */
@@ -190,7 +190,7 @@ export class Unauthorized extends Run402Error {
 /**
  * HTTP 403 `NOT_AUTHORIZED` — the org-owned control plane (gateway v1.77+)
  * denied a control-plane action. A wallet *authenticates* (SIWX resolves it to
- * a principal); *authorization* is an org (billing-account) membership in the
+ * a principal); *authorization* is an org (organization) membership in the
  * role lattice `owner > admin > developer > billing > viewer`, or a per-project
  * grant for agent/CI principals — never `wallet_address == signer`. High-stakes
  * ops (delete, transfer-of-ownership, membership change) require an active
@@ -611,7 +611,7 @@ export function isStepUpRequired(e: unknown): e is StepUpRequiredError {
 }
 
 /**
- * Extract the v1.46+ quota-denial scope from an error. Returns `"account"`
+ * Extract the v1.46+ quota-denial scope from an error. Returns `"organization"`
  * for pooled denials, `"project"` for the orphan fallback, or `undefined`
  * when the error is not quota-related (or originated from a pre-v1.46
  * gateway that did not set `details.scope`). Safe to call with `unknown`.

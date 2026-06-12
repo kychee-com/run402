@@ -238,7 +238,7 @@ async function balance() {
       "base-sepolia_usd_micros": sepoliaUsdc,
       "tempo-moderato_pathusd_micros": tempoPathUsd,
     },
-    run402: billingRes ? { balance_usd_micros: billingRes.available_usd_micros } : "no billing account",
+    run402: billingRes ? { balance_usd_micros: billingRes.available_usd_micros } : "no organization",
   }, null, 2));
 }
 

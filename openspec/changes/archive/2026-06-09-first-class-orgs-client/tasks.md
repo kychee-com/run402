@@ -1,10 +1,10 @@
 ## 1. SDK — types & org namespace reshape (Model B, org_id)
 
-- [x] 1.1 In `sdk/src/namespaces/org.types.ts`, rename `OrgMembership` to `{ org_id, display_name, role, status }`; drop `billing_account_id`; add `OrgRef`/create/get result types (`{ org_id, display_name, tier }` and `{ …, role }`).
-- [x] 1.2 Reshape `sdk/src/namespaces/org.ts`: split into a collection `Orgs` (`create`, `list`, `whoami`) and a scoped instance sub-client `ScopedOrg` (constructed with `(client, orgId)`) exposing `get`, `rename`, `members`, `invites`, `audit`; move `OrgMembers`/`OrgInvites` to bind the id at construction (remove `requireBa`/per-call id).
+- [x] 1.1 In `sdk/src/namespaces/org.types.ts`, rename `OrgMembership` to `{ org_id, display_name, role, status }`; drop `organization_id`; add `OrgRef`/create/get result types (`{ org_id, display_name, tier }` and `{ …, role }`).
+- [x] 1.2 Reshape `sdk/src/namespaces/org.ts`: split into a collection `Orgs` (`create`, `list`, `whoami`) and a scoped instance sub-client `ScopedOrg` (constructed with `(client, orgId)`) exposing `get`, `rename`, `members`, `invites`, `audit`; move `OrgMembers`/`OrgInvites` to bind the id at construction.
 - [x] 1.3 Implement `Orgs.create({ displayName? })` → `POST /orgs/v1` (display_name only, no tier).
 - [x] 1.4 Implement `ScopedOrg.get()` → `GET /orgs/v1/:org_id`; `ScopedOrg.rename(name | null)` → `PATCH /orgs/v1/:org_id` (null/"" clears).
-- [x] 1.5 Repoint `list`/`whoami`/`members`/`invites`/`audit` to the new shapes and `org_id` paths; delete all `billing_account`/`billingAccountId` identifiers.
+- [x] 1.5 Repoint `list`/`whoami`/`members`/`invites`/`audit` to the new shapes and `org_id` paths; delete all `organization`/`organizationId` identifiers.
 
 ## 2. SDK — provision into org
 
@@ -31,7 +31,7 @@
 
 ## 6. CLI — org verbs
 
-- [x] 6.1 In `cli/lib/org.mjs`, rename every `<billing_account>` positional and `ba_*` example to `<org>` / `org_*`; update help text.
+- [x] 6.1 In `cli/lib/org.mjs`, use `<org>` positionals and org-shaped examples throughout the help text.
 - [x] 6.2 Add `run402 org create [--name <label>]`, `run402 org get <org>`, `run402 org rename <org> <display_name|--clear>`; route through `r.orgs.create` / `r.org(id).get` / `r.org(id).rename`.
 - [x] 6.3 Repoint `list`/`whoami`/`member`/`invite`/`audit` to the scoped sub-client; keep JSON-in/JSON-out.
 
@@ -55,7 +55,7 @@
 ## 10. Tests
 
 - [x] 10.1 Add `SURFACE` + `SDK_BY_CAPABILITY` entries in `sync.test.ts` for every new SDK method (orgs create/get/rename, provision orgId, operator claimWalletOrg.*), and assert CLI/OpenClaw parity + MCP tool presence.
-- [x] 10.2 Unit tests for the org namespace (create/get/rename/list/whoami/members/invites/audit) asserting `org_id` paths/bodies and no `billing_account_id`.
+- [x] 10.2 Unit tests for the org namespace (create/get/rename/list/whoami/members/invites/audit) asserting `org_id` paths/bodies and no `organization_id`.
 - [x] 10.3 Unit tests for the claim seam: dual headers on submit, `select_org` returned-not-thrown, re-submit reuses nonce+siwx, `STEP_UP_REQUIRED` surfaced; Node convenience signs with the allowance and refuses without a control-plane session.
 - [x] 10.4 Unit test for `provision` orgId body inclusion/omission + tier passthrough (no `--org`/`--tier` rejection — the gateway ignores client tier).
 - [x] 10.5 CLI e2e + help snapshots for the new `org` verbs, `provision --org`, and `operator claim-wallet-org`; add any new `cli-*.test.mjs` files to the `package.json` `test:e2e` allow-list.

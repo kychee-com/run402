@@ -2,11 +2,11 @@
 
 The gateway side of `first-class-orgs` has shipped (run402-private, gateway v1.82): first-class org **creation**, display-name **labeling/rename**, a wallet-owned org **claim** (ownership transfer), and **`provision --org`**. This change is the client half — the SDK / CLI / MCP / docs that wrap those routes — tracked by [#451](https://github.com/kychee-com/run402/issues/451).
 
-Two things force the work beyond "wrap new routes." First, the gateway made `org` the public noun: `/orgs/v1` now speaks `org_id`, and `billing_account` / `billing_account_id` MUST NOT appear on the wire. The already-shipped `org` namespace is built entirely on `billing_account_id`, so it is now misaligned with the platform's own vocabulary. Second, three of the new verbs (create, rename, claim) need a fresh step-up and — for the claim — a dual-credential dance the client must own. We are pre-launch with no users, so we take the break and design the optimal DX rather than carry a compatibility shim.
+Two things force the work beyond "wrap new routes." First, the gateway made `org` the public noun: `/orgs/v1` now speaks `org_id`, and `organization` / `organization_id` MUST NOT appear on the wire. The already-shipped `org` namespace is built entirely on `organization_id`, so it is now misaligned with the platform's own vocabulary. Second, three of the new verbs (create, rename, claim) need a fresh step-up and — for the claim — a dual-credential dance the client must own. We are pre-launch with no users, so we take the break and design the optimal DX rather than carry a compatibility shim.
 
 ## What Changes
 
-- **BREAKING — full `org_id` rename.** `billing_account_id` is removed from the entire client surface: SDK method params, response/membership types, CLI positionals (`<billing_account>` → `<org>`), and MCP tool inputs. `OrgMembership` becomes `{ org_id, display_name, role, status }`.
+- **BREAKING — full `org_id` rename.** `organization_id` is removed from the entire client surface: SDK method params, response/membership types, CLI positionals (`<organization>` → `<org>`), and MCP tool inputs. `OrgMembership` becomes `{ org_id, display_name, role, status }`.
 - **BREAKING — SDK namespace reshaped to collection + instance**, mirroring the existing `r.projects` / `r.project(id)` idiom:
   - `r.orgs.create({ displayName? })`, `r.orgs.list()`, `r.orgs.whoami()` — collection / identity.
   - `r.org(id)` — a resource-scoped sub-client (id pre-bound) exposing `get()`, `rename(name | null)`, `members.*`, `invites.*`, `audit(opts)`.
@@ -28,7 +28,7 @@ Two things force the work beyond "wrap new routes." First, the gateway made `org
 ## Impact
 
 - **SDK (`sdk/src/`):** reshape `namespaces/org.ts` + `org.types.ts` (collection `Orgs` + scoped `org(id)` sub-client; `org_id` everywhere); new claim methods on `namespaces/operator.ts` + types; `node/` convenience for the claim dance (reuses the `core` allowance + `buildSIWxAuthHeaders` SIWX path, like `signCiDelegation`); `ProvisionOptions.orgId` in `projects.ts` / `projects.types.ts`; wire `r.orgs` / `r.org(id)` into the root client and `scoped.ts`.
-- **CLI (`cli/lib/`):** `org.mjs` rename `<billing_account>` → `<org>` + add `create`/`get`/`rename`; `operator.mjs` add `claim-wallet-org` (challenge/sign/claim loop, `--org`, `--name`, step-up guidance); `provision` add `--org`.
+- **CLI (`cli/lib/`):** `org.mjs` rename `<organization>` → `<org>` + add `create`/`get`/`rename`; `operator.mjs` add `claim-wallet-org` (challenge/sign/claim loop, `--org`, `--name`, step-up guidance); `provision` add `--org`.
 - **MCP (`src/tools/`):** `orgs.ts` add create/get/rename + rename internal params; new claim tool; provision tool gains `org_id`.
 - **Tests:** `sync.test.ts` `SURFACE` + `SDK_BY_CAPABILITY`; `scoped.test.ts`-style drift guard for `r.org(id)`; unit tests for each new method + the claim discriminated result; CLI e2e + help snapshots (new files added to the `package.json` allow-list).
 - **Docs:** `cli/llms-cli.txt` (canonical; the private site pulls it at deploy).

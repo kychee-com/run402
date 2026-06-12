@@ -145,8 +145,8 @@ describe("admin.transfers.preview", () => {
       contract_wallets: [],
       github_repo_note: "GitHub repository ownership is not transferred by Run402.",
       billing_implications: {
-        from_billing_account_id: "ba_1",
-        target_billing_account_id: null,
+        from_organization_id: "org_1",
+        target_organization_id: null,
         tier: "hobby",
         secrets_count: 1,
         functions_count: 0,
@@ -175,7 +175,7 @@ describe("admin.transfers.accept", () => {
         project_id: "prj_abc",
         from_wallet: "0xaaa",
         to_wallet: "0xbeef",
-        new_billing_account_id: "ba_2",
+        new_organization_id: "org_2",
         completed_at: "2026-05-27T01:00:00Z",
         secrets_rotation_advised: true,
         secret_names_inherited: ["DB_URL"],
@@ -384,20 +384,20 @@ describe("admin.transfers — email->org handoff (v1.78)", () => {
     assert.equal(p.project_id, "prj_abc");
   });
 
-  it("claimHandoff POSTs /claim with billing_account_id when given, {} otherwise", async () => {
+  it("claimHandoff POSTs /claim with organization_id when given, {} otherwise", async () => {
     const r1 = mockFetch((call) => {
       assert.equal(call.url, "https://api.example.test/agent/v1/handoffs/hof_1/claim");
-      assert.deepEqual(JSON.parse(String(call.body)), { billing_account_id: "ba_9" });
-      return jsonResponse({ project_id: "prj_abc", new_billing_account_id: "ba_9" });
+      assert.deepEqual(JSON.parse(String(call.body)), { organization_id: "org_9" });
+      return jsonResponse({ project_id: "prj_abc", new_organization_id: "org_9" });
     });
-    await makeSdk(r1.fetch).admin.transfers.claimHandoff("hof_1", { billingAccountId: "ba_9" });
+    await makeSdk(r1.fetch).admin.transfers.claimHandoff("hof_1", { organizationId: "org_9" });
 
     const r2 = mockFetch((call) => {
       assert.deepEqual(JSON.parse(String(call.body)), {});
-      return jsonResponse({ project_id: "prj_abc", new_billing_account_id: "ba_new" });
+      return jsonResponse({ project_id: "prj_abc", new_organization_id: "org_new" });
     });
     const res = await makeSdk(r2.fetch).admin.transfers.claimHandoff("hof_1");
-    assert.equal(res.new_billing_account_id, "ba_new");
+    assert.equal(res.new_organization_id, "org_new");
   });
 
   it("cancelHandoff POSTs /agent/v1/handoffs/:id/cancel", async () => {

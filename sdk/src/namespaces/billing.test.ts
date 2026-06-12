@@ -71,7 +71,7 @@ const ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
 /** The canonical account-detail projection the gateway returns (accountDetailJson). */
 function accountDetail(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    billing_account_id: ACCOUNT_ID,
+    organization_id: ACCOUNT_ID,
     available_usd_micros: 0,
     email_credits_remaining: 0,
     tier: "prototype",
@@ -85,12 +85,12 @@ function accountDetail(overrides: Record<string, unknown> = {}): Record<string, 
 /**
  * Mock for history flows: a wallet/email identifier first hits the
  * `?wallet=`/`?email=` lookup (→ account detail), then `/history` (→ the
- * ledger envelope). An account-id identifier skips straight to `/history`.
+ * ledger envelope). An org-id identifier skips straight to `/history`.
  */
 function historyMock(entries: unknown[] = []) {
   return mockFetch((call) =>
     call.url.includes("/history")
-      ? jsonResponse({ billing_account_id: ACCOUNT_ID, entries })
+      ? jsonResponse({ organization_id: ACCOUNT_ID, entries })
       : jsonResponse(accountDetail()),
   );
 }
@@ -102,11 +102,11 @@ describe("billing.checkBalance / getAccount", () => {
     const result = await sdk.billing.checkBalance(WALLET_UPPER);
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts?wallet=${WALLET_LOWER}`);
+    assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/lookup?wallet=${WALLET_LOWER}`);
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
-    assert.equal(result.billing_account_id, ACCOUNT_ID);
+    assert.equal(result.organization_id, ACCOUNT_ID);
     assert.equal(result.available_usd_micros, 0);
     assert.equal(result.email_credits_remaining, 0);
     assert.equal(result.tier, "prototype");
@@ -120,21 +120,21 @@ describe("billing.checkBalance / getAccount", () => {
       jsonResponse(accountDetail({ available_usd_micros: 1000000, tier: null, lease_expires_at: null, auto_recharge_threshold: 0 })),
     );
     const sdk = makeSdk(fetch);
-    const result = await sdk.billing.getAccount("user@example.com");
+    const result = await sdk.billing.getOrganization("user@example.com");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts?email=user%40example.com");
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/lookup?email=user%40example.com");
     assert.equal(result.tier, null);
     assert.equal(result.lease_expires_at, null);
-    assert.equal(result.billing_account_id, ACCOUNT_ID);
+    assert.equal(result.organization_id, ACCOUNT_ID);
   });
 
-  it("reads an account id (UUID) directly without a lookup", async () => {
+  it("reads an organization id (UUID) directly without a lookup", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
     const sdk = makeSdk(fetch);
-    await sdk.billing.getAccount(ACCOUNT_ID);
+    await sdk.billing.getOrganization(ACCOUNT_ID);
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}`);
+    assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing`);
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
   });
@@ -142,9 +142,9 @@ describe("billing.checkBalance / getAccount", () => {
   it("URL-encodes email identifiers with reserved characters", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
     const sdk = makeSdk(fetch);
-    await sdk.billing.getAccount("billing+team@example.com");
+    await sdk.billing.getOrganization("billing+team@example.com");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts?email=billing%2Bteam%40example.com");
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/lookup?email=billing%2Bteam%40example.com");
   });
 
   it("rejects malformed balance identifiers before requesting", async () => {
@@ -167,32 +167,32 @@ describe("billing.checkBalance / getAccount", () => {
   });
 });
 
-describe("billing.lookupAccount", () => {
+describe("billing.lookupOrganization", () => {
   it("resolves a wallet to its account via ?wallet=", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
     const sdk = makeSdk(fetch);
-    const result = await sdk.billing.lookupAccount(WALLET_UPPER);
+    const result = await sdk.billing.lookupOrganization(WALLET_UPPER);
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts?wallet=${WALLET_LOWER}`);
+    assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/lookup?wallet=${WALLET_LOWER}`);
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
-    assert.equal(result.billing_account_id, ACCOUNT_ID);
+    assert.equal(result.organization_id, ACCOUNT_ID);
   });
 
   it("resolves an email to its account via ?email=", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
     const sdk = makeSdk(fetch);
-    await sdk.billing.lookupAccount("user@example.com");
+    await sdk.billing.lookupOrganization("user@example.com");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts?email=user%40example.com");
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/lookup?email=user%40example.com");
   });
 
-  it("reads an account id (UUID) directly", async () => {
+  it("reads an organization id (UUID) directly", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(accountDetail()));
     const sdk = makeSdk(fetch);
-    await sdk.billing.lookupAccount(ACCOUNT_ID);
+    await sdk.billing.lookupOrganization(ACCOUNT_ID);
 
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}`);
+    assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing`);
   });
 
   it("rejects malformed identifiers before requesting", async () => {
@@ -202,17 +202,17 @@ describe("billing.lookupAccount", () => {
     const sdk = makeSdk(fetch);
 
     await assert.rejects(
-      sdk.billing.lookupAccount("nonsense" as any),
+      sdk.billing.lookupOrganization("nonsense" as any),
       (err: unknown) =>
         err instanceof LocalError &&
-        err.context === "looking up billing account",
+        err.context === "looking up organization",
     );
     assert.equal(calls.length, 0);
   });
 });
 
 describe("billing.history / getHistory", () => {
-  it("resolves a wallet to its account id, then reads history by id with SIWX on both", async () => {
+  it("resolves a wallet to its organization id, then reads history by id with SIWX on both", async () => {
     const { fetch, calls } = historyMock([
       {
         id: "ent_1",
@@ -231,15 +231,15 @@ describe("billing.history / getHistory", () => {
     const result = await sdk.billing.history(WALLET_UPPER);
 
     assert.equal(calls.length, 2);
-    // 1) lookup wallet → billing_account_id
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts?wallet=${WALLET_LOWER}`);
+    // 1) lookup wallet → organization_id
+    assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/lookup?wallet=${WALLET_LOWER}`);
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
-    // 2) history keyed by the resolved account id
-    assert.equal(calls[1]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history`);
+    // 2) history keyed by the resolved organization id
+    assert.equal(calls[1]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history`);
     assert.equal(calls[1]!.method, "GET");
     assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
-    assert.equal(result.billing_account_id, ACCOUNT_ID);
+    assert.equal(result.organization_id, ACCOUNT_ID);
     assert.equal(result.entries.length, 1);
 
     const entry = result.entries[0]!;
@@ -255,13 +255,13 @@ describe("billing.history / getHistory", () => {
     assert.equal(entry.created_at, "2026-04-30T10:00:00.000Z");
   });
 
-  it("reads history by account id (UUID) in a single request", async () => {
+  it("reads history by organization id (UUID) in a single request", async () => {
     const { fetch, calls } = historyMock([]);
     const sdk = makeSdk(fetch);
     await sdk.billing.getHistory(ACCOUNT_ID);
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history`);
+    assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history`);
   });
 
   it("appends ?limit=N on the history request (wallet flow)", async () => {
@@ -269,7 +269,7 @@ describe("billing.history / getHistory", () => {
     const sdk = makeSdk(fetch);
     await sdk.billing.history(WALLET_UPPER, 50);
 
-    assert.equal(calls[1]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history?limit=50`);
+    assert.equal(calls[1]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history?limit=50`);
   });
 
   it("appends ?limit=1 on the by-id history request", async () => {
@@ -277,7 +277,7 @@ describe("billing.history / getHistory", () => {
     const sdk = makeSdk(fetch);
     await sdk.billing.getHistory(ACCOUNT_ID, 1);
 
-    assert.equal(calls[0]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history?limit=1`);
+    assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history?limit=1`);
   });
 
   it("throws LocalError and does not request for invalid limits", async () => {
@@ -305,8 +305,8 @@ describe("billing.history / getHistory", () => {
     const sdk = makeSdk(fetch);
     await sdk.billing.getHistory("user@example.com", 25);
 
-    assert.equal(calls[0]!.url, "https://api.example.test/billing/v1/accounts?email=user%40example.com");
-    assert.equal(calls[1]!.url, `https://api.example.test/billing/v1/accounts/${ACCOUNT_ID}/history?limit=25`);
+    assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/lookup?email=user%40example.com");
+    assert.equal(calls[1]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history?limit=25`);
   });
 
   it("preserves null reference_type and reference_id for entries without references", async () => {
@@ -394,33 +394,33 @@ describe("billing.createCheckout", () => {
   });
 });
 
-describe("billing.createEmailAccount", () => {
+describe("billing.createEmailOrganization", () => {
   it("rejects malformed emails before requesting", async () => {
     const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch for malformed email account");
+      throw new Error("unexpected fetch for malformed email organization");
     });
     const sdk = makeSdk(fetch);
 
     await assert.rejects(
-      sdk.billing.createEmailAccount("not an email"),
+      sdk.billing.createEmailOrganization("not an email"),
       (err: unknown) =>
         err instanceof LocalError &&
-        err.context === "creating email billing account",
+        err.context === "creating email organization",
     );
     assert.equal(calls.length, 0);
   });
 });
 
 describe("billing.linkWallet", () => {
-  it("URL-encodes billing account ids and lowercases wallets", async () => {
+  it("URL-encodes organization ids and lowercases wallets", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ status: "ok" }));
     const sdk = makeSdk(fetch);
 
-    await sdk.billing.linkWallet("acct/../tiers", WALLET_UPPER);
+    await sdk.billing.linkWallet("org/../tiers", WALLET_UPPER);
 
     assert.equal(
       calls[0]!.url,
-      "https://api.example.test/billing/v1/accounts/acct%2F..%2Ftiers/link-wallet",
+      "https://api.example.test/orgs/v1/org%2F..%2Ftiers/wallets",
     );
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { wallet: WALLET_LOWER });
@@ -433,7 +433,7 @@ describe("billing.linkWallet", () => {
     const sdk = makeSdk(fetch);
 
     await assert.rejects(
-      sdk.billing.linkWallet("acct_123", "not-a-wallet"),
+      sdk.billing.linkWallet("org_123", "not-a-wallet"),
       (err: unknown) =>
         err instanceof LocalError &&
         err.context === "linking wallet",
@@ -445,13 +445,13 @@ describe("billing.linkWallet", () => {
     const { fetch } = mockFetch(() =>
       jsonResponse({
         status: "linked",
-        billing_account_id: "ba_test",
+        organization_id: "org_test",
         wallet: WALLET_LOWER,
         pool_implications: {
           tier: "hobby",
           projects_in_pool_count: 3,
-          account_api_calls_current: 12345,
-          account_storage_bytes_current: 314572800,
+          organization_api_calls_current: 12345,
+          organization_storage_bytes_current: 314572800,
           tier_limits: { api_calls: 5000000, storage_bytes: 5368709120 },
           over_limit: false,
         },
@@ -459,14 +459,14 @@ describe("billing.linkWallet", () => {
     );
     const sdk = makeSdk(fetch);
 
-    const result = await sdk.billing.linkWallet("ba_test", WALLET_LOWER);
+    const result = await sdk.billing.linkWallet("org_test", WALLET_LOWER);
 
     assert.equal(result.status, "linked");
-    assert.equal(result.billing_account_id, "ba_test");
+    assert.equal(result.organization_id, "org_test");
     assert.equal(result.wallet, WALLET_LOWER);
     assert.equal(result.pool_implications?.tier, "hobby");
     assert.equal(result.pool_implications?.projects_in_pool_count, 3);
-    assert.equal(result.pool_implications?.account_api_calls_current, 12345);
+    assert.equal(result.pool_implications?.organization_api_calls_current, 12345);
     assert.equal(result.pool_implications?.over_limit, false);
     assert.equal(result.pool_implications?.tier_limits.api_calls, 5000000);
     assert.equal(result.pool_implications?.tier_limits.storage_bytes, 5368709120);
@@ -476,7 +476,7 @@ describe("billing.linkWallet", () => {
     const { fetch } = mockFetch(() => jsonResponse({ status: "ok" }));
     const sdk = makeSdk(fetch);
 
-    const result = await sdk.billing.linkWallet("ba_test", WALLET_LOWER);
+    const result = await sdk.billing.linkWallet("org_test", WALLET_LOWER);
 
     assert.equal(result.status, "ok");
     assert.equal(result.pool_implications, undefined);
@@ -580,7 +580,7 @@ describe("billing.setAutoRecharge", () => {
 
       await assert.rejects(
         sdk.billing.setAutoRecharge({
-          billingAccountId: "acct_123",
+          organizationId: "org_123",
           enabled: true,
           threshold,
         }),
@@ -598,12 +598,12 @@ describe("billing.setAutoRecharge", () => {
     const sdk = makeSdk(fetch);
 
     await sdk.billing.setAutoRecharge({
-      billingAccountId: "acct_zero",
+      organizationId: "org_zero",
       enabled: true,
       threshold: 0,
     });
     await sdk.billing.setAutoRecharge({
-      billingAccountId: "acct_positive",
+      organizationId: "org_positive",
       enabled: true,
       threshold: 2000,
     });
@@ -612,12 +612,12 @@ describe("billing.setAutoRecharge", () => {
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      billing_account_id: "acct_zero",
+      organization_id: "org_zero",
       enabled: true,
       threshold: 0,
     });
     assert.deepEqual(JSON.parse(calls[1]!.body as string), {
-      billing_account_id: "acct_positive",
+      organization_id: "org_positive",
       enabled: true,
       threshold: 2000,
     });

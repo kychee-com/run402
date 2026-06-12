@@ -131,7 +131,7 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
   it("whoami with a token: bearer, no SIWX; returns principal + memberships", async () => {
     const who = {
       principal: { id: "prn_1", type: "human", createdAt: "2026-01-01T00:00:00Z" },
-      memberships: [{ billing_account_id: "ba_1", role: "developer", status: "active" }],
+      memberships: [{ organization_id: "org_1", role: "developer", status: "active" }],
       amr: ["passkey"],
       amr_times: { passkey: 1 },
     };
@@ -143,7 +143,7 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
     assert.equal(calls[0]!.headers["Authorization"], "Bearer cps_tok");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
     assert.equal(res.principal.id, "prn_1");
-    assert.equal(res.memberships[0]!.billing_account_id, "ba_1");
+    assert.equal(res.memberships[0]!.organization_id, "org_1");
   });
 
   it("whoami without a token: falls back to SIWX (credential provider)", async () => {
@@ -196,16 +196,16 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
       token: "cps_tok",
       response: { id: "x" },
       opClass: "org.invite",
-      objectKind: "billing_account",
-      objectId: "ba_1",
+      objectKind: "organization",
+      objectId: "org_1",
     });
     assert.equal(calls[0]!.url, "https://api.example.test/agent/v1/control-plane/step-up/options");
     assert.deepEqual(JSON.parse(String(calls[0]!.body)), { op_class: "org.invite" });
     assert.deepEqual(JSON.parse(String(calls[1]!.body)), {
       response: { id: "x" },
       op_class: "org.invite",
-      object_kind: "billing_account",
-      object_id: "ba_1",
+      object_kind: "organization",
+      object_id: "org_1",
     });
     assert.equal(verified.stepped_up, true);
   });

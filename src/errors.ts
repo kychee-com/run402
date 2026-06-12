@@ -194,7 +194,7 @@ function addCodeGuidance(
       if (reason) req.push(`reason \`${reason}\``);
       const reqStr = req.length > 0 ? ` (${req.join(", ")})` : "";
       lines.push(
-        `\nNext step: Authorization denied${reqStr} — not a payment or lease issue. A wallet authenticates; ownership is the org (billing account), and what you may do is decided by your org membership role (\`owner > admin > developer > billing > viewer\`) or a per-project grant. Obtain a covering membership/role or grant; high-stakes actions (delete, transfer, membership changes) require an active \`owner\` membership. Note: control-plane denials return 403 even when the project does not exist, so this can also mean the project id is wrong.`,
+        `\nNext step: Authorization denied${reqStr} — not a payment or lease issue. A wallet authenticates; ownership is the org (organization), and what you may do is decided by your org membership role (\`owner > admin > developer > billing > viewer\`) or a per-project grant. Obtain a covering membership/role or grant; high-stakes actions (delete, transfer, membership changes) require an active \`owner\` membership. Note: control-plane denials return 403 even when the project does not exist, so this can also mean the project id is wrong.`,
       );
       return true;
     }

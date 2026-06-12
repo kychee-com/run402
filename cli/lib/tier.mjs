@@ -13,7 +13,7 @@ Subcommands:
 
 Tiers: prototype ($0.10/7d, free with testnet faucet), hobby ($5/30d), team ($20/30d)
 
-Tier is per billing account. A single subscription covers every project on
+Tier is per organization. A single subscription covers every project on
 the account; api_calls and storage_bytes are pooled across all of them.
 
 The server auto-detects the action based on your allowance state:
@@ -35,7 +35,7 @@ Usage:
   run402 tier status
 
 Notes:
-  - Tier and quotas are per billing account. The 'pool_usage' block sums
+  - Tier and quotas are per organization. The 'pool_usage' block sums
     api_calls and storage_bytes across every project on this account
     (across every wallet linked to it), not just the requesting wallet.
   - Returns the current tier name, status, expiry, and pool usage
@@ -61,7 +61,7 @@ Tiers:
   team                $20/30d
 
 Notes:
-  Tier is per billing account, not per project. A successful subscribe,
+  Tier is per organization, not per project. A successful subscribe,
   renew, or upgrade applies immediately to every project on the account.
 
   Server auto-detects action based on current allowance state:
@@ -72,7 +72,7 @@ Notes:
   Pays via x402 micropayments.
 
   After the call, the CLI refetches /tiers/v1/status and includes the
-  refreshed account-pooled usage as 'status_after' in the JSON output.
+  refreshed organization-pooled usage as 'status_after' in the JSON output.
 
 Examples:
   run402 tier set prototype

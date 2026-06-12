@@ -22,7 +22,7 @@ Usage:
 Notes:
   - Unauthenticated and free; no allowance required
   - Returns uptime, supported capabilities, operator, and deployment info
-  - For account state (allowance, balance, tier, projects), use
+  - For organization state (allowance, balance, tier, projects), use
     'run402 status' instead
 
 Examples:

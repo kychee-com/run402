@@ -7,7 +7,7 @@ export const listProjectsSchema = {
     .string()
     .optional()
     .describe(
-      "Optional org (billing account) id to filter to. Authorize-before-reveal: a non-member or guessed id returns the same 403 as a real-but-unauthorized org; a non-UUID id is a 400.",
+      "Optional org (organization) id to filter to. Authorize-before-reveal: a non-member or guessed id returns the same 403 as a real-but-unauthorized org; a non-UUID id is a 400.",
     ),
   all: z
     .boolean()
@@ -61,11 +61,11 @@ export async function handleListProjects(args: {
     const lines = [
       `## Projects — ${scopeLabel} (${body.projects.length})`,
       ``,
-      `Tier and lifecycle live on the billing account, not each project.`,
-      `Call \`tier_status\` for the account tier, lifecycle state, and pooled`,
+      `Tier and lifecycle live on the organization, not each project.`,
+      `Call \`tier_status\` for the organization tier, lifecycle state, and pooled`,
       `usage across every project below.`,
       ``,
-      `| ID | Name | Site URL | Custom domains | Org (billing_account_id) | Status |`,
+      `| ID | Name | Site URL | Custom domains | Org (organization_id) | Status |`,
       `|----|------|----------|----------------|--------------------------|--------|`,
     ];
 
@@ -73,7 +73,7 @@ export async function handleListProjects(args: {
       const domains =
         p.custom_domains && p.custom_domains.length ? p.custom_domains.join(", ") : "—";
       lines.push(
-        `| \`${p.id}\` | ${p.name ?? "—"} | ${p.site_url ?? "—"} | ${domains} | ${p.billing_account_id ?? "—"} | ${p.status ?? p.effective_status ?? "—"} |`,
+        `| \`${p.id}\` | ${p.name ?? "—"} | ${p.site_url ?? "—"} | ${domains} | ${p.organization_id ?? "—"} | ${p.status ?? p.effective_status ?? "—"} |`,
       );
     }
 

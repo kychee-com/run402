@@ -17,7 +17,7 @@ Usage:
   run402 transfer preview <transfer_id>
   run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]
   run402 transfer accept <transfer_id>
-  run402 transfer claim <transfer_id> [--into <billing_account_id>]
+  run402 transfer claim <transfer_id> [--into <organization_id>]
   run402 transfer cancel <transfer_id> [--reason <text>] [--handoff]
 
 Subcommands:
@@ -53,7 +53,7 @@ Options:
 Notes:
   - Caller's wallet must currently own the project (gateway re-checks fresh DB).
   - Owner-side mutations on the project are frozen until accept/cancel/expiry.
-  - The project lease stays with your billing account; it is NOT refunded.
+  - The project lease stays with your organization; it is NOT refunded.
 `,
   preview: `run402 transfer preview — Fetch the preview document
 
@@ -97,7 +97,7 @@ email->org handoff instead of a wallet transfer.
   claim: `run402 transfer claim — Claim an incoming email handoff
 
 Usage:
-  run402 transfer claim <transfer_id> [--into <billing_account_id>]
+  run402 transfer claim <transfer_id> [--into <organization_id>]
 
 Claims a handoff addressed to your email into an org you own. Omit --into to
 claim into a brand-new org. This is the email-handoff analog of 'accept'.
@@ -281,7 +281,7 @@ async function claim(args) {
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const positionals = positionalArgs(parsedArgs, valueFlags);
   if (positionals.length !== 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer claim <transfer_id> [--into <billing_account_id>]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer claim <transfer_id> [--into <organization_id>]" });
   }
   const transferId = positionals[0];
   const into = flagValue(parsedArgs, "--into");
@@ -289,7 +289,7 @@ async function claim(args) {
 
   try {
     const data = await getSdk().admin.transfers.claimHandoff(transferId, {
-      billingAccountId: into ?? undefined,
+      organizationId: into ?? undefined,
     });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {

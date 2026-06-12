@@ -396,21 +396,21 @@ describe("Run402Error.toJSON", () => {
   });
 });
 
-// ─── quotaScope (v1.46 account-pool denial discriminator) ───────────────────
+// ─── quotaScope (v1.46 organization-pool denial discriminator) ───────────────
 
 describe("Run402Error.quotaScope", () => {
-  it("lifts details.scope='account' for pooled denials", () => {
+  it("lifts details.scope='organization' for pooled denials", () => {
     const e = new PaymentRequired(
       "quota exceeded",
       402,
       {
         code: "QUOTA_EXCEEDED",
-        details: { scope: "account", billing_account_id: "ba_123" },
+        details: { scope: "organization", organization_id: "org_123" },
       },
       "running sql",
     );
-    assert.equal(e.quotaScope, "account");
-    assert.equal(getQuotaScope(e), "account");
+    assert.equal(e.quotaScope, "organization");
+    assert.equal(getQuotaScope(e), "organization");
   });
 
   it("lifts details.scope='project' for orphan-fallback denials", () => {
@@ -448,11 +448,11 @@ describe("Run402Error.quotaScope", () => {
     const e = new PaymentRequired(
       "nope",
       402,
-      { details: { scope: "account" } },
+      { details: { scope: "organization" } },
       "ctx",
     );
     const json = JSON.parse(JSON.stringify(e)) as Record<string, unknown>;
-    assert.equal(json["quotaScope"], "account");
+    assert.equal(json["quotaScope"], "organization");
   });
 
   it("getQuotaScope returns undefined for non-Run402 errors", () => {

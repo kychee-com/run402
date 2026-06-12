@@ -34,9 +34,9 @@ When CLI or MCP requires Run402 API behavior that is not represented by the SDK,
 - **AND** the CLI MAY still stream file chunks to the returned presigned URLs directly
 
 #### Scenario: Billing reads support wallet and email identifiers
-- **WHEN** CLI or MCP needs to read billing account balance or history for an email or wallet identifier
+- **WHEN** CLI or MCP needs to read organization balance or history for an email or wallet identifier
 - **THEN** the SDK SHALL expose typed methods that accept the same identifier forms
-- **AND** interface code SHALL NOT manually encode `/billing/v1/accounts/:identifier` URLs
+- **AND** interface code SHALL NOT manually encode organization billing URLs
 
 #### Scenario: Existing SDK method is present
 - **WHEN** a needed gateway operation already has an SDK method

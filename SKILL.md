@@ -332,7 +332,7 @@ export default async (req: Request) => {
 - **`db(req)`** — caller-context. Forwards the Authorization header. RLS applies. Default choice.
 - **`adminDb()`** — bypasses RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL, always bypasses RLS.
-- **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
+- **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project organization through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - **`assets.put(key, source, opts?)`** — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`. v1.50 `opts` accept `metadata` (flat bag, ≤4 KB, leaves `string | number | boolean | string[]`) and `exifPolicy` (`"keep"` | `"strip"`); the returned `AssetRef` includes `image_format`, `image_info`, `image_exif`, and `image_exif_policy` for image MIMEs.
 - **`getUserId(req)` / `getRole(req)`** (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passed. Both return `string | null`. Use these inside a gated function instead of re-decoding the JWT — the gate already verified the caller and resolved the application role. `getRole(req)` is non-null only when `requireRole` ran (the value is guaranteed to be in `requireRole.allowed`). The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them.
 - **`getRun402Context(req)`** (v1.52+, `@run402/functions` 2.7+) — zero-dependency reader for the full per-request context the gateway populates as `x-run402-*` headers. Returns `{ requestId, projectId, releaseId, host, locale, defaultLocale }` (all `string | null`). Use this in non-Astro functions (plain webhook handlers, auth endpoints) instead of hand-rolling `request.headers.get('x-run402-...')` per field — the helper papers over `Request`/`Headers`/plain-object header shapes and any future gateway header renames. Same return shape as `Astro.locals.run402`, so Astro and plain-function code share one mental model. The helper never throws; missing headers come back as `null`.
@@ -454,7 +454,7 @@ Reference: [`astro/README.md`](./astro/README.md) (top section), [`cli/llms-cli.
 - **`rest_query`** — query/mutate via PostgREST. Pass `key_type: "anon"` (default) for RLS-applied access, `"service"` to bypass.
 - **`validate_manifest`** / **`apply_expose`** / **`get_expose`** — declarative authorization manifest (see "expose manifest" above).
 - **`get_schema`** — introspect tables, columns, types, constraints, RLS policies.
-- **`get_usage`** — per-project usage counters (API calls, storage, lease expiry). The reported tier and capacity limits are **account-level** — pooled across every project on the same billing account. Use `tier_status` for the authoritative pooled total.
+- **`get_usage`** — per-project usage counters (API calls, storage, lease expiry). The reported tier and capacity limits are **organization-level** — pooled across every project on the same organization. Use `tier_status` for the authoritative pooled total.
 - **`promote_user`** / **`demote_user`** — manage `project_admin` role on a project user.
 - **`delete_project`** — cascade purge. Irreversible.
 
@@ -535,13 +535,13 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 ### Tier & billing
 
-Tier is per **billing account**, not per project. One subscribe / renew / upgrade applies immediately to every project on the account, and `api_calls` / `storage_bytes` quotas are enforced against the pooled sum across every non-terminal project on the account. Multi-wallet accounts (via `link_wallet_to_account`) share that same pool. Quota-denial errors carry `details.scope: "account" | "project"` — `"account"` for the pooled path, `"project"` for the orphan fallback when a project's billing account row has been purged but cascade has not yet run.
+Tier is per **organization**, not per project. One subscribe / renew / upgrade applies immediately to every project in the organization, and `api_calls` / `storage_bytes` quotas are enforced against the pooled sum across every non-terminal project in the organization. Multi-wallet organizations (via `link_wallet_to_organization`) share that same pool. Quota-denial errors carry `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback when a project's organization row has been purged but cascade has not yet run.
 
-- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Effect is account-wide.
-- **`tier_status`** — current account tier, lease, **pool_usage across every project on the account**, and function caps when returned.
+- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Effect is organization-wide.
+- **`tier_status`** — current organization tier, lease, **pool_usage across every project in the organization**, and function caps when returned.
 - **`get_quote`** — pricing (free, no auth).
 - **`tier_checkout`** — Stripe checkout (alternative to x402).
-- **`create_email_billing_account`** / **`link_wallet_to_account`** — email-based accounts; hybrid Stripe + x402. `link_wallet_to_account` returns a `pool_implications` block (account tier, current pooled api_calls/storage, tier_limits, `over_limit`) so agents can warn before merging a wallet into a pool that would exceed the cap.
+- **`create_email_organization`** / **`link_wallet_to_organization`** — email-based organizations; hybrid Stripe + x402. `link_wallet_to_organization` returns a `pool_implications` block (organization tier, current pooled api_calls/storage, tier_limits, `over_limit`) so agents can warn before merging a wallet into a pool that would exceed the cap.
 - **`billing_history`** — ledger.
 - **`buy_email_pack`** — $5 / 10,000 emails (never expire).
 - **`set_auto_recharge`** — auto-buy email packs when credits run low.
@@ -561,24 +561,24 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`drain_contract_wallet`** — drain native balance (works on suspended wallets — the safety valve).
 - **`delete_contract_wallet`** — schedule KMS key deletion (refused if balance ≥ dust).
 
-### Allowance & account
+### Allowance & organization
 
 - **`init`** — one-shot setup: allowance + faucet + tier check + project list.
-- **`status`** — full account snapshot. Includes a `wallet` object naming the active named wallet.
+- **`status`** — full organization snapshot. Includes a `wallet` object naming the active named wallet.
 
 **Multiple wallets.** A user can hold several named wallets (profiles) on one machine — keys never leave the machine. The MCP server picks its wallet from the `RUN402_WALLET` environment variable in your server config (default `default`); set it to a wallet name (e.g. `kychon`) to operate that wallet's projects. The `status` tool surfaces which wallet is active. Wallet creation/selection/binding is done from the CLI (`run402 wallets …`), not via MCP tools.
 - **`allowance_status`** / **`allowance_create`** / **`allowance_export`** — local allowance management.
 - **`request_faucet`** — testnet USDC.
 - **`check_balance`** — USDC for an allowance address.
-- **`list_projects`** — the named, domain-aware project inventory (project-findability). Each row carries `name`, `site_url`, `custom_domains`, and the v1.57 lifecycle fields (`status`/`effective_status`, `account_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`); the owning org is `billing_account_id` and the provisioning principal is `created_by`. Membership-scoped by default (org-owned control plane, v1.77+): a wallet *authenticates* but does not *own* — lists projects owned by orgs the wallet's resolved principal is an active member of, plus any with an active per-project grant. Pass `org_id` to filter to one org (authorize-before-reveal), `all: true` to read the cross-wallet inventory across every wallet controlling your operator email, or `limit`/`cursor` to paginate.
+- **`list_projects`** — the named, domain-aware project inventory (project-findability). Each row carries `name`, `site_url`, `custom_domains`, and the v1.57 lifecycle fields (`status`/`effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`); the owning org is `organization_id` and the provisioning principal is `created_by`. Membership-scoped by default (org-owned control plane, v1.77+): a wallet *authenticates* but does not *own* — lists projects owned by orgs the wallet's resolved principal is an active member of, plus any with an active per-project grant. Pass `org_id` to filter to one org (authorize-before-reveal), `all: true` to read the cross-wallet inventory across every wallet controlling your operator email, or `limit`/`cursor` to paginate.
 - **`rename_project`** — rename a project to fix an auto-generated name. Needs org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal. Works even if the project isn't in the local key store (uses the wallet's SIWX auth, not a service key).
-- **`admin_set_lease_perpetual`** — operator escape hatch (v1.57+). Toggles the billing account's `lease_perpetual` flag so the account never advances past `active` regardless of lease expiry. Replaces the v1.56 per-project pin tool (gateway endpoint was removed). Enabling on a grace-state account reactivates inline.
-- **`admin_archive_project`** / **`admin_reactivate_project`** — operator moderation actions on a single project (`projects.archived_at`). Independent of account-level lifecycle.
+- **`admin_set_lease_perpetual`** — operator escape hatch (v1.57+). Toggles the organization's `lease_perpetual` flag so the organization never advances past `active` regardless of lease expiry. Replaces the v1.56 per-project pin tool (gateway endpoint was removed). Enabling on a grace-state organization reactivates inline.
+- **`admin_archive_project`** / **`admin_reactivate_project`** — operator moderation actions on a single project (`projects.archived_at`). Independent of organization-level lifecycle.
 - **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
 - **`send_message`** — send feedback to the Run402 team.
 - **`set_agent_contact`** / **`get_agent_contact_status`** / **`verify_agent_contact_email`** — register agent contact info, read assurance status, and start the operator email reply challenge.
 - **`start_operator_passkey_enrollment`** — email a Run402 operator passkey enrollment link to the verified contact email.
-- **`get_operator_status`** — compact operator-health snapshot (contact assurance, critical items, skipped notifications, accounts, projects, active thresholds). Consumed by `run402 doctor`.
+- **`get_operator_status`** — compact operator-health snapshot (contact assurance, critical items, skipped notifications, organizations, projects, active thresholds). Consumed by `run402 doctor`.
 - **`get_notification_preferences`** / **`set_notification_preferences`** — read/update operator notification preferences (cadence, channels, per-class toggles, locale, timezone). Cross-wallet effects need `email_verified`; webhook URL changes need `operator_passkey`.
 - **`list_notifications`** — per-delivery-attempt audit log. Paginated; filter by event_type / since.
 - **`test_notification`** — fire a real test through the full pipeline. Audit row marked `is_test=true`. Rate-limited per wallet at 1/min.
@@ -626,7 +626,7 @@ Project rate limit: **100 req/sec**. Exceeding returns 429 with `retry_after`. E
 
 ## Project lifecycle (~104-day soft delete)
 
-Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.billing_accounts`. The grace clock now ticks per **billing account** — every project on the same account inherits the same `account_lifecycle_state`. The live data plane keeps serving the whole time; only the owner's control plane gets gated:
+Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.organizations`. The grace clock now ticks per **organization** — every project on the same organization inherits the same `organization_lifecycle_state`. The live data plane keeps serving the whole time; only the owner's control plane gets gated:
 
 | State | When | What happens |
 |-------|------|--------------|
@@ -636,11 +636,11 @@ Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `int
 | `dormant` | +44d | Scheduled functions pause. |
 | `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become claimable 14 days later. |
 
-Calling **`set_tier`** during grace reactivates the **account** inline and clears every project's timers in one transaction. Per-project fields on each `list_projects` row:
+Calling **`set_tier`** during grace reactivates the **organization** inline and clears every project's timers in one transaction. Per-project fields on each `list_projects` row:
 
-- `effective_status` — derived for serving / UX. Equals `account_lifecycle_state` unless the project is individually archived (`archived_at` set → `archived`) or deleted (`deleted_at` set → `deleted`).
-- `account_lifecycle_state` — the raw per-account state. Identical across every project on the same account.
-- `lease_perpetual` — operator escape hatch flag on the owning account. When `true`, the account never advances past `active`. Replaces the v1.56 per-project `pinned`. Toggle via **`admin_set_lease_perpetual`** (platform-admin only).
+- `effective_status` — derived for serving / UX. Equals `organization_lifecycle_state` unless the project is individually archived (`archived_at` set → `archived`) or deleted (`deleted_at` set → `deleted`).
+- `organization_lifecycle_state` — the raw per-organization state. Identical across every project on the same organization.
+- `lease_perpetual` — operator escape hatch flag on the owning organization. When `true`, the organization never advances past `active`. Replaces the v1.56 per-project `pinned`. Toggle via **`admin_set_lease_perpetual`** (platform-admin only).
 
 Operator moderation actions (independent of lifecycle, scoped to a single project): **`admin_archive_project`** and **`admin_reactivate_project`**.
 
@@ -661,12 +661,12 @@ A project can be transferred to a different wallet without redeploying. Both sid
 
 **What does NOT transfer:**
 
-- Tier lease stays with the original owner's billing account (no proration in Phase 1A).
+- Tier lease stays with the original owner's organization (no proration in Phase 1A).
 - KMS contract wallets (`provision_contract_wallet`) remain wallet-scoped, not project-scoped.
 - GitHub repository ownership — handle that out of band.
 - On-chain balance attached to any wallet — `to_wallet` does NOT gain access to `from_wallet`'s funds.
 
-**Billing policy.** Phase 1A supports only `migrate` (default): the project moves into the recipient's billing account. The recipient must already have an active billing account; if not, the accept returns `409 RECIPIENT_ACCOUNT_NOT_ACTIVE`.
+**Billing policy.** Phase 1A supports only `migrate` (default): the project moves into the recipient's organization. The recipient must already have an active organization; if not, the accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
 
 **Secrets rotation prompt.** After accept, `tier_status` surfaces `projects[].secrets_rotation_advised: { advised_at, reason }` for the transferred project. Use **`set_secret`** to rotate every inherited name; the advisory clears once every one has been re-written.
 
@@ -712,7 +712,7 @@ The MCP server handles all signing automatically. When a paid tool returns 402, 
 For real-money tiers, two paths to fund:
 
 - **Path A — fund the agent allowance**: human sends USDC on Base mainnet to the address from **`allowance_export`**. Agent pays autonomously via x402.
-- **Path B — Stripe credits**: **`create_email_billing_account`** with the human's email, then **`tier_checkout`** returns a Stripe URL the human pays once.
+- **Path B — Stripe credits**: **`create_email_organization`** with the human's email, then **`tier_checkout`** returns a Stripe URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
 
@@ -734,7 +734,7 @@ The MCP server manages a local agent allowance — a wallet key dedicated to pay
 - **`init`** — composes `allowance_create` + `request_faucet` + `tier_status` + `list_projects`. Use this on a fresh install.
 - **`allowance_create`** / **`allowance_status`** / **`allowance_export`** — granular allowance ops.
 - **`request_faucet`** — Base Sepolia testnet USDC.
-- **`check_balance`** — run402 billing account balance (available + held) for the agent's wallet; resolves the wallet to its account over SIWX.
+- **`check_balance`** — run402 organization balance (available + held) for the agent's wallet; resolves the wallet to its organization over SIWX.
 
 Other allowance options:
 - **Coinbase AgentKit** — MPC wallet on Base with built-in x402.

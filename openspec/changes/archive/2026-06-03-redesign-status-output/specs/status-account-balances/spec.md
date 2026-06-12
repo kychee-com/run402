@@ -6,7 +6,7 @@
 
 #### Scenario: Balances are grouped under one object
 
-- **WHEN** a user runs `run402 status` with an active wallet and a billing account
+- **WHEN** a user runs `run402 status` with an active wallet and a organization
 - **THEN** stdout SHALL contain a `balances` object with `on_chain_usd_micros`, `on_chain_token`, `prepaid_credit_usd_micros`, and `held_usd_micros`
 - **AND** stdout SHALL NOT contain a top-level `wallet_balance_usd_micros` field
 - **AND** stdout SHALL NOT contain a top-level `billing` block
@@ -35,16 +35,16 @@
 
 ### Requirement: Prepaid Credit Is Rail-Independent
 
-`balances.prepaid_credit_usd_micros` SHALL report the Run402-held billing balance (formerly `billing.available_usd_micros`) independently of the active rail, and SHALL be `null` when no billing account exists for the wallet. `balances.held_usd_micros` SHALL report the held portion, defaulting to `0` when a billing account exists with nothing held.
+`balances.prepaid_credit_usd_micros` SHALL report the Run402-held billing balance (formerly `billing.available_usd_micros`) independently of the active rail, and SHALL be `null` when no organization exists for the wallet. `balances.held_usd_micros` SHALL report the held portion, defaulting to `0` when a organization exists with nothing held.
 
 #### Scenario: Prepaid credit does not depend on rail
 
-- **WHEN** a user runs `run402 status` under either the `x402` or `mpp` rail with the same billing account
+- **WHEN** a user runs `run402 status` under either the `x402` or `mpp` rail with the same organization
 - **THEN** `balances.prepaid_credit_usd_micros` SHALL report the same Run402-held balance in both cases
 
-#### Scenario: No billing account yields null prepaid credit
+#### Scenario: No organization yields null prepaid credit
 
-- **WHEN** a user runs `run402 status` for a wallet with no billing account
+- **WHEN** a user runs `run402 status` for a wallet with no organization
 - **THEN** `balances.prepaid_credit_usd_micros` SHALL be `null`
 
 ### Requirement: Status Omits The Funding Boolean And The Duplicate Wallet Block

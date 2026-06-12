@@ -233,9 +233,9 @@ describe("projects.list", () => {
             custom_domains: ["www.olddominionboatclub.com"],
             status: "active",
             effective_status: "active",
-            account_lifecycle_state: "active",
+            organization_lifecycle_state: "active",
             lease_perpetual: false,
-            billing_account_id: "11111111-2222-3333-4444-555555555555",
+            organization_id: "11111111-2222-3333-4444-555555555555",
             created_by: "99999999-8888-7777-6666-555555555555",
             created_at: "2026-04-30T15:32:59.891Z",
             deleted_at: null,
@@ -256,7 +256,7 @@ describe("projects.list", () => {
     assert.equal(item.site_url, "https://port.run402.com");
     assert.deepEqual(item.custom_domains, ["www.olddominionboatclub.com"]);
     assert.equal(item.status, "active");
-    assert.equal(item.billing_account_id, "11111111-2222-3333-4444-555555555555");
+    assert.equal(item.organization_id, "11111111-2222-3333-4444-555555555555");
     assert.equal(item.created_at, "2026-04-30T15:32:59.891Z");
   });
 
@@ -270,7 +270,7 @@ describe("projects.list", () => {
             site_url: null,
             custom_domains: [],
             status: "active",
-            billing_account_id: "11111111-2222-3333-4444-555555555555",
+            organization_id: "11111111-2222-3333-4444-555555555555",
             created_at: "2026-04-30T15:32:59.891Z",
           },
         ],
@@ -374,7 +374,7 @@ describe("projects.getUsage", () => {
   it("GETs /projects/v1/admin/:id/usage with service key", async () => {
     // Mirrors the live gateway shape — `lease_expires_at` is intentionally
     // absent because the endpoint doesn't compute it (see GH-163). v1.57:
-    // effective_status / account_lifecycle_state replace the legacy `status`.
+    // effective_status / organization_lifecycle_state replace the legacy `status`.
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         project_id: "prj_known",
@@ -384,7 +384,7 @@ describe("projects.getUsage", () => {
         storage_bytes: 1024,
         storage_limit_bytes: 1048576,
         effective_status: "active",
-        account_lifecycle_state: "active",
+        organization_lifecycle_state: "active",
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
@@ -395,7 +395,7 @@ describe("projects.getUsage", () => {
     assert.equal(result.tier, "prototype");
     assert.equal(result.api_calls, 10);
     assert.equal(result.effective_status, "active");
-    assert.equal(result.account_lifecycle_state, "active");
+    assert.equal(result.organization_lifecycle_state, "active");
     assert.equal(result.lease_expires_at, undefined,
       "gateway omits lease_expires_at; type is optional so callers don't read a non-existent string");
   });

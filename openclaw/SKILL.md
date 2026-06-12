@@ -555,7 +555,7 @@ export default async (req: Request) => {
 - `db(req)` — caller-context. Forwards Authorization header. RLS applies. Default choice.
 - `adminDb()` — bypass RLS. Use only for audit logs, cron cleanup, webhook handlers, platform-authored writes.
 - `adminDb().sql(query, params?)` — raw parameterized SQL. Always bypass.
-- `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions, billed/rate-limited against the project billing account through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
+- `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions, billed/rate-limited against the project organization through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - `assets.put(key, source, opts?)` — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
 - `getUserId(req)` / `getRole(req)` (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passed. Both return `string | null`. Use these inside a gated function instead of re-decoding the JWT — the gate already verified the caller and resolved the application role. `getRole(req)` is non-null only when `requireRole` ran (the value is guaranteed to be in `requireRole.allowed`). The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them. See "Function-level auth gates" below for the deploy-spec side.
 
@@ -832,27 +832,27 @@ run402 contracts delete <wallet_id> --confirm              # 7-day KMS deletion 
 
 ## Tier and billing
 
-Tier is per billing account, not per project. `run402 tier set` is account-wide — one subscribe / renew / upgrade applies to every project on the account. `api_calls` and `storage_bytes` are pooled across every project on the account, and across every wallet linked to it via `run402 billing link-wallet`. Quota-denial error envelopes include `details.scope: "account" | "project"` — `"account"` for the pooled path, `"project"` for the orphan fallback (project whose billing account row was purged but cascade has not yet run).
+Tier is per organization, not per project. `run402 tier set` is organization-wide — one subscribe / renew / upgrade applies to every project in the organization. `api_calls` and `storage_bytes` are pooled across every project in the organization, and across every wallet linked to it via `run402 billing link-wallet`. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
 
 ```bash
 run402 tier set prototype     # FREE on testnet (verifies x402 setup)
 run402 tier set hobby         # $5 / 30 days
 run402 tier set team          # $20 / 30 days
-run402 tier status            # pool_usage sums across the whole account
+run402 tier status            # pool_usage sums across the whole organization
 
 # Pay with Stripe instead of x402
 run402 billing create-email user@example.com
-run402 billing link-wallet <account_id> <wallet>   # response includes pool_implications (over_limit warning)
+run402 billing link-wallet <org_id> <wallet>   # response includes pool_implications (over_limit warning)
 run402 billing tier-checkout hobby --email user@example.com
 run402 billing buy-email-pack       --email user@example.com   # $5 / 10k emails (never expire)
-run402 billing auto-recharge <account_id> on --threshold 2000
-run402 billing balance <account-id | wallet | email>   # wallet/email resolved to the account; SIWX must be linked to it (email lookups admin-only)
-run402 billing history <account-id | wallet | email>
+run402 billing auto-recharge <org_id> on --threshold 2000
+run402 billing balance <org-id | wallet | email>   # wallet/email resolved to the organization; SIWX must be linked to it (email lookups admin-only)
+run402 billing history <org-id | wallet | email>
 ```
 
-`run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed account-pool snapshot as `status_after` in the JSON output, so the new pooled `api_calls` / `storage_bytes` totals come back in one step.
+`run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed organization-pool snapshot as `status_after` in the JSON output, so the new pooled `api_calls` / `storage_bytes` totals come back in one step.
 
-After subscribing you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier, subject to the account-pooled api_calls and storage_bytes caps. Only image generation ($0.03/image) is per-call.
+After subscribing you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier, subject to the organization-pooled api_calls and storage_bytes caps. Only image generation ($0.03/image) is per-call.
 
 The server auto-detects the action: no tier or expired → subscribe; same tier active → renew; higher tier → upgrade (prorated refund); lower tier → downgrade (prorated refund if usage fits).
 
@@ -875,7 +875,7 @@ Project-level rate limit: 100 req/sec. Exceeding returns 429 with `retry_after`.
 
 ## Project lifecycle (~104-day soft delete)
 
-Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.billing_accounts`. The grace clock now ticks per **account**, not per project — every project on the same billing account inherits the same `account_lifecycle_state`. The live data plane keeps serving the whole time; only the owner's control plane gets gated:
+Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.organizations`. The grace clock now ticks per **organization**, not per project — every project on the same organization inherits the same `organization_lifecycle_state`. The live data plane keeps serving the whole time; only the owner's control plane gets gated:
 
 | State | When | What happens |
 |---|---|---|
@@ -885,13 +885,13 @@ Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `int
 | `dormant` | +44d | Scheduled (cron) functions pause. |
 | `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become claimable 14 days later. |
 
-`run402 tier set …` at any point during grace reactivates the account inline and clears every project's timers in one transaction. Each project entry also exposes:
+`run402 tier set …` at any point during grace reactivates the organization inline and clears every project's timers in one transaction. Each project entry also exposes:
 
-- `effective_status` — derived state for serving (`active` / `past_due` / `frozen` / `dormant` / `archived` / `deleted`). Use this for UX. When a single project is moderate-archived (`archived_at` set) or user-deleted (`deleted_at` set) it overrides the account lifecycle in this field.
-- `account_lifecycle_state` — the raw per-account state. Identical across every project on the same account.
-- `lease_perpetual` — operator escape hatch flag. When `true`, the account never advances past `active`. Replaces the v1.56 per-project `pinned`. Toggle via `run402 admin lease-perpetual <ba_id> --enable | --disable` (platform-admin only).
+- `effective_status` — derived state for serving (`active` / `past_due` / `frozen` / `dormant` / `archived` / `deleted`). Use this for UX. When a single project is moderate-archived (`archived_at` set) or user-deleted (`deleted_at` set) it overrides the organization lifecycle in this field.
+- `organization_lifecycle_state` — the raw per-organization state. Identical across every project on the same organization.
+- `lease_perpetual` — operator escape hatch flag. When `true`, the organization never advances past `active`. Replaces the v1.56 per-project `pinned`. Toggle via `run402 admin lease-perpetual <org_id> --enable | --disable` (platform-admin only).
 
-Operator moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same account keep serving.
+Operator moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same organization keep serving.
 
 ## Project transfer (v1.59, two-party handoff)
 
@@ -917,9 +917,9 @@ run402 transfer list --outgoing
 
 **Freeze invariant.** While `pending`, owner-side mutations against the project (deploy, secrets, custom domains, function CRUD, scheduled-function changes, mailbox config, CI bindings, project rename) return **`409 PROJECT_HAS_PENDING_TRANSFER`** with `details.transfer_id` and a `next_actions[]` cancel route. Data-plane traffic keeps serving. Payment-path routes (tier renew, billing) keep working. The `transfer cancel` route is intentionally unblocked.
 
-**What does NOT transfer:** tier lease (stays with the original owner's billing account; no Phase 1A proration), KMS contract wallets (`run402 contracts ...` — wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet.
+**What does NOT transfer:** tier lease (stays with the original owner's organization; no Phase 1A proration), KMS contract wallets (`run402 contracts ...` — wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet.
 
-**Billing policy.** Phase 1A supports only `--billing-policy migrate` (default): the project moves into the recipient's billing account. If the recipient has no active billing account yet, the accept returns `409 RECIPIENT_ACCOUNT_NOT_ACTIVE`.
+**Billing policy.** Phase 1A supports only `--billing-policy migrate` (default): the project moves into the recipient's organization. If the recipient has no active organization yet, the accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
 
 **Secrets rotation prompt.** Secret VALUES are inherited at accept. The accept response returns `secret_names_inherited[]` (names only). The project carries a persistent `secrets_rotation_advised` advisory; `run402 tier status` surfaces it on `projects[].secrets_rotation_advised`. Use `run402 secrets set <project> <name> <value>` to rotate every inherited name; the advisory clears once every one has been re-written.
 
@@ -966,7 +966,7 @@ run402 service status   # 24h/7d/30d uptime per capability, operator, deployment
 run402 service health   # per-dependency liveness (postgres, postgrest, s3, cloudfront)
 ```
 
-Don't confuse with `run402 status` (your account's allowance, balance, tier, projects).
+Don't confuse with `run402 status` (your organization's allowance, balance, tier, projects).
 
 ## Send feedback
 
@@ -1072,7 +1072,7 @@ The **operator** is the human, identified by email — distinct from the **agent
 
 ```bash
 run402 operator login            # browser device-auth (RFC 8628, like `aws sso login`): magic-link OR passkey
-run402 operator overview         # account view across ALL wallets controlling your email (requires login)
+run402 operator overview         # organization view across ALL wallets controlling your email (requires login)
 run402 operator whoami           # cached session: email, wallets, expiry - local, no network
 run402 operator logout           # revoke server-side + clear the local cache
 ```

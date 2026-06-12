@@ -65,7 +65,7 @@ export async function handleStatus(
 
   // Build summary
   const lines: string[] = [
-    `## Account Status`,
+    `## Organization Status`,
     ``,
     `| Field | Value |`,
     `|-------|-------|`,

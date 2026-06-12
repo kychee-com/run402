@@ -5,7 +5,7 @@
  * membership in the role lattice below, or a per-project grant. These shapes map
  * to `/agent/v1/whoami` and `/orgs/v1*`.
  *
- * Public vocabulary is `org` / `org_id` (v1.82): the internal `billing_account`
+ * Public vocabulary is `org` / `org_id` (v1.82): the internal `organization`
  * substrate never appears on the wire.
  */
 
@@ -40,7 +40,7 @@ export interface Principal {
  * `"revoked"` do not). Returned by {@link Orgs.whoami} and {@link Orgs.list}.
  *
  * v1.82: carries `org_id` + `display_name` (the public vocabulary), replacing
- * the pre-v1.82 `billing_account_id`.
+ * the pre-v1.82 `organization_id`.
  */
 export interface OrgMembership {
   org_id: string;

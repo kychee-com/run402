@@ -211,22 +211,22 @@ describe("admin.getProjectFinance", () => {
 });
 
 describe("admin.setLeasePerpetual (v1.57)", () => {
-  it("POSTs to /billing/v1/admin/accounts/:account_id/lease-perpetual with admin headers", async () => {
+  it("POSTs to /orgs/v1/admin/:org_id/lease-perpetual with admin headers", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         status: "ok",
-        billing_account_id: "ba_known",
+        organization_id: "org_known",
         lease_perpetual: true,
         reactivated: true,
       }),
     );
-    const result = await sdk(fetch).admin.setLeasePerpetual("ba_known", true);
+    const result = await sdk(fetch).admin.setLeasePerpetual("org_known", true);
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.method, "POST");
     assert.equal(
       calls[0]!.url,
-      "https://api.test/billing/v1/admin/accounts/ba_known/lease-perpetual",
+      "https://api.test/orgs/v1/admin/org_known/lease-perpetual",
     );
     assert.equal(calls[0]!.headers["X-Admin-Mode"], "1");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
@@ -237,23 +237,23 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
 
   it("sends false to disable perpetual", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({ status: "ok", billing_account_id: "ba_known", lease_perpetual: false, reactivated: false }),
+      json({ status: "ok", organization_id: "org_known", lease_perpetual: false, reactivated: false }),
     );
-    const result = await sdk(fetch).admin.setLeasePerpetual("ba_known", false);
+    const result = await sdk(fetch).admin.setLeasePerpetual("org_known", false);
 
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { lease_perpetual: false });
     assert.equal(result.lease_perpetual, false);
     assert.equal(result.reactivated, false);
   });
 
-  it("URI-encodes the billing account id", async () => {
+  it("URI-encodes the organization id", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({ status: "ok", billing_account_id: "ba/has space", lease_perpetual: true, reactivated: false }),
+      json({ status: "ok", organization_id: "org/has space", lease_perpetual: true, reactivated: false }),
     );
-    await sdk(fetch).admin.setLeasePerpetual("ba/has space", true);
+    await sdk(fetch).admin.setLeasePerpetual("org/has space", true);
     assert.equal(
       calls[0]!.url,
-      "https://api.test/billing/v1/admin/accounts/ba%2Fhas%20space/lease-perpetual",
+      "https://api.test/orgs/v1/admin/org%2Fhas%20space/lease-perpetual",
     );
   });
 });

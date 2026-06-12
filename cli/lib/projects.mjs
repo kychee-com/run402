@@ -101,7 +101,7 @@ Usage:
   run402 projects list [--org <id>] [--all]
 
 Options:
-  --org <id>          Filter to projects owned by one org (billing account).
+  --org <id>          Filter to projects owned by one org (organization).
                       Authorize-before-reveal: a non-member or guessed id is a
                       403; a non-UUID id is a 400.
   --all               Read the cross-wallet inventory across every wallet
@@ -114,7 +114,7 @@ Notes:
   - This is a SERVER read (membership-scoped), not the local keystore. Each row
     has project_id, name, site_url, custom_domains, org_id, status, and an
     'active' marker derived from local state.
-  - Tier and lifecycle live on the billing account, not each project — use
+  - Tier and lifecycle live on the organization, not each project — use
     'run402 status' or 'run402 tier status' for the account view.
 
 Examples:
@@ -478,7 +478,7 @@ async function list(args = []) {
       active: p.id === activeId,
       site_url: p.site_url ?? null,
       custom_domains: p.custom_domains ?? [],
-      org_id: p.billing_account_id ?? null,
+      org_id: p.organization_id ?? null,
       status: p.status ?? p.effective_status ?? null,
     }));
     const out = { projects: rows };
@@ -724,7 +724,7 @@ export async function run(sub, args) {
     fail({
       code: "REMOVED_COMMAND",
       message: "`run402 projects pin` was removed in v1.57.",
-      hint: "Per-project pin is superseded by the account-level escape hatch. Use `run402 admin lease-perpetual <billing_account_id> --enable` (platform-admin only).",
+      hint: "Per-project pin is superseded by the organization-level escape hatch. Use `run402 admin lease-perpetual <organization_id> --enable` (platform-admin only).",
     });
   }
   args = normalizeArgv(args);

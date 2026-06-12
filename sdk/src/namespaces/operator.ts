@@ -57,7 +57,7 @@ export type DevicePollResult =
   | { kind: "expired_token" };
 
 /**
- * Account overview. Forward-compatible: the gateway owns the exact shape and
+ * Organization overview. Forward-compatible: the gateway owns the exact shape and
  * may add fields, so unknown keys are preserved via the index signature.
  * `scope.kind` is `"email"` for the operator-session (email-union) and
  * `"wallet"` for a SIWX slice.
@@ -65,7 +65,7 @@ export type DevicePollResult =
 export interface OperatorOverview {
   scope?: { kind?: "email" | "wallet" | string; principal?: string };
   rollup?: Record<string, unknown>;
-  billing_accounts?: unknown[];
+  organizations?: unknown[];
   wallets?: unknown[];
   advisories?: unknown[];
   [key: string]: unknown;
@@ -325,7 +325,7 @@ export class Operator {
   }
 
   /**
-   * Fetch the account overview. With `opts.token` the request carries the
+   * Fetch the organization overview. With `opts.token` the request carries the
    * operator-session bearer and returns the email-union; without it the request
    * falls back to the credential provider's default auth (SIWX) and returns
    * that wallet's slice. The CLI always passes a token (human-only surface); the

@@ -5,7 +5,7 @@ CLI and MCP are intended to be thin shims over `@run402/sdk`, but several comman
 ## What Changes
 
 - Add SDK coverage for every Run402 API behavior currently reached directly by CLI or MCP.
-- Move CLI and MCP handlers to SDK calls for SQL, PostgREST, expose manifests, auth providers, blob upload sessions, faucet/billing account reads, tier/project status aggregation, and related account/project operations.
+- Move CLI and MCP handlers to SDK calls for SQL, PostgREST, expose manifests, auth providers, blob upload sessions, faucet/organization reads, tier/project status aggregation, and related account/project operations.
 - Preserve intentional non-Run402 network calls outside the SDK contract, including direct presigned storage PUTs, on-chain/RPC balance reads, and GitHub repository-id discovery.
 - Add regression checks that fail when CLI or MCP production code introduces direct Run402 gateway `fetch` / `apiRequest` usage outside an explicit narrow allowlist.
 - Keep command/tool UX and JSON/Markdown output stable unless an existing direct path had inconsistent SDK error handling that should now be normalized.

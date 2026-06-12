@@ -4,7 +4,7 @@
  * The operator is YOU, the human, identified by email — distinct from the
  * AGENT (your wallet / SIWX identity). One browser login spans every wallet
  * that verified your email, so `operator overview` returns the cross-wallet
- * union. For a single wallet's account state, use `run402 status`.
+ * union. For a single wallet's organization state, use `run402 status`.
  *
  * Auth: browser-delegated device-authorization grant (RFC 8628, the
  * `aws sso login` model). The CLI never performs WebAuthn — the browser does,
@@ -47,7 +47,7 @@ const HELP = `run402 operator — operator (human / email) session
 
 The operator is YOU, the human, identified by email — distinct from the agent
 (your wallet). One browser login spans every wallet that verified your email.
-For a single wallet's account state, use 'run402 status'.
+For a single wallet's organization state, use 'run402 status'.
 
 Usage:
   run402 operator login [--no-open]              (read session, device-flow)
@@ -289,7 +289,7 @@ async function loopbackLogin(args, { stepUp }) {
     if (memberships.length) {
       process.stderr.write(
         `Member of ${memberships.length} org(s):\n` +
-          memberships.map((m) => `  - ${m.display_name || m.org_id || m.billing_account_id} (${m.role}, ${m.status})`).join("\n") +
+          memberships.map((m) => `  - ${m.display_name || m.org_id || m.organization_id || "unknown"} (${m.role}, ${m.status})`).join("\n") +
           "\n",
       );
     }

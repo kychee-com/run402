@@ -290,7 +290,7 @@ const SURFACE: Capability[] = [
   { id: "list_versions",     endpoint: "GET /projects/v1/admin/:id/versions",       mcp: "list_versions", cli: "apps:versions", openclaw: "apps:versions" },
 
   // ── Billing ──────────────────────────────────────────────────────────────
-  { id: "check_balance",     endpoint: "GET /billing/v1/accounts?wallet=",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
+  { id: "check_balance",     endpoint: "GET /orgs/v1/lookup?wallet=",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
   { id: "list_projects",     endpoint: "GET /projects/v1",                           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
   { id: "rename_project",    endpoint: "PATCH /projects/v1/:project_id",             mcp: "rename_project", cli: "projects:rename", openclaw: "projects:rename" },
   { id: "project_info",      endpoint: "(local)",                                    mcp: "project_info",   cli: "projects:info",  openclaw: "projects:info" },
@@ -355,7 +355,7 @@ const SURFACE: Capability[] = [
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /billing/v1/checkouts",        mcp: "create_checkout",     cli: "allowance:checkout",  openclaw: "allowance:checkout" },
-  { id: "billing_history",   endpoint: "GET /billing/v1/accounts/:account_id/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
+  { id: "billing_history",   endpoint: "GET /orgs/v1/:org_id/billing/history", mcp: "billing_history", cli: "allowance:history", openclaw: "allowance:history" },
 
   // ── Version management ─────────────────────────────────────────────────
   { id: "update_version",    endpoint: "PATCH /projects/v1/admin/:id/versions/:version_id", mcp: "update_version", cli: "apps:update", openclaw: "apps:update" },
@@ -364,9 +364,9 @@ const SURFACE: Capability[] = [
 
   // ── Admin ──────────────────────────────────────────────────────────────
   // v1.57: pin/unpin endpoints removed. Per-project pin is superseded by the
-  // account-level escape hatch (admin_set_lease_perpetual). archive and
+  // organization-level escape hatch (admin_set_lease_perpetual). archive and
   // reactivate are operator moderation actions, scoped to a single project.
-  { id: "admin_set_lease_perpetual", endpoint: "POST /billing/v1/admin/accounts/:account_id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
+  { id: "admin_set_lease_perpetual", endpoint: "POST /orgs/v1/admin/:org_id/lease-perpetual", mcp: "admin_set_lease_perpetual", cli: "admin:lease-perpetual", openclaw: "admin:lease-perpetual" },
   { id: "admin_archive_project",     endpoint: "POST /projects/v1/admin/:id/archive",                 mcp: "admin_archive_project",     cli: "admin:archive",          openclaw: "admin:archive" },
   { id: "admin_reactivate_project",  endpoint: "POST /projects/v1/admin/:id/reactivate",              mcp: "admin_reactivate_project",  cli: "admin:reactivate",       openclaw: "admin:reactivate" },
   { id: "promote_user",    endpoint: "POST /projects/v1/admin/:id/promote-user", mcp: "promote_user", cli: "projects:promote-user", openclaw: "projects:promote-user" },
@@ -422,14 +422,14 @@ const SURFACE: Capability[] = [
   { id: "enable_sender_domain_inbound",  endpoint: "POST /email/v1/domains/inbound",   mcp: "enable_sender_domain_inbound",  cli: "sender-domain:inbound-enable",  openclaw: "sender-domain:inbound-enable" },
   { id: "disable_sender_domain_inbound", endpoint: "DELETE /email/v1/domains/inbound", mcp: "disable_sender_domain_inbound", cli: "sender-domain:inbound-disable", openclaw: "sender-domain:inbound-disable" },
 
-  // ── Email billing accounts + Stripe tier checkout + email packs ───────
-  { id: "create_email_billing_account", endpoint: "POST /billing/v1/accounts",                   mcp: "create_email_billing_account", cli: "billing:create-email",   openclaw: "billing:create-email" },
-  { id: "link_wallet_to_account",       endpoint: "POST /billing/v1/accounts/:account_id/link-wallet",   mcp: "link_wallet_to_account",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
+  // ── Email organizations + Stripe tier checkout + email packs ───────
+  { id: "create_email_organization", endpoint: "POST /orgs/v1/email",                   mcp: "create_email_organization", cli: "billing:create-email",   openclaw: "billing:create-email" },
+  { id: "link_wallet_to_organization",       endpoint: "POST /orgs/v1/:org_id/wallets",   mcp: "link_wallet_to_organization",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
   { id: "tier_checkout",                endpoint: "POST /billing/v1/tiers/:tier/checkout",       mcp: "tier_checkout",                cli: "billing:tier-checkout",  openclaw: "billing:tier-checkout" },
   { id: "buy_email_pack",               endpoint: "POST /billing/v1/email-packs/checkout",       mcp: "buy_email_pack",               cli: "billing:buy-email-pack", openclaw: "billing:buy-email-pack" },
   { id: "set_auto_recharge",            endpoint: "POST /billing/v1/email-packs/auto-recharge",  mcp: "set_auto_recharge",            cli: "billing:auto-recharge",  openclaw: "billing:auto-recharge" },
-  { id: "billing_balance",              endpoint: "GET /billing/v1/accounts/:account_id",        mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
-  { id: "billing_history_cli",          endpoint: "GET /billing/v1/accounts/:account_id/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
+  { id: "billing_balance",              endpoint: "GET /orgs/v1/:org_id/billing",        mcp: null,                           cli: "billing:balance",        openclaw: "billing:balance" },
+  { id: "billing_history_cli",          endpoint: "GET /orgs/v1/:org_id/billing/history",        mcp: null,                           cli: "billing:history",        openclaw: "billing:history" },
 
   // ── Tier management ────────────────────────────────────────────────────
   { id: "tier_status",       endpoint: "GET /tiers/v1/status",             mcp: "tier_status",      cli: "tier:status",      openclaw: "tier:status" },
@@ -587,12 +587,12 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   project_keys: "projects.keys",
   create_checkout: "billing.createCheckout",
   billing_history: "billing.history",
-  create_email_billing_account: "billing.createEmailAccount",
-  link_wallet_to_account: "billing.linkWallet",
+  create_email_organization: "billing.createEmailOrganization",
+  link_wallet_to_organization: "billing.linkWallet",
   tier_checkout: "billing.tierCheckout",
   buy_email_pack: "billing.buyEmailPack",
   set_auto_recharge: "billing.setAutoRecharge",
-  billing_balance: "billing.getAccount",
+  billing_balance: "billing.getOrganization",
   billing_history_cli: "billing.getHistory",
 
   // Image / AI
@@ -974,12 +974,12 @@ describe("SDK surface alignment", () => {
       "email.resolveMailbox",  // private helper
       "email.pickMailbox",     // private helper
       "email.cacheMailbox",    // private helper
-      // billing.lookupAccount resolves a wallet/email → billing_account_id via
-      // GET /billing/v1/accounts?wallet=|?email=. It's an SDK primitive used by
+      // billing.lookupOrganization resolves a wallet/email → organization_id via
+      // GET /orgs/v1/lookup?wallet=|?email=. It's an SDK primitive used by
       // getAccount/getHistory and exposed for consumers that only need the id;
       // no dedicated MCP/CLI verb (the wallet/email-keyed balance/history
       // commands resolve internally).
-      "billing.lookupAccount",
+      "billing.lookupOrganization",
       "projects.active",       // returns active project id from the provider
       "projects.restResponse", // REST proxy with HTTP status for CLI/MCP formatters
       "assets.initUploadSession", // low-level resumable upload primitive for CLI UX

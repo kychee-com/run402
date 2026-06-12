@@ -6,7 +6,7 @@ export const adminArchiveProjectSchema = {
   project_id: z
     .string()
     .describe(
-      "The project ID to archive. Platform-admin only — sets `projects.archived_at = NOW()` and takes only this project down. Sibling projects on the same billing account keep serving.",
+      "The project ID to archive. Platform-admin only — sets `projects.archived_at = NOW()` and takes only this project down. Sibling projects on the same organization keep serving.",
     ),
   reason: z
     .string()

@@ -2,25 +2,25 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
 
-const HELP = `run402 billing — Email billing accounts, Stripe tier checkout, email packs
+const HELP = `run402 billing — Email organizations, Stripe tier checkout, email packs
 
 Usage:
   run402 billing <subcommand> [args...]
 
 Subcommands:
-  create-email <email>                     Create an email billing account
-  link-wallet <account_id> <wallet>        Link a wallet to an email account
+  create-email <email>                     Create an email organization
+  link-wallet <org_id> <wallet>        Link a wallet to an email organization
   tier-checkout <tier> [--email <e> | --wallet <w>]    Stripe tier checkout
   buy-email-pack [--email <e> | --wallet <w>]  Buy \$5 email pack (10,000 emails)
-  auto-recharge <account_id> <on|off> [--threshold <n>]
-  balance <identifier>                     Balance by account id (UUID), wallet (0x...), or email
-  history <identifier> [--limit <n>]       Ledger history by account id (UUID), wallet, or email
+  auto-recharge <org_id> <on|off> [--threshold <n>]
+  balance <identifier>                     Balance by organization id (UUID), wallet (0x...), or email
+  history <identifier> [--limit <n>]       Ledger history by organization id (UUID), wallet, or email
 
 Examples:
   run402 billing create-email user@example.com
   run402 billing tier-checkout hobby --email user@example.com
   run402 billing buy-email-pack --wallet 0x1234...
-  run402 billing auto-recharge acct_abc on --threshold 2000
+  run402 billing auto-recharge org_abc on --threshold 2000
   run402 billing balance user@example.com
 `;
 
@@ -34,7 +34,7 @@ Arguments:
   <tier>              Tier name (e.g. hobby, pro)
 
 Options:
-  --email <e>         Email billing account to charge
+  --email <e>         Email organization to charge
   --wallet <w>        Wallet address (0x...) to associate with the checkout
 
 Examples:
@@ -47,7 +47,7 @@ Usage:
   run402 billing buy-email-pack [--email <e> | --wallet <w>]
 
 Options:
-  --email <e>         Email billing account to charge
+  --email <e>         Email organization to charge
   --wallet <w>        Wallet address (0x...) to associate with the purchase
 
 Examples:
@@ -57,33 +57,33 @@ Examples:
   "auto-recharge": `run402 billing auto-recharge — Toggle email-pack auto-recharge
 
 Usage:
-  run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]
+  run402 billing auto-recharge <org_id> <on|off> [--threshold <n>]
 
 Arguments:
-  <account_id>        Billing account ID
+  <org_id>        Organization ID
   <on|off>            Enable or disable auto-recharge
 
 Options:
   --threshold <n>     Remaining-email threshold that triggers auto-recharge
 
 Examples:
-  run402 billing auto-recharge acct_abc on --threshold 2000
-  run402 billing auto-recharge acct_abc off
+  run402 billing auto-recharge org_abc on --threshold 2000
+  run402 billing auto-recharge org_abc off
 `,
-  history: `run402 billing history — Show ledger history for a billing account
+  history: `run402 billing history — Show ledger history for a organization
 
 Usage:
   run402 billing history <identifier> [--limit <n>]
 
 Arguments:
-  <identifier>        Billing account id (UUID), wallet (0x...), or email.
-                      Wallet/email are resolved to the account id first.
+  <identifier>        Organization id (UUID), wallet (0x...), or email.
+                      Wallet/email are resolved to the organization id first.
 
 Options:
   --limit <n>         Max entries to return (default: 50)
 
 Auth:
-  Requires SIWX from a wallet linked to the account (signed automatically from
+  Requires SIWX from a wallet linked to the organization (signed automatically from
   the local allowance), or an admin key. Email lookups require an admin key.
 
 Examples:
@@ -91,17 +91,17 @@ Examples:
   run402 billing history 0x1234... --limit 100
   run402 billing history 00000000-0000-4000-8000-000000000001
 `,
-  balance: `run402 billing balance — Show balance for a billing account
+  balance: `run402 billing balance — Show balance for a organization
 
 Usage:
   run402 billing balance <identifier>
 
 Arguments:
-  <identifier>        Billing account id (UUID), wallet (0x...), or email.
-                      Wallet/email are resolved via the accounts lookup.
+  <identifier>        Organization id (UUID), wallet (0x...), or email.
+                      Wallet/email are resolved via the organization lookup.
 
 Auth:
-  Requires SIWX from a wallet linked to the account (signed automatically from
+  Requires SIWX from a wallet linked to the organization (signed automatically from
   the local allowance), or an admin key. Email lookups require an admin key.
 
 Examples:
@@ -109,38 +109,38 @@ Examples:
   run402 billing balance 0x1234abcd...
   run402 billing balance 00000000-0000-4000-8000-000000000001
 `,
-  "create-email": `run402 billing create-email — Create an email billing account
+  "create-email": `run402 billing create-email — Create an email organization
 
 Usage:
   run402 billing create-email <email>
 
 Arguments:
-  <email>             Email address to register as a billing account
+  <email>             Email address to register as a organization
 
 Examples:
   run402 billing create-email user@example.com
 `,
-  "link-wallet": `run402 billing link-wallet — Link a wallet to an email billing account
+  "link-wallet": `run402 billing link-wallet — Link a wallet to an email organization
 
 Usage:
-  run402 billing link-wallet <account_id> <wallet>
+  run402 billing link-wallet <org_id> <wallet>
 
 Arguments:
-  <account_id>        Billing account ID (e.g. acct_abc123)
+  <org_id>        Organization ID (e.g. org_abc123)
   <wallet>            Wallet address (0x...) to link
 
 Notes:
-  - Tier and quotas are per-billing-account. Linking a wallet merges its
-    spend into the account-wide pool that already includes every project
-    on this billing account.
+  - Tier and quotas are per-organization. Linking a wallet merges its
+    spend into the organization-wide pool that already includes every project
+    on this organization.
   - The response includes a 'pool_implications' block on v1.46+ gateways:
-    tier, projects_in_pool_count, account_api_calls_current,
-    account_storage_bytes_current, tier_limits, over_limit. Inspect
+    tier, projects_in_pool_count, organization_api_calls_current,
+    organization_storage_bytes_current, tier_limits, over_limit. Inspect
     'over_limit' before linking a wallet whose existing usage might push
     the merged pool past the tier cap.
 
 Examples:
-  run402 billing link-wallet acct_abc123 0x1234abcd...
+  run402 billing link-wallet org_abc123 0x1234abcd...
 `,
 };
 
@@ -177,7 +177,7 @@ async function createEmail(args) {
     });
   }
   try {
-    const data = await getSdk().billing.createEmailAccount(email);
+    const data = await getSdk().billing.createEmailOrganization(email);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -188,23 +188,23 @@ async function linkWallet(args) {
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
   const positionals = positionalArgs(parsedArgs);
-  const accountId = positionals[0];
+  const organizationId = positionals[0];
   const wallet = positionals[1];
   if (positionals.length > 2) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for billing link-wallet: ${positionals[2]}` });
   }
-  if (!accountId || !wallet) {
+  if (!organizationId || !wallet) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <account_id> and/or <wallet>.",
-      hint: "run402 billing link-wallet <account_id> <wallet>",
+      message: "Missing <org_id> and/or <wallet>.",
+      hint: "run402 billing link-wallet <org_id> <wallet>",
     });
   }
   try {
-    const data = await getSdk().billing.linkWallet(accountId, wallet);
+    const data = await getSdk().billing.linkWallet(organizationId, wallet);
     const output = {
       status: data?.status ?? "ok",
-      billing_account_id: data?.billing_account_id ?? accountId,
+      organization_id: data?.organization_id ?? organizationId,
       wallet: data?.wallet ?? wallet.toLowerCase(),
       ...(data?.pool_implications ? { pool_implications: data.pool_implications } : {}),
     };
@@ -265,16 +265,16 @@ async function autoRecharge(args) {
   const valueFlags = ["--threshold"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const positionals = positionalArgs(parsedArgs, valueFlags);
-  const accountId = positionals[0];
+  const organizationId = positionals[0];
   const state = positionals[1];
   if (positionals.length > 2) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for billing auto-recharge: ${positionals[2]}` });
   }
-  if (!accountId || !state || !["on", "off"].includes(state)) {
+  if (!organizationId || !state || !["on", "off"].includes(state)) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <account_id> and/or <on|off>.",
-      hint: "run402 billing auto-recharge <account_id> <on|off> [--threshold <n>]",
+      message: "Missing <org_id> and/or <on|off>.",
+      hint: "run402 billing auto-recharge <org_id> <on|off> [--threshold <n>]",
     });
   }
   const thresholdStr = flagValue(parsedArgs, "--threshold");
@@ -283,11 +283,11 @@ async function autoRecharge(args) {
     : undefined;
   try {
     await getSdk().billing.setAutoRecharge({
-      billingAccountId: accountId,
+      organizationId: organizationId,
       enabled: state === "on",
       threshold,
     });
-    console.log(JSON.stringify({ billing_account_id: accountId, enabled: state === "on", updated: true }));
+    console.log(JSON.stringify({ organization_id: organizationId, enabled: state === "on", updated: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -305,11 +305,11 @@ async function balance(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <identifier>.",
-      hint: "run402 billing balance <account-id | wallet | email>",
+      hint: "run402 billing balance <org-id | wallet | email>",
     });
   }
   try {
-    const data = await getSdk().billing.getAccount(id);
+    const data = await getSdk().billing.getOrganization(id);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -329,7 +329,7 @@ async function history(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <identifier>.",
-      hint: "run402 billing history <account-id | wallet | email> [--limit <n>]",
+      hint: "run402 billing history <org-id | wallet | email> [--limit <n>]",
     });
   }
   const limit = parsedArgs.includes("--limit")

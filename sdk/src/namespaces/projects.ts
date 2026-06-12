@@ -7,7 +7,7 @@
  *
  * Operator-only project actions live on the {@link Admin} namespace:
  *   - `admin.archiveProject` / `admin.reactivateProject` — moderate-archive
- *   - `admin.setLeasePerpetual` — account-level escape hatch (replaces the
+ *   - `admin.setLeasePerpetual` — organization-level escape hatch (replaces the
  *     v1.56 `projects.pin` removed in v1.57)
  */
 
@@ -117,7 +117,7 @@ export class Projects {
   /**
    * List projects in the named, domain-aware inventory (gateway
    * `project-findability`). Each row carries `name`, `site_url`,
-   * `custom_domains`, `billing_account_id` (the owning org), `status`, and
+   * `custom_domains`, `organization_id` (the owning org), `status`, and
    * `created_at`.
    *
    * Membership-scoped by default (`GET /projects/v1`): returns every project

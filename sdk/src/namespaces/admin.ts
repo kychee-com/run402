@@ -104,7 +104,7 @@ export interface NotificationRow {
   attempt_count: number;
   is_test: boolean;
   related_project_id: string | null;
-  related_billing_account_id: string | null;
+  related_organization_id: string | null;
   related_wallet_address: string | null;
   created_at: string;
   redacted_at: string | null;
@@ -166,13 +166,13 @@ export interface RotateWebhookSecretResult {
 }
 
 // ---------------------------------------------------------------------------
-// Operator-only project + billing-account actions (v1.57,
-// lifecycle-state-on-billing-account).
+// Operator-only project + organization actions (v1.57,
+// lifecycle-state-on-organization).
 // ---------------------------------------------------------------------------
 
 export interface SetLeasePerpetualResult {
   status: "ok";
-  billing_account_id: string;
+  organization_id: string;
   lease_perpetual: boolean;
   /**
    * `true` when the toggle was `lease_perpetual: true` AND the account was in
@@ -219,11 +219,11 @@ export interface OperatorStatusResult {
     id: string;
     event_type: string;
     related_project_id: string | null;
-    related_billing_account_id: string | null;
+    related_organization_id: string | null;
     related_wallet_address: string | null;
     created_at: string;
   }>;
-  billing_accounts: Array<Record<string, unknown>>;
+  organizations: Array<Record<string, unknown>>;
   projects: Array<Record<string, unknown>>;
   active_thresholds: Array<{
     resource: string;
@@ -421,38 +421,38 @@ export class Admin {
   }
 
   // -------------------------------------------------------------------------
-  // Operator-only project + billing-account actions (v1.57).
+  // Operator-only project + organization actions (v1.57).
   // -------------------------------------------------------------------------
 
   /**
-   * Toggle a billing account's `lease_perpetual` flag — the operator escape
-   * hatch that pins every project on the account (replaces the v1.56
-   * per-project `pin` removed in v1.57). When enabling on an account in a
+   * Toggle a organization's `lease_perpetual` flag — the operator escape
+   * hatch that pins every project in the organization (replaces the v1.56
+   * per-project `pin` removed in v1.57). When enabling on an organization in a
    * grace state, the gateway reactivates inline and reports it via
    * `reactivated: true`.
    *
    * Platform-admin only. Calls
-   * `POST /billing/v1/admin/accounts/:account_id/lease-perpetual`.
+   * `POST /orgs/v1/admin/:org_id/lease-perpetual`.
    */
   async setLeasePerpetual(
-    billingAccountId: string,
+    organizationId: string,
     perpetual: boolean,
   ): Promise<SetLeasePerpetualResult> {
     return this.client.request<SetLeasePerpetualResult>(
-      `/billing/v1/admin/accounts/${encodeURIComponent(billingAccountId)}/lease-perpetual`,
+      `/orgs/v1/admin/${encodeURIComponent(organizationId)}/lease-perpetual`,
       {
         method: "POST",
         headers: { "X-Admin-Mode": "1" },
         body: { lease_perpetual: perpetual },
-        context: "setting billing account lease_perpetual",
+        context: "setting organization lease_perpetual",
       },
     );
   }
 
   /**
    * Operator moderation action — archive a single project (ToS / abuse).
-   * Sets `projects.archived_at` to NOW(). Independent of account-level
-   * lifecycle; the rest of the account's projects continue serving.
+   * Sets `projects.archived_at` to NOW(). Independent of organization-level
+   * lifecycle; the rest of the organization's projects continue serving.
    *
    * Platform-admin only. Calls `POST /projects/v1/admin/:id/archive`.
    */
@@ -474,11 +474,10 @@ export class Admin {
   }
 
   /**
-   * Operator "un-archive" — flips `projects.archived_at` back to NULL. In
-   * v1.57 this route was narrowed: it no longer touches account-level
-   * lifecycle. To reactivate a grace-state account, either subscribe a new
-   * tier (the tier flow runs `advanceLifecycleForAccount` inline) or set
-   * `lease_perpetual: true` via {@link setLeasePerpetual}.
+   * Operator "un-archive" — flips `projects.archived_at` back to NULL. It does
+   * not touch organization-level lifecycle. To reactivate a grace-state
+   * organization, either subscribe a new tier or set `lease_perpetual: true`
+   * via {@link setLeasePerpetual}.
    *
    * Platform-admin only. Calls `POST /projects/v1/admin/:id/reactivate`.
    */

@@ -263,7 +263,7 @@ export default async (req: Request) => {
 
 `@run402/functions` is auto-bundled into deployed code; install it in your editor for full TypeScript autocomplete (also works at build time for static-site generation with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` set).
 
-`ai.generateImage({ prompt, aspect? })` is available inside deployed functions for live app flows such as generated avatars or OG images. It calls the project runtime image endpoint with `RUN402_SERVICE_KEY`, so deployed functions do not need allowance wallets or x402 signing code. Aspects are `square`, `landscape`, and `portrait`; the result is `{ image, content_type, aspect }` with base64 image bytes. Runtime image generation is billed, rate-limited, and spend-capped against the project billing account; public routed functions should authenticate/rate-limit their users before calling it.
+`ai.generateImage({ prompt, aspect? })` is available inside deployed functions for live app flows such as generated avatars or OG images. It calls the project runtime image endpoint with `RUN402_SERVICE_KEY`, so deployed functions do not need allowance wallets or x402 signing code. Aspects are `square`, `landscape`, and `portrait`; the result is `{ image, content_type, aspect }` with base64 image bytes. Runtime image generation is billed, rate-limited, and spend-capped against the project organization; public routed functions should authenticate/rate-limit their users before calling it.
 
 `assets.put(key, source, opts?)` uploads bytes from inside a deployed function through the same CAS-backed apply substrate as deploy-time assets. It uses `RUN402_SERVICE_KEY`, accepts a string, `Uint8Array`, or `{ content | bytes }`, and returns an SDK-compatible `AssetRef` with mutable and immutable URLs.
 
@@ -310,7 +310,7 @@ Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on succes
 
 ```bash
 run402 init                              # one-shot allowance + faucet + tier check
-run402 status                            # account snapshot (wallet, rail, balances, tier, projects)
+run402 status                            # organization snapshot (wallet, rail, balances, tier, projects)
 run402 projects provision --name my-app
 run402 projects sql <id> "CREATE TABLE …"
 run402 projects validate-expose <id> --file manifest.json
@@ -493,7 +493,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `tier_status` | Current tier, lease expiry, usage, and function authoring caps when returned. |
 | `get_quote` | Tier pricing (free, no auth). |
 | `tier_checkout` | Stripe checkout for a tier (alternative to x402). |
-| `create_email_billing_account` / `link_wallet_to_account` | Email-based billing accounts; hybrid Stripe + x402. |
+| `create_email_organization` / `link_wallet_to_organization` | Email-based organizations; hybrid Stripe + x402. |
 | `billing_history` | Ledger history. |
 | `buy_email_pack` | $5 for 10,000 emails (never expire). |
 | `set_auto_recharge` | Auto-buy email packs when credits run low. |
@@ -511,12 +511,12 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `drain_contract_wallet` | Drain native balance (works on suspended wallets — the safety valve). |
 | `delete_contract_wallet` | Schedule KMS key deletion (refused if balance ≥ dust). |
 
-### Allowance & account
+### Allowance & organization
 
 | Tool | Description |
 |------|-------------|
 | `init` | One-shot setup: allowance + faucet + tier check + project list. |
-| `status` | Full account snapshot (allowance, balance, tier, projects). |
+| `status` | Full organization snapshot (allowance, balance, tier, projects). |
 | `allowance_status` / `allowance_create` / `allowance_export` | Local allowance management. |
 | `request_faucet` | Request testnet USDC. |
 | `check_balance` | USDC balance for an allowance address. |
@@ -527,7 +527,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `send_message` | Send feedback to the Run402 team. |
 | `set_agent_contact` / `get_agent_contact_status` / `verify_agent_contact_email` | Register agent contact info, read assurance status, and start the operator email reply challenge. |
 | `start_operator_passkey_enrollment` | Email a Run402 operator passkey enrollment link to the verified contact email. |
-| `get_operator_status` | Compact operator-health snapshot — contact assurance state, critical items, skipped notifications, billing accounts, projects, active thresholds. Read via `run402 doctor` or directly. |
+| `get_operator_status` | Compact operator-health snapshot — contact assurance state, critical items, skipped notifications, organizations, projects, active thresholds. Read via `run402 doctor` or directly. |
 | `get_notification_preferences` / `set_notification_preferences` | Read/update operator notification preferences (cadence, channels, per-class toggles, locale, timezone). Cross-wallet effects require `email_verified`; webhook URL changes require `operator_passkey`. |
 | `list_notifications` | Per-delivery-attempt audit log. Paginated, filterable by event_type / since. |
 | `test_notification` | Fire a real test notification through the full worker pipeline. Audit row marked `is_test=true`. Rate-limited per wallet at 1/min. |

@@ -2,7 +2,7 @@
 
 - [x] 1.1 Audit current CLI/MCP direct Run402 calls and map each to an existing SDK method or a missing SDK method.
 - [x] 1.2 Add SDK blob upload session primitives for init, status/resume, and complete gateway calls while keeping presigned part PUTs outside the gateway request kernel.
-- [x] 1.3 Add or widen SDK billing account read/history methods so callers can pass either wallet or email identifiers.
+- [x] 1.3 Add or widen SDK organization read/history methods so callers can pass either wallet or email identifiers.
 - [x] 1.4 Add SDK unit tests for new blob session and generic billing methods, including auth headers, URL encoding, response parsing, and structured error behavior.
 - [x] 1.5 Export all new public option/result types from `sdk/src/index.ts` and `sdk/src/node/index.ts`, and update type export drift tests.
 

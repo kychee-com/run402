@@ -23,7 +23,7 @@ export interface ProvisionOptions {
    * `developer`+ membership on that org (a project-scoped grant cannot authorize
    * creating a new project). Omit for the cold-start path — the wallet's billing
    * account is used or auto-created exactly as before. Note: tier is governed by
-   * the org/billing account, not the project — the gateway ignores a client tier.
+   * the org/organization, not the project — the gateway ignores a client tier.
    */
   orgId?: string;
 }
@@ -38,12 +38,12 @@ export interface ProvisionResult {
 // ─── list ───────────────────────────────────────────────────────────────
 
 /**
- * Lifecycle state of the owning billing account (gateway v1.57+). The state
- * machine moved from `internal.projects` to `internal.billing_accounts`; every
+ * Lifecycle state of the owning organization (gateway v1.57+). The state
+ * machine moved from `internal.projects` to `internal.organizations`; every
  * project on the account inherits the same value. `purging` is an internal
  * transition state and is not exposed on the wire.
  */
-export type BillingAccountLifecycleState =
+export type OrganizationLifecycleState =
   | "active"
   | "past_due"
   | "frozen"
@@ -51,11 +51,11 @@ export type BillingAccountLifecycleState =
   | "purged";
 
 /**
- * Effective project status, derived from `(account_lifecycle_state,
+ * Effective project status, derived from `(organization_lifecycle_state,
  * deleted_at, archived_at)`:
  *   - `deleted_at` set → `"deleted"`
  *   - `archived_at` set → `"archived"`
- *   - otherwise → the account's `lifecycle_state`
+ *   - otherwise → the organization's `lifecycle_state`
  *
  * Use this for serving / UX decisions instead of trying to combine the
  * underlying fields yourself.
@@ -74,7 +74,7 @@ export type EffectiveProjectStatus =
  * and `GET /agent/v1/operator/projects` (operator email-union, `--all`) — both
  * share this shape.
  *
- * Tier and lifecycle live on the owning billing account, not the project; the
+ * Tier and lifecycle live on the owning organization, not the project; the
  * row mirrors them for convenience but read `r.tier.status()` for the
  * authoritative account view.
  */
@@ -98,20 +98,20 @@ export interface ProjectSummary {
   status?: EffectiveProjectStatus;
   /** Alias of `status` (gateway v1.57 canonical field). */
   effective_status?: EffectiveProjectStatus;
-  /** Owning billing account's lifecycle state. */
-  account_lifecycle_state?: BillingAccountLifecycleState;
+  /** Owning organization's lifecycle state. */
+  organization_lifecycle_state?: OrganizationLifecycleState;
   /** Account-level lease-perpetual escape hatch (mirror). */
   lease_perpetual?: boolean;
   /**
-   * Owning org (billing account) id — v1.77 org-owned control plane. A wallet
+   * Owning org (organization) id — v1.77 org-owned control plane. A wallet
    * authenticates; the org owns the project. Surfaced as `org_id` in CLI/MCP
    * output. `null` for legacy rows; optional because the legacy wallet-scoped
    * list (`GET /wallets/v1/:address/projects`) omits it.
    */
-  billing_account_id?: string | null;
+  organization_id?: string | null;
   /**
    * Provisioning principal id — provenance for who created the project (v1.77).
-   * Optional for the same reason as {@link ProjectSummary.billing_account_id}.
+   * Optional for the same reason as {@link ProjectSummary.organization_id}.
    */
   created_by?: string | null;
   created_at: string;
@@ -136,7 +136,7 @@ export interface ProjectSummary {
  */
 export interface ListProjectsOptions {
   /**
-   * Narrow to projects owned by one org (billing account) id. Authorize-before-
+   * Narrow to projects owned by one org (organization) id. Authorize-before-
    * reveal: a non-member or guessed id returns the same 403 as a real-but-
    * unauthorized org; a non-UUID id is a clean 400.
    */
@@ -193,8 +193,8 @@ export interface UsageReport {
   lease_expires_at?: string | null;
   /** Derived effective status — see {@link EffectiveProjectStatus}. */
   effective_status: EffectiveProjectStatus;
-  /** Owning billing account's lifecycle state. */
-  account_lifecycle_state: BillingAccountLifecycleState;
+  /** Owning organization's lifecycle state. */
+  organization_lifecycle_state: OrganizationLifecycleState;
 }
 
 // ─── schema ─────────────────────────────────────────────────────────────

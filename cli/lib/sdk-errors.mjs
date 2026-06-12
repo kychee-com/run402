@@ -111,7 +111,7 @@ export function reportSdkError(err) {
     if (d?.required_capability) need.push(`capability \`${d.required_capability}\``);
     const needStr = need.length > 0 ? ` (needs ${need.join(" or ")})` : "";
     payload.hint =
-      `Authorization denied${needStr}: a wallet authenticates, but the owning org (billing account) ` +
+      `Authorization denied${needStr}: a wallet authenticates, but the owning org (organization) ` +
       "decides access via membership role (owner > admin > developer > billing > viewer) or a per-project grant. " +
       "High-stakes actions (delete, transfer, membership change) require an active `owner` membership. " +
       "Returned as 403 even when the project does not exist, so verify the project id too.";

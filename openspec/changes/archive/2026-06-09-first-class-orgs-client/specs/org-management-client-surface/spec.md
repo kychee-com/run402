@@ -2,15 +2,15 @@
 
 ### Requirement: Organization vocabulary on the client surface is `org_id`
 
-The client (SDK, CLI, MCP) SHALL use `org_id` as the organization identifier across every parameter, response field, membership field, CLI positional, and tool input. The substrate names `billing_account` and `billing_account_id` SHALL NOT appear anywhere on the client surface. `OrgMembership` SHALL be `{ org_id, display_name, role, status }`.
+The client (SDK, CLI, MCP) SHALL use `org_id` as the organization identifier across every parameter, response field, membership field, CLI positional, and tool input. The substrate names `organization` and `organization_id` SHALL NOT appear anywhere on the client surface. `OrgMembership` SHALL be `{ org_id, display_name, role, status }`.
 
 #### Scenario: Membership shape uses org_id and display_name
 - **WHEN** a caller reads a membership from `r.orgs.list()` or `r.orgs.whoami()`
-- **THEN** each membership SHALL carry `org_id` and `display_name` and SHALL NOT carry `billing_account_id`
+- **THEN** each membership SHALL carry `org_id` and `display_name` and SHALL NOT carry `organization_id`
 
-#### Scenario: No billing_account identifier on the client surface
+#### Scenario: No organization identifier on the client surface
 - **WHEN** the SDK, CLI, and MCP org surfaces are scanned
-- **THEN** no public parameter, type field, CLI positional, or tool input SHALL be named `billing_account_id` or `billing_account`
+- **THEN** no public parameter, type field, CLI positional, or tool input SHALL be named `organization_id` or `organization`
 
 ### Requirement: SDK exposes orgs as a collection and a scoped instance sub-client
 
@@ -90,7 +90,7 @@ The client (SDK, CLI, MCP) SHALL use `org_id` as the organization identifier acr
 
 ### Requirement: Provision into an existing organization
 
-`ProvisionOptions.orgId`, `run402 provision --org <id>`, and the MCP provision tool's `org_id` SHALL send `{ org_id }` on `POST /projects/v1`. Omitting the org target SHALL send no `org_id` and preserve the cold-start request body byte-for-byte. Caller authorization (`developer`+) is gateway-enforced; the client SHALL surface the `403`. Tier is governed by the org/billing account — the shipped gateway ignores any client-supplied `tier` — so the client SHALL NOT special-case `tier` for org-targeted provisioning; `--org` simply adds `org_id`. An empty `--org` SHALL be rejected locally.
+`ProvisionOptions.orgId`, `run402 provision --org <id>`, and the MCP provision tool's `org_id` SHALL send `{ org_id }` on `POST /projects/v1`. Omitting the org target SHALL send no `org_id` and preserve the cold-start request body byte-for-byte. Caller authorization (`developer`+) is gateway-enforced; the client SHALL surface the `403`. Tier is governed by the org/organization — the shipped gateway ignores any client-supplied `tier` — so the client SHALL NOT special-case `tier` for org-targeted provisioning; `--org` simply adds `org_id`. An empty `--org` SHALL be rejected locally.
 
 #### Scenario: Provision into a chosen org
 - **WHEN** a caller provisions with `orgId` set
@@ -102,7 +102,7 @@ The client (SDK, CLI, MCP) SHALL use `org_id` as the organization identifier acr
 
 #### Scenario: Tier is org-governed, not special-cased per project
 - **WHEN** a caller provisions into an org
-- **THEN** the client SHALL send `org_id` and SHALL NOT require or reject a `tier` — the org/billing account governs tier and the gateway ignores a client-supplied `tier`
+- **THEN** the client SHALL send `org_id` and SHALL NOT require or reject a `tier` — the org/organization governs tier and the gateway ignores a client-supplied `tier`
 
 #### Scenario: Empty org target is rejected locally
 - **WHEN** a caller passes an empty `--org`

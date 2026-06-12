@@ -133,33 +133,33 @@ describe("run402 org", () => {
   });
 
   it("members GETs the members route", async () => {
-    capture(); await runOrg("member", ["list", "ba_1"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/ba_1/members`);
+    capture(); await runOrg("member", ["list", "org_1"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/org_1/members`);
     assert.equal(lastCall().method, "GET");
   });
 
   it("add-member POSTs { wallet } and omits role by default", async () => {
-    capture(); await runOrg("member", ["add", "ba_1", TEST_ADDRESS]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/ba_1/members`);
+    capture(); await runOrg("member", ["add", "org_1", TEST_ADDRESS]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/org_1/members`);
     assert.equal(lastCall().method, "POST");
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS });
   });
 
   it("add-member maps --role into the body", async () => {
-    capture(); await runOrg("member", ["add", "ba_1", TEST_ADDRESS, "--role", "admin"]); uncapture();
+    capture(); await runOrg("member", ["add", "org_1", TEST_ADDRESS, "--role", "admin"]); uncapture();
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS, role: "admin" });
   });
 
-  it("set-role PATCHes .../members/:principal with positional order (ba, principal, role)", async () => {
-    capture(); await runOrg("member", ["role", "ba_1", "prn_2", "owner"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/ba_1/members/prn_2`);
+  it("set-role PATCHes .../members/:principal with positional order (org, principal, role)", async () => {
+    capture(); await runOrg("member", ["role", "org_1", "prn_2", "owner"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/org_1/members/prn_2`);
     assert.equal(lastCall().method, "PATCH");
     assert.deepEqual(lastCall().body, { role: "owner" });
   });
 
   it("remove-member DELETEs .../members/:principal", async () => {
-    capture(); await runOrg("member", ["rm", "ba_1", "prn_2"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/ba_1/members/prn_2`);
+    capture(); await runOrg("member", ["rm", "org_1", "prn_2"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/org_1/members/prn_2`);
     assert.equal(lastCall().method, "DELETE");
   });
 

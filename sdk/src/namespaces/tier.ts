@@ -20,7 +20,7 @@ export interface TierFunctionLimits {
 /**
  * Per-project summary returned in `TierStatusResult.projects[]`. Mirrors the
  * gateway's `WalletTierInfo.projects[]` shape. Pre-v1.57 gateways may omit
- * `effective_status` / `account_lifecycle_state` / `lease_perpetual`; pre-v1.59
+ * `effective_status` / `organization_lifecycle_state` / `lease_perpetual`; pre-v1.59
  * gateways omit `secrets_rotation_advised`. Unknown future fields are preserved
  * via the index signature so callers can branch on them.
  */
@@ -32,16 +32,16 @@ export interface TierStatusProject {
   pinned: boolean;
   created_at: string;
   effective_status?: string;
-  account_lifecycle_state?: string;
+  organization_lifecycle_state?: string;
   lease_perpetual?: boolean;
   /**
-   * v1.77 (org-owned control plane): owning org (billing account) id and the
+   * v1.77 (org-owned control plane): owning org (organization) id and the
    * provisioning principal. A wallet authenticates; the org owns the project.
    * Present on the canonical project object (`GET /projects/v1`); the
    * tier-status list does not include them today, so both are optional and
    * forward-compatible (preserved via the index signature regardless).
    */
-  billing_account_id?: string;
+  organization_id?: string;
   created_by?: string;
   /**
    * v1.59 (add-project-transfer): set on a project after an accepted transfer
@@ -82,10 +82,10 @@ export interface TierStatusResult {
   lease_expires_at: string | null;
   active: boolean;
   /**
-   * Lifecycle state of the owning billing account. `null` only when the
-   * wallet has no billing account row (orphan wallet).
+   * Lifecycle state of the owning organization. `null` only when the
+   * wallet has no organization row (orphan wallet).
    */
-  account_lifecycle_state:
+  organization_lifecycle_state:
     | "active"
     | "past_due"
     | "frozen"
@@ -93,9 +93,9 @@ export interface TierStatusResult {
     | "purged"
     | null;
   /**
-   * Operator escape hatch flag on the owning billing account. When `true`,
-   * the account never advances past `active` regardless of lease expiry.
-   * `null` only for orphan wallets with no billing account row.
+   * Operator escape hatch flag on the owning organization. When `true`,
+   * the organization never advances past `active` regardless of lease expiry.
+   * `null` only for orphan wallets with no organization row.
    */
   lease_perpetual: boolean | null;
   pool_usage: {
@@ -106,7 +106,7 @@ export interface TierStatusResult {
     storage_bytes_limit: number;
   };
   /**
-   * Per-project summary across all projects on the wallet's billing account.
+   * Per-project summary across all projects on the wallet's organization.
    * Always present on v1.46+ gateways. Pre-v1.59 entries lack
    * `secrets_rotation_advised`.
    */

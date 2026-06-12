@@ -25,7 +25,7 @@ import type { Client } from "../kernel.js";
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
-/** Phase 1A only supports the `migrate` policy — B's wallet must already be on a billing account, and the project moves into it. */
+/** Phase 1A only supports the `migrate` policy — B's wallet must already be on a organization, and the project moves into it. */
 export type TransferBillingPolicy = "migrate";
 
 export type TransferStatus = "pending" | "accepted" | "cancelled" | "expired";
@@ -68,7 +68,7 @@ export interface AcceptTransferResult {
   project_id: string;
   from_wallet: string;
   to_wallet: string;
-  new_billing_account_id: string | null;
+  new_organization_id: string | null;
   completed_at: string;
   secrets_rotation_advised: true;
   /** Names of secrets that carried over with the project. Values are never returned. */
@@ -147,8 +147,8 @@ export interface ContractWalletPreview {
 }
 
 export interface BillingImplications {
-  from_billing_account_id: string | null;
-  target_billing_account_id: string | null;
+  from_organization_id: string | null;
+  target_organization_id: string | null;
   tier: string | null;
   secrets_count: number;
   functions_count: number;
@@ -219,14 +219,14 @@ export interface ProjectHandoffPreview {
 
 /** Inputs to {@link Transfers.claimHandoff}. */
 export interface ClaimHandoffInput {
-  /** Org (billing account) to claim into. Omit to claim into a brand-new org. */
-  billingAccountId?: string;
+  /** Org (organization) to claim into. Omit to claim into a brand-new org. */
+  organizationId?: string;
 }
 
 /** Result of {@link Transfers.claimHandoff}. Forward-compatible. */
 export interface ClaimHandoffResult {
   project_id: string;
-  new_billing_account_id?: string | null;
+  new_organization_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -364,13 +364,13 @@ export class Transfers {
   }
 
   /**
-   * Claim an incoming handoff into an org. Omit `billingAccountId` to claim
+   * Claim an incoming handoff into an org. Omit `organizationId` to claim
    * into a brand-new org. The claim atomically flips ownership (the handoff
    * analog of {@link Transfers.accept}).
    */
   async claimHandoff(transferId: string, input: ClaimHandoffInput = {}): Promise<ClaimHandoffResult> {
     const body: Record<string, unknown> = {};
-    if (input.billingAccountId !== undefined) body.billing_account_id = input.billingAccountId;
+    if (input.organizationId !== undefined) body.organization_id = input.organizationId;
     return this.client.request<ClaimHandoffResult>(
       `/agent/v1/handoffs/${encodeURIComponent(transferId)}/claim`,
       { method: "POST", body, context: "claiming project handoff" },

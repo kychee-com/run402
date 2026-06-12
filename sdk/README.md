@@ -75,7 +75,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `auth` | `requestMagicLink`, `verifyMagicLink`, `createUser`, `inviteUser`, `setUserPassword`, `settings`, passkey registration/login/list/delete helpers, `providers`, `promote`, `demote` |
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion` |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
-| `billing` | `createEmailAccount`, `linkWallet`, `tierCheckout`, `buyEmailPack`, `setAutoRecharge`, `checkBalance`, `getAccount`, `lookupAccount`, `getHistory`, `balance`, `history`, `createCheckout` |
+| `billing` | `createEmailOrganization`, `linkWallet`, `tierCheckout`, `buyEmailPack`, `setAutoRecharge`, `checkBalance`, `getOrganization`, `lookupOrganization`, `getHistory`, `balance`, `history`, `createCheckout` |
 | `contracts` | `provisionWallet`, `getWallet`, `listWallets`, `setRecovery`, `setLowBalanceAlert`, `call`, `read`, `callStatus`, `drain`, `deleteWallet` |
 | `ai` | `translate`, `moderate`, `usage`, `generateImage` |
 | `allowance` | `status`, `create`, `export`, `faucet` |

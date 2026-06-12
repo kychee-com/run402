@@ -43,7 +43,7 @@ function mockApis(opts: {
     if (url.includes("/tiers/v1/status") && opts.tier) {
       return new Response(JSON.stringify(opts.tier), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-    if (url.includes("/billing/v1/accounts") && opts.billing) {
+    if (url.includes("/orgs/v1/lookup") && opts.billing) {
       return new Response(JSON.stringify(opts.billing), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/wallets/v1/") && opts.projects) {
@@ -54,12 +54,12 @@ function mockApis(opts: {
 }
 
 describe("status tool", () => {
-  it("returns full account snapshot", async () => {
+  it("returns full organization snapshot", async () => {
     writeAllowance({ address: TEST_ADDR, privateKey: TEST_PK, created: "2026-01-01T00:00:00Z", funded: true, rail: "x402" });
     writeKeystore({ active_project_id: "proj-1", projects: { "proj-1": { anon_key: "ak1", service_key: "sk1" } } });
     mockApis({
       tier: { tier: "prototype", status: "active", lease_expires_at: "2026-04-01T00:00:00Z" },
-      billing: { billing_account_id: "00000000-0000-4000-8000-000000000001", available_usd_micros: 250000, held_usd_micros: 0 },
+      billing: { organization_id: "00000000-0000-4000-8000-000000000001", available_usd_micros: 250000, held_usd_micros: 0 },
       projects: { projects: [{ id: "proj-1" }] },
     });
 

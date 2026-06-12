@@ -21,7 +21,7 @@
 ## 4. MCP tools (src/tools/status.ts, src/tools/init.ts)
 
 - [x] 4.1 `status.ts`: replaced `wallet`/`allowance`/`funded` rows with `local_label`, `server_label`, `address`, `rail`.
-- [x] 4.2 `status.ts`: replaced the single `balance` row with `prepaid_credit` + `held`. NOTE: MCP does not read on-chain balance (it never did — its old `funded` was the same stale boolean removed here), so no `on_chain` row is added; use `run402 status` (CLI) for the on-chain figure. Added `held_usd_micros?` to the `BillingBalance` SDK type so this typechecks.
+- [x] 4.2 `status.ts`: replaced the single `balance` row with `prepaid_credit` + `held`. NOTE: MCP does not read on-chain balance, so no `on_chain` row is added; use `run402 status` (CLI) for the on-chain figure. Added `held_usd_micros?` to the `OrganizationDetail` SDK type so this typechecks.
 - [x] 4.3 `init.ts`: the MCP init table had no `funded`/`balance` rows; renamed the overloaded `| allowance |` row label → `| address |`.
 
 ## 5. CLI `wallets list` / `wallets current` (cli/lib/wallets.mjs)

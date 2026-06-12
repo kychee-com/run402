@@ -8,9 +8,9 @@ Usage:
   run402 admin <subcommand> [args...]
 
 Subcommands:
-  lease-perpetual <billing_account_id> (--enable | --disable)
-                                         Toggle the account-level escape hatch.
-                                         When enabled, the account never advances
+  lease-perpetual <organization_id> (--enable | --disable)
+                                         Toggle the organization-level escape hatch.
+                                         When enabled, the organization never advances
                                          past 'active' regardless of lease expiry.
                                          If the account is currently in a grace
                                          state, enabling reactivates it inline
@@ -19,12 +19,12 @@ Subcommands:
 
   archive <project_id> [--reason "..."]  Moderate-archive a single project. Sets
                                          projects.archived_at = NOW(). Independent
-                                         of account lifecycle; the rest of the
-                                         account's projects keep serving.
+                                         of organization lifecycle; the rest of the
+                                         organization's projects keep serving.
 
   reactivate <project_id>                Un-archive a project (flips archived_at
                                          back to NULL). In v1.57 this no longer
-                                         touches account-level lifecycle — to
+                                         touches organization-level lifecycle — to
                                          reactivate a grace-state account, use
                                          \`tier set <tier>\` or enable
                                          lease-perpetual above.
@@ -36,17 +36,17 @@ Notes:
   - Output is JSON.
 
 Examples:
-  run402 admin lease-perpetual ba_abc123 --enable
-  run402 admin lease-perpetual ba_abc123 --disable
+  run402 admin lease-perpetual org_abc123 --enable
+  run402 admin lease-perpetual org_abc123 --disable
   run402 admin archive prj_abuse --reason "ToS violation"
   run402 admin reactivate prj_abuse
 `;
 
 const SUB_HELP = {
-  "lease-perpetual": `run402 admin lease-perpetual — Toggle the account-level escape hatch
+  "lease-perpetual": `run402 admin lease-perpetual — Toggle the organization-level escape hatch
 
 Usage:
-  run402 admin lease-perpetual <billing_account_id> (--enable | --disable)
+  run402 admin lease-perpetual <organization_id> (--enable | --disable)
 
 Options:
   --enable    Set lease_perpetual = true (pins every project on the account)
@@ -59,8 +59,8 @@ Notes:
     the gateway reactivates inline and reports \`reactivated: true\`.
 
 Examples:
-  run402 admin lease-perpetual ba_abc123 --enable
-  run402 admin lease-perpetual ba_abc123 --disable
+  run402 admin lease-perpetual org_abc123 --enable
+  run402 admin lease-perpetual org_abc123 --disable
 `,
   archive: `run402 admin archive — Moderate-archive a single project
 
@@ -71,8 +71,8 @@ Options:
   --reason <text>    Free-text moderation reason recorded in the audit log.
 
 Notes:
-  - Sets projects.archived_at = NOW(). Independent of account-level lifecycle —
-    only this project goes dark; siblings on the same billing account keep
+  - Sets projects.archived_at = NOW(). Independent of organization-level lifecycle —
+    only this project goes dark; siblings on the same organization keep
     serving.
   - No-op when the project is already archived (returns \`note: "already
     archived"\` without changing archived_at).
@@ -88,9 +88,9 @@ Usage:
 
 Notes:
   - Flips projects.archived_at back to NULL. In v1.57 this was narrowed:
-    account-level lifecycle reactivation is NOT triggered. Use
+    organization-level lifecycle reactivation is NOT triggered. Use
     \`run402 tier set <tier>\` (the tier flow runs the lifecycle advance) or
-    \`run402 admin lease-perpetual <ba_id> --enable\` for that.
+    \`run402 admin lease-perpetual <org_id> --enable\` for that.
   - No-op when the project is not archived (returns \`note: "not archived"\`).
 
 Examples:
@@ -110,25 +110,25 @@ function validateFlags(sub, args) {
 }
 
 async function leasePerpetual(args) {
-  const accountId = args.find((a) => typeof a === "string" && !a.startsWith("--"));
+  const organizationId = args.find((a) => typeof a === "string" && !a.startsWith("--"));
   const enable = args.includes("--enable");
   const disable = args.includes("--disable");
-  if (!accountId) {
+  if (!organizationId) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <billing_account_id>.",
-      hint: "run402 admin lease-perpetual <billing_account_id> --enable | --disable",
+      message: "Missing <organization_id>.",
+      hint: "run402 admin lease-perpetual <organization_id> --enable | --disable",
     });
   }
   if (enable === disable) {
     fail({
       code: "BAD_USAGE",
       message: "Pass exactly one of --enable / --disable.",
-      hint: "run402 admin lease-perpetual <billing_account_id> --enable | --disable",
+      hint: "run402 admin lease-perpetual <organization_id> --enable | --disable",
     });
   }
   try {
-    const data = await getSdk().admin.setLeasePerpetual(accountId, enable);
+    const data = await getSdk().admin.setLeasePerpetual(organizationId, enable);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

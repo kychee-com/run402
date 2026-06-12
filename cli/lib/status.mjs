@@ -4,7 +4,7 @@ import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
 import { getActiveProfile } from "../core-dist/config.js";
 import { readMeta } from "../core-dist/profiles.js";
 
-const HELP = `run402 status — Show full account state in one shot
+const HELP = `run402 status — Show full organization state in one shot
 
 Usage:
   run402 status
@@ -120,7 +120,7 @@ export async function run(args = []) {
   //   - on_chain_usd_micros / on_chain_token: on-chain USDC (x402) or pathUSD
   //     (mpp), null if the RPC read failed
   //   - prepaid_credit_usd_micros / held_usd_micros: Run402-held credits,
-  //     rail-independent, null when no billing account exists
+  //     rail-independent, null when no organization exists
   const hasBilling = billing && billing.exists !== false;
   const result = {
     wallet: {
@@ -138,10 +138,10 @@ export async function run(args = []) {
     tier: tier && tier.tier
       ? { name: tier.tier, status: tier.status, expires: tier.lease_expires_at }
       : null,
-    // v1.57: lifecycle state and the per-account escape hatch moved to the
-    // billing account. Surface them at the top level so agents don't have to
+    // v1.57: lifecycle state and the per-organization escape hatch moved to the
+    // organization. Surface them at the top level so agents don't have to
     // dig into the projects array to read them.
-    account_lifecycle_state: tier?.account_lifecycle_state ?? null,
+    organization_lifecycle_state: tier?.organization_lifecycle_state ?? null,
     lease_perpetual: tier?.lease_perpetual ?? null,
     projects,
     active_project: activeId || null,

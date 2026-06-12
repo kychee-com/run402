@@ -21,7 +21,7 @@ export const initiateProjectTransferSchema = {
   billing_policy: z
     .enum(["migrate"])
     .optional()
-    .describe("Billing policy. Phase 1A supports only `migrate` (default). The project moves into the recipient's billing account."),
+    .describe("Billing policy. Phase 1A supports only `migrate` (default). The project moves into the recipient's organization."),
   message: z
     .string()
     .optional()
@@ -54,7 +54,7 @@ export async function handleInitiateProjectTransfer(args: {
       `- billing_policy: ${res.project_summary.billing_policy}`,
       `- expires_at: ${res.expires_at} (72h)`,
       `- terms_sha256: ${res.terms_sha256}`,
-      `- your_unused_lease_days: ${res.your_unused_lease_days} (lease stays with your account; not refunded)`,
+      `- your_unused_lease_days: ${res.your_unused_lease_days} (lease stays with your organization; not refunded)`,
       ``,
       `Owner-side mutations on this project are now blocked until the transfer is accepted, cancelled, or expires. Use \`cancel_project_transfer\` with the transfer id to reverse.`,
     ];
@@ -121,7 +121,7 @@ export async function handleAcceptProjectTransfer(args: {
     const lines = [
       `Transfer accepted. Project \`${res.project_id}\` is now owned by ${res.to_wallet}.`,
       `- completed_at: ${res.completed_at}`,
-      `- new_billing_account_id: ${res.new_billing_account_id ?? "null"}`,
+      `- new_organization_id: ${res.new_organization_id ?? "null"}`,
       `- secrets inherited: ${res.secrets_count_inherited}`,
     ];
     if (res.secret_names_inherited.length > 0) {
