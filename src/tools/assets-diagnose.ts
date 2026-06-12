@@ -38,7 +38,7 @@ export async function handleBlobDiagnose(
           text:
             `${summary}\n\nHint: ${env.hint}\n\n` +
             "```json\n" +
-            JSON.stringify(env, null, 2) +
+            JSON.stringify(toToolDiagnoseEnvelope(env), null, 2) +
             "\n```",
         },
       ],
@@ -46,4 +46,27 @@ export async function handleBlobDiagnose(
   } catch (err) {
     return mapSdkError(err, "diagnosing public blob URL");
   }
+}
+
+function toToolDiagnoseEnvelope(env: Awaited<ReturnType<ReturnType<typeof getSdk>["assets"]["diagnoseUrl"]>>): unknown {
+  return {
+    project_id: env.projectId,
+    key: env.key,
+    expected_sha256: env.expectedSha256,
+    observed_sha256: env.observedSha256,
+    vantage: env.vantage,
+    probe_method: env.probeMethod,
+    accept_encoding: env.acceptEncoding,
+    observed_at: env.observedAt,
+    probe_may_have_warmed_cache: env.probeMayHaveWarmedCache,
+    canonical_url: env.canonicalUrl,
+    path_kind: env.pathKind,
+    cache: {
+      x_cache: env.cache.xCache,
+      age_seconds: env.cache.ageSeconds,
+      cache_kind: env.cache.cacheKind,
+    },
+    invalidation: env.invalidation,
+    hint: env.hint,
+  };
 }

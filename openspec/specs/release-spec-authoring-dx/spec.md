@@ -9,7 +9,7 @@ Run402 SHALL publish a versioned JSON Schema for the unified deploy manifest at 
 
 The schema SHALL cover the complete author-facing deploy manifest accepted by `run402 deploy apply --manifest`, stdin manifests, MCP-compatible manifest JSON, and `loadDeployManifest()` / `normalizeDeployManifest()`. It SHALL include top-level `project`, `project_id`, `$schema`, `base`, `database`, `secrets`, `functions`, `site`, `subdomains`, `routes`, and `checks` where those fields are accepted by manifest adapters.
 
-The schema SHALL distinguish authoring-only metadata from deploy state. `$schema` SHALL be accepted only as top-level metadata and SHALL NOT be sent to `/deploy/v2/plans`.
+The schema SHALL distinguish authoring-only metadata from deploy state. `$schema` SHALL be accepted only as top-level metadata and SHALL NOT be sent to `/apply/v1/plans`.
 
 The schema SHALL document known static cache classes `html`, `immutable_versioned`, and `revalidating_asset`, while preserving the SDK contract that unknown future cache-class strings remain representable unless the gateway rejects them.
 
@@ -33,7 +33,7 @@ The docs and schema SHALL show that `runtime`, `source`, `files`, `entrypoint`, 
 
 The docs SHALL explain that `source` accepts the same byte-source authoring shapes as site files in manifest JSON, including `{ data, encoding?, contentType? }` and Node manifest `{ path, contentType? }` entries. If `files` is used, docs SHALL explain that `entrypoint` is required.
 
-The docs SHALL state the current unified-deploy support status for npm `deps`. If deploy-v2 supports function dependencies, `deps` SHALL be documented and schematized as a sibling of `schedule`. If deploy-v2 does not support dependencies, docs and schema SHALL explicitly reject `deps` and tell authors to bundle dependencies into source or use the non-unified function deploy surface.
+The docs SHALL state the current unified-deploy support status for npm `deps`. If apply-v1 supports function dependencies, `deps` SHALL be documented and schematized as a sibling of `schedule`. If apply-v1 does not support dependencies, docs and schema SHALL explicitly reject `deps` and tell authors to bundle dependencies into source or use the non-unified function deploy surface.
 
 #### Scenario: Scheduled function is authored atomically
 
@@ -50,7 +50,7 @@ The docs SHALL state the current unified-deploy support status for npm `deps`. I
 #### Scenario: Dependency support status is explicit
 
 - **WHEN** an agent reads `llms-cli.txt` or `llms-sdk.txt` to author a unified deploy function with npm packages
-- **THEN** it SHALL learn either the exact `deps` field location if supported or a clear statement that deploy-v2 manifests do not accept `deps`
+- **THEN** it SHALL learn either the exact `deps` field location if supported or a clear statement that apply-v1 manifests do not accept `deps`
 - **AND** the schema SHALL match that documented behavior
 
 ### Requirement: ReleaseSpec Docs Cover Strictness Traps

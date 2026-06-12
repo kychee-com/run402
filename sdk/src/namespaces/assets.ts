@@ -78,6 +78,63 @@ async function sha256HexAndBase64(bytes: Uint8Array): Promise<{ hex: string; bas
   return { hex, base64: hexToBase64(hex) };
 }
 
+type WireBlobDiagnoseEnvelope = {
+  project_id?: string;
+  projectId?: string;
+  key?: string;
+  expected_sha256?: string | null;
+  expectedSha256?: string | null;
+  observed_sha256?: string | null;
+  observedSha256?: string | null;
+  vantage?: BlobDiagnoseEnvelope["vantage"];
+  probe_method?: BlobDiagnoseEnvelope["probeMethod"];
+  probeMethod?: BlobDiagnoseEnvelope["probeMethod"];
+  accept_encoding?: string;
+  acceptEncoding?: string;
+  observed_at?: string;
+  observedAt?: string;
+  probe_may_have_warmed_cache?: true;
+  probeMayHaveWarmedCache?: true;
+  canonical_url?: string;
+  canonicalUrl?: string;
+  path_kind?: BlobDiagnoseEnvelope["pathKind"];
+  pathKind?: BlobDiagnoseEnvelope["pathKind"];
+  cache?: {
+    x_cache?: string | null;
+    xCache?: string | null;
+    age_seconds?: number | null;
+    ageSeconds?: number | null;
+    cache_kind?: BlobCacheKind | null;
+    cacheKind?: BlobCacheKind | null;
+  };
+  invalidation?: BlobDiagnoseEnvelope["invalidation"];
+  hint?: string;
+};
+
+function normalizeBlobDiagnoseEnvelope(env: WireBlobDiagnoseEnvelope): BlobDiagnoseEnvelope {
+  const cache = env.cache ?? {};
+  return {
+    projectId: env.projectId ?? env.project_id ?? "",
+    key: env.key ?? "",
+    expectedSha256: env.expectedSha256 ?? env.expected_sha256 ?? null,
+    observedSha256: env.observedSha256 ?? env.observed_sha256 ?? null,
+    vantage: env.vantage ?? "gateway-us-east-1",
+    probeMethod: env.probeMethod ?? env.probe_method ?? "GET_RANGE_0_0",
+    acceptEncoding: env.acceptEncoding ?? env.accept_encoding ?? "",
+    observedAt: env.observedAt ?? env.observed_at ?? "",
+    probeMayHaveWarmedCache: env.probeMayHaveWarmedCache ?? env.probe_may_have_warmed_cache ?? true,
+    canonicalUrl: env.canonicalUrl ?? env.canonical_url ?? "",
+    pathKind: env.pathKind ?? env.path_kind ?? "blob-mutable",
+    cache: {
+      xCache: cache.xCache ?? cache.x_cache ?? null,
+      ageSeconds: cache.ageSeconds ?? cache.age_seconds ?? null,
+      cacheKind: cache.cacheKind ?? cache.cache_kind ?? null,
+    },
+    invalidation: env.invalidation ?? { id: null, status: null },
+    hint: env.hint ?? "",
+  };
+}
+
 function validateSha256Hex(value: unknown, name: string, context: string): asserts value is string {
   if (typeof value !== "string" || !/^[a-fA-F0-9]{64}$/.test(value)) {
     throw new LocalError(`${name} must be a 64-character hex SHA-256 digest.`, context);
@@ -544,7 +601,7 @@ export class Assets {
 
     // v1.48 unified-apply: route through the apply hero. Bytes upload via
     // /content/v1/plans (CAS substrate) and the asset slice promotes in the
-    // activation transaction of /apply/v1/plans/:id/commit. The legacy
+    // activation transaction of /apply/v1/plans/:plan_id/commit. The legacy
     // /storage/v1/uploads* flow is gone (gateway returns 404).
     const { Deploy } = await import("./deploy.js");
     const deploy = new Deploy(this.client);
@@ -702,13 +759,14 @@ export class Assets {
     if (!project) throw new ProjectNotFound(projectId, "diagnosing blob URL");
 
     const path = `/storage/v1/blobs/diagnose?url=${encodeURIComponent(url)}`;
-    return this.client.request<BlobDiagnoseEnvelope>(path, {
+    const env = await this.client.request<WireBlobDiagnoseEnvelope>(path, {
       headers: {
         apikey: project.service_key,
         Authorization: `Bearer ${project.service_key}`,
       },
       context: "diagnosing blob URL",
     });
+    return normalizeBlobDiagnoseEnvelope(env);
   }
 
   /**

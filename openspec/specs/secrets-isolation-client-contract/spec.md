@@ -86,17 +86,17 @@ The SDK SHALL define and export the gateway-exact `WarningEntry`, and deploy pla
 
 #### Scenario: Apply surfaces warnings before commit
 
-- **WHEN** `r.deploy.apply(spec)` observes non-empty plan warnings
+- **WHEN** `r.project(id).apply(spec)` observes non-empty plan warnings
 - **THEN** the SDK SHALL emit a `plan.warnings` event before content upload or commit
 
 #### Scenario: Apply aborts on confirmation-required warning
 
-- **WHEN** `r.deploy.apply(spec)` observes a warning with `requires_confirmation: true`
+- **WHEN** `r.project(id).apply(spec)` observes a warning with `requires_confirmation: true`
 - **THEN** the SDK SHALL abort before content upload or commit unless the caller explicitly opts in to continuing
 
 #### Scenario: Apply result carries warnings
 
-- **WHEN** `r.deploy.apply(spec)` reaches ready after a plan with warnings that did not require confirmation or were explicitly allowed
+- **WHEN** `r.project(id).apply(spec)` reaches ready after a plan with warnings that did not require confirmation or were explicitly allowed
 - **THEN** `DeployResult.warnings` SHALL contain those plan warnings
 
 #### Scenario: CLI and MCP display warning codes

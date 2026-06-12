@@ -56,7 +56,7 @@ Options:
 Example request:
   {
     "job_type": "kysigned.fflonk_prove.v0_17_0",
-    "input": { "input.json": {} },
+    "input": { "input_json": {} },
     "max_cost_usd_micros": 50000,
     "callback_url": "https://hooks.example.com/jobs"
   }

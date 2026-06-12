@@ -2,7 +2,7 @@
  * Tests for the unified `deploy` MCP tool (src/tools/deploy.ts).
  *
  * These tests focus on the MCP-layer translation from the agent-facing
- * Zod-validated args into the SDK's `ReleaseSpec`. The SDK's `deploy.apply`
+ * Zod-validated args into the SDK's `ReleaseSpec`. The SDK's `apply`
  * is mocked so we can capture the spec the MCP layer constructs and assert
  * on the byte sources passed through.
  *

@@ -106,7 +106,7 @@ describe("Run402 constructor validation", () => {
     });
     assert.ok(r instanceof Run402);
     assert.ok(r.projects);
-    // v1.48 unified-apply: r.deploy was removed. The engine is at
+    // Unified apply has no public r.deploy surface. The engine is at
     // r._applyEngine (internal); the public surface is r.project(id).apply.
     assert.ok(r._applyEngine);
     assert.ok(r.assets);

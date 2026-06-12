@@ -157,7 +157,9 @@ import type {
   ApplyOptions,
   ActiveReleaseInventory,
   DeployEvent,
+  DeployEventsResponse,
   ExposeManifest,
+  DeployListOptions,
   DeployListResponse,
   DeployOperation,
   DeployResolveResponse,
@@ -430,8 +432,10 @@ class ScopedContracts {
  * Callable hero shape for `r.project(id).apply`. The function form is the
  * documented happy path; the attached `plan`/`start`/`resume` sub-methods
  * are advanced primitives for callers building their own plan/upload/commit
- * pipelines. Per design D5 the hero is the only public apply surface — no
- * bare `r.apply`, no `r.deploy.apply`, no `r.assets.apply`.
+ * pipelines. The same object owns release and operation reads, so the public
+ * project-scoped lifecycle has one noun: apply. Per design D5 the hero is the
+ * only public apply surface — no bare `r.apply`, no `r.deploy.apply`, no
+ * `r.assets.apply`.
  */
 export interface ScopedApplyHero {
   (
@@ -459,6 +463,44 @@ export interface ScopedApplyHero {
     releaseId: string,
     opts?: PromoteOptions,
   ): Promise<PromoteResult>;
+  upload(
+    plan: PlanResponse,
+    opts: {
+      project?: string;
+      byteReaders: Map<string, ByteReader>;
+      onEvent?: (event: DeployEvent) => void;
+    },
+  ): Promise<void>;
+  commit(
+    planId: string,
+    opts?: {
+      onEvent?: (event: DeployEvent) => void;
+      idempotencyKey?: string;
+      project?: string;
+    },
+  ): Promise<DeployResult>;
+  status(
+    operationId: string,
+    opts?: { project?: string },
+  ): Promise<OperationSnapshot>;
+  list(
+    opts?: Omit<DeployListOptions, "project"> & { project?: string },
+  ): Promise<DeployListResponse>;
+  events(
+    operationId: string,
+    opts?: { project?: string },
+  ): Promise<DeployEventsResponse>;
+  getRelease(
+    releaseId: string,
+    opts?: Partial<ReleaseInventoryOptions>,
+  ): Promise<ReleaseInventory>;
+  getActiveRelease(
+    opts?: Partial<ReleaseInventoryOptions>,
+  ): Promise<ActiveReleaseInventory>;
+  diff(
+    opts: Omit<ReleaseDiffOptions, "project"> & { project?: string },
+  ): Promise<ReleaseToReleaseDiff>;
+  resolve(opts: ScopedDeployResolveOptions): Promise<DeployResolveResponse>;
 }
 
 function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHero {
@@ -476,103 +518,53 @@ function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHe
     });
   hero.promote = (releaseId, opts = {}) =>
     parent._applyEngine.promote(projectId, releaseId, opts);
-  return hero;
-}
-
-class ScopedDeploy {
-  constructor(private readonly parent: Run402, private readonly projectId: string) {}
-
-  // apply / start / plan moved to r.project(id).apply (callable hero) in
-  // v1.48 unified-apply per design D5. The hero proxies to the same
-  // engine; this class is now a read/event/operation surface only.
-  upload(
-    plan: PlanResponse,
-    opts: {
-      project?: string;
-      byteReaders: Map<string, ByteReader>;
-      onEvent?: (event: DeployEvent) => void;
-    },
-  ): Promise<void> {
-    return this.parent._applyEngine.upload(plan, {
+  hero.upload = (plan, opts) =>
+    parent._applyEngine.upload(plan, {
       ...opts,
-      project: opts.project ?? this.projectId,
+      project: opts.project ?? projectId,
     });
-  }
-  commit(
-    planId: string,
-    opts: {
-      onEvent?: (event: DeployEvent) => void;
-      idempotencyKey?: string;
-      project?: string;
-    } = {},
-  ): Promise<DeployResult> {
-    return this.parent._applyEngine.commit(planId, {
+  hero.commit = (planId, opts = {}) =>
+    parent._applyEngine.commit(planId, {
       ...opts,
-      project: opts.project ?? this.projectId,
+      project: opts.project ?? projectId,
     });
-  }
-  resume(
-    operationId: string,
-    opts: { onEvent?: (event: DeployEvent) => void; project?: string } = {},
-  ): Promise<DeployResult> {
-    return this.parent._applyEngine.resume(operationId, {
+  hero.status = (operationId, opts = {}) =>
+    parent._applyEngine.status(operationId, {
       ...opts,
-      project: opts.project ?? this.projectId,
+      project: opts.project ?? projectId,
     });
-  }
-  status(
-    operationId: string,
-    opts: { project?: string } = {},
-  ): Promise<OperationSnapshot> {
-    return this.parent._applyEngine.status(operationId, {
-      ...opts,
-      project: opts.project ?? this.projectId,
-    });
-  }
-  list(opts: { project?: string; limit?: number } = {}): Promise<DeployListResponse> {
-    return this.parent._applyEngine.list({
-      project: opts.project ?? this.projectId,
+  hero.list = (opts = {}) =>
+    parent._applyEngine.list({
+      project: opts.project ?? projectId,
       limit: opts.limit,
+      cursor: opts.cursor,
     });
-  }
-  events(operationId: string, opts: { project?: string } = {}) {
-    return this.parent._applyEngine.events(operationId, {
-      project: opts.project ?? this.projectId,
+  hero.events = (operationId, opts = {}) =>
+    parent._applyEngine.events(operationId, {
+      project: opts.project ?? projectId,
     });
-  }
-  getRelease(
-    releaseId: string,
-    opts: Partial<ReleaseInventoryOptions> = {},
-  ): Promise<ReleaseInventory> {
-    return this.parent._applyEngine.getRelease({
-      project: opts.project ?? this.projectId,
+  hero.getRelease = (releaseId, opts = {}) =>
+    parent._applyEngine.getRelease({
+      project: opts.project ?? projectId,
       releaseId,
       siteLimit: opts.siteLimit,
     });
-  }
-  getActiveRelease(
-    opts: Partial<ReleaseInventoryOptions> = {},
-  ): Promise<ActiveReleaseInventory> {
-    return this.parent._applyEngine.getActiveRelease({
-      project: opts.project ?? this.projectId,
+  hero.getActiveRelease = (opts = {}) =>
+    parent._applyEngine.getActiveRelease({
+      project: opts.project ?? projectId,
       siteLimit: opts.siteLimit,
     });
-  }
-  diff(
-    opts: Omit<ReleaseDiffOptions, "project"> & { project?: string },
-  ): Promise<ReleaseToReleaseDiff> {
-    return this.parent._applyEngine.diff({
+  hero.diff = (opts) =>
+    parent._applyEngine.diff({
       ...opts,
-      project: opts.project ?? this.projectId,
+      project: opts.project ?? projectId,
     });
-  }
-  resolve(opts: ScopedDeployResolveOptions): Promise<DeployResolveResponse> {
-    return this.parent._applyEngine.resolve({
+  hero.resolve = (opts) =>
+    parent._applyEngine.resolve({
       ...opts,
-      project: opts.project ?? this.projectId,
+      project: opts.project ?? projectId,
     } as Parameters<Run402["_applyEngine"]["resolve"]>[0]);
-  }
-
+  return hero;
 }
 
 class ScopedDomains {
@@ -769,13 +761,10 @@ export class ScopedRun402 {
    */
   readonly apply: ScopedApplyHero;
   /**
-   * Release/operation read primitives — events streams, status reads,
-   * release inventory + diff, operation list, resolve. Distinct from the
-   * hero `apply` which is for writes. The legacy `.deploy.apply` /
-   * `.deploy.start` / `.deploy.plan` aliases were removed in v1.48
-   * (use `r.project(id).apply` directly).
+   * No `deploy` namespace: `apply` owns both writes and lifecycle reads.
+   * Use `p.apply(...)`, `p.apply.plan(...)`, `p.apply.status(...)`,
+   * `p.apply.getRelease(...)`, and `p.apply.resolve(...)`.
    */
-  readonly deploy: ScopedDeploy;
   readonly domains: ScopedDomains;
   readonly email: ScopedEmail;
   readonly functions: ScopedFunctions;
@@ -795,7 +784,6 @@ export class ScopedRun402 {
     this.assets = new ScopedAssets(parent, projectId);
     this.contracts = new ScopedContracts(parent, projectId);
     this.apply = createScopedApplyHero(parent, projectId);
-    this.deploy = new ScopedDeploy(parent, projectId);
     this.domains = new ScopedDomains(parent, projectId);
     this.email = new ScopedEmail(parent, projectId);
     this.functions = new ScopedFunctions(parent, projectId);

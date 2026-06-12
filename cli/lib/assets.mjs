@@ -581,7 +581,7 @@ async function diagnose(projectId, argv) {
   try {
     const env = await getSdk().assets.diagnoseUrl(resolvedId, url);
     // Always print the JSON envelope for agent consumption (parseable).
-    console.log(JSON.stringify(env, null, 2));
+    console.log(JSON.stringify(toCliDiagnoseEnvelope(env), null, 2));
     // Vantage caveat to stderr so a TTY operator sees it; agent shell loops
     // that pipe stdout into another tool aren't affected.
     process.stderr.write(
@@ -596,6 +596,29 @@ async function diagnose(projectId, argv) {
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+function toCliDiagnoseEnvelope(env) {
+  return {
+    project_id: env.projectId,
+    key: env.key,
+    expected_sha256: env.expectedSha256,
+    observed_sha256: env.observedSha256,
+    vantage: env.vantage,
+    probe_method: env.probeMethod,
+    accept_encoding: env.acceptEncoding,
+    observed_at: env.observedAt,
+    probe_may_have_warmed_cache: env.probeMayHaveWarmedCache,
+    canonical_url: env.canonicalUrl,
+    path_kind: env.pathKind,
+    cache: {
+      x_cache: env.cache?.xCache ?? null,
+      age_seconds: env.cache?.ageSeconds ?? null,
+      cache_kind: env.cache?.cacheKind ?? null,
+    },
+    invalidation: env.invalidation,
+    hint: env.hint,
+  };
 }
 
 async function sign(projectId, argv) {

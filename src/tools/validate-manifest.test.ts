@@ -55,7 +55,7 @@ describe("handleValidateManifest", () => {
       manifest: { version: "1", tables: [] },
     });
     const json = extractFencedJson(res.content[0]!.text);
-    assert.equal(json.hasErrors, false);
+    assert.equal(json.has_errors, false);
   });
 
   it("validates string manifests with project context and migration SQL", async () => {
@@ -90,7 +90,7 @@ describe("handleValidateManifest", () => {
       migration_sql: "create table posts (id bigint primary key);",
     });
     const json = extractFencedJson(res.content[0]!.text);
-    assert.equal(json.hasErrors, true);
+    assert.equal(json.has_errors, true);
     assert.equal(json.errors[0].type, "missing-table");
   });
 
@@ -106,7 +106,7 @@ describe("handleValidateManifest", () => {
     assert.equal(fetchCalled, false);
     assert.equal(res.isError, undefined);
     const json = extractFencedJson(res.content[0]!.text);
-    assert.equal(json.hasErrors, true);
+    assert.equal(json.has_errors, true);
     assert.equal(json.errors[0].type, "schema-shape");
   });
 

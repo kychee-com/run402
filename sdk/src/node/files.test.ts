@@ -1,6 +1,6 @@
 /**
  * Unit tests for `fileSetFromDir` — the Node-only directory-to-FileSet
- * helper used by `r.deploy.apply` and the `sites.deployDir` shim.
+ * helper used by the internal apply engine and the `sites.deployDir` shim.
  */
 
 import { describe, it } from "node:test";

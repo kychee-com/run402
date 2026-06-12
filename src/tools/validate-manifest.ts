@@ -45,7 +45,11 @@ export async function handleValidateManifest(args: {
       : "**Result:** no blocking validation errors.",
     "",
     "```json",
-    JSON.stringify(result, null, 2),
+    JSON.stringify({
+      has_errors: result.hasErrors,
+      errors: result.errors,
+      warnings: result.warnings,
+    }, null, 2),
     "```",
   ];
 

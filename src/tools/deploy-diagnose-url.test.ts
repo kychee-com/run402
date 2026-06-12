@@ -14,7 +14,7 @@ mock.module("../sdk.js", {
   namedExports: {
     getSdk: () => ({
       project: async (_id: string) => ({
-        deploy: {
+        apply: {
           resolve: async (opts: unknown) => {
             lastResolveInput = opts;
             return nextResolveImpl(opts);
@@ -40,7 +40,7 @@ beforeEach(() => {
 });
 
 describe("deploy_diagnose_url", () => {
-  it("calls SDK deploy.resolve with URL input and renders structured output", async () => {
+  it("calls SDK apply.resolve with URL input and renders structured output", async () => {
     nextResolveImpl = async () => ({
       hostname: "example.com",
       result: 404,

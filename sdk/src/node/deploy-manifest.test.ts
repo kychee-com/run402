@@ -22,7 +22,7 @@ describe("Node deploy manifest helpers", () => {
           "logo.png": {
             data: "AAAA",
             encoding: "base64",
-            contentType: "image/png",
+            content_type: "image/png",
           },
         },
       },
@@ -149,7 +149,7 @@ describe("Node deploy manifest helpers", () => {
       project_id: "prj_manifest",
       site: { replace: { "index.html": "<h1>hi</h1>" } },
       i18n: {
-        defaultLocale: "en",
+        default_locale: "en",
         locales: ["en", "es", "fr", "zh-Hant"],
         detect: ["cookie:wl_locale", "accept-language"],
       },
@@ -170,17 +170,17 @@ describe("Node deploy manifest helpers", () => {
     assert.equal(normalized.spec.i18n, null);
   });
 
-  it("rejects snake_case typos in the i18n slice with a hint pointing at defaultLocale", async () => {
+  it("rejects camelCase i18n fields in manifest JSON with a hint pointing at default_locale", async () => {
     await assert.rejects(
       () =>
         normalizeDeployManifest({
           project_id: "prj_manifest",
           i18n: {
-            default_locale: "en",
+            defaultLocale: "en",
             locales: ["en"],
           } as unknown as Parameters<typeof normalizeDeployManifest>[0]["i18n"],
         }),
-      /default_locale.*defaultLocale/,
+      /defaultLocale.*default_locale/,
     );
   });
 
@@ -240,7 +240,7 @@ describe("Node deploy manifest helpers", () => {
           },
           site: {
             replace: {
-              "index.html": { path: "index.html", contentType: "text/html" },
+              "index.html": { path: "index.html", content_type: "text/html" },
             },
           },
         }),
@@ -432,17 +432,17 @@ describe("Node deploy manifest helpers", () => {
           authed: {
             runtime: "node22",
             source: { data: "export default async () => new Response('ok')" },
-            requireAuth: true,
+            require_auth: true,
           },
           admins: {
             runtime: "node22",
             source: { data: "export default async () => new Response('ok')" },
-            requireRole: {
+            require_role: {
               table: "members",
-              idColumn: "user_id",
-              roleColumn: "role",
+              id_column: "user_id",
+              role_column: "role",
               allowed: ["admin"],
-              cacheTtl: 30,
+              cache_ttl: 30,
             },
           },
         },
@@ -451,7 +451,7 @@ describe("Node deploy manifest helpers", () => {
             cleared: {
               runtime: "node22",
               source: { data: "export default async () => new Response('ok')" },
-              requireRole: null,
+              require_role: null,
             },
           },
         },

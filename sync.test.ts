@@ -252,8 +252,8 @@ const SURFACE: Capability[] = [
   { id: "jobs_download_artifact", endpoint: "GET /jobs/v1/runs/:job_id/artifacts/:filename", mcp: "jobs_download_artifact", cli: "jobs:artifacts:get", openclaw: "jobs:artifacts:get" },
 
   // ── Sites / Subdomains ───────────────────────────────────────────────────
-  { id: "deploy_site",       endpoint: "POST /deploy/v2/plans",             mcp: "deploy_site",       cli: "sites:deploy",       openclaw: "sites:deploy" },
-  { id: "deploy_site_dir",   endpoint: "POST /deploy/v2/plans",             mcp: "deploy_site_dir",   cli: "sites:deploy-dir",   openclaw: "sites:deploy-dir" },
+  { id: "deploy_site",       endpoint: "POST /apply/v1/plans",             mcp: "deploy_site",       cli: "sites:deploy",       openclaw: "sites:deploy" },
+  { id: "deploy_site_dir",   endpoint: "POST /apply/v1/plans",             mcp: "deploy_site_dir",   cli: "sites:deploy-dir",   openclaw: "sites:deploy-dir" },
   { id: "claim_subdomain",   endpoint: "POST /subdomains/v1",              mcp: "claim_subdomain",   cli: "subdomains:claim",   openclaw: "subdomains:claim" },
   { id: "delete_subdomain",  endpoint: "DELETE /subdomains/v1/:name",      mcp: "delete_subdomain",  cli: "subdomains:delete",  openclaw: "subdomains:delete" },
   { id: "list_subdomains",   endpoint: "GET /subdomains/v1",               mcp: "list_subdomains",   cli: "subdomains:list",    openclaw: "subdomains:list" },
@@ -264,17 +264,17 @@ const SURFACE: Capability[] = [
   { id: "check_domain_status",  endpoint: "GET /domains/v1/:domain",       mcp: "check_domain_status",  cli: "domains:status", openclaw: "domains:status" },
   { id: "remove_custom_domain", endpoint: "DELETE /domains/v1/:domain",    mcp: "remove_custom_domain", cli: "domains:delete", openclaw: "domains:delete" },
 
-  // ── Unified deploy (v1.34+) ──────────────────────────────────────────────
-  { id: "deploy",            endpoint: "POST /deploy/v2/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
-  { id: "deploy_resume",     endpoint: "POST /deploy/v2/operations/:id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
-  { id: "deploy_promote",    endpoint: "POST /apply/v1/releases/:id/promote",              mcp: null,                cli: "deploy:promote",    openclaw: "deploy:promote" },
-  { id: "deploy_list",       endpoint: "GET /deploy/v2/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
-  { id: "deploy_events",     endpoint: "GET /deploy/v2/operations/:id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
-  { id: "deploy_release_get",    endpoint: "GET /deploy/v2/releases/:id",                  mcp: "deploy_release_get",    cli: "deploy:release:get",    openclaw: "deploy:release:get" },
-  { id: "deploy_release_active", endpoint: "GET /deploy/v2/releases/active",               mcp: "deploy_release_active", cli: "deploy:release:active", openclaw: "deploy:release:active" },
-  { id: "deploy_release_diff",   endpoint: "GET /deploy/v2/releases/diff",                 mcp: "deploy_release_diff",   cli: "deploy:release:diff",   openclaw: "deploy:release:diff" },
-  { id: "deploy_diagnose_url",   endpoint: "GET /deploy/v2/resolve",                       mcp: "deploy_diagnose_url",   cli: "deploy:diagnose",       openclaw: "deploy:diagnose" },
-  { id: "deploy_resolve",        endpoint: "GET /deploy/v2/resolve",                       mcp: null,                    cli: "deploy:resolve",        openclaw: "deploy:resolve" },
+  // ── Unified apply ────────────────────────────────────────────────────────
+  { id: "deploy",            endpoint: "POST /apply/v1/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
+  { id: "deploy_resume",     endpoint: "POST /apply/v1/operations/:operation_id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
+  { id: "deploy_promote",    endpoint: "POST /apply/v1/releases/:release_id/promote",              mcp: null,                cli: "deploy:promote",    openclaw: "deploy:promote" },
+  { id: "deploy_list",       endpoint: "GET /apply/v1/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
+  { id: "deploy_events",     endpoint: "GET /apply/v1/operations/:operation_id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
+  { id: "deploy_release_get",    endpoint: "GET /apply/v1/releases/:release_id",                  mcp: "deploy_release_get",    cli: "deploy:release:get",    openclaw: "deploy:release:get" },
+  { id: "deploy_release_active", endpoint: "GET /apply/v1/releases/active",               mcp: "deploy_release_active", cli: "deploy:release:active", openclaw: "deploy:release:active" },
+  { id: "deploy_release_diff",   endpoint: "GET /apply/v1/releases/diff",                 mcp: "deploy_release_diff",   cli: "deploy:release:diff",   openclaw: "deploy:release:diff" },
+  { id: "deploy_diagnose_url",   endpoint: "GET /apply/v1/resolve",                       mcp: "deploy_diagnose_url",   cli: "deploy:diagnose",       openclaw: "deploy:diagnose" },
+  { id: "deploy_resolve",        endpoint: "GET /apply/v1/resolve",                       mcp: null,                    cli: "deploy:resolve",        openclaw: "deploy:resolve" },
 
   // ── CI/OIDC federation ──────────────────────────────────────────────────
   { id: "ci_link_github",    endpoint: "POST /ci/v1/bindings",                              mcp: "ci_create_binding", cli: "ci:link",          openclaw: "ci:link" },
@@ -302,22 +302,22 @@ const SURFACE: Capability[] = [
 
   // ── Email ──────────────────────────────────────────────────────────────
   { id: "create_mailbox",  endpoint: "POST /mailboxes/v1",                      mcp: "create_mailbox",  cli: "email:create",  openclaw: "email:create" },
-  { id: "send_email",      endpoint: "POST /mailboxes/v1/:id/messages",         mcp: "send_email",      cli: "email:send",    openclaw: "email:send" },
-  { id: "list_emails",     endpoint: "GET /mailboxes/v1/:id/messages",          mcp: "list_emails",     cli: "email:list",    openclaw: "email:list" },
-  { id: "get_email",       endpoint: "GET /mailboxes/v1/:id/messages/:msgId",   mcp: "get_email",       cli: "email:get",     openclaw: "email:get" },
-  { id: "get_email_raw",   endpoint: "GET /mailboxes/v1/:id/messages/:msgId/raw", mcp: "get_email_raw", cli: "email:get-raw", openclaw: "email:get-raw" },
+  { id: "send_email",      endpoint: "POST /mailboxes/v1/:mailbox_id/messages",         mcp: "send_email",      cli: "email:send",    openclaw: "email:send" },
+  { id: "list_emails",     endpoint: "GET /mailboxes/v1/:mailbox_id/messages",          mcp: "list_emails",     cli: "email:list",    openclaw: "email:list" },
+  { id: "get_email",       endpoint: "GET /mailboxes/v1/:mailbox_id/messages/:message_id",   mcp: "get_email",       cli: "email:get",     openclaw: "email:get" },
+  { id: "get_email_raw",   endpoint: "GET /mailboxes/v1/:mailbox_id/messages/:message_id/raw", mcp: "get_email_raw", cli: "email:get-raw", openclaw: "email:get-raw" },
   { id: "get_mailbox",     endpoint: "GET /mailboxes/v1",                        mcp: "get_mailbox",     cli: "email:info",    openclaw: "email:info" },
-  { id: "delete_mailbox",  endpoint: "DELETE /mailboxes/v1/:id",                 mcp: "delete_mailbox",  cli: "email:delete",  openclaw: "email:delete" },
-  { id: "reply_email",     endpoint: "POST /mailboxes/v1/:id/messages",          mcp: null,              cli: "email:reply",   openclaw: "email:reply" },
+  { id: "delete_mailbox",  endpoint: "DELETE /mailboxes/v1/:mailbox_id",                 mcp: "delete_mailbox",  cli: "email:delete",  openclaw: "email:delete" },
+  { id: "reply_email",     endpoint: "POST /mailboxes/v1/:mailbox_id/messages",          mcp: null,              cli: "email:reply",   openclaw: "email:reply" },
 
   // ── Mailbox webhooks ──────────────────────────────────────────────────
-  { id: "register_mailbox_webhook", endpoint: "POST /mailboxes/v1/:id/webhooks",              mcp: "register_mailbox_webhook", cli: "webhooks:register", openclaw: "webhooks:register" },
-  { id: "list_mailbox_webhooks",    endpoint: "GET /mailboxes/v1/:id/webhooks",               mcp: "list_mailbox_webhooks",    cli: "webhooks:list",     openclaw: "webhooks:list" },
-  { id: "get_mailbox_webhook",      endpoint: "GET /mailboxes/v1/:id/webhooks/:webhook_id",   mcp: "get_mailbox_webhook",      cli: "webhooks:get",      openclaw: "webhooks:get" },
-  { id: "delete_mailbox_webhook",   endpoint: "DELETE /mailboxes/v1/:id/webhooks/:webhook_id", mcp: "delete_mailbox_webhook",  cli: "webhooks:delete",   openclaw: "webhooks:delete" },
-  { id: "update_mailbox_webhook",   endpoint: "PATCH /mailboxes/v1/:id/webhooks/:webhook_id", mcp: "update_mailbox_webhook",   cli: "webhooks:update",   openclaw: "webhooks:update" },
-  { id: "list_mailbox_webhook_deliveries", endpoint: "GET /mailboxes/v1/:id/webhooks/deliveries", mcp: "list_mailbox_webhook_deliveries", cli: "webhooks:deliveries", openclaw: "webhooks:deliveries" },
-  { id: "redrive_mailbox_webhook_delivery", endpoint: "POST /mailboxes/v1/:id/webhooks/deliveries/:deliveryId/redrive", mcp: "redrive_mailbox_webhook_delivery", cli: "webhooks:redrive", openclaw: "webhooks:redrive" },
+  { id: "register_mailbox_webhook", endpoint: "POST /mailboxes/v1/:mailbox_id/webhooks",              mcp: "register_mailbox_webhook", cli: "webhooks:register", openclaw: "webhooks:register" },
+  { id: "list_mailbox_webhooks",    endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks",               mcp: "list_mailbox_webhooks",    cli: "webhooks:list",     openclaw: "webhooks:list" },
+  { id: "get_mailbox_webhook",      endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks/:webhook_id",   mcp: "get_mailbox_webhook",      cli: "webhooks:get",      openclaw: "webhooks:get" },
+  { id: "delete_mailbox_webhook",   endpoint: "DELETE /mailboxes/v1/:mailbox_id/webhooks/:webhook_id", mcp: "delete_mailbox_webhook",  cli: "webhooks:delete",   openclaw: "webhooks:delete" },
+  { id: "update_mailbox_webhook",   endpoint: "PATCH /mailboxes/v1/:mailbox_id/webhooks/:webhook_id", mcp: "update_mailbox_webhook",   cli: "webhooks:update",   openclaw: "webhooks:update" },
+  { id: "list_mailbox_webhook_deliveries", endpoint: "GET /mailboxes/v1/:mailbox_id/webhooks/deliveries", mcp: "list_mailbox_webhook_deliveries", cli: "webhooks:deliveries", openclaw: "webhooks:deliveries" },
+  { id: "redrive_mailbox_webhook_delivery", endpoint: "POST /mailboxes/v1/:mailbox_id/webhooks/deliveries/:delivery_id/redrive", mcp: "redrive_mailbox_webhook_delivery", cli: "webhooks:redrive", openclaw: "webhooks:redrive" },
 
   // ── AI ──────────────────────────────────────────────────────────────────
   { id: "ai_translate",    endpoint: "POST /ai/v1/translate",      mcp: "ai_translate",    cli: "ai:translate",  openclaw: "ai:translate" },
@@ -549,7 +549,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   check_domain_status: "domains.status",
   remove_custom_domain: "domains.remove",
 
-  // Unified apply (v1.48+ collapsed deploy → apply hero). The engine lives
+  // Unified apply. The engine lives
   // at r._applyEngine internally; the public hero is r.project(id).apply.
   // SDK_BY_CAPABILITY targets the engine instance for resolution checks.
   deploy: "_applyEngine.apply",
@@ -1305,7 +1305,7 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/r\.deploy\.resolve/, "SDK resolve method"],
+          [/r\.project\(id\)\.apply\.resolve/, "SDK resolve method"],
           [/DeployResolveResponse/, "SDK resolve response type"],
           [/target: \{ type: "static", file: "events\.html" \}/, "static route target TS"],
           [/static_assets/, "static asset diff counters"],
@@ -1323,7 +1323,7 @@ describe("deploy route surface alignment", () => {
           [/\/events\.html.*not public|not public.*\/events\.html/, "explicit mode hides backing asset filename"],
           [/static_public_paths/, "static public path inventory"],
           [/reachability_authority/, "reachability authority field"],
-          [/r\.deploy\.resolve/, "SDK resolve method"],
+          [/r\.project\(id\)\.apply\.resolve/, "SDK resolve method"],
           [/DeployResolveOptions/, "SDK resolve options type"],
           [/DeployResolveResponse/, "SDK resolve response type"],
           [/target: \{ type: "static", file: "events\.html" \}/, "static route target TS"],

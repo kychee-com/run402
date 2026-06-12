@@ -55,17 +55,17 @@ The SDK CI deploy preflight SHALL continue to reject `secrets`, `subdomains`, `c
 The CLI and MCP SHALL preserve gateway error envelopes for `CI_ROUTE_SCOPE_DENIED` and SHALL add actionable guidance explaining that the binding's route scopes do not cover one or more added, removed, or changed route entries.
 
 #### Scenario: CI routes null is allowed
-- **WHEN** a CI-marked deploy provider calls `deploy.apply` with `routes: null`
+- **WHEN** a CI-marked deploy provider calls `apply` with `routes: null`
 - **THEN** SDK preflight SHALL allow the request to proceed
 - **AND** the gateway SHALL receive `routes: null` as preserve/carry-forward semantics
 
 #### Scenario: CI routes replace reaches gateway
-- **WHEN** a CI-marked deploy provider calls `deploy.apply` with `routes: { replace: [...] }`
+- **WHEN** a CI-marked deploy provider calls `apply` with `routes: { replace: [...] }`
 - **THEN** SDK preflight SHALL NOT reject the routes property by presence
 - **AND** the gateway SHALL remain responsible for route-scope authorization
 
 #### Scenario: Non-route CI restrictions remain
-- **WHEN** a CI-marked deploy provider calls `deploy.apply` with `secrets`, `subdomains`, `checks`, an unknown top-level field, non-current `base`, or non-null `manifest_ref`
+- **WHEN** a CI-marked deploy provider calls `apply` with `secrets`, `subdomains`, `checks`, an unknown top-level field, non-current `base`, or non-null `manifest_ref`
 - **THEN** SDK preflight SHALL reject before upload, content planning, or deploy planning
 
 #### Scenario: Scope-denied gateway error is actionable

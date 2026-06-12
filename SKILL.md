@@ -151,7 +151,7 @@ If the manifest references a table the migration doesn't create, the deploy is r
 
 #### Non-mutating validation: `validate_manifest`
 
-Before applying, call **`validate_manifest`** with `manifest` (object or JSON string), optional `migration_sql`, and optional `project_id`. It validates the auth/expose manifest used by `database.expose` and `apply_expose`; it does not validate deploy manifests. Migration SQL is only reference context for manifest checks and is not executed as a PostgreSQL dry run. The result preserves `{ hasErrors, errors, warnings }` in fenced JSON, and `hasErrors: true` is data rather than a tool failure.
+Before applying, call **`validate_manifest`** with `manifest` (object or JSON string), optional `migration_sql`, and optional `project_id`. It validates the auth/expose manifest used by `database.expose` and `apply_expose`; it does not validate deploy manifests. Migration SQL is only reference context for manifest checks and is not executed as a PostgreSQL dry run. The result preserves `{ has_errors, errors, warnings }` in fenced JSON, and `has_errors: true` is data rather than a tool failure.
 
 #### Imperative: `apply_expose` and `get_expose`
 
@@ -251,17 +251,17 @@ Declare supported locales as a `spec.i18n` release slice and the gateway negotia
     ]
   },
   "i18n": {
-    "defaultLocale": "en",
+    "default_locale": "en",
     "locales": ["en", "es", "fr", "zh-Hant"],
     "detect": ["cookie:wl_locale", "accept-language"]
   }
 }
 ```
 
-Carry-forward semantics: omit `i18n` to carry forward from base release; pass `"i18n": null` to clear the slice on the new release; pass `{ defaultLocale, locales, detect? }` to replace. Simpler than `routes` — no `{ replace }` envelope.
+Carry-forward semantics: omit `i18n` to carry forward from base release; pass `"i18n": null` to clear the slice on the new release; pass `{ default_locale, locales, detect? }` to replace. Simpler than `routes` — no `{ replace }` envelope.
 
 Locale-tag rules (strict, no canonicalization):
-- `defaultLocale` MUST be byte-identical to one entry in `locales[]`. The gateway does NOT silently canonicalize; the SDK validates this client-side before planning.
+- `default_locale` MUST be byte-identical to one entry in `locales[]`. The gateway does NOT silently canonicalize; adapters normalize this to SDK `defaultLocale` before planning.
 - Each tag MUST match `/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/` AND be in RFC 5646 canonical casing: primary subtag lowercase, script subtag Titlecase, 2-alpha region UPPERCASE, 3-digit (UN M.49) region preserved, variants/extensions lowercase. Examples: `pt-BR`, `zh-Hant`, `zh-Hant-TW`, `de-1996`. Non-canonical casing is rejected at deploy time with `code: "R402_LOCALE_NOT_CANONICAL"` (HTTP 400) carrying `fix: { input, canonical }` so agents can auto-correct and retry. The platform refuses to silently canonicalize because translations are typically keyed on the literal locale string in your DB (`section_translations.language = 'pt-BR'`) — auto-fixing would split the spec from your column values.
 - `locales[]` is non-empty, max 50 entries.
 - Negotiation returns canonical casing from `locales[]`, NOT the request's casing.
@@ -301,7 +301,7 @@ function setLanguage(lang) {
 ```
 
 ```json
-{ "i18n": { "defaultLocale": "en", "locales": ["en", "es"], "detect": ["cookie:wl_locale", "accept-language"] } }
+{ "i18n": { "default_locale": "en", "locales": ["en", "es"], "detect": ["cookie:wl_locale", "accept-language"] } }
 ```
 
 ### In-function helpers — `db(req)` vs `adminDb()`
@@ -351,8 +351,8 @@ Skip the hand-rolled "decode JWT → query members table → return 403" boilerp
 
 Two independent fields on `FunctionSpec`:
 
-- **`requireAuth: true`** — gateway rejects callers without a valid project user JWT with `401`. No DB lookup.
-- **`requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? }`** — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary, not the caller) and rejects callers whose role is not in `allowed` with `403`. Implies authentication.
+- **`require_auth: true`** — gateway rejects callers without a valid project user JWT with `401`. No DB lookup.
+- **`require_role: { table, id_column, role_column, allowed[], cache_ttl? }`** — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary, not the caller) and rejects callers whose role is not in `allowed` with `403`. Implies authentication.
 
 Three worked examples — pass these through the `deploy` MCP tool's `spec.functions.patch.set`:
 
@@ -361,28 +361,28 @@ Three worked examples — pass these through the `deploy` MCP tool's `spec.funct
   // 1. Auth-only — any valid project JWT passes.
   "list-my-items": {
     "source": { /* … */ },
-    "requireAuth": true
+    "require_auth": true
   },
 
   // 2. Single-role — members.role must be "admin".
   "delete-content": {
     "source": { /* … */ },
-    "requireRole": {
+    "require_role": {
       "table": "members",
-      "idColumn": "user_id",
-      "roleColumn": "role",
+      "id_column": "user_id",
+      "role_column": "role",
       "allowed": ["admin"],
-      "cacheTtl": 60
+      "cache_ttl": 60
     }
   },
 
   // 3. Multi-role — any role in allowed passes.
   "moderate-content": {
     "source": { /* … */ },
-    "requireRole": {
+    "require_role": {
       "table": "members",
-      "idColumn": "user_id",
-      "roleColumn": "role",
+      "id_column": "user_id",
+      "role_column": "role",
       "allowed": ["admin", "moderator"]
     }
   }
@@ -406,12 +406,12 @@ export default async (req: Request): Promise<Response> => {
 
 Rules and footnotes:
 
-- **One role table per release.** All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with `INVALID_SPEC`.
+- **One role table per release.** All `require_role` blocks in a single release must share the same `(table, id_column, role_column)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with `INVALID_SPEC`.
 - **Unqualified identifiers.** Schema-qualified names (e.g. `"public.members"`) are rejected. The project schema is resolved server-side.
 - **Deploy-time validation.** Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (422) *before* flipping the live release.
-- **Cache TTL.** Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cacheTtl: 0` (fresh lookup per request).
+- **Cache TTL.** Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cache_ttl: 0` (fresh lookup per request).
 - **Gate applies to both** routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
-- **Reading the role — TWO approaches (`@run402/functions` 3.4.0+; `{ from }` since 3.5.0).** The edge gate now authenticates BOTH Bearer and cookie-session SSR callers (`ssr-aware-role-gate`), so pick by function topology. (1) **Dedicated function/route → edge gate:** with a `requireRole` gate, `await auth.requireRole("operator")` returns `{ user, role }` (throwing `RoleGateNotConfiguredError` 500 if no gate vs `InsufficientRoleError` 403 for a mismatch); for multi-role gates read `await auth.role()`. It authenticates Bearer AND cookie session, enforces before dispatch, and caches (TTL). For a browser console add `onDeny: "redirect"` + `signInPath` (same-origin path) → unauthenticated HTML requests get a `303` to sign-in (401-class only; wrong-role 403 stays an envelope). PER-FUNCTION. (2) **Catch-all SSR function (one fn = console + public fallback), or finer per-path control → in-function `{ from }`:** the per-function edge gate would also gate public 404s + `/admin/login`, so pass `{ from: { table, idColumn, roleColumn } }` — resolves the cookie user + reads their role from your tenant table (RLS-bypass), scoped in-app. On `.astro` pages use `await auth.role({ from })` + `Astro.redirect("/admin/login", 303)` (a throw in frontmatter renders a 500).
+- **Reading the role — TWO approaches (`@run402/functions` 3.4.0+; `{ from }` since 3.5.0).** The edge gate now authenticates BOTH Bearer and cookie-session SSR callers (`ssr-aware-role-gate`), so pick by function topology. (1) **Dedicated function/route → edge gate:** with a `require_role` gate, `await auth.requireRole("operator")` returns `{ user, role }` (throwing `RoleGateNotConfiguredError` 500 if no gate vs `InsufficientRoleError` 403 for a mismatch); for multi-role gates read `await auth.role()`. It authenticates Bearer AND cookie session, enforces before dispatch, and caches (TTL). For a browser console add `on_deny: "redirect"` + `sign_in_path` (same-origin path) → unauthenticated HTML requests get a `303` to sign-in (401-class only; wrong-role 403 stays an envelope). PER-FUNCTION. (2) **Catch-all SSR function (one fn = console + public fallback), or finer per-path control → in-function `{ from }`:** the per-function edge gate would also gate public 404s + `/admin/login`, so pass `{ from: { table, idColumn, roleColumn } }` — resolves the cookie user + reads their role from your tenant table (RLS-bypass), scoped in-app. On `.astro` pages use `await auth.role({ from })` + `Astro.redirect("/admin/login", 303)` (a throw in frontmatter renders a 500).
 - **Scaffold + first-operator bootstrap.** `run402 auth scaffold-roles --roles operator` emits the `app_roles` migration, the `requireRole` snippet, and a service-role `INSERT` for the FIRST operator — the table starts empty, so the first grant bypasses RLS with the service key. The gate keys on the tenant user id (JWT `sub`), not a wallet.
 
 ### Astro SSR runtime + ISR cache (v1.52+)
@@ -471,7 +471,7 @@ Reference: [`astro/README.md`](./astro/README.md) (top section), [`cli/llms-cli.
 ### Sites & subdomains
 
 - **`deploy_site`** — deploy from inline file bytes.
-- **`deploy_site_dir`** — deploy from a local directory. Routes through the unified deploy primitive (CAS-backed) — only uploads bytes the gateway doesn't have.
+- **`deploy_site_dir`** — deploy from a local directory. Routes through the unified apply primitive (CAS-backed) — only uploads bytes the gateway doesn't have.
 - **`claim_subdomain`** — claim `<name>.run402.com` (idempotent; auto-reassigns to latest deployment on subsequent deploys, no re-claim needed).
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
@@ -495,7 +495,7 @@ No `route_scopes` means no CI route-declaration authority. With route scopes, CI
 - **`functions_rebuild`** — opt-in refresh onto the platform's current runtime WITHOUT changing source (gateway v1.69+). Pass `name` for one function, or omit it to rebuild every function in the project. Re-bundles each function's stored source with deps pinned to the recorded versions, so `code_hash` is unchanged and no new release is created — this is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does not. Wallet-authed, allowed during billing grace. Functions deployed before dependency locking fail with `CANNOT_REBUILD_UNLOCKED_DEPS` — redeploy them from source with `deploy_function`. Find stale functions via `list_functions` (`runtime_stale`) or `run402 doctor`.
 - **`list_functions`** / **`delete_function`** — list / remove.
 - **`set_secret`** / **`list_secrets`** / **`delete_secret`** — `process.env` secrets injected into every function. Values are write-only; `list_secrets` returns keys and timestamps only. Deploy specs use `secrets.require[]` as a dependency gate, not as a value carrier or per-function allowlist.
-- **`jobs_submit`** / **`jobs_get`** / **`jobs_logs`** / **`jobs_cancel`** / **`jobs_download_artifact`** — fixed platform-managed jobs. Submit the gateway-shaped request with `job_type`, `input["input.json"]`, and `max_cost_usd_micros`; this is not arbitrary Docker execution. When a job completes, `jobs_get` returns an `artifacts` map of `{ url, content_type, sha256, size_bytes }` objects (the old `run402://` refs were retired); `jobs_download_artifact` writes one artifact (e.g. `proof.json`) to a local path.
+- **`jobs_submit`** / **`jobs_get`** / **`jobs_logs`** / **`jobs_cancel`** / **`jobs_download_artifact`** — fixed platform-managed jobs. Submit the gateway-shaped request with `job_type`, `input.input_json`, and `max_cost_usd_micros`; this is not arbitrary Docker execution. When a job completes, `jobs_get` returns an `artifacts` map of `{ url, content_type, sha256, size_bytes }` objects (the old `run402://` refs were retired); `jobs_download_artifact` writes one artifact (e.g. `proof.json`) to a local path.
 
 Function authoring limits per tier: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. Deploy preflights literal unified-deploy function values before plan/upload and returns structured `BAD_FIELD` details.
 

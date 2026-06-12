@@ -70,7 +70,7 @@ function json(body: unknown, status = 200): Response {
  *   2. POST /content/v1/plans    → ContentPlanResponse with presigned PUTs (if missing)
  *   3. PUT  to each presigned URL → 200 from S3
  *   4. POST /content/v1/plans/:id/commit → 200 (CAS promotion)
- *   5. POST /apply/v1/plans/:id/commit  → CommitResponse status: "ready"
+ *   5. POST /apply/v1/plans/:plan_id/commit  → CommitResponse status: "ready"
  *
  * The helper takes an `entries` array (one per asset key the test wants
  * the plan response to acknowledge) and a `missing` flag (whether the
@@ -733,18 +733,18 @@ describe("blobs.diagnoseUrl", () => {
   it("GETs /storage/v1/blobs/diagnose with the URL query-encoded", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
-        projectId: "prj_known",
+        project_id: "prj_known",
         key: "avatar.png",
-        expectedSha256: "abc",
-        observedSha256: "abc",
+        expected_sha256: "abc",
+        observed_sha256: "abc",
         vantage: "gateway-us-east-1",
-        probeMethod: "GET_RANGE_0_0",
-        acceptEncoding: "identity",
-        observedAt: "2026-04-27T00:00:00Z",
-        probeMayHaveWarmedCache: true,
-        canonicalUrl: "https://app.run402.com/_blob/avatar.png",
-        pathKind: "blob-mutable",
-        cache: { xCache: "Hit from cloudfront", ageSeconds: 5, cacheKind: "mutable" },
+        probe_method: "GET_RANGE_0_0",
+        accept_encoding: "identity",
+        observed_at: "2026-04-27T00:00:00Z",
+        probe_may_have_warmed_cache: true,
+        canonical_url: "https://app.run402.com/_blob/avatar.png",
+        path_kind: "blob-mutable",
+        cache: { x_cache: "Hit from cloudfront", age_seconds: 5, cache_kind: "mutable" },
         invalidation: { id: null, status: null },
         hint: "CDN is serving the current SHA.",
       }),
@@ -758,6 +758,9 @@ describe("blobs.diagnoseUrl", () => {
     assert.equal(env.vantage, "gateway-us-east-1");
     assert.equal(env.probeMethod, "GET_RANGE_0_0");
     assert.equal(env.probeMayHaveWarmedCache, true);
+    assert.equal(env.cache.xCache, "Hit from cloudfront");
+    assert.equal(env.cache.ageSeconds, 5);
+    assert.equal(env.cache.cacheKind, "mutable");
     assert.match(
       calls[0]!.url,
       /\/storage\/v1\/blobs\/diagnose\?url=https%3A%2F%2Fapp\.run402\.com%2F_blob%2Favatar\.png/,

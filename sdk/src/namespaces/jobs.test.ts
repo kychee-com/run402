@@ -53,8 +53,16 @@ function json(body: unknown, status = 200): Response {
 
 function submitRequest(): ManagedJobSubmitRequest {
   return {
+    jobType: "kysigned.fflonk_prove.v0_17_0",
+    input: { inputJson: { envelopeId: "env_1" } },
+    maxCostUsdMicros: 50_000,
+  };
+}
+
+function submitWireRequest() {
+  return {
     job_type: "kysigned.fflonk_prove.v0_17_0",
-    input: { "input.json": { envelopeId: "env_1" } },
+    input: { input_json: { envelopeId: "env_1" } },
     max_cost_usd_micros: 50_000,
   };
 }
@@ -76,7 +84,7 @@ describe("jobs", () => {
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers.Authorization, "Bearer s");
     assert.match(calls[0]!.headers["Idempotency-Key"], /^job-/);
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), submitRequest());
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), submitWireRequest());
   });
 
   it("submit forwards an optional callback_url verbatim", async () => {
@@ -94,7 +102,7 @@ describe("jobs", () => {
 
     await sdk(fetch).jobs.submit("prj_k", {
       ...submitRequest(),
-      callback_url: "https://hooks.example.com/jobs",
+      callbackUrl: "https://hooks.example.com/jobs",
     });
 
     const body = JSON.parse(calls[0]!.body as string);

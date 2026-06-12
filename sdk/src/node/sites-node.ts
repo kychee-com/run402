@@ -1,7 +1,7 @@
 /**
  * Node-only `sites.deployDir` convenience.
  *
- * **As of v1.34, this is a thin wrapper over `r.deploy.apply`** — bytes ride
+ * **As of v1.34, this is a thin wrapper over `r.project(id).apply`** — bytes ride
  * through the unified CAS substrate, the deploy flows through the v2 plan/
  * commit endpoints, and the agent-observable result remains a
  * {@link SiteDeployResult}. Existing callers keep their input shape
@@ -11,7 +11,7 @@
  * support target labels and passing one throws a `LocalError`.
  *
  * Imports `node:fs/promises` via `fileSetFromDir`, so this module remains
- * Node-only — V8 isolates use `r.deploy.apply` with in-memory byte sources.
+ * Node-only — V8 isolates use `r.project(id).apply` with in-memory byte sources.
  */
 
 import { Sites, type SiteDeployResult } from "../namespaces/sites.js";
@@ -52,7 +52,7 @@ export class NodeSites extends Sites {
   /**
    * Deploy every file under `dir` as a static site. Walks the tree (skipping
    * `.git`/`node_modules`/`.DS_Store`, rejecting symlinks), produces an
-   * `FsFileSource`-backed `FileSet`, and delegates to `r.deploy.apply` —
+   * `FsFileSource`-backed `FileSet`, and delegates to `r.project(id).apply` —
    * which uploads only the bytes the gateway doesn't already have, applies
    * the new release atomically, and polls the operation until terminal.
    */

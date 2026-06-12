@@ -55,7 +55,7 @@ Important fields:
 Safe retry policy:
 - `retryable: true` + `safe_to_retry: true` → retry, ideally with the same idempotency key for mutations
 - `safe_to_retry: true` alone is not a retry signal; it means duplicate-safe, not likely-to-succeed. Lifecycle-gated writes, auth token exchanges, and passkey verifies need the indicated action before retrying.
-- The `deploy` tool uses SDK `deploy.apply`, which already re-plans and retries safe `BASE_RELEASE_CONFLICT` races for omitted/current-base specs. A handled retry appears as a `deploy.retry` progress event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Static activation/config failures reported from `activation_pending` throw promptly with gateway metadata instead of polling until timeout. Do not hand-roll this specific deploy race loop around MCP calls.
+- The `deploy` tool uses SDK `apply`, which already re-plans and retries safe `BASE_RELEASE_CONFLICT` races for omitted/current-base specs. A handled retry appears as a `deploy.retry` progress event; exhausted retries include `attempts`, `max_retries`, and `last_retry_code`. Static activation/config failures reported from `activation_pending` throw promptly with gateway metadata instead of polling until timeout. Do not hand-roll this specific deploy race loop around MCP calls.
 - 5xx with `safe_to_retry: false`, or `mutation_state` is `committed` / `partial` / `unknown` → inspect or poll state before retrying. For deploys, use `deploy_resume` / event polling.
 - Lifecycle / payment errors → take the action, don't blind-retry. `PROJECT_FROZEN` → `set_tier`; `PAYMENT_REQUIRED` → submit payment, then retry.
 
@@ -129,7 +129,7 @@ The response's `content` array includes a fenced `json` block of buffered unifie
 
 For full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use `deploy` / `deploy_resume`. Set secret values first with `set_secret`, then deploy with `secrets.require[]`; never put secret values in a deploy spec.
 
-The `deploy` tool also accepts `site.public_paths` for clean static browser URLs and deploy-v2 web routes to functions or exact method-aware static aliases. Release static asset paths and public browser paths are distinct: `events.html` can be a private release asset while `/events` is the public static URL.
+The `deploy` tool also accepts `site.public_paths` for clean static browser URLs and apply-v1 web routes to functions or exact method-aware static aliases. Release static asset paths and public browser paths are distinct: `events.html` can be a private release asset while `/events` is the public static URL.
 
 ```json
 {
@@ -233,8 +233,8 @@ Declare auth requirements directly on each function spec — the gateway enforce
 
 Two independent optional fields on each `FunctionSpec` inside `deploy`'s `spec.functions.replace` / `spec.functions.patch.set`:
 
-- `requireAuth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `requireRole`.
-- `requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? } | null` — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary) and rejects callers whose role is not in `allowed` with `403`. Implies authentication. Pass `null` in patch mode to remove an existing gate. `cacheTtl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
+- `require_auth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `require_role`.
+- `require_role: { table, id_column, role_column, allowed[], cache_ttl? } | null` — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary) and rejects callers whose role is not in `allowed` with `403`. Implies authentication. Pass `null` in patch mode to remove an existing gate. `cache_ttl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
 
 Worked spec fragment for the `deploy` tool — three common shapes:
 
@@ -246,24 +246,24 @@ Worked spec fragment for the `deploy` tool — three common shapes:
         "set": {
           "list-my-items": {
             "source": { "data": "/* … */", "encoding": "utf-8" },
-            "requireAuth": true
+            "require_auth": true
           },
           "delete-content": {
             "source": { "data": "/* … */", "encoding": "utf-8" },
-            "requireRole": {
+            "require_role": {
               "table": "members",
-              "idColumn": "user_id",
-              "roleColumn": "role",
+              "id_column": "user_id",
+              "role_column": "role",
               "allowed": ["admin"],
-              "cacheTtl": 60
+              "cache_ttl": 60
             }
           },
           "moderate-content": {
             "source": { "data": "/* … */", "encoding": "utf-8" },
-            "requireRole": {
+            "require_role": {
               "table": "members",
-              "idColumn": "user_id",
-              "roleColumn": "role",
+              "id_column": "user_id",
+              "role_column": "role",
               "allowed": ["admin", "moderator"]
             }
           }
@@ -276,9 +276,9 @@ Worked spec fragment for the `deploy` tool — three common shapes:
 
 Validation rules (gateway-authoritative):
 
-- One role table per release. All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
+- One role table per release. All `require_role` blocks in a single release must share the same `(table, id_column, role_column)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
 - Unqualified identifiers only. Schema-qualified names (e.g. `"public.members"`) are rejected with `INVALID_SPEC`. The project schema is resolved server-side.
-- `cacheTtl` range. `0 ≤ cacheTtl ≤ 600`. Out-of-range → `INVALID_SPEC`.
+- `cache_ttl` range. `0 ≤ cache_ttl ≤ 600`. Out-of-range → `INVALID_SPEC`.
 - Empty `allowed`. Rejected with `INVALID_SPEC`.
 - Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. The `deploy` tool surfaces the structured envelope.
 
@@ -292,7 +292,7 @@ The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/
 - `run_sql` — execute SQL (DDL or queries). Service-key-authenticated. Params: `project_id?` (defaults to the active project), `sql`. Returns a markdown table for result sets; mutations report "N rows affected" and DDL reports "Statement executed".
 - `rest_query` — query/mutate via PostgREST. Params: `project_id?` (defaults to the active project), `table`, `method?` (`GET`/`POST`/`PATCH`/`DELETE`), `params?` (PostgREST query syntax: `select=…`, `eq.value`, `order=…`, `limit=…`), `body?`, `key_type?` (`"anon"` default — RLS applies; `"service"` — bypasses RLS via the admin REST path).
 - `apply_expose` — apply the declarative authorization manifest. Params: `project_id`, `manifest` (`{ version: "1", tables: [...], views: [...], rpcs: [...] }`).
-- `validate_manifest` — validate the auth/expose manifest without applying it. Params: `manifest` (object or JSON string), `migration_sql?`, `project_id?`. Returns fenced JSON with `hasErrors`, `errors`, and `warnings`; validation findings are data, not MCP errors.
+- `validate_manifest` — validate the auth/expose manifest without applying it. Params: `manifest` (object or JSON string), `migration_sql?`, `project_id?`. Returns fenced JSON with `has_errors`, `errors`, and `warnings`; validation findings are data, not MCP errors.
 - `get_expose` — return the current manifest. Params: `project_id`. Returns the manifest plus `source: "applied" | "introspected"`.
 - `get_schema` — introspect tables, columns, types, constraints, RLS policies. Params: `project_id?` (defaults to the active project).
 - `get_usage` — per-project usage counters (API calls, storage, lease expiry). Params: `project_id`. The reported tier and capacity limits are organization-level (pooled across every project on the same organization); use `tier_status` for the pooled total.
@@ -312,7 +312,7 @@ and "Bulk asset directories" below).
 - `assets_ls` — keyset-paginated list. Params: `project_id`, `prefix?`, `limit?` (default 100, max 1000), `cursor?`.
 - `assets_rm` — delete and decrement project storage usage. Params: `project_id`, `key`.
 - `assets_sign` — time-boxed presigned GET URL. Params: `project_id`, `key`, `ttl_seconds?` (default 3600, max 604800).
-- `diagnose_public_url` — live CDN state. Params: `project_id`, `url`. Returns `expectedSha256`, `observedSha256`, `cache.{xCache,ageSeconds,cacheKind}`, `invalidation.{id,status}`, `vantage`, `hint`. Vantage is single-region (us-east-1).
+- `diagnose_public_url` — live CDN state. Params: `project_id`, `url`. Returns `expected_sha256`, `observed_sha256`, `cache.{x_cache,age_seconds,cache_kind}`, `invalidation.{id,status}`, `vantage`, `hint`. Vantage is single-region (us-east-1).
 - `wait_for_cdn_freshness` — poll a mutable URL until it serves the expected SHA. Params: `project_id`, `url`, `sha256`, `timeout_ms?` (default 60_000, max 600_000). `isError: true` on timeout.
 
 #### Bulk asset directories — via the `deploy` tool's `assets` slice
@@ -327,11 +327,11 @@ Each `AssetPutEntry` carries the locally-computed `sha256` so the gateway can de
 ### Sites & subdomains
 
 - `deploy_site` — deploy from inline file bytes. Params: `project`, `target?`, `files: [{ file, data, encoding? }]`. Free with active tier.
-- `deploy_site_dir` — deploy from a local directory. Routes through the unified deploy primitive (CAS-backed) — only uploads bytes the gateway doesn't have. Params: `project`, `dir`, `target?`. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
+- `deploy_site_dir` — deploy from a local directory. Routes through the unified apply primitive (CAS-backed) — only uploads bytes the gateway doesn't have. Params: `project`, `dir`, `target?`. Skips `.git/`, `node_modules/`, `.DS_Store`. Symlinks throw.
 - `claim_subdomain` — claim `<name>.run402.com`. Idempotent; auto-reassigns to latest deployment on subsequent deploys. Params: `project_id`, `name`, `deployment_id?`.
 - `list_subdomains` / `delete_subdomain` — manage subdomains.
 - `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` — point your own domain at a Run402 subdomain.
-- `deploy` — the unified apply primitive (v1.34 unified deploy → v2.0 unified apply with first-class assets slice). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource, value-free `secrets.require` / `secrets.delete`, and optional `assets: { put: [...], sync?: { prefix, prune, confirm? } }` for batch/declarative-sync asset directories. Returns the apply operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
+- `deploy` — the unified apply primitive (with first-class assets slice). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource, value-free `secrets.require` / `secrets.delete`, and optional `assets: { put: [...], sync?: { prefix, prune, confirm? } }` for batch/declarative-sync asset directories. Returns the apply operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
 - `deploy_resume` — resume a deploy operation by `operation_id`.
 - `deploy_list` — list recent deploy operations. Params: `project_id`, `limit?`, `cursor?`.
 - `deploy_events` — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
@@ -370,7 +370,7 @@ Scheduled function tier limits: prototype 1 / 15 min, hobby 3 / 5 min, team 10 /
 
 ### Managed jobs
 
-Fixed platform-managed jobs. These tools do not run arbitrary Docker images; they submit the delivered gateway `job_type` with a JSON `input["input.json"]` object and a hard `max_cost_usd_micros` cap. The SDK supplies the required idempotency header.
+Fixed platform-managed jobs. These tools do not run arbitrary Docker images; they submit the delivered gateway `job_type` with a JSON `input.input_json` object and a hard `max_cost_usd_micros` cap. The SDK supplies the required idempotency header.
 
 - `jobs_submit` — submit a managed job. Params: `project_id`, `request` (`job_type`, `input`, `max_cost_usd_micros`).
 - `jobs_get` — get a job run. Params: `project_id`, `job_id`.

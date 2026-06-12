@@ -35,10 +35,8 @@ const CONTEXT = "normalizing deploy manifest";
 
 const MANIFEST_FIELDS = new Set([
   "$schema",
-  "project",
   "project_id",
   "idempotency_key",
-  "idempotencyKey",
   "base",
   "database",
   "secrets",
@@ -50,7 +48,7 @@ const MANIFEST_FIELDS = new Set([
   "checks",
   "i18n",
 ]);
-const MANIFEST_I18N_FIELDS = new Set(["defaultLocale", "locales", "detect"]);
+const MANIFEST_I18N_FIELDS = new Set(["default_locale", "locales", "detect", "unknown_locale_policy"]);
 const MANIFEST_DATABASE_FIELDS = new Set(["migrations", "expose", "zero_downtime"]);
 const MANIFEST_MIGRATION_FIELDS = new Set([
   "id",
@@ -70,9 +68,19 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "entrypoint",
   "config",
   "schedule",
-  "requireAuth",
-  "requireRole",
+  "require_auth",
+  "require_role",
   "class",
+]);
+const MANIFEST_FUNCTION_CONFIG_FIELDS = new Set(["timeout_seconds", "memory_mb"]);
+const MANIFEST_REQUIRE_ROLE_FIELDS = new Set([
+  "table",
+  "id_column",
+  "role_column",
+  "allowed",
+  "cache_ttl",
+  "on_deny",
+  "sign_in_path",
 ]);
 const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths"]);
 const MANIFEST_SITE_PATCH_FIELDS = new Set(["put", "delete"]);
@@ -104,13 +112,13 @@ export type DeployManifestFileEntry =
   | ContentSource
   | {
       path: string;
-      contentType?: string;
+      content_type?: string;
       data?: never;
     }
   | {
       data: string | ContentSource;
       encoding?: "utf-8" | "base64";
-      contentType?: string;
+      content_type?: string;
     };
 
 export type DeployManifestFileSet = Record<string, DeployManifestFileEntry>;
@@ -178,21 +186,20 @@ export interface DeployManifestInput
   extends Omit<ReleaseSpec, "project" | "database" | "functions" | "site" | "assets" | "i18n"> {
   /** JSON Schema metadata for editors. Stripped before deploy planning. */
   $schema?: string;
-  /** SDK-native project field. `project_id` is also accepted for MCP/CLI parity. */
-  project?: string;
-  /** MCP/CLI-friendly project field, normalized to `ReleaseSpec.project`. */
+  /** CLI/MCP project field, normalized to SDK-native `ReleaseSpec.project`. */
   project_id?: string;
   database?: DeployManifestDatabaseSpec;
   functions?: DeployManifestFunctionsSpec;
   site?: DeployManifestSiteSpec;
   assets?: DeployManifestAssetSpec;
   /** Routed-locale-context slice. Omit to carry forward, `null` to clear,
-   *  `{ defaultLocale, locales, detect? }` to replace. */
-  i18n?: I18nSpec | null;
+   *  `{ default_locale, locales, detect?, unknown_locale_policy? }` to replace. */
+  i18n?: (Omit<I18nSpec, "defaultLocale" | "unknownLocalePolicy"> & {
+    default_locale: string;
+    unknown_locale_policy?: I18nSpec["unknownLocalePolicy"];
+  }) | null;
   /** CLI/MCP manifest idempotency key, returned separately for deploy options. */
   idempotency_key?: string;
-  /** JS-friendly alias for `idempotency_key`. */
-  idempotencyKey?: string;
 }
 
 export interface NormalizeDeployManifestOptions {
@@ -208,7 +215,7 @@ export interface LoadDeployManifestOptions
   extends Omit<NormalizeDeployManifestOptions, "baseDir"> {}
 
 export interface NormalizedDeployManifest {
-  /** SDK-native deploy spec ready for `r.deploy.apply(spec, opts)`. */
+  /** SDK-native deploy spec ready for `r.project(id).apply(spec, opts)`. */
   spec: ReleaseSpec;
   /** Optional idempotency key from `idempotency_key` / `idempotencyKey`. */
   idempotencyKey?: string;
@@ -295,18 +302,7 @@ function resolveProject(
   manifest: DeployManifestInput,
   opts: NormalizeDeployManifestOptions,
 ): string {
-  if (
-    manifest.project !== undefined &&
-    manifest.project_id !== undefined &&
-    manifest.project !== manifest.project_id
-  ) {
-    throw new LocalError(
-      `project conflict: manifest.project=${manifest.project} but manifest.project_id=${manifest.project_id}`,
-      CONTEXT,
-    );
-  }
-
-  const manifestProject = manifest.project ?? manifest.project_id;
+  const manifestProject = manifest.project_id;
   if (
     opts.project !== undefined &&
     manifestProject !== undefined &&
@@ -321,7 +317,7 @@ function resolveProject(
   const project = opts.project ?? manifestProject ?? opts.defaultProject;
   if (!project) {
     throw new LocalError(
-      "Deploy manifest requires project_id (or project). Pass a project override or set a default project before normalizing.",
+      "Deploy manifest requires project_id. Pass a project override or set a default project before normalizing.",
       CONTEXT,
     );
   }
@@ -331,17 +327,7 @@ function resolveProject(
 function resolveIdempotencyKey(
   manifest: DeployManifestInput,
 ): string | undefined {
-  if (
-    manifest.idempotency_key !== undefined &&
-    manifest.idempotencyKey !== undefined &&
-    manifest.idempotency_key !== manifest.idempotencyKey
-  ) {
-    throw new LocalError(
-      "idempotency key conflict: idempotency_key and idempotencyKey differ",
-      CONTEXT,
-    );
-  }
-  return manifest.idempotency_key ?? manifest.idempotencyKey;
+  return manifest.idempotency_key;
 }
 
 async function mapDatabase(
@@ -472,6 +458,29 @@ function mapFunctionMap(
   return out;
 }
 
+function mapFunctionConfig(config: unknown): FunctionSpec["config"] {
+  assertPlainRecord(config, "Deploy manifest function config");
+  assertKnownFields(config, "Deploy manifest function config", MANIFEST_FUNCTION_CONFIG_FIELDS);
+  return {
+    ...(config.timeout_seconds !== undefined ? { timeoutSeconds: config.timeout_seconds as number } : {}),
+    ...(config.memory_mb !== undefined ? { memoryMb: config.memory_mb as number } : {}),
+  };
+}
+
+function mapRequireRole(value: unknown): NonNullable<FunctionSpec["requireRole"]> {
+  assertPlainRecord(value, "Deploy manifest function require_role");
+  assertKnownFields(value, "Deploy manifest function require_role", MANIFEST_REQUIRE_ROLE_FIELDS);
+  return {
+    table: value.table as string,
+    idColumn: value.id_column as string,
+    roleColumn: value.role_column as string,
+    allowed: value.allowed as string[],
+    ...(value.cache_ttl !== undefined ? { cacheTtl: value.cache_ttl as number } : {}),
+    ...(value.on_deny !== undefined ? { onDeny: value.on_deny as "envelope" | "redirect" } : {}),
+    ...(value.sign_in_path !== undefined ? { signInPath: value.sign_in_path as string } : {}),
+  };
+}
+
 function mapFunction(
   fn: DeployManifestFunctionSpec,
   opts: NormalizeDeployManifestOptions,
@@ -486,10 +495,13 @@ function mapFunction(
   }
   if (raw.files !== undefined) out.files = mapFileSet(raw.files, opts);
   if (raw.entrypoint !== undefined) out.entrypoint = raw.entrypoint;
-  if (raw.config !== undefined) out.config = raw.config;
+  if (raw.config !== undefined) out.config = mapFunctionConfig(raw.config);
   if (raw.schedule !== undefined) out.schedule = raw.schedule;
-  if (raw.requireAuth !== undefined) out.requireAuth = raw.requireAuth;
-  if (raw.requireRole !== undefined) out.requireRole = raw.requireRole;
+  const rawRecord = raw as Record<string, unknown>;
+  if (rawRecord.require_auth !== undefined) out.requireAuth = rawRecord.require_auth as boolean;
+  if (rawRecord.require_role !== undefined) {
+    out.requireRole = rawRecord.require_role === null ? null : mapRequireRole(rawRecord.require_role);
+  }
   if (raw.class !== undefined) out.class = raw.class;
   return out;
 }
@@ -743,13 +755,14 @@ function mapI18n(i18n: unknown): I18nSpec | null {
   if (i18n === null) return null;
   assertPlainRecord(i18n, "Deploy manifest i18n");
   assertKnownFields(i18n, "Deploy manifest i18n", MANIFEST_I18N_FIELDS, {
-    default_locale: "Use `defaultLocale` (camelCase) in i18n.",
-    default: "Use `defaultLocale` in i18n.",
+    defaultLocale: "Use `default_locale` in CLI/manifest JSON.",
+    unknownLocalePolicy: "Use `unknown_locale_policy` in CLI/manifest JSON.",
+    default: "Use `default_locale` in i18n.",
     locale: "Use `locales` (plural array) in i18n.",
   });
-  const raw = i18n as { defaultLocale?: unknown; locales?: unknown; detect?: unknown };
+  const raw = i18n as { default_locale?: unknown; locales?: unknown; detect?: unknown; unknown_locale_policy?: unknown };
   const out: I18nSpec = {
-    defaultLocale: raw.defaultLocale as string,
+    defaultLocale: raw.default_locale as string,
     locales: Array.isArray(raw.locales)
       ? ([...raw.locales] as string[])
       : (raw.locales as unknown as string[]),
@@ -758,6 +771,9 @@ function mapI18n(i18n: unknown): I18nSpec | null {
     out.detect = Array.isArray(raw.detect)
       ? ([...raw.detect] as I18nSpec["detect"])
       : (raw.detect as I18nSpec["detect"]);
+  }
+  if (raw.unknown_locale_policy !== undefined) {
+    out.unknownLocalePolicy = raw.unknown_locale_policy as I18nSpec["unknownLocalePolicy"];
   }
   return out;
 }
@@ -939,7 +955,7 @@ function fileEntryToContentSource(
   if (entry instanceof ArrayBuffer) return entry;
   if (typeof Blob !== "undefined" && entry instanceof Blob) return entry;
   if (isReadableStream(entry)) return entry;
-  if (isContentRef(entry)) return { ...entry };
+  if (isContentRef(entry)) return contentRefFromManifest(entry);
 
   if (!isRecord(entry) || Array.isArray(entry)) {
     return entry as ContentSource;
@@ -962,12 +978,13 @@ function fileEntryToContentSource(
     typeof rec.path === "string" &&
     !Object.prototype.hasOwnProperty.call(rec, "data")
   ) {
+    const contentType = typeof rec.content_type === "string" ? rec.content_type : undefined;
     const source = {
       __source: "fs-file" as const,
       path: resolveLocalPath(rec.path, opts.baseDir),
     };
-    return typeof entry.contentType === "string"
-      ? { ...source, contentType: entry.contentType }
+    return contentType
+      ? { ...source, contentType }
       : source;
   }
 
@@ -979,8 +996,9 @@ function fileEntryToContentSource(
       );
     }
     const bytes = base64ToBytes(rec.data);
-    return typeof entry.contentType === "string"
-      ? { data: bytes, contentType: entry.contentType }
+    const contentType = typeof rec.content_type === "string" ? rec.content_type : undefined;
+    return contentType
+      ? { data: bytes, contentType }
       : bytes;
   }
 
@@ -989,8 +1007,9 @@ function fileEntryToContentSource(
       throw new LocalError(`File entry for ${label} is missing data`, CONTEXT);
     }
     const data = rec.data as ContentSource;
-    return typeof entry.contentType === "string"
-      ? { data, contentType: entry.contentType }
+    const contentType = typeof rec.content_type === "string" ? rec.content_type : undefined;
+    return contentType
+      ? { data, contentType }
       : data;
   }
 
@@ -1012,6 +1031,16 @@ function isContentRef(value: unknown): value is ContentRef {
     typeof value.sha256 === "string" &&
     typeof value.size === "number"
   );
+}
+
+function contentRefFromManifest(value: ContentRef | (ContentRef & { content_type?: string })): ContentRef {
+  const wire = value as ContentRef & { content_type?: string };
+  return {
+    sha256: value.sha256,
+    size: value.size,
+    ...(value.contentType ?? wire.content_type ? { contentType: value.contentType ?? wire.content_type } : {}),
+    ...(value.integrity ? { integrity: value.integrity } : {}),
+  };
 }
 
 function isReadableStream(

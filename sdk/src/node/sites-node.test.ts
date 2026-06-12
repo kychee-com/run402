@@ -1,6 +1,6 @@
 /**
  * Unit tests for `NodeSites.deployDir` — the Node-only directory deploy
- * convenience that wraps `r.deploy.apply`.
+ * convenience that wraps the internal apply engine.
  *
  * Drives the v2 deploy primitive against a fake `Client` so we can assert the
  * shape of the legacy {@link SiteDeployResult} produced from a v2 commit

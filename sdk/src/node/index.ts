@@ -15,7 +15,7 @@
  * await r.sites.deployDir({ project: project.project_id, dir: "./my-site" });
  * ```
  *
- * `deployDir` is a thin wrapper over `r.deploy.apply` — bytes ride through
+ * `deployDir` is a thin wrapper over `r.project(id).apply` — bytes ride through
  * the unified CAS substrate, so only files the gateway doesn't already have
  * are uploaded. Re-deploying an unchanged tree issues no S3 PUTs.
  */
@@ -153,7 +153,6 @@ export {
   ROUTE_HTTP_METHODS,
   Ci,
   CI_SESSION_CREDENTIALS,
-  Deploy,
   Orgs,
   ScopedOrg,
   Grants,

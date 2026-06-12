@@ -8,7 +8,7 @@ import {
 
 /**
  * MCP `deploy_diagnose_url` tool — read-only public URL diagnostics for the
- * current live deploy release. This wraps SDK `r.deploy.resolve(...)`; it is
+ * current live deploy release. This wraps SDK `p.apply.resolve(...)`; it is
  * not a fetch proxy, cache purge, or internal CAS URL inspector.
  */
 
@@ -73,7 +73,7 @@ export async function handleDeployDiagnoseUrl(args: {
 
   try {
     const p = await getSdk().project(args.project_id);
-    const resolution = await p.deploy.resolve(input as never);
+    const resolution = await p.apply.resolve(input as never);
     const summary = buildDeployResolveSummary(resolution, request);
     const envelope = {
       status: "ok",

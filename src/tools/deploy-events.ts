@@ -8,7 +8,7 @@ import { Run402DeployError } from "../../sdk/dist/index.js";
  * MCP `deploy_events` tool — fetch the recorded phase event stream for a
  * deploy operation.
  *
- * Wraps `r.deploy.events()` over `GET /apply/v1/operations/:id/events`.
+ * Wraps `p.apply.events()` over `GET /apply/v1/operations/:operation_id/events`.
  * Useful for inspecting a deploy after the fact (no live subscription) —
  * for live progress events during an in-flight deploy, the `deploy` tool
  * already returns them inline in its response.
@@ -36,7 +36,7 @@ export async function handleDeployEvents(args: {
 
   try {
     const p = await getSdk().project(args.project_id);
-    const result = await p.deploy.events(args.operation_id);
+    const result = await p.apply.events(args.operation_id);
 
     const lines: string[] = [
       `## Deploy Events`,

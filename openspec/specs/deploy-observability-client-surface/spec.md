@@ -5,7 +5,7 @@ TBD - created by archiving change expose-deploy-observability. Update Purpose af
 ## Requirements
 ### Requirement: SDK defines deploy release inventory types
 
-The SDK SHALL export typed deploy observability inventory shapes matching the shipped `/deploy/v2/releases/{id}` and `/deploy/v2/releases/active` envelopes.
+The SDK SHALL export typed deploy observability inventory shapes matching the shipped `/apply/v1/releases/{release_id}` and `/apply/v1/releases/active` envelopes.
 
 The `ReleaseInventory` type SHALL be a union of `ActiveReleaseInventory` and `ReleaseSnapshotInventory`.
 
@@ -42,50 +42,45 @@ Inventory site path entries SHALL expose `path`, `content_sha256`, and `content_
 - **THEN** `ReleaseInventory["secrets"]` SHALL contain `keys: string[]`
 - **AND** SHALL NOT contain value, hash, prefix, length, or other value-derived fields
 
-### Requirement: SDK exposes project-aware release inventory methods
+### Requirement: SDK exposes project-scoped release inventory methods
 
-The SDK deploy namespace SHALL expose project-aware methods for release inventory reads. Root SDK calls SHALL include a project id so the SDK can send the gateway's required apikey auth; scoped SDK calls SHALL bind the scoped project id.
-
-The root SDK SHALL expose:
-
-- `r.deploy.getRelease({ project, releaseId, siteLimit? }): Promise<ReleaseSnapshotInventory>`
-- `r.deploy.getActiveRelease({ project, siteLimit? }): Promise<ActiveReleaseInventory>`
+The SDK apply hero SHALL expose project-scoped methods for release inventory reads. Scoped SDK calls SHALL bind the scoped project id and SHALL allow an explicit project override where the scoped-client override pattern already applies.
 
 The scoped SDK SHALL expose:
 
-- `r.project(id).deploy.getRelease(releaseId, opts?): Promise<ReleaseInventory>`
-- `r.project(id).deploy.getActiveRelease(opts?): Promise<ActiveReleaseInventory>`
+- `r.project(id).apply.getRelease(releaseId, opts?): Promise<ReleaseInventory>`
+- `r.project(id).apply.getActiveRelease(opts?): Promise<ActiveReleaseInventory>`
 
-Implementations SHALL send `GET /deploy/v2/releases/{id}` and `GET /deploy/v2/releases/active` respectively, adding `?site_limit=N` only when a site limit is supplied. Release ids SHALL be path-encoded with `encodeURIComponent`. Project ids SHALL be used only for apikey resolution/auth; they SHALL NOT be sent as query parameters or body fields to these GET endpoints.
+Implementations SHALL send `GET /apply/v1/releases/{release_id}` and `GET /apply/v1/releases/active` respectively, adding `?site_limit=N` only when a site limit is supplied. Release ids SHALL be path-encoded with `encodeURIComponent`. Project ids SHALL be used only for apikey resolution/auth; they SHALL NOT be sent as query parameters or body fields to these GET endpoints.
 
-#### Scenario: Root get release sends apikey auth
+#### Scenario: Scoped get release sends apikey auth
 
-- **WHEN** `r.deploy.getRelease({ project: "prj_123", releaseId: "rel_123" })` is called
+- **WHEN** `r.project("prj_123").apply.getRelease("rel_123")` is called
 - **THEN** the SDK SHALL resolve apikey auth for `prj_123`
-- **AND** send `GET /deploy/v2/releases/rel_123`
+- **AND** send `GET /apply/v1/releases/rel_123`
 - **AND** return a typed `ReleaseInventory`
 
 #### Scenario: Release id is path encoded
 
-- **WHEN** `r.deploy.getRelease({ project: "prj_123", releaseId: "rel_/weird" })` is called
+- **WHEN** `r.project("prj_123").apply.getRelease("rel_/weird")` is called
 - **THEN** the SDK SHALL encode the release id path segment
 - **AND** SHALL NOT concatenate the raw value into the URL
 
 #### Scenario: Scoped active release binds project
 
-- **WHEN** `r.project("prj_123").deploy.getActiveRelease({ siteLimit: 10000 })` is called
-- **THEN** the SDK SHALL send `GET /deploy/v2/releases/active?site_limit=10000` with apikey auth for `prj_123`
+- **WHEN** `r.project("prj_123").apply.getActiveRelease({ siteLimit: 10000 })` is called
+- **THEN** the SDK SHALL send `GET /apply/v1/releases/active?site_limit=10000` with apikey auth for `prj_123`
 - **AND** return a typed `ReleaseInventory`
 
 #### Scenario: Scoped release methods allow explicit project override
 
-- **WHEN** `r.project("prj_a").deploy.getRelease("rel_123", { project: "prj_b" })` is called
+- **WHEN** `r.project("prj_a").apply.getRelease("rel_123", { project: "prj_b" })` is called
 - **THEN** the SDK SHALL use apikey auth for `prj_b`
 - **AND** SHALL preserve the existing scoped-client override-friendly pattern
 
 ### Requirement: SDK exposes release-to-release diff types and method
 
-The SDK SHALL export a typed release-to-release diff envelope matching `GET /deploy/v2/releases/diff`.
+The SDK SHALL export a typed release-to-release diff envelope matching `GET /apply/v1/releases/diff`.
 
 The `ReleaseToReleaseDiff` type SHALL include `kind: "release_diff"`, `schema_version: "agent-deploy-observability.v1"`, `from_release_id`, `to_release_id`, `is_noop`, `summary`, `warnings`, `migrations`, `site`, `functions`, `secrets`, `subdomains`, `routes`, and `static_assets`.
 
@@ -95,7 +90,7 @@ The secrets block SHALL include `added` and `removed` only. It SHALL NOT include
 
 The `static_assets` block SHALL have type `StaticAssetsDiff`.
 
-The root SDK SHALL expose `r.deploy.diff({ project, from, to, limit? })`; the scoped SDK SHALL expose `r.project(id).deploy.diff({ from, to, limit? })`. Implementations SHALL call `GET /deploy/v2/releases/diff?from=<from>&to=<to>` and add `limit` only when supplied. Query strings SHALL be built with `URLSearchParams`. Project ids SHALL be used only for apikey resolution/auth; they SHALL NOT be sent as query parameters or body fields.
+The scoped SDK SHALL expose `r.project(id).apply.diff({ from, to, limit? })`. Implementations SHALL call `GET /apply/v1/releases/diff?from=<from>&to=<to>` and add `limit` only when supplied. Query strings SHALL be built with `URLSearchParams`. Project ids SHALL be used only for apikey resolution/auth; they SHALL NOT be sent as query parameters or body fields.
 
 #### Scenario: Release diff includes static asset summary
 
@@ -131,7 +126,7 @@ While the gateway's modern plan diff flag remains off in any environment, the SD
 #### Scenario: Plan diff includes static assets
 
 - **WHEN** the gateway returns `static_assets` on a deploy plan response
-- **THEN** `r.deploy.plan` and `r.deploy.apply` SHALL expose that bucket losslessly
+- **THEN** `r.project(id).apply.plan` and `r.project(id).apply` SHALL expose that bucket losslessly
 - **AND** CLI and MCP JSON output SHALL preserve the full bucket
 
 #### Scenario: Top-level static assets are normalized into plan diff
@@ -157,7 +152,7 @@ Successful commands SHALL print the natural JSON payload to stdout without a top
 #### Scenario: CLI gets a release by id
 
 - **WHEN** a user runs `run402 deploy release get rel_123 --project prj_123`
-- **THEN** the CLI SHALL call `r.deploy.getRelease({ project: "prj_123", releaseId: "rel_123" })`
+- **THEN** the CLI SHALL call `r.project("prj_123").apply.getRelease("rel_123")`
 - **AND** print a JSON object with `release.kind: "release_inventory"` and NO top-level `status` field
 
 #### Scenario: CLI active release documents current-live semantics
@@ -169,7 +164,7 @@ Successful commands SHALL print the natural JSON payload to stdout without a top
 #### Scenario: CLI release diff accepts active and empty selectors
 
 - **WHEN** a user runs `run402 deploy release diff --from empty --to active --project prj_123`
-- **THEN** the CLI SHALL call `r.deploy.diff({ project: "prj_123", from: "empty", to: "active" })`
+- **THEN** the CLI SHALL call `r.project("prj_123").apply.diff({ from: "empty", to: "active" })`
 - **AND** print a JSON object with `diff.kind: "release_diff"` and NO top-level `status` field
 
 #### Scenario: CLI help exposes nested release help
@@ -193,7 +188,7 @@ Each tool SHALL use shared SDK error mapping. Successful responses SHALL include
 #### Scenario: MCP release get maps to SDK
 
 - **WHEN** `deploy_release_get` receives `{ project_id: "prj_123", release_id: "rel_123" }`
-- **THEN** it SHALL call `getSdk().deploy.getRelease({ project: "prj_123", releaseId: "rel_123" })`
+- **THEN** it SHALL call `(await getSdk().project("prj_123")).apply.getRelease("rel_123")`
 - **AND** return `kind: "release_inventory"` in the response JSON
 
 #### Scenario: MCP active release tool warns about semantics
@@ -220,7 +215,7 @@ The public repo SHALL update drift gates and documentation surfaces for deploy r
 
 `sync.test.ts` SHALL include the SDK resolve, CLI deploy diagnose/resolve, MCP `deploy_diagnose_url`, and OpenClaw deploy diagnose/resolve surface entries. Public docs SHALL describe release generation, static manifest SHA and metadata, `static_assets`, public URL diagnostics, diff target selectors, plan/diff type updates, stable-host CAS fields, response variants, route/static diagnostic fields, and known resolve match/authorization literals.
 
-`documentation.md` SHALL include a checklist row for stable static asset identity and public URL diagnostics so future maintainers update SDK types, CLI/MCP surfaces, `llms*.txt`, skill files, README surfaces, and private-site docs when `/deploy/v2/resolve` or static asset observability changes.
+`documentation.md` SHALL include a checklist row for stable static asset identity and public URL diagnostics so future maintainers update SDK types, CLI/MCP surfaces, `llms*.txt`, skill files, README surfaces, and private-site docs when `/apply/v1/resolve` or static asset observability changes.
 
 #### Scenario: Sync test knows deploy URL diagnostics
 
@@ -247,7 +242,7 @@ Tests SHALL avoid depending on live production feature flags in ordinary unit te
 #### Scenario: SDK tests assert URL and auth headers
 
 - **WHEN** SDK unit tests call release inventory and diff methods with a mocked credential provider
-- **THEN** the tests SHALL assert the exact `/deploy/v2/releases/*` paths
+- **THEN** the tests SHALL assert the exact `/apply/v1/releases/*` paths
 - **AND** assert that apikey auth headers are sent for the supplied project
 
 #### Scenario: Type tests catch forbidden diff fields
@@ -265,17 +260,12 @@ Tests SHALL avoid depending on live production feature flags in ordinary unit te
 
 ### Requirement: SDK exposes stable public URL diagnostics
 
-The SDK deploy namespace SHALL expose a typed read-only public URL diagnostics method backed by `GET /deploy/v2/resolve`.
-
-The root SDK SHALL expose:
-
-- `r.deploy.resolve({ project, url, method? }): Promise<DeployResolveResponse>`
-- `r.deploy.resolve({ project, host, path?, method? }): Promise<DeployResolveResponse>`
+The SDK apply hero SHALL expose a typed read-only public URL diagnostics method backed by `GET /apply/v1/resolve`.
 
 The scoped SDK SHALL expose:
 
-- `r.project(id).deploy.resolve({ url, method?, project? }): Promise<DeployResolveResponse>`
-- `r.project(id).deploy.resolve({ host, path?, method?, project? }): Promise<DeployResolveResponse>`
+- `r.project(id).apply.resolve({ url, method?, project? }): Promise<DeployResolveResponse>`
+- `r.project(id).apply.resolve({ host, path?, method?, project? }): Promise<DeployResolveResponse>`
 
 The SDK SHALL send apikey auth for the resolved project id. The project id SHALL be used only for local apikey resolution/auth and SHALL NOT be sent as a query parameter or body field. The request SHALL use `URLSearchParams` for query params. Callers SHALL provide exactly one of `url` or `host`. URL input SHALL be absolute, SHALL use `http:` or `https:`, SHALL NOT contain username/password credentials, SHALL parse `url.hostname` as `host`, and SHALL parse `url.pathname` as `path`. URL query strings and fragments SHALL NOT be sent to the gateway because route matching ignores them. In host/path mode, `host` SHALL NOT contain a scheme, path, query, or fragment; `path` SHALL be typed as `string`, SHALL start with `/` when supplied, SHALL NOT contain `?` or `#`, and SHALL default to gateway behavior when omitted. `method` SHALL default to gateway behavior when omitted.
 
@@ -312,23 +302,23 @@ The SDK SHALL export deterministic summary helpers, static-hit and route-hit typ
 
 `DeployResolveSummary` SHALL include `would_serve: boolean`, `diagnostic_status: number`, `match: DeployResolveMatch`, a coarse `category` string, `summary: string`, `warnings: DeployResolveWarning[]`, and `next_steps: DeployResolveNextStep[]`. `DeployResolveWarning` and `DeployResolveNextStep` SHALL each include a stable `code` and human-readable `message`. `NormalizedDeployResolveRequest` SHALL include the selected project, `project_scope: "credential_lookup_only"`, `project_sent_to_gateway: false`, normalized host/path/method, and ignored URL query/fragment values when present.
 
-#### Scenario: Root resolve accepts a full URL
+#### Scenario: Scoped resolve accepts a full URL
 
-- **WHEN** `r.deploy.resolve({ project: "prj_123", url: "https://Example.COM/assets/app.js?x=1#top", method: "GET" })` is called
+- **WHEN** `r.project("prj_123").apply.resolve({ url: "https://Example.COM/assets/app.js?x=1#top", method: "GET" })` is called
 - **THEN** the SDK SHALL resolve apikey auth for `prj_123`
-- **AND** send `GET /deploy/v2/resolve?host=Example.COM&path=%2Fassets%2Fapp.js&method=GET`
+- **AND** send `GET /apply/v1/resolve?host=Example.COM&path=%2Fassets%2Fapp.js&method=GET`
 - **AND** return `DeployResolveResponse`
 
-#### Scenario: Root resolve accepts host and path
+#### Scenario: Scoped resolve accepts host and path
 
-- **WHEN** `r.deploy.resolve({ project: "prj_123", host: "Example.COM", path: "/assets/app.js", method: "GET" })` is called
+- **WHEN** `r.project("prj_123").apply.resolve({ host: "Example.COM", path: "/assets/app.js", method: "GET" })` is called
 - **THEN** the SDK SHALL resolve apikey auth for `prj_123`
-- **AND** send `GET /deploy/v2/resolve?host=Example.COM&path=%2Fassets%2Fapp.js&method=GET`
+- **AND** send `GET /apply/v1/resolve?host=Example.COM&path=%2Fassets%2Fapp.js&method=GET`
 - **AND** return `DeployResolveResponse`
 
 #### Scenario: Scoped resolve binds project
 
-- **WHEN** `r.project("prj_123").deploy.resolve({ url: "https://example.com/" })` is called
+- **WHEN** `r.project("prj_123").apply.resolve({ url: "https://example.com/" })` is called
 - **THEN** the SDK SHALL use apikey auth for `prj_123`
 - **AND** SHALL preserve the existing scoped-client override-friendly pattern when `project` is explicitly supplied
 
@@ -398,14 +388,14 @@ The CLI SHALL expose primary agent-facing diagnostics as `run402 deploy diagnose
 
 Successful CLI output SHALL be JSON and SHALL wrap the gateway response without colliding with gateway fields. The JSON SHALL include `status`, `would_serve`, `diagnostic_status`, `match`, `summary`, normalized `request`, `warnings`, full `resolution`, and structured `next_steps`. Diagnostic misses SHALL exit 0 and use `status: "ok"`. CLI input errors and SDK/HTTP errors SHALL exit nonzero and use the existing CLI error envelope conventions.
 
-The MCP server SHALL expose a read-only `deploy_diagnose_url` tool with `project_id`, either `url` or `host`/`path`, and optional `method`. The tool SHALL use `getSdk().deploy.resolve(...)` and shared SDK error mapping. Successful MCP responses SHALL include normalized request details, `would_serve`, `diagnostic_status`, `match`, a human-readable summary, structured warnings, deterministic next steps, structured machine-readable data when the MCP server shape supports it, and a fenced `json` block containing the full response as fallback.
+The MCP server SHALL expose a read-only `deploy_diagnose_url` tool with `project_id`, either `url` or `host`/`path`, and optional `method`. The tool SHALL use `(await getSdk().project(project_id)).apply.resolve(...)` and shared SDK error mapping. Successful MCP responses SHALL include normalized request details, `would_serve`, `diagnostic_status`, `match`, a human-readable summary, structured warnings, deterministic next steps, structured machine-readable data when the MCP server shape supports it, and a fenced `json` block containing the full response as fallback.
 
 CLI and MCP summaries SHALL distinguish host/static/SPA fallback diagnostics, route method misses, CAS object health failures, and CAS authorization failures when those fields are present. The full `resolution` JSON SHALL remain the source of truth for any fields not summarized by first-party prose.
 
 #### Scenario: CLI diagnose prints structured JSON
 
 - **WHEN** a user runs `run402 deploy diagnose --project prj_123 "https://example.com/assets/app.js?cache=1#hero"`
-- **THEN** the CLI SHALL call `r.deploy.resolve({ project: "prj_123", url: "https://example.com/assets/app.js?cache=1#hero" })`
+- **THEN** the CLI SHALL call `r.project("prj_123").apply.resolve({ url: "https://example.com/assets/app.js?cache=1#hero" })`
 - **AND** stdout SHALL include `status: "ok"`, `would_serve`, `diagnostic_status`, `match`, a normalized `request`, `warnings`, full `resolution`, and structured `next_steps`
 - **AND** stdout SHALL disclose the ignored query string and fragment in structured fields
 
@@ -424,7 +414,7 @@ CLI and MCP summaries SHALL distinguish host/static/SPA fallback diagnostics, ro
 #### Scenario: MCP diagnostics map to SDK
 
 - **WHEN** `deploy_diagnose_url` receives `{ "project_id": "prj_123", "url": "https://example.com/" }`
-- **THEN** it SHALL call `getSdk().deploy.resolve({ project: "prj_123", url: "https://example.com/" })`
+- **THEN** it SHALL call `(await getSdk().project("prj_123")).apply.resolve({ url: "https://example.com/" })`
 - **AND** the machine-readable output and fenced JSON SHALL preserve `match`, `result`, `fallback_state`, `route`, static manifest metadata, CAS diagnostics, response variant diagnostics, route/static diagnostics, and legacy immutable risk fields when returned
 
 #### Scenario: CAS failure remains machine-readable

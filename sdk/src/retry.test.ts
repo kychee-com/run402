@@ -202,7 +202,7 @@ describe("withRetry custom retryIf", () => {
     assert.equal(calls, 2);
   });
 
-  it("default policy retries gateway retryable errors outside deploy.apply", async () => {
+  it("default policy retries gateway retryable errors outside the apply engine", async () => {
     let calls = 0;
     const result = await withRetry(
       async () => {

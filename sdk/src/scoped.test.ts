@@ -216,13 +216,13 @@ describe("ScopedRun402 wrapper routing", () => {
     assert.equal(calls[0]!.headers.Authorization, "Bearer service_xxx");
   });
 
-  it("injects project for options-object methods (deploy.list)", async () => {
+  it("injects project for options-object methods (apply.list)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ operations: [] }));
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_known");
-    await p.deploy.list();
+    await p.apply.list();
     assert.equal(calls.length, 1);
-    // deploy.list calls `apikeyHeaders(client, opts.project)` which loads `prj_known`
+    // apply.list calls `apikeyHeaders(client, opts.project)` which loads `prj_known`
     // from creds and sends its anon_key as the "apikey" header.
     assert.equal(calls[0]!.headers.apikey, "anon_xxx");
   });
@@ -240,7 +240,7 @@ describe("ScopedRun402 wrapper routing", () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ operations: [] }));
     const sdk = makeSdk(creds, fetch);
     const p = await sdk.project("prj_known");
-    await p.deploy.list({ project: "prj_other" });
+    await p.apply.list({ project: "prj_other" });
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.headers.apikey, "anon_other");
     assert.deepEqual(ledger, ["lookup:prj_other"]);
@@ -284,8 +284,8 @@ describe("ScopedRun402 wrapper routing", () => {
     const sdk = makeSdk(creds, fetch);
     const p = await sdk.project("prj_known");
 
-    await p.deploy.getRelease("rel_1");
-    await p.deploy.getActiveRelease({ project: "prj_other", siteLimit: 3 });
+    await p.apply.getRelease("rel_1");
+    await p.apply.getActiveRelease({ project: "prj_other", siteLimit: 3 });
 
     assert.match(calls[0]!.url, /\/apply\/v1\/releases\/rel_1$/);
     assert.equal(calls[0]!.headers.apikey, "anon_known");
@@ -314,13 +314,13 @@ describe("ScopedRun402 wrapper routing", () => {
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_known");
 
-    await p.deploy.diff({ from: "empty", to: "active", limit: 10 });
+    await p.apply.diff({ from: "empty", to: "active", limit: 10 });
 
     assert.match(calls[0]!.url, /\/apply\/v1\/releases\/diff\?from=empty&to=active&limit=10$/);
     assert.equal(calls[0]!.headers.apikey, "anon_xxx");
   });
 
-  it("scoped deploy.resolve binds project and preserves explicit overrides", async () => {
+  it("scoped apply.resolve binds project and preserves explicit overrides", async () => {
     const ledger: string[] = [];
     const creds = makeCreds({
       async getProject(id: string) {
@@ -342,8 +342,8 @@ describe("ScopedRun402 wrapper routing", () => {
     const sdk = makeSdk(creds, fetch);
     const p = await sdk.project("prj_known");
 
-    await p.deploy.resolve({ url: "https://example.com/" });
-    await p.deploy.resolve({ project: "prj_other", host: "other.example", path: "/x" });
+    await p.apply.resolve({ url: "https://example.com/" });
+    await p.apply.resolve({ project: "prj_other", host: "other.example", path: "/x" });
 
     assert.match(calls[0]!.url, /\/apply\/v1\/resolve\?host=example\.com&path=%2F$/);
     assert.equal(calls[0]!.headers.apikey, "anon_known");

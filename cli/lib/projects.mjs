@@ -426,7 +426,7 @@ async function validateExpose(args = []) {
       ...(project ? { project } : {}),
       ...(migration !== null && migration !== undefined ? { migrationSql: migration } : {}),
     });
-    console.log(JSON.stringify(data, null, 2));
+    console.log(JSON.stringify(toCliExposeValidationResult(data), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -562,10 +562,26 @@ async function sqlCmd(projectId, args = []) {
   }
   try {
     const data = await getSdk().projects.sql(projectId, sql, params);
-    console.log(JSON.stringify(data, null, 2));
+    console.log(JSON.stringify(toCliSqlResult(data), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+function toCliExposeValidationResult(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  if ("has_errors" in data) return data;
+  if (!("hasErrors" in data)) return data;
+  const { hasErrors, ...rest } = data;
+  return { has_errors: hasErrors, ...rest };
+}
+
+function toCliSqlResult(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  if ("row_count" in data) return data;
+  if (!("rowCount" in data)) return data;
+  const { rowCount, ...rest } = data;
+  return { ...rest, row_count: rowCount };
 }
 
 async function rest(projectId, table, queryParams) {

@@ -1,11 +1,11 @@
 # routed-http-function-contract Specification
 
 ## Purpose
-TBD - created by archiving change add-deploy-v2-web-routes-public-surface. Update Purpose after archive.
+TBD - created by archiving change add-apply-v1-web-routes-public-surface. Update Purpose after archive.
 ## Requirements
 ### Requirement: Routed HTTP Ingress Is Public Same-Origin Traffic
 
-Deploy-v2 web routes SHALL invoke functions through a routed browser ingress mode named `run402.routed_http.v1`.
+Apply-v1 web routes SHALL invoke functions through a routed browser ingress mode named `run402.routed_http.v1`.
 
 Routed ingress SHALL be public same-origin traffic and SHALL NOT require a Run402 API key at the public edge. Direct `/functions/v1/:name` invocation SHALL remain API-key protected and API-shaped. Application authentication, sessions, authorization, CSRF, OAuth callbacks, and CORS behavior SHALL be owned by the routed function code.
 

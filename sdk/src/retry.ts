@@ -10,7 +10,7 @@
  *
  * @example
  *   const release = await withRetry(
- *     () => r.deploy.apply(spec, { idempotencyKey: "my-deploy-2026-05-01" }),
+ *     () => r.project(id).apply(spec, { idempotencyKey: "my-deploy-2026-05-01" }),
  *     { attempts: 3, onRetry: (e, n, ms) => console.warn(`retry ${n} in ${ms}ms`) },
  *   );
  *

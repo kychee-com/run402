@@ -1,5 +1,5 @@
 /**
- * Type definitions for the unified `deploy.apply` primitive (`unified-deploy`
+ * Type definitions for the unified `apply` primitive (`unified-deploy`
  * capability, gateway routes `POST /apply/v1/plans` + commit + operations).
  *
  * The user-facing inputs accept polymorphic byte sources (strings, Uint8Array,
@@ -80,7 +80,7 @@ export interface LocalDirRef {
 
 // ─── ReleaseSpec ─────────────────────────────────────────────────────────────
 
-/** Caller-facing spec passed to `r.deploy.apply(spec)`. */
+/** Caller-facing spec passed to `r.project(id).apply(spec)`. */
 export interface ReleaseSpec {
   /** JSON Schema metadata for editor-authored specs. Stripped before plan requests. */
   $schema?: string;
@@ -362,6 +362,12 @@ export interface RequireRoleSpec {
    *  operations where instant demotion matters. A demoted user retains
    *  the cached role until expiry; demotion is NOT broadcast. */
   cacheTtl?: number;
+  /** Unauthorized HTML response mode. Default gateway behavior is an error
+   *  envelope; `"redirect"` sends unauthenticated browser requests to
+   *  `signInPath` for console-style apps. */
+  onDeny?: "envelope" | "redirect";
+  /** Same-origin sign-in path used when `onDeny` is `"redirect"`. */
+  signInPath?: string;
 }
 
 export interface PublicStaticPathSpec {
@@ -440,6 +446,9 @@ export interface I18nSpec {
    *  when omitted, ≤10 entries. `[]` is allowed and means "always
    *  default". */
   detect?: I18nDetectSource[];
+  /** How the gateway handles an otherwise-valid locale value that is not in
+   *  `locales[]`. Omit for the gateway default. */
+  unknownLocalePolicy?: "default" | "reject";
 }
 
 /** Materialized form of `I18nSpec` as it appears on release inventory
@@ -480,7 +489,7 @@ export interface StaticRouteTarget {
 
 export type RouteTarget = FunctionRouteTarget | StaticRouteTarget;
 
-/** One deploy-v2 web route entry. */
+/** One apply-v1 web route entry. */
 export interface RouteSpec {
   pattern: string;
   /** Omit to allow every supported method. Empty arrays are invalid. */
@@ -1315,7 +1324,7 @@ function deployResolveNextSteps(
       return [
         {
           code: "check_active_release",
-          message: "Check that the project has an active deploy-v2 release.",
+          message: "Check that the project has an active apply-v1 release.",
         },
         {
           code: "redeploy_static_site",
@@ -1326,7 +1335,7 @@ function deployResolveNextSteps(
       return [
         {
           code: "check_active_release",
-          message: "Check that the project has an active deploy-v2 release.",
+          message: "Check that the project has an active apply-v1 release.",
         },
         {
           code: "deploy_release",
@@ -1429,9 +1438,9 @@ export interface PlanResponse {
    *  preserves backward compatibility and still normalizes both shapes. */
   kind?: "plan_response";
   schema_version?: "agent-deploy-observability.v1";
-  /** Null only for `deploy.plan(..., { dryRun: true })`. */
+  /** Null only for `r.project(id).apply.plan(..., { dryRun: true })`. */
   plan_id: string | null;
-  /** Null only for `deploy.plan(..., { dryRun: true })`. */
+  /** Null only for `r.project(id).apply.plan(..., { dryRun: true })`. */
   operation_id: string | null;
   base_release_id: string | null;
   manifest_digest: string;
@@ -2040,9 +2049,9 @@ export interface DeployListResponse {
   cursor?: string | null;
 }
 
-/** Response from `GET /apply/v1/operations/:id/events`. Returns the
+/** Response from `GET /apply/v1/operations/:operation_id/events`. Returns the
  *  synthesized phase event stream the gateway has recorded so far for the
- *  operation. Same shape as the events emitted by `r.deploy.start().events()`
+ *  operation. Same shape as the events emitted by `r.project(id).apply.start().events()`
  *  during an in-flight deploy. */
 export interface DeployEventsResponse {
   events: DeployEvent[];
@@ -2084,10 +2093,10 @@ export interface GatewayDeployError {
  *  refs, not inline. The gateway's wire envelope is `{ spec, manifest_ref?,
  *  idempotency_key? }`. Most callers never construct this directly; it's
  *  produced by the SDK's normalizer and exposed for the low-level
- *  `deploy.plan` layer. */
+ *  `apply.plan` layer. */
 export interface PlanRequest {
-  spec: NormalizedReleaseSpec;
-  manifest_ref?: ContentRef;
+  spec: Record<string, unknown>;
+  manifest_ref?: Record<string, unknown>;
   idempotency_key?: string;
 }
 

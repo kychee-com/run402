@@ -18,7 +18,7 @@ mock.module("../sdk.js", {
   namedExports: {
     getSdk: () => ({
       project: async (_id: string) => ({
-        deploy: {
+        apply: {
           list: async (opts: unknown) => {
             calls.push(opts);
             return nextListImpl(opts);
@@ -60,11 +60,7 @@ describe("deploy_list", () => {
     assert.equal(parsed.cursor, "op_cursor");
   });
 
-  it("forwards limit to SDK deploy.list and renders next cursor when returned", async () => {
-    // v2.0.x: ScopedDeploy.list({ limit }) is the only parameter; `cursor`
-    // pagination is not threaded through the scoped surface yet (the
-    // gateway endpoint still returns a `cursor` for callers that want
-    // page-2 — track at openspec/changes/unified-apply tasks §6.10).
+  it("forwards limit to SDK apply.list and renders next cursor when returned", async () => {
     nextListImpl = async () => ({
       operations: [
         {
@@ -80,10 +76,11 @@ describe("deploy_list", () => {
     const result = await handleDeployList({
       project_id: "prj_test",
       limit: 5,
+      cursor: "op_cursor",
     });
 
     assert.equal(result.isError, undefined);
-    assert.deepEqual(calls, [{ limit: 5 }]);
+    assert.deepEqual(calls, [{ limit: 5, cursor: "op_cursor" }]);
     assert.match(result.content[0]!.text, /Next cursor: `op_next`/);
   });
 });

@@ -52,7 +52,7 @@ Stdout (success) — the natural JSON payload, never wrapped. No top-level `stat
 
 Stderr (failure) — a structured JSON error envelope with `status: "error"` and non-zero exit. The `status` field is the sentinel that says "this is an error" — it is preserved on stderr only and never appears on stdout. The envelope's other canonical fields are described under Error JSON and Safe Retry below.
 
-Exit code — `0` means the subcommand completed; non-zero means it failed and the structured envelope is on stderr. Validation commands that find issues (e.g. `validate-expose` reporting `hasErrors: true`) still exit 0 — the command itself succeeded; agents read `hasErrors` from the payload to decide what to do.
+Exit code — `0` means the subcommand completed; non-zero means it failed and the structured envelope is on stderr. Validation commands that find issues (e.g. `validate-expose` reporting `has_errors: true`) still exit 0 — the command itself succeeded; agents read `has_errors` from the payload to decide what to do.
 
 Per-payload `status` fields are not envelopes. `run402 doctor` reports per-check items inside a `checks[]` array, each of which has its own `status: "ok" | "warning" | "missing" | "skipped"` label. Those are payload contents, not the top-level envelope, and they are NOT the same as the (forbidden) top-level `status` wrapper.
 
@@ -163,7 +163,7 @@ After subscribing, you can create unlimited projects, deploy unlimited sites, an
 ---
 ## Deploying Apps
 
-### Unified Deploy (v1.34 → v2.0 unified apply, recommended)
+### Unified Apply
 
 The canonical deploy primitive. All bytes ride through CAS (no inline-body cap), supports both `replace` and `patch` semantics per resource, atomic multi-resource activation, and resumable recovery from partial failures. This is the path the SDK exposes as `r.project(id).apply(...)`.
 
@@ -200,7 +200,7 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
       "api": {
         "runtime": "node22",
         "source": { "data": "export default async (req) => new Response('ok')" },
-        "config": { "timeoutSeconds": 30, "memoryMb": 256 },
+        "config": { "timeout_seconds": 30, "memory_mb": 256 },
         "schedule": "*/15 * * * *"
       }
     }
@@ -218,16 +218,16 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
     ]
   },
   "i18n": {
-    "defaultLocale": "en",
+    "default_locale": "en",
     "locales": ["en", "es", "fr"],
     "detect": ["cookie:wl_locale", "accept-language"]
   }
 }
 ```
 
-File entries accept a bare UTF-8 string, `{ "data": "...", "encoding": "utf-8" | "base64", "contentType": "..." }`, or `{ "path": "dist/index.html", "contentType": "text/html" }`. In `--manifest` files, relative paths resolve against the manifest file's directory; in `--spec` / stdin they resolve against the current working directory. Migration entries may use `"sql_path"` or `"sql_file"` instead of inline `"sql"`. The CLI and MCP adapters share the SDK's typed `normalizeDeployManifest` path, so the same JSON can become SDK-native `ReleaseSpec` code without reimplementing base64 or path handling. The adapter is strict: only top-level `$schema` metadata is ignored; unknown fields and no-op specs are rejected before deploy planning, so typos like `"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, or `"functions.replace.api.config.schedule"` do not become partial deploys.
+File entries accept a bare UTF-8 string, `{ "data": "...", "encoding": "utf-8" | "base64", "content_type": "..." }`, or `{ "path": "dist/index.html", "content_type": "text/html" }`. In `--manifest` files, relative paths resolve against the manifest file's directory; in `--spec` / stdin they resolve against the current working directory. Migration entries may use `"sql_path"` or `"sql_file"` instead of inline `"sql"`. The CLI and MCP adapters share the SDK's typed `normalizeDeployManifest` path, so the same JSON can become SDK-native `ReleaseSpec` code without reimplementing base64 or path handling. The adapter is strict: only top-level `$schema` metadata is ignored; unknown fields and no-op specs are rejected before deploy planning, so typos like `"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, or `"functions.replace.api.config.schedule"` do not become partial deploys.
 
-Function specs in unified deploy accept `runtime` (`"node22"`), exactly one code source (`source` for a single module, or `files` plus `entrypoint` for multi-file functions), `config.timeoutSeconds`, `config.memoryMb`, and `schedule` as a sibling of `config`. In patch mode, omit `schedule` to leave it unchanged and use `"schedule": null` to remove an existing schedule. Unified deploy manifests do not accept `deps` yet; bundle dependencies into the function files or use `run402 functions deploy --deps` for the standalone function path.
+Function specs in unified deploy manifests accept `runtime` (`"node22"`), exactly one code source (`source` for a single module, or `files` plus `entrypoint` for multi-file functions), `config.timeout_seconds`, `config.memory_mb`, and `schedule` as a sibling of `config`. In patch mode, omit `schedule` to leave it unchanged and use `"schedule": null` to remove an existing schedule. Unified deploy manifests do not accept `deps` yet; bundle dependencies into the function files or use `run402 functions deploy --deps` for the standalone function path.
 
 Deploy preflights obvious tier function caps after manifest normalization but before CAS upload or `/apply/v1/plans`: timeout, memory, cron interval, and scheduled-function count. Structured local failures use `code: "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, the relevant limit e.g. `tier_max` or `min_interval_minutes`, and `details.limit_source` (`tier_status` or `local_static_fallback`). Current authoring caps: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. `run402 tier status` shows live function caps and current scheduled usage when the gateway returns them.
 
@@ -380,15 +380,15 @@ Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest
 ```json
 {
   "i18n": {
-    "defaultLocale": "en",
+    "default_locale": "en",
     "locales": ["en", "es", "fr", "zh-Hant"],
     "detect": ["cookie:wl_locale", "accept-language"]
   }
 }
 ```
 
-- Omit `i18n` to carry forward from the base release; pass `"i18n": null` to clear the slice on the new release; pass `{ defaultLocale, locales, detect? }` to replace.
-- `defaultLocale` MUST be byte-identical to one entry in `locales[]`. The platform does NOT silently canonicalize; the CLI/SDK validate this client-side before planning.
+- Omit `i18n` to carry forward from the base release; pass `"i18n": null` to clear the slice on the new release; pass `{ default_locale, locales, detect? }` to replace.
+- `default_locale` MUST be byte-identical to one entry in `locales[]`. The platform does NOT silently canonicalize; the CLI/SDK validate this client-side before planning.
 - Locale tags MUST match `/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/` AND be in RFC 5646 canonical casing: primary subtag lowercase, script subtag Titlecase, 2-alpha region UPPERCASE, 3-digit (UN M.49) region preserved, variants/extensions lowercase. Examples: `pt-BR`, `zh-Hant`, `zh-Hant-TW`, `de-1996`. The gateway rejects non-canonical casing at deploy time with `code: "R402_LOCALE_NOT_CANONICAL"` (HTTP 400) carrying `fix: { input, canonical }` so agents can auto-correct and retry. The platform does NOT silently canonicalize because translations are typically keyed on the literal locale string in your DB (e.g. `section_translations.language = 'pt-BR'`); auto-canonicalization would create a silent split between the spec and your column values. `locales[]` is non-empty, max 50 entries.
 - Negotiation returns canonical casing from `locales[]`, NOT the request's casing.
 - `detect[]` (default `["accept-language"]`, max 10, `[]` allowed and means "always default") is walked in order; first match wins. Sources: `"accept-language"` (RFC 9110 parsing, RFC 4647 §3.4 lookup-style truncation `zh-Hant-TW` → `zh-Hant` → `zh`; a generic request tag does NOT match a more specific `locales[]` entry — `Accept-Language: es` does NOT match `locales: ["es-MX"]`) and `"cookie:<name>"` (RFC 6265 cookie-name grammar `/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/`, raw value matched case-insensitively against `locales[]`).
@@ -570,7 +570,7 @@ Create a manifest file `app.json` (use the `project_id` from provision):
       "my-fn": {
         "runtime": "node22",
         "source": { "data": "export default async (req) => new Response('ok')" },
-        "config": { "timeoutSeconds": 30, "memoryMb": 256 },
+        "config": { "timeout_seconds": 30, "memory_mb": 256 },
         "schedule": "*/15 * * * *"
       }
     }
@@ -588,14 +588,14 @@ Create a manifest file `app.json` (use the `project_id` from provision):
 
 `project_id` is required (from `run402 projects provision`). All other fields are optional; omitted top-level sections are carried forward from the current release. The adapter is strict: only top-level `$schema` metadata is ignored; typo fields e.g. `subdomain`, `site.replcae`, `functions.replace.my-fn.deps`, or `functions.replace.my-fn.config.schedule` fail before planning.
 
-Function specs accept `runtime: "node22"`, exactly one code source (`source`, or `files` plus `entrypoint`), `config.timeoutSeconds`, `config.memoryMb`, a sibling `schedule`, and the v1.51+ auth-gate fields `requireAuth` / `requireRole` (see "Function-level auth gates" below). Omit `schedule` in patch mode to leave it unchanged; set it to `null` to remove the schedule. Unified deploy manifests do not accept `deps`; bundle dependencies into the function files or use `run402 functions deploy --deps`.
+Function specs accept `runtime: "node22"`, exactly one code source (`source`, or `files` plus `entrypoint`), `config.timeout_seconds`, `config.memory_mb`, a sibling `schedule`, and the v1.51+ auth-gate fields `require_auth` / `require_role` (see "Function-level auth gates" below). Omit `schedule` in patch mode to leave it unchanged; set it to `null` to remove the schedule. Unified deploy manifests do not accept `deps`; bundle dependencies into the function files or use `run402 functions deploy --deps`.
 
 Function-level auth gates (v1.51+). Two optional declarative fields on each function spec:
 
-- `requireAuth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `requireRole`.
-- `requireRole: { table, idColumn, roleColumn, allowed[], cacheTtl? } | null` — gateway resolves the caller's role from the project-schema table (RLS-bypass) and rejects callers whose role is not in `allowed` with `403`. Implies authentication (no JWT → 401). Pass `null` in patch mode to remove an existing gate. `cacheTtl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
+- `require_auth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `require_role`.
+- `require_role: { table, id_column, role_column, allowed[], cache_ttl? } | null` — gateway resolves the caller's role from the project-schema table (RLS-bypass) and rejects callers whose role is not in `allowed` with `403`. Implies authentication (no JWT → 401). Pass `null` in patch mode to remove an existing gate. `cache_ttl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
 
-When a gate passes, the gateway injects `x-run402-user-id` (always when any gate ran) and `x-run402-user-role` (only when `requireRole` ran) into the request. In-function code reads them with `getUserId(req)` / `getRole(req)` from `@run402/functions` 2.5+.
+When a gate passes, the gateway injects `x-run402-user-id` (always when any gate ran) and `x-run402-user-role` (only when `require_role` ran) into the request. In-function code reads the headers directly or uses the current `auth.*` helpers.
 
 Worked example — manifest fragment:
 
@@ -606,24 +606,24 @@ Worked example — manifest fragment:
       "set": {
         "list-my-items": {
           "source": { "path": "functions/list.ts" },
-          "requireAuth": true
+          "require_auth": true
         },
         "delete-content": {
           "source": { "path": "functions/delete.ts" },
-          "requireRole": {
+          "require_role": {
             "table": "members",
-            "idColumn": "user_id",
-            "roleColumn": "role",
+            "id_column": "user_id",
+            "role_column": "role",
             "allowed": ["admin"],
-            "cacheTtl": 60
+            "cache_ttl": 60
           }
         },
         "moderate-content": {
           "source": { "path": "functions/moderate.ts" },
-          "requireRole": {
+          "require_role": {
             "table": "members",
-            "idColumn": "user_id",
-            "roleColumn": "role",
+            "id_column": "user_id",
+            "role_column": "role",
             "allowed": ["admin", "moderator"]
           }
         }
@@ -635,15 +635,15 @@ Worked example — manifest fragment:
 
 Validation rules:
 
-- One role table per release. All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
+- One role table per release. All `require_role` blocks in a single release must share the same `(table, id_column, role_column)` triple. Different `allowed` sets are fine; different tables are rejected at plan time with the canonical `INVALID_SPEC` envelope.
 - Unqualified identifiers only. Schema-qualified names (e.g. `"public.members"`) are rejected with `INVALID_SPEC`. The project schema is resolved server-side.
-- `cacheTtl` range. `0 ≤ cacheTtl ≤ 600`; out-of-range rejected with `INVALID_SPEC`.
+- `cache_ttl` range. `0 ≤ cache_ttl ≤ 600`; out-of-range rejected with `INVALID_SPEC`.
 - Empty `allowed`. Rejected with `INVALID_SPEC` — set the role values explicitly.
 - Deploy-time validation. Missing table or column at activation fails with `DEPLOY_INVALID_ROLE_GATE` (HTTP 422) *before* flipping the live release. `run402 deploy apply` surfaces the structured envelope on stderr.
 
 Reading the role in-function — TWO approaches (`@run402/functions` 3.4.0+; `{ from }` since 3.5.0). The edge gate now authenticates BOTH `Authorization: Bearer` callers and cookie-session SSR browsers (capability `ssr-aware-role-gate`), so pick by your function TOPOLOGY, not by how the caller authenticates.
 
-1. Dedicated function / route → the deploy-spec `requireRole` EDGE gate (above). It authenticates Bearer JWT AND the browser cookie session, enforces before dispatch, and caches the role lookup (TTL). In-function, `await auth.requireRole("operator")` returns `{ user, role }` (throwing a *distinct* `RoleGateNotConfiguredError` (500) if no gate is declared vs `InsufficientRoleError` (403) for a mismatch); for multi-role gates read `await auth.role()` and branch — `requireRole(x)` requires `x` in `allowed`. For a browser console, add `onDeny: "redirect"` + `signInPath` (a same-origin path) to the gate so an unauthenticated HTML request gets a `303` to sign-in (401-class only — an authenticated wrong-role 403 stays a JSON envelope, no redirect loop). The gate is PER-FUNCTION.
+1. Dedicated function / route → the deploy-spec `require_role` EDGE gate (above). It authenticates Bearer JWT AND the browser cookie session, enforces before dispatch, and caches the role lookup (TTL). In-function, `await auth.requireRole("operator")` returns `{ user, role }` (throwing a *distinct* `RoleGateNotConfiguredError` (500) if no gate is declared vs `InsufficientRoleError` (403) for a mismatch); for multi-role gates read `await auth.role()` and branch — `requireRole(x)` requires `x` in `allowed`. For a browser console, add `on_deny: "redirect"` + `sign_in_path` (a same-origin path) to the gate so an unauthenticated HTML request gets a `303` to sign-in (401-class only — an authenticated wrong-role 403 stays a JSON envelope, no redirect loop). The gate is PER-FUNCTION.
 
 2. Catch-all SSR function, or finer per-path control → the in-function `{ from }` guard. Because the edge gate is per-function, a single catch-all function (one ssr function = `/admin/*` console AND the public 404 fallback) can't gate just `/admin/*` — an edge gate would also gate the public 404s and the public `/admin/login`. Use `{ from }`: it resolves the cookie user (`auth.user()`) and reads their role from your tenant table (RLS-bypass), scoped in-app to your admin pages, no gate required:
 
@@ -713,7 +713,7 @@ JSON Schema: `https://run402.com/schemas/manifest.v1.json` — point your editor
 
 The preferred way to declare authorization is to ship a `manifest.json` file in the bundle's `files[]` (shown above). The platform reads it, validates it against the migration SQL, applies it, and strips it from `files[]` before the site deploys so it's never publicly reachable on your subdomain. The deploy response includes `manifest_applied: true` on success. If the manifest references a table your migration doesn't create, the deploy is rejected with HTTP 400 and a structured `errors` array listing every violation.
 
-For a non-mutating feedback loop before applying, run `run402 projects validate-expose [project_id] --file manifest.json [--migration-file setup.sql]`. It validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "hasErrors": boolean, "errors": [...], "warnings": [...] }` and exits 0 even when `hasErrors` is true — the validator ran, so the command succeeded; agents read `hasErrors` to decide what to do.
+For a non-mutating feedback loop before applying, run `run402 projects validate-expose [project_id] --file manifest.json [--migration-file setup.sql]`. It validates the auth/expose manifest used by `manifest.json`, `database.expose`, and `apply-expose`; it is not deploy-manifest validation. Migration SQL is used only for reference checks and is not executed as a PostgreSQL dry run. The command prints `{ "has_errors": boolean, "errors": [...], "warnings": [...] }` and exits 0 even when `has_errors` is true — the validator ran, so the command succeeded; agents read `has_errors` to decide what to do.
 
 Built-in policies (one per table):
 
@@ -861,7 +861,7 @@ User auth: password + Google OAuth. See "User Auth" section below.
 All admin subcommands require a platform-admin allowance wallet (or an admin OAuth session). Project owners with a non-admin wallet receive `403 admin_required`.
 
 ### deploy
-- `run402 deploy apply --manifest app.json [--project <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive (v1.34 unified deploy → v2.0 unified apply with `assets` slice support)
+- `run402 deploy apply --manifest app.json [--project <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive with `assets` slice support
 - `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
 - `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline); v1.58+
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
@@ -1002,7 +1002,7 @@ const rows = result.rows;
 
 #### Calling functions from the browser
 
-Functions are accessible via HTTP at `https://api.run402.com/functions/v1/<name>`. This direct invoke path remains API-key protected even when deploy-v2 web routes expose browser paths to the same function. Use the project's `anon_key` as the `apikey` header. For authenticated calls, also pass the user's `access_token`:
+Functions are accessible via HTTP at `https://api.run402.com/functions/v1/<name>`. This direct invoke path remains API-key protected even when apply-v1 web routes expose browser paths to the same function. Use the project's `anon_key` as the `apikey` header. For authenticated calls, also pass the user's `access_token`:
 
 ```javascript
 const res = await fetch('https://api.run402.com/functions/v1/my-function', {
@@ -1078,7 +1078,7 @@ Submit request shape:
 ```json
 {
   "job_type": "kysigned.fflonk_prove.v0_17_0",
-  "input": { "input.json": {} },
+  "input": { "input_json": {} },
   "max_cost_usd_micros": 50000
 }
 ```
@@ -1220,7 +1220,7 @@ console.log(manifest.byKey["static/logo.png"].cdn_url);
 
 // Or as part of a release apply (assets promote inside the same activation
 // transaction that flips live_release_id).
-await client.deploy.apply({
+await (await client.project(projectId)).apply({
   project: projectId,
   assets: { put: [{ key: "static/logo.png", source: bytes }] },
   site: dir("./dist"),

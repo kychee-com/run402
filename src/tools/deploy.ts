@@ -18,7 +18,7 @@ import type {
 } from "../../sdk/dist/index.js";
 
 /**
- * MCP `deploy` tool — exposes the unified `r.deploy.apply` primitive.
+ * MCP `deploy` tool — exposes the unified `p.apply` primitive.
  *
  * The Zod schema mirrors `ReleaseSpec` and accepts byte sources in either
  * shape: a bare UTF-8 string (the natural shape, e.g. `"<h1>hi</h1>"`) or
@@ -311,7 +311,7 @@ export const deploySchema = {
     ])
     .optional()
     .describe(
-      "Deploy-v2 web routes. Omit or pass null to carry forward base routes; pass { replace: [] } to clear routes; pass { replace: [{ pattern, methods?, target: { type: 'function', name } }] } for functions or exact GET/HEAD { target: { type: 'static', file } } entries for method-aware static route aliases. Prefer site.public_paths for ordinary clean static URLs.",
+      "Apply-v1 web routes. Omit or pass null to carry forward base routes; pass { replace: [] } to clear routes; pass { replace: [{ pattern, methods?, target: { type: 'function', name } }] } for functions or exact GET/HEAD { target: { type: 'static', file } } entries for method-aware static route aliases. Prefer site.public_paths for ordinary clean static URLs.",
     ),
   i18n: z
     .union([
@@ -651,7 +651,7 @@ const ROUTE_WARNING_GUIDANCE: Record<string, { meaning: string; recovery: string
     recovery: "Consolidate route patterns or remove stale routes before adding more.",
   },
   ROUTES_NOT_ENABLED: {
-    meaning: "Deploy-v2 web routes are not enabled for this project or environment.",
+    meaning: "Apply-v1 web routes are not enabled for this project or environment.",
     recovery: "Deploy without routes or request enablement. Direct /functions/v1/:name remains protected and is not a browser-route substitute.",
   },
   STATIC_ALIAS_SHADOWS_STATIC_PATH: {

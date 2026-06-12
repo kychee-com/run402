@@ -66,7 +66,7 @@ describe("jobs MCP tools", () => {
       project_id: "prj_k",
       request: {
         job_type: "kysigned.fflonk_prove.v0_17_0",
-        input: { "input.json": { envelopeId: "env_1" } },
+        input: { input_json: { envelopeId: "env_1" } },
         max_cost_usd_micros: 50_000,
       },
     });
@@ -98,7 +98,7 @@ describe("jobs MCP tools", () => {
       project_id: "prj_k",
       request: {
         job_type: "kysigned.fflonk_prove.v0_17_0",
-        input: { "input.json": { envelopeId: "env_1" } },
+        input: { input_json: { envelopeId: "env_1" } },
         max_cost_usd_micros: 50_000,
         callback_url: "https://hooks.example.com/jobs",
       },

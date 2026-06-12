@@ -74,8 +74,8 @@ export class Run402 {
   readonly contracts: Contracts;
   readonly admin: Admin;
   /**
-   * Internal engine. v1.48 unified-apply removed `r.deploy.apply` and
-   * `r.apply` as public surfaces — the sole hero is `r.project(id).apply`.
+   * Internal engine. Unified apply has no public `r.deploy` or `r.apply`
+   * root surface — the sole hero is `r.project(id).apply`.
    * This property exists only so the scoped sub-client can delegate to the
    * engine implementation; do not call directly from user code.
    * @internal
@@ -286,7 +286,7 @@ export interface WhoAmI {
  * `ContentSource` union and for keeping deploy specs declarative.
  *
  * @example
- *   await r.deploy.apply({
+ *   await (await r.project(project)).apply({
  *     project,
  *     site: { replace: files({
  *       "index.html": "<h1>hi</h1>",
@@ -356,7 +356,6 @@ export {
   isControlPlaneSessionCredentials,
 } from "./control-plane-credentials.js";
 export type * from "./control-plane-credentials.js";
-export { Deploy } from "./namespaces/deploy.js";
 export {
   EMPTY_STATIC_MANIFEST_METADATA,
   ROUTE_HTTP_METHODS,

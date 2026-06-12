@@ -1,5 +1,5 @@
 /**
- * Node-only filesystem byte-source helpers for `deploy.apply`.
+ * Node-only filesystem byte-source helpers for `apply`.
  *
  * `fileSetFromDir(path)` walks a directory and emits a path-keyed `FileSet`
  * of `FsFileSource` markers. The SDK normalizer reads each file's bytes
@@ -56,7 +56,7 @@ export interface FileSetFromDirOptions {
  *   import { run402 } from "@run402/sdk/node";
  *   import { fileSetFromDir } from "@run402/sdk/node";
  *   const r = run402();
- *   await r.deploy.apply({
+ *   await r.project(id).apply({
  *     project,
  *     site: { replace: fileSetFromDir("./dist") },
  *   });

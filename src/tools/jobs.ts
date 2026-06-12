@@ -14,7 +14,7 @@ const managedJobSubmitRequestSchema = z
       .describe("Fixed platform-managed job type to run"),
     input: z
       .object({
-        "input.json": z
+        input_json: z
           .record(z.unknown())
           .describe("JSON object passed to the managed job runner"),
       })
@@ -85,7 +85,7 @@ export async function handleJobsSubmit(args: {
   project_id: string;
   request: {
     job_type: "kysigned.fflonk_prove.v0_17_0";
-    input: { "input.json": Record<string, unknown> };
+    input: { input_json: Record<string, unknown> };
     max_cost_usd_micros: number;
     callback_url?: string;
   };

@@ -76,11 +76,11 @@ The drift guard SHALL include route-related deploy types, public URL diagnostics
 
 Agent-facing SDK documentation examples SHALL continue to compile against the package entrypoints, and reference tables SHOULD be derived from or checked against the same public type surface when practical.
 
-Route examples in SDK documentation SHALL import only from package entrypoints and SHALL use the concrete `{ replace: RouteSpec[] }` shape. Public URL diagnostic examples SHALL import only from package entrypoints and SHALL lead with the URL-first `r.deploy.resolve({ project, url, method? })` shape.
+Route examples in SDK documentation SHALL import only from package entrypoints and SHALL use the concrete `{ replace: RouteSpec[] }` shape. Public URL diagnostic examples SHALL import only from package entrypoints and SHALL lead with the URL-first `r.project(id).apply.resolve({ project, url, method? })` shape.
 
 #### Scenario: Documentation uses deploy resolve
 
-- **WHEN** SDK documentation includes a TypeScript example for `r.deploy.resolve`
+- **WHEN** SDK documentation includes a TypeScript example for `r.project(id).apply.resolve`
 - **THEN** the example SHALL compile using imports from `@run402/sdk` or `@run402/sdk/node`
 - **AND** it SHALL NOT import from deep source paths
 

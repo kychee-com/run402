@@ -1,10 +1,10 @@
 /**
  * Unit tests for the unified `deploy` namespace.
  *
- * Drives `r.deploy.apply` against a fake `Client` that records each
+ * Drives the internal `Deploy.apply` engine against a fake `Client` that records each
  * `request(path, opts)` and a fake `fetch` that records each S3 PUT.
  * Together they assert the full v2 wire sequence:
- *   POST /apply/v1/plans  →  presigned PUT  →  POST /apply/v1/plans/:id/commit
+ *   POST /apply/v1/plans  →  presigned PUT  →  POST /apply/v1/plans/:plan_id/commit
  * plus the validation paths (subdomain multi rejection, invalid spec).
  */
 
@@ -232,8 +232,8 @@ describe("Deploy.apply (happy path)", () => {
     // Plan body never carries inline bytes — only ContentRefs, wrapped in {spec}.
     const planReq = w.requests.find((r) => r.path === "/apply/v1/plans");
     assert(planReq, "plan request was issued");
-    const planBody = planReq.body as { spec: { project: string; site?: unknown } };
-    assert.equal(planBody.spec.project, "prj_test");
+    const planBody = planReq.body as { spec: { project_id: string; site?: unknown } };
+    assert.equal(planBody.spec.project_id, "prj_test");
     assert(JSON.stringify(planBody).indexOf(html) === -1, "no inline HTML bytes leak into plan body");
 
     // Content plan request: no project_id (apikey identifies project).
@@ -1348,20 +1348,20 @@ describe("Deploy.apply (validation)", () => {
     const body = plannedBody as {
       spec: {
         functions: {
-          replace: Record<string, { requireAuth?: boolean; requireRole?: unknown }>;
-          patch: { set: Record<string, { requireRole?: unknown }> };
+          replace: Record<string, { require_auth?: boolean; require_role?: unknown }>;
+          patch: { set: Record<string, { require_role?: unknown }> };
         };
       };
     };
-    assert.equal(body.spec.functions.replace.authed.requireAuth, true);
-    assert.deepEqual(body.spec.functions.replace.admins.requireRole, {
+    assert.equal(body.spec.functions.replace.authed.require_auth, true);
+    assert.deepEqual(body.spec.functions.replace.admins.require_role, {
       table: "members",
-      idColumn: "user_id",
-      roleColumn: "role",
+      id_column: "user_id",
+      role_column: "role",
       allowed: ["admin"],
-      cacheTtl: 30,
+      cache_ttl: 30,
     });
-    assert.equal(body.spec.functions.patch.set.cleared.requireRole, null);
+    assert.equal(body.spec.functions.patch.set.cleared.require_role, null);
   });
 
   it("rejects invalid function config integers before issuing gateway calls", async () => {
@@ -2517,7 +2517,7 @@ describe("Deploy.apply (i18n validation)", () => {
     assert.equal(result.release_id, "rel_1");
     const body = plannedBody as { spec?: { i18n?: unknown } };
     assert.deepEqual(body.spec?.i18n, {
-      defaultLocale: "en",
+      default_locale: "en",
       locales: ["en", "es", "fr"],
       detect: ["cookie:wl_locale", "accept-language"],
     });
@@ -3458,7 +3458,7 @@ describe("Deploy.apply (gateway error translation)", () => {
         project: "prj_test",
         database: { migrations: [{ id: "001_init", sql: "select 1" }] },
       });
-      assert.fail("expected deploy.apply to reject");
+      assert.fail("expected apply engine to reject");
     } catch (err) {
       caught = err;
     }
@@ -4750,7 +4750,7 @@ describe("Deploy.list", () => {
 });
 
 describe("Deploy.events", () => {
-  it("GETs /apply/v1/operations/:id/events and returns the event list", async () => {
+  it("GETs /apply/v1/operations/:operation_id/events and returns the event list", async () => {
     const w = makeWiring();
     const sample = {
       events: [

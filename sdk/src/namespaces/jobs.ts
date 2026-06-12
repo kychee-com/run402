@@ -16,11 +16,11 @@ export type ManagedJobStatus =
   | "cancelled";
 
 export interface ManagedJobSubmitRequest {
-  job_type: ManagedJobType;
+  jobType: ManagedJobType;
   input: {
-    "input.json": Record<string, unknown>;
+    inputJson: Record<string, unknown>;
   };
-  max_cost_usd_micros: number;
+  maxCostUsdMicros: number;
   /**
    * Optional HTTPS URL pushed once when the job reaches a terminal state
    * (completed/failed/cancelled), so you need not poll. Delivery is durable
@@ -28,8 +28,31 @@ export interface ManagedJobSubmitRequest {
    * header and re-fetch authoritative state with `get()` before acting — the
    * callback is a trigger, not the source of truth.
    */
+  callbackUrl?: string;
+}
+
+export interface ManagedJobSubmitRequestWireCompat {
+  job_type: ManagedJobType;
+  input: {
+    input_json?: Record<string, unknown>;
+    "input.json"?: Record<string, unknown>;
+  };
+  max_cost_usd_micros: number;
   callback_url?: string;
 }
+
+type ManagedJobSubmitRequestInput =
+  | ManagedJobSubmitRequest
+  | ManagedJobSubmitRequestWireCompat;
+
+type ManagedJobSubmitWireRequest = {
+  job_type: ManagedJobType;
+  input: {
+    input_json: Record<string, unknown>;
+  };
+  max_cost_usd_micros: number;
+  callback_url?: string;
+};
 
 export interface ManagedJobError {
   code: string;
@@ -120,17 +143,18 @@ export class Jobs {
   constructor(private readonly client: Client) {}
 
   /** Submit a fixed platform-managed job run. */
-  async submit(projectId: string, request: ManagedJobSubmitRequest): Promise<ManagedJobResponse> {
+  async submit(projectId: string, request: ManagedJobSubmitRequestInput): Promise<ManagedJobResponse> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "submitting job");
 
+    const body = managedJobSubmitRequestToWire(request);
     return this.client.request<ManagedJobResponse>("/jobs/v1/runs", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${project.service_key}`,
         "Idempotency-Key": createIdempotencyKey(),
       },
-      body: request,
+      body,
       context: "submitting job",
     });
   }
@@ -214,6 +238,26 @@ export class Jobs {
 
 function jobRunPath(jobId: string): string {
   return `/jobs/v1/runs/${encodeURIComponent(jobId)}`;
+}
+
+function managedJobSubmitRequestToWire(
+  request: ManagedJobSubmitRequestInput,
+): ManagedJobSubmitWireRequest {
+  if ("jobType" in request) {
+    return {
+      job_type: request.jobType,
+      input: { input_json: request.input.inputJson },
+      max_cost_usd_micros: request.maxCostUsdMicros,
+      ...(request.callbackUrl ? { callback_url: request.callbackUrl } : {}),
+    };
+  }
+  const inputJson = request.input.input_json ?? request.input["input.json"];
+  return {
+    job_type: request.job_type,
+    input: { input_json: inputJson ?? {} },
+    max_cost_usd_micros: request.max_cost_usd_micros,
+    ...(request.callback_url ? { callback_url: request.callback_url } : {}),
+  };
 }
 
 function createIdempotencyKey(): string {

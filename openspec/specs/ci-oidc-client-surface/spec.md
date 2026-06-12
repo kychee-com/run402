@@ -117,11 +117,11 @@ The SDK SHALL provide credentials-provider helpers for CI sessions, including a 
 - **THEN** the deploy SDK MUST NOT automatically apply CI deploy restrictions or CI no-key behavior
 
 ### Requirement: Deploy SDK enforces CI restrictions when using CI-session credentials
-The deploy SDK SHALL keep `r.deploy.apply(spec)` as the public API while automatically preflighting release specs against the gateway's CI allowlist whenever the credential provider is CI-marked.
+The deploy SDK SHALL keep `r.project(id).apply(spec)` as the public API while automatically preflighting release specs against the gateway's CI allowlist whenever the credential provider is CI-marked.
 
 #### Scenario: CI credentials trigger preflight automatically
-- **WHEN** `r.deploy.apply(spec)` is called with CI-session credentials
-- **THEN** the SDK MUST run CI deploy preflight before hashing, manifest sizing, content planning, uploading, or calling `/deploy/v2/plans`
+- **WHEN** `r.project(id).apply(spec)` is called with CI-session credentials
+- **THEN** the SDK MUST run CI deploy preflight before hashing, manifest sizing, content planning, uploading, or calling `/apply/v1/plans`
 
 #### Scenario: Reject forbidden spec fields
 - **WHEN** CI-session credentials are active and a ReleaseSpec contains `secrets`, `subdomains`, `checks`, or any unknown future top-level spec field
@@ -137,7 +137,7 @@ The deploy SDK SHALL keep `r.deploy.apply(spec)` as the public API while automat
 
 #### Scenario: Allow CI deployable fields through existing deploy API
 - **WHEN** CI-session credentials are active and the ReleaseSpec contains only `project`, `database`, `functions`, `site`, and absent or current `base`
-- **THEN** `r.deploy.apply(spec)` MUST drive the existing deploy flow with CI Bearer auth and no public CI-mode flag
+- **THEN** `r.project(id).apply(spec)` MUST drive the existing deploy flow with CI Bearer auth and no public CI-mode flag
 
 #### Scenario: CI deploy sends Bearer and not apikey
 - **WHEN** CI-session credentials are active and deploy needs content planning, content commit, operation status, operation events, or resume calls
@@ -173,7 +173,7 @@ The SDK CI preflight SHALL continue to reject forbidden top-level fields, non-cu
 #### Scenario: CI forwards site public paths
 
 - **WHEN** CI-session credentials are active
-- **AND** `r.deploy.apply()` receives a `ReleaseSpec` with `site.public_paths`
+- **AND** `r.project(id).apply()` receives a `ReleaseSpec` with `site.public_paths`
 - **THEN** SDK CI preflight SHALL allow the spec to proceed
 - **AND** the deploy plan request SHALL include the complete normalized `site` resource
 

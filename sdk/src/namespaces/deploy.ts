@@ -248,7 +248,7 @@ export class Deploy {
   }
 
   /**
-   * Low-level commit: `POST /apply/v1/plans/:id/commit`, then poll
+   * Low-level commit: `POST /apply/v1/plans/:plan_id/commit`, then poll
    * `/operations/:id` until terminal. Pass the project id whose anon_key
    * should authenticate the polling — the operations endpoint requires
    * apikey auth even though the plan/commit endpoints accept SIWX.
@@ -417,13 +417,13 @@ export class Deploy {
     const cursor = typeof opts === "string" ? undefined : opts?.cursor;
     if (!project) {
       throw new LocalError(
-        "r.deploy.list requires a project id (as a string or { project: 'prj_...' })",
+        "apply.list requires a project id (as a string or { project: 'prj_...' })",
         "listing deploy operations",
       );
     }
     const normalizedLimit = normalizePositiveSafeIntegerQueryOption(
       limit,
-      "r.deploy.list limit",
+      "apply.list limit",
       "listing deploy operations",
     );
     const headers = await apikeyHeaders(this.client, project);
@@ -479,19 +479,19 @@ export class Deploy {
   async getRelease(opts: ReleaseInventoryByIdOptions): Promise<ReleaseInventory> {
     if (!opts?.project) {
       throw new LocalError(
-        "r.deploy.getRelease requires a project id ({ project: 'prj_...', releaseId: 'rel_...' })",
+        "apply.getRelease requires a project id ({ project: 'prj_...', releaseId: 'rel_...' })",
         "fetching release inventory",
       );
     }
     if (!opts.releaseId) {
       throw new LocalError(
-        "r.deploy.getRelease requires a release id",
+        "apply.getRelease requires a release id",
         "fetching release inventory",
       );
     }
     const siteLimit = normalizePositiveSafeIntegerQueryOption(
       opts.siteLimit,
-      "r.deploy.getRelease siteLimit",
+      "apply.getRelease siteLimit",
       "fetching release inventory",
     );
     const headers = await apikeyHeaders(this.client, opts.project);
@@ -513,13 +513,13 @@ export class Deploy {
   ): Promise<ActiveReleaseInventory> {
     if (!opts?.project) {
       throw new LocalError(
-        "r.deploy.getActiveRelease requires a project id ({ project: 'prj_...' })",
+        "apply.getActiveRelease requires a project id ({ project: 'prj_...' })",
         "fetching active release inventory",
       );
     }
     const siteLimit = normalizePositiveSafeIntegerQueryOption(
       opts.siteLimit,
-      "r.deploy.getActiveRelease siteLimit",
+      "apply.getActiveRelease siteLimit",
       "fetching active release inventory",
     );
     const headers = await apikeyHeaders(this.client, opts.project);
@@ -539,23 +539,23 @@ export class Deploy {
   async diff(opts: ReleaseDiffOptions): Promise<ReleaseToReleaseDiff> {
     if (!opts?.project) {
       throw new LocalError(
-        "r.deploy.diff requires a project id ({ project: 'prj_...', from, to })",
+        "apply.diff requires a project id ({ project: 'prj_...', from, to })",
         "diffing releases",
       );
     }
     const from = requireNonEmptyStringQueryOption(
       opts.from,
-      "r.deploy.diff from",
+      "apply.diff from",
       "diffing releases",
     );
     const to = requireNonEmptyStringQueryOption(
       opts.to,
-      "r.deploy.diff to",
+      "apply.diff to",
       "diffing releases",
     );
     const limit = normalizePositiveSafeIntegerQueryOption(
       opts.limit,
-      "r.deploy.diff limit",
+      "apply.diff limit",
       "diffing releases",
     );
     const headers = await apikeyHeaders(this.client, opts.project);
@@ -837,6 +837,140 @@ function enrichDeployRetryBody(
   return retryFields;
 }
 
+function contentRefToWire(ref: ContentRef): Record<string, unknown> {
+  const maybeWire = ref as ContentRef & { content_type?: string };
+  return {
+    sha256: ref.sha256,
+    size: ref.size,
+    ...(ref.contentType ?? maybeWire.content_type
+      ? { content_type: ref.contentType ?? maybeWire.content_type }
+      : {}),
+    ...(ref.integrity ? { integrity: ref.integrity } : {}),
+  };
+}
+
+function fileSetToWire(map: Record<string, ContentRef>): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [path, ref] of Object.entries(map)) out[path] = contentRefToWire(ref);
+  return out;
+}
+
+function requireRoleToWire(gate: NonNullable<NormalizedFunctionSpec["requireRole"]>): Record<string, unknown> {
+  return {
+    table: gate.table,
+    id_column: gate.idColumn,
+    role_column: gate.roleColumn,
+    allowed: gate.allowed,
+    ...(gate.cacheTtl !== undefined ? { cache_ttl: gate.cacheTtl } : {}),
+    ...(gate.onDeny !== undefined ? { on_deny: gate.onDeny } : {}),
+    ...(gate.signInPath !== undefined ? { sign_in_path: gate.signInPath } : {}),
+  };
+}
+
+function functionToWire(fn: NormalizedFunctionSpec): Record<string, unknown> {
+  return {
+    ...(fn.runtime !== undefined ? { runtime: fn.runtime } : {}),
+    ...(fn.source !== undefined ? { source: contentRefToWire(fn.source) } : {}),
+    ...(fn.files !== undefined ? { files: fileSetToWire(fn.files) } : {}),
+    ...(fn.entrypoint !== undefined ? { entrypoint: fn.entrypoint } : {}),
+    ...(fn.config !== undefined
+      ? {
+          config: {
+            ...(fn.config.timeoutSeconds !== undefined ? { timeout_seconds: fn.config.timeoutSeconds } : {}),
+            ...(fn.config.memoryMb !== undefined ? { memory_mb: fn.config.memoryMb } : {}),
+          },
+        }
+      : {}),
+    ...(fn.schedule !== undefined ? { schedule: fn.schedule } : {}),
+    ...(fn.requireAuth !== undefined ? { require_auth: fn.requireAuth } : {}),
+    ...(fn.requireRole !== undefined
+      ? { require_role: fn.requireRole === null ? null : requireRoleToWire(fn.requireRole) }
+      : {}),
+    ...(fn.class !== undefined ? { class: fn.class } : {}),
+  };
+}
+
+function functionMapToWire(map: Record<string, NormalizedFunctionSpec>): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [name, fn] of Object.entries(map)) out[name] = functionToWire(fn);
+  return out;
+}
+
+function databaseToWire(database: NormalizedDatabaseSpec): Record<string, unknown> {
+  return {
+    ...(database.expose !== undefined ? { expose: database.expose } : {}),
+    ...(database.zero_downtime !== undefined ? { zero_downtime: database.zero_downtime } : {}),
+    ...(database.migrations !== undefined
+      ? {
+          migrations: database.migrations.map((m) => ({
+            id: m.id,
+            checksum: m.checksum,
+            sql_ref: contentRefToWire(m.sql_ref),
+            ...(m.transaction !== undefined ? { transaction: m.transaction } : {}),
+          })),
+        }
+      : {}),
+  };
+}
+
+function functionsToWire(functions: NormalizedFunctionsSpec): Record<string, unknown> {
+  return {
+    ...(functions.replace !== undefined ? { replace: functionMapToWire(functions.replace) } : {}),
+    ...(functions.patch !== undefined
+      ? {
+          patch: {
+            ...(functions.patch.set !== undefined ? { set: functionMapToWire(functions.patch.set) } : {}),
+            ...(functions.patch.delete !== undefined ? { delete: functions.patch.delete } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function siteToWire(site: NormalizedSiteSpec): Record<string, unknown> {
+  if ("replace" in site && site.replace) {
+    return {
+      replace: fileSetToWire(site.replace),
+      ...(site.public_paths ? { public_paths: site.public_paths } : {}),
+    };
+  }
+  if ("patch" in site && site.patch) {
+    return {
+      patch: {
+        ...(site.patch.put ? { put: fileSetToWire(site.patch.put) } : {}),
+        ...(site.patch.delete ? { delete: site.patch.delete } : {}),
+      },
+      ...(site.public_paths ? { public_paths: site.public_paths } : {}),
+    };
+  }
+  return { public_paths: site.public_paths };
+}
+
+function i18nToWire(i18n: NonNullable<NormalizedReleaseSpec["i18n"]>): Record<string, unknown> {
+  return {
+    default_locale: i18n.defaultLocale,
+    locales: i18n.locales,
+    ...(i18n.detect !== undefined ? { detect: i18n.detect } : {}),
+    ...(i18n.unknownLocalePolicy !== undefined ? { unknown_locale_policy: i18n.unknownLocalePolicy } : {}),
+  };
+}
+
+function releaseSpecToWire(spec: NormalizedReleaseSpec): Record<string, unknown> {
+  return {
+    project_id: spec.project,
+    ...(spec.base !== undefined ? { base: spec.base } : {}),
+    ...(spec.database !== undefined ? { database: databaseToWire(spec.database) } : {}),
+    ...(spec.secrets !== undefined ? { secrets: spec.secrets } : {}),
+    ...(spec.functions !== undefined ? { functions: functionsToWire(spec.functions) } : {}),
+    ...(spec.site !== undefined ? { site: siteToWire(spec.site) } : {}),
+    ...(spec.subdomains !== undefined ? { subdomains: spec.subdomains } : {}),
+    ...(spec.routes !== undefined ? { routes: spec.routes } : {}),
+    ...(spec.checks !== undefined ? { checks: spec.checks } : {}),
+    ...(spec.assets !== undefined ? { assets: spec.assets } : {}),
+    ...(spec.i18n !== undefined ? { i18n: spec.i18n === null ? null : i18nToWire(spec.i18n) } : {}),
+  };
+}
+
 async function planInternal(
   client: Client,
   spec: ReleaseSpec,
@@ -849,13 +983,14 @@ async function planInternal(
 
   const { normalized, byteReaders } = await normalizeReleaseSpec(client, spec);
   await preflightTierFunctionLimits(client, normalized, ciCredentials);
+  const wireSpec = releaseSpecToWire(normalized);
 
   // The gateway expects { spec, manifest_ref?, idempotency_key? } with
-  // ReleaseSpec.project (singular). For oversized specs the SDK uploads
+  // snake_case ReleaseSpec wire JSON. For oversized specs the SDK uploads
   // the manifest JSON to CAS first and references it; the gateway still
   // needs `spec` in the body (with at least the project), so we keep a
   // minimal stub there.
-  const inlineBody: PlanRequest = { spec: normalized };
+  const inlineBody: PlanRequest = { spec: wireSpec };
   if (idempotencyKey && !dryRun) inlineBody.idempotency_key = idempotencyKey;
   const inlineBytes = new TextEncoder().encode(JSON.stringify(inlineBody)).byteLength;
 
@@ -890,14 +1025,14 @@ async function planInternal(
     // Upload the normalized manifest itself as a CAS object so the gateway
     // can pick it up via `manifest_ref`. The body still carries a minimal
     // `spec` so the gateway has the project for auth + plan persistence.
-    const manifestBytes = new TextEncoder().encode(JSON.stringify(normalized));
+    const manifestBytes = new TextEncoder().encode(JSON.stringify(wireSpec));
     const ref = await uploadInlineCas(
       client,
       spec.project,
       manifestBytes,
       MANIFEST_CONTENT_TYPE,
     );
-    body = { spec: { project: spec.project }, manifest_ref: ref };
+    body = { spec: { project_id: spec.project }, manifest_ref: contentRefToWire(ref) };
     if (idempotencyKey) body.idempotency_key = idempotencyKey;
   }
 
@@ -2094,7 +2229,7 @@ const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "acknowledge
 const FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
-const I18N_SPEC_FIELDS = new Set(["defaultLocale", "locales", "detect"]);
+const I18N_SPEC_FIELDS = new Set(["defaultLocale", "locales", "detect", "unknownLocalePolicy"]);
 const I18N_LOCALE_TAG_REGEX = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const I18N_COOKIE_NAME_REGEX = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const I18N_MAX_LOCALES = 50;
@@ -3820,7 +3955,7 @@ async function uploadInlineCas(
 
 /**
  * Build the apikey header set for a project. The v1.34 gateway's
- * `/apply/v1/operations/:id*` and `/content/v1/plans*` routes require
+ * `/apply/v1/operations/:operation_id*` and `/content/v1/plans*` routes require
  * `apikey: <project.anon_key>` (apikeyAuth middleware). Plan + commit on
  * `/apply/v1/plans*` use SIWX, which the kernel's getAuth provides
  * automatically — only the apikey-gated paths need this helper.

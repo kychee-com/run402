@@ -17,10 +17,12 @@ import { LocalError, ProjectNotFound } from "../errors.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
   ExposeManifestValidationInput,
+  ExposeManifestValidationIssue,
   ExposeManifestValidationResult,
   ListProjectsOptions,
   ListProjectsResult,
   ProjectInfo,
+  ProjectSummary,
   ProjectRestOptions,
   ProjectRestResponse,
   ProvisionOptions,
@@ -31,6 +33,41 @@ import type {
   UsageReport,
   ValidateExposeOptions,
 } from "./projects.types.js";
+
+type WireProjectSummary = Omit<ProjectSummary, "id"> & {
+  project_id?: string;
+  id?: string;
+  [key: string]: unknown;
+};
+
+function normalizeListProjectsResult(result: ListProjectsResult | { projects?: WireProjectSummary[] }): ListProjectsResult {
+  const rows = Array.isArray(result.projects) ? result.projects : [];
+  return {
+    ...(result as ListProjectsResult),
+    projects: rows.map((row) => {
+      const raw = row as WireProjectSummary;
+      const { project_id: projectId, id, ...rest } = raw;
+      return { id: id ?? projectId ?? "", ...rest } as ProjectSummary;
+    }),
+  };
+}
+
+function normalizeAdminSqlResponse(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const rowCount = (value as { row_count?: unknown }).row_count;
+  if (rowCount === undefined) return value;
+  const { row_count: _drop, ...rest } = value as Record<string, unknown>;
+  return { ...rest, rowCount };
+}
+
+function normalizeExposeValidationResult(value: ExposeManifestValidationResult | { has_errors?: boolean; errors?: ExposeManifestValidationIssue[]; warnings?: ExposeManifestValidationIssue[] }): ExposeManifestValidationResult {
+  if ("hasErrors" in value) return value as ExposeManifestValidationResult;
+  return {
+    hasErrors: value.has_errors === true,
+    errors: Array.isArray(value.errors) ? value.errors : [],
+    warnings: Array.isArray(value.warnings) ? value.warnings : [],
+  };
+}
 
 export class Projects {
   readonly schema: (id: string) => Promise<SchemaReport>;
@@ -153,10 +190,11 @@ export class Projects {
       // token, the gateway returns the cross-wallet union; without one, it
       // falls back to the SIWX wallet's own slice (same row shape either way).
       const headers = opts.token ? { Authorization: `Bearer ${opts.token}` } : undefined;
-      return this.client.request<ListProjectsResult>("/agent/v1/operator/projects", {
+      const result = await this.client.request<ListProjectsResult>("/agent/v1/operator/projects", {
         context: "listing projects",
         ...(headers ? { headers, withAuth: false } : {}),
       });
+      return normalizeListProjectsResult(result);
     }
 
     // Membership-scoped named inventory (`GET /projects/v1`). SIWX wallet auth
@@ -166,9 +204,10 @@ export class Projects {
     if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
     if (opts.cursor !== undefined) qs.set("after", opts.cursor);
     const query = qs.toString();
-    return this.client.request<ListProjectsResult>(`/projects/v1${query ? `?${query}` : ""}`, {
+    const result = await this.client.request<ListProjectsResult>(`/projects/v1${query ? `?${query}` : ""}`, {
       context: "listing projects",
     });
+    return normalizeListProjectsResult(result);
   }
 
   /**
@@ -230,7 +269,7 @@ export class Projects {
     if (!keys) throw new ProjectNotFound(id, "running SQL");
 
     const useParams = Array.isArray(params) && params.length > 0;
-    return this.client.request<unknown>(`/projects/v1/admin/${id}/sql`, {
+    const result = await this.client.request<unknown>(`/projects/v1/admin/${id}/sql`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${keys.service_key}`,
@@ -240,6 +279,7 @@ export class Projects {
       rawBody: useParams ? undefined : sql,
       context: "running SQL",
     });
+    return normalizeAdminSqlResponse(result);
   }
 
   /** Query or mutate a project table through PostgREST. */
@@ -324,7 +364,7 @@ export class Projects {
     if (project) {
       const keys = await this.client.getProject(project);
       if (!keys) throw new ProjectNotFound(project, "validating expose manifest");
-      return this.client.request<ExposeManifestValidationResult>(
+      const result = await this.client.request<ExposeManifestValidationResult | { has_errors?: boolean; errors?: ExposeManifestValidationIssue[]; warnings?: ExposeManifestValidationIssue[] }>(
         `/projects/v1/admin/${project}/expose/validate`,
         {
           method: "POST",
@@ -334,13 +374,15 @@ export class Projects {
           withAuth: false,
         },
       );
+      return normalizeExposeValidationResult(result);
     }
 
-    return this.client.request<ExposeManifestValidationResult>("/projects/v1/expose/validate", {
+    const result = await this.client.request<ExposeManifestValidationResult | { has_errors?: boolean; errors?: ExposeManifestValidationIssue[]; warnings?: ExposeManifestValidationIssue[] }>("/projects/v1/expose/validate", {
       method: "POST",
       body,
       context: "validating expose manifest",
     });
+    return normalizeExposeValidationResult(result);
   }
 
   /** Fetch the project's current expose manifest. */
@@ -396,7 +438,7 @@ export class Projects {
    * client in one call, use {@link Run402.useProject} instead:
    *
    *   const p = await r.useProject("prj_xxx");
-   *   await p.deploy.apply({ site: { ... } });
+   *   await p.apply.apply({ site: { ... } });
    *
    * @throws {ProjectNotFound} if the id is unknown to the provider.
    * @throws {LocalError} if the provider does not support active-project state.

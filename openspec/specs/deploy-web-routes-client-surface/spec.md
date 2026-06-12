@@ -1,11 +1,11 @@
 # deploy-web-routes-client-surface Specification
 
 ## Purpose
-TBD - created by archiving change add-deploy-v2-web-routes-public-surface. Update Purpose after archive.
+TBD - created by archiving change add-apply-v1-web-routes-public-surface. Update Purpose after archive.
 ## Requirements
 ### Requirement: Deploy Spec Exposes Concrete Web Routes
 
-The SDK SHALL model deploy-v2 web routes as a release resource. `ReleaseSpec.routes` SHALL have type `ReleaseRoutesSpec`, where `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. `RouteSpec` SHALL mean one route entry, not the top-level routes resource.
+The SDK SHALL model apply-v1 web routes as a release resource. `ReleaseSpec.routes` SHALL have type `ReleaseRoutesSpec`, where `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. `RouteSpec` SHALL mean one route entry, not the top-level routes resource.
 
 `undefined` and `null` SHALL carry forward the base release's materialized routes. `{ replace: [] }` SHALL clear all routes. `{ replace: [...] }` SHALL replace the route table for the new release.
 

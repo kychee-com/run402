@@ -33,7 +33,7 @@ The SDK SHALL model `ReleaseSpec.site.public_paths` as the canonical client-faci
 
 ### Requirement: SDK validates public path shape before deploy planning
 
-The SDK SHALL reject malformed `site.public_paths` object shapes before hashing, upload planning, or calling `/deploy/v2/plans`.
+The SDK SHALL reject malformed `site.public_paths` object shapes before hashing, upload planning, or calling `/apply/v1/plans`.
 
 Local validation SHALL reject unknown `site` fields, unknown `public_paths` fields, unsupported `mode` values, explicit mode without a `replace` object, implicit mode with a `replace` object, non-object public path entries, missing or non-string `asset`, and unknown public path entry fields.
 
@@ -65,7 +65,7 @@ The SDK deploy normalizer SHALL preserve `site.public_paths` in the normalized r
 
 #### Scenario: Replace files normalize while public paths pass through
 
-- **WHEN** `r.deploy.plan` receives `site.replace` with inline file bytes and `site.public_paths.replace` mapping `/events` to `events.html`
+- **WHEN** `r.project(id).apply.plan` receives `site.replace` with inline file bytes and `site.public_paths.replace` mapping `/events` to `events.html`
 - **THEN** the plan request body SHALL contain `site.replace["events.html"]` as a `ContentRef`
 - **AND** it SHALL contain `site.public_paths.replace["/events"].asset === "events.html"`
 - **AND** the inline file bytes SHALL NOT appear inside the deploy plan body
@@ -80,7 +80,7 @@ The SDK deploy normalizer SHALL preserve `site.public_paths` in the normalized r
 
 The Node SDK manifest adapter SHALL accept `site.public_paths` in `loadDeployManifest()` and `normalizeDeployManifest()` input and return an SDK-native `ReleaseSpec` with the same public path declaration.
 
-Manifest adapter strictness SHALL match the SDK shape: unknown public path fields and malformed entry objects SHALL fail before `deploy.apply()`.
+Manifest adapter strictness SHALL match the SDK shape: unknown public path fields and malformed entry objects SHALL fail before `apply()`.
 
 #### Scenario: Manifest normalizes explicit public paths
 
@@ -98,7 +98,7 @@ Manifest adapter strictness SHALL match the SDK shape: unknown public path field
 
 The CLI and MCP deploy surfaces SHALL accept `site.public_paths` only as edge input and SHALL delegate typed normalization, validation, and deploy behavior to the SDK.
 
-The CLI SHALL route `run402 deploy apply --manifest`, `--spec`, and stdin manifests through `normalizeDeployManifest()` before calling `deploy.apply()`. The MCP `deploy` tool SHALL build input compatible with the same SDK manifest adapter and call `getSdk().deploy.apply(...)`.
+The CLI SHALL route `run402 deploy apply --manifest`, `--spec`, and stdin manifests through `normalizeDeployManifest()` before calling `r.project(id).apply(...)`. The MCP `deploy` tool SHALL build input compatible with the same SDK manifest adapter and call `(await getSdk().project(project_id)).apply(...)`.
 
 Neither CLI nor MCP SHALL duplicate public path canonicalization, sticky-mode inheritance, asset existence validation, or reachability authorization logic.
 
