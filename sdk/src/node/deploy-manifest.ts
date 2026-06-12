@@ -112,12 +112,14 @@ export type DeployManifestFileEntry =
   | ContentSource
   | {
       path: string;
+      contentType?: string;
       content_type?: string;
       data?: never;
     }
   | {
       data: string | ContentSource;
       encoding?: "utf-8" | "base64";
+      contentType?: string;
       content_type?: string;
     };
 
@@ -974,11 +976,12 @@ function fileEntryToContentSource(
     );
   }
 
+  const contentType = contentTypeFromManifestRecord(rec, label);
+
   if (
     typeof rec.path === "string" &&
     !Object.prototype.hasOwnProperty.call(rec, "data")
   ) {
-    const contentType = typeof rec.content_type === "string" ? rec.content_type : undefined;
     const source = {
       __source: "fs-file" as const,
       path: resolveLocalPath(rec.path, opts.baseDir),
@@ -996,7 +999,6 @@ function fileEntryToContentSource(
       );
     }
     const bytes = base64ToBytes(rec.data);
-    const contentType = typeof rec.content_type === "string" ? rec.content_type : undefined;
     return contentType
       ? { data: bytes, contentType }
       : bytes;
@@ -1007,13 +1009,33 @@ function fileEntryToContentSource(
       throw new LocalError(`File entry for ${label} is missing data`, CONTEXT);
     }
     const data = rec.data as ContentSource;
-    const contentType = typeof rec.content_type === "string" ? rec.content_type : undefined;
     return contentType
       ? { data, contentType }
       : data;
   }
 
   return entry as ContentSource;
+}
+
+function contentTypeFromManifestRecord(
+  rec: Record<string, unknown>,
+  label: string,
+): string | undefined {
+  const camel = rec.contentType;
+  const snake = rec.content_type;
+  if (camel !== undefined && typeof camel !== "string") {
+    throw new LocalError(`${label}.contentType must be a string`, CONTEXT);
+  }
+  if (snake !== undefined && typeof snake !== "string") {
+    throw new LocalError(`${label}.content_type must be a string`, CONTEXT);
+  }
+  if (typeof camel === "string" && typeof snake === "string" && camel !== snake) {
+    throw new LocalError(
+      `${label} must not set both contentType and content_type with different values`,
+      CONTEXT,
+    );
+  }
+  return typeof camel === "string" ? camel : typeof snake === "string" ? snake : undefined;
 }
 
 function base64ToBytes(value: string): Uint8Array {

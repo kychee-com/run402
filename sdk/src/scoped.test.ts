@@ -400,14 +400,14 @@ describe("ScopedRun402 wrapper routing", () => {
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_known");
     // We don't need to assert success — just confirm the plan POST body
-    // carried project: "prj_known".
+    // carried the scoped project in the raw HTTP snake_case shape.
     await p
       .apply({ site: { patch: { delete: ["old.html"] } } })
       .catch(() => undefined);
     const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
     assert.ok(planCall, "expected a plan POST");
     const body = JSON.parse(planCall!.body as string);
-    assert.equal(body.spec.project, "prj_known");
+    assert.equal(body.spec.project_id, "prj_known");
   });
 });
 
