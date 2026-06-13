@@ -30,6 +30,12 @@ export async function handleGetSchema(args: {
 
     for (const table of body.tables) {
       lines.push(`### ${table.name}${table.rls_enabled ? " 🔒 RLS" : ""}`);
+      // The planner's row estimate (reltuples) — labeled as an estimate so the
+      // agent never mistakes it for an exact COUNT(*). Omitted when unknown
+      // (null / never-analyzed) rather than shown as a misleading 0.
+      if (typeof table.row_estimate === "number") {
+        lines.push(`_~${table.row_estimate.toLocaleString("en-US")} rows (estimate)_`);
+      }
       lines.push(``);
       lines.push(`| Column | Type | Nullable | Default |`);
       lines.push(`|--------|------|----------|---------|`);
