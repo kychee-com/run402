@@ -22,6 +22,16 @@ function formatMarkdownTable(rows: Record<string, unknown>[]): string {
   return [header, separator, ...body].join("\n");
 }
 
+/** Render the result column descriptors as a compact "Columns:" line. */
+function formatColumns(
+  fields: { name: string; type?: string }[] | undefined,
+): string | null {
+  if (!fields || fields.length === 0) return null;
+  return (
+    "Columns: " + fields.map((f) => (f.type ? `${f.name} (${f.type})` : f.name)).join(", ")
+  );
+}
+
 export async function handleRunSql(args: {
   project_id?: string;
   sql: string;
@@ -35,6 +45,7 @@ export async function handleRunSql(args: {
     schema: string;
     rows: Record<string, unknown>[];
     rowCount: number | null;
+    fields?: { name: string; type?: string }[];
   };
   try {
     body = await getSdk().projects.sql(project, args.sql, args.params) as typeof body;
@@ -42,22 +53,29 @@ export async function handleRunSql(args: {
     return mapSdkError(err, "running SQL");
   }
 
-  const { rows, rowCount, schema } = body;
+  const { rows, rowCount, schema, fields } = body;
+  const columns = formatColumns(fields);
 
   // The gateway distinguishes statement kinds by `rowCount`: a result set
   // (SELECT / ... RETURNING) populates `rows`; an INSERT/UPDATE/DELETE returns
   // `rows: []` with a numeric affected-row count; DDL returns `rowCount: null`.
   // Surface each kind explicitly — never report a mutation that changed rows
   // as "0 rows returned", which reads to an agent like the statement no-op'd.
+  // `fields` (present only for result-set queries) carries the column names +
+  // types, so an empty SELECT still conveys its shape.
   let text: string;
   if (rows.length > 0) {
-    text = `**${rows.length} row${rows.length !== 1 ? "s" : ""} returned** (schema: ${schema})\n\n${formatMarkdownTable(rows)}`;
+    const head = `**${rows.length} row${rows.length !== 1 ? "s" : ""} returned** (schema: ${schema})`;
+    text = `${head}${columns ? `\n${columns}` : ""}\n\n${formatMarkdownTable(rows)}`;
   } else if (typeof rowCount === "number" && rowCount > 0) {
     text = `**${rowCount} row${rowCount !== 1 ? "s" : ""} affected** (schema: ${schema})`;
   } else if (rowCount === 0) {
-    // A mutation that matched nothing, or an empty result set — indistinguishable
-    // here (both are rows: [], rowCount: 0), so stay neutral.
-    text = `**0 rows** (schema: ${schema})`;
+    // An empty result set OR a no-match mutation. When `fields` is present the
+    // statement was a SELECT / ... RETURNING, so surface the column shape — an
+    // empty SELECT still teaches the agent what it would have returned, instead
+    // of a blind "0 rows". Absent fields ⇒ a mutation that matched nothing.
+    const head = `**0 rows** (schema: ${schema})`;
+    text = columns ? `${head}\n${columns}` : head;
   } else {
     // DDL and other statements with no row semantics (rowCount === null).
     text = `**Statement executed** (schema: ${schema})`;
