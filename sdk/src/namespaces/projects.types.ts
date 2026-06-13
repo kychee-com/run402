@@ -224,6 +224,13 @@ export interface TableSchema {
   columns: ColumnSchema[];
   constraints: ConstraintSchema[];
   rls_enabled: boolean;
+  /**
+   * Planner row estimate (`reltuples`), refreshed by ANALYZE/VACUUM. Always an
+   * estimate, never an exact count. `null` when the table was never analyzed
+   * (so "unknown" stays distinguishable from a real zero); may be absent from
+   * gateways predating the field.
+   */
+  row_estimate?: number | null;
   policies: RlsPolicy[];
 }
 
