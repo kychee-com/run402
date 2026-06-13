@@ -118,4 +118,45 @@ describe("get_schema tool", () => {
     assert.ok(text.includes("USING true"));
     assert.ok(!text.includes("WITH CHECK"), "a null check_expression must not render");
   });
+
+  it("renders row_estimate as a labeled estimate", async () => {
+    // Anticipatory + Faithful: surface table size, but never as an exact count.
+    stub({
+      schema: "p0001",
+      tables: [
+        {
+          name: "events",
+          columns: [{ name: "id", type: "uuid", nullable: false, default_value: null }],
+          constraints: [],
+          rls_enabled: false,
+          row_estimate: 1234,
+          policies: [],
+        },
+      ],
+    });
+
+    const result = await handleGetSchema({ project_id: "proj-1" });
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("~1,234 rows (estimate)"), "row count must be shown and labeled as an estimate");
+  });
+
+  it("omits the row estimate when unknown (null / never analyzed)", async () => {
+    stub({
+      schema: "p0001",
+      tables: [
+        {
+          name: "fresh",
+          columns: [{ name: "id", type: "uuid", nullable: false, default_value: null }],
+          constraints: [],
+          rls_enabled: false,
+          row_estimate: null,
+          policies: [],
+        },
+      ],
+    });
+
+    const result = await handleGetSchema({ project_id: "proj-1" });
+    const text = result.content[0]!.text;
+    assert.ok(!text.includes("rows (estimate)"), "unknown row count must not render a misleading estimate or 0");
+  });
 });
