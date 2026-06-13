@@ -278,4 +278,57 @@ describe("run_sql tool", () => {
     assert.equal(result.isError, true);
     assert.ok(result.content[0]!.text.includes("active project"));
   });
+
+  it("shows result columns + types for an empty SELECT (not a blind '0 rows')", async () => {
+    const result = await runWithResponse(
+      {
+        status: "ok",
+        schema: "p0001",
+        rows: [],
+        rowCount: 0,
+        fields: [
+          { name: "id", type: "uuid" },
+          { name: "email", type: "text" },
+          { name: "last_login", type: "timestamptz" },
+        ],
+      },
+      "SELECT id, email, last_login FROM users WHERE false",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("0 rows"));
+    assert.ok(
+      text.includes("Columns: id (uuid), email (text), last_login (timestamptz)"),
+      "an empty SELECT must still convey the query shape",
+    );
+  });
+
+  it("annotates a non-empty result with its column types", async () => {
+    const result = await runWithResponse(
+      {
+        status: "ok",
+        schema: "p0001",
+        rows: [{ id: 1, name: "Alice" }],
+        rowCount: 1,
+        fields: [
+          { name: "id", type: "int4" },
+          { name: "name", type: "text" },
+        ],
+      },
+      "SELECT id, name FROM users",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("1 row returned"));
+    assert.ok(text.includes("Columns: id (int4), name (text)"));
+    assert.ok(text.includes("| id | name |"), "still renders the data table");
+  });
+
+  it("stays a bare '0 rows' for a no-match mutation (no fields)", async () => {
+    const result = await runWithResponse(
+      { status: "ok", schema: "p0001", rows: [], rowCount: 0 },
+      "UPDATE t SET x = 1 WHERE false",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("0 rows"));
+    assert.ok(!text.includes("Columns:"), "a mutation has no result columns to show");
+  });
 });
