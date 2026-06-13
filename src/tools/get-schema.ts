@@ -41,14 +41,26 @@ export async function handleGetSchema(args: {
 
       if (table.constraints.length > 0) {
         lines.push(``);
-        lines.push(`**Constraints:** ${table.constraints.map((c) => `${c.type}(\`${c.name}\`)`).join(", ")}`);
+        lines.push(`**Constraints:**`);
+        for (const c of table.constraints) {
+          // Render the full definition, not just type+name — FK targets
+          // (REFERENCES …) and CHECK predicates are what an agent needs to
+          // reason about joins and valid inserts without a follow-up query.
+          lines.push(`- ${c.type} \`${c.name}\`: ${c.definition}`);
+        }
       }
 
       if (table.policies.length > 0) {
         lines.push(``);
         lines.push(`**RLS Policies:**`);
         for (const p of table.policies) {
-          lines.push(`- ${p.name} (${p.command})`);
+          // Surface the USING / WITH CHECK predicates, not just the policy
+          // name — the predicate is what determines which rows the agent can
+          // read and write under RLS.
+          const parts = [`${p.name} (${p.command})`];
+          if (p.using_expression) parts.push(`USING ${p.using_expression}`);
+          if (p.check_expression) parts.push(`WITH CHECK ${p.check_expression}`);
+          lines.push(`- ${parts.join(" — ")}`);
         }
       }
 
