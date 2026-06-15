@@ -10,8 +10,8 @@ import { getSdk } from "../sdk.js";
 const managedJobSubmitRequestSchema = z
   .object({
     job_type: z
-      .literal("kysigned.fflonk_prove.v0_17_0")
-      .describe("Fixed platform-managed job type to run"),
+      .string()
+      .describe("Run402-configured managed job type to run"),
     input: z
       .object({
         input_json: z
@@ -68,13 +68,17 @@ export const jobsCancelSchema = {
   job_id: z.string().describe("Managed job run ID"),
 };
 
+export const jobsPurgeSchema = {
+  project_id: z.string().describe("The project ID"),
+};
+
 export const jobsDownloadArtifactSchema = {
   project_id: z.string().describe("The project ID"),
   job_id: z.string().describe("Managed job run ID (must be completed)"),
   filename: z
     .string()
     .describe(
-      "Artifact filename to download, e.g. proof.json, public.json, prove-output.log. Discover the recorded set from the artifacts map returned by jobs_get.",
+      "Artifact filename to download. Discover the recorded set from the artifacts map returned by jobs_get.",
     ),
   output_path: z
     .string()
@@ -84,7 +88,7 @@ export const jobsDownloadArtifactSchema = {
 export async function handleJobsSubmit(args: {
   project_id: string;
   request: {
-    job_type: "kysigned.fflonk_prove.v0_17_0";
+    job_type: string;
     input: { input_json: Record<string, unknown> };
     max_cost_usd_micros: number;
     callback_url?: string;
@@ -136,6 +140,17 @@ export async function handleJobsCancel(args: {
     return jsonResult("Managed Job Cancelled", result);
   } catch (err) {
     return mapSdkError(err, "cancelling job");
+  }
+}
+
+export async function handleJobsPurge(args: {
+  project_id: string;
+}): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  try {
+    const result = await getSdk().jobs.purge(args.project_id);
+    return jsonResult("Managed Jobs Purged", result);
+  } catch (err) {
+    return mapSdkError(err, "purging jobs");
   }
 }
 

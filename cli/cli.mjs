@@ -32,7 +32,7 @@ Commands:
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
   org         Org membership, invites & audit (whoami, list, member, invite, audit)
   grants      Per-project capability grants for agent/CI principals (create, revoke)
-  jobs        Submit and inspect fixed platform-managed jobs
+  jobs        Submit and inspect platform-managed jobs
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
   assets      Direct-to-S3 asset storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB

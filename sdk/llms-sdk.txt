@@ -1010,11 +1010,11 @@ rebuildAll(projectId): Promise<FunctionRebuildBatchResult> // { rebuilt_count, t
 
 ### `r.jobs`
 
-Fixed platform-managed jobs over `/jobs/v1/*`. This is not arbitrary Docker execution: callers choose the delivered `jobType`, provide JSON input, and set a hard cost cap. The SDK loads the project's `service_key`, supplies the required `Idempotency-Key` header internally, and serializes the request to the gateway's snake_case body.
+Platform-managed jobs over `/jobs/v1/*`. This is not arbitrary Docker execution: callers choose a run402-configured `jobType`, provide JSON input, and set a hard cost cap. The SDK loads the project's `service_key`, supplies the required `Idempotency-Key` header internally, and serializes the request to the gateway's snake_case body.
 
 ```
 submit(projectId, {
-  jobType: "kysigned.fflonk_prove.v0_17_0",
+  jobType: "example.managed_job.v1",
   input: { inputJson: Record<string, unknown> },
   maxCostUsdMicros: number,
   callbackUrl?: string,
@@ -1022,6 +1022,7 @@ submit(projectId, {
 get(projectId, jobId): Promise<ManagedJobResponse>
 logs(projectId, jobId, opts?: { tail?, since? }): Promise<{ logs: ManagedJobLogEntry[] }>
 cancel(projectId, jobId): Promise<ManagedJobResponse>
+purge(projectId): Promise<{ deleted_jobs, cancelled_active_jobs, terminated_instances }>
 ```
 
 The scoped client pre-binds the project id: `const p = await r.project(id); await p.jobs.get(jobId)`.

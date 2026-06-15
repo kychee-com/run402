@@ -715,17 +715,18 @@ run402 secrets delete <id> STALE_KEY
 
 ## Jobs
 
-Fixed platform-managed jobs. This is not arbitrary Docker execution: submit the gateway-shaped request with `job_type`, `input["input.json"]`, and `max_cost_usd_micros`, then inspect status/logs or cancel.
+Platform-managed jobs. This is not arbitrary Docker execution: submit the gateway-shaped request with `job_type`, `input["input.json"]`, and `max_cost_usd_micros`, then inspect status/logs, cancel one run, or purge all project runs.
 
 ```bash
 run402 jobs submit --file job.json --project <id>
 run402 jobs get    <job_id> --project <id>
 run402 jobs logs   <job_id> --project <id> --tail 100
 run402 jobs cancel <job_id> --project <id>
-run402 jobs artifacts get <job_id> proof.json --output ./proof.json --project <id>
+run402 jobs purge           --project <id>
+run402 jobs artifacts get <job_id> result.json --output ./result.json --project <id>
 ```
 
-When a job completes, `jobs get` returns an `artifacts` map keyed by filename, each value an object `{ url, content_type, sha256, size_bytes }` (the old `run402://` ref strings were retired; `sha256`/`size_bytes` are omitted for pre-change jobs). Download the bytes with `jobs artifacts get` — recorded files are `proof.json`, `public.json`, `prove-output.log`, `prove-time.log`, `verify-output.log`.
+When a job completes, `jobs get` returns an `artifacts` map keyed by filename, each value an object `{ url, content_type, sha256, size_bytes }` (the old `run402://` ref strings were retired; `sha256`/`size_bytes` are omitted for pre-change jobs). Download the bytes with `jobs artifacts get`; discover the recorded filenames from the job's `artifacts` map.
 
 ## Email
 

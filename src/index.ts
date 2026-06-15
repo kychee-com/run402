@@ -74,11 +74,13 @@ import {
   handleJobsDownloadArtifact,
   handleJobsGet,
   handleJobsLogs,
+  handleJobsPurge,
   handleJobsSubmit,
   jobsCancelSchema,
   jobsDownloadArtifactSchema,
   jobsGetSchema,
   jobsLogsSchema,
+  jobsPurgeSchema,
   jobsSubmitSchema,
 } from "./tools/jobs.js";
 
@@ -462,7 +464,7 @@ server.tool(
 
 server.tool(
   "jobs_submit",
-  "Submit a fixed platform-managed job. The request must match the gateway jobs API shape: job_type, input with input.json, and max_cost_usd_micros. The SDK supplies the required idempotency header.",
+  "Submit a platform-managed job. The request must match the gateway jobs API shape: job_type, input with input.json, and max_cost_usd_micros. The SDK supplies the required idempotency header.",
   jobsSubmitSchema,
   async (args) => handleJobsSubmit(args),
 );
@@ -489,8 +491,15 @@ server.tool(
 );
 
 server.tool(
+  "jobs_purge",
+  "Purge all managed job runs for a project, terminating known active runners first.",
+  jobsPurgeSchema,
+  async (args) => handleJobsPurge(args),
+);
+
+server.tool(
   "jobs_download_artifact",
-  "Download a completed managed job's artifact by filename (e.g. proof.json, public.json, prove-output.log) to a local file. Discover the recorded filenames from the artifacts map returned by jobs_get; the legacy run402:// refs were retired in favor of these gateway URLs.",
+  "Download a completed managed job's artifact by filename to a local file. Discover the recorded filenames from the artifacts map returned by jobs_get; the legacy run402:// refs were retired in favor of these gateway URLs.",
   jobsDownloadArtifactSchema,
   async (args) => handleJobsDownloadArtifact(args),
 );

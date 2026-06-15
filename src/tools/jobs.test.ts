@@ -9,6 +9,7 @@ import {
   handleJobsDownloadArtifact,
   handleJobsGet,
   handleJobsLogs,
+  handleJobsPurge,
   handleJobsSubmit,
 } from "./jobs.js";
 
@@ -54,7 +55,7 @@ describe("jobs MCP tools", () => {
       return new Response(
         JSON.stringify({
           job_id: "job_123",
-          job_type: "kysigned.fflonk_prove.v0_17_0",
+          job_type: "example.managed_job.v1",
           status: "queued",
           created_at: "2026-05-18T00:00:00.000Z",
         }),
@@ -65,7 +66,7 @@ describe("jobs MCP tools", () => {
     const result = await handleJobsSubmit({
       project_id: "prj_k",
       request: {
-        job_type: "kysigned.fflonk_prove.v0_17_0",
+        job_type: "example.managed_job.v1",
         input: { input_json: { envelopeId: "env_1" } },
         max_cost_usd_micros: 50_000,
       },
@@ -86,7 +87,7 @@ describe("jobs MCP tools", () => {
       return new Response(
         JSON.stringify({
           job_id: "job_cb",
-          job_type: "kysigned.fflonk_prove.v0_17_0",
+          job_type: "example.managed_job.v1",
           status: "queued",
           created_at: "2026-05-18T00:00:00.000Z",
         }),
@@ -97,7 +98,7 @@ describe("jobs MCP tools", () => {
     await handleJobsSubmit({
       project_id: "prj_k",
       request: {
-        job_type: "kysigned.fflonk_prove.v0_17_0",
+        job_type: "example.managed_job.v1",
         input: { input_json: { envelopeId: "env_1" } },
         max_cost_usd_micros: 50_000,
         callback_url: "https://hooks.example.com/jobs",
@@ -117,7 +118,7 @@ describe("jobs MCP tools", () => {
         JSON.stringify(
           isLogs
             ? { logs: [{ timestamp: "2026-05-18T00:00:00.000Z", message: "ok", log_stream_name: "s", event_id: "e" }] }
-            : { job_id: "job_123", job_type: "kysigned.fflonk_prove.v0_17_0", status: "running", created_at: "2026-05-18T00:00:00.000Z" },
+            : { job_id: "job_123", job_type: "example.managed_job.v1", status: "running", created_at: "2026-05-18T00:00:00.000Z" },
         ),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
@@ -138,6 +139,33 @@ describe("jobs MCP tools", () => {
       urls[1],
       "https://test-api.run402.com/jobs/v1/runs/job_123/logs?tail=10&since=1710000000000",
     );
+  });
+
+  it("purges project job runs", async () => {
+    const calls: Array<{ url: string; method: string; headers: Record<string, string> }> = [];
+    globalThis.fetch = (async (input, init) => {
+      calls.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        headers: (init?.headers ?? {}) as Record<string, string>,
+      });
+      return new Response(
+        JSON.stringify({
+          deleted_jobs: 3,
+          cancelled_active_jobs: 1,
+          terminated_instances: 1,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const result = await handleJobsPurge({ project_id: "prj_k" });
+
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[0]!.text.includes("deleted_jobs"));
+    assert.equal(calls[0]!.url, "https://test-api.run402.com/jobs/v1/runs");
+    assert.equal(calls[0]!.method, "DELETE");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer svc_test");
   });
 
   it("downloads an artifact through the SDK and writes it to disk", async () => {

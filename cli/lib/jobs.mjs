@@ -16,7 +16,7 @@ import {
   validateRegularFile,
 } from "./argparse.mjs";
 
-const HELP = `run402 jobs — Submit and inspect fixed platform-managed jobs
+const HELP = `run402 jobs — Submit and inspect platform-managed jobs
 
 Usage:
   run402 jobs <subcommand> [args...] [options]
@@ -26,6 +26,7 @@ Subcommands:
   get             <job_id>                Get a job run
   logs            <job_id>                Read job logs
   cancel          <job_id>                Cancel a queued or running job
+  purge                                   Purge all job runs for the project
   artifacts get   <job_id> <file>         Download a completed job's artifact
 
 Examples:
@@ -34,7 +35,8 @@ Examples:
   run402 jobs get job_abc123
   run402 jobs logs job_abc123 --tail 100
   run402 jobs cancel job_abc123
-  run402 jobs artifacts get job_abc123 proof.json --output ./proof.json
+  run402 jobs purge --project prj_abc123
+  run402 jobs artifacts get job_abc123 result.json --output ./result.json
 
 Notes:
   - --project defaults to the active project from 'run402 projects use'
@@ -55,7 +57,7 @@ Options:
 
 Example request:
   {
-    "job_type": "kysigned.fflonk_prove.v0_17_0",
+    "job_type": "example.managed_job.v1",
     "input": { "input_json": {} },
     "max_cost_usd_micros": 50000,
     "callback_url": "https://hooks.example.com/jobs"
@@ -92,6 +94,18 @@ Usage:
 Options:
   --project <id>    Project ID (defaults to the active project)
 `,
+  purge: `run402 jobs purge — Purge all managed job runs for a project
+
+Usage:
+  run402 jobs purge [--project <id>]
+
+Options:
+  --project <id>    Project ID (defaults to the active project)
+
+Deletes all project-scoped managed-job run records. Queued/running jobs are
+included in the purge; known active runner instances are terminated first.
+Prints { deleted_jobs, cancelled_active_jobs, terminated_instances }.
+`,
   artifacts: `run402 jobs artifacts — Download outputs from a completed managed job
 
 Usage:
@@ -100,9 +114,8 @@ Usage:
 Actions:
   get <job_id> <file>   Download the named artifact to a local file
 
-Recorded artifact filenames (per run): proof.json, public.json,
-prove-output.log, prove-time.log, verify-output.log. Use 'run402 jobs get
-<job_id>' and read the 'artifacts' map for the exact set on a given run.
+Use 'run402 jobs get <job_id>' and read the 'artifacts' map for the exact
+recorded filenames on a given run.
 `,
   "artifacts get": `run402 jobs artifacts get — Download a completed job's artifact
 
@@ -119,7 +132,7 @@ gateway returns 404. Prints a JSON envelope { job_id, filename, project_id,
 output, ... } on success.
 
 Example:
-  run402 jobs artifacts get job_abc123 proof.json --output ./proof.json
+  run402 jobs artifacts get job_abc123 result.json --output ./result.json
 `,
 };
 
@@ -292,6 +305,23 @@ async function cancel(jobId, args = []) {
   }
 }
 
+async function purge(args = []) {
+  const parsed = normalizeArgv(args);
+  assertKnownFlags(parsed, ["--project", "--help", "-h"], PROJECT_FLAGS);
+  requirePositionalCount(parsed, PROJECT_FLAGS, {
+    max: 0,
+    command: "run402 jobs purge",
+  });
+  const projectId = resolveProjectId(flagValue(parsed, "--project"));
+
+  try {
+    const result = await getSdk().jobs.purge(projectId);
+    console.log(JSON.stringify(result, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function artifactsGet(args = []) {
   if (args.includes("--help") || args.includes("-h")) {
     console.log(SUB_HELP["artifacts get"]);
@@ -425,6 +455,9 @@ export async function run(sub, args = []) {
       await cancel(jobId, rest);
       break;
     }
+    case "purge":
+      await purge(args);
+      break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

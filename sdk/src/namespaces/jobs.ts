@@ -1,12 +1,12 @@
 /**
- * `jobs` namespace — fixed platform-managed job runs.
+ * `jobs` namespace — platform-managed job runs.
  * All methods require the project's service key.
  */
 
 import { ApiError, ProjectNotFound } from "../errors.js";
 import type { Client } from "../kernel.js";
 
-export type ManagedJobType = "kysigned.fflonk_prove.v0_17_0";
+export type ManagedJobType = string;
 
 export type ManagedJobStatus =
   | "queued"
@@ -109,11 +109,10 @@ export interface ManagedJobResponse {
   started_at?: string;
   completed_at?: string;
   /**
-   * Recorded outputs for a completed run, keyed by filename — e.g.
-   * `proof.json`, `public.json`, `prove-output.log`, `prove-time.log`,
-   * `verify-output.log`. Each value is a {@link ManagedJobArtifact} object
-   * (the pre-retirement `run402://` ref strings are gone). Absent until the
-   * job reaches a terminal state with recorded artifacts.
+   * Recorded outputs for a completed run, keyed by filename. Each value is a
+   * {@link ManagedJobArtifact} object (the pre-retirement `run402://` ref
+   * strings are gone). Absent until the job reaches a terminal state with
+   * recorded artifacts.
    */
   artifacts?: Record<string, ManagedJobArtifact>;
   metadata?: ManagedJobMetadata;
@@ -139,10 +138,18 @@ export interface ManagedJobLogsResponse {
   logs: ManagedJobLogEntry[];
 }
 
+export interface ManagedJobPurgeResponse {
+  deleted_jobs: number;
+  /** Queued/running jobs included in the purge. */
+  cancelled_active_jobs: number;
+  /** Known EC2 runner instances terminated before records were deleted. */
+  terminated_instances: number;
+}
+
 export class Jobs {
   constructor(private readonly client: Client) {}
 
-  /** Submit a fixed platform-managed job run. */
+  /** Submit a platform-managed job run for a run402-configured job type. */
   async submit(projectId: string, request: ManagedJobSubmitRequestInput): Promise<ManagedJobResponse> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "submitting job");
@@ -175,9 +182,7 @@ export class Jobs {
    * so callers can stream to disk or buffer with `.bytes()` / `.text()` —
    * this avoids forcing large artifacts through a JS string.
    *
-   * Discover the available filenames from the `artifacts` map on {@link get}
-   * (the recorded set is e.g. `proof.json`, `public.json`, `prove-output.log`,
-   * `prove-time.log`, `verify-output.log`).
+   * Discover the available filenames from the `artifacts` map on {@link get}.
    *
    * @throws {ProjectNotFound} if `projectId` is not in the provider.
    * @throws {ApiError} on non-2xx — notably `404` when the job has not
@@ -232,6 +237,18 @@ export class Jobs {
       method: "DELETE",
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "cancelling job",
+    });
+  }
+
+  /** Purge all managed job runs for a project. Active runners are terminated when known. */
+  async purge(projectId: string): Promise<ManagedJobPurgeResponse> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "purging jobs");
+
+    return this.client.request<ManagedJobPurgeResponse>("/jobs/v1/runs", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${project.service_key}` },
+      context: "purging jobs",
     });
   }
 }

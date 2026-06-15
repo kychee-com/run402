@@ -370,12 +370,13 @@ Scheduled function tier limits: prototype 1 / 15 min, hobby 3 / 5 min, team 10 /
 
 ### Managed jobs
 
-Fixed platform-managed jobs. These tools do not run arbitrary Docker images; they submit the delivered gateway `job_type` with a JSON `input.input_json` object and a hard `max_cost_usd_micros` cap. The SDK supplies the required idempotency header.
+Platform-managed jobs. These tools do not run arbitrary Docker images; they submit a run402-configured gateway `job_type` with a JSON `input.input_json` object and a hard `max_cost_usd_micros` cap. The SDK supplies the required idempotency header.
 
 - `jobs_submit` — submit a managed job. Params: `project_id`, `request` (`job_type`, `input`, `max_cost_usd_micros`).
 - `jobs_get` — get a job run. Params: `project_id`, `job_id`.
 - `jobs_logs` — read runner logs. Params: `project_id`, `job_id`, `tail?` (max 1000), `since?` (epoch ms).
 - `jobs_cancel` — cancel a queued or running job. Params: `project_id`, `job_id`.
+- `jobs_purge` — purge all job runs for a project. Params: `project_id`. Returns `{deleted_jobs, cancelled_active_jobs, terminated_instances}`.
 
 ### Auth & email
 

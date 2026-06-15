@@ -132,6 +132,7 @@ import type {
 import type {
   ManagedJobLogsOptions,
   ManagedJobLogsResponse,
+  ManagedJobPurgeResponse,
   ManagedJobResponse,
   ManagedJobSubmitRequest,
 } from "./namespaces/jobs.js";
@@ -697,6 +698,9 @@ class ScopedJobs {
   }
   cancel(jobId: string): Promise<ManagedJobResponse> {
     return this.parent.jobs.cancel(this.projectId, jobId);
+  }
+  purge(): Promise<ManagedJobPurgeResponse> {
+    return this.parent.jobs.purge(this.projectId);
   }
   downloadArtifact(jobId: string, filename: string): Promise<Response> {
     return this.parent.jobs.downloadArtifact(this.projectId, jobId, filename);

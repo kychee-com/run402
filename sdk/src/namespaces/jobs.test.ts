@@ -53,7 +53,7 @@ function json(body: unknown, status = 200): Response {
 
 function submitRequest(): ManagedJobSubmitRequest {
   return {
-    jobType: "kysigned.fflonk_prove.v0_17_0",
+    jobType: "example.managed_job.v1",
     input: { inputJson: { envelopeId: "env_1" } },
     maxCostUsdMicros: 50_000,
   };
@@ -61,7 +61,7 @@ function submitRequest(): ManagedJobSubmitRequest {
 
 function submitWireRequest() {
   return {
-    job_type: "kysigned.fflonk_prove.v0_17_0",
+    job_type: "example.managed_job.v1",
     input: { input_json: { envelopeId: "env_1" } },
     max_cost_usd_micros: 50_000,
   };
@@ -71,7 +71,7 @@ describe("jobs", () => {
   it("submit POSTs the gateway request with service bearer and generated idempotency key", async () => {
     const response = {
       job_id: "job_123",
-      job_type: "kysigned.fflonk_prove.v0_17_0",
+      job_type: "example.managed_job.v1",
       status: "queued",
       created_at: "2026-05-18T00:00:00.000Z",
     };
@@ -92,7 +92,7 @@ describe("jobs", () => {
       json(
         {
           job_id: "job_cb",
-          job_type: "kysigned.fflonk_prove.v0_17_0",
+          job_type: "example.managed_job.v1",
           status: "queued",
           created_at: "2026-05-18T00:00:00.000Z",
         },
@@ -114,7 +114,7 @@ describe("jobs", () => {
       json(
         {
           job_id: "job_nocb",
-          job_type: "kysigned.fflonk_prove.v0_17_0",
+          job_type: "example.managed_job.v1",
           status: "queued",
           created_at: "2026-05-18T00:00:00.000Z",
         },
@@ -132,7 +132,7 @@ describe("jobs", () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         job_id: "job_123",
-        job_type: "kysigned.fflonk_prove.v0_17_0",
+        job_type: "example.managed_job.v1",
         status: "running",
         created_at: "2026-05-18T00:00:00.000Z",
       }),
@@ -176,7 +176,7 @@ describe("jobs", () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         job_id: "job_123",
-        job_type: "kysigned.fflonk_prove.v0_17_0",
+        job_type: "example.managed_job.v1",
         status: "cancelled",
         created_at: "2026-05-18T00:00:00.000Z",
       }),
@@ -187,6 +187,22 @@ describe("jobs", () => {
     assert.equal(result.status, "cancelled");
     assert.equal(calls[0]!.url, "https://api.test/jobs/v1/runs/job_123");
     assert.equal(calls[0]!.method, "DELETE");
+  });
+
+  it("purge DELETEs the project jobs collection route", async () => {
+    const response = {
+      deleted_jobs: 3,
+      cancelled_active_jobs: 1,
+      terminated_instances: 1,
+    };
+    const { fetch, calls } = mockFetch(() => json(response));
+
+    const result = await sdk(fetch).jobs.purge("prj_k");
+
+    assert.deepEqual(result, response);
+    assert.equal(calls[0]!.url, "https://api.test/jobs/v1/runs");
+    assert.equal(calls[0]!.method, "DELETE");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer s");
   });
 
   it("downloadArtifact streams raw bytes with the service bearer", async () => {

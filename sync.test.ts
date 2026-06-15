@@ -249,6 +249,7 @@ const SURFACE: Capability[] = [
   { id: "jobs_get",          endpoint: "GET /jobs/v1/runs/:job_id",          mcp: "jobs_get",    cli: "jobs:get",    openclaw: "jobs:get" },
   { id: "jobs_logs",         endpoint: "GET /jobs/v1/runs/:job_id/logs",     mcp: "jobs_logs",   cli: "jobs:logs",   openclaw: "jobs:logs" },
   { id: "jobs_cancel",       endpoint: "DELETE /jobs/v1/runs/:job_id",       mcp: "jobs_cancel", cli: "jobs:cancel", openclaw: "jobs:cancel" },
+  { id: "jobs_purge",        endpoint: "DELETE /jobs/v1/runs",               mcp: "jobs_purge",  cli: "jobs:purge",  openclaw: "jobs:purge" },
   { id: "jobs_download_artifact", endpoint: "GET /jobs/v1/runs/:job_id/artifacts/:filename", mcp: "jobs_download_artifact", cli: "jobs:artifacts:get", openclaw: "jobs:artifacts:get" },
 
   // ── Sites / Subdomains ───────────────────────────────────────────────────
@@ -534,6 +535,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   jobs_get: "jobs.get",
   jobs_logs: "jobs.logs",
   jobs_cancel: "jobs.cancel",
+  jobs_purge: "jobs.purge",
   jobs_download_artifact: "jobs.downloadArtifact",
 
   // Sites / Subdomains

@@ -445,7 +445,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `update_function` | Update schedule / timeout / memory without redeploying code. |
 | `list_functions` / `delete_function` | List / remove functions. |
 | `set_secret` / `list_secrets` / `delete_secret` | Manage `process.env` secrets injected into all functions. Values are write-only; list returns keys and timestamps only. |
-| `jobs_submit` / `jobs_get` / `jobs_logs` / `jobs_cancel` | Submit and inspect fixed platform-managed jobs. Requests use the gateway jobs shape; the SDK supplies the required idempotency header. |
+| `jobs_submit` / `jobs_get` / `jobs_logs` / `jobs_cancel` / `jobs_purge` | Submit, inspect, cancel, and purge platform-managed jobs. Requests use the gateway jobs shape; the SDK supplies the required idempotency header. |
 
 ### Auth & email
 

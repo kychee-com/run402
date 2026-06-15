@@ -1064,20 +1064,21 @@ Injected as `process.env` in functions. Values are write-only — `list` returns
 - `run402 secrets <list|delete> <id> [<KEY>]`
 
 ### jobs
-Fixed platform-managed jobs. This is not arbitrary Docker execution: submit a gateway-shaped request for the delivered `job_type`, then inspect status, logs, or cancel the run. The SDK supplies the required idempotency header; the CLI does not expose it.
+Platform-managed jobs. This is not arbitrary Docker execution: submit a gateway-shaped request for a run402-configured `job_type`, then inspect status/logs, cancel one run, or purge all project runs. The SDK supplies the required idempotency header; the CLI does not expose it.
 
 - `run402 jobs submit --file job.json [--project <id>]`
 - `run402 jobs submit --stdin [--project <id>]`
 - `run402 jobs get <job_id> [--project <id>]`
 - `run402 jobs logs <job_id> [--project <id>] [--tail <n>] [--since <epoch_ms>]`
 - `run402 jobs cancel <job_id> [--project <id>]`
+- `run402 jobs purge [--project <id>]`
 - `run402 jobs artifacts get <job_id> <file> --output <path> [--project <id>]`
 
 Submit request shape:
 
 ```json
 {
-  "job_type": "kysigned.fflonk_prove.v0_17_0",
+  "job_type": "example.managed_job.v1",
   "input": { "input_json": {} },
   "max_cost_usd_micros": 50000
 }
@@ -1089,10 +1090,9 @@ filename. Each value is an object — `{ "url", "content_type", "sha256",
 `run402://storage/...` scheme was retired). `sha256`/`size_bytes` are omitted
 for jobs created before this change; the `url` still serves. Download the bytes
 with `run402 jobs artifacts get <job_id> <file> --output <path>` (auth is the
-project service key, same as the rest of the jobs API). The recorded filenames
-are `proof.json`, `public.json`, `prove-output.log`, `prove-time.log`, and
-`verify-output.log`; a 404 means the job has not completed or the filename was
-not recorded for that run.
+project service key, same as the rest of the jobs API). Discover recorded
+filenames from the `artifacts` map; a 404 means the job has not completed or
+the filename was not recorded for that run.
 
 ### assets (primary storage API)
 

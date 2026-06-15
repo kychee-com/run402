@@ -76,7 +76,7 @@ const MATRIX = {
     specific: ["deploy", "invoke", "logs", "update", "rebuild", "list", "delete"],
   },
   secrets: { shared: [], specific: ["set", "list", "delete"] },
-  jobs: { shared: [], specific: ["submit", "get", "logs", "cancel", "artifacts"] },
+  jobs: { shared: [], specific: ["submit", "get", "logs", "cancel", "purge", "artifacts"] },
   assets: {
     shared: [],
     specific: ["put", "get", "ls", "rm", "sign"],
