@@ -13,11 +13,11 @@ import {
 const HELP = `run402 transfer — Two-party project transfer (v1.59)
 
 Usage:
-  run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>]
+  run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]
   run402 transfer preview <transfer_id>
   run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]
   run402 transfer accept <transfer_id>
-  run402 transfer claim <transfer_id> [--into <organization_id>]
+  run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]
   run402 transfer cancel <transfer_id> [--reason <text>] [--handoff]
 
 Subcommands:
@@ -41,7 +41,7 @@ const SUB_HELP = {
   init: `run402 transfer init — Initiate a project transfer
 
 Usage:
-  run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>]
+  run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]
 
 Options:
   --project <id>         Project id (defaults to the active project)
@@ -49,6 +49,9 @@ Options:
   --billing-policy <p>   Billing policy. Phase 1A only allows 'migrate' (default).
   --message <text>       Optional note shown to the recipient in preview + emails.
   --kysigned <record_id> Optional KySigned record id (Phase 1A: informational only).
+  --retain-collaborator <role>  Email handoffs only (v1.91): keep a 'developer' membership in
+                         the recipient's org after handoff. The recipient must accept it at
+                         claim (--accept-retained-collaborator); omit for full severance.
 
 Notes:
   - Caller's wallet must currently own the project (gateway re-checks fresh DB).
@@ -97,18 +100,24 @@ email->org handoff instead of a wallet transfer.
   claim: `run402 transfer claim — Claim an incoming email handoff
 
 Usage:
-  run402 transfer claim <transfer_id> [--into <organization_id>]
+  run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]
 
 Claims a handoff addressed to your email into an org you own. Omit --into to
 claim into a brand-new org. This is the email-handoff analog of 'accept'.
+
+Options:
+  --into <organization_id>       Org to claim into (omit = brand-new org).
+  --accept-retained-collaborator Accept the sender's v1.91 retained-developer-membership offer
+                                 (see 'transfer preview' retain_collaborator). Omit = full severance.
 `,
 };
 
 const BILLING_POLICIES = new Set(["migrate"]);
+const RETAIN_ROLES = new Set(["developer"]);
 
 async function init(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--project", "--to", "--billing-policy", "--message", "--kysigned"];
+  const valueFlags = ["--project", "--to", "--billing-policy", "--message", "--kysigned", "--retain-collaborator"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
@@ -133,10 +142,31 @@ async function init(args) {
   }
   const message = flagValue(parsedArgs, "--message");
   const kysigned = flagValue(parsedArgs, "--kysigned");
+  const retainCollaborator = flagValue(parsedArgs, "--retain-collaborator");
 
   // One noun, two rails: an email recipient routes to the email->org handoff;
   // a wallet recipient routes to the two-party wallet transfer.
   const isEmail = toWallet.includes("@");
+
+  // --retain-collaborator (v1.91) is a handoff-only opt-in: the sender keeps a
+  // developer membership in the recipient's org (recipient must accept at claim).
+  if (retainCollaborator !== null) {
+    if (!isEmail) {
+      fail({
+        code: "BAD_FLAG",
+        message: "--retain-collaborator applies only to email handoffs; a wallet --to uses the two-party transfer rail.",
+        details: { flag: "--retain-collaborator" },
+      });
+    }
+    if (!RETAIN_ROLES.has(retainCollaborator)) {
+      fail({
+        code: "BAD_FLAG",
+        message: `Unsupported --retain-collaborator role: ${retainCollaborator}. Allowed: ${[...RETAIN_ROLES].join(", ")}.`,
+        details: { flag: "--retain-collaborator", value: retainCollaborator, allowed: [...RETAIN_ROLES] },
+      });
+    }
+  }
+
   allowanceAuthHeaders(
     isEmail ? `/projects/v1/${projectId}/handoffs` : `/projects/v1/${projectId}/transfers`,
   );
@@ -147,6 +177,7 @@ async function init(args) {
           projectId,
           toEmail: toWallet,
           message: message ?? undefined,
+          retainCollaborator: retainCollaborator ? { role: retainCollaborator } : undefined,
         })
       : await getSdk().admin.transfers.initiate({
           projectId,
@@ -278,18 +309,22 @@ async function cancel(args) {
 async function claim(args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--into"];
-  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  assertKnownFlags(parsedArgs, [...valueFlags, "--accept-retained-collaborator", "--help", "-h"], valueFlags);
   const positionals = positionalArgs(parsedArgs, valueFlags);
   if (positionals.length !== 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer claim <transfer_id> [--into <organization_id>]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]" });
   }
   const transferId = positionals[0];
   const into = flagValue(parsedArgs, "--into");
+  // v1.91: accept the sender's retained-developer-membership offer (see the
+  // preview's `retain_collaborator` block). Absent = full severance (default).
+  const acceptRetain = parsedArgs.includes("--accept-retained-collaborator");
   allowanceAuthHeaders(`/agent/v1/handoffs/${transferId}/claim`);
 
   try {
     const data = await getSdk().admin.transfers.claimHandoff(transferId, {
       organizationId: into ?? undefined,
+      acceptRetainedCollaborator: acceptRetain || undefined,
     });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {

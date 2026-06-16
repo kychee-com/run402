@@ -23,6 +23,7 @@ import type {
   ExposeManifestValidationResult,
   ListProjectsOptions,
   ListProjectsResult,
+  ProjectDetail,
   ProjectInfo,
   ProjectRestOptions,
   ProjectRestResponse,
@@ -226,6 +227,9 @@ class ScopedProjects {
   }
   demoteUser(email: string): Promise<void> {
     return this.parent.projects.demoteUser(this.projectId, email);
+  }
+  get(): Promise<ProjectDetail> {
+    return this.parent.projects.get(this.projectId);
   }
   info(): Promise<ProjectInfo> {
     return this.parent.projects.info(this.projectId);

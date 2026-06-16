@@ -252,6 +252,7 @@ import { tierStatusSchema, handleTierStatus } from "./tools/tier-status.js";
 import { initSchema, handleInit } from "./tools/init.js";
 import { statusSchema, handleStatus } from "./tools/status.js";
 import { projectInfoSchema, handleProjectInfo } from "./tools/project-info.js";
+import { projectGetSchema, handleProjectGet } from "./tools/project-get.js";
 import { projectUseSchema, handleProjectUse } from "./tools/project-use.js";
 import { projectKeysSchema, handleProjectKeys } from "./tools/project-keys.js";
 
@@ -1128,6 +1129,13 @@ server.tool(
   "Show local project details — REST URL, keys, site URL, and deployment info. Reads from local keystore only.",
   projectInfoSchema,
   async (args) => handleProjectInfo(args),
+);
+
+server.tool(
+  "project_get",
+  "Authoritative server read of a project — name, owning org, tier, effective status, active deploy, mailbox addresses, and usage vs. tier limits. Live API call; returns no keys (use project_keys for those).",
+  projectGetSchema,
+  async (args) => handleProjectGet(args),
 );
 
 server.tool(

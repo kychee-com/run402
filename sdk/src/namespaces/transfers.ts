@@ -192,6 +192,16 @@ export interface InitiateHandoffInput {
   toEmail: string;
   /** Optional note shown to the recipient (HTML-escaped server-side). */
   message?: string;
+  /**
+   * Opt in (v1.91) to retaining a `developer` membership in the recipient's org
+   * after the handoff completes. Only `role: "developer"` is accepted, and the
+   * subject is always the initiating owner (you can only retain yourself). The
+   * recipient must explicitly accept it at claim time (see
+   * {@link ClaimHandoffInput.acceptRetainedCollaborator}); omitting this is a
+   * full severance, the default. Gateway rejects a bad role with
+   * `INVALID_RETAIN_ROLE` and a missing actor with `RETAIN_SUBJECT_REQUIRED`.
+   */
+  retainCollaborator?: { role: "developer" } | null;
 }
 
 /** Result of {@link Transfers.initiateHandoff}. Forward-compatible (gateway owns the exact shape). */
@@ -209,11 +219,28 @@ export interface HandoffSummary {
   [key: string]: unknown;
 }
 
+/**
+ * The sender-retained-membership offer block on a handoff preview (v1.91), or
+ * `null` when the sender requested no retention. `accept_field` names the claim
+ * body field the recipient sets to accept (`"accept_retained_collaborator"`).
+ */
+export interface RetainCollaboratorPreview {
+  principal_id: string;
+  role: "developer";
+  sender_label: string;
+  scope: string;
+  note?: string;
+  accept_field: string;
+  [key: string]: unknown;
+}
+
 /** Preview from `GET /agent/v1/handoffs/:transfer_id`. Forward-compatible. */
 export interface ProjectHandoffPreview {
   transfer_id: string;
   project_id: string;
   status?: TransferStatus | string;
+  /** v1.91 sender-retained-membership offer, or `null` when none was requested. */
+  retain_collaborator?: RetainCollaboratorPreview | null;
   [key: string]: unknown;
 }
 
@@ -221,12 +248,24 @@ export interface ProjectHandoffPreview {
 export interface ClaimHandoffInput {
   /** Org (organization) to claim into. Omit to claim into a brand-new org. */
   organizationId?: string;
+  /**
+   * Accept the sender's v1.91 retained-`developer`-membership offer (see the
+   * handoff preview's `retain_collaborator` block). Only an explicit `true`
+   * materializes the membership in the new org; omitting it (the default) is a
+   * full severance.
+   */
+  acceptRetainedCollaborator?: boolean;
 }
 
 /** Result of {@link Transfers.claimHandoff}. Forward-compatible. */
 export interface ClaimHandoffResult {
   project_id: string;
   new_organization_id?: string | null;
+  /**
+   * The sender's principal id retained as a `developer` of the new org (v1.91),
+   * or `null` when no membership was retained (declined, not offered, or no-op).
+   */
+  retained_collaborator_principal_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -340,6 +379,7 @@ export class Transfers {
   async initiateHandoff(input: InitiateHandoffInput): Promise<HandoffResult> {
     const body: Record<string, unknown> = { to_email: input.toEmail };
     if (input.message !== undefined) body.message = input.message;
+    if (input.retainCollaborator !== undefined) body.retain_collaborator = input.retainCollaborator;
     return this.client.request<HandoffResult>(
       `/projects/v1/${encodeURIComponent(input.projectId)}/handoffs`,
       { method: "POST", body, context: "initiating project handoff" },
@@ -371,6 +411,9 @@ export class Transfers {
   async claimHandoff(transferId: string, input: ClaimHandoffInput = {}): Promise<ClaimHandoffResult> {
     const body: Record<string, unknown> = {};
     if (input.organizationId !== undefined) body.organization_id = input.organizationId;
+    if (input.acceptRetainedCollaborator !== undefined) {
+      body.accept_retained_collaborator = input.acceptRetainedCollaborator;
+    }
     return this.client.request<ClaimHandoffResult>(
       `/agent/v1/handoffs/${encodeURIComponent(transferId)}/claim`,
       { method: "POST", body, context: "claiming project handoff" },

@@ -176,6 +176,61 @@ export interface RenameProjectResult {
   name: string;
 }
 
+// ─── single-project read (server, authoritative) ─────────────────────────
+
+/** Active-release pointer on {@link ProjectDetail}. `null` when nothing is live. */
+export interface ProjectLastDeploy {
+  release_id: string;
+  activated_at: string;
+}
+
+/** Usage counters paired with the owning account's tier limits. */
+export interface ProjectUsageWithLimits {
+  api_calls: number;
+  storage_bytes: number;
+  api_calls_limit: number;
+  storage_bytes_limit: number;
+}
+
+/**
+ * Authoritative server-side view of one project, from `GET /projects/v1/:project_id`
+ * (gateway `project.read`). A superset of {@link ProjectSummary} that adds the
+ * public id, the active-release pointer, active mailbox addresses, and usage vs.
+ * tier limits. Carries NO key material — the endpoint never returns secrets; read
+ * `r.projects.keys(id)` (local) for the anon/service keys.
+ *
+ * Authorize-before-reveal: a caller without `project.read` authority sees the same
+ * `Unauthorized` for a real-but-forbidden project as for an absent one — never a
+ * 404 that would confirm existence.
+ */
+export interface ProjectDetail {
+  project_id: string;
+  /** Short public identifier (distinct from the `prj_…` id). */
+  public_id: string;
+  name: string;
+  /** Owning org (organization) id — v1.77 org-owned control plane. */
+  org_id: string;
+  /** Account-derived tier (authoritative source is `r.tier.status()`). */
+  tier: string;
+  /** Derived effective status — see {@link EffectiveProjectStatus}. */
+  effective_status: EffectiveProjectStatus;
+  /** Owning organization's lifecycle state. */
+  organization_lifecycle_state: OrganizationLifecycleState;
+  /** Primary public URL, or `null` when none is claimed. */
+  site_url: string | null;
+  /** Every custom hostname mapped to this project (empty when none). */
+  custom_domains: string[];
+  /** Active-release pointer, or `null` when nothing is deployed. */
+  last_deploy: ProjectLastDeploy | null;
+  /** Active mailbox addresses (formatted, e.g. `hello@mail.run402.com`). */
+  mailbox: string[];
+  /** Usage counters paired with the owning account's tier limits. */
+  usage: ProjectUsageWithLimits;
+  created_at: string;
+  /** Forward-compat: unknown future fields a newer gateway may add. */
+  [key: string]: unknown;
+}
+
 // ─── usage ──────────────────────────────────────────────────────────────
 
 export interface UsageReport {

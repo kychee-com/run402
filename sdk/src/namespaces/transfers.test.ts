@@ -409,3 +409,67 @@ describe("admin.transfers — email->org handoff (v1.78)", () => {
     assert.equal(calls[0].method, "POST");
   });
 });
+
+describe("admin.transfers handoff retain-collaborator (v1.91)", () => {
+  it("initiateHandoff sends retain_collaborator only when set", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ transfer_id: "hof_r1" }));
+    await makeSdk(fetch).admin.transfers.initiateHandoff({
+      projectId: "prj_abc",
+      toEmail: "alice@example.com",
+      retainCollaborator: { role: "developer" },
+    });
+    assert.equal(calls[0].url, "https://api.example.test/projects/v1/prj_abc/handoffs");
+    assert.deepEqual(JSON.parse(String(calls[0].body)), {
+      to_email: "alice@example.com",
+      retain_collaborator: { role: "developer" },
+    });
+  });
+
+  it("initiateHandoff omits retain_collaborator when not requested", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ transfer_id: "hof_r2" }));
+    await makeSdk(fetch).admin.transfers.initiateHandoff({ projectId: "prj_abc", toEmail: "alice@example.com" });
+    const body = JSON.parse(String(calls[0].body));
+    assert.deepEqual(body, { to_email: "alice@example.com" });
+    assert.ok(!("retain_collaborator" in body));
+  });
+
+  it("claimHandoff sends accept_retained_collaborator only when true and surfaces the result id", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ project_id: "prj_abc", retained_collaborator_principal_id: "prn_sender" }),
+    );
+    const res = await makeSdk(fetch).admin.transfers.claimHandoff("hof_r1", {
+      organizationId: "org_1",
+      acceptRetainedCollaborator: true,
+    });
+    assert.equal(calls[0].url, "https://api.example.test/agent/v1/handoffs/hof_r1/claim");
+    assert.deepEqual(JSON.parse(String(calls[0].body)), {
+      organization_id: "org_1",
+      accept_retained_collaborator: true,
+    });
+    assert.equal(res.retained_collaborator_principal_id, "prn_sender");
+  });
+
+  it("claimHandoff omits accept_retained_collaborator by default (full severance)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ project_id: "prj_abc" }));
+    await makeSdk(fetch).admin.transfers.claimHandoff("hof_r2");
+    const body = JSON.parse(String(calls[0].body));
+    assert.deepEqual(body, {});
+    assert.ok(!("accept_retained_collaborator" in body));
+  });
+
+  it("previewHandoff surfaces the typed retain_collaborator block", async () => {
+    const block = {
+      principal_id: "prn_sender",
+      role: "developer",
+      sender_label: "Bob",
+      scope: "organization",
+      note: "stay on",
+      accept_field: "accept_retained_collaborator",
+    };
+    const { fetch } = mockFetch(() =>
+      jsonResponse({ transfer_id: "hof_r1", project_id: "prj_abc", status: "pending", retain_collaborator: block }),
+    );
+    const res = await makeSdk(fetch).admin.transfers.previewHandoff("hof_r1");
+    assert.deepEqual(res.retain_collaborator, block);
+  });
+});

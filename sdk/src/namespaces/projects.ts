@@ -21,6 +21,7 @@ import type {
   ExposeManifestValidationResult,
   ListProjectsOptions,
   ListProjectsResult,
+  ProjectDetail,
   ProjectInfo,
   ProjectSummary,
   ProjectRestOptions,
@@ -403,6 +404,24 @@ export class Projects {
     return this.client.request<QuoteResult>("/tiers/v1", {
       context: "getting quote",
       withAuth: false,
+    });
+  }
+
+  /**
+   * Authoritative single-project read — `GET /projects/v1/:id` (gateway
+   * `project.read`). Returns the server-side {@link ProjectDetail} (identity,
+   * owning org, tier, lifecycle, site_url + custom domains, active-release
+   * pointer, mailbox addresses, usage vs. tier limits). Carries no secrets.
+   *
+   * Uses the default credential (wallet SIWX or control-plane session) and does
+   * NOT require the project to be in the local keystore — read a project you own
+   * via org membership without provisioning it locally. Authorize-before-reveal:
+   * a forbidden or absent project both surface as `Unauthorized`, never a 404.
+   * For the local anon/service keys use {@link Projects.keys} instead.
+   */
+  async get(id: string): Promise<ProjectDetail> {
+    return this.client.request<ProjectDetail>(`/projects/v1/${id}`, {
+      context: "getting project",
     });
   }
 

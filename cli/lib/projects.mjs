@@ -16,8 +16,9 @@ Subcommands:
   use   <id>                              Set the active project (used as default for other commands)
   list [--org <id>] [--all]               List your projects from the server (name, site_url, custom domains, org_id, active marker)
   rename <id> --name <label>              Rename a project (fix an auto-generated name)
-  info  [id]                              Show project details: REST URL, keys
-  keys  [id]                              Print anon_key and service_key as JSON
+  get   [id]                              Authoritative server read: status, org, tier, active deploy, mailbox, usage vs limits (live; no keys)
+  info  [id]                              Show local project details: REST URL, keys (local keystore only)
+  keys  [id]                              Print anon_key and service_key as JSON (local keystore only)
   sql   [id] "<query>" [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
   rest  [id] <table> [params]             Query a table via the REST API (PostgREST)
   usage [id]                              Show compute/storage usage for a project
@@ -41,6 +42,7 @@ Examples:
   run402 projects list --org 11111111-2222-3333-4444-555555555555
   run402 projects list --all
   run402 projects rename prj_abc123 --name "My Site"
+  run402 projects get prj_abc123
   run402 projects info prj_abc123
   run402 projects sql prj_abc123 "SELECT * FROM users LIMIT 5"
   run402 projects sql prj_abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
@@ -508,6 +510,15 @@ async function rename(projectId, args = []) {
   }
 }
 
+async function get(projectId) {
+  try {
+    const data = await getSdk().projects.get(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function info(projectId) {
   try {
     const data = await getSdk().projects.info(projectId);
@@ -755,6 +766,7 @@ export async function run(sub, args) {
     case "use":       await use(args[0]); break;
     case "list":      await list(args); break;
     case "rename":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.rename.values }); await rename(projectId, rest); break; }
+    case "get":       { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await get(projectId); break; }
     case "info":      { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await info(projectId); break; }
     case "keys":      { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await keys(projectId); break; }
     case "sql":       { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB.sql.values, rejectBareFirstWhenFlagPresent: ["--file"] }); await sqlCmd(projectId, rest); break; }

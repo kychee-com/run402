@@ -1727,3 +1727,28 @@ describe("deploy apply manifest source precedence", () => {
     assert.match(r.error.message, /No deploy manifest provided/);
   });
 });
+
+describe("transfer retain-collaborator argv validation (v1.91)", () => {
+  it("transfer init rejects an invalid --retain-collaborator role before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() =>
+      run("init", ["--to", "alice@example.com", "--retain-collaborator", "owner"]),
+    );
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /retain-collaborator/);
+  });
+
+  it("transfer init rejects --retain-collaborator on the wallet rail before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() =>
+      run("init", [
+        "--to",
+        "0xC0ffee0000000000000000000000000000000000",
+        "--retain-collaborator",
+        "developer",
+      ]),
+    );
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /email handoff/);
+  });
+});

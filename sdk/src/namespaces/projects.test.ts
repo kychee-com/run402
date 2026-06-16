@@ -8,7 +8,14 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { LocalError, ProjectNotFound, PaymentRequired, Run402Error } from "../errors.js";
+import {
+  LocalError,
+  NotAuthorizedError,
+  ProjectNotFound,
+  PaymentRequired,
+  Run402Error,
+  Unauthorized,
+} from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -181,6 +188,91 @@ describe("projects.delete", () => {
     assert.equal(calls[0]!.method, "DELETE");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
     assert.deepEqual(removed, ["prj_known"]);
+  });
+});
+
+describe("projects.get", () => {
+  const detail = {
+    project_id: "prj_known",
+    public_id: "p_abc123",
+    name: "My Site",
+    org_id: "org_1",
+    tier: "prototype",
+    effective_status: "active",
+    organization_lifecycle_state: "active",
+    site_url: null,
+    custom_domains: [],
+    last_deploy: null,
+    mailbox: ["hello@mail.run402.com"],
+    usage: { api_calls: 5, storage_bytes: 100, api_calls_limit: 1000, storage_bytes_limit: 10000 },
+    created_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("GETs /projects/v1/:id and parses the ProjectDetail, preserving explicit nulls", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(detail));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const got = await sdk.projects.get("prj_known");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].method, "GET");
+    assert.equal(calls[0].url, "https://api.example.test/projects/v1/prj_known");
+    assert.equal(got.public_id, "p_abc123");
+    assert.equal(got.site_url, null);
+    assert.equal(got.last_deploy, null);
+    assert.deepEqual(got.mailbox, ["hello@mail.run402.com"]);
+    assert.equal(got.usage.api_calls_limit, 1000);
+    assert.equal(got.usage.storage_bytes_limit, 10000);
+  });
+
+  it("works for a project absent from the local keystore (no ProjectNotFound)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ ...detail, project_id: "prj_unknown" }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const got = await sdk.projects.get("prj_unknown");
+    assert.equal(got.project_id, "prj_unknown");
+    assert.equal(calls[0].url, "https://api.example.test/projects/v1/prj_unknown");
+  });
+
+  it("carries no key material in the result", async () => {
+    const { fetch } = mockFetch(() => jsonResponse(detail));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const got = (await sdk.projects.get("prj_known")) as Record<string, unknown>;
+    assert.equal(got.anon_key, undefined);
+    assert.equal(got.service_key, undefined);
+  });
+
+  it("maps a generic 403 to Unauthorized, never ProjectNotFound", async () => {
+    const { fetch } = mockFetch(() => jsonResponse({ message: "forbidden" }, 403));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      () => sdk.projects.get("prj_x"),
+      (err: unknown) => {
+        assert.ok(err instanceof Unauthorized, "expected Unauthorized");
+        assert.ok(!(err instanceof ProjectNotFound), "must not be ProjectNotFound");
+        return true;
+      },
+    );
+  });
+
+  it("maps a 403 NOT_AUTHORIZED to NotAuthorizedError (org denial), never ProjectNotFound", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({ code: "NOT_AUTHORIZED", message: "no membership" }, 403),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      () => sdk.projects.get("prj_x"),
+      (err: unknown) => {
+        assert.ok(err instanceof NotAuthorizedError, "expected NotAuthorizedError");
+        assert.ok(!(err instanceof ProjectNotFound), "must not be ProjectNotFound");
+        return true;
+      },
+    );
+  });
+
+  it("is exposed on the scoped client as r.project(id).projects.get()", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(detail));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const scoped = await sdk.project("prj_known");
+    await scoped.projects.get();
+    assert.equal(calls[0].url, "https://api.example.test/projects/v1/prj_known");
   });
 });
 

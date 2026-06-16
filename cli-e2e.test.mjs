@@ -222,6 +222,25 @@ async function mockFetch(input, init) {
       scope: "wallet",
     }));
   }
+  // single-project authoritative read (GET /projects/v1/:id).
+  if (pathNoQuery.match(/^\/projects\/v1\/[^/]+$/) && method === "GET") {
+    const projectId = pathNoQuery.split("/").pop();
+    return Promise.resolve(json({
+      project_id: projectId,
+      public_id: "p_test123",
+      name: "Test Project",
+      org_id: "org_test",
+      tier: "prototype",
+      effective_status: "active",
+      organization_lifecycle_state: "active",
+      site_url: null,
+      custom_domains: [],
+      last_deploy: null,
+      mailbox: ["hello@mail.run402.com"],
+      usage: { api_calls: 12, storage_bytes: 2048, api_calls_limit: 100000, storage_bytes_limit: 1073741824 },
+      created_at: "2026-03-15T00:00:00.000Z",
+    }));
+  }
   // project-findability: rename (PATCH /projects/v1/:id).
   if (path.match(/^\/projects\/v1\/[^/]+$/) && method === "PATCH") {
     const projectId = pathNoQuery.split("/").pop();
@@ -1339,6 +1358,21 @@ describe("CLI e2e happy path", () => {
     await run("quote", []);
     captureStop();
     assert.ok(captured().includes("tiers"), "should show tier pricing");
+  });
+
+  it("projects get returns the authoritative server view as JSON (no keys)", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    captureStart();
+    await run("get", ["prj_test123"]);
+    captureStop();
+    const out = JSON.parse(captured());
+    assert.equal(out.project_id, "prj_test123", "should return the project id");
+    assert.equal(out.public_id, "p_test123");
+    assert.equal(out.effective_status, "active");
+    assert.deepEqual(out.mailbox, ["hello@mail.run402.com"]);
+    assert.equal(out.usage.api_calls_limit, 100000);
+    assert.equal(out.anon_key, undefined, "must not leak keys");
+    assert.equal(out.service_key, undefined, "must not leak keys");
   });
 
   it("projects provision", async () => {
