@@ -1,41 +1,71 @@
-## 0. Gateway wire-shape verification (blocking pre-req)
+## 0. Gateway wire-shape + binding verification (blocking pre-req)
 
-- [ ] 0.1 Against a live/staging gateway — or by reading `packages/gateway/src/routes/write-auth.ts` + `services/write-auth.ts` on run402-private `origin/main` — confirm the exact request+response shapes of `POST /agent/v1/control-plane/write-auth/challenges` (returns `confirm_url`/`redirect_to`? `delivery`? `challenge_id`?) and `POST /agent/v1/control-plane/write-auth/cli/token` (`write_auth_token`, `token_type`, `header`, `expires_in`, `session`?). Confirm the `403 WRITE_AUTH_REQUIRED` envelope and that SIWX wallet auth still provisions/deploys with **no** write-auth token. Pin the real field names before coding the seams + cache.
+- [ ] 0.1 Against a live/staging gateway — or by reading `packages/gateway/src/routes/write-auth.ts` + `services/write-auth.ts` on run402-private `origin/main` — pin the exact shapes and behaviors before coding:
+  - `POST /agent/v1/control-plane/write-auth/challenges` request (does it take `cli_redirect_uri`/`code_challenge`/`state`?) + response (`confirm_url`/`redirect_to`? `delivery`? `challenge_id`?).
+  - `POST /agent/v1/control-plane/write-auth/cli/token` request (`code`/`code_verifier`/`redirect_uri`/`state`?) + response (`write_auth_token`, `token_type`, `header`, `expires_in`, `scopes`? `org_id`/`project_id` target? `session`?).
+  - The `403 WRITE_AUTH_REQUIRED` envelope (does it carry `capability`/`next_actions`?).
+  - **Binding/safety checks** (review #12): SIWX wallet auth still provisions/deploys with NO approval; approval alone fails; approval + wrong cp-session fails; approval target/scope mismatch fails; SIWX + a stray `X-Run402-Write-Auth` does not change principal selection; non-gated routes ignore a malformed/expired approval (don't reject reads) and do not refresh its idle TTL; redirects never forward auth headers off-origin.
 
-## 1. core — write-auth token cache
+---
 
-- [ ] 1.1 Add `core/src/write-auth-session.ts` mirroring `control-plane-session.ts`: `WriteAuthSessionCache { write_auth_token, token_type, header, principal_id, amr, expires_at }`, `getWriteAuthSessionPath()` (`{base}/write-auth-session.json`, `RUN402_WRITE_AUTH_SESSION_PATH` override), `read/save/clear/isExpired/loadLiveWriteAuthSession`, `writeAuthSessionFromTokenResponse` (relative `expires_in` → absolute `expires_at`), `selfHealPermissions`, atomic 0600 write.
-- [ ] 1.2 Add `core/src/write-auth-session.test.ts` (round-trip, expiry, corrupt-shape throw, 0600 perms), mirroring `control-plane-session.test.ts`.
+## PR 1 — Auth plumbing
 
-## 2. SDK — ceremony seams + types
+## 1. Kernel header hardening
 
-- [ ] 2.1 In `sdk/src/namespaces/operator.ts`, add a `WriteAuth` sub-class — `requestChallenge({ cliRedirectUri, codeChallenge, state, token? })` → `POST /agent/v1/control-plane/write-auth/challenges`; `exchangeClaimCode({ code, codeVerifier, state, token? })` → `POST /agent/v1/control-plane/write-auth/cli/token` — exposed as `r.operator.writeAuth`. Keep isomorphic (no `fs`/`http`); honor an explicit `token` over the default credential (like the claim seams).
-- [ ] 2.2 Add request/response types (`WriteAuthChallengeInput`/`Result`, `WriteAuthClaimInput`, `WriteAuthTokenResponse`) using the field names confirmed in 0.1; export the public ones from the SDK type-surface entry.
+- [ ] 1.1 In `sdk/src/kernel.ts`, replace the case-sensitive `if (!(k in fetchHeaders))` merge with a case-insensitive `hasHeader(fetchHeaders, k)` check.
+- [ ] 1.2 Add credential-family atomicity: if the request already set any of `Authorization` / `SIGN-IN-WITH-X` / `X-Run402-Write-Auth` (any casing), do NOT merge provider auth headers. Unit-test mixed casing + pre-set auth.
 
-## 3. SDK — error mapping
+## 2. SDK credentials — surface, authMode, deterministic resolution
 
-- [ ] 3.1 Add `WriteAuthRequiredError` to `sdk/src/errors.ts` (extends the `Run402Error` base; carries status/body/context; message points at `run402 operator write-auth`).
-- [ ] 3.2 In `sdk/src/kernel.ts`, add a `res.status === 403 && envelopeCode(resBody) === "WRITE_AUTH_REQUIRED"` branch **before** the generic 401/403 → `Unauthorized`, throwing `WriteAuthRequiredError`. Export it from `index.ts`.
+- [ ] 2.1 In `sdk/src/credentials.ts`, widen `getAuth` to `getAuth(path: string, metadata?: { method?: string; mutates?: boolean; capability?: string }): Promise<Record<string,string> | null>` (back-compatible — metadata optional). Thread the metadata from each namespace call site (start with provision + apply/deploy) through the kernel into `getAuth`.
+- [ ] 2.2 Add `{ surface: "cli" | "mcp" | "sdk", authMode?: "auto" | "wallet" | "operator" | "none" }` to `NodeCredentialsProvider`. Implement deterministic resolution (exactly one class; no silent inter-class fallback). Defaults: CLI `auto`, MCP `wallet`, SDK Node `auto` only when explicitly constructed so.
+- [ ] 2.3 In `auto`/`operator` mode with no wallet allowance, return `Authorization: Bearer <live cp-session>`; do NOT yet attach the approval (that's PR 2, gated on metadata). Ensure MCP (`wallet`) never reads the cp-session/approval caches.
+- [ ] 2.4 Construct the SDK with the right `surface` at each edge: MCP (`src/sdk.ts`) → `"mcp"`; CLI (`cli/lib/sdk.mjs`) → `"cli"`.
 
-## 4. SDK/Node — dual-header injection
+## 3. SDK — OperatorApprovalRequiredError
 
-- [ ] 4.1 Extend `NodeCredentialsProvider.getAuth(path)` in `sdk/src/node/credentials.ts`: if allowance headers exist, return them unchanged; else if `loadLiveControlPlaneSession()` returns a session, return `{ Authorization: "Bearer <token>" }` and, when `loadLiveWriteAuthSession()` is present, add `{ "X-Run402-Write-Auth": "Bearer <token>" }`. Import the core loaders via `../../core-dist/`.
-- [ ] 4.2 Add `getAuth` cases to `sdk/src/node/credentials.test.ts`: wallet present → unchanged; wallet-less + session + token → dual header; wallet-less + session only → bearer only; expired write-auth token → no `X-Run402-Write-Auth`.
+- [ ] 3.1 Add `OperatorApprovalRequiredError` to `sdk/src/errors.ts` (extends `Run402Error`; fields `code: "WRITE_AUTH_REQUIRED"`, `principal: "operator"`, `capability`, `next_actions`).
+- [ ] 3.2 In `sdk/src/kernel.ts`, map `403` + `envelopeCode === "WRITE_AUTH_REQUIRED"` to it (before the generic 401/403 → `Unauthorized`); synthesize `next_actions` (referencing `run402 operator approve`) if the gateway omits them. Export from `index.ts`.
+- [ ] 3.3 Make deterministic-resolution auth failures (2.2) throw a typed error naming the credential class used.
 
-## 5. CLI — operator write-auth verb + wallet-less writes
+## 4. CLI — operator status + plumbing (PR 1)
 
-- [ ] 5.1 In `cli/lib/operator.mjs`, add a `write-auth` verb reusing `generatePkce` + the loopback server: require a live control-plane session (else fail with guidance to `login --loopback`), `requestChallenge`, open `confirm_url` (respect `--no-open`), capture `code`+`state`, verify `state`, `exchangeClaimCode`, `saveWriteAuthSession`; JSON to stdout.
-- [ ] 5.2 Add the verb to the help text + `assertKnownFlags`; extend `logout` to `clearWriteAuthSession()` so `operator logout` clears both caches.
-- [ ] 5.3 Confirm `provision` / `deploy apply` need no command change (the dual header rides via `getAuth`); ensure `WriteAuthRequiredError` flows through `reportSdkError` with the remediation hint intact.
+- [ ] 4.1 Add `run402 operator status` in `cli/lib/operator.mjs`: report operator-login state, approval state + expiry + scopes + target (human to stderr, JSON to stdout). In PR 1 the approval section reads "none" until PR 2 lands.
+- [ ] 4.2 Ensure `provision` / `deploy apply` surface `OperatorApprovalRequiredError` through `reportSdkError` with `next_actions` intact (no auto-approve yet).
+- [ ] 4.3 PR-1 tests: kernel header-merge hardening; resolution matrix (CLI auto wallet/cp; MCP wallet-only never touches cp cache); `403 WRITE_AUTH_REQUIRED` → `OperatorApprovalRequiredError`; `operator status` output. `sync.test.ts` SURFACE for `operator:status`.
 
-## 6. Docs
+---
 
-- [ ] 6.1 Fix the stale `core/src/control-plane-session.ts` header comment — drop SIWX-equivalence-for-writes; note the write-auth-token requirement for `provision`/`deploy`.
-- [ ] 6.2 Document the dual-credential wallet-less write path, the `run402 operator write-auth` ceremony, and the `WRITE_AUTH_*` codes in `cli/llms-cli.txt` and `sdk/llms-sdk.txt`.
+## PR 2 — Approval ceremony
 
-## 7. Tests + sync
+## 5. core — approval token cache with binding
 
-- [ ] 7.1 SDK unit tests for the `writeAuth` seams (mock fetch: correct paths/bodies/bearer) and the `403 WRITE_AUTH_REQUIRED` → `WriteAuthRequiredError` mapping.
-- [ ] 7.2 CLI e2e (`cli-operator-write-auth.test.mjs`): stub the gateway seams + drive the loopback redirect locally; assert the token is cached and a follow-up request carries the dual header; assert the no-session guidance path. Register the file in the `package.json` test allow-list.
-- [ ] 7.3 If `operator:write-auth` is tracked in `sync.test.ts` `SURFACE`, add the row + `SDK_BY_CAPABILITY` mapping and keep CLI/OpenClaw parity; otherwise note why it is excluded (browser ceremony, like `operator login`).
-- [ ] 7.4 `npm test` green; `npm run build` + `npm run build:core` clean (the new core file compiles into `core-dist/`).
+- [ ] 5.1 Add `core/src/write-auth-session.ts` mirroring `control-plane-session.ts` discipline, with shape `{ write_auth_token, token_type, header, principal_id, amr, expires_at, control_plane_session_hash, control_plane_principal_id, api_origin, scopes, org_id?, project_id?, minted_at }`; `getWriteAuthSessionPath()` (`RUN402_WRITE_AUTH_SESSION_PATH` override), `read/save/clear`, `loadLiveApproval(...)` returning `null` on cp-hash / principal / api-origin / scope-target mismatch or expiry, `writeAuthSessionFromTokenResponse` (relative→absolute, captures binding).
+- [ ] 5.2 Add `core/src/write-auth-session.test.ts`: round-trip, each binding mismatch → null, expiry, corrupt-shape throw, 0600.
+
+## 6. SDK — operator-approval ceremony seams (hardened)
+
+- [ ] 6.1 In `sdk/src/namespaces/operator.ts`, add an `Approval` sub-class exposed as `r.operator.approval` — `requestChallenge({ cliRedirectUri, codeChallenge, state, token? })` and `exchangeClaimCode({ code, codeVerifier, redirectUri, state, token? })` (includes `redirect_uri`). Isomorphic; honor explicit `token`. Field names per task 0.1.
+- [ ] 6.2 Export the public types from the SDK type-surface entry.
+
+## 7. SDK/Node — gated approval attachment
+
+- [ ] 7.1 In `NodeCredentialsProvider.getAuth`, when resolution selects operator mode AND the request metadata marks a mutating/gated capability AND a live bound approval exists (`loadLiveApproval`), add `X-Run402-Write-Auth: Bearer <token>` alongside the cp bearer. Never attach on non-mutating requests; never via a path allowlist.
+- [ ] 7.2 Tests: gated method → dual header; read method → cp-bearer only; expired/mismatched approval → cp-bearer only.
+
+## 8. CLI — operator approve, lifecycle invalidation, TTY auto-approve
+
+- [ ] 8.1 Add `run402 operator approve` (hidden alias `write-auth`) reusing `pkce` + the loopback server: require a live cp-session (else guidance to `login --loopback`); validate `confirm_url` is same-origin as `apiBase` before opening; validate `state` before rendering success; `exchangeClaimCode`; `saveWriteAuthSession` with binding; never print the token; JSON to stdout.
+- [ ] 8.2 Lifecycle invalidation: `operator login`/`--step-up` clears any prior approval before saving the new cp-session; `operator logout` clears the approval too; update `operator status` to show the live approval.
+- [ ] 8.3 TTY-only auto-approve: in `provision`/`deploy apply`, when `OperatorApprovalRequiredError` is hit AND `stderr.isTTY` AND surface is CLI, prompt `[Y/n]`, run the ceremony, retry once. Never in MCP/CI/non-TTY.
+
+## 9. Docs
+
+- [ ] 9.1 Fix the stale `core/src/control-plane-session.ts` comment (drop SIWX-equivalence-for-writes; note the operator-approval requirement for provision/deploy).
+- [ ] 9.2 Document the operator-approval model in `cli/llms-cli.txt` + `sdk/llms-sdk.txt`: `operator approve` / `operator status`, surface/authMode semantics (MCP no-ambient-approval), the wallet-less write path, TTY auto-approve, and `WRITE_AUTH_*` as transport codes.
+
+## 10. Tests + sync (PR 2)
+
+- [ ] 10.1 CLI e2e (`cli-operator-approve.test.mjs`): stub the gateway seams + drive the loopback redirect; assert bound approval cached, a gated follow-up carries the dual header, a read carries cp-only, state-mismatch aborts, and `operator login` clears a prior approval. Register the file in the `package.json` test allow-list.
+- [ ] 10.2 `sync.test.ts` SURFACE for `operator:approve` (+ alias note); keep CLI/OpenClaw parity; confirm no handoff/approval MCP tool was added.
+- [ ] 10.3 `npm test` green; `npm run build` + `npm run build:core` clean.
