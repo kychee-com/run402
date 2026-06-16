@@ -175,11 +175,11 @@ run402 image generate "a serif logo" --aspect square --output logo.png
 
 $0.03 per image via x402.
 
-### On-chain (KMS contract wallets)
+### On-chain (KMS signers)
 
 ```bash
-run402 contracts provision-wallet --chain base-mainnet
-run402 contracts call --wallet <id> --to 0x… --abi @abi.json --fn transfer --args '["0x…","1000000"]'
+run402 contracts provision-signer --chain base-mainnet
+run402 contracts call <project_id> <signer_id> --to 0x… --abi @abi.json --fn transfer --args '["0x…","1000000"]'
 ```
 
 Private keys never leave AWS KMS. $0.04/day rental + $0.000005/call.

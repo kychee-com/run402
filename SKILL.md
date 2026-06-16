@@ -545,19 +545,19 @@ Tier is per **organization**, not per project. One subscribe / renew / upgrade a
 - **`set_auto_recharge`** — auto-buy email packs when credits run low.
 - **`create_checkout`** — org checkout for balance top-ups, tiers, or email packs.
 
-### KMS contract wallets (on-chain signing)
+### KMS signers (on-chain signing)
 
-For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit (30 days prepaid). **Non-custodial.**
+For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 cash credit (30 days prepaid). **Non-custodial.**
 
-- **`provision_contract_wallet`** — `chain: "base-mainnet"` or `"base-sepolia"`. Optional `recovery_address`.
-- **`get_contract_wallet`** / **`list_contract_wallets`** — metadata + live balance + USD value.
+- **`provision_signer`** — `chain: "base-mainnet"` or `"base-sepolia"`. Optional `recovery_address`.
+- **`get_signer`** / **`list_signers`** — metadata + live balance + USD value.
 - **`set_recovery_address`** / **`set_low_balance_alert`** — optional safety nets.
 - **`contract_call`** — submit a write call (chain gas at-cost + KMS sign fee). Idempotent on `idempotency_key`.
-- **`contract_deploy`** — deploy a contract from the wallet (signs `to: null + bytecode` creation tx). Returns deterministic CREATE address synchronously. Same pricing as `contract_call`. Caller supplies pre-compiled bytecode + ABI-encoded constructor args (run402 doesn't compile Solidity).
+- **`contract_deploy`** — deploy a contract from the signer (signs `to: null + bytecode` creation tx). Returns deterministic CREATE address synchronously. Same pricing as `contract_call`. Caller supplies pre-compiled bytecode + ABI-encoded constructor args (run402 doesn't compile Solidity).
 - **`contract_read`** — read-only call (free).
 - **`get_contract_call_status`** — lifecycle, gas, receipt.
-- **`drain_contract_wallet`** — drain native balance (works on suspended wallets — the safety valve).
-- **`delete_contract_wallet`** — schedule KMS key deletion (refused if balance ≥ dust).
+- **`drain_signer`** — drain native balance (works on suspended signers — the safety valve).
+- **`delete_signer`** — schedule KMS key deletion (refused if balance ≥ dust).
 
 ### Allowance & organization
 
@@ -660,7 +660,7 @@ A project can be transferred to a different wallet without redeploying. Both sid
 **What does NOT transfer:**
 
 - Tier lease stays with the original owner's organization (no proration in Phase 1A).
-- KMS contract wallets (`provision_contract_wallet`) remain wallet-scoped, not project-scoped.
+- KMS signers (`provision_signer`) remain wallet-scoped, not project-scoped.
 - GitHub repository ownership — handle that out of band.
 - On-chain balance attached to any wallet — `to_wallet` does NOT gain access to `from_wallet`'s funds.
 

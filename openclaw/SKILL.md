@@ -810,16 +810,16 @@ run402 domains delete example.com --confirm
 
 Subdomain auto-reassignment: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new deployment. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
 
-## On-chain — KMS contract wallets
+## On-chain — KMS signers
 
-For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS — there is no export, ever. $0.04/day rental + $0.000005/call. Wallet creation requires $1.20 in cash credit (30 days prepaid). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>.
+For agents that need to sign Ethereum transactions. Private keys never leave AWS KMS — there is no export, ever. $0.04/day rental + $0.000005/call. Signer creation requires $1.20 in cash credit (30 days prepaid). Non-custodial — see <https://run402.com/humans/terms.html#non-custodial-kms-wallets>.
 
 ```bash
-run402 contracts provision-wallet --chain base-mainnet [--recovery-address 0x…]
-run402 contracts list-wallets
-run402 contracts get-wallet <wallet_id>          # metadata + live balance + USD value
+run402 contracts provision-signer --chain base-mainnet [--recovery-address 0x…]
+run402 contracts list-signers
+run402 contracts get-signer <signer_id>          # metadata + live balance + USD value
 
-run402 contracts call --wallet <id> --to 0x… \
+run402 contracts call <project_id> <signer_id> --to 0x… \
   --abi @abi.json --fn transfer --args '["0x…", "1000000"]' \
   [--value-wei 0] [--idempotency-key <k>]
 
@@ -827,8 +827,8 @@ run402 contracts read --chain base-mainnet \
   --to 0x… --abi @abi.json --fn balanceOf --args '["0x…"]'
 
 run402 contracts status <call_id>
-run402 contracts drain  <wallet_id> --to 0x… --confirm     # safety valve (works on suspended)
-run402 contracts delete <wallet_id> --confirm              # 7-day KMS deletion window
+run402 contracts drain  <signer_id> --to 0x… --confirm     # safety valve (works on suspended)
+run402 contracts delete <signer_id> --confirm              # 7-day KMS deletion window
 ```
 
 ## Tier and billing
@@ -919,7 +919,7 @@ run402 transfer list --outgoing
 
 **Freeze invariant.** While `pending`, owner-side mutations against the project (deploy, secrets, custom domains, function CRUD, scheduled-function changes, mailbox config, CI bindings, project rename) return **`409 PROJECT_HAS_PENDING_TRANSFER`** with `details.transfer_id` and a `next_actions[]` cancel route. Data-plane traffic keeps serving. Payment-path routes (tier renew, billing) keep working. The `transfer cancel` route is intentionally unblocked.
 
-**What does NOT transfer:** tier lease (stays with the original owner's organization; no Phase 1A proration), KMS contract wallets (`run402 contracts ...` — wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet.
+**What does NOT transfer:** tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`run402 contracts ...` — wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet.
 
 **Billing policy.** Phase 1A supports only `--billing-policy migrate` (default): the project moves into the recipient's organization. If the recipient has no active organization yet, the accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
 

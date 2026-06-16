@@ -597,9 +597,9 @@ describe("2026-05 CLI bug backlog argv validation", () => {
     },
     {
       issue: "GH-286",
-      name: "contracts provision-wallet rejects unsupported chains",
+      name: "contracts provision-signer rejects unsupported chains",
       module: "./cli/lib/contracts.mjs",
-      call: (run) => run("provision-wallet", ["prj_test123", "--chain", "polygon"]),
+      call: (run) => run("provision-signer", ["prj_test123", "--chain", "polygon"]),
       code: "BAD_FLAG",
     },
     {

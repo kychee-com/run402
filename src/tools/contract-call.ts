@@ -4,7 +4,7 @@ import { mapSdkError } from "../errors.js";
 
 export const contractCallSchema = {
   project_id: z.string().describe("The project ID"),
-  wallet_id: z.string().describe("The KMS contract wallet ID"),
+  signer_id: z.string().describe("The KMS signer ID"),
   chain: z.enum(["base-mainnet", "base-sepolia"]).describe("EVM chain"),
   contract_address: z.string().describe("0x-prefixed contract address"),
   abi_fragment: z.array(z.unknown()).describe("ABI fragment containing the function definition"),
@@ -14,10 +14,10 @@ export const contractCallSchema = {
   idempotency_key: z.string().optional().describe("Optional idempotency key — same key returns same call_id without re-broadcasting"),
 };
 
-export async function handleContractCall(args: { project_id: string; wallet_id: string; chain: "base-mainnet" | "base-sepolia"; contract_address: string; abi_fragment: unknown[]; function_name: string; args: unknown[]; value?: string; idempotency_key?: string }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+export async function handleContractCall(args: { project_id: string; signer_id: string; chain: "base-mainnet" | "base-sepolia"; contract_address: string; abi_fragment: unknown[]; function_name: string; args: unknown[]; value?: string; idempotency_key?: string }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const body = await getSdk().contracts.call(args.project_id, {
-      walletId: args.wallet_id,
+      signerId: args.signer_id,
       chain: args.chain,
       contractAddress: args.contract_address,
       abiFragment: args.abi_fragment,

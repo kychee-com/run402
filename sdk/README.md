@@ -75,7 +75,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion` |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
 | `billing` | `createEmailOrganization`, `linkWallet`, `createCheckout`, `setAutoRecharge`, `checkBalance`, `getOrganization`, `lookupOrganization`, `getHistory`, `balance`, `history` |
-| `contracts` | `provisionWallet`, `getWallet`, `listWallets`, `setRecovery`, `setLowBalanceAlert`, `call`, `read`, `callStatus`, `drain`, `deleteWallet` |
+| `contracts` | `provisionSigner`, `getSigner`, `listSigners`, `setRecovery`, `setLowBalanceAlert`, `call`, `read`, `callStatus`, `drain`, `deleteSigner` |
 | `ai` | `translate`, `moderate`, `usage`, `generateImage` |
 | `allowance` | `status`, `create`, `export`, `faucet` |
 | `service` | `status`, `health` (no auth, no setup — works on a fresh install) |

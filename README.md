@@ -497,18 +497,18 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `billing_history` | Ledger history. |
 | `set_auto_recharge` | Auto-buy email packs when credits run low. |
 
-### KMS contract wallets (on-chain signing)
+### KMS signers (on-chain signing)
 
 | Tool | Description |
 |------|-------------|
-| `provision_contract_wallet` | AWS KMS-backed Ethereum wallet. $0.04/day rental + $0.000005 per call. Private keys never leave KMS. |
-| `get_contract_wallet` / `list_contract_wallets` | Metadata + live native balance. |
+| `provision_signer` | AWS KMS-backed Ethereum signer. $0.04/day rental + $0.000005 per call. Private keys never leave KMS. |
+| `get_signer` / `list_signers` | Metadata + live native balance. |
 | `set_recovery_address` / `set_low_balance_alert` | Optional safety nets. |
 | `contract_call` | Submit a write call (chain gas at-cost + KMS sign fee). |
 | `contract_read` | Read-only call (free). |
 | `get_contract_call_status` | Lifecycle, gas, receipt. |
-| `drain_contract_wallet` | Drain native balance (works on suspended wallets — the safety valve). |
-| `delete_contract_wallet` | Schedule KMS key deletion (refused if balance ≥ dust). |
+| `drain_signer` | Drain native balance (works on suspended signers — the safety valve). |
+| `delete_signer` | Schedule KMS key deletion (refused if balance ≥ dust). |
 
 ### Allowance & organization
 

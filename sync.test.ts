@@ -444,18 +444,18 @@ const SURFACE: Capability[] = [
   { id: "service_status",    endpoint: "GET /status",                      mcp: "service_status",   cli: "service:status",   openclaw: "service:status" },
   { id: "service_health",    endpoint: "GET /health",                      mcp: "service_health",   cli: "service:health",   openclaw: "service:health" },
 
-  // ── KMS contract wallets ───────────────────────────────────────────────
-  { id: "provision_contract_wallet", endpoint: "POST /contracts/v1/wallets",                       mcp: "provision_contract_wallet", cli: "contracts:provision-wallet", openclaw: "contracts:provision-wallet" },
-  { id: "get_contract_wallet",       endpoint: "GET /contracts/v1/wallets/:id",                    mcp: "get_contract_wallet",       cli: "contracts:get-wallet",       openclaw: "contracts:get-wallet" },
-  { id: "list_contract_wallets",     endpoint: "GET /contracts/v1/wallets",                        mcp: "list_contract_wallets",     cli: "contracts:list-wallets",     openclaw: "contracts:list-wallets" },
-  { id: "set_recovery_address",      endpoint: "POST /contracts/v1/wallets/:id/recovery-address",  mcp: "set_recovery_address",      cli: "contracts:set-recovery",     openclaw: "contracts:set-recovery" },
-  { id: "set_low_balance_alert",     endpoint: "POST /contracts/v1/wallets/:id/alert",             mcp: "set_low_balance_alert",     cli: "contracts:set-alert",        openclaw: "contracts:set-alert" },
+  // ── KMS signers ─────────────────────────────────────────────────────────
+  { id: "provision_signer",          endpoint: "POST /contracts/v1/signers",                       mcp: "provision_signer",          cli: "contracts:provision-signer", openclaw: "contracts:provision-signer" },
+  { id: "get_signer",                endpoint: "GET /contracts/v1/signers/:id",                    mcp: "get_signer",                cli: "contracts:get-signer",       openclaw: "contracts:get-signer" },
+  { id: "list_signers",              endpoint: "GET /contracts/v1/signers",                        mcp: "list_signers",              cli: "contracts:list-signers",     openclaw: "contracts:list-signers" },
+  { id: "set_recovery_address",      endpoint: "POST /contracts/v1/signers/:id/recovery-address",  mcp: "set_recovery_address",      cli: "contracts:set-recovery",     openclaw: "contracts:set-recovery" },
+  { id: "set_low_balance_alert",     endpoint: "POST /contracts/v1/signers/:id/alert",             mcp: "set_low_balance_alert",     cli: "contracts:set-alert",        openclaw: "contracts:set-alert" },
   { id: "contract_call",             endpoint: "POST /contracts/v1/call",                          mcp: "contract_call",             cli: "contracts:call",             openclaw: "contracts:call" },
   { id: "contract_deploy",           endpoint: "POST /contracts/v1/deploy",                        mcp: "contract_deploy",           cli: "contracts:deploy",           openclaw: "contracts:deploy" },
   { id: "contract_read",             endpoint: "POST /contracts/v1/read",                          mcp: "contract_read",             cli: "contracts:read",             openclaw: "contracts:read" },
   { id: "get_contract_call_status",  endpoint: "GET /contracts/v1/calls/:id",                      mcp: "get_contract_call_status",  cli: "contracts:status",           openclaw: "contracts:status" },
-  { id: "drain_contract_wallet",     endpoint: "POST /contracts/v1/wallets/:id/drain",             mcp: "drain_contract_wallet",     cli: "contracts:drain",            openclaw: "contracts:drain" },
-  { id: "delete_contract_wallet",    endpoint: "DELETE /contracts/v1/wallets/:id",                 mcp: "delete_contract_wallet",    cli: "contracts:delete",           openclaw: "contracts:delete" },
+  { id: "drain_signer",              endpoint: "POST /contracts/v1/signers/:id/drain",             mcp: "drain_signer",              cli: "contracts:drain",            openclaw: "contracts:drain" },
+  { id: "delete_signer",             endpoint: "DELETE /contracts/v1/signers/:id",                 mcp: "delete_signer",             cli: "contracts:delete",           openclaw: "contracts:delete" },
 ];
 
 // ─── SDK namespace mapping ──────────────────────────────────────────────────
@@ -727,17 +727,17 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   service_health: "service.health",
 
   // KMS contract wallets
-  provision_contract_wallet: "contracts.provisionWallet",
-  get_contract_wallet: "contracts.getWallet",
-  list_contract_wallets: "contracts.listWallets",
+  provision_signer: "contracts.provisionSigner",
+  get_signer: "contracts.getSigner",
+  list_signers: "contracts.listSigners",
   set_recovery_address: "contracts.setRecovery",
   set_low_balance_alert: "contracts.setLowBalanceAlert",
   contract_call: "contracts.call",
   contract_deploy: "contracts.deploy",
   contract_read: "contracts.read",
   get_contract_call_status: "contracts.callStatus",
-  drain_contract_wallet: "contracts.drain",
-  delete_contract_wallet: "contracts.deleteWallet",
+  drain_signer: "contracts.drain",
+  delete_signer: "contracts.deleteSigner",
 };
 
 /** Walk the SDK `Run402` class and list every namespace.method pair (including nested email.webhooks.*). */

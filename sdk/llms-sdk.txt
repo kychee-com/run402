@@ -1243,26 +1243,26 @@ linking a wallet whose existing usage would push the merged pool past the tier c
 ### `r.contracts`
 
 ```
-provisionWallet(projectId, opts: { chain: "base-mainnet" | "base-sepolia", recoveryAddress? }): Promise<ProvisionWalletResult>
-getWallet(projectId, walletId): Promise<ContractWalletSummary>
-listWallets(projectId): Promise<ListWalletsResult>
-setRecovery(projectId, walletId, recoveryAddress: string | null): Promise<void>
-setLowBalanceAlert(projectId, walletId, thresholdWei: string): Promise<void>
+provisionSigner(projectId, opts: { chain: "base-mainnet" | "base-sepolia", recoveryAddress? }): Promise<ProvisionSignerResult>
+getSigner(projectId, signerId): Promise<SignerSummary>
+listSigners(projectId): Promise<ListSignersResult>
+setRecovery(projectId, signerId, recoveryAddress: string | null): Promise<void>
+setLowBalanceAlert(projectId, signerId, thresholdWei: string): Promise<void>
 
-call(projectId, opts: { walletId, chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args, value?, idempotencyKey? }): Promise<ContractCallResult>
-deploy(projectId, opts: { walletId, chain, bytecode, value?, idempotencyKey? }): Promise<ContractDeployResult> // bytecode = full creation calldata (creation bytecode + ABI-encoded ctor args concatenated by caller); ≤ 128 KB. Returns deterministic CREATE address synchronously in `contract_address`.
+call(projectId, opts: { signerId, chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args, value?, idempotencyKey? }): Promise<ContractCallResult>
+deploy(projectId, opts: { signerId, chain, bytecode, value?, idempotencyKey? }): Promise<ContractDeployResult> // bytecode = full creation calldata (creation bytecode + ABI-encoded ctor args concatenated by caller); ≤ 128 KB. Returns deterministic CREATE address synchronously in `contract_address`.
 read(opts: { chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args }): Promise<ContractReadResult>
 callStatus(projectId, callId): Promise<ContractCallResult>
-drain(projectId, walletId, destinationAddress): Promise<DrainResult>
-deleteWallet(projectId, walletId): Promise<DeleteWalletResult> // refused if balance ≥ dust
+drain(projectId, signerId, destinationAddress): Promise<DrainResult>
+deleteSigner(projectId, signerId): Promise<DeleteSignerResult> // refused if balance ≥ dust
 
 // CLI-style aliases:
-setAlert(projectId, walletId, thresholdWei): Promise<void>
+setAlert(projectId, signerId, thresholdWei): Promise<void>
 status(projectId, callId): Promise<ContractCallResult>
-delete(projectId, walletId): Promise<DeleteWalletResult>
+delete(projectId, signerId): Promise<DeleteSignerResult>
 ```
 
-Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Wallet creation requires $1.20 cash credit. Non-custodial. The SDK exports typed metadata and call-result envelopes (`ContractWalletSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
+Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 cash credit. Non-custodial. The SDK exports typed metadata and call-result envelopes (`SignerSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
 
 ### `r.ai`
 
@@ -1467,7 +1467,7 @@ After `accept`, the project carries a persistent `secrets_rotation_advised` advi
 
 `r.tier.status()` also surfaces `incoming_transfers[]` at the top level (each entry includes `preview_path` and the full pending summary) so a single status call shows pending offers without a separate `listIncoming` fetch.
 
-What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS contract wallets (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
+What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
 ## Org membership & project grants (`r.orgs`, `r.org(id)`, `r.grants` — v1.77+ org-owned control plane; first-class orgs v1.82)
 

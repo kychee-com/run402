@@ -257,17 +257,17 @@ import { projectUseSchema, handleProjectUse } from "./tools/project-use.js";
 import { projectKeysSchema, handleProjectKeys } from "./tools/project-keys.js";
 
 // New tools — KMS contract wallets
-import { provisionContractWalletSchema, handleProvisionContractWallet } from "./tools/provision-contract-wallet.js";
-import { getContractWalletSchema, handleGetContractWallet } from "./tools/get-contract-wallet.js";
-import { listContractWalletsSchema, handleListContractWallets } from "./tools/list-contract-wallets.js";
+import { provisionSignerSchema, handleProvisionSigner } from "./tools/provision-signer.js";
+import { getSignerSchema, handleGetSigner } from "./tools/get-signer.js";
+import { listSignersSchema, handleListSigners } from "./tools/list-signers.js";
 import { setRecoveryAddressSchema, handleSetRecoveryAddress } from "./tools/set-recovery-address.js";
 import { setLowBalanceAlertSchema, handleSetLowBalanceAlert } from "./tools/set-low-balance-alert.js";
 import { contractCallSchema, handleContractCall } from "./tools/contract-call.js";
 import { contractDeploySchema, handleContractDeploy } from "./tools/contract-deploy.js";
 import { contractReadSchema, handleContractRead } from "./tools/contract-read.js";
 import { getContractCallStatusSchema, handleGetContractCallStatus } from "./tools/get-contract-call-status.js";
-import { drainContractWalletSchema, handleDrainContractWallet } from "./tools/drain-contract-wallet.js";
-import { deleteContractWalletSchema, handleDeleteContractWallet } from "./tools/delete-contract-wallet.js";
+import { drainSignerSchema, handleDrainSigner } from "./tools/drain-signer.js";
+import { deleteSignerSchema, handleDeleteSigner } from "./tools/delete-signer.js";
 
 // New tools — service status (public, unauthenticated)
 import { serviceStatusSchema, handleServiceStatus } from "./tools/service-status.js";
@@ -1305,53 +1305,53 @@ server.tool(
   async (args) => handleSetAutoRecharge(args),
 );
 
-// ─── KMS contract wallets ──────────────────────────────────────────────────
+// ─── KMS signers ───────────────────────────────────────────────────────────
 
 server.tool(
-  "provision_contract_wallet",
-  "Provision an AWS KMS-backed Ethereum wallet for signing smart-contract write transactions. Private keys never leave KMS. Cost: $0.04/day rental ($1.20/month) plus $0.000005 per contract call. Requires $1.20 in cash credit at creation (30 days of rent). Non-custodial.",
-  provisionContractWalletSchema,
-  async (args) => handleProvisionContractWallet(args),
+  "provision_signer",
+  "Provision an AWS KMS-backed Ethereum signer for signing smart-contract write transactions. Private keys never leave KMS. Cost: $0.04/day rental ($1.20/month) plus $0.000005 per contract call. Requires $1.20 in cash credit at creation (30 days of rent). Non-custodial.",
+  provisionSignerSchema,
+  async (args) => handleProvisionSigner(args),
 );
 
 server.tool(
-  "get_contract_wallet",
-  "Get a KMS contract wallet's metadata + live native-token balance + USD-micros (Chainlink-cached price).",
-  getContractWalletSchema,
-  async (args) => handleGetContractWallet(args),
+  "get_signer",
+  "Get a KMS signer's metadata + live native-token balance + USD-micros (Chainlink-cached price).",
+  getSignerSchema,
+  async (args) => handleGetSigner(args),
 );
 
 server.tool(
-  "list_contract_wallets",
-  "List all KMS contract wallets owned by the project, including deleted ones.",
-  listContractWalletsSchema,
-  async (args) => handleListContractWallets(args),
+  "list_signers",
+  "List all KMS signers owned by the project, including deleted ones.",
+  listSignersSchema,
+  async (args) => handleListSigners(args),
 );
 
 server.tool(
   "set_recovery_address",
-  "Set or clear the optional recovery address used for auto-drain on day-90 deletion of a KMS contract wallet.",
+  "Set or clear the optional recovery address used for auto-drain on day-90 deletion of a KMS signer.",
   setRecoveryAddressSchema,
   async (args) => handleSetRecoveryAddress(args),
 );
 
 server.tool(
   "set_low_balance_alert",
-  "Set the low-balance threshold (in wei) for a KMS contract wallet. Email alerts fire when the wallet's native balance drops below this threshold.",
+  "Set the low-balance threshold (in wei) for a KMS signer. Email alerts fire when the signer's native balance drops below this threshold.",
   setLowBalanceAlertSchema,
   async (args) => handleSetLowBalanceAlert(args),
 );
 
 server.tool(
   "contract_call",
-  "Submit a smart-contract write call from a KMS wallet. The gateway encodes via viem, signs the digest via AWS KMS, and broadcasts. Idempotent on optional idempotency_key. Cost: chain gas at-cost + $0.000005 KMS sign fee per call.",
+  "Submit a smart-contract write call from a KMS signer. The gateway encodes via viem, signs the digest via AWS KMS, and broadcasts. Idempotent on optional idempotency_key. Cost: chain gas at-cost + $0.000005 KMS sign fee per call.",
   contractCallSchema,
   async (args) => handleContractCall(args),
 );
 
 server.tool(
   "contract_deploy",
-  "Deploy a smart contract from a KMS wallet (signs a contract-creation tx with `to: null + data: bytecode`). The `bytecode` is full creation calldata — creation bytecode + ABI-encoded constructor args, concatenated client-side (run402 does NOT compile Solidity). Returns the deterministic CREATE address synchronously in `contract_address` — known before confirmation, no polling needed to know where the contract lives. Same pricing as `contract_call`: chain gas at-cost + $0.000005 KMS sign fee.",
+  "Deploy a smart contract from a KMS signer (signs a contract-creation tx with `to: null + data: bytecode`). The `bytecode` is full creation calldata — creation bytecode + ABI-encoded constructor args, concatenated client-side (run402 does NOT compile Solidity). Returns the deterministic CREATE address synchronously in `contract_address` — known before confirmation, no polling needed to know where the contract lives. Same pricing as `contract_call`: chain gas at-cost + $0.000005 KMS sign fee.",
   contractDeploySchema,
   async (args) => handleContractDeploy(args),
 );
@@ -1371,17 +1371,17 @@ server.tool(
 );
 
 server.tool(
-  "drain_contract_wallet",
-  "Drain a KMS contract wallet's entire native-token balance to a destination address. Works on suspended wallets — the safety valve. Cost: chain gas + $0.000005 KMS sign fee.",
-  drainContractWalletSchema,
-  async (args) => handleDrainContractWallet(args),
+  "drain_signer",
+  "Drain a KMS signer's entire native-token balance to a destination address. Works on suspended signers — the safety valve. Cost: chain gas + $0.000005 KMS sign fee.",
+  drainSignerSchema,
+  async (args) => handleDrainSigner(args),
 );
 
 server.tool(
-  "delete_contract_wallet",
-  "Schedule the KMS key for a contract wallet for deletion (7-day AWS minimum window). Refused if the wallet has on-chain balance ≥ dust — drain first.",
-  deleteContractWalletSchema,
-  async (args) => handleDeleteContractWallet(args),
+  "delete_signer",
+  "Schedule the KMS key for a signer for deletion (7-day AWS minimum window). Refused if the signer has on-chain balance ≥ dust — drain first.",
+  deleteSignerSchema,
+  async (args) => handleDeleteSigner(args),
 );
 
 // ─── Service status (public, unauthenticated) ───────────────────────────────

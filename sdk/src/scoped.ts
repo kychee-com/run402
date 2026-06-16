@@ -90,7 +90,7 @@ import type {
   ContractCallOptions,
   ContractDeployOptions,
   ContractReadOptions,
-  ProvisionWalletOptions,
+  ProvisionSignerOptions,
 } from "./namespaces/contracts.js";
 import type {
   CustomDomainAddResult,
@@ -397,20 +397,20 @@ class ScopedAssets {
 class ScopedContracts {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  provisionWallet(opts: ProvisionWalletOptions): Promise<unknown> {
-    return this.parent.contracts.provisionWallet(this.projectId, opts);
+  provisionSigner(opts: ProvisionSignerOptions): Promise<unknown> {
+    return this.parent.contracts.provisionSigner(this.projectId, opts);
   }
-  getWallet(walletId: string): Promise<unknown> {
-    return this.parent.contracts.getWallet(this.projectId, walletId);
+  getSigner(signerId: string): Promise<unknown> {
+    return this.parent.contracts.getSigner(this.projectId, signerId);
   }
-  listWallets(): Promise<unknown> {
-    return this.parent.contracts.listWallets(this.projectId);
+  listSigners(): Promise<unknown> {
+    return this.parent.contracts.listSigners(this.projectId);
   }
-  setRecovery(walletId: string, recoveryAddress: string | null): Promise<void> {
-    return this.parent.contracts.setRecovery(this.projectId, walletId, recoveryAddress);
+  setRecovery(signerId: string, recoveryAddress: string | null): Promise<void> {
+    return this.parent.contracts.setRecovery(this.projectId, signerId, recoveryAddress);
   }
-  setLowBalanceAlert(walletId: string, thresholdWei: string): Promise<void> {
-    return this.parent.contracts.setLowBalanceAlert(this.projectId, walletId, thresholdWei);
+  setLowBalanceAlert(signerId: string, thresholdWei: string): Promise<void> {
+    return this.parent.contracts.setLowBalanceAlert(this.projectId, signerId, thresholdWei);
   }
   call(opts: ContractCallOptions): Promise<unknown> {
     return this.parent.contracts.call(this.projectId, opts);
@@ -421,11 +421,11 @@ class ScopedContracts {
   callStatus(callId: string): Promise<unknown> {
     return this.parent.contracts.callStatus(this.projectId, callId);
   }
-  drain(walletId: string, destinationAddress: string): Promise<unknown> {
-    return this.parent.contracts.drain(this.projectId, walletId, destinationAddress);
+  drain(signerId: string, destinationAddress: string): Promise<unknown> {
+    return this.parent.contracts.drain(this.projectId, signerId, destinationAddress);
   }
-  deleteWallet(walletId: string): Promise<unknown> {
-    return this.parent.contracts.deleteWallet(this.projectId, walletId);
+  deleteSigner(signerId: string): Promise<unknown> {
+    return this.parent.contracts.deleteSigner(this.projectId, signerId);
   }
   // `read` is not project-scoped — pass through.
   read(opts: ContractReadOptions): Promise<unknown> {

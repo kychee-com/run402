@@ -1,9 +1,9 @@
 /**
- * `contracts` namespace — AWS KMS-backed Ethereum contract wallets.
+ * `contracts` namespace — AWS KMS-backed Ethereum signers.
  *
- * Contract wallets sign smart-contract write transactions. Private keys
- * never leave KMS. Pricing: $0.04/day rental ($1.20/month) plus $0.000005
- * per sign. Non-custodial.
+ * Signers sign smart-contract write transactions. Private keys never leave
+ * KMS. Pricing: $0.04/day rental ($1.20/month) plus $0.000005 per sign.
+ * Non-custodial.
  *
  * NOTE: The contracts API surface is frozen — this namespace preserves the
  * existing request/response shapes verbatim.
@@ -16,30 +16,30 @@ import { assertEvmAddress, assertStringInSet, assertWeiString } from "../validat
 export type EvmChain = "base-mainnet" | "base-sepolia";
 const EVM_CHAINS: readonly EvmChain[] = ["base-mainnet", "base-sepolia"];
 
-export type ContractWalletStatus = "active" | "suspended" | "deleted";
+export type SignerStatus = "active" | "suspended" | "deleted";
 
 export type ContractCallStatus = "submitted" | "confirmed" | "failed";
 
-export interface ContractWalletSummary {
-  wallet_id: string;
+export interface SignerSummary {
+  signer_id: string;
   address: string;
   chain: EvmChain;
-  status: ContractWalletStatus;
+  status: SignerStatus;
   balance_wei: string;
   threshold_wei: string | null;
   recovery_address: string | null;
   created_at: string;
 }
 
-export interface ListWalletsResult {
-  wallets: ContractWalletSummary[];
+export interface ListSignersResult {
+  signers: SignerSummary[];
 }
 
-export interface ProvisionWalletResult {
-  wallet_id: string;
+export interface ProvisionSignerResult {
+  signer_id: string;
   address: string;
   chain: EvmChain;
-  status?: ContractWalletStatus;
+  status?: SignerStatus;
   balance_wei?: string;
   threshold_wei?: string | null;
   recovery_address?: string | null;
@@ -65,19 +65,19 @@ export interface DrainResult {
   tx_hash: string | null;
 }
 
-export interface DeleteWalletResult {
-  wallet_id: string;
+export interface DeleteSignerResult {
+  signer_id: string;
   deleted_at?: string;
   scheduled_deletion_at?: string;
 }
 
-export interface ProvisionWalletOptions {
+export interface ProvisionSignerOptions {
   chain: EvmChain;
   recoveryAddress?: string;
 }
 
 export interface ContractCallOptions {
-  walletId: string;
+  signerId: string;
   chain: EvmChain;
   contractAddress?: string;
   to?: string;
@@ -91,9 +91,9 @@ export interface ContractCallOptions {
 }
 
 export interface ContractDeployOptions {
-  /** The cwlt_… ID of the KMS wallet that will sign + own the new contract. */
-  walletId: string;
-  /** The chain to deploy to. Must match the wallet's chain. */
+  /** The cwlt_… ID of the KMS signer that will sign + own the new contract. */
+  signerId: string;
+  /** The chain to deploy to. Must match the signer's chain. */
   chain: EvmChain;
   /**
    * Full creation calldata as a 0x-prefixed hex string: creation bytecode
@@ -111,7 +111,7 @@ export interface ContractDeployOptions {
 
 export interface ContractDeployResult extends ContractCallResult {
   /**
-   * The deterministic CREATE address derived from `(wallet.address, nonce)`.
+   * The deterministic CREATE address derived from `(signer.address, nonce)`.
    * Returned synchronously — the caller knows where the new contract will
    * live without waiting for confirmation. The reconciler verifies this
    * matches the on-chain receipt's `contractAddress` on confirmation.
@@ -131,66 +131,66 @@ export interface ContractReadOptions {
 }
 
 export class Contracts {
-  readonly setAlert: (projectId: string, walletId: string, thresholdWei: string) => Promise<void>;
-  readonly delete: (projectId: string, walletId: string) => Promise<DeleteWalletResult>;
+  readonly setAlert: (projectId: string, signerId: string, thresholdWei: string) => Promise<void>;
+  readonly delete: (projectId: string, signerId: string) => Promise<DeleteSignerResult>;
   readonly status: (projectId: string, callId: string) => Promise<ContractCallResult>;
 
   constructor(private readonly client: Client) {
     this.setAlert = this.setLowBalanceAlert.bind(this);
-    this.delete = this.deleteWallet.bind(this);
+    this.delete = this.deleteSigner.bind(this);
     this.status = this.callStatus.bind(this);
   }
 
-  /** Provision a new KMS-backed contract wallet. */
-  async provisionWallet(projectId: string, opts: ProvisionWalletOptions): Promise<ProvisionWalletResult> {
-    assertStringInSet(opts.chain, EVM_CHAINS, "chain", "provisioning KMS contract wallet");
+  /** Provision a new KMS-backed signer. */
+  async provisionSigner(projectId: string, opts: ProvisionSignerOptions): Promise<ProvisionSignerResult> {
+    assertStringInSet(opts.chain, EVM_CHAINS, "chain", "provisioning KMS signer");
     if (opts.recoveryAddress) {
-      assertEvmAddress(opts.recoveryAddress, "recoveryAddress", "provisioning KMS contract wallet");
+      assertEvmAddress(opts.recoveryAddress, "recoveryAddress", "provisioning KMS signer");
     }
     const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "provisioning KMS contract wallet");
+    if (!project) throw new ProjectNotFound(projectId, "provisioning KMS signer");
     const body: Record<string, unknown> = { chain: opts.chain };
     if (opts.recoveryAddress) body.recovery_address = opts.recoveryAddress;
-    return this.client.request<ProvisionWalletResult>("/contracts/v1/wallets", {
+    return this.client.request<ProvisionSignerResult>("/contracts/v1/signers", {
       method: "POST",
       headers: { Authorization: `Bearer ${project.service_key}` },
       body,
-      context: "provisioning KMS contract wallet",
+      context: "provisioning KMS signer",
     });
   }
 
-  /** Get a wallet's metadata + live balance. */
-  async getWallet(projectId: string, walletId: string): Promise<ContractWalletSummary> {
+  /** Get a signer's metadata + live balance. */
+  async getSigner(projectId: string, signerId: string): Promise<SignerSummary> {
     const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "fetching wallet");
-    return this.client.request<ContractWalletSummary>(
-      `/contracts/v1/wallets/${encodeURIComponent(walletId)}`,
+    if (!project) throw new ProjectNotFound(projectId, "fetching signer");
+    return this.client.request<SignerSummary>(
+      `/contracts/v1/signers/${encodeURIComponent(signerId)}`,
       {
         headers: { Authorization: `Bearer ${project.service_key}` },
-        context: "fetching wallet",
+        context: "fetching signer",
       },
     );
   }
 
-  /** List all wallets owned by the project, including deleted ones. */
-  async listWallets(projectId: string): Promise<ListWalletsResult> {
+  /** List all signers owned by the project, including deleted ones. */
+  async listSigners(projectId: string): Promise<ListSignersResult> {
     const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing wallets");
-    return this.client.request<ListWalletsResult>("/contracts/v1/wallets", {
+    if (!project) throw new ProjectNotFound(projectId, "listing signers");
+    return this.client.request<ListSignersResult>("/contracts/v1/signers", {
       headers: { Authorization: `Bearer ${project.service_key}` },
-      context: "listing wallets",
+      context: "listing signers",
     });
   }
 
   /** Set or clear the recovery address used for auto-drain on day-90 deletion. */
-  async setRecovery(projectId: string, walletId: string, recoveryAddress: string | null): Promise<void> {
+  async setRecovery(projectId: string, signerId: string, recoveryAddress: string | null): Promise<void> {
     if (recoveryAddress !== null) {
       assertEvmAddress(recoveryAddress, "recoveryAddress", "setting recovery address");
     }
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "setting recovery address");
     await this.client.request<unknown>(
-      `/contracts/v1/wallets/${encodeURIComponent(walletId)}/recovery-address`,
+      `/contracts/v1/signers/${encodeURIComponent(signerId)}/recovery-address`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${project.service_key}` },
@@ -201,12 +201,12 @@ export class Contracts {
   }
 
   /** Set the low-balance threshold (in wei) for email alerts. */
-  async setLowBalanceAlert(projectId: string, walletId: string, thresholdWei: string): Promise<void> {
+  async setLowBalanceAlert(projectId: string, signerId: string, thresholdWei: string): Promise<void> {
     assertWeiString(thresholdWei, "thresholdWei", "setting low-balance threshold");
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "setting low-balance threshold");
     await this.client.request<unknown>(
-      `/contracts/v1/wallets/${encodeURIComponent(walletId)}/alert`,
+      `/contracts/v1/signers/${encodeURIComponent(signerId)}/alert`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${project.service_key}` },
@@ -240,7 +240,7 @@ export class Contracts {
     if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
 
     const body: Record<string, unknown> = {
-      wallet_id: opts.walletId,
+      signer_id: opts.signerId,
       chain: opts.chain,
       contract_address: contractAddress,
       abi_fragment: abiFragment,
@@ -261,14 +261,14 @@ export class Contracts {
   }
 
   /**
-   * Deploy a contract from the wallet (KMS-signs a contract-creation tx).
+   * Deploy a contract from the signer (KMS-signs a contract-creation tx).
    *
    * The `bytecode` is the full creation calldata — creation bytecode
    * concatenated with ABI-encoded constructor args (the caller does the
    * encoding via viem/ethers etc.; run402 does NOT compile Solidity).
    *
    * Returns synchronously with the deterministic CREATE address derived
-   * from `(wallet.address, nonce)` — no need to wait for confirmation
+   * from `(signer.address, nonce)` — no need to wait for confirmation
    * to know where the contract will live. Reconciler verifies on receipt.
    *
    * Same pricing as `call`: chain gas at-cost + $0.000005 KMS sign fee.
@@ -297,7 +297,7 @@ export class Contracts {
     if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
 
     const body: Record<string, unknown> = {
-      wallet_id: opts.walletId,
+      signer_id: opts.signerId,
       chain: opts.chain,
       bytecode: opts.bytecode,
     };
@@ -359,44 +359,44 @@ export class Contracts {
   }
 
   /**
-   * Drain the wallet's native-token balance to a destination address.
-   * Works on suspended wallets. Requires `X-Confirm-Drain: <wallet_id>`
+   * Drain the signer's native-token balance to a destination address.
+   * Works on suspended signers. Requires `X-Confirm-Drain: <signer_id>`
    * confirmation header (sent automatically by the SDK).
    */
-  async drain(projectId: string, walletId: string, destinationAddress: string): Promise<DrainResult> {
-    assertEvmAddress(destinationAddress, "destinationAddress", "draining wallet");
+  async drain(projectId: string, signerId: string, destinationAddress: string): Promise<DrainResult> {
+    assertEvmAddress(destinationAddress, "destinationAddress", "draining signer");
     const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "draining wallet");
+    if (!project) throw new ProjectNotFound(projectId, "draining signer");
     return this.client.request<DrainResult>(
-      `/contracts/v1/wallets/${encodeURIComponent(walletId)}/drain`,
+      `/contracts/v1/signers/${encodeURIComponent(signerId)}/drain`,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${project.service_key}`,
-          "X-Confirm-Drain": walletId,
+          "X-Confirm-Drain": signerId,
         },
         body: { destination_address: destinationAddress },
-        context: "draining wallet",
+        context: "draining signer",
       },
     );
   }
 
   /**
    * Schedule the KMS key for deletion (7-day AWS minimum window). Refused
-   * if the wallet has on-chain balance >= dust — drain first.
+   * if the signer has on-chain balance >= dust — drain first.
    */
-  async deleteWallet(projectId: string, walletId: string): Promise<DeleteWalletResult> {
+  async deleteSigner(projectId: string, signerId: string): Promise<DeleteSignerResult> {
     const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting wallet");
-    return this.client.request<DeleteWalletResult>(
-      `/contracts/v1/wallets/${encodeURIComponent(walletId)}`,
+    if (!project) throw new ProjectNotFound(projectId, "deleting signer");
+    return this.client.request<DeleteSignerResult>(
+      `/contracts/v1/signers/${encodeURIComponent(signerId)}`,
       {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${project.service_key}`,
-          "X-Confirm-Delete": walletId,
+          "X-Confirm-Delete": signerId,
         },
-        context: "deleting wallet",
+        context: "deleting signer",
       },
     );
   }

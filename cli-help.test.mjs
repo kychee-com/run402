@@ -115,8 +115,8 @@ const MATRIX = {
   contracts: {
     shared: [],
     specific: [
-      "provision-wallet", "set-recovery", "set-alert", "call", "read", "drain", "delete",
-      "get-wallet", "list-wallets", "status",
+      "provision-signer", "set-recovery", "set-alert", "call", "read", "drain", "delete",
+      "get-signer", "list-signers", "status",
     ],
   },
   agent: { shared: [], specific: ["contact"] },
@@ -447,7 +447,7 @@ describe("CLI --help contract", () => {
       [["tier", "status"],             "run402 tier — Manage your Run402 tier subscription"],
       [["service", "status"],          "run402 service — Run402 service health and availability"],
       [["sender-domain", "register"],  "run402 sender-domain — Manage custom email sender domain"],
-      [["contracts", "get-wallet"],    "run402 contracts — KMS-backed Ethereum wallets"],
+      [["contracts", "get-signer"],    "run402 contracts — KMS-backed Ethereum signers"],
     ];
     for (const [argv, parentHeading] of cases) {
       it(`run402 ${argv.join(" ")} --help shows per-subcommand title`, async () => {

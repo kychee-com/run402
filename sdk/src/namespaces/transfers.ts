@@ -140,8 +140,8 @@ export interface CiBindingPreview {
   created_at: string;
 }
 
-export interface ContractWalletPreview {
-  /** Always an empty array in Phase 1A. Reserved for future project-scoped KMS wallets. */
+export interface SignerPreview {
+  /** Always an empty array in Phase 1A. Reserved for future project-scoped KMS signers. */
   address: string;
   chain: string;
 }
@@ -177,7 +177,7 @@ export interface ProjectTransferPreview {
   secret_names: string[];
   mailbox_summary: MailboxSummary;
   ci_bindings_to_be_revoked: CiBindingPreview[];
-  contract_wallets: ContractWalletPreview[];
+  signers: SignerPreview[];
   github_repo_note: string;
   billing_implications: BillingImplications;
 }

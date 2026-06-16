@@ -142,7 +142,7 @@ describe("admin.transfers.preview", () => {
       secret_names: ["DB_URL"],
       mailbox_summary: { count: 0, slugs_truncated: [] },
       ci_bindings_to_be_revoked: [],
-      contract_wallets: [],
+      signers: [],
       github_repo_note: "GitHub repository ownership is not transferred by Run402.",
       billing_implications: {
         from_organization_id: "org_1",

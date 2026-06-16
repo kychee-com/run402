@@ -48,7 +48,7 @@ Commands:
   auth        Manage project user authentication (magic link, passwords, settings)
   sender-domain  Manage custom email sender domain (register, status, remove)
   billing     Email organizations, Stripe tier checkout, email packs
-  contracts   KMS contract wallets ($0.04/day rental + $0.000005/sign)
+  contracts   KMS signers ($0.04/day rental + $0.000005/sign)
   agent       Manage agent identity (contact info)
   operator    Operator (human/email) session — login, then overview across your wallets
   service     Run402 service health and availability (status, health)

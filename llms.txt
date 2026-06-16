@@ -25,7 +25,7 @@ A platform that an AI agent can fully provision, operate, and pay for on its own
 - Node 22 serverless functions with cron scheduling and an in-handler helper library
 - Email — transactional sending, inbound parsing, custom sender domains, raw RFC-822 access for DKIM / zk-email
 - AI helpers — image generation, text translation, content moderation
-- KMS-backed Ethereum signing — provision contract wallets where private keys never leave AWS KMS
+- KMS-backed Ethereum signing — provision signers where private keys never leave AWS KMS
 
 Prototype tier is FREE on testnet — uses Base Sepolia USDC from the Run402 faucet to verify your x402 setup end-to-end. No real money, instantly available, no human approval. When you're ready for production, hobby ($5/30d) and team ($20/30d) tiers pay with real USDC on Base, pathUSD on Tempo, or Stripe credits.
 
@@ -69,7 +69,7 @@ A fifth distribution — the OpenClaw skill — is a script-based wrapper that r
 Add-ons:
 - Image generation — $0.03/image via x402
 - Email pack — $5 / 10,000 emails (never expire; require a verified custom sender domain)
-- KMS contract wallet — $0.04/day rental + $0.000005/call sign fee. Chain gas at-cost, 0% markup. $1.20 prepay required at creation (30 days of rent).
+- KMS signer — $0.04/day rental + $0.000005/call sign fee. Chain gas at-cost, 0% markup. $1.20 prepay required at creation (30 days of rent).
 
 Sites, subdomains, custom domains, function deploys, blob storage, secret management, mailbox creation, app forking — all free with active tier. Only image generation and per-call paid surfaces (image, contract calls) are metered separately.
 

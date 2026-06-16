@@ -9,49 +9,49 @@ import {
   validateEvmAddress,
 } from "./argparse.mjs";
 
-const HELP = `run402 contracts — KMS-backed Ethereum wallets for smart-contract calls
+const HELP = `run402 contracts — KMS-backed Ethereum signers for smart-contract calls
 
-  Pricing: $0.04/day per wallet ($1.20/month) plus $0.000005 per contract call.
-  Wallet creation requires $1.20 in cash credit (30 days of rent).
+  Pricing: $0.04/day per signer ($1.20/month) plus $0.000005 per contract call.
+  Signer creation requires $1.20 in cash credit (30 days of rent).
   Non-custodial: see https://run402.com/humans/terms.html#non-custodial-kms-wallets
 
 Usage:
   run402 contracts <subcommand> [args...]
 
 Subcommands:
-  provision-wallet <project_id> --chain <base-mainnet|base-sepolia> [--recovery 0x...]
-    Provision a KMS wallet ($0.04/day, requires $1.20 prepay).
-  get-wallet <project_id> <wallet_id>
-    Get wallet metadata + live native balance.
-  list-wallets <project_id>
-    List all KMS wallets for the project (includes deleted).
-  set-recovery <project_id> <wallet_id> [--address 0x... | --clear]
+  provision-signer <project_id> --chain <base-mainnet|base-sepolia> [--recovery 0x...]
+    Provision a KMS signer ($0.04/day, requires $1.20 prepay).
+  get-signer <project_id> <signer_id>
+    Get signer metadata + live native balance.
+  list-signers <project_id>
+    List all KMS signers for the project (includes deleted).
+  set-recovery <project_id> <signer_id> [--address 0x... | --clear]
     Set/clear the optional recovery address.
-  set-alert <project_id> <wallet_id> --threshold-wei <n>
+  set-alert <project_id> <signer_id> --threshold-wei <n>
     Set the low-balance alert threshold (in wei).
-  call <project_id> <wallet_id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]
+  call <project_id> <signer_id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]
     Submit a contract write call (chain gas + $0.000005 KMS sign fee).
-  deploy <project_id> <wallet_id> --bytecode 0x... [--chain <base-mainnet|base-sepolia>] [--value-wei <n>] [--idempotency-key <k>]
+  deploy <project_id> <signer_id> --bytecode 0x... [--chain <base-mainnet|base-sepolia>] [--value-wei <n>] [--idempotency-key <k>]
     Deploy a contract (chain gas + $0.000005 KMS sign fee). Returns deterministic CREATE address synchronously.
   read --chain <chain> --to 0x... --abi <json> --fn <name> --args <json>
     Read-only contract call (free).
   status <project_id> <call_id>
     Get call status, gas used, gas cost USD-micros, receipt.
-  drain <project_id> <wallet_id> --to 0x... --confirm
-    Drain native balance to a destination address. Works on suspended wallets.
-  delete <project_id> <wallet_id> --confirm
+  drain <project_id> <signer_id> --to 0x... --confirm
+    Drain native balance to a destination address. Works on suspended signers.
+  delete <project_id> <signer_id> --confirm
     Schedule the KMS key for deletion (refused if balance >= dust).
 
 Examples:
-  run402 contracts provision-wallet proj_abc --chain base-mainnet
+  run402 contracts provision-signer proj_abc --chain base-mainnet
   run402 contracts call proj_abc cwlt_xyz --to 0x1234... --abi '[{"type":"function","name":"ping","inputs":[],"outputs":[]}]' --fn ping --args '[]'
 `;
 
 const SUB_HELP = {
-  "provision-wallet": `run402 contracts provision-wallet — Provision a KMS-backed wallet
+  "provision-signer": `run402 contracts provision-signer — Provision a KMS-backed signer
 
 Usage:
-  run402 contracts provision-wallet <project_id> --chain <chain> [options]
+  run402 contracts provision-signer <project_id> --chain <chain> [options]
 
 Arguments:
   <project_id>        Target project ID
@@ -59,39 +59,39 @@ Arguments:
 Options:
   --chain <chain>     Required: base-mainnet or base-sepolia
   --recovery 0x...    Optional recovery address (can be set later)
-  --yes               Skip confirmation when project already has a wallet
+  --yes               Skip confirmation when project already has a signer
 `,
-  "set-recovery": `run402 contracts set-recovery — Set or clear the wallet recovery address
+  "set-recovery": `run402 contracts set-recovery — Set or clear the signer recovery address
 
 Usage:
-  run402 contracts set-recovery <project_id> <wallet_id> [options]
+  run402 contracts set-recovery <project_id> <signer_id> [options]
 `,
   "set-alert": `run402 contracts set-alert — Set the low-balance alert threshold
 
 Usage:
-  run402 contracts set-alert <project_id> <wallet_id> --threshold-wei <n>
+  run402 contracts set-alert <project_id> <signer_id> --threshold-wei <n>
 `,
   call: `run402 contracts call — Submit a contract write call
 
 Usage:
-  run402 contracts call <project_id> <wallet_id> --to 0x... --abi <json>
+  run402 contracts call <project_id> <signer_id> --to 0x... --abi <json>
     --fn <name> --args <json> [options]
 `,
-  deploy: `run402 contracts deploy — Deploy a smart contract from a KMS wallet
+  deploy: `run402 contracts deploy — Deploy a smart contract from a KMS signer
 
 KMS-signs a contract-creation transaction (to: null + data: bytecode) and broadcasts.
-Returns the deterministic CREATE address synchronously — known from (wallet, nonce)
+Returns the deterministic CREATE address synchronously — known from (signer, nonce)
 before the tx confirms. Cost: chain gas at-cost + $0.000005 KMS sign fee.
 
 Usage:
-  run402 contracts deploy <project_id> <wallet_id> --bytecode 0x... [options]
+  run402 contracts deploy <project_id> <signer_id> --bytecode 0x... [options]
 
 Options:
   --bytecode 0x...        Full creation calldata as 0x-prefixed hex (creation
                           bytecode + ABI-encoded constructor args, concatenated
                           client-side via viem/ethers). Required. ≤ 128 KB.
   --chain <chain>         base-mainnet (default) or base-sepolia. Must match
-                          the wallet's chain.
+                          the signer's chain.
   --value-wei <n>         Optional native-token value in wei to attach.
   --idempotency-key <k>   Optional. Same key + same bytecode returns the
                           existing call without re-broadcasting.
@@ -108,38 +108,38 @@ Usage:
   drain: `run402 contracts drain — Drain native balance to a destination address
 
 Usage:
-  run402 contracts drain <project_id> <wallet_id> --to 0x... --confirm
+  run402 contracts drain <project_id> <signer_id> --to 0x... --confirm
 `,
   delete: `run402 contracts delete — Schedule the KMS key for deletion
 
 Usage:
-  run402 contracts delete <project_id> <wallet_id> --confirm
+  run402 contracts delete <project_id> <signer_id> --confirm
 `,
-  "get-wallet": `run402 contracts get-wallet — Get wallet metadata + live balance
+  "get-signer": `run402 contracts get-signer — Get signer metadata + live balance
 
 Usage:
-  run402 contracts get-wallet <project_id> <wallet_id>
+  run402 contracts get-signer <project_id> <signer_id>
 
 Arguments:
-  <project_id>        Project ID that owns the wallet
-  <wallet_id>         Wallet ID (e.g. cwlt_abc123)
+  <project_id>        Project ID that owns the signer
+  <signer_id>         Signer ID (e.g. cwlt_abc123)
 
 Examples:
-  run402 contracts get-wallet prj_abc123 cwlt_abc123
+  run402 contracts get-signer prj_abc123 cwlt_abc123
 `,
-  "list-wallets": `run402 contracts list-wallets — List all KMS wallets for a project
+  "list-signers": `run402 contracts list-signers — List all KMS signers for a project
 
 Usage:
-  run402 contracts list-wallets <project_id>
+  run402 contracts list-signers <project_id>
 
 Arguments:
-  <project_id>        Project ID to list wallets for
+  <project_id>        Project ID to list signers for
 
 Notes:
-  - Includes deleted wallets
+  - Includes deleted signers
 
 Examples:
-  run402 contracts list-wallets prj_abc123
+  run402 contracts list-signers prj_abc123
 `,
   status: `run402 contracts status — Get a contract call's status and receipt
 
@@ -171,13 +171,13 @@ function validateWeiFlag(flag, value) {
   }
 }
 
-async function provisionWallet(projectId, args) {
+async function provisionSigner(projectId, args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--chain", "--recovery"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--yes", "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts provision-wallet: ${extra[0]}` });
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts provision-signer: ${extra[0]}` });
   }
   const chain = flagValue(parsedArgs, "--chain");
   if (!chain) {
@@ -189,22 +189,22 @@ async function provisionWallet(projectId, args) {
   assertAllowedValue(chain, ["base-mainnet", "base-sepolia"], "--chain");
   const recovery = flagValue(parsedArgs, "--recovery");
   if (recovery) validateEvmAddress(recovery, "--recovery");
-  // Soft default of one wallet — confirm if project already has one.
-  let activeWallets = null;
+  // Soft default of one signer — confirm if project already has one.
+  let activeSigners = null;
   try {
-    const list = await getSdk().contracts.listWallets(projectId);
-    activeWallets = (list.wallets || []).filter((w) => w.status === "active").length;
+    const list = await getSdk().contracts.listSigners(projectId);
+    activeSigners = (list.signers || []).filter((s) => s.status === "active").length;
   } catch { /* best-effort */ }
-  if (activeWallets !== null && activeWallets >= 1 && !hasFlag(parsedArgs, "--yes")) {
+  if (activeSigners !== null && activeSigners >= 1 && !hasFlag(parsedArgs, "--yes")) {
     fail({
       code: "CONFIRMATION_REQUIRED",
-      message: `This project already has ${activeWallets} active wallet(s). Adding another costs $0.04/day each ($1.20/month). Re-run with --yes to confirm.`,
-      details: { active_wallets: activeWallets },
+      message: `This project already has ${activeSigners} active signer(s). Adding another costs $0.04/day each ($1.20/month). Re-run with --yes to confirm.`,
+      details: { active_signers: activeSigners },
     });
   }
 
   try {
-    const data = await getSdk().contracts.provisionWallet(projectId, {
+    const data = await getSdk().contracts.provisionSigner(projectId, {
       chain,
       recoveryAddress: recovery ?? undefined,
     });
@@ -214,37 +214,37 @@ async function provisionWallet(projectId, args) {
   }
 }
 
-async function getWallet(projectId, walletId, args = []) {
+async function getSigner(projectId, signerId, args = []) {
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
   const extra = positionalArgs(parsedArgs);
   if (extra.length > 0) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts get-wallet: ${extra[0]}` });
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts get-signer: ${extra[0]}` });
   }
   try {
-    const data = await getSdk().contracts.getWallet(projectId, walletId);
+    const data = await getSdk().contracts.getSigner(projectId, signerId);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function listWallets(projectId, args = []) {
+async function listSigners(projectId, args = []) {
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
   const extra = positionalArgs(parsedArgs);
   if (extra.length > 0) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts list-wallets: ${extra[0]}` });
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for contracts list-signers: ${extra[0]}` });
   }
   try {
-    const data = await getSdk().contracts.listWallets(projectId);
+    const data = await getSdk().contracts.listSigners(projectId);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function setRecovery(projectId, walletId, args) {
+async function setRecovery(projectId, signerId, args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--address"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--clear", "--help", "-h"], valueFlags);
@@ -265,14 +265,14 @@ async function setRecovery(projectId, walletId, args) {
   }
   if (address) validateEvmAddress(address, "--address");
   try {
-    await getSdk().contracts.setRecovery(projectId, walletId, clear ? null : address);
-    console.log(JSON.stringify({ wallet_id: walletId, recovery_address: clear ? null : address, updated: true }));
+    await getSdk().contracts.setRecovery(projectId, signerId, clear ? null : address);
+    console.log(JSON.stringify({ signer_id: signerId, recovery_address: clear ? null : address, updated: true }));
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function setAlert(projectId, walletId, args) {
+async function setAlert(projectId, signerId, args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--threshold-wei"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
@@ -286,14 +286,14 @@ async function setAlert(projectId, walletId, args) {
   }
   validateWeiFlag("--threshold-wei", threshold);
   try {
-    await getSdk().contracts.setLowBalanceAlert(projectId, walletId, threshold);
-    console.log(JSON.stringify({ wallet_id: walletId, threshold_wei: threshold, updated: true }));
+    await getSdk().contracts.setLowBalanceAlert(projectId, signerId, threshold);
+    console.log(JSON.stringify({ signer_id: signerId, threshold_wei: threshold, updated: true }));
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function call(projectId, walletId, args) {
+async function call(projectId, signerId, args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--to", "--abi", "--fn", "--args", "--value-wei", "--chain", "--idempotency-key"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
@@ -322,7 +322,7 @@ async function call(projectId, walletId, args) {
   validateEvmAddress(to, "--to");
   try {
     const data = await getSdk().contracts.call(projectId, {
-      walletId,
+      signerId,
       chain,
       contractAddress: to,
       abiFragment,
@@ -337,7 +337,7 @@ async function call(projectId, walletId, args) {
   }
 }
 
-async function deploy(projectId, walletId, args) {
+async function deploy(projectId, signerId, args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--bytecode", "--value-wei", "--chain", "--idempotency-key"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
@@ -360,7 +360,7 @@ async function deploy(projectId, walletId, args) {
   if (value !== null) validateWeiFlag("--value-wei", value);
   try {
     const data = await getSdk().contracts.deploy(projectId, {
-      walletId,
+      signerId,
       chain,
       bytecode,
       value: value ?? undefined,
@@ -424,7 +424,7 @@ async function status(projectId, callId, args = []) {
   }
 }
 
-async function drain(projectId, walletId, args) {
+async function drain(projectId, signerId, args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--to"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--confirm", "--help", "-h"], valueFlags);
@@ -442,14 +442,14 @@ async function drain(projectId, walletId, args) {
   }
   validateEvmAddress(to, "--to");
   try {
-    const data = await getSdk().contracts.drain(projectId, walletId, to);
+    const data = await getSdk().contracts.drain(projectId, signerId, to);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function deleteWallet(projectId, walletId, args) {
+async function deleteSigner(projectId, signerId, args) {
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--confirm", "--help", "-h"]);
   const extra = positionalArgs(parsedArgs);
@@ -460,7 +460,7 @@ async function deleteWallet(projectId, walletId, args) {
     fail({ code: "BAD_USAGE", message: "Required: --confirm" });
   }
   try {
-    const data = await getSdk().contracts.deleteWallet(projectId, walletId);
+    const data = await getSdk().contracts.deleteSigner(projectId, signerId);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -471,9 +471,9 @@ export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
-    case "provision-wallet": await provisionWallet(args[0], args.slice(1)); break;
-    case "get-wallet":       await getWallet(args[0], args[1], args.slice(2)); break;
-    case "list-wallets":     await listWallets(args[0], args.slice(1)); break;
+    case "provision-signer": await provisionSigner(args[0], args.slice(1)); break;
+    case "get-signer":       await getSigner(args[0], args[1], args.slice(2)); break;
+    case "list-signers":     await listSigners(args[0], args.slice(1)); break;
     case "set-recovery":     await setRecovery(args[0], args[1], args.slice(2)); break;
     case "set-alert":        await setAlert(args[0], args[1], args.slice(2)); break;
     case "call":             await call(args[0], args[1], args.slice(2)); break;
@@ -481,7 +481,7 @@ export async function run(sub, args) {
     case "read":             await read(args); break;
     case "status":           await status(args[0], args[1], args.slice(2)); break;
     case "drain":            await drain(args[0], args[1], args.slice(2)); break;
-    case "delete":           await deleteWallet(args[0], args[1], args.slice(2)); break;
+    case "delete":           await deleteSigner(args[0], args[1], args.slice(2)); break;
     default:
       console.error(`Unknown subcommand: ${sub}\n`);
       console.log(HELP);

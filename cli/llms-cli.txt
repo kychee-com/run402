@@ -895,7 +895,7 @@ One noun, two rails: a **wallet** recipient is a two-party wallet transfer; an *
 
 While a transfer is `pending` (72h TTL), owner-side mutations on the project return `409 PROJECT_HAS_PENDING_TRANSFER` with `details.transfer_id` and a `next_actions[]` cancel route. Data-plane (`/rest/v1/*`, function invocation, mailbox send/receive) keeps serving; payment-path routes (tier renew, billing) keep working; the `transfer cancel` route is intentionally unblocked so the owner can always recover. After accept, rotate every inherited secret with `run402 secrets set <project> <name> <value>` — the `secrets_rotation_advised` advisory on `tier status` clears once every previously-inherited name has been re-written.
 
-What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS contract wallets (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet. Phase 1A supports only `--billing-policy migrate` — the project moves into the recipient's organization; if they have no active organization yet, accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
+What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet. Phase 1A supports only `--billing-policy migrate` — the project moves into the recipient's organization; if they have no active organization yet, accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
 
 ### org / grants (v1.77+ org-owned control plane; first-class orgs v1.82)
 A wallet AUTHENTICATES; an org owns projects. Authorization is an org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet == signer`. Member/invite changes require an active `owner`. Members and invites are grouped sub-resources (`org member …`, `org invite …`). Memberships carry `org_id` + `display_name`. Create/rename/member/invite mutations are step-up gated for control-plane sessions.
@@ -1378,19 +1378,19 @@ Auth: organization reads (`balance`, `history`) require SIWX from a wallet **lin
 Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
 
 ### contracts
-KMS contract wallets — provision AWS KMS-backed Ethereum wallets per project for signing and broadcasting smart-contract transactions. Private keys never leave KMS. **Pricing: $0.04/day rental + $0.000005 per call**. Wallet creation requires $1.20 in cash credit (30 days of rent). Non-custodial — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
+KMS signers — provision AWS KMS-backed Ethereum signers per project for signing and broadcasting smart-contract transactions. Private keys never leave KMS. **Pricing: $0.04/day rental + $0.000005 per call**. Signer creation requires $1.20 in cash credit (30 days of rent). Non-custodial — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.
 
-- `run402 contracts provision-wallet --chain <base-mainnet|base-sepolia> [--recovery-address 0x...]` — provision a KMS wallet ($0.04/day rental, requires $1.20 in cash credit at creation). Prompts for confirmation if the project already has ≥1 active wallet.
-- `run402 contracts get-wallet <wallet_id>` — get wallet metadata + live native balance + USD value (free)
-- `run402 contracts list-wallets` — list all wallets owned by the project, including deleted ones (free)
-- `run402 contracts set-recovery <wallet_id> [--address 0x... | --clear]` — set/clear the optional recovery address used for auto-drain on day-90 deletion (free)
-- `run402 contracts set-alert <wallet_id> --threshold-wei <n>` — set the low-balance alert threshold (free; alerts billed via existing email infra)
-- `run402 contracts call --wallet <id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]` — submit a contract write call (gas at-cost + $0.000005 KMS sign fee). Returns `{ call_id, tx_hash, status }`.
-- `run402 contracts deploy <project_id> <wallet_id> --bytecode 0x... [--chain <base-mainnet|base-sepolia>] [--value-wei <n>] [--idempotency-key <k>]` — deploy a contract from the KMS wallet (gas at-cost + $0.000005 KMS sign fee). `--bytecode` is the full creation calldata (creation bytecode + ABI-encoded constructor args, concatenated client-side via viem/ethers; ≤ 128 KB). Returns `{ call_id, tx_hash, status, contract_address }` — the deterministic CREATE address is known synchronously. run402 does NOT compile Solidity.
+- `run402 contracts provision-signer --chain <base-mainnet|base-sepolia> [--recovery-address 0x...]` — provision a KMS signer ($0.04/day rental, requires $1.20 in cash credit at creation). Prompts for confirmation if the project already has ≥1 active signer.
+- `run402 contracts get-signer <signer_id>` — get signer metadata + live native balance + USD value (free)
+- `run402 contracts list-signers` — list all signers owned by the project, including deleted ones (free)
+- `run402 contracts set-recovery <signer_id> [--address 0x... | --clear]` — set/clear the optional recovery address used for auto-drain on day-90 deletion (free)
+- `run402 contracts set-alert <signer_id> --threshold-wei <n>` — set the low-balance alert threshold (free; alerts billed via existing email infra)
+- `run402 contracts call <project_id> <signer_id> --to 0x... --abi <json> --fn <name> --args <json> [--value-wei <n>] [--idempotency-key <k>]` — submit a contract write call (gas at-cost + $0.000005 KMS sign fee). Returns `{ call_id, tx_hash, status }`.
+- `run402 contracts deploy <project_id> <signer_id> --bytecode 0x... [--chain <base-mainnet|base-sepolia>] [--value-wei <n>] [--idempotency-key <k>]` — deploy a contract from the KMS signer (gas at-cost + $0.000005 KMS sign fee). `--bytecode` is the full creation calldata (creation bytecode + ABI-encoded constructor args, concatenated client-side via viem/ethers; ≤ 128 KB). Returns `{ call_id, tx_hash, status, contract_address }` — the deterministic CREATE address is known synchronously. run402 does NOT compile Solidity.
 - `run402 contracts read --chain <chain> --to 0x... --abi <json> --fn <name> --args <json>` — read-only contract call (free, no signing, no billing)
 - `run402 contracts status <call_id>` — get call status, gas used, gas cost USD-micros, receipt, error (free)
-- `run402 contracts drain <wallet_id> --to 0x... --confirm` — drain native balance to a destination address (gas at-cost + $0.000005 KMS sign fee). Works on suspended wallets — the safety valve.
-- `run402 contracts delete <wallet_id> --confirm` — schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
+- `run402 contracts drain <signer_id> --to 0x... --confirm` — drain native balance to a destination address (gas at-cost + $0.000005 KMS sign fee). Works on suspended signers — the safety valve.
+- `run402 contracts delete <signer_id> --confirm` — schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
 
 ### message
 - `run402 message send "<text>"`
@@ -1830,7 +1830,7 @@ run402 message send "My human said: 'The todo app was great!' Deploy was smooth.
 | Subdomain | Free with tier | -- |
 | App fork | Free with tier | -- |
 | Image generation | $0.03 | Per image |
-| KMS contract wallet rental | $0.04/day ($1.20/month) | Per wallet, daily debit. $1.20 prepay required. |
+| KMS signer rental | $0.04/day ($1.20/month) | Per signer, daily debit. $1.20 prepay required. |
 | Contract call (gas) | at-cost | Per call, 0% markup on chain gas. |
 | Contract call (KMS sign fee) | $0.000005 | Per call, the only run402 markup on contract calls. |
 | Functions | Free with tier | -- |

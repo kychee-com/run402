@@ -428,20 +428,20 @@ Tier is per organization, not per project. `set_tier` applies immediately to eve
 - `set_auto_recharge` — auto-buy email packs when credits run low.
 - `create_checkout` — org checkout for `balance_topup`, `tier`, or `email_pack`. Params: `org_id`, `product`, plus `amount_usd_micros` for balance top-ups or `tier` for tiers.
 
-### KMS contract wallets (on-chain signing)
+### KMS signers (on-chain signing)
 
-For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0.04/day rental + $0.000005/call. Wallet creation requires $1.20 cash credit (30 days prepaid). Non-custodial.
+For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0.04/day rental + $0.000005/call. Signer creation requires $1.20 cash credit (30 days prepaid). Non-custodial.
 
-- `provision_contract_wallet` — params: `project_id`, `chain` (`base-mainnet` / `base-sepolia`), `recovery_address?`.
-- `get_contract_wallet` / `list_contract_wallets` — metadata + live native balance + USD value.
+- `provision_signer` — params: `project_id`, `chain` (`base-mainnet` / `base-sepolia`), `recovery_address?`.
+- `get_signer` / `list_signers` — metadata + live native balance + USD value.
 - `set_recovery_address` — set/clear the optional auto-drain address used at day-90 deletion.
 - `set_low_balance_alert` — wei threshold; email alerts on drop (24h cooldown).
-- `contract_call` — submit a write call. Idempotent on `idempotency_key`. Params: `project_id`, `wallet_id`, `chain`, `contract_address`, `abi_fragment`, `function_name`, `args`, `value_wei?`, `idempotency_key?`.
-- `contract_deploy` — deploy a contract from the wallet (signs `to: null + data: bytecode` creation tx). Same pricing + idempotency as `contract_call`. Params: `project_id`, `wallet_id`, `chain`, `bytecode` (0x-prefixed hex; full creation calldata = creation bytecode + ABI-encoded constructor args, concatenated client-side; ≤ 128 KB), `value?`, `idempotency_key?`. Returns `contract_address` synchronously (deterministic CREATE address from `(wallet, nonce)`). run402 does NOT compile Solidity — bring your own bytecode.
+- `contract_call` — submit a write call. Idempotent on `idempotency_key`. Params: `project_id`, `signer_id`, `chain`, `contract_address`, `abi_fragment`, `function_name`, `args`, `value_wei?`, `idempotency_key?`.
+- `contract_deploy` — deploy a contract from the signer (signs `to: null + data: bytecode` creation tx). Same pricing + idempotency as `contract_call`. Params: `project_id`, `signer_id`, `chain`, `bytecode` (0x-prefixed hex; full creation calldata = creation bytecode + ABI-encoded constructor args, concatenated client-side; ≤ 128 KB), `value?`, `idempotency_key?`. Returns `contract_address` synchronously (deterministic CREATE address from `(signer, nonce)`). run402 does NOT compile Solidity — bring your own bytecode.
 - `contract_read` — read-only call (free).
 - `get_contract_call_status` — lifecycle, gas, receipt.
-- `drain_contract_wallet` — drain native balance. Works on suspended wallets — the safety valve. Requires `X-Confirm-Drain` header equivalent.
-- `delete_contract_wallet` — schedule KMS key deletion (7-day window). Refused if balance ≥ dust.
+- `drain_signer` — drain native balance. Works on suspended signers — the safety valve. Requires `X-Confirm-Drain` header equivalent.
+- `delete_signer` — schedule KMS key deletion (7-day window). Refused if balance ≥ dust.
 
 ### Allowance & organization
 
@@ -475,7 +475,7 @@ Hand off a project to a new owner without redeploying. Both sides sign with thei
 
 The freeze covers owner-side mutations (deploy, secret CRUD, function CRUD, custom-domain bind/unbind, scheduled-function changes, mailbox config, CI binding CRUD, project rename). Data-plane traffic (`/rest/v1/*`, function invocation, mailbox send/receive) keeps serving. Payment-path routes (`set_tier`, billing) keep working. The cancel route is intentionally never blocked.
 
-What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS contract wallets (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
+What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
 
 After accept, `tier_status` surfaces `projects[].secrets_rotation_advised: { advised_at, reason }` on the transferred project, and `incoming_transfers[]` at the top level lists pending offers (each with `preview_path`) so the inbox is visible without a separate `list_incoming_transfers` fetch.
 

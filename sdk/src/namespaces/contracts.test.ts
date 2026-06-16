@@ -58,11 +58,11 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe("contracts.listWallets", () => {
-  it("returns a typed wallets array with the documented fields", async () => {
-    const wallets = [
+describe("contracts.listSigners", () => {
+  it("returns a typed signers array with the documented fields", async () => {
+    const signers = [
       {
-        wallet_id: "cwlt_abc",
+        signer_id: "cwlt_abc",
         address: "0x1111111111111111111111111111111111111111",
         chain: "base-mainnet",
         status: "active",
@@ -72,38 +72,38 @@ describe("contracts.listWallets", () => {
         created_at: "2025-01-01T00:00:00Z",
       },
     ];
-    const { fetch, calls } = mockFetch(() => jsonResponse({ wallets }));
+    const { fetch, calls } = mockFetch(() => jsonResponse({ signers }));
     const sdk = makeSdk(fetch);
-    const result = await sdk.contracts.listWallets("prj_known");
+    const result = await sdk.contracts.listSigners("prj_known");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/wallets");
+    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/signers");
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer service_xxx");
 
-    assert.equal(result.wallets.length, 1);
-    const w = result.wallets[0]!;
-    assert.equal(w.wallet_id, "cwlt_abc");
-    assert.equal(w.address, "0x1111111111111111111111111111111111111111");
-    assert.equal(w.chain, "base-mainnet");
-    assert.equal(w.status, "active");
-    assert.equal(w.balance_wei, "1000000000000000");
-    assert.equal(w.threshold_wei, "500000000000000");
-    assert.equal(w.recovery_address, "0x2222222222222222222222222222222222222222");
-    assert.equal(w.created_at, "2025-01-01T00:00:00Z");
+    assert.equal(result.signers.length, 1);
+    const s = result.signers[0]!;
+    assert.equal(s.signer_id, "cwlt_abc");
+    assert.equal(s.address, "0x1111111111111111111111111111111111111111");
+    assert.equal(s.chain, "base-mainnet");
+    assert.equal(s.status, "active");
+    assert.equal(s.balance_wei, "1000000000000000");
+    assert.equal(s.threshold_wei, "500000000000000");
+    assert.equal(s.recovery_address, "0x2222222222222222222222222222222222222222");
+    assert.equal(s.created_at, "2025-01-01T00:00:00Z");
   });
 
   it("throws ProjectNotFound for unknown ids before any fetch", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(fetch);
-    await assert.rejects(sdk.contracts.listWallets("prj_missing"), ProjectNotFound);
+    await assert.rejects(sdk.contracts.listSigners("prj_missing"), ProjectNotFound);
     assert.equal(calls.length, 0);
   });
 });
 
-describe("contracts.getWallet", () => {
-  it("returns a typed wallet summary with documented fields", async () => {
-    const wallet = {
-      wallet_id: "cwlt_abc",
+describe("contracts.getSigner", () => {
+  it("returns a typed signer summary with documented fields", async () => {
+    const signer = {
+      signer_id: "cwlt_abc",
       address: "0x1111111111111111111111111111111111111111",
       chain: "base-sepolia",
       status: "suspended",
@@ -112,13 +112,13 @@ describe("contracts.getWallet", () => {
       recovery_address: null,
       created_at: "2025-01-01T00:00:00Z",
     };
-    const { fetch, calls } = mockFetch(() => jsonResponse(wallet));
+    const { fetch, calls } = mockFetch(() => jsonResponse(signer));
     const sdk = makeSdk(fetch);
-    const result = await sdk.contracts.getWallet("prj_known", "cwlt_abc");
+    const result = await sdk.contracts.getSigner("prj_known", "cwlt_abc");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/wallets/cwlt_abc");
+    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/signers/cwlt_abc");
     assert.equal(calls[0]!.method, "GET");
-    assert.equal(result.wallet_id, "cwlt_abc");
+    assert.equal(result.signer_id, "cwlt_abc");
     assert.equal(result.chain, "base-sepolia");
     assert.equal(result.status, "suspended");
     assert.equal(result.threshold_wei, null);
@@ -126,21 +126,21 @@ describe("contracts.getWallet", () => {
   });
 });
 
-describe("contracts.provisionWallet", () => {
-  it("returns at least wallet_id, address, chain", async () => {
+describe("contracts.provisionSigner", () => {
+  it("returns at least signer_id, address, chain", async () => {
     const provisioned = {
-      wallet_id: "cwlt_new",
+      signer_id: "cwlt_new",
       address: "0xaaaa000000000000000000000000000000000000",
       chain: "base-mainnet",
     };
     const { fetch, calls } = mockFetch(() => jsonResponse(provisioned));
     const sdk = makeSdk(fetch);
-    const result = await sdk.contracts.provisionWallet("prj_known", { chain: "base-mainnet" });
+    const result = await sdk.contracts.provisionSigner("prj_known", { chain: "base-mainnet" });
 
-    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/wallets");
+    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/signers");
     assert.equal(calls[0]!.method, "POST");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { chain: "base-mainnet" });
-    assert.equal(result.wallet_id, "cwlt_new");
+    assert.equal(result.signer_id, "cwlt_new");
     assert.equal(result.address, "0xaaaa000000000000000000000000000000000000");
     assert.equal(result.chain, "base-mainnet");
   });
@@ -148,13 +148,13 @@ describe("contracts.provisionWallet", () => {
   it("includes recovery_address in body when provided", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
-        wallet_id: "cwlt_new",
+        signer_id: "cwlt_new",
         address: "0xaaaa000000000000000000000000000000000000",
         chain: "base-mainnet",
       }),
     );
     const sdk = makeSdk(fetch);
-    await sdk.contracts.provisionWallet("prj_known", {
+    await sdk.contracts.provisionSigner("prj_known", {
       chain: "base-mainnet",
       recoveryAddress: "0x3333333333333333333333333333333333333333",
     });
@@ -169,7 +169,7 @@ describe("contracts.provisionWallet", () => {
     const sdk = makeSdk(fetch);
 
     await assert.rejects(
-      sdk.contracts.provisionWallet("prj_known", { chain: "polygon" as any }),
+      sdk.contracts.provisionSigner("prj_known", { chain: "polygon" as any }),
       LocalError,
     );
     assert.equal(calls.length, 0);
@@ -180,7 +180,7 @@ describe("contracts.provisionWallet", () => {
     const sdk = makeSdk(fetch);
 
     await assert.rejects(
-      sdk.contracts.provisionWallet("prj_known", {
+      sdk.contracts.provisionSigner("prj_known", {
         chain: "base-mainnet",
         recoveryAddress: "0xabc",
       }),
@@ -224,7 +224,7 @@ describe("contracts.setLowBalanceAlert", () => {
 
       await sdk.contracts.setLowBalanceAlert("prj_known", "cwlt_abc", thresholdWei);
 
-      assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/wallets/cwlt_abc/alert");
+      assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/signers/cwlt_abc/alert");
       assert.deepEqual(JSON.parse(calls[0]!.body as string), { threshold_wei: thresholdWei });
     });
   }
@@ -240,7 +240,7 @@ describe("contracts.call", () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(callRes));
     const sdk = makeSdk(fetch);
     const result = await sdk.contracts.call("prj_known", {
-      walletId: "cwlt_abc",
+      signerId: "cwlt_abc",
       chain: "base-mainnet",
       contractAddress: "0x4444444444444444444444444444444444444444",
       abiFragment: [{ type: "function", name: "ping", inputs: [], outputs: [] }],
@@ -261,7 +261,7 @@ describe("contracts.call", () => {
     );
     const sdk = makeSdk(fetch);
     await sdk.contracts.call("prj_known", {
-      walletId: "cwlt_abc",
+      signerId: "cwlt_abc",
       chain: "base-mainnet",
       contractAddress: "0x4444444444444444444444444444444444444444",
       abiFragment: [],
@@ -279,7 +279,7 @@ describe("contracts.call", () => {
 
       await assert.rejects(
         sdk.contracts.call("prj_known", {
-          walletId: "cwlt_abc",
+          signerId: "cwlt_abc",
           chain: "base-mainnet",
           contractAddress: "0x4444444444444444444444444444444444444444",
           abiFragment: [],
@@ -301,7 +301,7 @@ describe("contracts.call", () => {
       const sdk = makeSdk(fetch);
 
       await sdk.contracts.call("prj_known", {
-        walletId: "cwlt_abc",
+        signerId: "cwlt_abc",
         chain: "base-mainnet",
         contractAddress: "0x4444444444444444444444444444444444444444",
         abiFragment: [],
@@ -320,7 +320,7 @@ describe("contracts.call", () => {
     );
     const sdk = makeSdk(fetch);
     await sdk.contracts.call("prj_known", {
-      walletId: "cwlt_abc",
+      signerId: "cwlt_abc",
       chain: "base-mainnet",
       to: "0x4444444444444444444444444444444444444444",
       abi: [{ type: "function", name: "ping" }],
@@ -328,7 +328,7 @@ describe("contracts.call", () => {
       args: [],
     });
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      wallet_id: "cwlt_abc",
+      signer_id: "cwlt_abc",
       chain: "base-mainnet",
       contract_address: "0x4444444444444444444444444444444444444444",
       abi_fragment: [{ type: "function", name: "ping" }],
@@ -342,7 +342,7 @@ describe("contracts.call", () => {
     const sdk = makeSdk(fetch);
     await assert.rejects(
       sdk.contracts.call("prj_known", {
-        walletId: "cwlt_abc",
+        signerId: "cwlt_abc",
         chain: "base-mainnet",
         abiFragment: [],
         functionName: "ping",
@@ -359,7 +359,7 @@ describe("contracts.call", () => {
 
     await assert.rejects(
       sdk.contracts.call("prj_known", {
-        walletId: "cwlt_abc",
+        signerId: "cwlt_abc",
         chain: "base-mainnet",
         contractAddress: "0xabc",
         abiFragment: [],
@@ -531,7 +531,7 @@ describe("contracts.drain", () => {
       "0x5555555555555555555555555555555555555555",
     );
 
-    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/wallets/cwlt_abc/drain");
+    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/signers/cwlt_abc/drain");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["X-Confirm-Drain"], "cwlt_abc");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
@@ -552,17 +552,17 @@ describe("contracts.drain", () => {
   });
 });
 
-describe("contracts.deleteWallet", () => {
-  it("DELETEs /contracts/v1/wallets/:id with X-Confirm-Delete header", async () => {
+describe("contracts.deleteSigner", () => {
+  it("DELETEs /contracts/v1/signers/:id with X-Confirm-Delete header", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ wallet_id: "cwlt_abc", deleted_at: "2025-01-02T00:00:00Z" }),
+      jsonResponse({ signer_id: "cwlt_abc", deleted_at: "2025-01-02T00:00:00Z" }),
     );
     const sdk = makeSdk(fetch);
-    const result = await sdk.contracts.deleteWallet("prj_known", "cwlt_abc");
+    const result = await sdk.contracts.deleteSigner("prj_known", "cwlt_abc");
 
-    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/wallets/cwlt_abc");
+    assert.equal(calls[0]!.url, "https://api.example.test/contracts/v1/signers/cwlt_abc");
     assert.equal(calls[0]!.method, "DELETE");
     assert.equal(calls[0]!.headers["X-Confirm-Delete"], "cwlt_abc");
-    assert.equal(result.wallet_id, "cwlt_abc");
+    assert.equal(result.signer_id, "cwlt_abc");
   });
 });
