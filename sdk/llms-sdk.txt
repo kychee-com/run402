@@ -816,7 +816,7 @@ operator.revoke({ token }): Promise<void>
   // 204. Server-side revoke is instant (no positive-validity cache).
 ```
 
-**Write-capable control-plane session (v1.78 — `passkey-principals-onboarding`).** A second, *write*-capable human session (the gateway's 5th principal, `control_plane_session`) accepted everywhere a SIWX wallet is. Distinct from the read-only operator session above. High-stakes writes (invite, membership, handoff, delete) require a **fresh passkey** — a magic-link/OAuth session raises `StepUpRequiredError` until it runs a step-up ceremony.
+**Control-plane session (v1.78 — `passkey-principals-onboarding`).** The human's write-capable session (the gateway's 5th principal, `control_plane_session`). Distinct from the read-only operator session above. It authorizes most control-plane ops, but since v1.85/v1.87 it is **not** sufficient on its own for `provision` / `deploy` / secret-writes — those additionally require a passkey-fresh **operator approval** (see below). High-stakes control ops (invite, membership, handoff, delete) require a **fresh passkey** — a magic-link/OAuth session raises `StepUpRequiredError` until it runs a step-up ceremony.
 
 The CLI mints it headlessly via loopback-PKCE (RFC 8252, the `aws sso login` localhost-redirect model). The SDK exposes the two isomorphic seams:
 
@@ -829,6 +829,19 @@ operator.exchangeCliToken({ code, codeVerifier, redirectUri, state }): Promise<C
   // ControlPlaneSession { control_plane_session_token, token_type, expires_in,
   // provenance:"loopback_pkce", principal_id, amr[] }.
 ```
+
+**Operator approval (write-auth, v1.85/v1.87).** A wallet-less human's control-plane session is read-capable on the high-stakes routes; `provision` / `deploy` / secret-writes also need a passkey-fresh approval scoped to one `(action, target)`, carried as an `X-Run402-Write-Auth` token. The isomorphic seams (`r.operator.approval`) mirror the login seams; the Node CLI (`run402 operator approve`) runs the loopback + PKCE around them:
+
+```
+operator.approval.requestChallenge({ action, orgId?, projectId?, cliRedirectUri, codeChallenge, state, token? }): Promise<ApprovalChallengeResult>
+  // POST /agent/v1/control-plane/write-auth/challenges. action ∈ org.project.create | project.deploy
+  // | project.secret.write (org.project.create needs orgId; the others projectId). Carries the cp bearer.
+operator.approval.exchangeClaimCode({ code, codeVerifier, state }): Promise<ApprovalTokenResult>
+  // POST /agent/v1/control-plane/write-auth/cli/token (unauth; no redirect_uri — bound at challenge).
+  // ApprovalTokenResult { write_auth_token, token_type:"write_auth", header:"X-Run402-Write-Auth", session }.
+```
+
+Credential resolution is **surface-aware and never ambient**: `run402({ surface })` — `cli` resolves `auto` (wallet, else the control-plane session + an approval *only* when a cached one exactly matches the request's `(capability, target)`); `mcp` / `sdk` stay wallet-only, so an agent tool call never spends the human's approval. A gated write with no matching approval throws `OperatorApprovalRequiredError` (`isOperatorApprovalRequired()` guard) carrying `capability`, `target`, and a resolved `approveCommand` (e.g. `run402 operator approve --action project.deploy --project prj_x`) — the agent relays that; an interactive CLI auto-runs it. (`WRITE_AUTH_BINDING_MISMATCH` / `WRITE_AUTH_SESSION_INVALID` map to the same typed error.)
 
 The **hosted/browser** session surface — the front door the console (and any browser app) drives — is `r.operator.session.*`. Public *mint* methods send no auth; *session-bound* methods take `{ token }` (the `control_plane_session` bearer) and fall back to the credential provider when omitted (mirrors `overview`). WebAuthn option/assertion payloads are opaque passthroughs — the browser runs the ceremony.
 

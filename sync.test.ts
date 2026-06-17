@@ -354,6 +354,8 @@ const SURFACE: Capability[] = [
   { id: "operator_logout",   endpoint: "POST /agent/v1/operator/session/revoke",                   mcp: null, cli: "operator:logout",   openclaw: "operator:logout" },
   { id: "operator_whoami",   endpoint: "(local)",                                                  mcp: null, cli: "operator:whoami",   openclaw: "operator:whoami" },
   { id: "claim_wallet_org",  endpoint: "POST /agent/v1/operator/claim-wallet-org (+ /challenge)",   mcp: null, cli: "operator:claim-wallet-org", openclaw: "operator:claim-wallet-org" },
+  { id: "operator_approve",  endpoint: "POST /agent/v1/control-plane/write-auth/challenges (+ /cli/token)", mcp: null, cli: "operator:approve",  openclaw: "operator:approve" },
+  { id: "operator_status",   endpoint: "(local)",                                                  mcp: null, cli: "operator:status",   openclaw: "operator:status" },
 
   // ── Additional billing ─────────────────────────────────────────────────
   { id: "create_checkout",   endpoint: "POST /orgs/v1/:org_id/checkouts",        mcp: "create_checkout",     cli: "billing:checkout",  openclaw: "billing:checkout" },
@@ -648,6 +650,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Claim maps to the submit step; the challenge step is in SDK_ONLY_METHODS and
   // the full dance is the Node convenience `claimWalletOrg` (a standalone export).
   claim_wallet_org: "operator.claimWalletOrg.submit",
+  operator_approve: "operator.approval.requestChallenge",
+  operator_status: null, // local-only cache read (core/write-auth-session.ts)
 
   // Admin (v1.57)
   admin_set_lease_perpetual: "admin.setLeasePerpetual",
@@ -1024,6 +1028,10 @@ describe("SDK surface alignment", () => {
       // `operator login --loopback` ceremony, with no dedicated capability.
       "operator.buildCliAuthorizeUrl",
       "operator.exchangeCliToken",
+      // Operator-approval ceremony (v1.85/v1.87): requestChallenge is mapped to
+      // `operator_approve`; exchangeClaimCode is the second half of the same
+      // `operator approve` loopback dance, with no dedicated capability.
+      "operator.approval.exchangeClaimCode",
       // ─── hosted control-plane session (v1.78, passkey-principals-onboarding) ─
       // `r.operator.session.*` is the browser/console session-login client
       // surface (email magic-link / passkey / OAuth / lifecycle / step-up /

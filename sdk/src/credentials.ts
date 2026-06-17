@@ -46,14 +46,47 @@ export interface WalletIdentity {
   label: string | null;
 }
 
+/**
+ * Gateway write-auth (operator-approval) capabilities. Each is scoped to a
+ * target: `org.project.create` → an org, the others → a project.
+ */
+export type WriteAuthCapability =
+  | "org.project.create"
+  | "project.deploy"
+  | "project.secret.write";
+
+/** A write-capability target: an org (for `org.project.create`) or a project. */
+export interface WriteAuthTarget {
+  org_id?: string;
+  project_id?: string;
+}
+
+/**
+ * Per-request metadata a typed SDK method may pass to {@link
+ * CredentialsProvider.getAuth}. `capability` + `target` let a provider decide
+ * whether (and which) operator-approval credential to attach for a gated write.
+ */
+export interface AuthRequestMeta {
+  /** Diagnostic: the SDK method name (e.g. "projects.provision"). */
+  method?: string;
+  /** The gateway write capability this request exercises, if any. */
+  capability?: WriteAuthCapability;
+  /** The capability's target. */
+  target?: WriteAuthTarget;
+}
+
 export interface CredentialsProvider {
   /**
    * Return per-request auth headers for the given API path, or null if none
    * are available. Typical headers: `SIGN-IN-WITH-X` (SIWE), `Authorization:
    * Bearer ...`. The kernel merges these into the request headers without
    * overwriting headers explicitly set on the request.
+   *
+   * `metadata` (optional) carries the request's write capability + target so a
+   * provider can attach a matching operator-approval credential. Providers that
+   * ignore it (wallet-only) simply omit the parameter.
    */
-  getAuth(path: string): Promise<Record<string, string> | null>;
+  getAuth(path: string, metadata?: AuthRequestMeta): Promise<Record<string, string> | null>;
 
   /**
    * Resolve the anon/service keys for a project. Returns null if the project

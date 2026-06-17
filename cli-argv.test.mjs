@@ -1752,3 +1752,24 @@ describe("transfer retain-collaborator argv validation (v1.91)", () => {
     assert.match(err.message, /email handoff/);
   });
 });
+
+describe("operator approve argv validation (v1.85/v1.87)", () => {
+  it("rejects an unknown --action before any network/ceremony", async () => {
+    const { run } = await import("./cli/lib/operator.mjs");
+    const err = await expectExit1(() => run("approve", ["--action", "bogus"]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /action/);
+  });
+  it("requires --project for a project-scoped action", async () => {
+    const { run } = await import("./cli/lib/operator.mjs");
+    const err = await expectExit1(() => run("approve", ["--action", "project.deploy"]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /project/);
+  });
+  it("requires --org for org.project.create", async () => {
+    const { run } = await import("./cli/lib/operator.mjs");
+    const err = await expectExit1(() => run("approve", ["--action", "org.project.create"]));
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /org/);
+  });
+});

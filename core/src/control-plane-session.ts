@@ -13,13 +13,16 @@ import { randomBytes } from "node:crypto";
 import { getConfigBaseDir } from "./config.js";
 
 /**
- * A cached **control-plane session** — the human principal's *write-capable*
- * bearer, minted by the loopback-PKCE flow (`run402 operator login --loopback`).
- * Distinct from the device-flow {@link OperatorSession} (read-only): this one
- * carries `provenance` (`loopback_pkce`) and `amr`, and is accepted everywhere a
- * SIWX wallet is. Cached at the BASE config dir (email/principal-scoped, shared
- * across local named wallets), mode 0600 — the token is as sensitive as the
- * allowance key.
+ * A cached **control-plane session** — the human principal's bearer, minted by
+ * the loopback-PKCE flow (`run402 operator login --loopback`). Distinct from the
+ * device-flow {@link OperatorSession} (read-only): this one carries `provenance`
+ * (`loopback_pkce`) and `amr`. It authorizes most control-plane operations, but
+ * since gateway v1.85/v1.87 it is NOT sufficient on its own for the high-stakes
+ * writes `provision` / `deploy` / secrets — those additionally require a
+ * passkey-fresh **operator approval** (`X-Run402-Write-Auth`, minted by
+ * `run402 operator approve`; see {@link WriteAuthApproval}). Cached at the BASE
+ * config dir (email/principal-scoped, shared across local named wallets), mode
+ * 0600 — the token is as sensitive as the allowance key.
  *
  * Stored shape vs the gateway payload: the gateway returns a relative
  * `expires_in` (seconds); we persist the absolute `expires_at` (epoch ms) so a

@@ -113,6 +113,17 @@ export class Projects {
     const result = await this.client.request<ProvisionResult>("/projects/v1", {
       method: "POST",
       body,
+      // Operator-approval scope: creating a project in an org is `org.project.create`
+      // targeting that org. Only meaningful when provisioning into an existing org.
+      ...(opts.orgId
+        ? {
+            authMeta: {
+              method: "projects.provision",
+              capability: "org.project.create" as const,
+              target: { org_id: opts.orgId },
+            },
+          }
+        : {}),
       context: "provisioning project",
     });
 

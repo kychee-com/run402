@@ -26,7 +26,8 @@ export type Run402ErrorKind =
   | "local_error"
   | "deploy_error"
   | "transfer_freeze"
-  | "step_up_required";
+  | "step_up_required"
+  | "operator_approval_required";
 
 /**
  * Quota-denial scope discriminator (v1.46+). Indicates whether a quota-related
@@ -543,6 +544,84 @@ export class StepUpRequiredError extends Run402Error {
   }
 }
 
+/**
+ * HTTP 403 — a wallet-less human (control-plane session) write needs a
+ * passkey-fresh **operator approval** scoped to a specific `(capability,
+ * target)`. Maps the gateway codes `WRITE_AUTH_REQUIRED` (no approval),
+ * `WRITE_AUTH_BINDING_MISMATCH` (cached approval targeted the wrong org/project),
+ * and `WRITE_AUTH_SESSION_INVALID` (stale approval).
+ *
+ * The gateway envelope is bare, so the SDK synthesizes a fully-resolved
+ * remediation from the failing request's capability+target: read
+ * {@link approveCommand} (e.g. `run402 operator approve --action project.deploy
+ * --project prj_x`) or the structured {@link nextActions}. The SIWX wallet path
+ * never triggers this. Never catch-and-swallow — surface the command to the
+ * human/agent. Branch on `kind === "operator_approval_required"` (or
+ * {@link isOperatorApprovalRequired}).
+ */
+export class OperatorApprovalRequiredError extends Run402Error {
+  static readonly DEFAULT_CODE = "WRITE_AUTH_REQUIRED";
+  static readonly DEFAULT_CATEGORY = "auth";
+  static readonly DEFAULT_RETRYABLE = false;
+  readonly kind = "operator_approval_required" as const;
+  /** The principal class the approval belongs to. Always `"operator"` (the human). */
+  readonly principal = "operator" as const;
+  /** The gateway write capability needing approval, when known from the request. */
+  readonly capability: string | null;
+  /** The capability's target (`{ org_id }` or `{ project_id }`), when known. */
+  readonly target: { org_id?: string; project_id?: string } | null;
+  /** Fully-resolved CLI command that mints the missing approval, or null if unresolvable. */
+  readonly approveCommand: string | null;
+
+  constructor(
+    message: string,
+    status: number,
+    body: unknown,
+    context: string,
+    meta?: { capability?: string | null; target?: { org_id?: string; project_id?: string } | null },
+  ) {
+    super(message, status, body, context);
+    this.capability = meta?.capability ?? null;
+    this.target = meta?.target ?? null;
+    this.approveCommand = buildApproveCommand(this.capability, this.target);
+    // The gateway WRITE_AUTH_* envelope carries no next_actions — synthesize a
+    // structured one so generic consumers get the remediation too.
+    if ((!this.nextActions || this.nextActions.length === 0) && this.approveCommand) {
+      (this as { nextActions?: unknown[] }).nextActions = [
+        { type: "operator_approve", command: this.approveCommand, why: approveWhy(this.code) },
+      ];
+    }
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      principal: this.principal,
+      capability: this.capability,
+      target: this.target,
+      approveCommand: this.approveCommand,
+    };
+  }
+}
+
+function buildApproveCommand(
+  capability: string | null,
+  target: { org_id?: string; project_id?: string } | null,
+): string | null {
+  if (!capability) return null;
+  if (target?.org_id) return `run402 operator approve --action ${capability} --org ${target.org_id}`;
+  if (target?.project_id) return `run402 operator approve --action ${capability} --project ${target.project_id}`;
+  return `run402 operator approve --action ${capability}`;
+}
+
+function approveWhy(code?: string): string {
+  if (code === "WRITE_AUTH_BINDING_MISMATCH")
+    return "A cached approval targets a different org/project. Re-approve for this exact target.";
+  if (code === "WRITE_AUTH_SESSION_INVALID")
+    return "The cached approval is stale (its control-plane session changed). Re-approve.";
+  return "This write needs a passkey operator approval.";
+}
+
 // ─── Type guards ─────────────────────────────────────────────────────────────
 //
 // Identity-free guards. Each one checks the structural brand and (for subclass
@@ -608,6 +687,11 @@ export function isTransferFreezeError(e: unknown): e is TransferFreezeError {
 /** True if `e` is a {@link StepUpRequiredError}. Survives duplicate SDK copies and realms. */
 export function isStepUpRequired(e: unknown): e is StepUpRequiredError {
   return isRun402Error(e) && e.kind === "step_up_required";
+}
+
+/** True if `e` is an {@link OperatorApprovalRequiredError} (wallet-less write needs a passkey approval). */
+export function isOperatorApprovalRequired(e: unknown): e is OperatorApprovalRequiredError {
+  return isRun402Error(e) && e.kind === "operator_approval_required";
 }
 
 /**

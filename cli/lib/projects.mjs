@@ -1,6 +1,8 @@
 import { readFileSync } from "fs";
 import { loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
 import { loadLiveOperatorSession } from "../core-dist/operator-session.js";
+import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
+import { withAutoApprove } from "./operator.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject, validateRegularFile } from "./argparse.mjs";
@@ -302,13 +304,16 @@ async function provision(args) {
       });
     }
   }
-  // Preserve the aggressive early exit when no allowance is configured —
-  // gives the user a more specific prompt than the SDK's 401/402 path.
-  allowanceAuthHeaders("/projects/v1");
+  // Aggressive early exit when no agent allowance is configured — but only when
+  // there's also no operator (control-plane) session, since a wallet-less human
+  // provisions into an org via their operator approval instead of a wallet.
+  if (!loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
 
   const activeBefore = getActiveProjectId();
   try {
-    const data = await getSdk().projects.provision({ tier: opts.tier, name: opts.name, orgId: opts.orgId });
+    const data = await withAutoApprove(() =>
+      getSdk().projects.provision({ tier: opts.tier, name: opts.name, orgId: opts.orgId }),
+    );
     const activeAfter = getActiveProjectId();
     const out = { ...data };
     if (activeBefore && activeAfter && activeBefore !== activeAfter) {

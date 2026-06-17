@@ -25,6 +25,7 @@ import { Run402, type Run402Options } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type { Client } from "../kernel.js";
 import { NodeCredentialsProvider } from "./credentials.js";
+import type { AuthMode, CredentialSurface } from "./credentials.js";
 import { createLazyPaidFetch } from "./paid-fetch.js";
 import { NodeSites } from "./sites-node.js";
 import { NodeAssets } from "./assets-node.js";
@@ -38,6 +39,15 @@ export interface NodeRun402Options {
   allowancePath?: string;
   /** Override the credentials provider. Defaults to the local Node keystore + allowance provider. */
   credentials?: CredentialsProvider;
+  /**
+   * Which surface is constructing the client — selects the default credential
+   * mode. `"cli"` opts into `auto` (wallet, else operator-approval); `"mcp"` /
+   * `"sdk"` stay `wallet`-only so a human's approval never leaks into agent
+   * tool calls. Ignored when `credentials` is supplied.
+   */
+  surface?: CredentialSurface;
+  /** Explicit credential mode override (otherwise derived from `surface`). */
+  authMode?: AuthMode;
   /**
    * Skip x402 payment wrapping and use `globalThis.fetch` directly. Useful in
    * tests or when the caller pre-wraps fetch with a custom scheme.
@@ -72,6 +82,8 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
     credentials: opts.credentials ?? new NodeCredentialsProvider({
       allowancePath: opts.allowancePath,
       keystorePath: opts.keystorePath,
+      surface: opts.surface,
+      authMode: opts.authMode,
     }),
     fetch:
       opts.fetch ??
@@ -176,6 +188,7 @@ export {
   isUnauthorized,
   isNotAuthorized,
   isStepUpRequired,
+  isOperatorApprovalRequired,
   isApiError,
   isNetworkError,
   isLocalError,

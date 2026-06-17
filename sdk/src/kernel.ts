@@ -15,12 +15,20 @@ import {
   ApiError,
   NetworkError,
   NotAuthorizedError,
+  OperatorApprovalRequiredError,
   PaymentRequired,
   StepUpRequiredError,
   TransferFreezeError,
   Unauthorized,
 } from "./errors.js";
-import type { CredentialsProvider, ProjectKeys } from "./credentials.js";
+
+/** Gateway 403 codes that mean "a passkey operator approval is needed for this (capability, target)". */
+const WRITE_AUTH_CODES = new Set([
+  "WRITE_AUTH_REQUIRED",
+  "WRITE_AUTH_BINDING_MISMATCH",
+  "WRITE_AUTH_SESSION_INVALID",
+]);
+import type { AuthRequestMeta, CredentialsProvider, ProjectKeys } from "./credentials.js";
 
 export interface KernelConfig {
   apiBase: string;
@@ -36,6 +44,8 @@ export interface RequestOptions {
   rawBody?: string | Uint8Array;
   /** Include credential headers from `credentials.getAuth(path)`. Default: true. */
   withAuth?: boolean;
+  /** Optional write capability + target, passed to `getAuth` for operator-approval matching. */
+  authMeta?: AuthRequestMeta;
   /** Short verb phrase attached to thrown errors (e.g. "provisioning project"). */
   context: string;
 }
@@ -70,6 +80,22 @@ export async function request<T>(
   return (await requestWithResponse<T>(kernel, path, opts)).body;
 }
 
+/**
+ * Auth header families. If a request explicitly sets ANY of these, it owns its
+ * credentials and the kernel will not merge a provider auth header alongside —
+ * preventing duplicate/contradictory credentials once dual-header auth exists.
+ */
+const AUTH_HEADER_NAMES = ["authorization", "sign-in-with-x", "x-run402-write-auth"];
+
+/** Case-insensitive header presence check. */
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const lower = name.toLowerCase();
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === lower) return true;
+  }
+  return false;
+}
+
 export async function requestWithResponse<T>(
   kernel: KernelConfig,
   path: string,
@@ -82,10 +108,16 @@ export async function requestWithResponse<T>(
   const fetchHeaders: Record<string, string> = { ...headers };
 
   if (withAuth) {
-    const auth = await credentials.getAuth(path);
+    const auth = await credentials.getAuth(path, opts.authMeta);
     if (auth) {
+      // Credential-family atomicity: if the request already set any auth header
+      // (any casing), it owns its credentials — never merge provider auth over
+      // or beside it. Other provider headers still merge (case-insensitively).
+      const requestOwnsAuth = AUTH_HEADER_NAMES.some((h) => hasHeader(fetchHeaders, h));
       for (const [k, v] of Object.entries(auth)) {
-        if (!(k in fetchHeaders)) fetchHeaders[k] = v;
+        if (hasHeader(fetchHeaders, k)) continue;
+        if (requestOwnsAuth && AUTH_HEADER_NAMES.includes(k.toLowerCase())) continue;
+        fetchHeaders[k] = v;
       }
     }
   }
@@ -150,6 +182,15 @@ export async function requestWithResponse<T>(
       res.status,
       resBody,
       context,
+    );
+  }
+  if (res.status === 403 && WRITE_AUTH_CODES.has(envelopeCode(resBody) ?? "")) {
+    throw new OperatorApprovalRequiredError(
+      `${displayMessage(resBody, "Operator approval required")} while ${context}`,
+      res.status,
+      resBody,
+      context,
+      { capability: opts.authMeta?.capability ?? null, target: opts.authMeta?.target ?? null },
     );
   }
   if (res.status === 401 || res.status === 403) {

@@ -19,6 +19,7 @@
  */
 
 import type { Client } from "../kernel.js";
+import type { WriteAuthCapability } from "../credentials.js";
 import { ApiError, LocalError, NetworkError } from "../errors.js";
 import { OperatorSession } from "./operator-session.js";
 
@@ -72,10 +73,12 @@ export interface OperatorOverview {
 }
 
 /**
- * A write-capable control-plane session minted by the loopback-PKCE flow
+ * A control-plane session minted by the loopback-PKCE flow
  * (`POST /agent/v1/control-plane/cli/token`). Distinct from the device-flow
- * {@link OperatorSessionToken} (read-only): this carries `provenance` and
- * `amr`, and is accepted everywhere a SIWX wallet is. Forward-compatible.
+ * {@link OperatorSessionToken} (read-only): this carries `provenance` and `amr`.
+ * It authorizes most control-plane ops, but `provision` / `deploy` / secrets
+ * additionally require a passkey-fresh operator approval (v1.85/v1.87) — see
+ * `r.operator.approval`. Forward-compatible.
  */
 export interface ControlPlaneSession {
   control_plane_session_token: string;
@@ -249,6 +252,116 @@ export class ClaimWalletOrg {
   }
 }
 
+// ── Operator approval (write-auth) ceremony (v1.85/v1.87) ─────────────────────
+// The passkey-fresh human approval a wallet-less operator mints to provision /
+// deploy. Scoped to one (action, target); transport is the X-Run402-Write-Auth
+// token. Isomorphic seams — the loopback server + PKCE live in the Node CLI.
+
+/** Input to {@link Approval.requestChallenge}. */
+export interface ApprovalChallengeInput {
+  /** The capability to approve. Determines whether `orgId` or `projectId` is required. */
+  action: WriteAuthCapability;
+  /** Required for `org.project.create`. */
+  orgId?: string;
+  /** Required for `project.deploy` / `project.secret.write`. */
+  projectId?: string;
+  /** The CLI's loopback redirect, e.g. `http://127.0.0.1:54321/callback`. */
+  cliRedirectUri: string;
+  /** PKCE S256 challenge = base64url(sha256(verifier)). */
+  codeChallenge: string;
+  /** Opaque CSRF state echoed back on the loopback redirect. */
+  state: string;
+  /**
+   * The human's control-plane session bearer. Falls back to the client's
+   * default auth when omitted — pass it explicitly unless the client was
+   * constructed with control-plane-session credentials.
+   */
+  token?: string;
+}
+
+/** Result of {@link Approval.requestChallenge}. Forward-compatible. */
+export interface ApprovalChallengeResult {
+  challenge_id: string;
+  confirm_url: string;
+  expires_at?: string;
+  action?: string;
+  org_id?: string | null;
+  project_id?: string | null;
+  delivery?: "cli_loopback" | "postmessage" | string;
+  [key: string]: unknown;
+}
+
+/** Input to {@link Approval.exchangeClaimCode}. */
+export interface ApprovalClaimInput {
+  /** Authorization code received on the loopback redirect. */
+  code: string;
+  /** The PKCE verifier whose hash was sent as `codeChallenge`. */
+  codeVerifier: string;
+  /** Must match the `state` used at challenge time. */
+  state: string;
+}
+
+/** Minted approval token payload. Expiry lives inside `session`. Forward-compatible. */
+export interface ApprovalTokenResult {
+  write_auth_token: string;
+  token_type?: string;
+  header?: string;
+  session?: { expires_at?: string | number; absolute_expires_at?: string | number; amr?: string[]; [k: string]: unknown } | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Operator-approval ceremony seams — `r.operator.approval.*`. Isomorphic
+ * (raw-request) seams: `requestChallenge` opens a passkey approval scoped to an
+ * `(action, target)`; the human approves in the browser; the confirm page
+ * redirects to the CLI loopback with a one-time `code`; `exchangeClaimCode`
+ * (PKCE) mints the token. The loopback server + PKCE generation live in the
+ * Node CLI (`run402 operator approve`).
+ */
+export class Approval {
+  constructor(private readonly client: Client) {}
+
+  /** Begin a scoped approval (`POST …/write-auth/challenges`). Carries the cp-session bearer. */
+  async requestChallenge(input: ApprovalChallengeInput): Promise<ApprovalChallengeResult> {
+    const body: Record<string, unknown> = {
+      action: input.action,
+      cli_redirect_uri: input.cliRedirectUri,
+      code_challenge: input.codeChallenge,
+      state: input.state,
+    };
+    if (input.orgId !== undefined) body.org_id = input.orgId;
+    if (input.projectId !== undefined) body.project_id = input.projectId;
+    return this.client.request<ApprovalChallengeResult>(
+      "/agent/v1/control-plane/write-auth/challenges",
+      {
+        method: "POST",
+        body,
+        ...(input.token
+          ? { headers: { Authorization: `Bearer ${input.token}` }, withAuth: false }
+          : {}),
+        context: "requesting operator approval challenge",
+      },
+    );
+  }
+
+  /**
+   * Exchange the loopback claim `code` (+ PKCE verifier + `state`) for the
+   * approval token (`POST …/write-auth/cli/token`). No `redirect_uri` — it is
+   * bound at challenge time. Unauthenticated (code+verifier are the credential).
+   */
+  async exchangeClaimCode(input: ApprovalClaimInput): Promise<ApprovalTokenResult> {
+    return this.client.request<ApprovalTokenResult>(
+      "/agent/v1/control-plane/write-auth/cli/token",
+      {
+        method: "POST",
+        body: { code: input.code, code_verifier: input.codeVerifier, state: input.state },
+        withAuth: false,
+        context: "exchanging operator approval claim code",
+      },
+    );
+  }
+}
+
 export class Operator {
   /**
    * The hosted/browser control-plane **session** surface (gateway v1.78):
@@ -267,9 +380,17 @@ export class Operator {
    */
   readonly claimWalletOrg: ClaimWalletOrg;
 
+  /**
+   * Operator-approval (write-auth) ceremony: `r.operator.approval.requestChallenge()`
+   * + `.exchangeClaimCode()`. The Node CLI (`run402 operator approve`) runs the
+   * loopback + PKCE around these isomorphic seams.
+   */
+  readonly approval: Approval;
+
   constructor(private readonly client: Client) {
     this.session = new OperatorSession(client);
     this.claimWalletOrg = new ClaimWalletOrg(client);
+    this.approval = new Approval(client);
   }
 
   /**

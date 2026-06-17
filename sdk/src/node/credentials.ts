@@ -17,16 +17,82 @@ import {
 } from "../../core-dist/keystore.js";
 import { getAllowanceAuthHeaders } from "../../core-dist/allowance-auth.js";
 import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance } from "../../core-dist/allowance.js";
-import { getAllowancePath as coreGetAllowancePath, getActiveProfile } from "../../core-dist/config.js";
+import { getAllowancePath as coreGetAllowancePath, getActiveProfile, getApiBase } from "../../core-dist/config.js";
 import { readMeta } from "../../core-dist/profiles.js";
-import type { AllowanceData, CredentialsProvider, ProjectKeys, WalletIdentity } from "../credentials.js";
+import { loadLiveControlPlaneSession } from "../../core-dist/control-plane-session.js";
+import { loadLiveApproval, hashControlPlaneSession } from "../../core-dist/write-auth-session.js";
+import type { AllowanceData, AuthRequestMeta, CredentialsProvider, ProjectKeys, WalletIdentity } from "../credentials.js";
+
+/** Where credential resolution runs — selects the default `authMode`. */
+export type CredentialSurface = "cli" | "mcp" | "sdk";
+/** How a request's credentials are chosen. `auto` = wallet, else operator (control-plane) session. */
+export type AuthMode = "auto" | "wallet" | "operator" | "none";
+
+export interface NodeCredentialsOptions {
+  allowancePath?: string;
+  keystorePath?: string;
+  /** Default is `wallet` (no ambient operator authority); `cli` opts into `auto`. */
+  surface?: CredentialSurface;
+  /** Explicit override; otherwise derived from `surface`. */
+  authMode?: AuthMode;
+}
 
 export class NodeCredentialsProvider implements CredentialsProvider {
-  constructor(private readonly options: { allowancePath?: string; keystorePath?: string } = {}) {}
+  constructor(private readonly options: NodeCredentialsOptions = {}) {}
 
-  async getAuth(path: string): Promise<Record<string, string> | null> {
-    const headers = getAllowanceAuthHeaders(path, this.options.allowancePath);
-    return headers ? { ...headers } : null;
+  /** Effective credential mode. Explicit `authMode` wins; else `cli → auto`, everything else → `wallet`. */
+  private resolveAuthMode(): AuthMode {
+    return this.options.authMode ?? (this.options.surface === "cli" ? "auto" : "wallet");
+  }
+
+  /**
+   * Deterministic credential resolution — selects exactly one credential class
+   * and never silently falls back to another after a failure.
+   *
+   * - `wallet` (default; the MCP/agent path): only the SIWX allowance. NEVER
+   *   reads the control-plane session or operator-approval caches, so a human's
+   *   ambient authority cannot leak into an agent tool call.
+   * - `auto` (CLI): SIWX allowance if present; otherwise the live control-plane
+   *   session, plus an `X-Run402-Write-Auth` approval ONLY when the request's
+   *   `(capability, target)` exactly matches a cached, origin/session-bound
+   *   approval. A gated write with no match is sent cp-bearer-only and fails
+   *   closed with `WRITE_AUTH_REQUIRED`.
+   */
+  async getAuth(path: string, metadata?: AuthRequestMeta): Promise<Record<string, string> | null> {
+    const mode = this.resolveAuthMode();
+    if (mode === "none") return null;
+
+    const wallet = getAllowanceAuthHeaders(path, this.options.allowancePath);
+    if (mode === "wallet") return wallet ? { ...wallet } : null;
+    if (mode === "auto" && wallet) return { ...wallet };
+
+    // operator mode, or auto with no wallet: the control-plane session principal.
+    const cp = loadLiveControlPlaneSession();
+    if (!cp) return wallet ? { ...wallet } : null;
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${cp.control_plane_session_token}`,
+    };
+    // Capability+target-matched approval attachment (never blanket).
+    if (metadata?.capability && metadata.target) {
+      const approval = loadLiveApproval({
+        apiOrigin: this.apiOrigin(),
+        cpSessionHash: hashControlPlaneSession(cp.control_plane_session_token),
+        capability: metadata.capability,
+        target: metadata.target,
+      });
+      if (approval) headers["X-Run402-Write-Auth"] = `Bearer ${approval.write_auth_token}`;
+    }
+    return headers;
+  }
+
+  /** API origin used to bind/look-up approvals (matches the ceremony's mint origin). */
+  private apiOrigin(): string {
+    try {
+      return new URL(getApiBase()).origin;
+    } catch {
+      return getApiBase();
+    }
   }
 
   async getProject(id: string): Promise<ProjectKeys | null> {

@@ -10,6 +10,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
+import { isOperatorApprovalRequired } from "../errors.js";
+import type { OperatorApprovalRequiredError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -225,5 +227,78 @@ describe("operator loopback-PKCE write-login (v1.78)", () => {
     assert.equal(session.provenance, "loopback_pkce");
     assert.deepEqual(session.amr, ["passkey"]);
     assert.equal(calls.length, 1);
+  });
+});
+
+describe("operator.approval ceremony seams (v1.85/v1.87)", () => {
+  it("requestChallenge POSTs the challenge with action + target + PKCE, carrying the explicit bearer", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ challenge_id: "ch_1", confirm_url: "https://api.example.test/confirm", delivery: "cli_loopback" }, 201),
+    );
+    const sdk = makeSdk(fetch);
+    const res = await sdk.operator.approval.requestChallenge({
+      action: "project.deploy",
+      projectId: "prj_x",
+      cliRedirectUri: "http://127.0.0.1:5555/callback",
+      codeChallenge: "ch4llenge",
+      state: "st4te",
+      token: "cp_tok",
+    });
+    assert.equal(calls[0].url, "https://api.example.test/agent/v1/control-plane/write-auth/challenges");
+    assert.equal(calls[0].method, "POST");
+    assert.equal(calls[0].headers["Authorization"], "Bearer cp_tok");
+    assert.equal(calls[0].headers["SIGN-IN-WITH-X"], undefined, "explicit bearer ⇒ no SIWX");
+    assert.deepEqual(JSON.parse(String(calls[0].body)), {
+      action: "project.deploy",
+      cli_redirect_uri: "http://127.0.0.1:5555/callback",
+      code_challenge: "ch4llenge",
+      state: "st4te",
+      project_id: "prj_x",
+    });
+    assert.equal(res.confirm_url, "https://api.example.test/confirm");
+  });
+
+  it("exchangeClaimCode POSTs {code, code_verifier, state} only (no redirect_uri), unauthenticated", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ write_auth_token: "wat_x", token_type: "write_auth", header: "X-Run402-Write-Auth", session: { expires_at: "2099-01-01T00:00:00Z" } }, 201),
+    );
+    const sdk = makeSdk(fetch);
+    const res = await sdk.operator.approval.exchangeClaimCode({ code: "code1", codeVerifier: "ver1", state: "st4te" });
+    assert.equal(calls[0].url, "https://api.example.test/agent/v1/control-plane/write-auth/cli/token");
+    assert.equal(calls[0].headers["SIGN-IN-WITH-X"], undefined, "unauthenticated exchange");
+    const body = JSON.parse(String(calls[0].body));
+    assert.deepEqual(body, { code: "code1", code_verifier: "ver1", state: "st4te" });
+    assert.equal("redirect_uri" in body, false);
+    assert.equal(res.write_auth_token, "wat_x");
+  });
+});
+
+describe("OperatorApprovalRequiredError mapping", () => {
+  it("maps 403 WRITE_AUTH_REQUIRED to a typed error with a resolved approve command", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({ code: "WRITE_AUTH_REQUIRED", error: "needs approval", hint: "..." }, 403),
+    );
+    const sdk = makeSdk(fetch);
+    let threw: unknown;
+    try {
+      await sdk.projects.provision({ orgId: "org_y" });
+    } catch (e) {
+      threw = e;
+    }
+    assert.ok(isOperatorApprovalRequired(threw), "expected OperatorApprovalRequiredError");
+    const err = threw as OperatorApprovalRequiredError;
+    assert.equal(err.capability, "org.project.create");
+    assert.deepEqual(err.target, { org_id: "org_y" });
+    assert.equal(err.approveCommand, "run402 operator approve --action org.project.create --org org_y");
+    assert.ok(Array.isArray(err.nextActions) && err.nextActions.length > 0);
+  });
+
+  it("maps WRITE_AUTH_BINDING_MISMATCH to the same typed error", async () => {
+    const { fetch } = mockFetch(() => jsonResponse({ code: "WRITE_AUTH_BINDING_MISMATCH" }, 403));
+    const sdk = makeSdk(fetch);
+    await assert.rejects(
+      () => sdk.projects.provision({ orgId: "org_z" }),
+      (e: unknown) => isOperatorApprovalRequired(e),
+    );
   });
 });

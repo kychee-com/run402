@@ -34,6 +34,8 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId } from "./config.mjs";
 import { normalizeArgv } from "./argparse.mjs";
+import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
+import { withAutoApprove } from "./operator.mjs";
 
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
@@ -810,18 +812,21 @@ async function applyCmd(args) {
       credentials: githubActionsCredentials({ projectId: releaseSpec.project, apiBase: API }),
       disablePaidFetch: true,
     };
-  } else {
-    // Preserve the aggressive early exit when no allowance is configured.
+  } else if (!loadLiveControlPlaneSession()) {
+    // Aggressive early exit when no allowance is configured — unless a
+    // wallet-less human is deploying via their operator (control-plane) session.
     allowanceAuthHeaders("/apply/v1/plans");
   }
 
   try {
-    const result = await getSdk(sdkOpts)._applyEngine.apply(releaseSpec, {
-      onEvent: makeStderrEventWriter(opts.quiet),
-      idempotencyKey,
-      allowWarnings: opts.allowWarnings,
-      allowWarningCodes: opts.allowWarningCodes,
-    });
+    const result = await withAutoApprove(() =>
+      getSdk(sdkOpts)._applyEngine.apply(releaseSpec, {
+        onEvent: makeStderrEventWriter(opts.quiet),
+        idempotencyKey,
+        allowWarnings: opts.allowWarnings,
+        allowWarningCodes: opts.allowWarningCodes,
+      }),
+    );
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     reportDeployApplyError(err, useGithubActionsOidc);

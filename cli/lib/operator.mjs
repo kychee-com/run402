@@ -23,7 +23,7 @@ import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
 import { getSdk } from "./sdk.mjs";
-import { claimWalletOrg, isStepUpRequired } from "#sdk/node";
+import { claimWalletOrg, isStepUpRequired, isOperatorApprovalRequired } from "#sdk/node";
 import { normalizeArgv, hasHelp, assertKnownFlags, flagValue } from "./argparse.mjs";
 import {
   saveOperatorSession,
@@ -38,8 +38,33 @@ import {
   clearControlPlaneSession,
   readControlPlaneSession,
   isControlPlaneSessionExpired,
+  loadLiveControlPlaneSession,
   controlPlaneSessionFromTokenResponse,
 } from "../core-dist/control-plane-session.js";
+import {
+  saveApproval,
+  clearApprovals,
+  readApprovals,
+  hashControlPlaneSession,
+  approvalFromTokenResponse,
+} from "../core-dist/write-auth-session.js";
+import { getApiBase } from "../core-dist/config.js";
+
+/** Gateway write-auth capabilities → required target scope. */
+const APPROVAL_ACTIONS = {
+  "org.project.create": "org",
+  "project.deploy": "project",
+  "project.secret.write": "project",
+};
+
+/** True when `url` is same-origin as the API base (confirm_url validation). */
+function sameApiOrigin(url) {
+  try {
+    return new URL(url).origin === new URL(getApiBase()).origin;
+  } catch {
+    return false;
+  }
+}
 
 const CLIENT_NAME = "run402 CLI";
 
@@ -57,6 +82,8 @@ Usage:
   run402 operator whoami
   run402 operator logout
   run402 operator claim-wallet-org [--org <id>] [--name <label>]
+  run402 operator approve --action <cap> (--org <id> | --project <id>) [--no-open]
+  run402 operator status
 
 Subcommands:
   login            Sign in via the browser. Default = device-flow READ session (powers
@@ -68,6 +95,12 @@ Subcommands:
   claim-wallet-org Claim an org owned by your wallet's agent into your human identity
                    (ownership transfer). Dual proof: your write-capable session
                    ('login --loopback' first) + a fresh signature from the active wallet.
+  approve          Mint a passkey operator-approval scoped to one (action, target) so a
+                   wallet-less human can provision/deploy. --action is one of
+                   org.project.create (--org), project.deploy (--project),
+                   project.secret.write (--project). Requires 'login --loopback' first.
+  status           Show the control-plane login state + each cached approval (action,
+                   target, expiry). Local, no network.
 
 Options:
   --no-open  (login) Do not auto-open the browser; just print the URL.
@@ -275,6 +308,8 @@ async function loopbackLogin(args, { stepUp }) {
   close();
 
   const cached = controlPlaneSessionFromTokenResponse(session);
+  // A fresh control-plane session invalidates any approvals bound to the old one.
+  clearApprovals();
   saveControlPlaneSession(cached);
   process.stderr.write(`\nSigned in (write-capable, provenance=${cached.provenance}).\n`);
 
@@ -394,6 +429,7 @@ async function logout(args) {
   }
   clearOperatorSession();
   clearControlPlaneSession();
+  clearApprovals();
   console.log(JSON.stringify({ revoked, cleared: true }));
 }
 
@@ -510,12 +546,203 @@ async function claimWalletOrgCmd(args) {
   }
 }
 
+/**
+ * Run the scoped operator-approval ceremony (loopback + passkey) and cache the
+ * minted approval. Requires a live control-plane session. Returns the cached
+ * approval (or exits non-zero via fail/reportSdkError). Reused by the
+ * `operator approve` verb AND the TTY auto-approve path in provision/deploy.
+ */
+export async function mintApproval({ action, orgId, projectId, noOpen = false }) {
+  const cp = loadLiveControlPlaneSession();
+  if (!cp) {
+    return fail({
+      code: "OPERATOR_LOGIN_REQUIRED",
+      message: "No control-plane session. Run 'run402 operator login --loopback' first, then approve.",
+      hint: "operator approval is minted on top of your write-capable control-plane session.",
+    });
+  }
+  const sdk = getSdk();
+  const { codeVerifier, codeChallenge, state } = pkce();
+  const { ready, codePromise, close } = startLoopbackServer({ expectedState: state, timeoutMs: 300_000 });
+
+  let port;
+  try {
+    port = await ready;
+  } catch (err) {
+    close();
+    return fail({ code: "OPERATOR_APPROVE_FAILED", message: `Could not start the loopback server: ${err.message}` });
+  }
+  const redirectUri = `http://127.0.0.1:${port}/callback`;
+
+  let challenge;
+  try {
+    challenge = await sdk.operator.approval.requestChallenge({
+      action,
+      orgId: orgId ?? undefined,
+      projectId: projectId ?? undefined,
+      cliRedirectUri: redirectUri,
+      codeChallenge,
+      state,
+      token: cp.control_plane_session_token,
+    });
+  } catch (err) {
+    close();
+    return reportSdkError(err);
+  }
+
+  const confirmUrl = challenge?.confirm_url;
+  if (!confirmUrl || !sameApiOrigin(confirmUrl)) {
+    close();
+    return fail({
+      code: "OPERATOR_APPROVE_BAD_CONFIRM_URL",
+      message: "The gateway returned a confirm_url that is not same-origin as the API base; aborting.",
+    });
+  }
+  const targetLabel = orgId ? `org ${orgId}` : projectId ? `project ${projectId}` : "(no target)";
+  process.stderr.write(
+    `\nTo approve '${action}' for ${targetLabel}, open and approve with your passkey:\n  ${confirmUrl}\n\n`,
+  );
+  if (!noOpen && process.stderr.isTTY) {
+    openBrowser(confirmUrl);
+    process.stderr.write("(opening your browser…)\n\n");
+  }
+  process.stderr.write("Waiting for passkey approval…\n");
+
+  let code;
+  try {
+    code = await codePromise;
+  } catch (err) {
+    close();
+    return fail({ code: "OPERATOR_APPROVE_FAILED", message: err.message, hint: "Run 'run402 operator approve' to try again." });
+  }
+
+  let token;
+  try {
+    token = await sdk.operator.approval.exchangeClaimCode({ code, codeVerifier, state });
+  } catch (err) {
+    close();
+    return reportSdkError(err);
+  }
+  close();
+
+  const approval = approvalFromTokenResponse(token, {
+    action,
+    target: { org_id: orgId ?? undefined, project_id: projectId ?? undefined },
+    apiOrigin: new URL(getApiBase()).origin,
+    controlPlaneSessionHash: hashControlPlaneSession(cp.control_plane_session_token),
+    controlPlanePrincipalId: cp.principal_id || "",
+  });
+  saveApproval(approval);
+  process.stderr.write(`\nApproved '${action}' for ${targetLabel}.\n`);
+  return approval;
+}
+
+/**
+ * Run a write action; on `OperatorApprovalRequiredError` AND an interactive
+ * TTY (CLI), run the scoped approval ceremony and retry once. In MCP / CI /
+ * non-TTY the typed error is rethrown unchanged — the agent relays the resolved
+ * `operator approve …` command rather than a browser opening unexpectedly.
+ */
+export async function withAutoApprove(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!isOperatorApprovalRequired(err) || !process.stderr.isTTY) throw err;
+    const action = err.capability;
+    const target = err.target || {};
+    if (!action) throw err;
+    process.stderr.write(`\nThis '${action}' needs a one-time operator approval. Opening the browser to approve…\n`);
+    await mintApproval({ action, orgId: target.org_id ?? undefined, projectId: target.project_id ?? undefined });
+    return await fn(); // retry once with the now-cached approval
+  }
+}
+
+/**
+ * `operator approve --action <cap> (--org <id> | --project <id>)` — mint a
+ * passkey approval scoped to one (action, target). Hidden alias: `write-auth`.
+ */
+async function approve(args) {
+  assertKnownFlags(
+    args,
+    ["--help", "-h", "--no-open", "--action", "--org", "--project"],
+    ["--action", "--org", "--project"],
+  );
+  const action = flagValue(args, "--action");
+  const org = flagValue(args, "--org");
+  const project = flagValue(args, "--project");
+
+  if (!action || !APPROVAL_ACTIONS[action]) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--action must be one of: ${Object.keys(APPROVAL_ACTIONS).join(", ")}`,
+      details: { flag: "--action", value: action, allowed: Object.keys(APPROVAL_ACTIONS) },
+    });
+  }
+  const scope = APPROVAL_ACTIONS[action];
+  if (scope === "org" && !org) fail({ code: "BAD_FLAG", message: `--org <id> is required for --action ${action}` });
+  if (scope === "project" && !project) fail({ code: "BAD_FLAG", message: `--project <id> is required for --action ${action}` });
+  if (scope === "org" && project) fail({ code: "BAD_FLAG", message: `--project is not valid for org-scoped --action ${action}; use --org` });
+  if (scope === "project" && org) fail({ code: "BAD_FLAG", message: `--org is not valid for project-scoped --action ${action}; use --project` });
+
+  const approval = await mintApproval({
+    action,
+    orgId: org ?? undefined,
+    projectId: project ?? undefined,
+    noOpen: args.includes("--no-open"),
+  });
+  console.log(
+    JSON.stringify({
+      approved: true,
+      action,
+      ...(org ? { org_id: org } : {}),
+      ...(project ? { project_id: project } : {}),
+      expires_at: new Date(approval.expires_at).toISOString(),
+    }),
+  );
+}
+
+/** `operator status` — operator-login state + each cached approval's (action, target, expiry). */
+async function status(args) {
+  assertKnownFlags(args, ["--help", "-h"]);
+  const now = Date.now();
+  const cp = readControlPlaneSession();
+  const liveCp = cp && !isControlPlaneSessionExpired(cp, now) ? cp : null;
+  const approvals = readApprovals()
+    .filter((a) => a.expires_at > now)
+    .map((a) => ({
+      action: a.action,
+      org_id: a.org_id ?? null,
+      project_id: a.project_id ?? null,
+      expires_at: new Date(a.expires_at).toISOString(),
+    }));
+  const out = {
+    operator_login: liveCp
+      ? { active: true, provenance: liveCp.provenance, amr: liveCp.amr, expires_at: new Date(liveCp.expires_at).toISOString() }
+      : { active: false },
+    approvals,
+  };
+  if (liveCp) {
+    process.stderr.write(`Operator login: active (${liveCp.provenance})\n`);
+    process.stderr.write(
+      approvals.length
+        ? `Approvals (${approvals.length}):\n` +
+            approvals.map((a) => `  - ${a.action} ${a.org_id || a.project_id || ""} (expires ${a.expires_at})`).join("\n") +
+            "\n"
+        : "Approvals: none. Run 'run402 operator approve --action <cap> --org|--project <id>'.\n",
+    );
+  } else {
+    process.stderr.write("Operator login: none. Run 'run402 operator login --loopback'.\n");
+  }
+  console.log(JSON.stringify(out, null, 2));
+}
+
 export async function run(sub, args = []) {
   args = normalizeArgv(args);
   if (!sub || sub === "--help" || sub === "-h" || hasHelp(args)) {
     console.log(HELP);
     process.exit(0);
   }
+  if (sub === "write-auth") sub = "approve"; // hidden alias (transport name)
   switch (sub) {
     case "login":
       await login(args);
@@ -531,6 +758,12 @@ export async function run(sub, args = []) {
       break;
     case "claim-wallet-org":
       await claimWalletOrgCmd(args);
+      break;
+    case "approve":
+      await approve(args);
+      break;
+    case "status":
+      await status(args);
       break;
     default:
       fail({

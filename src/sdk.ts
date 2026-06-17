@@ -13,7 +13,9 @@ import { run402 as createNodeSdk, type NodeRun402 } from "../sdk/dist/node/index
 let cached: NodeRun402 | null = null;
 
 export function getSdk(): NodeRun402 {
-  if (!cached) cached = createNodeSdk();
+  // surface: "mcp" keeps credential resolution wallet-only — an agent tool call
+  // never spends the human's cached operator approval (no ambient authority).
+  if (!cached) cached = createNodeSdk({ surface: "mcp" });
   return cached;
 }
 

@@ -262,7 +262,7 @@ export class Deploy {
     } = {},
   ): Promise<DeployResult> {
     const emit = makeEmitter(opts.onEvent);
-    const commit = await commitInternal(this.client, planId, opts.idempotencyKey);
+    const commit = await commitInternal(this.client, planId, opts.idempotencyKey, opts.project);
     return await pollUntilReady(this.client, commit, {}, [], emit, opts.project);
   }
 
@@ -677,7 +677,7 @@ async function applyOnce(
     ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
   });
   const { planId } = requirePersistedPlan(plan, "applying deploy");
-  const commit = await commitInternal(client, planId, opts.idempotencyKey);
+  const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project);
   const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
 
   // v1.48 unified-apply: thread the plan response's `asset_entries[]` back
@@ -1041,6 +1041,8 @@ async function planInternal(
     plan = withClientPlanWarnings(normalized, normalizePlanResponse(await client.request<PlanResponse>(dryRun ? "/apply/v1/plans?dry_run=true" : "/apply/v1/plans", {
       method: "POST",
       body,
+      // Operator-approval scope: deploying a release is `project.deploy` on this project.
+      authMeta: { method: "deploy.plan", capability: "project.deploy", target: { project_id: spec.project } },
       context: "planning deploy",
     })));
   } catch (err) {
@@ -1532,6 +1534,7 @@ async function commitInternal(
   client: Client,
   planId: string,
   idempotencyKey?: string,
+  project?: string,
 ): Promise<CommitResponse> {
   try {
     return await client.request<CommitResponse>(
@@ -1539,6 +1542,16 @@ async function commitInternal(
       {
         method: "POST",
         body: idempotencyKey ? { idempotency_key: idempotencyKey } : {},
+        // Operator-approval scope: committing a deploy is `project.deploy` on this project.
+        ...(project
+          ? {
+              authMeta: {
+                method: "deploy.commit",
+                capability: "project.deploy" as const,
+                target: { project_id: project },
+              },
+            }
+          : {}),
         context: "committing deploy",
       },
     );
@@ -2050,7 +2063,7 @@ async function startInternal(
       ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
     });
     const { planId } = requirePersistedPlan(plan, "starting deploy");
-    const commit = await commitInternal(client, planId, opts.idempotencyKey);
+    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project);
     return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
   })();
   // Avoid an unhandled-rejection at construction time. Consumers must call

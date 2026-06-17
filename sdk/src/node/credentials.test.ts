@@ -95,3 +95,95 @@ describe("NodeCredentialsProvider.getAuth", () => {
     assert.match(decoded.signature, /^0x[0-9a-fA-F]+$/);
   });
 });
+
+import { hashControlPlaneSession } from "../../core-dist/write-auth-session.js";
+
+const ORIGIN = "https://api.run402.test";
+
+function writeCp(token = "cp_tok"): void {
+  writeFileSync(
+    join(tempDir, "control-plane-session.json"),
+    JSON.stringify({
+      control_plane_session_token: token,
+      token_type: "Bearer",
+      provenance: "loopback_pkce",
+      principal_id: "prn_1",
+      amr: ["passkey"],
+      expires_at: Date.now() + 3_600_000,
+    }),
+  );
+}
+
+function writeApprovalCache(over: Record<string, unknown> = {}): void {
+  writeFileSync(
+    join(tempDir, "write-auth-session.json"),
+    JSON.stringify({
+      approvals: [
+        {
+          write_auth_token: "wat_x",
+          token_type: "write_auth",
+          header: "X-Run402-Write-Auth",
+          action: "project.deploy",
+          project_id: "prj_x",
+          expires_at: Date.now() + 3_600_000,
+          control_plane_session_hash: hashControlPlaneSession("cp_tok"),
+          control_plane_principal_id: "prn_1",
+          api_origin: ORIGIN,
+          minted_at: Date.now(),
+          ...over,
+        },
+      ],
+    }),
+  );
+}
+
+const DEPLOY_META = { capability: "project.deploy" as const, target: { project_id: "prj_x" } };
+
+describe("NodeCredentialsProvider.getAuth — surface resolution (no ambient approval)", () => {
+  it("default/mcp surface never reads the control-plane session (wallet-only)", async () => {
+    writeCp();
+    writeApprovalCache();
+    for (const surface of ["mcp", undefined] as const) {
+      const p = new NodeCredentialsProvider(surface ? { surface } : {});
+      assert.equal(await p.getAuth("/projects/v1", DEPLOY_META), null, `surface=${surface} must not use cp/approval`);
+    }
+  });
+
+  it("cli surface falls back to the control-plane bearer when no wallet is present", async () => {
+    writeCp();
+    const p = new NodeCredentialsProvider({ surface: "cli" });
+    const h = await p.getAuth("/projects/v1");
+    assert.equal(h?.Authorization, "Bearer cp_tok");
+    assert.equal(h?.["X-Run402-Write-Auth"], undefined, "no capability ⇒ no approval header");
+  });
+
+  it("cli surface attaches the approval header on a matching (capability, target)", async () => {
+    writeCp();
+    writeApprovalCache();
+    const p = new NodeCredentialsProvider({ surface: "cli" });
+    const h = await p.getAuth("/apply/v1/plans", DEPLOY_META);
+    assert.equal(h?.Authorization, "Bearer cp_tok");
+    assert.equal(h?.["X-Run402-Write-Auth"], "Bearer wat_x");
+  });
+
+  it("cli surface withholds the approval header on a target mismatch (fails closed)", async () => {
+    writeCp();
+    writeApprovalCache({ project_id: "prj_DIFFERENT" });
+    const p = new NodeCredentialsProvider({ surface: "cli" });
+    const h = await p.getAuth("/apply/v1/plans", DEPLOY_META);
+    assert.equal(h?.Authorization, "Bearer cp_tok");
+    assert.equal(h?.["X-Run402-Write-Auth"], undefined, "wrong target ⇒ no approval");
+  });
+
+  it("cli surface prefers the wallet when an allowance is present (no cp fallback)", async () => {
+    const privateKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
+    writeFileSync(join(tempDir, "allowance.json"), JSON.stringify({ address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", privateKey, rail: "x402" }));
+    writeCp();
+    writeApprovalCache();
+    const p = new NodeCredentialsProvider({ surface: "cli" });
+    const h = await p.getAuth("/apply/v1/plans", DEPLOY_META);
+    assert.ok(h?.["SIGN-IN-WITH-X"], "wallet present ⇒ SIWX");
+    assert.equal(h?.Authorization, undefined, "wallet present ⇒ no cp bearer");
+    assert.equal(h?.["X-Run402-Write-Auth"], undefined, "wallet present ⇒ no approval");
+  });
+});

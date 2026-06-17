@@ -16,16 +16,20 @@
 - **WHEN** the selected credential class's request fails (e.g. wallet auth rejected)
 - **THEN** the SDK SHALL throw a typed error naming the credential class used and SHALL NOT retry the request under a different class
 
-### Requirement: Capability-driven dual-header attachment
+### Requirement: Capability+target-matched dual-header attachment
 
-`getAuth(path, metadata?)` SHALL accept `{ method, mutates?, capability? }` supplied by the typed SDK method. When resolution selects the operator-approval class, the control-plane bearer and `X-Run402-Write-Auth` SHALL be attached only for requests whose metadata marks a mutating/gated capability. The approval header SHALL NOT be attached blanket to every control-plane request, and SHALL NOT be governed by a client-side path allowlist.
+`getAuth(path, metadata?)` SHALL accept `{ method, capability?, target? }` supplied by the typed SDK method, where `capability` is a gateway `WriteAuthCapability` (`org.project.create` / `project.deploy` / `project.secret.write`) and `target` is `{ org_id }` or `{ project_id }`. When resolution selects the operator-approval class, the control-plane bearer and `X-Run402-Write-Auth: Bearer <token>` SHALL be attached only when a cached approval EXACTLY matches the request's `(capability, target)` (plus origin + cp-session binding). The approval header SHALL NOT be attached blanket, SHALL NOT be governed by a client-side path allowlist, and SHALL NOT be attached when the cached approval's target differs.
 
-#### Scenario: Gated write carries the dual header
-- **WHEN** an operator-mode request is made for a method marked `mutates: true` (e.g. provision/deploy) with a live approval cached
+#### Scenario: Gated write with a matching approval carries the dual header
+- **WHEN** an operator-mode request is made for `capability: "project.deploy"`, `target: { project_id: "prj_x" }`, and a live approval for exactly that `(action, target)` is cached
 - **THEN** the request SHALL carry both `Authorization: Bearer <session>` and `X-Run402-Write-Auth: Bearer <token>`
 
+#### Scenario: Gated write with a non-matching approval fails closed
+- **WHEN** the request is for `project.deploy` on `prj_x` but only an approval for a different target (or a different action) is cached
+- **THEN** the request SHALL carry `Authorization: Bearer <session>` only (no `X-Run402-Write-Auth`), so the gateway returns `WRITE_AUTH_REQUIRED`
+
 #### Scenario: Read carries only the control-plane bearer
-- **WHEN** an operator-mode request is made for a non-mutating method (no `mutates`/gated `capability`)
+- **WHEN** an operator-mode request is made for a method with no write capability
 - **THEN** the request SHALL carry `Authorization: Bearer <session>` and SHALL NOT attach `X-Run402-Write-Auth`, even when an approval is cached
 
 ### Requirement: Kernel header merge is case-insensitive and credential-family-atomic
@@ -40,24 +44,32 @@ The kernel SHALL merge provider headers case-insensitively (an explicit `authori
 - **WHEN** a request explicitly sets `Authorization: Bearer <token>` and the provider resolves a different auth class
 - **THEN** the kernel SHALL leave the request's credentials intact and SHALL NOT add the provider's auth headers
 
-### Requirement: Isomorphic, hardened operator-approval ceremony seams
+### Requirement: Isomorphic, action+target-scoped, hardened ceremony seams
 
-`r.operator.approval.requestChallenge({ cliRedirectUri, codeChallenge, state, token? })` SHALL `POST /agent/v1/control-plane/write-auth/challenges` carrying the control-plane session bearer, the loopback redirect, the PKCE S256 challenge, and CSRF state. `r.operator.approval.exchangeClaimCode({ code, codeVerifier, redirectUri, state, token? })` SHALL `POST /agent/v1/control-plane/write-auth/cli/token` including `redirect_uri`, and return the minted approval token payload. Both seams SHALL be isomorphic (no `fs`/loopback).
+`r.operator.approval.requestChallenge({ action, orgId?, projectId?, cliRedirectUri, codeChallenge, state, token? })` SHALL `POST /agent/v1/control-plane/write-auth/challenges` with `{ action, org_id?, project_id?, cli_redirect_uri, code_challenge, state }` and the control-plane session bearer. `r.operator.approval.exchangeClaimCode({ code, codeVerifier, state, token? })` SHALL `POST /agent/v1/control-plane/write-auth/cli/token` with `{ code, code_verifier, state }` (NO `redirect_uri` — it is bound at challenge time) and return the minted payload `{ write_auth_token, token_type, header, session }`. Both seams SHALL be isomorphic (no `fs`/loopback).
 
-#### Scenario: exchangeClaimCode includes the redirect_uri
-- **WHEN** `exchangeClaimCode({ code, codeVerifier, redirectUri, state })` is invoked
-- **THEN** the POST body SHALL include `redirect_uri` in addition to `code`, `code_verifier`, and `state`
+#### Scenario: requestChallenge carries the action and target
+- **WHEN** `requestChallenge({ action: "project.deploy", projectId: "prj_x", cliRedirectUri, codeChallenge, state })` is invoked
+- **THEN** the POST body SHALL include `action: "project.deploy"`, `project_id: "prj_x"`, `cli_redirect_uri`, `code_challenge`, and `state`
+
+#### Scenario: exchangeClaimCode omits redirect_uri
+- **WHEN** `exchangeClaimCode({ code, codeVerifier, state })` is invoked
+- **THEN** the POST body SHALL contain exactly `code`, `code_verifier`, and `state`, and SHALL NOT contain `redirect_uri`
 
 #### Scenario: Seams carry no Node-only dependency
 - **WHEN** the `approval` seams are imported in an isomorphic build
 - **THEN** they SHALL NOT import `fs`, `http`, or any Node-only module
 
-### Requirement: Approval token cache bound to session, origin, and target
+### Requirement: Multi-entry approval cache keyed and bound per (origin, cp-session, action, target)
 
-`core/src/write-auth-session.ts` SHALL persist the approval at `{base}/write-auth-session.json` (mode `0600`, atomic write, self-healing permissions, absolute `expires_at`) and SHALL store binding fields: `control_plane_session_hash`, `control_plane_principal_id`, `api_origin`, `scopes`, optional `org_id`/`project_id`, and `minted_at`. `loadLiveApproval(...)` SHALL return `null` on cp-session-hash mismatch, principal mismatch, api-origin mismatch, scope/target mismatch, or expiry.
+`core/src/write-auth-session.ts` SHALL persist a LIST of approvals at `{base}/write-auth-session.json` (mode `0600`, atomic write, self-healing permissions), each `{ write_auth_token, token_type, header, action, org_id?, project_id?, expires_at, control_plane_session_hash, control_plane_principal_id, api_origin, minted_at }`. Saving an approval SHALL replace any existing entry with the same `(api_origin, control_plane_session_hash, action, target)` key and leave other entries intact. `loadLiveApproval({ apiOrigin, cpSessionHash, capability, target })` SHALL return the entry matching all of origin, cp-session-hash, action, and target, or `null` if none matches or it is expired.
 
-#### Scenario: A stale or cross-origin approval is not returned live
-- **WHEN** `loadLiveApproval` is called and the cached `control_plane_session_hash` or `api_origin` does not match the current control-plane session / API base
+#### Scenario: Distinct (action, target) approvals coexist
+- **WHEN** an `org.project.create` approval for org Y and a `project.deploy` approval for project X are both minted under the same control-plane session
+- **THEN** both SHALL be retrievable; saving one SHALL NOT evict the other
+
+#### Scenario: A non-matching or cross-origin approval is not returned live
+- **WHEN** `loadLiveApproval` is called for `(project.deploy, prj_x)` and the cache holds only an approval for a different target/action, a different `api_origin`, or a different `control_plane_session_hash`
 - **THEN** it SHALL return `null`
 
 #### Scenario: Cache file is owner-only
@@ -74,11 +86,11 @@ The cached approval SHALL be cleared when the control-plane session changes: `op
 
 ### Requirement: CLI `operator approve`, `operator status`, and TTY-only auto-approve
 
-`run402 operator approve` SHALL run the headless passkey approval ceremony (PKCE + state, 127.0.0.1 loopback, `requestChallenge`, open the validated `confirm_url`, capture and validate `code`+`state`, `exchangeClaimCode`, persist + bind the approval), require a live control-plane session (else fail with guidance to run `operator login --loopback`), and emit JSON. `run402 operator write-auth` SHALL exist as a hidden alias. `run402 operator status` SHALL report operator-login state, approval state + expiry, scopes, and org/project target. When approval is missing AND `stderr` is a TTY, `provision`/`deploy apply` SHALL offer to run the ceremony and retry once; in MCP, CI, or non-TTY they SHALL NOT open a browser.
+`run402 operator approve --action <capability> (--org <id> | --project <id>)` SHALL run the headless passkey ceremony scoped to that `(action, target)` (PKCE + state, 127.0.0.1 loopback, `requestChallenge` with the action+target, open the validated `confirm_url`, capture and validate `code`+`state`, `exchangeClaimCode`, persist the bound approval), require a live control-plane session (else fail with guidance to run `operator login --loopback`), and emit JSON. `run402 operator write-auth` SHALL exist as a hidden alias. `run402 operator status` SHALL report operator-login state and each cached approval's `(action, target, expiry)`. When a gated write raises `OperatorApprovalRequiredError` AND `stderr` is a TTY AND surface is CLI, `provision`/`deploy apply` SHALL derive the `(action, target)` from the failing request, offer to run the scoped ceremony, and retry once; in MCP, CI, or non-TTY they SHALL NOT open a browser.
 
-#### Scenario: Successful ceremony caches a bound approval
-- **WHEN** `run402 operator approve` completes the loopback exchange
-- **THEN** the approval SHALL be written to the cache with its session/origin binding and a JSON success result SHALL be printed, and the token SHALL NOT be printed
+#### Scenario: Scoped ceremony caches a bound approval
+- **WHEN** `run402 operator approve --action project.deploy --project prj_x` completes the loopback exchange
+- **THEN** an approval bound to `(project.deploy, prj_x, api_origin, cp-session)` SHALL be cached, a JSON success result SHALL be printed, and the token SHALL NOT be printed
 
 #### Scenario: State mismatch aborts before success
 - **WHEN** the loopback redirect carries a `state` that does not match the value sent to `requestChallenge`
@@ -86,7 +98,7 @@ The cached approval SHALL be cleared when the control-plane session changes: `op
 
 #### Scenario: Non-interactive deploy does not open a browser
 - **WHEN** `run402 deploy apply` needs approval and `stderr` is not a TTY (or `surface` is MCP/CI)
-- **THEN** it SHALL NOT open a browser and SHALL surface `OperatorApprovalRequiredError`
+- **THEN** it SHALL NOT open a browser and SHALL surface `OperatorApprovalRequiredError` with the resolved approve command
 
 ### Requirement: Wallet-less provision and deploy succeed after approval
 
@@ -96,13 +108,17 @@ After a bound approval is cached, `run402 provision` and `run402 deploy apply` i
 - **WHEN** a wallet-less human with a cached control-plane session and a live bound approval runs `run402 provision`
 - **THEN** the create request SHALL carry both `Authorization` and `X-Run402-Write-Auth` and SHALL NOT return `403 WRITE_AUTH_REQUIRED`
 
-### Requirement: Typed OperatorApprovalRequiredError with structured remediation
+### Requirement: Typed OperatorApprovalRequiredError with a resolved next-action
 
-When the gateway returns `403` with envelope code `WRITE_AUTH_REQUIRED`, the SDK SHALL throw `OperatorApprovalRequiredError` (a `Run402Error` subclass), distinct from `Unauthorized` / `NotAuthorizedError` / `StepUpRequiredError`, carrying `code: "WRITE_AUTH_REQUIRED"`, `principal: "operator"`, the `capability`, and `next_actions` referencing `run402 operator approve`.
+When the gateway returns `403` with envelope code `WRITE_AUTH_REQUIRED`, `WRITE_AUTH_BINDING_MISMATCH`, or `WRITE_AUTH_SESSION_INVALID`, the SDK SHALL throw `OperatorApprovalRequiredError` (a `Run402Error` subclass), distinct from `Unauthorized` / `NotAuthorizedError` / `StepUpRequiredError`, carrying `code`, `principal: "operator"`, the `capability`, the `target` (`{ org_id }` or `{ project_id }`), and `next_actions` whose command is the fully-resolved `run402 operator approve --action <capability> --org <id>|--project <id>` synthesized from the failing request's metadata.
 
-#### Scenario: Missing approval surfaces the typed error with next_actions
-- **WHEN** a wallet-less gated write is attempted without a live approval and the gateway returns `403 WRITE_AUTH_REQUIRED`
-- **THEN** the SDK SHALL throw `OperatorApprovalRequiredError` whose `next_actions` reference `run402 operator approve`
+#### Scenario: Missing approval surfaces a fully-resolved command
+- **WHEN** a wallet-less `project.deploy` on `prj_x` is attempted without a matching approval and the gateway returns `403 WRITE_AUTH_REQUIRED`
+- **THEN** the SDK SHALL throw `OperatorApprovalRequiredError` whose `next_actions[0].command` is `run402 operator approve --action project.deploy --project prj_x`
+
+#### Scenario: Binding mismatch maps to a re-approve action
+- **WHEN** the gateway returns `403 WRITE_AUTH_BINDING_MISMATCH` (a cached approval targeted the wrong project/org)
+- **THEN** the SDK SHALL throw `OperatorApprovalRequiredError` whose `why` indicates the cached approval is stale/wrong-target and SHALL surface the correctly-targeted approve command
 
 ### Requirement: Documentation reflects the operator-approval model
 

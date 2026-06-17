@@ -319,6 +319,7 @@ export {
   Run402DeployError,
   TransferFreezeError,
   StepUpRequiredError,
+  OperatorApprovalRequiredError,
   isRun402Error,
   isPaymentRequired,
   isProjectNotFound,
@@ -330,6 +331,7 @@ export {
   isDeployError,
   isTransferFreezeError,
   isStepUpRequired,
+  isOperatorApprovalRequired,
   isRetryableRun402Error,
   getQuotaScope,
 } from "./errors.js";

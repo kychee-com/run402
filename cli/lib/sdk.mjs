@@ -10,5 +10,7 @@
 import { run402 } from "#sdk/node";
 
 export function getSdk(opts = {}) {
-  return run402(opts);
+  // surface: "cli" opts the default credential resolution into `auto` — wallet
+  // if present, else the operator (control-plane) session + matched approval.
+  return run402({ surface: "cli", ...opts });
 }
