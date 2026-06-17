@@ -87,12 +87,12 @@ Notes:
     export default async (req: Request) => Response
   Deploy may require payment if the project lease has expired.
 
-  The deploy response includes:
-  - runtime_version: the bundled @run402/functions version (e.g. "1.48.0")
-  - deps_resolved: map of each --deps name to the actually-installed
-    concrete version (e.g. {"lodash":"4.17.21"})
-  - warnings (optional, top-level, sibling to the record): non-fatal
-    notes such as bundle-size advisories
+  Deploy routes through the unified apply engine (functions.patch.set), not
+  a legacy admin route. The result sets runtime_version and deps_resolved to
+  null (apply returns release-level data, not per-function build metadata) -
+  read the resolved versions from 'run402 functions list', whose records
+  carry both. The result still includes an optional top-level warnings:
+  string[] for non-fatal notes such as bundle-size advisories.
 
 Examples:
   run402 functions deploy prj_abc123 stripe-webhook --file handler.ts

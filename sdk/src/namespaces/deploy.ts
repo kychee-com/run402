@@ -881,6 +881,7 @@ function functionToWire(fn: NormalizedFunctionSpec): Record<string, unknown> {
           },
         }
       : {}),
+    ...(fn.deps !== undefined ? { deps: fn.deps } : {}),
     ...(fn.schedule !== undefined ? { schedule: fn.schedule } : {}),
     ...(fn.requireAuth !== undefined ? { require_auth: fn.requireAuth } : {}),
     ...(fn.requireRole !== undefined
@@ -2226,6 +2227,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "files",
   "entrypoint",
   "config",
+  "deps",
   "schedule",
   "requireAuth",
   "requireRole",
@@ -3395,6 +3397,7 @@ async function normalizeFunction(
     runtime: fn.runtime ?? "node22",
   };
   if (fn.config) out.config = fn.config;
+  if (fn.deps !== undefined) out.deps = fn.deps;
   if (fn.schedule !== undefined) out.schedule = fn.schedule;
   if (fn.entrypoint) out.entrypoint = fn.entrypoint;
   if (fn.requireAuth !== undefined) out.requireAuth = fn.requireAuth;

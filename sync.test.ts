@@ -226,7 +226,7 @@ const SURFACE: Capability[] = [
   { id: "wait_for_cdn_freshness", endpoint: "GET /storage/v1/blobs/diagnose (poll)", mcp: "wait_for_cdn_freshness",  cli: "cdn:wait-fresh",    openclaw: "cdn:wait-fresh" },
 
   // ── Functions ────────────────────────────────────────────────────────────
-  { id: "deploy_function",   endpoint: "POST /projects/v1/admin/:id/functions",              mcp: "deploy_function",   cli: "functions:deploy", openclaw: "functions:deploy" },
+  { id: "deploy_function",   endpoint: "POST /apply/v1/plans (functions.patch.set)",          mcp: "deploy_function",   cli: "functions:deploy", openclaw: "functions:deploy" },
   { id: "invoke_function",   endpoint: "POST /functions/v1/:name",                            mcp: "invoke_function",   cli: "functions:invoke", openclaw: "functions:invoke" },
   { id: "get_function_logs", endpoint: "GET /projects/v1/admin/:id/functions/:name/logs",    mcp: "get_function_logs", cli: "functions:logs",   openclaw: "functions:logs" },
   { id: "list_functions",    endpoint: "GET /projects/v1/admin/:id/functions",                mcp: "list_functions",    cli: "functions:list",   openclaw: "functions:list" },

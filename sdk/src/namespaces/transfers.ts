@@ -70,6 +70,10 @@ export interface AcceptTransferResult {
   to_wallet: string;
   new_organization_id: string | null;
   completed_at: string;
+  /** New owner's project anon key (stateless JWT) — #428. The SDK persists it on accept. */
+  anon_key: string;
+  /** New owner's project service key (stateless JWT) — #428. Full project access; persisted on accept. */
+  service_key: string;
   secrets_rotation_advised: true;
   /** Names of secrets that carried over with the project. Values are never returned. */
   secret_names_inherited: string[];
@@ -317,7 +321,7 @@ export class Transfers {
    * `secrets_rotation_advised` advisory on the project.
    */
   async accept(transferId: string): Promise<AcceptTransferResult> {
-    return this.client.request<AcceptTransferResult>(
+    const result = await this.client.request<AcceptTransferResult>(
       `/agent/v1/transfers/${encodeURIComponent(transferId)}/accept`,
       {
         method: "POST",
@@ -325,6 +329,21 @@ export class Transfers {
         context: "accepting project transfer",
       },
     );
+    // Persist the new owner's keys (#428) so the recipient can operate the
+    // project immediately, mirroring `projects.provision`.
+    if (result.anon_key && result.service_key) {
+      const creds = this.client.credentials;
+      if (creds.saveProject) {
+        await creds.saveProject(result.project_id, {
+          anon_key: result.anon_key,
+          service_key: result.service_key,
+        });
+      }
+      if (creds.setActiveProject) {
+        await creds.setActiveProject(result.project_id);
+      }
+    }
+    return result;
   }
 
   /**

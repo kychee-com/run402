@@ -1,14 +1,18 @@
 /**
  * `functions` namespace — serverless function lifecycle.
  *
- * Covers deploy/invoke/logs/list/delete/update against
- * `/projects/v1/admin/:id/functions*` and `/functions/v1/:name`, plus the
- * opt-in runtime rebuild/rebuildAll against `/projects/v1/:id/functions*`
+ * `deploy` routes through the unified apply engine (`/apply/v1`, a
+ * `functions.patch.set` release) — the legacy `POST /projects/v1/admin/:id/
+ * functions` route was removed gateway-side. invoke/logs/list/delete/update
+ * cover `/projects/v1/admin/:id/functions*` and `/functions/v1/:name`, plus
+ * the opt-in runtime rebuild/rebuildAll against `/projects/v1/:id/functions*`
  * (wallet-authed, capability `function-runtime-rebuild`).
  */
 
 import type { Client } from "../kernel.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
+import { Deploy } from "./deploy.js";
+import type { FunctionSpec, ReleaseSpec, WarningEntry } from "./deploy.types.js";
 import type {
   DeleteFunctionResult,
   FunctionDeployOptions,
@@ -41,21 +45,32 @@ export class Functions {
   constructor(private readonly client: Client) {}
 
   /**
-   * Deploy a serverless function. Deployed functions can
-   * `import { db, adminDb, getUser, email, ai } from "@run402/functions"` —
-   * the in-function helper library is auto-bundled by the platform at the
-   * version recorded in {@link FunctionDeployResult.runtime_version}.
+   * Deploy a serverless function through the unified apply engine. Builds a
+   * one-function `functions.patch.set` {@link ReleaseSpec} (additive — never
+   * touches coexisting functions) and runs it through the same `/apply/v1`
+   * state machine as `r.project(id).apply`. The legacy
+   * `POST /projects/v1/admin/:id/functions` route was removed gateway-side.
    *
-   * `opts.deps` lists additional npm packages to install and bundle. Bare
-   * names resolve to the latest published version at deploy time; pinned
-   * or range specs (`"lodash@4.17.21"`, `"date-fns@^3.0.0"`) are honored
-   * verbatim. The actually-installed concrete versions are returned in
-   * {@link FunctionDeployResult.deps_resolved}. `@run402/functions` and
-   * the deprecated `run402-functions` are rejected.
+   * Deployed functions can `import { db, adminDb, email, ai } from
+   * "@run402/functions"` — the in-function helper library is auto-bundled by
+   * the platform.
    *
-   * Non-fatal deploy issues (bundle size warnings, esbuild advisories)
-   * surface in {@link FunctionDeployResult.warnings}.
+   * `opts.deps` lists additional npm packages to install and bundle (capability
+   * `apply-v1-function-deps`). Bare names resolve to the latest published
+   * version at deploy time; pinned or range specs (`"lodash@4.17.21"`,
+   * `"date-fns@^3.0.0"`) are honored verbatim. `@run402/functions` and native
+   * binary modules are rejected by the gateway. The actually-installed concrete
+   * versions land on the function record (read via {@link Functions.list}) —
+   * the apply/deploy result does not carry them, so
+   * {@link FunctionDeployResult.deps_resolved} and `runtime_version` are `null`.
    *
+   * Authorizes through the standard apply credential — a SIWX wallet, or the
+   * operator-approval `project.deploy` gate for a wallet-less human — NOT the
+   * project service key. Non-fatal deploy issues (bundle size warnings, esbuild
+   * advisories) surface in {@link FunctionDeployResult.warnings}.
+   *
+   * @throws {ProjectNotFound} when the project is absent from the local keystore.
+   * @throws {Run402DeployError} on any apply state-machine failure.
    * @throws {PaymentRequired} when the project lease has expired.
    */
   async deploy(projectId: string, opts: FunctionDeployOptions): Promise<FunctionDeployResult> {
@@ -65,26 +80,48 @@ export class Functions {
     validateFunctionDeps(opts.deps, "deps", "deploying function");
     validateFunctionSchedule(opts.schedule, "schedule", "deploying function");
 
+    // Fast-fail on an unknown project id before planning (and the spec needs
+    // the id). The deploy authorizes via the apply credential, not the
+    // service key — the legacy service-key route no longer exists.
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "deploying function");
 
-    const body: Record<string, unknown> = {
-      name: opts.name,
-      code: opts.code,
+    const fn: FunctionSpec = {
+      runtime: "node22",
+      source: { data: opts.code, contentType: "text/javascript; charset=utf-8" },
     };
-    if (opts.config !== undefined) body.config = opts.config;
-    if (opts.deps !== undefined) body.deps = opts.deps;
-    if (opts.schedule !== undefined) body.schedule = opts.schedule;
+    if (opts.config !== undefined) {
+      fn.config = { timeoutSeconds: opts.config.timeout, memoryMb: opts.config.memory };
+    }
+    if (opts.deps !== undefined) fn.deps = opts.deps;
+    if (opts.schedule !== undefined) fn.schedule = opts.schedule;
 
-    return this.client.request<FunctionDeployResult>(
-      `/projects/v1/admin/${projectId}/functions`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${project.service_key}` },
-        body,
-        context: "deploying function",
-      },
-    );
+    const spec: ReleaseSpec = {
+      project: projectId,
+      functions: { patch: { set: { [opts.name]: fn } } },
+    };
+
+    const result = await new Deploy(this.client).apply(spec, {});
+
+    // Map the release-level `DeployResult` back to the stable
+    // `FunctionDeployResult`. The apply result carries urls + warnings, not
+    // per-function build metadata, so `runtime_version` / `deps_resolved` are
+    // `null` (the function record holds them — read via `list`). `runtime` /
+    // `timeout` / `memory` echo the request (or the documented defaults).
+    const warnings = result.warnings.map((w: WarningEntry) => w.message);
+    return {
+      name: opts.name,
+      url: result.urls[opts.name] ?? `${this.client.apiBase}/functions/v1/${opts.name}`,
+      status: "deployed",
+      runtime: "node22",
+      timeout: opts.config?.timeout ?? 15,
+      memory: opts.config?.memory ?? 128,
+      schedule: opts.schedule ?? null,
+      created_at: new Date().toISOString(),
+      runtime_version: null,
+      deps_resolved: null,
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
   }
 
   /**

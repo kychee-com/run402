@@ -60,60 +60,109 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+/**
+ * A `mockFetch` handler that drives the unified-apply engine to terminal
+ * success for a single `functions.patch.set` deploy: `missing_content: []`
+ * (so the CAS upload dance is skipped) + a terminal `"ready"` commit (so the
+ * operation poll is skipped). `/tiers/v1/status` returns an empty tier so the
+ * function tier preflight bails (no extra endpoints to mock). The `functions`
+ * deploy re-point rides this path instead of the deleted legacy admin route.
+ */
+function applyOkFetch(opts: { planId: string; warnings?: unknown[] }) {
+  const { planId, warnings = [] } = opts;
+  return mockFetch((call) => {
+    if (call.url.endsWith("/tiers/v1/status")) return json({ tier: "" });
+    if (call.url.endsWith("/apply/v1/plans")) {
+      return json({
+        plan_id: planId,
+        operation_id: "op_fn",
+        base_release_id: null,
+        manifest_digest: "digest",
+        missing_content: [],
+        diff: { resources: {} },
+        warnings,
+      });
+    }
+    if (call.url.endsWith(`/apply/v1/plans/${planId}/commit`)) {
+      return json({ operation_id: "op_fn", status: "ready", release_id: "rel_fn", urls: {} });
+    }
+    throw new Error(`unexpected fetch ${call.method} ${call.url}`);
+  });
+}
+
 describe("functions.deploy", () => {
-  it("POSTs name/code/config/deps/schedule when present", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({
-        name: "hello",
-        url: "https://api.example.test/functions/v1/hello",
-        status: "deployed",
-        runtime: "node22",
-        timeout: 15,
-        memory: 256,
-        schedule: "*/5 * * * *",
-        created_at: "2026-04-23T00:00:00Z",
-      }),
-    );
+  it("deploys via a functions.patch.set apply plan, not the deleted legacy route", async () => {
+    const { fetch, calls } = applyOkFetch({
+      planId: "plan_fn",
+      warnings: [
+        { code: "BUNDLE_SIZE", severity: "low", requires_confirmation: false, message: "bundle is large" },
+      ],
+    });
     const sdk = makeSdk(fetch);
     const result = await sdk.functions.deploy("prj_known", {
       name: "hello",
       code: "export default async () => new Response('ok')",
-      config: { timeout: 15, memory: 256 },
-      deps: ["axios"],
-      schedule: "*/5 * * * *",
+      deps: ["lodash"],
     });
-    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/functions");
-    assert.equal(calls[0]!.method, "POST");
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer svc_k");
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(body.name, "hello");
-    assert.deepEqual(body.config, { timeout: 15, memory: 256 });
-    assert.deepEqual(body.deps, ["axios"]);
-    assert.equal(body.schedule, "*/5 * * * *");
+
+    // Routed through unified apply — never the deleted admin route, never a
+    // service-key bearer (auth shifts to the project.deploy apply credential).
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"));
+    assert(planCall, "posted an /apply/v1/plans plan");
+    assert.equal(planCall!.method, "POST");
+    assert(
+      !calls.some((c) => c.url.includes("/projects/v1/admin/")),
+      "must not POST the deleted /projects/v1/admin/:id/functions route",
+    );
+    assert.notEqual(planCall!.headers["Authorization"], "Bearer svc_k");
+
+    // The function rides under functions.patch.set.<name>, code as a content
+    // ref, deps preserved (capability apply-v1-function-deps).
+    const spec = (JSON.parse(planCall!.body as string) as { spec: Record<string, any> }).spec;
+    assert.equal(spec.project_id, "prj_known");
+    const fn = spec.functions.patch.set.hello;
+    assert(fn, "functions.patch.set.hello present");
+    assert.equal(typeof fn.source?.sha256, "string");
+    assert.deepEqual(fn.deps, ["lodash"]);
+
+    // Mapped back to the stable FunctionDeployResult contract — apply does not
+    // carry per-function build metadata, so these are null.
+    assert.equal(result.name, "hello");
     assert.equal(result.status, "deployed");
+    assert.equal(result.url, "https://api.example.test/functions/v1/hello");
+    assert.equal(result.runtime_version, null);
+    assert.equal(result.deps_resolved, null);
+    assert.deepEqual(result.warnings, ["bundle is large"]);
   });
 
-  it("omits config/deps/schedule when undefined", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({ name: "x", url: "u", status: "deployed", runtime: "node22", timeout: 15, memory: 128, created_at: "2026-04-23T00:00:00Z" }),
-    );
+  it("maps legacy config { timeout, memory } to the apply FunctionSpec shape", async () => {
+    const { fetch, calls } = applyOkFetch({ planId: "plan_cfg" });
     const sdk = makeSdk(fetch);
-    await sdk.functions.deploy("prj_known", { name: "x", code: "..." });
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(body.config, undefined);
-    assert.equal(body.deps, undefined);
-    assert.equal(body.schedule, undefined);
+    await sdk.functions.deploy("prj_known", {
+      name: "cfg",
+      code: "export default async () => new Response('ok')",
+      config: { timeout: 20, memory: 256 },
+    });
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"))!;
+    const fn = (JSON.parse(planCall.body as string) as { spec: Record<string, any> }).spec.functions.patch.set.cfg;
+    assert.deepEqual(fn.config, { timeout_seconds: 20, memory_mb: 256 });
   });
 
-  it("forwards schedule: null to clear an existing schedule", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      json({ name: "x", url: "u", status: "deployed", runtime: "node22", timeout: 15, memory: 128, schedule: null, created_at: "2026-04-23T00:00:00Z" }),
-    );
+  it("forwards schedule: null into the spec and omits config/deps when not provided", async () => {
+    const { fetch, calls } = applyOkFetch({ planId: "plan_sch" });
     const sdk = makeSdk(fetch);
-    await sdk.functions.deploy("prj_known", { name: "x", code: "...", schedule: null });
-    const body = JSON.parse(calls[0]!.body as string);
-    assert.equal(Object.prototype.hasOwnProperty.call(body, "schedule"), true);
-    assert.equal(body.schedule, null);
+    const result = await sdk.functions.deploy("prj_known", {
+      name: "sch",
+      code: "export default async () => new Response('ok')",
+      schedule: null,
+    });
+    const planCall = calls.find((c) => c.url.endsWith("/apply/v1/plans"))!;
+    const fn = (JSON.parse(planCall.body as string) as { spec: Record<string, any> }).spec.functions.patch.set.sch;
+    assert.equal(Object.prototype.hasOwnProperty.call(fn, "schedule"), true);
+    assert.equal(fn.schedule, null);
+    assert.equal(fn.config, undefined);
+    assert.equal(fn.deps, undefined);
+    assert.equal(result.schedule, null);
   });
 
   it("rejects invalid config values before calling the gateway", async () => {

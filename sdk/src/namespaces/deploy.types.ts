@@ -279,6 +279,17 @@ export interface FunctionSpec {
    *  within the file set (e.g., `"index.mjs"`). */
   entrypoint?: string;
   config?: { timeoutSeconds?: number; memoryMb?: number };
+  /**
+   * Capability `apply-v1-function-deps`. Additional npm packages to install
+   * and bundle with the function. Each entry is an npm spec: a bare name
+   * (`"lodash"`) resolves to latest at deploy time; a pinned spec
+   * (`"lodash@4.17.21"`) or range (`"date-fns@^3.0.0"`) is honored verbatim.
+   * `@run402/functions` (auto-bundled) and native-binary modules are rejected
+   * by the gateway. Omit for no user dependencies. The resolved concrete
+   * versions live on the function record (read via the GET-list), not the
+   * apply/deploy result.
+   */
+  deps?: string[];
   /** 5-field cron expression. Pass `null` to remove an existing schedule;
    *  omit to leave it unchanged in `patch` mode. */
   schedule?: string | null;
@@ -2151,6 +2162,8 @@ export interface NormalizedFunctionSpec {
   files?: Record<string, ContentRef>;
   entrypoint?: string;
   config?: { timeoutSeconds?: number; memoryMb?: number };
+  /** Capability `apply-v1-function-deps` — see `FunctionSpec.deps`. */
+  deps?: string[];
   schedule?: string | null;
   /** v1.51+ — see `FunctionSpec.requireAuth`. */
   requireAuth?: boolean;

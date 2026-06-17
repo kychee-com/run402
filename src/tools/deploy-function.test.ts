@@ -8,10 +8,58 @@ import { handleDeployFunction } from "./deploy-function.js";
 const originalFetch = globalThis.fetch;
 let tempDir: string;
 
+// Bodies posted to /apply/v1/plans, for spec-shape assertions.
+let planBodies: string[] = [];
+
+function jsonRes(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * A URL-aware `globalThis.fetch` that drives the unified-apply engine to
+ * terminal success for a single `functions.patch.set` deploy: `/tiers/v1/status`
+ * returns an empty tier (so the function preflight bails), `/apply/v1/plans`
+ * reports no missing content (so the CAS upload dance is skipped) and records
+ * the posted body, and the commit returns a terminal `"ready"` (so the poll is
+ * skipped). Function deploy re-points onto this path — the legacy
+ * `POST /projects/v1/admin/:id/functions` route was removed gateway-side.
+ */
+function applyOkFetch(): typeof fetch {
+  return (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = typeof url === "string" ? url : url.toString();
+    if (u.endsWith("/tiers/v1/status")) return jsonRes({ tier: "" });
+    if (u.endsWith("/apply/v1/plans")) {
+      planBodies.push(init?.body as string);
+      return jsonRes({
+        plan_id: "plan_1",
+        operation_id: "op_1",
+        base_release_id: null,
+        manifest_digest: "d",
+        missing_content: [],
+        diff: { resources: {} },
+        warnings: [],
+      });
+    }
+    if (u.endsWith("/apply/v1/plans/plan_1/commit")) {
+      return jsonRes({ operation_id: "op_1", status: "ready", release_id: "rel_1", urls: {} });
+    }
+    throw new Error(`unexpected fetch ${u}`);
+  }) as typeof fetch;
+}
+
+/** The `spec` from the most recent /apply/v1/plans body. */
+function lastPlanSpec(): Record<string, any> {
+  return JSON.parse(planBodies.at(-1)!).spec;
+}
+
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-deploy-fn-test-"));
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
+  planBodies = [];
 
   const store = {
     projects: {
@@ -34,20 +82,8 @@ afterEach(() => {
 });
 
 describe("deploy_function tool", () => {
-  it("returns success on 201", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({
-          name: "my-func",
-          url: "https://test-api.run402.com/functions/v1/my-func",
-          status: "deployed",
-          runtime: "node22",
-          timeout: 10,
-          memory: 128,
-          created_at: "2026-03-05T12:00:00Z",
-        }),
-        { status: 201, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
+  it("renders the deployed function on a successful apply", async () => {
+    globalThis.fetch = applyOkFetch();
 
     const result = await handleDeployFunction({
       project_id: "proj-001",
@@ -58,15 +94,18 @@ describe("deploy_function tool", () => {
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0]!.text.includes("Function Deployed"));
     assert.ok(result.content[0]!.text.includes("my-func"));
+    // url is derived from the project's API base when apply returns no urls map.
     assert.ok(result.content[0]!.text.includes("functions/v1/my-func"));
+
+    // Routed through unified apply — never the deleted admin route.
+    assert.equal(lastPlanSpec().project_id, "proj-001");
+    assert.ok(lastPlanSpec().functions.patch.set["my-func"], "functions.patch.set entry present");
   });
 
-  it("returns error on 400 (bad name)", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({ error: "Function name must be lowercase alphanumeric" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
+  it("returns error on an invalid name (client-side, before any apply)", async () => {
+    globalThis.fetch = (async () => {
+      throw new Error("fetch must not be called for an invalid function name");
+    }) as typeof fetch;
 
     const result = await handleDeployFunction({
       project_id: "proj-001",
@@ -76,14 +115,17 @@ describe("deploy_function tool", () => {
 
     assert.equal(result.isError, true);
     assert.ok(result.content[0]!.text.includes("lowercase"));
+    assert.equal(planBodies.length, 0, "no apply plan was attempted");
   });
 
-  it("returns payment info (NOT isError) on 402", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({ error: "Lease expired", renew_url: "/tiers/v1/prototype" }),
-        { status: 402, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
+  it("returns payment info (NOT isError) on 402 from the plan", async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/apply/v1/plans")) {
+        return jsonRes({ error: "Lease expired", renew_url: "/tiers/v1/prototype" }, 402);
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as typeof fetch;
 
     const result = await handleDeployFunction({
       project_id: "proj-001",
@@ -95,12 +137,14 @@ describe("deploy_function tool", () => {
     assert.ok(result.content[0]!.text.includes("Payment Required"));
   });
 
-  it("returns isError on 403 (quota exceeded)", async () => {
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({ error: "Function limit reached (5 for your tier)" }),
-        { status: 403, headers: { "Content-Type": "application/json" } },
-      )) as typeof fetch;
+  it("returns isError on 403 (quota exceeded) from the plan", async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/apply/v1/plans")) {
+        return jsonRes({ error: "Function limit reached (5 for your tier)" }, 403);
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as typeof fetch;
 
     const result = await handleDeployFunction({
       project_id: "proj-001",
@@ -112,24 +156,8 @@ describe("deploy_function tool", () => {
     assert.ok(result.content[0]!.text.includes("limit"));
   });
 
-  it("passes schedule in request body and shows in output", async () => {
-    let capturedBody: string | undefined;
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      capturedBody = init.body as string;
-      return new Response(
-        JSON.stringify({
-          name: "send-reminders",
-          url: "https://test-api.run402.com/functions/v1/send-reminders",
-          status: "deployed",
-          runtime: "node22",
-          timeout: 10,
-          memory: 128,
-          schedule: "*/15 * * * *",
-          created_at: "2026-03-05T12:00:00Z",
-        }),
-        { status: 201, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
+  it("carries the schedule under functions.patch.set and shows it in the output", async () => {
+    globalThis.fetch = applyOkFetch();
 
     const result = await handleDeployFunction({
       project_id: "proj-001",
@@ -139,59 +167,27 @@ describe("deploy_function tool", () => {
     });
 
     assert.equal(result.isError, undefined);
-    const parsed = JSON.parse(capturedBody!);
-    assert.equal(parsed.schedule, "*/15 * * * *");
+    assert.equal(lastPlanSpec().functions.patch.set["send-reminders"].schedule, "*/15 * * * *");
     assert.ok(result.content[0]!.text.includes("*/15 * * * *"));
   });
 
-  it("passes schedule null to remove schedule", async () => {
-    let capturedBody: string | undefined;
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      capturedBody = init.body as string;
-      return new Response(
-        JSON.stringify({
-          name: "send-reminders",
-          url: "https://test-api.run402.com/functions/v1/send-reminders",
-          status: "deployed",
-          runtime: "node22",
-          timeout: 10,
-          memory: 128,
-          schedule: null,
-          created_at: "2026-03-05T12:00:00Z",
-        }),
-        { status: 201, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
+  it("forwards schedule: null in the spec to remove a schedule", async () => {
+    globalThis.fetch = applyOkFetch();
 
-    const result = await handleDeployFunction({
+    await handleDeployFunction({
       project_id: "proj-001",
       name: "send-reminders",
       code: 'export default async (req) => new Response("ok")',
       schedule: null,
     });
 
-    assert.equal(result.isError, undefined);
-    const parsed = JSON.parse(capturedBody!);
-    assert.equal(parsed.schedule, null);
+    const fn = lastPlanSpec().functions.patch.set["send-reminders"];
+    assert.equal(Object.prototype.hasOwnProperty.call(fn, "schedule"), true);
+    assert.equal(fn.schedule, null);
   });
 
-  it("omits schedule from body when not provided", async () => {
-    let capturedBody: string | undefined;
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      capturedBody = init.body as string;
-      return new Response(
-        JSON.stringify({
-          name: "my-func",
-          url: "https://test-api.run402.com/functions/v1/my-func",
-          status: "deployed",
-          runtime: "node22",
-          timeout: 10,
-          memory: 128,
-          created_at: "2026-03-05T12:00:00Z",
-        }),
-        { status: 201, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
+  it("omits schedule/config/deps from the spec when not provided", async () => {
+    globalThis.fetch = applyOkFetch();
 
     await handleDeployFunction({
       project_id: "proj-001",
@@ -199,8 +195,23 @@ describe("deploy_function tool", () => {
       code: 'export default async (req) => new Response("ok")',
     });
 
-    const parsed = JSON.parse(capturedBody!);
-    assert.equal("schedule" in parsed, false);
+    const fn = lastPlanSpec().functions.patch.set["my-func"];
+    assert.equal("schedule" in fn, false);
+    assert.equal("config" in fn, false);
+    assert.equal("deps" in fn, false);
+  });
+
+  it("carries user deps under functions.patch.set", async () => {
+    globalThis.fetch = applyOkFetch();
+
+    await handleDeployFunction({
+      project_id: "proj-001",
+      name: "with-deps",
+      code: 'export default async (req) => new Response("ok")',
+      deps: ["lodash"],
+    });
+
+    assert.deepEqual(lastPlanSpec().functions.patch.set["with-deps"].deps, ["lodash"]);
   });
 
   it("returns isError when project not in keystore", async () => {

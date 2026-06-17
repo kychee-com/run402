@@ -189,6 +189,79 @@ describe("admin.transfers.accept", () => {
     assert.deepEqual(res.secret_names_inherited, ["DB_URL"]);
     assert.equal(calls[0].method, "POST");
   });
+
+  it("surfaces the new owner's project keys on the result (#428)", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        project_id: "prj_abc",
+        from_wallet: "0xaaa",
+        to_wallet: "0xbeef",
+        completed_at: "2026-05-27T01:00:00Z",
+        secrets_rotation_advised: false,
+        anon_key: "anon_jwt",
+        service_key: "svc_jwt",
+      }),
+    );
+    const r = makeSdk(fetch);
+    const res = await r.admin.transfers.accept("ptx_1");
+    assert.equal(res.anon_key, "anon_jwt");
+    assert.equal(res.service_key, "svc_jwt");
+  });
+
+  it("persists the returned keys via saveProject + setActiveProject", async () => {
+    const saved: Array<{ id: string; keys: unknown }> = [];
+    let activated: string | null = null;
+    const creds: CredentialsProvider = {
+      async getAuth() {
+        return { "SIGN-IN-WITH-X": "test-siwx" };
+      },
+      async getProject() {
+        return null;
+      },
+      async saveProject(id, keys) {
+        saved.push({ id, keys });
+      },
+      async setActiveProject(id) {
+        activated = id;
+      },
+    };
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        project_id: "prj_new",
+        from_wallet: "0xaaa",
+        to_wallet: "0xbeef",
+        completed_at: "2026-05-27T01:00:00Z",
+        secrets_rotation_advised: false,
+        anon_key: "anon_jwt",
+        service_key: "svc_jwt",
+      }),
+    );
+    const r = new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch });
+    await r.admin.transfers.accept("ptx_new");
+    assert.deepEqual(saved, [
+      { id: "prj_new", keys: { anon_key: "anon_jwt", service_key: "svc_jwt" } },
+    ]);
+    assert.equal(activated, "prj_new");
+  });
+
+  it("does not throw when the provider lacks saveProject (sandbox)", async () => {
+    // The default provider implements neither saveProject nor setActiveProject —
+    // accept must still return the keys without throwing.
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        project_id: "prj_abc",
+        from_wallet: "0xaaa",
+        to_wallet: "0xbeef",
+        completed_at: "2026-05-27T01:00:00Z",
+        secrets_rotation_advised: false,
+        anon_key: "anon_jwt",
+        service_key: "svc_jwt",
+      }),
+    );
+    const r = makeSdk(fetch);
+    const res = await r.admin.transfers.accept("ptx_1");
+    assert.equal(res.service_key, "svc_jwt");
+  });
 });
 
 describe("admin.transfers.cancel", () => {
