@@ -41,7 +41,7 @@ export interface TierStatusProject {
    * tier-status list does not include them today, so both are optional and
    * forward-compatible (preserved via the index signature regardless).
    */
-  organization_id?: string;
+  org_id?: string;
   created_by?: string;
   /**
    * v1.59 (add-project-transfer): set on a project after an accepted transfer

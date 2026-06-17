@@ -384,10 +384,10 @@ describe("admin.transfers.accept (wallet completion)", () => {
 });
 
 describe("admin.transfers.claim (email completion)", () => {
-  it("POSTs /agent/v1/transfers/:id/claim with organization_id when given, {} otherwise", async () => {
+  it("POSTs /agent/v1/transfers/:id/claim with org_id when given, {} otherwise", async () => {
     const r1 = mockFetch((call) => {
       assert.equal(call.url, "https://api.example.test/agent/v1/transfers/ptx_e1/claim");
-      assert.deepEqual(JSON.parse(String(call.body)), { organization_id: "org_9" });
+      assert.deepEqual(JSON.parse(String(call.body)), { org_id: "org_9" });
       return jsonResponse({
         status: "accepted",
         project_id: "prj_abc",
@@ -481,7 +481,7 @@ describe("admin.transfers.claim (email completion)", () => {
       acceptRetainedCollaborator: true,
     });
     assert.deepEqual(JSON.parse(String(calls[0].body)), {
-      organization_id: "org_1",
+      org_id: "org_1",
       accept_retained_collaborator: true,
     });
     assert.equal(res.retained_collaborator_principal_id, "prn_sender");

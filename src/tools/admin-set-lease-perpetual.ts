@@ -3,7 +3,7 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 
 export const adminSetLeasePerpetualSchema = {
-  organization_id: z
+  org_id: z
     .string()
     .describe(
       "The organization ID to toggle. Format: UUID. Platform-admin only — uses the configured allowance wallet for admin auth; project owners with a non-admin SIWX wallet will receive 403 admin_required.",
@@ -16,12 +16,12 @@ export const adminSetLeasePerpetualSchema = {
 };
 
 export async function handleAdminSetLeasePerpetual(args: {
-  organization_id: string;
+  org_id: string;
   lease_perpetual: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const body = await getSdk().admin.setLeasePerpetual(
-      args.organization_id,
+      args.org_id,
       args.lease_perpetual,
     );
     const reactivatedNote = body.reactivated
@@ -31,7 +31,7 @@ export async function handleAdminSetLeasePerpetual(args: {
       content: [
         {
           type: "text",
-          text: `Organization \`${body.organization_id}\` now has \`lease_perpetual=${body.lease_perpetual}\`.${reactivatedNote}`,
+          text: `Organization \`${body.org_id}\` now has \`lease_perpetual=${body.lease_perpetual}\`.${reactivatedNote}`,
         },
       ],
     };

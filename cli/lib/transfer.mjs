@@ -17,7 +17,7 @@ Usage:
   run402 transfer preview <transfer_id>
   run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]
   run402 transfer accept <transfer_id>
-  run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]
+  run402 transfer claim <transfer_id> [--into <org_id>] [--accept-retained-collaborator]
   run402 transfer cancel <transfer_id> [--reason <text>]
 
 Subcommands:
@@ -107,13 +107,13 @@ TRANSFER_ALREADY_PROCESSED.
   claim: `run402 transfer claim — Claim an incoming EMAIL transfer
 
 Usage:
-  run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]
+  run402 transfer claim <transfer_id> [--into <org_id>] [--accept-retained-collaborator]
 
 Claims an email-addressed transfer into an org you own. Omit --into to claim into
 a brand-new org. This is the email analog of 'accept'.
 
 Options:
-  --into <organization_id>       Org to claim into (omit = brand-new org).
+  --into <org_id>       Org to claim into (omit = brand-new org).
   --accept-retained-collaborator Accept the sender's v1.91 retained-developer-membership offer
                                  (see 'transfer preview' retain_collaborator). Omit = full severance.
 `,
@@ -305,7 +305,7 @@ async function claim(args) {
   assertKnownFlags(parsedArgs, [...valueFlags, "--accept-retained-collaborator", "--help", "-h"], valueFlags);
   const positionals = positionalArgs(parsedArgs, valueFlags);
   if (positionals.length !== 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer claim <transfer_id> [--into <org_id>] [--accept-retained-collaborator]" });
   }
   const transferId = positionals[0];
   const into = flagValue(parsedArgs, "--into");

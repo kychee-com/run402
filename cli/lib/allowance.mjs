@@ -281,7 +281,7 @@ async function checkout(args) {
   const amount = parseIntegerFlag("--amount", amountRaw, { min: 1 });
   try {
     const org = await getSdk().billing.lookupOrganization(w.address);
-    const data = await getSdk().billing.createCheckout(org.organization_id, {
+    const data = await getSdk().billing.createCheckout(org.org_id, {
       product: "balance_topup",
       amountUsdMicros: amount,
     });

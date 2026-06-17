@@ -485,7 +485,7 @@ async function list(args = []) {
       active: p.id === activeId,
       site_url: p.site_url ?? null,
       custom_domains: p.custom_domains ?? [],
-      org_id: p.organization_id ?? null,
+      org_id: p.org_id ?? null,
       status: p.status ?? p.effective_status ?? null,
     }));
     const out = { projects: rows };
@@ -756,7 +756,7 @@ export async function run(sub, args) {
     fail({
       code: "REMOVED_COMMAND",
       message: "`run402 projects pin` was removed in v1.57.",
-      hint: "Per-project pin is superseded by the organization-level escape hatch. Use `run402 admin lease-perpetual <organization_id> --enable` (platform-admin only).",
+      hint: "Per-project pin is superseded by the organization-level escape hatch. Use `run402 admin lease-perpetual <org_id> --enable` (platform-admin only).",
     });
   }
   args = normalizeArgv(args);

@@ -775,7 +775,7 @@ server.tool(
 
 server.tool(
   "claim_project_transfer",
-  "Claim an incoming EMAIL transfer into an org (v1.93+) — the email analog of `accept_project_transfer`. The transfer's addressed email must match your verified email. Provide `organization_id` to claim into an org you own/admin, or omit to create a new org. Atomically flips ownership and returns the new owner's project keys (persisted to the local keystore, symmetric with accept) so you can operate the project immediately. Calls POST /agent/v1/transfers/:transfer_id/claim.",
+  "Claim an incoming EMAIL transfer into an org (v1.93+) — the email analog of `accept_project_transfer`. The transfer's addressed email must match your verified email. Provide `org_id` to claim into an org you own/admin, or omit to create a new org. Atomically flips ownership and returns the new owner's project keys (persisted to the local keystore, symmetric with accept) so you can operate the project immediately. Calls POST /agent/v1/transfers/:transfer_id/claim.",
   claimProjectTransferSchema,
   async (args) => handleClaimProjectTransfer(args),
 );
@@ -826,7 +826,7 @@ server.tool(
 
 server.tool(
   "list_projects",
-  "List projects from the named, domain-aware inventory (GET /projects/v1). Membership-scoped by default: every project owned by an org the agent's wallet is an active member of, with name, site_url, custom_domains, org (organization_id), and status. SIWX wallet auth is signed automatically. Pass org_id to filter to one org (authorize-before-reveal: non-member/guessed → 403, non-UUID → 400), all:true to read the cross-wallet inventory across every wallet controlling your operator email, or limit/cursor to paginate.",
+  "List projects from the named, domain-aware inventory (GET /projects/v1). Membership-scoped by default: every project owned by an org the agent's wallet is an active member of, with name, site_url, custom_domains, org (org_id), and status. SIWX wallet auth is signed automatically. Pass org_id to filter to one org (authorize-before-reveal: non-member/guessed → 403, non-UUID → 400), all:true to read the cross-wallet inventory across every wallet controlling your operator email, or limit/cursor to paginate.",
   listProjectsSchema,
   async (args) => handleListProjects(args),
 );

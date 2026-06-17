@@ -41,11 +41,11 @@ The SDK SHALL expose `claim(transferId, opts?)` where `opts` is `{ organizationI
 
 #### Scenario: claim posts to the unified claim route
 - **WHEN** a caller invokes `claim(transferId, { organizationId: "org_…" })`
-- **THEN** the SDK SHALL POST `{ organization_id: "org_…" }` to `/agent/v1/transfers/:transfer_id/claim`
+- **THEN** the SDK SHALL POST `{ org_id: "org_…" }` to `/agent/v1/transfers/:transfer_id/claim`
 
-#### Scenario: claim into a new org omits organization_id
+#### Scenario: claim into a new org omits org_id
 - **WHEN** a caller invokes `claim(transferId)` with no `organizationId`
-- **THEN** the POST body SHALL NOT contain an `organization_id` key
+- **THEN** the POST body SHALL NOT contain an `org_id` key
 
 #### Scenario: claim surfaces and persists the new owner's keys
 - **WHEN** a `claim` succeeds and the response carries `anon_key` and `service_key`

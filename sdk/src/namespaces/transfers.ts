@@ -421,7 +421,7 @@ export class Transfers {
    */
   async claim(transferId: string, opts: ClaimTransferInput = {}): Promise<ClaimTransferResult> {
     const body: Record<string, unknown> = {};
-    if (opts.organizationId !== undefined) body.organization_id = opts.organizationId;
+    if (opts.organizationId !== undefined) body.org_id = opts.organizationId;
     if (opts.acceptRetainedCollaborator !== undefined) {
       body.accept_retained_collaborator = opts.acceptRetainedCollaborator;
     }

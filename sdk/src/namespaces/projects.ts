@@ -166,7 +166,7 @@ export class Projects {
   /**
    * List projects in the named, domain-aware inventory (gateway
    * `project-findability`). Each row carries `name`, `site_url`,
-   * `custom_domains`, `organization_id` (the owning org), `status`, and
+   * `custom_domains`, `org_id` (the owning org), `status`, and
    * `created_at`.
    *
    * Membership-scoped by default (`GET /projects/v1`): returns every project

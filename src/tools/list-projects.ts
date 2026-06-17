@@ -65,7 +65,7 @@ export async function handleListProjects(args: {
       `Call \`tier_status\` for the organization tier, lifecycle state, and pooled`,
       `usage across every project below.`,
       ``,
-      `| ID | Name | Site URL | Custom domains | Org (organization_id) | Status |`,
+      `| ID | Name | Site URL | Custom domains | Org (org_id) | Status |`,
       `|----|------|----------|----------------|--------------------------|--------|`,
     ];
 
@@ -73,7 +73,7 @@ export async function handleListProjects(args: {
       const domains =
         p.custom_domains && p.custom_domains.length ? p.custom_domains.join(", ") : "—";
       lines.push(
-        `| \`${p.id}\` | ${p.name ?? "—"} | ${p.site_url ?? "—"} | ${domains} | ${p.organization_id ?? "—"} | ${p.status ?? p.effective_status ?? "—"} |`,
+        `| \`${p.id}\` | ${p.name ?? "—"} | ${p.site_url ?? "—"} | ${domains} | ${p.org_id ?? "—"} | ${p.status ?? p.effective_status ?? "—"} |`,
       );
     }
 

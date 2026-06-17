@@ -405,7 +405,7 @@ describe("Run402Error.quotaScope", () => {
       402,
       {
         code: "QUOTA_EXCEEDED",
-        details: { scope: "organization", organization_id: "org_123" },
+        details: { scope: "organization", org_id: "org_123" },
       },
       "running sql",
     );
