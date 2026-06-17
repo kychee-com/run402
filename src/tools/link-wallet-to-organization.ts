@@ -3,21 +3,21 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 
 export const linkWalletToOrganizationSchema = {
-  organization_id: z.string().describe("The organization ID (from create_email_organization)"),
+  org_id: z.string().describe("The organization ID (from create_email_organization)"),
   wallet: z.string().describe("The wallet address to link (0x...)"),
 };
 
 export async function handleLinkWalletToOrganization(args: {
-  organization_id: string;
+  org_id: string;
   wallet: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const result = await getSdk().billing.linkWallet(args.organization_id, args.wallet);
+    const result = await getSdk().billing.linkWallet(args.org_id, args.wallet);
     const wallet = args.wallet.toLowerCase();
     const lines = [
       `## Wallet Linked`,
       ``,
-      `- **Organization:** \`${args.organization_id}\``,
+      `- **Organization:** \`${args.org_id}\``,
       `- **Wallet:** \`${wallet}\``,
       ``,
       `The organization now supports both Stripe checkout and x402 on-chain payments.`,

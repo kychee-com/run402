@@ -8,7 +8,7 @@ Usage:
   run402 admin <subcommand> [args...]
 
 Subcommands:
-  lease-perpetual <organization_id> (--enable | --disable)
+  lease-perpetual <org_id> (--enable | --disable)
                                          Toggle the organization-level escape hatch.
                                          When enabled, the organization never advances
                                          past 'active' regardless of lease expiry.
@@ -46,7 +46,7 @@ const SUB_HELP = {
   "lease-perpetual": `run402 admin lease-perpetual — Toggle the organization-level escape hatch
 
 Usage:
-  run402 admin lease-perpetual <organization_id> (--enable | --disable)
+  run402 admin lease-perpetual <org_id> (--enable | --disable)
 
 Options:
   --enable    Set lease_perpetual = true (pins every project on the account)
@@ -116,15 +116,15 @@ async function leasePerpetual(args) {
   if (!organizationId) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <organization_id>.",
-      hint: "run402 admin lease-perpetual <organization_id> --enable | --disable",
+      message: "Missing <org_id>.",
+      hint: "run402 admin lease-perpetual <org_id> --enable | --disable",
     });
   }
   if (enable === disable) {
     fail({
       code: "BAD_USAGE",
       message: "Pass exactly one of --enable / --disable.",
-      hint: "run402 admin lease-perpetual <organization_id> --enable | --disable",
+      hint: "run402 admin lease-perpetual <org_id> --enable | --disable",
     });
   }
   try {

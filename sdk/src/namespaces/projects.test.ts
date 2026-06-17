@@ -327,7 +327,7 @@ describe("projects.list", () => {
             effective_status: "active",
             organization_lifecycle_state: "active",
             lease_perpetual: false,
-            organization_id: "11111111-2222-3333-4444-555555555555",
+            org_id: "11111111-2222-3333-4444-555555555555",
             created_by: "99999999-8888-7777-6666-555555555555",
             created_at: "2026-04-30T15:32:59.891Z",
             deleted_at: null,
@@ -348,7 +348,7 @@ describe("projects.list", () => {
     assert.equal(item.site_url, "https://port.run402.com");
     assert.deepEqual(item.custom_domains, ["www.olddominionboatclub.com"]);
     assert.equal(item.status, "active");
-    assert.equal(item.organization_id, "11111111-2222-3333-4444-555555555555");
+    assert.equal(item.org_id, "11111111-2222-3333-4444-555555555555");
     assert.equal(item.created_at, "2026-04-30T15:32:59.891Z");
   });
 
@@ -362,7 +362,7 @@ describe("projects.list", () => {
             site_url: null,
             custom_domains: [],
             status: "active",
-            organization_id: "11111111-2222-3333-4444-555555555555",
+            org_id: "11111111-2222-3333-4444-555555555555",
             created_at: "2026-04-30T15:32:59.891Z",
           },
         ],

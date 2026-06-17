@@ -1,19 +1,19 @@
 # org-management-client-surface Specification
 
 ## Purpose
-The client surface (SDK / CLI / MCP / docs) for managing organizations: the `org_id` vocabulary (no `organization_id` on the client), the `r.orgs` collection + `r.org(id)` scoped-instance split (mirroring `r.project(id)`), create / get / rename / list / whoami / members / invites / audit, provisioning into an existing org via `--org`, and the typed `FREE_ORG_OWNER_LIMIT_EXCEEDED` + authorize-before-reveal surfaces. Wraps gateway v1.82 `first-class-orgs`.
+The client surface (SDK / CLI / MCP / docs) for managing organizations: the `org_id` vocabulary (no `org_id` on the client), the `r.orgs` collection + `r.org(id)` scoped-instance split (mirroring `r.project(id)`), create / get / rename / list / whoami / members / invites / audit, provisioning into an existing org via `--org`, and the typed `FREE_ORG_OWNER_LIMIT_EXCEEDED` + authorize-before-reveal surfaces. Wraps gateway v1.82 `first-class-orgs`.
 ## Requirements
 ### Requirement: Organization vocabulary on the client surface is `org_id`
 
-The client (SDK, CLI, MCP) SHALL use `org_id` as the organization identifier across every parameter, response field, membership field, CLI positional, and tool input. The substrate names `organization` and `organization_id` SHALL NOT appear anywhere on the client surface. `OrgMembership` SHALL be `{ org_id, display_name, role, status }`.
+The client (SDK, CLI, MCP) SHALL use `org_id` as the organization identifier across every parameter, response field, membership field, CLI positional, and tool input. The substrate names `organization` and `org_id` SHALL NOT appear anywhere on the client surface. `OrgMembership` SHALL be `{ org_id, display_name, role, status }`.
 
 #### Scenario: Membership shape uses org_id and display_name
 - **WHEN** a caller reads a membership from `r.orgs.list()` or `r.orgs.whoami()`
-- **THEN** each membership SHALL carry `org_id` and `display_name` and SHALL NOT carry `organization_id`
+- **THEN** each membership SHALL carry `org_id` and `display_name` and SHALL NOT carry `org_id`
 
 #### Scenario: No organization identifier on the client surface
 - **WHEN** the SDK, CLI, and MCP org surfaces are scanned
-- **THEN** no public parameter, type field, CLI positional, or tool input SHALL be named `organization_id` or `organization`
+- **THEN** no public parameter, type field, CLI positional, or tool input SHALL be named `org_id` or `organization`
 
 ### Requirement: SDK exposes orgs as a collection and a scoped instance sub-client
 

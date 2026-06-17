@@ -1,7 +1,7 @@
 /**
  * `billing` namespace — organizations and Stripe checkouts.
  *
- * Organizations are addressed by their canonical `organization_id` (UUID). A
+ * Organizations are addressed by their canonical `org_id` (UUID). A
  * wallet or email is resolved to that id through the
  * `GET /orgs/v1/lookup?wallet=|?email=` lookup; `getOrganization` / `history`
  * accept any of the three identifier forms and resolve internally. Organization
@@ -24,7 +24,7 @@ import type { ProjectTier } from "./projects.types.js";
 
 export interface OrganizationDetail {
   /** Canonical organization id (UUID). */
-  organization_id: string;
+  org_id: string;
   available_usd_micros: number;
   /** Held/reserved portion of the balance; absent on gateways that predate the field. */
   held_usd_micros?: number;
@@ -50,12 +50,12 @@ export interface BillingHistoryEntry {
 
 export interface BillingHistoryResult {
   /** Canonical organization id (UUID) the entries belong to. */
-  organization_id: string;
+  org_id: string;
   entries: BillingHistoryEntry[];
 }
 
 export interface CreateCheckoutResult {
-  organization_id: string;
+  org_id: string;
   product: CheckoutProduct;
   checkout_url: string;
   topup_id: string;
@@ -87,7 +87,7 @@ export interface LinkWalletPoolImplications {
 
 export interface LinkWalletResult {
   status: string;
-  organization_id: string;
+  org_id: string;
   wallet: string;
   /** Present on v1.46+ gateways; undefined when the gateway predates the field. */
   pool_implications?: LinkWalletPoolImplications;
@@ -127,7 +127,7 @@ const BILLING_TIERS = ["prototype", "hobby", "team"] as const;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type BillingIdentifierKind = "organization_id" | "wallet" | "email";
+type BillingIdentifierKind = "org_id" | "wallet" | "email";
 
 interface ClassifiedBillingIdentifier {
   kind: BillingIdentifierKind;
@@ -145,7 +145,7 @@ function classifyBillingIdentifier(
 ): ClassifiedBillingIdentifier {
   assertNonEmptyString(identifier, "identifier", context);
   if (UUID_RE.test(identifier)) {
-    return { kind: "organization_id", value: identifier };
+    return { kind: "org_id", value: identifier };
   }
   if (/^0x/i.test(identifier)) {
     assertEvmAddress(identifier, "identifier", context);
@@ -170,7 +170,7 @@ function fetchOrganizationById(
 /**
  * Resolve a wallet / email to its organization detail via the lookup endpoint
  * `GET /orgs/v1/lookup?wallet=|?email=`. The lookup returns the same
- * detail shape as the by-id read, including the resolved `organization_id`.
+ * detail shape as the by-id read, including the resolved `org_id`.
  */
 function fetchOrganizationByLookup(
   client: Client,
@@ -195,7 +195,7 @@ async function resolveOrganizationDetail(
   context: string,
 ): Promise<OrganizationDetail> {
   const id = classifyBillingIdentifier(identifier, context);
-  return id.kind === "organization_id"
+  return id.kind === "org_id"
     ? fetchOrganizationById(client, id.value, context)
     : fetchOrganizationByLookup(client, id.kind, id.value, context);
 }
@@ -288,7 +288,7 @@ export class Billing {
 
   /**
    * Resolve a wallet or email to its organization detail — including the
-   * canonical `organization_id` — via `GET /orgs/v1/lookup?wallet=|?email=`.
+   * canonical `org_id` — via `GET /orgs/v1/lookup?wallet=|?email=`.
    * An org-id (UUID) argument is read directly instead. SIWX must match the
    * `?wallet`; email lookups are admin-only.
    */
@@ -312,10 +312,10 @@ export class Billing {
       assertPositiveSafeInteger(limit, "limit", "fetching billing history");
     }
     const id = classifyBillingIdentifier(identifier, "fetching billing history");
-    const organizationId = id.kind === "organization_id"
+    const organizationId = id.kind === "org_id"
       ? id.value
       : (await fetchOrganizationByLookup(this.client, id.kind, id.value, "fetching billing history"))
-          .organization_id;
+          .org_id;
     const base = `/orgs/v1/${encodeURIComponent(organizationId)}/billing/history`;
     const path = limit !== undefined
       ? `${base}?limit=${encodeURIComponent(String(limit))}`
@@ -353,7 +353,7 @@ export class Billing {
   /**
    * Link a wallet to an existing email organization to enable hybrid
    * Stripe + x402 payments. `organizationId` is the canonical
-   * `organization_id` (UUID) returned by `createEmailOrganization` /
+   * `org_id` (UUID) returned by `createEmailOrganization` /
    * `lookupOrganization`; the gateway addresses the route as
    * `POST /orgs/v1/:org_id/wallets`. Returns the gateway
    * response; v1.46+ gateways include a {@link LinkWalletPoolImplications}

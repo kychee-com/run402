@@ -108,10 +108,10 @@ export interface ProjectSummary {
    * output. `null` for legacy rows; optional because the legacy wallet-scoped
    * list (`GET /wallets/v1/:address/projects`) omits it.
    */
-  organization_id?: string | null;
+  org_id?: string | null;
   /**
    * Provisioning principal id — provenance for who created the project (v1.77).
-   * Optional for the same reason as {@link ProjectSummary.organization_id}.
+   * Optional for the same reason as {@link ProjectSummary.org_id}.
    */
   created_by?: string | null;
   created_at: string;

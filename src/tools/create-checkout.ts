@@ -53,7 +53,7 @@ export async function handleCreateCheckout(args: {
       ``,
       `| Field | Value |`,
       `|-------|-------|`,
-      `| organization | \`${body.organization_id}\` |`,
+      `| organization | \`${body.org_id}\` |`,
       `| product | ${body.product} |`,
       ...(amountUsd ? [`| amount | $${amountUsd} |`] : []),
       ...(args.tier ? [`| tier | ${args.tier} |`] : []),

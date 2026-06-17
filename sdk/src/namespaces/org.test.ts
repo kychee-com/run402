@@ -52,7 +52,7 @@ function parseBody(body: unknown): Record<string, unknown> {
 // ─── r.orgs (collection + identity) ─────────────────────────────────────────
 
 describe("r.orgs.whoami", () => {
-  it("GETs /agent/v1/whoami; memberships carry org_id + display_name (not organization_id)", async () => {
+  it("GETs /agent/v1/whoami; memberships carry org_id + display_name (not org_id)", async () => {
     const payload = {
       principal: { id: "prn_1", type: "human", displayName: "Tal", createdAt: "2026-01-01T00:00:00Z" },
       memberships: [{ org_id: "org_1", display_name: "Kychee", role: "owner", status: "active" }],

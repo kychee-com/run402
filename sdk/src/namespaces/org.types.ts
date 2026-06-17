@@ -40,7 +40,7 @@ export interface Principal {
  * `"revoked"` do not). Returned by {@link Orgs.whoami} and {@link Orgs.list}.
  *
  * v1.82: carries `org_id` + `display_name` (the public vocabulary), replacing
- * the pre-v1.82 `organization_id`.
+ * the pre-v1.82 `org_id`.
  */
 export interface OrgMembership {
   org_id: string;

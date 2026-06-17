@@ -71,7 +71,7 @@ const ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
 /** The canonical account-detail projection the gateway returns (accountDetailJson). */
 function accountDetail(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    organization_id: ACCOUNT_ID,
+    org_id: ACCOUNT_ID,
     available_usd_micros: 0,
     email_credits_remaining: 0,
     tier: "prototype",
@@ -90,7 +90,7 @@ function accountDetail(overrides: Record<string, unknown> = {}): Record<string, 
 function historyMock(entries: unknown[] = []) {
   return mockFetch((call) =>
     call.url.includes("/history")
-      ? jsonResponse({ organization_id: ACCOUNT_ID, entries })
+      ? jsonResponse({ org_id: ACCOUNT_ID, entries })
       : jsonResponse(accountDetail()),
   );
 }
@@ -106,7 +106,7 @@ describe("billing.checkBalance / getAccount", () => {
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
-    assert.equal(result.organization_id, ACCOUNT_ID);
+    assert.equal(result.org_id, ACCOUNT_ID);
     assert.equal(result.available_usd_micros, 0);
     assert.equal(result.email_credits_remaining, 0);
     assert.equal(result.tier, "prototype");
@@ -125,7 +125,7 @@ describe("billing.checkBalance / getAccount", () => {
     assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/lookup?email=user%40example.com");
     assert.equal(result.tier, null);
     assert.equal(result.lease_expires_at, null);
-    assert.equal(result.organization_id, ACCOUNT_ID);
+    assert.equal(result.org_id, ACCOUNT_ID);
   });
 
   it("reads an organization id (UUID) directly without a lookup", async () => {
@@ -176,7 +176,7 @@ describe("billing.lookupOrganization", () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/lookup?wallet=${WALLET_LOWER}`);
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
-    assert.equal(result.organization_id, ACCOUNT_ID);
+    assert.equal(result.org_id, ACCOUNT_ID);
   });
 
   it("resolves an email to its account via ?email=", async () => {
@@ -231,7 +231,7 @@ describe("billing.history / getHistory", () => {
     const result = await sdk.billing.history(WALLET_UPPER);
 
     assert.equal(calls.length, 2);
-    // 1) lookup wallet → organization_id
+    // 1) lookup wallet → org_id
     assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/lookup?wallet=${WALLET_LOWER}`);
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
     // 2) history keyed by the resolved organization id
@@ -239,7 +239,7 @@ describe("billing.history / getHistory", () => {
     assert.equal(calls[1]!.method, "GET");
     assert.equal(calls[1]!.headers["SIGN-IN-WITH-X"], "test-siwx");
 
-    assert.equal(result.organization_id, ACCOUNT_ID);
+    assert.equal(result.org_id, ACCOUNT_ID);
     assert.equal(result.entries.length, 1);
 
     const entry = result.entries[0]!;
@@ -354,7 +354,7 @@ describe("billing.createCheckout", () => {
   it("creates an org balance top-up checkout", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
-        organization_id: "org_123",
+        org_id: "org_123",
         product: "balance_topup",
         checkout_url: "https://checkout.example.com",
         topup_id: "top_1",
@@ -378,7 +378,7 @@ describe("billing.createCheckout", () => {
   it("creates tier and email-pack checkouts through the same endpoint", async () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
-        organization_id: "org_123",
+        org_id: "org_123",
         product: "tier",
         checkout_url: "https://checkout.example.com",
         topup_id: "top_1",
@@ -484,7 +484,7 @@ describe("billing.linkWallet", () => {
     const { fetch } = mockFetch(() =>
       jsonResponse({
         status: "linked",
-        organization_id: "org_test",
+        org_id: "org_test",
         wallet: WALLET_LOWER,
         pool_implications: {
           tier: "hobby",
@@ -501,7 +501,7 @@ describe("billing.linkWallet", () => {
     const result = await sdk.billing.linkWallet("org_test", WALLET_LOWER);
 
     assert.equal(result.status, "linked");
-    assert.equal(result.organization_id, "org_test");
+    assert.equal(result.org_id, "org_test");
     assert.equal(result.wallet, WALLET_LOWER);
     assert.equal(result.pool_implications?.tier, "hobby");
     assert.equal(result.pool_implications?.projects_in_pool_count, 3);

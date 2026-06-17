@@ -199,7 +199,7 @@ async function checkout(args) {
   }
   try {
     const org = await getSdk().billing.lookupOrganization(identifier);
-    const data = await getSdk().billing.createCheckout(org.organization_id, checkoutRequest);
+    const data = await getSdk().billing.createCheckout(org.org_id, checkoutRequest);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -249,7 +249,7 @@ async function linkWallet(args) {
     const data = await getSdk().billing.linkWallet(organizationId, wallet);
     const output = {
       status: data?.status ?? "ok",
-      organization_id: data?.organization_id ?? organizationId,
+      org_id: data?.org_id ?? organizationId,
       wallet: data?.wallet ?? wallet.toLowerCase(),
       ...(data?.pool_implications ? { pool_implications: data.pool_implications } : {}),
     };
@@ -286,7 +286,7 @@ async function autoRecharge(args) {
       enabled: state === "on",
       threshold,
     });
-    console.log(JSON.stringify({ organization_id: organizationId, enabled: state === "on", updated: true }));
+    console.log(JSON.stringify({ org_id: organizationId, enabled: state === "on", updated: true }));
   } catch (err) {
     reportSdkError(err);
   }

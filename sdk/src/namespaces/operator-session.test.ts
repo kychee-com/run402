@@ -131,7 +131,7 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
   it("whoami with a token: bearer, no SIWX; returns principal + memberships", async () => {
     const who = {
       principal: { id: "prn_1", type: "human", createdAt: "2026-01-01T00:00:00Z" },
-      memberships: [{ organization_id: "org_1", role: "developer", status: "active" }],
+      memberships: [{ org_id: "org_1", role: "developer", status: "active" }],
       amr: ["passkey"],
       amr_times: { passkey: 1 },
     };
@@ -143,7 +143,7 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
     assert.equal(calls[0]!.headers["Authorization"], "Bearer cps_tok");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], undefined);
     assert.equal(res.principal.id, "prn_1");
-    assert.equal(res.memberships[0]!.organization_id, "org_1");
+    assert.equal(res.memberships[0]!.org_id, "org_1");
   });
 
   it("whoami without a token: falls back to SIWX (credential provider)", async () => {

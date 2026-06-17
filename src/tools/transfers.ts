@@ -189,7 +189,7 @@ export const claimProjectTransferSchema = {
   transfer_id: z
     .string()
     .describe("EMAIL transfer id to claim. The transfer's addressed email must match your verified email. The email analog of `accept_project_transfer`."),
-  organization_id: z
+  org_id: z
     .string()
     .optional()
     .describe("Organization to claim the project into (you must own/admin it). Omit to claim into a brand-new org."),
@@ -201,12 +201,12 @@ export const claimProjectTransferSchema = {
 
 export async function handleClaimProjectTransfer(args: {
   transfer_id: string;
-  organization_id?: string;
+  org_id?: string;
   accept_retained_collaborator?: boolean;
 }): Promise<ToolResult> {
   try {
     const res = await getSdk().admin.transfers.claim(args.transfer_id, {
-      organizationId: args.organization_id,
+      organizationId: args.org_id,
       acceptRetainedCollaborator: args.accept_retained_collaborator,
     });
     const lines = [

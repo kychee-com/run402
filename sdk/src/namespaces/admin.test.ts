@@ -215,7 +215,7 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         status: "ok",
-        organization_id: "org_known",
+        org_id: "org_known",
         lease_perpetual: true,
         reactivated: true,
       }),
@@ -237,7 +237,7 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
 
   it("sends false to disable perpetual", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({ status: "ok", organization_id: "org_known", lease_perpetual: false, reactivated: false }),
+      json({ status: "ok", org_id: "org_known", lease_perpetual: false, reactivated: false }),
     );
     const result = await sdk(fetch).admin.setLeasePerpetual("org_known", false);
 
@@ -248,7 +248,7 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
 
   it("URI-encodes the organization id", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({ status: "ok", organization_id: "org/has space", lease_perpetual: true, reactivated: false }),
+      json({ status: "ok", org_id: "org/has space", lease_perpetual: true, reactivated: false }),
     );
     await sdk(fetch).admin.setLeasePerpetual("org/has space", true);
     assert.equal(

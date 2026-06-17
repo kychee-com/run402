@@ -972,7 +972,7 @@ describe("SDK surface alignment", () => {
       "email.resolveMailbox",  // private helper
       "email.pickMailbox",     // private helper
       "email.cacheMailbox",    // private helper
-      // billing.lookupOrganization resolves a wallet/email → organization_id via
+      // billing.lookupOrganization resolves a wallet/email → org_id via
       // GET /orgs/v1/lookup?wallet=|?email=. It's an SDK primitive used by
       // getAccount/getHistory and exposed for consumers that only need the id;
       // no dedicated MCP/CLI verb (the wallet/email-keyed balance/history

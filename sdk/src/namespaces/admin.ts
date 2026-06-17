@@ -172,7 +172,7 @@ export interface RotateWebhookSecretResult {
 
 export interface SetLeasePerpetualResult {
   status: "ok";
-  organization_id: string;
+  org_id: string;
   lease_perpetual: boolean;
   /**
    * `true` when the toggle was `lease_perpetual: true` AND the account was in

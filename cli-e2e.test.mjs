@@ -199,7 +199,7 @@ async function mockFetch(input, init) {
         status: "active",
         effective_status: "active",
         organization_lifecycle_state: "active",
-        organization_id: "11111111-2222-3333-4444-555555555555",
+        org_id: "11111111-2222-3333-4444-555555555555",
         created_by: "99999999-8888-7777-6666-555555555555",
         created_at: "2026-03-15T00:00:00.000Z",
       }],
@@ -216,7 +216,7 @@ async function mockFetch(input, init) {
         site_url: "https://test.run402.com",
         custom_domains: [],
         status: "active",
-        organization_id: "11111111-2222-3333-4444-555555555555",
+        org_id: "11111111-2222-3333-4444-555555555555",
         created_at: "2026-03-15T00:00:00.000Z",
       }],
       scope: "wallet",
@@ -254,7 +254,7 @@ async function mockFetch(input, init) {
     const desired = Boolean(body?.lease_perpetual);
     return Promise.resolve(json({
       status: "ok",
-      organization_id: organizationId,
+      org_id: organizationId,
       lease_perpetual: desired,
       reactivated: desired,
     }));
@@ -748,10 +748,10 @@ async function mockFetch(input, init) {
 
   // Billing
   // Organization lookup: GET /orgs/v1/lookup?wallet=|?email= → resolve to a
-  // organization_id (and return the same detail shape as the by-id read).
+  // org_id (and return the same detail shape as the by-id read).
   if (pathNoQuery === "/orgs/v1/lookup" && method === "GET") {
     return Promise.resolve(json({
-      organization_id: "00000000-0000-4000-8000-0000000000e2",
+      org_id: "00000000-0000-4000-8000-0000000000e2",
       available_usd_micros: 150000,
       held_usd_micros: 0,
       email_credits_remaining: 0,
@@ -762,14 +762,14 @@ async function mockFetch(input, init) {
     }));
   }
   if (path.match(/^\/orgs\/v1\/[^/]+\/billing$/) && method === "GET") {
-    return Promise.resolve(json({ organization_id: "00000000-0000-4000-8000-0000000000e2", available_usd_micros: 150000, held_usd_micros: 0 }));
+    return Promise.resolve(json({ org_id: "00000000-0000-4000-8000-0000000000e2", available_usd_micros: 150000, held_usd_micros: 0 }));
   }
   if (path.match(/\/history/) && method === "GET") {
     return Promise.resolve(json({ transactions: [{ id: "tx1", amount: -100000, description: "Tier subscription" }] }));
   }
   if (path.match(/^\/orgs\/v1\/[^/]+\/checkouts$/) && method === "POST") {
     return Promise.resolve(json({
-      organization_id: "00000000-0000-4000-8000-0000000000e2",
+      org_id: "00000000-0000-4000-8000-0000000000e2",
       product: "balance_topup",
       checkout_url: "https://checkout.stripe.com/test",
       topup_id: "top_123",
@@ -1499,7 +1499,7 @@ describe("CLI e2e happy path", () => {
     // project-findability: the named, domain-aware row shape.
     assert.ok(out.includes("custom_domains"), "should surface custom_domains");
     assert.ok(out.includes("www.example.com"), "should render the custom domain");
-    assert.ok(out.includes("org_id"), "should surface org_id (organization_id)");
+    assert.ok(out.includes("org_id"), "should surface org_id (org_id)");
     assert.ok(out.includes("11111111-2222-3333-4444-555555555555"), "should render the owning org id");
   });
 
@@ -2066,7 +2066,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(seenAdminMode, "1", "lease-perpetual should explicitly request admin mode");
     assert.equal(seenAuthorization, null, "lease-perpetual must not use a service_key as Bearer auth");
     const parsed = JSON.parse(capturedStdout());
-    assert.equal(parsed.organization_id, "org_external");
+    assert.equal(parsed.org_id, "org_external");
     assert.equal(parsed.lease_perpetual, true,
       "mockFetch echoes the request body; if this is false, the body didn't carry lease_perpetual:true");
   });

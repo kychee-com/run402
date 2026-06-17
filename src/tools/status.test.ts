@@ -59,7 +59,7 @@ describe("status tool", () => {
     writeKeystore({ active_project_id: "proj-1", projects: { "proj-1": { anon_key: "ak1", service_key: "sk1" } } });
     mockApis({
       tier: { tier: "prototype", status: "active", lease_expires_at: "2026-04-01T00:00:00Z" },
-      billing: { organization_id: "00000000-0000-4000-8000-000000000001", available_usd_micros: 250000, held_usd_micros: 0 },
+      billing: { org_id: "00000000-0000-4000-8000-000000000001", available_usd_micros: 250000, held_usd_micros: 0 },
       projects: { projects: [{ id: "proj-1" }] },
     });
 

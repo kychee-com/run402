@@ -324,7 +324,7 @@ async function loopbackLogin(args, { stepUp }) {
     if (memberships.length) {
       process.stderr.write(
         `Member of ${memberships.length} org(s):\n` +
-          memberships.map((m) => `  - ${m.display_name || m.org_id || m.organization_id || "unknown"} (${m.role}, ${m.status})`).join("\n") +
+          memberships.map((m) => `  - ${m.display_name || m.org_id || m.org_id || "unknown"} (${m.role}, ${m.status})`).join("\n") +
           "\n",
       );
     }

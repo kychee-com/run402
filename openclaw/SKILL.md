@@ -914,7 +914,7 @@ run402 transfer cancel <transfer_id> [--reason "..."]
 run402 transfer accept <transfer_id>
 
 # EMAIL recipient completes — claim into an org (omit --into to create a new org)
-run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]
+run402 transfer claim <transfer_id> [--into <org_id>] [--accept-retained-collaborator]
 
 # Inbox / outbox (both list wallet + email rows, each tagged recipient_kind)
 run402 transfer list                 # incoming (default)
