@@ -642,18 +642,20 @@ Calling **`set_tier`** during grace reactivates the **organization** inline and 
 
 Operator moderation actions (independent of lifecycle, scoped to a single project): **`admin_archive_project`** and **`admin_reactivate_project`**.
 
-## Project transfer (v1.59, two-party handoff)
+## Project transfer (unified noun, v1.93+)
 
-A project can be transferred to a different wallet without redeploying. Both sides sign with their own wallet (SIWX). Owner-side mutations on the project freeze for the 72-hour pending window — the recipient sees exactly what they review.
+A project can be transferred to a new owner without redeploying — one noun, two recipient kinds. A **wallet** recipient is a two-party SIWX transfer completed by `accept`; an **email** recipient is an email→org transfer the recipient completes by `claim` (claiming the project into an org they own). Owner-side mutations on the project freeze for the 72-hour pending window — the recipient sees exactly what they review.
 
-**Six tools**: **`initiate_project_transfer`** (owner-only), **`preview_project_transfer`**, **`accept_project_transfer`** (recipient), **`cancel_project_transfer`** (either party), **`list_incoming_transfers`**, **`list_outgoing_transfers`**.
+**Seven tools**: **`initiate_project_transfer`** (owner-or-admin; `to_wallet` XOR `to_email`), **`preview_project_transfer`** (kind-agnostic), **`accept_project_transfer`** (wallet recipient), **`claim_project_transfer`** (email recipient), **`cancel_project_transfer`** (any authorized party), **`list_incoming_transfers`**, **`list_outgoing_transfers`**.
 
 **Flow:**
 
-1. Owner runs **`initiate_project_transfer`** with `project_id`, `to_wallet`, optional `message`. Gateway creates a `pending` row with 72h expiry.
-2. Either party runs **`preview_project_transfer`** with the `transfer_id`. Preview shows custom domains, subdomains, function names, secret NAMES (values are NEVER returned), CI bindings to be revoked, and billing implications.
-3. Recipient runs **`accept_project_transfer`**. Atomic at accept: ownership flips, the previous owner's CI bindings on the project are revoked, both sides get notification emails, and the project carries a persistent `secrets_rotation_advised` advisory until every inherited secret is re-written.
-4. Either side can **`cancel_project_transfer`** at any time before accept. After 72h the gateway auto-expires the pending row.
+1. Owner runs **`initiate_project_transfer`** with `project_id` and exactly one of `to_wallet` or `to_email` (optional `message`; the email path adds optional `retain_collaborator_role`). Gateway creates a `pending` row with 72h expiry.
+2. Either party runs **`preview_project_transfer`** with the `transfer_id`. Preview shows custom domains, subdomains, function names, secret NAMES (values are NEVER returned), CI bindings to be revoked, billing implications, and — on email transfers — the `retain_collaborator` offer.
+3. The recipient completes by kind:
+   - **Wallet** → **`accept_project_transfer`**. Atomic: ownership flips, the previous owner's CI bindings are revoked, both sides get notification emails, the project carries a persistent `secrets_rotation_advised` advisory, and the response returns the new owner's project keys (persisted to the local keystore).
+   - **Email** → **`claim_project_transfer`** (`organization_id` optional; omit to claim into a new org). Atomic ownership flip, the email analog of accept. Like accept, the response returns the new owner's project keys (persisted to the keystore) and the project carries the `secrets_rotation_advised` advisory.
+4. Either side can **`cancel_project_transfer`** at any time before completion. After 72h the gateway auto-expires the pending row.
 
 **Freeze invariant.** While `pending`, every owner-side mutation against the project (deploy, secret CRUD, function CRUD, custom-domain bind/unbind, scheduled-function changes, mailbox config, CI binding CRUD, project rename) returns **409 `PROJECT_HAS_PENDING_TRANSFER`** with `details.transfer_id` and a `next_actions[]` cancel route. Data-plane traffic keeps serving. Payment-path routes (tier renew, billing) keep working. The `cancel_project_transfer` route is intentionally unblocked so recovery is always possible.
 

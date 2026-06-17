@@ -10,7 +10,7 @@ import {
   positionalArgs,
 } from "./argparse.mjs";
 
-const HELP = `run402 transfer — Two-party project transfer (v1.59)
+const HELP = `run402 transfer — Project transfer, one noun for both recipient kinds (v1.93+)
 
 Usage:
   run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]
@@ -18,22 +18,22 @@ Usage:
   run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]
   run402 transfer accept <transfer_id>
   run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]
-  run402 transfer cancel <transfer_id> [--reason <text>] [--handoff]
+  run402 transfer cancel <transfer_id> [--reason <text>]
 
 Subcommands:
-  init        Initiate ownership change. --to <wallet> = two-party wallet transfer;
-              --to <email> = email->org handoff (the recipient claims it).
-  preview     Fetch the safe review document (add --handoff for an email handoff)
-  list        List pending transfers (incoming default, --outgoing, or --handoffs)
-  accept      Accept an incoming wallet transfer (your wallet must be the to_wallet)
-  claim       Claim an incoming email handoff into an org (--into <id>; omit = new org)
-  cancel      Cancel a pending transfer/handoff (--handoff routes to a handoff)
+  init        Initiate ownership change. --to <wallet> = two-party wallet transfer
+              (completed by 'accept'); --to <email> = email->org transfer (completed by 'claim').
+  preview     Fetch the safe review document (wallet or email — kind-agnostic)
+  list        List pending transfers (incoming default, or --outgoing) — both kinds, unioned
+  accept      Accept an incoming WALLET transfer (your wallet must be the to_wallet)
+  claim       Claim an incoming EMAIL transfer into an org (--into <id>; omit = new org)
+  cancel      Cancel a pending transfer of either kind
 
 Notes:
   - Owner-side mutations on a project with a pending transfer return 409
     PROJECT_HAS_PENDING_TRANSFER. Cancel the transfer or wait 72h for expiry.
   - Phase 1A supports only billing_policy=migrate (default).
-  - Secret VALUES are inherited by the recipient on accept; rotation is advised.
+  - Secret VALUES are inherited by the recipient on completion; rotation is advised.
   - GitHub repo ownership is NOT transferred — handle that out of band.
 `;
 
@@ -45,17 +45,18 @@ Usage:
 
 Options:
   --project <id>         Project id (defaults to the active project)
-  --to <wallet>          Recipient wallet (required). Any case; lowercased server-side.
-  --billing-policy <p>   Billing policy. Phase 1A only allows 'migrate' (default).
+  --to <wallet|email>    Recipient (required). A wallet uses the two-party rail (completed by
+                         'accept'); an email uses the email->org rail (completed by 'claim').
+  --billing-policy <p>   Billing policy (wallet rail). Phase 1A only allows 'migrate' (default).
   --message <text>       Optional note shown to the recipient in preview + emails.
-  --kysigned <record_id> Optional KySigned record id (Phase 1A: informational only).
-  --retain-collaborator <role>  Email handoffs only (v1.91): keep a 'developer' membership in
-                         the recipient's org after handoff. The recipient must accept it at
+  --kysigned <record_id> Optional KySigned record id (wallet rail; Phase 1A: informational only).
+  --retain-collaborator <role>  Email recipients only (v1.91): keep a 'developer' membership in
+                         the recipient's org after the transfer. The recipient must accept it at
                          claim (--accept-retained-collaborator); omit for full severance.
 
 Notes:
-  - Caller's wallet must currently own the project (gateway re-checks fresh DB).
-  - Owner-side mutations on the project are frozen until accept/cancel/expiry.
+  - Caller's wallet/session must currently own or admin the project (gateway re-checks fresh DB).
+  - Owner-side mutations on the project are frozen until accept/claim/cancel/expiry.
   - The project lease stays with your organization; it is NOT refunded.
 `,
   preview: `run402 transfer preview — Fetch the preview document
@@ -64,21 +65,25 @@ Usage:
   run402 transfer preview <transfer_id>
 
 Returns project name, custom domains, subdomains, function names, secret NAMES
-(values are never returned), CI bindings that will be revoked on accept, and
-billing implications. Either the from_wallet or the to_wallet may preview.
+(values are never returned), CI bindings that will be revoked on completion, and
+billing implications. Works for both wallet- and email-addressed transfers; any
+party to the transfer may preview.
 `,
   list: `run402 transfer list — List pending transfers
 
 Usage:
   run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]
 
+Lists both wallet- and email-addressed transfers, unioned; each row carries
+recipient_kind.
+
 Options:
-  --incoming    List transfers OFFERED TO your wallet (default).
-  --outgoing    List transfers INITIATED BY your wallet.
+  --incoming    List transfers OFFERED TO you (default).
+  --outgoing    List transfers INITIATED BY you.
   --limit N     Page size (default 50).
   --offset N    Pagination offset (default 0).
 `,
-  accept: `run402 transfer accept — Accept an incoming transfer
+  accept: `run402 transfer accept — Accept an incoming WALLET transfer
 
 Usage:
   run402 transfer accept <transfer_id>
@@ -86,24 +91,26 @@ Usage:
 Your wallet must equal the transfer's to_wallet. The accept transaction
 atomically: flips ownership, revokes the previous owner's CI bindings on the
 project, enqueues notifications to both parties, and stamps a
-'secrets_rotation_advised' advisory on the project.
+'secrets_rotation_advised' advisory on the project. (Email transfers complete
+via 'claim', not 'accept'.)
 `,
   cancel: `run402 transfer cancel — Cancel a pending transfer
 
 Usage:
-  run402 transfer cancel <transfer_id> [--reason <text>] [--handoff]
+  run402 transfer cancel <transfer_id> [--reason <text>]
 
-Either the from_wallet or the to_wallet may cancel. Already-processed
-transfers return 409 TRANSFER_ALREADY_PROCESSED. Pass --handoff to cancel an
-email->org handoff instead of a wallet transfer.
+Cancels a pending transfer of either kind. You must be authorized for the row's
+kind (a wallet signing party, or an owner/admin of the offering org / the
+addressed-email principal). Already-processed transfers return 409
+TRANSFER_ALREADY_PROCESSED.
 `,
-  claim: `run402 transfer claim — Claim an incoming email handoff
+  claim: `run402 transfer claim — Claim an incoming EMAIL transfer
 
 Usage:
   run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]
 
-Claims a handoff addressed to your email into an org you own. Omit --into to
-claim into a brand-new org. This is the email-handoff analog of 'accept'.
+Claims an email-addressed transfer into an org you own. Omit --into to claim into
+a brand-new org. This is the email analog of 'accept'.
 
 Options:
   --into <organization_id>       Org to claim into (omit = brand-new org).
@@ -123,9 +130,9 @@ async function init(args) {
   if (extra.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for transfer init: ${extra[0]}` });
   }
-  const toWallet = flagValue(parsedArgs, "--to");
-  if (!toWallet) {
-    fail({ code: "BAD_USAGE", message: "Missing --to <wallet>" });
+  const to = flagValue(parsedArgs, "--to");
+  if (!to) {
+    fail({ code: "BAD_USAGE", message: "Missing --to <wallet|email>" });
   }
   const projectFlag = flagValue(parsedArgs, "--project");
   const projectId = await resolveProjectId(projectFlag);
@@ -144,17 +151,18 @@ async function init(args) {
   const kysigned = flagValue(parsedArgs, "--kysigned");
   const retainCollaborator = flagValue(parsedArgs, "--retain-collaborator");
 
-  // One noun, two rails: an email recipient routes to the email->org handoff;
-  // a wallet recipient routes to the two-party wallet transfer.
-  const isEmail = toWallet.includes("@");
+  // One noun, two rails: an email recipient routes to the email->org completion
+  // ('claim'); a wallet recipient routes to the two-party wallet completion
+  // ('accept'). Both initiate on the SAME endpoint, discriminated by the body.
+  const isEmail = to.includes("@");
 
-  // --retain-collaborator (v1.91) is a handoff-only opt-in: the sender keeps a
+  // --retain-collaborator (v1.91) is an email-only opt-in: the sender keeps a
   // developer membership in the recipient's org (recipient must accept at claim).
   if (retainCollaborator !== null) {
     if (!isEmail) {
       fail({
         code: "BAD_FLAG",
-        message: "--retain-collaborator applies only to email handoffs; a wallet --to uses the two-party transfer rail.",
+        message: "--retain-collaborator applies only to email recipients; a wallet --to uses the two-party transfer rail.",
         details: { flag: "--retain-collaborator" },
       });
     }
@@ -167,21 +175,20 @@ async function init(args) {
     }
   }
 
-  allowanceAuthHeaders(
-    isEmail ? `/projects/v1/${projectId}/handoffs` : `/projects/v1/${projectId}/transfers`,
-  );
+  // Both kinds initiate on the unified transfer endpoint — sign that path.
+  allowanceAuthHeaders(`/projects/v1/${projectId}/transfers`);
 
   try {
     const res = isEmail
-      ? await getSdk().admin.transfers.initiateHandoff({
+      ? await getSdk().admin.transfers.initiate({
           projectId,
-          toEmail: toWallet,
+          toEmail: to,
           message: message ?? undefined,
           retainCollaborator: retainCollaborator ? { role: retainCollaborator } : undefined,
         })
       : await getSdk().admin.transfers.initiate({
           projectId,
-          toWallet,
+          toWallet: to,
           billingPolicy: billingPolicy ?? undefined,
           message: message ?? undefined,
           kysignedRecordId: kysigned ?? undefined,
@@ -194,19 +201,17 @@ async function init(args) {
 
 async function preview(args) {
   const parsedArgs = normalizeArgv(args);
-  assertKnownFlags(parsedArgs, ["--handoff", "--help", "-h"]);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
   const positionals = positionalArgs(parsedArgs);
   if (positionals.length !== 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer preview <transfer_id> [--handoff]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer preview <transfer_id>" });
   }
   const transferId = positionals[0];
-  const handoff = parsedArgs.includes("--handoff");
-  allowanceAuthHeaders(`/agent/v1/${handoff ? "handoffs" : "transfers"}/${transferId}`);
+  // Preview is kind-agnostic — one route serves wallet and email transfers.
+  allowanceAuthHeaders(`/agent/v1/transfers/${transferId}`);
 
   try {
-    const data = handoff
-      ? await getSdk().admin.transfers.previewHandoff(transferId)
-      : await getSdk().admin.transfers.preview(transferId);
+    const data = await getSdk().admin.transfers.preview(transferId);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -216,22 +221,10 @@ async function preview(args) {
 async function list(args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--limit", "--offset"];
-  assertKnownFlags(parsedArgs, [...valueFlags, "--incoming", "--outgoing", "--handoffs", "--help", "-h"], valueFlags);
+  assertKnownFlags(parsedArgs, [...valueFlags, "--incoming", "--outgoing", "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for transfer list: ${extra[0]}` });
-  }
-
-  // Email->org handoffs ride the same rail but have their own incoming inbox.
-  if (parsedArgs.includes("--handoffs")) {
-    allowanceAuthHeaders("/agent/v1/handoffs/incoming");
-    try {
-      const handoffs = await getSdk().admin.transfers.listIncomingHandoffs();
-      console.log(JSON.stringify({ kind: "handoffs", handoffs }, null, 2));
-    } catch (err) {
-      reportSdkError(err);
-    }
-    return;
   }
 
   const incoming = parsedArgs.includes("--incoming");
@@ -252,6 +245,8 @@ async function list(args) {
       ? undefined
       : parseIntegerFlag("--offset", offsetFlag, { min: 0 });
 
+  // Incoming/outgoing are kind-agnostic — each returns the union of wallet- and
+  // email-addressed rows, tagged with recipient_kind.
   allowanceAuthHeaders(`/agent/v1/transfers/${direction}`);
 
   try {
@@ -286,20 +281,18 @@ async function accept(args) {
 async function cancel(args) {
   const parsedArgs = normalizeArgv(args);
   const valueFlags = ["--reason"];
-  assertKnownFlags(parsedArgs, [...valueFlags, "--handoff", "--help", "-h"], valueFlags);
+  assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const positionals = positionalArgs(parsedArgs, valueFlags);
   if (positionals.length !== 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer cancel <transfer_id> [--reason <text>] [--handoff]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 transfer cancel <transfer_id> [--reason <text>]" });
   }
   const transferId = positionals[0];
   const reason = flagValue(parsedArgs, "--reason");
-  const handoff = parsedArgs.includes("--handoff");
-  allowanceAuthHeaders(`/agent/v1/${handoff ? "handoffs" : "transfers"}/${transferId}/cancel`);
+  // Cancel is kind-agnostic — one route serves wallet and email transfers.
+  allowanceAuthHeaders(`/agent/v1/transfers/${transferId}/cancel`);
 
   try {
-    const data = handoff
-      ? await getSdk().admin.transfers.cancelHandoff(transferId)
-      : await getSdk().admin.transfers.cancel(transferId, reason ?? undefined);
+    const data = await getSdk().admin.transfers.cancel(transferId, reason ?? undefined);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -319,10 +312,10 @@ async function claim(args) {
   // v1.91: accept the sender's retained-developer-membership offer (see the
   // preview's `retain_collaborator` block). Absent = full severance (default).
   const acceptRetain = parsedArgs.includes("--accept-retained-collaborator");
-  allowanceAuthHeaders(`/agent/v1/handoffs/${transferId}/claim`);
+  allowanceAuthHeaders(`/agent/v1/transfers/${transferId}/claim`);
 
   try {
-    const data = await getSdk().admin.transfers.claimHandoff(transferId, {
+    const data = await getSdk().admin.transfers.claim(transferId, {
       organizationId: into ?? undefined,
       acceptRetainedCollaborator: acceptRetain || undefined,
     });

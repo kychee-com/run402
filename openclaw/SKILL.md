@@ -895,24 +895,28 @@ Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `int
 
 Operator moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same organization keep serving.
 
-## Project transfer (v1.59, two-party handoff)
+## Project transfer (unified noun, v1.93+)
 
-Hand off a project to another wallet without redeploying. Both sides sign with their own wallet (SIWX); owner-side mutations on the project freeze for the 72-hour pending window so the recipient reviews exactly what they will own.
+Hand off a project to a new owner without redeploying — one noun, two recipient kinds. `--to` routes by value: a **wallet** is a two-party SIWX transfer (recipient completes with `accept`); an **email** is an email→org transfer (recipient completes with `claim`, claiming into an org they own). Owner-side mutations on the project freeze for the 72-hour pending window so the recipient reviews exactly what they will own.
 
 ```bash
-# Initiate (you must currently own the project)
-run402 transfer init --to 0xRECIPIENT --project <project_id> [--message "..."]
+# Initiate (you must currently own/admin the project). --to routes by recipient kind:
+run402 transfer init --to 0xRECIPIENT --project <project_id> [--message "..."]            # wallet
+run402 transfer init --to alice@example.com --project <project_id> [--retain-collaborator developer]  # email
 
-# Either party can inspect the safe preview document
+# Either party can inspect the safe preview document (kind-agnostic)
 run402 transfer preview <transfer_id>
 
-# Either party can cancel before accept
+# Cancel a pending transfer of either kind (any authorized party)
 run402 transfer cancel <transfer_id> [--reason "..."]
 
-# Recipient accepts (your wallet must equal the transfer's to_wallet)
+# WALLET recipient completes (your wallet must equal the transfer's to_wallet)
 run402 transfer accept <transfer_id>
 
-# Inbox / outbox
+# EMAIL recipient completes — claim into an org (omit --into to create a new org)
+run402 transfer claim <transfer_id> [--into <organization_id>] [--accept-retained-collaborator]
+
+# Inbox / outbox (both list wallet + email rows, each tagged recipient_kind)
 run402 transfer list                 # incoming (default)
 run402 transfer list --outgoing
 ```

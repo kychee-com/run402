@@ -1749,7 +1749,33 @@ describe("transfer retain-collaborator argv validation (v1.91)", () => {
       ]),
     );
     assert.equal(err.code, "BAD_FLAG");
-    assert.match(err.message, /email handoff/);
+    assert.match(err.message, /email recipients/);
+  });
+});
+
+describe("transfer unified surface — obsolete kind flags rejected (unify-transfer-client-surface)", () => {
+  it("preview rejects the obsolete --handoff flag before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() => run("preview", ["ptx_1", "--handoff"]));
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--handoff");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("list rejects the obsolete --handoffs flag before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() => run("list", ["--handoffs"]));
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--handoffs");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("cancel rejects the obsolete --handoff flag before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() => run("cancel", ["ptx_1", "--handoff"]));
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--handoff");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
   });
 });
 

@@ -1,6 +1,9 @@
 /**
- * MCP tools for the v1.59 two-party project transfer flow. Each handler is
- * a thin shim over `r.admin.transfers.*` followed by markdown formatting.
+ * MCP tools for the unified project-transfer flow (v1.93+). Each handler is a
+ * thin shim over `r.admin.transfers.*` followed by markdown formatting. One
+ * noun, two recipient kinds: a wallet recipient (`to_wallet`, completed via
+ * `accept_project_transfer`) or an email recipient (`to_email`, completed via
+ * `claim_project_transfer`).
  */
 
 import { z } from "zod";
@@ -14,14 +17,19 @@ type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: bo
 export const initiateProjectTransferSchema = {
   project_id: z
     .string()
-    .describe("Project id to transfer. You must currently own it (the gateway verifies against fresh DB state)."),
+    .describe("Project id to transfer. You must currently own or admin it (the gateway verifies against fresh DB state)."),
   to_wallet: z
     .string()
-    .describe("Recipient wallet address (any case — the gateway lowercases). Must differ from the current owner."),
+    .optional()
+    .describe("Recipient WALLET address (any case — the gateway lowercases). Provide EXACTLY ONE of `to_wallet` or `to_email`. A wallet recipient completes the transfer via `accept_project_transfer`."),
+  to_email: z
+    .string()
+    .optional()
+    .describe("Recipient EMAIL. Provide EXACTLY ONE of `to_wallet` or `to_email`. An email recipient completes the transfer via `claim_project_transfer` (they claim it into an org they own)."),
   billing_policy: z
     .enum(["migrate"])
     .optional()
-    .describe("Billing policy. Phase 1A supports only `migrate` (default). The project moves into the recipient's organization."),
+    .describe("Wallet rail only. Phase 1A supports only `migrate` (default). The project moves into the recipient's organization."),
   message: z
     .string()
     .optional()
@@ -29,20 +37,53 @@ export const initiateProjectTransferSchema = {
   kysigned_record_id: z
     .string()
     .optional()
-    .describe("Optional KySigned record id. Phase 1A stores this verbatim (no verification). Phase 1B will verify against the canonical terms hash."),
+    .describe("Wallet rail only. Optional KySigned record id. Phase 1A stores this verbatim (no verification)."),
+  retain_collaborator_role: z
+    .enum(["developer"])
+    .optional()
+    .describe("Email rail only (v1.91): keep a `developer` membership in the recipient's org after the transfer completes. The recipient must accept it at claim time (`accept_retained_collaborator`). Omit for a full severance."),
 };
 
 export async function handleInitiateProjectTransfer(args: {
   project_id: string;
-  to_wallet: string;
+  to_wallet?: string;
+  to_email?: string;
   billing_policy?: "migrate";
   message?: string;
   kysigned_record_id?: string;
+  retain_collaborator_role?: "developer";
 }): Promise<ToolResult> {
+  const hasWallet = typeof args.to_wallet === "string" && args.to_wallet.length > 0;
+  const hasEmail = typeof args.to_email === "string" && args.to_email.length > 0;
+  if (hasWallet === hasEmail) {
+    return {
+      content: [{ type: "text", text: "Provide exactly one of `to_wallet` or `to_email`." }],
+      isError: true,
+    };
+  }
   try {
+    if (hasEmail) {
+      const res = await getSdk().admin.transfers.initiate({
+        projectId: args.project_id,
+        toEmail: args.to_email as string,
+        message: args.message,
+        retainCollaborator: args.retain_collaborator_role
+          ? { role: args.retain_collaborator_role }
+          : undefined,
+      });
+      const lines = [
+        `Email transfer initiated for project \`${args.project_id}\`.`,
+        `- transfer_id: \`${res.transfer_id}\``,
+        `- to_email: ${res.to_email}`,
+        `- expires_at: ${res.expires_at} (72h)`,
+        ``,
+        `The recipient completes by verifying ${res.to_email} and claiming the project into an org (the email analog of accept). Owner-side mutations on this project are blocked until it is claimed, cancelled, or expires. Use \`cancel_project_transfer\` with the transfer id to reverse.`,
+      ];
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    }
     const res = await getSdk().admin.transfers.initiate({
       projectId: args.project_id,
-      toWallet: args.to_wallet,
+      toWallet: args.to_wallet as string,
       billingPolicy: args.billing_policy,
       message: args.message,
       kysignedRecordId: args.kysigned_record_id,
@@ -69,7 +110,7 @@ export async function handleInitiateProjectTransfer(args: {
 export const previewProjectTransferSchema = {
   transfer_id: z
     .string()
-    .describe("Transfer id to preview. You must be either the from_wallet or the to_wallet of the transfer."),
+    .describe("Transfer id to preview. You must be a party to it (wallet signer, the addressed-email principal, or an offering-org member). Kind-agnostic — works for wallet and email transfers."),
 };
 
 export async function handlePreviewProjectTransfer(args: {
@@ -78,16 +119,23 @@ export async function handlePreviewProjectTransfer(args: {
   try {
     const p = await getSdk().admin.transfers.preview(args.transfer_id);
     const lines = [
-      `Preview for transfer \`${p.transfer_id}\` (status: ${p.status})`,
+      `Preview for transfer \`${p.transfer_id}\` (status: ${p.status}, kind: ${p.recipient_kind})`,
       `- project: \`${p.project_id}\`${p.project_name_snapshot ? ` (\`${p.project_name_snapshot}\`)` : ""}`,
-      `- from: ${p.from_wallet_display} → to: ${p.to_wallet_display}`,
-      `- billing_policy: ${p.billing_policy}`,
-      `- initiated_at: ${p.initiated_at}`,
-      `- expires_at: ${p.expires_at}`,
-      `- terms_sha256: ${p.terms_sha256}`,
     ];
+    if (p.recipient_kind === "email") {
+      lines.push(`- to_email: ${p.to_email ?? "(unknown)"}`);
+    } else {
+      lines.push(`- from: ${p.from_wallet_display} → to: ${p.to_wallet_display}`);
+    }
+    lines.push(`- billing_policy: ${p.billing_policy}`);
+    lines.push(`- initiated_at: ${p.initiated_at}`);
+    lines.push(`- expires_at: ${p.expires_at}`);
+    lines.push(`- terms_sha256: ${p.terms_sha256}`);
     if (p.kysigned_record_id) lines.push(`- kysigned_record_id: ${p.kysigned_record_id}`);
     if (p.message) lines.push(`- message: ${p.message}`);
+    if (p.retain_collaborator) {
+      lines.push(`- retain_collaborator: ${p.retain_collaborator.sender_label} keeps \`${p.retain_collaborator.role}\` (accept with claim's accept_retained_collaborator)`);
+    }
     lines.push(``, `What transfers:`);
     lines.push(`- custom_domains: ${p.custom_domains.length}`);
     lines.push(`- subdomains: ${p.subdomains.length}`);
@@ -105,12 +153,12 @@ export async function handlePreviewProjectTransfer(args: {
   }
 }
 
-// ─── accept_project_transfer ────────────────────────────────────────────────
+// ─── accept_project_transfer (WALLET completion) ────────────────────────────
 
 export const acceptProjectTransferSchema = {
   transfer_id: z
     .string()
-    .describe("Transfer id to accept. Your wallet must equal the transfer's to_wallet. Atomically flips ownership, revokes the previous owner's CI bindings on the project, and stamps a `secrets_rotation_advised` advisory."),
+    .describe("WALLET transfer id to accept. Your wallet must equal the transfer's to_wallet. Atomically flips ownership, revokes the previous owner's CI bindings on the project, and stamps a `secrets_rotation_advised` advisory. (Email transfers complete via `claim_project_transfer`.)"),
 };
 
 export async function handleAcceptProjectTransfer(args: {
@@ -135,12 +183,53 @@ export async function handleAcceptProjectTransfer(args: {
   }
 }
 
+// ─── claim_project_transfer (EMAIL completion) ──────────────────────────────
+
+export const claimProjectTransferSchema = {
+  transfer_id: z
+    .string()
+    .describe("EMAIL transfer id to claim. The transfer's addressed email must match your verified email. The email analog of `accept_project_transfer`."),
+  organization_id: z
+    .string()
+    .optional()
+    .describe("Organization to claim the project into (you must own/admin it). Omit to claim into a brand-new org."),
+  accept_retained_collaborator: z
+    .boolean()
+    .optional()
+    .describe("Accept the sender's v1.91 retained-`developer`-membership offer (see the preview's retain_collaborator). Omit (the default) for a full severance."),
+};
+
+export async function handleClaimProjectTransfer(args: {
+  transfer_id: string;
+  organization_id?: string;
+  accept_retained_collaborator?: boolean;
+}): Promise<ToolResult> {
+  try {
+    const res = await getSdk().admin.transfers.claim(args.transfer_id, {
+      organizationId: args.organization_id,
+      acceptRetainedCollaborator: args.accept_retained_collaborator,
+    });
+    const lines = [
+      `Transfer \`${args.transfer_id}\` claimed. Project \`${res.project_id}\` is now in org \`${res.to_organization_id}\`${res.created_new_org ? " (new org created)" : ""}.`,
+      `- status: ${res.status}`,
+    ];
+    if (res.retained_collaborator_principal_id) {
+      lines.push(`- retained_collaborator_principal_id: ${res.retained_collaborator_principal_id}`);
+    }
+    lines.push(``, `The new owner's project keys were returned and persisted to the local keystore (mirroring accept) — you can deploy / set secrets / run SQL on the project immediately. The service_key JWT is not printed here.`);
+    lines.push(``, `Rotation advised: project keys are \`project_id\`-derived and do not rotate on transfer, so the former owner still knows them — the project carries a \`secrets_rotation_advised\` advisory. Rotate inherited secret VALUES via \`set_secret\`.`);
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  } catch (err) {
+    return mapSdkError(err, "claiming project transfer");
+  }
+}
+
 // ─── cancel_project_transfer ────────────────────────────────────────────────
 
 export const cancelProjectTransferSchema = {
   transfer_id: z
     .string()
-    .describe("Transfer id to cancel. You must be either the from_wallet or the to_wallet of the transfer."),
+    .describe("Transfer id to cancel. You must be authorized for the row's kind (a wallet signing party, or an owner/admin of the offering org / the addressed-email principal). Kind-agnostic."),
   reason: z
     .string()
     .optional()
@@ -186,7 +275,8 @@ export async function handleListIncomingTransfers(args: {
     }
     const lines = [`Pending incoming transfers (${list.length}):`];
     for (const t of list) {
-      lines.push(`- \`${t.transfer_id}\` — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, from ${t.from_wallet}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
+      const who = t.recipient_kind === "email" ? `to_email ${t.to_email}` : `from ${t.from_wallet}`;
+      lines.push(`- \`${t.transfer_id}\` [${t.recipient_kind}] — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, ${who}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
       lines.push(`  preview: ${t.preview_path}`);
     }
     return { content: [{ type: "text", text: lines.join("\n") }] };
@@ -216,7 +306,8 @@ export async function handleListOutgoingTransfers(args: {
     }
     const lines = [`Pending outgoing transfers (${list.length}):`];
     for (const t of list) {
-      lines.push(`- \`${t.transfer_id}\` — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, to ${t.to_wallet}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
+      const who = t.recipient_kind === "email" ? `to_email ${t.to_email}` : `to ${t.to_wallet}`;
+      lines.push(`- \`${t.transfer_id}\` [${t.recipient_kind}] — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, ${who}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
       lines.push(`  preview: ${t.preview_path}`);
     }
     return { content: [{ type: "text", text: lines.join("\n") }] };

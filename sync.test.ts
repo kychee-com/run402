@@ -378,13 +378,13 @@ const SURFACE: Capability[] = [
   { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  mcp: "demote_user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
   { id: "admin_project_finance", endpoint: "GET /admin/api/finance/project/:id", mcp: null, cli: "projects:costs", openclaw: "projects:costs" },
 
-  // ── Project transfer (v1.59, two-party SIWX handoff) ──────────────────
+  // ── Project transfer (unified noun, v1.93+) — wallet (accept) + email (claim) ──
   { id: "initiate_project_transfer", endpoint: "POST /projects/v1/:project_id/transfers",       mcp: "initiate_project_transfer", cli: "transfer:init",    openclaw: "transfer:init" },
   { id: "preview_project_transfer",  endpoint: "GET /agent/v1/transfers/:transfer_id",          mcp: "preview_project_transfer",  cli: "transfer:preview", openclaw: "transfer:preview" },
   { id: "accept_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/accept",  mcp: "accept_project_transfer",   cli: "transfer:accept",  openclaw: "transfer:accept" },
+  { id: "claim_project_transfer",    endpoint: "POST /agent/v1/transfers/:transfer_id/claim",   mcp: "claim_project_transfer",    cli: "transfer:claim",   openclaw: "transfer:claim" },
   { id: "cancel_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/cancel",  mcp: "cancel_project_transfer",   cli: "transfer:cancel",  openclaw: "transfer:cancel" },
   { id: "list_incoming_transfers",   endpoint: "GET /agent/v1/transfers/incoming",              mcp: "list_incoming_transfers",   cli: "transfer:list",    openclaw: "transfer:list" },
-  { id: "claim_project_handoff",     endpoint: "POST /agent/v1/handoffs/:transfer_id/claim",    mcp: null,                        cli: "transfer:claim",   openclaw: "transfer:claim" },
   { id: "list_outgoing_transfers",   endpoint: "GET /agent/v1/transfers/outgoing",              mcp: "list_outgoing_transfers",   cli: null,               openclaw: null },
 
   // ── Org-owned control plane: identity, membership, grants (v1.77+) ──────
@@ -661,10 +661,11 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   demote_user: "auth.demote",
   admin_project_finance: "admin.getProjectFinance",
 
-  // Project transfer (v1.59) — sub-namespace lives on admin.transfers
+  // Project transfer (unified noun, v1.93+) — sub-namespace lives on admin.transfers
   initiate_project_transfer: "admin.transfers.initiate",
   preview_project_transfer: "admin.transfers.preview",
   accept_project_transfer: "admin.transfers.accept",
+  claim_project_transfer: "admin.transfers.claim",
   cancel_project_transfer: "admin.transfers.cancel",
   list_incoming_transfers: "admin.transfers.listIncoming",
   list_outgoing_transfers: "admin.transfers.listOutgoing",
@@ -685,15 +686,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   org_invite_rm: "org.invites.revoke",
   create_project_grant: "grants.create",
   revoke_project_grant: "grants.revoke",
-
-  // Email->org handoff (v1.78) — same `transfer` noun, email recipient.
-  // `claim` is its own CLI verb (SURFACE entry); the rest route through the
-  // existing init/list/preview/cancel verbs, so they map here only (orphan-sat).
-  initiate_project_handoff: "admin.transfers.initiateHandoff",
-  list_incoming_handoffs: "admin.transfers.listIncomingHandoffs",
-  preview_project_handoff: "admin.transfers.previewHandoff",
-  claim_project_handoff: "admin.transfers.claimHandoff",
-  cancel_project_handoff: "admin.transfers.cancelHandoff",
 
   // Auth
   request_magic_link: "auth.requestMagicLink",

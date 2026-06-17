@@ -54,7 +54,7 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
   });
 }
 
-describe("admin.transfers.initiate", () => {
+describe("admin.transfers.initiate (wallet)", () => {
   it("POSTs the gateway init route with snake_case body", async () => {
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.method, "POST");
@@ -90,8 +90,8 @@ describe("admin.transfers.initiate", () => {
       message: "hi",
       kysignedRecordId: "ks_1",
     });
-    assert.equal(res.transfer_id, "ptx_1");
-    assert.equal(res.lease_refundable, false);
+    assert.equal((res as { transfer_id: string }).transfer_id, "ptx_1");
+    assert.equal((res as { lease_refundable: boolean }).lease_refundable, false);
     assert.equal(calls.length, 1);
   });
 
@@ -117,15 +117,83 @@ describe("admin.transfers.initiate", () => {
     const r = makeSdk(fetch);
     await r.admin.transfers.initiate({ projectId: "prj_abc", toWallet: "0xc0ffee" });
   });
+
+  it("rejects both-or-neither recipient locally (no request issued)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const r = makeSdk(fetch);
+    // Cast to any: the discriminated union makes "both" / "neither" compile errors;
+    // we exercise the runtime guard that backstops JS callers.
+    await assert.rejects(
+      () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({
+        projectId: "prj_abc",
+        toWallet: "0xbeef",
+        toEmail: "a@b.c",
+      }),
+      (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
+    );
+    await assert.rejects(
+      () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({ projectId: "prj_abc" }),
+      (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("admin.transfers.initiate (email)", () => {
+  it("POSTs /transfers with to_email (NOT /handoffs)", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "POST");
+      assert.equal(call.url, "https://api.example.test/projects/v1/prj_abc/transfers");
+      assert.deepEqual(JSON.parse(String(call.body)), { to_email: "alice@example.com", message: "hi" });
+      return jsonResponse(
+        { status: "ok", transfer_id: "ptx_e1", to_email: "alice@example.com", expires_at: "2026-06-10T00:00:00Z" },
+        201,
+      );
+    });
+    const res = await makeSdk(fetch).admin.transfers.initiate({
+      projectId: "prj_abc",
+      toEmail: "alice@example.com",
+      message: "hi",
+    });
+    assert.equal((res as { status: string }).status, "ok");
+    assert.equal((res as { transfer_id: string }).transfer_id, "ptx_e1");
+    assert.equal(calls.length, 1);
+  });
+
+  it("sends retain_collaborator only when set", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ status: "ok", transfer_id: "ptx_r1", to_email: "alice@example.com", expires_at: "x" }, 201),
+    );
+    await makeSdk(fetch).admin.transfers.initiate({
+      projectId: "prj_abc",
+      toEmail: "alice@example.com",
+      retainCollaborator: { role: "developer" },
+    });
+    assert.deepEqual(JSON.parse(String(calls[0].body)), {
+      to_email: "alice@example.com",
+      retain_collaborator: { role: "developer" },
+    });
+  });
+
+  it("omits retain_collaborator when not requested", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ status: "ok", transfer_id: "ptx_r2", to_email: "alice@example.com", expires_at: "x" }, 201),
+    );
+    await makeSdk(fetch).admin.transfers.initiate({ projectId: "prj_abc", toEmail: "alice@example.com" });
+    const body = JSON.parse(String(calls[0].body));
+    assert.deepEqual(body, { to_email: "alice@example.com" });
+    assert.ok(!("retain_collaborator" in body));
+  });
 });
 
 describe("admin.transfers.preview", () => {
-  it("GETs the preview route and returns the preview document", async () => {
+  it("GETs the preview route and returns a wallet preview", async () => {
     const previewBody = {
       transfer_id: "ptx_1",
       project_id: "prj_abc",
       project_name_snapshot: "demo",
       status: "pending",
+      recipient_kind: "wallet",
       from_wallet: "0xaaa",
       from_wallet_display: "0xaa…aaa",
       to_wallet: "0xbeef",
@@ -161,11 +229,64 @@ describe("admin.transfers.preview", () => {
     const r = makeSdk(fetch);
     const res = await r.admin.transfers.preview("ptx_1");
     assert.equal(res.transfer_id, "ptx_1");
+    assert.equal(res.recipient_kind, "wallet");
     assert.deepEqual(res.secret_names, ["DB_URL"]);
+  });
+
+  it("surfaces recipient_kind and the retain_collaborator block on an email transfer", async () => {
+    const block = {
+      principal_id: "prn_sender",
+      role: "developer" as const,
+      sender_label: "Bob",
+      scope: "organization",
+      note: "stay on",
+      accept_field: "accept_retained_collaborator",
+    };
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        transfer_id: "ptx_e1",
+        project_id: "prj_abc",
+        project_name_snapshot: "demo",
+        status: "pending",
+        recipient_kind: "email",
+        from_wallet: null,
+        from_wallet_display: null,
+        to_wallet: null,
+        to_wallet_display: null,
+        to_email: "alice@example.com",
+        billing_policy: "migrate",
+        message: null,
+        initiated_at: "x",
+        expires_at: "y",
+        kysigned_record_id: null,
+        terms_sha256: "h",
+        custom_domains: [],
+        subdomains: [],
+        functions: [],
+        secret_names: [],
+        mailbox_summary: { count: 0, slugs_truncated: [] },
+        ci_bindings_to_be_revoked: [],
+        signers: [],
+        github_repo_note: "n",
+        billing_implications: {
+          from_organization_id: "org_1",
+          target_organization_id: null,
+          tier: null,
+          secrets_count: 0,
+          functions_count: 0,
+          custom_domains_count: 0,
+        },
+        retain_collaborator: block,
+      }),
+    );
+    const res = await makeSdk(fetch).admin.transfers.preview("ptx_e1");
+    assert.equal(res.recipient_kind, "email");
+    assert.equal(res.to_email, "alice@example.com");
+    assert.deepEqual(res.retain_collaborator, block);
   });
 });
 
-describe("admin.transfers.accept", () => {
+describe("admin.transfers.accept (wallet completion)", () => {
   it("POSTs the accept route with empty body", async () => {
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.method, "POST");
@@ -245,8 +366,6 @@ describe("admin.transfers.accept", () => {
   });
 
   it("does not throw when the provider lacks saveProject (sandbox)", async () => {
-    // The default provider implements neither saveProject nor setActiveProject —
-    // accept must still return the keys without throwing.
     const { fetch } = mockFetch(() =>
       jsonResponse({
         project_id: "prj_abc",
@@ -261,6 +380,127 @@ describe("admin.transfers.accept", () => {
     const r = makeSdk(fetch);
     const res = await r.admin.transfers.accept("ptx_1");
     assert.equal(res.service_key, "svc_jwt");
+  });
+});
+
+describe("admin.transfers.claim (email completion)", () => {
+  it("POSTs /agent/v1/transfers/:id/claim with organization_id when given, {} otherwise", async () => {
+    const r1 = mockFetch((call) => {
+      assert.equal(call.url, "https://api.example.test/agent/v1/transfers/ptx_e1/claim");
+      assert.deepEqual(JSON.parse(String(call.body)), { organization_id: "org_9" });
+      return jsonResponse({
+        status: "accepted",
+        project_id: "prj_abc",
+        to_organization_id: "org_9",
+        created_new_org: false,
+        retained_collaborator_principal_id: null,
+      });
+    });
+    const res = await makeSdk(r1.fetch).admin.transfers.claim("ptx_e1", { organizationId: "org_9" });
+    assert.equal(res.status, "accepted");
+    assert.equal(res.to_organization_id, "org_9");
+
+    const r2 = mockFetch((call) => {
+      assert.deepEqual(JSON.parse(String(call.body)), {});
+      return jsonResponse({
+        status: "accepted",
+        project_id: "prj_abc",
+        to_organization_id: "org_new",
+        created_new_org: true,
+        retained_collaborator_principal_id: null,
+      });
+    });
+    const res2 = await makeSdk(r2.fetch).admin.transfers.claim("ptx_e1");
+    assert.equal(res2.created_new_org, true);
+  });
+
+  it("surfaces and persists the new owner's keys via saveProject + setActiveProject (symmetric with accept)", async () => {
+    const saved: Array<{ id: string; keys: unknown }> = [];
+    let activated: string | null = null;
+    const creds: CredentialsProvider = {
+      async getAuth() {
+        return { "SIGN-IN-WITH-X": "t" };
+      },
+      async getProject() {
+        return null;
+      },
+      async saveProject(id, keys) {
+        saved.push({ id, keys });
+      },
+      async setActiveProject(id) {
+        activated = id;
+      },
+    };
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        status: "accepted",
+        project_id: "prj_new",
+        to_organization_id: "org_1",
+        created_new_org: false,
+        retained_collaborator_principal_id: null,
+        anon_key: "anon_jwt",
+        service_key: "svc_jwt",
+      }),
+    );
+    const r = new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch });
+    const res = await r.admin.transfers.claim("ptx_e1");
+    assert.equal(res.anon_key, "anon_jwt");
+    assert.equal(res.service_key, "svc_jwt");
+    assert.deepEqual(saved, [{ id: "prj_new", keys: { anon_key: "anon_jwt", service_key: "svc_jwt" } }]);
+    assert.equal(activated, "prj_new");
+  });
+
+  it("does not throw when the provider lacks saveProject (sandbox)", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        status: "accepted",
+        project_id: "prj_abc",
+        to_organization_id: "org_1",
+        created_new_org: false,
+        retained_collaborator_principal_id: null,
+        anon_key: "anon_jwt",
+        service_key: "svc_jwt",
+      }),
+    );
+    const res = await makeSdk(fetch).admin.transfers.claim("ptx_e1");
+    assert.equal(res.service_key, "svc_jwt");
+  });
+
+  it("sends accept_retained_collaborator only when true and surfaces the retained principal", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        status: "accepted",
+        project_id: "prj_abc",
+        to_organization_id: "org_1",
+        created_new_org: false,
+        retained_collaborator_principal_id: "prn_sender",
+      }),
+    );
+    const res = await makeSdk(fetch).admin.transfers.claim("ptx_r1", {
+      organizationId: "org_1",
+      acceptRetainedCollaborator: true,
+    });
+    assert.deepEqual(JSON.parse(String(calls[0].body)), {
+      organization_id: "org_1",
+      accept_retained_collaborator: true,
+    });
+    assert.equal(res.retained_collaborator_principal_id, "prn_sender");
+  });
+
+  it("omits accept_retained_collaborator by default (full severance)", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        status: "accepted",
+        project_id: "prj_abc",
+        to_organization_id: "org_1",
+        created_new_org: false,
+        retained_collaborator_principal_id: null,
+      }),
+    );
+    await makeSdk(fetch).admin.transfers.claim("ptx_r2");
+    const body = JSON.parse(String(calls[0].body));
+    assert.deepEqual(body, {});
+    assert.ok(!("accept_retained_collaborator" in body));
   });
 });
 
@@ -300,21 +540,32 @@ describe("admin.transfers.cancel", () => {
 });
 
 describe("admin.transfers.listIncoming / listOutgoing", () => {
-  it("returns the transfers array (unwrapped from the envelope)", async () => {
+  it("returns the kind-agnostic union (wallet + email rows, each tagged recipient_kind)", async () => {
     const body = {
       transfers: [
         {
           transfer_id: "ptx_1",
           project_id: "prj_abc",
           project_name_snapshot: "demo",
+          recipient_kind: "wallet" as const,
           from_wallet: "0xaaa",
           to_wallet: "0xbeef",
           billing_policy: "migrate" as const,
           message: null,
-          initiated_at: "2026-05-27T00:00:00Z",
           expires_at: "2026-05-30T00:00:00Z",
-          kysigned_record_id: null,
           preview_path: "/agent/v1/transfers/ptx_1",
+        },
+        {
+          transfer_id: "ptx_e1",
+          project_id: "prj_def",
+          project_name_snapshot: "email-demo",
+          recipient_kind: "email" as const,
+          to_email: "alice@example.com",
+          from_organization_id: "org_1",
+          billing_policy: "migrate" as const,
+          message: null,
+          expires_at: "2026-06-10T00:00:00Z",
+          preview_path: "/agent/v1/transfers/ptx_e1",
         },
       ],
     };
@@ -324,8 +575,10 @@ describe("admin.transfers.listIncoming / listOutgoing", () => {
     });
     const r = makeSdk(fetch);
     const incoming = await r.admin.transfers.listIncoming();
-    assert.equal(incoming.length, 1);
-    assert.equal(incoming[0].transfer_id, "ptx_1");
+    assert.equal(incoming.length, 2);
+    assert.equal(incoming[0].recipient_kind, "wallet");
+    assert.equal(incoming[1].recipient_kind, "email");
+    assert.equal(incoming[1].to_email, "alice@example.com");
     assert.equal(incoming[0].preview_path, "/agent/v1/transfers/ptx_1");
     const outgoing = await r.admin.transfers.listOutgoing();
     assert.deepEqual(outgoing, []);
@@ -419,130 +672,5 @@ describe("TransferFreezeError", () => {
     } catch (err) {
       assert.equal(isTransferFreezeError(err), false);
     }
-  });
-});
-
-describe("admin.transfers — email->org handoff (v1.78)", () => {
-  it("initiateHandoff POSTs /handoffs with snake_case to_email", async () => {
-    const { fetch, calls } = mockFetch((call) => {
-      assert.equal(call.method, "POST");
-      assert.equal(call.url, "https://api.example.test/projects/v1/prj_abc/handoffs");
-      assert.deepEqual(JSON.parse(String(call.body)), { to_email: "x@y.z", message: "hi" });
-      return jsonResponse({ transfer_id: "hof_1", expires_at: "2026-06-10T00:00:00Z" });
-    });
-    const res = await makeSdk(fetch).admin.transfers.initiateHandoff({
-      projectId: "prj_abc",
-      toEmail: "x@y.z",
-      message: "hi",
-    });
-    assert.equal(res.transfer_id, "hof_1");
-    assert.equal(calls.length, 1);
-  });
-
-  it("listIncomingHandoffs unwraps { handoffs }, falls back to { transfers } then []", async () => {
-    const r1 = makeSdk(mockFetch(() => jsonResponse({ handoffs: [{ transfer_id: "hof_1", project_id: "prj_abc" }] })).fetch);
-    assert.equal((await r1.admin.transfers.listIncomingHandoffs())[0].transfer_id, "hof_1");
-    const r2 = makeSdk(mockFetch(() => jsonResponse({ transfers: [{ transfer_id: "hof_2", project_id: "prj_x" }] })).fetch);
-    assert.equal((await r2.admin.transfers.listIncomingHandoffs())[0].transfer_id, "hof_2");
-    const r3 = makeSdk(mockFetch(() => jsonResponse({})).fetch);
-    assert.deepEqual(await r3.admin.transfers.listIncomingHandoffs(), []);
-  });
-
-  it("previewHandoff GETs /agent/v1/handoffs/:id", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ transfer_id: "hof_1", project_id: "prj_abc", status: "pending" }),
-    );
-    const p = await makeSdk(fetch).admin.transfers.previewHandoff("hof_1");
-    assert.equal(calls[0].url, "https://api.example.test/agent/v1/handoffs/hof_1");
-    assert.equal(p.project_id, "prj_abc");
-  });
-
-  it("claimHandoff POSTs /claim with organization_id when given, {} otherwise", async () => {
-    const r1 = mockFetch((call) => {
-      assert.equal(call.url, "https://api.example.test/agent/v1/handoffs/hof_1/claim");
-      assert.deepEqual(JSON.parse(String(call.body)), { organization_id: "org_9" });
-      return jsonResponse({ project_id: "prj_abc", new_organization_id: "org_9" });
-    });
-    await makeSdk(r1.fetch).admin.transfers.claimHandoff("hof_1", { organizationId: "org_9" });
-
-    const r2 = mockFetch((call) => {
-      assert.deepEqual(JSON.parse(String(call.body)), {});
-      return jsonResponse({ project_id: "prj_abc", new_organization_id: "org_new" });
-    });
-    const res = await makeSdk(r2.fetch).admin.transfers.claimHandoff("hof_1");
-    assert.equal(res.new_organization_id, "org_new");
-  });
-
-  it("cancelHandoff POSTs /agent/v1/handoffs/:id/cancel", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ transfer_id: "hof_1", status: "cancelled", cancelled_by: "from_wallet", cancellation_reason: null, cancelled_at: "2026-06-08T00:00:00Z" }),
-    );
-    await makeSdk(fetch).admin.transfers.cancelHandoff("hof_1");
-    assert.equal(calls[0].url, "https://api.example.test/agent/v1/handoffs/hof_1/cancel");
-    assert.equal(calls[0].method, "POST");
-  });
-});
-
-describe("admin.transfers handoff retain-collaborator (v1.91)", () => {
-  it("initiateHandoff sends retain_collaborator only when set", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ transfer_id: "hof_r1" }));
-    await makeSdk(fetch).admin.transfers.initiateHandoff({
-      projectId: "prj_abc",
-      toEmail: "alice@example.com",
-      retainCollaborator: { role: "developer" },
-    });
-    assert.equal(calls[0].url, "https://api.example.test/projects/v1/prj_abc/handoffs");
-    assert.deepEqual(JSON.parse(String(calls[0].body)), {
-      to_email: "alice@example.com",
-      retain_collaborator: { role: "developer" },
-    });
-  });
-
-  it("initiateHandoff omits retain_collaborator when not requested", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ transfer_id: "hof_r2" }));
-    await makeSdk(fetch).admin.transfers.initiateHandoff({ projectId: "prj_abc", toEmail: "alice@example.com" });
-    const body = JSON.parse(String(calls[0].body));
-    assert.deepEqual(body, { to_email: "alice@example.com" });
-    assert.ok(!("retain_collaborator" in body));
-  });
-
-  it("claimHandoff sends accept_retained_collaborator only when true and surfaces the result id", async () => {
-    const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ project_id: "prj_abc", retained_collaborator_principal_id: "prn_sender" }),
-    );
-    const res = await makeSdk(fetch).admin.transfers.claimHandoff("hof_r1", {
-      organizationId: "org_1",
-      acceptRetainedCollaborator: true,
-    });
-    assert.equal(calls[0].url, "https://api.example.test/agent/v1/handoffs/hof_r1/claim");
-    assert.deepEqual(JSON.parse(String(calls[0].body)), {
-      organization_id: "org_1",
-      accept_retained_collaborator: true,
-    });
-    assert.equal(res.retained_collaborator_principal_id, "prn_sender");
-  });
-
-  it("claimHandoff omits accept_retained_collaborator by default (full severance)", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ project_id: "prj_abc" }));
-    await makeSdk(fetch).admin.transfers.claimHandoff("hof_r2");
-    const body = JSON.parse(String(calls[0].body));
-    assert.deepEqual(body, {});
-    assert.ok(!("accept_retained_collaborator" in body));
-  });
-
-  it("previewHandoff surfaces the typed retain_collaborator block", async () => {
-    const block = {
-      principal_id: "prn_sender",
-      role: "developer",
-      sender_label: "Bob",
-      scope: "organization",
-      note: "stay on",
-      accept_field: "accept_retained_collaborator",
-    };
-    const { fetch } = mockFetch(() =>
-      jsonResponse({ transfer_id: "hof_r1", project_id: "prj_abc", status: "pending", retain_collaborator: block }),
-    );
-    const res = await makeSdk(fetch).admin.transfers.previewHandoff("hof_r1");
-    assert.deepEqual(res.retain_collaborator, block);
   });
 });
