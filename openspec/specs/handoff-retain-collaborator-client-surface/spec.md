@@ -5,51 +5,51 @@ TBD - created by archiving change add-handoff-retain-collaborator. Update Purpos
 ## Requirements
 ### Requirement: Sender opts into retention at initiate
 
-`InitiateHandoffInput` SHALL accept an optional `retainCollaborator?: { role: "developer" } | null`. When set, `initiateHandoff` SHALL include `retain_collaborator` in the request body; when omitted, the request body SHALL be byte-for-byte identical to today's (`{ to_email, message? }`).
+`InitiateTransferInput` SHALL accept an optional `retainCollaborator?: { role: "developer" } | null` on the **email** recipient path. When set on an email-addressed `initiate` (`toEmail`), the SDK SHALL include `retain_collaborator` in the `POST /projects/v1/:project_id/transfers` body; when omitted, the email request body SHALL be `{ to_email, message? }`. The retain option SHALL ride the unified transfer noun — there is no separate `initiateHandoff` / `InitiateHandoffInput`.
 
 #### Scenario: retain_collaborator is sent when requested
-- **WHEN** a caller invokes `initiateHandoff({ projectId, toEmail, retainCollaborator: { role: "developer" } })`
+- **WHEN** a caller invokes `initiate({ projectId, toEmail, retainCollaborator: { role: "developer" } })`
 - **THEN** the POST body SHALL contain `retain_collaborator: { role: "developer" }`
 
 #### Scenario: Request is unchanged when retention is not requested
-- **WHEN** a caller invokes `initiateHandoff({ projectId, toEmail })` with no `retainCollaborator`
+- **WHEN** a caller invokes `initiate({ projectId, toEmail })` with no `retainCollaborator`
 - **THEN** the POST body SHALL NOT contain a `retain_collaborator` key
 
 ### Requirement: Preview surfaces the retention offer as a typed block
 
-`ProjectHandoffPreview` SHALL expose a typed `retain_collaborator` field that is either `null` or `{ principal_id, role, sender_label, scope, note, accept_field }`, while retaining its forward-compatible index signature.
+`ProjectTransferPreview` SHALL expose a typed `retain_collaborator` field that is either `null` or `{ principal_id, role, sender_label, scope, note, accept_field }` on email-kind transfers, while retaining its forward-compatible index signature. The block is surfaced by the kind-agnostic `preview` — there is no separate `previewHandoff` / `ProjectHandoffPreview`.
 
 #### Scenario: Preview exposes the offer block
-- **WHEN** a recipient previews a handoff whose sender requested retention
+- **WHEN** a recipient invokes `preview(transferId)` for an email transfer whose sender requested retention
 - **THEN** `preview.retain_collaborator` SHALL be a typed block carrying `sender_label` and `accept_field`
 
 #### Scenario: Preview is null when no retention was offered
-- **WHEN** a recipient previews a handoff with no retention offer
+- **WHEN** a recipient previews an email transfer with no retention offer
 - **THEN** `preview.retain_collaborator` SHALL be `null`
 
 ### Requirement: Recipient accepts retention at claim
 
-`ClaimHandoffInput` SHALL accept an optional `acceptRetainedCollaborator?: boolean`. When set, `claimHandoff` SHALL include `accept_retained_collaborator` in the request body; when omitted, the body SHALL be unchanged (full severance). `ClaimHandoffResult` SHALL expose `retained_collaborator_principal_id: string | null`.
+The unified `claim(transferId, opts?)` options SHALL accept an optional `acceptRetainedCollaborator?: boolean`. When set, the SDK SHALL include `accept_retained_collaborator` in the `POST /agent/v1/transfers/:transfer_id/claim` body; when omitted, the body SHALL be unchanged (full severance). The claim result SHALL expose `retained_collaborator_principal_id: string | null`. There is no separate `claimHandoff` / `ClaimHandoffInput` / `ClaimHandoffResult`.
 
 #### Scenario: Acceptance is sent only when requested
-- **WHEN** a caller invokes `claimHandoff(id, { acceptRetainedCollaborator: true })`
+- **WHEN** a caller invokes `claim(id, { acceptRetainedCollaborator: true })`
 - **THEN** the POST body SHALL contain `accept_retained_collaborator: true`
 
 #### Scenario: Default claim severs (no acceptance field)
-- **WHEN** a caller invokes `claimHandoff(id)` or `claimHandoff(id, { organizationId })` with no `acceptRetainedCollaborator`
+- **WHEN** a caller invokes `claim(id)` or `claim(id, { organizationId })` with no `acceptRetainedCollaborator`
 - **THEN** the POST body SHALL NOT contain `accept_retained_collaborator`
 
 #### Scenario: Claim result reports the retained principal
 - **WHEN** a claim materializes a retained membership
-- **THEN** `ClaimHandoffResult.retained_collaborator_principal_id` SHALL carry the sender's principal id (and SHALL be `null` when none was retained)
+- **THEN** the claim result's `retained_collaborator_principal_id` SHALL carry the sender's principal id (and SHALL be `null` when none was retained)
 
 ### Requirement: CLI flags drive the opt-in on the handoff rail
 
-`run402 transfer init` SHALL accept `--retain-collaborator <role>` on the email/handoff rail, validating the role against the allowed set and mapping it to `retainCollaborator`. `run402 transfer claim` SHALL accept a boolean `--accept-retained-collaborator` mapping to `acceptRetainedCollaborator`. Both flags SHALL be registered with `assertKnownFlags`.
+`run402 transfer init` SHALL accept `--retain-collaborator <role>` on the email recipient path (a `--to <email>`), validating the role against the allowed set and mapping it to the unified `initiate`'s `retainCollaborator`. `run402 transfer claim` SHALL accept a boolean `--accept-retained-collaborator` mapping to the unified `claim`'s `acceptRetainedCollaborator`. Both flags SHALL be registered with `assertKnownFlags`. Retention applies only to the email recipient kind.
 
 #### Scenario: init flag maps to the SDK option
 - **WHEN** `run402 transfer init --to alice@example.com --retain-collaborator developer` runs
-- **THEN** the CLI SHALL call `initiateHandoff` with `retainCollaborator: { role: "developer" }`
+- **THEN** the CLI SHALL call `initiate` with `toEmail` and `retainCollaborator: { role: "developer" }`
 
 #### Scenario: Invalid retain role is rejected locally
 - **WHEN** `--retain-collaborator owner` is passed
@@ -57,21 +57,9 @@ TBD - created by archiving change add-handoff-retain-collaborator. Update Purpos
 
 #### Scenario: Retain on the wallet rail is rejected
 - **WHEN** `--retain-collaborator developer` is combined with a wallet `--to`
-- **THEN** the CLI SHALL fail with a `BAD_FLAG` envelope stating retention applies only to email handoffs
+- **THEN** the CLI SHALL fail with a `BAD_FLAG` envelope stating retention applies only to email recipients
 
 #### Scenario: claim flag maps to the SDK option
 - **WHEN** `run402 transfer claim <id> --accept-retained-collaborator` runs
-- **THEN** the CLI SHALL call `claimHandoff(id, { acceptRetainedCollaborator: true })`
-
-### Requirement: Parity holds and no MCP surface is added
-
-OpenClaw SHALL inherit the new flags via the existing `transfer` re-export, and no handoff MCP tool SHALL be added (handoff is not exposed via MCP today). `sync.test.ts` CLI/OpenClaw parity SHALL continue to pass.
-
-#### Scenario: OpenClaw inherits the flags
-- **WHEN** the OpenClaw `transfer` command set is compared to the CLI
-- **THEN** they SHALL remain identical, including the new flags
-
-#### Scenario: No handoff MCP tool is introduced
-- **WHEN** the MCP tool set is scanned after this change
-- **THEN** there SHALL be no new handoff/retain MCP tool
+- **THEN** the CLI SHALL call `claim(id, { acceptRetainedCollaborator: true })`
 

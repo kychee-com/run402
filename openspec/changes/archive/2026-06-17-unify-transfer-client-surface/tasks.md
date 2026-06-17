@@ -53,5 +53,5 @@
 - [x] 8.1 `npm run build` clean (core + sdk + tsc) — the discriminated union + overloads compile against existing wallet call sites.
 - [x] 8.2 `npm test` green: 1401 pass / 0 fail / 1 conditional skip (unit+skill+sync) + 683 pass / 0 fail (CLI e2e) + `test:docs` 43 snippets clean.
 - [x] 8.3 CLI smoke: `run402 transfer --help` reflects the unified surface (no `--handoff`; `claim` present; "one noun for both recipient kinds").
-- [ ] 8.4 Lockstep publish `run402-mcp` + `run402` + `@run402/sdk` (SEPARATE explicit authorization; decide major vs lockstep-minor bump for the removed methods).
-- [ ] 8.5 Post-ship: update `project_last_integration` memory (synced); mark private task 6.1 done so the private `unify-project-transfer-surface` change can archive once 6.2 (run402-admin) also closes.
+- [x] 8.4 Lockstep-published `run402-mcp` + `run402` + `@run402/sdk` **3.3.0** (user chose minor; OIDC workflow run 27694403653, SLSA provenance verified on all three, CLI smoke-tested). Commits on `main`: `2d08499` impl + `2514405` bump, tag `v3.3.0`, release notes rewritten.
+- [x] 8.5 Post-ship: updated `project_last_integration` memory (synced @ v3.3.0); marked private task 6.1 `[x]` in `unify-project-transfer-surface/tasks.md` (edit staged locally — private `main` is behind+dirty, user syncs). The private change archives once 6.2 (run402-admin) closes.
