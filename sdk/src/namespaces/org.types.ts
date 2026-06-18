@@ -17,20 +17,20 @@ export type OrgRole = "owner" | "admin" | "developer" | "billing" | "viewer";
  * (`"human"` / `"agent"` / `"ci"` — future kinds pass through). Unknown future
  * fields are preserved via the index signature.
  *
- * NOTE: the `principal` sub-object is serialized in **camelCase** by the gateway
- * (`displayName` / `createdAt` / `disabledAt`), unlike the snake_case
- * `memberships[]` and top-level `authenticator_id`. The gateway OMITS
- * `displayName` and `disabledAt` when they are null, so both are optional.
+ * The `principal` sub-object is serialized in **snake_case** by the gateway
+ * (`display_name` / `created_at` / `disabled_at`), matching the snake_case
+ * `memberships[]` and top-level `authenticator_id`. All three renamed fields are
+ * ALWAYS PRESENT and NULLABLE (value-or-null, never omitted).
  */
 export interface Principal {
   id: string;
   type: string;
-  /** Human-readable label (e.g. the wallet address for a SIWX human). Omitted when unset. */
-  displayName?: string;
-  /** ISO-8601 creation time. */
-  createdAt: string;
-  /** ISO-8601 timestamp present only when the principal is disabled (and thus fails auth); omitted otherwise. */
-  disabledAt?: string;
+  /** Human-readable label (e.g. the wallet address for a SIWX human); `null` when unset. */
+  display_name: string | null;
+  /** ISO-8601 creation time; `null` when unset. */
+  created_at: string | null;
+  /** ISO-8601 timestamp when the principal is disabled (and thus fails auth); `null` otherwise. */
+  disabled_at: string | null;
   [key: string]: unknown;
 }
 
@@ -139,13 +139,18 @@ export interface CreateInviteInput {
 /**
  * A pending email invite from {@link OrgInvites.list} (`GET /orgs/v1/:org_id/invites`).
  * Represented by a pending `principal_id` — pass it to {@link OrgInvites.revoke}.
+ * The wire shape carries the owning `org_id`, the `invited_email`, who invited
+ * (`invited_by`, `null` when unattributed), and ISO-8601 `invite_expires_at` /
+ * `created_at` (both nullable).
  */
 export interface OrgInvite {
   principal_id: string;
-  email: string;
+  org_id: string;
+  invited_email: string;
   role: OrgRole;
-  status: string;
-  expires_at?: string;
+  invited_by: string | null;
+  invite_expires_at: string | null;
+  created_at: string | null;
   [key: string]: unknown;
 }
 
@@ -160,11 +165,20 @@ export interface OrgInviteRevokeResult {
 export interface AuditOptions {
   /** Page size; gateway default applies when omitted. */
   limit?: number;
-  /** Cursor — return events before this opaque marker. */
+  /** Keyset cursor — page forward from this opaque marker (`next_cursor` from a prior page). */
+  after?: string;
+  /** Legacy cursor — return events before this opaque marker. Still accepted by the gateway. */
   before?: string;
 }
 
 /** One control-plane audit event from {@link ScopedOrg.audit}. Shape is gateway-owned (forward-compatible). */
 export interface AuditEvent {
   [key: string]: unknown;
+}
+
+/** Result of {@link ScopedOrg.audit} — a keyset page of audit events. */
+export interface AuditResult {
+  events: AuditEvent[];
+  has_more: boolean;
+  next_cursor: string | null;
 }

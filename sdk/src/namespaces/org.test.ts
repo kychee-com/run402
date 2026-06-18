@@ -52,9 +52,15 @@ function parseBody(body: unknown): Record<string, unknown> {
 // ─── r.orgs (collection + identity) ─────────────────────────────────────────
 
 describe("r.orgs.whoami", () => {
-  it("GETs /agent/v1/whoami; memberships carry org_id + display_name (not org_id)", async () => {
+  it("GETs /agent/v1/whoami; principal + memberships carry snake_case fields", async () => {
     const payload = {
-      principal: { id: "prn_1", type: "human", displayName: "Tal", createdAt: "2026-01-01T00:00:00Z" },
+      principal: {
+        id: "prn_1",
+        type: "human",
+        display_name: "Tal",
+        created_at: "2026-01-01T00:00:00Z",
+        disabled_at: null,
+      },
       memberships: [{ org_id: "org_1", display_name: "Kychee", role: "owner", status: "active" }],
       authenticator_id: "auth_1",
     };
@@ -66,7 +72,9 @@ describe("r.orgs.whoami", () => {
     const r = await makeSdk(fetch).orgs.whoami();
     assert.equal(r.memberships[0]!.org_id, "org_1");
     assert.equal(r.memberships[0]!.display_name, "Kychee");
-    assert.equal(r.principal.displayName, "Tal");
+    assert.equal(r.principal.display_name, "Tal");
+    assert.equal(r.principal.created_at, "2026-01-01T00:00:00Z");
+    assert.equal(r.principal.disabled_at, null);
     assert.equal(calls.length, 1);
   });
 });

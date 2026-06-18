@@ -49,11 +49,11 @@ export interface CacheInspectResult {
   search?: string;
   method?: string;
   locale?: string;
-  releaseId?: string;
-  cachedAt?: string;
-  expiresAt?: string;
-  writtenUnderGeneration?: string;
-  contentSha256?: string;
+  release_id?: string;
+  cached_at?: string;
+  expires_at?: string;
+  written_under_generation?: string;
+  content_sha256?: string;
   headers?: Record<string, string | string[]>;
 }
 

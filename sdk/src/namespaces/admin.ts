@@ -118,12 +118,14 @@ export interface ListNotificationsOptions {
   since?: string;
   /** Default 50, max 200. */
   limit?: number;
-  offset?: number;
+  /** Opaque keyset cursor — page forward from a prior page's `next_cursor`. */
+  after?: string;
 }
 
 export interface ListNotificationsResult {
   notifications: NotificationRow[];
-  pagination: { limit: number; offset: number; returned: number };
+  has_more: boolean;
+  next_cursor: string | null;
 }
 
 export interface NotificationPreferences {
@@ -315,7 +317,7 @@ export class Admin {
     if (opts.type) q.push(`type=${encodeURIComponent(opts.type)}`);
     if (opts.since) q.push(`since=${encodeURIComponent(opts.since)}`);
     if (opts.limit != null) q.push(`limit=${opts.limit}`);
-    if (opts.offset != null) q.push(`offset=${opts.offset}`);
+    if (opts.after != null) q.push(`after=${encodeURIComponent(opts.after)}`);
     const url = q.length > 0
       ? `/agent/v1/notifications?${q.join("&")}`
       : "/agent/v1/notifications";

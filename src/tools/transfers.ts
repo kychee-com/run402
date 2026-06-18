@@ -258,26 +258,29 @@ export async function handleCancelProjectTransfer(args: {
 
 export const listIncomingTransfersSchema = {
   limit: z.number().int().positive().optional().describe("Page size (default 50)."),
-  offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)."),
+  after: z.string().optional().describe("Opaque pagination cursor (next_cursor from a prior page)."),
 };
 
 export async function handleListIncomingTransfers(args: {
   limit?: number;
-  offset?: number;
+  after?: string;
 }): Promise<ToolResult> {
   try {
-    const list = await getSdk().admin.transfers.listIncoming({
+    const res = await getSdk().admin.transfers.listIncoming({
       limit: args.limit,
-      offset: args.offset,
+      after: args.after,
     });
-    if (list.length === 0) {
+    if (res.transfers.length === 0) {
       return { content: [{ type: "text", text: "No pending incoming transfers." }] };
     }
-    const lines = [`Pending incoming transfers (${list.length}):`];
-    for (const t of list) {
+    const lines = [`Pending incoming transfers (${res.transfers.length}):`];
+    for (const t of res.transfers) {
       const who = t.recipient_kind === "email" ? `to_email ${t.to_email}` : `from ${t.from_wallet}`;
       lines.push(`- \`${t.transfer_id}\` [${t.recipient_kind}] — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, ${who}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
       lines.push(`  preview: ${t.preview_path}`);
+    }
+    if (res.has_more) {
+      lines.push(`More available (next_cursor: ${res.next_cursor}). Re-run with after=<cursor>.`);
     }
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
@@ -289,26 +292,29 @@ export async function handleListIncomingTransfers(args: {
 
 export const listOutgoingTransfersSchema = {
   limit: z.number().int().positive().optional().describe("Page size (default 50)."),
-  offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)."),
+  after: z.string().optional().describe("Opaque pagination cursor (next_cursor from a prior page)."),
 };
 
 export async function handleListOutgoingTransfers(args: {
   limit?: number;
-  offset?: number;
+  after?: string;
 }): Promise<ToolResult> {
   try {
-    const list = await getSdk().admin.transfers.listOutgoing({
+    const res = await getSdk().admin.transfers.listOutgoing({
       limit: args.limit,
-      offset: args.offset,
+      after: args.after,
     });
-    if (list.length === 0) {
+    if (res.transfers.length === 0) {
       return { content: [{ type: "text", text: "No pending outgoing transfers." }] };
     }
-    const lines = [`Pending outgoing transfers (${list.length}):`];
-    for (const t of list) {
+    const lines = [`Pending outgoing transfers (${res.transfers.length}):`];
+    for (const t of res.transfers) {
       const who = t.recipient_kind === "email" ? `to_email ${t.to_email}` : `to ${t.to_wallet}`;
       lines.push(`- \`${t.transfer_id}\` [${t.recipient_kind}] — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, ${who}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
       lines.push(`  preview: ${t.preview_path}`);
+    }
+    if (res.has_more) {
+      lines.push(`More available (next_cursor: ${res.next_cursor}). Re-run with after=<cursor>.`);
     }
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {

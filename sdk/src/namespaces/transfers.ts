@@ -171,7 +171,15 @@ export interface TransferSummary {
 export interface ListTransfersOptions {
   /** Page size; defaults to 50 on the gateway. */
   limit?: number;
-  offset?: number;
+  /** Opaque keyset cursor — page forward from a prior page's `next_cursor`. */
+  after?: string;
+}
+
+/** Result of {@link Transfers.listIncoming} / {@link Transfers.listOutgoing} — a keyset page. */
+export interface ListTransfersResult {
+  transfers: TransferSummary[];
+  has_more: boolean;
+  next_cursor: string | null;
 }
 
 // ─── Preview shape (GET /agent/v1/transfers/:id) ────────────────────────────
@@ -467,29 +475,27 @@ export class Transfers {
   }
 
   /** Pending transfers OFFERED TO the caller — both wallet- and email-addressed. */
-  async listIncoming(opts: ListTransfersOptions = {}): Promise<TransferSummary[]> {
+  async listIncoming(opts: ListTransfersOptions = {}): Promise<ListTransfersResult> {
     const q = buildPagination(opts);
     const path = q ? `/agent/v1/transfers/incoming?${q}` : "/agent/v1/transfers/incoming";
-    const res = await this.client.request<{ transfers: TransferSummary[] }>(path, {
+    return this.client.request<ListTransfersResult>(path, {
       context: "listing incoming transfers",
     });
-    return res.transfers;
   }
 
   /** Pending transfers INITIATED BY the caller — both wallet- and email-addressed. */
-  async listOutgoing(opts: ListTransfersOptions = {}): Promise<TransferSummary[]> {
+  async listOutgoing(opts: ListTransfersOptions = {}): Promise<ListTransfersResult> {
     const q = buildPagination(opts);
     const path = q ? `/agent/v1/transfers/outgoing?${q}` : "/agent/v1/transfers/outgoing";
-    const res = await this.client.request<{ transfers: TransferSummary[] }>(path, {
+    return this.client.request<ListTransfersResult>(path, {
       context: "listing outgoing transfers",
     });
-    return res.transfers;
   }
 }
 
 function buildPagination(opts: ListTransfersOptions): string {
   const parts: string[] = [];
   if (opts.limit !== undefined) parts.push(`limit=${encodeURIComponent(String(opts.limit))}`);
-  if (opts.offset !== undefined) parts.push(`offset=${encodeURIComponent(String(opts.offset))}`);
+  if (opts.after !== undefined) parts.push(`after=${encodeURIComponent(opts.after)}`);
   return parts.join("&");
 }
