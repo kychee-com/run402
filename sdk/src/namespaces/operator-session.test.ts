@@ -130,7 +130,7 @@ describe("operator.session — public mint methods (no auth)", () => {
 describe("operator.session — session-bound methods (bearer vs SIWX fallback)", () => {
   it("whoami with a token: bearer, no SIWX; returns principal + memberships", async () => {
     const who = {
-      principal: { id: "prn_1", type: "human", createdAt: "2026-01-01T00:00:00Z" },
+      principal: { id: "prn_1", type: "human", display_name: null, created_at: "2026-01-01T00:00:00Z", disabled_at: null },
       memberships: [{ org_id: "org_1", role: "developer", status: "active" }],
       amr: ["passkey"],
       amr_times: { passkey: 1 },
@@ -148,7 +148,7 @@ describe("operator.session — session-bound methods (bearer vs SIWX fallback)",
 
   it("whoami without a token: falls back to SIWX (credential provider)", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ principal: { id: "p", type: "human", createdAt: "x" }, memberships: [], amr: [] }),
+      jsonResponse({ principal: { id: "p", type: "human", display_name: null, created_at: "x", disabled_at: null }, memberships: [], amr: [] }),
     );
     await makeSdk(fetch).operator.session.whoami();
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");

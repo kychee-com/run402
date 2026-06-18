@@ -18,7 +18,7 @@ Usage:
   run402 org get    <org>
   run402 org rename <org> <display_name>   (or: --clear to remove the label)
   run402 org whoami
-  run402 org audit  <org> [--limit N] [--before <cursor>]
+  run402 org audit  <org> [--limit N] [--after <cursor>] [--before <cursor>]
   run402 org member list <org>
   run402 org member add  <org> <wallet> [--role <role>]
   run402 org member role <org> <principal_id> <role>
@@ -92,7 +92,7 @@ the label.
 Usage:
   run402 org whoami
 
-Calls GET /agent/v1/whoami. Returns the control-plane principal (id/type/displayName/createdAt),
+Calls GET /agent/v1/whoami. Returns the control-plane principal (id/type/display_name/created_at),
 authenticator_id, and every org membership (org_id, display_name, role, status). REMOTE identity;
 for local wallet/profile state use 'run402 status'.
 `,
@@ -120,9 +120,11 @@ An invite is claimed at the recipient's first login. Mutations require an active
   audit: `run402 org audit — control-plane audit trail
 
 Usage:
-  run402 org audit <org> [--limit N] [--before <cursor>]
+  run402 org audit <org> [--limit N] [--after <cursor>] [--before <cursor>]
 
-Requires an admin+ membership on the org. Newest-first; page with --before.
+Requires an admin+ membership on the org. Newest-first. Page forward with --after
+(next_cursor from a prior page); --before is the legacy cursor. Returns
+{ events, has_more, next_cursor }.
 `,
 };
 
@@ -197,7 +199,7 @@ async function rename(args) {
 
 async function audit(args) {
   const a = normalizeArgv(args);
-  const valueFlags = ["--limit", "--before"];
+  const valueFlags = ["--limit", "--after", "--before"];
   assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
   const [org] = requirePositionalCount(a, valueFlags, {
     min: 1,
@@ -206,11 +208,16 @@ async function audit(args) {
     missing: "Missing <org>.",
   });
   const limitFlag = flagValue(a, "--limit");
+  const after = flagValue(a, "--after");
   const before = flagValue(a, "--before");
   const limit = limitFlag === null ? undefined : parseIntegerFlag("--limit", limitFlag, { min: 1, max: 1000 });
   try {
-    const events = await getSdk().org(org).audit({ limit, before: before ?? undefined });
-    console.log(JSON.stringify({ events }, null, 2));
+    const result = await getSdk().org(org).audit({
+      limit,
+      after: after ?? undefined,
+      before: before ?? undefined,
+    });
+    console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     reportSdkError(err);
   }

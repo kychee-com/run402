@@ -52,6 +52,16 @@ export interface BillingHistoryResult {
   /** Canonical organization id (UUID) the entries belong to. */
   org_id: string;
   entries: BillingHistoryEntry[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+/** Options for {@link Billing.history} / {@link Billing.getHistory}. */
+export interface BillingHistoryOptions {
+  /** Page size; gateway default applies when omitted. */
+  limit?: number;
+  /** Opaque keyset cursor — page forward from a prior page's `next_cursor`. */
+  after?: string;
 }
 
 export interface CreateCheckoutResult {
@@ -296,9 +306,16 @@ export class Billing {
     return resolveOrganizationDetail(this.client, identifier, "looking up organization");
   }
 
-  /** Fetch billing history by organization id (UUID), wallet, or email. */
-  async history(identifier: OrganizationIdentifier, limit?: number): Promise<BillingHistoryResult> {
-    return this.getHistory(identifier, limit);
+  /**
+   * Fetch billing history by organization id (UUID), wallet, or email. Pass
+   * `{ limit, after }` to page; `after` is the opaque keyset cursor
+   * (`next_cursor` from a prior page).
+   */
+  async history(
+    identifier: OrganizationIdentifier,
+    opts: BillingHistoryOptions = {},
+  ): Promise<BillingHistoryResult> {
+    return this.getHistory(identifier, opts);
   }
 
   /**
@@ -306,20 +323,27 @@ export class Billing {
    * (UUID): a wallet/email identifier is first resolved to its organization via the
    * lookup, then `GET /orgs/v1/:org_id/billing/history` is read.
    * Requires SIWX from a wallet linked to the organization, or an admin key.
+   * Pass `{ limit, after }` to page; `after` is the opaque keyset cursor
+   * (`next_cursor` from a prior page). Returns `{ org_id, entries, has_more,
+   * next_cursor }`.
    */
-  async getHistory(identifier: OrganizationIdentifier, limit?: number): Promise<BillingHistoryResult> {
-    if (limit !== undefined) {
-      assertPositiveSafeInteger(limit, "limit", "fetching billing history");
+  async getHistory(
+    identifier: OrganizationIdentifier,
+    opts: BillingHistoryOptions = {},
+  ): Promise<BillingHistoryResult> {
+    if (opts.limit !== undefined) {
+      assertPositiveSafeInteger(opts.limit, "limit", "fetching billing history");
     }
     const id = classifyBillingIdentifier(identifier, "fetching billing history");
     const organizationId = id.kind === "org_id"
       ? id.value
       : (await fetchOrganizationByLookup(this.client, id.kind, id.value, "fetching billing history"))
           .org_id;
-    const base = `/orgs/v1/${encodeURIComponent(organizationId)}/billing/history`;
-    const path = limit !== undefined
-      ? `${base}?limit=${encodeURIComponent(String(limit))}`
-      : base;
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    if (opts.after !== undefined) params.set("after", opts.after);
+    const query = params.toString();
+    const path = `/orgs/v1/${encodeURIComponent(organizationId)}/billing/history${query ? `?${query}` : ""}`;
     return this.client.request<BillingHistoryResult>(path, {
       context: "fetching billing history",
     });

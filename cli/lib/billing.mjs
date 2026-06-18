@@ -63,7 +63,7 @@ Examples:
   history: `run402 billing history — Show ledger history for a organization
 
 Usage:
-  run402 billing history <identifier> [--limit <n>]
+  run402 billing history <identifier> [--limit <n>] [--after <cursor>]
 
 Arguments:
   <identifier>        Organization id (UUID), wallet (0x...), or email.
@@ -71,6 +71,7 @@ Arguments:
 
 Options:
   --limit <n>         Max entries to return (default: 50)
+  --after <cursor>    Opaque keyset cursor (next_cursor from a prior page)
 
 Auth:
   Requires SIWX from a wallet linked to the organization (signed automatically from
@@ -317,7 +318,7 @@ async function balance(args) {
 
 async function history(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--limit"];
+  const valueFlags = ["--limit", "--after"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const positionals = positionalArgs(parsedArgs, valueFlags);
   const id = positionals[0];
@@ -328,14 +329,15 @@ async function history(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <identifier>.",
-      hint: "run402 billing history <org-id | wallet | email> [--limit <n>]",
+      hint: "run402 billing history <org-id | wallet | email> [--limit <n>] [--after <cursor>]",
     });
   }
   const limit = parsedArgs.includes("--limit")
     ? parseIntegerFlag("--limit", flagValue(parsedArgs, "--limit"), { min: 1 })
     : 50;
+  const after = flagValue(parsedArgs, "--after");
   try {
-    const data = await getSdk().billing.getHistory(id, limit);
+    const data = await getSdk().billing.getHistory(id, { limit, after: after ?? undefined });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

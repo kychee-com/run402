@@ -3,7 +3,7 @@
  *
  * Wraps the v1.55 `add-operator-health-notifications` API surface:
  *
- *   - run402 notifications list [--type ...] [--since ...] [--limit N] [--offset N]
+ *   - run402 notifications list [--type ...] [--since ...] [--limit N] [--after <cursor>]
  *   - run402 notifications get <id>
  *   - run402 notifications preferences [get|set ...]
  *   - run402 notifications test
@@ -22,7 +22,7 @@ import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./ar
 const HELP = `run402 notifications — Operator health notifications
 
 Usage:
-  run402 notifications list [--type <event_type>] [--since <iso>] [--limit N] [--offset N]
+  run402 notifications list [--type <event_type>] [--since <iso>] [--limit N] [--after <cursor>]
   run402 notifications get <id>
   run402 notifications preferences
   run402 notifications preferences set <key>=<value> [<key>=<value> ...]
@@ -45,7 +45,7 @@ Auth ladder (enforced server-side):
 
 async function list(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--type", "--since", "--limit", "--offset"];
+  const valueFlags = ["--type", "--since", "--limit", "--after"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
@@ -56,11 +56,11 @@ async function list(args) {
   const type = flagValue(parsedArgs, "--type");
   const since = flagValue(parsedArgs, "--since");
   const limit = flagValue(parsedArgs, "--limit");
-  const offset = flagValue(parsedArgs, "--offset");
+  const after = flagValue(parsedArgs, "--after");
   if (type) opts.type = type;
   if (since) opts.since = since;
   if (limit != null) opts.limit = Number(limit);
-  if (offset != null) opts.offset = Number(offset);
+  if (after != null) opts.after = after;
   try {
     const data = await getSdk().admin.listNotifications(opts);
     console.log(JSON.stringify(data, null, 2));

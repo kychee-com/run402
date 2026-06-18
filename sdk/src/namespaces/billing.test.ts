@@ -90,7 +90,7 @@ function accountDetail(overrides: Record<string, unknown> = {}): Record<string, 
 function historyMock(entries: unknown[] = []) {
   return mockFetch((call) =>
     call.url.includes("/history")
-      ? jsonResponse({ org_id: ACCOUNT_ID, entries })
+      ? jsonResponse({ org_id: ACCOUNT_ID, entries, has_more: false, next_cursor: null })
       : jsonResponse(accountDetail()),
   );
 }
@@ -264,10 +264,24 @@ describe("billing.history / getHistory", () => {
     assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history`);
   });
 
+  it("threads ?after=<cursor> onto the history request and surfaces has_more/next_cursor", async () => {
+    const { fetch, calls } = mockFetch((call) =>
+      call.url.includes("/history")
+        ? jsonResponse({ org_id: ACCOUNT_ID, entries: [], has_more: true, next_cursor: "cur_9" })
+        : jsonResponse(accountDetail()),
+    );
+    const sdk = makeSdk(fetch);
+    const result = await sdk.billing.getHistory(ACCOUNT_ID, { limit: 10, after: "cur_8" });
+
+    assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history?limit=10&after=cur_8`);
+    assert.equal(result.has_more, true);
+    assert.equal(result.next_cursor, "cur_9");
+  });
+
   it("appends ?limit=N on the history request (wallet flow)", async () => {
     const { fetch, calls } = historyMock([]);
     const sdk = makeSdk(fetch);
-    await sdk.billing.history(WALLET_UPPER, 50);
+    await sdk.billing.history(WALLET_UPPER, { limit: 50 });
 
     assert.equal(calls[1]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history?limit=50`);
   });
@@ -275,7 +289,7 @@ describe("billing.history / getHistory", () => {
   it("appends ?limit=1 on the by-id history request", async () => {
     const { fetch, calls } = historyMock([]);
     const sdk = makeSdk(fetch);
-    await sdk.billing.getHistory(ACCOUNT_ID, 1);
+    await sdk.billing.getHistory(ACCOUNT_ID, { limit: 1 });
 
     assert.equal(calls[0]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history?limit=1`);
   });
@@ -290,7 +304,7 @@ describe("billing.history / getHistory", () => {
       const sdk = makeSdk(fetch);
 
       await assert.rejects(
-        sdk.billing.history(WALLET_UPPER, limit),
+        sdk.billing.history(WALLET_UPPER, { limit }),
         (err: unknown) =>
           err instanceof LocalError &&
           err.context === "fetching billing history" &&
@@ -303,7 +317,7 @@ describe("billing.history / getHistory", () => {
   it("offers getHistory as a generic identifier alias (email flow)", async () => {
     const { fetch, calls } = historyMock([]);
     const sdk = makeSdk(fetch);
-    await sdk.billing.getHistory("user@example.com", 25);
+    await sdk.billing.getHistory("user@example.com", { limit: 25 });
 
     assert.equal(calls[0]!.url, "https://api.example.test/orgs/v1/lookup?email=user%40example.com");
     assert.equal(calls[1]!.url, `https://api.example.test/orgs/v1/${ACCOUNT_ID}/billing/history?limit=25`);

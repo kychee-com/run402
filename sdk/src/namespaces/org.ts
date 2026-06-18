@@ -18,6 +18,7 @@ import type {
   AddMemberInput,
   AuditEvent,
   AuditOptions,
+  AuditResult,
   CreateInviteInput,
   CreateOrgInput,
   MemberMutationResult,
@@ -173,19 +174,27 @@ export class ScopedOrg {
 
   /**
    * Control-plane audit trail for this org (`GET /orgs/v1/:org_id/audit`).
-   * admin+. Newest-first; page with the `before` cursor.
+   * admin+. Newest-first; page forward with the `after` keyset cursor
+   * (`next_cursor` from a prior page) — the legacy `before` cursor is still
+   * accepted. Returns `{ events, has_more, next_cursor }`.
    */
-  async audit(opts: AuditOptions = {}): Promise<AuditEvent[]> {
+  async audit(opts: AuditOptions = {}): Promise<AuditResult> {
     const parts: string[] = [];
     if (opts.limit !== undefined) parts.push(`limit=${encodeURIComponent(String(opts.limit))}`);
+    if (opts.after !== undefined) parts.push(`after=${encodeURIComponent(opts.after)}`);
     if (opts.before !== undefined) parts.push(`before=${encodeURIComponent(opts.before)}`);
     const q = parts.join("&");
     const base = `/orgs/v1/${encodeURIComponent(this.orgId)}/audit`;
-    const res = await this.client.request<{ events?: AuditEvent[]; audit_events?: AuditEvent[] }>(
-      q ? `${base}?${q}` : base,
-      { context: "reading org audit trail" },
-    );
-    return res.events ?? res.audit_events ?? [];
+    const res = await this.client.request<{
+      events?: AuditEvent[];
+      has_more?: boolean;
+      next_cursor?: string | null;
+    }>(q ? `${base}?${q}` : base, { context: "reading org audit trail" });
+    return {
+      events: res.events ?? [],
+      has_more: res.has_more ?? false,
+      next_cursor: res.next_cursor ?? null,
+    };
   }
 }
 

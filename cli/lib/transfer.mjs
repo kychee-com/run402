@@ -15,7 +15,7 @@ const HELP = `run402 transfer — Project transfer, one noun for both recipient 
 Usage:
   run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]
   run402 transfer preview <transfer_id>
-  run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]
+  run402 transfer list [--incoming | --outgoing] [--limit N] [--after <cursor>]
   run402 transfer accept <transfer_id>
   run402 transfer claim <transfer_id> [--into <org_id>] [--accept-retained-collaborator]
   run402 transfer cancel <transfer_id> [--reason <text>]
@@ -72,16 +72,16 @@ party to the transfer may preview.
   list: `run402 transfer list — List pending transfers
 
 Usage:
-  run402 transfer list [--incoming | --outgoing] [--limit N] [--offset N]
+  run402 transfer list [--incoming | --outgoing] [--limit N] [--after <cursor>]
 
 Lists both wallet- and email-addressed transfers, unioned; each row carries
 recipient_kind.
 
 Options:
-  --incoming    List transfers OFFERED TO you (default).
-  --outgoing    List transfers INITIATED BY you.
-  --limit N     Page size (default 50).
-  --offset N    Pagination offset (default 0).
+  --incoming        List transfers OFFERED TO you (default).
+  --outgoing        List transfers INITIATED BY you.
+  --limit N         Page size (default 50).
+  --after <cursor>  Opaque keyset cursor (next_cursor from a prior page).
 `,
   accept: `run402 transfer accept — Accept an incoming WALLET transfer
 
@@ -220,7 +220,7 @@ async function preview(args) {
 
 async function list(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--limit", "--offset"];
+  const valueFlags = ["--limit", "--after"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--incoming", "--outgoing", "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
@@ -235,26 +235,33 @@ async function list(args) {
   const direction = outgoing ? "outgoing" : "incoming";
 
   const limitFlag = flagValue(parsedArgs, "--limit");
-  const offsetFlag = flagValue(parsedArgs, "--offset");
+  const after = flagValue(parsedArgs, "--after");
   const limit =
     limitFlag === null
       ? undefined
       : parseIntegerFlag("--limit", limitFlag, { min: 1, max: 1000 });
-  const offset =
-    offsetFlag === null
-      ? undefined
-      : parseIntegerFlag("--offset", offsetFlag, { min: 0 });
 
   // Incoming/outgoing are kind-agnostic — each returns the union of wallet- and
   // email-addressed rows, tagged with recipient_kind.
   allowanceAuthHeaders(`/agent/v1/transfers/${direction}`);
 
   try {
-    const data =
+    const result =
       direction === "incoming"
-        ? await getSdk().admin.transfers.listIncoming({ limit, offset })
-        : await getSdk().admin.transfers.listOutgoing({ limit, offset });
-    console.log(JSON.stringify({ direction, transfers: data }, null, 2));
+        ? await getSdk().admin.transfers.listIncoming({ limit, after: after ?? undefined })
+        : await getSdk().admin.transfers.listOutgoing({ limit, after: after ?? undefined });
+    console.log(
+      JSON.stringify(
+        {
+          direction,
+          transfers: result.transfers,
+          has_more: result.has_more,
+          next_cursor: result.next_cursor,
+        },
+        null,
+        2,
+      ),
+    );
   } catch (err) {
     reportSdkError(err);
   }

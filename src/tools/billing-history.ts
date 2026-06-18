@@ -14,7 +14,7 @@ export async function handleBillingHistory(args: {
   const wallet = args.wallet.toLowerCase();
 
   try {
-    const body = await getSdk().billing.history(wallet, args.limit);
+    const body = await getSdk().billing.history(wallet, { limit: args.limit });
 
     if (body.entries.length === 0) {
       return {

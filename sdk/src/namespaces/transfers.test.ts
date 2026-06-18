@@ -570,29 +570,33 @@ describe("admin.transfers.listIncoming / listOutgoing", () => {
       ],
     };
     const { fetch } = mockFetch((call) => {
-      if (call.url.includes("/incoming")) return jsonResponse(body);
-      return jsonResponse({ transfers: [] });
+      if (call.url.includes("/incoming")) return jsonResponse({ ...body, has_more: true, next_cursor: "cur_1" });
+      return jsonResponse({ transfers: [], has_more: false, next_cursor: null });
     });
     const r = makeSdk(fetch);
     const incoming = await r.admin.transfers.listIncoming();
-    assert.equal(incoming.length, 2);
-    assert.equal(incoming[0].recipient_kind, "wallet");
-    assert.equal(incoming[1].recipient_kind, "email");
-    assert.equal(incoming[1].to_email, "alice@example.com");
-    assert.equal(incoming[0].preview_path, "/agent/v1/transfers/ptx_1");
+    assert.equal(incoming.transfers.length, 2);
+    assert.equal(incoming.transfers[0].recipient_kind, "wallet");
+    assert.equal(incoming.transfers[1].recipient_kind, "email");
+    assert.equal(incoming.transfers[1].to_email, "alice@example.com");
+    assert.equal(incoming.transfers[0].preview_path, "/agent/v1/transfers/ptx_1");
+    assert.equal(incoming.has_more, true);
+    assert.equal(incoming.next_cursor, "cur_1");
     const outgoing = await r.admin.transfers.listOutgoing();
-    assert.deepEqual(outgoing, []);
+    assert.deepEqual(outgoing.transfers, []);
+    assert.equal(outgoing.has_more, false);
+    assert.equal(outgoing.next_cursor, null);
   });
 
-  it("threads limit/offset onto the query string", async () => {
+  it("threads limit/after onto the query string", async () => {
     const seen: string[] = [];
     const { fetch } = mockFetch((call) => {
       seen.push(call.url);
-      return jsonResponse({ transfers: [] });
+      return jsonResponse({ transfers: [], has_more: false, next_cursor: null });
     });
     const r = makeSdk(fetch);
-    await r.admin.transfers.listIncoming({ limit: 10, offset: 20 });
-    assert.equal(seen[0], "https://api.example.test/agent/v1/transfers/incoming?limit=10&offset=20");
+    await r.admin.transfers.listIncoming({ limit: 10, after: "cur_20" });
+    assert.equal(seen[0], "https://api.example.test/agent/v1/transfers/incoming?limit=10&after=cur_20");
     await r.admin.transfers.listOutgoing({ limit: 5 });
     assert.equal(seen[1], "https://api.example.test/agent/v1/transfers/outgoing?limit=5");
   });

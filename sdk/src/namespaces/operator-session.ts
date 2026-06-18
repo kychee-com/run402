@@ -108,6 +108,12 @@ export interface RecoveryCodesResult {
 export interface Authenticator {
   id: string;
   kind: string;
+  /** Provider-side subject hint (e.g. masked email / credential label); absent when unset. */
+  subject_hint?: string;
+  /** ISO-8601 enrollment time. */
+  added_at?: string;
+  /** ISO-8601 last-use time; absent when never used. */
+  last_used_at?: string;
   [key: string]: unknown;
 }
 
