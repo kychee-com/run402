@@ -54,7 +54,7 @@ const r = new Run402({
 
 The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readAllowance`, `saveAllowance`, …) for hosts that want full sticky-default behavior.
 
-## Namespaces (23)
+## Namespaces (25)
 
 | Namespace | Highlights |
 |---|---|
@@ -81,6 +81,9 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `service` | `status`, `health` (no auth, no setup — works on a fresh install) |
 | `admin` | Operator/admin endpoints: messages/contact, per-project finance (`getProjectFinance`) |
 | `operator` | **The human / email principal** — distinct from the agent's per-wallet SIWX identity (and from platform-`admin`). Read session: `deviceStart`, `devicePoll`, `overview({ token })`, `revoke({ token })` — browser-delegated device-authorization (RFC 8628, the `aws sso login` model); `overview` returns the email-union across every wallet that verified the email. Write session (v1.78): `buildCliAuthorizeUrl`/`exchangeCliToken` (loopback-PKCE CLI login) + the hosted `operator.session.*` surface (email magic-link / passkey / OAuth login, `whoami`/`refresh`/`revoke`, step-up, authenticators, recovery) — carry a minted session SDK-wide with `controlPlaneSessionCredentials({ token })`. Drives `run402 operator login[/--loopback]/overview/whoami/logout`. No MCP tool by design — MCP authenticates as the agent, not the human. |
+| `wallets` | `getLabel`, `setLabel` — the signed server-side wallet label (gateway `/wallets/v1/:address/label`) surfaced in the operator console; pushed on `wallets use` unless `RUN402_WALLET_LABEL_SYNC=0` |
+| `orgs` | **Org-owned control plane** (v1.77+; first-class orgs v1.82). `create`, `list`, `whoami` (the gateway-resolved control-plane identity) on the collection; the scoped `r.org(id)` sub-client (org analog of `r.project(id)`) adds `get`, `rename`, `members.*` (`list`/`add`/`setRole`/`revoke`), `invites.*` (`list`/`create`/`revoke`), `audit` |
+| `grants` | `create`, `revoke` — per-project capability grants (e.g. `"deploy"`, `"functions:write"`) for agent/CI principals; owner-gated, also reachable project-scoped as `r.project(id).grants` |
 
 CLI-style aliases are available for agent ergonomics: `r.image` aliases `r.ai`,
 and common command names such as `r.billing.balance`, `r.auth.magicLink`,

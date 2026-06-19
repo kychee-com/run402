@@ -592,7 +592,7 @@ The helper makes raw `fetch()` calls to the project's own gateway endpoints usin
 
 ## Namespaces — full surface
 
-The `Run402` class exposes 22 namespaces. Click into the SDK source for full method signatures.
+The `Run402` class exposes 25 namespaces. Click into the SDK source for full method signatures.
 
 > Reference tables below use plain fences, not `ts` fences. They document the
 > type surface in compact form — they are not runnable programs. Runnable example
@@ -1308,6 +1308,18 @@ success — surfaced via `status().faucet_used`.
 status(): Promise<ServiceStatus> // 24h/7d/30d uptime per capability — no auth, no setup
 health(): Promise<ServiceHealth> // per-dependency liveness — no auth, no setup
 ```
+
+### `r.wallets`
+
+```
+getLabel(address: string): Promise<string | null>
+setLabel(address: string, label: string): Promise<{ ok: boolean }>
+```
+
+The signed server-side wallet label (gateway `/wallets/v1/:address/label`) that
+surfaces the human-readable named-wallet name in the operator console. `setLabel`
+is pushed automatically on `run402 wallets use` unless `RUN402_WALLET_LABEL_SYNC=0`.
+(For org/grants control-plane identity, see "Org membership & project grants" below.)
 
 ### `r.cache` (gateway v1.52+, paired with `@run402/astro` v1.0+)
 

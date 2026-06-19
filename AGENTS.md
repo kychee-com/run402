@@ -68,7 +68,7 @@ When adding a new tool/command, add it to the `SURFACE` array **and** `SDK_BY_CA
 ## Architecture
 
 ```
-@run402/sdk  (typed TypeScript kernel — 23 namespaces, ~100 methods)
+@run402/sdk  (typed TypeScript kernel — 25 namespaces, ~110 methods)
    │
    │   /index.ts    (isomorphic: Node + sandbox)
    │   /node        (Node-only: keystore + allowance + x402-wrapped fetch + fileSetFromDir)
@@ -107,6 +107,7 @@ The SDK is the canonical kernel — a single typed client with a `CredentialsPro
 - **`namespaces/*.ts`** — One class per resource group (projects, assets, functions, jobs, email, CI/OIDC, …). Namespaces hold a `Client` and expose typed methods. The canonical apply primitive is implemented in **`namespaces/deploy.ts`**; the public-facing symbol is `r.project(id).apply`, with no public `r.deploy` surface. The internal engine is `_applyEngine`. Shared types live in `deploy.types.ts` — see "Unified Apply" below.
 - **`node/*.ts`** — Node-only entry point (`@run402/sdk/node`). Wraps `core/` keystore + allowance into `NodeCredentialsProvider`. Sets up x402-wrapped fetch via `createLazyPaidFetch()`. Adds `fileSetFromDir(path)` for filesystem byte sources and the deploy manifest adapter (`loadDeployManifest(path)`, `normalizeDeployManifest(input)`) for CLI/MCP-compatible JSON.
 - **`scoped.ts`** — `ScopedRun402` sub-client. Returned by `r.project(id?)` and `r.useProject(id)`. Wraps every project-id-bearing namespace method with the id pre-bound, so `p.apply({ site })` (no `project`), `p.functions.list()`, `p.jobs.get(jobId)`, `p.assets.put(key, src)` all "just work" once the scope is set. Caller-supplied `project_id` / `project` still wins (override-friendly). The unwrapped namespaces (`r.assets`, `r.functions`, `r.jobs`, …) keep their required-id signatures unchanged — scoped is sugar, not a replacement. The apply primitive is only exposed via the scoped client (`r.project(id).apply(spec)`); there is no public `r.deploy`.
+- **`namespaces/org.ts` + `namespaces/grants.ts` + `namespaces/wallets.ts`** — Org-owned control plane (gateway v1.77+, first-class orgs v1.82). `r.orgs` is the org collection + control-plane identity (`create`, `list`, `whoami`); `r.org(id)` is the scoped per-org sub-client (the org analog of `r.project(id)` — `get`, `rename`, `members.*`, `invites.*`, `audit`). `r.grants` is per-project capability grants (`create`, `revoke`) for agent/CI principals, also reachable as `r.project(id).grants`. `r.wallets` carries the signed server-side wallet label (`getLabel`, `setLabel`, gateway `/wallets/v1/:address/label`) surfaced in the operator console. A principal *authenticates* via SIWX but its org-membership role (or a per-project grant) decides authorization — never `wallet_address == signer`.
 
 ### Project-scoped sub-client (`r.project(id?)`)
 
