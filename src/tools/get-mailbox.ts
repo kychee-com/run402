@@ -16,10 +16,26 @@ export async function handleGetMailbox(args: {
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const mb = await getSdk().email.getMailbox(args.project_id, args.mailbox);
+    const roles = [
+      mb.is_default_outbound ? "default_outbound" : null,
+      mb.is_auth_sender ? "auth_sender" : null,
+    ].filter(Boolean);
+    const lines = [
+      "## Mailbox Info",
+      "",
+      `- **Address:** ${mb.address}`,
+      `- **Mailbox ID:** \`${mb.mailbox_id}\`${mb.slug ? `\n- **Slug:** ${mb.slug}` : ""}`,
+      `- **Status:** ${mb.status}`,
+    ];
+    if (roles.length > 0) lines.push(`- **Roles:** ${roles.join(", ")}`);
+    if (mb.can_send !== undefined) {
+      lines.push(`- **Can send:** ${mb.can_send}${mb.send_blocked_reason ? ` (${mb.send_blocked_reason})` : ""}`);
+    }
+    if (mb.domain_kind) lines.push(`- **Domain kind:** ${mb.domain_kind}`);
     return {
       content: [{
         type: "text",
-        text: `## Mailbox Info\n\n- **Address:** ${mb.address}\n- **Mailbox ID:** \`${mb.mailbox_id}\`${mb.slug ? `\n- **Slug:** ${mb.slug}` : ""}`,
+        text: lines.join("\n"),
       }],
     };
   } catch (err) {

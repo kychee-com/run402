@@ -730,10 +730,12 @@ When a job completes, `jobs get` returns an `artifacts` map keyed by filename, e
 
 ## Email
 
-One mailbox per project at `<slug>@mail.run402.com`. Optionally bring your own domain.
+Up to 5 mailboxes per project at `<slug>@mail.run402.com`. Optionally bring your own domain. Configure explicit defaults before relying on omitted `--mailbox` sends.
 
 ```bash
-run402 email create my-app                          # idempotent
+run402 email create my-app                          # not idempotent
+run402 email mailboxes                              # candidates + mailbox_settings + next_actions
+run402 email defaults --outbound my-app --auth-sender my-app
 run402 email send --to user@example.com \
   --template notification \
   --var project_name="My App" --var message="Hello"
@@ -745,6 +747,8 @@ run402 email list
 run402 email get <message_id>
 run402 email get-raw <message_id> --output msg.eml   # raw RFC-822 for DKIM / zk-email
 ```
+
+Omitting `--mailbox` on `email send` uses `default_outbound_mailbox_id`; missing/invalid defaults return typed errors such as `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` with `next_actions`. Successful sends echo the actual `mailbox_id` and `from_address` when the gateway returns them.
 
 Templates: `project_invite` (`project_name`, `invite_url`), `magic_link` (`project_name`, `link_url`, `expires_in`), `notification` (`project_name`, `message` ≤ 500 chars).
 

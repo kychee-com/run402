@@ -163,6 +163,8 @@ Jobs are platform-managed runners, not arbitrary Docker execution. Submit the ga
 
 ```bash
 run402 email create my-app
+run402 email mailboxes
+run402 email defaults --outbound my-app --auth-sender my-app
 run402 email send --to user@example.com --subject "Welcome" --html "<h1>Hi</h1>"
 run402 email send --to user@example.com --template notification --var project_name="My App"
 ```

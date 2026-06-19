@@ -1293,11 +1293,13 @@ Built-in AI helpers. Translation requires the AI Translation add-on on the proje
 - `run402 ai usage <id>` — check translation word quota for the current billing period (used, included, remaining).
 
 ### email
-Up to 5 mailboxes per project (flat across tiers). When a project has more than one mailbox, pass `--mailbox <slug|id>` to pick which one (slug or `mbx_…` id); omitting it on a multi-mailbox project returns an ambiguity error naming the available slugs. Two send modes: template (predefined templates) and raw HTML (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
+Up to 5 mailboxes per project (flat across tiers). Inspect mailbox defaults with `run402 email mailboxes`, then set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` with `run402 email defaults`. Omitting `--mailbox` on send uses the configured outbound default; if the gateway reports missing/invalid defaults, branch on typed errors such as `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` and follow `next_actions`. Two send modes: template (predefined templates) and raw HTML (arbitrary subject + HTML body). Single recipient per send. Rate limits by tier: prototype 10/day, hobby 50/day, team 500/day. Unique recipient cap per lease: prototype 25, hobby 200, team 1000.
 
 Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 
 - `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com`. NOT idempotent: a conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
+- `run402 email mailboxes [--project <id>]` — list mailboxes plus `mailbox_settings`, default-role/readiness metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `send_blocked_reason`, `domain_kind`), and gateway `next_actions`.
+- `run402 email defaults [--outbound <slug|mbx_id>] [--auth-sender <slug|mbx_id>] [--clear-outbound] [--clear-auth-sender] [--project <id>]` — show current defaults with no flags, or set/clear `default_outbound_mailbox_id` and/or `auth_sender_mailbox_id`. Slugs are resolved through `email mailboxes`; SDK PATCH uses mailbox ids.
 - `run402 email status [--mailbox <slug|id>] [--project <id>]` — show mailbox info (ID, address, slug)
 - `run402 email send --template <name> --to <email> [--var key=value ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
 - `run402 email send --to <email> --subject <subject> --html <html> [--text <text>] [--attach <path>[:content-type] ...] [--from-name <name>] [--mailbox <slug|id>] [--project <id>]`
@@ -1314,11 +1316,11 @@ Templates: `project_invite` (project_name, invite_url), `magic_link` (project_na
 - `run402 email webhooks deliveries [--status <pending|in_flight|delivered|failed_permanent>] [--mailbox <slug|id>] [--project <id>]` — list durable delivery rows. Delivery is at-least-once with bounded retries + backoff; `failed_permanent` is the dead-letter queue. The delivered body is the canonical envelope `{ id, type, created_at, schema_version, idempotency_key, payload }` — consumers MUST dedupe on `idempotency_key`.
 - `run402 email webhooks redrive <delivery_id> [--mailbox <slug|id>] [--project <id>]` — re-queue a dead-lettered (failed_permanent) delivery for another attempt
 
-Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--attach <path>[:content-type]` attaches a file (raw HTML mode only; repeatable, max 5, ≤ 7 MB total; content-type inferred from the extension when the suffix is omitted). `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`.
+Raw HTML: `--subject` (max 998 chars) + `--html` (max 1MB). Plaintext auto-generated from HTML if `--text` omitted. `--attach <path>[:content-type]` attaches a file (raw HTML mode only; repeatable, max 5, ≤ 7 MB total; content-type inferred from the extension when the suffix is omitted). `--from-name` sets display name on From header (both modes): `"My App" <slug@mail.run402.com>`. Successful send JSON includes the actual `mailbox_id` and `from_address` when the gateway returns them.
 
 Slug rules: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens. `--project` defaults to the active project.
 
-Using email from functions: Import `email` from `@run402/functions` — no need to manage mailbox IDs or service keys manually:
+Using email from functions: Import `email` from `@run402/functions` — it uses the project service context and the configured outbound mailbox default, so set mailbox defaults before relying on omitted mailbox selection:
 ```js
 import { email } from '@run402/functions';
 
@@ -1328,7 +1330,7 @@ await email.send({ to: "user@example.com", template: "notification", variables: 
 // Raw HTML mode
 await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h1>", from_name: "My App" });
 ```
-Discovers the mailbox automatically. Throws on errors (rate limit, suppression, no mailbox).
+Uses the configured outbound mailbox default. Throws on errors (rate limit, suppression, missing/invalid default, no mailbox).
 
 ### auth
 Manage project user authentication: magic links, trusted invites, passwords, passkeys, and auth settings.

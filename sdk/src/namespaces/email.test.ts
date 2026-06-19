@@ -117,6 +117,40 @@ describe("email.createMailbox", () => {
     assert.equal(result.created_at, "2026-05-01T16:51:56.760Z");
     assert.equal(result.updated_at, "2026-05-01T16:51:56.760Z");
   });
+
+  it("normalizes the new create envelope with mailbox_settings and next_actions", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        mailbox: {
+          mailbox_id: "mbx_new",
+          address: "new@mail.run402.com",
+          slug: "new",
+          project_id: "prj_known",
+          status: "active",
+          sends_today: 0,
+          unique_recipients: 0,
+          created_at: "2026-05-01T00:00:00.000Z",
+          updated_at: "2026-05-01T00:00:00.000Z",
+          is_default_outbound: false,
+          is_auth_sender: false,
+          can_send: true,
+          send_blocked_reason: null,
+          domain_kind: "shared",
+        },
+        mailbox_settings: {
+          default_outbound_mailbox_id: null,
+          auth_sender_mailbox_id: null,
+        },
+        next_actions: [{ type: "set_mailbox_defaults" }],
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.email.createMailbox("prj_known", "new");
+
+    assert.equal(result.mailbox_id, "mbx_new");
+    assert.equal(result.mailbox_settings?.default_outbound_mailbox_id, null);
+    assert.equal(result.next_actions?.[0]?.type, "set_mailbox_defaults");
+  });
 });
 
 describe("email.getMailbox + listMailboxes wire shape", () => {
@@ -150,6 +184,79 @@ describe("email.getMailbox + listMailboxes wire shape", () => {
     assert.equal(mb.mailbox_id, "mbx_envelope");
     assert.equal(mb.address, "envelope@mail.run402.com");
   });
+
+  it("listMailboxes exposes settings and next_actions", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        mailboxes: [{
+          ...mailboxRecord("support", "mbx_support"),
+          is_default_outbound: true,
+          is_auth_sender: false,
+          can_send: true,
+          send_blocked_reason: null,
+          domain_kind: "shared",
+        }],
+        mailbox_settings: {
+          default_outbound_mailbox_id: "mbx_support",
+          auth_sender_mailbox_id: null,
+        },
+        next_actions: [{ type: "set_mailbox_defaults" }],
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.email.listMailboxes("prj_known");
+
+    assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1");
+    assert.equal(result.mailboxes[0]!.mailbox_id, "mbx_support");
+    assert.equal(result.mailbox_settings?.default_outbound_mailbox_id, "mbx_support");
+    assert.equal(result.next_actions?.[0]?.type, "set_mailbox_defaults");
+  });
+});
+
+describe("email.setMailboxDefaults", () => {
+  it("PATCHes mailbox settings", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        mailboxes: [mailboxRecord("support", "mbx_support")],
+        mailbox_settings: {
+          default_outbound_mailbox_id: "mbx_support",
+          auth_sender_mailbox_id: "mbx_support",
+        },
+        next_actions: [],
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.email.setMailboxDefaults("prj_known", {
+      default_outbound_mailbox_id: "mbx_support",
+      auth_sender_mailbox_id: "mbx_support",
+    });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1/settings");
+    assert.equal(calls[0]!.method, "PATCH");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      default_outbound_mailbox_id: "mbx_support",
+      auth_sender_mailbox_id: "mbx_support",
+    });
+    assert.equal(result.mailbox_settings?.auth_sender_mailbox_id, "mbx_support");
+  });
+
+  it("rejects slug values before PATCHing", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid defaults");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.email.setMailboxDefaults("prj_known", {
+        default_outbound_mailbox_id: "support",
+      }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "setting mailbox defaults" &&
+        /mbx_/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe("email.deleteMailbox", () => {
@@ -177,6 +284,8 @@ describe("email.send", () => {
         subject: "test",
         status: "sent",
         sent_at: "2026-05-01T18:30:14.904Z",
+        mailbox_id: "mbx_known",
+        from_address: "known@mail.run402.com",
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
@@ -195,6 +304,8 @@ describe("email.send", () => {
     assert.equal(result.template, null);
     assert.equal(result.subject, "test");
     assert.equal(result.sent_at, "2026-05-01T18:30:14.904Z");
+    assert.equal(result.mailbox_id, "mbx_known");
+    assert.equal(result.from_address, "known@mail.run402.com");
   });
 
   it("preserves explicit empty optional fields in the send body", async () => {
@@ -524,6 +635,104 @@ describe("email mailbox selector (multi-mailbox)", () => {
         /sign/.test(err.message) && /notifications/.test(err.message) && /support/.test(err.message),
     );
     // Listed once to detect ambiguity; never POSTed a send.
+    assert.equal(calls.filter((c) => c.url.endsWith("/messages")).length, 0);
+  });
+
+  it("send with no selector uses configured default_outbound_mailbox_id when settings are present", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({
+          mailboxes: [
+            { ...mailboxRecord("support", "mbx_support"), is_default_outbound: true, can_send: true },
+            { ...mailboxRecord("auth", "mbx_auth"), is_auth_sender: true, can_send: true },
+          ],
+          mailbox_settings: {
+            default_outbound_mailbox_id: "mbx_support",
+            auth_sender_mailbox_id: "mbx_auth",
+          },
+          next_actions: [],
+        });
+      }
+      if (call.url.endsWith("/messages")) {
+        return jsonResponse({
+          message_id: "msg_1",
+          to: "u@example.com",
+          template: null,
+          subject: "s",
+          status: "sent",
+          sent_at: "now",
+          mailbox_id: "mbx_support",
+          from_address: "support@mail.run402.com",
+        });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    const result = await sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>" });
+
+    assert.equal(calls[1]!.url, "https://api.example.test/mailboxes/v1/mbx_support/messages");
+    assert.equal(result.mailbox_id, "mbx_support");
+    assert.equal(result.from_address, "support@mail.run402.com");
+  });
+
+  it("send with no selector fails with DEFAULT_MAILBOX_REQUIRED when settings exist but outbound default is unset", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({
+          mailboxes: [mailboxRecord("only", "mbx_only")],
+          mailbox_settings: {
+            default_outbound_mailbox_id: null,
+            auth_sender_mailbox_id: null,
+          },
+          next_actions: [{ type: "set_mailbox_defaults" }],
+        });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>" }),
+      (err: unknown) =>
+        err instanceof ApiError &&
+        err.status === 400 &&
+        err.code === "DEFAULT_MAILBOX_REQUIRED" &&
+        Array.isArray(err.nextActions) &&
+        err.nextActions[0]!.type === "set_mailbox_defaults",
+    );
+    assert.equal(calls.filter((c) => c.url.endsWith("/messages")).length, 0);
+  });
+
+  it("send with configured default fails with DEFAULT_MAILBOX_INVALID when the default cannot send", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/mailboxes/v1") && call.method === "GET") {
+        return jsonResponse({
+          mailboxes: [{
+            ...mailboxRecord("support", "mbx_support"),
+            is_default_outbound: true,
+            can_send: false,
+            send_blocked_reason: "sender_domain_unverified",
+          }],
+          mailbox_settings: {
+            default_outbound_mailbox_id: "mbx_support",
+            auth_sender_mailbox_id: null,
+          },
+          next_actions: [{ type: "verify_sender_domain" }],
+        });
+      }
+      throw new Error(`unexpected call: ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>" }),
+      (err: unknown) =>
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.code === "DEFAULT_MAILBOX_INVALID" &&
+        /sender_domain_unverified/.test(err.message),
+    );
     assert.equal(calls.filter((c) => c.url.endsWith("/messages")).length, 0);
   });
 

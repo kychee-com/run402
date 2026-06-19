@@ -446,10 +446,17 @@ describe("ScopedRun402 drift protection", () => {
     auth: new Set(),
     assets: new Set(),
     domains: new Set(),
-    // resolveMailbox, listMailboxes, pickMailbox, and cacheMailbox are
+    // resolveMailbox, listMailboxEnvelope, pickMailbox, pickDefaultOutboundMailbox,
+    // and cacheMailbox are
     // TS-private helpers — JS runtime sees them on the prototype, so list them
     // here so the drift test ignores them.
-    email: new Set(["resolveMailbox", "listMailboxes", "pickMailbox", "cacheMailbox"]),
+    email: new Set([
+      "resolveMailbox",
+      "listMailboxEnvelope",
+      "pickMailbox",
+      "pickDefaultOutboundMailbox",
+      "cacheMailbox",
+    ]),
     functions: new Set(),
     jobs: new Set(),
     secrets: new Set(),

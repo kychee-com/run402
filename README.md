@@ -235,7 +235,7 @@ export default async (req: Request) => {
   // BYPASSRLS — for platform-authored writes (audit logs, cron cleanup, webhook handlers).
   await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
 
-  // Send mail from the project's mailbox — discovers it automatically.
+  // Send mail from the configured default outbound mailbox.
   if (mine.length === 0) {
     await email.send({ to: user.email, subject: "Welcome", html: "<h1>hi</h1>" });
   }
@@ -459,8 +459,9 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `passkey_register_options` / `passkey_register_verify` | Create and verify WebAuthn passkey registration ceremonies. |
 | `passkey_login_options` / `passkey_login_verify` | Create and verify WebAuthn passkey login ceremonies. |
 | `list_passkeys` / `delete_passkey` | List or delete the authenticated user's passkeys. |
-| `create_mailbox` / `get_mailbox` / `delete_mailbox` | Per-project mailbox at `<slug>@mail.run402.com`. |
-| `send_email` | Template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. |
+| `create_mailbox` / `get_mailbox` / `delete_mailbox` | Per-project mailboxes at `<slug>@mail.run402.com`; create is not idempotent. |
+| `list_mailboxes` / `set_mailbox_defaults` | Inspect mailbox default-role/readiness metadata and set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` explicitly. |
+| `send_email` | Template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Omitting `mailbox` uses the configured outbound default; result echoes `mailbox_id` and `from_address` when returned. |
 | `list_emails` / `get_email` / `get_email_raw` | Read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification. |
 | `register_mailbox_webhook` / `list_mailbox_webhooks` / `get_mailbox_webhook` / `update_mailbox_webhook` / `delete_mailbox_webhook` | Email-event webhooks (delivery, bounced, complained, reply_received). |
 | `register_sender_domain` / `sender_domain_status` / `remove_sender_domain` | Send from your own domain (DKIM verified). |

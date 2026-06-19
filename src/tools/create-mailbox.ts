@@ -17,11 +17,27 @@ export async function handleCreateMailbox(args: {
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const body = await getSdk().email.createMailbox(args.project_id, args.slug);
+    const lines = [
+      "## Mailbox Created",
+      "",
+      `- **Address:** ${body.address}`,
+      `- **Mailbox ID:** \`${body.mailbox_id}\``,
+      `- **Status:** ${body.status}`,
+    ];
+    if (body.mailbox_settings) {
+      lines.push(
+        `- **Default outbound:** ${body.mailbox_settings.default_outbound_mailbox_id ?? "(unset)"}`,
+        `- **Auth sender:** ${body.mailbox_settings.auth_sender_mailbox_id ?? "(unset)"}`,
+      );
+    }
+    if (Array.isArray(body.next_actions) && body.next_actions.length > 0) {
+      lines.push("", "Next actions:", "```json", JSON.stringify(body.next_actions, null, 2), "```");
+    }
 
     return {
       content: [{
         type: "text",
-        text: `## Mailbox Created\n\n- **Address:** ${body.address}\n- **Mailbox ID:** \`${body.mailbox_id}\`\n- **Status:** ${body.status}\n\nUse \`send_email\` to send template-based emails from this mailbox.`,
+        text: lines.join("\n"),
       }],
     };
   } catch (err) {

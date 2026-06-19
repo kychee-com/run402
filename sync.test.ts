@@ -304,6 +304,8 @@ const SURFACE: Capability[] = [
 
   // ── Email ──────────────────────────────────────────────────────────────
   { id: "create_mailbox",  endpoint: "POST /mailboxes/v1",                      mcp: "create_mailbox",  cli: "email:create",  openclaw: "email:create" },
+  { id: "list_mailboxes",  endpoint: "GET /mailboxes/v1",                       mcp: "list_mailboxes",   cli: "email:mailboxes", openclaw: "email:mailboxes" },
+  { id: "set_mailbox_defaults", endpoint: "PATCH /mailboxes/v1/settings",        mcp: "set_mailbox_defaults", cli: "email:defaults", openclaw: "email:defaults" },
   { id: "send_email",      endpoint: "POST /mailboxes/v1/:mailbox_id/messages",         mcp: "send_email",      cli: "email:send",    openclaw: "email:send" },
   { id: "list_emails",     endpoint: "GET /mailboxes/v1/:mailbox_id/messages",          mcp: "list_emails",     cli: "email:list",    openclaw: "email:list" },
   { id: "get_email",       endpoint: "GET /mailboxes/v1/:mailbox_id/messages/:message_id",   mcp: "get_email",       cli: "email:get",     openclaw: "email:get" },
@@ -607,6 +609,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
 
   // Email
   create_mailbox: "email.createMailbox",
+  list_mailboxes: "email.listMailboxes",
+  set_mailbox_defaults: "email.setMailboxDefaults",
   send_email: "email.send",
   list_emails: "email.list",
   get_email: "email.get",
@@ -968,9 +972,10 @@ describe("SDK surface alignment", () => {
       // `claim_wallet_org` capability maps to the submit step, and the Node
       // convenience `claimWalletOrg` composes challenge + sign + submit.
       "operator.claimWalletOrg.challenge",
-      "email.listMailboxes",   // private helper
       "email.resolveMailbox",  // private helper
+      "email.listMailboxEnvelope", // private helper
       "email.pickMailbox",     // private helper
+      "email.pickDefaultOutboundMailbox", // private helper
       "email.cacheMailbox",    // private helper
       // billing.lookupOrganization resolves a wallet/email → org_id via
       // GET /orgs/v1/lookup?wallet=|?email=. It's an SDK primitive used by

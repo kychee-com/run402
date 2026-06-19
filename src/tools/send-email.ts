@@ -28,7 +28,7 @@ export const sendEmailSchema = {
   mailbox: z
     .string()
     .optional()
-    .describe("Target mailbox by slug or id; omit only when the project has exactly one mailbox (otherwise the send returns an ambiguity error naming the slugs)."),
+    .describe("Target mailbox by slug or id. If omitted, the configured default_outbound_mailbox_id is used; missing/invalid defaults return typed repair errors."),
   attachments: z
     .array(
       z.object({
@@ -69,10 +69,20 @@ export async function handleSendEmail(args: {
     });
 
     const mode = body.template ? `**Template:** ${body.template}` : `**Subject:** ${body.subject}`;
+    const lines = [
+      "## Email Sent",
+      "",
+      `- **Message ID:** \`${body.message_id}\``,
+      `- **To:** ${body.to}`,
+      `- ${mode}`,
+      `- **Status:** ${body.status}`,
+    ];
+    if (body.mailbox_id) lines.push(`- **Mailbox ID:** \`${body.mailbox_id}\``);
+    if (body.from_address) lines.push(`- **From:** ${body.from_address}`);
     return {
       content: [{
         type: "text",
-        text: `## Email Sent\n\n- **Message ID:** \`${body.message_id}\`\n- **To:** ${body.to}\n- ${mode}\n- **Status:** ${body.status}`,
+        text: lines.join("\n"),
       }],
     };
   } catch (err) {

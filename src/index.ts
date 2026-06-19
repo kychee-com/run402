@@ -170,6 +170,8 @@ import { generateImageSchema, handleGenerateImage } from "./tools/generate-image
 
 // New tools — email
 import { createMailboxSchema, handleCreateMailbox } from "./tools/create-mailbox.js";
+import { listMailboxesSchema, handleListMailboxes } from "./tools/list-mailboxes.js";
+import { setMailboxDefaultsSchema, handleSetMailboxDefaults } from "./tools/set-mailbox-defaults.js";
 import { sendEmailSchema, handleSendEmail } from "./tools/send-email.js";
 import { listEmailsSchema, handleListEmails } from "./tools/list-emails.js";
 import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
@@ -874,14 +876,28 @@ server.tool(
 
 server.tool(
   "create_mailbox",
-  "Create a project-scoped email mailbox at <slug>@mail.run402.com. One mailbox per project.",
+  "Create a project-scoped email mailbox at <slug>@mail.run402.com. Returns mailbox_settings and next_actions when the gateway provides default-role repair guidance. Not idempotent: slug conflicts/cooldowns/limit errors are surfaced.",
   createMailboxSchema,
   async (args) => handleCreateMailbox(args),
 );
 
 server.tool(
+  "list_mailboxes",
+  "List a project's mailboxes, including default-role metadata (`is_default_outbound`, `is_auth_sender`), readiness (`can_send`, `send_blocked_reason`, `domain_kind`), mailbox_settings, and next_actions. Use before choosing or repairing email defaults.",
+  listMailboxesSchema,
+  async (args) => handleListMailboxes(args),
+);
+
+server.tool(
+  "set_mailbox_defaults",
+  "Set default_outbound_mailbox_id and/or auth_sender_mailbox_id for a project. Use list_mailboxes first to choose an explicit mailbox id; sending without a mailbox uses the configured outbound default instead of guessing.",
+  setMailboxDefaultsSchema,
+  async (args) => handleSetMailboxDefaults(args),
+);
+
+server.tool(
   "send_email",
-  "Send an email from the project's mailbox. Two modes: template (project_invite, magic_link, notification) or raw HTML (subject + html). Optional from_name for display name. Single recipient only.",
+  "Send an email. Two modes: template (project_invite, magic_link, notification) or raw HTML (subject + html). Optional from_name for display name. Single recipient only. Pass mailbox to target a slug/id; otherwise the configured default_outbound_mailbox_id is used. Result echoes mailbox_id and from_address when the gateway provides them.",
   sendEmailSchema,
   async (args) => handleSendEmail(args),
 );

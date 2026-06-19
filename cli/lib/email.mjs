@@ -74,6 +74,11 @@ Usage:
 
 Subcommands:
   create <slug> [--project <id>]     Create a mailbox (<slug>@mail.run402.com)
+  mailboxes [--project <id>]         List mailboxes with default-role metadata
+                                      and gateway next_actions
+  defaults [--outbound <slug|id>] [--auth-sender <slug|id>] [--project <id>]
+                                      Show or set mailbox defaults. With no
+                                      flags, prints current settings/candidates.
   info   [--project <id>]            Show mailbox info (ID, address, slug)
   status [--project <id>]            Alias for 'info' (prefer 'info')
   send   --to <email> [mode flags]   Send an email (template or raw HTML)
@@ -114,10 +119,12 @@ Send modes:
 
 Choosing a mailbox:
   --mailbox <slug|id>  Target a specific mailbox. Accepted by send, list, get,
-                       get-raw, reply, info, and webhooks. Required when the
-                       project has more than one mailbox; omit it only when the
-                       project has exactly one. (delete takes the target as its
-                       positional <slug|mailbox_id>.)
+                       get-raw, reply, info, and webhooks. For send, omitting
+                       --mailbox uses default_outbound_mailbox_id when set; if
+                       the gateway reports mailbox_settings and no default is
+                       configured, set one with 'run402 email defaults'.
+                       (delete takes the target as its positional
+                       <slug|mailbox_id>.)
 
 Templates:
   project_invite  — requires --var project_name=... --var invite_url=...
@@ -126,6 +133,8 @@ Templates:
 
 Examples:
   run402 email create my-app
+  run402 email mailboxes
+  run402 email defaults --outbound my-app --auth-sender my-app
   run402 email send --template project_invite --to user@example.com \\
     --var project_name="My App" --var invite_url="https://example.com/invite/abc"
   run402 email send --to user@example.com --subject "Welcome!" \\
@@ -141,7 +150,8 @@ Examples:
   run402 email webhooks register --url https://example.com/hook --events delivery,bounced
 
 Notes:
-  - Up to 5 mailboxes per project — pass --mailbox <slug|id> to pick one
+  - Up to 5 mailboxes per project — configure explicit defaults before
+    relying on omitted --mailbox sends
   - Single recipient per send (no CC/BCC)
   - Slug: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
   - --project defaults to the active project
@@ -168,7 +178,7 @@ Options:
                       max 5, ≤ 7 MB total). Content-type is inferred from the
                       extension when the :content-type suffix is omitted.
   --from-name "..."   Display name for the From header
-  --mailbox <slug|id> Target mailbox (required if the project has more than one)
+  --mailbox <slug|id> Target mailbox. Omit to use default_outbound_mailbox_id.
   --project <id>      Project ID (defaults to the active project)
 `,
   list: `run402 email list — List messages in the mailbox
@@ -236,6 +246,28 @@ Examples:
   run402 email create my-app
   run402 email create my-app --project prj_abc123
 `,
+  mailboxes: `run402 email mailboxes — List project mailboxes
+
+Usage:
+  run402 email mailboxes [--project <id>]
+
+Returns JSON: { mailboxes, mailbox_settings?, next_actions? }. Mailbox rows
+include default-role/readiness metadata when the gateway provides it.
+`,
+  defaults: `run402 email defaults — Show or set mailbox defaults
+
+Usage:
+  run402 email defaults [--project <id>]
+  run402 email defaults --outbound <slug|mbx_id> [--auth-sender <slug|mbx_id>] [--project <id>]
+  run402 email defaults --auth-sender <slug|mbx_id> [--project <id>]
+
+Options:
+  --outbound <slug|mbx_id>     Set default_outbound_mailbox_id
+  --auth-sender <slug|mbx_id>  Set auth_sender_mailbox_id
+  --clear-outbound             Clear default_outbound_mailbox_id
+  --clear-auth-sender          Clear auth_sender_mailbox_id
+  --project <id>               Project ID (defaults to the active project)
+`,
   get: `run402 email get — Get a message with replies
 
 Usage:
@@ -262,6 +294,39 @@ function strictFlagValue(args, flag) {
     });
   }
   return value;
+}
+
+function summarizeMailboxForDefaults(m) {
+  return {
+    mailbox_id: m.mailbox_id,
+    slug: m.slug,
+    address: m.address,
+    status: m.status,
+    is_default_outbound: m.is_default_outbound ?? false,
+    is_auth_sender: m.is_auth_sender ?? false,
+    can_send: m.can_send,
+    send_blocked_reason: m.send_blocked_reason ?? null,
+    domain_kind: m.domain_kind,
+  };
+}
+
+function mailboxIdFromSelector(envelope, selector, flag) {
+  if (selector === undefined || selector === null) return undefined;
+  if (/^mbx_/.test(selector)) return selector;
+  const hit = (envelope.mailboxes ?? []).find((m) => m.mailbox_id === selector || m.slug === selector);
+  if (!hit) {
+    fail({
+      code: "MAILBOX_NOT_FOUND",
+      message: `No mailbox matching ${JSON.stringify(selector)} for ${flag}.`,
+      details: {
+        selector,
+        flag,
+        candidates: (envelope.mailboxes ?? []).map(summarizeMailboxForDefaults),
+      },
+      next_actions: [{ type: "list_mailboxes", command: "run402 email mailboxes" }],
+    });
+  }
+  return hit.mailbox_id;
 }
 
 function validateArgs(args, knownFlags, flagsWithValues = knownFlags) {
@@ -321,7 +386,64 @@ async function create(args) {
 
   try {
     const data = await getSdk().email.createMailbox(projectId, slug);
-    console.log(JSON.stringify({ mailbox_id: data.mailbox_id, address: data.address, slug: data.slug, created: true }));
+    console.log(JSON.stringify({
+      mailbox_id: data.mailbox_id,
+      address: data.address,
+      slug: data.slug,
+      status: data.status,
+      mailbox_settings: data.mailbox_settings,
+      next_actions: data.next_actions,
+      created: true,
+    }));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function mailboxes(args) {
+  validateArgs(args, ["--project"]);
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  try {
+    const data = await getSdk().email.listMailboxes(projectId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function defaults(args) {
+  const knownFlags = ["--project", "--outbound", "--auth-sender", "--clear-outbound", "--clear-auth-sender"];
+  const valueFlags = ["--project", "--outbound", "--auth-sender"];
+  validateArgs(args, knownFlags, valueFlags);
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const outbound = strictFlagValue(args, "--outbound");
+  const authSender = strictFlagValue(args, "--auth-sender");
+  const clearOutbound = args.includes("--clear-outbound");
+  const clearAuthSender = args.includes("--clear-auth-sender");
+
+  if (outbound && clearOutbound) {
+    fail({ code: "BAD_USAGE", message: "Use either --outbound or --clear-outbound, not both." });
+  }
+  if (authSender && clearAuthSender) {
+    fail({ code: "BAD_USAGE", message: "Use either --auth-sender or --clear-auth-sender, not both." });
+  }
+
+  const shouldPatch = outbound || authSender || clearOutbound || clearAuthSender;
+  try {
+    const current = await getSdk().email.listMailboxes(projectId);
+    if (!shouldPatch) {
+      console.log(JSON.stringify(current, null, 2));
+      return;
+    }
+
+    const patch = {};
+    if (outbound) patch.default_outbound_mailbox_id = mailboxIdFromSelector(current, outbound, "--outbound");
+    if (clearOutbound) patch.default_outbound_mailbox_id = null;
+    if (authSender) patch.auth_sender_mailbox_id = mailboxIdFromSelector(current, authSender, "--auth-sender");
+    if (clearAuthSender) patch.auth_sender_mailbox_id = null;
+
+    const updated = await getSdk().email.setMailboxDefaults(projectId, patch);
+    console.log(JSON.stringify(updated, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -357,7 +479,17 @@ async function send(args) {
       mailbox: mailbox ?? undefined,
       attachments: attachments.length ? attachments : undefined,
     });
-    console.log(JSON.stringify({ message_id: data.message_id, to: data.to, template: data.template, subject: data.subject, sent: true }));
+    console.log(JSON.stringify({
+      message_id: data.message_id,
+      to: data.to,
+      template: data.template,
+      subject: data.subject,
+      status: data.status,
+      sent_at: data.sent_at,
+      mailbox_id: data.mailbox_id,
+      from_address: data.from_address,
+      sent: true,
+    }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -536,6 +668,8 @@ export async function run(sub, args) {
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h")) && sub !== "webhooks") { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
   switch (sub) {
     case "create": await create(args); break;
+    case "mailboxes": await mailboxes(args); break;
+    case "defaults": await defaults(args); break;
     case "info":
     case "status": await status(args); break;
     case "send":   await send(args); break;

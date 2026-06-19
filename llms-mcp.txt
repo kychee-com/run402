@@ -27,7 +27,7 @@ Six tool calls take you from zero to a deployed static site backed by a real Pos
 5. `validate_manifest`, then `apply_expose` with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
 6. `deploy_site_dir` with `dir` — incremental upload, only PUTs bytes the gateway doesn't already have. Auto-claims the subdomain on subsequent deploys.
 
-Optional next: `deploy_function` for server logic, `assets_put` for paste-and-go CDN assets, `create_mailbox` + `send_email` for transactional mail.
+Optional next: `deploy_function` for server logic, `assets_put` for paste-and-go CDN assets, `create_mailbox` → `list_mailboxes` / `set_mailbox_defaults` → `send_email` for transactional mail.
 
 ## Project credentials
 
@@ -388,8 +388,9 @@ Platform-managed jobs. These tools do not run arbitrary Docker images; they subm
 - `passkey_register_options` / `passkey_register_verify` — WebAuthn passkey registration. Params: `project_id`, `access_token`, `app_origin` then `challenge_id`, `response`, `label?`.
 - `passkey_login_options` / `passkey_login_verify` — WebAuthn passkey login. Params: `project_id`, `app_origin`, `email?` then `challenge_id`, `response`.
 - `list_passkeys` / `delete_passkey` — list or delete the authenticated user's passkeys. Params: `project_id`, `access_token`, `passkey_id?`.
-- `create_mailbox` / `get_mailbox` / `delete_mailbox` — up to 5 mailboxes per project at `<slug>@mail.run402.com`. Read/send/webhook tools take an optional `mailbox` (slug or `mbx_…` id) to choose one; omitting it on a project with more than one mailbox returns an ambiguity error naming the slugs. `create_mailbox` is NOT idempotent — a 409 (slug in use / cooldown / project at its 5-mailbox limit) is surfaced as an error, not recovered. `delete_mailbox` requires `confirm: true` and takes the target via `mailbox_id` (slug or id).
-- `send_email` — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Params: `project_id`, `to`, `template?` + `variables?` OR `subject?` + `html?` + `text?` + `attachments?`, `from_name?`, `in_reply_to?`, `mailbox?`. `attachments?` (raw mode only): `{ filename, content_base64, content_type }[]`, max 5, ≤ 7 MB total.
+- `create_mailbox` / `get_mailbox` / `delete_mailbox` — up to 5 mailboxes per project at `<slug>@mail.run402.com`. `create_mailbox` is NOT idempotent — a 409 (slug in use / cooldown / project at its 5-mailbox limit) is surfaced as an error, not recovered. `delete_mailbox` requires `confirm: true` and takes the target via `mailbox_id` (slug or id).
+- `list_mailboxes` / `set_mailbox_defaults` — inspect mailbox candidates/default-role metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `send_blocked_reason`, `domain_kind`) and set `default_outbound_mailbox_id` / `auth_sender_mailbox_id`. Happy path: `create_mailbox` → `list_mailboxes` → set missing defaults from `next_actions` → `send_email`.
+- `send_email` — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Params: `project_id`, `to`, `template?` + `variables?` OR `subject?` + `html?` + `text?` + `attachments?`, `from_name?`, `in_reply_to?`, `mailbox?`. If `mailbox` is omitted, the configured outbound default is used; missing/invalid defaults surface typed errors such as `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` with `next_actions`. Successful sends echo the actual `mailbox_id` and `from_address` when the gateway returns them. `attachments?` (raw mode only): `{ filename, content_base64, content_type }[]`, max 5, ≤ 7 MB total.
 - `list_emails` / `get_email` — read messages. Both take an optional `mailbox`.
 - `get_email_raw` — return raw RFC-822 bytes for DKIM / zk-email verification (inbound only). Params: `project_id`, `message_id`, `mailbox?`.
 - `register_mailbox_webhook` / `list_mailbox_webhooks` / `get_mailbox_webhook` / `update_mailbox_webhook` / `delete_mailbox_webhook` — email-event webhooks (events: `delivery`, `bounced`, `complained`, `reply_received`). Each takes an optional `mailbox`.

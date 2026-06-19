@@ -1,7 +1,6 @@
 /**
- * `email` namespace — project mailboxes (send / list / get / raw / delete)
- * and mailbox webhooks. Most operations auto-resolve the project's mailbox
- * via the provider cache, falling back to a discovery GET when absent.
+ * `email` namespace — project mailboxes (defaults, send / list / get / raw /
+ * delete) and mailbox webhooks.
  */
 
 import type { Client } from "../kernel.js";
@@ -34,15 +33,55 @@ export interface MailboxRecord {
   unique_recipients: number;
   created_at: string;
   updated_at: string;
+  /** True when this mailbox is configured as the project's outbound default. */
+  is_default_outbound?: boolean;
+  /** True when this mailbox is configured as the auth/session email sender. */
+  is_auth_sender?: boolean;
+  /** Whether the mailbox can currently send outbound mail. */
+  can_send?: boolean;
+  /** Present when `can_send` is false, e.g. domain verification or suspension. */
+  send_blocked_reason?: string | null;
+  /** Shared run402 domain vs a project-owned sender domain. Future strings are valid. */
+  domain_kind?: string;
 }
 
-export type CreateMailboxResult = MailboxRecord;
+export interface MailboxSettings {
+  default_outbound_mailbox_id: string | null;
+  auth_sender_mailbox_id: string | null;
+}
+
+export interface MailboxNextAction {
+  type?: string;
+  action?: string;
+  method?: string;
+  path?: string;
+  auth?: string;
+  why?: string;
+  command?: string;
+  [key: string]: unknown;
+}
+
+export interface MailboxSelectionEnvelope {
+  mailbox_settings?: MailboxSettings;
+  next_actions?: MailboxNextAction[];
+}
+
+export type CreateMailboxResult = MailboxRecord & MailboxSelectionEnvelope;
 
 export type MailboxInfo = MailboxRecord;
 
-export interface MailboxListResponse {
+export interface MailboxListResult extends MailboxSelectionEnvelope {
   mailboxes: MailboxRecord[];
 }
+
+export type MailboxListResponse = MailboxListResult;
+
+export interface SetMailboxDefaultsOptions {
+  default_outbound_mailbox_id?: string | null;
+  auth_sender_mailbox_id?: string | null;
+}
+
+export type SetMailboxDefaultsResult = MailboxListResult;
 
 export interface DeleteMailboxResult {
   mailbox_id: string;
@@ -84,9 +123,9 @@ export interface SendEmailOptions {
   attachments?: EmailAttachment[];
   in_reply_to?: string;
   /**
-   * Target mailbox (slug or `mbx_…` id) on a project that has more than one.
-   * Omit only when the project has exactly one mailbox — otherwise the call
-   * throws an ambiguity error naming the available slugs.
+   * Target mailbox (slug or `mbx_…` id). Omit to use the configured
+   * `default_outbound_mailbox_id` when the gateway returns mailbox settings.
+   * Missing or invalid defaults surface typed repair errors.
    */
   mailbox?: MailboxSelector;
 }
@@ -103,6 +142,10 @@ export interface SendEmailResult {
   template: string | null;
   subject: string | null;
   sent_at: string;
+  /** The actual mailbox used for the send, echoed by the gateway. */
+  mailbox_id?: string;
+  /** The actual From address used for the send, echoed by the gateway. */
+  from_address?: string;
 }
 
 export interface EmailSummary {
@@ -365,30 +408,101 @@ export class Email {
    * - `selector` is a mailbox id (`mbx_…`) → used directly; the gateway 403s
    *   if the id belongs to a different project, so no list call is needed.
    * - `selector` is a slug → the project's mailboxes are listed and matched.
-   * - `selector` omitted → the project's mailboxes are listed:
-   *     0 → "create one first"; exactly 1 → that one (cache refreshed);
-   *     2+ → an ambiguity error naming the slugs (never a silent pick).
+   * - `selector` omitted for sends → use the configured
+   *   `default_outbound_mailbox_id`. When the gateway returns
+   *   `mailbox_settings` and no default is set, throw
+   *   `DEFAULT_MAILBOX_REQUIRED`; do not silently pick the first/single row.
+   * - `selector` omitted for reads/webhooks → require a unique mailbox, as
+   *   before. This keeps non-send flows from guessing that the outbound
+   *   default is also the intended read/webhook target.
    *
    * The cached `mailbox_id` is intentionally NOT used to resolve when a
    * selector is omitted — trusting it would silently target an arbitrary
-   * mailbox on a multi-mailbox project. It remains a best-effort convenience
-   * cache, refreshed only on the single-mailbox path.
+   * mailbox on a multi-mailbox project.
    */
   private async resolveMailbox(
     projectId: string,
     selector?: MailboxSelector,
+    mode: "unique" | "default_outbound" = "unique",
+    context = "resolving mailbox",
   ): Promise<{ id: string; serviceKey: string }> {
     const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "resolving mailbox");
+    if (!project) throw new ProjectNotFound(projectId, context);
 
     if (selector && /^mbx_/.test(selector)) {
       return { id: selector, serviceKey: project.service_key };
     }
 
-    const list = await this.listMailboxes(project.service_key);
-    const mb = this.pickMailbox(list, selector, "resolving mailbox");
-    if (!selector && list.length === 1) await this.cacheMailbox(projectId, mb);
+    const list = await this.listMailboxEnvelope(project.service_key);
+    const mb =
+      mode === "default_outbound" && !selector
+        ? this.pickDefaultOutboundMailbox(projectId, list, context)
+        : this.pickMailbox(list.mailboxes, selector, context);
+    if (!selector && list.mailboxes.length === 1) await this.cacheMailbox(projectId, mb);
     return { id: mb.mailbox_id, serviceKey: project.service_key };
+  }
+
+  private pickDefaultOutboundMailbox(
+    projectId: string,
+    envelope: MailboxListResult,
+    context: string,
+  ): MailboxRecord {
+    const defaultId =
+      envelope.mailbox_settings?.default_outbound_mailbox_id ??
+      envelope.mailboxes.find((m) => m.is_default_outbound)?.mailbox_id ??
+      null;
+
+    if (defaultId) {
+      const mb = envelope.mailboxes.find((m) => m.mailbox_id === defaultId);
+      if (!mb) {
+        throw mailboxConfigError({
+          status: 409,
+          code: "DEFAULT_MAILBOX_INVALID",
+          message: `Configured default outbound mailbox ${defaultId} is not available. Set a valid default before sending email.`,
+          context,
+          projectId,
+          mailboxes: envelope.mailboxes,
+          settings: envelope.mailbox_settings,
+          nextActions: envelope.next_actions,
+          details: { default_outbound_mailbox_id: defaultId, reason: "missing_from_mailbox_list" },
+        });
+      }
+      if (mb.can_send === false) {
+        throw mailboxConfigError({
+          status: 409,
+          code: "DEFAULT_MAILBOX_INVALID",
+          message: `Configured default outbound mailbox ${defaultId} cannot send email: ${mb.send_blocked_reason ?? "blocked"}.`,
+          context,
+          projectId,
+          mailboxes: envelope.mailboxes,
+          settings: envelope.mailbox_settings,
+          nextActions: envelope.next_actions,
+          details: {
+            default_outbound_mailbox_id: defaultId,
+            reason: mb.send_blocked_reason ?? "send_blocked",
+          },
+        });
+      }
+      return mb;
+    }
+
+    // Old gateways did not return mailbox_settings. Keep the legacy
+    // single-mailbox convenience only while that field is absent, so tolerant
+    // public clients can ship before the stricter gateway rollout.
+    if (envelope.mailbox_settings === undefined) {
+      return this.pickMailbox(envelope.mailboxes, undefined, context);
+    }
+
+    throw mailboxConfigError({
+      status: envelope.mailboxes.length > 1 ? 409 : 400,
+      code: "DEFAULT_MAILBOX_REQUIRED",
+      message: "Set default_outbound_mailbox_id before sending email without an explicit mailbox.",
+      context,
+      projectId,
+      mailboxes: envelope.mailboxes,
+      settings: envelope.mailbox_settings,
+      nextActions: envelope.next_actions,
+    });
   }
 
   /**
@@ -448,12 +562,61 @@ export class Email {
     }
   }
 
-  private async listMailboxes(serviceKey: string): Promise<MailboxRecord[]> {
+  private async listMailboxEnvelope(serviceKey: string): Promise<MailboxListResult> {
     const raw = await this.client.request<MailboxListResponse>(`/mailboxes/v1`, {
       headers: { Authorization: `Bearer ${serviceKey}` },
       context: "listing mailboxes",
     });
-    return raw.mailboxes ?? [];
+    return {
+      mailboxes: Array.isArray(raw.mailboxes) ? raw.mailboxes : [],
+      ...(raw.mailbox_settings !== undefined ? { mailbox_settings: raw.mailbox_settings } : {}),
+      ...(Array.isArray(raw.next_actions) ? { next_actions: raw.next_actions } : {}),
+    };
+  }
+
+  /** List project mailboxes plus default-role settings and gateway repair hints. */
+  async listMailboxes(projectId: string): Promise<MailboxListResult> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "listing mailboxes");
+    return this.listMailboxEnvelope(project.service_key);
+  }
+
+  /**
+   * Configure the project's mailbox defaults. Values are mailbox ids
+   * (`mbx_…`) or `null` to clear when the gateway allows clearing.
+   */
+  async setMailboxDefaults(
+    projectId: string,
+    opts: SetMailboxDefaultsOptions,
+  ): Promise<SetMailboxDefaultsResult> {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+      throw new LocalError(
+        "r.email.setMailboxDefaults(projectId, opts) requires an opts object.",
+        "setting mailbox defaults",
+      );
+    }
+    const hasOutbound = Object.prototype.hasOwnProperty.call(opts, "default_outbound_mailbox_id");
+    const hasAuthSender = Object.prototype.hasOwnProperty.call(opts, "auth_sender_mailbox_id");
+    if (!hasOutbound && !hasAuthSender) {
+      throw new LocalError(
+        "Provide default_outbound_mailbox_id and/or auth_sender_mailbox_id.",
+        "setting mailbox defaults",
+      );
+    }
+    validateOptionalMailboxId(opts.default_outbound_mailbox_id, "default_outbound_mailbox_id");
+    validateOptionalMailboxId(opts.auth_sender_mailbox_id, "auth_sender_mailbox_id");
+
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "setting mailbox defaults");
+    return this.client.request<SetMailboxDefaultsResult>("/mailboxes/v1/settings", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${project.service_key}` },
+      body: {
+        ...(hasOutbound ? { default_outbound_mailbox_id: opts.default_outbound_mailbox_id } : {}),
+        ...(hasAuthSender ? { auth_sender_mailbox_id: opts.auth_sender_mailbox_id } : {}),
+      },
+      context: "setting mailbox defaults",
+    });
   }
 
   /**
@@ -485,13 +648,14 @@ export class Email {
       );
     }
 
-    const result = await this.client.request<CreateMailboxResult>("/mailboxes/v1", {
+    const raw = await this.client.request<CreateMailboxResult | { mailbox: MailboxRecord } & MailboxSelectionEnvelope>("/mailboxes/v1", {
       method: "POST",
       headers: { Authorization: `Bearer ${project.service_key}` },
       body: { slug, project_id: projectId },
       context: "creating mailbox",
     });
 
+    const result = normalizeCreateMailboxResult(raw);
     await this.cacheMailbox(projectId, result);
     return result;
   }
@@ -536,7 +700,12 @@ export class Email {
       );
     }
 
-    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
+    const { id, serviceKey } = await this.resolveMailbox(
+      projectId,
+      opts.mailbox,
+      "default_outbound",
+      "sending email",
+    );
     const body: Record<string, unknown> = { to: opts.to };
     if (isTemplate) {
       body.template = opts.template;
@@ -634,9 +803,9 @@ export class Email {
   async getMailbox(projectId: string, selector?: MailboxSelector): Promise<MailboxInfo> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "getting mailbox");
-    const list = await this.listMailboxes(project.service_key);
-    const mb = this.pickMailbox(list, selector, "getting mailbox");
-    if (!selector && list.length === 1) await this.cacheMailbox(projectId, mb);
+    const list = await this.listMailboxEnvelope(project.service_key);
+    const mb = this.pickMailbox(list.mailboxes, selector, "getting mailbox");
+    if (!selector && list.mailboxes.length === 1) await this.cacheMailbox(projectId, mb);
     return mb;
   }
 
@@ -654,8 +823,8 @@ export class Email {
     if (selector && /^mbx_/.test(selector)) {
       id = selector;
     } else {
-      const list = await this.listMailboxes(project.service_key);
-      if (!selector && list.length === 0) {
+      const list = await this.listMailboxEnvelope(project.service_key);
+      if (!selector && list.mailboxes.length === 0) {
         throw new ApiError(
           "No mailbox found for this project — nothing to delete.",
           404,
@@ -663,7 +832,7 @@ export class Email {
           "deleting mailbox",
         );
       }
-      id = this.pickMailbox(list, selector, "deleting mailbox").mailbox_id;
+      id = this.pickMailbox(list.mailboxes, selector, "deleting mailbox").mailbox_id;
     }
 
     const result = await this.client.request<DeleteMailboxResult>(`/mailboxes/v1/${id}`, {
@@ -686,6 +855,99 @@ export class Email {
 
     return result;
   }
+}
+
+function normalizeCreateMailboxResult(
+  raw: CreateMailboxResult | ({ mailbox: MailboxRecord } & MailboxSelectionEnvelope),
+): CreateMailboxResult {
+  const maybeEnvelope = raw as { mailbox?: MailboxRecord } & MailboxSelectionEnvelope;
+  if (maybeEnvelope.mailbox && typeof maybeEnvelope.mailbox === "object") {
+    return {
+      ...maybeEnvelope.mailbox,
+      ...(maybeEnvelope.mailbox_settings !== undefined
+        ? { mailbox_settings: maybeEnvelope.mailbox_settings }
+        : {}),
+      ...(Array.isArray(maybeEnvelope.next_actions)
+        ? { next_actions: maybeEnvelope.next_actions }
+        : {}),
+    };
+  }
+  const maybeLegacy = raw as CreateMailboxResult & { id?: string };
+  if (!maybeLegacy.mailbox_id && typeof maybeLegacy.id === "string") {
+    return { ...maybeLegacy, mailbox_id: maybeLegacy.id };
+  }
+  return raw as CreateMailboxResult;
+}
+
+function validateOptionalMailboxId(value: unknown, field: string): void {
+  if (value === undefined || value === null) return;
+  assertNonEmptyString(value, field, "setting mailbox defaults");
+  if (!/^mbx_/.test(value)) {
+    throw new LocalError(
+      `${field} must be a mailbox id starting with "mbx_". Use listMailboxes() to resolve a slug first.`,
+      "setting mailbox defaults",
+    );
+  }
+}
+
+function mailboxConfigError(opts: {
+  status: number;
+  code: "DEFAULT_MAILBOX_REQUIRED" | "DEFAULT_MAILBOX_INVALID";
+  message: string;
+  context: string;
+  projectId: string;
+  mailboxes: MailboxRecord[];
+  settings?: MailboxSettings;
+  nextActions?: MailboxNextAction[];
+  details?: Record<string, unknown>;
+}): ApiError {
+  const next_actions =
+    opts.nextActions && opts.nextActions.length > 0
+      ? opts.nextActions
+      : [{
+          type: "set_mailbox_defaults",
+          method: "PATCH",
+          path: "/mailboxes/v1/settings",
+          auth: "service_key",
+          why: "Choose the mailbox that should send outbound project email, then set default_outbound_mailbox_id.",
+          command: `run402 email defaults --outbound <slug|mbx_id> --project ${opts.projectId}`,
+        }];
+
+  return new ApiError(
+    opts.message,
+    opts.status,
+    {
+      error: opts.message,
+      message: opts.message,
+      code: opts.code,
+      category: "email",
+      retryable: false,
+      safe_to_retry: true,
+      mutation_state: "none",
+      details: {
+        project_id: opts.projectId,
+        mailbox_settings: opts.settings ?? null,
+        candidates: summarizeMailboxCandidates(opts.mailboxes),
+        ...(opts.details ?? {}),
+      },
+      next_actions,
+    },
+    opts.context,
+  );
+}
+
+function summarizeMailboxCandidates(mailboxes: MailboxRecord[]): Array<Record<string, unknown>> {
+  return mailboxes.map((m) => ({
+    mailbox_id: m.mailbox_id,
+    slug: m.slug,
+    address: m.address,
+    status: m.status,
+    is_default_outbound: m.is_default_outbound ?? false,
+    is_auth_sender: m.is_auth_sender ?? false,
+    can_send: m.can_send,
+    send_blocked_reason: m.send_blocked_reason ?? null,
+    domain_kind: m.domain_kind,
+  }));
 }
 
 function encodePathSegment(value: unknown, name: string, context: string): string {
