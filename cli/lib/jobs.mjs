@@ -79,12 +79,12 @@ Options:
   logs: `run402 jobs logs — Read managed job logs
 
 Usage:
-  run402 jobs logs <job_id> [--project <id>] [--tail <n>] [--since <epoch_ms>]
+  run402 jobs logs <job_id> [--project <id>] [--tail <n>] [--since <iso>]
 
 Options:
   --project <id>    Project ID (defaults to the active project)
   --tail <n>        Maximum entries to return (gateway max: 1000)
-  --since <ms>      Only include logs at or after this epoch millisecond timestamp
+  --since <iso>     Only include logs at or after this ISO-8601 timestamp
 `,
   cancel: `run402 jobs cancel — Cancel a managed job run
 
@@ -271,7 +271,7 @@ async function logs(jobId, args = []) {
   const tail = flagValue(parsed, "--tail");
   const since = flagValue(parsed, "--since");
   if (tail !== null) opts.tail = parseIntegerFlag("--tail", tail, { min: 1, max: 1000 });
-  if (since !== null) opts.since = parseIntegerFlag("--since", since, { min: 0 });
+  if (since !== null) opts.since = parseSinceIsoFlag("--since", since);
 
   try {
     const result = await getSdk().jobs.logs(projectId, jobId, opts);
@@ -279,6 +279,33 @@ async function logs(jobId, args = []) {
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+function parseSinceIsoFlag(flag, value) {
+  const str = String(value).trim();
+  if (str === "") {
+    fail({
+      code: "BAD_USAGE",
+      message: `Invalid ${flag} value: ${value}`,
+      details: { flag, value },
+      hint: "Use an ISO-8601 timestamp such as 2026-05-18T00:00:00.000Z.",
+    });
+  }
+  const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+  const ms = /^\d+$/.test(str)
+    ? Number(str)
+    : isoDateTime.test(str)
+      ? Date.parse(str)
+      : Number.NaN;
+  if (!Number.isSafeInteger(ms) || ms < 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Invalid ${flag} value: ${value}`,
+      details: { flag, value },
+      hint: "Use an ISO-8601 timestamp such as 2026-05-18T00:00:00.000Z.",
+    });
+  }
+  return new Date(ms).toISOString();
 }
 
 async function cancel(jobId, args = []) {

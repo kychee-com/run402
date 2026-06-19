@@ -5,6 +5,7 @@ import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, validateRegularFile } from "./argparse.mjs";
 
 const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
+const ISO_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const FUNCTION_LOG_TAIL_MAX = 1000;
 
 const HELP = `run402 functions — Manage serverless functions
@@ -324,9 +325,13 @@ async function logs(projectId, name, args) {
   // being dropped by the SDK.
   let sinceIso = undefined;
   if (since !== undefined) {
-    const parsed = Number(since);
-    const ms = Number.isNaN(parsed) ? new Date(since).getTime() : parsed;
-    if (Number.isNaN(ms)) {
+    const raw = String(since).trim();
+    const ms = /^\d+$/.test(raw)
+      ? Number(raw)
+      : ISO_DATE_TIME_RE.test(raw)
+        ? Date.parse(raw)
+        : Number.NaN;
+    if (!Number.isSafeInteger(ms) || ms < 0) {
       fail({
         code: "BAD_USAGE",
         message: `Invalid --since value: ${since}`,

@@ -146,7 +146,7 @@ describe("jobs", () => {
     assert.equal(calls[0]!.headers.Authorization, "Bearer s");
   });
 
-  it("logs passes tail and since as gateway query params", async () => {
+  it("logs passes tail and ISO since as gateway query params", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         logs: [
@@ -162,13 +162,13 @@ describe("jobs", () => {
 
     const result = await sdk(fetch).jobs.logs("prj_k", "job_123", {
       tail: 10,
-      since: 1_710_000_000_000,
+      since: "2026-05-18T00:00:00.000Z",
     });
 
     assert.equal(result.logs.length, 1);
     assert.equal(
       calls[0]!.url,
-      "https://api.test/jobs/v1/runs/job_123/logs?tail=10&since=1710000000000",
+      "https://api.test/jobs/v1/runs/job_123/logs?tail=10&since=2026-05-18T00%3A00%3A00.000Z",
     );
   });
 

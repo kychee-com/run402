@@ -87,6 +87,15 @@ accesses a field that does not exist on the actual type. Reference tables
 below use plain code fences (no `ts`) — they document the type surface for
 visual scanning, are not runnable, and are exempt from type-checking.
 
+### Timestamp Convention
+
+Public API and SDK response timestamps are ISO-8601 strings, never JavaScript
+`Date` objects or numeric epochs. Absolute instants use fields such as
+`created_at`, `updated_at`, `expires_at`, `lease_expires_at`, `timestamp`, and
+`ingestion_time`; nullable means the gateway state is genuinely absent. Numeric
+time values are reserved for relative durations or local measurements and carry
+units in the name (`expires_in`, `duration_ms`, `elapsedMs`, `ttl_seconds`).
+
 ## Project credentials
 
 After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `service_key`, `schema_slot`. The Node entry's credentials provider auto-saves these to `~/.config/run402/projects.json`.
@@ -1043,6 +1052,7 @@ purge(projectId): Promise<{ deleted_jobs, cancelled_active_jobs, terminated_inst
 The scoped client pre-binds the project id: `const p = await r.project(id); await p.jobs.get(jobId)`.
 
 `ManagedJobResponse` mirrors the gateway snake_case shape: `job_id`, `job_type`, `status` (`queued` / `running` / `completed` / `failed` / `cancelled`), `created_at`, optional `started_at`, `completed_at`, `artifacts`, `metadata`, and `error`.
+`jobs.logs(..., { since })` prefers an ISO-8601 timestamp; legacy epoch milliseconds are still accepted for older callers.
 
 ### `r.secrets`
 
@@ -1525,11 +1535,11 @@ What does NOT transfer: tier lease (stays with the original owner's organization
 
 A wallet **authenticates** (SIWX → a control-plane *principal*); an **org** owns projects, and what a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet_address == signer`. The collection + identity lives on `r.orgs`; per-org operations on the scoped sub-client **`r.org(id)`** (the org analog of `r.project(id)` — the id is bound once). Memberships carry `org_id` + `display_name`.
 
-- **`r.orgs.create({ displayName? })`** → `{ org_id, display_name, tier }` (POST `/orgs/v1`). Creates an empty org on the prototype tier; you become owner. Accepts only `displayName` — no tier at create. Step-up gated; may throw `ApiError code: "FREE_ORG_OWNER_LIMIT_EXCEEDED"` (429).
+- **`r.orgs.create({ displayName? })`** → `{ org_id, display_name, tier, lease_started_at, lease_expires_at }` (POST `/orgs/v1`). Creates an empty org on the prototype tier; you become owner. Accepts only `displayName` — no tier input. Step-up gated; may throw `ApiError code: "FREE_ORG_OWNER_LIMIT_EXCEEDED"` (429).
 - **`r.orgs.list()`** → orgs you are an active member of (`OrgMembership[]`, each `{ org_id, display_name, role, status }`).
 - **`r.orgs.whoami()`** → `{ principal, memberships[], authenticator_id }` (GET `/agent/v1/whoami`). The REMOTE, gateway-resolved identity — distinct from **`r.whoami()`** (local + network-free wallet/profile label, used by `run402 status`).
-- **`r.org(id).get()`** → `{ org_id, display_name, tier, role }`. Any active member; a non-member (incl. a guessed id) gets the same non-revealing 403.
-- **`r.org(id).rename(displayName | null)`** → owner-only; set or clear the label (`null`/`""` clears). Step-up gated.
+- **`r.org(id).get()`** → `{ org_id, display_name, tier, lease_started_at, lease_expires_at, role }`. Any active member; a non-member (incl. a guessed id) gets the same non-revealing 403.
+- **`r.org(id).rename(displayName | null)`** → `{ org_id, display_name, tier, lease_started_at, lease_expires_at }`. Owner-only; set or clear the label (`null`/`""` clears). Step-up gated.
 - **`r.org(id).members.list()` / `.add({ wallet, role? })` / `.setRole(principalId, role)` / `.revoke(principalId)`** — owner-gated; a new wallet is provisioned as a `human` principal, `role` defaults to `developer`. Removing/demoting the org's only active owner throws `ApiError code: "LAST_OWNER"` (409).
 - **`r.org(id).invites.list()` / `.create({ email, role, inviteTtlHours? })` / `.revoke(principalId)`** — email invites, claimed automatically at the invitee's first login.
 - **`r.org(id).audit({ limit?, before? })`** → control-plane audit trail (admin+), newest-first; page with `before`.

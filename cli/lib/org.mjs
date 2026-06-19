@@ -30,7 +30,7 @@ Usage:
 Subcommands:
   create      Create an empty org on the prototype tier (you become owner)
   list        Orgs you are a member of
-  get         Read one org (label + tier + your role)
+  get         Read one org (label + tier/lease + your role)
   rename      Set or clear an org's display label (owner-only)
   whoami      Resolved principal + org memberships (GET /agent/v1/whoami)
   member      Manage members (list, add, role, rm) — mutations require owner
@@ -62,15 +62,17 @@ Usage:
   run402 org create [--name <label>]
 
 The label is an optional free-text name (non-unique, not an id). Omit for an
-unlabeled org. There is no tier at create — paid tiers are a separate flow.
-Step-up gated for control-plane sessions; the free-org cap may apply.
+unlabeled org. There is no tier input at create; the response reports the
+created org's prototype tier plus lease_started_at / lease_expires_at. Paid
+tiers are a separate flow. Step-up gated for control-plane sessions; the
+free-org cap may apply.
 `,
   list: `run402 org list — orgs you are a member of
 
 Usage:
   run402 org list
 `,
-  get: `run402 org get — read one org (label + tier + your role)
+  get: `run402 org get — read one org (label + tier/lease + your role)
 
 Usage:
   run402 org get <org>
@@ -85,7 +87,7 @@ Usage:
   run402 org rename <org> --clear
 
 Owner-only + step-up gated. Pass --clear (or an empty display_name) to remove
-the label.
+the label. Output includes the updated tier and lease timestamps.
 `,
   whoami: `run402 org whoami — resolved principal + org memberships
 

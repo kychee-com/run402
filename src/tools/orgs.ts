@@ -25,13 +25,29 @@ function orgLabel(orgId: string, displayName: string | null | undefined): string
   return displayName ? `\`${orgId}\` ("${displayName}")` : `\`${orgId}\``;
 }
 
+function orgTier(tier: string | null | undefined): string {
+  return tier ?? "(no active tier)";
+}
+
+function orgLeaseLines(org: {
+  tier?: string | null;
+  lease_started_at?: string | null;
+  lease_expires_at?: string | null;
+}): string[] {
+  return [
+    `- tier: ${orgTier(org.tier)}`,
+    `- lease_started_at: ${org.lease_started_at ?? "null"}`,
+    `- lease_expires_at: ${org.lease_expires_at ?? "null"}`,
+  ];
+}
+
 // ─── create_org ───────────────────────────────────────────────────────────────
 
 export const createOrgSchema = {
   display_name: z
     .string()
     .optional()
-    .describe("Optional free-text label (e.g. `Kychee`). Non-unique, not an id. Omit for an unlabeled org. No tier at create."),
+    .describe("Optional free-text label (e.g. `Kychee`). Non-unique, not an id. Omit for an unlabeled org. There is no tier input at create; the response reports the created org's prototype tier/lease state."),
 };
 
 export async function handleCreateOrg(args: { display_name?: string }): Promise<ToolResult> {
@@ -41,7 +57,10 @@ export async function handleCreateOrg(args: { display_name?: string }): Promise<
       content: [
         {
           type: "text",
-          text: `Created org ${orgLabel(org.org_id, org.display_name)} on the ${org.tier} tier. You are the owner.`,
+          text: [
+            `Created org ${orgLabel(org.org_id, org.display_name)}. You are the owner.`,
+            ...orgLeaseLines(org),
+          ].join("\n"),
         },
       ],
     };
@@ -61,7 +80,7 @@ export async function handleGetOrg(args: { org_id: string }): Promise<ToolResult
     const org = await getSdk().org(args.org_id).get();
     const lines = [
       `Org ${orgLabel(org.org_id, org.display_name)}:`,
-      `- tier: ${org.tier}`,
+      ...orgLeaseLines(org),
       `- your role: ${org.role ?? "(admin — not a member)"}`,
     ];
     return { content: [{ type: "text", text: lines.join("\n") }] };
@@ -87,9 +106,12 @@ export async function handleRenameOrg(args: { org_id: string; display_name: stri
       content: [
         {
           type: "text",
-          text: org.display_name
-            ? `Renamed ${`\`${org.org_id}\``} to "${org.display_name}".`
-            : `Cleared the label on \`${org.org_id}\`.`,
+          text: [
+            org.display_name
+              ? `Renamed ${`\`${org.org_id}\``} to "${org.display_name}".`
+              : `Cleared the label on \`${org.org_id}\`.`,
+            ...orgLeaseLines(org),
+          ].join("\n"),
         },
       ],
     };

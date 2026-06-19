@@ -342,7 +342,7 @@ describe("functions.logs", () => {
     const { fetch, calls } = mockFetch(() => json({ logs: [] }));
     const sdk = makeSdk(fetch);
     await assert.rejects(
-      sdk.functions.logs("prj_known", "x", { since: "not-a-date" }),
+      sdk.functions.logs("prj_known", "x", { since: "June 19, 2026 12:00:00 UTC" }),
       LocalError,
     );
     assert.equal(calls.length, 0);

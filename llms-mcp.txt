@@ -374,7 +374,7 @@ Platform-managed jobs. These tools do not run arbitrary Docker images; they subm
 
 - `jobs_submit` — submit a managed job. Params: `project_id`, `request` (`job_type`, `input`, `max_cost_usd_micros`).
 - `jobs_get` — get a job run. Params: `project_id`, `job_id`.
-- `jobs_logs` — read runner logs. Params: `project_id`, `job_id`, `tail?` (max 1000), `since?` (epoch ms).
+- `jobs_logs` — read runner logs. Params: `project_id`, `job_id`, `tail?` (max 1000), `since?` (ISO 8601; legacy epoch milliseconds also accepted).
 - `jobs_cancel` — cancel a queued or running job. Params: `project_id`, `job_id`.
 - `jobs_purge` — purge all job runs for a project. Params: `project_id`. Returns `{deleted_jobs, cancelled_active_jobs, terminated_instances}`.
 
@@ -487,9 +487,9 @@ A wallet **authenticates**; the **org (organization)** owns projects. Authorizat
 
 - `whoami` — resolve YOUR control-plane principal + every org membership (role + status) + `authenticator_id` (GET `/agent/v1/whoami`). The remote identity; for local wallet/profile state use `status`.
 - `list_orgs` — orgs you are a member of, with each org's `org_id`, `display_name`, your role + membership status.
-- `create_org` — create an empty org on the prototype tier; you become owner. Params: optional `display_name` (no tier at create). May return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
-- `get_org` — read one org: `{ org_id, display_name, tier, role }`. Any active member; a guessed id gets the same non-revealing 403. Params: `org_id`.
-- `rename_org` — set or clear an org's display label (owner-only). Params: `org_id`, `display_name` (`null`/`""` clears).
+- `create_org` — create an empty org on the prototype tier; you become owner. Params: optional `display_name` (no tier input). Response includes `org_id`, `display_name`, `tier`, `lease_started_at`, `lease_expires_at`. May return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
+- `get_org` — read one org: `{ org_id, display_name, tier, lease_started_at, lease_expires_at, role }`. Any active member; a guessed id gets the same non-revealing 403. Params: `org_id`.
+- `rename_org` — set or clear an org's display label (owner-only). Params: `org_id`, `display_name` (`null`/`""` clears). Response includes `org_id`, `display_name`, `tier`, `lease_started_at`, `lease_expires_at`.
 - `list_org_members` — members + roles of an org. Params: `org_id`.
 - `add_org_member` — add a member BY WALLET (a new wallet is provisioned as a `human` principal). Params: `org_id`, `wallet`, optional `role` (default `developer`). Owner-gated. (Email-first invite is a separate, not-yet-shipped flow.)
 - `set_org_member_role` — change a member's role. Params: `org_id`, `principal_id`, `role`. Owner-gated. Demoting the only active owner → `409 LAST_OWNER`.

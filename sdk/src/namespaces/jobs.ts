@@ -130,8 +130,11 @@ export interface ManagedJobLogEntry {
 export interface ManagedJobLogsOptions {
   /** Maximum number of log entries to return. Gateway default is 100. */
   tail?: number;
-  /** Only include events at or after this epoch millisecond timestamp. */
-  since?: number;
+  /**
+   * Only include events at or after this ISO-8601 timestamp. Legacy epoch
+   * milliseconds are still accepted for older callers.
+   */
+  since?: string | number;
 }
 
 export interface ManagedJobLogsResponse {

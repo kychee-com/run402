@@ -30,6 +30,7 @@ import type {
 
 const FUNCTION_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
+const ISO_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const FUNCTION_LOG_TAIL_MAX = 1000;
 const FUNCTION_DEP_MAX = 30;
 const FUNCTION_DEP_SPEC_MAX = 200;
@@ -330,8 +331,11 @@ export class Functions {
 
 function parseLogSince(since: string): number {
   const raw = since.trim();
-  const numeric = raw === "" ? Number.NaN : Number(raw);
-  const ms = Number.isFinite(numeric) ? numeric : new Date(since).getTime();
+  const ms = /^\d+$/.test(raw)
+    ? Number(raw)
+    : ISO_DATE_TIME_RE.test(raw)
+      ? Date.parse(raw)
+      : Number.NaN;
   if (!Number.isSafeInteger(ms) || ms < 0) {
     throw new LocalError(
       `Invalid functions.logs since timestamp: ${since}`,

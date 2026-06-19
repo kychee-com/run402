@@ -82,7 +82,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `admin` | Operator/admin endpoints: messages/contact, per-project finance (`getProjectFinance`) |
 | `operator` | **The human / email principal** — distinct from the agent's per-wallet SIWX identity (and from platform-`admin`). Read session: `deviceStart`, `devicePoll`, `overview({ token })`, `revoke({ token })` — browser-delegated device-authorization (RFC 8628, the `aws sso login` model); `overview` returns the email-union across every wallet that verified the email. Write session (v1.78): `buildCliAuthorizeUrl`/`exchangeCliToken` (loopback-PKCE CLI login) + the hosted `operator.session.*` surface (email magic-link / passkey / OAuth login, `whoami`/`refresh`/`revoke`, step-up, authenticators, recovery) — carry a minted session SDK-wide with `controlPlaneSessionCredentials({ token })`. Drives `run402 operator login[/--loopback]/overview/whoami/logout`. No MCP tool by design — MCP authenticates as the agent, not the human. |
 | `wallets` | `getLabel`, `setLabel` — the signed server-side wallet label (gateway `/wallets/v1/:address/label`) surfaced in the operator console; pushed on `wallets use` unless `RUN402_WALLET_LABEL_SYNC=0` |
-| `orgs` | **Org-owned control plane** (v1.77+; first-class orgs v1.82). `create`, `list`, `whoami` (the gateway-resolved control-plane identity) on the collection; the scoped `r.org(id)` sub-client (org analog of `r.project(id)`) adds `get`, `rename`, `members.*` (`list`/`add`/`setRole`/`revoke`), `invites.*` (`list`/`create`/`revoke`), `audit` |
+| `orgs` | **Org-owned control plane** (v1.77+; first-class orgs v1.82). `create`, `list`, `whoami` (the gateway-resolved control-plane identity) on the collection; the scoped `r.org(id)` sub-client (org analog of `r.project(id)`) adds `get`, `rename`, `members.*` (`list`/`add`/`setRole`/`revoke`), `invites.*` (`list`/`create`/`revoke`), `audit`. Org create/read/rename summaries include `tier`, `lease_started_at`, and `lease_expires_at`. |
 | `grants` | `create`, `revoke` — per-project capability grants (e.g. `"deploy"`, `"functions:write"`) for agent/CI principals; owner-gated, also reachable project-scoped as `r.project(id).grants` |
 
 CLI-style aliases are available for agent ergonomics: `r.image` aliases `r.ai`,
@@ -455,6 +455,15 @@ await (await r.project(ciSpec.project)).apply(ciSpec);
 ```
 
 CI deploys intentionally allow only `project`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. The SDK normalizes scopes, sends `route_scopes` only when non-empty, and still rejects `secrets`, `subdomains`, `checks`, unknown future top-level fields, non-current `base`, and specs large enough to require `manifest_ref` before upload/plan. Gateway planning enforces route diffs and can return `CI_ROUTE_SCOPE_DENIED`; re-link with covering exact scopes like `/admin` or final-wildcard scopes like `/api/*`, or deploy locally. Use the canonical builders (`buildCiDelegationStatement`, `buildCiDelegationResourceUri`) instead of hand-rolling SIWX text; gateway tests pin those strings as golden vectors.
+
+### Timestamp Convention
+
+Public API and SDK response timestamps are ISO-8601 strings, not `Date` objects
+or numeric epochs: `created_at`, `updated_at`, `expires_at`,
+`lease_expires_at`, `timestamp`, and similar absolute instants all stay JSON
+native. Numeric time values are only for relative durations or elapsed/local
+measurements, and their names carry units such as `expires_in`, `duration_ms`,
+`elapsedMs`, or `ttl_seconds`.
 
 ### Errors
 

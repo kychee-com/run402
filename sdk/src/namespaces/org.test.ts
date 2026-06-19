@@ -4,6 +4,9 @@ import assert from "node:assert/strict";
 import { Run402, ApiError, isLocalError } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 
+const LEASE_STARTED_AT = "2026-06-19T12:00:00.000Z";
+const LEASE_EXPIRES_AT = "2026-06-26T12:00:00.000Z";
+
 interface FetchCall {
   url: string;
   method: string;
@@ -102,18 +105,32 @@ describe("r.orgs.create", () => {
       const body = parseBody(call.body);
       assert.equal(body.display_name, "Kychee");
       assert.ok(!("tier" in body), "create must never send a tier");
-      return jsonResponse({ org_id: "org_new", display_name: "Kychee", tier: "prototype" }, 201);
+      return jsonResponse({
+        org_id: "org_new",
+        display_name: "Kychee",
+        tier: "prototype",
+        lease_started_at: LEASE_STARTED_AT,
+        lease_expires_at: LEASE_EXPIRES_AT,
+      }, 201);
     });
     const org = await makeSdk(fetch).orgs.create({ displayName: "Kychee" });
     assert.equal(org.org_id, "org_new");
     assert.equal(org.tier, "prototype");
+    assert.equal(org.lease_started_at, LEASE_STARTED_AT);
+    assert.equal(org.lease_expires_at, LEASE_EXPIRES_AT);
     assert.equal(calls.length, 1);
   });
 
   it("sends an empty body when no displayName is given", async () => {
     const { fetch } = mockFetch((call) => {
       assert.deepEqual(parseBody(call.body), {});
-      return jsonResponse({ org_id: "org_new", display_name: null, tier: "prototype" }, 201);
+      return jsonResponse({
+        org_id: "org_new",
+        display_name: null,
+        tier: "prototype",
+        lease_started_at: LEASE_STARTED_AT,
+        lease_expires_at: LEASE_EXPIRES_AT,
+      }, 201);
     });
     const org = await makeSdk(fetch).orgs.create();
     assert.equal(org.display_name, null);
@@ -141,11 +158,20 @@ describe("r.org(id).get", () => {
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.method, "GET");
       assert.equal(call.url, "https://api.example.test/orgs/v1/org_abc");
-      return jsonResponse({ org_id: "org_abc", display_name: "Kychee", tier: "prototype", role: "owner" });
+      return jsonResponse({
+        org_id: "org_abc",
+        display_name: "Kychee",
+        tier: "prototype",
+        lease_started_at: LEASE_STARTED_AT,
+        lease_expires_at: LEASE_EXPIRES_AT,
+        role: "owner",
+      });
     });
     const org = await makeSdk(fetch).org("org_abc").get();
     assert.equal(org.role, "owner");
     assert.equal(org.org_id, "org_abc");
+    assert.equal(org.lease_started_at, LEASE_STARTED_AT);
+    assert.equal(org.lease_expires_at, LEASE_EXPIRES_AT);
     assert.equal(calls.length, 1);
   });
 });
@@ -156,10 +182,18 @@ describe("r.org(id).rename", () => {
       assert.equal(call.method, "PATCH");
       assert.equal(call.url, "https://api.example.test/orgs/v1/org_abc");
       assert.equal(parseBody(call.body).display_name, "New");
-      return jsonResponse({ org_id: "org_abc", display_name: "New", tier: "prototype" });
+      return jsonResponse({
+        org_id: "org_abc",
+        display_name: "New",
+        tier: "prototype",
+        lease_started_at: LEASE_STARTED_AT,
+        lease_expires_at: LEASE_EXPIRES_AT,
+      });
     });
     const org = await makeSdk(fetch).org("org_abc").rename("New");
     assert.equal(org.display_name, "New");
+    assert.equal(org.lease_started_at, LEASE_STARTED_AT);
+    assert.equal(org.lease_expires_at, LEASE_EXPIRES_AT);
     assert.equal(calls.length, 1);
   });
 
@@ -168,7 +202,13 @@ describe("r.org(id).rename", () => {
       const body = parseBody(call.body);
       assert.ok("display_name" in body);
       assert.equal(body.display_name, null);
-      return jsonResponse({ org_id: "org_abc", display_name: null, tier: "prototype" });
+      return jsonResponse({
+        org_id: "org_abc",
+        display_name: null,
+        tier: "prototype",
+        lease_started_at: LEASE_STARTED_AT,
+        lease_expires_at: LEASE_EXPIRES_AT,
+      });
     });
     const org = await makeSdk(fetch).org("org_abc").rename(null);
     assert.equal(org.display_name, null);

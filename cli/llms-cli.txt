@@ -251,7 +251,7 @@ Route semantics:
 - Exact patterns look like `/admin`; prefix wildcard patterns use final `/*`, like `/admin/*`. `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a dynamic section root.
 - Query ignored for matching but preserved in full public `req.url`. Exact beats prefix; longest prefix wins; method-compatible dynamic routes beat static assets.
 - `POST /login` can coexist with static `GET /login`; unsafe method mismatch returns 405, not SPA HTML. Matched dynamic failures fail closed; no static fallback.
-- Routed ingress uses Node 22 Fetch `Request -> Response`; `req.url` is full public URL across managed subdomains/deployment hosts/custom domains. Derive OAuth origins from `new URL(req.url).origin`. `run402.routed_http.v1` envelope is internal. Direct `/functions/v1/:name` remains API-key protected. Function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and forwarding-header hygiene.
+- Routed ingress uses the Node 22 Fetch Request -> Response contract; `req.url` is full public URL across managed subdomains/deployment hosts/custom domains. Derive OAuth origins from `new URL(req.url).origin`. `run402.routed_http.v1` envelope is internal. Direct `/functions/v1/:name` remains API-key protected. Function owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, and forwarding-header hygiene.
 - Anti-patterns: routing every static file, broad method lists by default, wildcard static route targets, leading-slash static files, directory shorthand, one-static-route-target-per-page route-table exhaustion, wildcard function routes shadowing direct public static paths, and confusing omitted/null `routes` with `routes: { "replace": [] }`.
 
 Apply it:
@@ -781,9 +781,9 @@ Does not transfer: tier lease (stays with original org; no proration), KMS signe
 
 ### org / grants (v1.77+ org-owned control plane; first-class orgs v1.82)
 Wallet authenticates; org owns projects. Authorization = org role (`owner > admin > developer > billing > viewer`) or per-project grant, never `wallet == signer`. Member/invite changes require active `owner`; subresources: `org member ...`, `org invite ...`; memberships carry `org_id` + `display_name`. Create/rename/member/invite are step-up gated for control-plane sessions.
-- `run402 org create [--name <label>]` — create an empty org on the prototype tier; you become owner. `--name` is an optional free-text label (non-unique, not an id; no tier at create). The soft per-owner free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
-- `run402 org get <org>` — read one org: `{ org_id, display_name, tier, role }`. Any active member; a non-member (incl. a guessed id) gets the same non-revealing 403.
-- `run402 org rename <org> <display_name>` (or `--clear`) — owner-only; set or clear the org's free-text label.
+- `run402 org create [--name <label>]` — create an empty org on the prototype tier; you become owner. `--name` is an optional free-text label (non-unique, not an id; no tier input). Response includes `tier`, `lease_started_at`, and `lease_expires_at`. The soft per-owner free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
+- `run402 org get <org>` — read one org: `{ org_id, display_name, tier, lease_started_at, lease_expires_at, role }`. Any active member; a non-member (incl. a guessed id) gets the same non-revealing 403.
+- `run402 org rename <org> <display_name>` (or `--clear`) — owner-only; set or clear the org's free-text label. Response includes `tier`, `lease_started_at`, and `lease_expires_at`.
 - `run402 org whoami` — resolve your control-plane principal + org memberships (GET `/agent/v1/whoami`). The REMOTE identity; for local wallet/profile state use `run402 status`.
 - `run402 org list` — orgs you are a member of (`org_id`, `display_name`, role, status each).
 - `run402 org audit <org> [--limit N] [--before <cursor>]` — control-plane audit trail for the org (admin+); newest-first, page with `--before`.
@@ -952,7 +952,7 @@ Platform-managed jobs. This is not arbitrary Docker execution: submit a gateway-
 - `run402 jobs submit --file job.json [--project <id>]`
 - `run402 jobs submit --stdin [--project <id>]`
 - `run402 jobs get <job_id> [--project <id>]`
-- `run402 jobs logs <job_id> [--project <id>] [--tail <n>] [--since <epoch_ms>]`
+- `run402 jobs logs <job_id> [--project <id>] [--tail <n>] [--since <iso-timestamp>]`
 - `run402 jobs cancel <job_id> [--project <id>]`
 - `run402 jobs purge [--project <id>]`
 - `run402 jobs artifacts get <job_id> <file> --output <path> [--project <id>]`

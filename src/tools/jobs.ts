@@ -56,11 +56,9 @@ export const jobsLogsSchema = {
     .optional()
     .describe("Maximum number of log entries to return"),
   since: z
-    .number()
-    .int()
-    .min(0)
+    .union([z.string(), z.number().int().min(0)])
     .optional()
-    .describe("Only include logs at or after this epoch millisecond timestamp"),
+    .describe("Only include logs at or after this ISO-8601 timestamp. Legacy epoch milliseconds are also accepted."),
 };
 
 export const jobsCancelSchema = {
@@ -118,7 +116,7 @@ export async function handleJobsLogs(args: {
   project_id: string;
   job_id: string;
   tail?: number;
-  since?: number;
+  since?: string | number;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
     const result = await getSdk().jobs.logs(args.project_id, args.job_id, {

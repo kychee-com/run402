@@ -828,7 +828,7 @@ describe("function log filter validation", () => {
   it("functions logs rejects invalid --since before network", async () => {
     const { run } = await import("./cli/lib/functions.mjs");
     const err = await expectExit1(() =>
-      run("logs", ["prj_test123", "hello", "--since", "not-a-date"]));
+      run("logs", ["prj_test123", "hello", "--since", "June 19, 2026 12:00:00 UTC"]));
 
     assert.equal(err.code, "BAD_USAGE");
     assert.equal(err.details.flag, "--since");

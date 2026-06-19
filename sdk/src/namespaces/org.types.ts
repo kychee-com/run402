@@ -68,20 +68,27 @@ export interface WhoAmIResult {
 export interface CreateOrgInput {
   /**
    * Optional free-text label (e.g. "Kychee"). Non-unique, not an identifier,
-   * validated server-side. Omit for an unlabeled org. No `tier` — paid tiers are
-   * a separate flow.
+   * validated server-side. Omit for an unlabeled org. There is no tier input at
+   * create — the gateway returns the created org's prototype tier/lease state.
    */
   displayName?: string | null;
 }
 
 /**
  * An org summary as returned by {@link Orgs.create} and {@link ScopedOrg.rename}
- * (`{ org_id, display_name, tier }`). `display_name` is `null` when unset.
+ * (`{ org_id, display_name, tier, lease_started_at, lease_expires_at }`).
+ * `display_name` is `null` when unset. `tier` and lease timestamps are `null`
+ * only for true pre-subscription placeholder orgs; direct-created orgs should
+ * report `prototype` plus lease timestamps once the gateway is current.
  */
 export interface OrgSummary {
   org_id: string;
   display_name: string | null;
-  tier: string;
+  tier: string | null;
+  /** ISO-8601 lease start; `null` only for pre-subscription placeholders. */
+  lease_started_at: string | null;
+  /** ISO-8601 lease expiry; `null` only for pre-subscription placeholders. */
+  lease_expires_at: string | null;
   [key: string]: unknown;
 }
 

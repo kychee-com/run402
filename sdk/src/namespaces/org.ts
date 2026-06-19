@@ -149,7 +149,8 @@ export class ScopedOrg {
   }
 
   /**
-   * Read this org (`GET /orgs/v1/:org_id`) — `{ org_id, display_name, tier, role }`.
+   * Read this org (`GET /orgs/v1/:org_id`) — `{ org_id, display_name, tier,
+   * lease_started_at, lease_expires_at, role }`.
    * Any active member may view; a non-member (including a guessed id) gets the
    * same non-revealing `403`.
    */
@@ -162,7 +163,7 @@ export class ScopedOrg {
   /**
    * Rename this org (`PATCH /orgs/v1/:org_id`). Owner-only + step-up gated. Pass
    * `null` or `""` to clear the label. Returns the updated `{ org_id,
-   * display_name, tier }`.
+   * display_name, tier, lease_started_at, lease_expires_at }`.
    */
   async rename(displayName: string | null): Promise<OrgSummary> {
     return this.client.request<OrgSummary>(`/orgs/v1/${encodeURIComponent(this.orgId)}`, {
@@ -207,8 +208,9 @@ export class Orgs {
 
   /**
    * Create an empty org on the `prototype` tier (`POST /orgs/v1`); the caller
-   * becomes `owner`. Accepts only an optional `displayName` — there is no tier at
-   * create (paid tiers are a separate flow). Step-up gated; the soft per-owner
+   * becomes `owner`. Accepts only an optional `displayName` — there is no tier
+   * input at create. The response reports the created org's tier/lease state.
+   * Step-up gated; the soft per-owner
    * free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.
    */
   async create(input: CreateOrgInput = {}): Promise<OrgSummary> {

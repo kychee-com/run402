@@ -19,6 +19,8 @@ process.env.RUN402_API_BASE = API;
 
 const TEST_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const TEST_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const LEASE_STARTED_AT = "2026-06-19T12:00:00.000Z";
+const LEASE_EXPIRES_AT = "2026-06-26T12:00:00.000Z";
 
 const originalFetch = globalThis.fetch;
 const originalLog = console.log;
@@ -57,13 +59,32 @@ async function mockFetch(input, init) {
   calls.push({ url, method, body });
   // first-class-orgs (v1.82) routes — specific matches BEFORE the generic handlers below.
   if (url.endsWith("/orgs/v1") && method === "POST") {
-    return Promise.resolve(json({ org_id: "org_new", display_name: body?.display_name ?? null, tier: "prototype" }, 201));
+    return Promise.resolve(json({
+      org_id: "org_new",
+      display_name: body?.display_name ?? null,
+      tier: "prototype",
+      lease_started_at: LEASE_STARTED_AT,
+      lease_expires_at: LEASE_EXPIRES_AT,
+    }, 201));
   }
   if (url.endsWith("/orgs/v1/org_abc") && method === "GET") {
-    return Promise.resolve(json({ org_id: "org_abc", display_name: "Kychee", tier: "prototype", role: "owner" }));
+    return Promise.resolve(json({
+      org_id: "org_abc",
+      display_name: "Kychee",
+      tier: "prototype",
+      lease_started_at: LEASE_STARTED_AT,
+      lease_expires_at: LEASE_EXPIRES_AT,
+      role: "owner",
+    }));
   }
   if (url.endsWith("/orgs/v1/org_abc") && method === "PATCH") {
-    return Promise.resolve(json({ org_id: "org_abc", display_name: body?.display_name ?? null, tier: "prototype" }));
+    return Promise.resolve(json({
+      org_id: "org_abc",
+      display_name: body?.display_name ?? null,
+      tier: "prototype",
+      lease_started_at: LEASE_STARTED_AT,
+      lease_expires_at: LEASE_EXPIRES_AT,
+    }));
   }
   if (url.endsWith("/projects/v1") && method === "POST") {
     return Promise.resolve(json({ project_id: "prj_1", anon_key: "a", service_key: "s", schema_slot: "p1" }));
@@ -177,6 +198,7 @@ describe("run402 org", () => {
     assert.ok(post, "should POST /orgs/v1");
     assert.deepEqual(post.body, { display_name: "Kychee" });
     assert.match(stdout.join("\n"), /"org_id": "org_new"/);
+    assert.match(stdout.join("\n"), /"lease_expires_at": "2026-06-26T12:00:00.000Z"/);
   });
 
   it("get GETs /orgs/v1/:org and surfaces the caller role", async () => {
@@ -184,6 +206,7 @@ describe("run402 org", () => {
     assert.equal(lastCall().url, `${API}/orgs/v1/org_abc`);
     assert.equal(lastCall().method, "GET");
     assert.match(stdout.join("\n"), /"role": "owner"/);
+    assert.match(stdout.join("\n"), /"lease_started_at": "2026-06-19T12:00:00.000Z"/);
   });
 
   it("rename sets a new label", async () => {

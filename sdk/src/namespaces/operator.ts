@@ -301,12 +301,12 @@ export interface ApprovalClaimInput {
   state: string;
 }
 
-/** Minted approval token payload. Expiry lives inside `session`. Forward-compatible. */
+/** Minted approval token payload. Expiry lives inside `session` as ISO-8601 strings. Forward-compatible. */
 export interface ApprovalTokenResult {
   write_auth_token: string;
   token_type?: string;
   header?: string;
-  session?: { expires_at?: string | number; absolute_expires_at?: string | number; amr?: string[]; [k: string]: unknown } | null;
+  session?: { expires_at?: string; absolute_expires_at?: string; amr?: string[]; [k: string]: unknown } | null;
   [key: string]: unknown;
 }
 

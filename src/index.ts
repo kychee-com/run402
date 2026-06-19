@@ -483,7 +483,7 @@ server.tool(
 
 server.tool(
   "jobs_logs",
-  "Read recent runner logs for a managed job. Use tail to cap entries and since for an epoch millisecond lower bound.",
+  "Read recent runner logs for a managed job. Use tail to cap entries and since for an ISO-8601 lower bound; legacy epoch milliseconds are still accepted.",
   jobsLogsSchema,
   async (args) => handleJobsLogs(args),
 );
@@ -1429,21 +1429,21 @@ server.tool(
 
 server.tool(
   "create_org",
-  "Create an empty organization on the prototype tier (POST /orgs/v1); you become its owner. Accepts only an optional `display_name` (no tier at create — paid tiers are a separate flow). Step-up gated; the soft per-owner free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.",
+  "Create an empty organization on the prototype tier (POST /orgs/v1); you become its owner. Accepts only an optional `display_name` (no tier input); the response reports `tier`, `lease_started_at`, and `lease_expires_at`. Step-up gated; the soft per-owner free-org cap may return `FREE_ORG_OWNER_LIMIT_EXCEEDED`.",
   createOrgSchema,
   async (args) => handleCreateOrg(args),
 );
 
 server.tool(
   "get_org",
-  "Read one organization (GET /orgs/v1/:org_id) — its `org_id`, `display_name`, `tier`, and your `role`. Any active member may read; a non-member (including a guessed id) gets the same non-revealing 403. Params: `org_id`.",
+  "Read one organization (GET /orgs/v1/:org_id) — its `org_id`, `display_name`, `tier`, `lease_started_at`, `lease_expires_at`, and your `role`. Any active member may read; a non-member (including a guessed id) gets the same non-revealing 403. Params: `org_id`.",
   getOrgSchema,
   async (args) => handleGetOrg(args),
 );
 
 server.tool(
   "rename_org",
-  "Set or clear an organization's display label (PATCH /orgs/v1/:org_id). Owner-only + step-up gated. Pass `display_name: null` (or `\"\"`) to clear. Params: `org_id`, `display_name`.",
+  "Set or clear an organization's display label (PATCH /orgs/v1/:org_id). Owner-only + step-up gated. Pass `display_name: null` (or `\"\"`) to clear. Returns the updated `org_id`, `display_name`, `tier`, `lease_started_at`, and `lease_expires_at`. Params: `org_id`, `display_name`.",
   renameOrgSchema,
   async (args) => handleRenameOrg(args),
 );

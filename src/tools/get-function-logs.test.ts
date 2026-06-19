@@ -158,7 +158,7 @@ describe("get_function_logs tool", () => {
     const result = await handleGetFunctionLogs({
       project_id: "proj-001",
       name: "my-func",
-      since: "not-a-date",
+      since: "June 19, 2026 12:00:00 UTC",
     });
 
     assert.equal(result.isError, true);
