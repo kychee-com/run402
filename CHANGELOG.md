@@ -2,6 +2,14 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the private gateway monorepo and publishes on its own cadence.
 
+## Unreleased — project transfer to owned org
+
+Adds the public client surface for gateway issue `project-transfer-to-owned-org` / run402#469.
+
+- **SDK:** `r.admin.transfers.initiate` now accepts a third typed recipient shape, `{ projectId, toOrgId, message? }`, posting `{ to_org_id }` to the existing `/projects/v1/:project_id/transfers` endpoint. The response is typed as an immediate accepted result with returned project keys; the SDK persists those keys via `saveProject` + `setActiveProject` when available.
+- **CLI/MCP:** `run402 transfer init --to-org <org_id> --project <project_id>` and MCP `initiate_project_transfer { to_org_id }` route through the same SDK primitive. Client-side validation enforces exactly one of wallet/email/org recipients and keeps wallet-only flags (`--billing-policy`, `--kysigned` / `billing_policy`, `kysigned_record_id`) and email-only retention on their rails.
+- **Docs/tests:** OpenClaw inherits the CLI re-export; SDK, CLI, MCP, skill, OpenSpec, and drift tests document/pin the three-recipient transfer model.
+
 ## Unreleased — agent ergonomics: optional project_id + working service-key REST
 
 Public-repo quick wins surfaced by the MCPMark run (no backend changes).

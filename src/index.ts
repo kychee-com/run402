@@ -103,7 +103,7 @@ import {
   handleAdminReactivateProject,
 } from "./tools/admin-reactivate-project.js";
 
-// Unified project transfer (v1.93+) — wallet (accept) + email (claim) recipient kinds
+// Unified project transfer — wallet (accept), email (claim), owned-org (immediate) recipient shapes
 import {
   acceptProjectTransferSchema,
   cancelProjectTransferSchema,
@@ -752,18 +752,18 @@ server.tool(
   async (args) => handleAdminReactivateProject(args),
 );
 
-// ─── Project transfer (unified noun, v1.93+) ────────────────────────────────
+// ─── Project transfer (unified noun, owned-org recipient v1.96+) ─────────────
 
 server.tool(
   "initiate_project_transfer",
-  "Initiate a project transfer (v1.93+). Addressed to a WALLET (`to_wallet`, completed by `accept_project_transfer`) OR an EMAIL (`to_email`, completed by `claim_project_transfer`) — provide exactly one. You must currently own or admin the project (gateway verifies against fresh DB state). Creates a `pending` row with 72h expiry and freezes owner-side mutations until completed, cancelled, or expired. The recipient gets the project under the `migrate` billing policy (project moves into their organization). Owner's tier lease is NOT refunded. GitHub repo ownership is NOT transferred. Calls POST /projects/v1/:project_id/transfers.",
+  "Initiate a project transfer (owned-org recipient shape v1.96+). Addressed to a WALLET (`to_wallet`, completed by `accept_project_transfer`), an EMAIL (`to_email`, completed by `claim_project_transfer`), OR an owned ORG (`to_org_id`, same-actor move that completes immediately in the first gateway release) — provide exactly one. You must currently own/admin the project; for `to_org_id` you must be an active owner of both the source and destination orgs. Wallet/email transfers create a `pending` row with 72h expiry and freeze owner-side mutations until completed, cancelled, or expired. The recipient gets the project under the `migrate` billing policy. Owner's tier lease is NOT refunded. GitHub repo ownership is NOT transferred. Calls POST /projects/v1/:project_id/transfers.",
   initiateProjectTransferSchema,
   async (args) => handleInitiateProjectTransfer(args),
 );
 
 server.tool(
   "preview_project_transfer",
-  "Fetch the preview document for a project transfer of either kind (v1.93+). Returns the safe review payload: project name, custom domains, subdomains, function names, secret NAMES (values are never returned), CI bindings that will be revoked at completion, mailbox summary, billing implications, and — on email transfers — the retain_collaborator offer. Caller must be a party to the transfer. Calls GET /agent/v1/transfers/:transfer_id.",
+  "Fetch the preview document for a project transfer of any pending kind (v1.93+). Returns the safe review payload: project name, custom domains, subdomains, function names, secret NAMES (values are never returned), CI bindings that will be revoked at completion, mailbox summary, billing implications, and — on email transfers — the retain_collaborator offer. Caller must be a party to the transfer. Calls GET /agent/v1/transfers/:transfer_id.",
   previewProjectTransferSchema,
   async (args) => handlePreviewProjectTransfer(args),
 );
@@ -784,7 +784,7 @@ server.tool(
 
 server.tool(
   "cancel_project_transfer",
-  "Cancel a pending project transfer of either kind (v1.93+). You must be authorized for the row's kind (a wallet signing party, or an owner/admin of the offering org / the addressed-email principal). Already-accepted/cancelled/expired transfers return 409 TRANSFER_ALREADY_PROCESSED. Calls POST /agent/v1/transfers/:transfer_id/cancel.",
+  "Cancel a pending project transfer of any kind (v1.93+). You must be authorized for the row's kind (a wallet signing party, an owner/admin of the offering org, or the addressed-email principal). Already-accepted/cancelled/expired transfers return 409 TRANSFER_ALREADY_PROCESSED. Calls POST /agent/v1/transfers/:transfer_id/cancel.",
   cancelProjectTransferSchema,
   async (args) => handleCancelProjectTransfer(args),
 );

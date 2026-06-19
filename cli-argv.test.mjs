@@ -1751,6 +1751,87 @@ describe("transfer retain-collaborator argv validation (v1.91)", () => {
     assert.equal(err.code, "BAD_FLAG");
     assert.match(err.message, /email recipients/);
   });
+
+  it("transfer init rejects --retain-collaborator on the owned-org rail before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() =>
+      run("init", ["--to-org", "org_123", "--retain-collaborator", "developer"]),
+    );
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /email recipients/);
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+});
+
+describe("transfer owned-org init argv plumbing (GH-469)", () => {
+  it("transfer init maps --to-org to the SDK/wire to_org_id body", async () => {
+    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
+    saveAllowance({
+      address: "0x0000000000000000000000000000000000000001",
+      privateKey: "0x" + "11".repeat(32),
+      rail: "x402",
+      funded: true,
+      created: new Date().toISOString(),
+    });
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const info = requestInfo(input, init);
+      const body =
+        input instanceof Request
+          ? await input.clone().text()
+          : (init?.body ?? null);
+      calls.push({ ...info, body });
+      return json({
+        status: "accepted",
+        project_id: "prj_test123",
+        to_organization_id: "org_123",
+        anon_key: "anon_new",
+        service_key: "svc_new",
+      });
+    };
+
+    captureStart();
+    try {
+      await run("init", ["--to-org", "org_123", "--project", "prj_test123", "--message", "move"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    const call = calls.find((c) => c.path === "/projects/v1/prj_test123/transfers");
+    assert.ok(call, `expected transfer init request, got ${JSON.stringify(calls)}`);
+    assert.equal(call.method, "POST");
+    assert.deepEqual(JSON.parse(String(call.body)), { to_org_id: "org_123", message: "move" });
+  });
+
+  it("transfer init rejects conflicting --to and --to-org before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() =>
+      run("init", ["--to", "alice@example.com", "--to-org", "org_123"]),
+    );
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /exactly one recipient/);
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("transfer init rejects wallet-only flags on non-wallet rails before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    let err = await expectExit1(() =>
+      run("init", ["--to-org", "org_123", "--kysigned", "ks_1"]),
+    );
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /wallet recipients/);
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+
+    calls = [];
+    err = await expectExit1(() =>
+      run("init", ["--to", "alice@example.com", "--billing-policy", "migrate"]),
+    );
+    assert.equal(err.code, "BAD_FLAG");
+    assert.match(err.message, /wallet recipients/);
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
 });
 
 describe("transfer unified surface — obsolete kind flags rejected (unify-transfer-client-surface)", () => {

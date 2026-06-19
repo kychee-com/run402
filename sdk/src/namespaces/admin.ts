@@ -251,9 +251,9 @@ export interface OperatorStatusResult {
 
 export class Admin {
   /**
-   * Project transfer sub-namespace (v1.59+) — two-party SIWX-signed
-   * project handoff. Access via `r.admin.transfers.{initiate, preview,
-   * accept, cancel, listIncoming, listOutgoing}`.
+   * Project transfer sub-namespace — unified wallet, email, and owned-org
+   * project transfer surface. Access via `r.admin.transfers.{initiate,
+   * preview, accept, claim, cancel, listIncoming, listOutgoing}`.
    */
   readonly transfers: Transfers;
 

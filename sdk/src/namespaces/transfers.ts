@@ -1,16 +1,18 @@
 /**
- * `transfers` namespace — the unified project-transfer noun (v1.93+).
+ * `transfers` namespace — the unified project-transfer noun (v1.93+;
+ * owned-org recipient shape v1.96+).
  *
  * Exposed as `r.admin.transfers.*`. Project transfer is ONE capability,
  * body-discriminated by recipient kind: a wallet recipient (`toWallet`, SIWX
- * bilateral signing) or an email recipient (`toEmail`, the recipient claims
- * into an org). Both ride the same `/transfers` surface — there is no separate
- * `/handoffs` noun (the gateway removed it in `unify-project-transfer-surface`).
+ * bilateral signing), an email recipient (`toEmail`, the recipient claims into
+ * an org), or an owned org recipient (`toOrgId`, same-actor org move). All ride
+ * the same `/transfers` surface — there is no separate `/handoffs` noun (the
+ * gateway removed it in `unify-project-transfer-surface`).
  *
  * Gateway endpoints:
- *   POST /projects/v1/:project_id/transfers      — initiate; body { to_wallet } XOR { to_email }
- *   GET  /agent/v1/transfers/incoming            — inbox (both kinds, unioned)
- *   GET  /agent/v1/transfers/outgoing            — outbox (both kinds, unioned)
+ *   POST /projects/v1/:project_id/transfers      — initiate; body { to_wallet } XOR { to_email } XOR { to_org_id }
+ *   GET  /agent/v1/transfers/incoming            — inbox (pending kinds, unioned)
+ *   GET  /agent/v1/transfers/outgoing            — outbox (pending kinds, unioned)
  *   GET  /agent/v1/transfers/:transfer_id        — preview (kind-agnostic)
  *   POST /agent/v1/transfers/:transfer_id/accept — WALLET completion (recipient SIWX-signs)
  *   POST /agent/v1/transfers/:transfer_id/claim  — EMAIL completion (recipient claims into an org)
@@ -37,7 +39,7 @@ export type TransferStatus = "pending" | "accepted" | "cancelled" | "expired";
 export type TransferCancelledBy = "from_wallet" | "to_wallet" | "system";
 
 /** Which kind of recipient a transfer row is addressed to. */
-export type RecipientKind = "wallet" | "email";
+export type RecipientKind = "wallet" | "email" | "org";
 
 /** Initiate a transfer addressed to a wallet (two-party SIWX completion via `accept`). */
 export interface InitiateWalletTransferInput {
@@ -47,6 +49,8 @@ export interface InitiateWalletTransferInput {
   toWallet: string;
   /** Mutually exclusive with {@link InitiateWalletTransferInput.toWallet}; not allowed on the wallet path. */
   toEmail?: never;
+  /** Mutually exclusive with {@link InitiateWalletTransferInput.toWallet}; not allowed on the wallet path. */
+  toOrgId?: never;
   /**
    * Billing policy. Defaults to `"migrate"`. Phase 1A only supports
    * `"migrate"`; future phases may add `"inherit"` as a separate spec.
@@ -68,6 +72,8 @@ export interface InitiateEmailTransferInput {
   toEmail: string;
   /** Mutually exclusive with {@link InitiateEmailTransferInput.toEmail}; not allowed on the email path. */
   toWallet?: never;
+  /** Mutually exclusive with {@link InitiateEmailTransferInput.toEmail}; not allowed on the email path. */
+  toOrgId?: never;
   /** Optional note shown to the recipient (HTML-escaped server-side). */
   message?: string;
   /**
@@ -85,8 +91,34 @@ export interface InitiateEmailTransferInput {
   kysignedRecordId?: never;
 }
 
-/** Inputs to `r.admin.transfers.initiate(...)` — wallet XOR email. */
-export type InitiateTransferInput = InitiateWalletTransferInput | InitiateEmailTransferInput;
+/** Initiate an immediate move to an organization the caller already owns. */
+export interface InitiateOrgTransferInput {
+  /** Project id to transfer. Caller must be an active owner of the source org. */
+  projectId: string;
+  /**
+   * Destination organization id. The first gateway release is same-actor only:
+   * caller must be an active owner of both source and destination orgs.
+   */
+  toOrgId: string;
+  /** Mutually exclusive with {@link InitiateOrgTransferInput.toOrgId}; not allowed on the org path. */
+  toWallet?: never;
+  /** Mutually exclusive with {@link InitiateOrgTransferInput.toOrgId}; not allowed on the org path. */
+  toEmail?: never;
+  /** Optional free-text note recorded with the transfer audit row. */
+  message?: string;
+  /** Billing policy is wallet-path only; not allowed on the org path. */
+  billingPolicy?: never;
+  /** KySigned record id is wallet-path only; not allowed on the org path. */
+  kysignedRecordId?: never;
+  /** Retention is an email-only opt-in; not allowed on the org path. */
+  retainCollaborator?: never;
+}
+
+/** Inputs to `r.admin.transfers.initiate(...)` — wallet XOR email XOR org. */
+export type InitiateTransferInput =
+  | InitiateWalletTransferInput
+  | InitiateEmailTransferInput
+  | InitiateOrgTransferInput;
 
 /** Result of a wallet-addressed `initiate`. */
 export interface InitiateTransferResult {
@@ -110,6 +142,30 @@ export interface InitiateEmailTransferResult {
   transfer_id: string;
   to_email: string;
   expires_at: string;
+}
+
+/**
+ * Result of an owned-org `initiate`. Same-actor org moves complete
+ * synchronously in the first gateway release and return project keys so the
+ * caller can continue operating the project without a follow-up fetch.
+ */
+export interface InitiateOrgTransferResult {
+  status: "accepted";
+  project_id: string;
+  to_organization_id: string;
+  /** Echo of the requested org id when a gateway chooses the shorter wire key. */
+  to_org_id?: string;
+  /** Present when the gateway materializes an audit transfer row. */
+  transfer_id?: string;
+  /** Present when the gateway returns the completion timestamp inline. */
+  completed_at?: string;
+  anon_key: string;
+  service_key: string;
+  secrets_rotation_advised?: true;
+  secret_names_inherited?: string[];
+  secrets_count_inherited?: number;
+  github_repo_note?: string;
+  [key: string]: unknown;
 }
 
 export interface AcceptTransferResult {
@@ -140,9 +196,10 @@ export interface CancelTransferResult {
 
 /**
  * Summary row used in `/agent/v1/transfers/incoming` and `/outgoing`. The list
- * is kind-agnostic: `recipient_kind` discriminates wallet vs email rows. Wallet
- * rows carry `from_wallet`/`to_wallet`; email rows carry `to_email` +
- * `from_organization_id`.
+ * is kind-agnostic: `recipient_kind` discriminates wallet, email, and future
+ * org rows. Wallet rows carry `from_wallet`/`to_wallet`; email rows carry
+ * `to_email` + `from_organization_id`; future org rows carry `to_org_id` /
+ * `to_organization_id`.
  */
 export interface TransferSummary {
   transfer_id: string;
@@ -166,6 +223,10 @@ export interface TransferSummary {
   to_email?: string;
   /** Email rows only. */
   from_organization_id?: string | null;
+  /** Org rows only (future non-same-actor org transfers). */
+  to_org_id?: string;
+  /** Org rows only (canonical gateway field when present). */
+  to_organization_id?: string;
 }
 
 export interface ListTransfersOptions {
@@ -247,7 +308,8 @@ export interface RetainCollaboratorPreview {
 
 /**
  * Kind-agnostic preview document. Wallet-identity fields are `null` on email
- * rows; `to_email` and `retain_collaborator` are populated on email rows.
+ * and org rows; `to_email` and `retain_collaborator` are populated on email
+ * rows, while org rows carry `to_org_id` / `to_organization_id` when returned.
  */
 export interface ProjectTransferPreview {
   transfer_id: string;
@@ -261,6 +323,10 @@ export interface ProjectTransferPreview {
   to_wallet_display: string | null;
   /** Email rows only. */
   to_email?: string;
+  /** Org rows only (future non-same-actor org transfers). */
+  to_org_id?: string;
+  /** Org rows only (canonical gateway field when present). */
+  to_organization_id?: string;
   billing_policy: TransferBillingPolicy;
   message: string | null;
   initiated_at: string;
@@ -324,30 +390,51 @@ export class Transfers {
   constructor(private readonly client: Client) {}
 
   /**
-   * Initiate a project transfer — addressed to a wallet (`toWallet`) OR an email
-   * (`toEmail`), exactly one. Caller must currently own/admin `projectId`
-   * (gateway re-reads owner from DB, not cache). Creates a `pending` row with a
-   * 72h expiry and freezes owner-side mutations on the project until the
-   * transfer is accepted (wallet), claimed (email), cancelled, or expires.
+   * Initiate a project transfer — addressed to a wallet (`toWallet`), an email
+   * (`toEmail`), OR an owned org (`toOrgId`), exactly one. Caller must
+   * currently own/admin `projectId` (gateway re-reads owner from DB, not cache).
+   * Wallet/email recipients create a `pending` row with a 72h expiry and freeze
+   * owner-side mutations until accepted/claimed/cancelled/expired. The first
+   * org-recipient gateway release is same-actor only and completes immediately.
    */
   async initiate(input: InitiateWalletTransferInput): Promise<InitiateTransferResult>;
   async initiate(input: InitiateEmailTransferInput): Promise<InitiateEmailTransferResult>;
+  async initiate(input: InitiateOrgTransferInput): Promise<InitiateOrgTransferResult>;
   async initiate(
     input: InitiateTransferInput,
-  ): Promise<InitiateTransferResult | InitiateEmailTransferResult> {
+  ): Promise<InitiateTransferResult | InitiateEmailTransferResult | InitiateOrgTransferResult> {
     const toWallet = "toWallet" in input ? input.toWallet : undefined;
     const toEmail = "toEmail" in input ? input.toEmail : undefined;
+    const toOrgId = "toOrgId" in input ? input.toOrgId : undefined;
     const hasWallet = typeof toWallet === "string" && toWallet.length > 0;
     const hasEmail = typeof toEmail === "string" && toEmail.length > 0;
-    if (hasWallet === hasEmail) {
+    const hasOrg = typeof toOrgId === "string" && toOrgId.length > 0;
+    const recipientCount = Number(hasWallet) + Number(hasEmail) + Number(hasOrg);
+    if (recipientCount !== 1) {
       throw new LocalError(
-        "Provide exactly one of toWallet or toEmail.",
+        "Provide exactly one of toWallet, toEmail, or toOrgId.",
         "initiating project transfer",
-        { code: "VALIDATION_ERROR", details: { fields: ["toWallet", "toEmail"] } },
+        { code: "VALIDATION_ERROR", details: { fields: ["toWallet", "toEmail", "toOrgId"] } },
       );
     }
     const path = `/projects/v1/${encodeURIComponent(input.projectId)}/transfers`;
+    if (hasOrg) {
+      rejectDefinedField(input, "billingPolicy", "org");
+      rejectDefinedField(input, "kysignedRecordId", "org");
+      rejectDefinedField(input, "retainCollaborator", "org");
+      const body: Record<string, unknown> = { to_org_id: toOrgId };
+      if (input.message !== undefined) body.message = input.message;
+      const result = await this.client.request<InitiateOrgTransferResult>(path, {
+        method: "POST",
+        body,
+        context: "initiating project transfer",
+      });
+      await persistProjectKeys(this.client, result);
+      return result;
+    }
     if (hasEmail) {
+      rejectDefinedField(input, "billingPolicy", "email");
+      rejectDefinedField(input, "kysignedRecordId", "email");
       const body: Record<string, unknown> = { to_email: toEmail };
       if (input.message !== undefined) body.message = input.message;
       const retain = (input as InitiateEmailTransferInput).retainCollaborator;
@@ -359,6 +446,7 @@ export class Transfers {
       });
     }
     const w = input as InitiateWalletTransferInput;
+    rejectDefinedField(w, "retainCollaborator", "wallet");
     const body: Record<string, unknown> = { to_wallet: toWallet };
     if (w.billingPolicy !== undefined) body.billing_policy = w.billingPolicy;
     if (w.message !== undefined) body.message = w.message;
@@ -400,20 +488,7 @@ export class Transfers {
         context: "accepting project transfer",
       },
     );
-    // Persist the new owner's keys (#428) so the recipient can operate the
-    // project immediately, mirroring `projects.provision`.
-    if (result.anon_key && result.service_key) {
-      const creds = this.client.credentials;
-      if (creds.saveProject) {
-        await creds.saveProject(result.project_id, {
-          anon_key: result.anon_key,
-          service_key: result.service_key,
-        });
-      }
-      if (creds.setActiveProject) {
-        await creds.setActiveProject(result.project_id);
-      }
-    }
+    await persistProjectKeys(this.client, result);
     return result;
   }
 
@@ -437,26 +512,12 @@ export class Transfers {
       `/agent/v1/transfers/${encodeURIComponent(transferId)}/claim`,
       { method: "POST", body, context: "claiming project transfer" },
     );
-    // Persist the new owner's keys so the claimant can operate the project
-    // immediately, mirroring `accept`. Keys are returned only after the
-    // ownership flip commits, to the authorized claimant.
-    if (result.anon_key && result.service_key) {
-      const creds = this.client.credentials;
-      if (creds.saveProject) {
-        await creds.saveProject(result.project_id, {
-          anon_key: result.anon_key,
-          service_key: result.service_key,
-        });
-      }
-      if (creds.setActiveProject) {
-        await creds.setActiveProject(result.project_id);
-      }
-    }
+    await persistProjectKeys(this.client, result);
     return result;
   }
 
   /**
-   * Cancel a pending transfer of either kind. The caller must be authorized for
+   * Cancel a pending transfer of any kind. The caller must be authorized for
    * the row's kind (a wallet signer, or an owner/admin of the offering org /
    * the addressed-email principal). Already-processed transfers return 409
    * `TRANSFER_ALREADY_PROCESSED`.
@@ -474,7 +535,7 @@ export class Transfers {
     );
   }
 
-  /** Pending transfers OFFERED TO the caller — both wallet- and email-addressed. */
+  /** Pending transfers OFFERED TO the caller — wallet/email/future org rows, unioned. */
   async listIncoming(opts: ListTransfersOptions = {}): Promise<ListTransfersResult> {
     const q = buildPagination(opts);
     const path = q ? `/agent/v1/transfers/incoming?${q}` : "/agent/v1/transfers/incoming";
@@ -483,13 +544,49 @@ export class Transfers {
     });
   }
 
-  /** Pending transfers INITIATED BY the caller — both wallet- and email-addressed. */
+  /** Pending transfers INITIATED BY the caller — wallet/email/future org rows, unioned. */
   async listOutgoing(opts: ListTransfersOptions = {}): Promise<ListTransfersResult> {
     const q = buildPagination(opts);
     const path = q ? `/agent/v1/transfers/outgoing?${q}` : "/agent/v1/transfers/outgoing";
     return this.client.request<ListTransfersResult>(path, {
       context: "listing outgoing transfers",
     });
+  }
+}
+
+async function persistProjectKeys(
+  client: Client,
+  result: {
+    project_id?: string;
+    anon_key?: string;
+    service_key?: string;
+  },
+): Promise<void> {
+  if (result.project_id && result.anon_key && result.service_key) {
+    const creds = client.credentials;
+    if (creds.saveProject) {
+      await creds.saveProject(result.project_id, {
+        anon_key: result.anon_key,
+        service_key: result.service_key,
+      });
+    }
+    if (creds.setActiveProject) {
+      await creds.setActiveProject(result.project_id);
+    }
+  }
+}
+
+function rejectDefinedField(
+  input: InitiateTransferInput,
+  field: "billingPolicy" | "kysignedRecordId" | "retainCollaborator",
+  recipient: "wallet" | "email" | "org",
+): void {
+  if ((input as unknown as Record<string, unknown>)[field] !== undefined) {
+    throw new LocalError(
+      `${field} is not supported for ${recipient}-addressed project transfers.`,
+      "initiating project transfer",
+      { code: "VALIDATION_ERROR", details: { field, recipient } },
+    );
   }
 }
 

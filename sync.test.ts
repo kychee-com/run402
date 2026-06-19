@@ -380,7 +380,7 @@ const SURFACE: Capability[] = [
   { id: "demote_user",     endpoint: "POST /projects/v1/admin/:id/demote-user",  mcp: "demote_user",  cli: "projects:demote-user",  openclaw: "projects:demote-user" },
   { id: "admin_project_finance", endpoint: "GET /admin/api/finance/project/:id", mcp: null, cli: "projects:costs", openclaw: "projects:costs" },
 
-  // ── Project transfer (unified noun, v1.93+) — wallet (accept) + email (claim) ──
+  // ── Project transfer (unified noun) — wallet (accept) + email (claim) + owned-org (immediate) ──
   { id: "initiate_project_transfer", endpoint: "POST /projects/v1/:project_id/transfers",       mcp: "initiate_project_transfer", cli: "transfer:init",    openclaw: "transfer:init" },
   { id: "preview_project_transfer",  endpoint: "GET /agent/v1/transfers/:transfer_id",          mcp: "preview_project_transfer",  cli: "transfer:preview", openclaw: "transfer:preview" },
   { id: "accept_project_transfer",   endpoint: "POST /agent/v1/transfers/:transfer_id/accept",  mcp: "accept_project_transfer",   cli: "transfer:accept",  openclaw: "transfer:accept" },
@@ -665,7 +665,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   demote_user: "auth.demote",
   admin_project_finance: "admin.getProjectFinance",
 
-  // Project transfer (unified noun, v1.93+) — sub-namespace lives on admin.transfers
+  // Project transfer (unified noun) — sub-namespace lives on admin.transfers
   initiate_project_transfer: "admin.transfers.initiate",
   preview_project_transfer: "admin.transfers.preview",
   accept_project_transfer: "admin.transfers.accept",

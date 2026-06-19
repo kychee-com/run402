@@ -3,9 +3,9 @@
 ## Purpose
 TBD - created by archiving change unify-transfer-client-surface. Update Purpose after archive.
 ## Requirements
-### Requirement: One initiate method addressed to a wallet OR an email
+### Requirement: One initiate method addressed to a wallet, email, OR owned org
 
-The SDK `initiate` method SHALL accept exactly one recipient — `toWallet` XOR `toEmail` — on the single `InitiateTransferInput`, plus `billingPolicy?`, `message?`, `kysignedRecordId?` (wallet path), and `retainCollaborator?` (email path). It SHALL POST to `POST /projects/v1/:project_id/transfers` with `{ to_wallet }` or `{ to_email }` accordingly. Supplying both or neither SHALL be rejected before the request is sent. The dedicated `initiateHandoff` method and `InitiateHandoffInput` type SHALL NOT exist.
+The SDK `initiate` method SHALL accept exactly one recipient — `toWallet` XOR `toEmail` XOR `toOrgId` — on the single `InitiateTransferInput`, plus `billingPolicy?`, `message?`, `kysignedRecordId?` (wallet path), and `retainCollaborator?` (email path). It SHALL POST to `POST /projects/v1/:project_id/transfers` with `{ to_wallet }`, `{ to_email }`, or `{ to_org_id }` accordingly. Supplying more than one recipient or no recipient SHALL be rejected before the request is sent. `billingPolicy` and `kysignedRecordId` SHALL be wallet-only; `retainCollaborator` SHALL be email-only. The dedicated `initiateHandoff` method and `InitiateHandoffInput` type SHALL NOT exist.
 
 #### Scenario: Wallet initiate posts to_wallet
 - **WHEN** a caller invokes `initiate({ projectId, toWallet: "0xb…" })`
@@ -15,24 +15,33 @@ The SDK `initiate` method SHALL accept exactly one recipient — `toWallet` XOR 
 - **WHEN** a caller invokes `initiate({ projectId, toEmail: "alice@example.com" })`
 - **THEN** the SDK SHALL POST `{ to_email: "alice@example.com" }` to `/projects/v1/:project_id/transfers` (NOT `/handoffs`)
 
-#### Scenario: Both or neither recipient is rejected locally
-- **WHEN** a caller supplies both `toWallet` and `toEmail`, or neither
+#### Scenario: Owned-org initiate posts to_org_id on the same route
+- **WHEN** a caller invokes `initiate({ projectId, toOrgId: "org_…" })`
+- **THEN** the SDK SHALL POST `{ to_org_id: "org_…" }` to `/projects/v1/:project_id/transfers`
+- **AND** when the response carries `anon_key` and `service_key`, the SDK SHALL persist them with `saveProject` and call `setActiveProject` when the credentials provider supports those methods
+
+#### Scenario: Multiple or no recipients are rejected locally
+- **WHEN** a caller supplies more than one of `toWallet`, `toEmail`, and `toOrgId`, or supplies none
+- **THEN** the SDK SHALL reject the call without issuing a request
+
+#### Scenario: Recipient-specific fields are rejected locally
+- **WHEN** a caller supplies `kysignedRecordId` or `billingPolicy` on an email/org recipient, or `retainCollaborator` on a wallet/org recipient
 - **THEN** the SDK SHALL reject the call without issuing a request
 
 ### Requirement: Kind-agnostic reads and cancel carry recipient_kind
 
-`listIncoming`, `listOutgoing`, `preview`, and `cancel` SHALL each serve both recipient kinds through the `/agent/v1/transfers/*` endpoints. `TransferSummary` and `ProjectTransferPreview` SHALL carry `recipient_kind: "wallet" | "email"` and an optional `to_email`, with `to_wallet` typed as nullable. A single `listIncoming`/`listOutgoing` call SHALL return the union of wallet- and email-addressed rows for the caller. The handoff-specific `listIncomingHandoffs`, `previewHandoff`, and `cancelHandoff` methods and the `HandoffSummary` / `ProjectHandoffPreview` types SHALL NOT exist.
+`listIncoming`, `listOutgoing`, `preview`, and `cancel` SHALL each serve pending recipient kinds through the `/agent/v1/transfers/*` endpoints. `TransferSummary` and `ProjectTransferPreview` SHALL carry `recipient_kind: "wallet" | "email" | "org"`, optional `to_email`, and optional `to_org_id` / `to_organization_id`, with `to_wallet` typed as nullable. A single `listIncoming`/`listOutgoing` call SHALL return the union of pending wallet-, email-, and future org-addressed rows for the caller. The handoff-specific `listIncomingHandoffs`, `previewHandoff`, and `cancelHandoff` methods and the `HandoffSummary` / `ProjectHandoffPreview` types SHALL NOT exist.
 
-#### Scenario: Incoming list returns both kinds with recipient_kind
-- **WHEN** the authenticated caller has one wallet-addressed and one email-addressed pending transfer
-- **THEN** `listIncoming()` SHALL return both rows, each carrying `recipient_kind`
+#### Scenario: Incoming list returns pending rows with recipient_kind
+- **WHEN** the authenticated caller has wallet-addressed, email-addressed, or future org-addressed pending transfers
+- **THEN** `listIncoming()` SHALL return the rows, each carrying `recipient_kind`
 
 #### Scenario: Preview of an email transfer uses the unified route
 - **WHEN** a caller invokes `preview(transferId)` for an `email`-kind transfer
 - **THEN** the SDK SHALL GET `/agent/v1/transfers/:transfer_id` and return a preview whose `recipient_kind` is `"email"`
 
 #### Scenario: Cancel is kind-agnostic
-- **WHEN** a caller invokes `cancel(transferId)` for either kind
+- **WHEN** a caller invokes `cancel(transferId)` for any pending transfer kind
 - **THEN** the SDK SHALL POST `/agent/v1/transfers/:transfer_id/cancel`
 
 ### Requirement: claim is the email completion, the analog of accept
@@ -65,11 +74,19 @@ When the gateway returns `409 WRONG_COMPLETION_FOR_TRANSFER_KIND` (calling `acce
 
 ### Requirement: CLI is a thin shim over the unified surface
 
-`run402 transfer init --to <wallet|email>` SHALL auto-detect the recipient kind by `@` and call the unified `initiate` (mapping email to `toEmail`, wallet to `toWallet`). Every `allowanceAuthHeaders` signing path in the transfer command SHALL target `/transfers*` (never `/handoffs*`), matching the endpoint the SDK calls. The obsolete `--handoff` (preview/cancel) and `--handoffs` (list) flags SHALL be removed — `preview`, `cancel`, and `list` are kind-agnostic. `run402 transfer claim` SHALL call the unified `claim` against `/agent/v1/transfers/:id/claim`.
+`run402 transfer init --to <wallet|email>` SHALL auto-detect the recipient kind by `@` and call the unified `initiate` (mapping email to `toEmail`, wallet to `toWallet`). `run402 transfer init --to-org <org_id>` SHALL call `initiate({ toOrgId })` for same-actor owned-org moves. Every `allowanceAuthHeaders` signing path in the transfer command SHALL target `/transfers*` (never `/handoffs*`), matching the endpoint the SDK calls. The obsolete `--handoff` (preview/cancel) and `--handoffs` (list) flags SHALL be removed — `preview`, `cancel`, and `list` are kind-agnostic. `run402 transfer claim` SHALL call the unified `claim` against `/agent/v1/transfers/:id/claim`.
 
 #### Scenario: Email init signs and calls the unified route
 - **WHEN** `run402 transfer init --to alice@example.com` runs
 - **THEN** the CLI SHALL sign `/projects/v1/:id/transfers` and call `initiate({ toEmail })` — no `/handoffs` path is signed or called
+
+#### Scenario: Owned-org init signs and calls the unified route
+- **WHEN** `run402 transfer init --to-org org_…` runs
+- **THEN** the CLI SHALL sign `/projects/v1/:id/transfers` and call `initiate({ toOrgId })`
+
+#### Scenario: Recipient-specific CLI flags stay on their rails
+- **WHEN** `--kysigned` or `--billing-policy` is passed with `--to <email>` or `--to-org`, or `--retain-collaborator` is passed with `--to <wallet>` or `--to-org`
+- **THEN** the CLI SHALL reject the invocation before any network request
 
 #### Scenario: Obsolete kind flags are gone
 - **WHEN** `--handoff` or `--handoffs` is passed to any transfer subcommand
@@ -81,11 +98,15 @@ When the gateway returns `409 WRONG_COMPLETION_FOR_TRANSFER_KIND` (calling `acce
 
 ### Requirement: MCP reaches the full unified surface as thin shims
 
-`initiate_project_transfer` SHALL accept an optional `to_email` (mutually exclusive with `to_wallet`) and a new `claim_project_transfer` tool SHALL be added, each a thin shim over the corresponding SDK method. This closes the prior gap where the email recipient kind was unreachable from MCP. The MCP wallet tools' existing `/transfers*` behavior SHALL be unchanged.
+`initiate_project_transfer` SHALL accept optional `to_wallet`, `to_email`, and `to_org_id` fields (exactly one required) and `claim_project_transfer` SHALL remain the email completion tool. Each handler SHALL be a thin shim over the corresponding SDK method. The MCP wallet tools' existing `/transfers*` behavior SHALL be unchanged.
 
 #### Scenario: MCP can initiate an email transfer
 - **WHEN** `initiate_project_transfer` is invoked with `to_email`
 - **THEN** the tool SHALL call the SDK `initiate({ toEmail })` and surface the result
+
+#### Scenario: MCP can initiate an owned-org transfer
+- **WHEN** `initiate_project_transfer` is invoked with `to_org_id`
+- **THEN** the tool SHALL call the SDK `initiate({ toOrgId })` and surface the immediate accepted result
 
 #### Scenario: MCP can claim an email transfer
 - **WHEN** `claim_project_transfer` is invoked with a `transfer_id`
@@ -102,4 +123,3 @@ The CLI, OpenClaw, and MCP command/tool sets SHALL satisfy `sync.test.ts` after 
 #### Scenario: OpenClaw stays at parity
 - **WHEN** the OpenClaw `transfer` command set is compared to the CLI
 - **THEN** they SHALL be identical
-

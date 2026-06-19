@@ -643,19 +643,20 @@ Calling **`set_tier`** during grace reactivates the **organization** inline and 
 
 Operator moderation actions (independent of lifecycle, scoped to a single project): **`admin_archive_project`** and **`admin_reactivate_project`**.
 
-## Project transfer (unified noun, v1.93+)
+## Project transfer (unified noun, owned-org recipient v1.96+)
 
-A project can be transferred to a new owner without redeploying — one noun, two recipient kinds. A **wallet** recipient is a two-party SIWX transfer completed by `accept`; an **email** recipient is an email→org transfer the recipient completes by `claim` (claiming the project into an org they own). Owner-side mutations on the project freeze for the 72-hour pending window — the recipient sees exactly what they review.
+A project can be transferred to a new owner without redeploying — one noun, three recipient shapes. A **wallet** recipient is a two-party SIWX transfer completed by `accept`; an **email** recipient is an email→org transfer the recipient completes by `claim` (claiming the project into an org they own); an **owned org** recipient (`to_org_id`) is a same-actor move into another org the caller already owns and completes immediately in the first gateway release. Owner-side mutations on pending wallet/email transfers freeze for the 72-hour window — the recipient sees exactly what they review.
 
-**Seven tools**: **`initiate_project_transfer`** (owner-or-admin; `to_wallet` XOR `to_email`), **`preview_project_transfer`** (kind-agnostic), **`accept_project_transfer`** (wallet recipient), **`claim_project_transfer`** (email recipient), **`cancel_project_transfer`** (any authorized party), **`list_incoming_transfers`**, **`list_outgoing_transfers`**.
+**Seven tools**: **`initiate_project_transfer`** (owner-or-admin; exactly one of `to_wallet`, `to_email`, or `to_org_id`), **`preview_project_transfer`** (kind-agnostic), **`accept_project_transfer`** (wallet recipient), **`claim_project_transfer`** (email recipient), **`cancel_project_transfer`** (any authorized party), **`list_incoming_transfers`**, **`list_outgoing_transfers`**.
 
 **Flow:**
 
-1. Owner runs **`initiate_project_transfer`** with `project_id` and exactly one of `to_wallet` or `to_email` (optional `message`; the email path adds optional `retain_collaborator_role`). Gateway creates a `pending` row with 72h expiry.
+1. Owner runs **`initiate_project_transfer`** with `project_id` and exactly one of `to_wallet`, `to_email`, or `to_org_id` (optional `message`; the email path adds optional `retain_collaborator_role`; the wallet path adds optional `billing_policy`/`kysigned_record_id`). Wallet/email transfers create a `pending` row with 72h expiry. `to_org_id` is same-actor only at first: caller must own both source and destination orgs, and success returns an accepted result plus project keys.
 2. Either party runs **`preview_project_transfer`** with the `transfer_id`. Preview shows custom domains, subdomains, function names, secret NAMES (values are NEVER returned), CI bindings to be revoked, billing implications, and — on email transfers — the `retain_collaborator` offer.
 3. The recipient completes by kind:
    - **Wallet** → **`accept_project_transfer`**. Atomic: ownership flips, the previous owner's CI bindings are revoked, both sides get notification emails, the project carries a persistent `secrets_rotation_advised` advisory, and the response returns the new owner's project keys (persisted to the local keystore).
    - **Email** → **`claim_project_transfer`** (`org_id` optional; omit to claim into a new org). Atomic ownership flip, the email analog of accept. Like accept, the response returns the new owner's project keys (persisted to the keystore) and the project carries the `secrets_rotation_advised` advisory.
+   - **Owned org** → no separate completion step in the same-actor release; `initiate_project_transfer` completes the move immediately and persists returned project keys.
 4. Either side can **`cancel_project_transfer`** at any time before completion. After 72h the gateway auto-expires the pending row.
 
 **Freeze invariant.** While `pending`, every owner-side mutation against the project (deploy, secret CRUD, function CRUD, custom-domain bind/unbind, scheduled-function changes, mailbox config, CI binding CRUD, project rename) returns **409 `PROJECT_HAS_PENDING_TRANSFER`** with `details.transfer_id` and a `next_actions[]` cancel route. Data-plane traffic keeps serving. Payment-path routes (tier renew, billing) keep working. The `cancel_project_transfer` route is intentionally unblocked so recovery is always possible.
@@ -667,7 +668,7 @@ A project can be transferred to a new owner without redeploying — one noun, tw
 - GitHub repository ownership — handle that out of band.
 - On-chain balance attached to any wallet — `to_wallet` does NOT gain access to `from_wallet`'s funds.
 
-**Billing policy.** Phase 1A supports only `migrate` (default): the project moves into the recipient's organization. The recipient must already have an active organization; if not, the accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
+**Billing policy.** Wallet transfers support only `migrate` (default): the project moves into the recipient's organization. The recipient must already have an active organization; if not, the accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`. Email and owned-org transfers always migrate ownership; do not send `billing_policy` on those rails.
 
 **Secrets rotation prompt.** After accept, `tier_status` surfaces `projects[].secrets_rotation_advised: { advised_at, reason }` for the transferred project. Use **`set_secret`** to rotate every inherited name; the advisory clears once every one has been re-written.
 

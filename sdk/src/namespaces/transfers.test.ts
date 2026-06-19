@@ -46,10 +46,10 @@ function makeCreds(): CredentialsProvider {
   };
 }
 
-function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
+function makeSdk(fetchImpl: typeof globalThis.fetch, credentials: CredentialsProvider = makeCreds()): Run402 {
   return new Run402({
     apiBase: "https://api.example.test",
-    credentials: makeCreds(),
+    credentials,
     fetch: fetchImpl,
   });
 }
@@ -118,10 +118,10 @@ describe("admin.transfers.initiate (wallet)", () => {
     await r.admin.transfers.initiate({ projectId: "prj_abc", toWallet: "0xc0ffee" });
   });
 
-  it("rejects both-or-neither recipient locally (no request issued)", async () => {
+  it("rejects multiple-or-no recipients locally (no request issued)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     const r = makeSdk(fetch);
-    // Cast to any: the discriminated union makes "both" / "neither" compile errors;
+    // Cast to any: the discriminated union makes invalid mixes compile errors;
     // we exercise the runtime guard that backstops JS callers.
     await assert.rejects(
       () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({
@@ -132,9 +132,82 @@ describe("admin.transfers.initiate (wallet)", () => {
       (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
     );
     await assert.rejects(
+      () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({
+        projectId: "prj_abc",
+        toWallet: "0xbeef",
+        toOrgId: "org_123",
+      }),
+      (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
+    );
+    await assert.rejects(
       () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({ projectId: "prj_abc" }),
       (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
     );
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe("admin.transfers.initiate (owned org)", () => {
+  it("POSTs /transfers with to_org_id and persists returned keys", async () => {
+    const saved: Array<{ id: string; keys: { anon_key: string; service_key: string } }> = [];
+    const active: string[] = [];
+    const credentials: CredentialsProvider = {
+      ...makeCreds(),
+      async saveProject(id, keys) {
+        saved.push({ id, keys });
+      },
+      async setActiveProject(id) {
+        active.push(id);
+      },
+    };
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "POST");
+      assert.equal(call.url, "https://api.example.test/projects/v1/prj_abc/transfers");
+      assert.deepEqual(JSON.parse(String(call.body)), { to_org_id: "org_9", message: "move it" });
+      return jsonResponse(
+        {
+          status: "accepted",
+          transfer_id: "ptx_org",
+          project_id: "prj_abc",
+          to_organization_id: "org_9",
+          completed_at: "2026-06-19T12:00:00Z",
+          anon_key: "anon_new",
+          service_key: "svc_new",
+        },
+        200,
+      );
+    });
+
+    const res = await makeSdk(fetch, credentials).admin.transfers.initiate({
+      projectId: "prj_abc",
+      toOrgId: "org_9",
+      message: "move it",
+    });
+
+    assert.equal(res.status, "accepted");
+    assert.equal(res.to_organization_id, "org_9");
+    assert.deepEqual(saved, [{ id: "prj_abc", keys: { anon_key: "anon_new", service_key: "svc_new" } }]);
+    assert.deepEqual(active, ["prj_abc"]);
+    assert.equal(calls.length, 1);
+  });
+
+  it("rejects wallet/email-only options on org transfers locally", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    const r = makeSdk(fetch);
+    for (const extra of [
+      { billingPolicy: "migrate" },
+      { kysignedRecordId: "ks_1" },
+      { retainCollaborator: { role: "developer" } },
+    ]) {
+      await assert.rejects(
+        () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({
+          projectId: "prj_abc",
+          toOrgId: "org_9",
+          ...extra,
+        }),
+        (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
+      );
+    }
     assert.equal(calls.length, 0);
   });
 });
@@ -540,7 +613,7 @@ describe("admin.transfers.cancel", () => {
 });
 
 describe("admin.transfers.listIncoming / listOutgoing", () => {
-  it("returns the kind-agnostic union (wallet + email rows, each tagged recipient_kind)", async () => {
+  it("returns the kind-agnostic union (pending rows tagged recipient_kind)", async () => {
     const body = {
       transfers: [
         {

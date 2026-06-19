@@ -10,10 +10,10 @@ import {
   positionalArgs,
 } from "./argparse.mjs";
 
-const HELP = `run402 transfer — Project transfer, one noun for both recipient kinds (v1.93+)
+const HELP = `run402 transfer — Project transfer, one noun for wallet, email, and owned-org recipients
 
 Usage:
-  run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]
+  run402 transfer init (--to <wallet|email> | --to-org <org_id>) [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]
   run402 transfer preview <transfer_id>
   run402 transfer list [--incoming | --outgoing] [--limit N] [--after <cursor>]
   run402 transfer accept <transfer_id>
@@ -22,17 +22,19 @@ Usage:
 
 Subcommands:
   init        Initiate ownership change. --to <wallet> = two-party wallet transfer
-              (completed by 'accept'); --to <email> = email->org transfer (completed by 'claim').
-  preview     Fetch the safe review document (wallet or email — kind-agnostic)
-  list        List pending transfers (incoming default, or --outgoing) — both kinds, unioned
+              (completed by 'accept'); --to <email> = email->org transfer (completed by 'claim');
+              --to-org <org_id> = same-actor move to an owned org (completes immediately).
+  preview     Fetch the safe review document (pending transfer — kind-agnostic)
+  list        List pending transfers (incoming default, or --outgoing) — pending rows unioned
   accept      Accept an incoming WALLET transfer (your wallet must be the to_wallet)
   claim       Claim an incoming EMAIL transfer into an org (--into <id>; omit = new org)
-  cancel      Cancel a pending transfer of either kind
+  cancel      Cancel a pending transfer of any kind
 
 Notes:
   - Owner-side mutations on a project with a pending transfer return 409
     PROJECT_HAS_PENDING_TRANSFER. Cancel the transfer or wait 72h for expiry.
   - Phase 1A supports only billing_policy=migrate (default).
+  - --to-org is same-actor only in the first gateway release: you must own both orgs.
   - Secret VALUES are inherited by the recipient on completion; rotation is advised.
   - GitHub repo ownership is NOT transferred — handle that out of band.
 `;
@@ -41,12 +43,14 @@ const SUB_HELP = {
   init: `run402 transfer init — Initiate a project transfer
 
 Usage:
-  run402 transfer init --to <wallet|email> [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]
+  run402 transfer init (--to <wallet|email> | --to-org <org_id>) [--project <id>] [--billing-policy migrate] [--message <text>] [--kysigned <record_id>] [--retain-collaborator developer]
 
 Options:
   --project <id>         Project id (defaults to the active project)
   --to <wallet|email>    Recipient (required). A wallet uses the two-party rail (completed by
                          'accept'); an email uses the email->org rail (completed by 'claim').
+  --to-org <org_id>      Destination org you already own. Same-actor only in the first gateway
+                         release; completes immediately and returns project keys.
   --billing-policy <p>   Billing policy (wallet rail). Phase 1A only allows 'migrate' (default).
   --message <text>       Optional note shown to the recipient in preview + emails.
   --kysigned <record_id> Optional KySigned record id (wallet rail; Phase 1A: informational only).
@@ -57,6 +61,7 @@ Options:
 Notes:
   - Caller's wallet/session must currently own or admin the project (gateway re-checks fresh DB).
   - Owner-side mutations on the project are frozen until accept/claim/cancel/expiry.
+    Owned-org moves complete immediately and do not create a pending window.
   - The project lease stays with your organization; it is NOT refunded.
 `,
   preview: `run402 transfer preview — Fetch the preview document
@@ -66,7 +71,7 @@ Usage:
 
 Returns project name, custom domains, subdomains, function names, secret NAMES
 (values are never returned), CI bindings that will be revoked on completion, and
-billing implications. Works for both wallet- and email-addressed transfers; any
+billing implications. Works for pending wallet/email/future-org transfers; any
 party to the transfer may preview.
 `,
   list: `run402 transfer list — List pending transfers
@@ -74,8 +79,7 @@ party to the transfer may preview.
 Usage:
   run402 transfer list [--incoming | --outgoing] [--limit N] [--after <cursor>]
 
-Lists both wallet- and email-addressed transfers, unioned; each row carries
-recipient_kind.
+Lists pending transfers, unioned; each row carries recipient_kind.
 
 Options:
   --incoming        List transfers OFFERED TO you (default).
@@ -99,7 +103,7 @@ via 'claim', not 'accept'.)
 Usage:
   run402 transfer cancel <transfer_id> [--reason <text>]
 
-Cancels a pending transfer of either kind. You must be authorized for the row's
+Cancels a pending transfer of any kind. You must be authorized for the row's
 kind (a wallet signing party, or an owner/admin of the offering org / the
 addressed-email principal). Already-processed transfers return 409
 TRANSFER_ALREADY_PROCESSED.
@@ -124,15 +128,19 @@ const RETAIN_ROLES = new Set(["developer"]);
 
 async function init(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--project", "--to", "--billing-policy", "--message", "--kysigned", "--retain-collaborator"];
+  const valueFlags = ["--project", "--to", "--to-org", "--billing-policy", "--message", "--kysigned", "--retain-collaborator"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for transfer init: ${extra[0]}` });
   }
   const to = flagValue(parsedArgs, "--to");
-  if (!to) {
-    fail({ code: "BAD_USAGE", message: "Missing --to <wallet|email>" });
+  const toOrg = flagValue(parsedArgs, "--to-org");
+  if (!to && !toOrg) {
+    fail({ code: "BAD_USAGE", message: "Missing recipient. Pass --to <wallet|email> or --to-org <org_id>." });
+  }
+  if (to && toOrg) {
+    fail({ code: "BAD_USAGE", message: "Pass exactly one recipient flag: --to <wallet|email> or --to-org <org_id>." });
   }
   const projectFlag = flagValue(parsedArgs, "--project");
   const projectId = await resolveProjectId(projectFlag);
@@ -151,18 +159,17 @@ async function init(args) {
   const kysigned = flagValue(parsedArgs, "--kysigned");
   const retainCollaborator = flagValue(parsedArgs, "--retain-collaborator");
 
-  // One noun, two rails: an email recipient routes to the email->org completion
-  // ('claim'); a wallet recipient routes to the two-party wallet completion
-  // ('accept'). Both initiate on the SAME endpoint, discriminated by the body.
-  const isEmail = to.includes("@");
+  // One noun, three recipient shapes. --to keeps wallet/email auto-detection;
+  // --to-org is explicit because org ids are not human-recipient addresses.
+  const recipientKind = toOrg ? "org" : (to.includes("@") ? "email" : "wallet");
 
   // --retain-collaborator (v1.91) is an email-only opt-in: the sender keeps a
   // developer membership in the recipient's org (recipient must accept at claim).
   if (retainCollaborator !== null) {
-    if (!isEmail) {
+    if (recipientKind !== "email") {
       fail({
         code: "BAD_FLAG",
-        message: "--retain-collaborator applies only to email recipients; a wallet --to uses the two-party transfer rail.",
+        message: "--retain-collaborator applies only to email recipients.",
         details: { flag: "--retain-collaborator" },
       });
     }
@@ -174,25 +181,48 @@ async function init(args) {
       });
     }
   }
+  if (kysigned !== null && recipientKind !== "wallet") {
+    fail({
+      code: "BAD_FLAG",
+      message: "--kysigned applies only to wallet recipients; email and owned-org transfers do not use the KySigned rail.",
+      details: { flag: "--kysigned" },
+    });
+  }
+  if (billingPolicy !== null && recipientKind !== "wallet") {
+    fail({
+      code: "BAD_FLAG",
+      message: "--billing-policy applies only to wallet recipients; email and owned-org transfers always migrate ownership.",
+      details: { flag: "--billing-policy" },
+    });
+  }
 
-  // Both kinds initiate on the unified transfer endpoint — sign that path.
+  // All recipient shapes initiate on the unified transfer endpoint — sign that path.
   allowanceAuthHeaders(`/projects/v1/${projectId}/transfers`);
 
   try {
-    const res = isEmail
-      ? await getSdk().admin.transfers.initiate({
-          projectId,
-          toEmail: to,
-          message: message ?? undefined,
-          retainCollaborator: retainCollaborator ? { role: retainCollaborator } : undefined,
-        })
-      : await getSdk().admin.transfers.initiate({
-          projectId,
-          toWallet: to,
-          billingPolicy: billingPolicy ?? undefined,
-          message: message ?? undefined,
-          kysignedRecordId: kysigned ?? undefined,
-        });
+    let res;
+    if (recipientKind === "org") {
+      res = await getSdk().admin.transfers.initiate({
+        projectId,
+        toOrgId: toOrg,
+        message: message ?? undefined,
+      });
+    } else if (recipientKind === "email") {
+      res = await getSdk().admin.transfers.initiate({
+        projectId,
+        toEmail: to,
+        message: message ?? undefined,
+        retainCollaborator: retainCollaborator ? { role: retainCollaborator } : undefined,
+      });
+    } else {
+      res = await getSdk().admin.transfers.initiate({
+        projectId,
+        toWallet: to,
+        billingPolicy: billingPolicy ?? undefined,
+        message: message ?? undefined,
+        kysignedRecordId: kysigned ?? undefined,
+      });
+    }
     console.log(JSON.stringify(res, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -207,7 +237,7 @@ async function preview(args) {
     fail({ code: "BAD_USAGE", message: "Usage: run402 transfer preview <transfer_id>" });
   }
   const transferId = positionals[0];
-  // Preview is kind-agnostic — one route serves wallet and email transfers.
+  // Preview is kind-agnostic — one route serves wallet, email, and future org transfers.
   allowanceAuthHeaders(`/agent/v1/transfers/${transferId}`);
 
   try {
@@ -241,8 +271,8 @@ async function list(args) {
       ? undefined
       : parseIntegerFlag("--limit", limitFlag, { min: 1, max: 1000 });
 
-  // Incoming/outgoing are kind-agnostic — each returns the union of wallet- and
-  // email-addressed rows, tagged with recipient_kind.
+  // Incoming/outgoing are kind-agnostic — each returns the union of pending
+  // wallet/email/future-org rows, tagged with recipient_kind.
   allowanceAuthHeaders(`/agent/v1/transfers/${direction}`);
 
   try {

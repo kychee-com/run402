@@ -1,9 +1,11 @@
 /**
- * MCP tools for the unified project-transfer flow (v1.93+). Each handler is a
- * thin shim over `r.admin.transfers.*` followed by markdown formatting. One
- * noun, two recipient kinds: a wallet recipient (`to_wallet`, completed via
- * `accept_project_transfer`) or an email recipient (`to_email`, completed via
- * `claim_project_transfer`).
+ * MCP tools for the unified project-transfer flow (v1.93+; owned-org recipient
+ * shape v1.96+). Each handler is a thin shim over `r.admin.transfers.*`
+ * followed by markdown formatting. One noun, three recipient shapes: a wallet
+ * recipient (`to_wallet`, completed via `accept_project_transfer`), an email
+ * recipient (`to_email`, completed via `claim_project_transfer`), or an owned
+ * org recipient (`to_org_id`, same-actor move that completes immediately in the
+ * first gateway release).
  */
 
 import { z } from "zod";
@@ -21,11 +23,15 @@ export const initiateProjectTransferSchema = {
   to_wallet: z
     .string()
     .optional()
-    .describe("Recipient WALLET address (any case — the gateway lowercases). Provide EXACTLY ONE of `to_wallet` or `to_email`. A wallet recipient completes the transfer via `accept_project_transfer`."),
+    .describe("Recipient WALLET address (any case — the gateway lowercases). Provide EXACTLY ONE of `to_wallet`, `to_email`, or `to_org_id`. A wallet recipient completes the transfer via `accept_project_transfer`."),
   to_email: z
     .string()
     .optional()
-    .describe("Recipient EMAIL. Provide EXACTLY ONE of `to_wallet` or `to_email`. An email recipient completes the transfer via `claim_project_transfer` (they claim it into an org they own)."),
+    .describe("Recipient EMAIL. Provide EXACTLY ONE of `to_wallet`, `to_email`, or `to_org_id`. An email recipient completes the transfer via `claim_project_transfer` (they claim it into an org they own)."),
+  to_org_id: z
+    .string()
+    .optional()
+    .describe("Destination ORG id. Provide EXACTLY ONE of `to_wallet`, `to_email`, or `to_org_id`. First gateway release is same-actor only: caller must be an active owner of the source org and destination org. Completes immediately and returns project keys."),
   billing_policy: z
     .enum(["migrate"])
     .optional()
@@ -48,6 +54,7 @@ export async function handleInitiateProjectTransfer(args: {
   project_id: string;
   to_wallet?: string;
   to_email?: string;
+  to_org_id?: string;
   billing_policy?: "migrate";
   message?: string;
   kysigned_record_id?: string;
@@ -55,13 +62,49 @@ export async function handleInitiateProjectTransfer(args: {
 }): Promise<ToolResult> {
   const hasWallet = typeof args.to_wallet === "string" && args.to_wallet.length > 0;
   const hasEmail = typeof args.to_email === "string" && args.to_email.length > 0;
-  if (hasWallet === hasEmail) {
+  const hasOrg = typeof args.to_org_id === "string" && args.to_org_id.length > 0;
+  const recipientCount = Number(hasWallet) + Number(hasEmail) + Number(hasOrg);
+  if (recipientCount !== 1) {
     return {
-      content: [{ type: "text", text: "Provide exactly one of `to_wallet` or `to_email`." }],
+      content: [{ type: "text", text: "Provide exactly one of `to_wallet`, `to_email`, or `to_org_id`." }],
+      isError: true,
+    };
+  }
+  if (!hasEmail && args.retain_collaborator_role) {
+    return {
+      content: [{ type: "text", text: "`retain_collaborator_role` applies only to `to_email` transfers." }],
+      isError: true,
+    };
+  }
+  if (!hasWallet && args.kysigned_record_id) {
+    return {
+      content: [{ type: "text", text: "`kysigned_record_id` applies only to `to_wallet` transfers." }],
+      isError: true,
+    };
+  }
+  if (!hasWallet && args.billing_policy) {
+    return {
+      content: [{ type: "text", text: "`billing_policy` applies only to `to_wallet` transfers." }],
       isError: true,
     };
   }
   try {
+    if (hasOrg) {
+      const res = await getSdk().admin.transfers.initiate({
+        projectId: args.project_id,
+        toOrgId: args.to_org_id as string,
+        message: args.message,
+      });
+      const toOrg = res.to_organization_id ?? res.to_org_id ?? args.to_org_id;
+      const lines = [
+        `Project \`${res.project_id ?? args.project_id}\` moved to org \`${toOrg}\`.`,
+        `- status: ${res.status}`,
+      ];
+      if (res.transfer_id) lines.push(`- transfer_id: \`${res.transfer_id}\``);
+      if (res.completed_at) lines.push(`- completed_at: ${res.completed_at}`);
+      lines.push(``, `Same-actor owned-org transfer completed immediately. The returned project keys were persisted to the local keystore; the service_key is not printed here.`);
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    }
     if (hasEmail) {
       const res = await getSdk().admin.transfers.initiate({
         projectId: args.project_id,
@@ -124,6 +167,8 @@ export async function handlePreviewProjectTransfer(args: {
     ];
     if (p.recipient_kind === "email") {
       lines.push(`- to_email: ${p.to_email ?? "(unknown)"}`);
+    } else if (p.recipient_kind === "org") {
+      lines.push(`- to_org_id: ${p.to_organization_id ?? p.to_org_id ?? "(unknown)"}`);
     } else {
       lines.push(`- from: ${p.from_wallet_display} → to: ${p.to_wallet_display}`);
     }
@@ -275,7 +320,12 @@ export async function handleListIncomingTransfers(args: {
     }
     const lines = [`Pending incoming transfers (${res.transfers.length}):`];
     for (const t of res.transfers) {
-      const who = t.recipient_kind === "email" ? `to_email ${t.to_email}` : `from ${t.from_wallet}`;
+      const who =
+        t.recipient_kind === "email"
+          ? `to_email ${t.to_email}`
+          : t.recipient_kind === "org"
+          ? `to_org ${t.to_organization_id ?? t.to_org_id}`
+          : `from ${t.from_wallet}`;
       lines.push(`- \`${t.transfer_id}\` [${t.recipient_kind}] — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, ${who}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
       lines.push(`  preview: ${t.preview_path}`);
     }
@@ -309,7 +359,12 @@ export async function handleListOutgoingTransfers(args: {
     }
     const lines = [`Pending outgoing transfers (${res.transfers.length}):`];
     for (const t of res.transfers) {
-      const who = t.recipient_kind === "email" ? `to_email ${t.to_email}` : `to ${t.to_wallet}`;
+      const who =
+        t.recipient_kind === "email"
+          ? `to_email ${t.to_email}`
+          : t.recipient_kind === "org"
+          ? `to_org ${t.to_organization_id ?? t.to_org_id}`
+          : `to ${t.to_wallet}`;
       lines.push(`- \`${t.transfer_id}\` [${t.recipient_kind}] — project \`${t.project_id}\`${t.project_name_snapshot ? ` (${t.project_name_snapshot})` : ""}, ${who}, billing_policy=${t.billing_policy}, expires ${t.expires_at}`);
       lines.push(`  preview: ${t.preview_path}`);
     }

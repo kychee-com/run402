@@ -899,19 +899,20 @@ Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `int
 
 Operator moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same organization keep serving.
 
-## Project transfer (unified noun, v1.93+)
+## Project transfer (unified noun, owned-org recipient v1.96+)
 
-Hand off a project to a new owner without redeploying — one noun, two recipient kinds. `--to` routes by value: a **wallet** is a two-party SIWX transfer (recipient completes with `accept`); an **email** is an email→org transfer (recipient completes with `claim`, claiming into an org they own). Owner-side mutations on the project freeze for the 72-hour pending window so the recipient reviews exactly what they will own.
+Hand off or move a project without redeploying — one noun, three recipient shapes. `--to` routes by value: a **wallet** is a two-party SIWX transfer (recipient completes with `accept`); an **email** is an email→org transfer (recipient completes with `claim`, claiming into an org they own). `--to-org` moves the project into another org you already own; same-actor owned-org moves complete immediately in the first gateway release. Owner-side mutations on pending wallet/email transfers freeze for the 72-hour window so the recipient reviews exactly what they will own.
 
 ```bash
 # Initiate (you must currently own/admin the project). --to routes by recipient kind:
 run402 transfer init --to 0xRECIPIENT --project <project_id> [--message "..."]            # wallet
 run402 transfer init --to alice@example.com --project <project_id> [--retain-collaborator developer]  # email
+run402 transfer init --to-org <org_id> --project <project_id> [--message "..."]           # owned org; completes immediately
 
 # Either party can inspect the safe preview document (kind-agnostic)
 run402 transfer preview <transfer_id>
 
-# Cancel a pending transfer of either kind (any authorized party)
+# Cancel a pending transfer of any kind (any authorized party)
 run402 transfer cancel <transfer_id> [--reason "..."]
 
 # WALLET recipient completes (your wallet must equal the transfer's to_wallet)
@@ -920,7 +921,9 @@ run402 transfer accept <transfer_id>
 # EMAIL recipient completes — claim into an org (omit --into to create a new org)
 run402 transfer claim <transfer_id> [--into <org_id>] [--accept-retained-collaborator]
 
-# Inbox / outbox (both list wallet + email rows, each tagged recipient_kind)
+# OWNED-ORG moves have no follow-up accept/claim step in the same-actor release
+
+# Inbox / outbox (pending rows are tagged recipient_kind)
 run402 transfer list                 # incoming (default)
 run402 transfer list --outgoing
 ```
@@ -929,7 +932,7 @@ run402 transfer list --outgoing
 
 **What does NOT transfer:** tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`run402 contracts ...` — wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet.
 
-**Billing policy.** Phase 1A supports only `--billing-policy migrate` (default): the project moves into the recipient's organization. If the recipient has no active organization yet, the accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
+**Billing policy.** Wallet transfers support only `--billing-policy migrate` (default): the project moves into the recipient's organization. If the recipient has no active organization yet, the accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`. Email and owned-org transfers always migrate ownership; don't send `--billing-policy` there.
 
 **Secrets rotation prompt.** Secret VALUES are inherited at accept. The accept response returns `secret_names_inherited[]` (names only). The project carries a persistent `secrets_rotation_advised` advisory; `run402 tier status` surfaces it on `projects[].secrets_rotation_advised`. Use `run402 secrets set <project> <name> <value>` to rotate every inherited name; the advisory clears once every one has been re-written.
 
