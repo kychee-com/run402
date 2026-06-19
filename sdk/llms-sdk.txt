@@ -1452,16 +1452,20 @@ ArchiveProjectResult:    { status, project_id, archived_at?, reason?, note? }   
 ReactivateProjectResult: { status, project_id, reactivated?: true, note? }      // note: "not archived"
 ```
 
-### `r.admin.transfers` (unified project transfer, v1.93+)
+### `r.admin.transfers` (unified project transfer, v1.96+)
 
-Project transfer is exposed as a sub-namespace at `r.admin.transfers` — one noun, two recipient kinds. A **wallet** recipient completes via `accept` (both sides sign SIWX); an **email** recipient completes via `claim` (the recipient claims into an org). `initiate` is body-discriminated (`toWallet` XOR `toEmail`); `preview` / `cancel` / `listIncoming` / `listOutgoing` are kind-agnostic and tag each row with `recipient_kind`. (The pre-v1.93 `*Handoff` methods and `/handoffs` routes are gone.)
+Project transfer is exposed as a sub-namespace at `r.admin.transfers` — one noun, three recipient shapes. A **wallet** recipient completes via `accept` (both sides sign SIWX); an **email** recipient completes via `claim` (the recipient claims into an org); an **org** recipient (`toOrgId`) is a same-actor move into an org the caller already owns and completes synchronously. `initiate` is body-discriminated (`toWallet` XOR `toEmail` XOR `toOrgId`); `preview` / `cancel` / `listIncoming` / `listOutgoing` remain for pending wallet/email rows and tag each row with `recipient_kind`. (The pre-v1.93 `*Handoff` methods and `/handoffs` routes are gone.)
 
 ```
 initiate({ projectId, toWallet, billingPolicy?, message?, kysignedRecordId? })   // wallet recipient
   : Promise<InitiateTransferResult>            // { transfer_id, expires_at, project_summary, your_unused_lease_days, lease_refundable: false, terms_sha256 }
 initiate({ projectId, toEmail, message?, retainCollaborator? })                  // email recipient
   : Promise<InitiateEmailTransferResult>       // { status: "ok", transfer_id, to_email, expires_at }
-// Exactly one of toWallet / toEmail — both-or-neither throws a local VALIDATION_ERROR before any request.
+initiate({ projectId, toOrgId, message? })                                       // same-actor org move
+  : Promise<InitiateOrgTransferResult>         // { transfer_id, project_id, from_organization_id, to_organization_id, completed_at,
+                                               //   secrets_rotation_advised: true, secret_names_inherited[], secrets_count_inherited,
+                                               //   github_repo_note, anon_key, service_key }; initiate() persists keys.
+// Exactly one of toWallet / toEmail / toOrgId — zero/multiple throws a local VALIDATION_ERROR before any request.
 preview(transferId: string): Promise<ProjectTransferPreview>
   // { transfer_id, project_id, status, recipient_kind, from_wallet_display, to_wallet_display, to_email?,
   //   billing_policy, message, initiated_at, expires_at, terms_sha256, custom_domains[], subdomains[],
@@ -1483,7 +1487,7 @@ listIncoming(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // wallet
 listOutgoing(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // wallet + email rows, unioned
 ```
 
-`billingPolicy` defaults to `"migrate"` (the only Phase 1A policy — the project moves into the recipient's organization). The `kysignedRecordId` field is stored verbatim in Phase 1A; Phase 1B will verify it against the canonical terms hash. Initiate authority is owner-OR-admin.
+`billingPolicy` defaults to `"migrate"` (the only Phase 1A policy — the project moves into the recipient's organization). The `kysignedRecordId` field is wallet-only and stored verbatim in Phase 1A; Phase 1B will verify it against the canonical terms hash. Wallet/email initiate authority is owner-OR-admin. The `toOrgId` path is stricter: the caller must be an active owner of both the source org and destination org; if they own only the source, the gateway returns `403 FORBIDDEN` and creates no pending org transfer yet. The same `toOrgId` model is reserved for a future interactive non-same-actor org transfer.
 
 **Email recipient — retain-collaborator (v1.91).** Pass `retainCollaborator: { role: "developer" }` on the email `initiate` to keep a `developer` membership in the recipient's org after the transfer (only `developer` is valid; the subject is always the initiating owner — gateway rejects with `INVALID_RETAIN_ROLE` / `RETAIN_SUBJECT_REQUIRED`). The recipient sees the offer as `ProjectTransferPreview.retain_collaborator` (a `RetainCollaboratorPreview` `{ principal_id, role, sender_label, scope, note, accept_field }`, or `null`) and accepts by passing `acceptRetainedCollaborator: true` to `claim`; the result then carries `retained_collaborator_principal_id` (or `null`). Omitting the accept (the default) is a full severance.
 

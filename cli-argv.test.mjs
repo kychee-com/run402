@@ -1753,6 +1753,62 @@ describe("transfer retain-collaborator argv validation (v1.91)", () => {
   });
 });
 
+describe("transfer to-org argv validation (v1.96)", () => {
+  it("transfer init rejects --to and --to-org together before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() =>
+      run("init", [
+        "--to",
+        "alice@example.com",
+        "--to-org",
+        "11111111-1111-4111-8111-111111111111",
+      ]),
+    );
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /exactly one/);
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
+  it("transfer init rejects email/wallet-only flags on --to-org before network", async () => {
+    const { run } = await import("./cli/lib/transfer.mjs");
+    const err = await expectExit1(() =>
+      run("init", [
+        "--to-org",
+        "11111111-1111-4111-8111-111111111111",
+        "--retain-collaborator",
+        "developer",
+      ]),
+    );
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--retain-collaborator");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+
+    const err2 = await expectExit1(() =>
+      run("init", [
+        "--to-org",
+        "11111111-1111-4111-8111-111111111111",
+        "--kysigned",
+        "ks_1",
+      ]),
+    );
+    assert.equal(err2.code, "BAD_FLAG");
+    assert.equal(err2.details.flag, "--kysigned");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+
+    const err3 = await expectExit1(() =>
+      run("init", [
+        "--to-org",
+        "11111111-1111-4111-8111-111111111111",
+        "--billing-policy",
+        "migrate",
+      ]),
+    );
+    assert.equal(err3.code, "BAD_FLAG");
+    assert.equal(err3.details.flag, "--billing-policy");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+});
+
 describe("transfer unified surface — obsolete kind flags rejected (unify-transfer-client-surface)", () => {
   it("preview rejects the obsolete --handoff flag before network", async () => {
     const { run } = await import("./cli/lib/transfer.mjs");

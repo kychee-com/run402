@@ -899,14 +899,15 @@ Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `int
 
 Operator moderation actions (independent of lifecycle): `run402 admin archive <project_id> [--reason "..."]` sets `archived_at`; `run402 admin reactivate <project_id>` flips it back. Both are scoped to a single project — siblings on the same organization keep serving.
 
-## Project transfer (unified noun, v1.93+)
+## Project transfer (unified noun, v1.96+)
 
-Hand off a project to a new owner without redeploying — one noun, two recipient kinds. `--to` routes by value: a **wallet** is a two-party SIWX transfer (recipient completes with `accept`); an **email** is an email→org transfer (recipient completes with `claim`, claiming into an org they own). Owner-side mutations on the project freeze for the 72-hour pending window so the recipient reviews exactly what they will own.
+Hand off or move a project without redeploying — one noun, three recipient shapes. `--to` routes wallet/email by value: a **wallet** is a two-party SIWX transfer (recipient completes with `accept`); an **email** is an email→org transfer (recipient completes with `claim`, claiming into an org they own). `--to-org` moves into another org the caller already owns and completes synchronously. Owner-side mutations on the project freeze for the 72-hour pending window only for wallet/email pending rows.
 
 ```bash
 # Initiate (you must currently own/admin the project). --to routes by recipient kind:
 run402 transfer init --to 0xRECIPIENT --project <project_id> [--message "..."]            # wallet
 run402 transfer init --to alice@example.com --project <project_id> [--retain-collaborator developer]  # email
+run402 transfer init --to-org <org_id> --project <project_id> [--message "..."]           # same-actor org move
 
 # Either party can inspect the safe preview document (kind-agnostic)
 run402 transfer preview <transfer_id>
@@ -929,7 +930,7 @@ run402 transfer list --outgoing
 
 **What does NOT transfer:** tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`run402 contracts ...` — wallet-scoped, not project-scoped), GitHub repo ownership (handle out of band), or on-chain balance on any wallet.
 
-**Billing policy.** Phase 1A supports only `--billing-policy migrate` (default): the project moves into the recipient's organization. If the recipient has no active organization yet, the accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE`.
+**Billing policy.** Phase 1A supports only `--billing-policy migrate` (default): the project moves into the recipient's organization. Wallet accept returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE` if the recipient has no active organization. `--to-org` requires an active destination org you own and returns `409 RECIPIENT_ORGANIZATION_NOT_ACTIVE` if it is not active.
 
 **Secrets rotation prompt.** Secret VALUES are inherited at accept. The accept response returns `secret_names_inherited[]` (names only). The project carries a persistent `secrets_rotation_advised` advisory; `run402 tier status` surfaces it on `projects[].secrets_rotation_advised`. Use `run402 secrets set <project> <name> <value>` to rotate every inherited name; the advisory clears once every one has been re-written.
 

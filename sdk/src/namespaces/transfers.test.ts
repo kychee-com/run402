@@ -132,10 +132,80 @@ describe("admin.transfers.initiate (wallet)", () => {
       (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
     );
     await assert.rejects(
+      () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({
+        projectId: "prj_abc",
+        toEmail: "a@b.c",
+        toOrgId: "11111111-1111-4111-8111-111111111111",
+      }),
+      (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
+    );
+    await assert.rejects(
       () => (r.admin.transfers.initiate as (i: unknown) => Promise<unknown>)({ projectId: "prj_abc" }),
       (e: unknown) => (e as { code?: string }).code === "VALIDATION_ERROR",
     );
     assert.equal(calls.length, 0);
+  });
+});
+
+describe("admin.transfers.initiate (org)", () => {
+  it("POSTs /transfers with to_org_id and persists returned keys", async () => {
+    const saved: Array<{ projectId: string; keys: { anon_key: string; service_key: string } }> = [];
+    let activeProject: string | null = null;
+    const credentials: CredentialsProvider = {
+      async getAuth() {
+        return { "SIGN-IN-WITH-X": "test-siwx" };
+      },
+      async getProject() {
+        return null;
+      },
+      async saveProject(projectId, keys) {
+        saved.push({ projectId, keys });
+      },
+      async setActiveProject(projectId) {
+        activeProject = projectId;
+      },
+    };
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "POST");
+      assert.equal(call.url, "https://api.example.test/projects/v1/prj_abc/transfers");
+      assert.deepEqual(JSON.parse(String(call.body)), {
+        to_org_id: "11111111-1111-4111-8111-111111111111",
+        message: "move it",
+      });
+      return jsonResponse({
+        transfer_id: "ptx_org1",
+        project_id: "prj_abc",
+        from_organization_id: "00000000-0000-4000-8000-000000000001",
+        to_organization_id: "11111111-1111-4111-8111-111111111111",
+        completed_at: "2026-06-19T10:00:00Z",
+        secrets_rotation_advised: true,
+        secret_names_inherited: ["API_KEY"],
+        secrets_count_inherited: 1,
+        github_repo_note: "GitHub repository ownership is not transferred by Run402.",
+        anon_key: "anon_moved",
+        service_key: "svc_moved",
+      }, 200);
+    });
+    const r = new Run402({
+      apiBase: "https://api.example.test",
+      credentials,
+      fetch,
+    });
+    const res = await r.admin.transfers.initiate({
+      projectId: "prj_abc",
+      toOrgId: "11111111-1111-4111-8111-111111111111",
+      message: "move it",
+    });
+    assert.equal(res.transfer_id, "ptx_org1");
+    assert.equal(res.to_organization_id, "11111111-1111-4111-8111-111111111111");
+    assert.deepEqual(saved, [
+      {
+        projectId: "prj_abc",
+        keys: { anon_key: "anon_moved", service_key: "svc_moved" },
+      },
+    ]);
+    assert.equal(activeProject, "prj_abc");
+    assert.equal(calls.length, 1);
   });
 });
 

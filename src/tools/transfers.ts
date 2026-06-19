@@ -1,9 +1,10 @@
 /**
- * MCP tools for the unified project-transfer flow (v1.93+). Each handler is a
+ * MCP tools for the unified project-transfer flow (v1.96+). Each handler is a
  * thin shim over `r.admin.transfers.*` followed by markdown formatting. One
- * noun, two recipient kinds: a wallet recipient (`to_wallet`, completed via
- * `accept_project_transfer`) or an email recipient (`to_email`, completed via
- * `claim_project_transfer`).
+ * noun, three recipient kinds: a wallet recipient (`to_wallet`, completed via
+ * `accept_project_transfer`), an email recipient (`to_email`, completed via
+ * `claim_project_transfer`), or an org recipient (`to_org_id`, completed
+ * synchronously when the caller owns both orgs).
  */
 
 import { z } from "zod";
@@ -21,11 +22,15 @@ export const initiateProjectTransferSchema = {
   to_wallet: z
     .string()
     .optional()
-    .describe("Recipient WALLET address (any case — the gateway lowercases). Provide EXACTLY ONE of `to_wallet` or `to_email`. A wallet recipient completes the transfer via `accept_project_transfer`."),
+    .describe("Recipient WALLET address (any case — the gateway lowercases). Provide EXACTLY ONE of `to_wallet`, `to_email`, or `to_org_id`. A wallet recipient completes the transfer via `accept_project_transfer`."),
   to_email: z
     .string()
     .optional()
-    .describe("Recipient EMAIL. Provide EXACTLY ONE of `to_wallet` or `to_email`. An email recipient completes the transfer via `claim_project_transfer` (they claim it into an org they own)."),
+    .describe("Recipient EMAIL. Provide EXACTLY ONE of `to_wallet`, `to_email`, or `to_org_id`. An email recipient completes the transfer via `claim_project_transfer` (they claim it into an org they own)."),
+  to_org_id: z
+    .string()
+    .optional()
+    .describe("Destination org id for a same-actor move. Provide EXACTLY ONE of `to_wallet`, `to_email`, or `to_org_id`. In v1.96 the caller must own both the source and destination orgs; success completes synchronously."),
   billing_policy: z
     .enum(["migrate"])
     .optional()
@@ -48,6 +53,7 @@ export async function handleInitiateProjectTransfer(args: {
   project_id: string;
   to_wallet?: string;
   to_email?: string;
+  to_org_id?: string;
   billing_policy?: "migrate";
   message?: string;
   kysigned_record_id?: string;
@@ -55,9 +61,28 @@ export async function handleInitiateProjectTransfer(args: {
 }): Promise<ToolResult> {
   const hasWallet = typeof args.to_wallet === "string" && args.to_wallet.length > 0;
   const hasEmail = typeof args.to_email === "string" && args.to_email.length > 0;
-  if (hasWallet === hasEmail) {
+  const hasOrg = typeof args.to_org_id === "string" && args.to_org_id.length > 0;
+  if ([hasWallet, hasEmail, hasOrg].filter(Boolean).length !== 1) {
     return {
-      content: [{ type: "text", text: "Provide exactly one of `to_wallet` or `to_email`." }],
+      content: [{ type: "text", text: "Provide exactly one of `to_wallet`, `to_email`, or `to_org_id`." }],
+      isError: true,
+    };
+  }
+  if (hasOrg && args.kysigned_record_id) {
+    return {
+      content: [{ type: "text", text: "`kysigned_record_id` is only supported for wallet transfers." }],
+      isError: true,
+    };
+  }
+  if (hasOrg && args.retain_collaborator_role) {
+    return {
+      content: [{ type: "text", text: "`retain_collaborator_role` is only supported for email transfers." }],
+      isError: true,
+    };
+  }
+  if (hasOrg && args.billing_policy) {
+    return {
+      content: [{ type: "text", text: "`billing_policy` is implicit for org moves; omit it." }],
       isError: true,
     };
   }
@@ -79,6 +104,27 @@ export async function handleInitiateProjectTransfer(args: {
         ``,
         `The recipient completes by verifying ${res.to_email} and claiming the project into an org (the email analog of accept). Owner-side mutations on this project are blocked until it is claimed, cancelled, or expires. Use \`cancel_project_transfer\` with the transfer id to reverse.`,
       ];
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    }
+    if (hasOrg) {
+      const res = await getSdk().admin.transfers.initiate({
+        projectId: args.project_id,
+        toOrgId: args.to_org_id as string,
+        message: args.message,
+      });
+      const lines = [
+        `Project \`${res.project_id}\` moved to org \`${res.to_organization_id}\`.`,
+        `- transfer_id: \`${res.transfer_id}\``,
+        `- from_organization_id: ${res.from_organization_id}`,
+        `- completed_at: ${res.completed_at}`,
+        `- secrets inherited: ${res.secrets_count_inherited}`,
+      ];
+      if (res.secret_names_inherited.length > 0) {
+        lines.push(`  names: ${res.secret_names_inherited.map((n) => `\`${n}\``).join(", ")}`);
+      }
+      lines.push(``, `The move completed synchronously because the caller owns both orgs. The project keys were returned and persisted to the local keystore; the service_key JWT is not printed here.`);
+      lines.push(``, `Rotation advised: inherited secret VALUES carried with the project. Rotate them with \`set_secret\`.`);
+      lines.push(``, `Note: ${res.github_repo_note}`);
       return { content: [{ type: "text", text: lines.join("\n") }] };
     }
     const res = await getSdk().admin.transfers.initiate({
