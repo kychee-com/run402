@@ -496,6 +496,7 @@ CI deploy restrictions: when `run402 deploy apply` runs inside GitHub Actions wi
 Common CI error codes:
 - `invalid_token`: check `permissions: id-token: write` and the workflow's OIDC environment
 - `access_denied`: no active binding matched this repo/branch/environment
+- `binding_revoked`: a matching binding existed but was revoked (most often the project was transferred/handed off, which suspends the prior org's CI bindings) — re-run `run402 ci link github` to re-create it; do NOT run `set-asset-scopes` (it 409s on a revoked binding)
 - `event_not_allowed`: v1 allows only `push` and `workflow_dispatch`
 - `repository_id_mismatch`: re-link from the current repo or pass the correct numeric `--repository-id`
 - `forbidden_spec_field` / `forbidden_plan`: remove disallowed CI manifest fields or run the deploy locally

@@ -251,6 +251,55 @@ describe("deploy apply GitHub Actions OIDC", () => {
     assert.ok(parsedStderr.next_actions.length > 0);
   });
 
+  it("surfaces re-link guidance when token-exchange returns binding_revoked (transferred project)", async () => {
+    process.env.GITHUB_ACTIONS = "true";
+    process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;
+    process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "github-request-token";
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url === `${API}/ci/v1/token-exchange`) {
+        // Canonical gateway envelope: the code collapses to the generic
+        // FORBIDDEN (same as access_denied); only `error` discriminates.
+        return Promise.resolve(json({
+          error: "binding_revoked",
+          code: "FORBIDDEN",
+          message: "the binding was revoked — the project may have been transferred; re-create it with `run402 ci link github`",
+        }, 403));
+      }
+      return mockFetch(input, init);
+    };
+
+    captureStart();
+    let threw = null;
+    try {
+      await runDeployV2("apply", [
+        "--spec",
+        JSON.stringify({
+          project_id: "prj_ci_manifest",
+          site: { replace: { "index.html": { data: "hello" } } },
+        }),
+        "--quiet",
+      ]);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+      globalThis.fetch = previousFetch;
+    }
+
+    assert.equal(threw?.message, "process.exit(1)");
+    // The plan endpoint must never be reached — token-exchange fails first.
+    assert.equal(calls.some((c) => c.url === `${API}/apply/v1/plans`), false);
+    const parsedStderr = JSON.parse(stderr.join("\n"));
+    assert.equal(parsedStderr.error, "binding_revoked");
+    assert.match(parsedStderr.hint, /transferred|revoked/i);
+    assert.ok(parsedStderr.next_actions.some((action) => /ci link github/.test(action)));
+    // Steers away from the red-herring fix.
+    assert.ok(parsedStderr.next_actions.some((action) => /set-asset-scopes/.test(action)));
+  });
+
   it("passes route specs through CI deploy manifests for gateway scope authorization", async () => {
     process.env.GITHUB_ACTIONS = "true";
     process.env.ACTIONS_ID_TOKEN_REQUEST_URL = OIDC_URL;

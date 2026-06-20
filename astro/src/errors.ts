@@ -122,6 +122,20 @@ function hintForCode(code: string, gatewayStatus: number | undefined): string {
         "  Local-laptop wallet deploys skip this check; only CI sessions hit it.\n" +
         "  See @run402/astro README → 'Before you start' #3."
       );
+    case "CI_BINDING_REVOKED":
+      // The CI/OIDC binding existed but was revoked — most often because the
+      // project was transferred or handed to a new owner (a transfer suspends
+      // the prior org's CI bindings). The fix is to RE-LINK, not to widen
+      // asset scopes: `set-asset-scopes` 409s on a revoked binding. Closes the
+      // red-herring asset-scope hint from kychee-com/run402#470 / #473.
+      return (
+        "\n\n  The CI/OIDC binding was revoked — most often because the project was\n" +
+        "  transferred or handed to a new owner (a transfer suspends the prior org's\n" +
+        "  CI bindings). Re-create it from the repository:\n" +
+        "    run402 ci link github --project <project-id> --repo <owner/repo>\n" +
+        "  Do NOT run `set-asset-scopes` — it 409s on a revoked binding.\n" +
+        "  See @run402/astro README → 'Before you start' #2."
+      );
     case "FORBIDDEN":
       // The SDK envelope-maps the gateway's CI_ASSET_SCOPE_DENIED to a
       // generic FORBIDDEN for some endpoints. If the gateway message

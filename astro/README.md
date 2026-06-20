@@ -539,6 +539,12 @@ run402 ci set-asset-scopes <binding-id> 'astro/*'    # grant the prefix
 
 If you customized `assetPrefix` in `run402({ assetPrefix: 'my-app/' })`, grant `'my-app/*'` instead. **Local-laptop wallet deploys skip this check; only CI sessions hit it.**
 
+**Transferred a project? Re-link, don't re-scope (cause of [kychee-com/run402#470](https://github.com/kychee-com/run402/issues/470)).** If the build fails with `CI_BINDING_REVOKED` ("the CI/OIDC binding was revoked"), the binding was revoked — most often because the project was transferred or handed to a new owner, which suspends the prior org's CI bindings. The fix is to re-create the binding, **not** to widen asset scopes (`set-asset-scopes` returns `409` on a revoked binding):
+
+```sh
+run402 ci link github --project <project-id> --repo <owner/repo>
+```
+
 ### 4. Image CSS uses `height: auto` (or `aspect-ratio`)
 
 The `<Image>` component emits explicit `width`/`height` HTML attributes from the source's intrinsic dimensions to prevent cumulative layout shift (CLS). Pair this with `height: auto` (or `aspect-ratio: <w>/<h>`) in your CSS, otherwise responsive `width: 100%` rules will stretch images vertically:

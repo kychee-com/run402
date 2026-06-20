@@ -498,7 +498,21 @@ function inferContentType(absPath: string): string {
 
 function extractErrorCode(err: unknown): string | undefined {
   if (err && typeof err === "object") {
-    const e = err as { code?: unknown; envelope?: { code?: unknown } };
+    const e = err as {
+      code?: unknown;
+      envelope?: { code?: unknown };
+      body?: { error?: unknown } | null;
+    };
+    // A revoked CI/OIDC binding (most often: the project was transferred, which
+    // suspends the prior org's CI bindings) surfaces from token-exchange as a
+    // generic 403 whose canonical code is FORBIDDEN — same as access_denied.
+    // The only discriminator is the OAuth-style `error` field. Map it to a
+    // dedicated code so the operator gets the re-link remediation instead of
+    // the misleading asset-scope hint (set-asset-scopes 409s on a revoked
+    // binding). See kychee-com/run402#473.
+    if (e.body && typeof e.body === "object" && e.body.error === "binding_revoked") {
+      return "CI_BINDING_REVOKED";
+    }
     if (typeof e.code === "string") return e.code;
     if (e.envelope && typeof e.envelope.code === "string") return e.envelope.code;
   }

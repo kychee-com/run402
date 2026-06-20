@@ -246,6 +246,43 @@ describe("uploader", () => {
     );
   });
 
+  it("maps a revoked CI binding (transferred project) to CI_BINDING_REVOKED with a re-link hint, no retry", async () => {
+    const cache = new BuildCache(root);
+    let attempts = 0;
+    const { client } = makeClient(async () => {
+      attempts++;
+      // Shape mirrors the SDK Unauthorized thrown by token-exchange: the
+      // canonical code is the generic FORBIDDEN (same as access_denied); only
+      // body.error discriminates the revoked binding.
+      const err = new Error(
+        "the binding was revoked — the project may have been transferred; re-create it with `run402 ci link github`",
+      );
+      Object.assign(err, {
+        code: "FORBIDDEN",
+        status: 403,
+        body: {
+          error: "binding_revoked",
+          code: "FORBIDDEN",
+          message: "the binding was revoked — the project may have been transferred",
+        },
+      });
+      throw err;
+    });
+    await assert.rejects(
+      uploadAll([img], client, cache),
+      (err) => {
+        assert.ok(err instanceof GatewayUploadError);
+        assert.equal(err.code, "CI_BINDING_REVOKED");
+        // Points at the right fix (re-link) and away from the red-herring one.
+        assert.match(err.message, /run402 ci link github/);
+        assert.doesNotMatch(err.message, /set-asset-scopes <binding-id> 'astro/);
+        return true;
+      },
+    );
+    // Revoked binding is terminal — never retried.
+    assert.equal(attempts, 1);
+  });
+
   it("bounded parallelism caps in-flight calls", async () => {
     const paths: string[] = [];
     for (let i = 0; i < 10; i++) {

@@ -8,6 +8,18 @@ export const DEFAULT_CI_DELEGATION_CHAIN_ID = "eip155:84532" as const;
 export const V1_CI_ALLOWED_ACTIONS = ["deploy"] as const;
 export const V1_CI_ALLOWED_EVENTS_DEFAULT = ["push", "workflow_dispatch"] as const;
 
+/**
+ * The token-exchange `error` value the gateway returns (HTTP 403) when a
+ * subject-matching CI/OIDC binding EXISTS but was revoked — most often because
+ * the project was transferred or handed to a new owner (a transfer suspends the
+ * prior org's CI bindings). Distinct from `access_denied`, which means no
+ * binding ever matched. The canonical envelope `code` is the generic
+ * `FORBIDDEN` for both, so this `error`-field value is the only discriminator;
+ * use {@link isCiBindingRevoked} to branch on it. Re-create the binding with
+ * `run402 ci link github`.
+ */
+export const CI_BINDING_REVOKED_ERROR = "binding_revoked" as const;
+
 export type CiProvider = typeof CI_GITHUB_ACTIONS_PROVIDER;
 export type CiAllowedAction = (typeof V1_CI_ALLOWED_ACTIONS)[number];
 export type CiAllowedEvent =
@@ -30,6 +42,10 @@ export type CiTokenExchangeErrorCode =
   | "invalid_request"
   | "invalid_token"
   | "access_denied"
+  // A subject-matching binding existed but was revoked (e.g. the project was
+  // transferred). Distinct from `access_denied` (no binding ever matched).
+  // See {@link CI_BINDING_REVOKED_ERROR} and {@link isCiBindingRevoked}.
+  | "binding_revoked"
   | "event_not_allowed"
   | "repository_id_mismatch"
   | "ambiguous_binding";

@@ -381,6 +381,7 @@ export {
 export {
   Ci,
   CI_AUDIENCE,
+  CI_BINDING_REVOKED_ERROR,
   CI_GITHUB_ACTIONS_ISSUER,
   CI_GITHUB_ACTIONS_PROVIDER,
   DEFAULT_CI_DELEGATION_CHAIN_ID,
@@ -389,6 +390,7 @@ export {
   assertCiDeployableSpec,
   buildCiDelegationResourceUri,
   buildCiDelegationStatement,
+  isCiBindingRevoked,
   normalizeCiRouteScopes,
   normalizeCiDelegationValues,
   validateCiNonce,

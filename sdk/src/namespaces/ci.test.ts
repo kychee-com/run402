@@ -6,18 +6,20 @@ import {
   assertCiDeployableSpec,
   buildCiDelegationResourceUri,
   buildCiDelegationStatement,
+  isCiBindingRevoked,
   normalizeCiRouteScopes,
   normalizeCiDelegationValues,
   validateCiNonce,
   validateCiRouteScope,
   validateCiSubjectMatch,
   CI_AUDIENCE,
+  CI_BINDING_REVOKED_ERROR,
   CI_GITHUB_ACTIONS_ISSUER,
   CI_GITHUB_ACTIONS_PROVIDER,
   DEFAULT_CI_DELEGATION_CHAIN_ID,
   V1_CI_ALLOWED_EVENTS_DEFAULT,
 } from "../index.js";
-import { ApiError, LocalError, Run402DeployError, Unauthorized } from "../errors.js";
+import { ApiError, LocalError, Run402DeployError, Unauthorized, isUnauthorized } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type { CiBindingRow } from "./ci.types.js";
 
@@ -304,6 +306,68 @@ describe("ci namespace wire methods", () => {
         },
       );
     }
+  });
+});
+
+describe("isCiBindingRevoked", () => {
+  // The gateway gives binding_revoked AND access_denied the same canonical
+  // code: "FORBIDDEN" — only the OAuth-style `error` field discriminates them.
+  const revokedBody = {
+    error: CI_BINDING_REVOKED_ERROR,
+    code: "FORBIDDEN",
+    message:
+      "the binding was revoked — the project may have been transferred; re-create it with `run402 ci link github`",
+  };
+  const deniedBody = {
+    error: "access_denied",
+    code: "FORBIDDEN",
+    message: "no binding matches this token",
+  };
+
+  it("is true for a token-exchange binding_revoked 403, and stays an Unauthorized", async () => {
+    const { fetch } = mockFetch(() => jsonResponse(revokedBody, 403));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.ci.exchangeToken({ project_id: "prj_abc", subject_token: "jwt" }),
+      (err: unknown) => {
+        assert.equal(isCiBindingRevoked(err), true);
+        // No regression: the error is still an Unauthorized so existing
+        // generic-403 handling keeps working.
+        assert.equal(isUnauthorized(err), true);
+        assert.ok(err instanceof Unauthorized);
+        return true;
+      },
+    );
+  });
+
+  it("is false for access_denied (no binding ever matched) but still Unauthorized", async () => {
+    const { fetch } = mockFetch(() => jsonResponse(deniedBody, 403));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.ci.exchangeToken({ project_id: "prj_abc", subject_token: "jwt" }),
+      (err: unknown) => {
+        assert.equal(isCiBindingRevoked(err), false);
+        assert.equal(isUnauthorized(err), true);
+        return true;
+      },
+    );
+  });
+
+  it("is false for non-Run402 / non-403 / unrelated errors", () => {
+    assert.equal(isCiBindingRevoked(null), false);
+    assert.equal(isCiBindingRevoked(undefined), false);
+    assert.equal(isCiBindingRevoked(new Error("plain")), false);
+    assert.equal(isCiBindingRevoked({ error: CI_BINDING_REVOKED_ERROR }), false);
+    // A 400 carrying the same string must not match — the guard requires 403.
+    assert.equal(
+      isCiBindingRevoked(new ApiError("nope", 400, revokedBody, "exchanging CI OIDC token")),
+      false,
+    );
+    // A 403 without the binding_revoked error string must not match.
+    assert.equal(
+      isCiBindingRevoked(new Unauthorized("denied", 403, deniedBody, "exchanging CI OIDC token")),
+      false,
+    );
   });
 });
 

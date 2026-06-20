@@ -867,6 +867,14 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
       "Run run402 ci link github again for this repository/branch/environment.",
     ],
   },
+  binding_revoked: {
+    hint: "A matching CI binding existed but was revoked — most often because the project was transferred or handed to a new owner, which suspends the prior org's CI bindings.",
+    next_actions: [
+      "Run run402 ci link github again from this repository to re-create the binding.",
+      "Do not run run402 ci set-asset-scopes — it returns 409 on a revoked binding.",
+      "Run run402 ci list --project <prj_...> locally to confirm the binding state.",
+    ],
+  },
   event_not_allowed: {
     hint: "This binding only allows push and workflow_dispatch events in v1.",
     next_actions: [
@@ -1083,7 +1091,17 @@ function enhanceCiDeployError(err) {
     ? err.body
     : {};
   const code = existingBody.code || err?.code || (err?.status === 402 ? "payment_required" : null);
-  const guidance = code ? CI_DEPLOY_ERROR_GUIDANCE[code] : null;
+  // Token-exchange denials (invalid_token, access_denied, binding_revoked, …)
+  // carry their discriminator in the OAuth-style `error` field — the canonical
+  // `code` collapses to the generic FORBIDDEN/INVALID_AUTH for all of them.
+  // Plan-path denials (CI_ROUTE_SCOPE_DENIED, forbidden_spec_field, …) carry it
+  // in `code` instead. Prefer whichever names a known guidance entry; the
+  // OAuth `error` on plan-path errors is a human message, so it simply misses.
+  const oauthError = typeof existingBody.error === "string" ? existingBody.error : null;
+  const guidance =
+    (oauthError && CI_DEPLOY_ERROR_GUIDANCE[oauthError]) ||
+    (code && CI_DEPLOY_ERROR_GUIDANCE[code]) ||
+    null;
   if (!guidance) return err;
 
   const enhanced = Object.assign(new Error(err?.message || existingBody.message || String(code)), err);

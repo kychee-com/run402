@@ -177,6 +177,7 @@ The SDK exports identity-free guards plus a single canonical "should I retry thi
 - `isPaymentRequired(e)`, `isProjectNotFound(e)`, `isUnauthorized(e)`, `isNotAuthorized(e)`, `isApiError(e)`, `isNetworkError(e)`, `isLocalError(e)`, `isDeployError(e)`, `isTransferFreezeError(e)` — narrow `unknown` to the named subclass. `isUnauthorized` (authentication missing/invalid) and `isNotAuthorized` (org control-plane denial — authenticated but under-privileged) are distinct: the first calls for re-auth, the second for obtaining an org membership/role or grant.
 - `isRetryableRun402Error(e)` — encapsulates the retry policy: `e.retryable || kind === "network_error" || status in {408, 425, 429} || status >= 500`, unless the gateway explicitly sets `retryable: false`. `safeToRetry` alone is not a retry signal; it means a repeated mutation should not duplicate/corrupt state, not that lifecycle/payment/auth gates will become allowed without an action. Returns `false` for non-Run402 inputs so it's safe to call from any `catch` block.
 - `getQuotaScope(e)` — returns `"organization"` for pooled organization quota denials, `"project"` for the orphan-project fallback when a organization row has been purged but cascade has not yet run, and `undefined` for non-quota errors or pre-v1.46 gateways. Safe to call with any `unknown`; reads `Run402Error.quotaScope`, which is lifted from `details.scope` on the gateway envelope.
+- `isCiBindingRevoked(e)` — true for the CI token-exchange `binding_revoked` denial (HTTP 403): a subject-matching binding existed but was revoked (most often the project was transferred/handed off). Distinct from `access_denied` (no binding ever matched), which shares the same canonical `code: "FORBIDDEN"` — the guard reads the OAuth-style `error` field for you. The error stays an `Unauthorized` (no regression). Fix: re-run `run402 ci link github`; do NOT `set-asset-scopes` (409 on a revoked binding). Safe to call with any `unknown`.
 
 `Run402Error.toJSON()` returns a canonical envelope (`name`, `kind`, `message`, `status`, `code`, `category`, `retryable`, `safeToRetry`, `mutationState`, `traceId`, `context`, `details`, `nextActions`, `quotaScope`, `body`). `Run402DeployError.toJSON()` extends it with `phase`, `resource`, `operationId`, `planId`, `fix`, `logs`, `rolledBack`, and, when automatic deploy retries are exhausted, `attempts`, `maxRetries`, `lastRetryCode`. `JSON.stringify(error)` produces a populated structured object — never the empty `"{}"` plain `Error` produces.
 
@@ -743,6 +744,18 @@ exchangeToken(input: { project_id: string, subject_token: string }): Promise<{
 `subject_token_type = urn:ietf:params:oauth:token-type:jwt`. It sends
 `withAuth: false`; credential-provider auth headers are intentionally omitted.
 
+On failure `exchangeToken` throws the usual `Unauthorized`/`ApiError`. Use
+`isCiBindingRevoked(err)` to detect the `binding_revoked` denial (HTTP 403): a
+subject-matching binding existed but was revoked — typically because the project
+was transferred/handed off, which suspends the prior org's CI bindings. The fix
+is to re-create it with `run402 ci link github`, NOT to widen asset scopes
+(`run402 ci set-asset-scopes` 409s on a revoked binding). The gateway gives both
+`binding_revoked` and `access_denied` the generic canonical `code: "FORBIDDEN"`,
+so the only discriminator is the OAuth-style `error` field on the 403 body —
+`isCiBindingRevoked` reads it for you. The error stays an `Unauthorized`
+(`isUnauthorized` remains true), so existing generic-403 handling is unaffected.
+`CI_BINDING_REVOKED_ERROR` is the exported `"binding_revoked"` constant.
+
 `CiBindingRow` preserves gateway snake_case fields:
 
 ```
@@ -794,7 +807,7 @@ githubActionsCredentials({
 isCiSessionCredentials(credentials): boolean
 ```
 
-CI error-code unions include binding errors (`invalid_route_scopes`, `nonce_replay`, `delegation_statement_mismatch`, `signer_mismatch`, `duplicate`), token-exchange errors (`invalid_token`, `access_denied`, `event_not_allowed`, `repository_id_mismatch`, `ambiguous_binding`), and CI deploy errors (`payment_required`, `insufficient_scope`, `forbidden_spec_field`, `forbidden_plan`, `CI_ROUTE_SCOPE_DENIED`). Preserve unknown future strings as opaque gateway codes.
+CI error-code unions include binding errors (`invalid_route_scopes`, `nonce_replay`, `delegation_statement_mismatch`, `signer_mismatch`, `duplicate`), token-exchange errors (`invalid_token`, `access_denied`, `binding_revoked`, `event_not_allowed`, `repository_id_mismatch`, `ambiguous_binding`), and CI deploy errors (`payment_required`, `insufficient_scope`, `forbidden_spec_field`, `forbidden_plan`, `CI_ROUTE_SCOPE_DENIED`). Preserve unknown future strings as opaque gateway codes.
 
 ### `r.operator`
 

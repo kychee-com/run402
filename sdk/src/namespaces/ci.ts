@@ -1,7 +1,7 @@
 /** CI/OIDC federation namespace and canonical delegation helpers. */
 
 import type { Client } from "../kernel.js";
-import { LocalError, Run402DeployError } from "../errors.js";
+import { LocalError, Run402DeployError, Unauthorized, isRun402Error } from "../errors.js";
 import type { PlanRequest, ReleaseSpec } from "./deploy.types.js";
 import type {
   CiBindingRow,
@@ -16,6 +16,7 @@ import type {
 } from "./ci.types.js";
 import {
   CI_AUDIENCE,
+  CI_BINDING_REVOKED_ERROR,
   CI_GITHUB_ACTIONS_ISSUER,
   CI_GITHUB_ACTIONS_PROVIDER,
   DEFAULT_CI_DELEGATION_CHAIN_ID,
@@ -25,6 +26,7 @@ import {
 
 export {
   CI_AUDIENCE,
+  CI_BINDING_REVOKED_ERROR,
   CI_GITHUB_ACTIONS_ISSUER,
   CI_GITHUB_ACTIONS_PROVIDER,
   DEFAULT_CI_DELEGATION_CHAIN_ID,
@@ -197,6 +199,32 @@ export class Ci {
       context: "exchanging CI OIDC token",
     });
   }
+}
+
+/**
+ * True when `err` is the CI token-exchange `binding_revoked` denial: a
+ * subject-matching binding existed but was revoked — typically because the
+ * project was transferred / handed off, which suspends the prior org's CI
+ * bindings. The actionable fix is to re-create the binding with
+ * `run402 ci link github`, NOT to widen asset scopes (`run402 ci
+ * set-asset-scopes` 409s on a revoked binding).
+ *
+ * Discriminates against `access_denied` (no binding ever matched). The gateway
+ * gives both the generic canonical `code: "FORBIDDEN"`, so the only signal is
+ * the OAuth-style `error` field on the 403 response body — this guard reads it
+ * for you. The thrown error stays an {@link Unauthorized} (`isUnauthorized`
+ * remains true), so existing generic-403 handling is unaffected. Structural
+ * (brand + body) so it survives duplicate SDK copies and realm boundaries.
+ */
+export function isCiBindingRevoked(err: unknown): err is Unauthorized {
+  if (!isRun402Error(err) || err.status !== 403) return false;
+  const body = err.body;
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body) &&
+    (body as { error?: unknown }).error === CI_BINDING_REVOKED_ERROR
+  );
 }
 
 export function normalizeCiDelegationValues(
