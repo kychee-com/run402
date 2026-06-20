@@ -2,7 +2,7 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the private gateway monorepo and publishes on its own cadence.
 
-## Unreleased — SDK call-shape conventions (scope handles + options objects)
+## 3.4.0 — SDK call-shape conventions (scope handles + options objects)
 
 Codifies one call-shape rule — at most one leading id/handle positional; no same-type positional pair and no boolean positional — and closes the audited gaps. Additive: every reshaped method keeps its positional overload, now `@deprecated`, which emits a one-time **stderr** notice (silence with `RUN402_SUPPRESS_DEPRECATIONS=1`). No removals.
 
