@@ -23,7 +23,7 @@ import { Ai } from "./namespaces/ai.js";
 import { Auth } from "./namespaces/auth.js";
 import { SenderDomain } from "./namespaces/sender-domain.js";
 import { Billing } from "./namespaces/billing.js";
-import { Wallets } from "./namespaces/wallets.js";
+import { Wallets, ScopedWallet } from "./namespaces/wallets.js";
 import { Apps } from "./namespaces/apps.js";
 import { Email } from "./namespaces/email.js";
 import { Contracts } from "./namespaces/contracts.js";
@@ -239,6 +239,16 @@ export class Run402 {
   }
 
   /**
+   * Return a wallet-scoped sub-client with `address` pre-bound — the wallet
+   * analog of {@link Run402.project}. Exposes `getLabel()` / `setLabel(label)`
+   * without the address as a swappable positional. Lazy and synchronous (no key
+   * or network access at construction).
+   */
+  wallet(address: string): ScopedWallet {
+    return new ScopedWallet(this.#client, address);
+  }
+
+  /**
    * Identify the active wallet and project: `{ local_label, server_label,
    * address, activeProject }`. `local_label` is the local wallet/profile
    * selector (e.g. "kychon", or "default"); `server_label` is the server-side
@@ -419,3 +429,5 @@ export type * from "./namespaces/service.js";
 export type * from "./namespaces/sites.js";
 export type * from "./namespaces/subdomains.js";
 export type * from "./namespaces/tier.js";
+export { ScopedWallet } from "./namespaces/wallets.js";
+export type * from "./namespaces/wallets.js";

@@ -278,7 +278,7 @@ async function runMember(args) {
       missing: "Missing <org>, <principal_id>, and/or <role>.",
     });
     try {
-      console.log(JSON.stringify(await getSdk().org(org).members.setRole(principalId, role), null, 2));
+      console.log(JSON.stringify(await getSdk().org(org).members.setRole(principalId, { role }), null, 2));
     } catch (err) {
       reportSdkError(err);
     }

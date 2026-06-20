@@ -316,7 +316,7 @@ async function maybePushLabel(name, label, address) {
       allowancePath: join(profileDir(name), "allowance.json"),
       keystorePath: join(profileDir(name), "projects.json"),
     });
-    await sdk.wallets.setLabel(address, label);
+    await sdk.wallet(address).setLabel(label);
   } catch {
     /* best-effort — never block the local operation */
   }

@@ -286,7 +286,7 @@ export async function handleCancelProjectTransfer(args: {
   reason?: string;
 }): Promise<ToolResult> {
   try {
-    const res = await getSdk().admin.transfers.cancel(args.transfer_id, args.reason);
+    const res = await getSdk().admin.transfers.cancel(args.transfer_id, { reason: args.reason });
     const lines = [
       `Transfer \`${res.transfer_id}\` cancelled.`,
       `- cancelled_by: ${res.cancelled_by}`,

@@ -128,7 +128,7 @@ async function set(projectId, key, args = []) {
     });
   }
   try {
-    await getSdk().secrets.set(projectId, key, val);
+    await getSdk().secrets.set(projectId, key, { value: val });
     console.log(JSON.stringify({ key, project_id: projectId, set: true }));
   } catch (err) {
     reportSdkError(err);

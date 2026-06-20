@@ -9,6 +9,7 @@
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { Transfers } from "./transfers.js";
+import { deprecatePositional } from "../deprecate.js";
 
 export interface AgentContact {
   name: string;
@@ -261,6 +262,25 @@ export class Admin {
     this.transfers = new Transfers(client);
   }
 
+  /**
+   * Operator-scoped sub-client for an org id — the operator analog of
+   * `r.org(id)`, kept on `r.admin` because these actions require platform-admin
+   * (`X-Admin-Mode`) auth, a different principal from the member-facing
+   * `r.org(id)`. Exposes `pinLease()` / `unpinLease()`. Lazy and synchronous.
+   */
+  org(orgId: string): ScopedAdminOrg {
+    return new ScopedAdminOrg(this, orgId);
+  }
+
+  /**
+   * Operator-scoped sub-client for a project id. Exposes `archive(opts?)`,
+   * `reactivate()`, and `finance(opts?)` with the id pre-bound. Lazy and
+   * synchronous.
+   */
+  project(projectId: string): ScopedAdminProject {
+    return new ScopedAdminProject(this, projectId);
+  }
+
   /** Send a message to the Run402 developers. Requires an active tier. */
   async sendMessage(message: string): Promise<SendMessageResult> {
     return this.client.request<SendMessageResult>("/message/v1", {
@@ -436,7 +456,27 @@ export class Admin {
    * Platform-admin only. Calls
    * `POST /orgs/v1/admin/:org_id/lease-perpetual`.
    */
+  /**
+   * @deprecated Boolean positional argument is a swap trap. Use
+   * `r.admin.org(orgId).pinLease()` / `.unpinLease()` instead.
+   */
   async setLeasePerpetual(
+    organizationId: string,
+    perpetual: boolean,
+  ): Promise<SetLeasePerpetualResult> {
+    deprecatePositional(
+      "admin.setLeasePerpetual",
+      "use r.admin.org(orgId).pinLease()/unpinLease()",
+    );
+    return this._setLeasePerpetual(organizationId, perpetual);
+  }
+
+  /**
+   * Shared, non-deprecated implementation behind {@link setLeasePerpetual} and
+   * the `r.admin.org(id).pinLease()/unpinLease()` handle.
+   * @internal
+   */
+  _setLeasePerpetual(
     organizationId: string,
     perpetual: boolean,
   ): Promise<SetLeasePerpetualResult> {
@@ -492,5 +532,49 @@ export class Admin {
         context: "reactivating project",
       },
     );
+  }
+}
+
+/**
+ * Operator-scoped sub-client for a single org, returned by `r.admin.org(id)`.
+ * Replaces the boolean `admin.setLeasePerpetual(orgId, perpetual)` with two
+ * intent-named verbs. Carries platform-admin auth; operator-only errors surface
+ * at call time.
+ */
+export class ScopedAdminOrg {
+  constructor(private readonly admin: Admin, private readonly orgId: string) {}
+
+  /** Pin the org's lease (`lease_perpetual = true`). */
+  pinLease(): Promise<SetLeasePerpetualResult> {
+    return this.admin._setLeasePerpetual(this.orgId, true);
+  }
+
+  /** Unpin the org's lease (`lease_perpetual = false`). */
+  unpinLease(): Promise<SetLeasePerpetualResult> {
+    return this.admin._setLeasePerpetual(this.orgId, false);
+  }
+}
+
+/**
+ * Operator-scoped sub-client for a single project, returned by
+ * `r.admin.project(id)`. The project id is pre-bound; methods carry
+ * platform-admin auth.
+ */
+export class ScopedAdminProject {
+  constructor(private readonly admin: Admin, private readonly projectId: string) {}
+
+  /** Archive the project (operator moderation). */
+  archive(opts: ArchiveProjectOptions = {}): Promise<ArchiveProjectResult> {
+    return this.admin.archiveProject(this.projectId, opts);
+  }
+
+  /** Un-archive the project. */
+  reactivate(): Promise<ReactivateProjectResult> {
+    return this.admin.reactivateProject(this.projectId);
+  }
+
+  /** Read per-project finance (operator Finance tab). */
+  finance(opts: AdminProjectFinanceOptions = {}): Promise<AdminProjectFinanceResult> {
+    return this.admin.getProjectFinance(this.projectId, opts);
   }
 }

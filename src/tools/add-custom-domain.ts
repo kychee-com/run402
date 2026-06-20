@@ -20,7 +20,10 @@ export async function handleAddCustomDomain(args: {
   project_id: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().domains.add(args.project_id, args.domain, args.subdomain_name);
+    const body = await getSdk().domains.add(args.project_id, {
+      domain: args.domain,
+      subdomainName: args.subdomain_name,
+    });
 
     const lines = [
       `## Custom Domain Registered`,

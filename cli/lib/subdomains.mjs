@@ -119,7 +119,7 @@ async function claim(args) {
     });
   }
   try {
-    const data = await getSdk().subdomains.claim(name, deploymentId, { projectId });
+    const data = await getSdk().subdomains.claim({ name, deploymentId, projectId });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

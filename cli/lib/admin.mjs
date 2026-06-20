@@ -128,7 +128,8 @@ async function leasePerpetual(args) {
     });
   }
   try {
-    const data = await getSdk().admin.setLeasePerpetual(organizationId, enable);
+    const adminOrg = getSdk().admin.org(organizationId);
+    const data = enable ? await adminOrg.pinLease() : await adminOrg.unpinLease();
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

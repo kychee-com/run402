@@ -1011,6 +1011,16 @@ describe("SDK surface alignment", () => {
       // direct SDK consumers; no dedicated MCP/CLI verb.
       "wallets.getLabel",
       "wallets.setLabel",
+      // ─── call-shape conventions (sdk-positional-arg-ergonomics) ───────────
+      // r.admin.org(id) / r.admin.project(id) are operator scope-handle
+      // factories (the admin analog of r.project(id)/r.org(id)). Their methods
+      // (pinLease/unpinLease, archive/reactivate/finance) reach the existing
+      // admin SURFACE capabilities (lease-perpetual, archive, reactivate,
+      // finance). `_setLeasePerpetual` is the shared impl behind both the
+      // deprecated boolean `setLeasePerpetual` and the pinLease/unpinLease handle.
+      "admin.org",
+      "admin.project",
+      "admin._setLeasePerpetual",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
       // shares the `run402 functions rebuild --all` CLI verb (and the
@@ -1127,6 +1137,33 @@ function productionInterfaceFiles(): string[] {
       .map((name) => join(srcTools, name)),
   ].sort();
 }
+
+describe("first-party callers use only canonical SDK call shapes", () => {
+  // The deprecated positional overloads (sdk-call-shape-conventions) exist for
+  // external back-compat only. First-party code (CLI `cli/lib/*` + MCP
+  // `src/tools/*`) MUST use the canonical handle/options forms. This guards the
+  // FULLY-deprecated methods — ones with no same-name canonical overload, so a
+  // bare token match is unambiguous. The overloaded reshapes (domains.add /
+  // secrets.set / subdomains.claim / members.setRole / transfers.cancel /
+  // projects.rest) are covered by the SDK deprecation unit tests; their
+  // positional arm can't be regex-detected without false positives.
+  const BANNED = [
+    { token: "setLeasePerpetual(", fix: "use r.admin.org(orgId).pinLease()/unpinLease()" },
+    { token: "wallets.setLabel(", fix: "use r.wallet(address).setLabel(label)" },
+  ];
+  for (const file of productionInterfaceFiles()) {
+    const rel = file.replace(__dirname + "/", "");
+    it(`${rel} avoids fully-deprecated SDK methods`, () => {
+      const text = readFileSync(file, "utf-8");
+      for (const { token, fix } of BANNED) {
+        assert.ok(
+          !text.includes(token),
+          `${rel} uses deprecated \`${token}\` — ${fix}`,
+        );
+      }
+    });
+  }
+});
 
 describe("SURFACE consistency", () => {
   it("has no duplicate capability IDs", () => {

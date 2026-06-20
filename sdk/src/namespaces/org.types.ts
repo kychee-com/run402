@@ -12,6 +12,11 @@
 /** Org role lattice: `owner > admin > developer > billing > viewer`. */
 export type OrgRole = "owner" | "admin" | "developer" | "billing" | "viewer";
 
+/** Options for {@link OrgMembers.setRole} — the canonical `setRole(principalId, { role })` shape. */
+export interface SetMemberRoleOptions {
+  role: OrgRole;
+}
+
 /**
  * A resolved control-plane principal. `type` is the principal kind
  * (`"human"` / `"agent"` / `"ci"` — future kinds pass through). Unknown future

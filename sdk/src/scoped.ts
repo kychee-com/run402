@@ -18,6 +18,7 @@
 import type { Client } from "./kernel.js";
 import type { Run402 } from "./index.js";
 import type { ProjectKeys } from "./credentials.js";
+import { deprecatePositional } from "./deprecate.js";
 import type {
   ExposeManifestValidationInput,
   ExposeManifestValidationResult,
@@ -97,6 +98,7 @@ import type {
   CustomDomainListResult,
   CustomDomainRemoveResult,
   CustomDomainStatusResult,
+  DomainAddOptions,
 } from "./namespaces/domains.js";
 import type {
   CreateMailboxResult,
@@ -140,7 +142,7 @@ import type {
   ManagedJobResponse,
   ManagedJobSubmitRequest,
 } from "./namespaces/jobs.js";
-import type { DeleteSecretResult, SecretListResult } from "./namespaces/secrets.js";
+import type { DeleteSecretResult, SecretListResult, SecretSetOptions } from "./namespaces/secrets.js";
 import type {
   CreateGrantInput,
   GrantCreateResult,
@@ -153,6 +155,7 @@ import type {
   SenderDomainStatusResult,
 } from "./namespaces/sender-domain.js";
 import type {
+  SubdomainClaimInput,
   SubdomainClaimOptions,
   SubdomainClaimResult,
   SubdomainDeleteResult,
@@ -578,8 +581,18 @@ function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHe
 class ScopedDomains {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  add(domain: string, subdomainName: string): Promise<CustomDomainAddResult> {
-    return this.parent.domains.add(this.projectId, domain, subdomainName);
+  add(opts: DomainAddOptions): Promise<CustomDomainAddResult>;
+  /** @deprecated Use `add({ domain, subdomainName })`. */
+  add(domain: string, subdomainName: string): Promise<CustomDomainAddResult>;
+  add(domainOrOpts: string | DomainAddOptions, subdomainName?: string): Promise<CustomDomainAddResult> {
+    if (typeof domainOrOpts === "object" && domainOrOpts !== null) {
+      return this.parent.domains.add(this.projectId, domainOrOpts);
+    }
+    deprecatePositional("domains.add", "use add({ domain, subdomainName })");
+    return this.parent.domains.add(this.projectId, {
+      domain: domainOrOpts,
+      subdomainName: subdomainName as string,
+    });
   }
   list(): Promise<CustomDomainListResult> {
     return this.parent.domains.list(this.projectId);
@@ -686,8 +699,15 @@ class ScopedFunctions {
 class ScopedSecrets {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  set(key: string, value: string): Promise<void> {
-    return this.parent.secrets.set(this.projectId, key, value);
+  set(key: string, opts: SecretSetOptions): Promise<void>;
+  /** @deprecated Use `set(key, { value })`. */
+  set(key: string, value: string): Promise<void>;
+  set(key: string, valueOrOpts: string | SecretSetOptions): Promise<void> {
+    if (typeof valueOrOpts === "object" && valueOrOpts !== null) {
+      return this.parent.secrets.set(this.projectId, key, valueOrOpts);
+    }
+    deprecatePositional("secrets.set", "use set(key, { value })");
+    return this.parent.secrets.set(this.projectId, key, { value: valueOrOpts });
   }
   list(): Promise<SecretListResult> {
     return this.parent.secrets.list(this.projectId);
@@ -746,9 +766,24 @@ class ScopedSubdomains {
   list(): Promise<SubdomainSummary[]> {
     return this.parent.subdomains.list(this.projectId);
   }
-  claim(name: string, deploymentId: string, opts: SubdomainClaimOptions = {}): Promise<SubdomainClaimResult> {
-    return this.parent.subdomains.claim(name, deploymentId, {
-      ...opts,
+  claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult>;
+  /** @deprecated Use `claim({ name, deploymentId, ...opts })`. */
+  claim(name: string, deploymentId: string, opts?: SubdomainClaimOptions): Promise<SubdomainClaimResult>;
+  claim(
+    nameOrInput: string | SubdomainClaimInput,
+    deploymentId?: string,
+    opts: SubdomainClaimOptions = {},
+  ): Promise<SubdomainClaimResult> {
+    if (typeof nameOrInput === "object" && nameOrInput !== null) {
+      return this.parent.subdomains.claim({
+        ...nameOrInput,
+        projectId: nameOrInput.projectId ?? this.projectId,
+      });
+    }
+    deprecatePositional("subdomains.claim", "use claim({ name, deploymentId, ...opts })");
+    return this.parent.subdomains.claim({
+      name: nameOrInput,
+      deploymentId: deploymentId as string,
       projectId: opts.projectId ?? this.projectId,
     });
   }

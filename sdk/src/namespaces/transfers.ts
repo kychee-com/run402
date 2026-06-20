@@ -28,6 +28,7 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
+import { deprecatePositional } from "../deprecate.js";
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -40,6 +41,12 @@ export type TransferCancelledBy = "from_wallet" | "to_wallet" | "system";
 
 /** Which kind of recipient a transfer row is addressed to. */
 export type RecipientKind = "wallet" | "email" | "org";
+
+/** Options for {@link Transfers.cancel} — the canonical `cancel(transferId, { reason })` shape. */
+export interface CancelTransferOptions {
+  /** Optional free-text cancellation reason recorded on the transfer row. */
+  reason?: string;
+}
 
 /** Initiate a transfer addressed to a wallet (two-party SIWX completion via `accept`). */
 export interface InitiateWalletTransferInput {
@@ -522,7 +529,17 @@ export class Transfers {
    * the addressed-email principal). Already-processed transfers return 409
    * `TRANSFER_ALREADY_PROCESSED`.
    */
-  async cancel(transferId: string, reason?: string): Promise<CancelTransferResult> {
+  async cancel(transferId: string, opts?: CancelTransferOptions): Promise<CancelTransferResult>;
+  /** @deprecated A bare string reason is swap-prone next to `transferId`. Use `cancel(transferId, { reason })`. */
+  async cancel(transferId: string, reason: string): Promise<CancelTransferResult>;
+  async cancel(transferId: string, reasonOrOpts?: string | CancelTransferOptions): Promise<CancelTransferResult> {
+    let reason: string | undefined;
+    if (typeof reasonOrOpts === "string") {
+      deprecatePositional("transfers.cancel", "use cancel(transferId, { reason })");
+      reason = reasonOrOpts;
+    } else if (reasonOrOpts && typeof reasonOrOpts === "object") {
+      reason = reasonOrOpts.reason;
+    }
     const body: Record<string, unknown> = {};
     if (reason !== undefined) body.reason = reason;
     return this.client.request<CancelTransferResult>(

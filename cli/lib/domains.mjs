@@ -122,7 +122,7 @@ async function add(args) {
   }
   const projectId = resolveProjectId(project);
   try {
-    const data = await getSdk().domains.add(projectId, domain, subdomainName);
+    const data = await getSdk().domains.add(projectId, { domain, subdomainName });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

@@ -18,7 +18,7 @@ export async function handleSetSecret(args: {
   value: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    await getSdk().secrets.set(args.project_id, args.key, args.value);
+    await getSdk().secrets.set(args.project_id, args.key, { value: args.value });
     return {
       content: [
         {

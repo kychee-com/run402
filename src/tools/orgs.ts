@@ -229,7 +229,7 @@ export async function handleSetOrgMemberRole(args: {
   role: OrgRole;
 }): Promise<ToolResult> {
   try {
-    const res = await getSdk().org(args.org_id).members.setRole(args.principal_id, args.role);
+    const res = await getSdk().org(args.org_id).members.setRole(args.principal_id, { role: args.role });
     return {
       content: [{ type: "text", text: `Principal \`${res.principal_id}\` is now ${res.role}.` }],
     };

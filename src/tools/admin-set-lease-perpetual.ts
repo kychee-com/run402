@@ -20,10 +20,10 @@ export async function handleAdminSetLeasePerpetual(args: {
   lease_perpetual: boolean;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().admin.setLeasePerpetual(
-      args.org_id,
-      args.lease_perpetual,
-    );
+    const adminOrg = getSdk().admin.org(args.org_id);
+    const body = args.lease_perpetual
+      ? await adminOrg.pinLease()
+      : await adminOrg.unpinLease();
     const reactivatedNote = body.reactivated
       ? " The organization was in a grace state and got pulled back to `active` inline."
       : "";

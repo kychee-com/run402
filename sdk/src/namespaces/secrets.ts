@@ -5,9 +5,14 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
+import { deprecatePositional } from "../deprecate.js";
 
 const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const SECRET_VALUE_LIMIT_BYTES = 4 * 1024;
+
+export interface SecretSetOptions {
+  value: string;
+}
 
 export interface SecretSummary {
   key: string;
@@ -28,7 +33,17 @@ export class Secrets {
   constructor(private readonly client: Client) {}
 
   /** Set or overwrite a project secret. Injected as `process.env.KEY` in deployed functions. */
-  async set(projectId: string, key: string, value: string): Promise<void> {
+  async set(projectId: string, key: string, opts: SecretSetOptions): Promise<void>;
+  /** @deprecated Bare string value is swap-prone next to `key`. Use `set(projectId, key, { value })`. */
+  async set(projectId: string, key: string, value: string): Promise<void>;
+  async set(projectId: string, key: string, valueOrOpts: string | SecretSetOptions): Promise<void> {
+    let value: string;
+    if (typeof valueOrOpts === "object" && valueOrOpts !== null) {
+      value = valueOrOpts.value;
+    } else {
+      deprecatePositional("secrets.set", "use set(projectId, key, { value })");
+      value = valueOrOpts;
+    }
     validateSecretKey(key, "setting secret");
     validateSecretValue(value);
     const project = await this.client.getProject(projectId);

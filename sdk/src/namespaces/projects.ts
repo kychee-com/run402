@@ -14,6 +14,7 @@
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
 import { LocalError, ProjectNotFound } from "../errors.js";
+import { deprecatePositional } from "../deprecate.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
   ExposeManifestValidationInput,
@@ -312,10 +313,13 @@ export class Projects {
     const keys = await this.client.getProject(id);
     if (!keys) throw new ProjectNotFound(id, "querying REST");
 
-    const opts: ProjectRestOptions =
-      typeof queryOrOptions === "string"
-        ? { query: queryOrOptions }
-        : queryOrOptions ?? {};
+    let opts: ProjectRestOptions;
+    if (typeof queryOrOptions === "string") {
+      deprecatePositional("projects.rest", "use rest(table, { query })");
+      opts = { query: queryOrOptions };
+    } else {
+      opts = queryOrOptions ?? {};
+    }
     const method = opts.method ?? "GET";
     const useService = opts.keyType === "service";
     const key = useService ? keys.service_key : keys.anon_key;

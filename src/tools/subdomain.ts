@@ -21,7 +21,9 @@ export async function handleClaimSubdomain(args: {
   project_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    const body = await getSdk().subdomains.claim(args.name, args.deployment_id, {
+    const body = await getSdk().subdomains.claim({
+      name: args.name,
+      deploymentId: args.deployment_id,
       projectId: args.project_id,
     });
 

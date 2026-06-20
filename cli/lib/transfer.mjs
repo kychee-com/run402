@@ -329,7 +329,7 @@ async function cancel(args) {
   allowanceAuthHeaders(`/agent/v1/transfers/${transferId}/cancel`);
 
   try {
-    const data = await getSdk().admin.transfers.cancel(transferId, reason ?? undefined);
+    const data = await getSdk().admin.transfers.cancel(transferId, { reason: reason ?? undefined });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

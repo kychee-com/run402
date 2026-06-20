@@ -609,7 +609,11 @@ async function rest(projectId, table, queryParams) {
     });
   }
   try {
-    const data = await getSdk().projects.rest(projectId, table, queryParams);
+    const data = await getSdk().projects.rest(
+      projectId,
+      table,
+      queryParams === undefined ? undefined : { query: queryParams },
+    );
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);

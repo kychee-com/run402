@@ -6,6 +6,12 @@
 
 import type { Client } from "../kernel.js";
 import { ProjectNotFound } from "../errors.js";
+import { deprecatePositional } from "../deprecate.js";
+
+export interface DomainAddOptions {
+  domain: string;
+  subdomainName: string;
+}
 
 export interface DnsInstructions {
   cname_target?: string;
@@ -60,18 +66,32 @@ export class Domains {
   constructor(private readonly client: Client) {}
 
   /** Register a custom domain. Returns DNS records the user must add at their DNS provider. */
+  async add(projectId: string, opts: DomainAddOptions): Promise<CustomDomainAddResult>;
+  /** @deprecated Two same-type strings are swap-prone. Use `add(projectId, { domain, subdomainName })`. */
+  async add(projectId: string, domain: string, subdomainName: string): Promise<CustomDomainAddResult>;
   async add(
     projectId: string,
-    domain: string,
-    subdomainName: string,
+    domainOrOpts: string | DomainAddOptions,
+    subdomainName?: string,
   ): Promise<CustomDomainAddResult> {
+    let domain: string;
+    let subdomain: string;
+    if (typeof domainOrOpts === "object" && domainOrOpts !== null) {
+      domain = domainOrOpts.domain;
+      subdomain = domainOrOpts.subdomainName;
+    } else {
+      deprecatePositional("domains.add", "use add(projectId, { domain, subdomainName })");
+      domain = domainOrOpts;
+      subdomain = subdomainName as string;
+    }
+
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "registering custom domain");
 
     return this.client.request<CustomDomainAddResult>("/domains/v1", {
       method: "POST",
       headers: { Authorization: `Bearer ${project.service_key}` },
-      body: { domain, subdomain_name: subdomainName },
+      body: { domain, subdomain_name: subdomain },
       context: "registering custom domain",
     });
   }

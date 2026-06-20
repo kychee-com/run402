@@ -2,6 +2,15 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the private gateway monorepo and publishes on its own cadence.
 
+## Unreleased — SDK call-shape conventions (scope handles + options objects)
+
+Codifies one call-shape rule — at most one leading id/handle positional; no same-type positional pair and no boolean positional — and closes the audited gaps. Additive: every reshaped method keeps its positional overload, now `@deprecated`, which emits a one-time **stderr** notice (silence with `RUN402_SUPPRESS_DEPRECATIONS=1`). No removals.
+
+- **New scope handles.** `r.wallet(address)` (`getLabel()` / `setLabel(label)`) and, on the existing `r.admin`, `r.admin.org(orgId)` (`pinLease()` / `unpinLease()`) and `r.admin.project(projectId)` (`archive(opts?)` / `reactivate()` / `finance(opts?)`).
+- **Boolean trap removed.** `admin.setLeasePerpetual(orgId, perpetual)` → `r.admin.org(orgId).pinLease()` / `.unpinLease()`.
+- **Options-object reshapes.** `domains.add(projectId, { domain, subdomainName })`, `subdomains.claim({ name, deploymentId, ...opts })`, `secrets.set(projectId, key, { value })`, `org.members.setRole(principalId, { role })`, `admin.transfers.cancel(transferId, { reason })`, and `projects.rest(table, { query })` (the bare-string query is deprecated). Each new form is byte-identical on the wire to its deprecated positional form.
+- **First-party canonical-only.** All CLI (`cli/lib/*`) and MCP (`src/tools/*`) callers use the new shapes; a `sync.test.ts` source guard fails the build if a fully-deprecated method reappears in first-party code.
+
 ## Unreleased — project transfer to owned org
 
 Adds the public client surface for gateway issue `project-transfer-to-owned-org` / run402#469.

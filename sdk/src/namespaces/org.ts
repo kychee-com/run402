@@ -14,6 +14,7 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
+import { deprecatePositional } from "../deprecate.js";
 import type {
   AddMemberInput,
   AuditEvent,
@@ -30,6 +31,7 @@ import type {
   OrgMembership,
   OrgRole,
   OrgSummary,
+  SetMemberRoleOptions,
   WhoAmIResult,
 } from "./org.types.js";
 
@@ -67,7 +69,17 @@ export class OrgMembers {
    * Change a member's role (`PATCH …/members/:principal_id`). Requires `owner`;
    * demoting the org's only active owner fails with `409 LAST_OWNER`.
    */
-  async setRole(principalId: string, role: OrgRole): Promise<MemberMutationResult> {
+  async setRole(principalId: string, opts: SetMemberRoleOptions): Promise<MemberMutationResult>;
+  /** @deprecated A bare role string next to `principalId` loses its union protection in plain JS. Use `setRole(principalId, { role })`. */
+  async setRole(principalId: string, role: OrgRole): Promise<MemberMutationResult>;
+  async setRole(principalId: string, roleOrOpts: OrgRole | SetMemberRoleOptions): Promise<MemberMutationResult> {
+    let role: OrgRole;
+    if (typeof roleOrOpts === "object" && roleOrOpts !== null) {
+      role = roleOrOpts.role;
+    } else {
+      deprecatePositional("org.members.setRole", "use setRole(principalId, { role })");
+      role = roleOrOpts;
+    }
     if (!principalId) throw new LocalError("org members.setRole requires a principalId", "setting member role");
     if (!role) throw new LocalError("org members.setRole requires a role", "setting member role");
     return this.client.request<MemberMutationResult>(
