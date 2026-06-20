@@ -71,6 +71,11 @@ The existing `run402 deploy apply` command SHALL automatically use GitHub Action
 - **WHEN** CI deploy receives `invalid_token`, `access_denied`, `event_not_allowed`, `repository_id_mismatch`, `forbidden_spec_field`, `forbidden_plan`, or 402 payment/tier errors
 - **THEN** the CLI MUST print an actionable explanation that references the binding, event, repository id, deploy spec restriction, same-binding-only guard, or tier requirement as appropriate
 
+#### Scenario: Revoked binding points at re-link
+- **WHEN** CI deploy token-exchange fails with `binding_revoked` (a matching binding existed but was revoked, e.g. the project was transferred)
+- **THEN** the CLI MUST print guidance to re-create the binding with `run402 ci link github`
+- **AND** the guidance MUST steer away from `run402 ci set-asset-scopes`, which returns 409 on a revoked binding
+
 ### Requirement: CLI keeps high-risk CI options out of v1
 The v1 CLI SHALL avoid exposing high-risk or low-level controls that are unnecessary for the common coding-agent path.
 

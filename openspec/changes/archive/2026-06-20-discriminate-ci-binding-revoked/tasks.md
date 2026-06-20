@@ -27,4 +27,4 @@
 
 - [x] 5.1 `npm test` (full main suite + sync + docs snippets) green
 - [x] 5.2 `@run402/astro` build + test green
-- [ ] 5.3 Deferred: `run402 ci list --include-revoked` (kychee-com/run402#473 Ask 2) — blocked on gateway `GET /ci/v1/bindings?include_revoked=1`
+- _Deferred (optional, not shipped in this change):_ 5.3 `run402 ci list --include-revoked` (kychee-com/run402#473 Ask 2) — blocked on gateway `GET /ci/v1/bindings?include_revoked=1`
