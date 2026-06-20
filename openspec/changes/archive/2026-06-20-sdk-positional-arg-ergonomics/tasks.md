@@ -31,7 +31,7 @@
 
 - [x] 5.1 Handle existence asserted (`call-shape-conventions.test.ts`); `scoped.test.ts` drift still green
 - [x] 5.2 Source guard in `sync.test.ts`: no fully-deprecated method (`setLeasePerpetual` / `wallets.setLabel`) in `cli/lib/**` or `src/tools/**`
-- [ ] 5.3 (optional) Add the deprecated tokens to the `SKILL.test.ts` banned-pattern list — belt-and-suspenders; the SKILL/reference docs already contain none (verified via grep), and 5.2 covers first-party code
+- _Deferred (optional, not shipped in this change):_ 5.3 Add the deprecated tokens to the `SKILL.test.ts` banned-pattern list — belt-and-suspenders; the SKILL/reference docs already contain none (verified via grep), and 5.2 covers first-party code
 - [x] 5.4 `sync.test.ts` `SURFACE`/`SDK_BY_CAPABILITY` valid (new `admin.*` in `SDK_ONLY_METHODS`); timestamp + type tests pass
 
 ## 6. First-party callers use only canonical forms
@@ -46,7 +46,7 @@
 - [x] 7.1 `sdk/llms-sdk.txt` + `sdk/README.md`: canonical forms (`r.wallet`, `r.admin.org/project`, options-object `secrets.set`/`setRole`, `pinLease`/`unpinLease`) + deprecation notes
 - [x] 7.2 `cli/llms-cli.txt` + `cli/README.md` + `openclaw/SKILL.md`: verified clean — CLI verbs/flags unchanged, no positional SDK forms present (grep: 0 hits)
 - [x] 7.3 `SKILL.md` + `llms-mcp.txt`: verified clean — MCP tool-name framings, no positional SDK forms present (grep: 0 hits)
-- [ ] 7.4 (optional polish) Add `r.wallet(address)` / `r.admin.org(id)` / `r.admin.project(id)` to the handle enumerations in `README.md` / `AGENTS.md` (no incorrect forms present today; this is additive listing only)
+- _Deferred (optional, not shipped in this change):_ 7.4 Add `r.wallet(address)` / `r.admin.org(id)` / `r.admin.project(id)` to the handle enumerations in `README.md` / `AGENTS.md` (no incorrect forms present today; this is additive listing only)
 - [x] 7.5 `CHANGELOG.md` `## Unreleased` entry added. **Manual follow-up (separate PR, run402-private):** `apps/marketing/updates.txt` + `humans/changelog.html` user-visible entry (HTTP API unchanged)
 
 ## 8. Verification
