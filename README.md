@@ -561,7 +561,7 @@ Local state lives at:
 ```bash
 npm run build           # builds core/, sdk/, then the MCP server
 npm test                # SKILL + sync + unit tests
-npm run test:e2e        # 47 CLI end-to-end tests
+npm run test:e2e        # builds generated CLI SDK mirrors, then runs CLI end-to-end tests
 npm run test:sync       # checks MCP/CLI/OpenClaw/SDK stay in sync
 npm run test:skill      # validates SKILL.md frontmatter + body
 ```

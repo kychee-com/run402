@@ -32,8 +32,8 @@ npm run start              # node dist/index.js (stdio MCP transport)
 npm run test:skill         # validates SKILL.md and openclaw/SKILL.md (49 tests across both)
 npm run test:sync          # checks MCP/CLI/OpenClaw/SDK stay in sync
 npm test                   # runs build first, then SKILL + sync + unit (core/src + sdk/src + src) + CLI e2e
-npm run test:e2e           # node --test cli-e2e.test.mjs cli-help.test.mjs cli-provision-active.test.mjs cli-argv.test.mjs cli-env.test.mjs
-npm run test:help          # CLI help-text snapshots only
+npm run test:e2e           # runs build first, then CLI end-to-end tests
+npm run test:help          # runs build first, then CLI help-text snapshots only
 npm run test:integration         # SIWX integration (core/src/siwx-integration.integ.ts)
 npm run test:integration:full    # full CLI integration (cli-integration.test.ts)
 npm run test:integration:mcp     # MCP integration (mcp-integration.test.ts)
