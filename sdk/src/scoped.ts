@@ -116,6 +116,8 @@ import type {
   SendEmailResult,
   SetMailboxDefaultsOptions,
   SetMailboxDefaultsResult,
+  UpdateMailboxOptions,
+  UpdateMailboxResult,
   UpdateWebhookOptions,
   WebhookDeliveriesResult,
 } from "./namespaces/email.js";
@@ -633,6 +635,9 @@ class ScopedEmail {
   }
   setMailboxDefaults(opts: SetMailboxDefaultsOptions): Promise<SetMailboxDefaultsResult> {
     return this.parent.email.setMailboxDefaults(this.projectId, opts);
+  }
+  updateMailbox(opts: UpdateMailboxOptions): Promise<UpdateMailboxResult> {
+    return this.parent.email.updateMailbox(this.projectId, opts);
   }
   send(opts: SendEmailOptions): Promise<SendEmailResult> {
     return this.parent.email.send(this.projectId, opts);

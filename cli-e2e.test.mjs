@@ -4726,6 +4726,39 @@ describe("CLI e2e happy path", () => {
     assert.ok(stdout.includes("test@mail.run402.com"), `stdout should include address, got: ${stdout}`);
   });
 
+  it("email update PATCHes mailbox footer policy", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/email.mjs");
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildEmailFetch(calls, {
+      "PATCH /mailboxes/v1/mbx_test_1": ({ body }) => json({
+        mailbox_id: "mbx_test_1",
+        address: "test@mail.run402.com",
+        slug: "test",
+        status: "active",
+        footer_policy: body.footer_policy,
+        effective_footer_policy: body.footer_policy,
+        footer_policy_locked_reason: null,
+      }),
+    });
+    let threw = null;
+    captureStart();
+    try {
+      await run("update", ["test", "--footer-policy", "none"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
+    const patch = calls.find(c => c.method === "PATCH" && c.pathNoQuery === "/mailboxes/v1/mbx_test_1");
+    assert.ok(patch, "must PATCH the resolved mailbox");
+    assert.deepEqual(patch.body, { footer_policy: "none" });
+    const stdout = JSON.parse(capturedStdout());
+    assert.equal(stdout.footer_policy, "none");
+    assert.equal(stdout.effective_footer_policy, "none");
+  });
+
   it("email delete without --confirm refuses to mutate (GH-87)", async () => {
     await seedTestProject();
     const { run } = await import("./cli/lib/email.mjs");

@@ -2,6 +2,14 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the private gateway monorepo and publishes on its own cadence.
 
+## Unreleased — configurable mailbox footer policy
+
+Adds downstream parity for gateway issue `configurable-email-footer` / run402#474.
+
+- **SDK:** mailbox records now type the footer policy fields (`footer_policy`, `effective_footer_policy`, `footer_policy_locked_reason`) and `r.email.updateMailbox(projectId, { mailbox?, footer_policy })` PATCHes `/mailboxes/v1/:mailbox_id`.
+- **CLI/MCP/OpenClaw:** `run402 email update <slug|mbx_id> --footer-policy run402_transparency|none` and MCP `update_mailbox` expose the same mailbox update path. Existing mailbox reads surface configured/effective footer policy.
+- **Docs/tests:** parity tests cover the new SDK/CLI/MCP/OpenClaw capability, and docs call out the tier gate: `none` is hobby/team-only; prototype projects remain locked to `run402_transparency` and surface `FOOTER_POLICY_TIER_REQUIRED`.
+
 ## Unreleased — project transfer to owned org
 
 Adds the public client surface for gateway issue `project-transfer-to-owned-org` / run402#469.

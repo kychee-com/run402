@@ -69,7 +69,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `secrets` | `set`, `list`, `delete` |
 | `subdomains` | `claim`, `list`, `delete` (most agents declare subdomains in `r.project(id).apply({ subdomains: { set: [...] } })` instead) |
 | `domains` | `add`, `list`, `status`, `remove` |
-| `email` | `createMailbox`, `listMailboxes`, `setMailboxDefaults`, `getMailbox`, `deleteMailbox`, `send`, `list`, `get`, `getRaw`, `webhooks.*` |
+| `email` | `createMailbox`, `listMailboxes`, `setMailboxDefaults`, `updateMailbox`, `getMailbox`, `deleteMailbox`, `send`, `list`, `get`, `getRaw`, `webhooks.*` |
 | `senderDomain` | `register`, `status`, `remove`, `enableInbound`, `disableInbound` |
 | `auth` | `requestMagicLink`, `verifyMagicLink`, `createUser`, `inviteUser`, `setUserPassword`, `settings`, passkey registration/login/list/delete helpers, `providers`, `promote`, `demote` |
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion` |

@@ -92,7 +92,7 @@ const MATRIX = {
   image: { shared: [], specific: ["generate"] },
   email: {
     shared: [],
-    specific: ["info", "status", "send", "list", "get-raw", "reply", "delete", "create", "get"],
+    specific: ["info", "status", "send", "list", "get-raw", "reply", "delete", "create", "update", "get"],
   },
   message: { shared: [], specific: ["send"] },
   auth: {
