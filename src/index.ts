@@ -177,6 +177,7 @@ import { listEmailsSchema, handleListEmails } from "./tools/list-emails.js";
 import { getEmailSchema, handleGetEmail } from "./tools/get-email.js";
 import { getEmailRawSchema, handleGetEmailRaw } from "./tools/get-email-raw.js";
 import { getMailboxSchema, handleGetMailbox } from "./tools/get-mailbox.js";
+import { updateMailboxSchema, handleUpdateMailbox } from "./tools/update-mailbox.js";
 import { deleteMailboxSchema, handleDeleteMailbox } from "./tools/delete-mailbox.js";
 
 // New tools — mailbox webhooks
@@ -883,7 +884,7 @@ server.tool(
 
 server.tool(
   "list_mailboxes",
-  "List a project's mailboxes, including default-role metadata (`is_default_outbound`, `is_auth_sender`), readiness (`can_send`, `send_blocked_reason`, `domain_kind`), mailbox_settings, and next_actions. Use before choosing or repairing email defaults.",
+  "List a project's mailboxes, including default-role metadata (`is_default_outbound`, `is_auth_sender`), readiness (`can_send`, `send_blocked_reason`, `domain_kind`), footer-policy fields, mailbox_settings, and next_actions. Use before choosing or repairing email defaults.",
   listMailboxesSchema,
   async (args) => handleListMailboxes(args),
 );
@@ -925,9 +926,16 @@ server.tool(
 
 server.tool(
   "get_mailbox",
-  "Get the project's mailbox info (ID, address, slug). Use to check if a mailbox exists.",
+  "Get the project's mailbox info (ID, address, slug, default/readiness metadata, and footer-policy fields when returned). Use to check if a mailbox exists.",
   getMailboxSchema,
   async (args) => handleGetMailbox(args),
+);
+
+server.tool(
+  "update_mailbox",
+  "Update per-mailbox settings. Currently supports footer_policy: run402_transparency or none. Prototype projects are locked to run402_transparency; attempting none surfaces the gateway's FOOTER_POLICY_TIER_REQUIRED typed error.",
+  updateMailboxSchema,
+  async (args) => handleUpdateMailbox(args),
 );
 
 server.tool(

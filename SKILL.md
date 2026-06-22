@@ -32,7 +32,7 @@ Six tool calls, zero-to-deployed:
 5. **`validate_manifest`**, then **`apply_expose`** with a manifest — check and declare which tables are reachable via PostgREST. Tables are dark by default.
 6. **`deploy_site_dir`** with `dir` (or `deploy_site` with inline files) — incremental upload, only PUTs bytes the gateway doesn't already have. Returns a live URL plus auto-claimed subdomain on subsequent deploys.
 
-Optional next: **`deploy_function`** for server logic, **`assets_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` → `list_mailboxes` / `set_mailbox_defaults` → `send_email`** for transactional mail.
+Optional next: **`deploy_function`** for server logic, **`assets_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` → `list_mailboxes` / `set_mailbox_defaults` / `update_mailbox` → `send_email`** for transactional mail.
 
 ## Error Envelopes and Safe Retry
 
@@ -508,8 +508,8 @@ Function authoring limits per tier: prototype 10s / 128 MB / 1 scheduled fn / 15
 - **`passkey_register_options`** / **`passkey_register_verify`** — create and verify WebAuthn passkey registration ceremonies.
 - **`passkey_login_options`** / **`passkey_login_verify`** — create and verify WebAuthn passkey login ceremonies.
 - **`list_passkeys`** / **`delete_passkey`** — list or delete the authenticated user's passkeys.
-- **`create_mailbox`** / **`get_mailbox`** / **`delete_mailbox`** — up to 5 mailboxes per project at `<slug>@mail.run402.com`. `create_mailbox` is not idempotent (a 409 — slug taken / cooldown / 5-mailbox limit — is surfaced, not recovered).
-- **`list_mailboxes`** / **`set_mailbox_defaults`** — inspect candidates/default-role metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `send_blocked_reason`, `domain_kind`) and explicitly set `default_outbound_mailbox_id` / `auth_sender_mailbox_id`. Happy path: `create_mailbox` → `list_mailboxes` → `set_mailbox_defaults` if `next_actions` says defaults are missing → `send_email`.
+- **`create_mailbox`** / **`get_mailbox`** / **`update_mailbox`** / **`delete_mailbox`** — up to 5 mailboxes per project at `<slug>@mail.run402.com`. `create_mailbox` is not idempotent (a 409 — slug taken / cooldown / 5-mailbox limit — is surfaced, not recovered). `update_mailbox` sets `footer_policy` (`run402_transparency` or `none`); `none` requires hobby/team, while prototype projects are locked to `run402_transparency` and return `FOOTER_POLICY_TIER_REQUIRED`.
+- **`list_mailboxes`** / **`set_mailbox_defaults`** — inspect candidates/default-role/readiness/footer-policy metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, `footer_policy_locked_reason`) and explicitly set `default_outbound_mailbox_id` / `auth_sender_mailbox_id`. Happy path: `create_mailbox` → `list_mailboxes` → `set_mailbox_defaults` if `next_actions` says defaults are missing → optionally `update_mailbox` for footer policy → `send_email`.
 - **`send_email`** — template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Optional `mailbox` selector; if omitted, the configured `default_outbound_mailbox_id` is used. Missing/ambiguous/invalid defaults return typed errors such as `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` with `next_actions`; successful sends echo the actual `mailbox_id` and `from_address` when the gateway returns them.
 - **`list_emails`** / **`get_email`** / **`get_email_raw`** — read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification.
 - **`register_mailbox_webhook`** / **`list_mailbox_webhooks`** / **`get_mailbox_webhook`** / **`update_mailbox_webhook`** / **`delete_mailbox_webhook`** — email-event webhooks (delivery, bounced, complained, reply_received).

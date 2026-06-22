@@ -79,7 +79,9 @@ Subcommands:
   defaults [--outbound <slug|id>] [--auth-sender <slug|id>] [--project <id>]
                                       Show or set mailbox defaults. With no
                                       flags, prints current settings/candidates.
-  info   [--project <id>]            Show mailbox info (ID, address, slug)
+  update [<slug|id>] --footer-policy <run402_transparency|none> [--project <id>]
+                                      Update per-mailbox settings
+  info   [--project <id>]            Show mailbox info, including footer policy
   status [--project <id>]            Alias for 'info' (prefer 'info')
   send   --to <email> [mode flags]   Send an email (template or raw HTML)
   list   [--limit <n>] [--after <cursor>] [--direction <inbound|outbound>] [--project <id>]
@@ -119,8 +121,8 @@ Send modes:
 
 Choosing a mailbox:
   --mailbox <slug|id>  Target a specific mailbox. Accepted by send, list, get,
-                       get-raw, reply, info, and webhooks. For send, omitting
-                       --mailbox uses default_outbound_mailbox_id when set; if
+                       get-raw, reply, info, update, and webhooks. For send,
+                       omitting --mailbox uses default_outbound_mailbox_id when set; if
                        the gateway reports mailbox_settings and no default is
                        configured, set one with 'run402 email defaults'.
                        (delete takes the target as its positional
@@ -135,6 +137,7 @@ Examples:
   run402 email create my-app
   run402 email mailboxes
   run402 email defaults --outbound my-app --auth-sender my-app
+  run402 email update my-app --footer-policy none
   run402 email send --template project_invite --to user@example.com \\
     --var project_name="My App" --var invite_url="https://example.com/invite/abc"
   run402 email send --to user@example.com --subject "Welcome!" \\
@@ -152,6 +155,8 @@ Examples:
 Notes:
   - Up to 5 mailboxes per project — configure explicit defaults before
     relying on omitted --mailbox sends
+  - Footer policy: prototype is locked to run402_transparency; hobby/team can
+    set none. Tier locks surface as FOOTER_POLICY_TIER_REQUIRED.
   - Single recipient per send (no CC/BCC)
   - Slug: 3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
   - --project defaults to the active project
@@ -196,7 +201,7 @@ Usage:
 Usage:
   run402 email delete [<slug|mailbox_id>] --confirm [--project <id>]
 `,
-  info: `run402 email info — Show mailbox info (ID, address, slug)
+  info: `run402 email info — Show mailbox info, including footer policy
 
 Usage:
   run402 email info [--project <id>]
@@ -268,6 +273,19 @@ Options:
   --clear-auth-sender          Clear auth_sender_mailbox_id
   --project <id>               Project ID (defaults to the active project)
 `,
+  update: `run402 email update — Update per-mailbox settings
+
+Usage:
+  run402 email update [<slug|mbx_id>] --footer-policy <run402_transparency|none> [--project <id>]
+  run402 email update --mailbox <slug|mbx_id> --footer-policy <run402_transparency|none> [--project <id>]
+
+Options:
+  --footer-policy <policy>  Outbound footer policy. Use run402_transparency or none.
+                            Prototype projects are locked to run402_transparency;
+                            attempts to set none return FOOTER_POLICY_TIER_REQUIRED.
+  --mailbox <slug|id>       Target mailbox; omit only when the project has one mailbox.
+  --project <id>            Project ID (defaults to the active project)
+`,
   get: `run402 email get — Get a message with replies
 
 Usage:
@@ -307,6 +325,26 @@ function summarizeMailboxForDefaults(m) {
     can_send: m.can_send,
     send_blocked_reason: m.send_blocked_reason ?? null,
     domain_kind: m.domain_kind,
+    footer_policy: m.footer_policy,
+    effective_footer_policy: m.effective_footer_policy,
+    footer_policy_locked_reason: m.footer_policy_locked_reason ?? null,
+  };
+}
+
+function mailboxInfoPayload(m) {
+  return {
+    mailbox_id: m.mailbox_id,
+    address: m.address,
+    slug: m.slug,
+    status: m.status,
+    is_default_outbound: m.is_default_outbound,
+    is_auth_sender: m.is_auth_sender,
+    can_send: m.can_send,
+    send_blocked_reason: m.send_blocked_reason,
+    domain_kind: m.domain_kind,
+    footer_policy: m.footer_policy,
+    effective_footer_policy: m.effective_footer_policy,
+    footer_policy_locked_reason: m.footer_policy_locked_reason,
   };
 }
 
@@ -391,6 +429,9 @@ async function create(args) {
       address: data.address,
       slug: data.slug,
       status: data.status,
+      footer_policy: data.footer_policy,
+      effective_footer_policy: data.effective_footer_policy,
+      footer_policy_locked_reason: data.footer_policy_locked_reason,
       mailbox_settings: data.mailbox_settings,
       next_actions: data.next_actions,
       created: true,
@@ -444,6 +485,53 @@ async function defaults(args) {
 
     const updated = await getSdk().email.setMailboxDefaults(projectId, patch);
     console.log(JSON.stringify(updated, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function updateMailbox(args) {
+  const valueFlags = ["--project", "--mailbox", "--footer-policy"];
+  validateArgs(args, valueFlags);
+  const projectId = resolveProjectId(strictFlagValue(args, "--project"));
+  const mailboxFlag = strictFlagValue(args, "--mailbox");
+  const footerPolicy = strictFlagValue(args, "--footer-policy");
+  const positional = positionalArgs(args, valueFlags);
+  const target = positional[0] ?? null;
+
+  if (positional.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Too many positional arguments. Use one optional <slug|id> target.",
+    });
+  }
+  if (target && mailboxFlag && target !== mailboxFlag) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Use either positional <slug|id> or --mailbox, not both.",
+    });
+  }
+  if (!footerPolicy) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing --footer-policy <run402_transparency|none>.",
+      hint: "run402 email update <slug|id> --footer-policy none",
+    });
+  }
+  if (!["run402_transparency", "none"].includes(footerPolicy)) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--footer-policy must be one of: run402_transparency, none.",
+      details: { footer_policy: footerPolicy },
+    });
+  }
+
+  try {
+    const data = await getSdk().email.updateMailbox(projectId, {
+      mailbox: target ?? mailboxFlag ?? undefined,
+      footer_policy: footerPolicy,
+    });
+    console.log(JSON.stringify(mailboxInfoPayload(data), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -656,7 +744,7 @@ async function status(args) {
   const mailbox = strictFlagValue(args, "--mailbox");
   try {
     const mb = await getSdk().email.getMailbox(projectId, mailbox ?? undefined);
-    console.log(JSON.stringify({ mailbox_id: mb.mailbox_id, address: mb.address, slug: mb.slug }));
+    console.log(JSON.stringify(mailboxInfoPayload(mb), null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -670,6 +758,7 @@ export async function run(sub, args) {
     case "create": await create(args); break;
     case "mailboxes": await mailboxes(args); break;
     case "defaults": await defaults(args); break;
+    case "update": await updateMailbox(args); break;
     case "info":
     case "status": await status(args); break;
     case "send":   await send(args); break;

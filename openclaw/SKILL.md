@@ -736,6 +736,7 @@ Up to 5 mailboxes per project at `<slug>@mail.run402.com`. Optionally bring your
 run402 email create my-app                          # not idempotent
 run402 email mailboxes                              # candidates + mailbox_settings + next_actions
 run402 email defaults --outbound my-app --auth-sender my-app
+run402 email update my-app --footer-policy none     # hobby/team only; prototype is locked
 run402 email send --to user@example.com \
   --template notification \
   --var project_name="My App" --var message="Hello"
@@ -749,6 +750,8 @@ run402 email get-raw <message_id> --output msg.eml   # raw RFC-822 for DKIM / zk
 ```
 
 Omitting `--mailbox` on `email send` uses `default_outbound_mailbox_id`; missing/invalid defaults return typed errors such as `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` with `next_actions`. Successful sends echo the actual `mailbox_id` and `from_address` when the gateway returns them.
+
+Mailbox reads (`email mailboxes` / `email info`) include `footer_policy`, `effective_footer_policy`, and `footer_policy_locked_reason` when the gateway returns them. Use `run402 email update <slug|mbx_id> --footer-policy run402_transparency|none` to set the policy. `none` is allowed on hobby/team projects; prototype projects stay locked to `run402_transparency` and attempts to set `none` return `FOOTER_POLICY_TIER_REQUIRED`.
 
 Templates: `project_invite` (`project_name`, `invite_url`), `magic_link` (`project_name`, `link_url`, `expires_in`), `notification` (`project_name`, `message` ≤ 500 chars).
 

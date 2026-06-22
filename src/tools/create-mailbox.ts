@@ -30,6 +30,13 @@ export async function handleCreateMailbox(args: {
         `- **Auth sender:** ${body.mailbox_settings.auth_sender_mailbox_id ?? "(unset)"}`,
       );
     }
+    if (body.footer_policy !== undefined) lines.push(`- **Footer policy:** ${body.footer_policy}`);
+    if (body.effective_footer_policy !== undefined) {
+      lines.push(`- **Effective footer policy:** ${body.effective_footer_policy}`);
+    }
+    if (body.footer_policy_locked_reason) {
+      lines.push(`- **Footer policy locked reason:** ${body.footer_policy_locked_reason}`);
+    }
     if (Array.isArray(body.next_actions) && body.next_actions.length > 0) {
       lines.push("", "Next actions:", "```json", JSON.stringify(body.next_actions, null, 2), "```");
     }

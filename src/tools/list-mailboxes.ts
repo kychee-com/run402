@@ -37,6 +37,13 @@ export async function handleListMailboxes(args: {
           lines.push(`  - Can send: ${mb.can_send}${mb.send_blocked_reason ? ` (${mb.send_blocked_reason})` : ""}`);
         }
         if (mb.domain_kind) lines.push(`  - Domain kind: ${mb.domain_kind}`);
+        if (mb.footer_policy !== undefined) lines.push(`  - Footer policy: ${mb.footer_policy}`);
+        if (mb.effective_footer_policy !== undefined) {
+          lines.push(`  - Effective footer policy: ${mb.effective_footer_policy}`);
+        }
+        if (mb.footer_policy_locked_reason) {
+          lines.push(`  - Footer policy locked reason: ${mb.footer_policy_locked_reason}`);
+        }
       }
     }
     if (Array.isArray(result.next_actions) && result.next_actions.length > 0) {

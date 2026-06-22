@@ -259,6 +259,71 @@ describe("email.setMailboxDefaults", () => {
   });
 });
 
+describe("email.updateMailbox", () => {
+  it("PATCHes footer_policy on a mailbox id", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        ...mailboxRecord("support", "mbx_support"),
+        footer_policy: "none",
+        effective_footer_policy: "none",
+        footer_policy_locked_reason: null,
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.email.updateMailbox("prj_known", {
+      mailbox: "mbx_support",
+      footer_policy: "none",
+    });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1/mbx_support");
+    assert.equal(calls[0]!.method, "PATCH");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { footer_policy: "none" });
+    assert.equal(result.footer_policy, "none");
+    assert.equal(result.effective_footer_policy, "none");
+    assert.equal(result.footer_policy_locked_reason, null);
+  });
+
+  it("resolves slug selectors before PATCHing", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.method === "GET") {
+        return jsonResponse({ mailboxes: [mailboxRecord("support", "mbx_support")] });
+      }
+      return jsonResponse({
+        ...mailboxRecord("support", "mbx_support"),
+        footer_policy: "run402_transparency",
+        effective_footer_policy: "run402_transparency",
+        footer_policy_locked_reason: "prototype_tier",
+      });
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.email.updateMailbox("prj_known", {
+      mailbox: "support",
+      footer_policy: "run402_transparency",
+    });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1");
+    assert.equal(calls[1]!.url, "https://api.example.test/mailboxes/v1/mbx_support");
+    assert.equal(result.footer_policy_locked_reason, "prototype_tier");
+  });
+
+  it("rejects invalid footer policies before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch for invalid footer policy");
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      // @ts-expect-error — exercising runtime validation of a bad value
+      sdk.email.updateMailbox("prj_known", { mailbox: "mbx_support", footer_policy: "bogus" }),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.context === "updating mailbox" &&
+        /run402_transparency/.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+});
+
 describe("email.deleteMailbox", () => {
   it("returns the deleted record { mailbox_id, address }", async () => {
     const { fetch, calls } = mockFetch(() =>

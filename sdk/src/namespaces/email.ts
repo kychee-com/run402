@@ -17,11 +17,14 @@ const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const WEBHOOK_EVENTS = ["delivery", "bounced", "complained", "reply_received"] as const;
 const MESSAGE_DIRECTIONS = ["inbound", "outbound"] as const;
 const DELIVERY_STATUSES = ["pending", "in_flight", "delivered", "failed_permanent"] as const;
+const MAILBOX_FOOTER_POLICIES = ["run402_transparency", "none"] as const;
 
 /** Direction filter for `email.list`. Omit to list both sent + received. */
 export type MessageDirection = (typeof MESSAGE_DIRECTIONS)[number];
 /** Durable webhook delivery lifecycle status. `failed_permanent` is the DLQ. */
 export type WebhookDeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+/** Outbound footer policy configured on a mailbox. */
+export type MailboxFooterPolicy = (typeof MAILBOX_FOOTER_POLICIES)[number];
 
 export interface MailboxRecord {
   mailbox_id: string;
@@ -43,6 +46,12 @@ export interface MailboxRecord {
   send_blocked_reason?: string | null;
   /** Shared run402 domain vs a project-owned sender domain. Future strings are valid. */
   domain_kind?: string;
+  /** Configured outbound footer policy for this mailbox. */
+  footer_policy?: MailboxFooterPolicy;
+  /** Effective policy after tier locks/defaults are applied. */
+  effective_footer_policy?: MailboxFooterPolicy;
+  /** Present when the requested footer policy is locked by tier or platform policy. */
+  footer_policy_locked_reason?: string | null;
 }
 
 export interface MailboxSettings {
@@ -82,6 +91,15 @@ export interface SetMailboxDefaultsOptions {
 }
 
 export type SetMailboxDefaultsResult = MailboxListResult;
+
+export interface UpdateMailboxOptions {
+  /** Target mailbox by slug or `mbx_...` id; omit only on single-mailbox projects. */
+  mailbox?: MailboxSelector;
+  /** Outbound footer policy. Prototype projects are locked to `run402_transparency`. */
+  footer_policy?: MailboxFooterPolicy;
+}
+
+export type UpdateMailboxResult = MailboxInfo;
 
 export interface DeleteMailboxResult {
   mailbox_id: string;
@@ -393,6 +411,7 @@ export class Email {
   readonly status: (projectId: string, mailbox?: MailboxSelector) => Promise<MailboxInfo>;
   readonly info: (projectId: string, mailbox?: MailboxSelector) => Promise<MailboxInfo>;
   readonly delete: (projectId: string, mailbox?: MailboxSelector) => Promise<DeleteMailboxResult>;
+  readonly update: (projectId: string, opts: UpdateMailboxOptions) => Promise<UpdateMailboxResult>;
 
   constructor(private readonly client: Client) {
     this.webhooks = new Webhooks(client, (projectId, selector) => this.resolveMailbox(projectId, selector));
@@ -400,6 +419,7 @@ export class Email {
     this.status = this.getMailbox.bind(this);
     this.info = this.getMailbox.bind(this);
     this.delete = this.deleteMailbox.bind(this);
+    this.update = this.updateMailbox.bind(this);
   }
 
   /**
@@ -616,6 +636,35 @@ export class Email {
         ...(hasAuthSender ? { auth_sender_mailbox_id: opts.auth_sender_mailbox_id } : {}),
       },
       context: "setting mailbox defaults",
+    });
+  }
+
+  /**
+   * Update per-mailbox settings. Currently supports the outbound
+   * `footer_policy` field accepted by PATCH /mailboxes/v1/:mailbox_id.
+   */
+  async updateMailbox(projectId: string, opts: UpdateMailboxOptions): Promise<UpdateMailboxResult> {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+      throw new LocalError(
+        "r.email.updateMailbox(projectId, opts) requires an opts object.",
+        "updating mailbox",
+      );
+    }
+    const hasFooterPolicy = Object.prototype.hasOwnProperty.call(opts, "footer_policy");
+    if (!hasFooterPolicy) {
+      throw new LocalError(
+        "Provide footer_policy.",
+        "updating mailbox",
+      );
+    }
+    assertStringInSet(opts.footer_policy, MAILBOX_FOOTER_POLICIES, "footer_policy", "updating mailbox");
+
+    const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox, "unique", "updating mailbox");
+    return this.client.request<UpdateMailboxResult>(`/mailboxes/v1/${id}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${serviceKey}` },
+      body: { footer_policy: opts.footer_policy },
+      context: "updating mailbox",
     });
   }
 
