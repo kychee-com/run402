@@ -1582,7 +1582,7 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.match(err, /\bConfig\b/, `human banner should be on stderr, got: ${err.slice(0, 300)}`);
   });
 
-  it("init astro emits JSON on stdout and progress on stderr; scaffold drops stale getUser", async () => {
+  it("init astro emits JSON on stdout and progress on stderr; scaffold uses current deps and drops stale getUser", async () => {
     const { runInitAstro } = await import("./cli/lib/init-astro.mjs");
     const scaffoldDir = join(tempDir, "scaffold-test");
     captureStart();
@@ -1599,6 +1599,14 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.equal(parsed.status, undefined, "no top-level status field");
     const err = stderr.join("\n");
     assert.match(err, /Scaffolded Astro project/, "progress lines should be on stderr");
+
+    const pkg = JSON.parse(readFileSync(join(scaffoldDir, "package.json"), "utf8"));
+    assert.equal(pkg.dependencies.astro, "^7.0.0");
+    assert.equal(pkg.dependencies["@run402/astro"], "^2.4.2");
+    assert.equal(pkg.dependencies["@run402/functions"], "^3.0.0");
+    assert.notEqual(pkg.dependencies.astro, "^5.0.0");
+    assert.notEqual(pkg.dependencies["@run402/astro"], "^1.0.0");
+    assert.notEqual(pkg.dependencies["@run402/functions"], "^2.5.0");
 
     // Scaffold-template regression: [slug].astro must NOT import the retired
     // getUser bare export from @run402/functions@3.0+ — it would throw
