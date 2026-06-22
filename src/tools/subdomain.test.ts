@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleClaimSubdomain, handleDeleteSubdomain } from "./subdomain.js";
 import { saveProject } from "../keystore.js";
+import { _resetSdk } from "../sdk.js";
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -13,16 +14,18 @@ beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-subdomain-test-"));
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
+  _resetSdk();
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  _resetSdk();
   rmSync(tempDir, { recursive: true, force: true });
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
 });
 
-describe("claim_subdomain tool", () => {
+describe("claim_subdomain tool", { concurrency: false }, () => {
   it("returns success with subdomain URL on 201", async () => {
     saveProject("proj-1", {
       anon_key: "ak",
@@ -159,7 +162,7 @@ describe("claim_subdomain tool", () => {
   });
 });
 
-describe("delete_subdomain tool", () => {
+describe("delete_subdomain tool", { concurrency: false }, () => {
   it("returns success on 200", async () => {
     saveProject("proj-5", {
       anon_key: "ak",
