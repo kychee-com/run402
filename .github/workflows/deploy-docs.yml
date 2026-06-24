@@ -4,11 +4,13 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "docs-site/**"
+      - "scripts/build-agent-flat-docs.mjs"
+      - "scripts/build-docs-deploy-manifest.mjs"
       - "cli/llms-cli.txt"
       - "sdk/llms-sdk.txt"
       - "llms-mcp.txt"
       - "SKILL.md"
-      - "run402.docs.deploy.json"
       - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
@@ -21,7 +23,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Single source of truth: the committed flat agent files must match what
+      # the docs-site content regenerates. Fail loudly if content was edited
+      # without running `node scripts/build-agent-flat-docs.mjs`.
+      - name: Verify agent flat docs are regenerated (single source)
+        run: node scripts/build-agent-flat-docs.mjs --check
+
+      # Build the static Starlight portal (no SSR adapter — plain static output).
+      - name: Build docs portal
+        working-directory: docs-site
+        run: |
+          npm ci
+          npm run build
+
+      # Enumerate dist/** + the four root flat files into run402.docs.deploy.json
+      # (the CLI's --dir flag is Astro-SSR-adapter only; this static dir needs an
+      # explicit per-file manifest).
+      - name: Build deploy manifest
+        run: node scripts/build-docs-deploy-manifest.mjs
+
+      # Deploy to the existing run402 docs project via GitHub OIDC (no stored
+      # run402 secret). Manifest via stdin — passing --manifest in CI trips the
+      # CLI's "only one deploy manifest source" stdin detection. Implicit public
+      # paths legitimately emit filename-derived widening notices, so warnings
+      # are allowed.
       - name: Deploy to run402
-        # Manifest via stdin (one source). Passing --manifest in CI trips the
-        # CLI's stdin detection ("Only one deploy manifest source"), so pipe it.
-        run: npx --yes run402@latest deploy apply --project 'prj_1780488560350_0018' < run402.docs.deploy.json
+        run: npx --yes run402@latest deploy apply --project 'prj_1780488560350_0018' --allow-warnings < run402.docs.deploy.json
+
+      # Smoke: the portal root serves HTML and the four flat files still serve at
+      # their canonical paths with the right content types (CDN propagation retry).
+      - name: Smoke test served surfaces
+        run: |
+          curl -fsS --retry 6 --retry-delay 5 --retry-all-errors -o /dev/null \
+            -w '/ -> %{http_code} %{content_type}\n' https://docs.run402.com/
+          for f in llms-cli.txt llms-sdk.txt llms-mcp.txt SKILL.md; do
+            curl -fsS --retry 6 --retry-delay 5 --retry-all-errors -o /dev/null \
+              -w "/$f -> %{http_code} %{content_type}\n" "https://docs.run402.com/$f"
+          done

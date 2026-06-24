@@ -1,0 +1,4 @@
+# Astro / Starlight build output and deps (standalone sub-project)
+dist/
+node_modules/
+.astro/

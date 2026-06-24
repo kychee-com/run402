@@ -1,0 +1,17 @@
+{
+  "name": "run402-docs-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "docs.run402.com — human-facing Run402 documentation portal (Astro Starlight, static). The flat agent files (llms-*.txt) are generated from this content by scripts/build-agent-flat-docs.mjs.",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.0",
+    "astro": "^7.0.2"
+  }
+}

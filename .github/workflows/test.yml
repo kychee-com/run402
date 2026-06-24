@@ -20,6 +20,10 @@ jobs:
       - run: npm run build
       - run: npm run test:skill
       - run: npm run test:sync
+      # Single-source gate: the committed flat agent files (llms-*.txt) must
+      # match what docs-site/src/content regenerates. Pure Node — no docs-site
+      # install needed. Fails the PR if content was edited without regenerating.
+      - run: node scripts/build-agent-flat-docs.mjs --check
       # Quote the globs so Node handles expansion natively. Node's --test
       # glob matching recurses into nested dirs AND matches depth-0 files,
       # so it works regardless of the shell's globstar support. (Earlier
@@ -35,3 +39,22 @@ jobs:
       # any example references a method or field that does not exist on
       # the actual exports.
       - run: npm run test:docs
+
+  # The human docs portal (Astro Starlight, static) must compile, and the deploy
+  # manifest generator must produce a valid manifest from the build output.
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build docs portal
+        working-directory: docs-site
+        run: |
+          npm ci
+          npm run build
+      - name: Build deploy manifest from dist
+        run: node scripts/build-docs-deploy-manifest.mjs
+      - name: Agent flat docs are regenerated from portal content (single source)
+        run: node scripts/build-agent-flat-docs.mjs --check

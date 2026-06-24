@@ -7,3 +7,6 @@ sdk/core-dist/
 .claude/worktrees/
 tmp/
 .DS_Store
+
+# Generated at deploy time from docs-site/dist by scripts/build-docs-deploy-manifest.mjs
+run402.docs.deploy.json

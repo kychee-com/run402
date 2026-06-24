@@ -1,0 +1,48 @@
+---
+title: Run402 Docs
+description: Postgres, REST, auth, storage, functions, email and atomic deploys an AI agent can provision and pay for on its own.
+template: splash
+hero:
+  tagline: The backend an AI agent can provision, operate, and pay for on its own — Postgres, REST, auth, content-addressed storage, serverless functions, email, and atomic full-stack deploys.
+  actions:
+    - text: Getting started
+      link: /getting-started/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/kychee-com/run402
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## You're supervising an agent that builds on Run402
+
+This portal is for the **developer behind the agent**. The agent itself reads the
+flat references below; you get the same material, navigable and searchable.
+
+<CardGrid>
+  <Card title="CLI" icon="seti:powershell">
+    The full `run402` command reference. [Read it](/cli/reference/) — or fetch the
+    raw file at [`/llms-cli.txt`](https://docs.run402.com/llms-cli.txt).
+  </Card>
+  <Card title="SDK" icon="seti:typescript">
+    The typed `@run402/sdk` reference. [Read it](/sdk/reference/) — raw at
+    [`/llms-sdk.txt`](https://docs.run402.com/llms-sdk.txt).
+  </Card>
+  <Card title="MCP" icon="puzzle">
+    The `run402-mcp` tool reference. [Read it](/mcp/reference/) — raw at
+    [`/llms-mcp.txt`](https://docs.run402.com/llms-mcp.txt).
+  </Card>
+  <Card title="Error codes" icon="error">
+    Stable `R402_*` envelope codes with suggested fixes.
+    [Browse the reference](/reference/error-codes/).
+  </Card>
+</CardGrid>
+
+## The agent's entry points
+
+Agents discover Run402 through the wayfinder at
+[`run402.com/llms.txt`](https://run402.com/llms.txt) and the skill at
+[`/SKILL.md`](https://docs.run402.com/SKILL.md). Those flat files are the source
+of truth for machines; the pages here are the same content rendered for people.

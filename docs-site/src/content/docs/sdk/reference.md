@@ -1,0 +1,1641 @@
+---
+title: SDK reference
+description: Comprehensive @run402/sdk reference (the agent-facing llms-sdk.txt, rendered).
+order: 1
+---
+
+# @run402/sdk — comprehensive reference
+
+> Package: `@run402/sdk` (npm)
+> Wayfinder: https://run402.com/llms.txt
+> Sibling references: CLI at https://docs.run402.com/llms-cli.txt · MCP at https://docs.run402.com/llms-mcp.txt · HTTP at https://run402.com/llms-full.txt
+> Source: sdk/llms-sdk.txt in https://github.com/kychee-com/run402
+
+The canonical agent-facing reference for the typed TypeScript SDK. Every Run402 capability is a method on a resource namespace; the CLI and MCP server are thin shims over this kernel.
+
+The SDK is the recommended surface when you're authoring code. Fewer process boundaries than the CLI, typed error envelopes, identical behavior. If you're already in TypeScript, prefer this.
+
+## Install
+
+```bash
+npm install @run402/sdk
+```
+
+Two entry points:
+
+| Import | Use when | Bundles |
+|---|---|---|
+| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads `~/.config/run402/projects.json` and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, and `normalizeDeployManifest(input)`. |
+| `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
+
+## Quick start (Node)
+
+```ts
+import { run402 } from "@run402/sdk/node";
+
+const r = run402();
+const project = await r.projects.provision({ tier: "prototype" });
+await (await r.project(project.project_id)).assets.put("hello.txt", { content: "hi" });
+```
+
+That's it — credentials are read, x402 payments are signed, results are typed.
+
+## Quick start (isomorphic / sandbox)
+
+```ts
+import { Run402, type CredentialsProvider } from "@run402/sdk";
+
+const credentials: CredentialsProvider = {
+  async getAuth() {
+    return { Authorization: `Bearer ${session.token}` };
+  },
+  async getProject(id) {
+    return session.projects[id] ?? null;
+  },
+};
+
+const r = new Run402({
+  apiBase: "https://api.run402.com",
+  credentials,
+});
+```
+
+The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones for hosts that want full sticky-default behavior (`saveProject`, `updateProject`, `removeProject`, `setActiveProject`, `getActiveProject`, `readAllowance`, `saveAllowance`, `createAllowance`, `getAllowancePath`).
+
+## Mental model
+
+The SDK is the canonical kernel. A single typed `Run402` class with one namespace per resource group (`r.projects`, `r.assets`, …). The hero apply primitive is `r.project(id).apply(spec)`; there is no public `r.deploy` surface. Every method:
+- Takes typed parameters (TS interfaces in `*.types.ts`)
+- Returns a typed `Promise<T>`
+- Throws a typed subclass of `Run402Error` on failure
+- Never calls `process.exit`
+
+The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share `~/.config/run402/projects.json` so credentials carry across surfaces.
+
+### Casing in returned shapes
+
+Two casings coexist by design — classify a field by the shape it belongs to:
+
+- Raw API result shapes preserve the gateway's snake_case fields. Examples:
+  `ProvisionResult.project_id`, `ProvisionResult.anon_key`,
+  `ProvisionResult.service_key`, `ProvisionResult.schema_slot`,
+  `ProjectInfo.project_id`, `ProjectSummary.lease_expires_at`,
+  `UsageReport.api_calls`, `SchemaReport.schema`. These mirror the HTTP
+  response bodies one-to-one.
+- SDK-specific helper shapes use camelCase. Examples:
+  `AssetRef.cdnUrl` / `AssetRef.cacheKind` / `AssetRef.contentSha256`,
+  `Run402DeployError.safeToRetry` / `operationId` / `mutationState`,
+  every `DeployEvent` variant's discriminator (`type`, plus per-variant
+  fields like `releaseId`, `urls`).
+
+The split stays through `1.x`. CI fails any TypeScript-fenced example that
+accesses a field that does not exist on the actual type. Reference tables
+below use plain code fences (no `ts`) — they document the type surface for
+visual scanning, are not runnable, and are exempt from type-checking.
+
+### Timestamp Convention
+
+Public API and SDK response timestamps are ISO-8601 strings, never JavaScript
+`Date` objects or numeric epochs. Absolute instants use fields such as
+`created_at`, `updated_at`, `expires_at`, `lease_expires_at`, `timestamp`, and
+`ingestion_time`; nullable means the gateway state is genuinely absent. Numeric
+time values are reserved for relative durations or local measurements and carry
+units in the name (`expires_in`, `duration_ms`, `elapsedMs`, `ttl_seconds`).
+
+## Project credentials
+
+After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `service_key`, `schema_slot`. The Node entry's credentials provider auto-saves these to `~/.config/run402/projects.json`.
+
+- `anon_key` — read-only by default; safe in browser HTML. RLS policies apply.
+- `service_key` — server-side admin. Never embed in browser code.
+
+Neither key expires. Lease enforcement happens server-side.
+
+```ts
+await r.projects.use(projectId);             // make this the active project
+const keys = await r.projects.keys(projectId);
+const info = await r.projects.info(projectId);
+```
+
+## Errors
+
+All failures throw subclasses of `Run402Error`. Every subclass carries a stable
+`kind` string discriminator and an `isRun402Error` brand. Branch with the
+exported type guards (or by comparing `e.kind`) — NOT with `instanceof X`:
+identity-based checks fail silently when the consumer's runtime holds a
+different copy of the SDK (duplicate npm installs, bundler chunk splits,
+ESM/CJS interop, V8-isolate realms). `instanceof` continues to work for
+single-copy single-realm callers as a back-compat path.
+
+| Class | `kind` | When | Notable fields |
+|---|---|---|---|
+| `PaymentRequired` | `"payment_required"` | HTTP 402 | x402 payment requirements in `body` |
+| `ProjectNotFound` | `"project_not_found"` | Project ID not in the credential provider | `projectId` |
+| `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 — authentication missing or invalid | — |
+| `NotAuthorizedError` | `"not_authorized"` | HTTP 403 with `code: "NOT_AUTHORIZED"` — org-owned control-plane denial (gateway v1.77+): authenticated, but the principal lacks the required org membership/role or per-project grant | `requiredRole`, `requiredCapability`, `reason`, `action` |
+| `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
+| `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
+| `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
+| `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
+| `TransferFreezeError` | `"transfer_freeze"` | HTTP 409 with `code: "PROJECT_HAS_PENDING_TRANSFER"` from the v1.59 transfer-freeze middleware blocking owner-side mutations during a pending transfer | `transferId`, `projectId`, `cancelPath`, `previewPath` |
+
+The exported `Run402ErrorKind` union type (`"payment_required" | "project_not_found" | "unauthorized" | "not_authorized" | "api_error" | "network_error" | "local_error" | "deploy_error" | "transfer_freeze"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
+
+```ts
+import {
+  run402,
+  withRetry,
+  isPaymentRequired,
+  isDeployError,
+  type ReleaseSpec,
+} from "@run402/sdk/node";
+
+declare const spec: ReleaseSpec;
+const r = run402();
+
+try {
+  const release = await withRetry(
+    async () => (await r.project(spec.project)).apply(spec, { idempotencyKey: "deploy-2026-05-01" }),
+    {
+      attempts: 3,
+      onRetry: (_e, attempt, delayMs) =>
+        process.stderr.write(`retry ${attempt} in ${delayMs}ms\n`),
+    },
+  );
+  console.log(release.urls);
+} catch (e) {
+  if (isPaymentRequired(e)) {
+    // narrowed to PaymentRequired — read e.body for the x402 quote
+  } else if (isDeployError(e)) {
+    // narrowed to Run402DeployError — log the structured envelope for triage
+    process.stderr.write(JSON.stringify(e) + "\n");
+  } else throw e;
+}
+```
+
+`Run402DeployError.code` is one of `MIGRATION_FAILED`, `MIGRATION_CHECKSUM_MISMATCH`, `BASE_RELEASE_CONFLICT`, `PAYMENT_REQUIRED`, `SCHEMA_SETTLE_TIMEOUT`, `ACTIVATION_FAILED`, `STORAGE_UNAVAILABLE`, `SITE_STAGE_FAILED`, `FUNCTION_BUILD_FAILED`, `CONTENT_UPLOAD_FAILED`, `INVALID_SPEC`, `MANIFEST_EMPTY`, `OPERATION_NOT_FOUND`, `MIGRATE_GATE_ACTIVE`, `INTERNAL_ERROR`, `NETWORK_ERROR`, `PROJECT_NOT_FOUND` (or any other string the gateway emits — consumers SHALL treat unknown codes as opaque). Pair it with the structured `nextActions` advisory array carried in the error body.
+
+### Type guards and the canonical retry policy
+
+The SDK exports identity-free guards plus a single canonical "should I retry this?" function:
+
+- `isRun402Error(e)` — true for any `Run402Error` subclass instance, regardless of which SDK copy created it.
+- `isPaymentRequired(e)`, `isProjectNotFound(e)`, `isUnauthorized(e)`, `isNotAuthorized(e)`, `isApiError(e)`, `isNetworkError(e)`, `isLocalError(e)`, `isDeployError(e)`, `isTransferFreezeError(e)` — narrow `unknown` to the named subclass. `isUnauthorized` (authentication missing/invalid) and `isNotAuthorized` (org control-plane denial — authenticated but under-privileged) are distinct: the first calls for re-auth, the second for obtaining an org membership/role or grant.
+- `isRetryableRun402Error(e)` — encapsulates the retry policy: `e.retryable || kind === "network_error" || status in {408, 425, 429} || status >= 500`, unless the gateway explicitly sets `retryable: false`. `safeToRetry` alone is not a retry signal; it means a repeated mutation should not duplicate/corrupt state, not that lifecycle/payment/auth gates will become allowed without an action. Returns `false` for non-Run402 inputs so it's safe to call from any `catch` block.
+- `getQuotaScope(e)` — returns `"organization"` for pooled organization quota denials, `"project"` for the orphan-project fallback when a organization row has been purged but cascade has not yet run, and `undefined` for non-quota errors or pre-v1.46 gateways. Safe to call with any `unknown`; reads `Run402Error.quotaScope`, which is lifted from `details.scope` on the gateway envelope.
+- `isCiBindingRevoked(e)` — true for the CI token-exchange `binding_revoked` denial (HTTP 403): a subject-matching binding existed but was revoked (most often the project was transferred/handed off). Distinct from `access_denied` (no binding ever matched), which shares the same canonical `code: "FORBIDDEN"` — the guard reads the OAuth-style `error` field for you. The error stays an `Unauthorized` (no regression). Fix: re-run `run402 ci link github`; do NOT `set-asset-scopes` (409 on a revoked binding). Safe to call with any `unknown`.
+
+`Run402Error.toJSON()` returns a canonical envelope (`name`, `kind`, `message`, `status`, `code`, `category`, `retryable`, `safeToRetry`, `mutationState`, `traceId`, `context`, `details`, `nextActions`, `quotaScope`, `body`). `Run402DeployError.toJSON()` extends it with `phase`, `resource`, `operationId`, `planId`, `fix`, `logs`, `rolledBack`, and, when automatic deploy retries are exhausted, `attempts`, `maxRetries`, `lastRetryCode`. `JSON.stringify(error)` produces a populated structured object — never the empty `"{}"` plain `Error` produces.
+
+### `withRetry(fn, opts?)`
+
+`withRetry` runs an async function with exponential backoff. Defaults: 3 attempts (1 + 2 retries), 250 ms base delay, 5 s cap. Uses `isRetryableRun402Error` as the default retry decision. Pair with the SDK method's own `idempotencyKey` so retried mutations dedup server-side — the closure carries the same key on every attempt.
+
+Do not wrap lifecycle-gated writes, auth token exchanges, or passkey verification in blind retry loops because an error says `safeToRetry: true`. Use a custom `retryIf` when a caller-specific recovery action makes a retry meaningful.
+
+For `r.project(id).apply()`, do not hand-roll the `BASE_RELEASE_CONFLICT` loop: the deploy namespace already re-plans and retries omitted/current-base specs when the gateway returns `safe_to_retry: true`. Default deploy budget is 2 retries after the initial attempt, `maxRetries: 0` opts out, each retry emits `deploy.retry`, and exhausted retries surface `attempts` / `maxRetries` / `lastRetryCode` on `Run402DeployError`.
+
+`RetryOptions`: `attempts?: number`, `baseDelayMs?: number`, `maxDelayMs?: number`, `retryIf?: (error, attempt) => boolean`, `onRetry?: (error, attempt, delayMs) => void`.
+
+After exhausting attempts, `withRetry` throws the LAST observed error — your catch handler sees the original structured envelope, not a wrapper. A buggy `onRetry` that throws is swallowed; the retry chain is unaffected.
+
+## The patterns
+
+### Paste-and-go assets — content-addressed URLs with SRI
+
+`r.assets.put` returns an `AssetRef`:
+
+```ts
+const logo = await (await r.project(projectId)).assets.put("logo.png", { bytes });
+
+logo.cdnUrl        // → "https://pr-<public_id>.run402.com/_blob/logo-3a7fc02e.png"
+logo.sri           // → "sha256-…" for <script integrity="…">
+logo.etag          // → strong "sha256-<hex>" ETag
+logo.cacheKind     // → "immutable" | "mutable" | "private"
+```
+
+The URL is content-addressed and served through CloudFront. No cache-invalidation choreography needed. The browser refuses execution on byte mismatch via SRI.
+
+`immutable: true` is the default. The SDK always computes and sends the object SHA-256 because upload sessions require it; pass `false` only when you specifically need mutable URL/cache semantics (the returned `cdnUrl` and `sri` are then `null`).
+
+If you suspect cache staleness on a *mutable* URL, the SDK has helpers:
+
+```ts
+const blobUrl = "https://pr-….run402.com/_blob/avatar.png";
+const diag = await (await r.project(projectId)).assets.diagnoseUrl( blobUrl);
+//   diag.expectedSha256 / observedSha256 / cache.* / invalidation.* / hint
+
+const fresh = await (await r.project(projectId)).assets.waitFresh( {
+  url: blobUrl,
+  sha256: expectedSha,
+  timeoutMs: 60_000,
+});
+//   `fresh.fresh === false` on timeout — handle by switching to immutable
+```
+
+Don't call `waitFresh` on immutable URLs — they're correct from upload time.
+
+### Unified apply — `r.project(id).apply`
+
+The canonical primitive for any deploy (database + migrations + manifest + value-free secret declarations + functions + site + subdomain). Three layers:
+
+```ts
+// One-shot — most agents use this. Awaits to a terminal state.
+const result = await (await r.project(spec.project)).apply(spec);
+
+// Long-running with progress events. Events are a discriminated union on `type`.
+const op = await (await r.project(spec.project)).apply.start(spec);
+for await (const ev of op.events()) {
+  console.log(ev.type, ev);
+}
+const final = await op.result();
+
+// Resume by id (e.g. after an interrupted process or a 5xx).
+const resumed = await (await r.project(projectId)).apply.resume(operationId);
+
+// Lower-level steps for CLI debugging:
+const pScoped = await r.project(spec.project);
+const { plan: lowPlan, byteReaders } = await pScoped.apply.plan(spec);
+await pScoped.apply.upload(lowPlan, { byteReaders });
+if (!lowPlan.plan_id) throw new Error("Dry-run plans cannot be committed");
+const committed = await pScoped.apply.commit(lowPlan.plan_id);
+
+// Server-authoritative dry-run: no bytes uploaded, no plan/operation rows.
+const { plan: preview } = await pScoped.apply.plan(spec, { dryRun: true });
+console.log(preview.plan_id);       // null
+console.log(preview.operation_id);  // null
+console.log(preview.diff.summary);  // SDK-normalized from the v2 flat plan envelope
+```
+
+Release observability reads live on the scoped `deploy` namespace:
+
+```ts
+const p = await r.project(projectId);
+const release = await p.apply.getRelease("rel_...", { siteLimit: 5000 });
+const active = await p.apply.getActiveRelease();
+const diff = await p.apply.diff({ from: "empty", to: "active", limit: 1000 });
+```
+
+`getRelease` / `getActiveRelease` return `ReleaseInventory` (`kind: "release_inventory"`, `state_kind: "current_live" | "effective" | "desired_manifest"`, site paths, `static_public_paths`, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and inventory warnings when returned). `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, `cache_class`, `content_type`, and optional route metadata. `reachability_authority` explains whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. `static_manifest_metadata: null` means unavailable, not zero; when present it includes `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, and `spa_fallback`. `diff` returns `ReleaseToReleaseDiff` (`kind: "release_diff"`) with `migrations.applied_between_releases`; secret and subdomain diffs have only `added` / `removed`, never `changed`; route diffs expose `routes.added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed files, `newly_uploaded_cas_bytes`, `reused_cas_bytes`, `deployment_copy_bytes_eliminated`, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
+
+#### `ReleaseSpec` shape
+
+The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/node`. Sketch:
+
+```
+{
+  $schema?: "https://run402.com/schemas/release-spec.v1.json", // editor metadata; stripped before planning
+  project: "prj_…",                        // SDK field is `project`, not `project_id`
+  base?: { release: "current" | "empty" } | { release_id: "rel_…" },
+  database?: {
+    migrations?: MigrationSpec[],          // each has { id, sql? | sql_ref?, checksum?, transaction? }
+    expose?: ExposeManifest,               // dark-by-default authorization manifest
+    zero_downtime?: boolean,
+  },
+  secrets?: SecretsSpec,                   // { require?: string[], delete?: string[] }
+  functions?: FunctionsSpec,               // { replace? } | { patch?: { set?, delete? } }
+  site?: SiteSpec,                         // { replace? | patch?, public_paths? } | { public_paths }
+  subdomains?: SubdomainsSpec,             // { set? } | { add? } | { remove? }
+  routes?: ReleaseRoutesSpec,              // null or { replace: RouteSpec[] }
+  checks?: SmokeCheck[],
+}
+```
+
+- Replace vs patch semantics per resource. `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` = surgical updates. `site.public_paths` is the browser reachability table and is separate from release asset paths: `{ mode: "explicit", replace: { "/events": { asset: "events.html", cache_class: "html" } } }` serves public `/events` from release asset `events.html`; in explicit mode `/events.html` is not public unless separately declared. `{ mode: "implicit" }` restores filename-derived public reachability and can widen access. Public-path-only site specs are deployable. Known static `cache_class` inputs are `html`, `immutable_versioned`, and `revalidating_asset`; preserve unknown strings returned by observability APIs. `functions` has the same replace/patch split. Secrets are declaration-only: use `r.project(id).secrets.set(key, { value })` for values, then `secrets.require[]` to assert keys exist and `secrets.delete[]` to remove keys at activation. `subdomains` supports exactly one mode per spec: `set` replaces the release's managed subdomain list, `add` appends without removing existing entries, and `remove` deletes named entries. Today `subdomains.set` accepts at most one subdomain per project; multi-subdomain `set` is rejected locally with `SUBDOMAIN_MULTI_NOT_SUPPORTED`. Top-level absence = leave untouched.
+- FunctionSpec. `functions.replace` is the complete desired function map; `functions.patch.set` updates only listed functions, and `functions.patch.delete` removes listed names. Each function accepts `runtime?: "node22"`, exactly one code source (`source` for a single bundled module, or `files` plus `entrypoint` for multi-file functions), optional `config.timeoutSeconds`, optional `config.memoryMb`, optional `schedule`, and the v1.51+ auth-gate fields `requireAuth` and `requireRole`. `schedule` is a sibling of `config`, not `config.schedule`; it is a 5-field cron expression. In patch mode, omit `schedule` to leave the current schedule unchanged and pass `schedule: null` to remove it. `FunctionSpec` also accepts `deps?: string[]` (npm specs) under capability `apply-v1-function-deps`; the gateway installs and bundles them. `r.functions.deploy(..., { deps })` builds a one-function `functions.patch.set` and rides this same unified-apply path (the legacy standalone deploy route was removed).
+- Function-level auth gates (v1.51+). Each `FunctionSpec` carries two optional declarative fields enforced by the gateway before invocation:
+  - `requireAuth?: boolean` — when `true`, gateway rejects callers without a valid project user JWT with `Run402DeployError`-shaped envelope or `401` at request time. No DB lookup. Independent from `requireRole`.
+  - `requireRole?: RequireRoleSpec | null` — gateway resolves the caller's role from the project-schema table and rejects callers whose role is not in `allowed` with `403`. Implies authentication (no JWT → 401). Pass `null` in patch mode to remove an existing gate. `RequireRoleSpec` is `{ table: string; idColumn: string; roleColumn: string; allowed: string[]; cacheTtl?: number }`. All identifiers are unqualified; `cacheTtl` is seconds (default 60, max 600, 0 disables caching for instant-revocation paths).
+  When a gate passes, the gateway injects `x-run402-user-id` (always when any gate ran) and `x-run402-user-role` (only when `requireRole` ran) into the request. In-function code reads them directly from `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")`. The legacy `getUserId(req)` / `getRole(req)` bare exports were retired in `@run402/functions` v3.0 — they now throw `R402_AUTH_UNKNOWN_EXPORT`. For the canonical cookie-session flow, use the `auth.*` namespace (see below). All `requireRole` blocks in a single release must share the same `(table, idColumn, roleColumn)` triple; mixed-table specs are rejected at plan time with `Run402DeployError.code === "INVALID_SPEC"`. The SDK does not validate gate shape — the gateway is authoritative. Missing table or column at activation throws `Run402DeployError.code === "DEPLOY_INVALID_ROLE_GATE"` (HTTP 422) before flipping the live release.
+- Routes. `ReleaseRoutesSpec` is `undefined | null | { replace: RouteSpec[] }`. Omitted and `null` carry forward base routes; `{ replace: [] }` clears dynamic routes; `{ replace: [...] }` replaces the route table. `RouteSpec` is one entry: `{ pattern: string, methods?: RouteHttpMethod[], target: RouteTarget }`. Function targets are `{ type: "function", name: string }`; static route targets are `{ type: "static", file: string }` for exact method-aware static aliases, not ordinary clean URLs, rewrites, or redirects. Prefer `site.public_paths` for clean static URLs e.g. `/events -> events.html`; use static routes for cases like static `GET /login` plus function `POST /login`. Static targets require exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and a relative deployed asset path with no leading slash, wildcard, directory shorthand, query, or fragment. `methods` omitted means all supported methods for function routes; `methods: []` is invalid. Supported methods are exported as `ROUTE_HTTP_METHODS` and `RouteHttpMethod` (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`). Function target names are materialized release function names.
+- Strict validation is SDK-owned. `apply.plan/start/apply` reject unknown raw `ReleaseSpec` fields before normalization can drop them; only top-level `$schema` metadata is tolerated and stripped before the plan request. `project_id`, `subdomain`, `site.replcae`, `functions.replace.api.deps`, `functions.replace.api.config.schedule`, and similar typos are `Run402DeployError.code === "INVALID_SPEC"` before any hash/upload/plan request. Use `loadDeployManifest` / `normalizeDeployManifest` for CLI/MCP JSON that legitimately uses `project_id`, `{ path }`, base64 file entries, or migration `sql_path`.
+- No-op specs fail locally. A spec with only `project` / `base`, or empty containers e.g. `site.replace: {}`, `functions.patch.delete: []`, `secrets.require: []`, or `subdomains.set: []`, throws `Run402DeployError.code === "MANIFEST_EMPTY"` before any network call. Delete-only patches with non-empty `delete` arrays still count as deployable.
+- Tier preflight is local but gateway remains authoritative. After normalization and before manifest CAS upload or `/apply/v1/plans`, `apply.plan/start/apply` check literal function `config.timeoutSeconds`, `config.memoryMb`, cron minimum interval, and scheduled-function count when computable. Failures are `Run402DeployError.code === "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, `tier_max` or `min_interval_minutes`, and `details.limit_source` (`tier_status` or `local_static_fallback`). Current caps: prototype 10s / 128 MB / 1 scheduled fn / 15 min, hobby 30s / 256 MB / 3 / 5 min, team 60s / 512 MB / 10 / 1 min. `tier.status()` exposes `function_limits` / `limits.functions` when returned, including current scheduled usage.
+- Plan warnings are structured. `PlanResponse.warnings` and `DeployResult.warnings` are `WarningEntry[]`; `apply()` emits `plan.warnings` and aborts before upload/commit when a warning requires confirmation unless broad `allowWarnings` is set or every blocking warning code is listed in `allowWarningCodes`. `MISSING_REQUIRED_SECRET` means set the affected keys with `r.secrets.set`, then retry. For `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS`, prefer route-level `acknowledge_readonly: true` on intentionally read-only GET/HEAD final-wildcard function routes; use code-level allowance only after inspecting all affected entries.
+- Deploy summaries are derived SDK helpers. `summarizeDeployResult(result: DeployResult): DeploySummary` is exported from `@run402/sdk` and `@run402/sdk/node`. It makes no gateway calls and summarizes only current reliable `DeployResult.diff` / `DeployResult.warnings` data: site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. Missing buckets are omitted, not zero-filled. It intentionally has no timings, client-side duration estimates, server phase estimates, or function old/new code hash fields.
+- Safe release-race retries are automatic. For omitted/current-base specs, `apply()` re-plans and retries `BASE_RELEASE_CONFLICT` only when the gateway marks the error `safe_to_retry: true`. Pinned `base.release_id` and `{ release: "empty" }` stay caller-owned. Static activation/spec failures inside `activation_pending` throw immediately with gateway metadata preserved instead of polling until timeout. Pass `maxRetries: 0` to opt out.
+- Plan envelopes are normalized. New gateways return `kind: "plan_response"` with `is_noop`, `summary`, `warnings`, `expected_events`, and resource buckets at top level. The SDK preserves those fields and also folds them into `PlanResponse.diff` for compatibility. Dry-run plans return `plan_id: null` and `operation_id: null` and cannot be uploaded or committed.
+- Modern plan/diff types are split. Deploy plans may expose `PlanDiffEnvelope` with migration buckets `{ new, noop }`; release-to-release diffs expose `{ applied_between_releases }`. Migration checksum mismatch is a hard deploy error (`Run402DeployError`), not a normal successful diff bucket. Legacy flag-off plan arrays remain represented by `DeployDiff` for compatibility.
+
+`WarningEntry` is a compatibility union. Legacy plan warnings used low/medium/high severity; deploy-observability warnings use info/warn/high severity with heuristic confidence. Shared fields:
+
+```
+{
+  code: string,
+  severity: "low" | "medium" | "high" | "info" | "warn",
+  requires_confirmation: boolean,
+  message: string,
+  affected?: string[],
+  details?: Record<string, unknown>,
+  confidence?: "low" | "medium" | "high" | "heuristic",
+}
+```
+- All bytes ride through CAS. Plan request bodies never carry inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object and references it (`manifest_ref` escape hatch — no body-size cliff).
+- Server-authoritative manifest digest. The gateway returns the canonical digest; the SDK no longer requires byte-for-byte canonicalize agreement.
+
+The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
+
+```ts
+import { run402, fileSetFromDir } from "@run402/sdk/node";
+
+const r = run402();
+const p = await r.project(projectId);
+const result = await p.apply({
+  site: { replace: await fileSetFromDir("./dist") },
+  subdomains: { set: ["my-app"] },
+});
+```
+
+`fileSetFromDir` walks the directory and returns an `FsFileSource`-backed `FileSet`. The deploy normalizer hashes and uploads each file lazily during `apply`, so collection does not load the tree into memory. Skips `.git/`, `node_modules/`, `.DS_Store`, dotenv/npmrc files, and private-key-like filenames by default. Pass `{ includeSensitive: true }` only when those files are intentional deploy artifacts. Symlinks throw.
+
+The Node entry also owns the typed manifest adapter used by CLI/MCP:
+
+```ts
+import { loadDeployManifest, normalizeDeployManifest, run402 } from "@run402/sdk/node";
+
+const r = run402();
+
+const loaded = await loadDeployManifest("./run402.deploy.json");
+await (await r.project(loaded.spec.project)).apply(loaded.spec, { idempotencyKey: loaded.idempotencyKey });
+
+const inMemory = await normalizeDeployManifest({
+  project_id: projectId,
+  site: { patch: { put: { "index.html": { data: "<h1>hi</h1>" } } } },
+});
+await (await r.project(inMemory.spec.project)).apply(inMemory.spec, { idempotencyKey: inMemory.idempotencyKey });
+```
+
+`DeployManifestInput` is the agent-facing JSON shape: `project_id` becomes SDK `project`, `idempotency_key` is returned separately for deploy options, `{ data, encoding: "base64", content_type? }` decodes to bytes, `{ path, content_type? }` becomes a lazy `FsFileSource`, and `database.migrations[].sql_path` / `sql_file` are read as UTF-8 SQL. Snake manifest fields such as `config.timeout_seconds`, `require_auth`, `require_role.id_column`, and `i18n.default_locale` normalize to the SDK's camelCase `ReleaseSpec`. `loadDeployManifest(path)` resolves relative paths against the manifest file's directory; `normalizeDeployManifest(input, { baseDir? })` defaults relative paths to `process.cwd()`. Manifest normalization is strict too: unknown fields are rejected instead of dropped, so a valid site deploy plus typoed `subdomain` cannot become a partial site-only deploy.
+
+Route manifest example:
+
+```ts
+import { run402, type ReleaseSpec, type RouteSpec } from "@run402/sdk/node";
+
+const r = run402();
+const routes: RouteSpec[] = [
+  { pattern: "/api/*", methods: ["GET", "POST", "OPTIONS"], target: { type: "function", name: "api" } },
+  { pattern: "/admin", target: { type: "function", name: "admin" } },
+  { pattern: "/admin/*", target: { type: "function", name: "admin" } },
+  { pattern: "/login", methods: ["POST"], target: { type: "function", name: "auth" } },
+];
+const specWithRoutes: ReleaseSpec = {
+  project: projectId,
+  site: { replace: {
+    "index.html": "<!doctype html><main id='app'></main>",
+    "events.html": "<!doctype html><h1>Events</h1>",
+  }, public_paths: { mode: "explicit", replace: { "/events": { asset: "events.html", cache_class: "html" } } } },
+  functions: {
+    replace: {
+      api: { source: "export default async function handler(req) { const url = new URL(req.url); return Response.json({ ok: true, path: url.pathname }); }" },
+      admin: { source: "export default async () => new Response('admin')" },
+      auth: { source: "export default async () => new Response('login')" },
+    },
+  },
+  routes: { replace: routes },
+};
+await (await r.project(specWithRoutes.project)).apply(specWithRoutes);
+```
+
+Route matching and routed HTTP contract:
+- Release static asset paths and public browser paths are distinct. In the example, `events.html` is a release asset and `/events` is the public static URL declared by `site.public_paths`. In explicit mode, `/events.html` is not public unless separately declared. `{ mode: "implicit" }` restores filename-derived public reachability and can widen access.
+- Exact patterns look like `/admin`; prefix wildcard patterns use a final `/*`, e.g. `/admin/*`.
+- `/admin/*` does not match `/admin`, `/admin/`, `/admin.css`, or `/administrator`; deploy both `/admin` and `/admin/*` for a dynamic section root. `/admin` and `/admin/` are trailing-slash equivalents for exact matching.
+- Prefer `site.public_paths` for ordinary clean static URLs e.g. `/events -> events.html`. Static route targets are exact, method-aware route-table aliases e.g. `{ pattern: "/events", methods: ["GET", "HEAD"], target: { type: "static", file: "events.html" } }`; `target.file` is a release asset path, not a public path, URL, CAS hash, rewrite, or redirect. In explicit public path mode, a route-only static alias can serve a private asset without making `/events.html` directly reachable.
+- Avoid routing ordinary static files, wildcard static targets, leading-slash files, directory shorthand, broad method lists by default, and one-static-route-target-per-page route-table exhaustion.
+- Query strings are ignored for matching and preserved in the handler's full public `req.url`.
+- Exact routes beat prefix routes, longest prefix wins among prefixes, and method-compatible dynamic routes beat static assets.
+- A method-specific `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, not SPA HTML.
+- Matched dynamic routes fail closed: function/platform errors are returned and Run402 does not continue to static lookup.
+- Routed browser ingress uses Node 22 Fetch Request -> Response. The handler receives `req.method` and full public `req.url` on managed subdomains, deployment hosts, and verified custom domains. The raw `run402.routed_http.v1` envelope is internal; do not write browser route handlers against it. Direct `/functions/v1/:name` remains API-key protected.
+- Request/response bodies are capped at 6 MiB. Run402 adds no wildcard CORS, does not store routed dynamic responses in a shared cache, and adds `Cache-Control: private, no-store` plus `x-run402-cache: dynamic-bypass` when the function sets no cache header.
+- The function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and not trusting spoofable forwarding headers.
+
+URL-first public diagnostics:
+
+```ts
+import {
+  buildDeployResolveSummary,
+  normalizeDeployResolveRequest,
+  run402,
+  type DeployResolveAuthorizationResult,
+  type DeployResolveCasObject,
+  type DeployResolveResponse,
+  type DeployResolveResponseVariant,
+} from "@run402/sdk/node";
+
+const r = run402();
+const request = normalizeDeployResolveRequest({
+  project: projectId,
+  url: "https://example.com/events?utm=x#hero",
+  method: "GET",
+});
+const p = await r.project(projectId);
+const resolution: DeployResolveResponse = await p.apply.resolve(request);
+const summary = buildDeployResolveSummary(resolution, request);
+const auth: DeployResolveAuthorizationResult | undefined = resolution.authorization_result ?? undefined;
+const cas: DeployResolveCasObject | undefined = resolution.cas_object ?? undefined;
+const variant: DeployResolveResponseVariant | undefined = resolution.response_variant ?? undefined;
+console.log(summary.would_serve, summary.diagnostic_status, summary.match, request.ignored);
+void auth; void cas; void variant;
+```
+
+`r.project(id).apply.resolve({ url, method })` also accepts lower-level `{ host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Current known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle; branch on structured fields e.g. `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
+
+Known route warning codes and recovery:
+
+| Code | Meaning | Recovery |
+|---|---|---|
+| `PUBLIC_ROUTED_FUNCTION` | A route makes the target function public same-origin browser ingress. | Review app auth, CSRF, CORS/`OPTIONS`, and cookies; direct `/functions/v1/:name` remains API-key protected. Prefer `allowWarningCodes: ["PUBLIC_ROUTED_FUNCTION"]` after review; broad `allowWarnings` only after every warning was reviewed. |
+| `ROUTE_TARGET_CARRIED_FORWARD` | A carried-forward route still points at a base-release function target. | Inspect active routes with release observability and deploy `routes.replace` if the target should change. |
+| `ROUTE_SHADOWS_STATIC_PATH` | A dynamic route shadows one static path. | Inspect warning details and active release routes; confirm only when intentional. |
+| `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` | A prefix route shadows static paths. | Review affected paths, split exact routes if needed, and confirm only when intentional. |
+| `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` | Unmatched methods can fall back to static content. | Confirm static fallback is intended or add method coverage. |
+| `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` | A wildcard function route only allows `GET`/`HEAD`. | Add mutation methods e.g. `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. `allowWarningCodes` is a reviewed escape hatch; broad `allowWarnings` is last resort. |
+| `ROUTE_TABLE_NEAR_LIMIT` | The route table is near the gateway/project limit. | Consolidate or remove routes before adding more. |
+| `ROUTES_NOT_ENABLED` | Routes are not enabled for this project/environment. | Deploy without `routes` or request enablement; direct function invoke is not a browser-route substitute. |
+| `STATIC_ALIAS_SHADOWS_STATIC_PATH` / `STATIC_ALIAS_RELATIVE_ASSET_RISK` | Route-only static alias conflicts with a direct public static path or has relative-asset risk. | Inspect active routes, `static_public_paths`, and the backing `asset_path`; prefer `site.public_paths` for ordinary clean URLs and confirm only when intentional. |
+| `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` / `STATIC_ALIAS_EXTENSIONLESS_NON_HTML` | Route-only static alias may duplicate another direct public path or expose extensionless non-HTML. | Use one canonical public path per page and reserve exact static route targets for method-aware aliases. |
+| `STATIC_ALIAS_TABLE_NEAR_LIMIT` | Static route targets are near route-table limits. | Avoid one-static-route-target-per-page tables; consolidate. |
+
+Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
+
+#### Node deploy convenience
+
+- `r.sites.deployDir(...)` — Node-only thin wrapper that uses `fileSetFromDir(dir)`, delegates to `apply`, and emits unified `DeployEvent` shapes.
+
+### GitHub Actions OIDC — CI credentials + the same deploy primitive
+
+CI/OIDC federation is deliberately credential-driven. Link a GitHub repository or environment once, then keep using `r.project(id).apply(...)`; the deploy namespace detects SDK-marked CI credentials internally. Do not invent an `r.ci.deployApply(...)` path and do not pass a public `ci` deploy flag.
+
+The setup side is `r.ci` plus the Node-only signing helper. Use the SDK builders exactly; the gateway validates the SIWX Statement and Resource URI against golden vectors.
+
+```ts
+import {
+  CI_GITHUB_ACTIONS_PROVIDER,
+  V1_CI_ALLOWED_ACTIONS,
+  V1_CI_ALLOWED_EVENTS_DEFAULT,
+  run402,
+  signCiDelegation,
+} from "@run402/sdk/node";
+
+const values = {
+  project_id: projectId,
+  subject_match: "repo:owner/name:ref:refs/heads/main",
+  allowed_actions: V1_CI_ALLOWED_ACTIONS,
+  allowed_events: V1_CI_ALLOWED_EVENTS_DEFAULT,
+  // Optional: omit or [] for no CI route authority.
+  // Use exact paths and/or final wildcard prefixes for route declarations.
+  route_scopes: ["/admin", "/api/*"],
+  github_repository_id: "123456789",
+  expires_at: null,
+  nonce: "0123456789abcdef0123456789abcdef",
+};
+
+const r = run402({ disablePaidFetch: true });
+await r.ci.createBinding({
+  ...values,
+  provider: CI_GITHUB_ACTIONS_PROVIDER,
+  signed_delegation: signCiDelegation(values),
+});
+```
+
+Inside GitHub Actions, prefer `githubActionsCredentials({ projectId })`. It:
+- Requires `permissions: id-token: write`
+- Requests a GitHub OIDC token for `CI_AUDIENCE` (`https://api.run402.com`) unless overridden
+- Calls `/ci/v1/token-exchange` without local auth
+- Caches the Run402 session token until `expires_in - refreshBeforeSeconds` (default refresh cushion: 60 seconds)
+- Marks the credential provider so deploy uses CI Bearer auth and never local `apikey` headers
+
+```ts
+import { githubActionsCredentials, run402, type ReleaseSpec } from "@run402/sdk/node";
+
+const r = run402({
+  credentials: githubActionsCredentials({ projectId }),
+  disablePaidFetch: true,
+});
+
+const ciSpec: ReleaseSpec = {
+  project: projectId,
+  base: { release: "current" },
+  site: { patch: { put: { "index.html": "<h1>ship</h1>" } } },
+};
+
+await (await r.project(ciSpec.project)).apply(ciSpec);
+```
+
+CI deploy restrictions are part of the client contract: allowed top-level fields are only `project`, `database`, `functions`, `site`, absent/current `base`, and `routes` authorized by the binding's `route_scopes`. Omitted or empty `route_scopes` preserves the original no-routes CI posture. `spec.secrets`, `spec.subdomains`, `spec.checks`, unknown future fields, non-current `base`, and oversized specs that would require `manifest_ref` are rejected before any upload or plan call. Non-CI deploy behavior is unchanged. Gateway planning enforces route diffs and returns `CI_ROUTE_SCOPE_DENIED` when a route declaration falls outside the delegated exact paths or final wildcard prefixes.
+
+### Dark-by-default tables + the expose manifest
+
+Tables you create are unreachable via `/rest/v1/*` until your manifest declares them with `expose: true`. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+
+The manifest itself is a JSON object:
+
+```json
+{
+  "$schema": "https://run402.com/schemas/manifest.v1.json",
+  "version": "1",
+  "tables": [
+    { "name": "items", "expose": true, "policy": "user_owns_rows",
+      "owner_column": "user_id", "force_owner_on_insert": true },
+    { "name": "audit", "expose": false }
+  ],
+  "views": [
+    { "name": "leaderboard", "base": "items", "select": ["user_id", "score"], "expose": true }
+  ],
+  "rpcs": [
+    { "name": "compute_streak", "signature": "(user_id uuid)", "grant_to": ["authenticated"] }
+  ]
+}
+```
+
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`), `public_read_authenticated_write` (anyone reads, any auth user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), `custom` (provide `custom_sql`).
+
+For `user_owns_rows`, `force_owner_on_insert: true` creates an idempotent per-table trigger named `<table>_set_owner` backed by `<table>_set_owner_fn`. The generated shape is:
+
+```sql
+CREATE OR REPLACE FUNCTION "<table>_set_owner_fn"() RETURNS trigger
+LANGUAGE plpgsql AS $body$
+BEGIN
+  IF NEW."<owner_column>" IS NULL THEN
+    NEW."<owner_column>" := auth.uid();
+  END IF;
+  RETURN NEW;
+END;
+$body$;
+
+CREATE TRIGGER "<table>_set_owner"
+  BEFORE INSERT ON "<table>"
+  FOR EACH ROW EXECUTE FUNCTION "<table>_set_owner_fn"();
+```
+
+The trigger only fills omitted or explicit `null` owner values; it does not overwrite a non-null owner. Ordinary authenticated inserts still pass through the `WITH CHECK (owner_column = auth.uid())` policy, so an explicit different owner is rejected. `service_key` / service-role writes bypass RLS, but the trigger still runs; if the request has no JWT subject, `auth.uid()` is null, so admin writes should set `owner_column` explicitly when the row needs an owner.
+
+**Preferred path: put the manifest object under `database.expose` in a v2 `ReleaseSpec`.** The gateway validates it against migration SQL and applies it atomically with the rest of the release.
+
+**Non-mutating validation:** `r.projects.validateExpose(manifestOrJsonString, { project?, project_id?, migrationSql? })` validates the auth/expose manifest used by `database.expose` and `apply_expose`. With `project` / `project_id`, validation uses the live project schema through a server-authoritative endpoint; without it, validation is projectless. Invalid JSON strings return `{ hasErrors: true, errors, warnings }` instead of throwing. `migrationSql` is reference context only and is not executed as a PostgreSQL dry run. This is not deploy-manifest validation.
+
+**Imperative path:** `r.projects.applyExpose(projectId, manifest)` POSTs the same JSON shape to `/projects/v1/admin/:id/expose`; `r.projects.getExpose(projectId)` reads the currently-applied manifest. Prefer `r.project(id).apply` for production deploys so schema migrations and expose policy land together, but the direct methods are useful for round-tripping an existing manifest.
+
+### In-function helpers — `@run402/functions`
+
+A separate package. Imported _inside_ a deployed serverless function, not by the SDK. Auto-bundled at deploy time (don't list `@run402/functions` in `--deps`). See <https://www.npmjs.com/package/@run402/functions> for full details.
+
+```ts
+import { db, adminDb, auth, email, ai, assets } from "@run402/functions";
+
+export default async (req: Request) => {
+  const user = await auth.requireUser();
+
+  // No .eq("user_id", user.id) — RLS already binds the visitor's rows via run402.current_user_id();
+  // the redundant filter is a deploy-fail (R402_AUTH_REDUNDANT_USER_FILTER).
+  const mine = await db().from("items").select("*");
+  await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
+  return Response.json(mine);
+};
+```
+
+- `db(req)` — caller-context. Forwards Authorization header. RLS applies.
+- `adminDb()` — bypass RLS. Routes to `/admin/v1/rest/*`.
+- `adminDb().sql(query, params?)` — raw parameterized SQL.
+- `auth.user()` / `auth.requireUser()` — read the verified actor from the SSR runtime context. `auth.user()` returns `Actor | null`; `auth.requireUser()` returns `Actor` and throws (303 redirect for HTML / 401 envelope for JSON, decided by the gateway from the `Accept` header). `Actor` has `id`, `projectId`, `sessionId`, `email`, `emailVerified`, `authTime`, `amr`, `amrTimes`. Calling either taints the SSR ISR cache (the response now depends on per-request actor state). Do NOT catch the throw from `auth.requireUser()` — the platform decides response shape. Bare `getUser` / `getUserId` / `getRole` / `getSession` / `currentUser` / `getCurrentUser` / `getServerSession` exports were retired in `@run402/functions` v3.0 — they throw `R402_AUTH_UNKNOWN_EXPORT` at runtime AND fail `run402 doctor` source scan at deploy.
+- For per-user gating in functions OUTSIDE the cookie-session flow (a `requireAuth` / `requireRole` deploy-spec gate, not the SSR auth namespace), read the gateway-injected headers directly: `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")`. The gateway strips inbound `x-run402-*` headers before injection, so the values are trustworthy. Returns `null` when no corresponding gate ran (function has no gate, only `requireAuth` declared without `requireRole`, or local-invoke outside the gateway).
+- `ai.generateImage({ prompt, aspect? })` — project-billed runtime image generation for deployed functions. `aspect` is `"square" | "landscape" | "portrait"`; result is `{ image, content_type, aspect }` with base64 image bytes. Uses `RUN402_SERVICE_KEY` against `/ai/v1/generate-image`, not the wallet/x402 `/generate-image/v1` endpoint. Gateway rate limits and spend caps are project-owned; public routed functions should add app auth or their own rate limiting before calling it.
+- `assets.put(key, source, opts?)` — runtime asset upload through `/apply/v1/service-asset-put`. Uses `RUN402_SERVICE_KEY`, shares the deploy-time CAS/activation substrate, and returns an SDK-compatible `AssetRef`.
+
+The helper makes raw `fetch()` calls to the project's own gateway endpoints using ambient request context (`RUN402_PROJECT_ID` / `RUN402_SERVICE_KEY` baked at deploy time). It does NOT use `@run402/sdk`.
+
+## Namespaces — full surface
+
+The `Run402` class exposes 25 namespaces. Click into the SDK source for full method signatures.
+
+> Reference tables below use plain fences, not `ts` fences. They document the
+> type surface in compact form — they are not runnable programs. Runnable example
+> snippets in this document still use ```` ```ts ```` and are type-checked by CI
+> against the published `@run402/sdk` and `@run402/sdk/node` types.
+
+### `r.projects`
+
+```
+provision(opts?: { tier?, name? }): Promise<ProvisionResult>
+delete(id: string): Promise<void>
+list(wallet?: string): Promise<ListProjectsResult>
+getUsage(id: string): Promise<UsageReport>
+getSchema(id: string): Promise<SchemaReport>
+sql(id: string, sql: string, params?: unknown[]): Promise<unknown>
+rest<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T>
+restResponse<T = unknown>(id: string, table: string, queryOrOptions?: string | ProjectRestOptions): Promise<ProjectRestResponse<T>>
+validateExpose(manifest: ExposeManifest | string, opts?: { project?: string; project_id?: string; migrationSql?: string }): Promise<ExposeManifestValidationResult>
+applyExpose(id: string, manifest: ExposeManifest): Promise<unknown>
+getExpose(id: string): Promise<ExposeManifest>
+getQuote(): Promise<QuoteResult>
+info(id: string): Promise<ProjectInfo>
+keys(id: string): Promise<ProjectKeys>
+use(id: string): Promise<void> // sets the active project (sticky default)
+active(): Promise<string | null>
+
+// CLI-style aliases:
+usage(id): Promise<UsageReport> // alias of getUsage
+schema(id): Promise<SchemaReport> // alias of getSchema
+quote(): Promise<QuoteResult> // alias of getQuote
+promoteUser(id, email): Promise<void> // project-admin role helper
+demoteUser(id, email): Promise<void>
+```
+
+**Tier and lifecycle are per-organization, not per project.** The state machine lives on `internal.organizations` (v1.46 / v1.57). Read it from `r.tier.status()`:
+
+- `organization_lifecycle_state: "active" | "past_due" | "frozen" | "dormant" | "purged" | null` — the organization's lifecycle state; `null` only for orphan wallets with no organization row.
+- `lease_perpetual: boolean | null` — operator escape hatch flag. When `true`, the organization never advances past `active` regardless of lease expiry.
+- `tier: "prototype" | "hobby" | "team" | null` — the organization's active tier.
+
+`r.projects.list(opts?)` reads the named, domain-aware inventory (`GET /projects/v1`, project-findability). Each `ProjectSummary` carries `id`, `name`, `tier`, `site_url` (first claimed run402.com subdomain → else first custom domain → else null), `custom_domains[]`, `status` / `effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `organization_id` (the owning org), `created_by` (provisioning principal), and `created_at`. The response is `{ projects, has_more?, next_cursor?, scope? }`. Membership-scoped by default — org-owned control plane (v1.77+): a wallet *authenticates* (SIWX signed from the provider; mandatory server-side) but does not *own* — this lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Options: `{ org }` filters to one org (`?org_id`; authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `{ limit, cursor }` paginate (`?limit` default 50 max 200, `?after`), and `{ all: true }` reads the operator email-union inventory (`GET /agent/v1/operator/projects`) across every wallet controlling the operator's verified email — pass `{ all: true, token }` (operator-session token) for the cross-wallet union, else `all` falls back to the SIWX wallet's own slice and echoes `scope`. `all` + `org` together throws `LocalError` (mutually exclusive). The legacy thin wallet-scoped shape (`api_calls` / `storage_bytes` via `GET /wallets/v1/:wallet/projects`) is retired; those two fields remain optional on `ProjectSummary` for back-compat but the named inventory does not populate them — read `r.projects.getUsage(id)` for live usage. The v1.56 `projects.pin(id)` SDK method was removed — use `r.admin.org(org_id).pinLease()`.
+
+`r.projects.get(id)` is the authoritative single-project read (`GET /projects/v1/:id`, gateway `project.read`) — a `ProjectDetail` superset of a list row: `project_id`, `public_id`, `name`, `org_id`, `tier`, `effective_status`, `organization_lifecycle_state`, `site_url` (`| null`), `custom_domains[]`, `last_deploy` (`{ release_id, activated_at } | null`), `mailbox[]` (active addresses), `usage` (`{ api_calls, storage_bytes, api_calls_limit, storage_bytes_limit }`), and `created_at`. Caller-authed (SIWX/control-plane, no project keys) and works without the project in the local keystore. It returns NO secrets — authorize-before-reveal means an unauthorized/guessed id throws `Unauthorized` (403, or `NotAuthorizedError` for an org-membership denial), never a not-found oracle. Distinct from the offline, keystore-only `r.projects.info(id)` / `r.projects.keys(id)` (no API call), which remain the way to read the anon/service keys. Scoped form: `(await r.project(id)).projects.get()`.
+
+`r.projects.rename(projectId, name)` renames a project (`PATCH /projects/v1/:id`, project-findability) and returns `{ project_id, name }`. Caller-authed (SIWX/control-plane, not a project service key), so it works without the project in the local keystore. Authorization is org `admin`+ (or a `project:write` grant) on the owning org and authorize-before-reveal — an unauthorized/guessed id throws `Unauthorized` (403), never a not-found oracle; an invalid name throws `ApiError` (400). Scoped form: `r.project(id).rename(name)`.
+
+`r.projects.getUsage(id)` still surfaces `effective_status` and `organization_lifecycle_state` because that endpoint scopes to a single project and the derivation collapses per-project `archived_at` / `deleted_at` together with the organization's lifecycle.
+
+### `r.project(id).apply`
+
+The unified apply primitive. **There is no public `r.deploy` surface** — the
+scoped client (`r.project(id)`) is the only path. Mutations live on the
+callable hero `r.project(id).apply(spec)` with `.plan/.start/.resume`
+sub-methods. Observability reads (release inventory, diff, resolve, event
+replay) live on the same `r.project(id).apply` object. The internal engine is
+`r._applyEngine` and is not part of the public surface.
+
+```
+// MUTATIONS — r.project(id).apply (callable hero):
+r.project(id).apply(spec, opts?): Promise<DeployResult>
+r.project(id).apply.plan(spec, opts?: { idempotencyKey?, dryRun? }): Promise<{ plan, byteReaders }>
+r.project(id).apply.start(spec, opts?): Promise<DeployOperation>
+r.project(id).apply.resume(operationId, opts?): Promise<DeployResult>
+
+// OBSERVABILITY — r.project(id).apply (read/event surface):
+r.project(id).apply.status(operationId, opts?): Promise<OperationSnapshot>
+r.project(id).apply.list(opts?: { limit?, cursor? }): Promise<DeployListResponse>
+r.project(id).apply.events(operationId, opts?): Promise<DeployEventsResponse>
+r.project(id).apply.resolve(opts: ScopedDeployResolveOptions): Promise<DeployResolveResponse>
+  // ScopedDeployResolveOptions is { url, method? } OR { host, path?, method? };
+  // the bare-r form r._applyEngine.resolve takes a top-level project plus DeployResolveOptions.
+r.project(id).apply.getRelease(releaseId, opts?: { siteLimit? }): Promise<ReleaseInventory>
+r.project(id).apply.getActiveRelease(opts?: { siteLimit? }): Promise<ActiveReleaseInventory>
+r.project(id).apply.diff(opts: { from, to, limit? }): Promise<ReleaseToReleaseDiff>
+
+// Low-level upload/commit (CLI debugging — most agents call apply()):
+r.project(id).apply.upload(plan, opts: { byteReaders, onEvent? }): Promise<void>
+r.project(id).apply.commit(planId, opts?: { idempotencyKey?, onEvent? }): Promise<DeployResult>
+```
+
+Top-level deploy summary helper:
+
+```
+summarizeDeployResult(result: DeployResult): DeploySummary
+```
+
+Example:
+
+```ts
+import { run402, summarizeDeployResult, type ReleaseSpec } from "@run402/sdk/node";
+
+const r = run402();
+const spec: ReleaseSpec = {
+  project: "prj_...",
+  site: { patch: { put: { "index.html": "<h1>Hello</h1>" } } },
+};
+
+const result = await (await r.project(spec.project)).apply(spec);
+const summary = summarizeDeployResult(result);
+console.log(summary.headline, summary.site?.cas?.reused_bytes);
+```
+
+For live event streaming during an in-flight apply, use `(await r.project(spec.project)).apply.start(spec)` and
+iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.project(id).apply.events(operationId)`
+method returns the events the gateway has recorded so far for an operation —
+useful for inspecting an apply after the fact, not for live streaming.
+
+### `r.ci`
+
+GitHub Actions OIDC federation over `/ci/v1/*`. V1 supports deploy-scoped bindings only.
+
+```
+createBinding(input: {
+  project_id: string,
+  provider: "github-actions",
+  subject_match: string,
+  allowed_actions: readonly ["deploy"],
+  allowed_events: readonly string[],
+  route_scopes?: readonly string[],
+  github_repository_id?: string | null,
+  expires_at?: string | null,
+  nonce: string,
+  signed_delegation: string,
+}): Promise<CiBindingRow>
+
+listBindings(input: { project: string }): Promise<{ bindings: CiBindingRow[] }>
+getBinding(bindingId: string): Promise<CiBindingRow>
+revokeBinding(bindingId: string): Promise<CiBindingRow>
+exchangeToken(input: { project_id: string, subject_token: string }): Promise<{
+  access_token: string,
+  token_type: "Bearer" | string,
+  expires_in: number,
+  scope: string,
+}>
+```
+
+`exchangeToken` fills the RFC 8693 grant constants internally:
+`grant_type = urn:ietf:params:oauth:grant-type:token-exchange` and
+`subject_token_type = urn:ietf:params:oauth:token-type:jwt`. It sends
+`withAuth: false`; credential-provider auth headers are intentionally omitted.
+
+On failure `exchangeToken` throws the usual `Unauthorized`/`ApiError`. Use
+`isCiBindingRevoked(err)` to detect the `binding_revoked` denial (HTTP 403): a
+subject-matching binding existed but was revoked — typically because the project
+was transferred/handed off, which suspends the prior org's CI bindings. The fix
+is to re-create it with `run402 ci link github`, NOT to widen asset scopes
+(`run402 ci set-asset-scopes` 409s on a revoked binding). The gateway gives both
+`binding_revoked` and `access_denied` the generic canonical `code: "FORBIDDEN"`,
+so the only discriminator is the OAuth-style `error` field on the 403 body —
+`isCiBindingRevoked` reads it for you. The error stays an `Unauthorized`
+(`isUnauthorized` remains true), so existing generic-403 handling is unaffected.
+`CI_BINDING_REVOKED_ERROR` is the exported `"binding_revoked"` constant.
+
+`CiBindingRow` preserves gateway snake_case fields:
+
+```
+{
+  id, project_id, issuer, subject_match,
+  allowed_actions, allowed_events,
+  route_scopes,
+  github_repository_id, created_by, nonce,
+  created_sig, created_at, expires_at, revoked_at,
+  last_used_at, use_count
+}
+```
+
+Canonical helper exports:
+
+```
+CI_GITHUB_ACTIONS_PROVIDER = "github-actions"
+CI_GITHUB_ACTIONS_ISSUER = "https://token.actions.githubusercontent.com"
+CI_AUDIENCE = "https://api.run402.com"
+DEFAULT_CI_DELEGATION_CHAIN_ID = "eip155:84532"
+V1_CI_ALLOWED_ACTIONS = ["deploy"]
+V1_CI_ALLOWED_EVENTS_DEFAULT = ["push", "workflow_dispatch"]
+
+normalizeCiDelegationValues(values): NormalizedCiDelegationValues
+buildCiDelegationStatement(values): string
+buildCiDelegationResourceUri(values): string
+validateCiSubjectMatch(subject): string
+validateCiNonce(nonce): string
+normalizeCiRouteScopes(values): string[]
+validateCiRouteScope(value): string
+assertCiDeployableSpec(specOrPlanBody): void
+```
+
+Node-only CI exports from `@run402/sdk/node`:
+
+```
+signCiDelegation(values, opts?: {
+  apiBase?, allowancePath?, chainId?, issuedAt?, expirationTime?, nonce?
+}): string
+
+createCiSessionCredentials({
+  projectId, accessToken?, getAccessToken?
+}): CiMarkedCredentialsProvider
+
+githubActionsCredentials({
+  projectId, apiBase?, audience?, refreshBeforeSeconds?, fetch?
+}): CiMarkedCredentialsProvider
+
+isCiSessionCredentials(credentials): boolean
+```
+
+CI error-code unions include binding errors (`invalid_route_scopes`, `nonce_replay`, `delegation_statement_mismatch`, `signer_mismatch`, `duplicate`), token-exchange errors (`invalid_token`, `access_denied`, `binding_revoked`, `event_not_allowed`, `repository_id_mismatch`, `ambiguous_binding`), and CI deploy errors (`payment_required`, `insufficient_scope`, `forbidden_spec_field`, `forbidden_plan`, `CI_ROUTE_SCOPE_DENIED`). Preserve unknown future strings as opaque gateway codes.
+
+### `r.operator`
+
+The **human / email principal** — the *operator session* — distinct from the agent's per-wallet SIWX identity (and from the platform-`admin` "operator" endpoints, which are a different thing). A wallet signature can only ever return one wallet's slice; the operator session proves control of the *email* and returns the union across every wallet that verified it.
+
+Authentication is browser-delegated via an OAuth 2.0 device-authorization grant (RFC 8628, the `aws sso login` model): the SDK never performs WebAuthn — the browser does, via the existing magic-link or passkey web flow — and the SDK brokers the resulting operator-session token (a read-only `operator.read` bearer, ~30-min TTL, ~12h absolute cap, revocable).
+
+```
+operator.deviceStart({ clientName? }): Promise<DeviceAuthStart>
+  // POST /agent/v1/operator/session/device (unauthenticated). Returns
+  // { device_code, user_code, verification_uri, verification_uri_complete?, expires_in, interval }.
+
+operator.devicePoll(deviceCode): Promise<DevicePollResult>
+  // POST /agent/v1/operator/session/device/token. RFC 8628 states are returned as
+  // DATA, not thrown: { kind: "approved", session } | { kind: "authorization_pending" }
+  // | { kind: "slow_down" } | { kind: "access_denied" } | { kind: "expired_token" }.
+  // `session` is the OperatorSessionToken { operator_session_token, token_type,
+  // expires_in, absolute_expires_at, email, wallets[] }.
+
+operator.overview({ token? }): Promise<OperatorOverview>
+  // GET /agent/v1/operator/overview. With `token` (the operator-session bearer) →
+  // the email-union (scope.kind "email"): rollup, organizations[], wallets[]
+  // (each with projects + email_binding), advisories[]. Without `token` it falls
+  // back to the provider's default auth (SIWX) → that one wallet's slice.
+
+operator.revoke({ token }): Promise<void>
+  // POST /agent/v1/operator/session/revoke (operator-session bearer). Idempotent,
+  // 204. Server-side revoke is instant (no positive-validity cache).
+```
+
+**Control-plane session (v1.78 — `passkey-principals-onboarding`).** The human's write-capable session (the gateway's 5th principal, `control_plane_session`). Distinct from the read-only operator session above. It authorizes most control-plane ops, but since v1.85/v1.87 it is **not** sufficient on its own for `provision` / `deploy` / secret-writes — those additionally require a passkey-fresh **operator approval** (see below). High-stakes control ops (invite, membership, handoff, delete) require a **fresh passkey** — a magic-link/OAuth session raises `StepUpRequiredError` until it runs a step-up ceremony.
+
+The CLI mints it headlessly via loopback-PKCE (RFC 8252, the `aws sso login` localhost-redirect model). The SDK exposes the two isomorphic seams:
+
+```
+operator.buildCliAuthorizeUrl({ redirectUri, codeChallenge, state, nonce }): string
+  // Pure (no network). GET /agent/v1/control-plane/cli/authorize — the URL the CLI
+  // opens in the browser; the console runs the passkey ceremony + approves.
+operator.exchangeCliToken({ code, codeVerifier, redirectUri, state }): Promise<ControlPlaneSession>
+  // POST /agent/v1/control-plane/cli/token (unauth — code + verifier ARE the credential).
+  // ControlPlaneSession { control_plane_session_token, token_type, expires_in,
+  // provenance:"loopback_pkce", principal_id, amr[] }.
+```
+
+**Operator approval (write-auth, v1.85/v1.87).** A wallet-less human's control-plane session is read-capable on the high-stakes routes; `provision` / `deploy` / secret-writes also need a passkey-fresh approval scoped to one `(action, target)`, carried as an `X-Run402-Write-Auth` token. The isomorphic seams (`r.operator.approval`) mirror the login seams; the Node CLI (`run402 operator approve`) runs the loopback + PKCE around them:
+
+```
+operator.approval.requestChallenge({ action, orgId?, projectId?, cliRedirectUri, codeChallenge, state, token? }): Promise<ApprovalChallengeResult>
+  // POST /agent/v1/control-plane/write-auth/challenges. action ∈ org.project.create | project.deploy
+  // | project.secret.write (org.project.create needs orgId; the others projectId). Carries the cp bearer.
+operator.approval.exchangeClaimCode({ code, codeVerifier, state }): Promise<ApprovalTokenResult>
+  // POST /agent/v1/control-plane/write-auth/cli/token (unauth; no redirect_uri — bound at challenge).
+  // ApprovalTokenResult { write_auth_token, token_type:"write_auth", header:"X-Run402-Write-Auth", session }.
+```
+
+Credential resolution is **surface-aware and never ambient**: `run402({ surface })` — `cli` resolves `auto` (wallet, else the control-plane session + an approval *only* when a cached one exactly matches the request's `(capability, target)`); `mcp` / `sdk` stay wallet-only, so an agent tool call never spends the human's approval. A gated write with no matching approval throws `OperatorApprovalRequiredError` (`isOperatorApprovalRequired()` guard) carrying `capability`, `target`, and a resolved `approveCommand` (e.g. `run402 operator approve --action project.deploy --project prj_x`) — the agent relays that; an interactive CLI auto-runs it. (`WRITE_AUTH_BINDING_MISMATCH` / `WRITE_AUTH_SESSION_INVALID` map to the same typed error.)
+
+The **hosted/browser** session surface — the front door the console (and any browser app) drives — is `r.operator.session.*`. Public *mint* methods send no auth; *session-bound* methods take `{ token }` (the `control_plane_session` bearer) and fall back to the credential provider when omitted (mirrors `overview`). WebAuthn option/assertion payloads are opaque passthroughs — the browser runs the ceremony.
+
+```
+// mint (public — no auth)
+operator.session.email({ email }): Promise<MagicLinkSendResult>            // non-enumerating magic-link send
+operator.session.verifyEmail({ token }): Promise<ControlPlaneSession>      // verifies email, AUTO-CLAIMS invites, mints (amr ["email"])
+operator.session.passkeyOptions({ email }) / passkeyVerify({ email, response })  // WebAuthn login → session
+operator.session.oauthUrl("google" | "github"): string                    // pure; GET …/oauth/:provider/start (browser 302)
+operator.session.consumeRecoveryCode({ code }): Promise<RecoveryConsumeResult>  // session + must_enroll_passkey
+
+// session-bound ({ token } → bearer; omit → provider auth)
+operator.session.whoami({ token? }): Promise<ControlPlaneWhoAmI>           // { principal, memberships, amr, amr_times }
+operator.session.refresh({ token? }) / revoke({ token? })
+operator.session.enrollPasskeyOptions({ token? }) / enrollPasskeyVerify({ token?, response, label? })
+operator.session.stepUpOptions({ token?, opClass? }) / stepUpVerify({ token?, response, opClass?, objectKind?, objectId? })
+  // satisfy a StepUpRequiredError (amr passkey), then retry the gated write
+operator.session.issueRecoveryCodes({ token? })                           // one-time codes (shown once)
+operator.session.listAuthenticators({ token? }) / revokeAuthenticator({ token?, id })
+```
+
+Carry a minted session as the whole SDK's credential with `controlPlaneSessionCredentials({ token | getToken })` — `r.orgs.*` / `r.org(id).*` / `r.admin.transfers.*` then act as that principal (it carries no project keys, so DB/project-key ops still need the wallet/keystore):
+
+```
+import { run402, controlPlaneSessionCredentials } from "@run402/sdk/node";
+const r = run402({ credentials: controlPlaneSessionCredentials({ token }) });
+await r.orgs.whoami();   // resolves the principal + memberships
+```
+
+**Invite → claim at first login.** An owner invites by email (`r.org(id).invites.create`); the invitee's pending memberships are claimed *automatically* when they log in via that verified email (email / OAuth / loopback) and surface as active rows in `session.whoami().memberships` (and in `run402 operator login --loopback` output). Owner/admin invites only claim once the invitee has enrolled a passkey; lower roles claim on any login. There is no invitee-side "list my invites" call — the claim is the surfacing.
+
+The session caches are Node-only and live in `core`: the read session at `{base}/operator-session.json` and the write-capable control-plane session at `{base}/control-plane-session.json` (both mode 0600, base config dir — email-scoped, shared across local named wallets). The CLI (`run402 operator login[/--loopback]/logout/overview/whoami`) brokers them; read `whoami` is a pure local-cache read. No MCP tool by design — MCP authenticates as the agent, not the human; the hosted login is browser-interactive and console-side.
+
+### `r.sites`
+
+`deployDir` is exposed only on the Node entry (`@run402/sdk/node`); the
+isomorphic entry's `r.sites` namespace is empty.
+
+```
+// Node-only — @run402/sdk/node:
+deployDir(opts: { project, dir, target?, onEvent? }): Promise<SiteDeployResult>
+```
+
+### `r.assets`
+
+The unified asset namespace (renamed from `r.blobs` in v2.0). Isomorphic
+single-asset methods on every runtime; the Node entry point
+(`@run402/sdk/node`) upgrades `r.assets` to `NodeAssets`, adding the bulk
+directory helpers.
+
+```
+// Isomorphic — single asset:
+put(projectId, key, source, opts?: BlobPutOptions): Promise<AssetRef>
+get(projectId, key): Promise<Response>
+ls(projectId, opts?: { prefix?, limit?, cursor? }): Promise<BlobLsResult>
+rm(projectId, key): Promise<void>
+sign(projectId, key, opts?: { ttl_seconds? }): Promise<BlobSignResult>
+diagnoseUrl(projectId, url): Promise<BlobDiagnoseEnvelope>
+waitFresh(projectId, opts: { url, sha256, timeoutMs? }): Promise<BlobWaitFreshResult>
+// Node-only — @run402/sdk/node — bulk directory + batch:
+uploadDir(path, opts: { project, prefix?, ignore?, includeSensitive?, onEvent? }): Promise<AssetManifest>
+syncDir(path, opts: { project, prefix?, prune?, confirm?, ignore?, includeSensitive?, onEvent? }): Promise<AssetManifest>
+prepareDir(path, opts: { project, prefix?, ignore?, includeSensitive? }): Promise<{ manifest: AssetManifest, applySlice: AssetSpec }>
+putMany(items: PutManyItem[], opts: { project, onEvent? }): Promise<AssetManifest>
+
+// Node-only — input helper (synchronous; walk happens at apply submission):
+dir(path, opts?: { prefix?, ignore?, includeSensitive? }): LocalDirRef
+```
+
+`source` is one of: a bare `string` (UTF-8 ≤ 1 MB), a bare `Uint8Array`,
+`{ content: string }`, or `{ bytes: Uint8Array }`.
+
+`AssetRef` (return type of single-asset `put`; legacy alias `BlobPutResult`
+still exported) extends snake_case fields (`key`, `size_bytes`, `sha256`,
+`visibility`, `url`, `immutable_url`) with the v1.45+ camelCase helpers
+used by paste-and-go HTML emitters: `cdnUrl`, `cdnMutableUrl`,
+`immutableUrl`, `etag`, `sri`, `contentDigest`, `cacheKind` (`"immutable" |
+"mutable" | "private"`), `contentSha256`, `contentType`, plus `scriptTag()`,
+`linkTag()`, `imgTag()` methods. See `sdk/src/namespaces/assets.types.ts`
+for the full shape.
+
+**v2.1.0 substrate change.** `r.assets.put` now routes through the unified-apply
+hero (`r.project(id).apply(spec)` with `spec.assets.put`). Bytes upload via
+`/content/v1/plans` to direct-to-S3 presigned URLs; per-key visibility flips
+inside the activation transaction that flips `live_release_id`. The legacy
+`/storage/v1/uploads*` substrate was removed in gateway v1.48; the
+`initUploadSession` / `getUploadSession` / `completeUploadSession` SDK methods
+now throw `LocalError` directing callers to `r.assets.put` (single key) or
+`r.assets.uploadDir(path)` (Node-only, batches a directory under one apply).
+
+#### Bulk directory helpers (Node-only)
+
+`uploadDir` is **additive**: walks the directory, hashes every file with
+streaming SHA-256, and submits one apply transaction (`r.project(id).apply
+({ assets: { put: [...] } })`). Existing keys not present in the directory
+are left untouched.
+
+`syncDir` is **declarative**. Without `prune: true` it behaves identically
+to `uploadDir`. With `prune: true` it deletes keys under the supplied
+prefix that aren't in the new directory; the first call runs a plan and
+throws `PruneConfirmationRequired` (a `LocalError` subclass) carrying
+`base_revision`, `delete_set_digest`, `expected_delete_count`, and
+`sample_keys`. Echo those back as `confirm: {...}` to commit. `prune: true`
+**requires an explicit `prefix`** — no implicit project-root prune. The
+gateway's `ASSET_SYNC_DRIFT` activation check catches the narrower race
+where inventory mutates between commit and activation.
+
+`prepareDir` runs plan-only and returns `{ manifest, applySlice }`. Use it
+when you need resolved CDN URLs before commit (e.g. inject content-hashed
+asset URLs into HTML, then commit both the HTML and the assets in one
+apply call by passing `applySlice` to a follow-up `r.project(id).apply
+.start(...)`).
+
+`putMany` is the in-memory batch shape: each item carries a `key` plus an
+in-memory `ContentSource` (string, Uint8Array, ArrayBuffer, Blob). Useful
+in V8 isolates and tests where no filesystem is available.
+
+#### The three-schema fidelity contract
+
+The SDK accepts three input shapes for the assets slice but the gateway
+sees only one wire shape:
+
+1. `LocalDirRef` — returned by `dir(path)`. Synchronous, lazy: the
+   filesystem walk happens at apply submission, not at construction. The
+   discriminator `__source: "local-dir"` is stable for type-narrowing.
+   **The gateway never sees a `LocalDirRef`** — submitting one in a JSON
+   body is rejected with HTTP 400 `INVALID_WIRE_SCHEMA`. The SDK
+   normalizes via `entriesFromLocalDir(ref)` before any plan request.
+2. `AssetPutEntry[]` — wire-shaped (`{ key, sha256, size_bytes,
+   content_type, visibility, immutable }`). What the gateway sees.
+3. In-memory `ContentSource` — accepted by `putMany`; hashed locally and
+   converted to `AssetPutEntry` before submission.
+
+This is enforced by the wire-schema validator and verified by
+`three-schema fidelity` tests under `sdk/src/`.
+
+#### `AssetManifest` — batch result envelope
+
+```
+interface AssetManifest {
+  list: AssetManifestEntry[]
+  byKey: Record<string, AssetManifestEntry> // null-prototype
+  manifest: Record<string, AssetManifestEntry> // null-prototype, plain-data copy
+  totals: { files, bytes_uploaded, bytes_reused, duration_ms }
+  pruned?: string[] // present when syncDir prune ran
+}
+
+interface AssetManifestEntry {
+  key, sha256, size_bytes, content_type, visibility,
+  url, immutable_url, cdn_url, cdn_immutable_url,
+  sri, etag, content_digest
+}
+```
+
+`byKey` and `manifest` are constructed with `Object.create(null)` so
+attacker-controlled keys like `__proto__` can't collide with
+`Object.prototype` — a hard invariant covered by the prototype-pollution
+safety tests in `sdk/src/`.
+
+### `r.functions`
+
+```
+deploy(projectId, opts: {
+  name: string, code: string, config?: { timeout?, memory? },
+  deps?: string[], schedule?: string | null,
+}): Promise<FunctionDeployResult> // routes through unified apply (functions.patch.set). result: { name, url, status, runtime, schedule, warnings }; runtime_version & deps_resolved are null via this path - read r.functions.list() for resolved versions
+invoke(projectId, name, opts?: { method?, body?, headers? }): Promise<FunctionInvokeResult>
+logs(projectId, name, opts?: { tail?, since?, requestId? }): Promise<FunctionLogsResult>
+update(projectId, name, opts: { schedule?, timeout?, memory? }): Promise<FunctionUpdateResult>
+list(projectId): Promise<FunctionListResult> // FunctionSummary includes runtime_stale? when the gateway derives it
+delete(projectId, name): Promise<void>
+rebuild(projectId, name): Promise<FunctionRebuildResult> // { name, rebuilt, old_fingerprint, new_fingerprint, runtime_version_before, runtime_version_after, code_hash }
+rebuildAll(projectId): Promise<FunctionRebuildBatchResult> // { rebuilt_count, total, results: (FunctionRebuildResult | { name, rebuilt: false, code?, error })[] }
+```
+
+`FunctionLogEntry` includes `timestamp` and `message`, plus optional `event_id`, `log_stream_name`, `ingestion_time`, and `request_id` metadata when the gateway can provide it. Use `requestId` to follow a routed browser failure exposed as `X-Run402-Request-Id` / JSON `request_id`; SDK calls reject invalid `since` timestamps, invalid request ids, and `tail` values outside 1..1000 locally instead of forwarding them.
+
+`rebuild` / `rebuildAll` (capability `function-runtime-rebuild`, gateway v1.69+) refresh a deployed function onto the platform's CURRENT entry wrapper + bundled runtime WITHOUT changing source: they re-bundle from the stored source with dependencies pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — only the platform wrapper/runtime changes. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does not pick it up. Strictly opt-in. Both are **wallet-authed** (project ownership; no service key) and allowed during billing grace (`past_due` / `frozen` / `dormant`). Functions deployed before dependency locking are refused with `CANNOT_REBUILD_UNLOCKED_DEPS` (single: HTTP 409 `ApiError`; `rebuildAll`: a `{ rebuilt: false, code: "CANNOT_REBUILD_UNLOCKED_DEPS", error }` entry that never aborts the batch) — redeploy those from source. Runtime staleness is surfaced read-only on `r.admin.getOperatorStatus().runtime` (`{ stale_function_count, stale_functions: [{ project_id, name }] }`) and per-function as `runtime_stale?` on the functions list; the scoped client exposes `r.project(id).functions.rebuild(name)` / `.rebuildAll()`.
+
+`deps` accepts npm specs: bare names → latest at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) honored verbatim. Max 30 entries / 200 chars each; empty or whitespace-only entries are rejected. **Native binary modules are rejected.** Don't list `@run402/functions` (auto-bundled).
+
+### `r.jobs`
+
+Platform-managed jobs over `/jobs/v1/*`. This is not arbitrary Docker execution: callers choose a run402-configured `jobType`, provide JSON input, and set a hard cost cap. The SDK loads the project's `service_key`, supplies the required `Idempotency-Key` header internally, and serializes the request to the gateway's snake_case body.
+
+```
+submit(projectId, {
+  jobType: "example.managed_job.v1",
+  input: { inputJson: Record<string, unknown> },
+  maxCostUsdMicros: number,
+  callbackUrl?: string,
+}): Promise<ManagedJobResponse>
+get(projectId, jobId): Promise<ManagedJobResponse>
+logs(projectId, jobId, opts?: { tail?, since? }): Promise<{ logs: ManagedJobLogEntry[] }>
+cancel(projectId, jobId): Promise<ManagedJobResponse>
+purge(projectId): Promise<{ deleted_jobs, cancelled_active_jobs, terminated_instances }>
+```
+
+The scoped client pre-binds the project id: `const p = await r.project(id); await p.jobs.get(jobId)`.
+
+`ManagedJobResponse` mirrors the gateway snake_case shape: `job_id`, `job_type`, `status` (`queued` / `running` / `completed` / `failed` / `cancelled`), `created_at`, optional `started_at`, `completed_at`, `artifacts`, `metadata`, and `error`.
+`jobs.logs(..., { since })` prefers an ISO-8601 timestamp; legacy epoch milliseconds are still accepted for older callers.
+
+### `r.secrets`
+
+```
+set(projectId, key, value): Promise<void>
+list(projectId): Promise<SecretListResult> // { secrets: [{ key, created_at?, updated_at? }] }
+delete(projectId, key): Promise<void>
+```
+
+Secret values and value-derived hashes are never returned. For deploys, use `secrets.require[]` only as a dependency gate; it is not an injection allowlist.
+
+### `r.subdomains`
+
+```
+claim(name, deploymentId, opts?: { projectId? }): Promise<SubdomainClaimResult>
+delete(name, opts?: { projectId? }): Promise<void>
+list(projectId): Promise<SubdomainSummary[]>
+```
+
+Most agents do not call `claim` directly — declare subdomains in
+`r.project(id).apply({ subdomains: { set: ["my-app"] } })` and the deploy primitive
+claims them as part of the release.
+
+Subdomain auto-reassignment: claim once. Every subsequent deploy to the same project automatically points the subdomain at the new deployment.
+
+### `r.domains`
+
+```
+add(projectId, domain, subdomainName): Promise<DomainAddResult> // returns DNS records
+list(projectId): Promise<DomainList>
+status(projectId, domain): Promise<DomainStatus> // poll until "active"
+remove(projectId, domain): Promise<void>
+```
+
+### `r.email`
+
+```
+createMailbox(projectId, slug): Promise<CreateMailboxResult> // NOT idempotent
+listMailboxes(projectId): Promise<MailboxListResult>
+setMailboxDefaults(projectId, {
+  default_outbound_mailbox_id?: string | null,
+  auth_sender_mailbox_id?: string | null
+}): Promise<SetMailboxDefaultsResult>
+updateMailbox(projectId, {
+  mailbox?: string,
+  footer_policy: "run402_transparency" | "none"
+}): Promise<MailboxInfo>
+getMailbox(projectId, mailbox?): Promise<MailboxInfo>
+deleteMailbox(projectId, mailboxId?): Promise<void>
+
+send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
+  // If opts.mailbox is omitted, the SDK uses the configured
+  // default_outbound_mailbox_id when mailbox_settings are present. Missing or
+  // invalid defaults throw typed ApiError envelopes such as
+  // DEFAULT_MAILBOX_REQUIRED / DEFAULT_MAILBOX_INVALID with details.candidates
+  // and next_actions. Successful sends echo mailbox_id/from_address when the
+  // gateway returns them.
+  // opts.attachments?: { filename, content_base64, content_type }[] — RAW MODE
+  // ONLY (subject + html, not template). Max 5; ≤ 7 MB total decoded. Sent as a
+  // multipart/mixed MIME. Sent messages echo attachments_meta (names/types/sizes).
+list(projectId, opts?: { limit?, after?, direction? }): Promise<EmailSummary[]>
+  // direction?: "inbound" | "outbound" — omit for BOTH. direction:"inbound" lists
+  // received replies (each EmailSummary carries `direction`) and is the
+  // reconciliation backstop if a reply_received webhook is ever lost.
+get(projectId, messageId): Promise<EmailDetail>
+getRaw(projectId, messageId): Promise<RawEmailResult> // bytes + content_type
+
+// Webhooks (sub-namespace):
+webhooks.register(projectId, opts: { url, events }): Promise<MailboxWebhookSummary>
+webhooks.list(projectId): Promise<MailboxWebhooksResult>
+webhooks.get(projectId, webhookId): Promise<MailboxWebhookSummary>
+webhooks.update(projectId, webhookId, opts: { url?, events? }): Promise<MailboxWebhookSummary>
+webhooks.delete(projectId, webhookId): Promise<void>
+webhooks.listDeliveries(projectId, opts?: { status?, limit?, after? }): Promise<WebhookDeliveriesResult>
+  // Durable delivery is AT-LEAST-ONCE with bounded retries + exponential backoff.
+  // Failures that exhaust the budget (or fail permanently) become status
+  // "failed_permanent" — the dead-letter queue. status?: pending | in_flight |
+  // delivered | failed_permanent. The delivered body is the canonical envelope
+  // { id, type, created_at, schema_version, idempotency_key, payload }; consumers
+  // MUST dedupe on idempotency_key (also the Run402-Webhook-Id header). Mailbox
+  // webhooks are unsigned (verifyWebhook is for operator notifications only).
+webhooks.redriveDelivery(projectId, deliveryId): Promise<RedriveDeliveryResult>
+  // Re-queue a dead-lettered delivery for another attempt (after fixing the consumer).
+
+// CLI-style aliases:
+create(projectId, slug): Promise<CreateMailboxResult>
+status(projectId): Promise<MailboxInfo>
+info(projectId): Promise<MailboxInfo>
+update(projectId, opts): Promise<MailboxInfo>
+delete(projectId, mailboxId?): Promise<void>
+```
+
+`MailboxRecord` includes default/readiness/footer-policy metadata when the gateway provides it: `is_default_outbound`, `is_auth_sender`, `can_send`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, and `footer_policy_locked_reason`. `updateMailbox` PATCHes `/mailboxes/v1/:mailbox_id` for `footer_policy`; `none` requires hobby/team, while prototype projects are locked to `run402_transparency` and return the typed gateway error `FOOTER_POLICY_TIER_REQUIRED`. `MailboxListResult` and create/settings responses may include `mailbox_settings` and `next_actions`; the happy path is create → list → set missing defaults → optionally update footer policy → send.
+
+Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Raw mode also accepts `attachments` (max 5, ≤ 7 MB total) — a multipart/mixed MIME is sent. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
+
+### `r.senderDomain`
+
+```
+register(projectId, domain): Promise<SenderDomainSetup> // returns DKIM CNAMEs
+status(projectId): Promise<SenderDomainStatus>
+remove(projectId): Promise<void>
+enableInbound(projectId, domain): Promise<{ mx_record }>
+disableInbound(projectId, domain): Promise<void>
+
+// CLI-style aliases:
+inboundEnable(projectId, domain): Promise<{ mx_record }>
+inboundDisable(projectId, domain): Promise<void>
+```
+
+### `r.auth`
+
+```
+requestMagicLink(projectId, opts: { email, redirectUrl, intent?, clientState? }): Promise<void>
+verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult> // { access_token, refresh_token, ... }
+createUser(projectId, opts: { email, isAdmin?, sendInvite?, redirectUrl?, clientState? }): Promise<AuthUserAdminResult>
+inviteUser(projectId, opts: { email, isAdmin?, redirectUrl, clientState? }): Promise<AuthUserAdminResult>
+setUserPassword(projectId, opts: { accessToken, newPassword, currentPassword? }): Promise<void>
+settings(projectId, opts: {
+  allow_password_set?,
+  preferred_sign_in_method?,
+  public_signup?,
+  require_passkey_for_project_admin?
+}): Promise<AuthSettingsResult>
+createPasskeyRegistrationOptions(projectId, opts: { accessToken, appOrigin }): Promise<PasskeyOptionsResult>
+verifyPasskeyRegistration(projectId, opts: { accessToken, challengeId, response, label? }): Promise<PasskeyRecord>
+createPasskeyLoginOptions(projectId, opts: { appOrigin, email? }): Promise<PasskeyOptionsResult>
+verifyPasskeyLogin(projectId, opts: { challengeId, response }): Promise<AuthSessionResult>
+listPasskeys(projectId, opts: { accessToken }): Promise<{ passkeys: PasskeyRecord[] }>
+deletePasskey(projectId, opts: { accessToken, passkeyId }): Promise<void>
+providers(projectId): Promise<unknown>
+promote(projectId, email): Promise<void>
+demote(projectId, email): Promise<void>
+
+// CLI-style aliases:
+magicLink(projectId, opts): Promise<void>
+verify(projectId, token): Promise<MagicLinkVerifyResult>
+setPassword(projectId, opts): Promise<void>
+promoteUser(projectId, email): Promise<void>
+demoteUser(projectId, email): Promise<void>
+```
+
+Magic-link tokens are single-use, expire in 15 min, rate-limited 5/email/hour. Google OAuth is on for all projects with zero config.
+
+### `r.apps`
+
+```
+browse(tags?: string[]): Promise<BrowseAppsResult>
+getApp(versionId): Promise<AppDetails>
+fork(opts: { versionId, name, subdomain? }): Promise<ForkAppResult>
+publish(projectId, opts?: { description?, tags?, visibility?, fork_allowed? }): Promise<PublishedVersion>
+listVersions(projectId): Promise<ListVersionsResult>
+updateVersion(projectId, versionId, opts: { description?, tags?, visibility?, fork_allowed? }): Promise<void>
+deleteVersion(projectId, versionId): Promise<void>
+```
+
+Forking clones schema + site + functions into a new project. If the source has a `bootstrap` function, it runs automatically with the variables you pass; result includes `bootstrap_result` or `bootstrap_error`.
+
+### `r.tier`
+
+```
+set(tier: "prototype" | "hobby" | "team"): Promise<TierSetResult>
+status(): Promise<TierStatusResult>
+```
+
+Tier is per **organization**, not per project. `set` applies to every project on the
+organization; `status.pool_usage` (`projects`, `total_api_calls`, `total_storage_bytes`,
+`api_calls_limit`, `storage_bytes_limit`) sums across every non-terminal project on the
+organization — including every wallet linked to it via `billing.linkWallet` — not
+just the requesting wallet. Use the returned `pool_usage` as the authoritative quota-
+enforcement view; per-project `r.projects.getUsage(id)` reports the same organization-level
+caps alongside that project's slice of the pool.
+
+**v1.57:** `TierStatusResult` also surfaces two optional organization fields:
+
+- `organization_lifecycle_state?: "active" | "past_due" | "frozen" | "dormant" | "purged"` — mirror of the owning organization's lifecycle state. Identical to the per-project `organization_lifecycle_state` on every `list()` entry.
+- `lease_perpetual?: boolean` — operator escape hatch flag. When `true`, the organization never advances past `active`.
+
+Both are optional because older gateways do not return them at the top level.
+
+`set` auto-detects subscribe / renew / upgrade / downgrade based on current state.
+For tier pricing, call `r.projects.getQuote()` (the SDK does not expose a separate
+`tier.quote()` method).
+
+#### Quota-denial `scope` discriminator (v1.46+)
+
+Quota-related error envelopes carry `details.scope: "organization" | "project"` so consumers
+can distinguish organization-pooled denials from the orphan fallback (project whose billing
+organization row was purged but cascade has not yet run). The SDK lifts this onto every
+`Run402Error` subclass as `e.quotaScope`, and exports a `getQuotaScope(e)` helper for
+non-`Run402Error` `unknown` inputs. Absent for non-quota errors and for pre-v1.46
+gateways.
+
+### `r.billing`
+
+```
+createEmailOrganization(email): Promise<EmailOrganization>
+linkWallet(organizationId, wallet): Promise<LinkWalletResult>  // organizationId = UUID; POST /orgs/v1/:org_id/wallets
+createCheckout(organizationId, checkout: { product: "balance_topup", amountUsdMicros: number } | { product: "tier", tier: "prototype" | "hobby" | "team" } | { product: "email_pack" }): Promise<CreateCheckoutResult>
+setAutoRecharge(opts: { organizationId: string, enabled: boolean, threshold? }): Promise<void>
+checkBalance(identifier): Promise<OrganizationDetail>  // identifier = organization id (UUID) | wallet | email
+getOrganization(identifier): Promise<OrganizationDetail>
+lookupOrganization(identifier): Promise<OrganizationDetail>  // resolve wallet/email → organization (incl. organization_id)
+balance(identifier): Promise<OrganizationDetail> // alias of checkBalance
+history(identifier, limit?: number): Promise<BillingHistoryResult>
+getHistory(identifier, limit?: number): Promise<BillingHistoryResult>
+
+// CLI-style aliases:
+createEmail(email): Promise<EmailOrganization>
+autoRecharge(opts): Promise<void>
+```
+
+Organizations are addressed by their canonical `organization_id` (UUID).
+`getOrganization` / `checkBalance` / `history` accept an organization id, wallet, or email:
+an organization id reads `GET /orgs/v1/:org_id/billing` directly, while a
+wallet/email is resolved through the `GET /orgs/v1/lookup?wallet=|?email=`
+lookup (also exposed as `lookupOrganization`). The detail shape includes
+`organization_id`. Organization reads require SIWX from a
+wallet **linked to** the organization (or matching the looked-up `?wallet`), or an
+admin key — email lookups are admin-only; `history` resolves to the organization id
+first, then reads `GET /orgs/v1/:org_id/billing/history`.
+
+`linkWallet` merges a wallet into an existing organization's pool. The response
+includes a `pool_implications` block (`tier`,
+`projects_in_pool_count`, `organization_api_calls_current`, `organization_storage_bytes_current`,
+`tier_limits.{api_calls,storage_bytes}`, `over_limit`) so callers can warn before
+linking a wallet whose existing usage would push the merged pool past the tier cap.
+
+### `r.contracts`
+
+```
+provisionSigner(projectId, opts: { chain: "base-mainnet" | "base-sepolia", recoveryAddress? }): Promise<ProvisionSignerResult>
+getSigner(projectId, signerId): Promise<SignerSummary>
+listSigners(projectId): Promise<ListSignersResult>
+setRecovery(projectId, signerId, recoveryAddress: string | null): Promise<void>
+setLowBalanceAlert(projectId, signerId, thresholdWei: string): Promise<void>
+
+call(projectId, opts: { signerId, chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args, value?, idempotencyKey? }): Promise<ContractCallResult>
+deploy(projectId, opts: { signerId, chain, bytecode, value?, idempotencyKey? }): Promise<ContractDeployResult> // bytecode = full creation calldata (creation bytecode + ABI-encoded ctor args concatenated by caller); ≤ 128 KB. Returns deterministic CREATE address synchronously in `contract_address`.
+read(opts: { chain, contractAddress?, to?, abiFragment?, abi?, functionName?, fn?, args }): Promise<ContractReadResult>
+callStatus(projectId, callId): Promise<ContractCallResult>
+drain(projectId, signerId, destinationAddress): Promise<DrainResult>
+deleteSigner(projectId, signerId): Promise<DeleteSignerResult> // refused if balance ≥ dust
+
+// CLI-style aliases:
+setAlert(projectId, signerId, thresholdWei): Promise<void>
+status(projectId, callId): Promise<ContractCallResult>
+delete(projectId, signerId): Promise<DeleteSignerResult>
+```
+
+Private keys never leave AWS KMS. **$0.04/day rental + $0.000005/call.** Signer creation requires $1.20 cash credit. Non-custodial. The SDK exports typed metadata and call-result envelopes (`SignerSummary`, `ContractCallResult`, `ContractReadResult`, etc.); contract ABI results and receipts remain `unknown` inside those envelopes and should be narrowed at the call site.
+
+### `r.ai`
+
+```
+translate(projectId, opts: { text, to, from?, context? }): Promise<TranslateResult>
+moderate(projectId, text): Promise<ModerateResult>
+usage(projectId): Promise<AiUsageResult>
+generateImage(opts: { prompt, aspect? }): Promise<GenerateImageResult> // $0.03 via x402, no projectId
+```
+
+`r.image` is an alias of `r.ai`, so CLI readers can translate
+`run402 image generate ...` to `r.image.generateImage(...)`.
+
+### `r.allowance`
+
+```
+status(): Promise<AllowanceStatusResult>
+create(): Promise<AllowanceCreateResult>
+export(): Promise<string> // address only, never the private key
+faucet(address?: string): Promise<FaucetResult>
+```
+
+`faucet` defaults to the local allowance's address when no argument is passed.
+The Node entry's credentials provider also writes a `lastFaucet` marker after
+success — surfaced via `status().faucet_used`.
+
+### `r.service`
+
+```
+status(): Promise<ServiceStatus> // 24h/7d/30d uptime per capability — no auth, no setup
+health(): Promise<ServiceHealth> // per-dependency liveness — no auth, no setup
+```
+
+### `r.wallet(address)`
+
+```
+r.wallet(address).getLabel(): Promise<string | null>
+r.wallet(address).setLabel(label: string): Promise<{ ok: boolean }>
+```
+
+The signed server-side wallet label (gateway `/wallets/v1/:address/label`) that
+surfaces the human-readable named-wallet name in the operator console. Use the
+`r.wallet(address)` scope handle so the address isn't a swappable positional. The
+label is pushed automatically on `run402 wallets use` unless
+`RUN402_WALLET_LABEL_SYNC=0`. (The two-string `r.wallets.setLabel(address, label)`
+form is deprecated; `r.wallets.getLabel(address)` remains valid. For org/grants
+control-plane identity, see "Org membership & project grants" below.)
+
+### `r.cache` (gateway v1.52+, paired with `@run402/astro` v1.0+)
+
+SSR origin-cache inspection + invalidation for the Astro SSR Runtime. Capability `ssr-isr-cache`.
+
+```
+invalidate(url: string | URL): Promise<CacheInvalidateResult>
+invalidatePrefix({ host, prefix }): Promise<CacheInvalidateResult>
+invalidateAll({ host }): Promise<CacheInvalidateResult>
+invalidateMany(urls: Array<string | URL>): Promise<CacheInvalidateResult>
+inspect(url: string | URL, opts?: { locale?, releaseId? }): Promise<CacheInspectResult>
+```
+
+`CacheInvalidateResult`:
+```ts
+interface CacheInvalidateResult {
+  deleted: number;
+  // post-increment per-(project, host) counter, as string for bigint safety
+  generation: string;
+  host: string;
+  // populated on single-URL form
+  path?: string;
+  // populated on invalidateMany
+  results?: Array<{ host: string; deleted: number; generation: string }>;
+}
+```
+
+`CacheInspectResult`:
+```ts
+interface CacheInspectResult {
+  // NEVER "BYPASS" — inspect doesn't issue a request
+  status: "HIT" | "MISS";
+  url?: string;
+  host?: string;
+  path?: string;
+  search?: string;
+  method?: string;
+  locale?: string;
+  releaseId?: string;
+  // ISO8601
+  cachedAt?: string;
+  // ISO8601
+  expiresAt?: string;
+  writtenUnderGeneration?: string;
+  // hex
+  contentSha256?: string;
+  headers?: Record<string, string | string[]>;
+}
+```
+
+Project-scoped. Cross-project absolute URLs throw `R402_CACHE_INVALIDATION_HOST_FORBIDDEN`. Path-string `invalidate('/path')` form requires active request context to resolve the host from ALS; outside a context, throws `R402_CACHE_INVALIDATION_HOST_REQUIRED`.
+
+**Inside an Astro `[slug].astro` admin save flow:**
+
+```ts
+import { db, cache } from "@run402/functions";
+
+declare const slug: string;
+declare const title: string;
+declare const html: string;
+
+await db().from("pages").insert({ slug, title, html });
+await cache.invalidate(`/${slug}`); // sub-second freshness
+```
+
+**From an admin-side function in a different host:**
+
+```ts
+import { cache } from "@run402/functions";
+
+declare const slug: string;
+
+await cache.invalidate(new URL(`https://eagles.kychon.com/${slug}`));
+```
+
+Tag-based invalidation deferred to v1.5. Client-side (browser) invalidation NOT in v1 — server-side function context only.
+
+### `r.admin`
+
+Operator/admin endpoints. Most agents won't reach for these — they're for platform operators.
+
+```
+sendMessage(message: string): Promise<SendMessageResult>
+setAgentContact({ name, email?, webhook? }): Promise<AgentContactResult>
+getAgentContactStatus(): Promise<AgentContactResult>
+verifyAgentContactEmail(): Promise<AgentContactResult>
+startOperatorPasskeyEnrollment(): Promise<AgentContactResult>
+getProjectFinance(id: string, opts?: {
+  window?: "24h" | "7d" | "30d" | "90d",
+  cookie?: string
+}): Promise<AdminProjectFinanceResult>
+
+// operator-only org + project actions — canonical via scope handles
+r.admin.org(orgId).pinLease() / .unpinLease(): Promise<SetLeasePerpetualResult>
+r.admin.project(projectId).archive(opts?: { reason?: string }): Promise<ArchiveProjectResult>
+r.admin.project(projectId).reactivate(): Promise<ReactivateProjectResult>
+r.admin.project(projectId).finance(opts?): Promise<AdminProjectFinanceResult>
+// deprecated flat/boolean forms (kept for back-compat, not for new code):
+//   admin.setLeasePerpetual(orgId, perpetual)  → admin.org(orgId).pinLease()/unpinLease()
+//   admin.archiveProject / reactivateProject / getProjectFinance → admin.project(id).*
+```
+
+`AgentContactResult` includes `email_verification_status`, `passkey_binding_status`, `assurance_level`, proof timestamps, and cooldown fields. Assurance labels are `wallet_only`, `email_pending`, `email_verified`, `passkey_pending`, and `operator_passkey`; they describe mailbox/passkey continuity, not a humanhood or uniqueness claim. `startOperatorPasskeyEnrollment()` requires `email_verified` and emails the token to the verified contact email instead of returning it.
+
+`getProjectFinance` reads the internal Finance-tab JSON for a project. It is
+platform-admin gated; a project `service_key` is not enough. In Node operator
+scripts, use an admin allowance wallet or pass
+`cookie: process.env.RUN402_ADMIN_COOKIE` for browser-session auth.
+
+**v1.57 — operator-only project + organization actions.** Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.organizations` and dropped the per-project `pin` / `unpin` endpoints. The replacements:
+
+- `r.admin.org(orgId).pinLease()` / `.unpinLease()` — toggle the organization-level escape hatch (canonical; replaces the deprecated boolean `admin.setLeasePerpetual(orgId, perpetual)`). When `lease_perpetual` is `true`, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Pinning a grace-state organization (`past_due` / `frozen` / `dormant`) reactivates inline — the response carries `reactivated: true`. This also replaces the v1.56 `projects.pin(id)` method (removed in v2.x SDK).
+- `archiveProject(projectId, { reason? })` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
+- `r.admin.project(projectId).reactivate()` — un-archive a project (flips `archived_at` back to NULL; replaces the deprecated flat `admin.reactivateProject(projectId)`). In v1.57 this was narrowed: it does NOT touch organization-level lifecycle. To reactivate a grace-state organization, either call `r.tier.set(tier)` (the tier flow runs the lifecycle advance inline) or `r.admin.org(org_id).pinLease()`.
+
+All three require platform-admin auth. Result envelopes:
+
+```
+SetLeasePerpetualResult: { status, organization_id, lease_perpetual, reactivated }
+ArchiveProjectResult:    { status, project_id, archived_at?, reason?, note? }   // note: "already archived"
+ReactivateProjectResult: { status, project_id, reactivated?: true, note? }      // note: "not archived"
+```
+
+### `r.admin.transfers` (unified project transfer, owned-org recipient v1.96+)
+
+Project transfer is exposed as a sub-namespace at `r.admin.transfers` — one noun, three recipient shapes. A **wallet** recipient completes via `accept` (both sides sign SIWX); an **email** recipient completes via `claim` (the recipient claims into an org); an **owned org** recipient completes immediately at initiate time in the same-actor first release. `initiate` is body-discriminated (`toWallet` XOR `toEmail` XOR `toOrgId`); `preview` / `cancel` / `listIncoming` / `listOutgoing` are kind-agnostic for pending rows and tag each row with `recipient_kind`. (The pre-v1.93 `*Handoff` methods and `/handoffs` routes are gone.)
+
+```
+initiate({ projectId, toWallet, billingPolicy?, message?, kysignedRecordId? })   // wallet recipient
+  : Promise<InitiateTransferResult>            // { transfer_id, expires_at, project_summary, your_unused_lease_days, lease_refundable: false, terms_sha256 }
+initiate({ projectId, toEmail, message?, retainCollaborator? })                  // email recipient
+  : Promise<InitiateEmailTransferResult>       // { status: "ok", transfer_id, to_email, expires_at }
+initiate({ projectId, toOrgId, message? })                                      // owned-org recipient, same-actor only
+  : Promise<InitiateOrgTransferResult>         // { status: "accepted", project_id, to_organization_id, transfer_id?, completed_at?, anon_key, service_key, ... }
+  // initiate({ toOrgId }) persists returned keys via saveProject + setActiveProject when supported.
+// Exactly one of toWallet / toEmail / toOrgId — multiple-or-none throws a local VALIDATION_ERROR before any request.
+// billingPolicy + kysignedRecordId are wallet-only; retainCollaborator is email-only.
+preview(transferId: string): Promise<ProjectTransferPreview>
+  // { transfer_id, project_id, status, recipient_kind, from_wallet_display, to_wallet_display, to_email?, to_org_id?,
+  //   billing_policy, message, initiated_at, expires_at, terms_sha256, custom_domains[], subdomains[],
+  //   functions[], secret_names[] (NEVER values), mailbox_summary, ci_bindings_to_be_revoked[], signers[],
+  //   github_repo_note, billing_implications, retain_collaborator? }
+accept(transferId: string): Promise<AcceptTransferResult>          // WALLET completion
+  // { project_id, from_wallet, to_wallet, new_organization_id, completed_at,
+  //   secrets_rotation_advised: true, secret_names_inherited[], secrets_count_inherited, github_repo_note,
+  //   anon_key, service_key }  // #428: new owner's project keys. accept() persists them via
+  //   saveProject + setActiveProject (when the provider supports them), mirroring provision.
+claim(transferId, { organizationId?, acceptRetainedCollaborator? }): Promise<ClaimTransferResult>   // EMAIL completion
+  // { status: "accepted", project_id, to_organization_id, created_new_org, retained_collaborator_principal_id,
+  //   anon_key, service_key }  // project-transfer-claim-credentials: symmetric with accept. claim() persists
+  //   the keys via saveProject + setActiveProject (when the provider supports them). Claim auth is principal-based
+  //   (control-plane session OR verified-email SIWX) — don't assume a wallet is present.
+cancel(transferId: string, reason?: string): Promise<CancelTransferResult>   // kind-agnostic
+  // { transfer_id, status: "cancelled", cancelled_by, cancellation_reason, cancelled_at }
+listIncoming(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // pending rows, unioned (recipient_kind-tagged)
+listOutgoing(opts?: { limit?, offset? }): Promise<TransferSummary[]>   // pending rows, unioned
+```
+
+`billingPolicy` defaults to `"migrate"` on wallet transfers (the only Phase 1A policy — the project moves into the recipient's organization). The `kysignedRecordId` field is wallet-only and stored verbatim in Phase 1A; Phase 1B will verify it against the canonical terms hash. Owned-org `toOrgId` moves are same-actor only in the first gateway release: caller must be an active owner of both source and destination orgs. Initiate authority is owner-OR-admin.
+
+**Email recipient — retain-collaborator (v1.91).** Pass `retainCollaborator: { role: "developer" }` on the email `initiate` to keep a `developer` membership in the recipient's org after the transfer (only `developer` is valid; the subject is always the initiating owner — gateway rejects with `INVALID_RETAIN_ROLE` / `RETAIN_SUBJECT_REQUIRED`). The recipient sees the offer as `ProjectTransferPreview.retain_collaborator` (a `RetainCollaboratorPreview` `{ principal_id, role, sender_label, scope, note, accept_field }`, or `null`) and accepts by passing `acceptRetainedCollaborator: true` to `claim`; the result then carries `retained_collaborator_principal_id` (or `null`). Omitting the accept (the default) is a full severance.
+
+While a transfer is `pending` (72h TTL), every owner-side mutation against the project throws `TransferFreezeError` (status 409, code `PROJECT_HAS_PENDING_TRANSFER`). The error carries `transferId`, `projectId`, `cancelPath`, and `previewPath` lifted from the gateway's `next_actions[]`, so agents can present an actionable resolution:
+
+```ts
+import { run402 } from "@run402/sdk/node";
+import { isTransferFreezeError } from "@run402/sdk";
+
+const r = run402();
+
+try {
+  const p = await r.project(projectId);
+  await p.apply({ secrets: { require: ["DB_URL"] } });
+} catch (err) {
+  if (isTransferFreezeError(err) && err.transferId) {
+    // err.transferId, err.cancelPath, err.previewPath
+    await r.admin.transfers.cancel(err.transferId);
+    // …retry the mutation here
+  } else {
+    throw err;
+  }
+}
+```
+
+Data-plane traffic (`/rest/v1/*`, `/storage/v1/*`, function invocation, mailbox send/receive) keeps serving during the freeze. Payment-path routes (`tier.set`, `/orgs/v1/:org_id/checkouts`, `/orgs/v1/:org_id/billing/auto-recharge`) keep working. `r.admin.transfers.cancel` is intentionally not blocked.
+
+After `accept`, the project carries a persistent `secrets_rotation_advised` advisory — visible on `r.tier.status()` as `projects[].secrets_rotation_advised: { advised_at, reason }`. Use `r.secrets.set(...)` to rotate every name in `secret_names_inherited`; the advisory clears once every previously-inherited name has been re-written.
+
+`r.tier.status()` also surfaces `incoming_transfers[]` at the top level (each entry includes `preview_path` and the full pending summary) so a single status call shows pending offers without a separate `listIncoming` fetch.
+
+What does NOT transfer: tier lease (stays with the original owner's organization; no Phase 1A proration), KMS signers (`r.contracts.*` — wallet-scoped), GitHub repo ownership (handle out of band), on-chain balance on any wallet.
+
+## Org membership & project grants (`r.orgs`, `r.org(id)`, `r.grants` — v1.77+ org-owned control plane; first-class orgs v1.82)
+
+A wallet **authenticates** (SIWX → a control-plane *principal*); an **org** owns projects, and what a principal may do is decided by its org membership role (`owner > admin > developer > billing > viewer`) or a per-project grant — never `wallet_address == signer`. The collection + identity lives on `r.orgs`; per-org operations on the scoped sub-client **`r.org(id)`** (the org analog of `r.project(id)` — the id is bound once). Memberships carry `org_id` + `display_name`.
+
+- **`r.orgs.create({ displayName? })`** → `{ org_id, display_name, tier, lease_started_at, lease_expires_at }` (POST `/orgs/v1`). Creates an empty org on the prototype tier; you become owner. Accepts only `displayName` — no tier input. Step-up gated; may throw `ApiError code: "FREE_ORG_OWNER_LIMIT_EXCEEDED"` (429).
+- **`r.orgs.list()`** → orgs you are an active member of (`OrgMembership[]`, each `{ org_id, display_name, role, status }`).
+- **`r.orgs.whoami()`** → `{ principal, memberships[], authenticator_id }` (GET `/agent/v1/whoami`). The REMOTE, gateway-resolved identity — distinct from **`r.whoami()`** (local + network-free wallet/profile label, used by `run402 status`).
+- **`r.org(id).get()`** → `{ org_id, display_name, tier, lease_started_at, lease_expires_at, role }`. Any active member; a non-member (incl. a guessed id) gets the same non-revealing 403.
+- **`r.org(id).rename(displayName | null)`** → `{ org_id, display_name, tier, lease_started_at, lease_expires_at }`. Owner-only; set or clear the label (`null`/`""` clears). Step-up gated.
+- **`r.org(id).members.list()` / `.add({ wallet, role? })` / `.setRole(principalId, { role })` / `.revoke(principalId)`** — owner-gated; a new wallet is provisioned as a `human` principal, `role` defaults to `developer`. Removing/demoting the org's only active owner throws `ApiError code: "LAST_OWNER"` (409).
+- **`r.org(id).invites.list()` / `.create({ email, role, inviteTtlHours? })` / `.revoke(principalId)`** — email invites, claimed automatically at the invitee's first login.
+- **`r.org(id).audit({ limit?, before? })`** → control-plane audit trail (admin+), newest-first; page with `before`.
+- **`r.grants.create(projectId, { wallet, capability, policy?, expiresAt? })`** / **`r.grants.revoke(projectId, grantId)`** — per-project capability grants for agent/CI principals; requires owner of the project's org. Also project-scoped: **`r.project(id).grants.create({...})`** / `.revoke(grantId)`. `capability` examples: `"deploy"`, `"functions:write"`.
+
+Control-plane denials throw `NotAuthorizedError` (403 `NOT_AUTHORIZED`, carrying `requiredRole` / `requiredCapability` / `reason`). Bad input is `ApiError` `code: "VALIDATION_ERROR"` (400). Exported types: `OrgRole`, `Principal`, `OrgMembership`, `OrgMember`, `WhoAmIResult`, `OrgSummary`, `OrgDetail`, `CreateOrgInput`, `ProjectGrant`, plus input/result types.
+
+## Resource limits
+
+| | Prototype | Hobby | Team |
+|---|---|---|---|
+| Lease | 7 days | 30 days | 30 days |
+| Storage | 250 MB | 1 GB | 10 GB |
+| API calls | 500K | 5M | 50M |
+| Functions | 5 | 25 | 100 |
+| Function timeout | 10s | 30s | 60s |
+| Function memory | 128 MB | 256 MB | 512 MB |
+| Secrets | 10 | 50 | 200 |
+| Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
+
+Project rate limit: **100 req/sec** — exceeding throws `ApiError` with status 429 and `retry_after` in the body.
+
+## Idempotent migrations
+
+`CREATE TABLE IF NOT EXISTS` only handles "already exists" — it won't add new columns. For evolving schemas, wrap `ALTER TABLE` in a `DO` block:
+
+```sql
+CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL);
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN priority int DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+```
+
+Safe to re-run on every deploy.
+
+## SQL guardrails
+
+The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`, `SET search_path`, `CREATE/DROP SCHEMA`, `GRANT/REVOKE`, `CREATE/DROP ROLE`. Use the expose manifest for access control.
+
+## Stability
+
+This package is on the `1.x` line. The CLI (`run402`), MCP server (`run402-mcp`), SDK (`@run402/sdk`), and `@run402/functions` release in lockstep at the same version. Pin an exact version in production dependencies:
+
+```json
+{ "dependencies": { "@run402/sdk": "1.60.0" } }
+```
+
+OpenClaw skill packaging follows the same release train.
+
+## Patterns & gotchas
+
+- Provision before authoring HTML. The `anon_key` is permanent and must be embedded in your frontend; provision first, then write the HTML.
+- Use the manifest for access control, never raw `GRANT/REVOKE`.
+- `user_owns_rows` is the default for user-scoped data. Reach for `public_read_write_UNRESTRICTED` only on intentionally-public tables.
+- Use immutable `cdnUrl` from `r.assets.put`. It's correct from the moment of upload — no `waitFresh` needed.
+- Don't bake unconditional `r.allowance.faucet()` into deploy scripts — the faucet rate-limits and breaks already-funded flows.
+- Per-project rate limit is 100 req/sec. On 429, back off using `retry_after`.
+- `r.service.status()` works without auth. Use it before evaluating Run402, or to distinguish platform issues from your own bugs.
+
+## See also
+
+- Wayfinder: <https://run402.com/llms.txt>
+- CLI reference: <https://docs.run402.com/llms-cli.txt>
+- MCP reference: <https://docs.run402.com/llms-mcp.txt>
+- HTTP API reference: <https://run402.com/llms-full.txt>
+- npm: <https://www.npmjs.com/package/@run402/sdk>
+- Source: <https://github.com/kychee-com/run402>
