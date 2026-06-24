@@ -22,7 +22,7 @@
  * UTF-8 is the default; binary files pass `"encoding": "base64"`.
  */
 
-import { fstatSync, readFileSync } from "node:fs";
+import { existsSync, fstatSync, readFileSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
 import {
   buildDeployResolveSummary,
@@ -646,6 +646,69 @@ async function mergeAstroReleaseSlice(spec, dirArg) {
   spec.functions = { replace: { ...existingFns, ...sliceFns } };
 }
 
+/**
+ * Derive the list of on-disk source files a raw manifest `spec` references,
+ * resolved against `baseDir` (the manifest's directory, or cwd for
+ * --spec/stdin). Walks the file-bearing slices:
+ *   - functions.replace[name].source
+ *   - functions.patch.put[name].source   (and functions.patch.set, an alias)
+ *   - site.replace[key]                  (entry itself or entry.source)
+ *   - site.patch.put[key]                (entry itself or entry.source)
+ *
+ * A manifest file entry is `{ path }` (on-disk ref) OR `{ data, encoding? }`
+ * (inline bytes). Only `{ path }` entries with no `data` resolve to a disk
+ * file; inline entries are skipped (nothing to scan on disk). Returns a
+ * de-duped list of absolute paths. Existence + extension filtering is the
+ * caller's job (GH-409). Defensive: tolerates missing/odd shapes silently —
+ * the manifest normalizer is the authority on shape validity, not this
+ * best-effort extractor.
+ */
+function collectManifestSourceFiles(spec, baseDir) {
+  const out = new Set();
+  if (!spec || typeof spec !== "object") return [];
+
+  const resolveEntryPath = (entry) => {
+    // The on-disk ref can be the entry itself (`{ path }`) or nested under
+    // `.source` (function entries, asset put entries). Skip inline `{ data }`.
+    const node =
+      entry && typeof entry === "object" && entry.source && typeof entry.source === "object"
+        ? entry.source
+        : entry;
+    if (
+      node &&
+      typeof node === "object" &&
+      typeof node.path === "string" &&
+      node.data === undefined
+    ) {
+      out.add(isAbsolute(node.path) ? node.path : resolve(baseDir, node.path));
+    }
+  };
+
+  const eachValue = (map) => {
+    if (!map || typeof map !== "object") return;
+    for (const entry of Object.values(map)) resolveEntryPath(entry);
+  };
+
+  const fns = spec.functions;
+  if (fns && typeof fns === "object") {
+    eachValue(fns.replace);
+    if (fns.patch && typeof fns.patch === "object") {
+      eachValue(fns.patch.put);
+      eachValue(fns.patch.set);
+    }
+  }
+
+  const site = spec.site;
+  if (site && typeof site === "object") {
+    eachValue(site.replace);
+    if (site.patch && typeof site.patch === "object") {
+      eachValue(site.patch.put);
+    }
+  }
+
+  return [...out];
+}
+
 async function applyCmd(args) {
   const opts = parseApplyArgs(args);
   const { source, error: sourceError } = resolveApplySource(opts, hasStdinSource());
@@ -772,15 +835,35 @@ async function applyCmd(args) {
   // RUN402_DEPLOY_SKIP_SCAN=1 — useful for forcing a deploy when
   // the scanner has a false positive that the operator has confirmed
   // is fine. Hits with severity `error` fail the deploy.
+  //
+  // Scope (GH-409): a `--dir` (Astro SSR build) deploy walks that dir —
+  // it IS the artifact. A manifest/spec/stdin deploy scans ONLY the
+  // on-disk source files the manifest actually references, resolved
+  // against the manifest's baseDir. We must NOT walk cwd/src for a
+  // manifest deploy: running from inside an unrelated source tree (e.g.
+  // the gateway monorepo, which legitimately has dozens of `getUser`
+  // references) would otherwise block a deploy of one unrelated HTML file.
   if (process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
     try {
-      const { resolveScanRoot, scanSourceTree, SCAN_SEVERITY } = await import(
+      const { scanSourceTree, scanSourceFiles, SCAN_SEVERITY } = await import(
         "./doctor-source-scan.mjs"
       );
-      const scanRoot = opts.dir
-        ? (isAbsolute(opts.dir) ? opts.dir : resolve(process.cwd(), opts.dir))
-        : resolveScanRoot(process.cwd());
-      const findings = scanSourceTree(scanRoot, { cwd: process.cwd() });
+      const scannableExt = /\.(?:ts|tsx|js|jsx|mjs|cjs|astro)$/;
+      let findings;
+      if (opts.dir) {
+        const scanRoot = isAbsolute(opts.dir)
+          ? opts.dir
+          : resolve(process.cwd(), opts.dir);
+        findings = scanSourceTree(scanRoot, { cwd: process.cwd() });
+      } else {
+        const baseDir = manifestPath ? dirname(manifestPath) : process.cwd();
+        const files = collectManifestSourceFiles(spec, baseDir).filter(
+          (p) => scannableExt.test(p) && existsSync(p),
+        );
+        findings = files.length > 0
+          ? scanSourceFiles(files, { cwd: process.cwd() })
+          : [];
+      }
       const errorFindings = findings.filter((f) => f.severity === SCAN_SEVERITY.ERROR);
       if (errorFindings.length > 0) {
         const summary = errorFindings.slice(0, 10).map((f) => {
