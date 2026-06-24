@@ -4,23 +4,25 @@
 
 Two forces make now the moment:
 
-1. **A shipping contract already points at structure that doesn't exist.** The in-flight `astro-ssr-runtime` change emits structured error envelopes whose `docs` field is `https://docs.run402.com/<topic>#<anchor>` (e.g. `/reference/errors#R402_ASTRO_BUILD_FAILED`). A `text/plain` file cannot serve a deep-linkable, per-error-code anchor; a structured docs portal (heading → anchor) is exactly that shape.
+1. **The human-docs gap.** Run402's surface (CLI, SDK, MCP, error codes, the growing `@run402/astro` story) has no navigable, searchable home for the developer behind the agent — only monolithic `.txt` dumps. A structured portal closes that gap, and single-sourcing keeps the agent flat files in lockstep with it.
 2. **Dogfood-of-the-dogfood.** `@run402/astro` v1.0 is shipping now. A documentation site built on Astro and deployed to run402 is the canonical, always-current reference implementation of "deploy an Astro site to run402" — the exact thing the docs teach. It stress-tests the toolchain on a real, non-trivial site on every publish.
+
+> **Not a driver (corrected):** an earlier draft justified this by the `astro-ssr-runtime` error envelopes pointing at `docs.run402.com/<topic>#<anchor>`. That is **not** a dependency — that change already shipped its error reference at `run402.com/errors/` (it routed around this site not existing yet). Consolidating those error docs onto this portal is an optional future change, not a reason to build it.
 
 ## What Changes
 
 - **Add a static Astro Starlight documentation portal at the root (`/`) of the existing docs project** (`run402-docs`, `prj_1780488560350_0018`, `docs.run402.com`): human-readable HTML with sidebar navigation, client-side search (Pagefind), syntax highlighting, and light/dark theming. Audience: the developer supervising the agent.
 - **Single source of truth (the load-bearing decision).** Docs are authored once as Starlight content (`src/content/docs/**`). A build-time generator emits the flat agent files (`llms-cli.txt`, `llms-sdk.txt`, `llms-mcp.txt`, `SKILL.md`) from that same content. One edit updates both the human HTML surface and the agent flat-file surface. This replaces today's hand-authored, drift-prone `.txt` files.
-- **The flat files keep serving at their stable paths.** Starlight HTML owns `/` and topic routes; the generated flat files continue to serve at `/llms-cli.txt`, `/llms-sdk.txt`, `/llms-mcp.txt`, `/SKILL.md` via the manifest's `site.public_paths`. Agents and the apex discovery index depend on those exact URLs.
-- **Per-error-code anchor pages** under a structured reference section satisfy the `docs.run402.com/<topic>#<anchor>` contract that `astro-ssr-runtime` is about to ship.
-- **Static (SSG) output, deployed via the existing path.** Plain `astro build` → `dist/` → `spec.site` through the existing `deploy-docs.yml` OIDC workflow. No SSR runtime is introduced. (Migrating to `@run402/astro` SSR is a deferred future option, not in scope.)
-- **BREAKING (authoring surface):** `SKILL.md` and the three `llms-*.txt` become **generated artifacts** — authors edit Starlight content, not the `.txt` directly. The generated `SKILL.md` MUST remain byte-deterministic so the apex discovery-index `sha256` digest keeps matching.
+- **The flat files keep serving at their stable paths.** Starlight HTML owns `/` and topic routes; the flat files continue to serve at `/llms-cli.txt`, `/llms-sdk.txt`, `/llms-mcp.txt`, `/SKILL.md` via the manifest's `site.public_paths`. Agents and the apex discovery index depend on those exact URLs.
+- **An R402_* error-code reference page** for the supervising developer — an informational mirror. (The error envelopes' canonical `docs` URLs resolve to `run402.com/errors/`, shipped separately by `astro-ssr-runtime`; this page is not their target.)
+- **Static (SSG) output, deployed via the existing path.** Plain `astro build` → `dist/` → `spec.site` through the existing `deploy-docs.yml` OIDC workflow, using **explicit** `public_paths` (clean URLs) so unknown paths 404 instead of SPA-falling-back to the home page. No SSR runtime is introduced. (Migrating to `@run402/astro` SSR is a deferred future option, not in scope.)
+- **BREAKING (authoring surface):** the three `llms-*.txt` become **generated artifacts** — authors edit Starlight content, not the `.txt` directly. (`SKILL.md` stays authored at the repo root — its agent-skills frontmatter is part of the discovery digest — so single-sourcing it is deferred.)
 - Stable flat-file paths are preferred but **link changes are acceptable**; apex/path back-compat redirects are nice-to-have, not mandatory.
 
 ## Capabilities
 
 ### New Capabilities
-- `docs-portal`: the human-facing run402 documentation portal — a static Astro Starlight site served at the root of `docs.run402.com`, with navigable structure, client-side search, and structured topic + per-error-code anchor pages (satisfying the `docs.run402.com/<topic>#<anchor>` envelope contract). Covers coexistence with the flat agent files on the same project and static deployment via the existing OIDC CI path.
+- `docs-portal`: the human-facing run402 documentation portal — a static Astro Starlight site served at the root of `docs.run402.com`, with navigable structure, client-side search, and an informational `R402_*` error-code reference (a mirror; the error envelopes' canonical `docs` URLs resolve to `run402.com/errors/`). Covers coexistence with the flat agent files on the same project and static deployment via the existing OIDC CI path.
 
 ### Modified Capabilities
 - `agent-docs-distribution`: the flat agent docs (`llms-cli.txt`, `llms-sdk.txt`, `llms-mcp.txt`, `SKILL.md`) become **single-sourced** — generated from the portal's canonical content rather than hand-authored. Their canonical serving URLs are unchanged; the generated `SKILL.md` remains byte-stable for the apex discovery-index digest; the apex-served wayfinder and discovery index are unaffected.

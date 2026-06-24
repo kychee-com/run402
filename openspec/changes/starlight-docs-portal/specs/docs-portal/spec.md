@@ -31,19 +31,14 @@ The portal's HTML routes SHALL occupy `/` and topic paths only, leaving the flat
 - **THEN** the response SHALL be `Content-Type: text/plain`
 - **AND** the bytes SHALL be the comprehensive CLI reference, unchanged by the portal's presence
 
-### Requirement: The portal hosts the R402_* error reference for the envelope docs-URL contract
+### Requirement: The portal hosts an informational R402_* error-code reference
 
-The portal SHALL host the `R402_*` error-code reference. Error envelopes carry a `docs` URL of the form `https://docs.run402.com/<topic>/<page>#<anchor>` (e.g. `astro/errors#build-failed`, `functions/errors#snapstart-init-io`, `cache/errors#unsupported-vary`). The portal SHALL serve those topic pages with anchors matching the codes' published `docs` URLs. The exact per-topic page split and anchor slugs are owned by the in-flight `astro-ssr-runtime` change; they SHALL be reconciled with its canonical code list before that change is generally available. (v1 ships a consolidated, browsable reference; the per-topic anchor split is the reconciliation deliverable.)
+The portal SHALL host a human-readable reference of the `R402_*` error-envelope codes (messages and suggested fixes) for the supervising developer. This is an informational **mirror**; it is NOT the canonical target of the error envelopes' `docs` field. Those URLs resolve to `https://run402.com/errors/` (per-code anchors like `#R402_ASTRO_BUILD_FAILED`), shipped independently by the `astro-ssr-runtime` change. Consolidating the canonical error docs onto this portal is an optional future change, explicitly out of scope here.
 
 #### Scenario: Error reference is browsable
 
 - **WHEN** a developer opens the portal's error-code reference
 - **THEN** the portal SHALL render the `R402_*` codes with their messages and suggested fixes
-
-#### Scenario: Envelope docs URLs resolve to the matching code
-
-- **WHEN** an error envelope's `docs` URL (e.g. `https://docs.run402.com/astro/errors#build-failed`) is followed
-- **THEN** the portal SHALL load the corresponding topic page anchored at that code's section
 
 ### Requirement: Portal is built static and deployed via the existing OIDC path
 

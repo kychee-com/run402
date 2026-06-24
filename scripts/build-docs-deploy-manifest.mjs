@@ -60,16 +60,38 @@ function walk(dir) {
 const distFiles = walk(DIST);
 if (distFiles.length === 0) throw new Error(`[build-docs-deploy-manifest] dist is empty: ${relative(ROOT, DIST)}`);
 
-const replace = {};
-// Static site assets keyed by their dist-relative path (POSIX), value = repo path ref.
-for (const full of distFiles) {
-  const assetKey = relative(DIST, full).split(/[/\\]/).join(posix.sep);
-  replace[assetKey] = { path: relative(ROOT, full).split(/[/\\]/).join(posix.sep) };
+function cacheClassFor(rel) {
+  if (rel.endsWith(".html")) return "html";
+  if (rel.startsWith("_astro/")) return "immutable_versioned"; // content-hashed
+  return "revalidating_asset";
 }
-// The four flat agent files from the repo root (assets at root so implicit mode
-// exposes them at /llms-*.txt and /SKILL.md).
+
+const replace = {};
+const publicPaths = {};
+
+// Upload every dist file as a release asset AND expose it at an explicit browser
+// path. EXPLICIT mode is deliberate: `implicit` + a root index.html makes the
+// gateway set spa_fallback="/index.html" (see release-state.ts), which serves the
+// home page with HTTP 200 for every unknown URL. A multi-page docs site wants real
+// 404s, so we enumerate clean URLs instead of relying on filename-derived reach.
+for (const full of distFiles) {
+  const rel = relative(DIST, full).split(/[/\\]/).join(posix.sep);
+  replace[rel] = { path: relative(ROOT, full).split(/[/\\]/).join(posix.sep) };
+  const cache_class = cacheClassFor(rel);
+  if (rel === "index.html") {
+    publicPaths["/"] = { asset: rel, cache_class };
+  } else if (rel.endsWith("/index.html")) {
+    const dir = "/" + rel.slice(0, -"index.html".length); // "/getting-started/"
+    publicPaths[dir] = { asset: rel, cache_class }; // canonical (trailing slash)
+    publicPaths[dir.replace(/\/$/, "")] = { asset: rel, cache_class }; // no-slash convenience
+  } else {
+    publicPaths["/" + rel] = { asset: rel, cache_class };
+  }
+}
+// The four flat agent files from the repo root → /llms-*.txt + /SKILL.md.
 for (const f of FLAT_FILES) {
   replace[f.asset] = { path: f.path };
+  publicPaths["/" + f.asset] = { asset: f.asset, cache_class: "revalidating_asset" };
 }
 
 const manifest = {
@@ -77,11 +99,11 @@ const manifest = {
   project_id: PROJECT_ID,
   site: {
     replace,
-    public_paths: { mode: "implicit" },
+    public_paths: { mode: "explicit", replace: publicPaths },
   },
 };
 
 writeFileSync(OUT, JSON.stringify(manifest, null, 2) + "\n");
 console.log(
-  `wrote ${relative(ROOT, OUT)} — ${distFiles.length} static assets + ${FLAT_FILES.length} flat files (implicit public paths)`,
+  `wrote ${relative(ROOT, OUT)} — ${distFiles.length} static assets + ${FLAT_FILES.length} flat files (explicit, ${Object.keys(publicPaths).length} public URLs)`,
 );
