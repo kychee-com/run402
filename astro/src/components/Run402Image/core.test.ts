@@ -1,7 +1,7 @@
 /**
  * Unit tests for `<Run402Image>` shared core (`core.ts`).
  *
- * Covers §3 (core unit tests) of `openspec/changes/run402-image-component-impl/tasks.md`:
+ * Covers §3 (core unit tests) of the run402-image-component-impl OpenSpec change:
  *
  *   3.1  Happy path
  *   3.2  Validation error scenarios (8 R402_* codes)

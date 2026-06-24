@@ -23,8 +23,7 @@
  *   The top-level Chinese translation `README.zh-CN.md` is intentionally
  *   excluded — translated prose only, no executable TypeScript.
  *
- * Schema: see `openspec/changes/fix-sdk-doc-drift-and-ci-gate/specs/sdk-docs-fidelity/spec.md`
- * (in run402-private). Design rationale: see `design.md` in the same change.
+ * Schema: see the sdk-docs-fidelity OpenSpec spec.
  */
 
 import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";

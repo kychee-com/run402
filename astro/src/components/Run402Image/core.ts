@@ -1,7 +1,7 @@
 /**
  * `<Run402Image>` — shared core render-tree factory.
  *
- * Implements §2 of `openspec/changes/run402-image-component-impl/tasks.md`
+ * Implements §2 of the run402-image-component-impl OpenSpec change
  * (tasks 2.1 - 2.22). This is the framework-agnostic heart of the component
  * — given an `AssetRef` + `Run402ImageProps` + `RenderContext`, returns a
  * `RenderTreeNode` that the Astro and React adapters serialize to their

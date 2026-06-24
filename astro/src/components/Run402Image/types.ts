@@ -1,7 +1,7 @@
 /**
  * `<Run402Image>` — type system foundations.
  *
- * Implements §1 of `openspec/changes/run402-image-component-impl/tasks.md`
+ * Implements §1 of the run402-image-component-impl OpenSpec change
  * (tasks 1.1 - 1.7):
  *
  *   1.1  Run402ImageProps interface (the binding source of truth for the v1.0 prop contract)

@@ -29,7 +29,7 @@
  * summary. Wired into `run402 deploy` pre-flight as a deploy-failing
  * gate for the error severities; non-blocking for warning severities.
  *
- * @see openspec/changes/auth-aware-ssr/specs/functions-sdk-auth-model
+ * @see the auth-aware-ssr OpenSpec change (functions-sdk-auth-model)
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";

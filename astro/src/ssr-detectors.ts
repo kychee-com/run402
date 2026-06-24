@@ -26,7 +26,7 @@
  * upgrade swaps the regex layer for a proper AST visitor (Astro
  * exposes `parseAstro` from `@astrojs/compiler`).
  *
- * @see openspec/changes/astro-ssr-runtime/specs/astro-ssr-runtime/spec.md
+ * @see the astro-ssr-runtime OpenSpec change
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";

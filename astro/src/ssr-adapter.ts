@@ -18,7 +18,7 @@
  *   - `hybridOutput: 'stable'`
  *   - `assets`: edge-middleware-style asset serving via the static fallback path
  *
- * @see openspec/changes/astro-ssr-runtime/specs/astro-ssr-runtime/spec.md
+ * @see the astro-ssr-runtime OpenSpec change
  */
 
 import { writeFile, mkdir } from "node:fs/promises";

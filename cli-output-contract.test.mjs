@@ -1,6 +1,6 @@
 // Drift-protection for the CLI stdout output contract.
 //
-// Contract (see openspec/specs/cli-output-shape/spec.md):
+// Contract (see the cli-output-shape OpenSpec spec):
 //   - Success-path stdout SHALL NOT contain a top-level `status` field.
 //   - The stderr error envelope (in cli/lib/sdk-errors.mjs) DOES use
 //     `status: "error"` as a sentinel; that is the allowlisted exception.
@@ -57,7 +57,7 @@ describe("CLI output contract drift protection", () => {
       assert.fail(
         `Found ${violations.length} disallowed top-level \`status\` emission${violations.length === 1 ? "" : "s"} ` +
         `in CLI success paths:\n${summary}\n\n` +
-        `The CLI stdout envelope contract (openspec/specs/cli-output-shape/spec.md) forbids a top-level ` +
+        `The CLI stdout envelope contract (cli-output-shape OpenSpec spec) forbids a top-level ` +
         `\`status\` field on success-path stdout. Emit the raw payload instead. For mutations with no natural ` +
         `payload, echo the affected resource identifiers plus an explicit boolean state field ` +
         `(e.g. \`{ key, project_id, deleted: true }\`). The only allowlisted emission is the stderr error ` +

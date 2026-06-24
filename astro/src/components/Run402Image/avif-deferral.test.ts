@@ -127,7 +127,7 @@ describe("AVIF deferral guard (§10)", () => {
           `because browsers pick \`<picture>\` sources by \`type\` before\n` +
           `size; a full-resolution AVIF source would defeat the variant\n` +
           `ladder on mobile.\n\n` +
-          `See: openspec/changes/run402-image-component/specs/run402-image-component/spec.md\n` +
+          `See: the run402-image-component OpenSpec change\n` +
           `     §"AVIF is NOT emitted in v1.0 (deferred per the platform-wide stance)"\n\n` +
           `Hits:\n${summary}`,
       );

@@ -146,7 +146,7 @@ export function flushDegradationManifest(
   const entries = accumulator.getAll();
   mkdirSync(dirname(filePath), { recursive: true });
   // 2-space indent matches the convention for human-readable JSON
-  // artifacts in this repo (openspec/, site/openapi.json, etc.). Trailing
+  // artifacts in this repo (site/openapi.json, etc.). Trailing
   // newline so POSIX tools and `git diff --check` are happy.
   writeFileSync(filePath, JSON.stringify(entries, null, 2) + "\n", "utf8");
 }

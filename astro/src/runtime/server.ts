@@ -29,8 +29,7 @@
  * gateway's `buildEntryWrapper` and crashed on `envelope.context.requestId`
  * because the wrapper passed a Web `Request`, not the envelope.)
  *
- * @see openspec/changes/astro-ssr-runtime/specs/routed-http-functions/spec.md
- * @see openspec/changes/astro-ssr-runtime/specs/functions-sdk-auth-model/spec.md
+ * @see the astro-ssr-runtime OpenSpec change (routed-http-functions, functions-sdk-auth-model)
  */
 
 /**
