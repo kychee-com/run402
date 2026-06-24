@@ -8,6 +8,7 @@ import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance 
 import { loadKeyStore, getProject, saveProject, updateProject, removeProject, saveKeyStore, getActiveProjectId, setActiveProjectId } from "../core-dist/keystore.js";
 import { getAllowanceAuthHeaders as coreGetAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
 import { fail } from "./sdk-errors.mjs";
+import { initializeWalletAction, createProjectAction } from "./next-actions.mjs";
 
 // Wallet-dependent paths are exposed as getters (preferred — they always
 // reflect the active profile, even if some future code path imports this module
@@ -48,6 +49,7 @@ export function readAllowance() {
       message: err?.message ?? "allowance.json is malformed",
       hint: "Back up ~/.config/run402/allowance.json and run 'run402 init' to recreate it.",
       details: { path: allowanceFile() },
+      next_actions: [initializeWalletAction()],
     });
   }
 }
@@ -63,6 +65,7 @@ export function allowanceAuthHeaders(path) {
       code: "NO_ALLOWANCE",
       message: "No agent allowance found.",
       hint: "Run: run402 allowance create",
+      next_actions: [initializeWalletAction()],
     });
   }
   return headers;
@@ -80,6 +83,7 @@ export function findProject(id) {
       message: `Project ${idStr} not found in local registry.`,
       hint,
       details: { project_id: idStr, source: "local_registry" },
+      next_actions: [createProjectAction()],
     });
   }
   return p;
@@ -92,6 +96,7 @@ export function resolveProject(id) {
       code: "NO_ACTIVE_PROJECT",
       message: "no project specified and no active project set.",
       hint: "Run: run402 projects provision",
+      next_actions: [createProjectAction()],
     });
   }
   return findProject(projectId);
@@ -104,6 +109,7 @@ export function resolveProjectId(id) {
       code: "NO_ACTIVE_PROJECT",
       message: "no project specified and no active project set.",
       hint: "Run: run402 projects provision",
+      next_actions: [createProjectAction()],
     });
   }
   return projectId;

@@ -26,6 +26,15 @@ export interface ProvisionOptions {
    * the org/organization, not the project — the gateway ignores a client tier.
    */
   orgId?: string;
+  /**
+   * Idempotency key for safe retries (durable-side-effects doctrine). When set,
+   * the SDK sends it as the `Idempotency-Key` header so a re-run with the same
+   * key + payload returns the existing project instead of creating a duplicate.
+   * Supply a stable key derived from the logical project identity (e.g. the app
+   * name) so an agent's natural re-run after a crash cannot double-bill. The CLI
+   * auto-derives one from `--name` when `--idempotency-key` is omitted.
+   */
+  idempotencyKey?: string;
 }
 
 export interface ProvisionResult {

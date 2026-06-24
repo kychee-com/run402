@@ -114,6 +114,9 @@ export class Projects {
     const result = await this.client.request<ProvisionResult>("/projects/v1", {
       method: "POST",
       body,
+      // Retry-safety: a caller-supplied key collapses a re-run (the agent's
+      // natural mode after a crash) onto the same project instead of duplicating.
+      ...(opts.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}),
       // Operator-approval scope: creating a project in an org is `org.project.create`
       // targeting that org. Only meaningful when provisioning into an existing org.
       ...(opts.orgId

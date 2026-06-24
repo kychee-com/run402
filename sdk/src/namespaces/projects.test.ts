@@ -77,6 +77,25 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+describe("projects.provision idempotency", () => {
+  const provisionBody = { project_id: "prj_new", anon_key: "a", service_key: "s", schema_slot: "s_0001" };
+
+  it("sends the Idempotency-Key header when idempotencyKey is provided", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(provisionBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.projects.provision({ name: "my-app", idempotencyKey: "provision:my-app" });
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers["Idempotency-Key"], "provision:my-app");
+  });
+
+  it("omits the Idempotency-Key header when no key is provided", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(provisionBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.projects.provision({});
+    assert.equal(calls[0]!.headers["Idempotency-Key"], undefined);
+  });
+});
+
 describe("projects.provision", () => {
   it("POSTs /projects/v1 with the requested tier and name", async () => {
     const { fetch, calls } = mockFetch(() =>

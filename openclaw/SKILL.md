@@ -93,7 +93,7 @@ Fields to use:
 - `trace_id`: include when reporting an issue
 - `request_id`: routed/function failure handle; use `run402 functions logs <id> <name> --request-id <req_...>` for diagnostics. Distinct from gateway `trace_id`.
 - `details`: structured route-specific context
-- `next_actions`: advisory actions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`; never treat them as blindly executable
+- `next_actions`: advisory actions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`; never treat them as blindly executable. CLI-resolvable entries carry a literal `command`. Cold start: from `run402 deploy apply`, follow the chain it hands back — no allowance -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — then retry. `tier set` and `projects provision` accept `--idempotency-key` so retries never double-charge
 
 Retry policy:
 - Retry directly only when `retryable: true` and `safe_to_retry: true`; reuse the same idempotency key for mutating operations.

@@ -4060,6 +4060,10 @@ describe("CLI e2e happy path", () => {
     assert.ok(Object.prototype.hasOwnProperty.call(parsed, "tier"), "should include tier field");
     assert.equal(typeof parsed.projects_saved, "number", "should include projects_saved (number)");
     assert.ok(typeof parsed.next_step === "string", "should include next_step");
+    // next_actions[] is the canonical typed surface; next_step mirrors action[0].command.
+    assert.ok(Array.isArray(parsed.next_actions) && parsed.next_actions.length > 0, "should include a non-empty next_actions[]");
+    assert.ok(typeof parsed.next_actions[0].type === "string", "next_actions entry has a typed `type`");
+    assert.equal(parsed.next_actions[0].command, parsed.next_step, "next_step mirrors next_actions[0].command");
     // Human-readable lines should still be emitted somewhere so agent can log them,
     // but they must go to stderr in JSON mode.
     assert.ok(stderr.includes("Config"), `stderr should contain human lines, got: ${stderr}`);

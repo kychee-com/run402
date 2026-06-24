@@ -46,7 +46,7 @@ Important fields:
 - `trace_id` — include this when reporting a Run402 issue
 - `request_id` — routed/function failure handle; use `get_function_logs` with `request_id` for function diagnostics. This is distinct from gateway `trace_id`.
 - `details` — structured route-specific context
-- `next_actions` — advisory suggestions such as `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, or `edit_migration`; render or follow them only after validating the action is safe
+- `next_actions` — advisory suggestions such as `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, or `deploy`; render or follow them only after validating the action is safe. On a cold start, follow the chain rather than memorizing it: a deploy with no allowance points to wallet setup, no tier points to `renew_tier`, no project points to `create_project` — do each, then retry the deploy
 
 Safe retry policy:
 - If `retryable: true` and `safe_to_retry: true`, retry the same request, preferably with the same idempotency key for mutating operations.

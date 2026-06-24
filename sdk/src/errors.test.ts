@@ -127,6 +127,32 @@ describe("StepUpRequiredError", () => {
   });
 });
 
+// ─── next_actions synthesis (empty gateway relay) ────────────────────────────
+
+describe("next_actions synthesis for empty gateway relays", () => {
+  it("synthesizes an authenticate action when AUTH_REQUIRED arrives with empty next_actions", () => {
+    const e = new Unauthorized("missing creds", 401, { error: "x", code: "AUTH_REQUIRED", next_actions: [] }, "ctx");
+    assert.ok(Array.isArray(e.nextActions) && e.nextActions.length > 0, "should synthesize a non-empty array");
+    assert.equal(e.nextActions![0]!.type, "authenticate");
+  });
+
+  it("does not override gateway-authored next_actions", () => {
+    const e = new Unauthorized(
+      "x",
+      401,
+      { code: "AUTH_REQUIRED", next_actions: [{ type: "authenticate", auth: "SIWX", path: "/keep" }] },
+      "ctx",
+    );
+    assert.equal(e.nextActions!.length, 1);
+    assert.equal((e.nextActions![0] as { path?: string }).path, "/keep");
+  });
+
+  it("leaves nextActions empty for an unknown code with no actions", () => {
+    const e = new ApiError("x", 400, { code: "SOMETHING_ELSE" }, "ctx");
+    assert.ok(!e.nextActions || e.nextActions.length === 0);
+  });
+});
+
 // ─── isRun402Error brand ─────────────────────────────────────────────────────
 
 describe("isRun402Error", () => {

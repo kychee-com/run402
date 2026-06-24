@@ -350,6 +350,8 @@ export type {
   Run402DeployErrorFix,
   Run402ErrorKind,
   Run402QuotaScope,
+  NextAction,
+  NextActionType,
 } from "./errors.js";
 export { withRetry } from "./retry.js";
 export type * from "./retry.js";

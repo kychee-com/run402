@@ -67,7 +67,8 @@ Canonical fields:
 - `trace_id`: include this when reporting the issue
 - `request_id`: routed/function handle; diagnose with `run402 functions logs <id> <name> --request-id <req_...>`. Distinct from gateway `trace_id`.
 - `details`: structured route-specific context
-- `next_actions`: advisory suggestions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, or `deploy_site_first`; do not execute route-like suggestions without validating method/path/auth/safety
+- `next_actions`: advisory typed suggestions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`, or `deploy_site_first`. CLI-resolvable entries carry a literal `command`, e.g. `{ "type": "create_project", "command": "run402 projects provision" }`. Do not execute route-like suggestions without validating method/path/auth/safety.
+- Cold-start chain: a fresh agent that knows only `run402 deploy apply` is walked to a deployed result by following `next_actions` — no allowance -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — each step idempotent, then retry the deploy. You do not need to memorize the sequence; follow what each failure hands back.
 
 Retry policy:
 - Retry same request only when `retryable: true` and `safe_to_retry: true`; reuse idempotency key for mutations when available.
@@ -122,6 +123,8 @@ run402 tier set team         # $20 for 30 days (real money)
 ```
 
 Tier is organization-scoped. Subscribe/renew/upgrade applies to every project in the org; `api_calls` / `storage_bytes` quota is org-pooled across linked wallets (`billing link-wallet`). Quota errors include `details.scope: "organization" | "project"` (`project` = orphan fallback after org purge before cascade). `tier set` refetches status and returns `status_after` with refreshed pool usage.
+
+Retry-safety: `tier set` and `projects provision` accept `--idempotency-key <key>` so a retried subscribe/renew/create collapses onto one charge instead of double-billing. `provision` auto-derives the key from `--name` when omitted (re-running `provision --name X` returns the same project); `tier set` is caller-supplied only — use a fresh key for a deliberate second renewal.
 
 Server action detection:
 - No tier or expired -> subscribe

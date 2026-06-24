@@ -1,6 +1,7 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, normalizeArgv, positionalArgs, flagValue } from "./argparse.mjs";
+import { setTierAction } from "./next-actions.mjs";
 
 const HELP = `run402 tier — Manage your Run402 tier subscription
 
@@ -50,10 +51,15 @@ Examples:
   set: `run402 tier set — Subscribe, renew, or upgrade your tier
 
 Usage:
-  run402 tier set <tier>
+  run402 tier set <tier> [--idempotency-key <key>]
 
 Arguments:
   <tier>              One of: prototype, hobby, team
+
+Options:
+  --idempotency-key <key>  Retry-safe key: re-running the same subscribe/renew
+                           intent with this key does not double-charge. Use a
+                           fresh key for a deliberate second renewal.
 
 Tiers:
   prototype           $0.10/7d (free with testnet faucet)
@@ -101,8 +107,8 @@ async function status(args = []) {
 
 async function set(args = []) {
   const parsedArgs = normalizeArgv(args);
-  assertKnownFlags(parsedArgs, ["--help", "-h"]);
-  const positionals = positionalArgs(parsedArgs);
+  assertKnownFlags(parsedArgs, ["--help", "-h"], ["--idempotency-key"]);
+  const positionals = positionalArgs(parsedArgs, ["--idempotency-key"]);
   if (positionals.length > 1) {
     fail({
       code: "BAD_USAGE",
@@ -116,11 +122,16 @@ async function set(args = []) {
       code: "BAD_USAGE",
       message: "Missing <tier>.",
       hint: "run402 tier set <prototype|hobby|team>",
+      next_actions: [setTierAction()],
     });
   }
+  // Caller-supplied idempotency key makes a retried subscribe/renew safe from
+  // double-charge. Not auto-derived: the SDK cannot tell a retry from a new
+  // renewal intent (that boundary is the caller's).
+  const idempotencyKey = flagValue(parsedArgs, "--idempotency-key") ?? undefined;
   try {
     const sdk = getSdk();
-    const data = await sdk.tier.set(tierName);
+    const data = await sdk.tier.set(tierName, idempotencyKey ? { idempotencyKey } : {});
     let statusAfter = null;
     try {
       statusAfter = await sdk.tier.status();

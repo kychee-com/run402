@@ -138,6 +138,18 @@ export interface TierSetResult {
   allowance_remaining_usd_micros: number;
 }
 
+export interface TierSetOptions {
+  /**
+   * Idempotency key for safe retries (durable-side-effects doctrine). When set,
+   * the SDK sends it as the `Idempotency-Key` header so retrying the same
+   * subscribe/renew intent does not double-charge. The key is caller-supplied:
+   * it represents one payment intent, a boundary only the caller knows (a
+   * deliberate second renewal must use a fresh key). The SDK does not
+   * auto-derive one — that cannot distinguish a retry from a new renewal.
+   */
+  idempotencyKey?: string;
+}
+
 export class Tier {
   constructor(private readonly client: Client) {}
 
@@ -154,10 +166,13 @@ export class Tier {
    * Node with an allowance). Throws {@link PaymentRequired} when the
    * wrapper cannot fund the call.
    */
-  async set(tier: TierName): Promise<TierSetResult> {
+  async set(tier: TierName, opts: TierSetOptions = {}): Promise<TierSetResult> {
     return this.client.request<TierSetResult>(`/tiers/v1/${tier}`, {
       method: "POST",
       body: {},
+      // Retry-safety: a caller-supplied key collapses a retried subscribe/renew
+      // onto one charge. Omitted by default — tier renewal is not auto-keyed.
+      ...(opts.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}),
       context: "setting tier",
     });
   }

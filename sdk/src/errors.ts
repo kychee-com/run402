@@ -72,8 +72,8 @@ export abstract class Run402Error extends Error {
   readonly traceId?: string;
   /** Canonical structured context. Preserved by reference from the response body. */
   readonly details?: unknown;
-  /** Advisory next actions from the gateway. Rendering them must not execute them. */
-  readonly nextActions?: unknown[];
+  /** Advisory next actions (gateway-authored or SDK-synthesized). Rendering them must not execute them. */
+  readonly nextActions?: NextAction[];
   /**
    * Quota-denial scope (v1.46+). `"organization"` for pooled organization
    * denials; `"project"` for the orphan fallback (project whose organization
@@ -110,7 +110,16 @@ export abstract class Run402Error extends Error {
     if (envelope && Object.prototype.hasOwnProperty.call(envelope, "details")) {
       this.details = envelope.details;
     }
-    if (Array.isArray(envelope?.next_actions)) this.nextActions = envelope.next_actions;
+    if (Array.isArray(envelope?.next_actions) && envelope.next_actions.length > 0) {
+      this.nextActions = envelope.next_actions as NextAction[];
+    } else {
+      // Verified gateway gap (2026-06-24): `POST /apply/v1/plans` 401 and some
+      // validation 400s return `next_actions: []`. Synthesize the canonical
+      // action for known codes so the relay never hands an agent an empty array.
+      // Only fills gaps — never overrides gateway-authored actions.
+      const synthesized = synthesizeNextActions(this.code);
+      if (synthesized.length > 0) this.nextActions = synthesized;
+    }
     const scope = extractQuotaScope(envelope);
     if (scope !== undefined) this.quotaScope = scope;
   }
@@ -471,6 +480,64 @@ export class TransferFreezeError extends Run402Error {
     const actions = Array.isArray(envelope?.next_actions) ? (envelope?.next_actions as unknown[]) : [];
     this.cancelPath = pickNextActionPath(actions, "cancel_transfer");
     this.previewPath = pickNextActionPath(actions, "view_transfer");
+  }
+}
+
+/**
+ * Known `type` values for a {@link NextAction}. The gateway set (style.md
+ * §Errors) extended with the client-side bootstrap verbs `create_project` and
+ * `initialize_wallet`, plus `operator_approve` (synthesized for WRITE_AUTH).
+ * Tolerates unknown future gateway types via the `(string & {})` fallback.
+ */
+export type NextActionType =
+  | "retry"
+  | "authenticate"
+  | "submit_payment"
+  | "renew_tier"
+  | "check_usage"
+  | "resume_deploy"
+  | "edit_request"
+  | "edit_migration"
+  | "create_project"
+  | "initialize_wallet"
+  | "deploy"
+  | "operator_approve"
+  | "contact_support";
+
+/**
+ * A single advisory "what to do next" entry. Mirrors the gateway's
+ * `next_actions[]` shape (`{ type, method?, path?, auth?, why? }`) extended with
+ * `command` — the literal CLI invocation — for client-side, CLI-resolvable
+ * actions. Rendering an action must never execute it.
+ */
+export interface NextAction {
+  type: NextActionType | (string & {});
+  /** Literal CLI invocation for client-side, CLI-resolvable actions. */
+  command?: string;
+  method?: string;
+  path?: string;
+  auth?: string;
+  why?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Synthesize a canonical next action when the gateway returned a known error
+ * code with an empty/absent `next_actions[]`. Mirrors the WRITE_AUTH synthesis
+ * on {@link OperatorApprovalRequiredError}; only fills gaps, never overrides.
+ */
+function synthesizeNextActions(code: string | undefined): NextAction[] {
+  switch (code) {
+    case "AUTH_REQUIRED":
+      return [
+        {
+          type: "authenticate",
+          auth: "SIWX",
+          why: "Provide SIWX wallet auth (or a session/delegate bearer) and retry the request.",
+        },
+      ];
+    default:
+      return [];
   }
 }
 

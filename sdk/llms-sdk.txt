@@ -612,7 +612,7 @@ The `Run402` class exposes 25 namespaces. Click into the SDK source for full met
 ### `r.projects`
 
 ```
-provision(opts?: { tier?, name? }): Promise<ProvisionResult>
+provision(opts?: { tier?, name?, orgId?, idempotencyKey? }): Promise<ProvisionResult>   // idempotencyKey → Idempotency-Key header; retry-safe re-runs
 delete(id: string): Promise<void>
 list(wallet?: string): Promise<ListProjectsResult>
 getUsage(id: string): Promise<UsageReport>
@@ -1227,7 +1227,7 @@ Forking clones schema + site + functions into a new project. If the source has a
 ### `r.tier`
 
 ```
-set(tier: "prototype" | "hobby" | "team"): Promise<TierSetResult>
+set(tier: "prototype" | "hobby" | "team", opts?: { idempotencyKey? }): Promise<TierSetResult>   // idempotencyKey → Idempotency-Key header (caller-supplied; not auto-derived)
 status(): Promise<TierStatusResult>
 ```
 

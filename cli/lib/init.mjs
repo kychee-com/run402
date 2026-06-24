@@ -1,6 +1,7 @@
 import { readAllowance, saveAllowance, loadKeyStore, configDir } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
+import { setTierAction, deployAction } from "./next-actions.mjs";
 import { getActiveProfile } from "../core-dist/config.js";
 import { readMeta } from "../core-dist/profiles.js";
 import { mkdirSync } from "fs";
@@ -95,6 +96,7 @@ export async function run(args = []) {
     balances: null,
     tier: null,
     projects_saved: 0,
+    next_actions: [],
     next_step: null,
   };
 
@@ -268,18 +270,18 @@ export async function run(args = []) {
   summary.projects_saved = Object.keys(store.projects).length;
   line("Projects", `${summary.projects_saved} saved`);
 
-  // 6. Next step
+  // 6. Next step — canonical typed action(s); `next_step` is the back-compat
+  // string mirror of the first action's command (one spelling, surface-wide).
   write("");
-  const nextStep = (!tierInfo || !tierInfo.tier || !tierInfo.active)
-    ? "run402 tier set prototype"
-    : "run402 deploy apply --manifest app.json";
-  if (!tierInfo || !tierInfo.tier || !tierInfo.active) {
+  const tierMissing = !tierInfo || !tierInfo.tier || !tierInfo.active;
+  summary.next_actions = [tierMissing ? setTierAction("prototype") : deployAction()];
+  summary.next_step = summary.next_actions[0].command;
+  if (tierMissing) {
     write("  Next: run402 tier set prototype");
   } else {
     write("  Ready to deploy. Run: run402 deploy apply --manifest app.json");
   }
   write("");
-  summary.next_step = nextStep;
 
   console.log(JSON.stringify(summary, null, 2));
 }

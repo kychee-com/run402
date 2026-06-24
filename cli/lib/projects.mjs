@@ -149,13 +149,16 @@ Examples:
   provision: `run402 projects provision — Provision a new Postgres project
 
 Usage:
-  run402 projects provision [--tier <tier>] [--name <name>] [--org <id>]
+  run402 projects provision [--tier <tier>] [--name <name>] [--org <id>] [--idempotency-key <key>]
 
 Options:
   --tier <tier>       Tier for the new project (default: prototype)
   --name <name>       Human-readable name for the project
   --org <id>          Provision into an EXISTING org (needs developer+ on it).
                       Omit for the cold-start path. Tier is org-governed.
+  --idempotency-key <key>  Retry-safe key: re-running with the same key returns
+                      the existing project instead of duplicating it. Auto-derived
+                      from --name when omitted; an unnamed provision stays un-keyed.
 
 Notes:
   - Payment is automatic via x402; requires a funded allowance
@@ -257,7 +260,7 @@ async function quote() {
 }
 
 async function provision(args) {
-  const opts = { tier: "prototype", name: undefined, orgId: undefined };
+  const opts = { tier: "prototype", name: undefined, orgId: undefined, idempotencyKey: undefined };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     // Use !== undefined so an empty-string value is captured (and rejected
@@ -267,6 +270,16 @@ async function provision(args) {
     // Omitted = cold-start. Tier is org-governed, so --tier is irrelevant here
     // (the gateway ignores a client-supplied tier in all cases).
     if (args[i] === "--org" && args[i + 1] !== undefined) opts.orgId = args[++i];
+    // Retry-safety: re-running provision (the agent's natural mode after a
+    // crash/fresh session) must not duplicate-bill a project.
+    if (args[i] === "--idempotency-key" && args[i + 1] !== undefined) opts.idempotencyKey = args[++i];
+  }
+  // Auto-derive a stable key from --name when none was supplied: a named
+  // project is a stable intent, so re-running `provision --name X` collapses
+  // onto the same project. An explicit --idempotency-key always wins; an
+  // unnamed provision stays un-keyed (each call is a new project on purpose).
+  if (opts.idempotencyKey === undefined && opts.name) {
+    opts.idempotencyKey = `provision:${opts.name}`;
   }
   if (opts.orgId === "") {
     fail({
@@ -312,7 +325,7 @@ async function provision(args) {
   const activeBefore = getActiveProjectId();
   try {
     const data = await withAutoApprove(() =>
-      getSdk().projects.provision({ tier: opts.tier, name: opts.name, orgId: opts.orgId }),
+      getSdk().projects.provision({ tier: opts.tier, name: opts.name, orgId: opts.orgId, idempotencyKey: opts.idempotencyKey }),
     );
     const activeAfter = getActiveProjectId();
     const out = { ...data };

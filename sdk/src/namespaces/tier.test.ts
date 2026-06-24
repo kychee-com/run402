@@ -147,3 +147,31 @@ describe("tier.status", () => {
     assert.equal(result.active, false);
   });
 });
+
+describe("tier.set idempotency", () => {
+  const setBody = {
+    wallet: "0xad17000000000000000000000000000000000000",
+    action: "subscribe",
+    tier: "prototype",
+    previous_tier: null,
+    lease_started_at: "2026-04-23T14:49:10.884Z",
+    lease_expires_at: "2026-04-30T14:49:10.884Z",
+    allowance_remaining_usd_micros: 0,
+  };
+
+  it("sends the Idempotency-Key header when idempotencyKey is provided", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(setBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.tier.set("prototype", { idempotencyKey: "k1" });
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.url, "https://api.example.test/tiers/v1/prototype");
+    assert.equal(calls[0]!.headers["Idempotency-Key"], "k1");
+  });
+
+  it("omits the Idempotency-Key header when no key is provided (no auto-derive)", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(setBody));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await sdk.tier.set("prototype");
+    assert.equal(calls[0]!.headers["Idempotency-Key"], undefined);
+  });
+});
