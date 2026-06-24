@@ -4,8 +4,6 @@ description: Comprehensive run402-mcp tool reference (the agent-facing llms-mcp.
 order: 1
 ---
 
-# Run402 MCP Server — comprehensive tool reference
-
 > Package: `run402-mcp` (npm)
 > Connect via: Claude Desktop / Cursor / Cline / Claude Code
 > Wayfinder: https://run402.com/llms.txt

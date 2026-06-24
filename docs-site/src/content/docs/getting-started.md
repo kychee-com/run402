@@ -23,9 +23,20 @@ references ([`/llms-cli.txt`](https://docs.run402.com/llms-cli.txt),
 
 The prototype tier is free on testnet — no real money. The wayfinder at
 [`run402.com/llms.txt`](https://run402.com/llms.txt) carries the current
-copy-paste bootstrap; the CLI reference covers `run402 deploy apply`, the single
-atomic primitive that ships a database, functions, a static site, secrets,
-assets, subdomains and routes as one transaction.
+copy-paste bootstrap; the CLI reference covers `run402 deploy apply`, the unified
+deploy primitive. Run402 **plans and stages** a database, functions, a static
+site, secrets, assets, subdomains and routes as one release, then **activates
+them together**. Failed stages are resumable; applied database migrations are
+**not** automatically reversed when you promote an older release.
+
+| Stage | Visible before activation? | Automatically reversible? |
+| --- | --- | --- |
+| CAS uploads | No | Yes (unused bytes are GC'd) |
+| Function staging | No | Yes |
+| Static-site staging | No | Yes |
+| SQL migrations | No | Not necessarily |
+| Release-pointer activation | Atomic | By promoting another release |
+| Cache invalidation | After activation | Recomputed |
 
 ## When something fails
 

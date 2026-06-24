@@ -4,8 +4,6 @@ description: Comprehensive run402 CLI reference (the agent-facing llms-cli.txt, 
 order: 1
 ---
 
-# Run402 CLI -- Agent Reference
-
 > CLI: `npm install -g run402`
 > SDK: `npm install @run402/sdk` (typed TS client; same namespaces; Node/Deno/Bun/V8 isolates)
 > Docs URL: https://docs.run402.com/llms-cli.txt

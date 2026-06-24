@@ -4,8 +4,6 @@ description: Comprehensive @run402/sdk reference (the agent-facing llms-sdk.txt,
 order: 1
 ---
 
-# @run402/sdk — comprehensive reference
-
 > Package: `@run402/sdk` (npm)
 > Wayfinder: https://run402.com/llms.txt
 > Sibling references: CLI at https://docs.run402.com/llms-cli.txt · MCP at https://docs.run402.com/llms-mcp.txt · HTTP at https://run402.com/llms-full.txt

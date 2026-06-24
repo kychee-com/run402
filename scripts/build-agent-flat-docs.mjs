@@ -32,9 +32,9 @@ const CONTENT_ROOT = join(ROOT, "docs-site", "src", "content", "docs");
 
 /** Each bundle maps a content section to one generated flat file. */
 const BUNDLES = [
-  { id: "cli", section: "cli", out: "cli/llms-cli.txt" },
-  { id: "sdk", section: "sdk", out: "sdk/llms-sdk.txt" },
-  { id: "mcp", section: "mcp", out: "llms-mcp.txt" },
+  { id: "cli", section: "cli", out: "cli/llms-cli.txt", flatHeader: "# Run402 CLI -- Agent Reference" },
+  { id: "sdk", section: "sdk", out: "sdk/llms-sdk.txt", flatHeader: "# @run402/sdk — comprehensive reference" },
+  { id: "mcp", section: "mcp", out: "llms-mcp.txt", flatHeader: "# Run402 MCP Server — comprehensive tool reference" },
 ];
 
 /** Recursively list *.md / *.mdx files under a directory (sorted by path). */
@@ -89,7 +89,10 @@ function renderBundle(bundle) {
   pages.sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
   // Trim each page body (leading/trailing blank lines are not significant) and
   // join with a single blank line; normalize() adds the lone trailing newline.
-  const joined = pages.map((p) => p.body.replace(/\r\n/g, "\n").trim()).join("\n\n");
+  // The agent-file title H1 is generator-owned (bundle.flatHeader) so the rendered
+  // portal pages carry only the Starlight frontmatter title — no duplicate body H1.
+  const parts = pages.map((p) => p.body.replace(/\r\n/g, "\n").trim());
+  const joined = (bundle.flatHeader ? [bundle.flatHeader, ...parts] : parts).join("\n\n");
   return normalize(joined);
 }
 
