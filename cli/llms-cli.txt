@@ -10,7 +10,7 @@
 
 ## TL;DR
 
-Run402 = Postgres + REST + Auth + Storage + static hosting + Node 22 functions + email + image generation behind one CLI.
+Run402 = Postgres + REST + Auth + Storage + static & Astro-SSR site hosting + same-origin routes + Node 22 functions + email + image generation behind one CLI.
 
 Agent-critical facts:
 - Atomic full-stack apply: `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, assets, subdomains, i18n, and routes as one transaction; partial failures roll back.
@@ -116,7 +116,7 @@ Allowance lives at `~/.config/run402/allowance.json` (0600). CLI signs x402 auto
 ## Step 3: Subscribe to a Tier
 
 ```bash
-run402 tier set prototype    # $0.10/7d, free with testnet faucet (verifies allowance setup, no real money)
+run402 tier set prototype    # FREE on testnet — faucet USDC verifies your x402 setup ($0 real money); 7-day lease
 run402 tier set hobby        # $5 for 30 days (real money)
 run402 tier set team         # $20 for 30 days (real money)
 ```
@@ -1250,7 +1250,7 @@ Email orgs + Stripe checkouts; pay by card or scale email beyond tier caps.
 
 - `run402 billing create-email <email>` — create an email-based organization (Stripe-only, no wallet). Sends a verification email. Idempotent.
 - `run402 billing link-wallet <org_id> <wallet>` — link a wallet to an email organization for hybrid Stripe + x402 access. Response includes a `pool_implications` block (organization `tier`, `projects_in_pool_count`, `organization_api_calls_current`, `organization_storage_bytes_current`, `tier_limits`, `over_limit`) — inspect `over_limit` before linking a wallet whose usage might push the merged pool past the tier cap.
-- `run402 billing checkout <org-id | wallet | email> --product tier --tier <prototype|hobby|team>` — subscribe/renew/upgrade a tier (prototype $0.10 / hobby $5 / team $20) via Stripe. Returns a checkout URL.
+- `run402 billing checkout <org-id | wallet | email> --product tier --tier <prototype|hobby|team>` — subscribe/renew/upgrade a tier via Stripe (hobby $5 / team $20; prototype is free on testnet — use `run402 tier set prototype`, not a Stripe charge). Returns a checkout URL.
 - `run402 billing checkout <org-id | wallet | email> --product email-pack` — buy a $5 email pack (10,000 emails, never expire). Returns a Stripe checkout URL.
 - `run402 billing checkout <org-id | wallet | email> --product balance-topup --amount <usd_micros>` — add cash credit to the organization. Returns a Stripe checkout URL.
 - `run402 billing auto-recharge <org_id> <on|off> [--threshold <n>]` — auto-repurchase $5 packs when credits drop below threshold. Requires saved Stripe payment method.
