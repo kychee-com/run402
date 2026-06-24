@@ -7,6 +7,7 @@ import { join } from "node:path";
 import {
   scanFileContent,
   scanSourceTree,
+  scanSourceFiles,
   readDeclaredCapabilities,
   SCAN_SEVERITY,
   _testOnly_hallucinatedNames,
@@ -412,6 +413,109 @@ describe("readDeclaredCapabilities — run402.config.json capability union", () 
     assert.ok(
       !findings.some((f) => f.code === "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING"),
       "config-declared capability should suppress the tree-scan warning",
+    );
+  });
+});
+
+describe("scanSourceFiles — explicit file list (GH-409)", () => {
+  function makeTwoFileDir() {
+    const dir = mkdtempSync(join(tmpdir(), "r402-gh409-"));
+    // A clean file referenced by a manifest — no auth violations.
+    writeFileSync(join(dir, "clean.ts"), "export const x = 1;\n");
+    // A sibling that legitimately imports a hallucinated name (e.g. the
+    // gateway source tree implementing the auth surface). NOT in the
+    // manifest, so it must never be scanned for a manifest-based deploy.
+    writeFileSync(
+      join(dir, "unrelated.ts"),
+      'import { getUser } from "@run402/functions";\n',
+    );
+    return dir;
+  }
+
+  it("scanSourceTree (OLD behavior) WOULD flag the unrelated sibling — proving the bug", () => {
+    const dir = makeTwoFileDir();
+    const findings = scanSourceTree(dir, { cwd: dir });
+    const errs = findings.filter((f) => f.severity === SCAN_SEVERITY.ERROR);
+    assert.ok(
+      errs.some((f) => f.file === "unrelated.ts" && f.attempted_name === "getUser"),
+      "whole-tree scan should have surfaced the unrelated sibling (this is the bug)",
+    );
+  });
+
+  it("scanSourceFiles([clean.ts]) returns ZERO error findings — GH-409 regression", () => {
+    const dir = makeTwoFileDir();
+    const findings = scanSourceFiles([join(dir, "clean.ts")], { cwd: dir });
+    const errs = findings.filter((f) => f.severity === SCAN_SEVERITY.ERROR);
+    assert.equal(
+      errs.length,
+      0,
+      `scoped scan must not walk the sibling; got: ${JSON.stringify(errs)}`,
+    );
+  });
+
+  it("scanSourceFiles([unrelated.ts]) STILL flags a file that IS in scope", () => {
+    const dir = makeTwoFileDir();
+    const findings = scanSourceFiles([join(dir, "unrelated.ts")], { cwd: dir });
+    const f = findings.find(
+      (x) => x.attempted_name === "getUser" && x.code === "R402_AUTH_UNKNOWN_EXPORT",
+    );
+    assert.ok(f, "in-scope file with a violation must still be flagged");
+    assert.equal(f.severity, SCAN_SEVERITY.ERROR);
+    assert.equal(f.file, "unrelated.ts");
+  });
+
+  it("labels findings relative to opts.cwd (mirroring scanSourceTree)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "r402-gh409-rel-"));
+    mkdirSync(join(dir, "functions"));
+    const abs = join(dir, "functions", "login.ts");
+    writeFileSync(abs, 'import { getSession } from "@run402/functions";\n');
+    const findings = scanSourceFiles([abs], { cwd: dir });
+    const f = findings.find((x) => x.attempted_name === "getSession");
+    assert.ok(f);
+    assert.equal(f.file, join("functions", "login.ts"));
+  });
+
+  it("skips files without a scannable extension", () => {
+    const dir = mkdtempSync(join(tmpdir(), "r402-gh409-ext-"));
+    const html = join(dir, "index.html");
+    writeFileSync(html, '<script>const u = getSession();</script>\n');
+    const findings = scanSourceFiles([html], { cwd: dir });
+    assert.equal(findings.length, 0, ".html is not a scanned extension");
+  });
+
+  it("returns no findings for an empty file list", () => {
+    assert.deepEqual(scanSourceFiles([], { cwd: tmpdir() }), []);
+  });
+
+  it("emits a warn finding for an unreadable (missing) file, never throws", () => {
+    const dir = mkdtempSync(join(tmpdir(), "r402-gh409-missing-"));
+    const missing = join(dir, "ghost.ts");
+    const findings = scanSourceFiles([missing], { cwd: dir });
+    const f = findings.find((x) => x.code === "R402_AUTH_SOURCE_SCAN_ERROR");
+    assert.ok(f, "unreadable file should produce a warn finding");
+    assert.equal(f.severity, SCAN_SEVERITY.WARN);
+    assert.equal(f.file, "ghost.ts");
+  });
+
+  it("respects opts.declaredCapabilities for the mint warning", () => {
+    const dir = mkdtempSync(join(tmpdir(), "r402-gh409-cap-"));
+    const abs = join(dir, "login.ts");
+    writeFileSync(
+      abs,
+      "export default async () => auth.sessions.createResponseFromTenantAssertion({});\n",
+    );
+    const withCap = scanSourceFiles([abs], {
+      cwd: dir,
+      declaredCapabilities: ["auth.sessionMint"],
+    });
+    assert.ok(
+      !withCap.some((f) => f.code === "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING"),
+      "declared capability should suppress the mint warning",
+    );
+    const without = scanSourceFiles([abs], { cwd: dir });
+    assert.ok(
+      without.some((f) => f.code === "R402_DOCTOR_AUTH_SESSION_MINT_CAPABILITY_MISSING"),
+      "absent capability should surface the mint warning",
     );
   });
 });

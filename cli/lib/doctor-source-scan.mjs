@@ -422,6 +422,47 @@ export function scanSourceTree(srcDir, opts = {}) {
   return findings;
 }
 
+/** Scan an explicit list of on-disk file paths — no directory walk.
+ *  Used by `run402 deploy apply` for manifest/spec/stdin deploys, where
+ *  the artifact is exactly the set of files the manifest references, NOT
+ *  whatever happens to live under cwd/src (GH-409). Files without a
+ *  scannable extension are ignored; unreadable files become a WARN
+ *  finding (never throw). Returns the combined findings list, sorted by
+ *  file + line for stable output, exactly like `scanSourceTree`. */
+export function scanSourceFiles(filePaths, opts = {}) {
+  const findings = [];
+  const cwd = opts.cwd ?? process.cwd();
+  // Same capability picture as scanSourceTree (#8 mint check).
+  const declaredCapabilities =
+    opts.declaredCapabilities ?? readDeclaredCapabilities(cwd);
+  for (const filePath of filePaths) {
+    if (!SCANNED_EXTENSIONS.has(extname(filePath))) continue;
+    let content;
+    try {
+      content = readFileSync(filePath, "utf8");
+    } catch (err) {
+      findings.push({
+        code: "R402_AUTH_SOURCE_SCAN_ERROR",
+        severity: SCAN_SEVERITY.WARN,
+        file: relative(cwd, filePath),
+        message: `failed to read file: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      continue;
+    }
+    findings.push(
+      ...scanFileContent(content, {
+        filePath: relative(cwd, filePath),
+        declaredCapabilities,
+      }),
+    );
+  }
+  findings.sort((a, b) => {
+    if (a.file !== b.file) return a.file < b.file ? -1 : 1;
+    return (a.line ?? 0) - (b.line ?? 0);
+  });
+  return findings;
+}
+
 function walk(dir, visitor) {
   let entries;
   try {
