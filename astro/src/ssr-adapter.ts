@@ -4,8 +4,8 @@
  * The adapter is an `AstroIntegration` that:
  *
  *   1. Registers itself as the Astro adapter via `setAdapter` in the
- *      `astro:config:done` hook (`serverEntrypoint` points at
- *      `@run402/astro/runtime/server`).
+ *      `astro:config:done` hook (`serverEntrypoint` points at the
+ *      installed `runtime/server.js` file).
  *   2. Runs build-time detectors for unsupported Astro features
  *      (dynamic `<Image>`, server islands, sessions API).
  *   3. Emits `dist/run402/adapter.json` in `astro:build:done` —
@@ -96,6 +96,7 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
   let manifest: Partial<Run402AdapterManifest> = {};
   let buildOutputDir = "";
   let serverDir = "";
+  const runtimeServerEntrypoint = fileURLToPath(new URL("./runtime/server.js", import.meta.url));
 
   return {
     name: "@run402/astro/adapter",
@@ -132,7 +133,7 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
         setAdapter({
           name: "@run402/astro",
           entrypointResolution: "auto",
-          serverEntrypoint: "@run402/astro/runtime/server",
+          serverEntrypoint: runtimeServerEntrypoint,
           supportedAstroFeatures: {
             staticOutput: "stable",
             serverOutput: "stable",

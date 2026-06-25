@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { describe, it } from "node:test";
 import { createRun402Adapter } from "./ssr-adapter.js";
 
@@ -73,8 +74,10 @@ describe("createRun402Adapter — Astro 6 shape (kychee-com/run402#403)", () => 
     assert.equal(feats.hybridOutput, "stable");
   });
 
-  it("points serverEntrypoint at the runtime export", () => {
+  it("points serverEntrypoint at an installed runtime file", () => {
     const adapter = runConfigDone(createRun402Adapter());
-    assert.equal(adapter.serverEntrypoint, "@run402/astro/runtime/server");
+    assert.equal(typeof adapter.serverEntrypoint, "string");
+    assert.equal(path.isAbsolute(adapter.serverEntrypoint as string), true);
+    assert.match(adapter.serverEntrypoint as string, /runtime\/server\.js$/);
   });
 });
