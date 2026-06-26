@@ -62,11 +62,13 @@ function parseSubcommands(filePath: string): string[] {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
   }
+  for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
+  for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
   for (const action of parseDeployReleaseActions()) {
     cmds.push(`deploy:release:${action}`);
   }
@@ -86,11 +88,13 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
   }
+  for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
+  for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
   for (const action of parseDeployReleaseActions()) {
     cmds.push(`deploy:release:${action}`);
   }
@@ -128,6 +132,28 @@ function parseJobsArtifactsActions(): string[] {
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
   const re = /if\s*\(\s*action\s*===\s*"([\w-]+)"\s*\)/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
+function parseCloudArchiveActions(relativePath: string): string[] {
+  const filePath = join(__dirname, relativePath);
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = /action\s*===\s*"([\w-]+)"/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
+function parseCoreProjectActions(relativePath: string): string[] {
+  const filePath = join(__dirname, relativePath);
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = /action\s*===\s*"([\w-]+)"/g;
   let m;
   while ((m = re.exec(src))) actions.push(m[1]);
   return [...new Set(actions)].sort();
@@ -202,6 +228,12 @@ const SURFACE: Capability[] = [
   { id: "provision",         endpoint: "POST /projects/v1",                      mcp: "provision_postgres_project",    cli: "projects:provision",  openclaw: "projects:provision" },
   { id: "set_tier",           endpoint: "POST /tiers/v1/:tier",                   mcp: "set_tier",                      cli: "tier:set",            openclaw: "tier:set" },
   { id: "delete",            endpoint: "DELETE /projects/v1/:id",                mcp: "delete_project",                cli: "projects:delete",     openclaw: "projects:delete" },
+  { id: "export_project_archive", endpoint: "POST /projects/v1/:project_id/archives", mcp: "export_project_archive", cli: "cloud:archives:create", openclaw: "cloud:archives:create" },
+  { id: "download_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id/download", mcp: null, cli: "cloud:archives:download", openclaw: "cloud:archives:download" },
+  { id: "get_project_archive", endpoint: "GET /projects/v1/:project_id/archives/:archive_id", mcp: null, cli: "cloud:archives:status", openclaw: "cloud:archives:status" },
+  { id: "inspect_project_archive", endpoint: "(local archive inspect)", mcp: "inspect_project_archive", cli: "archives:inspect", openclaw: "archives:inspect" },
+  { id: "verify_project_archive", endpoint: "(local archive verify)", mcp: "verify_project_archive", cli: "archives:verify", openclaw: "archives:verify" },
+  { id: "import_project_archive", endpoint: "POST /archives/v1/import (Run402 Core)", mcp: "import_project_archive", cli: "core:projects:import", openclaw: "core:projects:import" },
 
   // ── Faucet ───────────────────────────────────────────────────────────────
   { id: "faucet",            endpoint: "POST /faucet/v1",                        mcp: "request_faucet",                cli: "allowance:fund",      openclaw: "allowance:fund" },
@@ -501,6 +533,12 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   provision: "projects.provision",
   set_tier: "tier.set",
   delete: "projects.delete",
+  export_project_archive: "archives.export",
+  download_project_archive: "archives.download",
+  get_project_archive: "archives.get",
+  inspect_project_archive: "archives.inspect",
+  verify_project_archive: "archives.verify",
+  import_project_archive: "archives.importToCore",
   faucet: "allowance.faucet",
 
   // Database / Admin
@@ -797,6 +835,7 @@ async function listSdkMethods(): Promise<string[]> {
   // under the `org` / `org.members` / `org.invites` path prefixes.
   const nodeAugments: Array<{ namespace: string; modulePath: string; exportName: string }> = [
     { namespace: "sites", modulePath: "./sdk/dist/node/sites-node.js", exportName: "NodeSites" },
+    { namespace: "archives", modulePath: "./sdk/dist/node/archives-node.js", exportName: "NodeArchives" },
     { namespace: "org", modulePath: "./sdk/dist/index.js", exportName: "ScopedOrg" },
     { namespace: "org.members", modulePath: "./sdk/dist/index.js", exportName: "OrgMembers" },
     { namespace: "org.invites", modulePath: "./sdk/dist/index.js", exportName: "OrgInvites" },
@@ -835,7 +874,7 @@ const EXPECTED_OPENCLAW_COMMANDS = SURFACE
 
 // CLI dispatch-through commands that are routing prefixes, not leaf commands.
 // The scanner finds them as case statements but they just delegate to sub-modules.
-const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:release"];
+const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:release", "cloud:archives", "core:projects"];
 
 // CLI aliases that route to the same handler as a primary command already in
 // SURFACE. Listed here so the "no untracked commands" check doesn't fail.
@@ -1028,6 +1067,11 @@ describe("SDK surface alignment", () => {
       // shares the `run402 functions rebuild --all` CLI verb (and the
       // name-less `functions_rebuild` MCP tool), so it has no dedicated leaf command.
       "functions.rebuildAll",
+      // Portable archive export uses `archives.export` as the happy path.
+      // create/wait are low-level operation primitives used by the CLI/MCP
+      // wrappers to surface progress and idempotent resume behavior.
+      "archives.create",
+      "archives.wait",
       // ─── operator session (human/email, RFC 8628) ────────────────────────
       // `operator login` brokers the device flow via deviceStart + devicePoll;
       // devicePoll shares the `login` verb (no dedicated capability), like the

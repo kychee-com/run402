@@ -174,6 +174,10 @@ jobs:
             exit 1
           fi
           echo "CLI smoke OK: $ACTUAL"
+          node "$SMOKE/cli/package/cli.mjs" cloud --help | grep -q 'cloud archives create'
+          node "$SMOKE/cli/package/cli.mjs" archives --help | grep -q 'archives verify'
+          node "$SMOKE/cli/package/cli.mjs" core --help | grep -q 'core projects import'
+          echo "CLI archive smoke OK"
 
           # MCP: extract, install, verify getSdk resolves (don't boot the
           # stdio server — it doesn't exit).
@@ -184,7 +188,7 @@ jobs:
           # SDK: extract, install, verify both entry points.
           mkdir "$SMOKE/sdk" && tar xzf "$SMOKE/run402-sdk-$NEW.tgz" -C "$SMOKE/sdk"
           (cd "$SMOKE/sdk/package" && npm install --omit=dev)
-          (cd "$SMOKE/sdk/package" && node -e "import('./dist/node/index.js').then(m => { if (typeof m.run402 !== 'function') { console.error('node run402 export is not a function'); process.exit(1); } console.log('SDK /node smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })")
+          (cd "$SMOKE/sdk/package" && node -e "import('./dist/node/index.js').then(m => { if (typeof m.run402 !== 'function') { console.error('node run402 export is not a function'); process.exit(1); } for (const key of ['inspectArchive', 'verifyArchive', 'importArchiveToCore']) { if (typeof m[key] !== 'function') { console.error(key + ' export is not a function'); process.exit(1); } } console.log('SDK /node smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })")
           (cd "$SMOKE/sdk/package" && node -e "import('./dist/index.js').then(m => { if (typeof m.Run402 !== 'function') { console.error('iso Run402 export is not a function'); process.exit(1); } console.log('SDK iso smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })")
 
       # Idempotent + transient-tolerant publish. --provenance is optional under

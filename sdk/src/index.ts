@@ -31,6 +31,7 @@ import { Admin } from "./namespaces/admin.js";
 import { Deploy } from "./namespaces/deploy.js";
 import { Ci } from "./namespaces/ci.js";
 import { Jobs } from "./namespaces/jobs.js";
+import { Archives } from "./namespaces/archives.js";
 import { Operator } from "./namespaces/operator.js";
 import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
@@ -83,6 +84,7 @@ export class Run402 {
   readonly _applyEngine: Deploy;
   readonly ci: Ci;
   readonly jobs: Jobs;
+  readonly archives: Archives;
   /**
    * The *human* (email) principal — browser-delegated operator session (RFC
    * 8628 device flow), distinct from the agent's per-wallet SIWX identity.
@@ -166,6 +168,7 @@ export class Run402 {
     this._applyEngine = new Deploy(client);
     this.ci = new Ci(client);
     this.jobs = new Jobs(client);
+    this.archives = new Archives(client);
     this.operator = new Operator(client);
     this.orgs = new Orgs(client);
     this.grants = new Grants(client);
@@ -426,6 +429,8 @@ export { Orgs, ScopedOrg, OrgMembers, OrgInvites } from "./namespaces/org.js";
 export type * from "./namespaces/org.types.js";
 export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";
+export { Archives } from "./namespaces/archives.js";
+export type * from "./namespaces/archives.types.js";
 export type * from "./namespaces/projects.types.js";
 export type * from "./namespaces/secrets.js";
 export type * from "./namespaces/sender-domain.js";

@@ -27,6 +27,9 @@ Commands:
   tier        Manage tier subscription (status, set)
   projects    Manage projects (provision, list, query, inspect, delete)
   admin       Platform-admin operations (lease-perpetual, archive, reactivate)
+  cloud       Cloud portability archive export (archives create/download/status)
+  archives    Inspect and verify portable project archives locally
+  core        Local Run402 Core import helpers
   deploy      Unified deploy operations (requires active tier)
   ci          Link GitHub Actions OIDC deploy bindings
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
@@ -67,6 +70,8 @@ Examples:
   run402 allowance create
   run402 allowance fund
   run402 deploy apply --manifest app.json
+  run402 cloud archives create prj_... --wait --output ./project.r402ar --json
+  run402 core projects import ./project.r402ar --name imported-project --env-file ./required.env --json
   run402 jobs submit --file job.json
   run402 projects list
   run402 projects sql <project_id> "SELECT * FROM users LIMIT 5"
@@ -159,6 +164,21 @@ switch (cmd) {
   }
   case "admin": {
     const { run } = await import("./lib/admin.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "cloud": {
+    const { run } = await import("./lib/cloud.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "archives": {
+    const { run } = await import("./lib/archives.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "core": {
+    const { run } = await import("./lib/core.mjs");
     await run(sub, rest);
     break;
   }

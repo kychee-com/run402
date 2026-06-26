@@ -33,6 +33,20 @@ Six tool calls take you from zero to a deployed static site backed by a real Pos
 
 Optional next: `deploy_function` for server logic, `assets_put` for paste-and-go CDN assets, `create_mailbox` → `list_mailboxes` / `set_mailbox_defaults` / `update_mailbox` → `send_email` for transactional mail.
 
+## Portable project archives
+
+Portable archives let an agent export the supported Run402 Core runtime slice of a Cloud project, verify it locally, and import it into a new local Core project. This is the vendor-lock-in trust claim: Cloud is the easiest place to start, not the only place the supported application can run. It is separate from allowance/spend-cap financial-risk controls.
+
+MCP happy path:
+
+1. `export_project_archive` with `project_id`, optional `output_path`, `scope: "portable-runtime-v1"`, `auth: "stubs"`, `consistency: "pause-writes"`, and `wait: true`.
+2. `inspect_project_archive` with `archive_path`.
+3. `verify_project_archive` with `archive_path`.
+4. Fill the required secret values from the archive's `secrets/required.env.template` or the `required_secrets` list.
+5. `import_project_archive` with `archive_path`, `name`, `env_file` or `secret_values`, and optional `require_runnable: true`.
+
+Tool outputs use the same agent fields as CLI/SDK: `code`, `severity`, `resource_type`, `resource_id`, `message`, `next_action`, `retryable`, and safe `context`. `verify_project_archive` is offline and checks integrity and compatibility only; archives remain untrusted input. Import verifies before mutation, creates a new Core project only, and never imports secret values, auth credentials, logs, billing/allowance state, or managed Cloud operations from Cloud export.
+
 ## Project credentials
 
 After `provision_postgres_project`, two keys are saved automatically and reused by every subsequent tool call:
@@ -343,6 +357,13 @@ Each `AssetPutEntry` carries the locally-computed `sha256` so the gateway can de
 - `deploy_release_active` — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
 - `deploy_release_diff` — diff release targets. Params: `project_id`, `from` (`empty` / `active` / release id), `to` (`active` / release id), `limit?`. Returns `migrations.applied_between_releases`; secret and subdomain diffs expose `added` / `removed` only; route diffs expose `added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed, newly uploaded CAS bytes, reused CAS bytes, eliminated deployment-copy bytes, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 - `deploy_diagnose_url` — URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`. Returns `would_serve`, `diagnostic_status`, `match`, summary, warnings, next steps, and fenced JSON with the full resolution.
+
+### Portable archives
+
+- `export_project_archive` — operation-backed Cloud export. Params: `project_id`, optional `output_path`, `scope` (`portable-runtime-v1`), `auth` (`stubs` or `none`), `consistency` (`pause-writes` or `cloud_write_pause_v1`), `idempotency_key`, `wait`, `poll_interval_ms`, and `timeout_ms`. Returns archive id/status, output path and byte count when downloaded, `sha256`, `verify_command`, `import_command`, `next_action`, and the archive reports.
+- `inspect_project_archive` — local/offline archive inspection. Params: `archive_path`. Returns archive digest/version, transport, file/descriptor counts, required capabilities, required secrets, auth stub count, export report, portability report, and diagnostics.
+- `verify_project_archive` — local/offline verification. Params: `archive_path`. Same shape as inspect, with `ok`; an error result still avoids Cloud credentials and network access.
+- `import_project_archive` — import into local Run402 Core as a new project only. Params: `archive_path`, optional `name`, `env_file`, `secret_values`, `core_url`, `dry_run`, and `require_runnable`. Automatically verifies before Core import and reports `SECRET_VALUES_REQUIRED`, `PROJECT_ALREADY_EXISTS`, `IMPORT_VERIFY_FAILED`, or `IMPORT_CONFORMANCE_FAILED` with next actions.
 
 ### CI/OIDC bindings
 

@@ -151,6 +151,14 @@ import type {
   GrantRevokeResult,
 } from "./namespaces/grants.types.js";
 import type {
+  ProjectArchiveCreateOptions,
+  ProjectArchiveDownload,
+  ProjectArchiveDto,
+  ProjectArchiveExportOptions,
+  ProjectArchiveExportResult,
+  ProjectArchiveWaitOptions,
+} from "./namespaces/archives.types.js";
+import type {
   DisableInboundResult,
   InboundEnableResult,
   SenderDomainRegisterResult,
@@ -310,6 +318,26 @@ class ScopedGrants {
   }
   revoke(grantId: string): Promise<GrantRevokeResult> {
     return this.parent.grants.revoke(this.projectId, grantId);
+  }
+}
+
+class ScopedArchives {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(opts?: ProjectArchiveCreateOptions): Promise<ProjectArchiveDto> {
+    return this.parent.archives.create(this.projectId, opts);
+  }
+  get(archiveId: string): Promise<ProjectArchiveDto> {
+    return this.parent.archives.get(this.projectId, archiveId);
+  }
+  wait(archiveId: string, opts?: ProjectArchiveWaitOptions): Promise<ProjectArchiveDto> {
+    return this.parent.archives.wait(this.projectId, archiveId, opts);
+  }
+  download(archiveId: string): Promise<ProjectArchiveDownload> {
+    return this.parent.archives.download(this.projectId, archiveId);
+  }
+  export(opts?: ProjectArchiveExportOptions): Promise<ProjectArchiveExportResult> {
+    return this.parent.archives.export(this.projectId, opts);
   }
 }
 
@@ -831,6 +859,7 @@ export class ScopedRun402 {
   readonly subdomains: ScopedSubdomains;
   /** Per-project capability grants (agent/CI principals), project-id pre-bound. */
   readonly grants: ScopedGrants;
+  readonly archives: ScopedArchives;
 
   constructor(parent: Run402, _client: Client, projectId: string) {
     this.projectId = projectId;
@@ -849,5 +878,6 @@ export class ScopedRun402 {
     this.senderDomain = new ScopedSenderDomain(parent, projectId);
     this.subdomains = new ScopedSubdomains(parent, projectId);
     this.grants = new ScopedGrants(parent, projectId);
+    this.archives = new ScopedArchives(parent, projectId);
   }
 }

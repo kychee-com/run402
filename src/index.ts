@@ -160,6 +160,16 @@ import { removeCustomDomainSchema, handleRemoveCustomDomain } from "./tools/remo
 // New tools — billing
 import { checkBalanceSchema, handleCheckBalance } from "./tools/check-balance.js";
 import { listProjectsSchema, handleListProjects } from "./tools/list-projects.js";
+import {
+  exportProjectArchiveSchema,
+  handleExportProjectArchive,
+  handleImportProjectArchive,
+  handleInspectProjectArchive,
+  handleVerifyProjectArchive,
+  importProjectArchiveSchema,
+  inspectProjectArchiveSchema,
+  verifyProjectArchiveSchema,
+} from "./tools/project-archives.js";
 
 // New tools — allowance, faucet, image
 import { allowanceStatusSchema, handleAllowanceStatus } from "./tools/allowance-status.js";
@@ -339,6 +349,34 @@ server.tool(
   "Get project usage report — API calls, storage usage, limits, and lease expiry.",
   getUsageSchema,
   async (args) => handleGetUsage(args),
+);
+
+server.tool(
+  "export_project_archive",
+  "Export the supported Run402 Core runtime slice of a Cloud project as a portable .r402ar archive. Can wait for readiness and write the downloaded archive to a local path. Secrets, credentials, billing, allowance, logs, fleet, and Cloud operations are never exported.",
+  exportProjectArchiveSchema,
+  async (args) => handleExportProjectArchive(args),
+);
+
+server.tool(
+  "inspect_project_archive",
+  "Inspect a local run402-project-archive.v1 directory or .r402ar tar offline. Reports digest, required secrets, auth stubs, export report, portability report, and compatibility diagnostics without Cloud credentials.",
+  inspectProjectArchiveSchema,
+  async (args) => handleInspectProjectArchive(args),
+);
+
+server.tool(
+  "verify_project_archive",
+  "Verify a local run402-project-archive.v1 directory or .r402ar tar offline. Checks integrity and compatibility only; archives remain untrusted input.",
+  verifyProjectArchiveSchema,
+  async (args) => handleVerifyProjectArchive(args),
+);
+
+server.tool(
+  "import_project_archive",
+  "Import a verified portable archive into a new local Run402 Core project through the Core gateway. Automatically verifies before import, supports dry_run and require_runnable, and reports SECRET_VALUES_REQUIRED with next actions.",
+  importProjectArchiveSchema,
+  async (args) => handleImportProjectArchive(args),
 );
 
 // ─── Storage tools ──────────────────────────────────────────────────────────

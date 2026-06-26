@@ -111,6 +111,53 @@ const keys = await r.projects.keys(projectId);
 const info = await r.projects.info(projectId);
 ```
 
+## Portable project archives
+
+Portable archives are the SDK path for proving Cloud is the easiest place to start, not the only place the supported application can run. They are a vendor-lock-in trust artifact and are separate from allowance/spend-cap financial-risk controls. Archive v1 exports the supported Run402 Core runtime slice of a Cloud project, not an entire Cloud project.
+
+Node happy path:
+
+```ts
+import { writeFile } from "node:fs/promises";
+import {
+  importArchiveToCore,
+  inspectArchive,
+  run402,
+  verifyArchive,
+} from "@run402/sdk/node";
+
+const r = run402({ surface: "cli" });
+
+const exported = await r.archives.export("prj_...", {
+  scope: "portable-runtime-v1",
+  auth: "stubs",
+  consistency: "pause-writes",
+  onProgress: (event) => console.log(JSON.stringify(event)),
+});
+
+await writeFile("./project.r402ar", exported.bytes);
+
+const inspected = await inspectArchive("./project.r402ar");
+const verified = await verifyArchive("./project.r402ar");
+
+if (!verified.ok) {
+  console.error(JSON.stringify(verified.diagnostics));
+}
+
+const imported = await importArchiveToCore({
+  archivePath: "./project.r402ar",
+  name: "imported-project",
+  envFile: "./required.env",
+  requireRunnable: true,
+});
+
+console.log({ inspected, imported });
+```
+
+The isomorphic SDK exposes `r.archives.create(projectId, opts)`, `get(projectId, archiveId)`, `wait(projectId, archiveId, opts)`, `download(projectId, archiveId)`, and `export(projectId, opts)`. The Node entry upgrades `r.archives` to add local `inspect(archivePath)`, `verify(archivePath)`, and `importToCore(opts)`, and also exports standalone `inspectArchive`, `verifyArchive`, `importArchiveToCore`, and `readEnvFile`.
+
+Archive progress events and diagnostics use stable agent fields: `event`, `stage`, `resource_type`, `resource_id`, `project_id`, `status`, `completed_units`, `total_units`, `code`, `message`, `next_action`, `retryable`, and safe `context`. `verify` is offline and checks integrity and compatibility only; archives remain untrusted input. Core import verifies before mutation, creates a new Core project only, and accepts required secret values via `envFile` or `secretValues`. Secret values, auth credentials, logs, billing/allowance state, and managed Cloud operations are never exported in v1.
+
 ## Errors
 
 All failures throw subclasses of `Run402Error`. Every subclass carries a stable
@@ -1022,6 +1069,47 @@ interface AssetManifestEntry {
 attacker-controlled keys like `__proto__` can't collide with
 `Object.prototype` — a hard invariant covered by the prototype-pollution
 safety tests in `sdk/src/`.
+
+### `r.archives`
+
+Cloud export helpers are available in both SDK entry points:
+
+```
+create(projectId, opts?: {
+  scope?: "portable-runtime-v1",
+  auth?: "stubs" | "none",
+  consistency?: "pause-writes" | "cloud_write_pause_v1",
+  idempotencyKey?: string,
+}): Promise<ProjectArchiveDto>
+get(projectId, archiveId): Promise<ProjectArchiveDto>
+wait(projectId, archiveId, opts?: {
+  pollIntervalMs?: number,
+  timeoutMs?: number,
+  onProgress?: (event: ProjectArchiveProgressEvent) => void | Promise<void>,
+}): Promise<ProjectArchiveDto>
+download(projectId, archiveId): Promise<ProjectArchiveDownload>
+export(projectId, opts?: ProjectArchiveExportOptions): Promise<ProjectArchiveExportResult>
+```
+
+`ProjectArchiveDto` carries `archive_id`, `operation_id`, `status`, `format_version`, `scope`, `auth_export`, `consistency_mode`, `active_release_id`, `portability_report`, `export_report`, `byte_count`, `sha256`, `expires_at`, and `next_action`. `download` returns `{ archive, bytes, contentType, filename }`.
+
+Node-only helpers:
+
+```
+r.archives.inspect(archivePath): Promise<ArchiveVerifyResult>
+r.archives.verify(archivePath): Promise<ArchiveVerifyResult>
+r.archives.importToCore(opts: {
+  archivePath: string,
+  name?: string,
+  coreUrl?: string,
+  envFile?: string,
+  secretValues?: Record<string, string>,
+  dryRun?: boolean,
+  requireRunnable?: boolean,
+}): Promise<ArchiveImportResult>
+```
+
+`ArchiveVerifyResult` includes `ok`, `archive_version`, `archive_digest`, `transport`, `file_count`, `total_bytes`, `descriptor_count`, `required_capabilities`, `required_secrets`, `auth_subject_stub_count`, `export_report`, `portability_report`, and `diagnostics`. Branch on diagnostic `code`, not prose. Common codes include `ARCHIVE_DIGEST_MISMATCH`, `ARCHIVE_UNSUPPORTED_REQUIRED_CAPABILITY`, `ARCHIVE_PATH_UNSAFE`, `SECRET_VALUES_REQUIRED`, `AUTH_CREDENTIALS_NOT_EXPORTED`, `AUTH_SUBJECT_STUBS_IMPORTED`, `CLOUD_ONLY_FEATURE_EXCLUDED`, `PROJECT_ALREADY_EXISTS`, `IMPORT_VERIFY_FAILED`, and `IMPORT_CONFORMANCE_FAILED`.
 
 ### `r.functions`
 

@@ -145,6 +145,50 @@ run402 tier status
 With active tier: unlimited projects/sites/forks/functions/secrets/storage subject to org-pooled `api_calls`/`storage_bytes`; only image generation is per-call ($0.03/image).
 
 ---
+## Portable Project Archives (Cloud -> Core)
+
+Portable archives are the vendor-lock-in escape hatch: Cloud is the easiest place to start, not the only place the supported application can run. This is separate from allowance/spend-cap financial-risk controls. Archive v1 exports the supported Run402 Core runtime slice of a Cloud project, not an entire Cloud project.
+
+Canonical agent path:
+
+```bash
+run402 cloud archives create prj_... \
+  --scope portable-runtime-v1 \
+  --auth stubs \
+  --consistency pause-writes \
+  --wait \
+  --output ./project.r402ar \
+  --json
+
+run402 archives inspect ./project.r402ar --json
+run402 archives verify ./project.r402ar --json
+
+# Create ./required.env from required_secrets or secrets/required.env.template.
+run402 core projects import ./project.r402ar \
+  --name imported-project \
+  --env-file ./required.env \
+  --json
+```
+
+`cloud archives create` creates an operation-backed Cloud export, waits when `--wait` or `--output` is present, downloads bytes when `--output` is set, and returns `archive_id`, `operation_id`, `archive_status`, `sha256`, `expires_at`, `portability_report`, `export_report`, `verify_command`, and `import_command`. Use `--idempotency-key <key>` for safe retries, `--poll-interval <ms>` and `--timeout <ms>` for waits, and `--json-stream` for NDJSON progress.
+
+Progress events are one JSON object per line:
+
+```json
+{"event":"archive_export_created","stage":"create","resource_type":"project_archive","resource_id":"arc_...","project_id":"prj_...","status":"running","completed_units":0,"total_units":1,"code":null,"message":"Archive export status: running","next_action":{"type":"none"},"retryable":true}
+```
+
+Every event and diagnostic uses stable agent fields: `code`, `severity`, `resource_type`, `resource_id`, `message`, `next_action`, `retryable`, and safe `context`.
+
+`archives inspect` and `archives verify` are local and offline. They do not require Cloud credentials. `verify` checks descriptor/blob integrity, format compatibility, required capabilities, size/path safety, required secrets, auth stub counts, and portability diagnostics. Verification means integrity and compatibility, not trust; archives remain untrusted input.
+
+`core projects import` verifies before import, targets a new Core project only, and calls a local Core gateway (`RUN402_CORE_URL` or `--core-url`, default `http://127.0.0.1:4020`). It supports `--dry-run`, `--require-runnable`, `--env-file`, and repeated `--secret KEY=VALUE` overrides. Required secret names are reported by inspect/verify and in the archive's `secrets/required.env.template`; secret values are never exported.
+
+Expected v1 exclusions: secret values, password hashes, sessions, refresh/access/OAuth tokens, MFA secrets, signed URLs, logs, billing/allowance/spend state, fleet/Aurora/global-routing/provider operations, managed backups, monitoring, abuse/compliance/support metadata, Cloud import, and existing-project merge import.
+
+Stable archive codes include `EXPORT_CONSISTENCY_UNAVAILABLE`, `EXPORT_SCOPE_UNSUPPORTED`, `ARCHIVE_EXPIRED`, `ARCHIVE_DIGEST_MISMATCH`, `ARCHIVE_UNSUPPORTED_VERSION`, `ARCHIVE_UNSUPPORTED_REQUIRED_CAPABILITY`, `ARCHIVE_PATH_UNSAFE`, `ARCHIVE_BLOB_MISSING`, `SECRET_VALUES_REQUIRED`, `AUTH_CREDENTIALS_NOT_EXPORTED`, `AUTH_SUBJECT_STUBS_IMPORTED`, `CLOUD_ONLY_FEATURE_EXCLUDED`, `PROJECT_ALREADY_EXISTS`, `IMPORT_VERIFY_FAILED`, and `IMPORT_CONFORMANCE_FAILED`.
+
+---
 ## Deploying Apps
 
 ### Unified Apply

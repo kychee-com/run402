@@ -53,7 +53,8 @@ export interface WalletIdentity {
 export type WriteAuthCapability =
   | "org.project.create"
   | "project.deploy"
-  | "project.secret.write";
+  | "project.secret.write"
+  | "project.archives.export";
 
 /** A write-capability target: an org (for `org.project.create`) or a project. */
 export interface WriteAuthTarget {
