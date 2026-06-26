@@ -179,7 +179,7 @@ async function download(rawArgs) {
     mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, download.bytes);
     console.log(JSON.stringify({
-      status: "ok",
+      ok: true,
       project_id: projectId,
       archive_id: archiveId,
       output_path: outputPath,
@@ -204,7 +204,7 @@ async function status(rawArgs) {
   }
   try {
     const archive = await getSdk().archives.get(projectId, archiveId);
-    console.log(JSON.stringify({ status: "ok", archive }, null, 2));
+    console.log(JSON.stringify({ archive }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -212,7 +212,7 @@ async function status(rawArgs) {
 
 function finalCreateResult({ projectId, created, archive, outputPath, bytesWritten }) {
   return {
-    status: archive.status === "ready" ? "ok" : "error",
+    ok: archive.status === "ready",
     project_id: projectId,
     archive_id: archive.archive_id,
     operation_id: archive.operation_id,

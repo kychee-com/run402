@@ -8,39 +8,54 @@
  * CLI-resolvable, client-side actions — the same shape already used by
  * `cli/lib/email.mjs`. The `type` values match the SDK `NextActionType` union.
  *
- * (Legacy `{ action }` / bare-string `next_actions` entries elsewhere in the
- * CLI — `cache.mjs`, `subdomains.mjs`, `deploy-v2.mjs` — predate this and are
- * tracked as Tier-3 follow-up; they are intentionally left untouched here.)
+ * Use these helpers whenever the CLI itself authors next actions. Gateway/SDK
+ * `next_actions` remain the lower-layer source of truth and should pass through.
  */
 
+export function nextAction(type, fields = {}) {
+  const action = { type };
+  for (const key of ["command", "method", "path", "auth", "why"]) {
+    if (fields[key] !== undefined) action[key] = fields[key];
+  }
+  return action;
+}
+
+export function cliCommandAction(type, command, why) {
+  return nextAction(type, { command, why });
+}
+
+export function editRequestAction(command, why) {
+  return cliCommandAction("edit_request", command, why);
+}
+
+export function retryAction(command, why) {
+  return cliCommandAction("retry", command, why);
+}
+
 export function initializeWalletAction() {
-  return {
-    type: "initialize_wallet",
+  return nextAction("initialize_wallet", {
     command: "run402 init",
     why: "Create and fund an agent allowance, then retry.",
-  };
+  });
 }
 
 export function createProjectAction() {
-  return {
-    type: "create_project",
+  return nextAction("create_project", {
     command: "run402 projects provision",
     why: "Provision a project to act on, then retry.",
-  };
+  });
 }
 
 export function setTierAction(tier = "prototype") {
-  return {
-    type: "renew_tier",
+  return nextAction("renew_tier", {
     command: `run402 tier set ${tier}`,
     why: "Subscribe the account to a tier (free on testnet), then retry.",
-  };
+  });
 }
 
 export function deployAction() {
-  return {
-    type: "deploy",
+  return nextAction("deploy", {
     command: "run402 deploy apply --manifest app.json",
     why: "Apply your release manifest to deploy.",
-  };
+  });
 }

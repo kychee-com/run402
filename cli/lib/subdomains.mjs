@@ -2,6 +2,7 @@ import { resolveProject, resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { cliCommandAction } from "./next-actions.mjs";
 
 const HELP = `run402 subdomains — Manage custom subdomains
 
@@ -115,7 +116,7 @@ async function claim(args) {
       message: "no deployment_id specified and no recent deployment found.",
       hint: "Deploy a site first or pass --deployment <id>.",
       details: { project_id: projectId },
-      next_actions: [{ action: "deploy_site_first" }],
+      next_actions: [cliCommandAction("deploy", "run402 deploy apply", "Deploy a site first, then retry claiming the subdomain.")],
     });
   }
   try {

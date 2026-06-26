@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateRegularFile } from "./argparse.mjs";
+import { editRequestAction } from "./next-actions.mjs";
 
 const HELP = `run402 secrets — Manage project secrets
 
@@ -163,8 +164,8 @@ function failMissingStdin() {
     message: "Missing secret value on stdin.",
     hint: "Pipe a value, use --file <path>, or provide an inline value only when shell history exposure is acceptable.",
     next_actions: [
-      "printf %s \"$VALUE\" | run402 secrets set <project> <KEY> --stdin",
-      "run402 secrets set <project> <KEY> --file <path>",
+      editRequestAction("printf %s \"$VALUE\" | run402 secrets set <project> <KEY> --stdin", "Pipe the secret value through stdin."),
+      editRequestAction("run402 secrets set <project> <KEY> --file <path>", "Read the secret value from a local file."),
     ],
   });
 }

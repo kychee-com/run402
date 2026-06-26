@@ -19,6 +19,7 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv } from "./argparse.mjs";
+import { editRequestAction } from "./next-actions.mjs";
 
 // Locally-defined helpers — argparse.mjs's normalized form is a flat
 // string array; we need to identify positional args (non-flag, non-flag-
@@ -101,7 +102,7 @@ export async function run(sub, args) {
       fail({
         code: "BAD_USAGE",
         message: `Unknown cache subcommand: ${sub}`,
-        next_actions: ["run402 cache --help"],
+        next_actions: [editRequestAction("run402 cache --help", "Choose a supported cache subcommand.")],
       });
   }
 }
@@ -119,7 +120,7 @@ async function inspect(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing URL argument.",
-      next_actions: ["run402 cache inspect <url>"],
+      next_actions: [editRequestAction("run402 cache inspect <url>", "Provide the absolute URL to inspect.")],
     });
   }
   const url = positionals[0];
@@ -127,7 +128,7 @@ async function inspect(args) {
     fail({
       code: "BAD_USAGE",
       message: `URL must be absolute (got: ${url})`,
-      next_actions: ["run402 cache inspect https://<host>/<path>"],
+      next_actions: [editRequestAction("run402 cache inspect https://<host>/<path>", "Use an absolute HTTP(S) URL.")],
     });
   }
 
@@ -164,7 +165,7 @@ async function invalidate(args) {
       fail({
         code: "BAD_USAGE",
         message: "--all requires --host <hostname>",
-        next_actions: ["run402 cache invalidate --all --host <hostname>"],
+        next_actions: [editRequestAction("run402 cache invalidate --all --host <hostname>", "Name the host whose cache should be invalidated.")],
       });
     }
     try {
@@ -181,7 +182,7 @@ async function invalidate(args) {
       fail({
         code: "BAD_USAGE",
         message: "--prefix requires --host <hostname>",
-        next_actions: ["run402 cache invalidate --prefix /blog/ --host <hostname>"],
+        next_actions: [editRequestAction("run402 cache invalidate --prefix /blog/ --host <hostname>", "Pair prefix invalidation with the owning host.")],
       });
     }
     if (!prefix.startsWith("/")) {
@@ -205,9 +206,9 @@ async function invalidate(args) {
       code: "BAD_USAGE",
       message: "Missing URL argument.",
       next_actions: [
-        "run402 cache invalidate <url>",
-        "run402 cache invalidate --prefix /blog/ --host <hostname>",
-        "run402 cache invalidate --all --host <hostname>",
+        editRequestAction("run402 cache invalidate <url>", "Invalidate one absolute URL."),
+        editRequestAction("run402 cache invalidate --prefix /blog/ --host <hostname>", "Invalidate cached entries under a path prefix."),
+        editRequestAction("run402 cache invalidate --all --host <hostname>", "Invalidate every cached entry for a host."),
       ],
     });
   }
@@ -216,7 +217,7 @@ async function invalidate(args) {
     fail({
       code: "BAD_USAGE",
       message: `URL must be absolute (got: ${url})`,
-      next_actions: ["run402 cache invalidate https://<host>/<path>"],
+      next_actions: [editRequestAction("run402 cache invalidate https://<host>/<path>", "Use an absolute HTTP(S) URL.")],
     });
   }
   try {

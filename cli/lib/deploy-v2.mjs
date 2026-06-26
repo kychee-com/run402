@@ -36,6 +36,7 @@ import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId } from 
 import { normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./operator.mjs";
+import { editRequestAction, nextAction, retryAction } from "./next-actions.mjs";
 
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
@@ -939,66 +940,66 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
   invalid_token: {
     hint: "Ensure the workflow has permissions: id-token: write and is running in the repository/branch linked with run402 ci link github.",
     next_actions: [
-      "Check the workflow permissions block includes id-token: write.",
-      "Re-run run402 ci link github if the repository, branch, or environment changed.",
+      nextAction("edit_request", { why: "Check the workflow permissions block includes id-token: write." }),
+      editRequestAction("run402 ci link github", "Re-link if the repository, branch, or environment changed."),
     ],
   },
   access_denied: {
     hint: "The OIDC token was valid, but no active Run402 CI binding allowed this workflow.",
     next_actions: [
-      "Run run402 ci list --project <prj_...> locally to inspect bindings.",
-      "Run run402 ci link github again for this repository/branch/environment.",
+      editRequestAction("run402 ci list --project <prj_...>", "Inspect active CI bindings for this project."),
+      editRequestAction("run402 ci link github", "Link this repository, branch, and environment to Run402."),
     ],
   },
   binding_revoked: {
     hint: "A matching CI binding existed but was revoked — most often because the project was transferred or handed to a new owner, which suspends the prior org's CI bindings.",
     next_actions: [
-      "Run run402 ci link github again from this repository to re-create the binding.",
-      "Do not run run402 ci set-asset-scopes — it returns 409 on a revoked binding.",
-      "Run run402 ci list --project <prj_...> locally to confirm the binding state.",
+      editRequestAction("run402 ci link github", "Re-create the CI binding from this repository."),
+      nextAction("edit_request", { why: "Do not run run402 ci set-asset-scopes; it returns 409 on a revoked binding." }),
+      editRequestAction("run402 ci list --project <prj_...>", "Confirm the binding state locally."),
     ],
   },
   event_not_allowed: {
     hint: "This binding only allows push and workflow_dispatch events in v1.",
     next_actions: [
-      "Trigger the workflow with push or workflow_dispatch.",
-      "Create a separate follow-up design before enabling PR deploy events.",
+      nextAction("retry", { why: "Trigger the workflow with push or workflow_dispatch." }),
+      nextAction("edit_request", { why: "Create a separate follow-up design before enabling PR deploy events." }),
     ],
   },
   repository_id_mismatch: {
     hint: "The GitHub repository id in the OIDC token does not match the linked binding.",
     next_actions: [
-      "Run run402 ci link github again from the current repository.",
-      "If automatic lookup fails, pass --repository-id with the numeric GitHub repository id.",
+      editRequestAction("run402 ci link github", "Re-link from the current repository."),
+      editRequestAction("run402 ci link github --repository-id <id>", "Pass the numeric GitHub repository id if automatic lookup fails."),
     ],
   },
   forbidden_spec_field: {
     hint: "CI deploys can deploy site/functions/database content and route declarations only when the binding includes covering route scopes.",
     next_actions: [
-      "Remove forbidden fields such as secrets, subdomains, or checks from the CI manifest.",
-      "Keep the normalized manifest small enough to avoid manifest_ref.",
+      nextAction("edit_request", { why: "Remove forbidden fields such as secrets, subdomains, or checks from the CI manifest." }),
+      nextAction("edit_request", { why: "Keep the normalized manifest small enough to avoid manifest_ref." }),
     ],
   },
   CI_ROUTE_SCOPE_DENIED: {
     hint: "This CI binding does not cover one or more route declarations in the deploy manifest.",
     next_actions: [
-      "Re-run run402 ci link github with --route-scope for every exact or prefix path the workflow may deploy.",
-      "Use exact scopes such as --route-scope /admin or prefix scopes such as --route-scope /api/*.",
-      "Run the deploy locally with run402 deploy apply for route changes outside the CI delegation.",
+      editRequestAction("run402 ci link github --route-scope <pattern>", "Add a CI route scope for every exact or prefix path the workflow may deploy."),
+      nextAction("edit_request", { why: "Use exact scopes such as --route-scope /admin or prefix scopes such as --route-scope /api/*." }),
+      editRequestAction("run402 deploy apply", "Run route changes locally when they are outside the CI delegation."),
     ],
   },
   forbidden_plan: {
     hint: "The gateway rejected this deploy plan for CI. Keep CI deploys to the allowed resources and re-link if policy changed.",
     next_actions: [
-      "Inspect the gateway error details for the rejected resource.",
-      "Run the deploy locally with run402 deploy apply for operations outside the CI allowlist.",
+      nextAction("edit_request", { why: "Inspect the gateway error details for the rejected resource." }),
+      editRequestAction("run402 deploy apply", "Run operations outside the CI allowlist locally."),
     ],
   },
   payment_required: {
     hint: "The project tier or payment state does not allow this CI deploy.",
     next_actions: [
-      "Run run402 tier status --project <prj_...> locally.",
-      "Renew or upgrade the project tier, then re-run the workflow.",
+      editRequestAction("run402 tier status --project <prj_...>", "Inspect project tier and payment state locally."),
+      editRequestAction("run402 tier set <tier>", "Renew or upgrade the project tier, then re-run the workflow."),
     ],
   },
 };
@@ -1032,18 +1033,22 @@ function enhanceDeployWarningError(err) {
       : code
         ? [code]
         : [];
-  const allowWarningAction = unacknowledgedCodes.length === 1
-    ? `Retry with \`--allow-warning ${unacknowledgedCodes[0]}\` only after reviewing that warning.`
-    : unacknowledgedCodes.length > 1
-      ? `Retry with one \`--allow-warning <code>\` per reviewed warning code: ${unacknowledgedCodes.join(", ")}.`
-      : "Retry with `--allow-warning <code>` only after reviewing the warning.";
+  const allowWarningCommand = unacknowledgedCodes.length > 0
+    ? `run402 deploy apply ${unacknowledgedCodes.map((warningCode) => `--allow-warning ${warningCode}`).join(" ")}`
+    : "run402 deploy apply --allow-warning <code>";
+  const allowWarningAction = editRequestAction(
+    allowWarningCommand,
+    unacknowledgedCodes.length > 0
+      ? `Retry only after reviewing warning code${unacknowledgedCodes.length === 1 ? "" : "s"}: ${unacknowledgedCodes.join(", ")}.`
+      : "Retry only after reviewing the warning code.",
+  );
   const defaultNextActions = [
     ...(affected.length > 0
-      ? [`Set or inspect affected secrets: ${Array.from(new Set(affected)).join(", ")}`]
+      ? [editRequestAction("run402 secrets set <project> <KEY> --stdin", `Set or inspect affected secrets: ${Array.from(new Set(affected)).join(", ")}`)]
       : []),
-    "Retry `run402 deploy apply` after resolving warnings.",
+    retryAction("run402 deploy apply", "Retry after resolving warnings."),
     allowWarningAction,
-    "Use `--allow-warnings` only when every warning was explicitly reviewed.",
+    editRequestAction("run402 deploy apply --allow-warnings", "Use only when every warning was explicitly reviewed."),
   ];
   enhanced.body = {
     ...existingBody,
@@ -1066,98 +1071,98 @@ const ROUTE_WARNING_GUIDANCE = {
   PUBLIC_ROUTED_FUNCTION: {
     hint: "A deploy route makes a function public same-origin browser ingress; direct /functions/v1/:name remains API-key protected.",
     next_actions: [
-      "Review application auth and authorization in the routed function.",
-      "Add CSRF protection for cookie-authenticated POST/PUT/PATCH/DELETE routes.",
-      "Implement CORS and OPTIONS explicitly when cross-origin callers are intended.",
-      "Retry with --allow-warnings only after the public ingress review is intentional.",
+      nextAction("edit_request", { why: "Review application auth and authorization in the routed function." }),
+      nextAction("edit_request", { why: "Add CSRF protection for cookie-authenticated POST/PUT/PATCH/DELETE routes." }),
+      nextAction("edit_request", { why: "Implement CORS and OPTIONS explicitly when cross-origin callers are intended." }),
+      retryAction("run402 deploy apply --allow-warnings", "Retry only after the public ingress review is intentional."),
     ],
   },
   ROUTE_TARGET_CARRIED_FORWARD: {
     hint: "A carried-forward route still points at a base-release function target.",
     next_actions: [
-      "Inspect the active release with run402 deploy release active.",
-      "Deploy routes.replace if the target should change in this release.",
+      editRequestAction("run402 deploy release active", "Inspect the active release."),
+      editRequestAction("run402 deploy apply --manifest <path>", "Deploy routes.replace if the target should change in this release."),
     ],
   },
   ROUTE_SHADOWS_STATIC_PATH: {
     hint: "A dynamic route shadows a static site path.",
     next_actions: [
-      "Inspect the warning details for affected static paths.",
-      "Inspect live routes with run402 deploy release active.",
-      "Retry with --allow-warnings only when dynamic shadowing is intentional.",
+      nextAction("edit_request", { why: "Inspect the warning details for affected static paths." }),
+      editRequestAction("run402 deploy release active", "Inspect live routes."),
+      retryAction("run402 deploy apply --allow-warnings", "Retry only when dynamic shadowing is intentional."),
     ],
   },
   WILDCARD_ROUTE_SHADOWS_STATIC_PATHS: {
     hint: "A prefix wildcard route shadows one or more static site paths.",
     next_actions: [
-      "Review affected route/static path details.",
-      "Split exact routes or move static paths if the shadowing is accidental.",
-      "Retry with --allow-warnings only when the wildcard shadowing is intentional.",
+      nextAction("edit_request", { why: "Review affected route/static path details." }),
+      nextAction("edit_request", { why: "Split exact routes or move static paths if the shadowing is accidental." }),
+      retryAction("run402 deploy apply --allow-warnings", "Retry only when the wildcard shadowing is intentional."),
     ],
   },
   METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK: {
     hint: "A method-specific route allows static fallback for unmatched methods such as GET.",
     next_actions: [
-      "Confirm that static fallback for GET/HEAD is intended.",
-      "Add method coverage or static files deliberately.",
+      nextAction("edit_request", { why: "Confirm that static fallback for GET/HEAD is intended." }),
+      nextAction("edit_request", { why: "Add method coverage or static files deliberately." }),
     ],
   },
   WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS: {
     hint: "A wildcard function route only allows GET/HEAD, so POST/PUT/PATCH/DELETE paths under that prefix will be rejected before the function runs.",
     next_actions: [
-      "Add the mutation methods the routed function supports, such as POST.",
-      "Omit methods to allow every supported method when the route is an API surface.",
-      "Set acknowledge_readonly: true on an intentionally read-only GET/HEAD wildcard function route.",
-      "Use --allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS only as a reviewed CLI escape hatch.",
+      nextAction("edit_request", { why: "Add the mutation methods the routed function supports, such as POST." }),
+      nextAction("edit_request", { why: "Omit methods to allow every supported method when the route is an API surface." }),
+      nextAction("edit_request", { why: "Set acknowledge_readonly: true on an intentionally read-only GET/HEAD wildcard function route." }),
+      retryAction("run402 deploy apply --allow-warning WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS", "Use only as a reviewed CLI escape hatch."),
     ],
   },
   ROUTE_TABLE_NEAR_LIMIT: {
     hint: "The route table is near the gateway/project limit.",
     next_actions: [
-      "Consolidate prefix routes where possible.",
-      "Remove stale route entries before adding more.",
+      nextAction("edit_request", { why: "Consolidate prefix routes where possible." }),
+      nextAction("edit_request", { why: "Remove stale route entries before adding more." }),
     ],
   },
   ROUTES_NOT_ENABLED: {
     hint: "Deploy-v2 web routes are not enabled for this project or environment; direct /functions/v1/:name remains protected and is not a browser-route substitute.",
     next_actions: [
-      "Deploy without the routes resource, or request route enablement for this project/environment.",
-      "Keep direct function invocation API-key protected; do not substitute it for same-origin browser routes.",
+      nextAction("edit_request", { why: "Deploy without the routes resource, or request route enablement for this project/environment." }),
+      nextAction("edit_request", { why: "Keep direct function invocation API-key protected; do not substitute it for same-origin browser routes." }),
     ],
   },
   STATIC_ALIAS_SHADOWS_STATIC_PATH: {
     hint: "A static route target shadows a direct static path at the same public URL.",
     next_actions: [
-      "Inspect the route pattern, target.file, and direct static path.",
-      "Confirm only when the static route target is intentional.",
+      nextAction("edit_request", { why: "Inspect the route pattern, target.file, and direct static path." }),
+      nextAction("edit_request", { why: "Confirm only when the static route target is intentional." }),
     ],
   },
   STATIC_ALIAS_RELATIVE_ASSET_RISK: {
     hint: "Relative asset URLs inside the target HTML may resolve differently at the static route target URL.",
     next_actions: [
-      "Inspect the target HTML for relative asset references.",
-      "Use absolute asset URLs or confirm only when the alternate URL is intentional.",
+      nextAction("edit_request", { why: "Inspect the target HTML for relative asset references." }),
+      nextAction("edit_request", { why: "Use absolute asset URLs or confirm only when the alternate URL is intentional." }),
     ],
   },
   STATIC_ALIAS_DUPLICATE_CANONICAL_URL: {
     hint: "Both the static route target URL and the target file URL may be publicly reachable.",
     next_actions: [
-      "Decide which URL should be canonical.",
-      "Update links/canonical tags or accept the duplicate public URL intentionally.",
+      nextAction("edit_request", { why: "Decide which URL should be canonical." }),
+      nextAction("edit_request", { why: "Update links/canonical tags or accept the duplicate public URL intentionally." }),
     ],
   },
   STATIC_ALIAS_EXTENSIONLESS_NON_HTML: {
     hint: "An extensionless static route target points at a non-HTML file.",
     next_actions: [
-      "Check that the extensionless route is meant to serve that content type.",
-      "Prefer extensionless static route targets for HTML pages.",
+      nextAction("edit_request", { why: "Check that the extensionless route is meant to serve that content type." }),
+      nextAction("edit_request", { why: "Prefer extensionless static route targets for HTML pages." }),
     ],
   },
   STATIC_ALIAS_TABLE_NEAR_LIMIT: {
     hint: "Static route targets count toward the route table limit.",
     next_actions: [
-      "Consolidate manual static route targets where possible.",
-      "Avoid one route entry per page for large sites until framework-scale Web Output support exists.",
+      nextAction("edit_request", { why: "Consolidate manual static route targets where possible." }),
+      nextAction("edit_request", { why: "Avoid one route entry per page for large sites until framework-scale Web Output support exists." }),
     ],
   },
 };

@@ -5194,8 +5194,11 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     const parsed = parseStderrJson();
     assert.equal(parsed.code, "NO_DEPLOYMENT");
     assert.ok(Array.isArray(parsed.next_actions), "next_actions should be an array");
-    assert.deepEqual(parsed.next_actions, [{ action: "deploy_site_first" }],
-      `next_actions should populate with deploy_site_first, got: ${JSON.stringify(parsed.next_actions)}`);
+    assert.deepEqual(parsed.next_actions, [{
+      type: "deploy",
+      command: "run402 deploy apply",
+      why: "Deploy a site first, then retry claiming the subdomain.",
+    }], `next_actions should populate with typed deploy guidance, got: ${JSON.stringify(parsed.next_actions)}`);
   });
 
   it("domains add with no args emits BAD_USAGE envelope with usage hint", async () => {

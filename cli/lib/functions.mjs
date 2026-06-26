@@ -3,6 +3,7 @@ import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, validateRegularFile } from "./argparse.mjs";
+import { cliCommandAction } from "./next-actions.mjs";
 
 const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
 const ISO_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -541,7 +542,7 @@ async function rebuild(projectId, args = []) {
         code: "CANNOT_REBUILD_UNLOCKED_DEPS",
         message: err.body.error || err.body.message || "Function was deployed before dependency locking.",
         hint: UNLOCKED_DEPS_HINT,
-        next_actions: [`run402 functions deploy ${projectId} ${name} --file <file>`],
+        next_actions: [cliCommandAction("deploy", `run402 functions deploy ${projectId} ${name} --file <file>`, "Redeploy the function once so Run402 can lock dependencies for future rebuilds.")],
         retryable: false,
         safe_to_retry: false,
       });

@@ -34,7 +34,7 @@ async function inspect(rawArgs) {
   if (!archivePath) fail({ code: "BAD_USAGE", message: "Usage: run402 archives inspect <archive-path> [--json]" });
   try {
     const result = await inspectArchive(archivePath);
-    console.log(JSON.stringify({ status: "ok", archive: result }, null, 2));
+    console.log(JSON.stringify({ archive: result }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -47,7 +47,7 @@ async function verify(rawArgs) {
   if (!archivePath) fail({ code: "BAD_USAGE", message: "Usage: run402 archives verify <archive-path> [--json]" });
   try {
     const result = await verifyArchive(archivePath);
-    console.log(JSON.stringify({ status: result.ok ? "ok" : "error", archive: result }, null, 2));
+    console.log(JSON.stringify({ ok: result.ok, verified: result.ok, archive: result }, null, 2));
     if (!result.ok) process.exit(1);
   } catch (err) {
     reportSdkError(err);

@@ -87,7 +87,7 @@ async function importProject(rawArgs) {
         result,
       }));
     } else {
-      console.log(JSON.stringify({ status: result.status === "imported" || result.status === "dry_run" ? "ok" : "error", import: result }, null, 2));
+      console.log(JSON.stringify({ ok: result.status === "imported" || result.status === "dry_run", import: result }, null, 2));
     }
     if (result.status !== "imported" && result.status !== "dry_run") process.exit(1);
   } catch (err) {

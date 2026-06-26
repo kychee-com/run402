@@ -64,7 +64,7 @@ Examples:
   "retryable": false,
   "safe_to_retry": true,
   "mutation_state": "none",
-  "next_actions": [{ "action": "renew_tier" }, { "action": "check_usage" }]
+  "next_actions": [{ "type": "renew_tier" }, { "type": "check_usage" }]
 }
 ```
 
@@ -75,7 +75,7 @@ Examples:
   "category": "payment",
   "retryable": true,
   "safe_to_retry": true,
-  "next_actions": [{ "action": "submit_payment" }]
+  "next_actions": [{ "type": "submit_payment" }]
 }
 ```
 
@@ -89,7 +89,7 @@ Examples:
   "mutation_state": "rolled_back",
   "trace_id": "trc_...",
   "details": { "phase": "migrate", "operation_id": "op_..." },
-  "next_actions": [{ "action": "edit_migration" }]
+  "next_actions": [{ "type": "edit_migration" }]
 }
 ```
 

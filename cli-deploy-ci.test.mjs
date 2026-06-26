@@ -50,6 +50,20 @@ function parseBody(raw) {
   }
 }
 
+function assertTypedNextActions(actions) {
+  assert.ok(Array.isArray(actions), "next_actions should be an array");
+  assert.ok(actions.length > 0, "next_actions should not be empty");
+  for (const action of actions) {
+    assert.equal(typeof action?.type, "string", `next action should have a type: ${JSON.stringify(action)}`);
+  }
+}
+
+function nextActionText(actions) {
+  return actions
+    .map((action) => `${action.type ?? ""} ${action.command ?? ""} ${action.why ?? ""}`)
+    .join("\n");
+}
+
 function mockFetch(input, init) {
   const url = typeof input === "string"
     ? input
@@ -247,8 +261,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     const parsedStderr = JSON.parse(stderr.join("\n"));
     assert.equal(parsedStderr.code, "repository_id_mismatch");
     assert.match(parsedStderr.hint, /repository id/i);
-    assert.ok(Array.isArray(parsedStderr.next_actions));
-    assert.ok(parsedStderr.next_actions.length > 0);
+    assertTypedNextActions(parsedStderr.next_actions);
   });
 
   it("surfaces re-link guidance when token-exchange returns binding_revoked (transferred project)", async () => {
@@ -295,9 +308,11 @@ describe("deploy apply GitHub Actions OIDC", () => {
     const parsedStderr = JSON.parse(stderr.join("\n"));
     assert.equal(parsedStderr.error, "binding_revoked");
     assert.match(parsedStderr.hint, /transferred|revoked/i);
-    assert.ok(parsedStderr.next_actions.some((action) => /ci link github/.test(action)));
+    assertTypedNextActions(parsedStderr.next_actions);
+    const actionText = nextActionText(parsedStderr.next_actions);
+    assert.match(actionText, /ci link github/);
     // Steers away from the red-herring fix.
-    assert.ok(parsedStderr.next_actions.some((action) => /set-asset-scopes/.test(action)));
+    assert.match(actionText, /set-asset-scopes/);
   });
 
   it("passes route specs through CI deploy manifests for gateway scope authorization", async () => {
@@ -369,6 +384,7 @@ describe("deploy apply GitHub Actions OIDC", () => {
     const parsedStderr = JSON.parse(stderr.join("\n"));
     assert.equal(parsedStderr.code, "CI_ROUTE_SCOPE_DENIED");
     assert.match(parsedStderr.hint, /route declarations/);
-    assert.ok(parsedStderr.next_actions.some((action) => /--route-scope/.test(action)));
+    assertTypedNextActions(parsedStderr.next_actions);
+    assert.match(nextActionText(parsedStderr.next_actions), /--route-scope/);
   });
 });
