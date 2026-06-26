@@ -13,13 +13,13 @@ This monorepo ships **six interfaces**:
 - **SDK** (`sdk/`) — typed TypeScript client for the run402 API. Used by external integrators, MCP/CLI/OpenClaw, and (eventually) inside deployed functions. Published as `@run402/sdk` on npm. Two entry points: root (isomorphic — works in Node 22, Deno, Bun, V8 isolates) and `/node` (zero-config Node defaults — keystore + allowance + x402).
 - **MCP server** (root `src/`) — published as `run402-mcp` on npm. Each tool is a thin shim over an SDK call. Read by Claude Desktop / Cursor / Cline / Claude Code.
 - **CLI** (`cli/`) — standalone CLI published as `run402` on npm. Each subcommand is a thin shim over an SDK call; argv parsing and JSON output stay at the CLI edge.
-- **Functions library** — in-function helper imported _inside_ deployed serverless functions. Exposes `auth.*` (the canonical auth namespace — `auth.user`, `requireUser`, `requireRole`, `requireMembership`, `requireFresh`, `fetch`, `csrfToken`/`csrfField`, `sessions.*`, `identities.link`), `db(req?)`, `adminDb()`, `email`, `ai`, and `assets`. Published as `@run402/functions` on npm (v3.0+). **Source lives in a separate private gateway repo** so it can co-evolve with the gateway code that bundles it. Distinct from the SDK: this is the request-scoped, in-function shape; the SDK is the typed external client. The two are complementary, not redundant.
+- **Functions library** — in-function helper imported _inside_ deployed serverless functions. Exposes `auth.*` (the canonical auth namespace — `auth.user`, `requireUser`, `requireRole`, `requireMembership`, `requireFresh`, `fetch`, `csrfToken`/`csrfField`, `sessions.*`, `identities.link`), `db(req?)`, `adminDb()`, `email`, `ai`, and `assets`. Published as `@run402/functions` on npm (v3.0+). **Source lives in the public `run402-core` repo** under `packages/functions`; Run402 Cloud consumes the published npm package when it bundles deployed functions. Distinct from the SDK: this is the request-scoped, in-function shape; the SDK is the typed external client. The two are complementary, not redundant.
 - **OpenClaw skill** (`openclaw/`) — script-based skill for OpenClaw agents, re-exports from CLI modules.
 - **Astro integration** (`astro/`) — framework integration that wires the SDK into Astro's build pipeline. Ships an `<Image>` component (build-time scan + variant rewrite), an `assetsDir`/manifest pattern for data-driven sites, and runtime helpers (`resolveVariants`, `renderPicture`) for the recommended **AssetRef-persistence pattern** where consumers store the full `AssetRef` returned by `r.assets.put` in their data rows. Published as `@run402/astro` on npm.
 
-Workspace layout: `package.json` declares `cli`, `sdk`, and `astro` as npm workspaces; `pnpm-workspace.yaml` lists only `cli` and `sdk` for pnpm-based hosts (astro is npm-only today). `core/` is shared internal code, not an npm package. `@run402/functions` is NOT a workspace of this repo — its source lives in the private gateway monorepo so the gateway and the in-function helpers it bundles can change atomically in one commit.
+Workspace layout: `package.json` declares `cli`, `sdk`, and `astro` as npm workspaces; `pnpm-workspace.yaml` lists only `cli` and `sdk` for pnpm-based hosts (astro is npm-only today). `core/` is shared internal code, not an npm package. `@run402/functions` is NOT a workspace of this repo — its source lives in `kychee-com/run402-core/packages/functions`.
 
-The three packages in this repo (`run402-mcp`, `run402`, `@run402/sdk`) release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). MCP, CLI, OpenClaw, and the Node SDK all share the request kernel via `@run402/sdk`. `@run402/astro` is a sibling integration on its own release cadence via the `/publish-astro` skill — not part of the kernel lockstep. `@run402/functions` is published separately from the private repo via its own `/publish-functions` skill, but ships at the same npm name. `core/` holds filesystem primitives (keystore, allowance, SIWE signing) that the Node SDK provider wraps.
+The three packages in this repo (`run402-mcp`, `run402`, `@run402/sdk`) release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). MCP, CLI, OpenClaw, and the Node SDK all share the request kernel via `@run402/sdk`. `@run402/astro` is a sibling integration on its own release cadence via the `/publish-astro` skill — not part of the kernel lockstep. `@run402/functions` is published separately from `run402-core`, but ships at the same npm name. `core/` holds filesystem primitives (keystore, allowance, SIWE signing) that the Node SDK provider wraps.
 
 ## Build & Test Commands
 
@@ -85,15 +85,14 @@ core/      ← Node-only primitives (keystore, allowance, SIWE signing, config p
               (`getUser`, `getUserId`, `getRole`, `getSession`, `currentUser`,
               `getCurrentUser`, `getServerSession`) throw R402_AUTH_UNKNOWN_EXPORT at
               runtime AND fail `run402 doctor` source scan at deploy.
-              SOURCE LIVES IN A SEPARATE PRIVATE GATEWAY REPO — NOT in
-              this repo. Treated as platform code, not a library: the gateway bundles
-              its own workspace copy via esbuild alias at deploy time (no npm install
-              for @run402/functions per deploy). A gateway redeploy propagates runtime
-              fixes to all future function deployments without users needing to redeploy.
-              The npm package (@run402/functions) is published from the private repo
-              for TypeScript types and local editor autocomplete — not the runtime
-              bundling source. To change the surface, edit the functions package src in
-              the private repo and run /publish-functions there.
+              SOURCE LIVES IN THE PUBLIC run402-core REPO — NOT in this repo.
+              Treated as platform code, not a user dependency: the gateway bundles
+              its installed @run402/functions package via esbuild alias at deploy
+              time (users should not list @run402/functions in --deps). The npm
+              package (@run402/functions) is both the editor-autocomplete artifact
+              and the artifact Run402 Cloud consumes. To change the surface, edit
+              run402-core/packages/functions, publish @run402/functions from
+              run402-core, then bump the Cloud gateway dependency and redeploy.
 ```
 
 The SDK is the canonical kernel — a single typed client with a `CredentialsProvider` interface for credential access and a pluggable `fetch` (for x402 wrapping in Node, session tokens in sandboxes). MCP handlers and CLI commands are thin shims: argv/schema parsing + SDK call + output formatting. They must not call Run402 gateway endpoints directly; add missing SDK methods first. The only direct `fetch()` calls allowed at those edges are non-Run402 external services (Tempo RPC, GitHub API) and presigned storage part URLs returned by the SDK. `sync.test.ts` enforces this boundary. When code-mode MCP ships, the same SDK runs inside a V8 isolate.
@@ -164,7 +163,7 @@ Core functions return `null` or throw — they never call `process.exit()`. Each
 
 ### Functions library (`@run402/functions` v3.0+)
 
-**Source location: a separate private gateway repo.** Not in this repo. The package source moved to the gateway monorepo so the gateway-side endpoints and the in-function helpers that call them can co-evolve in a single PR and the same CI run — eliminating drift by construction. The npm package (`@run402/functions`) on the registry continues to ship at the same name and is what users install for TypeScript autocomplete.
+**Source location: public `run402-core`.** Not in this repo. The package source lives in `kychee-com/run402-core/packages/functions`; the npm package (`@run402/functions`) on the registry is what users install for TypeScript autocomplete and what Run402 Cloud consumes when it bundles deployed functions.
 
 v3.0 is BREAKING:
 
@@ -177,7 +176,7 @@ v3.0 is BREAKING:
 
 See `cli/llms-cli.txt` for the full v3.0 in-function helper reference + the R402_AUTH_* code catalog.
 
-Quick reference of the public surface (full API lives in the private gateway repo):
+Quick reference of the public surface (full package docs live in `run402-core`):
 
 - **`auth.user()`** — `Actor | null`. Reads the verified actor from the SSR runtime context. Triggers cache-bypass taint.
 - **`auth.requireUser()`** — `Actor`. 303 → `/auth/sign-in?returnTo=` (HTML) or 401 envelope (JSON) on anonymous. Don't catch.
@@ -197,7 +196,7 @@ Quick reference of the public surface (full API lives in the private gateway rep
 - **`assets.put(key, source, opts?)`** — in-function asset upload through the service-key `/apply/v1/service-asset-put` path. Uses the same CAS/activation substrate as deploy-time assets and returns SDK-compatible `AssetRef` snake_case + camelCase fields.
 - **`routedHttp`** — non-framework helpers for the `run402.routed_http.v1` same-origin browser ingress contract. Direct `/functions/v1/:name` remains API-key protected; routed function code owns app auth, CSRF, CORS/`OPTIONS`, cookies, redirects, cache headers, and spoofed forwarding-header hygiene.
 
-**Bundling model:** the gateway bundles its workspace copy of this library into every function zip via esbuild `alias` at deploy time — it is **platform code, not a user dependency**. User-declared `--deps` are npm-installed and esbuild-bundled separately. Native binaries are rejected. Publish a new `@run402/functions` to npm (via the private repo's `/publish-functions` skill) for API/type changes that affect user editors; runtime fixes (wrong URLs, logic bugs) only need a gateway redeploy. Also installable locally for full TypeScript autocomplete.
+**Bundling model:** the gateway bundles its installed copy of this library into every function zip via esbuild `alias` at deploy time — it is **platform code, not a user dependency**. User-declared `--deps` are npm-installed and esbuild-bundled separately. Native binaries are rejected. Publish a new `@run402/functions` to npm from `run402-core` for API/type/runtime changes, then bump the Cloud gateway dependency and redeploy. Also installable locally for full TypeScript autocomplete.
 
 ### MCP Server (`src/`)
 

@@ -17,8 +17,8 @@
  *   - bundle: true — collapse every reachable import.
  *   - external: Node built-ins (with and without `node:` prefix) +
  *     `@run402/functions` (the gateway aliases this at runtime to its
- *     own workspace copy via esbuild's `alias`; bundling our own copy
- *     would shadow that contract).
+ *     installed public Core package via esbuild's `alias`; bundling our
+ *     own copy would shadow that contract).
  *   - minify: false — Astro server bundles are not user-facing; readable
  *     output makes runtime errors traceable.
  *   - keepNames: true — preserves component / handler names in stack
@@ -83,11 +83,11 @@ const NODE_BUILTINS = [
 
 const RUN402_PLATFORM_EXTERNALS = [
   // `@run402/functions` is bundled at gateway-deploy time via the
-  // gateway's own esbuild alias — bundling our own copy here would
-  // shadow that runtime contract. See AGENTS.md: "the gateway bundles
-  // its workspace copy of this library into every function zip via
-  // esbuild alias at deploy time — it is platform code, not a user
-  // dependency."
+  // gateway's own esbuild alias to its installed public Core package —
+  // bundling our own copy here would shadow that runtime contract. See
+  // AGENTS.md: "the gateway bundles its installed copy of this library
+  // into every function zip via esbuild alias at deploy time — it is
+  // platform code, not a user dependency."
   "@run402/functions",
 ];
 

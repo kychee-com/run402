@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the private gateway monorepo and publishes on its own cadence.
+All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
 ## Unreleased — configurable mailbox footer policy
 
@@ -174,7 +174,7 @@ Surfaces the v1.49 gateway image-variant pipeline ([run402#392](https://github.c
 
 ### Out of scope (deliberate carve-out)
 
-- `@run402/functions` type updates — lives in `run402-private/packages/functions/` and co-evolves with the gateway via its own `/publish-functions` skill. The runtime returns the new fields regardless of which `@run402/functions` types are in use.
+- `@run402/functions` type updates — now live in `run402-core/packages/functions/` and publish on their own cadence. The runtime returns the new fields regardless of which `@run402/functions` types are in use.
 - AVIF generation or AVIF-aware helpers — deferred at the gateway. When AVIF returns, it must land at all three sizes simultaneously or via a dedicated `imgTagHero()` helper.
 - On-demand `?w=N&fmt=webp` resize endpoint and project-configurable variant sizes.
 

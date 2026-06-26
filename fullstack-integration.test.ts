@@ -367,10 +367,9 @@ async function removeBlobKey(key: string): Promise<void> {
 }
 
 before(async () => {
-  // `@run402/functions` source moved to the private gateway monorepo
-  // (commit bb1b5f2 — gateway bundles its own copy via esbuild alias at
-  // deploy time). The fixture functions still import from
-  // `@run402/functions`, but that's resolved gateway-side, not locally.
+  // `@run402/functions` source lives in the public run402-core repo. The
+  // fixture functions still import from `@run402/functions`, but Cloud
+  // resolves and bundles its installed package gateway-side, not locally.
   const requiredBuilds = [
     join(ROOT, "core", "dist", "config.js"),
     join(ROOT, "sdk", "core-dist", "config.js"),
