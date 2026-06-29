@@ -226,10 +226,27 @@ export function getApiTargetKind(): ApiTargetKind {
   return cfg?.target_kind ?? "unknown";
 }
 
+function stripTrailingSlashes(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function isExplicitHttpCoreTarget(apiBase: string): boolean {
+  if (stripTrailingSlashes(apiBase) === stripTrailingSlashes(DEFAULT_API_BASE)) return false;
+  try {
+    return new URL(apiBase).protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 export function isCoreApiTarget(): boolean {
+  const apiBase = getApiBase();
   const cfg = readApiTargetConfig();
-  if (cfg?.target_kind !== "core" || !cfg.api_base) return false;
-  return getApiBase().replace(/\/+$/, "") === cfg.api_base.replace(/\/+$/, "");
+  if (cfg?.target_kind === "core" && cfg.api_base) {
+    return stripTrailingSlashes(apiBase) === stripTrailingSlashes(cfg.api_base);
+  }
+  if (process.env.RUN402_API_BASE !== undefined && isExplicitHttpCoreTarget(apiBase)) return true;
+  return false;
 }
 
 export function getAllowancePath(): string {

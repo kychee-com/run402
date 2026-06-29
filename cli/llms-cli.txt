@@ -40,6 +40,8 @@ run402 deploy apply --manifest app.json      # uses the active Core project
 
 `init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy apply` do not require Cloud tier, allowance, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
 
+App build scripts should read the same target/profile store through `resolveRun402TargetProfile()` from `@run402/sdk/node`, not by parsing `target.json` or `projects.json` themselves.
+
 ## Core facts
 
 - Allowance: `~/.config/run402/allowance.json` (0600); projects: `~/.config/run402/projects.json` (0600)
@@ -268,7 +270,7 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
 }
 ```
 
-File entries: bare UTF-8 string; `{ "data": "...", "encoding": "utf-8" | "base64", "content_type": "..." }`; or `{ "path": "dist/index.html", "content_type": "text/html" }`. `--manifest` relative paths resolve from manifest dir; `--spec`/stdin paths resolve from cwd. Migrations may use `"sql_path"` / `"sql_file"` instead of `"sql"`. CLI/MCP share SDK `normalizeDeployManifest`; JSON can become SDK-native `ReleaseSpec`. Strict adapter: only top-level `$schema` ignored; unknown fields/no-op specs fail before planning (`"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, `"functions.replace.api.config.schedule"`).
+File entries: bare UTF-8 string; `{ "data": "...", "encoding": "utf-8" | "base64", "content_type": "..." }`; or `{ "path": "dist/index.html", "content_type": "text/html" }`. `site.replace` / `site.patch.put` may also be `{ "__source": "local-dir", "path": "dist/client" }` for a static-site directory. Function `source` may be `{ "path": "dist/run402/functions/api.js" }`. `--manifest` relative paths resolve from manifest dir; `--spec`/stdin paths resolve from cwd. Authoring-only local paths and `__source` markers are stripped/staged before the apply request. Migrations may use `"sql_path"` / `"sql_file"` instead of `"sql"`. CLI/MCP share SDK `normalizeDeployManifest`; JSON can become SDK-native `ReleaseSpec`. Strict adapter: only top-level `$schema` and app-kit evidence `x-run402-omitted_features` are ignored before planning; unknown fields/no-op specs fail (`"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, `"functions.replace.api.config.schedule"`).
 
 Function specs: `runtime: "node22"`, exactly one code source (`source` or `files`+`entrypoint`), `config.timeout_seconds`, `config.memory_mb`, sibling `schedule`. Patch: omit `schedule` to keep; `"schedule": null` removes. `deps: string[]` works under `apply-v1-function-deps`; gateway installs/bundles. `run402 functions deploy --deps` builds one `functions.patch.set` and uses unified apply; legacy standalone deploy route removed.
 

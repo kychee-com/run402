@@ -254,70 +254,100 @@ describe("Deploy.apply (happy path)", () => {
   it("applies to Core with inline migrations and direct content staging", async () => {
     const w = makeWiring();
     (w.client as { apiBase: string }).apiBase = "http://core.example:4020";
+    const root = mkdtempSync(join(tmpdir(), "run402-deploy-core-fn-source-"));
     const migrationSql = "select 1;";
     const html = "<html><body>core</body></html>";
     const fn = "export default async function handler() { return new Response('ok'); }";
+    const fnPath = join(root, "api.js");
+    writeFileSync(fnPath, fn, "utf-8");
     const htmlSha = shaHex(html);
     const fnSha = shaHex(fn);
 
-    w.setHandler((req) => {
-      if (req.path === "/apply/v1/plans") {
-        const body = req.body as { spec: Record<string, unknown> };
-        const database = body.spec.database as { migrations: Array<Record<string, unknown>> };
-        assert.equal(database.migrations[0]?.sql, migrationSql);
-        assert.equal(database.migrations[0]?.sql_ref, undefined);
-        return {
-          plan_id: "plan_core",
-          operation_id: null,
-          base_release_id: null,
-          manifest_digest: "core-digest",
-        };
-      }
-      if (req.path === "/projects/v1/prj_test/content") {
-        const body = req.body as { sha256: string; bytes_base64: string };
-        assert.ok([htmlSha, fnSha].includes(body.sha256));
-        assert.ok(body.bytes_base64.length > 0);
-        return { staged: true, sha256: body.sha256 };
-      }
-      if (req.path === "/apply/v1/plans/plan_core/commit") {
-        return {
-          plan_id: "plan_core",
-          project_id: "prj_test",
-          release_id: "rel_core",
-          release_digest: "sha256:core",
-          status: "committed",
-        };
-      }
-      if (req.path === "/projects/v1/prj_test") {
-        return {
-          endpoints: {
-            static_base_url: "http://core.example:4020/projects/v1/prj_test/static",
-            rest_url: "http://core.example:4300",
+    try {
+      w.setHandler((req) => {
+        if (req.path === "/apply/v1/plans") {
+          const payload = JSON.stringify(req.body);
+          assert(!payload.includes(fnPath), "authoring-only function source paths must not leak to apply wire");
+          assert(!payload.includes("__source"), "authoring-only source markers must not leak to apply wire");
+          assert(payload.includes(fnSha), "wire spec should contain the staged function content digest");
+          const body = req.body as { spec: Record<string, unknown> };
+          assert.equal(body.spec.project, "prj_test");
+          assert.equal("project_id" in body.spec, false, "Core wire shape uses ReleaseSpec.project");
+          const database = body.spec.database as { migrations: Array<Record<string, unknown>> };
+          assert.equal(database.migrations[0]?.sql, migrationSql);
+          assert.equal(database.migrations[0]?.sql_ref, undefined);
+          const functions = body.spec.functions as { replace: Record<string, Record<string, unknown>> };
+          assert.equal(functions.replace.api.requireAuth, true);
+          assert.equal("require_auth" in functions.replace.api, false, "Core function auth field stays camelCase");
+          assert.deepEqual(functions.replace.api.config, { timeoutSeconds: 3, memoryMb: 128 });
+          assert.equal("timeout_seconds" in (functions.replace.api.config as Record<string, unknown>), false);
+          const site = body.spec.site as { replace: Record<string, Record<string, unknown>> };
+          assert.equal(site.replace["index.html"].contentType, "text/html");
+          assert.equal("content_type" in site.replace["index.html"], false, "Core content refs use contentType");
+          return {
+            plan_id: "plan_core",
+            operation_id: null,
+            base_release_id: null,
+            manifest_digest: "core-digest",
+          };
+        }
+        if (req.path === "/projects/v1/prj_test/content") {
+          const body = req.body as { sha256: string; bytes_base64: string };
+          assert.ok([htmlSha, fnSha].includes(body.sha256));
+          assert.ok(body.bytes_base64.length > 0);
+          return { staged: true, sha256: body.sha256 };
+        }
+        if (req.path === "/apply/v1/plans/plan_core/commit") {
+          return {
+            plan_id: "plan_core",
+            project_id: "prj_test",
+            release_id: "rel_core",
+            release_digest: "sha256:core",
+            status: "committed",
+          };
+        }
+        if (req.path === "/projects/v1/prj_test") {
+          return {
+            endpoints: {
+              static_base_url: "http://core.example:4020/projects/v1/prj_test/static",
+              rest_url: "http://core.example:4300",
+            },
+          };
+        }
+        throw new Error(`unexpected path ${req.path}`);
+      });
+
+      const deploy = new Deploy(w.client);
+      const events: DeployEvent[] = [];
+      const result = await deploy.apply({
+        project: "prj_test",
+        database: { migrations: [{ id: "001", sql: migrationSql }] },
+        functions: {
+          replace: {
+            api: {
+              runtime: "node22",
+              source: { data: { __source: "fs-file", path: fnPath }, contentType: "application/javascript" },
+              config: { timeoutSeconds: 3, memoryMb: 128 },
+              requireAuth: true,
+            },
           },
-        };
-      }
-      throw new Error(`unexpected path ${req.path}`);
-    });
+        },
+        site: { replace: { "index.html": { data: html, contentType: "text/html" } } },
+      }, {
+        target: "core",
+        onEvent: (event) => events.push(event),
+      });
 
-    const deploy = new Deploy(w.client);
-    const events: DeployEvent[] = [];
-    const result = await deploy.apply({
-      project: "prj_test",
-      database: { migrations: [{ id: "001", sql: migrationSql }] },
-      functions: { replace: { api: { runtime: "node22", source: fn } } },
-      site: { replace: { "index.html": html } },
-    }, {
-      target: "core",
-      onEvent: (event) => events.push(event),
-    });
-
-    assert.equal(result.release_id, "rel_core");
-    assert.equal(result.operation_id, "core:plan_core");
-    assert.equal(result.urls.site, "http://core.example:4020/projects/v1/prj_test/static");
-    assert.equal(countRequests(w, "/content/v1/plans"), 0);
-    assert.equal(countRequests(w, "/apply/v1/operations/op_core"), 0);
-    assert.equal(w.requests.filter((req) => req.path === "/projects/v1/prj_test/content").length, 2);
-    assert.equal(events.filter((event) => event.type === "content.upload.progress").length, 2);
+      assert.equal(result.release_id, "rel_core");
+      assert.equal(result.operation_id, "core:plan_core");
+      assert.equal(result.urls.site, "http://core.example:4020/projects/v1/prj_test/static");
+      assert.equal(countRequests(w, "/content/v1/plans"), 0);
+      assert.equal(countRequests(w, "/apply/v1/operations/op_core"), 0);
+      assert.equal(w.requests.filter((req) => req.path === "/projects/v1/prj_test/content").length, 2);
+      assert.equal(events.filter((event) => event.type === "content.upload.progress").length, 2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("completes non-CI multipart content uploads with part ETags", async () => {

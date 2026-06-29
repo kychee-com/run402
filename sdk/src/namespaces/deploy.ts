@@ -884,6 +884,17 @@ function contentRefToWire(ref: ContentRef): Record<string, unknown> {
   };
 }
 
+function contentRefToCoreSpec(ref: ContentRef): Record<string, unknown> {
+  const maybeWire = ref as ContentRef & { content_type?: string };
+  const contentType = ref.contentType ?? maybeWire.content_type;
+  return {
+    sha256: ref.sha256,
+    size: ref.size,
+    ...(contentType ? { contentType } : {}),
+    ...(ref.integrity ? { integrity: ref.integrity } : {}),
+  };
+}
+
 function requireContentRef(ref: ContentRef | undefined, resource: string): ContentRef {
   if (ref) return ref;
   throw new Run402DeployError(`Missing content ref for ${resource}`, {
@@ -901,6 +912,12 @@ function fileSetToWire(map: Record<string, ContentRef>): Record<string, Record<s
   return out;
 }
 
+function fileSetToCoreSpec(map: Record<string, ContentRef>): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [path, ref] of Object.entries(map)) out[path] = contentRefToCoreSpec(ref);
+  return out;
+}
+
 function requireRoleToWire(gate: NonNullable<NormalizedFunctionSpec["requireRole"]>): Record<string, unknown> {
   return {
     table: gate.table,
@@ -910,6 +927,22 @@ function requireRoleToWire(gate: NonNullable<NormalizedFunctionSpec["requireRole
     ...(gate.cacheTtl !== undefined ? { cache_ttl: gate.cacheTtl } : {}),
     ...(gate.onDeny !== undefined ? { on_deny: gate.onDeny } : {}),
     ...(gate.signInPath !== undefined ? { sign_in_path: gate.signInPath } : {}),
+  };
+}
+
+function functionToCoreSpec(fn: NormalizedFunctionSpec): Record<string, unknown> {
+  return {
+    ...(fn.runtime !== undefined ? { runtime: fn.runtime } : {}),
+    ...(fn.source !== undefined ? { source: contentRefToCoreSpec(fn.source) } : {}),
+    ...(fn.files !== undefined ? { files: fileSetToCoreSpec(fn.files) } : {}),
+    ...(fn.entrypoint !== undefined ? { entrypoint: fn.entrypoint } : {}),
+    ...(fn.config !== undefined ? { config: fn.config } : {}),
+    ...(fn.deps !== undefined ? { deps: fn.deps } : {}),
+    ...(fn.schedule !== undefined ? { schedule: fn.schedule } : {}),
+    ...(fn.requireAuth !== undefined ? { requireAuth: fn.requireAuth } : {}),
+    ...(fn.requireRole !== undefined ? { requireRole: fn.requireRole } : {}),
+    ...(fn.class !== undefined ? { class: fn.class } : {}),
+    ...(fn.capabilities !== undefined ? { capabilities: fn.capabilities } : {}),
   };
 }
 
@@ -944,6 +977,26 @@ function functionMapToWire(map: Record<string, NormalizedFunctionSpec>): Record<
   return out;
 }
 
+function functionMapToCoreSpec(map: Record<string, NormalizedFunctionSpec>): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [name, fn] of Object.entries(map)) out[name] = functionToCoreSpec(fn);
+  return out;
+}
+
+function functionsToCoreSpec(functions: NormalizedFunctionsSpec): Record<string, unknown> {
+  return {
+    ...(functions.replace !== undefined ? { replace: functionMapToCoreSpec(functions.replace) } : {}),
+    ...(functions.patch !== undefined
+      ? {
+          patch: {
+            ...(functions.patch.set !== undefined ? { set: functionMapToCoreSpec(functions.patch.set) } : {}),
+            ...(functions.patch.delete !== undefined ? { delete: functions.patch.delete } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 function databaseToWire(database: NormalizedDatabaseSpec): Record<string, unknown> {
   return {
     ...(database.expose !== undefined ? { expose: database.expose } : {}),
@@ -963,6 +1016,25 @@ function databaseToWire(database: NormalizedDatabaseSpec): Record<string, unknow
   };
 }
 
+function databaseToCoreSpec(database: NormalizedDatabaseSpec): Record<string, unknown> {
+  return {
+    ...(database.expose !== undefined ? { expose: database.expose } : {}),
+    ...(database.zero_downtime !== undefined ? { zero_downtime: database.zero_downtime } : {}),
+    ...(database.migrations !== undefined
+      ? {
+          migrations: database.migrations.map((m) => ({
+            id: m.id,
+            checksum: m.checksum,
+            ...(m.sql !== undefined
+              ? { sql: m.sql }
+              : { sql_ref: contentRefToCoreSpec(requireContentRef(m.sql_ref, `database.migrations.${m.id}.sql_ref`)) }),
+            ...(m.transaction !== undefined ? { transaction: m.transaction } : {}),
+          })),
+        }
+      : {}),
+  };
+}
+
 function functionsToWire(functions: NormalizedFunctionsSpec): Record<string, unknown> {
   return {
     ...(functions.replace !== undefined ? { replace: functionMapToWire(functions.replace) } : {}),
@@ -975,6 +1047,25 @@ function functionsToWire(functions: NormalizedFunctionsSpec): Record<string, unk
         }
       : {}),
   };
+}
+
+function siteToCoreSpec(site: NormalizedSiteSpec): Record<string, unknown> {
+  if ("replace" in site && site.replace) {
+    return {
+      replace: fileSetToCoreSpec(site.replace),
+      ...(site.public_paths ? { public_paths: site.public_paths } : {}),
+    };
+  }
+  if ("patch" in site && site.patch) {
+    return {
+      patch: {
+        ...(site.patch.put ? { put: fileSetToCoreSpec(site.patch.put) } : {}),
+        ...(site.patch.delete ? { delete: site.patch.delete } : {}),
+      },
+      ...(site.public_paths ? { public_paths: site.public_paths } : {}),
+    };
+  }
+  return { public_paths: site.public_paths };
 }
 
 function siteToWire(site: NormalizedSiteSpec): Record<string, unknown> {
@@ -1002,6 +1093,22 @@ function i18nToWire(i18n: NonNullable<NormalizedReleaseSpec["i18n"]>): Record<st
     locales: i18n.locales,
     ...(i18n.detect !== undefined ? { detect: i18n.detect } : {}),
     ...(i18n.unknownLocalePolicy !== undefined ? { unknown_locale_policy: i18n.unknownLocalePolicy } : {}),
+  };
+}
+
+function releaseSpecToCoreSpec(spec: NormalizedReleaseSpec): Record<string, unknown> {
+  return {
+    project: spec.project,
+    ...(spec.base !== undefined ? { base: spec.base } : {}),
+    ...(spec.database !== undefined ? { database: databaseToCoreSpec(spec.database) } : {}),
+    ...(spec.secrets !== undefined ? { secrets: spec.secrets } : {}),
+    ...(spec.functions !== undefined ? { functions: functionsToCoreSpec(spec.functions) } : {}),
+    ...(spec.site !== undefined ? { site: siteToCoreSpec(spec.site) } : {}),
+    ...(spec.subdomains !== undefined ? { subdomains: spec.subdomains } : {}),
+    ...(spec.routes !== undefined ? { routes: spec.routes } : {}),
+    ...(spec.checks !== undefined ? { checks: spec.checks } : {}),
+    ...(spec.assets !== undefined ? { assets: spec.assets } : {}),
+    ...(spec.i18n !== undefined ? { i18n: spec.i18n } : {}),
   };
 }
 
@@ -1037,13 +1144,14 @@ async function planInternal(
     inlineMigrationSql: isCore,
   });
   if (!isCore) await preflightTierFunctionLimits(client, normalized, ciCredentials);
-  const wireSpec = releaseSpecToWire(normalized);
+  const wireSpec = isCore ? releaseSpecToCoreSpec(normalized) : releaseSpecToWire(normalized);
 
-  // The gateway expects { spec, manifest_ref?, idempotency_key? } with
-  // snake_case ReleaseSpec wire JSON. For oversized specs the SDK uploads
-  // the manifest JSON to CAS first and references it; the gateway still
-  // needs `spec` in the body (with at least the project), so we keep a
-  // minimal stub there.
+  // The gateway expects { spec, manifest_ref?, idempotency_key? }. Cloud
+  // receives the legacy snake_case apply wire shape; Core receives the
+  // open ReleaseSpec shape from @run402/release. For oversized Cloud specs
+  // the SDK uploads the manifest JSON to CAS first and references it; the
+  // gateway still needs `spec` in the body (with at least the project), so
+  // we keep a minimal stub there.
   const inlineBody: PlanRequest = { spec: wireSpec };
   if (idempotencyKey && !dryRun) inlineBody.idempotency_key = idempotencyKey;
   const inlineBytes = new TextEncoder().encode(JSON.stringify(inlineBody)).byteLength;

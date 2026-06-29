@@ -144,6 +144,15 @@ export type {
   NormalizedDeployManifest,
   NormalizeDeployManifestOptions,
 } from "./deploy-manifest.js";
+export { resolveRun402TargetProfile } from "./target-profile.js";
+export type {
+  ResolveRun402TargetProfileOptions,
+  Run402TargetKind,
+  Run402TargetProfile,
+  Run402TargetProfileEnvAliases,
+  Run402TargetProfileSources,
+  Run402TargetRequirement,
+} from "./target-profile.js";
 export { signCiDelegation } from "./ci.js";
 export type { SignCiDelegationOptions } from "./ci.js";
 export { signWalletOrgClaim, claimWalletOrg } from "./operator-claim.js";

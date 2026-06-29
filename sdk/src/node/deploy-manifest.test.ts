@@ -91,6 +91,21 @@ describe("Node deploy manifest helpers", () => {
     assert.equal(normalized.spec.routes, null);
   });
 
+  it("strips app-kit omitted-feature evidence before deploy planning", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      "x-run402-omitted_features": [{
+        resource: "functions.email-webhook",
+        capability: "email.managed",
+        reason: "Managed email is Cloud-only for this Core build.",
+      }],
+      site: { replace: { "index.html": "<h1>hi</h1>" } },
+    });
+
+    assert.equal("x-run402-omitted_features" in normalized.spec, false);
+    assert.equal(Array.isArray(normalized.manifest["x-run402-omitted_features"]), true);
+  });
+
   it("preserves static route targets through manifest normalization", async () => {
     const normalized = await normalizeDeployManifest({
       project_id: "prj_manifest",
@@ -293,6 +308,38 @@ describe("Node deploy manifest helpers", () => {
           path: join(root, "dist/run402/client"),
         },
         public_paths: { mode: "implicit" },
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads function source paths relative to the manifest directory", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-deploy-manifest-functions-test-"));
+    try {
+      const functionSource = "export default () => new Response('ok');\n";
+      writeFileSync(join(root, "api.js"), functionSource);
+      const manifestPath = join(root, "app.json");
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          project_id: "prj_file",
+          functions: {
+            replace: {
+              api: {
+                runtime: "node22",
+                source: { path: "api.js" },
+              },
+            },
+          },
+        }),
+      );
+
+      const normalized = await loadDeployManifest(manifestPath);
+
+      assert.deepEqual(normalized.spec.functions?.replace?.api.source, {
+        __source: "fs-file",
+        path: join(root, "api.js"),
       });
     } finally {
       rmSync(root, { recursive: true, force: true });

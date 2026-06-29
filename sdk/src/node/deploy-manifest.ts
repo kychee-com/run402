@@ -35,6 +35,7 @@ const CONTEXT = "normalizing deploy manifest";
 
 const MANIFEST_FIELDS = new Set([
   "$schema",
+  "x-run402-omitted_features",
   "project_id",
   "idempotency_key",
   "base",
@@ -157,8 +158,8 @@ export interface DeployManifestFunctionsSpec {
 }
 
 export type DeployManifestSiteSpec =
-  | { replace: DeployManifestFileSet; patch?: never; public_paths?: SitePublicPathsSpec }
-  | { patch: { put?: DeployManifestFileSet; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
+  | { replace: DeployManifestFileSet | LocalDirRef; patch?: never; public_paths?: SitePublicPathsSpec }
+  | { patch: { put?: DeployManifestFileSet | LocalDirRef; delete?: string[] }; replace?: never; public_paths?: SitePublicPathsSpec }
   | { public_paths: SitePublicPathsSpec; replace?: never; patch?: never };
 
 export interface DeployManifestAssetPutEntry {
@@ -189,6 +190,8 @@ export interface DeployManifestInput
   extends Omit<ReleaseSpec, "project" | "database" | "functions" | "site" | "assets" | "i18n"> {
   /** JSON Schema metadata for editors. Stripped before deploy planning. */
   $schema?: string;
+  /** App-kit evidence metadata for humans/agents. Stripped before deploy planning. */
+  "x-run402-omitted_features"?: unknown;
   /** CLI/MCP project field, normalized to SDK-native `ReleaseSpec.project`. */
   project_id?: string;
   database?: DeployManifestDatabaseSpec;

@@ -81,6 +81,15 @@ describe("config", () => {
     });
   });
 
+  it("treats an explicit non-default http API base as a Core target", () => {
+    withTempConfig(() => {
+      process.env.RUN402_API_BASE = "http://my-core:4020";
+      assert.equal(getApiBase(), "http://my-core:4020");
+      assert.equal(getApiBaseSource(), "env");
+      assert.equal(isCoreApiTarget(), true);
+    });
+  });
+
   it("warns and falls back to default when RUN402_API_BASE is empty string", () => {
     process.env.RUN402_API_BASE = "";
     const origWrite = process.stderr.write.bind(process.stderr);

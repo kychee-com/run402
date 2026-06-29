@@ -231,7 +231,8 @@ describe("CLI Core target", () => {
     assert.deepEqual(projectCreate.body, { tier: "prototype", name: "my-app" });
 
     const plan = calls.find((call) => call.path === "/apply/v1/plans" && call.method === "POST");
-    assert.equal(plan.body.spec.project_id, "prj_core_test");
+    assert.equal(plan.body.spec.project, "prj_core_test");
+    assert.equal("project_id" in plan.body.spec, false, "Core deploy plans use ReleaseSpec.project");
     assert.ok(calls.every((call) => call.url.startsWith(CORE)), "all API calls should target Core");
   });
 

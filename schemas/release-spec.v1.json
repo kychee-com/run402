@@ -10,6 +10,10 @@
       "type": "string",
       "description": "Editor metadata only. Manifest adapters strip this before deploy planning."
     },
+    "x-run402-omitted_features": {
+      "type": "array",
+      "description": "App-kit evidence metadata for humans/agents. Manifest adapters preserve it in the loaded manifest and strip it before deploy planning."
+    },
     "project": {
       "type": "string",
       "description": "SDK-native project id."
@@ -196,7 +200,12 @@
           "additionalProperties": false,
           "required": ["replace"],
           "properties": {
-            "replace": { "$ref": "#/$defs/fileSet" },
+            "replace": {
+              "oneOf": [
+                { "$ref": "#/$defs/fileSet" },
+                { "$ref": "#/$defs/localDirRef" }
+              ]
+            },
             "public_paths": { "$ref": "#/$defs/sitePublicPaths" }
           }
         },
@@ -209,7 +218,12 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "put": { "$ref": "#/$defs/fileSet" },
+                "put": {
+                  "oneOf": [
+                    { "$ref": "#/$defs/fileSet" },
+                    { "$ref": "#/$defs/localDirRef" }
+                  ]
+                },
                 "delete": {
                   "type": "array",
                   "items": { "type": "string" }
@@ -391,6 +405,19 @@
     "fileSet": {
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/fileEntry" }
+    },
+    "localDirRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["__source", "path"],
+      "properties": {
+        "__source": { "const": "local-dir" },
+        "path": {
+          "type": "string",
+          "description": "Local directory path resolved by the SDK/CLI from the manifest directory and stripped before the apply request."
+        }
+      },
+      "description": "CLI/MCP/Node SDK authoring form for static site directories. This is never sent to the gateway wire API."
     },
     "fileEntry": {
       "oneOf": [

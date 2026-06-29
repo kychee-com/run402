@@ -10,7 +10,7 @@ npm install @run402/sdk
 
 | Import | Use when |
 |---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance. Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, and `normalizeDeployManifest(input)`. |
+| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance. Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk` | Isomorphic — works in Node, Deno, Bun, V8 isolates. No filesystem access. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). |
 
 ## Quick start (Node)
@@ -26,6 +26,33 @@ await (await r.project(project.project_id)).assets.put("hello.txt", { content: "
 That's it — credentials are read, x402 payments are signed, results are typed.
 
 For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
+
+App build scripts should use the same target/profile store instead of parsing `target.json` or `projects.json`:
+
+```ts
+import { resolveRun402TargetProfile } from "@run402/sdk/node";
+
+const target = resolveRun402TargetProfile({
+  requiredTarget: "core",
+  requireProject: true,
+  requireAnonKey: true,
+});
+
+console.log(target.apiBase, target.projectId, target.anonKey);
+```
+
+For app-specific legacy env names, pass aliases:
+
+```ts
+import { resolveRun402TargetProfile } from "@run402/sdk/node";
+
+resolveRun402TargetProfile({
+  envAliases: {
+    projectId: ["MY_APP_PROJECT_ID"],
+    anonKey: ["MY_APP_ANON_KEY"],
+  },
+});
+```
 
 ### Project-scoped sub-client
 
