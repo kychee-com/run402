@@ -151,6 +151,41 @@ describe("projects.provision", () => {
     assert.deepEqual(activeSet, ["prj_new"]);
   });
 
+  it("persists Core static endpoint as the local site URL when returned", async () => {
+    const saved: Array<{ id: string; project: unknown }> = [];
+    const creds = makeCreds({
+      async saveProject(id, project) {
+        saved.push({ id, project });
+      },
+    });
+    const { fetch } = mockFetch(() =>
+      jsonResponse({
+        project_id: "prj_core",
+        anon_key: "anon_core",
+        service_key: "service_core",
+        schema_slot: "project_core",
+        endpoints: {
+          rest_url: "http://core.local/rest/v1",
+          static_base_url: "http://core.local/projects/v1/prj_core/static",
+          storage_base_url: "http://core.local/projects/v1/prj_core/storage",
+        },
+      }),
+    );
+    const sdk = makeSdk(creds, fetch);
+    await sdk.projects.provision({ name: "core-app" });
+
+    assert.deepEqual(saved, [
+      {
+        id: "prj_core",
+        project: {
+          anon_key: "anon_core",
+          service_key: "service_core",
+          site_url: "http://core.local/projects/v1/prj_core/static",
+        },
+      },
+    ]);
+  });
+
   it("throws PaymentRequired on 402 and does not persist", async () => {
     const saved: unknown[] = [];
     const creds = makeCreds({

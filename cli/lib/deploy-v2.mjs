@@ -32,7 +32,7 @@ import {
 } from "#sdk/node";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId } from "./config.mjs";
+import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApiTarget } from "./config.mjs";
 import { normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./operator.mjs";
@@ -123,6 +123,11 @@ Routes:
   Routed functions use Node 22 Fetch Request -> Response. req.url is the full public URL on managed domains, deployment hosts, and verified custom domains.
   Routes activate atomically with the release. Direct /functions/v1/:name remains API-key protected.
   Runtime route failure codes: ROUTE_MANIFEST_LOAD_FAILED, ROUTED_INVOKE_WORKER_SECRET_MISSING, ROUTED_INVOKE_AUTH_FAILED, ROUTED_ROUTE_STALE, ROUTE_METHOD_NOT_ALLOWED, ROUTED_RESPONSE_TOO_LARGE.
+
+Function capabilities:
+  functions.replace.<name>.capabilities is an array of runtime capability strings.
+  Framework adapters use it for contracts such as "astro.ssr.v1"; omit it for
+  ordinary user-authored functions unless a documented helper requires it.
 
 Internationalization (routed functions):
   "i18n": { "defaultLocale": "en", "locales": ["en", "es", "fr"], "detect": ["cookie:wl_locale", "accept-language"] }
@@ -664,7 +669,16 @@ async function mergeAstroReleaseSlice(spec, dirArg) {
  * the manifest normalizer is the authority on shape validity, not this
  * best-effort extractor.
  */
-function collectManifestSourceFiles(spec, baseDir) {
+function isAstroSsrManifestFunction(entry) {
+  return (
+    entry &&
+    typeof entry === "object" &&
+    Array.isArray(entry.capabilities) &&
+    entry.capabilities.includes("astro.ssr.v1")
+  );
+}
+
+export function collectManifestSourceFiles(spec, baseDir) {
   const out = new Set();
   if (!spec || typeof spec !== "object") return [];
 
@@ -689,13 +703,20 @@ function collectManifestSourceFiles(spec, baseDir) {
     if (!map || typeof map !== "object") return;
     for (const entry of Object.values(map)) resolveEntryPath(entry);
   };
+  const eachFunctionValue = (map) => {
+    if (!map || typeof map !== "object") return;
+    for (const entry of Object.values(map)) {
+      if (isAstroSsrManifestFunction(entry)) continue;
+      resolveEntryPath(entry);
+    }
+  };
 
   const fns = spec.functions;
   if (fns && typeof fns === "object") {
-    eachValue(fns.replace);
+    eachFunctionValue(fns.replace);
     if (fns.patch && typeof fns.patch === "object") {
-      eachValue(fns.patch.put);
-      eachValue(fns.patch.set);
+      eachFunctionValue(fns.patch.put);
+      eachFunctionValue(fns.patch.set);
     }
   }
 
@@ -896,9 +917,10 @@ async function applyCmd(args) {
       credentials: githubActionsCredentials({ projectId: releaseSpec.project, apiBase: API }),
       disablePaidFetch: true,
     };
-  } else if (!loadLiveControlPlaneSession()) {
+  } else if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) {
     // Aggressive early exit when no allowance is configured — unless a
-    // wallet-less human is deploying via their operator (control-plane) session.
+    // wallet-less human is deploying via their operator (control-plane) session
+    // or the active target is a self-hosted Core Gateway.
     allowanceAuthHeaders("/apply/v1/plans");
   }
 
@@ -909,6 +931,7 @@ async function applyCmd(args) {
         idempotencyKey,
         allowWarnings: opts.allowWarnings,
         allowWarningCodes: opts.allowWarningCodes,
+        target: isCoreApiTarget() ? "core" : "cloud",
       }),
     );
     console.log(JSON.stringify(result, null, 2));

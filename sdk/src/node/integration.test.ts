@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { run402, Run402, NodeCredentialsProvider } from "./index.js";
+import { configureApiBase } from "../../core-dist/config.js";
 
 let tempDir: string;
 const originalConfigDir = process.env.RUN402_CONFIG_DIR;
@@ -65,6 +66,28 @@ describe("run402() Node factory", () => {
       new Response("test", { status: 200 })) as typeof globalThis.fetch;
     const r = run402({ fetch: customFetch });
     assert.ok(r instanceof Run402);
+  });
+
+  it("uses the persisted Core API base when env override is unset", async () => {
+    const prev = process.env.RUN402_API_BASE;
+    delete process.env.RUN402_API_BASE;
+    configureApiBase("http://core.local:4020", { target_kind: "core" });
+    const calls: string[] = [];
+    try {
+      const customFetch = (async (input) => {
+        calls.push(String(input));
+        return new Response(JSON.stringify({ status: "ok", mode: "core" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof globalThis.fetch;
+      const r = run402({ fetch: customFetch, authMode: "none" });
+      await r.service.health();
+    } finally {
+      if (prev !== undefined) process.env.RUN402_API_BASE = prev;
+      else delete process.env.RUN402_API_BASE;
+    }
+    assert.deepEqual(calls, ["http://core.local:4020/health"]);
   });
 
   it("exports NodeCredentialsProvider for advanced consumers", () => {

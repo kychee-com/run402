@@ -1,4 +1,11 @@
-import { readAllowance, loadKeyStore, getActiveProjectId } from "./config.mjs";
+import {
+  readAllowance,
+  loadKeyStore,
+  getActiveProjectId,
+  apiBase,
+  apiBaseSource,
+  apiTargetKind,
+} from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
 import { getActiveProfile } from "../core-dist/config.js";
@@ -16,8 +23,10 @@ Displays:
   - Tier subscription (name, status, expiry)
   - Projects (from server, with fallback to local keystore)
   - Active project ID
+  - Active API target
 
-Output is JSON. Requires an existing allowance (run 'run402 init' first).
+Output is JSON. Run402 Cloud status requires an allowance; Core target status
+can still report local project state without one.
 `;
 
 // USDC / pathUSD constants (match allowance.mjs)
@@ -82,8 +91,20 @@ export async function run(args = []) {
   if (hasHelp(args)) { console.log(HELP); process.exit(0); }
   assertKnownFlags(args, ["--help", "-h"]);
   const allowance = readAllowance();
+  const target = {
+    api_base: apiBase(),
+    api_base_source: apiBaseSource(),
+    kind: apiTargetKind(),
+  };
   if (!allowance) {
-    console.log(JSON.stringify({ wallet: null, hint: "Run: run402 init" }));
+    const store = loadKeyStore();
+    console.log(JSON.stringify({
+      wallet: null,
+      target,
+      projects: Object.keys(store.projects).map(id => ({ project_id: id })),
+      active_project: getActiveProjectId() || null,
+      hint: target.kind === "core" ? "Run: run402 projects provision --name my-app" : "Run: run402 init",
+    }));
     return;
   }
 
@@ -145,6 +166,7 @@ export async function run(args = []) {
     lease_perpetual: tier?.lease_perpetual ?? null,
     projects,
     active_project: activeId || null,
+    target,
   };
 
   console.log(JSON.stringify(result, null, 2));

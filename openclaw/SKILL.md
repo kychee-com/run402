@@ -33,11 +33,24 @@ run402 subdomains claim my-app             # → https://my-app.run402.com
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
+## Self-hosted Core target
+
+Use the same commands against a self-hosted Run402 Core Gateway by configuring the API base once:
+
+```bash
+run402 init --api-base=http://my-core:4020
+run402 projects provision --name my-app    # → anon_key, service_key, project_id
+run402 deploy apply --manifest app.json    # uses the active Core project
+```
+
+For Core, `init --api-base` stores the target in the active profile and does not create a Cloud allowance, request faucet funds, or require a Cloud tier. The CLI, Node SDK, and MCP all read the same configured target by default. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
+
 ## How to think about it
 
 | You want to… | Reach for… |
 |---|---|
 | Set up a wallet from scratch | `run402 init` |
+| Point at self-hosted Core | `run402 init --api-base=<url>` |
 | Make a database | `run402 projects provision` |
 | Run SQL on it | `run402 projects sql` |
 | Check an auth manifest before applying | `run402 projects validate-expose` |

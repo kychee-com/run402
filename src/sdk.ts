@@ -9,6 +9,7 @@
  */
 
 import { run402 as createNodeSdk, type NodeRun402 } from "../sdk/dist/node/index.js";
+import { getApiBase } from "./config.js";
 
 let cached: NodeRun402 | null = null;
 let cachedKey: string | null = null;
@@ -32,7 +33,7 @@ export function _resetSdk(): void {
 
 function sdkCacheKey(): string {
   return JSON.stringify({
-    apiBase: process.env.RUN402_API_BASE ?? null,
+    apiBase: getApiBase(),
     configDir: process.env.RUN402_CONFIG_DIR ?? null,
     allowancePath: process.env.RUN402_ALLOWANCE_PATH ?? null,
     wallet: process.env.RUN402_WALLET ?? null,

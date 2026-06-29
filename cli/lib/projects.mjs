@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId } from "./config.mjs";
+import { loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId, isCoreApiTarget } from "./config.mjs";
 import { loadLiveOperatorSession } from "../core-dist/operator-session.js";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./operator.mjs";
@@ -14,7 +14,7 @@ Usage:
 
 Subcommands:
   quote                                   Show pricing tiers
-  provision [--tier <tier>] [--name <n>] [--org <id>]  Provision a new Postgres project (pays via x402)
+  provision [--tier <tier>] [--name <n>] [--org <id>]  Provision a new Postgres project
   use   <id>                              Set the active project (used as default for other commands)
   list [--org <id>] [--all]               List your projects from the server (name, site_url, custom domains, org_id, active marker)
   rename <id> --name <label>              Rename a project (fix an auto-generated name)
@@ -79,7 +79,9 @@ Notes:
     project:write grant) on the owning org; it works even if the project was
     never provisioned from this machine.
   - 'rest' uses PostgREST query syntax (table name + optional query string)
-  - 'provision' requires a funded allowance — payment is automatic via x402
+  - 'provision' requires a funded allowance on Run402 Cloud. Against a
+    configured Run402 Core target, it creates a local Core project without
+    payment.
   - 'apply-expose' declares the full authorization surface (tables, views, RPCs)
     in one convergent call. Tables not listed with expose:true are dark by
     default. Schema: https://run402.com/schemas/manifest.v1.json. Sample:
@@ -161,7 +163,9 @@ Options:
                       from --name when omitted; an unnamed provision stays un-keyed.
 
 Notes:
-  - Payment is automatic via x402; requires a funded allowance
+  - Payment is automatic via x402 on Run402 Cloud; requires a funded allowance.
+    Against a configured Run402 Core target, no Cloud tier/allowance/payment is
+    required.
   - The new project becomes the active project after provisioning
 
 Examples:
@@ -320,7 +324,7 @@ async function provision(args) {
   // Aggressive early exit when no agent allowance is configured — but only when
   // there's also no operator (control-plane) session, since a wallet-less human
   // provisions into an org via their operator approval instead of a wallet.
-  if (!loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
 
   const activeBefore = getActiveProjectId();
   try {
@@ -744,7 +748,10 @@ async function deleteProject(projectId, args = []) {
 }
 
 const FLAGS_BY_SUB = {
-  provision: { known: ["--tier", "--name", "--org"], values: ["--tier", "--name", "--org"] },
+  provision: {
+    known: ["--tier", "--name", "--org", "--idempotency-key"],
+    values: ["--tier", "--name", "--org", "--idempotency-key"],
+  },
   list: { known: ["--org", "--all"], values: ["--org"] },
   rename: { known: ["--name"], values: ["--name"] },
   sql: { known: ["--file", "--params"], values: ["--file", "--params"] },

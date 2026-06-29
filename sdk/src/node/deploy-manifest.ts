@@ -71,6 +71,7 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "require_auth",
   "require_role",
   "class",
+  "capabilities",
 ]);
 const MANIFEST_FUNCTION_CONFIG_FIELDS = new Set(["timeout_seconds", "memory_mb"]);
 const MANIFEST_REQUIRE_ROLE_FIELDS = new Set([
@@ -505,6 +506,12 @@ function mapFunction(
     out.requireRole = rawRecord.require_role === null ? null : mapRequireRole(rawRecord.require_role);
   }
   if (raw.class !== undefined) out.class = raw.class;
+  if (rawRecord.capabilities !== undefined) {
+    if (!Array.isArray(rawRecord.capabilities) || rawRecord.capabilities.some((v) => typeof v !== "string")) {
+      throw new LocalError("Deploy manifest function capabilities must be an array of strings", CONTEXT);
+    }
+    out.capabilities = [...rawRecord.capabilities] as string[];
+  }
   return out;
 }
 
@@ -536,7 +543,7 @@ function mapSite(
     }
     return {
       replace: isLocalDirRef(raw.replace)
-        ? raw.replace
+        ? resolveLocalDirRef(raw.replace, opts)
         : mapFileSet(raw.replace as DeployManifestFileSet, opts),
       ...(publicPaths ? { public_paths: publicPaths } : {}),
     };
@@ -548,7 +555,7 @@ function mapSite(
     assertKnownFields(rawPatch, "Deploy manifest site.patch", MANIFEST_SITE_PATCH_FIELDS);
     if (rawPatch.put !== undefined) {
       patch.put = isLocalDirRef(rawPatch.put)
-        ? rawPatch.put
+        ? resolveLocalDirRef(rawPatch.put, opts)
         : mapFileSet(rawPatch.put as DeployManifestFileSet, opts);
     }
     if (rawPatch.delete !== undefined) {
@@ -572,6 +579,16 @@ function mapSite(
     "Deploy manifest site must include replace, patch, or public_paths",
     CONTEXT,
   );
+}
+
+function resolveLocalDirRef(
+  ref: LocalDirRef,
+  opts: NormalizeDeployManifestOptions,
+): LocalDirRef {
+  return {
+    ...ref,
+    path: resolveLocalPath(ref.path, opts.baseDir),
+  };
 }
 
 function mapSitePublicPaths(value: unknown): SitePublicPathsSpec {

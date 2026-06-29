@@ -1,8 +1,19 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { existsSync, renameSync, mkdirSync, chmodSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { existsSync, renameSync, mkdirSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 
-const DEFAULT_API_BASE = "https://api.run402.com";
+export const DEFAULT_API_BASE = "https://api.run402.com";
+
+export type ApiTargetKind = "cloud" | "core" | "unknown";
+
+export interface ApiTargetConfig {
+  api_base?: string;
+  target_kind?: ApiTargetKind;
+  updated_at?: string;
+  health_status?: string;
+  health_error?: string;
+}
 
 /**
  * Validate a user-supplied API base URL. Throws a clear error message that
@@ -40,7 +51,12 @@ function validateApiBase(envVar: string, raw: string | undefined, fallback: stri
 
 export function getApiBase(): string {
   const validated = validateApiBase("RUN402_API_BASE", process.env.RUN402_API_BASE, DEFAULT_API_BASE);
-  return validated ?? DEFAULT_API_BASE;
+  return validated ?? getConfiguredApiBase() ?? DEFAULT_API_BASE;
+}
+
+export function getApiBaseSource(): "env" | "profile" | "default" {
+  if (process.env.RUN402_API_BASE !== undefined) return "env";
+  return getConfiguredApiBase() ? "profile" : "default";
 }
 
 /**
@@ -131,6 +147,89 @@ export function getConfigDir(): string {
 
 export function getKeystorePath(): string {
   return join(getConfigDir(), "projects.json");
+}
+
+export function getApiTargetConfigPath(): string {
+  return join(getConfigDir(), "target.json");
+}
+
+export function readApiTargetConfig(path?: string): ApiTargetConfig | null {
+  const p = path ?? getApiTargetConfigPath();
+  try {
+    const parsed = JSON.parse(readFileSync(p, "utf-8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const cfg = parsed as ApiTargetConfig;
+    if (cfg.api_base !== undefined && typeof cfg.api_base !== "string") return null;
+    if (
+      cfg.target_kind !== undefined &&
+      cfg.target_kind !== "cloud" &&
+      cfg.target_kind !== "core" &&
+      cfg.target_kind !== "unknown"
+    ) {
+      return null;
+    }
+    return cfg;
+  } catch {
+    return null;
+  }
+}
+
+function atomicWrite(path: string, content: string, mode: number): void {
+  const dir = dirname(path);
+  mkdirSync(dir, { recursive: true });
+  const tmp = join(dir, `.target.${randomBytes(4).toString("hex")}.tmp`);
+  writeFileSync(tmp, content, { mode });
+  renameSync(tmp, path);
+  try {
+    chmodSync(path, mode);
+  } catch {
+    /* best-effort on non-POSIX */
+  }
+}
+
+export function saveApiTargetConfig(config: ApiTargetConfig, path?: string): void {
+  const p = path ?? getApiTargetConfigPath();
+  atomicWrite(p, JSON.stringify(config, null, 2), 0o600);
+}
+
+export function configureApiBase(
+  apiBase: string,
+  options: Omit<ApiTargetConfig, "api_base" | "updated_at"> & { updated_at?: string } = {},
+): ApiTargetConfig {
+  if (apiBase === "") {
+    throw new Error("api_base must be a non-empty http(s) URL.");
+  }
+  const validated = validateApiBase("api_base", apiBase, DEFAULT_API_BASE);
+  if (!validated) {
+    throw new Error("api_base must be a non-empty http(s) URL.");
+  }
+  const config: ApiTargetConfig = {
+    api_base: validated.replace(/\/+$/, ""),
+    target_kind: options.target_kind ?? "unknown",
+    updated_at: options.updated_at ?? new Date().toISOString(),
+    ...(options.health_status ? { health_status: options.health_status } : {}),
+    ...(options.health_error ? { health_error: options.health_error } : {}),
+  };
+  saveApiTargetConfig(config);
+  return config;
+}
+
+export function getConfiguredApiBase(): string | null {
+  const cfg = readApiTargetConfig();
+  if (!cfg?.api_base) return null;
+  const validated = validateApiBase("api_base", cfg.api_base, DEFAULT_API_BASE);
+  return validated ? validated.replace(/\/+$/, "") : null;
+}
+
+export function getApiTargetKind(): ApiTargetKind {
+  const cfg = readApiTargetConfig();
+  return cfg?.target_kind ?? "unknown";
+}
+
+export function isCoreApiTarget(): boolean {
+  const cfg = readApiTargetConfig();
+  if (cfg?.target_kind !== "core" || !cfg.api_base) return false;
+  return getApiBase().replace(/\/+$/, "") === cfg.api_base.replace(/\/+$/, "");
 }
 
 export function getAllowancePath(): string {

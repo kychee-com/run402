@@ -161,6 +161,7 @@ describe("buildAstroReleaseSlice — happy path", () => {
     const fn = slice.functions.replace.ssr;
     assert.equal(fn.runtime, "node22");
     assert.equal((fn as { class?: string }).class, "ssr");
+    assert.deepEqual((fn as { capabilities?: string[] }).capabilities, ["astro.ssr.v1"]);
     assert.equal(
       typeof fn.source,
       "string",
@@ -191,6 +192,34 @@ describe("buildAstroReleaseSlice — happy path", () => {
       undefined,
       "slice must omit routes so base routes carry forward and CI sessions aren't rejected",
     );
+  });
+
+  it("emits an executable ESM SSR bundle when CommonJS deps require Node builtins", async () => {
+    const { distDir, entryAbs } = writeFixture(root, { routes: [] });
+    const serverDir = join(distDir, "run402", "server");
+    writeFileSync(
+      join(serverDir, "needs-util.cjs"),
+      "const util = require('util');\nmodule.exports = () => util.format('ok:%s', 'util');\n",
+    );
+    writeFileSync(
+      entryAbs,
+      "import message from './needs-util.cjs';\n" +
+        "export const handler = async () => new Response(message());\n" +
+        "export default handler;\n",
+    );
+
+    const slice = await buildAstroReleaseSlice(distDir);
+    const source = slice.functions.replace.ssr.source;
+    assert.equal(typeof source, "string");
+
+    const bundledPath = join(root, "bundled-ssr.mjs");
+    writeFileSync(bundledPath, source);
+    const mod = await import(`file://${bundledPath}?t=${Date.now()}`);
+    const handler = mod.default as () => Promise<Response>;
+    const response = await handler();
+
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "ok:util");
   });
 
   it("functionName option flows through to functions key", async () => {

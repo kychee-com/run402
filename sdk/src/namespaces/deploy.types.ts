@@ -303,6 +303,12 @@ export interface FunctionSpec {
    */
   class?: "ssr" | "standard";
   /**
+   * Function capability declarations interpreted by the gateway/runtime.
+   * Framework adapters use this for runtime contracts such as
+   * `astro.ssr.v1`; auth helpers can use it for explicit trust gates.
+   */
+  capabilities?: string[];
+  /**
    * v1.51+: when `true`, the Run402 gateway rejects callers without a
    * valid project user JWT with `401` before invoking the function.
    * Independent from `requireRole` — set `requireRole` alone to imply
@@ -2147,7 +2153,10 @@ export interface NormalizedMigrationSpec {
   id: string;
   /** Lowercase hex SHA-256 of the migration SQL. Required by the gateway. */
   checksum: string;
-  sql_ref: ContentRef;
+  /** Cloud wire form: migration SQL staged in CAS and referenced by digest. */
+  sql_ref?: ContentRef;
+  /** Core Developer Preview wire form: migration SQL carried inline. */
+  sql?: string;
   transaction?: "required" | "none";
 }
 
@@ -2171,6 +2180,8 @@ export interface NormalizedFunctionSpec {
   requireRole?: RequireRoleSpec | null;
   /** v1.52+ — see `FunctionSpec.class`. */
   class?: "ssr" | "standard";
+  /** v1.52+ — see `FunctionSpec.capabilities`. */
+  capabilities?: string[];
 }
 
 export type NormalizedSiteSpec =
@@ -2375,6 +2386,10 @@ export interface ApplyOptions {
    *  Default: 2 retries (3 total attempts). Pass 0 to disable automatic
    *  retry and surface the first safe deploy race to the caller. */
   maxRetries?: number;
+  /** Runtime target. CLI sets this automatically from `run402 init --api-base`.
+   *  Cloud keeps CAS content plans and operation polling; Core uses the
+   *  self-hosted gateway's direct content staging and immediate commit result. */
+  target?: "cloud" | "core";
 }
 
 export interface StartOptions {

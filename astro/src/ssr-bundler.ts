@@ -23,6 +23,10 @@
  *     output makes runtime errors traceable.
  *   - keepNames: true — preserves component / handler names in stack
  *     traces.
+ *   - banner: createRequire shim — esbuild's ESM wrapper can still
+ *     contain CommonJS dependency code that calls require("util") or
+ *     another Node builtin. Node ESM has no ambient require, so provide
+ *     one scoped to the bundled module URL.
  */
 
 import { build, type BuildOptions } from "esbuild";
@@ -91,6 +95,10 @@ const RUN402_PLATFORM_EXTERNALS = [
   "@run402/functions",
 ];
 
+const NODE_ESM_REQUIRE_SHIM =
+  `import { createRequire as __run402CreateRequire } from "node:module";\n` +
+  `const require = __run402CreateRequire(import.meta.url);\n`;
+
 export interface BundleSsrOptions {
   /** Absolute path to the Astro server output directory, e.g.
    *  `<projectRoot>/dist/run402/server`. */
@@ -143,6 +151,9 @@ export async function bundleSsrEntry(
     write: false,
     minify: false,
     keepNames: true,
+    banner: {
+      js: NODE_ESM_REQUIRE_SHIM,
+    },
     sourcemap: false,
     // Astro server bundles use top-level await for prerender data. Node
     // 22 supports it natively at module top-level for ESM, so we leave

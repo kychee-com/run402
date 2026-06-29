@@ -2,6 +2,12 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — self-hosted Core target config
+
+- **CLI:** `run402 init --api-base=<url>` now persists the active API target for the current profile without creating a Cloud allowance, requesting faucet funds, or requiring a Cloud tier. `run402 projects provision --name ...` and `run402 deploy apply --manifest ...` use that configured Core target and active project.
+- **SDK/MCP:** `@run402/sdk/node` and the MCP SDK singleton inherit the same configured API base by default; explicit constructor options or `RUN402_API_BASE` still override it. Function capabilities now flow through SDK/CLI manifest normalization and the Astro release slice marks SSR functions with `capabilities: ["astro.ssr.v1"]` for Core compatibility.
+- **Tests/docs:** added focused Core-target coverage for init, project provision, deploy apply, SDK config loading, and config precedence; CLI/OpenClaw/SDK docs now show the self-hosted Core command path.
+
 ## Unreleased — configurable mailbox footer policy
 
 Adds downstream parity for gateway issue `configurable-email-footer` / run402#474.

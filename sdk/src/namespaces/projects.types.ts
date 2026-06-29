@@ -42,6 +42,13 @@ export interface ProvisionResult {
   anon_key: string;
   service_key: string;
   schema_slot: string;
+  endpoints?: {
+    rest_url?: string;
+    static_base_url?: string;
+    storage_base_url?: string;
+  };
+  active_release_id?: string | null;
+  capabilities?: unknown;
 }
 
 // ─── list ───────────────────────────────────────────────────────────────

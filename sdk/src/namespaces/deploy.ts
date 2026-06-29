@@ -148,6 +148,17 @@ const TERMINAL_STATUSES: OperationStatus[] = [
   "needs_repair",
 ];
 const SUCCESS_STATUS: OperationStatus = "ready";
+type DeployTarget = "cloud" | "core";
+
+interface CoreCommitResponse {
+  plan_id: string;
+  project_id: string;
+  release_id: string;
+  release_digest: string;
+  status: "committed" | "noop" | "deferred";
+  deferred_phase?: "schema_settling" | "activation_pending";
+  deferred_reason?: string;
+}
 
 // ─── Public class ────────────────────────────────────────────────────────────
 
@@ -262,7 +273,10 @@ export class Deploy {
     } = {},
   ): Promise<DeployResult> {
     const emit = makeEmitter(opts.onEvent);
-    const commit = await commitInternal(this.client, planId, opts.idempotencyKey, opts.project);
+    const commit = requireCloudCommitResponse(
+      await commitInternal(this.client, planId, opts.idempotencyKey, opts.project),
+      "committing deploy",
+    );
     return await pollUntilReady(this.client, commit, {}, [], emit, opts.project);
   }
 
@@ -647,9 +661,10 @@ async function applyOnce(
   emit: (event: DeployEvent) => void,
 ): Promise<DeployResult> {
   const allowWarningCodes = normalizeAllowWarningCodes(opts.allowWarningCodes);
+  const target: DeployTarget = opts.target === "core" ? "core" : "cloud";
   const sliceKinds = deriveSliceKinds(spec);
   emit({ type: "plan.started" });
-  const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey);
+  const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey, false, target);
   emit({ type: "plan.diff", diff: plan.diff });
   emitPlanWarnings(plan, emit);
   abortOnConfirmationWarnings(plan, opts, allowWarningCodes);
@@ -668,6 +683,23 @@ async function applyOnce(
     // event and resolve before we hit upload.
   }
 
+  if (target === "core") {
+    await uploadCoreContent(client, spec.project, byteReaders, emit);
+
+    emit({
+      type: "commit.phase",
+      phase: "validate",
+      status: "started",
+      ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
+    });
+    const planId = requirePlanId(plan, "applying deploy to Core");
+    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project);
+    if (!isCoreCommitResponse(commit)) {
+      return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
+    }
+    return await coreDeployResult(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
+  }
+
   await uploadMissing(client, spec.project, plan.missing_content, byteReaders, emit);
 
   emit({
@@ -677,7 +709,10 @@ async function applyOnce(
     ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
   });
   const { planId } = requirePersistedPlan(plan, "applying deploy");
-  const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project);
+  const commit = requireCloudCommitResponse(
+    await commitInternal(client, planId, opts.idempotencyKey, spec.project),
+    "applying deploy",
+  );
   const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
 
   // v1.48 unified-apply: thread the plan response's `asset_entries[]` back
@@ -849,6 +884,17 @@ function contentRefToWire(ref: ContentRef): Record<string, unknown> {
   };
 }
 
+function requireContentRef(ref: ContentRef | undefined, resource: string): ContentRef {
+  if (ref) return ref;
+  throw new Run402DeployError(`Missing content ref for ${resource}`, {
+    code: "INTERNAL_ERROR",
+    phase: "validate",
+    resource,
+    retryable: false,
+    context: "serializing deploy spec",
+  });
+}
+
 function fileSetToWire(map: Record<string, ContentRef>): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {};
   for (const [path, ref] of Object.entries(map)) out[path] = contentRefToWire(ref);
@@ -888,6 +934,7 @@ function functionToWire(fn: NormalizedFunctionSpec): Record<string, unknown> {
       ? { require_role: fn.requireRole === null ? null : requireRoleToWire(fn.requireRole) }
       : {}),
     ...(fn.class !== undefined ? { class: fn.class } : {}),
+    ...(fn.capabilities !== undefined ? { capabilities: fn.capabilities } : {}),
   };
 }
 
@@ -906,7 +953,9 @@ function databaseToWire(database: NormalizedDatabaseSpec): Record<string, unknow
           migrations: database.migrations.map((m) => ({
             id: m.id,
             checksum: m.checksum,
-            sql_ref: contentRefToWire(m.sql_ref),
+            ...(m.sql !== undefined
+              ? { sql: m.sql }
+              : { sql_ref: contentRefToWire(requireContentRef(m.sql_ref, `database.migrations.${m.id}.sql_ref`)) }),
             ...(m.transaction !== undefined ? { transaction: m.transaction } : {}),
           })),
         }
@@ -977,13 +1026,17 @@ async function planInternal(
   spec: ReleaseSpec,
   idempotencyKey?: string,
   dryRun = false,
+  target: DeployTarget = "cloud",
 ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
   const ciCredentials = isCiClient(client);
   validateSpec(spec);
   if (ciCredentials) assertCiDeployableSpec(spec);
 
-  const { normalized, byteReaders } = await normalizeReleaseSpec(client, spec);
-  await preflightTierFunctionLimits(client, normalized, ciCredentials);
+  const isCore = target === "core";
+  const { normalized, byteReaders } = await normalizeReleaseSpec(client, spec, {
+    inlineMigrationSql: isCore,
+  });
+  if (!isCore) await preflightTierFunctionLimits(client, normalized, ciCredentials);
   const wireSpec = releaseSpecToWire(normalized);
 
   // The gateway expects { spec, manifest_ref?, idempotency_key? } with
@@ -998,6 +1051,17 @@ async function planInternal(
   let body: PlanRequest;
   if (inlineBytes <= PLAN_BODY_LIMIT_BYTES) {
     body = inlineBody;
+  } else if (isCore) {
+    throw new Run402DeployError(
+      "Core deploy planning requires an inline spec under the gateway body cap; manifest_ref is not supported by Core Developer Preview yet.",
+      {
+        code: "DRY_RUN_REQUIRES_INLINE_SPEC",
+        phase: "validate",
+        resource: "manifest_ref",
+        retryable: false,
+        context: "planning Core deploy",
+      },
+    );
   } else {
     if (dryRun) {
       throw new Run402DeployError(
@@ -1536,7 +1600,7 @@ async function commitInternal(
   planId: string,
   idempotencyKey?: string,
   project?: string,
-): Promise<CommitResponse> {
+): Promise<CommitResponse | CoreCommitResponse> {
   try {
     return await client.request<CommitResponse>(
       `/apply/v1/plans/${encodeURIComponent(planId)}/commit`,
@@ -1657,6 +1721,42 @@ async function uploadMissing(
     `/content/v1/plans/${encodeURIComponent(planRes.plan_id)}/commit`,
     { method: "POST", headers, body: {}, context: "committing content upload" },
   );
+}
+
+async function uploadCoreContent(
+  client: Client,
+  projectId: string,
+  byteReaders: Map<string, ByteReader>,
+  emit: (event: DeployEvent) => void,
+): Promise<void> {
+  const entries = [...byteReaders.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const total = entries.length;
+  let done = 0;
+  for (const [sha256, reader] of entries) {
+    const bytes = await reader();
+    await client.request(
+      `/projects/v1/${encodeURIComponent(projectId)}/content`,
+      {
+        method: "POST",
+        body: {
+          sha256,
+          size: bytes.byteLength,
+          content_type: reader.contentType ?? "application/octet-stream",
+          bytes_base64: base64FromBytes(bytes),
+        },
+        context: "staging Core deploy content",
+      },
+    );
+    done += 1;
+    emit({
+      type: "content.upload.progress",
+      label: reader.label ?? sha256,
+      sha256,
+      done,
+      total,
+      ...(reader.slice ? { slice_kind: reader.slice } : {}),
+    });
+  }
 }
 
 // Wrap `uploadOne` with exponential backoff for retryable failures.
@@ -2064,7 +2164,10 @@ async function startInternal(
       ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
     });
     const { planId } = requirePersistedPlan(plan, "starting deploy");
-    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project);
+    const commit = requireCloudCommitResponse(
+      await commitInternal(client, planId, opts.idempotencyKey, spec.project),
+      "starting deploy",
+    );
     return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
   })();
   // Avoid an unhandled-rejection at construction time. Consumers must call
@@ -2232,6 +2335,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "requireAuth",
   "requireRole",
   "class",
+  "capabilities",
 ]);
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
 const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths"]);
@@ -3002,6 +3106,7 @@ function invalidRouteSpec(message: string, resource: string): Run402DeployError 
 function normalizePlanResponse(plan: PlanResponse): PlanResponse {
   const raw = plan as PlanResponse & { warnings?: unknown };
   const warnings = Array.isArray(raw.warnings) ? raw.warnings : [];
+  const missingContent = Array.isArray(raw.missing_content) ? raw.missing_content : [];
   if (raw.kind === "plan_response") {
     const diff: DeployDiff = {
       is_noop: raw.is_noop,
@@ -3018,6 +3123,7 @@ function normalizePlanResponse(plan: PlanResponse): PlanResponse {
     return {
       ...plan,
       warnings,
+      missing_content: missingContent,
       diff,
       payment_required: raw.payment_required ?? null,
     };
@@ -3025,6 +3131,8 @@ function normalizePlanResponse(plan: PlanResponse): PlanResponse {
   return {
     ...plan,
     warnings,
+    missing_content: missingContent,
+    diff: plan.diff ?? {},
   };
 }
 
@@ -3045,6 +3153,105 @@ function requirePersistedPlan(
       context,
     },
   );
+}
+
+function requirePlanId(plan: PlanResponse, context: string): string {
+  if (plan.plan_id) return plan.plan_id;
+  throw new Run402DeployError(
+    "Plan response cannot be committed because it does not include plan_id.",
+    {
+      code: "DRY_RUN_PLAN_NOT_COMMITTABLE",
+      phase: "plan",
+      resource: "plan_id",
+      retryable: false,
+      context,
+    },
+  );
+}
+
+function isCoreCommitResponse(commit: CommitResponse | CoreCommitResponse): commit is CoreCommitResponse {
+  return (
+    typeof (commit as CoreCommitResponse).plan_id === "string" &&
+    typeof (commit as CoreCommitResponse).project_id === "string" &&
+    typeof (commit as CoreCommitResponse).release_digest === "string" &&
+    (
+      (commit as CoreCommitResponse).status === "committed" ||
+      (commit as CoreCommitResponse).status === "noop" ||
+      (commit as CoreCommitResponse).status === "deferred"
+    )
+  );
+}
+
+function requireCloudCommitResponse(
+  commit: CommitResponse | CoreCommitResponse,
+  context: string,
+): CommitResponse {
+  if (!isCoreCommitResponse(commit)) return commit;
+  throw new Run402DeployError(
+    "Core commit response reached a Cloud operation-polling path.",
+    {
+      code: "INTERNAL_ERROR",
+      phase: "commit",
+      retryable: false,
+      context,
+    },
+  );
+}
+
+async function coreDeployResult(
+  client: Client,
+  commit: CoreCommitResponse,
+  diff: PlanResponse["diff"],
+  warnings: PlanResponse["warnings"],
+  emit: (event: DeployEvent) => void,
+  projectId: string,
+  sliceKinds: ("release" | "asset")[] = [],
+): Promise<DeployResult> {
+  if (commit.status === "deferred") {
+    throw new Run402DeployError(
+      commit.deferred_reason ?? "Core deploy commit deferred.",
+      {
+        code: "INTERNAL_ERROR",
+        phase: commit.deferred_phase ?? "commit",
+        retryable: true,
+        context: "committing Core deploy",
+      },
+    );
+  }
+  const urls = await coreProjectUrls(client, projectId);
+  emit({
+    type: "ready",
+    releaseId: commit.release_id,
+    urls,
+    ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
+  });
+  return {
+    release_id: commit.release_id,
+    operation_id: `core:${commit.plan_id}`,
+    urls,
+    diff,
+    warnings,
+  };
+}
+
+async function coreProjectUrls(client: Client, projectId: string): Promise<Record<string, string>> {
+  try {
+    const project = await client.request<{
+      endpoints?: { static_base_url?: string; rest_url?: string; storage_base_url?: string };
+    }>(`/projects/v1/${encodeURIComponent(projectId)}`, {
+      method: "GET",
+      context: "fetching Core project endpoints",
+    });
+    const staticUrl = project.endpoints?.static_base_url;
+    return {
+      ...(staticUrl ? { site: staticUrl, static: staticUrl } : {}),
+      ...(project.endpoints?.rest_url ? { rest: project.endpoints.rest_url } : {}),
+      ...(project.endpoints?.storage_base_url ? { storage: project.endpoints.storage_base_url } : {}),
+    };
+  } catch {
+    const staticUrl = `${client.apiBase.replace(/\/+$/, "")}/projects/v1/${encodeURIComponent(projectId)}/static`;
+    return { site: staticUrl, static: staticUrl };
+  }
 }
 
 function emitPlanWarnings(
@@ -3252,6 +3459,7 @@ function invalidSecretSpec(message: string, resource: string): Run402DeployError
 async function normalizeReleaseSpec(
   client: Client,
   spec: ReleaseSpec,
+  opts: { inlineMigrationSql?: boolean } = {},
 ): Promise<{
   normalized: NormalizedReleaseSpec;
   byteReaders: Map<string, ByteReader>;
@@ -3313,7 +3521,7 @@ async function normalizeReleaseSpec(
     if (spec.database.migrations && spec.database.migrations.length > 0) {
       db.migrations = await Promise.all(
         spec.database.migrations.map(async (m) =>
-          normalizeMigration(client, spec.project, m, rememberRelease),
+          normalizeMigration(client, spec.project, m, rememberRelease, opts),
         ),
       );
     }
@@ -3403,6 +3611,7 @@ async function normalizeFunction(
   if (fn.requireAuth !== undefined) out.requireAuth = fn.requireAuth;
   if (fn.requireRole !== undefined) out.requireRole = fn.requireRole;
   if (fn.class !== undefined) out.class = fn.class;
+  if (fn.capabilities !== undefined) out.capabilities = [...fn.capabilities];
 
   if (fn.source !== undefined) {
     const resolved = await resolveContent(fn.source, "function source");
@@ -3738,6 +3947,7 @@ async function normalizeMigration(
   projectId: string,
   m: MigrationSpecInput,
   remember: (r: ResolvedContent) => ContentRef,
+  opts: { inlineMigrationSql?: boolean } = {},
 ): Promise<NormalizedMigrationSpec> {
   if (!m.id) {
     throw new Run402DeployError("MigrationSpec.id is required", {
@@ -3750,7 +3960,8 @@ async function normalizeMigration(
     });
   }
 
-  let sql_ref: ContentRef;
+  let sql_ref: ContentRef | undefined;
+  let sql: string | undefined;
   let checksum: string;
   if (m.sql_ref) {
     sql_ref = m.sql_ref;
@@ -3758,9 +3969,13 @@ async function normalizeMigration(
   } else if (m.sql !== undefined) {
     const bytes = new TextEncoder().encode(m.sql);
     const sha256 = await sha256Hex(bytes);
-    const ref: ContentRef = { sha256, size: bytes.byteLength, contentType: "application/sql" };
-    remember({ ref, reader: makeBytesReader(bytes, `migration:${m.id}`) });
-    sql_ref = ref;
+    if (opts.inlineMigrationSql) {
+      sql = m.sql;
+    } else {
+      const ref: ContentRef = { sha256, size: bytes.byteLength, contentType: "application/sql" };
+      remember({ ref, reader: makeBytesReader(bytes, `migration:${m.id}`) });
+      sql_ref = ref;
+    }
     checksum = m.checksum ?? sha256;
   } else {
     throw new Run402DeployError(
@@ -3779,7 +3994,9 @@ async function normalizeMigration(
     );
   }
 
-  const out: NormalizedMigrationSpec = { id: m.id, checksum, sql_ref };
+  const out: NormalizedMigrationSpec = { id: m.id, checksum };
+  if (sql_ref) out.sql_ref = sql_ref;
+  if (sql !== undefined) out.sql = sql;
   if (m.transaction) out.transaction = m.transaction;
   return out;
   // projectId / client params reserved for future content-presence preflight.

@@ -1,4 +1,4 @@
-import { readAllowance, saveAllowance, loadKeyStore, configDir } from "./config.mjs";
+import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { setTierAction, deployAction } from "./next-actions.mjs";
@@ -15,6 +15,9 @@ const HELP = `run402 init — Set up allowance, funding, and check tier status
 
 Usage:
   run402 init                Set up with x402 (Base Sepolia) — default
+  run402 init --api-base <url>
+                             Configure a Run402 Core/API target for the active
+                             profile without setting up Cloud payment.
   run402 init mpp            Set up with MPP (Tempo Moderato)
   run402 init <rail> --switch-rail
                              Switch the persisted payment rail to <rail>.
@@ -23,6 +26,9 @@ Usage:
                              silently flipping billing networks.
 
 Options:
+  --api-base <url> Configure the active profile to use this API base. Use this
+                  for a self-hosted Run402 Core Gateway, e.g.
+                  http://my-core:4020.
   --switch-rail   Confirm switching the persisted payment rail. Re-running
                   init with the SAME rail as the existing allowance is always
                   idempotent and does not need this flag.
@@ -46,6 +52,61 @@ Run this once to get started, or again to check your setup.
 
 function short(addr) { return addr.slice(0, 6) + "..." + addr.slice(-4); }
 
+function parseApiBaseFlag(args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--api-base") {
+      const value = args[i + 1];
+      if (value === undefined || String(value).startsWith("--")) {
+        fail({
+          code: "BAD_USAGE",
+          message: "--api-base requires a value.",
+          details: { flag: "--api-base" },
+        });
+      }
+      return { value, args: [...args.slice(0, i), ...args.slice(i + 2)] };
+    }
+    if (typeof arg === "string" && arg.startsWith("--api-base=")) {
+      const value = arg.slice("--api-base=".length);
+      if (!value) {
+        fail({
+          code: "BAD_USAGE",
+          message: "--api-base requires a non-empty value.",
+          details: { flag: "--api-base" },
+        });
+      }
+      return { value, args: [...args.slice(0, i), ...args.slice(i + 1)] };
+    }
+  }
+  return { value: null, args };
+}
+
+function sameOrigin(a, b) {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
+}
+
+async function detectTarget(apiBase) {
+  try {
+    const health = await getSdk({ apiBase, disablePaidFetch: true, authMode: "none" }).service.health();
+    const kind = health && typeof health === "object" && health.mode === "core"
+      ? "core"
+      : sameOrigin(apiBase, "https://api.run402.com") ? "cloud" : "core";
+    return {
+      kind,
+      health_status: typeof health?.status === "string" ? health.status : "ok",
+    };
+  } catch (err) {
+    return {
+      kind: sameOrigin(apiBase, "https://api.run402.com") ? "cloud" : "core",
+      health_error: errorMessage(err),
+    };
+  }
+}
+
 function errorMessage(err) {
   if (err?.body && typeof err.body === "object") return err.body.message || err.body.error || err.message;
   return err?.message || String(err);
@@ -66,6 +127,50 @@ export async function run(args = []) {
   }
 
   if (args.includes("--help") || args.includes("-h")) { console.log(HELP); process.exit(0); }
+
+  const parsedApiBase = parseApiBaseFlag(args);
+  if (parsedApiBase.value) {
+    if (parsedApiBase.args.some((arg) => typeof arg === "string" && !arg.startsWith("--"))) {
+      fail({
+        code: "BAD_USAGE",
+        message: "run402 init --api-base cannot be combined with a payment rail.",
+        hint: "Run `run402 init --api-base=http://my-core:4020` for Core, or `run402 init` for Run402 Cloud.",
+      });
+    }
+    const CONFIG_DIR = configDir();
+    const detected = await detectTarget(parsedApiBase.value);
+    const config = configureApiBase(parsedApiBase.value, {
+      target_kind: detected.kind,
+      ...(detected.health_status ? { health_status: detected.health_status } : {}),
+      ...(detected.health_error ? { health_error: detected.health_error } : {}),
+    });
+    mkdirSync(CONFIG_DIR, { recursive: true });
+    console.error("");
+    console.error(`  ${"Config".padEnd(10)} ${CONFIG_DIR}`);
+    console.error(`  ${"API base".padEnd(10)} ${config.api_base}`);
+    console.error(`  ${"Target".padEnd(10)} ${config.target_kind}`);
+    if (detected.health_status) console.error(`  ${"Health".padEnd(10)} ${detected.health_status}`);
+    if (detected.health_error) console.error(`  ${"Health".padEnd(10)} ${detected.health_error}`);
+    console.error("");
+    const summary = {
+      config_dir: CONFIG_DIR,
+      api_base: config.api_base,
+      api_base_source: "profile",
+      target: {
+        kind: config.target_kind,
+        ...(config.health_status ? { health_status: config.health_status } : {}),
+        ...(config.health_error ? { health_error: config.health_error } : {}),
+      },
+      payment_required: config.target_kind === "cloud",
+      next_actions: [{
+        type: "create_project",
+        command: 'run402 projects provision --name "my-app"',
+      }],
+      next_step: 'run402 projects provision --name "my-app"',
+    };
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
 
   // Resolve once for this invocation — reflects the active wallet/profile that
   // cli.mjs published to RUN402_WALLET before this module loaded.

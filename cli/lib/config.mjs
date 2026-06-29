@@ -3,7 +3,17 @@
  * Adds CLI-specific behavior: process.exit() on errors.
  */
 
-import { getApiBase, getConfigDir, getKeystorePath, getAllowancePath } from "../core-dist/config.js";
+import {
+  getApiBase,
+  getApiBaseSource,
+  getApiTargetKind,
+  getConfigDir,
+  getKeystorePath,
+  getAllowancePath,
+  configureApiBase,
+  isCoreApiTarget,
+  readApiTargetConfig,
+} from "../core-dist/config.js";
 import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance } from "../core-dist/allowance.js";
 import { loadKeyStore, getProject, saveProject, updateProject, removeProject, saveKeyStore, getActiveProjectId, setActiveProjectId } from "../core-dist/keystore.js";
 import { getAllowanceAuthHeaders as coreGetAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
@@ -16,6 +26,10 @@ import { initializeWalletAction, createProjectAction } from "./next-actions.mjs"
 export function configDir() { return getConfigDir(); }
 export function allowanceFile() { return getAllowancePath(); }
 export function projectsFile() { return getKeystorePath(); }
+export function apiBase() { return getApiBase(); }
+export function apiBaseSource() { return getApiBaseSource(); }
+export function apiTargetKind() { return getApiTargetKind(); }
+export function coreTarget() { return isCoreApiTarget(); }
 
 // Snapshot constants, retained for backward compatibility (tests, the OpenClaw
 // config re-export). These are evaluated when this module is first imported.
@@ -116,4 +130,15 @@ export function resolveProjectId(id) {
 }
 
 // Re-export core keystore functions for direct use
-export { loadKeyStore, saveProject, updateProject, removeProject, saveKeyStore, getActiveProjectId, setActiveProjectId };
+export {
+  configureApiBase,
+  isCoreApiTarget,
+  readApiTargetConfig,
+  loadKeyStore,
+  saveProject,
+  updateProject,
+  removeProject,
+  saveKeyStore,
+  getActiveProjectId,
+  setActiveProjectId,
+};

@@ -39,6 +39,7 @@ import { bundleSsrEntry } from "./ssr-bundler.js";
 const SUPPORTED_MANIFEST_VERSIONS = new Set<string>(["1.0"]);
 const DEFAULT_FUNCTION_NAME = "ssr";
 const DEFAULT_HTML_CACHE_CLASS: StaticCacheClass = "html";
+const ASTRO_SSR_OUTPUT_CONTRACT_VERSION = "astro.ssr.v1";
 const ADAPTER_MANIFEST_RELATIVE = path.join("run402", "adapter.json");
 const CLIENT_DIR_RELATIVE = path.join("run402", "client");
 const SERVER_DIR_RELATIVE = path.join("run402", "server");
@@ -401,6 +402,7 @@ export async function buildAstroReleaseSlice(
   const functionSpec: FunctionSpec = {
     runtime: "node22",
     class: "ssr",
+    capabilities: [ASTRO_SSR_OUTPUT_CONTRACT_VERSION],
     source: bundle.code,
   };
 
@@ -460,4 +462,3 @@ function prerenderedHtmlPath(pattern: string): string {
   if (/\.html?$/i.test(p)) return p;
   return `${p}/index.html`;
 }
-

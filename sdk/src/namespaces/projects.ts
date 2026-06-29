@@ -137,6 +137,7 @@ export class Projects {
       await creds.saveProject(result.project_id, {
         anon_key: result.anon_key,
         service_key: result.service_key,
+        ...(result.endpoints?.static_base_url ? { site_url: result.endpoints.static_base_url } : {}),
       });
     }
     if (creds.setActiveProject) {

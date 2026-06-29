@@ -267,6 +267,38 @@ describe("Node deploy manifest helpers", () => {
     }
   });
 
+  it("loads local-dir site refs relative to the manifest directory", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-deploy-manifest-dir-test-"));
+    try {
+      const manifestPath = join(root, "app.json");
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          project_id: "prj_file",
+          site: {
+            replace: {
+              __source: "local-dir",
+              path: "dist/run402/client",
+            },
+            public_paths: { mode: "implicit" },
+          },
+        }),
+      );
+
+      const normalized = await loadDeployManifest(manifestPath);
+
+      assert.deepEqual(normalized.spec.site, {
+        replace: {
+          __source: "local-dir",
+          path: join(root, "dist/run402/client"),
+        },
+        public_paths: { mode: "implicit" },
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects unknown manifest fields instead of silently dropping them", async () => {
     for (const input of [
       {
@@ -468,5 +500,25 @@ describe("Node deploy manifest helpers", () => {
       cacheTtl: 30,
     });
     assert.equal(normalized.spec.functions?.patch?.set?.cleared.requireRole, null);
+  });
+
+  it("passes function capabilities through manifest normalization", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      functions: {
+        replace: {
+          ssr: {
+            runtime: "node22",
+            class: "ssr",
+            capabilities: ["astro.ssr.v1"],
+            source: { data: "export default async () => new Response('ok')" },
+          },
+        },
+      },
+    });
+
+    const ssr = normalized.spec.functions?.replace?.ssr;
+    assert.equal(ssr?.class, "ssr");
+    assert.deepEqual(ssr?.capabilities, ["astro.ssr.v1"]);
   });
 });

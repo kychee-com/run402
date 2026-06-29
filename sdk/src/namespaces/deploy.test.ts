@@ -251,6 +251,75 @@ describe("Deploy.apply (happy path)", () => {
     assert.equal(new TextDecoder().decode(w.puts[0].body), html);
   });
 
+  it("applies to Core with inline migrations and direct content staging", async () => {
+    const w = makeWiring();
+    (w.client as { apiBase: string }).apiBase = "http://core.example:4020";
+    const migrationSql = "select 1;";
+    const html = "<html><body>core</body></html>";
+    const fn = "export default async function handler() { return new Response('ok'); }";
+    const htmlSha = shaHex(html);
+    const fnSha = shaHex(fn);
+
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        const body = req.body as { spec: Record<string, unknown> };
+        const database = body.spec.database as { migrations: Array<Record<string, unknown>> };
+        assert.equal(database.migrations[0]?.sql, migrationSql);
+        assert.equal(database.migrations[0]?.sql_ref, undefined);
+        return {
+          plan_id: "plan_core",
+          operation_id: null,
+          base_release_id: null,
+          manifest_digest: "core-digest",
+        };
+      }
+      if (req.path === "/projects/v1/prj_test/content") {
+        const body = req.body as { sha256: string; bytes_base64: string };
+        assert.ok([htmlSha, fnSha].includes(body.sha256));
+        assert.ok(body.bytes_base64.length > 0);
+        return { staged: true, sha256: body.sha256 };
+      }
+      if (req.path === "/apply/v1/plans/plan_core/commit") {
+        return {
+          plan_id: "plan_core",
+          project_id: "prj_test",
+          release_id: "rel_core",
+          release_digest: "sha256:core",
+          status: "committed",
+        };
+      }
+      if (req.path === "/projects/v1/prj_test") {
+        return {
+          endpoints: {
+            static_base_url: "http://core.example:4020/projects/v1/prj_test/static",
+            rest_url: "http://core.example:4300",
+          },
+        };
+      }
+      throw new Error(`unexpected path ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const events: DeployEvent[] = [];
+    const result = await deploy.apply({
+      project: "prj_test",
+      database: { migrations: [{ id: "001", sql: migrationSql }] },
+      functions: { replace: { api: { runtime: "node22", source: fn } } },
+      site: { replace: { "index.html": html } },
+    }, {
+      target: "core",
+      onEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.release_id, "rel_core");
+    assert.equal(result.operation_id, "core:plan_core");
+    assert.equal(result.urls.site, "http://core.example:4020/projects/v1/prj_test/static");
+    assert.equal(countRequests(w, "/content/v1/plans"), 0);
+    assert.equal(countRequests(w, "/apply/v1/operations/op_core"), 0);
+    assert.equal(w.requests.filter((req) => req.path === "/projects/v1/prj_test/content").length, 2);
+    assert.equal(events.filter((event) => event.type === "content.upload.progress").length, 2);
+  });
+
   it("completes non-CI multipart content uploads with part ETags", async () => {
     const w = makeWiring();
     const html = "<html><body>multipart-content</body></html>";
@@ -1362,6 +1431,48 @@ describe("Deploy.apply (validation)", () => {
       cache_ttl: 30,
     });
     assert.equal(body.spec.functions.patch.set.cleared.require_role, null);
+  });
+
+  it("passes function class capabilities through validateSpec to the gateway", async () => {
+    const w = makeWiring();
+    let plannedBody: unknown;
+    w.setHandler((req) => {
+      assert.equal(req.path, "/apply/v1/plans?dry_run=true");
+      plannedBody = req.body;
+      return {
+        plan_id: null,
+        operation_id: null,
+        base_release_id: null,
+        manifest_digest: "function-capabilities",
+        missing_content: [],
+        diff: {},
+        warnings: [],
+      } satisfies PlanResponse;
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan(
+      {
+        project: "prj_test",
+        functions: {
+          replace: {
+            ssr: {
+              runtime: "node22",
+              class: "ssr",
+              capabilities: ["astro.ssr.v1"],
+              source: "export default async () => new Response('ok')",
+            },
+          },
+        },
+      },
+      { dryRun: true },
+    );
+
+    const body = plannedBody as {
+      spec: { functions: { replace: Record<string, { class?: string; capabilities?: string[] }> } };
+    };
+    assert.equal(body.spec.functions.replace.ssr.class, "ssr");
+    assert.deepEqual(body.spec.functions.replace.ssr.capabilities, ["astro.ssr.v1"]);
   });
 
   it("rejects invalid function config integers before issuing gateway calls", async () => {

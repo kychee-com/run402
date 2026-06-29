@@ -19,7 +19,7 @@ Two entry points:
 
 | Import | Use when | Bundles |
 |---|---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads `~/.config/run402/projects.json` and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, and `normalizeDeployManifest(input)`. |
+| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, and `normalizeDeployManifest(input)`. |
 | `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
 
 ## Quick start (Node)
@@ -33,6 +33,8 @@ await (await r.project(project.project_id)).assets.put("hello.txt", { content: "
 ```
 
 That's it — credentials are read, x402 payments are signed, results are typed.
+
+For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
 
 ## Quick start (isomorphic / sandbox)
 
@@ -64,7 +66,7 @@ The SDK is the canonical kernel. A single typed `Run402` class with one namespac
 - Throws a typed subclass of `Run402Error` on failure
 - Never calls `process.exit`
 
-The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share `~/.config/run402/projects.json` so credentials carry across surfaces.
+The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share the configured API target and `~/.config/run402/projects.json` so target selection and credentials carry across surfaces.
 
 ### Casing in returned shapes
 

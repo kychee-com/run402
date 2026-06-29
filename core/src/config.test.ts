@@ -4,7 +4,23 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { getApiBase, getDeployApiBase, getConfigDir, getConfigBaseDir, getProfilesDir, getActiveProfile, isValidProfileName, getKeystorePath, getAllowancePath } from "./config.js";
+import {
+  configureApiBase,
+  getApiBase,
+  getApiBaseSource,
+  getApiTargetConfigPath,
+  getApiTargetKind,
+  getAllowancePath,
+  getConfigBaseDir,
+  getConfigDir,
+  getDeployApiBase,
+  getKeystorePath,
+  getProfilesDir,
+  getActiveProfile,
+  isCoreApiTarget,
+  isValidProfileName,
+  readApiTargetConfig,
+} from "./config.js";
 
 const origApiBase = process.env.RUN402_API_BASE;
 const origDeployApiBase = process.env.RUN402_DEPLOY_API_BASE;
@@ -12,6 +28,19 @@ const origConfigDir = process.env.RUN402_CONFIG_DIR;
 const origAllowancePath = process.env.RUN402_ALLOWANCE_PATH;
 const origWallet = process.env.RUN402_WALLET;
 const origProfile = process.env.RUN402_PROFILE;
+
+function withTempConfig<T>(fn: (dir: string) => T): T {
+  const tmp = mkdtempSync(join(tmpdir(), "config-test-"));
+  const prev = process.env.RUN402_CONFIG_DIR;
+  process.env.RUN402_CONFIG_DIR = tmp;
+  try {
+    return fn(tmp);
+  } finally {
+    if (prev !== undefined) process.env.RUN402_CONFIG_DIR = prev;
+    else delete process.env.RUN402_CONFIG_DIR;
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 afterEach(() => {
   if (origApiBase !== undefined) process.env.RUN402_API_BASE = origApiBase;
@@ -31,17 +60,25 @@ afterEach(() => {
 describe("config", () => {
   it("returns default API base", () => {
     delete process.env.RUN402_API_BASE;
-    assert.equal(getApiBase(), "https://api.run402.com");
+    withTempConfig(() => {
+      assert.equal(getApiBase(), "https://api.run402.com");
+      assert.equal(getApiBaseSource(), "default");
+    });
   });
 
   it("returns custom API base from env", () => {
-    process.env.RUN402_API_BASE = "https://custom.api.com";
-    assert.equal(getApiBase(), "https://custom.api.com");
+    withTempConfig(() => {
+      process.env.RUN402_API_BASE = "https://custom.api.com";
+      assert.equal(getApiBase(), "https://custom.api.com");
+      assert.equal(getApiBaseSource(), "env");
+    });
   });
 
   it("accepts http:// API base (local dev / staging)", () => {
-    process.env.RUN402_API_BASE = "http://localhost:8080";
-    assert.equal(getApiBase(), "http://localhost:8080");
+    withTempConfig(() => {
+      process.env.RUN402_API_BASE = "http://localhost:8080";
+      assert.equal(getApiBase(), "http://localhost:8080");
+    });
   });
 
   it("warns and falls back to default when RUN402_API_BASE is empty string", () => {
@@ -54,7 +91,9 @@ describe("config", () => {
       return true;
     };
     try {
-      assert.equal(getApiBase(), "https://api.run402.com");
+      withTempConfig(() => {
+        assert.equal(getApiBase(), "https://api.run402.com");
+      });
     } finally {
       process.stderr.write = origWrite;
     }
@@ -87,9 +126,11 @@ describe("config", () => {
   });
 
   it("getDeployApiBase falls back to getApiBase when not set", () => {
-    delete process.env.RUN402_DEPLOY_API_BASE;
-    process.env.RUN402_API_BASE = "https://custom.api.com";
-    assert.equal(getDeployApiBase(), "https://custom.api.com");
+    withTempConfig(() => {
+      delete process.env.RUN402_DEPLOY_API_BASE;
+      process.env.RUN402_API_BASE = "https://custom.api.com";
+      assert.equal(getDeployApiBase(), "https://custom.api.com");
+    });
   });
 
   it("getDeployApiBase validates its own value", () => {
@@ -111,11 +152,40 @@ describe("config", () => {
       return true;
     };
     try {
-      assert.equal(getDeployApiBase(), "https://custom.api.com");
+      withTempConfig(() => {
+        assert.equal(getDeployApiBase(), "https://custom.api.com");
+      });
     } finally {
       process.stderr.write = origWrite;
     }
     assert.match(captured, /RUN402_DEPLOY_API_BASE/);
+  });
+
+  it("uses persisted profile API base when env is unset", () => {
+    withTempConfig(() => {
+      delete process.env.RUN402_API_BASE;
+      const cfg = configureApiBase("http://127.0.0.1:4020/", {
+        target_kind: "core",
+        health_status: "ok",
+      });
+      assert.equal(cfg.api_base, "http://127.0.0.1:4020");
+      assert.equal(getApiBase(), "http://127.0.0.1:4020");
+      assert.equal(getApiBaseSource(), "profile");
+      assert.equal(getApiTargetKind(), "core");
+      assert.equal(isCoreApiTarget(), true);
+      assert.equal(readApiTargetConfig()?.health_status, "ok");
+      assert.equal(getApiTargetConfigPath(), join(process.env.RUN402_CONFIG_DIR!, "target.json"));
+    });
+  });
+
+  it("env API base overrides persisted profile API base", () => {
+    withTempConfig(() => {
+      configureApiBase("http://127.0.0.1:4020", { target_kind: "core" });
+      process.env.RUN402_API_BASE = "https://custom.api.com";
+      assert.equal(getApiBase(), "https://custom.api.com");
+      assert.equal(getApiBaseSource(), "env");
+      assert.equal(isCoreApiTarget(), false);
+    });
   });
 
   it("returns default config dir", () => {
