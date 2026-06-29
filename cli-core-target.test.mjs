@@ -29,6 +29,10 @@ const originalApiBase = process.env.RUN402_API_BASE;
 const originalAllowancePath = process.env.RUN402_ALLOWANCE_PATH;
 const originalWallet = process.env.RUN402_WALLET;
 const originalProfile = process.env.RUN402_PROFILE;
+const originalGithubActions = process.env.GITHUB_ACTIONS;
+const originalActionsIdTokenRequestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+const originalActionsIdTokenRequestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+const originalRun402ProjectId = process.env.RUN402_PROJECT_ID;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -158,6 +162,10 @@ beforeEach(() => {
   delete process.env.RUN402_ALLOWANCE_PATH;
   delete process.env.RUN402_WALLET;
   delete process.env.RUN402_PROFILE;
+  delete process.env.GITHUB_ACTIONS;
+  delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+  delete process.env.RUN402_PROJECT_ID;
   globalThis.fetch = mockFetch;
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   calls = [];
@@ -178,6 +186,14 @@ afterEach(() => {
   else delete process.env.RUN402_WALLET;
   if (originalProfile !== undefined) process.env.RUN402_PROFILE = originalProfile;
   else delete process.env.RUN402_PROFILE;
+  if (originalGithubActions !== undefined) process.env.GITHUB_ACTIONS = originalGithubActions;
+  else delete process.env.GITHUB_ACTIONS;
+  if (originalActionsIdTokenRequestUrl !== undefined) process.env.ACTIONS_ID_TOKEN_REQUEST_URL = originalActionsIdTokenRequestUrl;
+  else delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  if (originalActionsIdTokenRequestToken !== undefined) process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = originalActionsIdTokenRequestToken;
+  else delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+  if (originalRun402ProjectId !== undefined) process.env.RUN402_PROJECT_ID = originalRun402ProjectId;
+  else delete process.env.RUN402_PROJECT_ID;
   rmSync(tempDir, { recursive: true, force: true });
 });
 
