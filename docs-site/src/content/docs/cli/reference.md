@@ -25,13 +25,23 @@ Install + deploy:
 
 ```bash
 npm install -g run402
-run402 init
-run402 tier set prototype
-run402 projects provision --name "my-app"    # returns anon_key, service_key, project_id
-run402 deploy apply --manifest app.json      # use the anon_key in your frontend code
+run402 up --name "my-app" -y                 # validates manifest, bootstraps prerequisites, deploys
 ```
 
-Provision before writing frontend code so the real `anon_key` is embedded. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
+`up` is the agent-first path when the repo has `run402.deploy.json` or `app.json`. It is a thin CLI shim over the SDK action runner; the SDK owns manifest validation, project resolution, recursive prerequisites, idempotency-key derivation, and deploy apply. Provision before writing frontend code when you need the real `anon_key` embedded. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
+
+Self-hosted Run402 Core target:
+
+```bash
+npm install -g run402
+run402 init --api-base=http://my-core:4020
+run402 projects provision --name "my-app"    # returns anon_key, service_key, project_id
+run402 deploy apply --manifest app.json      # uses the active Core project
+```
+
+`init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy apply` do not require Cloud tier, allowance, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
+
+App build scripts should read the same target/profile store through `resolveRun402TargetProfile()` from `@run402/sdk/node`, not by parsing `target.json` or `projects.json` themselves.
 
 ## Core facts
 
@@ -40,9 +50,10 @@ Provision before writing frontend code so the real `anon_key` is embedded. `prot
 - `<id>` in commands = `project_id` from `run402 projects list`
 - Output: JSON stdout on success; JSON stderr on failure; exit 0 success, non-zero error. See Output Contract.
 - CLI handles x402 signing; do not request private keys or payment libraries.
+- `run402 up` is the only compound CLI command. It emits natural JSON with `steps[]` (no top-level success `status`), and `--dry-run` performs no gateway mutations, uploads, or local writes.
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`; generated workflow calls `run402 deploy apply` with `permissions: id-token: write`.
 - Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
-- Env overrides: `RUN402_API_BASE` (default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`)
+- Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
 - Wallets: `run402 wallets` manages named profiles. Select via `--wallet <name>` (`--profile`), `RUN402_WALLET`, or nearest `.run402.json` binding (commit-safe name only). Precedence: flag > env > `.run402.json`/`.run402.local.json` > `wallets use` default > `default`. Env/binding conflict hard-fails unless flag passed. `default` stays at config root; named wallets live under `{base}/profiles/<name>/`. Non-default active wallet is echoed on stderr and shown in `status` / `wallets current`.
 
 ## Output Contract
@@ -59,6 +70,33 @@ Uniform contract:
 - `cli-output-contract.test.mjs` guards this; violations are regressions.
 - v3.0 breaking change: success wrapper `{ status: "ok", ...payload }` removed; gate on exit code. Stderr error envelope unchanged.
 
+## `run402 up` (SDK action runner)
+
+`run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--dry-run] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
+
+Use `up` for a repo-level app deploy when the workspace has a deploy manifest. It discovers `run402.deploy.json`, then `app.json` under `--dir` / cwd, validates the manifest and filesystem references before any mutation, then executes the SDK action plan.
+
+Project resolution order:
+- explicit `--project`
+- workspace link `.run402/project.json` (`schema_version: "run402.workspace-project.v1"`, `project_id`, optional `name`, `target`)
+- manifest `project_id`
+- approved project creation from `--name`
+- approved active-project fallback
+
+`--name` is only project creation/link metadata. It is not part of the deploy manifest, does not select a project when another selector already resolved one, and never renames an existing project. The workspace link is a local convenience file; it is written atomically and skipped in `--dry-run`.
+
+Approval and recursion:
+- Non-interactive recursive mutations require `-y/--yes`; without it the command fails before mutating and returns a structured approval-required error.
+- If allowance/tier/project/workspace link are already configured, plain `run402 up` runs the requested deploy without `-y`.
+- In a TTY, the CLI prompts for SDK-planned mutations. In SDK code, pass `{ approval: "yes" }`, `{ approval: "never" }`, or an interactive approval callback.
+- `--dry-run` returns planned `steps[]` without allowance creation, faucet request, tier payment, project creation, workspace-link write, upload, or deploy commit.
+- Run402 Cloud `up` can create/fund an allowance, ensure a prototype tier by default, create a project from `--name`, write the workspace link, then apply the manifest.
+- Run402 Core `up` skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected by `--project`, workspace link, or manifest.
+- The SDK derives child idempotency keys for recursive gateway mutations from the root action key; pass `--idempotency-key` when you need a stable external key.
+- Deploy warnings use the same review surface as `deploy apply`: prefer repeatable `--allow-warning <code>` and reserve broad `--allow-warnings` for reviewed exceptional cases.
+
+Output: stdout is the action result, e.g. `{ "action": "up", "dry_run": false, "target": "cloud", "steps": [...], "result": { "project_id": "prj_...", "manifest_path": "...", "deploy": {...} } }`. Stderr carries JSON action-step events unless `--quiet`.
+
 ## Error JSON and Safe Retry
 
 CLI errors: JSON stderr with outer `"status": "error"`. Run402 JSON bodies may merge into the envelope. Branch on `code`, not `message`/legacy `error`.
@@ -73,6 +111,7 @@ Canonical fields:
 - `details`: structured route-specific context
 - `next_actions`: advisory typed suggestions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`, or `deploy_site_first`. CLI-resolvable entries carry a literal `command`, e.g. `{ "type": "create_project", "command": "run402 projects provision" }`. Do not execute route-like suggestions without validating method/path/auth/safety.
 - Cold-start chain: a fresh agent that knows only `run402 deploy apply` is walked to a deployed result by following `next_actions` — no allowance -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — each step idempotent, then retry the deploy. You do not need to memorize the sequence; follow what each failure hands back.
+- Prefer `run402 up` when starting from a local repo: it plans and runs that same cold-start chain through the SDK instead of executing advisory `next_actions[].command` strings.
 
 Retry policy:
 - Retry same request only when `retryable: true` and `safe_to_retry: true`; reuse idempotency key for mutations when available.
@@ -89,15 +128,15 @@ Retry policy:
 
 Examples:
 ```json
-{ "status": "error", "http": 403, "message": "Project is frozen.", "code": "PROJECT_FROZEN", "category": "lifecycle", "retryable": false, "safe_to_retry": true, "mutation_state": "none", "next_actions": [{ "action": "renew_tier" }, { "action": "check_usage" }] }
+{ "status": "error", "http": 403, "message": "Project is frozen.", "code": "PROJECT_FROZEN", "category": "lifecycle", "retryable": false, "safe_to_retry": true, "mutation_state": "none", "next_actions": [{ "type": "renew_tier" }, { "type": "check_usage" }] }
 ```
 
 ```json
-{ "status": "error", "http": 402, "message": "Payment required.", "code": "PAYMENT_REQUIRED", "category": "payment", "retryable": true, "safe_to_retry": true, "next_actions": [{ "action": "submit_payment" }] }
+{ "status": "error", "http": 402, "message": "Payment required.", "code": "PAYMENT_REQUIRED", "category": "payment", "retryable": true, "safe_to_retry": true, "next_actions": [{ "type": "submit_payment" }] }
 ```
 
 ```json
-{ "status": "error", "message": "Migration failed.", "code": "MIGRATION_FAILED", "category": "deploy", "retryable": false, "safe_to_retry": true, "mutation_state": "rolled_back", "trace_id": "trc_...", "details": { "operation_id": "op_...", "phase": "migrate" }, "next_actions": [{ "action": "edit_migration" }] }
+{ "status": "error", "message": "Migration failed.", "code": "MIGRATION_FAILED", "category": "deploy", "retryable": false, "safe_to_retry": true, "mutation_state": "rolled_back", "trace_id": "trc_...", "details": { "operation_id": "op_...", "phase": "migrate" }, "next_actions": [{ "type": "edit_migration" }] }
 ```
 
 ---
@@ -117,6 +156,14 @@ run402 allowance balance   # Check USDC balance (mainnet + testnet + billing)
 ```
 
 Allowance lives at `~/.config/run402/allowance.json` (0600). CLI signs x402 automatically; never handle private keys/payment libs manually.
+
+For a self-hosted Run402 Core Gateway, skip Cloud allowance setup and configure the target instead:
+
+```bash
+run402 init --api-base=http://my-core:4020
+```
+
+After that, the same `run402 projects provision` and `run402 deploy apply` commands target Core.
 
 ## Step 3: Subscribe to a Tier
 
@@ -253,7 +300,7 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
 }
 ```
 
-File entries: bare UTF-8 string; `{ "data": "...", "encoding": "utf-8" | "base64", "content_type": "..." }`; or `{ "path": "dist/index.html", "content_type": "text/html" }`. `--manifest` relative paths resolve from manifest dir; `--spec`/stdin paths resolve from cwd. Migrations may use `"sql_path"` / `"sql_file"` instead of `"sql"`. CLI/MCP share SDK `normalizeDeployManifest`; JSON can become SDK-native `ReleaseSpec`. Strict adapter: only top-level `$schema` ignored; unknown fields/no-op specs fail before planning (`"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, `"functions.replace.api.config.schedule"`).
+File entries: bare UTF-8 string; `{ "data": "...", "encoding": "utf-8" | "base64", "content_type": "..." }`; or `{ "path": "dist/index.html", "content_type": "text/html" }`. `site.replace` / `site.patch.put` may also be `{ "__source": "local-dir", "path": "dist/client" }` for a static-site directory. Function `source` may be `{ "path": "dist/run402/functions/api.js" }`. `--manifest` relative paths resolve from manifest dir; `--spec`/stdin paths resolve from cwd. Authoring-only local paths and `__source` markers are stripped/staged before the apply request. Migrations may use `"sql_path"` / `"sql_file"` instead of `"sql"`. CLI/MCP share SDK `normalizeDeployManifest`; JSON can become SDK-native `ReleaseSpec`. Strict adapter: only top-level `$schema` and app-kit evidence `x-run402-omitted_features` are ignored before planning; unknown fields/no-op specs fail (`"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, `"functions.replace.api.config.schedule"`).
 
 Function specs: `runtime: "node22"`, exactly one code source (`source` or `files`+`entrypoint`), `config.timeout_seconds`, `config.memory_mb`, sibling `schedule`. Patch: omit `schedule` to keep; `"schedule": null` removes. `deps: string[]` works under `apply-v1-function-deps`; gateway installs/bundles. `run402 functions deploy --deps` builds one `functions.patch.set` and uses unified apply; legacy standalone deploy route removed.
 
@@ -338,7 +385,7 @@ run402 deploy apply --dir ./dist --project prj_...
 run402 deploy apply --dir ./dist --manifest run402.config.json --project prj_...
 ```
 
-CLI dynamically imports `@run402/astro/release-slice` from the consuming project. Requires `@run402/astro >=1.2.1` + `@run402/sdk >=2.18.0`; older SDKs reject `FunctionSpec.class: 'ssr'`, helper preflights `R402_ASTRO_SDK_VERSION_TOO_OLD` with upgrade command. Helper bundles SSR server with esbuild into single `source`, roots site at `build.client` (`dist/run402/client/`, NOT `dist/`), omits `routes` so gateway's SSR catch-all works and base routes carry forward (also CI-safe without route scopes), defaults `site.public_paths: { mode: "implicit" }`, and colocates `_assets-manifest.json` inside `build.client`. Missing/incompatible manifest errors: `R402_ASTRO_ADAPTER_MANIFEST_MISSING` / `R402_ASTRO_ADAPTER_MANIFEST_VERSION_UNSUPPORTED` with `hint`+`docs`. SDK equivalent: `buildAstroReleaseSlice`. Do not hand-roll `site`/`public_paths`; shipping `run402/adapter.json` or `run402/server/**` as site content means source rooted at `dist/` instead of `dist/run402/client/`; SDK rejects `ASTRO_ADAPTER_TREE_IN_SITE`, gateway warns `SITE_NO_REACHABLE_HTML`.
+CLI dynamically imports `@run402/astro/release-slice` from the consuming project. Requires `@run402/astro >=1.2.1` + `@run402/sdk >=2.18.0`; older SDKs reject `FunctionSpec.class: 'ssr'`, helper preflights `R402_ASTRO_SDK_VERSION_TOO_OLD` with upgrade command. Helper bundles SSR server with esbuild into single `source`, marks it with `class: "ssr"` and `capabilities: ["astro.ssr.v1"]`, roots site at `build.client` (`dist/run402/client/`, NOT `dist/`), omits `routes` so gateway's SSR catch-all works and base routes carry forward (also CI-safe without route scopes), defaults `site.public_paths: { mode: "implicit" }`, and colocates `_assets-manifest.json` inside `build.client`. Missing/incompatible manifest errors: `R402_ASTRO_ADAPTER_MANIFEST_MISSING` / `R402_ASTRO_ADAPTER_MANIFEST_VERSION_UNSUPPORTED` with `hint`+`docs`. SDK equivalent: `buildAstroReleaseSlice`. Do not hand-roll `site`/`public_paths`; shipping `run402/adapter.json` or `run402/server/**` as site content means source rooted at `dist/` instead of `dist/run402/client/`; SDK rejects `ASTRO_ADAPTER_TREE_IN_SITE`, gateway warns `SITE_NO_REACHABLE_HTML`.
 
 Stuck deploys: `activation_pending` (rare transient between SQL commit and pointer-swap) auto-resumes hourly. Static spec/config activation failures throw structured deploy errors promptly. Explicit resume:
 
@@ -728,8 +775,12 @@ run402 subdomains claim my-app
 ---
 ## Command Reference
 
+### up
+- `run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--dry-run] [--quiet]` — SDK-owned recursive app deploy. Validates `run402.deploy.json`/`app.json`, ensures missing Cloud prerequisites when approved, resolves/creates/links a project, then applies the manifest. Output includes `steps[]`; success has no top-level `status`.
+
 ### init
 - `run402 init` — set up with x402 (Base Sepolia). Creates allowance, requests faucet, checks tier, lists projects.
+- `run402 init --api-base <url>` — configure the active profile to target a Run402 Core/API base. For Core, this does not create an allowance, request faucet funds, or require a Cloud tier.
 - `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
 
 ### status
@@ -764,7 +815,7 @@ Tier and quotas are per organization (not per project) — `set` is organization
 - `run402 projects quote`
 - `run402 projects list [--org <id>] [--all]` — SERVER read of the named, domain-aware inventory (NOT the local keystore). Membership-scoped by default: every project owned by an org your wallet is an active member of, each row `{ project_id, name, site_url, custom_domains, org_id, status, active }` (`active` from local state). `--org <id>` filters to one org (authorize-before-reveal: non-member/guessed id -> 403, non-UUID -> 400). `--all` reads the cross-wallet inventory across every wallet controlling your operator email — run `run402 operator login` first for the union, else it falls back to the current wallet's slice and echoes `scope`. Bare `run402 projects list` is the cold-start path (no login needed). Tier/lifecycle live on the organization — use `run402 status` / `run402 tier status`.
 - `run402 projects rename <id> --name <label>` — rename a project (fix an auto-generated name). Needs org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Works even if the project isn't in the local keystore. Server-validated name (1-200 chars, no control characters).
-- `run402 projects provision [--name <name>] [--org <id>]` — `--org` provisions into an EXISTING org (you need `developer`+ on it); omit for the cold-start path (the wallet's organization). Tier is org-governed — a client-supplied `--tier` is ignored when targeting an org.
+- `run402 projects provision [--name <name>] [--org <id>]` — `--org` provisions into an EXISTING org (you need `developer`+ on it); omit for the cold-start path (the wallet's organization). Tier is org-governed — a client-supplied `--tier` is ignored when targeting an org. Against a configured Core target, creates a local Core project without Cloud payment and saves it as the active project.
 - `run402 projects use <id>`
 - `run402 projects get <id>` — SERVER read of one project's authoritative view: `{ project_id, public_id, name, org_id, tier, effective_status, organization_lifecycle_state, site_url, custom_domains[], last_deploy, mailbox[], usage{api_calls, storage_bytes, api_calls_limit, storage_bytes_limit}, created_at }`. Caller-authed (SIWX/control-plane, no project keys) and works even if the project isn't in the local keystore; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Returns NO keys — use `run402 projects keys <id>` for those. Contrast `info`/`keys`, which read the LOCAL keystore only.
 - `run402 projects info <id>`
@@ -807,7 +858,7 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 - `run402 deploy diagnose [--project <id>] <url> [--method GET]` — URL-first public deploy diagnostics
 - `run402 deploy resolve [--project <id>] (--url <url> | --host <host> [--path /x]) [--method GET]` — lower-level resolver parity; `--url` cannot be combined with `--host`/`--path`
 
-Requires active tier and a provisioned project. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain. Secret values are write-only: set them with `printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin` or `--file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless each warning is covered by repeatable `--allow-warning <code>` or the broad reviewed `--allow-warnings`. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
+Requires active tier and a provisioned project on Run402 Cloud. Against a configured Core target, uses the active Core project and does not require Cloud tier/allowance setup. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain when the target supports that slice. Secret values are write-only: set them with `printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin` or `--file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless each warning is covered by repeatable `--allow-warning <code>` or the broad reviewed `--allow-warnings`. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
 
 Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `GITHUB_ACTIONS=true`, `ACTIONS_ID_TOKEN_REQUEST_URL`, and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are present. In that mode, project id resolution is `--project`, then `manifest.project_id`, then the local active project if present, then `RUN402_PROJECT_ID`.
 
@@ -1225,6 +1276,8 @@ Built-in AI helpers. Translation requires the AI Translation add-on on the proje
 
 ### email
 Max 5 mailboxes/project. Inspect defaults and footer policy with `email mailboxes`; set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` via `email defaults`; set per-mailbox outbound footer policy with `email update --footer-policy run402_transparency|none`. Omit `--mailbox` to use outbound default; branch on `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` + `next_actions`. `footer_policy=none` requires hobby/team; prototype projects are locked to `run402_transparency` and return `FOOTER_POLICY_TIER_REQUIRED`. Send modes: template or raw HTML; one recipient/send. Rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients/lease: prototype 25 / 200 / 1000.
+
+Run402 Core uses the same CLI after `run402 init --api-base=http://my-core:4020`. The Core operator must configure the gateway outbound provider first; `email mailboxes` surfaces `provider_readiness`, `can_send`, `send_blocked_reason`, and `next_actions` when setup is missing. Core's first slice supports raw outbound mail with attachments; managed templates, inbound reply handling, sender-domain automation, and delivery operations may remain Cloud-only until the Core gateway adds them.
 
 Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 
