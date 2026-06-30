@@ -13,6 +13,11 @@ const originalFetch = globalThis.fetch;
 const originalLog = console.log;
 const originalError = console.error;
 const originalExit = process.exit;
+const ciEnvKeys = [
+  "GITHUB_ACTIONS",
+  "ACTIONS_ID_TOKEN_REQUEST_URL",
+  "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+];
 let stdout = [];
 let stderr = [];
 let calls = [];
@@ -71,6 +76,7 @@ function stderrJson() {
 
 async function captureSuccess(fn) {
   captureStart();
+  const restoreCiEnv = scrubCiEnv();
   try {
     await fn();
     return { stdout: stdout.join("\n"), stderr: stderr.join("\n"), json: stdoutJson() };
@@ -78,6 +84,7 @@ async function captureSuccess(fn) {
     err.message = `${err.message}\nstdout:\n${stdout.join("\n")}\nstderr:\n${stderr.join("\n")}`;
     throw err;
   } finally {
+    restoreCiEnv();
     captureStop();
   }
 }
@@ -85,15 +92,28 @@ async function captureSuccess(fn) {
 async function expectExit1(fn) {
   let threw = null;
   captureStart();
+  const restoreCiEnv = scrubCiEnv();
   try {
     await fn();
   } catch (err) {
     threw = err;
   } finally {
+    restoreCiEnv();
     captureStop();
   }
   assert.equal(threw?.message, "process.exit(1)");
   return stderrJson();
+}
+
+function scrubCiEnv() {
+  const previous = new Map(ciEnvKeys.map((key) => [key, process.env[key]]));
+  for (const key of ciEnvKeys) delete process.env[key];
+  return () => {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
 }
 
 async function seedDeployAllowance() {
