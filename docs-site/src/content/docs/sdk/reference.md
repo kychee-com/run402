@@ -24,6 +24,8 @@ Two entry points:
 | Import | Use when | Bundles |
 |---|---|---|
 | `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/config` | Authoring typed deploy configs that normalize to `ReleaseSpec` | Browser-safe helper descriptors and types: `defineConfig`, `dir`, `file`, `sqlFile`, `nodeFunction`, `Run402ExecutionMode`. No filesystem, env, credential, or network side effects. |
+| `@run402/sdk/node/config` | Loading explicit executable deploy configs in Node | Re-exports config helpers plus `loadDeployManifest`, `loadExecutableDeployConfig`, and `normalizeDeployManifest`. |
 | `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
 
 ## Quick start (Node)
@@ -51,6 +53,23 @@ const provision = await r.actions.run({
   type: Run402Action.ProjectsProvision,
   name: "my-app",
 });
+```
+
+Typed deploy config loop:
+
+```ts
+await r.up({ manifest: "run402.deploy.ts" }, { mode: "check" });
+const reviewed = await r.up({ manifest: "run402.deploy.ts" }, { mode: "plan" });
+await r.up(
+  { manifest: "run402.deploy.ts" },
+  {
+    mode: {
+      kind: "applyReviewed",
+      planId: reviewed.result?.plan?.plan_id ?? "",
+      planFingerprint: reviewed.result?.plan?.plan_fingerprint ?? undefined,
+    },
+  },
+);
 ```
 
 For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
@@ -132,9 +151,16 @@ type Run402ActionInput =
   | { type: typeof Run402Action.ProjectsProvision; name?: string; tier?: "prototype" | "hobby" | "team"; orgId?: string; idempotencyKey?: string }
   | { type: typeof Run402Action.TierSet; tier: "prototype" | "hobby" | "team"; idempotencyKey?: string }
   | { type: typeof Run402Action.Up; dir?: string; manifest?: string; projectId?: string; name?: string; tier?: "prototype" | "hobby" | "team"; orgId?: string; idempotencyKey?: string };
+
+type Run402ExecutionMode =
+  | "apply"
+  | "check"
+  | "printSpec"
+  | "plan"
+  | { kind: "applyReviewed"; planId: string; planFingerprint?: string };
 ```
 
-`r.actions.run(input, opts)` returns `{ action, dry_run, target, steps, result }`. `r.up(input, opts)` is equivalent to `actions.run({ type: Run402Action.Up, ...input }, opts)`.
+`r.actions.run(input, opts)` returns `{ action, mode, dry_run, target, steps, result }`. `r.up(input, opts)` is equivalent to `actions.run({ type: Run402Action.Up, ...input }, opts)`.
 
 `Run402Action.Up` behavior:
 - Discover `run402.deploy.json`, then `app.json` under `dir` / cwd; explicit `manifest` wins.
@@ -147,10 +173,58 @@ type Run402ActionInput =
 - Delegate the final deployment to `r.project(id).apply(spec, opts)`.
 
 Action options:
-- `dryRun: true` returns planned `steps[]` with no gateway mutations, uploads, or local writes.
+- `mode: "check"` validates local manifest/config and file references only. No gateway calls, uploads, prerequisite mutations, or local writes.
+- `mode: "printSpec"` returns the normalized `ReleaseSpec` in `result.spec`; CLI prints only that JSON.
+- `mode: "plan"` creates a gateway-reviewed non-deploying plan. It returns `result.plan.plan_id`, `plan_fingerprint`, `plan_expires_at`, warnings, diff, and same-surface `next_actions[]`.
+- `mode: { kind: "applyReviewed", planId, planFingerprint? }` applies only when the reviewed plan still matches. The SDK verifies before upload and commit.
 - `approval: "never" | "yes" | { mode: "interactive"; approve(request) }` gates recursive prerequisites and local link writes. SDK default is `"never"`; CLI maps `-y/--yes` to `"yes"` and TTY prompts to interactive approval. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy without approval.
 - `autoPrerequisites` defaults to `true` for `up` and `false` for direct actions.
 - `idempotencyKey` supplies a root key; recursive gateway mutations derive child keys from it.
+
+Legacy `dryRun: true` remains an action-graph compatibility mode.
+For typed deploy config, use `mode: "check"` for local validation and `mode: "plan"` for gateway review.
+
+### Typed deploy config (`@run402/sdk/config`)
+
+Typed configs compile to the same SDK-native `ReleaseSpec` as JSON manifests. Raw `ReleaseSpec` slices remain valid for fields without helpers.
+
+```ts
+import { defineConfig, dir, file, nodeFunction, sqlFile } from "@run402/sdk/config";
+
+export default defineConfig(({ env }) => ({
+  project: env.required("RUN402_PROJECT_ID"),
+  database: { migrations: [sqlFile("db/001_init.sql")] },
+  site: {
+    replace: dir("dist"),
+    public_paths: { mode: "implicit" },
+  },
+  functions: {
+    replace: {
+      api: nodeFunction("dist/functions/api.js", {
+        deps: ["zod@^3"],
+        requireAuth: true,
+      }),
+    },
+  },
+  assets: {
+    put: [{ key: "logo.svg", source: file("assets/logo.svg", { contentType: "image/svg+xml" }) }],
+  },
+  secrets: { require: ["OPENAI_API_KEY"] },
+}));
+```
+
+Helper semantics:
+- `defineConfig(config)` preserves type inference. The export may be an object or `(context) => object`; context has `manifestPath`, `rootDir`, and `env`. Use `env.get("NAME")`, `env.required("NAME")`, or `env.RUN402_*` property reads; executable manifest loads report `config.env_accessed` metadata for those reads.
+- `dir(path, { prefix?, ignore?, includeSensitive? })` resolves from the config directory, walks deterministically by normalized `/` path, skips sensitive defaults unless opted in, rejects symlinks, infers content type, and produces local directory descriptors consumed by the Node normalizer.
+- `file(path, { contentType? })` produces a local file source; the Node normalizer reads bytes later and keeps secrets out of config examples.
+- `sqlFile(path, { id?, checksum?, transaction? })` derives `id` from the filename when omitted and keeps checksum/transaction metadata stable.
+- `nodeFunction(path, opts)` creates a Node 22 `FunctionSpec` from built JavaScript. TypeScript function sources (`.ts`, `.tsx`, `.mts`, `.cts`) currently fail locally with `TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE`; build them first and point at `.js`.
+
+Executable trust policy:
+- `loadDeployManifest("run402.deploy.ts")` can load `.ts/.mts/.cts/.js/.mjs/.cjs` configs only when the path is explicit.
+- Auto-discovery for `up` checks only data manifests: `run402.deploy.json`, then `app.json`.
+- If a repo only contains `run402.deploy.ts`, `up` fails with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST` and a next action to rerun with `--manifest run402.deploy.ts --check`.
+- `--check` / `mode: "check"` and `--print-spec` / `mode: "printSpec"` are local-only; use `--plan` / `mode: "plan"` for gateway policy, quota, cost, secret existence, missing-content, and base-release facts.
 
 The runner never executes arbitrary gateway-authored `next_actions[].command`; it uses its own fixed action graph (`allowance`, `tier`, `projects.provision`, workspace link, deploy apply).
 
@@ -386,14 +460,26 @@ const resumed = await (await r.project(projectId)).apply.resume(operationId);
 const pScoped = await r.project(spec.project);
 const { plan: lowPlan, byteReaders } = await pScoped.apply.plan(spec);
 await pScoped.apply.upload(lowPlan, { byteReaders });
-if (!lowPlan.plan_id) throw new Error("Dry-run plans cannot be committed");
+if (!lowPlan.plan_id) throw new Error("Preview plans cannot be committed");
 const committed = await pScoped.apply.commit(lowPlan.plan_id);
 
-// Server-authoritative dry-run: no bytes uploaded, no plan/operation rows.
-const { plan: preview } = await pScoped.apply.plan(spec, { dryRun: true });
-console.log(preview.plan_id);       // null
-console.log(preview.operation_id);  // null
-console.log(preview.diff.summary);  // SDK-normalized from the v2 flat plan envelope
+// Gateway-reviewed plan: no bytes uploaded and no release committed, but
+// returns a require-able reviewed identity.
+const { plan: reviewedPlan } = await pScoped.apply.plan(spec, { mode: "reviewedPlan" });
+console.log(reviewedPlan.plan_id);          // plan_...
+console.log(reviewedPlan.plan_fingerprint); // pfp_...
+
+await pScoped.apply(spec, {
+  requiredPlan: {
+    planId: reviewedPlan.plan_id ?? "",
+    planFingerprint: reviewedPlan.plan_fingerprint ?? undefined,
+  },
+});
+
+// Legacy low-level debug preview remains available but is not require-able.
+const { plan: debugPreview } = await pScoped.apply.plan(spec, { dryRun: true });
+console.log(debugPreview.plan_id);       // null
+console.log(debugPreview.operation_id);  // null
 ```
 
 Release observability reads live on the scoped `deploy` namespace:
@@ -811,8 +897,8 @@ replay) live on the same `r.project(id).apply` object. The internal engine is
 ```
 // MUTATIONS — r.project(id).apply (callable hero):
 r.project(id).apply(spec, opts?): Promise<DeployResult>
-r.project(id).apply.plan(spec, opts?: { idempotencyKey?, dryRun? }): Promise<{ plan, byteReaders }>
-r.project(id).apply.start(spec, opts?): Promise<DeployOperation>
+r.project(id).apply.plan(spec, opts?: { idempotencyKey?, mode?: "reviewedPlan" | "legacyDryRun", dryRun?, requiredPlan? }): Promise<{ plan, byteReaders }>
+r.project(id).apply.start(spec, opts?: { idempotencyKey?, requiredPlan?, allowWarnings?, allowWarningCodes? }): Promise<DeployOperation>
 r.project(id).apply.resume(operationId, opts?): Promise<DeployResult>
 
 // OBSERVABILITY — r.project(id).apply (read/event surface):

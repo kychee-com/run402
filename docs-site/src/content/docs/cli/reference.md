@@ -50,7 +50,7 @@ App build scripts should read the same target/profile store through `resolveRun4
 - `<id>` in commands = `project_id` from `run402 projects list`
 - Output: JSON stdout on success; JSON stderr on failure; exit 0 success, non-zero error. See Output Contract.
 - CLI handles x402 signing; do not request private keys or payment libraries.
-- `run402 up` is the only compound CLI command. It emits natural JSON with `steps[]` (no top-level success `status`), and `--dry-run` performs no gateway mutations, uploads, or local writes.
+- `run402 up` is the only compound CLI command. It emits natural JSON with `steps[]` (no top-level success `status`). Use `--check` for local-only validation, `--plan` for gateway-reviewed intent, and `--require-plan` for exact reviewed apply.
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`; generated workflow calls `run402 deploy apply` with `permissions: id-token: write`.
 - Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
 - Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
@@ -72,7 +72,7 @@ Uniform contract:
 
 ## `run402 up` (SDK action runner)
 
-`run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--dry-run] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
+`run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
 
 Use `up` for a repo-level app deploy when the workspace has a deploy manifest. It discovers `run402.deploy.json`, then `app.json` under `--dir` / cwd, validates the manifest and filesystem references before any mutation, then executes the SDK action plan.
 
@@ -83,13 +83,16 @@ Project resolution order:
 - approved project creation from `--name`
 - approved active-project fallback
 
-`--name` is only project creation/link metadata. It is not part of the deploy manifest, does not select a project when another selector already resolved one, and never renames an existing project. The workspace link is a local convenience file; it is written atomically and skipped in `--dry-run`.
+`--name` is only project creation/link metadata. It is not part of the deploy manifest, does not select a project when another selector already resolved one, and never renames an existing project. The workspace link is a local convenience file; it is written atomically and skipped in local check / reviewed-plan modes.
 
 Approval and recursion:
 - Non-interactive recursive mutations require `-y/--yes`; without it the command fails before mutating and returns a structured approval-required error.
 - If allowance/tier/project/workspace link are already configured, plain `run402 up` runs the requested deploy without `-y`.
 - In a TTY, the CLI prompts for SDK-planned mutations. In SDK code, pass `{ approval: "yes" }`, `{ approval: "never" }`, or an interactive approval callback.
-- `--dry-run` returns planned `steps[]` without allowance creation, faucet request, tier payment, project creation, workspace-link write, upload, or deploy commit.
+- `--check` returns local validation `steps[]` without allowance creation, faucet request, tier payment, project creation, workspace-link write, upload, gateway plan, or deploy commit.
+- `--print-spec` performs the same local validation and prints normalized `ReleaseSpec` JSON.
+- `--plan` calls the gateway reviewed-plan mode without upload or commit; it does not provision projects or write workspace links. The response includes a require-able `plan_id`, `plan_fingerprint`, expiration, warnings, diff, and `next_actions[]`.
+- `--require-plan <plan_id>` applies only if the reviewed plan still matches; optional `--plan-fingerprint <fingerprint>` tightens the check.
 - Run402 Cloud `up` can create/fund an allowance, ensure a prototype tier by default, create a project from `--name`, write the workspace link, then apply the manifest.
 - Run402 Core `up` skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected by `--project`, workspace link, or manifest.
 - The SDK derives child idempotency keys for recursive gateway mutations from the root action key; pass `--idempotency-key` when you need a stable external key.
@@ -359,6 +362,39 @@ run402 deploy apply --manifest app.json
 ```
 
 Stdout final result includes `release_id`, `operation_id`, `urls`, etc. Stderr streams JSON-line progress events. `--quiet` / `--final-only` silence stderr while preserving stdout.
+
+Typed deploy configs are an authoring format for the same `deploy apply` and `up` verbs, not a separate command family. JSON data manifests (`run402.deploy.json`, `app.json`) may be auto-discovered. TypeScript/JavaScript configs are executable local code, so v1 requires explicit trust with `--manifest`:
+
+```bash
+run402 up --manifest run402.deploy.ts --check
+run402 up --manifest run402.deploy.ts --print-spec
+run402 up --manifest run402.deploy.ts --plan
+run402 up --manifest run402.deploy.ts --require-plan plan_...
+```
+
+Mode contract:
+- `--check`: local-only import/normalize/strict field validation plus local file checks. No gateway calls, uploads, tier/project creation, or `.run402/project.json` writes. Success is raw JSON with `mode: "check"` / `dry_run: true` on `up`, or `{ ok: true, mode: "check", project_id, manifest_path }` on `deploy apply`.
+- `--print-spec`: local-only normalized `ReleaseSpec` JSON to stdout.
+- `--plan`: gateway-reviewed plan, no upload or commit. Response includes `plan_id`, `plan_fingerprint`, `plan_expires_at`, `manifest_digest`, diff, warnings, and `next_actions[]`.
+- `--require-plan <plan_id>`: exact reviewed apply. The SDK recompiles locally, verifies the reviewed plan before upload, then commit verifies again before release mutation. Add `--plan-fingerprint <fingerprint>` when it was returned by `--plan`.
+
+`run402 up --plan` preserves the `up` surface in `next_actions[0].argv`, e.g. `["run402","up","--manifest","run402.deploy.ts","--require-plan","plan_..."]`. `run402 deploy apply --plan` returns a `deploy apply --require-plan` action. `--allow-warning` / `--allow-warnings` conflict with `--require-plan` because reviewed-plan approval already binds the exact warning/destructive sets. If `run402 up --check` sees only `run402.deploy.ts` and no JSON manifest, it fails with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST` and a recovery action to rerun with `--manifest run402.deploy.ts --check`.
+
+Minimal typed config:
+
+```ts
+import { defineConfig, dir, nodeFunction, sqlFile } from "@run402/sdk/config";
+
+export default defineConfig(({ env }) => ({
+  project: env.required("RUN402_PROJECT_ID"),
+  database: { migrations: [sqlFile("db/001_init.sql")] },
+  site: { replace: dir("dist"), public_paths: { mode: "implicit" } },
+  functions: { replace: { api: nodeFunction("dist/functions/api.js") } },
+  secrets: { require: ["OPENAI_API_KEY"] }
+}));
+```
+
+Helper semantics: `dir()` walks files in stable path order, skips private/dev patterns by default like the existing directory deploy helpers, normalizes `/` separators, rejects symlinks, and infers content types. `file()` resolves relative to the config file directory. `sqlFile()` derives the migration id from the filename unless `id` is supplied and fails duplicate ids/checksum mismatches locally. `nodeFunction()` stages a Node 22 function from built JavaScript; TypeScript function source paths are rejected with `TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE` until a deterministic bundler path is introduced.
 
 Patch semantics — only the listed file changes:
 
@@ -776,7 +812,7 @@ run402 subdomains claim my-app
 ## Command Reference
 
 ### up
-- `run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--dry-run] [--quiet]` — SDK-owned recursive app deploy. Validates `run402.deploy.json`/`app.json`, ensures missing Cloud prerequisites when approved, resolves/creates/links a project, then applies the manifest. Output includes `steps[]`; success has no top-level `status`.
+- `run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--quiet]` — SDK-owned recursive app deploy. Validates `run402.deploy.json`/`app.json`, requires explicit `--manifest` for executable `.ts/.js` configs, ensures missing Cloud prerequisites when approved, resolves/creates/links a project, then applies the manifest. Output includes `steps[]`; success has no top-level `status`. Use `--check` for local-only validation, `--print-spec` for normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan` for exact reviewed apply.
 
 ### init
 - `run402 init` — set up with x402 (Base Sepolia). Creates allowance, requests faucet, checks tier, lists projects.
@@ -847,7 +883,7 @@ User auth: password + Google OAuth. See "User Auth" section below.
 All admin subcommands require a platform-admin allowance wallet (or an admin OAuth session). Project owners with a non-admin wallet receive `403 admin_required`.
 
 ### deploy
-- `run402 deploy apply --manifest app.json [--project <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive with `assets` slice support
+- `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag
 - `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
 - `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline); v1.58+
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
@@ -858,7 +894,7 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 - `run402 deploy diagnose [--project <id>] <url> [--method GET]` — URL-first public deploy diagnostics
 - `run402 deploy resolve [--project <id>] (--url <url> | --host <host> [--path /x]) [--method GET]` — lower-level resolver parity; `--url` cannot be combined with `--host`/`--path`
 
-Requires active tier and a provisioned project on Run402 Cloud. Against a configured Core target, uses the active Core project and does not require Cloud tier/allowance setup. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain when the target supports that slice. Secret values are write-only: set them with `printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin` or `--file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless each warning is covered by repeatable `--allow-warning <code>` or the broad reviewed `--allow-warnings`. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
+Requires active tier and a provisioned project on Run402 Cloud. Against a configured Core target, uses the active Core project and does not require Cloud tier/allowance setup. Deploys to an existing project: runs migrations, applies the authorization manifest (from a `manifest.json` entry in `files[]`), deploys functions, deploys static site, and claims subdomain when the target supports that slice. Secret values are write-only: set them with `printf %s "$OPENAI_API_KEY" | run402 secrets set <id> OPENAI_API_KEY --stdin` or `--file <path>` before deploy, then use value-free `secrets.require` in `deploy apply` manifests. `deploy apply` stops before upload/commit on confirmation-required warnings unless each warning is covered by repeatable `--allow-warning <code>` or the broad reviewed `--allow-warnings`; `--require-plan` absorbs the warning approval already bound into the reviewed plan and rejects warning flags. The manifest must include `project_id` (or use `--project` flag, or omit both to use the active project).
 
 Inside GitHub Actions, `deploy apply` automatically uses OIDC credentials when `GITHUB_ACTIONS=true`, `ACTIONS_ID_TOKEN_REQUEST_URL`, and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are present. In that mode, project id resolution is `--project`, then `manifest.project_id`, then the local active project if present, then `RUN402_PROJECT_ID`.
 
