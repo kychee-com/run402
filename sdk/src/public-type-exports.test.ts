@@ -177,6 +177,54 @@ test("action constants and discriminated inputs compile from package entrypoints
   }
 });
 
+test("typed config helpers and execution modes compile from config entrypoints", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-sdk-config-contract-"));
+  const contractPath = join(dir, "contract.ts");
+
+  try {
+    writeFileSync(
+      contractPath,
+      [
+        'import { defineConfig, dir, file, nodeFunction, sqlFile, type Run402ExecutionMode } from "@run402/sdk/config";',
+        'import { loadDeployManifest, normalizeDeployManifest } from "@run402/sdk/node/config";',
+        'const mode: Run402ExecutionMode = { kind: "applyReviewed", planId: "plan_123", planFingerprint: "run402-reviewed-plan-v1:" + "a".repeat(64) };',
+        "const config = defineConfig({",
+        '  project: "prj_123",',
+        '  database: { migrations: [sqlFile("db/001_init.sql")] },',
+        '  site: { replace: dir("dist"), public_paths: { mode: "implicit" } },',
+        '  functions: { replace: { api: nodeFunction("dist/functions/api.js", { requireAuth: true }) } },',
+        '  assets: { put: [{ key: "logo.svg", source: file("assets/logo.svg", { contentType: "image/svg+xml" }) }] },',
+        "});",
+        "void mode;",
+        "void config;",
+        "void loadDeployManifest;",
+        "void normalizeDeployManifest;",
+        "export {};",
+      ].join("\n"),
+    );
+
+    const program = ts.createProgram([contractPath], {
+      baseUrl: REPO_DIR,
+      paths: {
+        "@run402/sdk/config": ["sdk/src/config.ts"],
+        "@run402/sdk/node/config": ["sdk/src/node/config.ts"],
+      },
+      lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      noEmit: true,
+      skipLibCheck: true,
+      strict: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+
+    assert.equal(formatDiagnostics(diagnostics), "");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("stable-host deploy resolve diagnostic types are available from package entrypoints", () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-sdk-resolve-diagnostics-contract-"));
   const contractPath = join(dir, "contract.ts");

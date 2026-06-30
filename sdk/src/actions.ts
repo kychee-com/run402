@@ -1,6 +1,7 @@
-import type { DeployResult } from "./namespaces/deploy.types.js";
+import type { DeployResult, PlanResponse, ReleaseSpec } from "./namespaces/deploy.types.js";
 import type { ProvisionResult } from "./namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "./namespaces/tier.js";
+import type { Run402ExecutionMode } from "./config.js";
 
 /**
  * Stable action identifiers for the SDK action runner. Use these constants
@@ -88,7 +89,18 @@ export type Run402ActionMutation =
 
 export interface Run402ActionRunOptions {
   /**
-   * Plan only. No gateway mutations, uploads, or local writes are performed.
+   * Canonical execution mode for typed-config workflows.
+   *
+   * - `check`: local manifest/config validation only
+   * - `printSpec`: local validation plus normalized ReleaseSpec output
+   * - `plan`: gateway-reviewed plan, no upload or commit
+   * - `{ kind: "applyReviewed" }`: apply only if a reviewed plan still matches
+   * - `apply`: default mutation path
+   */
+  mode?: Run402ExecutionMode;
+  /**
+   * Legacy action-graph dry run. Prefer `mode: "check"` for local-only
+   * typed-config validation or `mode: "plan"` for gateway-reviewed plans.
    */
   dryRun?: boolean;
   /**
@@ -133,6 +145,7 @@ export interface Run402ActionEvent {
 
 export interface Run402ActionResult<T = unknown> {
   action: Run402ActionType;
+  mode: Run402ExecutionMode | "legacyDryRun";
   dry_run: boolean;
   target: "cloud" | "core" | "unknown";
   steps: Run402ActionStep[];
@@ -143,6 +156,8 @@ export interface Run402UpResult {
   project_id: string;
   manifest_path: string;
   workspace_link_path?: string;
+  spec?: ReleaseSpec;
+  plan?: PlanResponse;
   deploy?: DeployResult;
 }
 

@@ -360,6 +360,14 @@ export { withRetry } from "./retry.js";
 export type * from "./retry.js";
 export { Run402Action } from "./actions.js";
 export type * from "./actions.js";
+export {
+  defineConfig,
+  dir,
+  file,
+  nodeFunction,
+  sqlFile,
+} from "./config.js";
+export type * from "./config.js";
 export type * from "./credentials.js";
 export type * from "./kernel.js";
 export {

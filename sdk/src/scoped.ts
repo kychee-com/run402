@@ -485,7 +485,12 @@ export interface ScopedApplyHero {
   ): Promise<DeployResult>;
   plan(
     spec: Omit<ReleaseSpec, "project"> & { project?: string },
-    opts?: { idempotencyKey?: string; dryRun?: boolean },
+    opts?: {
+      idempotencyKey?: string;
+      dryRun?: boolean;
+      mode?: "legacyDryRun" | "reviewedPlan";
+      requiredPlan?: { planId: string; planFingerprint?: string };
+    },
   ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }>;
   start(
     spec: Omit<ReleaseSpec, "project"> & { project?: string },

@@ -1,16 +1,254 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, it } from "node:test";
 
 import { LocalError } from "../errors.js";
 import {
   loadDeployManifest,
+  loadExecutableDeployConfig,
   normalizeDeployManifest,
 } from "./deploy-manifest.js";
 
 describe("Node deploy manifest helpers", () => {
+  it("loads explicit executable TypeScript deploy configs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-"));
+    try {
+      mkdirSync(join(root, "dist"), { recursive: true });
+      mkdirSync(join(root, "db"), { recursive: true });
+      mkdirSync(join(root, "functions"), { recursive: true });
+      writeFileSync(join(root, "dist", "index.html"), "<h1>typed</h1>");
+      writeFileSync(join(root, "db", "001_init.sql"), "select 1;\n");
+      writeFileSync(join(root, "functions", "api.mjs"), "export default () => new Response('ok');\n");
+      const helperUrl = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "config.ts")).href;
+      const manifestPath = join(root, "run402.deploy.ts");
+      writeFileSync(manifestPath, `
+        import { defineConfig, dir, file, nodeFunction, sqlFile } from ${JSON.stringify(helperUrl)};
+        export default defineConfig({
+          project: "prj_typed",
+          site: { replace: dir("./dist"), public_paths: { mode: "implicit" } },
+          database: { migrations: [sqlFile("./db/001_init.sql")] },
+          functions: { replace: { api: nodeFunction("./functions/api.mjs") } },
+          assets: { put: [{ key: "logo.txt", source: file("./dist/index.html") }] },
+        });
+      `);
+
+      const normalized = await loadDeployManifest(manifestPath);
+      assert.equal(normalized.spec.project, "prj_typed");
+      assert.equal(normalized.manifestPath, manifestPath);
+      assert.deepEqual(normalized.spec.site && "replace" in normalized.spec.site && normalized.spec.site.replace, {
+        __source: "local-dir",
+        path: join(root, "dist"),
+      });
+      assert.equal(normalized.spec.database?.migrations?.[0]?.sql, "select 1;\n");
+      assert.equal(
+        (normalized.spec.functions?.replace?.api.source as { path?: string }).path,
+        join(root, "functions", "api.mjs"),
+      );
+      assert.equal(
+        (normalized.spec.assets?.put?.[0] as { source?: { path?: string } }).source?.path,
+        join(root, "dist", "index.html"),
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("loads explicit executable TS, MTS, CJS, and MJS deploy configs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-exts-"));
+    try {
+      const cases = [
+        ["run402.deploy.ts", 'export default { project: "prj_ts", site: { public_paths: { mode: "implicit" } } };'],
+        ["run402.deploy.mjs", 'export default { project: "prj_mjs", site: { public_paths: { mode: "implicit" } } };'],
+        ["run402.deploy.cjs", 'module.exports = { project: "prj_cjs", site: { public_paths: { mode: "implicit" } } };'],
+        ["run402.deploy.mts", 'export default { project: "prj_mts", site: { public_paths: { mode: "implicit" } } };'],
+      ] as const;
+
+      for (const [fileName, source] of cases) {
+        const manifestPath = join(root, fileName);
+        writeFileSync(manifestPath, source);
+        const normalized = await loadDeployManifest(manifestPath);
+        assert.equal(normalized.spec.project, `prj_${fileName.split(".").at(-1)}`);
+        assert.equal(normalized.manifestPath, manifestPath);
+      }
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects executable configs with missing or non-object exports", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-invalid-"));
+    try {
+      const cases = [
+        ["missing.mjs", "export const unrelated = true;"],
+        ["primitive.mjs", "export default 123;"],
+      ] as const;
+      for (const [fileName, source] of cases) {
+        const manifestPath = join(root, fileName);
+        writeFileSync(manifestPath, source);
+        await assert.rejects(
+          () => loadExecutableDeployConfig(manifestPath),
+          (err: unknown) => err instanceof LocalError && err.code === "EXECUTABLE_CONFIG_INVALID_EXPORT",
+        );
+      }
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("wraps executable config throw and rejection with a stable local code", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-throws-"));
+    try {
+      const cases = [
+        ["throws.mjs", "export default () => { throw new Error('boom sync'); };"],
+        ["rejects.mjs", "export default async () => { throw new Error('boom async'); };"],
+      ] as const;
+      for (const [fileName, source] of cases) {
+        const manifestPath = join(root, fileName);
+        writeFileSync(manifestPath, source);
+        await assert.rejects(
+          () => loadExecutableDeployConfig(manifestPath),
+          (err: unknown) => {
+            assert.ok(err instanceof LocalError);
+            assert.equal(err.code, "EXECUTABLE_CONFIG_EVALUATION_FAILED");
+            assert.match(err.message, /boom/);
+            return true;
+          },
+        );
+      }
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("times out hanging executable config functions", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-timeout-"));
+    try {
+      const manifestPath = join(root, "run402.deploy.mjs");
+      writeFileSync(manifestPath, "export default () => new Promise(() => {});");
+      await assert.rejects(
+        () => loadExecutableDeployConfig(manifestPath, { timeoutMs: 20 }),
+        (err: unknown) => {
+          assert.ok(err instanceof LocalError);
+          assert.equal(err.code, "EXECUTABLE_CONFIG_TIMEOUT");
+          assert.equal((err as LocalError).details?.timeout_ms, 20);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("captures env helper metadata from executable configs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-env-"));
+    try {
+      const manifestPath = join(root, "run402.deploy.mjs");
+      writeFileSync(manifestPath, `
+        export default ({ env, manifestPath, rootDir }) => ({
+          project: env.required("RUN402_PROJECT_ID"),
+          checks: [{ name: "root", url: env.get("RUN402_CHECK_URL") ?? rootDir }],
+          site: { replace: { "meta.txt": { data: manifestPath } } },
+        });
+      `);
+      const normalized = await loadDeployManifest(manifestPath, {
+        env: {
+          RUN402_PROJECT_ID: "prj_env",
+          RUN402_CHECK_URL: "https://example.test/health",
+        },
+      });
+
+      assert.equal(normalized.spec.project, "prj_env");
+      assert.deepEqual(normalized.config?.env_accessed, ["RUN402_CHECK_URL", "RUN402_PROJECT_ID"]);
+      assert.equal(normalized.spec.checks?.[0]?.url, "https://example.test/health");
+      assert.equal(
+        normalized.spec.site &&
+          "replace" in normalized.spec.site &&
+          normalized.spec.site.replace["meta.txt"],
+        manifestPath,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("throws a structured local error for missing required config env", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-env-required-"));
+    try {
+      const manifestPath = join(root, "run402.deploy.mjs");
+      writeFileSync(manifestPath, `
+        export default ({ env }) => ({
+          project: env.required("RUN402_PROJECT_ID"),
+        });
+      `);
+
+      await assert.rejects(
+        () => loadExecutableDeployConfig(manifestPath, { env: {} }),
+        (err: unknown) => {
+          assert.ok(err instanceof LocalError);
+          assert.equal(err.code, "CONFIG_ENV_REQUIRED");
+          assert.deepEqual(err.details, { name: "RUN402_PROJECT_ID" });
+          assert.equal(err.context, "evaluating executable deploy config");
+          return true;
+        },
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects missing local sqlFile references during executable config normalization", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-missing-file-"));
+    try {
+      const helperUrl = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "config.ts")).href;
+      const manifestPath = join(root, "run402.deploy.ts");
+      writeFileSync(manifestPath, `
+        import { defineConfig, sqlFile } from ${JSON.stringify(helperUrl)};
+        export default defineConfig({
+          project: "prj_missing",
+          database: { migrations: [sqlFile("./db/missing.sql")] },
+        });
+      `);
+
+      await assert.rejects(
+        () => loadDeployManifest(manifestPath),
+        (err: unknown) => {
+          assert.ok(err instanceof LocalError);
+          assert.match(err.message, /Failed to read migration sql_file/);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects unbundled TypeScript function sources in executable configs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-ts-fn-"));
+    try {
+      mkdirSync(join(root, "functions"), { recursive: true });
+      writeFileSync(join(root, "functions", "api.ts"), "export default () => new Response('ok');\n");
+      const helperUrl = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "config.ts")).href;
+      const manifestPath = join(root, "run402.deploy.ts");
+      writeFileSync(manifestPath, `
+        import { defineConfig, nodeFunction } from ${JSON.stringify(helperUrl)};
+        export default defineConfig({
+          project: "prj_typed",
+          functions: { replace: { api: nodeFunction("./functions/api.ts") } },
+        });
+      `);
+
+      await assert.rejects(
+        () => loadDeployManifest(manifestPath),
+        (err) => err instanceof LocalError && err.code === "TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE",
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
   it("normalizes MCP/CLI manifest fields into an SDK ReleaseSpec", async () => {
     const normalized = await normalizeDeployManifest({
       $schema: "https://run402.com/schemas/release-spec.v1.json",
@@ -185,18 +423,19 @@ describe("Node deploy manifest helpers", () => {
     assert.equal(normalized.spec.i18n, null);
   });
 
-  it("rejects camelCase i18n fields in manifest JSON with a hint pointing at default_locale", async () => {
-    await assert.rejects(
-      () =>
-        normalizeDeployManifest({
-          project_id: "prj_manifest",
-          i18n: {
-            defaultLocale: "en",
-            locales: ["en"],
-          } as unknown as Parameters<typeof normalizeDeployManifest>[0]["i18n"],
-        }),
-      /defaultLocale.*default_locale/,
-    );
+  it("accepts SDK-native camelCase i18n fields for typed config compatibility", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      i18n: {
+        defaultLocale: "en",
+        locales: ["en"],
+      } as unknown as Parameters<typeof normalizeDeployManifest>[0]["i18n"],
+    });
+
+    assert.deepEqual(normalized.spec.i18n, {
+      defaultLocale: "en",
+      locales: ["en"],
+    });
   });
 
   it("normalizes explicit site public paths", async () => {

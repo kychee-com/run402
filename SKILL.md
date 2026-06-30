@@ -34,6 +34,8 @@ Six tool calls, zero-to-deployed:
 
 Optional next: **`deploy_function`** for server logic, **`assets_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` → `list_mailboxes` / `set_mailbox_defaults` / `update_mailbox` → `send_email`** for transactional mail.
 
+Typed `run402.deploy.ts` config files are executable local code and are handled by the CLI/SDK, not by a separate MCP tool in v1. For repo-level typed config, run `run402 up --manifest run402.deploy.ts --check`, then `--plan`, then `--require-plan <plan_id>`. `--check` is local-only; `--plan` is gateway-reviewed and returns `plan_fingerprint`; `--require-plan` applies only that reviewed intent.
+
 ## Error Envelopes and Safe Retry
 
 Run402-originated JSON errors may include a canonical envelope. Branch on the stable `code`, not English `message` or legacy `error` text. `message` is for display; `error` is a legacy fallback.

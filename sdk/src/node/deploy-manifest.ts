@@ -1,9 +1,17 @@
 import { readFile } from "node:fs/promises";
 import {
   dirname,
+  extname,
   isAbsolute,
   resolve as resolvePath,
 } from "node:path";
+import { pathToFileURL } from "node:url";
+import type {
+  Run402ConfigContext,
+  Run402ConfigEnv,
+  Run402ExecutableConfigExport,
+  Run402ReleaseConfig,
+} from "../config.js";
 import { LocalError } from "../errors.js";
 import { ROUTE_HTTP_METHODS } from "../namespaces/deploy.types.js";
 import type {
@@ -36,6 +44,7 @@ const CONTEXT = "normalizing deploy manifest";
 const MANIFEST_FIELDS = new Set([
   "$schema",
   "x-run402-omitted_features",
+  "project",
   "project_id",
   "idempotency_key",
   "base",
@@ -49,7 +58,14 @@ const MANIFEST_FIELDS = new Set([
   "checks",
   "i18n",
 ]);
-const MANIFEST_I18N_FIELDS = new Set(["default_locale", "locales", "detect", "unknown_locale_policy"]);
+const MANIFEST_I18N_FIELDS = new Set([
+  "default_locale",
+  "defaultLocale",
+  "locales",
+  "detect",
+  "unknown_locale_policy",
+  "unknownLocalePolicy",
+]);
 const MANIFEST_DATABASE_FIELDS = new Set(["migrations", "expose", "zero_downtime"]);
 const MANIFEST_MIGRATION_FIELDS = new Set([
   "id",
@@ -68,13 +84,16 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "files",
   "entrypoint",
   "config",
+  "deps",
   "schedule",
+  "requireAuth",
+  "requireRole",
   "require_auth",
   "require_role",
   "class",
   "capabilities",
 ]);
-const MANIFEST_FUNCTION_CONFIG_FIELDS = new Set(["timeout_seconds", "memory_mb"]);
+const MANIFEST_FUNCTION_CONFIG_FIELDS = new Set(["timeout_seconds", "memory_mb", "timeoutSeconds", "memoryMb"]);
 const MANIFEST_REQUIRE_ROLE_FIELDS = new Set([
   "table",
   "id_column",
@@ -109,6 +128,23 @@ const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "ac
 const MANIFEST_FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const MANIFEST_STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
+const DATA_MANIFEST_EXTENSIONS = new Set([".json"]);
+const EXECUTABLE_MANIFEST_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"]);
+const TYPESCRIPT_MANIFEST_EXTENSIONS = new Set([".ts", ".mts", ".cts"]);
+const TYPESCRIPT_FUNCTION_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts"]);
+const EXECUTABLE_CONFIG_TIMEOUT_MS = 5_000;
+const EXECUTABLE_CONFIG_METADATA = Symbol("run402.executableConfigMetadata");
+
+export interface LoadExecutableDeployConfigOptions {
+  /** Test/advanced override for executable config evaluation timeout. Defaults to 5000ms. */
+  timeoutMs?: number;
+  /** Test/advanced override for env helper values. Defaults to process.env. */
+  env?: Record<string, string | undefined>;
+}
+
+export interface ExecutableDeployConfigMetadata {
+  env_accessed: string[];
+}
 
 export type DeployManifestFileEntry =
   | ContentSource
@@ -193,6 +229,8 @@ export interface DeployManifestInput
   /** App-kit evidence metadata for humans/agents. Stripped before deploy planning. */
   "x-run402-omitted_features"?: unknown;
   /** CLI/MCP project field, normalized to SDK-native `ReleaseSpec.project`. */
+  project?: string;
+  /** CLI/MCP project field, normalized to SDK-native `ReleaseSpec.project`. */
   project_id?: string;
   database?: DeployManifestDatabaseSpec;
   functions?: DeployManifestFunctionsSpec;
@@ -200,7 +238,7 @@ export interface DeployManifestInput
   assets?: DeployManifestAssetSpec;
   /** Routed-locale-context slice. Omit to carry forward, `null` to clear,
    *  `{ default_locale, locales, detect?, unknown_locale_policy? }` to replace. */
-  i18n?: (Omit<I18nSpec, "defaultLocale" | "unknownLocalePolicy"> & {
+  i18n?: I18nSpec | (Omit<I18nSpec, "defaultLocale" | "unknownLocalePolicy"> & {
     default_locale: string;
     unknown_locale_policy?: I18nSpec["unknownLocalePolicy"];
   }) | null;
@@ -218,7 +256,12 @@ export interface NormalizeDeployManifestOptions {
 }
 
 export interface LoadDeployManifestOptions
-  extends Omit<NormalizeDeployManifestOptions, "baseDir"> {}
+  extends Omit<NormalizeDeployManifestOptions, "baseDir"> {
+  /** Test/advanced override for executable config evaluation timeout. Defaults to 5000ms. */
+  executableTimeoutMs?: number;
+  /** Test/advanced override for executable config env helper values. Defaults to process.env. */
+  env?: Record<string, string | undefined>;
+}
 
 export interface NormalizedDeployManifest {
   /** SDK-native deploy spec ready for `r.project(id).apply(spec, opts)`. */
@@ -229,6 +272,8 @@ export interface NormalizedDeployManifest {
   manifest: DeployManifestInput;
   /** Absolute path when produced by `loadDeployManifest(path)`. */
   manifestPath?: string;
+  /** Metadata captured while loading an explicit executable config. */
+  config?: ExecutableDeployConfigMetadata;
 }
 
 export async function loadDeployManifest(
@@ -236,6 +281,31 @@ export async function loadDeployManifest(
   opts: LoadDeployManifestOptions = {},
 ): Promise<NormalizedDeployManifest> {
   const manifestPath = isAbsolute(path) ? path : resolvePath(process.cwd(), path);
+  const extension = extname(manifestPath).toLowerCase();
+  if (EXECUTABLE_MANIFEST_EXTENSIONS.has(extension)) {
+    const loaded = await loadExecutableDeployConfig(manifestPath, {
+      ...(opts.executableTimeoutMs !== undefined ? { timeoutMs: opts.executableTimeoutMs } : {}),
+      ...(opts.env !== undefined ? { env: opts.env } : {}),
+    });
+    const metadata = getExecutableDeployConfigMetadata(loaded);
+    const normalized = await normalizeDeployManifest(loaded, {
+      ...opts,
+      baseDir: dirname(manifestPath),
+    });
+    return metadata
+      ? { ...normalized, manifestPath, config: metadata }
+      : { ...normalized, manifestPath };
+  }
+  if (!DATA_MANIFEST_EXTENSIONS.has(extension)) {
+    throw new LocalError(
+      `Unsupported deploy manifest extension '${extension || "(none)"}'. Use .json for data manifests or pass an explicit .ts/.js executable config.`,
+      "loading deploy manifest",
+      {
+        code: "UNSUPPORTED_DEPLOY_MANIFEST_EXTENSION",
+        details: { path, extension },
+      },
+    );
+  }
   let raw: string;
   try {
     raw = await readFile(manifestPath, "utf-8");
@@ -263,6 +333,149 @@ export async function loadDeployManifest(
     baseDir: dirname(manifestPath),
   });
   return { ...normalized, manifestPath };
+}
+
+export async function loadExecutableDeployConfig(
+  path: string,
+  opts: LoadExecutableDeployConfigOptions = {},
+): Promise<Run402ReleaseConfig> {
+  const manifestPath = isAbsolute(path) ? path : resolvePath(process.cwd(), path);
+  const extension = extname(manifestPath).toLowerCase();
+  if (!EXECUTABLE_MANIFEST_EXTENSIONS.has(extension)) {
+    throw new LocalError(
+      `Executable deploy config must use .ts, .mts, .cts, .js, .mjs, or .cjs; got '${extension || "(none)"}'.`,
+      "loading executable deploy config",
+      {
+        code: "UNSUPPORTED_EXECUTABLE_CONFIG_EXTENSION",
+        details: { path, extension },
+      },
+    );
+  }
+  let mod: Record<string, unknown>;
+  try {
+    mod = await importConfigModule(manifestPath, extension);
+  } catch (err) {
+    throw new LocalError(
+      `Failed to load executable deploy config '${path}': ${(err as Error).message}`,
+      "loading executable deploy config",
+      {
+        cause: err,
+        code: "EXECUTABLE_CONFIG_LOAD_FAILED",
+        details: { path, extension },
+      },
+    );
+  }
+  const exported = resolveExecutableConfigExport(mod);
+  if (exported === undefined) {
+    throw new LocalError(
+      "Executable deploy config must export a default config object or a named `config` export.",
+      "loading executable deploy config",
+      {
+        code: "EXECUTABLE_CONFIG_INVALID_EXPORT",
+        details: { path, exports: Object.keys(mod).sort() },
+      },
+    );
+  }
+  const env = createConfigEnv(opts.env ?? process.env);
+  const context: Run402ConfigContext = {
+    manifestPath,
+    rootDir: dirname(manifestPath),
+    env,
+  };
+  let value: unknown;
+  try {
+    value = typeof exported === "function"
+      ? await withConfigTimeout(Promise.resolve(exported(context)), path, opts.timeoutMs ?? EXECUTABLE_CONFIG_TIMEOUT_MS)
+      : exported;
+  } catch (err) {
+    if (err instanceof LocalError) throw err;
+    throw new LocalError(
+      `Executable deploy config '${path}' failed while evaluating: ${(err as Error).message}`,
+      "loading executable deploy config",
+      {
+        cause: err,
+        code: "EXECUTABLE_CONFIG_EVALUATION_FAILED",
+        details: { path },
+      },
+    );
+  }
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new LocalError(
+      "Executable deploy config export must resolve to an object.",
+      "loading executable deploy config",
+      {
+        code: "EXECUTABLE_CONFIG_INVALID_EXPORT",
+        details: { path, received: typeof value },
+      },
+    );
+  }
+  assertNoUnsupportedTypeScriptFunctionSources(value, "config");
+  attachExecutableDeployConfigMetadata(value, { env_accessed: [...env.accessed] });
+  return value as Run402ReleaseConfig;
+}
+
+function resolveExecutableConfigExport(mod: Record<string, unknown>): Run402ExecutableConfigExport | undefined {
+  let exported = (mod.default ?? mod.config) as Run402ExecutableConfigExport | Record<string, unknown> | undefined;
+  for (let i = 0; i < 2; i++) {
+    if (!isRecord(exported) || looksLikeDeployConfig(exported)) break;
+    const wrapper = exported as Record<string, unknown>;
+    const nested = wrapper.default ?? wrapper.config;
+    if (nested === undefined) break;
+    exported = nested as Run402ExecutableConfigExport | Record<string, unknown>;
+  }
+  return exported as Run402ExecutableConfigExport | undefined;
+}
+
+function looksLikeDeployConfig(value: Record<string, unknown>): boolean {
+  return [...MANIFEST_FIELDS].some((field) => Object.prototype.hasOwnProperty.call(value, field));
+}
+
+function createConfigEnv(source: Record<string, string | undefined>): Run402ConfigEnv {
+  const accessed = new Set<string>();
+  const read = (name: string): string | undefined => {
+    accessed.add(name);
+    return source[name];
+  };
+  return new Proxy(Object.create(null), {
+    get(_target, prop) {
+      if (prop === "accessed") return [...accessed].sort();
+      if (prop === "get") return read;
+      if (prop === "required") {
+        return (name: string): string => {
+          const value = read(name);
+          if (value === undefined || value === "") {
+            throw new LocalError(
+              `Required environment variable ${name} is not set.`,
+              "evaluating executable deploy config",
+              {
+                code: "CONFIG_ENV_REQUIRED",
+                details: { name },
+              },
+            );
+          }
+          return value;
+        };
+      }
+      if (prop === Symbol.toStringTag) return "Run402ConfigEnv";
+      if (typeof prop !== "string" || prop === "then" || prop === "toJSON") return undefined;
+      return read(prop);
+    },
+  }) as Run402ConfigEnv;
+}
+
+function attachExecutableDeployConfigMetadata(
+  value: Record<string, unknown>,
+  metadata: ExecutableDeployConfigMetadata,
+): void {
+  Object.defineProperty(value, EXECUTABLE_CONFIG_METADATA, {
+    value: { env_accessed: [...metadata.env_accessed].sort() },
+    enumerable: false,
+    configurable: true,
+  });
+}
+
+function getExecutableDeployConfigMetadata(value: Run402ReleaseConfig): ExecutableDeployConfigMetadata | undefined {
+  return (value as Record<symbol, unknown>)[EXECUTABLE_CONFIG_METADATA] as ExecutableDeployConfigMetadata | undefined;
 }
 
 export async function normalizeDeployManifest(
@@ -308,7 +521,7 @@ function resolveProject(
   manifest: DeployManifestInput,
   opts: NormalizeDeployManifestOptions,
 ): string {
-  const manifestProject = manifest.project_id;
+  const manifestProject = resolveManifestProject(manifest);
   if (
     opts.project !== undefined &&
     manifestProject !== undefined &&
@@ -334,6 +547,22 @@ function resolveIdempotencyKey(
   manifest: DeployManifestInput,
 ): string | undefined {
   return manifest.idempotency_key;
+}
+
+function resolveManifestProject(manifest: DeployManifestInput): string | undefined {
+  const snake = manifest.project_id;
+  const sdk = manifest.project;
+  if (snake !== undefined && sdk !== undefined && snake !== sdk) {
+    throw new LocalError(
+      `project conflict: manifest project=${sdk} but project_id=${snake}`,
+      CONTEXT,
+      {
+        code: "RUN402_PROJECT_CONFLICT",
+        details: { project: sdk, project_id: snake },
+      },
+    );
+  }
+  return sdk ?? snake;
 }
 
 async function mapDatabase(
@@ -467,9 +696,11 @@ function mapFunctionMap(
 function mapFunctionConfig(config: unknown): FunctionSpec["config"] {
   assertPlainRecord(config, "Deploy manifest function config");
   assertKnownFields(config, "Deploy manifest function config", MANIFEST_FUNCTION_CONFIG_FIELDS);
+  const timeoutSeconds = config.timeoutSeconds ?? config.timeout_seconds;
+  const memoryMb = config.memoryMb ?? config.memory_mb;
   return {
-    ...(config.timeout_seconds !== undefined ? { timeoutSeconds: config.timeout_seconds as number } : {}),
-    ...(config.memory_mb !== undefined ? { memoryMb: config.memory_mb as number } : {}),
+    ...(timeoutSeconds !== undefined ? { timeoutSeconds: timeoutSeconds as number } : {}),
+    ...(memoryMb !== undefined ? { memoryMb: memoryMb as number } : {}),
   };
 }
 
@@ -502,11 +733,14 @@ function mapFunction(
   if (raw.files !== undefined) out.files = mapFileSet(raw.files, opts);
   if (raw.entrypoint !== undefined) out.entrypoint = raw.entrypoint;
   if (raw.config !== undefined) out.config = mapFunctionConfig(raw.config);
+  if (raw.deps !== undefined) out.deps = [...raw.deps];
   if (raw.schedule !== undefined) out.schedule = raw.schedule;
   const rawRecord = raw as Record<string, unknown>;
-  if (rawRecord.require_auth !== undefined) out.requireAuth = rawRecord.require_auth as boolean;
-  if (rawRecord.require_role !== undefined) {
-    out.requireRole = rawRecord.require_role === null ? null : mapRequireRole(rawRecord.require_role);
+  const requireAuth = rawRecord.requireAuth ?? rawRecord.require_auth;
+  const requireRole = rawRecord.requireRole ?? rawRecord.require_role;
+  if (requireAuth !== undefined) out.requireAuth = requireAuth as boolean;
+  if (requireRole !== undefined) {
+    out.requireRole = requireRole === null ? null : mapRequireRole(requireRole);
   }
   if (raw.class !== undefined) out.class = raw.class;
   if (rawRecord.capabilities !== undefined) {
@@ -516,6 +750,83 @@ function mapFunction(
     out.capabilities = [...rawRecord.capabilities] as string[];
   }
   return out;
+}
+
+async function importConfigModule(
+  manifestPath: string,
+  extension: string,
+): Promise<Record<string, unknown>> {
+  const url = pathToFileURL(manifestPath).href;
+  if (TYPESCRIPT_MANIFEST_EXTENSIONS.has(extension)) {
+    let tsx: typeof import("tsx/esm/api");
+    try {
+      tsx = (await import("tsx/esm/api")) as typeof import("tsx/esm/api");
+    } catch (err) {
+      throw new LocalError(
+        "TypeScript deploy configs require the bundled tsx loader.",
+        "loading executable deploy config",
+        {
+          cause: err,
+          code: "EXECUTABLE_CONFIG_TS_LOADER_UNAVAILABLE",
+          details: { manifest_path: manifestPath },
+        },
+      );
+    }
+    return await tsx.tsImport(url, { parentURL: import.meta.url }) as Record<string, unknown>;
+  }
+  return await import(`${url}?run402_config=${Date.now()}`) as Record<string, unknown>;
+}
+
+async function withConfigTimeout<T>(promise: Promise<T>, path: string, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new LocalError(
+            `Executable deploy config '${path}' did not finish within ${timeoutMs}ms.`,
+            "loading executable deploy config",
+            {
+              code: "EXECUTABLE_CONFIG_TIMEOUT",
+              details: { path, timeout_ms: timeoutMs },
+            },
+          ));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function assertNoUnsupportedTypeScriptFunctionSources(value: unknown, resource: string): void {
+  if (!isRecord(value)) return;
+  const functions = value.functions;
+  if (!isRecord(functions)) return;
+  const maps: Array<[string, unknown]> = [];
+  if (isRecord(functions.replace)) maps.push([`${resource}.functions.replace`, functions.replace]);
+  if (isRecord(functions.patch) && isRecord(functions.patch.set)) {
+    maps.push([`${resource}.functions.patch.set`, functions.patch.set]);
+  }
+  for (const [mapResource, map] of maps) {
+    for (const [name, fn] of Object.entries(map as Record<string, unknown>)) {
+      if (!isRecord(fn)) continue;
+      const source = fn.source;
+      if (!isRecord(source) || typeof source.path !== "string") continue;
+      const extension = extname(source.path).toLowerCase();
+      if (TYPESCRIPT_FUNCTION_EXTENSIONS.has(extension)) {
+        throw new LocalError(
+          `nodeFunction('${source.path}') points at TypeScript source. Pre-bundle it to JavaScript for now; Run402 will not upload unbundled function TypeScript.`,
+          "loading executable deploy config",
+          {
+            code: "TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE",
+            details: { resource: `${mapResource}.${name}.source`, path: source.path },
+          },
+        );
+      }
+    }
+  }
 }
 
 function mapSite(
@@ -782,7 +1093,30 @@ function mapI18n(i18n: unknown): I18nSpec | null {
     default: "Use `default_locale` in i18n.",
     locale: "Use `locales` (plural array) in i18n.",
   });
-  const raw = i18n as { default_locale?: unknown; locales?: unknown; detect?: unknown; unknown_locale_policy?: unknown };
+  const raw = i18n as {
+    default_locale?: unknown;
+    defaultLocale?: unknown;
+    locales?: unknown;
+    detect?: unknown;
+    unknown_locale_policy?: unknown;
+    unknownLocalePolicy?: unknown;
+  };
+  if (typeof raw.defaultLocale === "string") {
+    return {
+      defaultLocale: raw.defaultLocale,
+      locales: Array.isArray(raw.locales)
+        ? ([...raw.locales] as string[])
+        : (raw.locales as unknown as string[]),
+      ...(raw.detect !== undefined ? {
+        detect: Array.isArray(raw.detect)
+          ? ([...raw.detect] as I18nSpec["detect"])
+          : (raw.detect as I18nSpec["detect"]),
+      } : {}),
+      ...(raw.unknownLocalePolicy !== undefined ? {
+        unknownLocalePolicy: raw.unknownLocalePolicy as I18nSpec["unknownLocalePolicy"],
+      } : {}),
+    };
+  }
   const out: I18nSpec = {
     defaultLocale: raw.default_locale as string,
     locales: Array.isArray(raw.locales)

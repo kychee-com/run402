@@ -7,7 +7,7 @@ import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./ar
 const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
-  run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--dry-run] [--quiet]
+  run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--quiet]
 
 Options:
   --name <name>       Project display name when up needs to create a project.
@@ -20,8 +20,16 @@ Options:
                       (prototype, hobby, team; default prototype).
   -y, --yes           Approve recursive prerequisites/local writes (allowance,
                       tier, project creation, workspace link) for non-interactive runs.
-  --dry-run           Plan the recursive action graph without gateway mutations,
+  --check             Validate the manifest/config locally. No gateway calls,
                       uploads, or local writes.
+  --print-spec        Print the normalized ReleaseSpec JSON. No gateway calls,
+                      uploads, or local writes.
+  --plan              Ask the gateway for a reviewed deploy plan. No upload,
+                      commit, project provisioning, or workspace link write.
+  --require-plan <id> Apply only if this reviewed plan still matches.
+  --plan-fingerprint <fingerprint>
+                      Optional fingerprint returned by --plan. Only valid
+                      with --require-plan.
   --allow-warning <code>
                       Acknowledge a reviewed deploy warning code (repeatable).
   --allow-warnings    Acknowledge all reviewed deploy warnings.
@@ -33,8 +41,9 @@ Project resolution:
 
 Examples:
   run402 up --name my-app -y
-  run402 up --dry-run
-  run402 up --manifest run402.deploy.json --project prj_...
+  run402 up --manifest run402.deploy.ts --check
+  run402 up --manifest run402.deploy.ts --plan
+  run402 up --manifest run402.deploy.ts --require-plan pln_...
 `;
 
 const TIERS = new Set(["prototype", "hobby", "team"]);
@@ -47,8 +56,8 @@ export async function run(args = []) {
   }
   assertKnownFlags(
     parsed,
-    ["--help", "-h", "-y", "--yes", "--dry-run", "--quiet", "--final-only", "--allow-warnings"],
-    ["--name", "--project", "--manifest", "--dir", "--tier", "--idempotency-key", "--allow-warning"],
+    ["--help", "-h", "-y", "--yes", "--dry-run", "--check", "--print-spec", "--plan", "--quiet", "--final-only", "--allow-warnings"],
+    ["--name", "--project", "--manifest", "--dir", "--tier", "--idempotency-key", "--allow-warning", "--require-plan", "--plan-fingerprint"],
   );
   const extras = positionalArgs(parsed, [
     "--name",
@@ -58,6 +67,8 @@ export async function run(args = []) {
     "--tier",
     "--idempotency-key",
     "--allow-warning",
+    "--require-plan",
+    "--plan-fingerprint",
   ]);
   if (extras.length > 0) {
     fail({
@@ -78,7 +89,22 @@ export async function run(args = []) {
 
   const yes = parsed.includes("-y") || parsed.includes("--yes");
   const quiet = parsed.includes("--quiet") || parsed.includes("--final-only");
+  const mode = parseExecutionMode(parsed);
   const dryRun = parsed.includes("--dry-run");
+  if (dryRun && mode !== undefined) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--dry-run cannot be combined with --check, --print-spec, --plan, or --require-plan.",
+      details: { flag: "--dry-run" },
+    });
+  }
+  if (isApplyReviewedMode(mode) && (parsed.includes("--allow-warnings") || parsed.includes("--allow-warning"))) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--allow-warning/--allow-warnings are not used with --require-plan; the reviewed plan already binds the warning set.",
+      details: { flag: "--require-plan" },
+    });
+  }
   const allowWarningCodes = collectRepeatedValues(parsed, "--allow-warning");
 
   try {
@@ -93,16 +119,60 @@ export async function run(args = []) {
       allowWarnings: parsed.includes("--allow-warnings") ? true : undefined,
       allowWarningCodes,
     }, {
+      ...(mode !== undefined ? { mode } : {}),
       dryRun,
       approval: makeApproval(yes),
       onEvent: quiet ? undefined : (event) => {
         console.error(JSON.stringify(event));
       },
     });
-    console.log(JSON.stringify(result, null, 2));
+    if (mode === "printSpec") {
+      console.log(JSON.stringify(result.result?.spec ?? null, null, 2));
+    } else {
+      console.log(JSON.stringify(result, null, 2));
+    }
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+function parseExecutionMode(args) {
+  const modes = [];
+  if (args.includes("--check")) modes.push("--check");
+  if (args.includes("--print-spec")) modes.push("--print-spec");
+  if (args.includes("--plan")) modes.push("--plan");
+  const requiredPlan = flagValue(args, "--require-plan");
+  if (requiredPlan) modes.push("--require-plan");
+  const fingerprint = flagValue(args, "--plan-fingerprint");
+  if (fingerprint && !requiredPlan) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--plan-fingerprint can only be used with --require-plan.",
+      details: { flag: "--plan-fingerprint" },
+    });
+  }
+  if (modes.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Choose only one execution mode: ${modes.join(", ")}`,
+      details: { modes },
+    });
+  }
+  if (args.includes("--check")) return "check";
+  if (args.includes("--print-spec")) return "printSpec";
+  if (args.includes("--plan")) return "plan";
+  if (requiredPlan) {
+    return {
+      kind: "applyReviewed",
+      planId: requiredPlan,
+      ...(fingerprint ? { planFingerprint: fingerprint } : {}),
+    };
+  }
+  return undefined;
+}
+
+function isApplyReviewedMode(mode) {
+  return mode && typeof mode === "object" && mode.kind === "applyReviewed";
 }
 
 function collectRepeatedValues(args, flag) {

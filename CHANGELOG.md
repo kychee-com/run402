@@ -159,6 +159,17 @@ Surfaces the v1.56 gateway verification-no-silent-fail bundle ([parent change: `
 
 - No SDK type changes — `email_verification` is consumed dynamically because the v1.55 SDK already returns the rest of the operator-status response as `unknown`-shaped JSON pass-through, and adding strict types here would force a parallel public-repo edit on every gateway-side field addition. Future work: type the operator-status response shape end-to-end.
 
+## 3.7.0 — unreleased
+
+### Added
+
+- **Typed deploy config DX.** `@run402/sdk/config` and `@run402/sdk/node/config` expose `defineConfig`, `dir`, `file`, `sqlFile`, `nodeFunction`, `Run402ExecutionMode`, and the Node executable config loader. JSON data manifests still auto-discover as `run402.deploy.json` / `app.json`; executable `.ts/.js` configs require explicit `--manifest`.
+- **Reviewed deploy modes on existing commands.** `run402 up` and `run402 deploy apply` now expose `--check`, `--print-spec`, `--plan`, and `--require-plan <plan_id>` without adding a new command family. `--check` / `--print-spec` are local-only; `--plan` returns gateway-reviewed `plan_id` / `plan_fingerprint`; `--require-plan` applies only the reviewed intent.
+
+### Changed
+
+- **Agent docs prefer explicit modes over bare dry-run wording.** README, CLI, SDK, MCP, OpenClaw, and `llms*.txt` now show the canonical `up --manifest run402.deploy.ts --check -> --plan -> --require-plan` path.
+
 ## 2.3.0 — unreleased
 
 Surfaces the v1.49 gateway image-variant pipeline ([run402#392](https://github.com/kychee-com/run402/issues/392), parent change: [`asset-image-variants` in run402-private](https://github.com/kychee-com/run402-private/tree/main/openspec/changes/asset-image-variants)). Additive, non-breaking — old clients silently ignore the new fields.

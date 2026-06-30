@@ -229,9 +229,18 @@ export class Deploy {
    */
   async plan(
     spec: ReleaseSpec,
-    opts: { idempotencyKey?: string; dryRun?: boolean } = {},
+    opts: {
+      idempotencyKey?: string;
+      dryRun?: boolean;
+      mode?: "legacyDryRun" | "reviewedPlan";
+      requiredPlan?: { planId: string; planFingerprint?: string };
+    } = {},
   ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
-    return planInternal(this.client, spec, opts.idempotencyKey, opts.dryRun);
+    return planInternal(this.client, spec, opts.idempotencyKey, {
+      dryRun: opts.dryRun ?? opts.mode === "legacyDryRun",
+      reviewedPlan: opts.mode === "reviewedPlan",
+      requiredPlan: opts.requiredPlan,
+    });
   }
 
   /**
@@ -270,11 +279,12 @@ export class Deploy {
       onEvent?: (event: DeployEvent) => void;
       idempotencyKey?: string;
       project?: string;
+      requiredPlan?: { planId: string; planFingerprint?: string };
     } = {},
   ): Promise<DeployResult> {
     const emit = makeEmitter(opts.onEvent);
     const commit = requireCloudCommitResponse(
-      await commitInternal(this.client, planId, opts.idempotencyKey, opts.project),
+      await commitInternal(this.client, planId, opts.idempotencyKey, opts.project, opts.requiredPlan),
       "committing deploy",
     );
     return await pollUntilReady(this.client, commit, {}, [], emit, opts.project);
@@ -664,10 +674,13 @@ async function applyOnce(
   const target: DeployTarget = opts.target === "core" ? "core" : "cloud";
   const sliceKinds = deriveSliceKinds(spec);
   emit({ type: "plan.started" });
-  const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey, false, target);
+  const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey, {
+    target,
+    requiredPlan: opts.requiredPlan,
+  });
   emit({ type: "plan.diff", diff: plan.diff });
   emitPlanWarnings(plan, emit);
-  abortOnConfirmationWarnings(plan, opts, allowWarningCodes);
+  if (!opts.requiredPlan) abortOnConfirmationWarnings(plan, opts, allowWarningCodes);
 
   if (plan.payment_required) {
     emit({
@@ -693,7 +706,7 @@ async function applyOnce(
       ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
     });
     const planId = requirePlanId(plan, "applying deploy to Core");
-    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project);
+    const commit = await commitInternal(client, planId, opts.idempotencyKey, spec.project, opts.requiredPlan);
     if (!isCoreCommitResponse(commit)) {
       return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
     }
@@ -710,7 +723,7 @@ async function applyOnce(
   });
   const { planId } = requirePersistedPlan(plan, "applying deploy");
   const commit = requireCloudCommitResponse(
-    await commitInternal(client, planId, opts.idempotencyKey, spec.project),
+    await commitInternal(client, planId, opts.idempotencyKey, spec.project, opts.requiredPlan),
     "applying deploy",
   );
   const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
@@ -747,7 +760,7 @@ async function applyOnce(
     });
     if (hasImagePut) {
       try {
-        const { plan: recheck } = await planInternal(client, spec, undefined, true);
+        const { plan: recheck } = await planInternal(client, spec, undefined, { dryRun: true });
         if (recheck.asset_entries && recheck.asset_entries.length > 0) {
           for (const recheckEntry of recheck.asset_entries) {
             const existing = result.assets.byKey[recheckEntry.key];
@@ -1132,9 +1145,16 @@ async function planInternal(
   client: Client,
   spec: ReleaseSpec,
   idempotencyKey?: string,
-  dryRun = false,
-  target: DeployTarget = "cloud",
+  opts: {
+    dryRun?: boolean;
+    reviewedPlan?: boolean;
+    requiredPlan?: { planId: string; planFingerprint?: string };
+    target?: DeployTarget;
+  } = {},
 ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
+  const dryRun = opts.dryRun === true;
+  const reviewedPlan = opts.reviewedPlan === true;
+  const target = opts.target ?? "cloud";
   const ciCredentials = isCiClient(client);
   validateSpec(spec);
   if (ciCredentials) assertCiDeployableSpec(spec);
@@ -1153,7 +1173,9 @@ async function planInternal(
   // gateway still needs `spec` in the body (with at least the project), so
   // we keep a minimal stub there.
   const inlineBody: PlanRequest = { spec: wireSpec };
-  if (idempotencyKey && !dryRun) inlineBody.idempotency_key = idempotencyKey;
+  if (idempotencyKey && !dryRun && !reviewedPlan) inlineBody.idempotency_key = idempotencyKey;
+  if (reviewedPlan) inlineBody.mode = "reviewed_plan";
+  if (opts.requiredPlan) inlineBody.required_plan = requiredPlanToWire(opts.requiredPlan);
   const inlineBytes = new TextEncoder().encode(JSON.stringify(inlineBody)).byteLength;
 
   let body: PlanRequest;
@@ -1171,11 +1193,11 @@ async function planInternal(
       },
     );
   } else {
-    if (dryRun) {
+    if (dryRun || reviewedPlan || opts.requiredPlan) {
       throw new Run402DeployError(
-        "Dry-run deploy planning requires an inline spec under the gateway body cap; the normalized deploy plan would require manifest_ref.",
+        "Check/plan/require-plan deploy planning requires an inline spec under the gateway body cap; the normalized deploy plan would require manifest_ref.",
         {
-          code: "DRY_RUN_REQUIRES_INLINE_SPEC",
+          code: "PLAN_REQUIRES_INLINE_SPEC",
           phase: "validate",
           resource: "manifest_ref",
           retryable: false,
@@ -1222,6 +1244,12 @@ async function planInternal(
     throw translateDeployError(err, "plan", null, null);
   }
   return { plan, byteReaders };
+}
+
+function requiredPlanToWire(plan: { planId: string; planFingerprint?: string }): NonNullable<PlanRequest["required_plan"]> {
+  const wire: NonNullable<PlanRequest["required_plan"]> = { plan_id: plan.planId };
+  if (plan.planFingerprint !== undefined) wire.plan_fingerprint = plan.planFingerprint;
+  return wire;
 }
 
 type TierLimitSource = "tier_status" | "local_static_fallback";
@@ -1708,13 +1736,17 @@ async function commitInternal(
   planId: string,
   idempotencyKey?: string,
   project?: string,
+  requiredPlan?: { planId: string; planFingerprint?: string },
 ): Promise<CommitResponse | CoreCommitResponse> {
   try {
+    const body: Record<string, unknown> = {};
+    if (idempotencyKey) body.idempotency_key = idempotencyKey;
+    if (requiredPlan) body.required_plan = requiredPlanToWire(requiredPlan);
     return await client.request<CommitResponse>(
       `/apply/v1/plans/${encodeURIComponent(planId)}/commit`,
       {
         method: "POST",
-        body: idempotencyKey ? { idempotency_key: idempotencyKey } : {},
+        body,
         // Operator-approval scope: committing a deploy is `project.deploy` on this project.
         ...(project
           ? {
@@ -2248,10 +2280,12 @@ async function startInternal(
   };
 
   emit({ type: "plan.started" });
-  const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey);
+  const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey, {
+    requiredPlan: opts.requiredPlan,
+  });
   emit({ type: "plan.diff", diff: plan.diff });
   emitPlanWarnings(plan, emit);
-  abortOnConfirmationWarnings(plan, opts, allowWarningCodes);
+  if (!opts.requiredPlan) abortOnConfirmationWarnings(plan, opts, allowWarningCodes);
   if (plan.payment_required) {
     emit({
       type: "payment.required",
@@ -2273,7 +2307,7 @@ async function startInternal(
     });
     const { planId } = requirePersistedPlan(plan, "starting deploy");
     const commit = requireCloudCommitResponse(
-      await commitInternal(client, planId, opts.idempotencyKey, spec.project),
+      await commitInternal(client, planId, opts.idempotencyKey, spec.project, opts.requiredPlan),
       "starting deploy",
     );
     return await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);

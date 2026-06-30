@@ -36,7 +36,31 @@ run402 subdomains claim my-app                       # → https://my-app.run402
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
-Prefer `run402 up` when a repo has `run402.deploy.json` or `app.json`. The CLI stays a thin shim over the Node SDK action runner (`r.actions.run(...)` / `r.up(...)`): it validates the manifest first, then recursively performs only the missing prerequisites. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--name` is project creation/link metadata only; it is not part of the deploy manifest and never renames an existing project. Use `--dry-run` to print the planned steps without gateway mutations, uploads, or local writes.
+Prefer `run402 up` when a repo has `run402.deploy.json` or `app.json`. The CLI stays a thin shim over the Node SDK action runner (`r.actions.run(...)` / `r.up(...)`): it validates the manifest first, then recursively performs only the missing prerequisites. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--name` is project creation/link metadata only; it is not part of the deploy manifest and never renames an existing project. Use `--check` for local validation and `--plan` for gateway-reviewed intent before applying.
+
+Typed deploy configs use the same commands. Executable configs are trusted local code, so v1 only runs them when passed explicitly:
+
+```bash
+run402 up --manifest run402.deploy.ts --check
+run402 up --manifest run402.deploy.ts --plan
+run402 up --manifest run402.deploy.ts --require-plan plan_...
+```
+
+`--check` and `--print-spec` are local-only. `--plan` asks the gateway for a reviewed plan with `plan_id`, `plan_fingerprint`, warnings, diff, and one next action. `--require-plan` reapplies only if the normalized spec and reviewed gateway facts still match.
+
+```ts
+import { defineConfig, dir, nodeFunction, sqlFile } from "@run402/sdk/config";
+
+export default defineConfig(({ env }) => ({
+  project: env.required("RUN402_PROJECT_ID"),
+  database: { migrations: [sqlFile("db/001_init.sql")] },
+  site: { replace: dir("dist"), public_paths: { mode: "implicit" } },
+  functions: { replace: { api: nodeFunction("dist/functions/api.js") } },
+  secrets: { require: ["OPENAI_API_KEY"] },
+}));
+```
+
+Helpers normalize to the same `ReleaseSpec` as JSON manifests. `dir()` walks deterministically and rejects unsafe files unless explicitly allowed, `sqlFile()` derives the migration id from the filename unless supplied, and `nodeFunction()` currently expects JavaScript output; point TypeScript functions at built `.js` files.
 
 ## The patterns
 

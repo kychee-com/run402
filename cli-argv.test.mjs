@@ -73,7 +73,14 @@ function captureStop() {
 }
 
 function stderrJson() {
-  const line = stderr.find((s) => s.trim().startsWith("{"));
+  const jsonLines = stderr.filter((s) => s.trim().startsWith("{"));
+  const line = jsonLines.find((s) => {
+    try {
+      return JSON.parse(s).status === "error";
+    } catch {
+      return false;
+    }
+  }) ?? jsonLines[0];
   assert.ok(line, `expected JSON stderr, got: ${stderr.join("\n")}`);
   return JSON.parse(line);
 }
@@ -166,6 +173,7 @@ function applyMockFetch({ onPlanBody } = {}) {
     return mockFetch(input, init);
   };
 }
+
 
 describe("unknown flags", () => {
   it("status rejects unknown flags before doing any work (GH-190)", async () => {

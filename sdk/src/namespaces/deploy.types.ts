@@ -1455,10 +1455,17 @@ export interface PlanResponse {
    *  preserves backward compatibility and still normalizes both shapes. */
   kind?: "plan_response";
   schema_version?: "agent-deploy-observability.v1";
-  /** Null only for `r.project(id).apply.plan(..., { dryRun: true })`. */
+  /** Null only for local/legacy dry-run and reviewed-plan preview responses. */
   plan_id: string | null;
-  /** Null only for `r.project(id).apply.plan(..., { dryRun: true })`. */
+  /** Null only for local/legacy dry-run and reviewed-plan preview responses. */
   operation_id: string | null;
+  /** Gateway-reviewed plan identity. Present for reviewed plan mode. */
+  plan_fingerprint?: string | null;
+  /** ISO timestamp when a reviewed plan expires. Present for reviewed plan mode. */
+  plan_expires_at?: string | null;
+  planner_semantics_version?: string | null;
+  base_identity?: string | null;
+  next_actions?: unknown[];
   base_release_id: string | null;
   manifest_digest: string;
   is_noop?: boolean;
@@ -2115,6 +2122,11 @@ export interface PlanRequest {
   spec: Record<string, unknown>;
   manifest_ref?: Record<string, unknown>;
   idempotency_key?: string;
+  mode?: "reviewed_plan";
+  required_plan?: {
+    plan_id: string;
+    plan_fingerprint?: string;
+  };
 }
 
 export interface NormalizedReleaseSpec {
@@ -2382,6 +2394,11 @@ export interface ApplyOptions {
   /** Continue past specific confirmation-required warning codes. Every
    *  blocking warning must be covered by this list or by `allowWarnings`. */
   allowWarningCodes?: string[];
+  /** Bind this apply to a reviewed plan returned by `plan(..., { mode: "reviewedPlan" })`. */
+  requiredPlan?: {
+    planId: string;
+    planFingerprint?: string;
+  };
   /** Automatic safe-race retries after the initial `apply()` attempt.
    *  Default: 2 retries (3 total attempts). Pass 0 to disable automatic
    *  retry and surface the first safe deploy race to the caller. */
@@ -2403,6 +2420,10 @@ export interface StartOptions {
   allowWarnings?: boolean;
   /** Continue past specific confirmation-required warning codes. */
   allowWarningCodes?: string[];
+  requiredPlan?: {
+    planId: string;
+    planFingerprint?: string;
+  };
 }
 
 /**

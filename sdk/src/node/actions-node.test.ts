@@ -40,6 +40,94 @@ test("up dry-run plans recursive steps without gateway mutations or local writes
   }
 });
 
+test("up check validates locally without gateway calls", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-check-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>hello</h1>" } } },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({}, { mode: "check" });
+
+    assert.equal(result.mode, "check");
+    assert.equal(result.dry_run, true);
+    assert.equal(result.result?.manifest_path, join(dir, "run402.deploy.json"));
+    assert.deepEqual(calls, []);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up requires explicit manifest for executable configs", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-exec-trust-"));
+  writeFileSync(join(dir, "run402.deploy.ts"), "export default { site: { replace: {} } };\n");
+  const sdk = fakeSdk({
+    calls: [],
+    allowanceConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await assert.rejects(
+      () => actions.up({}, { mode: "check" }),
+      (err) => {
+        const e = err as { code?: string; details?: { next_actions?: Array<{ argv?: string[] }> } };
+        assert.equal(e.code, "EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST");
+        assert.deepEqual(e.details?.next_actions?.[0]?.argv?.slice(-1), ["--check"]);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up plan returns same-surface require-plan next action", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-plan-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    project_id: "prj_ready",
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({}, { mode: "plan" });
+
+    assert.equal(result.mode, "plan");
+    assert.equal(result.result?.plan?.plan_id, "plan_123");
+    assert.deepEqual(result.result?.plan?.next_actions?.[0], {
+      action: "retry",
+      command: `run402 up --manifest ${join(dir, "run402.deploy.json")} --require-plan plan_123 --plan-fingerprint pfp_123`,
+      argv: ["run402", "up", "--manifest", join(dir, "run402.deploy.json"), "--require-plan", "plan_123", "--plan-fingerprint", "pfp_123"],
+      why: "Apply exactly this reviewed plan from the same repo surface before it expires.",
+    });
+    assert.deepEqual(calls, [
+      "projects.keys:prj_ready",
+      "project:prj_ready",
+      "project.apply.plan:prj_ready",
+    ]);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up deploys when workspace link and active tier are configured", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-up-configured-"));
   writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
@@ -213,16 +301,48 @@ function fakeSdk(opts: {
     async project(projectId: string) {
       opts.calls.push(`project:${projectId}`);
       return {
-        async apply() {
-          opts.calls.push(`project.apply:${projectId}`);
-          return {
-            release_id: "rel_123",
-            operation_id: "op_123",
-            urls: {},
-            diff: {},
-            warnings: [],
-          };
-        },
+        apply: Object.assign(
+          async () => {
+            opts.calls.push(`project.apply:${projectId}`);
+            return {
+              release_id: "rel_123",
+              operation_id: "op_123",
+              urls: {},
+              diff: {},
+              warnings: [],
+            };
+          },
+          {
+            async plan() {
+              opts.calls.push(`project.apply.plan:${projectId}`);
+              return {
+                plan: {
+                  kind: "plan_response",
+                  schema_version: "agent-deploy-observability.v1",
+                  plan_id: "plan_123",
+                  operation_id: null,
+                  plan_fingerprint: "pfp_123",
+                  plan_expires_at: "2026-06-30T01:00:00.000Z",
+                  base_release_id: null,
+                  manifest_digest: "0".repeat(64),
+                  is_noop: false,
+                  summary: "Adds one site path",
+                  warnings: [],
+                  expected_events: [],
+                  missing_content: [],
+                  diff: {},
+                  migrations: { new: [], noop: [] },
+                  site: { added: [], removed: [], changed: [] },
+                  functions: { added: [], removed: [], changed: [] },
+                  secrets: { added: [], removed: [] },
+                  subdomains: { added: [], removed: [] },
+                  routes: { added: [], removed: [], changed: [] },
+                },
+                byteReaders: new Map(),
+              };
+            },
+          },
+        ),
       };
     },
   } as never;

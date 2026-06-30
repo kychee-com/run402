@@ -23,10 +23,11 @@
  */
 
 import { existsSync, fstatSync, readFileSync } from "node:fs";
-import { resolve, dirname, isAbsolute } from "node:path";
+import { resolve, dirname, extname, isAbsolute } from "node:path";
 import {
   buildDeployResolveSummary,
   githubActionsCredentials,
+  loadDeployManifest,
   normalizeDeployManifest,
   normalizeDeployResolveRequest,
 } from "#sdk/node";
@@ -41,8 +42,8 @@ import { editRequestAction, nextAction, retryAction } from "./next-actions.mjs";
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
 Usage:
-  run402 deploy apply --manifest <path> [--project <id>] [--quiet|--final-only] [--allow-warning <code>] [--allow-warnings]
-  run402 deploy apply --spec '<json>' [--project <id>] [--quiet|--final-only] [--allow-warning <code>] [--allow-warnings]
+  run402 deploy apply --manifest <path> [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--quiet|--final-only]
+  run402 deploy apply --spec '<json>' [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--quiet|--final-only]
   run402 deploy apply --dir <build-output> [--manifest <path>] [--project <id>]
   cat spec.json | run402 deploy apply [--project <id>]
 
@@ -90,6 +91,10 @@ Options:
                           the slice carries the build output. Requires
                           @run402/astro installed in the project.
   --project <id>          Override project_id from the manifest
+  --check                 Validate and normalize locally. No gateway calls or uploads.
+  --print-spec            Print the normalized ReleaseSpec JSON. No gateway calls or uploads.
+  --plan                  Ask the gateway for a reviewed plan. No upload or commit.
+  --require-plan <id>     Apply only if this reviewed plan still matches.
   --quiet                 Suppress per-event JSON-line stderr (final result still on stdout)
   --final-only            Alias for --quiet; final success/error envelope is still preserved
   --allow-warning <code>  Continue past this reviewed warning code (repeatable)
@@ -137,6 +142,8 @@ Internationalization (routed functions):
   Routed functions read the negotiated locale via request headers: req.headers.get("x-run402-locale") and req.headers.get("x-run402-default-locale"). Headers are omitted when no i18n slice is active.
   Static-route hits do NOT receive locale negotiation; only routed HTTP function invocations do. Run402 does NOT inject Vary headers.
 `;
+
+const EXECUTABLE_MANIFEST_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"]);
 
 const RESUME_HELP = `run402 deploy resume — Resume a stuck deploy operation
 
@@ -494,8 +501,18 @@ function makeStderrEventWriter(quiet) {
 }
 
 function parseApplyArgs(args) {
-  const opts = { manifest: null, spec: null, dir: null, project: null, quiet: false, allowWarnings: false, allowWarningCodes: [] };
-  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--allow-warning", "--allow-warnings", "--help", "-h"];
+  const opts = {
+    manifest: null,
+    spec: null,
+    dir: null,
+    project: null,
+    quiet: false,
+    allowWarnings: false,
+    allowWarningCodes: [],
+    mode: null,
+    planFingerprint: null,
+  };
+  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--plan", "--require-plan", "--plan-fingerprint", "--help", "-h"];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -503,7 +520,7 @@ function parseApplyArgs(args) {
       console.log(APPLY_HELP);
       process.exit(0);
     }
-    if (arg === "--manifest" || arg === "--spec" || arg === "--dir" || arg === "--project" || arg === "--allow-warning") {
+    if (arg === "--manifest" || arg === "--spec" || arg === "--dir" || arg === "--project" || arg === "--allow-warning" || arg === "--require-plan" || arg === "--plan-fingerprint") {
       const value = args[i + 1];
       if (value === undefined || (typeof value === "string" && value.startsWith("--"))) {
         fail({
@@ -541,14 +558,21 @@ function parseApplyArgs(args) {
         opts.dir = value;
       } else if (arg === "--project") {
         opts.project = value;
-      } else {
+      } else if (arg === "--allow-warning") {
         opts.allowWarningCodes.push(value);
+      } else if (arg === "--require-plan") {
+        setApplyMode(opts, { kind: "applyReviewed", planId: value }, "--require-plan");
+      } else {
+        opts.planFingerprint = value;
       }
       i += 1;
       continue;
     }
     if (arg === "--quiet" || arg === "--final-only") { opts.quiet = true; continue; }
     if (arg === "--allow-warnings") { opts.allowWarnings = true; continue; }
+    if (arg === "--check") { setApplyMode(opts, "check", "--check"); continue; }
+    if (arg === "--print-spec") { setApplyMode(opts, "printSpec", "--print-spec"); continue; }
+    if (arg === "--plan") { setApplyMode(opts, "plan", "--plan"); continue; }
     if (typeof arg === "string" && arg.startsWith("-")) {
       fail({
         code: "BAD_USAGE",
@@ -562,8 +586,36 @@ function parseApplyArgs(args) {
       details: { argument: arg },
     });
   }
+  if (opts.planFingerprint && (!opts.mode || opts.mode.kind !== "applyReviewed")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--plan-fingerprint can only be used with --require-plan.",
+      details: { flag: "--plan-fingerprint" },
+    });
+  }
+  if (opts.mode && opts.mode.kind === "applyReviewed") {
+    if (opts.planFingerprint) opts.mode.planFingerprint = opts.planFingerprint;
+    if (opts.allowWarnings || opts.allowWarningCodes.length > 0) {
+      fail({
+        code: "BAD_USAGE",
+        message: "--allow-warning/--allow-warnings are not used with --require-plan; the reviewed plan already binds the warning set.",
+        details: { flag: "--require-plan" },
+      });
+    }
+  }
 
   return opts;
+}
+
+function setApplyMode(opts, mode, flag) {
+  if (opts.mode !== null) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Choose only one execution mode for deploy apply.",
+      details: { existing_mode: opts.mode, flag },
+    });
+  }
+  opts.mode = mode;
 }
 
 // Resolve the single manifest source from parsed opts + whether stdin actually
@@ -738,12 +790,14 @@ async function applyCmd(args) {
 
   let raw;
   let manifestPath = null;
+  let executableManifest = false;
   if (source === "spec") {
     raw = opts.spec;
   } else if (source === "manifest") {
     try {
       manifestPath = isAbsolute(opts.manifest) ? opts.manifest : resolve(process.cwd(), opts.manifest);
-      raw = readFileSync(manifestPath, "utf-8");
+      executableManifest = EXECUTABLE_MANIFEST_EXTENSIONS.has(extname(manifestPath).toLowerCase());
+      raw = executableManifest ? null : readFileSync(manifestPath, "utf-8");
     } catch (err) {
       fail({
         code: "BAD_USAGE",
@@ -760,21 +814,30 @@ async function applyCmd(args) {
     raw = await readStdin();
   }
 
-  let spec;
-  try {
-    spec = JSON.parse(raw);
-  } catch (err) {
-    fail({
-      code: "BAD_USAGE",
-      message: `Manifest is not valid JSON: ${err.message}`,
-      details: { source, parse_error: err.message },
+  let spec = null;
+  if (!executableManifest) {
+    try {
+      spec = JSON.parse(raw);
+    } catch (err) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Manifest is not valid JSON: ${err.message}`,
+        details: { source, parse_error: err.message },
+      });
+    }
+    rejectLegacySecretManifest(spec, {
+      source,
+      ...(manifestPath ? { path: manifestPath } : {}),
     });
   }
-  rejectLegacySecretManifest(spec, {
-    source,
-    ...(manifestPath ? { path: manifestPath } : {}),
-  });
 
+  if (opts.dir !== null && executableManifest) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--dir cannot be merged into an executable deploy config. Put the site/function helper in the config file instead.",
+      details: { flag: "--dir", manifest: manifestPath },
+    });
+  }
   if (opts.dir !== null) {
     await mergeAstroReleaseSlice(spec, opts.dir);
   }
@@ -810,8 +873,10 @@ async function applyCmd(args) {
     if (key === "i18n" && value === null) return true;
     return hasContent(value);
   }
-  const hasMeaningfulContent = spec && typeof spec === "object" && !Array.isArray(spec) &&
-    meaningful.some((key) => hasDeployableSection(key, spec[key]));
+  const hasMeaningfulContent = executableManifest || (
+    spec && typeof spec === "object" && !Array.isArray(spec) &&
+    meaningful.some((key) => hasDeployableSection(key, spec[key]))
+  );
   if (!hasMeaningfulContent) {
     fail({
       code: "MANIFEST_EMPTY",
@@ -825,7 +890,7 @@ async function applyCmd(args) {
     });
   }
 
-  const manifestProject = spec.project ?? spec.project_id;
+  const manifestProject = spec?.project ?? spec?.project_id;
   if (opts.project && manifestProject && manifestProject !== opts.project) {
     fail({
       code: "BAD_USAGE",
@@ -841,17 +906,36 @@ async function applyCmd(args) {
 
   let normalizedManifest;
   try {
-    normalizedManifest = await normalizeDeployManifest(spec, {
-      baseDir: manifestPath ? dirname(manifestPath) : process.cwd(),
-      ...(opts.project ? { project: opts.project } : {}),
-      ...(defaultProject ? { defaultProject } : {}),
-    });
+    normalizedManifest = executableManifest
+      ? await loadDeployManifest(manifestPath, {
+          ...(opts.project ? { project: opts.project } : {}),
+          ...(defaultProject ? { defaultProject } : {}),
+        })
+      : await normalizeDeployManifest(spec, {
+          baseDir: manifestPath ? dirname(manifestPath) : process.cwd(),
+          ...(opts.project ? { project: opts.project } : {}),
+          ...(defaultProject ? { defaultProject } : {}),
+        });
   } catch (err) {
     reportSdkError(err);
   }
 
   const releaseSpec = normalizedManifest.spec;
   const idempotencyKey = normalizedManifest.idempotencyKey;
+
+  if (opts.mode === "check") {
+    console.log(JSON.stringify({
+      ok: true,
+      mode: "check",
+      project_id: releaseSpec.project,
+      manifest_path: manifestPath,
+    }, null, 2));
+    return;
+  }
+  if (opts.mode === "printSpec") {
+    console.log(JSON.stringify(releaseSpec, null, 2));
+    return;
+  }
 
   // Pre-flight source scan (auth-aware-ssr Section 9). Bypass via
   // RUN402_DEPLOY_SKIP_SCAN=1 — useful for forcing a deploy when
@@ -865,7 +949,7 @@ async function applyCmd(args) {
   // manifest deploy: running from inside an unrelated source tree (e.g.
   // the gateway monorepo, which legitimately has dozens of `getUser`
   // references) would otherwise block a deploy of one unrelated HTML file.
-  if (process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
+  if (!isNonApplyingMode(opts.mode) && process.env.RUN402_DEPLOY_SKIP_SCAN !== "1") {
     try {
       const { scanSourceTree, scanSourceFiles, SCAN_SEVERITY } = await import(
         "./doctor-source-scan.mjs"
@@ -879,7 +963,7 @@ async function applyCmd(args) {
         findings = scanSourceTree(scanRoot, { cwd: process.cwd() });
       } else {
         const baseDir = manifestPath ? dirname(manifestPath) : process.cwd();
-        const files = collectManifestSourceFiles(spec, baseDir).filter(
+        const files = collectManifestSourceFiles(spec ?? normalizedManifest.manifest, baseDir).filter(
           (p) => scannableExt.test(p) && existsSync(p),
         );
         findings = files.length > 0
@@ -925,12 +1009,24 @@ async function applyCmd(args) {
   }
 
   try {
+    if (opts.mode === "plan") {
+      const result = await getSdk(sdkOpts)._applyEngine.plan(releaseSpec, {
+        idempotencyKey,
+        mode: "reviewedPlan",
+      });
+      console.log(JSON.stringify(result.plan, null, 2));
+      return;
+    }
+    const requiredPlan = opts.mode && opts.mode.kind === "applyReviewed"
+      ? { planId: opts.mode.planId, ...(opts.mode.planFingerprint ? { planFingerprint: opts.mode.planFingerprint } : {}) }
+      : undefined;
     const result = await withAutoApprove(() =>
       getSdk(sdkOpts)._applyEngine.apply(releaseSpec, {
         onEvent: makeStderrEventWriter(opts.quiet),
         idempotencyKey,
         allowWarnings: opts.allowWarnings,
         allowWarningCodes: opts.allowWarningCodes,
+        ...(requiredPlan ? { requiredPlan } : {}),
         target: isCoreApiTarget() ? "core" : "cloud",
       }),
     );
@@ -938,6 +1034,10 @@ async function applyCmd(args) {
   } catch (err) {
     reportDeployApplyError(err, useGithubActionsOidc);
   }
+}
+
+function isNonApplyingMode(mode) {
+  return mode === "check" || mode === "printSpec" || mode === "plan";
 }
 
 function hasGithubActionsOidcEnv(env = process.env) {

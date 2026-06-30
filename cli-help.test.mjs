@@ -288,7 +288,11 @@ describe("CLI --help contract", () => {
     assert.match(result.stdout, /--name <name>/);
     assert.match(result.stdout, /--project <id>/);
     assert.match(result.stdout, /--tier <tier>/);
-    assert.match(result.stdout, /--dry-run/);
+    assert.match(result.stdout, /--check/);
+    assert.match(result.stdout, /--print-spec/);
+    assert.match(result.stdout, /--plan/);
+    assert.match(result.stdout, /--require-plan <id>/);
+    assert.doesNotMatch(result.stdout, /--dry-run/);
     assert.match(result.stdout, /-y, --yes/);
     assert.match(result.stdout, /--allow-warning <code>/);
     assert.match(result.stdout, /--allow-warnings/);

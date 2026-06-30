@@ -10,9 +10,17 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
     "./node": {
       "types": "./dist/node/index.d.ts",
       "import": "./dist/node/index.js"
+    },
+    "./node/config": {
+      "types": "./dist/node/config.d.ts",
+      "import": "./dist/node/config.js"
     }
   },
   "scripts": {
@@ -28,7 +36,8 @@
   ],
   "dependencies": {
     "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^2.0.1"
+    "@noble/hashes": "^2.0.1",
+    "tsx": "^4.21.0"
   },
   "peerDependencies": {
     "@x402/evm": "^2.6.0",

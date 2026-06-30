@@ -154,7 +154,30 @@ export type {
   SyncDirOptions,
   PrepareDirOptions,
 } from "./assets-node.js";
-export { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
+export {
+  loadDeployManifest,
+  loadExecutableDeployConfig,
+  normalizeDeployManifest,
+} from "./deploy-manifest.js";
+export {
+  defineConfig,
+  file,
+  nodeFunction,
+  sqlFile,
+} from "../config.js";
+export type {
+  Run402ConfigContext,
+  Run402DirConfigOptions,
+  Run402ExecutableConfigExport,
+  Run402ExecutionMode,
+  Run402FileConfigOptions,
+  Run402FileConfigSource,
+  Run402NodeFunctionConfigOptions,
+  Run402ReleaseConfig,
+  Run402ReviewedPlanRequirement,
+  Run402SqlFileConfigMigration,
+  Run402SqlFileConfigOptions,
+} from "../config.js";
 export type {
   DeployManifestDatabaseSpec,
   DeployManifestFileEntry,

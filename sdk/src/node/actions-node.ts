@@ -23,9 +23,10 @@ import type {
   Run402UpResult,
 } from "../actions.js";
 import { Run402Action } from "../actions.js";
+import type { Run402ExecutionMode, Run402ReviewedPlanRequirement } from "../config.js";
 import { LocalError } from "../errors.js";
 import type { Run402 } from "../index.js";
-import type { DeployEvent, ReleaseSpec } from "../namespaces/deploy.types.js";
+import type { DeployEvent, PlanResponse, ReleaseSpec } from "../namespaces/deploy.types.js";
 import type { ProvisionResult } from "../namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "../namespaces/tier.js";
 import { loadDeployManifest } from "./deploy-manifest.js";
@@ -68,6 +69,14 @@ const DEFAULT_BOOTSTRAP_TIER: TierName = "prototype";
 const MANIFEST_CANDIDATES = [
   "run402.deploy.json",
   "app.json",
+];
+const EXECUTABLE_MANIFEST_CANDIDATES = [
+  "run402.deploy.ts",
+  "run402.deploy.mts",
+  "run402.deploy.cts",
+  "run402.deploy.js",
+  "run402.deploy.mjs",
+  "run402.deploy.cjs",
 ];
 const TIER_RANK: Record<TierName, number> = {
   prototype: 1,
@@ -226,7 +235,23 @@ export class NodeActions implements Run402Actions {
     const workspaceDir = resolvePath(this.opts.cwd ?? process.cwd(), input.dir ?? ".");
     const manifest = await this.#discoverAndValidateManifest(input, workspaceDir, run);
 
-    if (this.#targetKind() !== "core") {
+    if (run.executionMode === "check" || run.executionMode === "printSpec") {
+      return run.result({
+        project_id: manifest.releaseSpec.project,
+        manifest_path: manifest.manifestPath,
+        ...(run.executionMode === "printSpec" ? { spec: manifest.releaseSpec } : {}),
+      });
+    }
+
+    if (run.executionMode === "plan") {
+      run.skipStep({
+        action: Run402Action.TierSet,
+        description: "Skip recursive tier bootstrap for reviewed-plan mode",
+        mutation: false,
+        auto: true,
+        details: { mode: "plan" },
+      });
+    } else if (this.#targetKind() !== "core") {
       await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER);
     } else {
       run.skipStep({
@@ -250,7 +275,7 @@ export class NodeActions implements Run402Actions {
       );
     }
     const releaseSpec = normalized.spec;
-    if (resolved.shouldWriteLink) {
+    if (resolved.shouldWriteLink && run.executionMode !== "plan") {
       await this.#writeWorkspaceProjectLink(
         resolved.linkPath,
         {
@@ -268,8 +293,8 @@ export class NodeActions implements Run402Actions {
 
     const deployStep = run.addStep({
       action: "deploy.apply",
-      description: "Apply deploy manifest",
-      mutation: true,
+      description: run.executionMode === "plan" ? "Create reviewed deploy plan" : "Apply deploy manifest",
+      mutation: run.executionMode !== "plan",
       auto: false,
       details: {
         project_id: resolved.projectId,
@@ -288,10 +313,29 @@ export class NodeActions implements Run402Actions {
     run.setState(deployStep, "running");
     await this.#assertLocalProjectKeys(resolved.projectId, run);
     const scoped = await this.sdk.project(resolved.projectId);
+    if (run.executionMode === "plan") {
+      const planned = await scoped.apply.plan(releaseSpec, {
+        mode: "reviewedPlan",
+        idempotencyKey: normalized.idempotencyKey ?? manifest.idempotencyKey ?? run.childKey("deploy.plan"),
+      });
+      const plan = withUpReviewedPlanNextAction(planned.plan, manifest.manifestPath);
+      run.setState(deployStep, "succeeded", {
+        plan_id: plan.plan_id,
+        plan_fingerprint: plan.plan_fingerprint ?? null,
+        plan_expires_at: plan.plan_expires_at ?? null,
+      });
+      return run.result({
+        project_id: resolved.projectId,
+        manifest_path: manifest.manifestPath,
+        plan,
+      });
+    }
+    const requiredPlan = reviewedPlanRequirement(run.executionMode);
     const deploy = await scoped.apply(releaseSpec, {
       idempotencyKey: normalized.idempotencyKey ?? manifest.idempotencyKey ?? run.childKey("deploy.apply"),
       allowWarnings: input.allowWarnings,
       allowWarningCodes: input.allowWarningCodes,
+      ...(requiredPlan ? { requiredPlan } : {}),
       target: this.#targetKind() === "core" ? "core" : "cloud",
       onEvent: (event: DeployEvent) => {
         run.options.onEvent?.({
@@ -333,10 +377,26 @@ export class NodeActions implements Run402Actions {
       ? resolveMaybe(workspaceDir, input.manifest)
       : await findManifest(workspaceDir);
     if (!manifestPath) {
+      const executablePath = input.manifest ? null : await findExecutableManifest(workspaceDir);
+      if (executablePath) {
+        throw run.error(
+          "Executable deploy configs are trusted code and must be passed explicitly with --manifest.",
+          "EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST",
+          {
+            dir: workspaceDir,
+            manifest_path: executablePath,
+            next_actions: [{
+              action: "retry",
+              command: `run402 up --manifest ${shellArg(shortPath(executablePath))} --check`,
+              argv: ["run402", "up", "--manifest", executablePath, "--check"],
+            }],
+          },
+        );
+      }
       throw run.error(
-        "No deploy manifest found. Add run402.deploy.json or app.json, or pass --manifest.",
+        "No deploy manifest found. Add run402.deploy.json or app.json, or pass --manifest for executable configs.",
         "UP_MANIFEST_REQUIRED",
-        { dir: workspaceDir, candidates: MANIFEST_CANDIDATES },
+        { dir: workspaceDir, candidates: MANIFEST_CANDIDATES, executable_candidates: EXECUTABLE_MANIFEST_CANDIDATES },
       );
     }
 
@@ -569,6 +629,13 @@ export class NodeActions implements Run402Actions {
     }
 
     if (input.name) {
+      if (run.executionMode === "plan") {
+        throw run.error(
+          "`up --plan` does not provision projects. Pass --project, add project_id/project to the manifest, or run `run402 up --name ...` first.",
+          "RUN402_PROJECT_REQUIRED",
+          { link_path: linkPath, manifest_path: manifest.manifestPath, mode: "plan" },
+        );
+      }
       if (this.#targetKind() === "core") {
         throw run.error(
           "Run402 Core cannot provision a Cloud project during `up`. Pass --project or add project_id to the manifest.",
@@ -729,6 +796,7 @@ export class NodeActions implements Run402Actions {
 class ActionRun {
   readonly steps: Run402ActionStep[] = [];
   readonly dryRun: boolean;
+  readonly executionMode: Run402ExecutionMode | "legacyDryRun";
   readonly autoPrerequisites: boolean;
   readonly approval: Run402ActionApproval;
 
@@ -737,6 +805,7 @@ class ActionRun {
     readonly options: Run402ActionRunOptions,
     readonly target: NodeActionTargetKind,
   ) {
+    this.executionMode = options.mode ?? (options.dryRun === true ? "legacyDryRun" : "apply");
     this.dryRun = options.dryRun === true;
     this.autoPrerequisites = options.autoPrerequisites ?? input.type === Run402Action.Up;
     this.approval = options.approval ?? "never";
@@ -846,7 +915,8 @@ class ActionRun {
   result<T>(result: T): Run402ActionResult<T> {
     return {
       action: this.input.type,
-      dry_run: this.dryRun,
+      mode: this.executionMode,
+      dry_run: this.dryRun || this.executionMode === "check" || this.executionMode === "printSpec" || this.executionMode === "plan",
       target: this.target,
       steps: this.steps,
       result,
@@ -892,6 +962,52 @@ async function findManifest(workspaceDir: string): Promise<string | null> {
     }
   }
   return null;
+}
+
+async function findExecutableManifest(workspaceDir: string): Promise<string | null> {
+  for (const candidate of EXECUTABLE_MANIFEST_CANDIDATES) {
+    const path = join(workspaceDir, candidate);
+    try {
+      await lstat(path);
+      return path;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
+
+function reviewedPlanRequirement(
+  mode: Run402ExecutionMode | "legacyDryRun",
+): Run402ReviewedPlanRequirement | undefined {
+  return typeof mode === "object" && mode.kind === "applyReviewed"
+    ? { planId: mode.planId, ...(mode.planFingerprint ? { planFingerprint: mode.planFingerprint } : {}) }
+    : undefined;
+}
+
+function withUpReviewedPlanNextAction(plan: PlanResponse, manifestPath: string): PlanResponse {
+  if (!plan.plan_id) return plan;
+  const commandManifest = shortPath(manifestPath);
+  const argv = ["run402", "up", "--manifest", manifestPath, "--require-plan", plan.plan_id];
+  const commandParts = ["run402", "up", "--manifest", shellArg(commandManifest), "--require-plan", shellArg(plan.plan_id)];
+  if (plan.plan_fingerprint) {
+    argv.push("--plan-fingerprint", plan.plan_fingerprint);
+    commandParts.push("--plan-fingerprint", shellArg(plan.plan_fingerprint));
+  }
+  return {
+    ...plan,
+    next_actions: [{
+      action: "retry",
+      command: commandParts.join(" "),
+      argv,
+      why: "Apply exactly this reviewed plan from the same repo surface before it expires.",
+    }],
+  };
+}
+
+function shellArg(value: string): string {
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 async function readWorkspaceProjectLink(path: string): Promise<WorkspaceProjectLink | null> {

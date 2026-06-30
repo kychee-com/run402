@@ -40,7 +40,21 @@ await r.actions.run({
 });
 ```
 
-Action identifiers are exported constants plus a string-literal union, so inputs narrow by `type`. `up` validates `run402.deploy.json` / `app.json` before any mutation, resolves the project as explicit `projectId` → `.run402/project.json` → manifest `project_id` → approved creation from `name` → approved active-project fallback, then delegates to `r.project(id).apply(...)`. `name` is only project creation/link metadata; it is not a manifest field and never renames an existing project. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy with the default approval policy; pass `{ approval: "yes" }` only when you want recursive prerequisites/local writes to proceed unattended. Pass `{ dryRun: true }` to return planned `steps[]` without gateway mutations, uploads, or local writes.
+Action identifiers are exported constants plus a string-literal union, so inputs narrow by `type`. `up` validates `run402.deploy.json` / `app.json` before any mutation, resolves the project as explicit `projectId` → `.run402/project.json` → manifest `project_id` → approved creation from `name` → approved active-project fallback, then delegates to `r.project(id).apply(...)`. `name` is only project creation/link metadata; it is not a manifest field and never renames an existing project. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy with the default approval policy; pass `{ approval: "yes" }` only when you want recursive prerequisites/local writes to proceed unattended.
+
+Typed-config workflows use one execution-mode union:
+
+```ts
+await r.up({ manifest: "run402.deploy.ts" }, { mode: "check" });
+await r.up({ manifest: "run402.deploy.ts" }, { mode: "printSpec" });
+await r.up({ manifest: "run402.deploy.ts" }, { mode: "plan" });
+await r.up(
+  { manifest: "run402.deploy.ts" },
+  { mode: { kind: "applyReviewed", planId: "plan_...", planFingerprint: "pfp_..." } },
+);
+```
+
+`check` and `printSpec` are local-only. `plan` calls the gateway in reviewed-plan mode and returns `plan_id` / `plan_fingerprint`; `applyReviewed` verifies before upload and again at commit.
 
 For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
 
@@ -104,7 +118,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 
 | Namespace | Highlights |
 |---|---|
-| `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated, dry-run is non-mutating, and child gateway mutations derive idempotency keys from the root action. |
+| `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
 | `projects` | `provision`, `delete`, `list`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
 | `r.project(id).apply` | **The unified apply primitive.** Callable hero — `r.project(id).apply(spec)` for atomic mixed writes (release slices + assets slice). Sub-methods: `.plan`, `.start`, `.resume`, `.upload`, `.commit`, `.status`, `.list`, `.events`, `.resolve`, `.getRelease`, `.getActiveRelease`, `.diff`. Underlying engine routes to `/apply/v1/*`. |
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |
@@ -330,7 +344,7 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
 - **Warnings are structured.** `DeployResult.warnings` contains `WarningEntry[]` (`code`, `severity`, `requires_confirmation`, `message`, optional `affected`/`details`/`confidence`); the type preserves legacy low/medium/high plan warnings and modern deploy-observability info/warn/high warnings. `apply()` emits `plan.warnings` and stops before upload/commit on confirmation-required warnings unless broad `allowWarnings` is set or every blocking code is listed in `allowWarningCodes`. For `MISSING_REQUIRED_SECRET`, set the affected keys with `r.secrets.set`, then retry.
 - **Deploy summaries are SDK-owned convenience.** `summarizeDeployResult(result)` returns `DeploySummary` (`schema_version: "deploy-summary.v1"`) with a headline plus reliable current buckets for site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. It is derived from `DeployResult.diff` / `DeployResult.warnings`; it makes no extra gateway calls, omits sections the gateway did not return, and intentionally excludes timings, client-side duration estimates, and function old/new code hashes.
 - **Safe release-race retries are SDK-owned.** `apply()` automatically re-plans and retries omitted/current-base specs when the gateway returns `BASE_RELEASE_CONFLICT` with `safe_to_retry: true`. Static activation/config failures reported from `activation_pending` throw immediately with gateway metadata preserved. The default retry budget is two retries after the initial attempt; pass `{ maxRetries: 0 }` to opt out.
-- **Planning supports dry-runs.** `(await r.project(spec.project)).apply.plan(spec, { dryRun: true })` calls the server-authoritative dry-run route and returns the normalized v2 plan envelope without uploading bytes or creating plan/operation rows (`plan_id` and `operation_id` are `null`).
+- **Planning has two explicit non-deploying modes.** `(await r.project(spec.project)).apply.plan(spec, { mode: "reviewedPlan" })` calls the gateway reviewed-plan route and returns `plan_id`, `plan_fingerprint`, `plan_expires_at`, diff, warnings, and `next_actions[]` without uploading bytes or committing. Exact apply passes `{ requiredPlan: { planId, planFingerprint? } }` to `apply()` / `start()` / `commit()`; the SDK verifies before upload and commit. Legacy `{ dryRun: true }` still calls the no-row debug route and returns `plan_id: null`, but it is not require-able.
 - **Release observability is typed.** Use `r.project(id).apply.getRelease(releaseId, { siteLimit? })`, `r.project(id).apply.getActiveRelease({ siteLimit? })`, and `r.project(id).apply.diff({ from, to, limit? })` to inspect release inventory and release-to-release diffs (there is no bare `r.deploy` surface). Inventories include `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and `static_public_paths[]` when returned. `site.paths` lists release static assets; `static_public_paths[]` lists browser reachability with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `diff` returns `ReleaseToReleaseDiff` with `migrations.applied_between_releases`; secret diffs expose keys only; `static_assets` exposes unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
 - **Server-authoritative manifest digest** — no byte-for-byte canonicalize requirement on the client.
 - The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
@@ -441,9 +455,38 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
   `loadDeployManifest(path)` parses JSON relative to the manifest file, maps
   agent-friendly `project_id` into `ReleaseSpec.project`, decodes base64 file
   entries, turns `{ path }` entries into lazy `FsFileSource` values, and reads
-  migration `sql_path` / `sql_file`. It rejects unknown manifest fields before
-  they can become partial deploys. Use `normalizeDeployManifest(input)` when the
-  manifest object is already in memory.
+  migration `sql_path` / `sql_file`. It also loads explicit executable
+  `.ts/.mts/.cts/.js/.mjs/.cjs` configs and rejects executable auto-discovery
+  with `EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST`. It rejects unknown
+  manifest fields before they can become partial deploys. Use
+  `normalizeDeployManifest(input)` when the manifest object is already in memory.
+
+  Minimal `run402.deploy.ts`:
+
+  ```ts
+  import { defineConfig, dir, nodeFunction, sqlFile } from "@run402/sdk/config";
+
+  export default defineConfig(({ env }) => ({
+    project: env.required("RUN402_PROJECT_ID"),
+    database: { migrations: [sqlFile("db/001_init.sql")] },
+    site: { replace: dir("dist"), public_paths: { mode: "implicit" } },
+    functions: { replace: { api: nodeFunction("dist/functions/api.js") } },
+    secrets: { require: ["OPENAI_API_KEY"] },
+  }));
+  ```
+
+  Helper semantics are explicit: `dir()` walks deterministically, normalizes
+  path separators, skips sensitive defaults unless `includeSensitive` is set,
+  and rejects symlinks; `file()` resolves relative paths from the manifest
+  directory; `sqlFile()` derives `id` from the filename unless supplied and
+  preserves optional checksum/transaction metadata; `nodeFunction()` stages
+  built JavaScript for Node 22. TypeScript function source paths are rejected
+  with `TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE` until the SDK owns a deterministic
+  bundling path. Typed configs may declare `secrets.require[]` / `delete[]`,
+  but never embed secret values. Config functions receive
+  `{ manifestPath, rootDir, env }`; reading through `env.get()`,
+  `env.required()`, or `env.RUN402_*` records `config.env_accessed` metadata
+  on executable manifest loads so agents can explain spec drift.
 
 ### GitHub Actions OIDC — CI credentials drive deploy
 

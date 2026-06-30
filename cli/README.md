@@ -35,11 +35,15 @@ Every command prints **JSON to stdout**, **JSON errors to stderr**, and exits **
 
 ```bash
 run402 up --name my-app -y
-run402 up --dry-run
+run402 up --manifest run402.deploy.ts --check
+run402 up --manifest run402.deploy.ts --plan
+run402 up --manifest run402.deploy.ts --require-plan plan_...
 run402 up --manifest run402.deploy.json --project prj_...
 ```
 
-`up` is a thin CLI shim over the Node SDK action runner. It discovers `run402.deploy.json` then `app.json`, validates the deploy input before any mutation, resolves the project as `--project` → `.run402/project.json` → manifest `project_id` → approved creation from `--name` → approved active-project fallback, then applies the manifest. `--name` is creation/link metadata only; it is not a manifest field and never renames an existing project. When everything is already configured, plain `run402 up` deploys. Non-interactive recursive prerequisites/local writes require `-y/--yes`; `--dry-run` prints planned `steps[]` without gateway mutations, uploads, or local writes. Use repeatable `--allow-warning <code>` for reviewed deploy warnings and reserve broad `--allow-warnings` for exceptional reviewed cases. Run402 Core skips Cloud allowance/tier prerequisites and fails closed when no Core project is selected.
+`up` is a thin CLI shim over the Node SDK action runner. It discovers `run402.deploy.json` then `app.json`, validates the deploy input before any mutation, resolves the project as `--project` → `.run402/project.json` → manifest `project_id` → approved creation from `--name` → approved active-project fallback, then applies the manifest. `--name` is creation/link metadata only; it is not a manifest field and never renames an existing project. When everything is already configured, plain `run402 up` deploys. Non-interactive recursive prerequisites/local writes require `-y/--yes`.
+
+For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeScript/JavaScript configs execute local code. Use `--check` for local-only import/normalize/file validation, `--print-spec` to inspect the normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan <plan_id>` to apply only that reviewed intent. Warning flags are not used with `--require-plan`; the reviewed plan binds the exact warning/destructive set. Run402 Core skips Cloud allowance/tier prerequisites and fails closed when no Core project is selected.
 
 ### Allowance
 
