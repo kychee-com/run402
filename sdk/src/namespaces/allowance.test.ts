@@ -106,4 +106,29 @@ describe("allowance.faucet", () => {
     assert.equal(result.token, "USDC");
     assert.equal(result.network, "base-sepolia");
   });
+
+  it("sends an Idempotency-Key header when provided", async () => {
+    const wireBody = {
+      transaction_hash: "0xabc123",
+      amount_usd_micros: 250000,
+      token: "USDC",
+      network: "base-sepolia",
+    };
+    let seenHeaders: HeadersInit | undefined;
+    let seenBody: unknown;
+    const fetchImpl: typeof globalThis.fetch = async (_url, init) => {
+      seenHeaders = init?.headers;
+      seenBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify(wireBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+
+    const result = await sdkWithFetch(makeCreds(null), fetchImpl).allowance.faucet({
+      address: "0xAbC",
+      idempotencyKey: "faucet-key-1",
+    });
+
+    assert.equal(result.transactionHash, "0xabc123");
+    assert.equal((seenHeaders as Record<string, string>)["Idempotency-Key"], "faucet-key-1");
+    assert.deepEqual(seenBody, { address: "0xAbC" });
+  });
 });

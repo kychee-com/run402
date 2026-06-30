@@ -19,7 +19,7 @@ Two entry points:
 
 | Import | Use when | Bundles |
 |---|---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
 
 ## Quick start (Node)
@@ -33,6 +33,21 @@ await (await r.project(project.project_id)).assets.put("hello.txt", { content: "
 ```
 
 That's it — credentials are read, x402 payments are signed, results are typed.
+
+Repo-level deploy through the same SDK action runner used by `run402 up`:
+
+```ts
+import { Run402Action, run402 } from "@run402/sdk/node";
+
+const r = run402();
+
+await r.up({ name: "my-app" }, { approval: "yes" });
+
+const provision = await r.actions.run({
+  type: Run402Action.ProjectsProvision,
+  name: "my-app",
+});
+```
 
 For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
 
@@ -94,6 +109,46 @@ The SDK is the canonical kernel. A single typed `Run402` class with one namespac
 - Never calls `process.exit`
 
 The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share the configured API target and `~/.config/run402/projects.json` so target selection and credentials carry across surfaces.
+
+### Action runner (`@run402/sdk/node`)
+
+The Node entry owns recursive agent actions. The CLI command `run402 up` is only a flag parser around this surface.
+
+```ts
+export const Run402Action = {
+  ProjectsProvision: "projects.provision",
+  TierSet: "tier.set",
+  Up: "up",
+} as const;
+
+export type Run402ActionType =
+  typeof Run402Action[keyof typeof Run402Action];
+
+type Run402ActionInput =
+  | { type: typeof Run402Action.ProjectsProvision; name?: string; tier?: "prototype" | "hobby" | "team"; orgId?: string; idempotencyKey?: string }
+  | { type: typeof Run402Action.TierSet; tier: "prototype" | "hobby" | "team"; idempotencyKey?: string }
+  | { type: typeof Run402Action.Up; dir?: string; manifest?: string; projectId?: string; name?: string; tier?: "prototype" | "hobby" | "team"; orgId?: string; idempotencyKey?: string };
+```
+
+`r.actions.run(input, opts)` returns `{ action, dry_run, target, steps, result }`. `r.up(input, opts)` is equivalent to `actions.run({ type: Run402Action.Up, ...input }, opts)`.
+
+`Run402Action.Up` behavior:
+- Discover `run402.deploy.json`, then `app.json` under `dir` / cwd; explicit `manifest` wins.
+- Validate the deploy manifest and referenced local files before allowance, tier, project, link, upload, or deploy mutations.
+- Resolve project as explicit `projectId`, then `.run402/project.json`, then manifest `project_id`, then approved project creation from `name`, then approved active-project fallback.
+- `name` is only project creation/link metadata. It is not a manifest field and never renames an existing project.
+- Write `.run402/project.json` atomically when `up` needs to remember an explicit/created/active project. Schema: `{ schema_version: "run402.workspace-project.v1", project_id, name?, target?, created_at, updated_at? }`.
+- On Run402 Cloud, recursively ensure allowance and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
+- On Run402 Core, skip Cloud allowance/tier prerequisites and fail closed if no Core project is selected.
+- Delegate the final deployment to `r.project(id).apply(spec, opts)`.
+
+Action options:
+- `dryRun: true` returns planned `steps[]` with no gateway mutations, uploads, or local writes.
+- `approval: "never" | "yes" | { mode: "interactive"; approve(request) }` gates recursive prerequisites and local link writes. SDK default is `"never"`; CLI maps `-y/--yes` to `"yes"` and TTY prompts to interactive approval. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy without approval.
+- `autoPrerequisites` defaults to `true` for `up` and `false` for direct actions.
+- `idempotencyKey` supplies a root key; recursive gateway mutations derive child keys from it.
+
+The runner never executes arbitrary gateway-authored `next_actions[].command`; it uses its own fixed action graph (`allowance`, `tier`, `projects.provision`, workspace link, deploy apply).
 
 ### Casing in returned shapes
 
@@ -678,12 +733,25 @@ The helper makes raw `fetch()` calls to the project's own gateway endpoints usin
 
 ## Namespaces — full surface
 
-The `Run402` class exposes 25 namespaces. Click into the SDK source for full method signatures.
+The `Run402` class exposes 26 namespaces. Click into the SDK source for full method signatures.
 
 > Reference tables below use plain fences, not `ts` fences. They document the
 > type surface in compact form — they are not runnable programs. Runnable example
 > snippets in this document still use ```` ```ts ```` and are type-checked by CI
 > against the published `@run402/sdk` and `@run402/sdk/node` types.
+
+### `r.actions` / `r.up` (`@run402/sdk/node` only)
+
+```
+r.actions.run(input: Run402ActionInput, opts?: Run402ActionRunOptions): Promise<Run402ActionResult>
+r.up(input?: Omit<Run402UpActionInput, "type">, opts?: Run402ActionRunOptions): Promise<Run402ActionResult<Run402UpResult>>
+
+Run402Action.ProjectsProvision === "projects.provision"
+Run402Action.TierSet === "tier.set"
+Run402Action.Up === "up"
+```
+
+Direct `projects.provision` and `tier.set` actions call the same SDK primitives as their namespaces. `up` is the recursive app deploy action described above; it returns `steps[]` and delegates final release work to `r.project(id).apply`.
 
 ### `r.projects`
 

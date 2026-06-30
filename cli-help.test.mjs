@@ -47,6 +47,7 @@ const CLI_PATH = join(__dirname, "cli", "cli.mjs");
 //  - specific: subs that must print per-subcommand help (stdout must start with
 //              `run402 <cmd> <sub>`, not `run402 <cmd> —`)
 const MATRIX = {
+  up: { shared: [], specific: [] },
   init: { shared: ["mpp"], specific: [] },
   status: { shared: [], specific: [] },
   allowance: {
@@ -279,6 +280,19 @@ describe("CLI --help contract", () => {
     assert.match(result.stdout, /--stdin/);
     assert.doesNotMatch(result.stdout, /"routes"\s*:\s*\{\s*"\/api\/\*"/);
     assert.doesNotMatch(result.stdout, /routedHttp\.json\(\{ ok: true, path: event\.path \}\)/);
+  });
+
+  it("up help includes action-runner control flags", async () => {
+    const result = await runCli(["up", "--help"]);
+    assertHelp(result, "run402 up --help");
+    assert.match(result.stdout, /--name <name>/);
+    assert.match(result.stdout, /--project <id>/);
+    assert.match(result.stdout, /--tier <tier>/);
+    assert.match(result.stdout, /--dry-run/);
+    assert.match(result.stdout, /-y, --yes/);
+    assert.match(result.stdout, /--allow-warning <code>/);
+    assert.match(result.stdout, /--allow-warnings/);
+    assert.match(result.stdout, /Project resolution:/);
   });
 
   it("secrets set help includes stdin-safe input", async () => {

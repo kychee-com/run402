@@ -21,13 +21,10 @@ Install + deploy:
 
 ```bash
 npm install -g run402
-run402 init
-run402 tier set prototype
-run402 projects provision --name "my-app"    # returns anon_key, service_key, project_id
-run402 deploy apply --manifest app.json      # use the anon_key in your frontend code
+run402 up --name "my-app" -y                 # validates manifest, bootstraps prerequisites, deploys
 ```
 
-Provision before writing frontend code so the real `anon_key` is embedded. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
+`up` is the agent-first path when the repo has `run402.deploy.json` or `app.json`. It is a thin CLI shim over the SDK action runner; the SDK owns manifest validation, project resolution, recursive prerequisites, idempotency-key derivation, and deploy apply. Provision before writing frontend code when you need the real `anon_key` embedded. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
 
 Self-hosted Run402 Core target:
 
@@ -49,6 +46,7 @@ App build scripts should read the same target/profile store through `resolveRun4
 - `<id>` in commands = `project_id` from `run402 projects list`
 - Output: JSON stdout on success; JSON stderr on failure; exit 0 success, non-zero error. See Output Contract.
 - CLI handles x402 signing; do not request private keys or payment libraries.
+- `run402 up` is the only compound CLI command. It emits natural JSON with `steps[]` (no top-level success `status`), and `--dry-run` performs no gateway mutations, uploads, or local writes.
 - GitHub Actions deploys use OIDC: link once with `run402 ci link github`; generated workflow calls `run402 deploy apply` with `permissions: id-token: write`.
 - Projects, sites, subdomains, forks, functions, secrets, blob storage: free with active tier. Only image generation ($0.03) is per-call
 - Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
@@ -68,6 +66,33 @@ Uniform contract:
 - `cli-output-contract.test.mjs` guards this; violations are regressions.
 - v3.0 breaking change: success wrapper `{ status: "ok", ...payload }` removed; gate on exit code. Stderr error envelope unchanged.
 
+## `run402 up` (SDK action runner)
+
+`run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--dry-run] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
+
+Use `up` for a repo-level app deploy when the workspace has a deploy manifest. It discovers `run402.deploy.json`, then `app.json` under `--dir` / cwd, validates the manifest and filesystem references before any mutation, then executes the SDK action plan.
+
+Project resolution order:
+- explicit `--project`
+- workspace link `.run402/project.json` (`schema_version: "run402.workspace-project.v1"`, `project_id`, optional `name`, `target`)
+- manifest `project_id`
+- approved project creation from `--name`
+- approved active-project fallback
+
+`--name` is only project creation/link metadata. It is not part of the deploy manifest, does not select a project when another selector already resolved one, and never renames an existing project. The workspace link is a local convenience file; it is written atomically and skipped in `--dry-run`.
+
+Approval and recursion:
+- Non-interactive recursive mutations require `-y/--yes`; without it the command fails before mutating and returns a structured approval-required error.
+- If allowance/tier/project/workspace link are already configured, plain `run402 up` runs the requested deploy without `-y`.
+- In a TTY, the CLI prompts for SDK-planned mutations. In SDK code, pass `{ approval: "yes" }`, `{ approval: "never" }`, or an interactive approval callback.
+- `--dry-run` returns planned `steps[]` without allowance creation, faucet request, tier payment, project creation, workspace-link write, upload, or deploy commit.
+- Run402 Cloud `up` can create/fund an allowance, ensure a prototype tier by default, create a project from `--name`, write the workspace link, then apply the manifest.
+- Run402 Core `up` skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected by `--project`, workspace link, or manifest.
+- The SDK derives child idempotency keys for recursive gateway mutations from the root action key; pass `--idempotency-key` when you need a stable external key.
+- Deploy warnings use the same review surface as `deploy apply`: prefer repeatable `--allow-warning <code>` and reserve broad `--allow-warnings` for reviewed exceptional cases.
+
+Output: stdout is the action result, e.g. `{ "action": "up", "dry_run": false, "target": "cloud", "steps": [...], "result": { "project_id": "prj_...", "manifest_path": "...", "deploy": {...} } }`. Stderr carries JSON action-step events unless `--quiet`.
+
 ## Error JSON and Safe Retry
 
 CLI errors: JSON stderr with outer `"status": "error"`. Run402 JSON bodies may merge into the envelope. Branch on `code`, not `message`/legacy `error`.
@@ -82,6 +107,7 @@ Canonical fields:
 - `details`: structured route-specific context
 - `next_actions`: advisory typed suggestions e.g. `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `create_project`, `initialize_wallet`, `deploy`, or `deploy_site_first`. CLI-resolvable entries carry a literal `command`, e.g. `{ "type": "create_project", "command": "run402 projects provision" }`. Do not execute route-like suggestions without validating method/path/auth/safety.
 - Cold-start chain: a fresh agent that knows only `run402 deploy apply` is walked to a deployed result by following `next_actions` — no allowance -> `run402 init`, no tier -> `run402 tier set prototype`, no project -> `run402 projects provision` — each step idempotent, then retry the deploy. You do not need to memorize the sequence; follow what each failure hands back.
+- Prefer `run402 up` when starting from a local repo: it plans and runs that same cold-start chain through the SDK instead of executing advisory `next_actions[].command` strings.
 
 Retry policy:
 - Retry same request only when `retryable: true` and `safe_to_retry: true`; reuse idempotency key for mutations when available.
@@ -98,15 +124,15 @@ Retry policy:
 
 Examples:
 ```json
-{ "status": "error", "http": 403, "message": "Project is frozen.", "code": "PROJECT_FROZEN", "category": "lifecycle", "retryable": false, "safe_to_retry": true, "mutation_state": "none", "next_actions": [{ "action": "renew_tier" }, { "action": "check_usage" }] }
+{ "status": "error", "http": 403, "message": "Project is frozen.", "code": "PROJECT_FROZEN", "category": "lifecycle", "retryable": false, "safe_to_retry": true, "mutation_state": "none", "next_actions": [{ "type": "renew_tier" }, { "type": "check_usage" }] }
 ```
 
 ```json
-{ "status": "error", "http": 402, "message": "Payment required.", "code": "PAYMENT_REQUIRED", "category": "payment", "retryable": true, "safe_to_retry": true, "next_actions": [{ "action": "submit_payment" }] }
+{ "status": "error", "http": 402, "message": "Payment required.", "code": "PAYMENT_REQUIRED", "category": "payment", "retryable": true, "safe_to_retry": true, "next_actions": [{ "type": "submit_payment" }] }
 ```
 
 ```json
-{ "status": "error", "message": "Migration failed.", "code": "MIGRATION_FAILED", "category": "deploy", "retryable": false, "safe_to_retry": true, "mutation_state": "rolled_back", "trace_id": "trc_...", "details": { "operation_id": "op_...", "phase": "migrate" }, "next_actions": [{ "action": "edit_migration" }] }
+{ "status": "error", "message": "Migration failed.", "code": "MIGRATION_FAILED", "category": "deploy", "retryable": false, "safe_to_retry": true, "mutation_state": "rolled_back", "trace_id": "trc_...", "details": { "operation_id": "op_...", "phase": "migrate" }, "next_actions": [{ "type": "edit_migration" }] }
 ```
 
 ---
@@ -744,6 +770,9 @@ run402 subdomains claim my-app
 
 ---
 ## Command Reference
+
+### up
+- `run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--dry-run] [--quiet]` — SDK-owned recursive app deploy. Validates `run402.deploy.json`/`app.json`, ensures missing Cloud prerequisites when approved, resolves/creates/links a project, then applies the manifest. Output includes `steps[]`; success has no top-level `status`.
 
 ### init
 - `run402 init` — set up with x402 (Base Sepolia). Creates allowance, requests faucet, checks tier, lists projects.

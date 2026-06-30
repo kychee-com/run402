@@ -19,10 +19,7 @@ npx run402 <command>
 ## 30-second start
 
 ```bash
-run402 init                                # one-shot: allowance + faucet + tier check
-run402 tier set prototype                  # FREE on testnet (verifies x402 setup)
-run402 projects provision --name my-app    # → anon_key, service_key, project_id
-run402 sites deploy-dir ./dist             # incremental upload
+run402 up --name my-app -y                 # bootstrap allowance/tier/project/link, then deploy
 run402 subdomains claim my-app             # → https://my-app.run402.com
 ```
 
@@ -33,6 +30,16 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 Every command prints **JSON to stdout**, **JSON errors to stderr**, and exits **0 on success / 1 on failure**. Designed for shells, scripts, and agent loops — pipe everything to `jq`.
 
 ## Common commands
+
+### One-command app deploy
+
+```bash
+run402 up --name my-app -y
+run402 up --dry-run
+run402 up --manifest run402.deploy.json --project prj_...
+```
+
+`up` is a thin CLI shim over the Node SDK action runner. It discovers `run402.deploy.json` then `app.json`, validates the deploy input before any mutation, resolves the project as `--project` → `.run402/project.json` → manifest `project_id` → approved creation from `--name` → approved active-project fallback, then applies the manifest. `--name` is creation/link metadata only; it is not a manifest field and never renames an existing project. When everything is already configured, plain `run402 up` deploys. Non-interactive recursive prerequisites/local writes require `-y/--yes`; `--dry-run` prints planned `steps[]` without gateway mutations, uploads, or local writes. Use repeatable `--allow-warning <code>` for reviewed deploy warnings and reserve broad `--allow-warnings` for exceptional reviewed cases. Run402 Core skips Cloud allowance/tier prerequisites and fails closed when no Core project is selected.
 
 ### Allowance
 

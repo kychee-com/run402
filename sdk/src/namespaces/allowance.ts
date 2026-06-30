@@ -44,6 +44,11 @@ export interface FaucetResult {
   network: string;
 }
 
+export interface FaucetOptions {
+  address?: string;
+  idempotencyKey?: string;
+}
+
 interface FaucetWireBody {
   transaction_hash: string;
   amount_usd_micros: number;
@@ -132,8 +137,11 @@ export class Allowance {
    * allowance's internal `funded` marker on success (surfaced as
    * `faucet_used` in `status()`).
    */
-  async faucet(address?: string): Promise<FaucetResult> {
-    let resolvedAddress = address;
+  async faucet(addressOrOptions?: string | FaucetOptions): Promise<FaucetResult> {
+    const opts: FaucetOptions = typeof addressOrOptions === "string"
+      ? { address: addressOrOptions }
+      : addressOrOptions ?? {};
+    let resolvedAddress = opts.address;
     if (!resolvedAddress) {
       const reader = this.client.credentials.readAllowance;
       if (!reader) {
@@ -156,6 +164,7 @@ export class Allowance {
     // normalize to the typed camelCase surface (regression: GH-163).
     const wire = await this.client.request<FaucetWireBody>("/faucet/v1", {
       method: "POST",
+      ...(opts.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}),
       body: { address: resolvedAddress },
       withAuth: false,
       context: "requesting faucet funds",

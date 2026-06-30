@@ -24,14 +24,13 @@ Every example below is a CLI command. The CLI prints JSON to stdout, JSON errors
 ## 30-second start
 
 ```bash
-run402 init                                # one-shot: allowance + faucet + tier check
-run402 tier set prototype                  # FREE on testnet (verifies x402 setup)
-run402 projects provision --name my-app    # → anon_key, service_key, project_id
-run402 sites deploy-dir ./dist             # incremental upload of a directory
+run402 up --name my-app -y                 # bootstrap/link/deploy run402.deploy.json or app.json
 run402 subdomains claim my-app             # → https://my-app.run402.com
 ```
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
+
+`run402 up` is the CLI path for local repos with a deploy manifest. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--dry-run` prints planned `steps[]` without mutating.
 
 ## Self-hosted Core target
 
@@ -50,6 +49,7 @@ For Core, `init --api-base` stores the target in the active profile and does not
 | You want to… | Reach for… |
 |---|---|
 | Set up a wallet from scratch | `run402 init` |
+| Bootstrap/link/deploy a manifest repo | `run402 up --name <name> -y` |
 | Point at self-hosted Core | `run402 init --api-base=<url>` |
 | Make a database | `run402 projects provision` |
 | Run SQL on it | `run402 projects sql` |

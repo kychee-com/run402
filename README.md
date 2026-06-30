@@ -30,14 +30,13 @@ All five interfaces share a single typed kernel where appropriate: `@run402/sdk`
 
 ```bash
 npm install -g run402
-run402 init                                          # creates allowance, requests testnet faucet
-run402 tier set prototype                            # free on testnet (verifies x402 setup)
-run402 projects provision --name my-app              # → anon_key, service_key, project_id
-run402 sites deploy-dir ./dist                       # incremental deploy of a directory → live URL
+run402 up --name my-app -y                           # bootstrap allowance/tier/project/link, then deploy manifest
 run402 subdomains claim my-app                       # → https://my-app.run402.com
 ```
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
+
+Prefer `run402 up` when a repo has `run402.deploy.json` or `app.json`. The CLI stays a thin shim over the Node SDK action runner (`r.actions.run(...)` / `r.up(...)`): it validates the manifest first, then recursively performs only the missing prerequisites. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--name` is project creation/link metadata only; it is not part of the deploy manifest and never renames an existing project. Use `--dry-run` to print the planned steps without gateway mutations, uploads, or local writes.
 
 ## The patterns
 
@@ -296,7 +295,7 @@ const p = await r.project(project.project_id);
 await p.assets.put("hello.txt", { content: "hi" });
 ```
 
-The SDK is organised as 26 namespaces: `projects`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session — browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), and `grants` (per-project capability grants), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
+The SDK is organised as 26 namespaces: `actions` (Node recursive action runner), `projects`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session — browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), and `grants` (per-project capability grants), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
 
 **Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+ — `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `auth.*` helpers / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 
@@ -309,6 +308,7 @@ npm install -g run402
 Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure — designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://docs.run402.com/llms-cli.txt>).
 
 ```bash
+run402 up --name my-app -y                # recursive SDK action runner: init/tier/project/link/deploy
 run402 init                              # one-shot allowance + faucet + tier check
 run402 status                            # organization snapshot (wallet, rail, balances, tier, projects)
 run402 projects provision --name my-app
@@ -324,6 +324,8 @@ run402 assets put ./asset.png --immutable
 run402 assets diagnose <url>             # inspect live CDN state for a public URL
 run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the new SHA
 ```
+
+`up` is the only compound CLI command: it calls the SDK action runner, emits `steps[]`, and writes `.run402/project.json` when it needs to remember the workspace project. Against Run402 Core it skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected.
 
 Portable archives export the supported Run402 Core runtime slice of a Cloud project for local Core import. This is the no-lock-in trust path, separate from allowance/spend-cap financial-risk controls.
 

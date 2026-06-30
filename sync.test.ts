@@ -78,6 +78,7 @@ function parseCliCommands(): string[] {
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`org:member:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
+  if (existsSync(join(__dirname, "cli/lib/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
   if (existsSync(join(__dirname, "cli/lib/dev.mjs"))) cmds.push("dev");
@@ -104,6 +105,7 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`org:member:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
+  if (existsSync(join(__dirname, "openclaw/scripts/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
   if (existsSync(join(__dirname, "openclaw/scripts/dev.mjs"))) cmds.push("dev");
@@ -199,6 +201,7 @@ interface Capability {
 
 const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
+  { id: "up",                endpoint: "(compound local+gateway action)",       mcp: null,                            cli: "up",                  openclaw: "up" },
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
   { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
 
@@ -505,6 +508,7 @@ const SURFACE: Capability[] = [
 
 const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Local-only compound flows — MCP handlers compose SDK calls internally.
+  up: "actions.up",
   init: null,
   status: null,
 
@@ -836,6 +840,7 @@ async function listSdkMethods(): Promise<string[]> {
   const nodeAugments: Array<{ namespace: string; modulePath: string; exportName: string }> = [
     { namespace: "sites", modulePath: "./sdk/dist/node/sites-node.js", exportName: "NodeSites" },
     { namespace: "archives", modulePath: "./sdk/dist/node/archives-node.js", exportName: "NodeArchives" },
+    { namespace: "actions", modulePath: "./sdk/dist/node/actions-node.js", exportName: "NodeActions" },
     { namespace: "org", modulePath: "./sdk/dist/index.js", exportName: "ScopedOrg" },
     { namespace: "org.members", modulePath: "./sdk/dist/index.js", exportName: "OrgMembers" },
     { namespace: "org.invites", modulePath: "./sdk/dist/index.js", exportName: "OrgInvites" },
@@ -1107,6 +1112,9 @@ describe("SDK surface alignment", () => {
       "operator.session.issueRecoveryCodes",
       "operator.session.listAuthenticators",
       "operator.session.revokeAuthenticator",
+      // SDK action runner exposes the generic dispatcher alongside the typed
+      // `actions.up` convenience mapped to the CLI `up` capability.
+      "actions.run",
     ]);
 
     const sdkMethods = await listSdkMethods();

@@ -27,6 +27,8 @@ test("@run402/sdk/node re-exports the isomorphic type surface and Node-only help
   const requiredNodeTypes = new Set([
     "NodeRun402Options",
     "NodeRun402",
+    "NodeActionTargetKind",
+    "NodeActionsOptions",
     "DeployDirOptions",
     "DeployDirEvent",
     "FileSetFromDirOptions",
@@ -105,6 +107,50 @@ test("route method constants are available from package entrypoints", () => {
         'const nodePost: "POST" = NODE_METHODS[2];',
         "void rootGet;",
         "void nodePost;",
+        "export {};",
+      ].join("\n"),
+    );
+
+    const program = ts.createProgram([contractPath], {
+      baseUrl: REPO_DIR,
+      paths: {
+        "@run402/sdk": ["sdk/src/index.ts"],
+        "@run402/sdk/node": ["sdk/src/node/index.ts"],
+      },
+      lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      noEmit: true,
+      skipLibCheck: true,
+      strict: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+
+    assert.equal(formatDiagnostics(diagnostics), "");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("action constants and discriminated inputs compile from package entrypoints", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-sdk-action-contract-"));
+  const contractPath = join(dir, "contract.ts");
+
+  try {
+    writeFileSync(
+      contractPath,
+      [
+        'import { Run402Action as RootAction, type Run402ActionInput as RootInput, type Run402ActionType as RootType } from "@run402/sdk";',
+        'import { Run402Action as NodeAction, type Run402ActionInput as NodeInput } from "@run402/sdk/node";',
+        'const projectAction: RootType = RootAction.ProjectsProvision;',
+        'const sameLiteral: "projects.provision" = NodeAction.ProjectsProvision;',
+        'const input: RootInput = { type: RootAction.ProjectsProvision, name: "my-app" };',
+        'const nodeInput: NodeInput = { type: NodeAction.Up, dir: ".", name: "my-app" };',
+        'if (input.type === RootAction.ProjectsProvision) { const maybeName: string | undefined = input.name; void maybeName; }',
+        "void projectAction;",
+        "void sameLiteral;",
+        "void nodeInput;",
         "export {};",
       ].join("\n"),
     );
@@ -228,6 +274,7 @@ function publicRootTypeFiles(): string[] {
 
   return [
     join(SRC_DIR, "ci-credentials.ts"),
+    join(SRC_DIR, "actions.ts"),
     join(SRC_DIR, "credentials.ts"),
     join(SRC_DIR, "errors.ts"),
     join(SRC_DIR, "kernel.ts"),

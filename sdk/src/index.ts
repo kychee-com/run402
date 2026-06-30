@@ -358,6 +358,8 @@ export type {
 } from "./errors.js";
 export { withRetry } from "./retry.js";
 export type * from "./retry.js";
+export { Run402Action } from "./actions.js";
+export type * from "./actions.js";
 export type * from "./credentials.js";
 export type * from "./kernel.js";
 export {

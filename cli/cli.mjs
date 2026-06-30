@@ -19,6 +19,7 @@ Usage:
   run402 <command> [subcommand] [options]
 
 Commands:
+  up          Provision/link/deploy the current app with SDK orchestration
   init        Set up allowance, funding, and check tier status (x402 default)
   init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
   status      Show full account state (allowance, balance, tier, projects)
@@ -67,6 +68,7 @@ Global options (any command):
 Run 'run402 <command> --help' for detailed usage of each command.
 
 Examples:
+  run402 up --name my-app -y
   run402 allowance create
   run402 allowance fund
   run402 deploy apply --manifest app.json
@@ -132,6 +134,11 @@ try {
 
 async function dispatch() {
 switch (cmd) {
+  case "up": {
+    const { run } = await import("./lib/up.mjs");
+    await run([sub, ...rest].filter(Boolean));
+    break;
+  }
   case "init": {
     const { run } = await import("./lib/init.mjs");
     await run([sub, ...rest].filter(Boolean));

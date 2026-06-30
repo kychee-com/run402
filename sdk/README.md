@@ -10,7 +10,7 @@ npm install @run402/sdk
 
 | Import | Use when |
 |---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance. Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance. Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk` | Isomorphic — works in Node, Deno, Bun, V8 isolates. No filesystem access. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). |
 
 ## Quick start (Node)
@@ -24,6 +24,23 @@ await (await r.project(project.project_id)).assets.put("hello.txt", { content: "
 ```
 
 That's it — credentials are read, x402 payments are signed, results are typed.
+
+For repo-level app deploys, the Node entry also exposes the action runner used by `run402 up`:
+
+```ts
+import { Run402Action, run402 } from "@run402/sdk/node";
+
+const r = run402();
+
+await r.up({ name: "my-app" }, { approval: "yes" });
+
+await r.actions.run({
+  type: Run402Action.ProjectsProvision,
+  name: "my-app",
+});
+```
+
+Action identifiers are exported constants plus a string-literal union, so inputs narrow by `type`. `up` validates `run402.deploy.json` / `app.json` before any mutation, resolves the project as explicit `projectId` → `.run402/project.json` → manifest `project_id` → approved creation from `name` → approved active-project fallback, then delegates to `r.project(id).apply(...)`. `name` is only project creation/link metadata; it is not a manifest field and never renames an existing project. If allowance/tier/project/link are already configured, `r.up()` can run the requested deploy with the default approval policy; pass `{ approval: "yes" }` only when you want recursive prerequisites/local writes to proceed unattended. Pass `{ dryRun: true }` to return planned `steps[]` without gateway mutations, uploads, or local writes.
 
 For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
 
@@ -83,10 +100,11 @@ const r = new Run402({
 
 The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readAllowance`, `saveAllowance`, …) for hosts that want full sticky-default behavior.
 
-## Namespaces (25)
+## Namespaces (26)
 
 | Namespace | Highlights |
 |---|---|
+| `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated, dry-run is non-mutating, and child gateway mutations derive idempotency keys from the root action. |
 | `projects` | `provision`, `delete`, `list`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
 | `r.project(id).apply` | **The unified apply primitive.** Callable hero — `r.project(id).apply(spec)` for atomic mixed writes (release slices + assets slice). Sub-methods: `.plan`, `.start`, `.resume`, `.upload`, `.commit`, `.status`, `.list`, `.events`, `.resolve`, `.getRelease`, `.getActiveRelease`, `.diff`. Underlying engine routes to `/apply/v1/*`. |
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |

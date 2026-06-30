@@ -20,7 +20,11 @@
  * are uploaded. Re-deploying an unchanged tree issues no S3 PUTs.
  */
 
-import { getApiBase } from "../../core-dist/config.js";
+import {
+  DEFAULT_API_BASE,
+  getApiBase,
+  getApiTargetKind,
+} from "../../core-dist/config.js";
 import { Run402, type Run402Options } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type { Client } from "../kernel.js";
@@ -30,6 +34,7 @@ import { createLazyPaidFetch } from "./paid-fetch.js";
 import { NodeSites } from "./sites-node.js";
 import { NodeAssets } from "./assets-node.js";
 import { NodeArchives } from "./archives-node.js";
+import { NodeActions, type NodeActionTargetKind } from "./actions-node.js";
 
 export interface NodeRun402Options {
   /** Override the API base URL. Defaults to `getApiBase()` (env var or production URL). */
@@ -66,6 +71,8 @@ export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives"> & {
   sites: NodeSites;
   assets: NodeAssets;
   archives: NodeArchives;
+  actions: NodeActions;
+  up: NodeActions["up"];
 };
 
 /**
@@ -79,14 +86,16 @@ export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives"> & {
  * exposes the `deployDir({ dir })` helper.
  */
 export function run402(opts: NodeRun402Options = {}): NodeRun402 {
+  const apiBase = opts.apiBase ?? getApiBase();
+  const credentials = opts.credentials ?? new NodeCredentialsProvider({
+    allowancePath: opts.allowancePath,
+    keystorePath: opts.keystorePath,
+    surface: opts.surface,
+    authMode: opts.authMode,
+  });
   const runOpts: Run402Options = {
-    apiBase: opts.apiBase ?? getApiBase(),
-    credentials: opts.credentials ?? new NodeCredentialsProvider({
-      allowancePath: opts.allowancePath,
-      keystorePath: opts.keystorePath,
-      surface: opts.surface,
-      authMode: opts.authMode,
-    }),
+    apiBase,
+    credentials,
     fetch:
       opts.fetch ??
       (opts.disablePaidFetch ? globalThis.fetch.bind(globalThis) : createLazyPaidFetch()),
@@ -103,8 +112,23 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   // Same single-Client pattern as the sites upgrade above.
   (base as unknown as { assets: NodeAssets }).assets = new NodeAssets(client);
   (base as unknown as { archives: NodeArchives }).archives = new NodeArchives(client);
+  const actions = new NodeActions(base, {
+    targetKind: inferTargetKind(apiBase, opts.apiBase !== undefined),
+  });
+  (base as unknown as { actions: NodeActions }).actions = actions;
+  (base as unknown as { up: NodeActions["up"] }).up = actions.up.bind(actions);
 
   return base as unknown as NodeRun402;
+}
+
+function inferTargetKind(apiBase: string, explicitApiBase: boolean): NodeActionTargetKind {
+  const configured = getApiTargetKind();
+  if (!explicitApiBase && configured !== "unknown") return configured;
+  return stripSlash(apiBase) === stripSlash(DEFAULT_API_BASE) ? "cloud" : "core";
+}
+
+function stripSlash(value: string): string {
+  return value.replace(/\/+$/, "");
 }
 
 export { NodeSites } from "./sites-node.js";
@@ -165,7 +189,10 @@ export {
   verifyArchive,
 } from "./archives-node.js";
 export { NodeCredentialsProvider } from "./credentials.js";
+export { NodeActions } from "./actions-node.js";
+export type { NodeActionTargetKind, NodeActionsOptions } from "./actions-node.js";
 export { setupPaidFetch, createLazyPaidFetch } from "./paid-fetch.js";
+export { Run402Action } from "../actions.js";
 export type * from "../index.js";
 // Re-export the isomorphic surface so Node consumers don't need two imports.
 export {
