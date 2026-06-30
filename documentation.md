@@ -11,6 +11,70 @@ The same code change rarely lands in just one doc. A new MCP tool needs a row in
 3. Read the **Update when…** column for the surface you touched.
 4. Update every flagged doc. For private-repo docs, open a separate PR there.
 
+## Agent DX benchmark gate
+
+For any change that materially affects how a coding agent discovers, calls, deploys, configures, debugs, or recovers a Run402 workflow, run this gate before release. The goal is one obvious next action for agents, not a pile of equally plausible commands, methods, tools, or examples.
+
+The private Run402 OpenSpec repo enforces the section markers for applicable designs; this public repo owns the concrete CLI, SDK, MCP, docs, snippet, and sync-test follow-through.
+
+### Benchmark set
+
+Compare the relevant job-to-be-done against Railway, Fly.io, Netlify, Vercel, Supabase, Render, and Terraform. Use official docs or a dated source note for current claims. If a product is not relevant, say why in one sentence. Add closer benchmarks when useful.
+
+### Canonical agent contract
+
+Every agent-facing workflow change should identify:
+
+- common workflow
+- canonical operation/action id
+- canonical config or manifest shape
+- canonical CLI path, SDK path, MCP tool, and API path where relevant
+- primary success response and primary error/recovery shape
+- advanced/debug/compatibility alternatives, clearly labeled
+- deprecated or removed paths
+- where workflow intelligence lives: gateway, shared client/SDK, CLI renderer, MCP renderer, direct HTTP response
+- affected docs and validation checks
+
+Mark irrelevant surfaces `N/A`; do not add symmetry just to have a CLI command, SDK method, or MCP tool.
+
+### Agent trace
+
+Prove the loop with one happy path and the likely mistake paths:
+
+- start state and assumptions
+- what the agent reads or discovers
+- what the agent runs or calls
+- what Run402 returns
+- the exact next action
+
+Likely mistakes include missing project selection, invalid config fields, unsupported tier/runtime caps, approval-required plans, stale commands, config/remote conflicts, and unsafe secret placement.
+
+### Surface-sprawl check
+
+Before adding any new public surface, answer why an existing canonical path cannot carry the behavior with equal or better clarity:
+
+- CLI command or flag
+- SDK method, type, helper, or action constant
+- MCP tool
+- API route, request field, response field
+- manifest/config field
+- docs example
+
+The issue is too many plausible next actions, not just too many CLI commands. A new surface is good only when it becomes canonical or is explicitly advanced/debug-only.
+
+### Docs and tests
+
+Update all affected public docs and checks before release:
+
+- `README.md`, `AGENTS.md`, `documentation.md`
+- `cli/README.md`, `cli/llms-cli.txt`
+- `sdk/README.md`, `sdk/llms-sdk.txt`
+- `llms-mcp.txt`, `SKILL.md`, `openclaw/SKILL.md`
+- package READMEs and changelogs
+- `sync.test.ts`, `SKILL.test.ts`, CLI help/output tests, SDK snippet/type tests, and any surface-specific fixtures
+
+For HTTP/API behavior, coordinate the private repo docs (`llms-full.txt`, OpenAPI, updates/changelog). For shared release/runtime/functions/storage behavior, coordinate `run402-core` docs, package READMEs/changelogs, fixtures, and conformance/smoke tests.
+
 ### Status legend
 
 - 🟢 **Up-to-date** with the current modern surface; no known gaps
