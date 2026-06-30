@@ -70,8 +70,16 @@ export interface MailboxNextAction {
   [key: string]: unknown;
 }
 
+export interface MailboxProviderReadiness {
+  status?: string;
+  provider?: string;
+  reason?: string;
+  [key: string]: unknown;
+}
+
 export interface MailboxSelectionEnvelope {
   mailbox_settings?: MailboxSettings;
+  provider_readiness?: MailboxProviderReadiness;
   next_actions?: MailboxNextAction[];
 }
 
@@ -168,6 +176,8 @@ export interface SendEmailResult {
 
 export interface EmailSummary {
   id: string;
+  /** Core gateways may expose this spelling on the wire; SDK normalizes `id`. */
+  message_id?: string;
   /** "inbound" (received) or "outbound" (sent). */
   direction: string;
   template: string | null;
@@ -180,11 +190,21 @@ export interface EmailSummary {
 
 export interface EmailDetail {
   id: string;
-  template: string;
+  /** Core gateways may expose this spelling on the wire; SDK normalizes `id`. */
+  message_id?: string;
+  template: string | null;
   to: string;
   status: string;
-  variables: Record<string, string>;
+  variables?: Record<string, string>;
+  subject?: string | null;
+  mailbox_id?: string;
+  from_address?: string;
+  delivery_state?: string;
+  provider?: string | null;
+  provider_message_id?: string | null;
   created_at: string;
+  updated_at?: string;
+  sent_at?: string | null;
   /** Present (non-null) when the send carried attachments; names/types/sizes only. */
   attachments_meta?: EmailAttachmentMeta[] | null;
   replies?: Array<{
@@ -590,6 +610,7 @@ export class Email {
     return {
       mailboxes: Array.isArray(raw.mailboxes) ? raw.mailboxes : [],
       ...(raw.mailbox_settings !== undefined ? { mailbox_settings: raw.mailbox_settings } : {}),
+      ...(raw.provider_readiness !== undefined ? { provider_readiness: raw.provider_readiness } : {}),
       ...(Array.isArray(raw.next_actions) ? { next_actions: raw.next_actions } : {}),
     };
   }
@@ -792,10 +813,12 @@ export class Email {
     if (opts.after) qs.set("after", opts.after);
     if (opts.direction !== undefined) qs.set("direction", opts.direction);
     const path = `/mailboxes/v1/${id}/messages${qs.toString() ? "?" + qs.toString() : ""}`;
-    return this.client.request<EmailSummary[]>(path, {
+    const raw = await this.client.request<EmailSummary[] | { messages?: EmailSummary[] }>(path, {
       headers: { Authorization: `Bearer ${serviceKey}` },
       context: "listing emails",
     });
+    const rows = Array.isArray(raw) ? raw : Array.isArray(raw.messages) ? raw.messages : [];
+    return rows.map(normalizeEmailSummary);
   }
 
   /** Get a single message by id, including any replies. */
@@ -806,10 +829,11 @@ export class Email {
   ): Promise<EmailDetail> {
     const { id, serviceKey } = await this.resolveMailbox(projectId, opts.mailbox);
     const encodedMessageId = encodePathSegment(messageId, "messageId", "getting email");
-    return this.client.request<EmailDetail>(`/mailboxes/v1/${id}/messages/${encodedMessageId}`, {
+    const raw = await this.client.request<EmailDetail>(`/mailboxes/v1/${id}/messages/${encodedMessageId}`, {
       headers: { Authorization: `Bearer ${serviceKey}` },
       context: "getting email",
     });
+    return normalizeEmailDetail(raw);
   }
 
   /**
@@ -926,6 +950,28 @@ function normalizeCreateMailboxResult(
     return { ...maybeLegacy, mailbox_id: maybeLegacy.id };
   }
   return raw as CreateMailboxResult;
+}
+
+function normalizeEmailSummary(raw: EmailSummary): EmailSummary {
+  const id = raw.id ?? raw.message_id ?? "";
+  return {
+    ...raw,
+    id,
+    ...(raw.message_id === undefined && id ? { message_id: id } : {}),
+    direction: raw.direction ?? "outbound",
+    template: raw.template ?? null,
+  };
+}
+
+function normalizeEmailDetail(raw: EmailDetail): EmailDetail {
+  const id = raw.id ?? raw.message_id ?? "";
+  return {
+    ...raw,
+    id,
+    ...(raw.message_id === undefined && id ? { message_id: id } : {}),
+    template: raw.template ?? null,
+    variables: raw.variables ?? {},
+  };
 }
 
 function validateOptionalMailboxId(value: unknown, field: string): void {

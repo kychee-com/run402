@@ -170,6 +170,8 @@ run402 email send --to user@example.com --subject "Welcome" --html "<h1>Hi</h1>"
 run402 email send --to user@example.com --template notification --var project_name="My App"
 ```
 
+For Run402 Core, use the same commands after `run402 init --api-base=http://my-core:4020`. The Core gateway operator must configure an outbound provider such as SES first; `run402 email mailboxes` surfaces `provider_readiness`, `can_send`, `send_blocked_reason`, and `next_actions` when setup is missing. Core's first email slice supports raw outbound mail with attachments; managed templates, inbound reply handling, sender-domain automation, and delivery operations may remain Cloud-only until the Core gateway adds those capabilities.
+
 ### Image generation
 
 ```bash

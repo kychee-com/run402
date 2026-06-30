@@ -200,6 +200,10 @@ describe("email.getMailbox + listMailboxes wire shape", () => {
           default_outbound_mailbox_id: "mbx_support",
           auth_sender_mailbox_id: null,
         },
+        provider_readiness: {
+          status: "configured",
+          provider: "ses",
+        },
         next_actions: [{ type: "set_mailbox_defaults" }],
       }),
     );
@@ -209,6 +213,8 @@ describe("email.getMailbox + listMailboxes wire shape", () => {
     assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1");
     assert.equal(result.mailboxes[0]!.mailbox_id, "mbx_support");
     assert.equal(result.mailbox_settings?.default_outbound_mailbox_id, "mbx_support");
+    assert.equal(result.provider_readiness?.status, "configured");
+    assert.equal(result.provider_readiness?.provider, "ses");
     assert.equal(result.next_actions?.[0]?.type, "set_mailbox_defaults");
   });
 });
@@ -486,6 +492,61 @@ describe("email message ids", () => {
       calls[1]!.url,
       "https://api.example.test/mailboxes/v1/mbx_known/messages/msg_1%2F..%2F..%2Fwebhooks/raw",
     );
+  });
+
+  it("normalizes Core message envelopes and message_id spelling", async () => {
+    const { fetch } = mockFetch((call) => {
+      if (call.url.endsWith("/messages/msg_core")) {
+        return jsonResponse({
+          message_id: "msg_core",
+          mailbox_id: "mbx_known",
+          from_address: "signing@example.com",
+          to: "signer@example.invalid",
+          subject: "Signature requested",
+          status: "sent",
+          delivery_state: "accepted",
+          provider: "mock",
+          provider_message_id: "mock-msg",
+          attachments_meta: [{ filename: "agreement.pdf", content_type: "application/pdf", size_bytes: 12 }],
+          created_at: "2026-06-30T00:00:00.000Z",
+          updated_at: "2026-06-30T00:00:00.000Z",
+          sent_at: "2026-06-30T00:00:01.000Z",
+        });
+      }
+      return jsonResponse({
+        messages: [{
+          message_id: "msg_core",
+          mailbox_id: "mbx_known",
+          from_address: "signing@example.com",
+          to: "signer@example.invalid",
+          subject: "Signature requested",
+          status: "sent",
+          delivery_state: "accepted",
+          provider: "mock",
+          provider_message_id: "mock-msg",
+          attachments_meta: [{ filename: "agreement.pdf", content_type: "application/pdf", size_bytes: 12 }],
+          created_at: "2026-06-30T00:00:00.000Z",
+          updated_at: "2026-06-30T00:00:00.000Z",
+          sent_at: "2026-06-30T00:00:01.000Z",
+        }],
+        has_more: false,
+        next_cursor: null,
+      });
+    });
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    const list = await sdk.email.list("prj_known", { mailbox: "mbx_known" });
+    assert.equal(list[0]!.id, "msg_core");
+    assert.equal(list[0]!.message_id, "msg_core");
+    assert.equal(list[0]!.direction, "outbound");
+    assert.equal(list[0]!.attachments_meta?.[0]?.filename, "agreement.pdf");
+
+    const detail = await sdk.email.get("prj_known", "msg_core", { mailbox: "mbx_known" });
+    assert.equal(detail.id, "msg_core");
+    assert.equal(detail.message_id, "msg_core");
+    assert.equal(detail.template, null);
+    assert.equal(detail.variables && Object.keys(detail.variables).length, 0);
+    assert.equal(detail.delivery_state, "accepted");
   });
 });
 

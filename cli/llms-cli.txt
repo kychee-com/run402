@@ -1244,6 +1244,8 @@ Built-in AI helpers. Translation requires the AI Translation add-on on the proje
 ### email
 Max 5 mailboxes/project. Inspect defaults and footer policy with `email mailboxes`; set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` via `email defaults`; set per-mailbox outbound footer policy with `email update --footer-policy run402_transparency|none`. Omit `--mailbox` to use outbound default; branch on `DEFAULT_MAILBOX_REQUIRED` / `DEFAULT_MAILBOX_INVALID` + `next_actions`. `footer_policy=none` requires hobby/team; prototype projects are locked to `run402_transparency` and return `FOOTER_POLICY_TIER_REQUIRED`. Send modes: template or raw HTML; one recipient/send. Rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients/lease: prototype 25 / 200 / 1000.
 
+Run402 Core uses the same CLI after `run402 init --api-base=http://my-core:4020`. The Core operator must configure the gateway outbound provider first; `email mailboxes` surfaces `provider_readiness`, `can_send`, `send_blocked_reason`, and `next_actions` when setup is missing. Core's first slice supports raw outbound mail with attachments; managed templates, inbound reply handling, sender-domain automation, and delivery operations may remain Cloud-only until the Core gateway adds them.
+
 Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 
 - `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com`. NOT idempotent: a conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
