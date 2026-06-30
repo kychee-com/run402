@@ -15,7 +15,7 @@
 //
 // Contract for CLI-authored next actions:
 //   - `next_actions[]` entries SHALL be typed objects with a `type` field.
-//   - Bare string actions and legacy `{ action: ... }` objects are rejected.
+//   - Bare string actions and invalid `{ action: ... }` objects are rejected.
 //   - SDK/gateway-provided `next_actions` pass through at runtime; this scanner
 //     targets literals authored in cli/lib source files.
 
@@ -163,7 +163,7 @@ describe("CLI output contract drift protection", () => {
     assert.match(source, /status:\s*"error"/, "sdk-errors.mjs must keep the `status: \"error\"` sentinel for the stderr error envelope");
   });
 
-  it("CLI-authored next_actions literals are typed objects, not legacy strings or action keys", () => {
+  it("CLI-authored next_actions literals are typed objects, not strings or action keys", () => {
     const files = readdirSync(CLI_LIB_DIR).filter((f) => f.endsWith(".mjs") && !f.endsWith(".test.mjs"));
     const violations = [];
 
@@ -184,7 +184,7 @@ describe("CLI output contract drift protection", () => {
           violations.push({
             file,
             line: lineNumberFor(source, array.start),
-            reason: "legacy action discriminator",
+            reason: "invalid action discriminator",
           });
         }
       }
@@ -195,7 +195,7 @@ describe("CLI output contract drift protection", () => {
         .map((v) => `  cli/lib/${v.file}:${v.line} -> ${v.reason}`)
         .join("\n");
       assert.fail(
-        `Found ${violations.length} legacy CLI-authored next_actions shape${violations.length === 1 ? "" : "s"}:\n${summary}\n\n` +
+        `Found ${violations.length} invalid CLI-authored next_actions shape${violations.length === 1 ? "" : "s"}:\n${summary}\n\n` +
         `CLI-authored next_actions must use typed objects such as ` +
         `\`{ type: "edit_request", command: "run402 ..." }\`. Preserve SDK/gateway-provided actions at runtime; ` +
         `do not author bare strings or \`{ action: ... }\` in cli/lib.`,

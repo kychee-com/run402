@@ -258,8 +258,8 @@ describe("handleDeploy deploy error formatting", () => {
             migration_id: "001_init",
           },
           next_actions: [
-            { action: "edit_migration", label: "Fix migration SQL" },
-            { action: "resume_deploy", label: "Resume after correction" },
+            { type: "edit_migration", label: "Fix migration SQL" },
+            { type: "resume_deploy", label: "Resume after correction" },
           ],
         },
         context: "commit",

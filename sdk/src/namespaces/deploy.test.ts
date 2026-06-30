@@ -3628,7 +3628,7 @@ describe("Deploy.apply (gateway error translation)", () => {
         plan_id: "plan_1",
         rolled_back: true,
       },
-      next_actions: [{ action: "edit_migration", path: "database.migrations.001_init" }],
+      next_actions: [{ type: "edit_migration", path: "database.migrations.001_init" }],
     };
     w.setHandler((req) => {
       if (req.path === "/apply/v1/plans/plan_1/commit") {
@@ -3737,7 +3737,7 @@ describe("Deploy.apply (gateway error translation)", () => {
             mutation_state: "not_started",
             trace_id: "trc_nested",
             details: { phase: "migrate-gate", plan_id: "plan_nested" },
-            next_actions: [{ action: "retry" }],
+            next_actions: [{ type: "retry" }],
           },
           "planning deploy",
         );
@@ -3763,7 +3763,7 @@ describe("Deploy.apply (gateway error translation)", () => {
         assert.equal(e.traceId, "trc_nested");
         assert.equal(e.operationId, "op_nested");
         assert.equal(e.planId, "plan_nested");
-        assert.deepEqual(e.nextActions, [{ action: "retry" }]);
+        assert.deepEqual(e.nextActions, [{ type: "retry" }]);
         return true;
       },
     );

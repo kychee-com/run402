@@ -168,7 +168,7 @@ function reviewedPlanPayload(
     routes: { added: [], removed: [], changed: [] },
     diff: { resources: { site: { added: ["index.html"] } } },
     next_actions: [{
-      action: "retry",
+      type: "retry",
       command: `run402 deploy apply --require-plan ${planId} --plan-fingerprint ${fingerprint}`,
       argv: ["run402", "deploy", "apply", "--require-plan", planId, "--plan-fingerprint", fingerprint],
       why: "Apply exactly this reviewed plan before it expires.",
@@ -278,7 +278,7 @@ describe("typed release config CLI modes", () => {
             message: "reviewed plan no longer matches this config",
             plan_id: body.required_plan.plan_id,
             next_actions: [{
-              action: "retry",
+              type: "retry",
               command: `run402 deploy apply --manifest ${manifestPath} --plan`,
               argv: ["run402", "deploy", "apply", "--manifest", manifestPath, "--plan"],
               why: "Create a fresh reviewed plan.",

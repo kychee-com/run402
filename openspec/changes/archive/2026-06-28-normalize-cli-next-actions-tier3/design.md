@@ -1,6 +1,6 @@
 ## Context
 
-Run402's lower layers already carry typed suggested next actions for the main error paths, and the CLI has a normalizer that accepts legacy shapes for compatibility. A previous cold-start change deliberately left a few uncommon CLI-only paths as a Tier-3 follow-up: cache command validation, function rebuild guidance, deploy CI/warning fallback guidance, and skill examples that still show `action`.
+Run402's lower layers already carry typed suggested next actions for the main error paths. A previous cold-start change deliberately left a few uncommon CLI-only paths as a Tier-3 follow-up: cache command validation, function rebuild guidance, deploy CI/warning fallback guidance, and skill examples that still showed `action`.
 
 This change cleans up that tail without moving ownership upward. Gateway and SDK actions remain authoritative; the CLI only authors typed guidance where the error originates in the CLI or where it is adding a local fallback for a gateway warning that did not provide actions.
 
@@ -14,7 +14,7 @@ This change cleans up that tail without moving ownership upward. Gateway and SDK
 
 **Non-Goals:**
 - Changing the gateway/API error envelope.
-- Changing SDK `Run402Error` construction or normalizer compatibility.
+- Changing SDK `Run402Error` construction.
 - Adding, removing, or renaming CLI commands.
 - Rewriting CLI modules into SDK calls beyond the narrow next-action cleanup.
 
@@ -41,7 +41,7 @@ The highest-risk regression is a future `fail({ next_actions: ["..."] })` in `cl
 ## Risks / Trade-offs
 
 - Existing agents that only understand string entries could see richer objects on the remaining Tier-3 paths. This is intentional alignment with the canonical contract and affects error guidance only.
-- A source-level scanner may miss dynamically constructed legacy arrays. The cleanup keeps dynamic helper outputs typed, and the scanner targets the historically recurring literal forms.
+- A source-level scanner may miss dynamically constructed non-canonical arrays. The cleanup keeps dynamic helper outputs typed, and the scanner targets the recurring literal forms.
 
 ## Open Questions
 

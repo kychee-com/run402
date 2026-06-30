@@ -113,7 +113,7 @@ test("up plan returns same-surface require-plan next action", async () => {
     assert.equal(result.mode, "plan");
     assert.equal(result.result?.plan?.plan_id, "plan_123");
     assert.deepEqual(result.result?.plan?.next_actions?.[0], {
-      action: "retry",
+      type: "retry",
       command: `run402 up --manifest ${join(dir, "run402.deploy.json")} --require-plan plan_123 --plan-fingerprint pfp_123`,
       argv: ["run402", "up", "--manifest", join(dir, "run402.deploy.json"), "--require-plan", "plan_123", "--plan-fingerprint", "pfp_123"],
       why: "Apply exactly this reviewed plan from the same repo surface before it expires.",

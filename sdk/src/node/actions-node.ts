@@ -386,7 +386,7 @@ export class NodeActions implements Run402Actions {
             dir: workspaceDir,
             manifest_path: executablePath,
             next_actions: [{
-              action: "retry",
+              type: "retry",
               command: `run402 up --manifest ${shellArg(shortPath(executablePath))} --check`,
               argv: ["run402", "up", "--manifest", executablePath, "--check"],
             }],
@@ -997,7 +997,7 @@ function withUpReviewedPlanNextAction(plan: PlanResponse, manifestPath: string):
   return {
     ...plan,
     next_actions: [{
-      action: "retry",
+      type: "retry",
       command: commandParts.join(" "),
       argv,
       why: "Apply exactly this reviewed plan from the same repo surface before it expires.",

@@ -117,7 +117,7 @@ describe("kernel request", () => {
       mutation_state: "none",
       trace_id: "trc_123",
       details: { project_id: "prj_1" },
-      next_actions: [{ action: "renew_tier" }],
+      next_actions: [{ type: "renew_tier" }],
     };
     const kernel = makeKernel(async () => makeRes(canonical, { status: 403 }));
     await assert.rejects(
@@ -136,7 +136,7 @@ describe("kernel request", () => {
         assert.equal(e.mutationState, "none");
         assert.equal(e.traceId, "trc_123");
         assert.deepEqual(e.details, { project_id: "prj_1" });
-        assert.deepEqual(e.nextActions, [{ action: "renew_tier" }]);
+        assert.deepEqual(e.nextActions, [{ type: "renew_tier" }]);
         return true;
       },
     );

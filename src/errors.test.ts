@@ -118,9 +118,9 @@ describe("formatApiError", () => {
           code: "PAYMENT_REQUIRED",
           category: "payment",
           next_actions: [
-            { action: "submit_payment", label: "Submit the x402 payment" },
-            { action: "renew_tier" },
-            { action: "check_usage", description: "Inspect current limits" },
+            { type: "submit_payment", label: "Submit the x402 payment" },
+            { type: "renew_tier" },
+            { type: "check_usage", description: "Inspect current limits" },
           ],
         },
       },

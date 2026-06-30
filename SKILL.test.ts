@@ -303,12 +303,12 @@ describe("public docs — next_actions discriminator", () => {
     "SKILL.md",
     "openclaw/SKILL.md",
   ];
-  const legacyNextAction = /"next_actions"\s*:\s*\[[^\]]*"action"\s*:/;
+  const invalidNextAction = /"next_actions"\s*:\s*\[[^\]]*"action"\s*:/;
 
   for (const relPath of docs) {
     const body = readFileSync(join(__dirname, relPath), "utf-8");
     it(`${relPath} uses type, not action, in next_actions examples`, () => {
-      assert.ok(!legacyNextAction.test(body), "next_actions examples must use the canonical `type` discriminator");
+      assert.ok(!invalidNextAction.test(body), "next_actions examples must use the canonical `type` discriminator");
     });
   }
 });

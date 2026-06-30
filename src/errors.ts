@@ -258,7 +258,6 @@ function formatNextActions(actions: unknown[]): string[] {
     if (action && typeof action === "object" && !Array.isArray(action)) {
       const obj = action as Record<string, unknown>;
       const name =
-        stringField(obj, "action") ??
         stringField(obj, "type") ??
         stringField(obj, "name") ??
         stringField(obj, "kind");

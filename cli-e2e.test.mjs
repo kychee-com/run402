@@ -996,7 +996,7 @@ describe("CLI SDK error reporting", () => {
         mutation_state: "none",
         trace_id: "trc_cli",
         details: { project_id: "prj_1" },
-        next_actions: [{ action: "renew_tier" }],
+        next_actions: [{ type: "renew_tier" }],
         hint: "Renew the project tier",
         retry_after_seconds: 30,
         admin_required: true,
@@ -1013,7 +1013,7 @@ describe("CLI SDK error reporting", () => {
     assert.equal(parsed.mutation_state, "none");
     assert.equal(parsed.trace_id, "trc_cli");
     assert.deepEqual(parsed.details, { project_id: "prj_1" });
-    assert.deepEqual(parsed.next_actions, [{ action: "renew_tier" }]);
+    assert.deepEqual(parsed.next_actions, [{ type: "renew_tier" }]);
     assert.equal(parsed.hint, "Renew the project tier");
     assert.equal(parsed.retry_after_seconds, 30);
     assert.equal(parsed.admin_required, true);
@@ -1067,7 +1067,7 @@ describe("CLI SDK error reporting", () => {
       mutationState: "rolled_back",
       traceId: "trc_dep_cli",
       details: { statement_offset: 184 },
-      nextActions: [{ action: "edit_migration" }],
+      nextActions: [{ type: "edit_migration" }],
       operationId: "op_1",
       planId: "plan_1",
       fix: { action: "edit_request", path: "database.migrations.001_init" },
@@ -1088,7 +1088,7 @@ describe("CLI SDK error reporting", () => {
     assert.equal(parsed.mutation_state, "rolled_back");
     assert.equal(parsed.trace_id, "trc_dep_cli");
     assert.deepEqual(parsed.details, { statement_offset: 184 });
-    assert.deepEqual(parsed.next_actions, [{ action: "edit_migration" }]);
+    assert.deepEqual(parsed.next_actions, [{ type: "edit_migration" }]);
     assert.equal(parsed.operation_id, "op_1");
     assert.equal(parsed.plan_id, "plan_1");
     assert.deepEqual(parsed.fix, { action: "edit_request", path: "database.migrations.001_init" });
@@ -4060,7 +4060,7 @@ describe("CLI e2e happy path", () => {
     assert.ok(Object.prototype.hasOwnProperty.call(parsed, "tier"), "should include tier field");
     assert.equal(typeof parsed.projects_saved, "number", "should include projects_saved (number)");
     assert.ok(typeof parsed.next_step === "string", "should include next_step");
-    // next_actions[] is the canonical typed surface; next_step mirrors action[0].command.
+    // next_actions[] is the canonical typed surface; next_step mirrors next_actions[0].command.
     assert.ok(Array.isArray(parsed.next_actions) && parsed.next_actions.length > 0, "should include a non-empty next_actions[]");
     assert.ok(typeof parsed.next_actions[0].type === "string", "next_actions entry has a typed `type`");
     assert.equal(parsed.next_actions[0].command, parsed.next_step, "next_step mirrors next_actions[0].command");
