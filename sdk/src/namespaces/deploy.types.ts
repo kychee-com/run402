@@ -2167,7 +2167,7 @@ export interface NormalizedMigrationSpec {
   checksum: string;
   /** Cloud wire form: migration SQL staged in CAS and referenced by digest. */
   sql_ref?: ContentRef;
-  /** Core Developer Preview wire form: migration SQL carried inline. */
+  /** Run402 Core wire form: migration SQL carried inline. */
   sql?: string;
   transaction?: "required" | "none";
 }

@@ -1183,7 +1183,7 @@ async function planInternal(
     body = inlineBody;
   } else if (isCore) {
     throw new Run402DeployError(
-      "Core deploy planning requires an inline spec under the gateway body cap; manifest_ref is not supported by Core Developer Preview yet.",
+      "Core deploy planning requires an inline spec under the gateway body cap; manifest_ref is not supported by Run402 Core yet.",
       {
         code: "DRY_RUN_REQUIRES_INLINE_SPEC",
         phase: "validate",
