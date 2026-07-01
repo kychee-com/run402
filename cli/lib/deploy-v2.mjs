@@ -148,7 +148,7 @@ const EXECUTABLE_MANIFEST_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".js", ".
 const RESUME_HELP = `run402 deploy resume — Resume a stuck deploy operation
 
 Usage:
-  run402 deploy resume <operation_id> [--quiet]
+  run402 deploy resume <operation_id> [--project <id>] [--quiet]
 
 Used when a previous \`deploy apply\` ended in \`activation_pending\` or
 \`schema_settling\` (e.g. transient gateway failure between SQL commit and
@@ -1363,6 +1363,7 @@ async function resumeCmd(args) {
   const parsed = parseDeploySubcommandArgs(args, {
     command: "deploy resume",
     help: RESUME_HELP,
+    valueFlags: ["--project"],
     booleanFlags: ["--quiet"],
   });
   const [operationId] = expectPositionals(parsed.positionals, {
@@ -1371,13 +1372,19 @@ async function resumeCmd(args) {
     max: 1,
     missing: "Missing <operation_id>.",
   });
-  const opts = { operationId, quiet: Boolean(parsed.flags["--quiet"]) };
+  const opts = {
+    operationId,
+    project: parsed.flags["--project"] ?? null,
+    quiet: Boolean(parsed.flags["--quiet"]),
+  };
+  const project = resolveProjectId(opts.project);
 
   allowanceAuthHeaders("/apply/v1/operations");
 
   try {
-    const result = await getSdk()._applyEngine.resume(opts.operationId, {
+    const result = await getSdk({ disablePaidFetch: true })._applyEngine.resume(opts.operationId, {
       onEvent: makeStderrEventWriter(opts.quiet),
+      project,
     });
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {

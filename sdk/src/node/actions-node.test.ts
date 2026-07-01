@@ -168,6 +168,73 @@ test("up deploys when workspace link and active tier are configured", async () =
   }
 });
 
+test("up apply does not synthesize deploy idempotency without an explicit key", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-no-deploy-idem-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+  }));
+  mkdirSync(join(dir, ".run402"), { recursive: true });
+  writeFileSync(join(dir, ".run402", "project.json"), JSON.stringify({
+    schema_version: "run402.workspace-project.v1",
+    project_id: "prj_ready",
+    name: "ready",
+    created_at: "2026-06-30T00:00:00.000Z",
+  }));
+  const calls: string[] = [];
+  const deployOptions: Array<{ idempotencyKey?: string }> = [];
+  const sdk = fakeSdk({
+    calls,
+    deployOptions,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await actions.up();
+
+    assert.equal(deployOptions.length, 1);
+    assert.equal(deployOptions[0].idempotencyKey, undefined);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up apply preserves explicit deploy idempotency keys", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-explicit-deploy-idem-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    idempotency_key: "deploy-explicit",
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+  }));
+  mkdirSync(join(dir, ".run402"), { recursive: true });
+  writeFileSync(join(dir, ".run402", "project.json"), JSON.stringify({
+    schema_version: "run402.workspace-project.v1",
+    project_id: "prj_ready",
+    name: "ready",
+    created_at: "2026-06-30T00:00:00.000Z",
+  }));
+  const calls: string[] = [];
+  const deployOptions: Array<{ idempotencyKey?: string }> = [];
+  const sdk = fakeSdk({
+    calls,
+    deployOptions,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await actions.up();
+
+    assert.equal(deployOptions.length, 1);
+    assert.equal(deployOptions[0].idempotencyKey, "deploy-explicit");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("projects provision can run SDK-owned recursive prerequisites when explicitly enabled", async () => {
   const calls: string[] = [];
   const sdk = fakeSdk({
@@ -246,6 +313,8 @@ function fakeSdk(opts: {
   allowanceConfigured: boolean;
   tierActive: boolean;
   activeProject: string | null;
+  deployOptions?: Array<{ idempotencyKey?: string }>;
+  deployPlanOptions?: Array<{ idempotencyKey?: string }>;
 }) {
   return {
     allowance: {
@@ -302,7 +371,8 @@ function fakeSdk(opts: {
       opts.calls.push(`project:${projectId}`);
       return {
         apply: Object.assign(
-          async () => {
+          async (_spec?: unknown, input?: { idempotencyKey?: string }) => {
+            opts.deployOptions?.push(input ?? {});
             opts.calls.push(`project.apply:${projectId}`);
             return {
               release_id: "rel_123",
@@ -313,7 +383,8 @@ function fakeSdk(opts: {
             };
           },
           {
-            async plan() {
+            async plan(_spec?: unknown, input?: { idempotencyKey?: string }) {
+              opts.deployPlanOptions?.push(input ?? {});
               opts.calls.push(`project.apply.plan:${projectId}`);
               return {
                 plan: {

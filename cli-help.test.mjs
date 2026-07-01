@@ -481,4 +481,21 @@ describe("CLI --help contract", () => {
       });
     }
   });
+
+  describe("mailbox-scoped email help", () => {
+    const cases = [
+      ["email", "get"],
+      ["email", "webhooks", "update"],
+      ["email", "webhooks", "register"],
+    ];
+
+    for (const argv of cases) {
+      it(`run402 ${argv.join(" ")} --help documents --mailbox`, async () => {
+        const result = await runCli([...argv, "--help"]);
+        assertHelp(result, `run402 ${argv.join(" ")} --help`);
+        assert.match(result.stdout, /--mailbox <slug\|id>/,
+          `run402 ${argv.join(" ")} --help must document mailbox selection\nstdout:\n${result.stdout}`);
+      });
+    }
+  });
 });

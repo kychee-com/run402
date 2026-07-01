@@ -313,10 +313,11 @@ export class NodeActions implements Run402Actions {
     run.setState(deployStep, "running");
     await this.#assertLocalProjectKeys(resolved.projectId, run);
     const scoped = await this.sdk.project(resolved.projectId);
+    const explicitDeployIdempotencyKey = input.idempotencyKey ?? normalized.idempotencyKey ?? manifest.idempotencyKey;
     if (run.executionMode === "plan") {
       const planned = await scoped.apply.plan(releaseSpec, {
         mode: "reviewedPlan",
-        idempotencyKey: normalized.idempotencyKey ?? manifest.idempotencyKey ?? run.childKey("deploy.plan"),
+        idempotencyKey: explicitDeployIdempotencyKey,
       });
       const plan = withUpReviewedPlanNextAction(planned.plan, manifest.manifestPath);
       run.setState(deployStep, "succeeded", {
@@ -332,7 +333,7 @@ export class NodeActions implements Run402Actions {
     }
     const requiredPlan = reviewedPlanRequirement(run.executionMode);
     const deploy = await scoped.apply(releaseSpec, {
-      idempotencyKey: normalized.idempotencyKey ?? manifest.idempotencyKey ?? run.childKey("deploy.apply"),
+      idempotencyKey: explicitDeployIdempotencyKey,
       allowWarnings: input.allowWarnings,
       allowWarningCodes: input.allowWarningCodes,
       ...(requiredPlan ? { requiredPlan } : {}),

@@ -422,7 +422,7 @@ CLI dynamically imports `@run402/astro/release-slice` from the consuming project
 Stuck deploys: `activation_pending` (rare transient between SQL commit and pointer-swap) auto-resumes hourly. Static spec/config activation failures throw structured deploy errors promptly. Explicit resume:
 
 ```bash
-run402 deploy resume <operation_id>
+run402 deploy resume <operation_id> [--project prj_...]
 ```
 
 Gateway reruns only failed phase forward; SQL is never replayed.
@@ -880,7 +880,7 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 
 ### deploy
 - `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag
-- `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
+- `run402 deploy resume <operation_id> [--project <id>] [--quiet]` — re-run a stuck operation forward
 - `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline); v1.58+
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
 - `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation

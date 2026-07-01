@@ -289,16 +289,17 @@ Options:
   get: `run402 email get — Get a message with replies
 
 Usage:
-  run402 email get <message_id> [--project <id>]
+  run402 email get <message_id> [--mailbox <slug|id>] [--project <id>]
 
 Arguments:
   <message_id>        Message ID to fetch
 
 Options:
+  --mailbox <slug|id> Target mailbox. Omit to use default_outbound_mailbox_id.
   --project <id>      Project ID (defaults to the active project)
 
 Examples:
-  run402 email get msg_abc123
+  run402 email get msg_abc123 --mailbox support
 `,
 };
 

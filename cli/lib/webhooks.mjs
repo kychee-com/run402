@@ -41,12 +41,12 @@ const SUB_HELP = {
   update: `run402 email webhooks update — Update an existing webhook
 
 Usage:
-  run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--project <id>]
+  run402 email webhooks update <webhook_id> [--url <url>] [--events <e1,e2>] [--mailbox <slug|id>] [--project <id>]
 `,
   register: `run402 email webhooks register — Register a new webhook
 
 Usage:
-  run402 email webhooks register --url <url> --events <e1,e2> [--project <id>]
+  run402 email webhooks register --url <url> --events <e1,e2> [--mailbox <slug|id>] [--project <id>]
 `,
 };
 

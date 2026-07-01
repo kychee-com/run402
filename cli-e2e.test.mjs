@@ -2322,6 +2322,59 @@ describe("CLI e2e happy path", () => {
     assert.match(parsed.message, /Unexpected argument/);
   });
 
+  it("deploy resume polls with the active project's apikey", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    await seedTestProject();
+    saveAllowance({
+      address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      created: "2026-03-15T00:00:00.000Z",
+      funded: true,
+      rail: "x402",
+    });
+
+    const prevFetch = globalThis.fetch;
+    let pollHeaders = null;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      if (url.includes("/apply/v1/operations/op_resume_test/resume")) {
+        return Promise.resolve(json({
+          operation_id: "op_resume_test",
+          plan_id: "plan_resume_test",
+          status: "activation_pending",
+          phase: "activate",
+          release_id: null,
+          urls: null,
+        }));
+      }
+      if (url.includes("/apply/v1/operations/op_resume_test")) {
+        pollHeaders = Object.fromEntries(new Headers(init?.headers ?? {}).entries());
+        return Promise.resolve(json({
+          operation_id: "op_resume_test",
+          plan_id: "plan_resume_test",
+          status: "ready",
+          phase: "ready",
+          release_id: "rel_resume_test",
+          urls: { site: "https://resume.example.test" },
+        }));
+      }
+      return prevFetch(input, init);
+    };
+
+    captureStart();
+    try {
+      await run(["resume", "op_resume_test", "--quiet"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.equal(pollHeaders?.apikey, TEST_PROJECT.anon_key);
+    const body = JSON.parse(capturedStdout());
+    assert.equal(body.release_id, "rel_resume_test");
+  });
+
   it("deploy list rejects unknown flags before network (GH-328)", async () => {
     const result = await runBadDeployArgv(["list", "--project", TEST_PROJECT.project_id, "--wat"], /\/apply\/v1\/operations(?:\?|$)/);
     assert.equal(result.threw?.message, "process.exit(1)");
