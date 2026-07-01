@@ -379,6 +379,7 @@ export type * from "./actions.js";
 export {
   defineConfig,
   dir,
+  emailTrigger,
   file,
   nodeFunction,
   scheduleTrigger,

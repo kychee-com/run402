@@ -1,6 +1,7 @@
 export {
   defineConfig,
   dir,
+  emailTrigger,
   file,
   nodeFunction,
   scheduleTrigger,
@@ -10,6 +11,7 @@ export type {
   Run402ConfigContext,
   Run402ConfigEnv,
   Run402DirConfigOptions,
+  Run402EmailTriggerOptions,
   Run402ExecutableConfigExport,
   Run402ExecutionMode,
   Run402FileConfigOptions,

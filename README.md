@@ -476,10 +476,10 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `deploy_function` | Deploy a Node 22 serverless function; use ReleaseSpec `triggers[]` for schedule-triggered durable runs. |
+| `deploy_function` | Deploy a Node 22 serverless function; use ReleaseSpec `triggers[]` for schedule or email event durable runs. |
 | `invoke_function` | Invoke a deployed function over the direct API-key-protected test path. |
 | `get_function_logs` | Recent logs (CloudWatch), filterable by `since` and routed `request_id`. |
-| `update_function` | Update timeout / memory without redeploying code; use ReleaseSpec `triggers[]` for new schedules. |
+| `update_function` | Update timeout / memory without redeploying code; use ReleaseSpec `triggers[]` for new schedule/email triggers. |
 | `list_functions` / `delete_function` | List / remove functions. |
 | `create_function_run` / `list_function_runs` / `get_function_run` | Durable function requests with idempotency, delay/run_at, retry, and polling. |
 | `get_function_run_logs` / `cancel_function_run` / `redrive_function_run` | Inspect, stop, and redrive durable function runs. |

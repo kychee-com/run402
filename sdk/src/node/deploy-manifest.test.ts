@@ -25,7 +25,7 @@ describe("Node deploy manifest helpers", () => {
       const helperUrl = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "config.ts")).href;
       const manifestPath = join(root, "run402.deploy.ts");
       writeFileSync(manifestPath, `
-        import { defineConfig, dir, file, nodeFunction, scheduleTrigger, sqlFile } from ${JSON.stringify(helperUrl)};
+        import { defineConfig, dir, emailTrigger, file, nodeFunction, scheduleTrigger, sqlFile } from ${JSON.stringify(helperUrl)};
         export default defineConfig({
           project: "prj_typed",
           site: { replace: dir("./dist"), public_paths: { mode: "implicit" } },
@@ -34,6 +34,10 @@ describe("Node deploy manifest helpers", () => {
             triggers: [
               scheduleTrigger("maintenance_every_15m", "*/15 * * * *", {
                 run: { event_type: "maintenance", payload: { sweep: true } },
+              }),
+              emailTrigger("mail_events", "signing-inbox", {
+                events: ["reply_received"],
+                run: { event_type: "email.event" },
               }),
             ],
           }) } },
@@ -59,6 +63,13 @@ describe("Node deploy manifest helpers", () => {
           type: "schedule",
           cron: "*/15 * * * *",
           run: { event_type: "maintenance", payload: { sweep: true } },
+        },
+        {
+          id: "mail_events",
+          type: "email",
+          mailbox: "signing-inbox",
+          events: ["reply_received"],
+          run: { event_type: "email.event" },
         },
       ]);
       assert.equal(

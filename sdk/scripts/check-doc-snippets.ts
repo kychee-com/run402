@@ -652,11 +652,14 @@ function ensureSdkBuilt(): number {
   }
 
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  // Run from the repo root so the root scripts (`build:core`, `build:sdk`,
-  // `build:functions`) resolve. We need build:functions because the
-  // top-level README references `@run402/functions` and snippets that
-  // import it must resolve.
+  const rootPackage = JSON.parse(readFileSync(resolve(REPO_ROOT, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  const scripts = rootPackage.scripts ?? {};
+  // Run from the repo root so root scripts resolve. Some repo layouts ship
+  // @run402/functions as a dependency rather than a workspace build target.
   for (const script of ["build:core", "build:sdk", "build:functions"]) {
+    if (!scripts[script]) continue;
     const result = spawnSync(npm, ["run", script], {
       cwd: REPO_ROOT,
       stdio: "inherit",

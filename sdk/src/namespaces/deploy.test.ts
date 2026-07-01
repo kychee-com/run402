@@ -1036,6 +1036,66 @@ describe("Deploy.apply (happy path)", () => {
       },
     ]);
   });
+
+  it("normalizes email triggers into the planned ReleaseSpec", async () => {
+    const w = makeWiring();
+    const fnSha = "b".repeat(64);
+    w.setHandler((req) => {
+      if (req.path === "/content/v1/plans") {
+        return {
+          plan_id: "cplan_email_triggers",
+          expires_at: "2026-07-01T13:00:00.000Z",
+          missing: [],
+          entries: [{ sha256: fnSha, missing: false }],
+        };
+      }
+      if (req.path === "/apply/v1/plans") {
+        return {
+          plan_id: "plan_email_triggers",
+          base_release_id: null,
+          manifest_digest: "digest",
+          missing_content: [],
+          diff: {},
+        } satisfies PlanResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan({
+      project: "prj_test",
+      functions: {
+        replace: {
+          worker: {
+            runtime: "node22",
+            source: { sha256: fnSha, size: 10 },
+            triggers: [
+              {
+                id: "mail-events",
+                type: "email",
+                mailbox: "signing-inbox",
+                events: ["reply_received", "bounced"],
+                run: { event_type: "email.event" },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const planReq = w.requests.find((req) => req.path === "/apply/v1/plans");
+    assert(planReq);
+    const body = planReq.body as { spec: { functions?: { replace?: Record<string, { triggers?: unknown }> } } };
+    assert.deepEqual(body.spec.functions?.replace?.worker.triggers, [
+      {
+        id: "mail-events",
+        type: "email",
+        mailbox: "signing-inbox",
+        events: ["bounced", "reply_received"],
+        run: { event_type: "email.event", payload: {} },
+      },
+    ]);
+  });
 });
 
 describe("Deploy.apply (tier function preflight)", () => {

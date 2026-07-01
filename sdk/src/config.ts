@@ -1,6 +1,8 @@
 import type {
   ContentSource,
+  EmailTriggerEvent,
   FsFileSource,
+  FunctionEmailTriggerSpec,
   FunctionSpec,
   FunctionScheduleTriggerSpec,
   FunctionTriggerRunSpec,
@@ -50,6 +52,11 @@ export interface Run402ScheduleTriggerOptions {
   misfire_policy?: "skip";
   overlapPolicy?: "allow";
   overlap_policy?: "allow";
+  run: FunctionTriggerRunSpec;
+}
+
+export interface Run402EmailTriggerOptions {
+  events: readonly EmailTriggerEvent[];
   run: FunctionTriggerRunSpec;
 }
 
@@ -168,6 +175,30 @@ export function scheduleTrigger(
       : options.overlap_policy !== undefined
         ? { overlap_policy: options.overlap_policy }
         : {}),
+    run: {
+      event_type: options.run.event_type,
+      ...(options.run.payload !== undefined ? { payload: options.run.payload } : {}),
+      ...(options.run.retry !== undefined ? { retry: options.run.retry } : {}),
+      ...(options.run.expires_after_seconds !== undefined
+        ? { expires_after_seconds: options.run.expires_after_seconds }
+        : {}),
+    },
+  };
+}
+
+export function emailTrigger(
+  id: string,
+  mailbox: string,
+  options: Run402EmailTriggerOptions,
+): FunctionEmailTriggerSpec {
+  if (!options || typeof options !== "object") {
+    throw new TypeError("emailTrigger options are required.");
+  }
+  return {
+    id,
+    type: "email",
+    mailbox,
+    events: [...options.events],
     run: {
       event_type: options.run.event_type,
       ...(options.run.payload !== undefined ? { payload: options.run.payload } : {}),

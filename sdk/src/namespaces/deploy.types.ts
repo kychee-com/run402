@@ -367,7 +367,19 @@ export interface FunctionScheduleTriggerSpec {
   run: FunctionTriggerRunSpec;
 }
 
-export type FunctionTriggerSpec = FunctionScheduleTriggerSpec;
+export type EmailTriggerEvent = "reply_received" | "delivery" | "bounced" | "complained";
+
+export interface FunctionEmailTriggerSpec {
+  id: string;
+  type: "email";
+  /** Mailbox id or slug to subscribe to. */
+  mailbox: string;
+  /** Email events that should create durable function runs. */
+  events: EmailTriggerEvent[];
+  run: FunctionTriggerRunSpec;
+}
+
+export type FunctionTriggerSpec = FunctionScheduleTriggerSpec | FunctionEmailTriggerSpec;
 
 /**
  * v1.51+: declarative role-gate descriptor for `FunctionSpec.requireRole`.

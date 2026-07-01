@@ -105,6 +105,7 @@ const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const APPLY_SAFE_RETRY_CODES = new Set<Run402DeployErrorCode>([
   "BASE_RELEASE_CONFLICT",
 ]);
+const EMAIL_TRIGGER_EVENTS = new Set(["reply_received", "delivery", "bounced", "complained"]);
 const STATIC_ACTIVATION_FAILURE_CODES = new Set<string>([
   "BAD_FIELD",
   "INVALID_SPEC",
@@ -1600,14 +1601,15 @@ async function readActiveScheduledFunctionNames(
   return scheduled;
 }
 
-type ScheduleTriggerForPreflight = NonNullable<NormalizedFunctionSpec["triggers"]>[number] & {
+type NormalizedTriggerSpec = NonNullable<NormalizedFunctionSpec["triggers"]>[number];
+type ScheduleTriggerForPreflight = Extract<NormalizedTriggerSpec, { type: "schedule" }> & {
   fieldSuffix: string;
 };
 
 function scheduleTriggersForFunction(fn: Pick<NormalizedFunctionSpec, "triggers" | "schedule">): ScheduleTriggerForPreflight[] {
   if (fn.triggers && fn.triggers.length > 0) {
     return fn.triggers
-      .filter((trigger) => trigger.type === "schedule")
+      .filter((trigger): trigger is Extract<NormalizedTriggerSpec, { type: "schedule" }> => trigger.type === "schedule")
       .map((trigger) => ({
         ...trigger,
         fieldSuffix: `triggers.${trigger.id}.cron`,
@@ -2512,7 +2514,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "capabilities",
 ]);
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
-const FUNCTION_TRIGGER_FIELDS = new Set(["id", "type", "cron", "timezone", "misfire_policy", "overlap_policy", "run"]);
+const FUNCTION_TRIGGER_FIELDS = new Set(["id", "type", "cron", "timezone", "misfire_policy", "overlap_policy", "mailbox", "events", "run"]);
 const FUNCTION_TRIGGER_RUN_FIELDS = new Set(["event_type", "payload", "retry", "expires_after_seconds"]);
 const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths"]);
 const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
@@ -2679,22 +2681,51 @@ function validateFunctionTriggers(value: unknown, resource: string): void {
       delivery: "Remove delivery; schedule triggers always start durable function runs.",
     });
     if (typeof obj.id !== "string" || obj.id.trim() === "") {
-      throw invalidSpec(`ReleaseSpec.${path}.id is required for schedule triggers`, `${path}.id`);
+      throw invalidSpec(`ReleaseSpec.${path}.id is required for function triggers`, `${path}.id`);
     }
     if (seen.has(obj.id)) throw invalidSpec(`ReleaseSpec.${path}.id duplicates ${JSON.stringify(obj.id)}`, `${path}.id`);
     seen.add(obj.id);
-    if (obj.type !== "schedule") throw invalidSpec(`ReleaseSpec.${path}.type must be "schedule"`, `${path}.type`);
-    if (typeof obj.cron !== "string" || obj.cron.trim().split(/\s+/).length !== 5) {
-      throw invalidSpec(`ReleaseSpec.${path}.cron must be a 5-field cron expression`, `${path}.cron`);
-    }
-    if (obj.timezone !== undefined && typeof obj.timezone !== "string") {
-      throw invalidSpec(`ReleaseSpec.${path}.timezone must be a string`, `${path}.timezone`);
-    }
-    if (obj.misfire_policy !== undefined && obj.misfire_policy !== "skip") {
-      throw invalidSpec(`ReleaseSpec.${path}.misfire_policy must be "skip"`, `${path}.misfire_policy`);
-    }
-    if (obj.overlap_policy !== undefined && obj.overlap_policy !== "allow") {
-      throw invalidSpec(`ReleaseSpec.${path}.overlap_policy must be "allow"`, `${path}.overlap_policy`);
+    if (obj.type === "schedule") {
+      if (obj.mailbox !== undefined || obj.events !== undefined) {
+        throw invalidSpec(`ReleaseSpec.${path} schedule triggers cannot include mailbox or events`, path);
+      }
+      if (typeof obj.cron !== "string" || obj.cron.trim().split(/\s+/).length !== 5) {
+        throw invalidSpec(`ReleaseSpec.${path}.cron must be a 5-field cron expression`, `${path}.cron`);
+      }
+      if (obj.timezone !== undefined && typeof obj.timezone !== "string") {
+        throw invalidSpec(`ReleaseSpec.${path}.timezone must be a string`, `${path}.timezone`);
+      }
+      if (obj.misfire_policy !== undefined && obj.misfire_policy !== "skip") {
+        throw invalidSpec(`ReleaseSpec.${path}.misfire_policy must be "skip"`, `${path}.misfire_policy`);
+      }
+      if (obj.overlap_policy !== undefined && obj.overlap_policy !== "allow") {
+        throw invalidSpec(`ReleaseSpec.${path}.overlap_policy must be "allow"`, `${path}.overlap_policy`);
+      }
+    } else if (obj.type === "email") {
+      if (
+        obj.cron !== undefined ||
+        obj.timezone !== undefined ||
+        obj.misfire_policy !== undefined ||
+        obj.overlap_policy !== undefined
+      ) {
+        throw invalidSpec(`ReleaseSpec.${path} email triggers cannot include schedule fields`, path);
+      }
+      if (typeof obj.mailbox !== "string" || obj.mailbox.trim() === "") {
+        throw invalidSpec(`ReleaseSpec.${path}.mailbox is required`, `${path}.mailbox`);
+      }
+      if (!Array.isArray(obj.events) || obj.events.length === 0) {
+        throw invalidSpec(`ReleaseSpec.${path}.events must be a non-empty array`, `${path}.events`);
+      }
+      for (const [eventIndex, event] of obj.events.entries()) {
+        if (typeof event !== "string" || !EMAIL_TRIGGER_EVENTS.has(event)) {
+          throw invalidSpec(
+            `ReleaseSpec.${path}.events.${eventIndex} must be one of reply_received, delivery, bounced, complained`,
+            `${path}.events.${eventIndex}`,
+          );
+        }
+      }
+    } else {
+      throw invalidSpec(`ReleaseSpec.${path}.type must be "schedule" or "email"`, `${path}.type`);
     }
     const run = requireObject(obj.run, `${path}.run`);
     validateKnownFields(run, `${path}.run`, FUNCTION_TRIGGER_RUN_FIELDS);
@@ -3851,22 +3882,34 @@ function normalizeFunctionTriggers(
   triggers: NonNullable<FunctionSpecInput["triggers"]>,
 ): NonNullable<NormalizedFunctionSpec["triggers"]> {
   return triggers
-    .map((trigger) => ({
-      id: trigger.id,
-      type: "schedule" as const,
-      cron: trigger.cron,
-      timezone: trigger.timezone ?? "UTC",
-      misfire_policy: trigger.misfire_policy ?? "skip",
-      overlap_policy: trigger.overlap_policy ?? "allow",
-      run: {
+    .map((trigger) => {
+      const run = {
         event_type: trigger.run.event_type,
         payload: trigger.run.payload ?? {},
         ...(trigger.run.retry !== undefined ? { retry: { ...trigger.run.retry } } : {}),
         ...(trigger.run.expires_after_seconds !== undefined
           ? { expires_after_seconds: trigger.run.expires_after_seconds }
           : {}),
-      },
-    }))
+      };
+      if (trigger.type === "email") {
+        return {
+          id: trigger.id,
+          type: "email" as const,
+          mailbox: trigger.mailbox,
+          events: [...trigger.events].sort(),
+          run,
+        };
+      }
+      return {
+        id: trigger.id,
+        type: "schedule" as const,
+        cron: trigger.cron,
+        timezone: trigger.timezone ?? "UTC",
+        misfire_policy: trigger.misfire_policy ?? "skip",
+        overlap_policy: trigger.overlap_policy ?? "allow",
+        run,
+      };
+    })
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
