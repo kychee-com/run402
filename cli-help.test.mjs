@@ -74,7 +74,7 @@ const MATRIX = {
   ci: { shared: [], specific: ["link", "list", "revoke"] },
   functions: {
     shared: [],
-    specific: ["deploy", "invoke", "logs", "update", "rebuild", "list", "delete"],
+    specific: ["deploy", "invoke", "logs", "runs", "update", "rebuild", "list", "delete"],
   },
   secrets: { shared: [], specific: ["set", "list", "delete"] },
   jobs: { shared: [], specific: ["submit", "get", "logs", "cancel", "purge", "artifacts"] },

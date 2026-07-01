@@ -132,6 +132,13 @@ import type {
   FunctionListResult,
   FunctionLogsOptions,
   FunctionLogsResult,
+  FunctionRunCreateOptions,
+  FunctionRunHandle,
+  FunctionRunListOptions,
+  FunctionRunListResult,
+  FunctionRunLogsOptions,
+  FunctionRunRedriveOptions,
+  FunctionRunWaitOptions,
   FunctionRebuildBatchResult,
   FunctionRebuildResult,
   FunctionUpdateOptions,
@@ -705,8 +712,38 @@ class ScopedEmail {
   }
 }
 
-class ScopedFunctions {
+class ScopedFunctionRuns {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(name: string, opts: FunctionRunCreateOptions): Promise<FunctionRunHandle> {
+    return this.parent.functions.runs.create(this.projectId, name, opts);
+  }
+  list(name: string, opts?: FunctionRunListOptions): Promise<FunctionRunListResult> {
+    return this.parent.functions.runs.list(this.projectId, name, opts);
+  }
+  get(runId: string): Promise<FunctionRunHandle> {
+    return this.parent.functions.runs.get(this.projectId, runId);
+  }
+  logs(runId: string, opts?: FunctionRunLogsOptions): Promise<FunctionLogsResult> {
+    return this.parent.functions.runs.logs(this.projectId, runId, opts);
+  }
+  cancel(runId: string): Promise<FunctionRunHandle> {
+    return this.parent.functions.runs.cancel(this.projectId, runId);
+  }
+  redrive(runId: string, opts?: FunctionRunRedriveOptions): Promise<FunctionRunHandle> {
+    return this.parent.functions.runs.redrive(this.projectId, runId, opts);
+  }
+  wait(runId: string, opts?: FunctionRunWaitOptions): Promise<FunctionRunHandle> {
+    return this.parent.functions.runs.wait(this.projectId, runId, opts);
+  }
+}
+
+class ScopedFunctions {
+  readonly runs: ScopedFunctionRuns;
+
+  constructor(private readonly parent: Run402, private readonly projectId: string) {
+    this.runs = new ScopedFunctionRuns(parent, projectId);
+  }
 
   deploy(opts: FunctionDeployOptions): Promise<FunctionDeployResult> {
     return this.parent.functions.deploy(this.projectId, opts);

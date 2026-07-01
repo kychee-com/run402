@@ -5,7 +5,7 @@ import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, validateRegularFile } from "./argparse.mjs";
 import { cliCommandAction } from "./next-actions.mjs";
 
-const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
+const FUNCTION_LOG_REQUEST_ID_RE = /^(?:req|fnrun|fnatt)_[A-Za-z0-9_-]{4,128}$/;
 const ISO_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const FUNCTION_LOG_TAIL_MAX = 1000;
 
@@ -25,6 +25,8 @@ Subcommands:
                                        body → pretty-printed JSON).
   logs   <id> <name> [--tail <n>] [--since <ts>] [--request-id <req_...>] [--follow]
                                        Get function logs
+  runs   <action> ...                  Create, inspect, cancel, redrive, and
+                                       wait for durable function runs
   update <id> <name> [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
                                        Update function schedule or config without re-deploying
   rebuild <id> [<name>] [--all]        Refresh function(s) onto the current platform
@@ -43,6 +45,8 @@ Examples:
   run402 functions logs prj_abc123 stripe-webhook --since 2026-03-29T14:00:00Z
   run402 functions logs prj_abc123 stripe-webhook --request-id req_abc123
   run402 functions logs prj_abc123 stripe-webhook --follow
+  run402 functions runs create prj_abc123 worker --event-type reminder.send --idempotency-key reminder:123 --delay 10m
+  run402 functions runs get prj_abc123 fnrun_abc123
   run402 functions update prj_abc123 send-reminders --schedule '0 */4 * * *'
   run402 functions update prj_abc123 send-reminders --schedule-remove
   run402 functions update prj_abc123 my-func --timeout 15 --memory 256
@@ -143,7 +147,7 @@ Arguments:
 Options:
   --tail <n>          Number of most-recent entries (default 50, max 1000)
   --since <ts>        ISO timestamp or epoch ms; only entries after this
-  --request-id <id>   Only entries correlated to this req_... request id
+  --request-id <id>   Only entries correlated to this req_, fnrun_, or fnatt_ id
   --follow            Poll every 3s and stream new entries (Ctrl-C to stop).
                       Emits NDJSON: one JSON log entry per line, no wrapping
                       "logs:" envelope (the wrapping object is only used in
@@ -154,6 +158,42 @@ Examples:
   run402 functions logs prj_abc123 stripe-webhook --since 2026-03-29T14:00:00Z
   run402 functions logs prj_abc123 stripe-webhook --request-id req_abc123
   run402 functions logs prj_abc123 stripe-webhook --follow
+`,
+  runs: `run402 functions runs — Manage durable function runs
+
+Usage:
+  run402 functions runs create <project_id> <function_name> --event-type <type> --idempotency-key <key> [options]
+  run402 functions runs list <project_id> <function_name> [options]
+  run402 functions runs get <project_id> <run_id>
+  run402 functions runs logs <project_id> <run_id> [--tail <n>] [--since <ts>]
+  run402 functions runs cancel <project_id> <run_id>
+  run402 functions runs redrive <project_id> <run_id> [options]
+
+Create options:
+  --payload-json <json>     Inline JSON object payload
+  --delay <duration>        Delay such as 10m, 1h, 3d
+  --run-at <iso>            Absolute ISO-8601 run time
+  --expires-at <iso>        Absolute ISO-8601 expiry
+  --expires-after <duration>
+  --retry-preset standard   Retry preset (default standard when retry options are present)
+  --max-attempts <n>        Retry max attempts
+  --wait                    Wait until the run is terminal
+  --timeout-ms <n>          Wait timeout (default SDK timeout)
+  --poll-interval-ms <n>    Wait poll interval
+
+List options:
+  --status <status>         scheduled|queued|running|retrying|blocked|succeeded|failed|cancelled|expired
+  --event-type <type>
+  --since <ts>
+  --until <ts>
+  --limit <n>
+  --cursor <cursor>
+
+Examples:
+  run402 functions runs create prj_abc123 worker --event-type reminder.send --payload-json '{"id":"msg_1"}' --idempotency-key reminder:msg_1 --delay 10m
+  run402 functions runs list prj_abc123 worker --status failed
+  run402 functions runs logs prj_abc123 fnrun_abc123 --tail 100
+  run402 functions runs redrive prj_abc123 fnrun_abc123 --wait
 `,
   update: `run402 functions update — Update function config without re-deploying
 
@@ -427,6 +467,197 @@ function logEntryIdentity(entry) {
   return entry.event_id || `${entry.log_stream_name || ""}:${entry.timestamp || ""}:${entry.message || ""}`;
 }
 
+function assertNoUnexpectedPositionals(args, valueFlags, usage) {
+  const flagsWithValues = new Set(valueFlags);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (flagsWithValues.has(arg)) {
+      i += 1;
+      continue;
+    }
+    if (typeof arg === "string" && arg.startsWith("-")) continue;
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument: ${arg}`,
+      hint: usage,
+      details: { argument: arg },
+    });
+  }
+}
+
+async function runs(action, args = []) {
+  if (!action || action === "--help" || action === "-h") {
+    console.log(SUB_HELP.runs);
+    process.exit(0);
+  }
+  if (action === "create") return runsCreate(args[0], args[1], args.slice(2));
+  if (action === "list") return runsList(args[0], args[1], args.slice(2));
+  if (action === "get") return runsGet(args[0], args[1], args.slice(2));
+  if (action === "logs") return runsLogs(args[0], args[1], args.slice(2));
+  if (action === "cancel") return runsCancel(args[0], args[1], args.slice(2));
+  if (action === "redrive") return runsRedrive(args[0], args[1], args.slice(2));
+  fail({
+    code: "BAD_USAGE",
+    message: `Unknown functions runs action: ${action}`,
+    hint: "run402 functions runs <create|list|get|logs|cancel|redrive> ...",
+  });
+}
+
+async function runsCreate(projectId, name, args) {
+  assertRequiredProjectAndName(projectId, name, "run402 functions runs create <project_id> <function_name> --event-type <type> --idempotency-key <key>");
+  const valueFlags = [
+    "--event-type", "--payload-json", "--idempotency-key", "--delay", "--run-at",
+    "--expires-at", "--expires-after", "--retry-preset", "--max-attempts",
+    "--timeout-ms", "--poll-interval-ms",
+  ];
+  assertKnownFlags(args, [
+    "--event-type", "--payload-json", "--idempotency-key", "--delay", "--run-at",
+    "--expires-at", "--expires-after", "--retry-preset", "--max-attempts",
+    "--wait", "--timeout-ms", "--poll-interval-ms", "--help", "-h",
+  ], valueFlags);
+  assertNoUnexpectedPositionals(args, valueFlags, "run402 functions runs create <project_id> <function_name> --event-type <type> --idempotency-key <key>");
+  const opts = {};
+  let wait = false;
+  const waitOpts = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--event-type") opts.eventType = args[++i];
+    if (args[i] === "--payload-json") opts.payload = parseJsonObjectFlag("--payload-json", args[++i]);
+    if (args[i] === "--idempotency-key") opts.idempotencyKey = args[++i];
+    if (args[i] === "--delay") opts.delay = args[++i];
+    if (args[i] === "--run-at") opts.runAt = args[++i];
+    if (args[i] === "--expires-at") opts.expiresAt = args[++i];
+    if (args[i] === "--expires-after") opts.expiresAfter = args[++i];
+    if (args[i] === "--retry-preset") opts.retry = { ...(opts.retry || {}), preset: args[++i] };
+    if (args[i] === "--max-attempts") opts.retry = { ...(opts.retry || {}), maxAttempts: parseIntegerFlag("--max-attempts", args[++i], { min: 1 }) };
+    if (args[i] === "--wait") wait = true;
+    if (args[i] === "--timeout-ms") waitOpts.timeoutMs = parseIntegerFlag("--timeout-ms", args[++i], { min: 1 });
+    if (args[i] === "--poll-interval-ms") waitOpts.intervalMs = parseIntegerFlag("--poll-interval-ms", args[++i], { min: 0 });
+  }
+  if (!opts.eventType) fail({ code: "BAD_USAGE", message: "Missing --event-type <type>" });
+  if (!opts.idempotencyKey) fail({ code: "BAD_USAGE", message: "Missing --idempotency-key <key>" });
+  if (opts.retry && !opts.retry.preset) opts.retry.preset = "standard";
+
+  try {
+    const created = await getSdk().functions.runs.create(projectId, name, opts);
+    const data = wait ? await getSdk().functions.runs.wait(projectId, created.run_id, waitOpts) : created;
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function runsList(projectId, name, args) {
+  assertRequiredProjectAndName(projectId, name, "run402 functions runs list <project_id> <function_name>");
+  const valueFlags = ["--status", "--event-type", "--since", "--until", "--limit", "--cursor"];
+  assertKnownFlags(args, ["--status", "--event-type", "--since", "--until", "--limit", "--cursor", "--help", "-h"], valueFlags);
+  assertNoUnexpectedPositionals(args, valueFlags, "run402 functions runs list <project_id> <function_name>");
+  const opts = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--status") opts.status = args[++i];
+    if (args[i] === "--event-type") opts.eventType = args[++i];
+    if (args[i] === "--since") opts.since = args[++i];
+    if (args[i] === "--until") opts.until = args[++i];
+    if (args[i] === "--limit") opts.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 100 });
+    if (args[i] === "--cursor") opts.cursor = args[++i];
+  }
+  try {
+    const data = await getSdk().functions.runs.list(projectId, name, opts);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function runsGet(projectId, runId, args) {
+  assertRequiredProject(projectId, "run402 functions runs get <project_id> <run_id>");
+  assertNoExtraPositionals(args, "run402 functions runs get <project_id> <run_id>");
+  if (!runId) fail({ code: "BAD_USAGE", message: "Missing <run_id>" });
+  try {
+    const data = await getSdk().functions.runs.get(projectId, runId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function runsLogs(projectId, runId, args) {
+  assertRequiredProject(projectId, "run402 functions runs logs <project_id> <run_id>");
+  if (!runId) fail({ code: "BAD_USAGE", message: "Missing <run_id>" });
+  const valueFlags = ["--tail", "--since"];
+  assertKnownFlags(args, ["--tail", "--since", "--help", "-h"], valueFlags);
+  assertNoUnexpectedPositionals(args, valueFlags, "run402 functions runs logs <project_id> <run_id>");
+  const opts = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--tail") opts.tail = parseIntegerFlag("--tail", args[++i], { min: 1, max: FUNCTION_LOG_TAIL_MAX });
+    if (args[i] === "--since") opts.since = args[++i];
+  }
+  try {
+    const data = await getSdk().functions.runs.logs(projectId, runId, opts);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function runsCancel(projectId, runId, args) {
+  assertRequiredProject(projectId, "run402 functions runs cancel <project_id> <run_id>");
+  assertNoExtraPositionals(args, "run402 functions runs cancel <project_id> <run_id>");
+  if (!runId) fail({ code: "BAD_USAGE", message: "Missing <run_id>" });
+  try {
+    const data = await getSdk().functions.runs.cancel(projectId, runId);
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function runsRedrive(projectId, runId, args) {
+  assertRequiredProject(projectId, "run402 functions runs redrive <project_id> <run_id>");
+  if (!runId) fail({ code: "BAD_USAGE", message: "Missing <run_id>" });
+  const valueFlags = ["--retry-preset", "--max-attempts", "--timeout-ms", "--poll-interval-ms"];
+  assertKnownFlags(args, ["--retry-preset", "--max-attempts", "--wait", "--timeout-ms", "--poll-interval-ms", "--help", "-h"], valueFlags);
+  assertNoUnexpectedPositionals(args, valueFlags, "run402 functions runs redrive <project_id> <run_id>");
+  const opts = {};
+  let wait = false;
+  const waitOpts = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--retry-preset") opts.retry = { ...(opts.retry || {}), preset: args[++i] };
+    if (args[i] === "--max-attempts") opts.retry = { ...(opts.retry || {}), maxAttempts: parseIntegerFlag("--max-attempts", args[++i], { min: 1 }) };
+    if (args[i] === "--wait") wait = true;
+    if (args[i] === "--timeout-ms") waitOpts.timeoutMs = parseIntegerFlag("--timeout-ms", args[++i], { min: 1 });
+    if (args[i] === "--poll-interval-ms") waitOpts.intervalMs = parseIntegerFlag("--poll-interval-ms", args[++i], { min: 0 });
+  }
+  if (opts.retry && !opts.retry.preset) opts.retry.preset = "standard";
+  try {
+    const redriven = await getSdk().functions.runs.redrive(projectId, runId, opts);
+    const data = wait ? await getSdk().functions.runs.wait(projectId, redriven.run_id, waitOpts) : redriven;
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+function parseJsonObjectFlag(flag, value) {
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch (err) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Invalid ${flag} JSON: ${err.message}`,
+      details: { flag, value },
+    });
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    fail({
+      code: "BAD_USAGE",
+      message: `${flag} must be a JSON object`,
+      details: { flag, value },
+    });
+  }
+  return parsed;
+}
+
 async function update(projectId, name, args) {
   assertRequiredProjectAndName(projectId, name, "run402 functions update <project_id> <name> [options]");
   assertKnownFlags(args, ["--schedule", "--schedule-remove", "--timeout", "--memory", "--help", "-h"], ["--schedule", "--timeout", "--memory"]);
@@ -586,6 +817,7 @@ export async function run(sub, args) {
     case "deploy": await deploy(args[0], args[1], args.slice(2)); break;
     case "invoke": await invoke(args[0], args[1], args.slice(2)); break;
     case "logs":   await logs(args[0], args[1], args.slice(2)); break;
+    case "runs": await runs(args[0], args.slice(1)); break;
     case "update": await update(args[0], args[1], args.slice(2)); break;
     case "rebuild": await rebuild(args[0], args.slice(1)); break;
     case "list":   await list(args[0], args.slice(1)); break;

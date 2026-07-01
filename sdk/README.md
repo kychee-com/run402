@@ -125,7 +125,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |
 | `r.project(id).assets` | `put` (single asset), `putMany`, `uploadDir` (Node, additive), `syncDir` (Node, destructive only with `prune: true` + confirm token), `prepareDir` (returns `{ manifest, applySlice }` for pre-commit URL injection), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh`, `diff`. Returns `AssetRef` (single) or `AssetManifest` (batch). |
 | `cache` (v1.52+) | SSR origin ISR cache: `invalidate(url)`, `invalidatePrefix({ host, prefix })`, `invalidateAll({ host })`, `invalidateMany(urls)`, `inspect(url)`. Project-scoped (host ownership validated server-side; cross-project hosts throw `R402_CACHE_INVALIDATION_HOST_FORBIDDEN`). Generation-guarded — in-flight MISS renders started before an invalidate cannot overwrite the freshly-cleared state. |
-| `functions` | `deploy`, `invoke`, `logs`, `update`, `list`, `delete` |
+| `functions` | `deploy`, `invoke`, `logs`, `update`, `list`, `delete`, `rebuild`, `rebuildAll`, `runs.*` durable function requests |
 | `jobs` | `submit`, `get`, `logs`, `cancel`, `purge` for platform-managed jobs |
 | `secrets` | `set`, `list`, `delete` |
 | `subdomains` | `claim`, `list`, `delete` (most agents declare subdomains in `r.project(id).apply({ subdomains: { set: [...] } })` instead) |
@@ -150,6 +150,20 @@ CLI-style aliases are available for agent ergonomics: `r.image` aliases `r.ai`,
 and common command names such as `r.billing.balance`, `r.auth.magicLink`,
 `r.projects.schema`, `r.email.create`, and `r.contracts.setAlert` point at the
 canonical camelCase methods.
+
+Durable function requests live under `r.functions.runs` and the scoped project handle. They require an idempotency key and support immediate, delayed, or absolute-time execution, retry policy, logs, cancellation, redrive, and polling:
+
+```ts
+const p = await r.project(projectId);
+const run = await p.functions.runs.create("worker", {
+  eventType: "reminder.send",
+  payload: { message_id: "msg_123" },
+  idempotencyKey: r.idempotency.fromParts("reminder", "msg_123"),
+  delay: "10m",
+  retry: r.functions.retry.standard({ maxAttempts: 3 }),
+});
+await p.functions.runs.wait(run.run_id);
+```
 
 ### Casing in returned shapes
 

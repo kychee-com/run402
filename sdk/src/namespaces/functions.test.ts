@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
 import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
+import { FunctionRunTerminalError } from "./functions.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 function makeCreds(): CredentialsProvider {
@@ -338,6 +339,16 @@ describe("functions.logs", () => {
     assert.equal(result.logs[0]!.request_id, "req_abc123");
   });
 
+  it("accepts function run ids as log correlation handles", async () => {
+    const { fetch, calls } = mockFetch(() => json({ logs: [] }));
+    const sdk = makeSdk(fetch);
+
+    await sdk.functions.logs("prj_known", "worker", { requestId: "fnrun_abc123" });
+
+    const u = new URL(calls[0]!.url);
+    assert.equal(u.searchParams.get("request_id"), "fnrun_abc123");
+  });
+
   it("throws LocalError for invalid since dates before fetching", async () => {
     const { fetch, calls } = mockFetch(() => json({ logs: [] }));
     const sdk = makeSdk(fetch);
@@ -387,6 +398,152 @@ describe("functions.logs", () => {
     const sdk = makeSdk(fetch);
     await sdk.functions.logs("prj_known", "my fn");
     assert.ok(calls[0]!.url.includes("/functions/my%20fn/logs"));
+  });
+});
+
+const queuedRun = {
+  run_id: "fnrun_abc123",
+  function_name: "worker",
+  event_type: "kysigned.forward.process",
+  status: "queued",
+  terminal: false,
+  generation: 1,
+  run_at: "2026-07-01T12:00:00.000Z",
+  source: { type: "api" },
+  attempts: { current: 0, max: 5, total: 0 },
+  created_at: "2026-07-01T12:00:00.000Z",
+  updated_at: "2026-07-01T12:00:00.000Z",
+  next_actions: [],
+};
+
+describe("functions.runs", () => {
+  it("creates delayed function runs with local normalization and service-key auth", async () => {
+    const { fetch, calls } = mockFetch(() => json({ ...queuedRun, status: "scheduled" }, 202));
+    const sdk = makeSdk(fetch);
+
+    const run = await sdk.functions.runs.create("prj_known", "worker", {
+      eventType: "kysigned.forward.process",
+      payload: { message_id: "msg_123" },
+      delay: "10m",
+      expiresAfter: "1d",
+      idempotencyKey: sdk.idempotency.fromParts("reply", "msg_123"),
+      retry: sdk.functions.retry.standard({ maxAttempts: 3 }),
+    });
+
+    assert.equal(run.run_id, "fnrun_abc123");
+    assert.equal(calls[0]!.url, "https://api.example.test/functions/v1/worker/runs");
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.headers.Authorization, "Bearer svc_k");
+    assert.equal(calls[0]!.headers["Idempotency-Key"], "reply:msg_123");
+    const body = JSON.parse(calls[0]!.body as string);
+    assert.deepEqual(body, {
+      event_type: "kysigned.forward.process",
+      payload: { message_id: "msg_123" },
+      delay_seconds: 600,
+      expires_at: body.expires_at,
+      idempotency_key: "reply:msg_123",
+      retry: { preset: "standard", max_attempts: 3 },
+    });
+    assert.match(body.expires_at, /^20\d\d-/);
+  });
+
+  it("rejects missing idempotency and ambiguous scheduling before fetch", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.functions.runs.create("prj_known", "worker", { eventType: "x" }),
+      LocalError,
+    );
+    await assert.rejects(
+      sdk.functions.runs.create("prj_known", "worker", {
+        eventType: "x",
+        idempotencyKey: "x",
+        delay: "10m",
+        runAt: "2026-07-01T12:00:00.000Z",
+      }),
+      LocalError,
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("lists, gets, logs, cancels, and redrives runs", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.url.includes("/logs")) return json({ logs: [] });
+      if (call.url.endsWith("/cancel")) return json({ ...queuedRun, status: "cancelled", terminal: true });
+      if (call.url.endsWith("/redrive")) return json({ ...queuedRun, generation: 2 });
+      if (call.url.includes("/worker/runs?")) return json({ runs: [queuedRun], next_cursor: "c2" });
+      return json(queuedRun);
+    });
+    const sdk = makeSdk(fetch);
+
+    const listed = await sdk.functions.runs.list("prj_known", "worker", {
+      status: "failed",
+      eventType: "kysigned.forward.process",
+      limit: 25,
+      cursor: "c1",
+    });
+    await sdk.functions.runs.get("prj_known", "fnrun_abc123");
+    await sdk.functions.runs.logs("prj_known", "fnrun_abc123", { tail: 10, since: "2026-07-01T12:00:00.000Z" });
+    await sdk.functions.runs.cancel("prj_known", "fnrun_abc123");
+    await sdk.functions.runs.redrive("prj_known", "fnrun_abc123", { retry: { preset: "standard", maxAttempts: 2 } });
+
+    assert.equal(listed.next_cursor, "c2");
+    assert.equal(new URL(calls[0]!.url).pathname, "/functions/v1/worker/runs");
+    assert.equal(new URL(calls[0]!.url).searchParams.get("event_type"), "kysigned.forward.process");
+    assert.equal(new URL(calls[2]!.url).pathname, "/functions/v1/runs/fnrun_abc123/logs");
+    assert.equal(calls[3]!.method, "POST");
+    assert.equal(calls[4]!.method, "POST");
+    assert.deepEqual(JSON.parse(calls[4]!.body as string), {
+      retry: { preset: "standard", max_attempts: 2 },
+    });
+  });
+
+  it("waits for terminal success and throws typed terminal failures", async () => {
+    let reads = 0;
+    const { fetch } = mockFetch(() => {
+      reads++;
+      if (reads === 1) return json(queuedRun);
+      if (reads === 2) return json({ ...queuedRun, status: "succeeded", terminal: true });
+      return json({
+        ...queuedRun,
+        status: "failed",
+        terminal: true,
+        last_error: { code: "BOOM", message: "nope", retryable: false },
+      });
+    });
+    const sdk = makeSdk(fetch);
+
+    const final = await sdk.functions.runs.wait("prj_known", "fnrun_abc123", {
+      intervalMs: 0,
+      timeoutMs: 1000,
+    });
+    assert.equal(final.status, "succeeded");
+
+    await assert.rejects(
+      sdk.functions.runs.wait("prj_known", "fnrun_abc123", {
+        intervalMs: 0,
+        timeoutMs: 1000,
+      }),
+      (err: unknown) => err instanceof FunctionRunTerminalError &&
+        err.run.status === "failed" &&
+        err.code === "BOOM",
+    );
+  });
+
+  it("is exposed on the scoped project client", async () => {
+    const { fetch, calls } = mockFetch(() => json(queuedRun, 202));
+    const sdk = makeSdk(fetch);
+    const project = await sdk.project("prj_known");
+
+    await project.functions.runs.create("worker", {
+      eventType: "x",
+      idempotencyKey: "x",
+    });
+
+    assert.equal(calls[0]!.url, "https://api.example.test/functions/v1/worker/runs");
   });
 });
 

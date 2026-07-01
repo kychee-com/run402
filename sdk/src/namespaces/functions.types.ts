@@ -108,12 +108,117 @@ export interface FunctionLogsOptions {
   tail?: number;
   /** Only return logs at or after this ISO 8601 timestamp or epoch ms. */
   since?: string;
-  /** Only return logs correlated to this routed/function request id. */
+  /** Only return logs correlated to this routed request id, function run id, or attempt id. */
   requestId?: string;
 }
 
 export interface FunctionLogsResult {
   logs: FunctionLogEntry[];
+}
+
+export type FunctionRunStatus =
+  | "scheduled"
+  | "queued"
+  | "running"
+  | "retrying"
+  | "blocked"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+export interface FunctionRunErrorInfo {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface FunctionRunHandle {
+  run_id: string;
+  function_name: string;
+  event_type: string;
+  status: FunctionRunStatus;
+  terminal: boolean;
+  generation: number;
+  run_at: string;
+  expires_at?: string;
+  source: Record<string, unknown>;
+  attempts: {
+    current: number;
+    max: number;
+    total: number;
+    next_attempt_at?: string;
+  };
+  last_attempt?: {
+    attempt_id: string;
+    number: number;
+    started_at?: string;
+    completed_at?: string;
+    duration_ms?: number;
+    response_status?: number;
+    error?: FunctionRunErrorInfo;
+  };
+  last_error?: FunctionRunErrorInfo;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
+  deduplicated?: boolean;
+  next_actions: Array<Record<string, unknown>>;
+}
+
+export interface FunctionRunRetryPolicy {
+  preset?: "standard" | string;
+  maxAttempts?: number;
+  max_attempts?: number;
+  minDelaySeconds?: number;
+  min_delay_seconds?: number;
+  maxDelaySeconds?: number;
+  max_delay_seconds?: number;
+  [key: string]: unknown;
+}
+
+export interface FunctionRunCreateOptions {
+  eventType: string;
+  payload?: Record<string, unknown>;
+  idempotencyKey?: string;
+  runAt?: string | Date;
+  delay?: string | number;
+  delaySeconds?: number;
+  expiresAt?: string | Date;
+  expiresAfter?: string | number;
+  retry?: FunctionRunRetryPolicy;
+}
+
+export interface FunctionRunListOptions {
+  status?: FunctionRunStatus;
+  eventType?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface FunctionRunListResult {
+  runs: FunctionRunHandle[];
+  next_cursor?: string;
+}
+
+export interface FunctionRunLogsOptions {
+  tail?: number;
+  since?: string;
+}
+
+export interface FunctionRunRedriveOptions {
+  retry?: FunctionRunRetryPolicy;
+}
+
+export interface FunctionRunWaitOptions {
+  /** Poll interval in milliseconds. Default 1000. */
+  intervalMs?: number;
+  /** Maximum wall-clock wait in milliseconds. Default 300000. */
+  timeoutMs?: number;
+  /** Throw on terminal failed/cancelled/expired. Default true. */
+  throwOnFailure?: boolean;
 }
 
 export interface FunctionScheduleMeta {

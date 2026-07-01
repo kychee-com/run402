@@ -343,6 +343,7 @@ run402 sites deploy-dir ./dist
 run402 deploy release active --project <id>  # inspect current-live release inventory
 run402 deploy diagnose --project <id> https://example.com/events --method GET
 run402 functions deploy <id> <name> --file fn.ts
+run402 functions runs create <id> <name> --event-type reminder.send --idempotency-key reminder:123 --delay 10m
 run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding (--route-scope for CI routes)
 run402 assets put ./asset.png --immutable
 run402 assets diagnose <url>             # inspect live CDN state for a public URL
@@ -480,6 +481,8 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `get_function_logs` | Recent logs (CloudWatch), filterable by `since` and routed `request_id`. |
 | `update_function` | Update schedule / timeout / memory without redeploying code. |
 | `list_functions` / `delete_function` | List / remove functions. |
+| `create_function_run` / `list_function_runs` / `get_function_run` | Durable function requests with idempotency, delay/run_at, retry, and polling. |
+| `get_function_run_logs` / `cancel_function_run` / `redrive_function_run` | Inspect, stop, and redrive durable function runs. |
 | `set_secret` / `list_secrets` / `delete_secret` | Manage `process.env` secrets injected into all functions. Values are write-only; list returns keys and timestamps only. |
 | `jobs_submit` / `jobs_get` / `jobs_logs` / `jobs_cancel` / `jobs_purge` | Submit, inspect, cancel, and purge platform-managed jobs. Requests use the gateway jobs shape; the SDK supplies the required idempotency header. |
 

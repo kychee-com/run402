@@ -148,6 +148,25 @@ describe("get_function_logs tool", () => {
     assert.equal(new URL(capturedUrl).searchParams.get("request_id"), "req_abc123");
   });
 
+  it("accepts function run ids as request_id filters", async () => {
+    let capturedUrl = "";
+    globalThis.fetch = (async (url: string) => {
+      capturedUrl = url;
+      return new Response(
+        JSON.stringify({ logs: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    await handleGetFunctionLogs({
+      project_id: "proj-001",
+      name: "my-func",
+      request_id: "fnrun_abc123",
+    });
+
+    assert.equal(new URL(capturedUrl).searchParams.get("request_id"), "fnrun_abc123");
+  });
+
   it("rejects invalid since before fetch", async () => {
     let fetchCalled = false;
     globalThis.fetch = (async () => {

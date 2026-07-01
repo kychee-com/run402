@@ -42,6 +42,11 @@ function requestInfo(input, init) {
   return { url, method, path, init };
 }
 
+function requestJsonBody(init) {
+  if (typeof init?.body !== "string") return {};
+  return JSON.parse(init.body);
+}
+
 function mockFetch(input, init) {
   const info = requestInfo(input, init);
   calls.push(info);
@@ -52,6 +57,74 @@ function mockFetch(input, init) {
   }
   if (/\/functions\/hello\/logs$/.test(pathNoQuery) && info.method === "GET") {
     return Promise.resolve(json({ logs: [{ timestamp: "2026-05-01T00:00:00Z", message: "ok" }] }));
+  }
+  if (/\/functions\/v1\/hello\/runs$/.test(pathNoQuery) && info.method === "POST") {
+    const body = requestJsonBody(info.init);
+    return Promise.resolve(json({
+      run_id: "fnrun_cli123",
+      project_id: "prj_test123",
+      function_name: "hello",
+      event_type: body.event_type,
+      payload: body.payload ?? {},
+      status: "queued",
+      terminal: false,
+      created_at: "2026-07-01T00:00:00.000Z",
+      updated_at: "2026-07-01T00:00:00.000Z",
+      scheduled_at: "2026-07-01T00:10:00.000Z",
+      attempts: 0,
+    }));
+  }
+  if (/\/functions\/v1\/hello\/runs$/.test(pathNoQuery) && info.method === "GET") {
+    return Promise.resolve(json({
+      runs: [{
+        run_id: "fnrun_cli123",
+        project_id: "prj_test123",
+        function_name: "hello",
+        event_type: "reminder.send",
+        payload: { id: "msg_1" },
+        status: "queued",
+        terminal: false,
+        created_at: "2026-07-01T00:00:00.000Z",
+        updated_at: "2026-07-01T00:00:00.000Z",
+        scheduled_at: "2026-07-01T00:10:00.000Z",
+        attempts: 0,
+      }],
+      next_cursor: null,
+    }));
+  }
+  if (/\/functions\/v1\/runs\/fnrun_cli123$/.test(pathNoQuery) && info.method === "GET") {
+    return Promise.resolve(json({
+      run_id: "fnrun_cli123",
+      project_id: "prj_test123",
+      function_name: "hello",
+      event_type: "reminder.send",
+      payload: { id: "msg_1" },
+      status: "succeeded",
+      terminal: true,
+      created_at: "2026-07-01T00:00:00.000Z",
+      updated_at: "2026-07-01T00:00:01.000Z",
+      scheduled_at: "2026-07-01T00:00:00.000Z",
+      attempts: 1,
+    }));
+  }
+  if (/\/functions\/v1\/runs\/fnrun_cli123\/logs$/.test(pathNoQuery) && info.method === "GET") {
+    return Promise.resolve(json({ logs: [{ timestamp: "2026-07-01T00:00:01.000Z", message: "run ok" }] }));
+  }
+  if (/\/functions\/v1\/runs\/fnrun_cli123\/cancel$/.test(pathNoQuery) && info.method === "POST") {
+    return Promise.resolve(json({
+      run_id: "fnrun_cli123",
+      status: "cancelled",
+      terminal: true,
+      updated_at: "2026-07-01T00:00:02.000Z",
+    }));
+  }
+  if (/\/functions\/v1\/runs\/fnrun_cli123\/redrive$/.test(pathNoQuery) && info.method === "POST") {
+    return Promise.resolve(json({
+      run_id: "fnrun_redriven",
+      status: "queued",
+      terminal: false,
+      updated_at: "2026-07-01T00:00:03.000Z",
+    }));
   }
   if (/\/functions\/hello$/.test(pathNoQuery) && info.method === "PATCH") {
     return Promise.resolve(json({ name: "hello", status: "updated" }));
@@ -919,6 +992,118 @@ describe("function log filter validation", () => {
       new URL(logCalls[1].url).searchParams.get("since"),
       String(new Date(timestamp).getTime()),
     );
+  });
+});
+
+describe("durable function runs CLI", () => {
+  it("creates a delayed run with JSON-only stdout", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    captureStart();
+    await run("runs", [
+      "create",
+      "prj_test123",
+      "hello",
+      "--event-type=reminder.send",
+      "--payload-json",
+      "{\"id\":\"msg_1\"}",
+      "--idempotency-key=reminder:msg_1",
+      "--delay=10m",
+      "--max-attempts=3",
+    ]);
+    captureStop();
+
+    const call = calls.find((c) => c.path === "/functions/v1/hello/runs" && c.method === "POST");
+    assert.ok(call, `expected create run request, got ${JSON.stringify(calls)}`);
+    const body = requestJsonBody(call.init);
+    assert.equal(body.event_type, "reminder.send");
+    assert.deepEqual(body.payload, { id: "msg_1" });
+    assert.equal(body.idempotency_key, "reminder:msg_1");
+    assert.equal(body.delay_seconds, 600);
+    assert.deepEqual(body.retry, { preset: "standard", max_attempts: 3 });
+    assert.equal(new Headers(call.init.headers).get("Idempotency-Key"), "reminder:msg_1");
+
+    const out = JSON.parse(stdout.join("\n"));
+    assert.equal(out.run_id, "fnrun_cli123");
+    assert.equal(out.status, "queued");
+  });
+
+  it("lists, fetches logs, cancels, and redrives runs", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+
+    captureStart();
+    await run("runs", ["list", "prj_test123", "hello", "--status=queued", "--limit=5"]);
+    await run("runs", ["logs", "prj_test123", "fnrun_cli123", "--tail=10"]);
+    await run("runs", ["cancel", "prj_test123", "fnrun_cli123"]);
+    await run("runs", ["redrive", "prj_test123", "fnrun_cli123", "--max-attempts=2"]);
+    captureStop();
+
+    assert.ok(calls.some((c) => c.path === "/functions/v1/hello/runs?status=queued&limit=5" && c.method === "GET"));
+    assert.ok(calls.some((c) => c.path === "/functions/v1/runs/fnrun_cli123/logs?tail=10" && c.method === "GET"));
+    assert.ok(calls.some((c) => c.path === "/functions/v1/runs/fnrun_cli123/cancel" && c.method === "POST"));
+    const redriveCall = calls.find((c) => c.path === "/functions/v1/runs/fnrun_cli123/redrive" && c.method === "POST");
+    assert.ok(redriveCall, `expected redrive request, got ${JSON.stringify(calls)}`);
+    assert.deepEqual(requestJsonBody(redriveCall.init), { retry: { preset: "standard", max_attempts: 2 } });
+  });
+
+  it("gets a run by id", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    captureStart();
+    await run("runs", ["get", "prj_test123", "fnrun_cli123"]);
+    captureStop();
+
+    const call = calls.find((c) => c.path === "/functions/v1/runs/fnrun_cli123" && c.method === "GET");
+    assert.ok(call, `expected get run request, got ${JSON.stringify(calls)}`);
+    assert.equal(JSON.parse(stdout.join("\n")).status, "succeeded");
+  });
+
+  it("rejects invalid payload JSON before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const err = await expectExit1(() =>
+      run("runs", [
+        "create",
+        "prj_test123",
+        "hello",
+        "--event-type",
+        "reminder.send",
+        "--idempotency-key",
+        "reminder:msg_1",
+        "--payload-json",
+        "[]",
+      ]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(err.details.flag, "--payload-json");
+    assert.equal(calls.length, 0, "invalid payload JSON must not hit the network");
+  });
+
+  it("rejects ambiguous scheduling and extra positionals before network", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+
+    let err = await expectExit1(() =>
+      run("runs", [
+        "create",
+        "prj_test123",
+        "hello",
+        "--event-type",
+        "reminder.send",
+        "--idempotency-key",
+        "reminder:msg_1",
+        "--delay",
+        "10m",
+        "--run-at",
+        "2026-07-01T00:10:00.000Z",
+      ]));
+
+    assert.equal(err.status, "error");
+    assert.equal(calls.length, 0, "ambiguous scheduling must not hit the network");
+
+    calls = [];
+    err = await expectExit1(() =>
+      run("runs", ["list", "prj_test123", "hello", "surprise"]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.equal(err.details.argument, "surprise");
+    assert.equal(calls.length, 0, "extra list args must not hit the network");
   });
 });
 

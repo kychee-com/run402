@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 
-const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
+const FUNCTION_LOG_REQUEST_ID_RE = /^(?:req|fnrun|fnatt)_[A-Za-z0-9_-]{4,128}$/;
 
 export const getFunctionLogsSchema = {
   project_id: z.string().describe("The project ID"),
@@ -19,9 +19,9 @@ export const getFunctionLogsSchema = {
     ),
   request_id: z
     .string()
-    .regex(FUNCTION_LOG_REQUEST_ID_RE, "Must be a Run402 request id like req_abc123")
+    .regex(FUNCTION_LOG_REQUEST_ID_RE, "Must be a Run402 request/run/attempt id like req_abc123, fnrun_abc123, or fnatt_abc123")
     .optional()
-    .describe("Only return logs correlated to this routed/function request id, such as req_abc123."),
+    .describe("Only return logs correlated to this routed request id, function run id, or attempt id, such as req_abc123, fnrun_abc123, or fnatt_abc123."),
 };
 
 export async function handleGetFunctionLogs(args: {

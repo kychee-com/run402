@@ -524,6 +524,7 @@ run402 functions deploy <id> my-fn --file fn.ts \
 
 run402 functions invoke <id> my-fn --body '{"hello":"world"}'
 run402 functions logs   <id> my-fn --tail 100 --request-id req_abc123 --follow
+run402 functions runs create <id> my-fn --event-type reminder.send --idempotency-key reminder:123 --delay 10m
 run402 functions update <id> my-fn --schedule "0 */6 * * *"
 run402 functions rebuild <id> my-fn      # refresh ONE function onto the current platform runtime
 run402 functions rebuild <id> --all      # refresh every function in the project
@@ -532,6 +533,8 @@ run402 functions delete <id> my-fn
 ```
 
 `run402 functions rebuild` is opt-in and never changes your source: it re-bundles the stored source against the platform's current runtime/entry-wrapper (deps pinned to the versions recorded at deploy), so the source `code_hash` is unchanged and no new release is created. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function — a plain redeploy with unchanged source does not. Functions deployed before dependency locking return `CANNOT_REBUILD_UNLOCKED_DEPS`; redeploy those from source instead. `run402 doctor` flags functions running a stale runtime so you know when to rebuild.
+
+`run402 functions runs` manages durable function requests. `create` requires `--event-type` and `--idempotency-key`, accepts `--payload-json`, `--delay` or `--run-at`, expiry, retry options, and optional `--wait`. `list`, `get`, `logs`, `cancel`, and `redrive` inspect and recover work by `fnrun_...`. Use durable runs for delayed work, webhook redrive, and retry-safe background tasks instead of ad hoc cron tables.
 
 `--deps` accepts npm specs: bare names (`lodash`) resolve to the latest version at deploy time, pinned (`lodash@4.17.21`) and ranges (`date-fns@^3.0.0`) are honored verbatim. Max 30 entries, 200 chars each. Native binary modules (`sharp`, `canvas`, native bcrypt, etc.) are rejected — pure JS only. Don't list `@run402/functions` (auto-bundled).
 

@@ -273,6 +273,14 @@ const SURFACE: Capability[] = [
   // the batch SDK method is in SDK_ONLY_METHODS. MCP tool `functions_rebuild`
   // (name → single, omitted → batch) landed the deferred gh#416 follow-up.
   { id: "rebuild_function",  endpoint: "POST /projects/v1/:id/functions/:name/rebuild",     mcp: "functions_rebuild", cli: "functions:rebuild", openclaw: "functions:rebuild" },
+  // durable-function-requests: one CLI/OpenClaw `functions runs <action>` group
+  // maps to six MCP tools and typed SDK methods.
+  { id: "create_function_run", endpoint: "POST /functions/v1/:name/runs",        mcp: "create_function_run",       cli: "functions:runs", openclaw: "functions:runs" },
+  { id: "list_function_runs",  endpoint: "GET /functions/v1/:name/runs",         mcp: "list_function_runs",        cli: null, openclaw: null },
+  { id: "get_function_run",    endpoint: "GET /functions/v1/runs/:run_id",       mcp: "get_function_run",          cli: null, openclaw: null },
+  { id: "get_function_run_logs", endpoint: "GET /functions/v1/runs/:run_id/logs", mcp: "get_function_run_logs",    cli: null, openclaw: null },
+  { id: "cancel_function_run", endpoint: "POST /functions/v1/runs/:run_id/cancel", mcp: "cancel_function_run",     cli: null, openclaw: null },
+  { id: "redrive_function_run", endpoint: "POST /functions/v1/runs/:run_id/redrive", mcp: "redrive_function_run",  cli: null, openclaw: null },
 
   // ── Secrets ──────────────────────────────────────────────────────────────
   { id: "set_secret",        endpoint: "POST /projects/v1/admin/:id/secrets",        mcp: "set_secret",    cli: "secrets:set",    openclaw: "secrets:set" },
@@ -572,6 +580,12 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   delete_function: "functions.delete",
   update_function: "functions.update",
   rebuild_function: "functions.rebuild",
+  create_function_run: "functions.runs.create",
+  list_function_runs: "functions.runs.list",
+  get_function_run: "functions.runs.get",
+  get_function_run_logs: "functions.runs.logs",
+  cancel_function_run: "functions.runs.cancel",
+  redrive_function_run: "functions.runs.redrive",
 
   // Secrets
   set_secret: "secrets.set",
@@ -807,6 +821,13 @@ async function listSdkMethods(): Promise<string[]> {
     // Top-level methods on the namespace class prototype.
     const proto = Object.getPrototypeOf(namespaceObj);
     if (!proto) continue;
+    if (proto === Object.prototype) {
+      for (const name of Object.keys(namespaceObj)) {
+        if (typeof namespaceObj[name] !== "function") continue;
+        methods.push(`${ns}.${name}`);
+      }
+      continue;
+    }
     for (const name of Object.getOwnPropertyNames(proto)) {
       if (name === "constructor") continue;
       if (typeof proto[name] !== "function") continue;
@@ -1072,6 +1093,11 @@ describe("SDK surface alignment", () => {
       // shares the `run402 functions rebuild --all` CLI verb (and the
       // name-less `functions_rebuild` MCP tool), so it has no dedicated leaf command.
       "functions.rebuildAll",
+      // Durable runs expose waiting as an option on create/redrive in CLI+MCP,
+      // backed by the SDK polling helper rather than a separate surface noun.
+      "functions.runs.wait",
+      // Local idempotency-key helper used by agents/CLI; no gateway endpoint.
+      "idempotency.fromParts",
       // Portable archive export uses `archives.export` as the happy path.
       // create/wait are low-level operation primitives used by the CLI/MCP
       // wrappers to surface progress and idempotent resume behavior.

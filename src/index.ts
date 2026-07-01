@@ -67,6 +67,20 @@ import { listFunctionsSchema, handleListFunctions } from "./tools/list-functions
 import { deleteFunctionSchema, handleDeleteFunction } from "./tools/delete-function.js";
 import { updateFunctionSchema, handleUpdateFunction } from "./tools/update-function.js";
 import { functionsRebuildSchema, handleFunctionsRebuild } from "./tools/functions-rebuild.js";
+import {
+  cancelFunctionRunSchema,
+  createFunctionRunSchema,
+  getFunctionRunLogsSchema,
+  getFunctionRunSchema,
+  handleCancelFunctionRun,
+  handleCreateFunctionRun,
+  handleGetFunctionRun,
+  handleGetFunctionRunLogs,
+  handleListFunctionRuns,
+  handleRedriveFunctionRun,
+  listFunctionRunsSchema,
+  redriveFunctionRunSchema,
+} from "./tools/function-runs.js";
 import { listSecretsSchema, handleListSecrets } from "./tools/list-secrets.js";
 import { deleteSecretSchema, handleDeleteSecret } from "./tools/delete-secret.js";
 import {
@@ -479,6 +493,48 @@ server.tool(
   "Refresh function(s) onto the platform's current entry wrapper + bundled runtime WITHOUT changing source (capability function-runtime-rebuild, gateway v1.69+). Provide `name` to rebuild one function, or omit it to rebuild every function in the project. Re-bundles from each function's STORED source with deps pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — this is how a gateway-side wrapper fix (e.g. an SSR auth.* fix) reaches an already-deployed function (a plain redeploy with unchanged source does NOT pick it up). Strictly opt-in; the platform never auto-rebuilds. Wallet-authed (project ownership; no service key) and allowed during billing grace. Functions deployed before dependency locking return CANNOT_REBUILD_UNLOCKED_DEPS — redeploy them from source with `deploy_function`. Use `list_functions` (runtime_stale) or `run402 doctor` to find stale functions.",
   functionsRebuildSchema,
   async (args) => handleFunctionsRebuild(args),
+);
+
+server.tool(
+  "create_function_run",
+  "Create a durable function run with a required idempotency key. Supports immediate, delayed, or run_at scheduling, expiry, retry policy, and optional wait. Use this instead of ad hoc cron/polling when work must survive retries or be redriven.",
+  createFunctionRunSchema,
+  async (args) => handleCreateFunctionRun(args),
+);
+
+server.tool(
+  "list_function_runs",
+  "List durable runs for a function, filterable by status, event_type, time window, limit, and cursor.",
+  listFunctionRunsSchema,
+  async (args) => handleListFunctionRuns(args),
+);
+
+server.tool(
+  "get_function_run",
+  "Fetch one durable function run by fnrun_ id.",
+  getFunctionRunSchema,
+  async (args) => handleGetFunctionRun(args),
+);
+
+server.tool(
+  "get_function_run_logs",
+  "Fetch logs correlated to one durable function run.",
+  getFunctionRunLogsSchema,
+  async (args) => handleGetFunctionRunLogs(args),
+);
+
+server.tool(
+  "cancel_function_run",
+  "Cancel a scheduled/queued durable function run when it has not completed yet.",
+  cancelFunctionRunSchema,
+  async (args) => handleCancelFunctionRun(args),
+);
+
+server.tool(
+  "redrive_function_run",
+  "Redrive a failed/cancelled/expired durable function run with an optional retry override and optional wait.",
+  redriveFunctionRunSchema,
+  async (args) => handleRedriveFunctionRun(args),
 );
 
 // ─── Secrets tools ──────────────────────────────────────────────────────────

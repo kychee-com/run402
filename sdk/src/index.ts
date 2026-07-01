@@ -103,6 +103,9 @@ export class Run402 {
    * project-scoped as `r.project(id).grants`.
    */
   readonly grants: Grants;
+  readonly idempotency = {
+    fromParts,
+  };
 
   readonly #client: Client;
 
@@ -312,6 +315,19 @@ export function files(record: Record<string, ContentSource>): FileSet {
   return record;
 }
 
+export function fromParts(...parts: Array<string | number | boolean | null | undefined>): string {
+  const cleaned = parts
+    .filter((part) => part !== undefined && part !== null && String(part).trim() !== "")
+    .map((part) => encodeURIComponent(String(part)));
+  if (cleaned.length === 0) {
+    throw new LocalError(
+      "idempotency.fromParts requires at least one non-empty part",
+      "building idempotency key",
+    );
+  }
+  return cleaned.join(":");
+}
+
 /**
  * Factory wrapper equivalent to `new Run402(opts)`. Reads better in code-mode
  * sandbox examples: `const r = run402({ ... })`.
@@ -430,6 +446,7 @@ export { Deploy } from "./namespaces/deploy.js";
 export type { ByteReader } from "./namespaces/deploy.js";
 export type * from "./namespaces/domains.js";
 export type * from "./namespaces/email.js";
+export { FunctionRunTerminalError, FunctionRuns } from "./namespaces/functions.js";
 export type * from "./namespaces/functions.types.js";
 export type * from "./namespaces/jobs.js";
 export type * from "./namespaces/operator.js";

@@ -1308,9 +1308,29 @@ list(projectId): Promise<FunctionListResult> // FunctionSummary includes runtime
 delete(projectId, name): Promise<void>
 rebuild(projectId, name): Promise<FunctionRebuildResult> // { name, rebuilt, old_fingerprint, new_fingerprint, runtime_version_before, runtime_version_after, code_hash }
 rebuildAll(projectId): Promise<FunctionRebuildBatchResult> // { rebuilt_count, total, results: (FunctionRebuildResult | { name, rebuilt: false, code?, error })[] }
+r.functions.runs.create(projectId, name, {
+  eventType: string,
+  payload?: Record<string, unknown>,
+  idempotencyKey: string,
+  delay?: string | number,      // "10m", "1h", "3d" or seconds; mutually exclusive with runAt
+  delaySeconds?: number,
+  runAt?: string | Date,
+  expiresAt?: string | Date,
+  expiresAfter?: string | number,
+  retry?: { preset?: "standard", maxAttempts?: number, minDelaySeconds?: number, maxDelaySeconds?: number },
+}): Promise<FunctionRunHandle>
+r.functions.runs.list(projectId, name, opts?: { status?, eventType?, since?, until?, limit?, cursor? }): Promise<{ runs, next_cursor? }>
+r.functions.runs.get(projectId, runId): Promise<FunctionRunHandle>
+r.functions.runs.logs(projectId, runId, opts?: { tail?, since? }): Promise<FunctionLogsResult>
+r.functions.runs.cancel(projectId, runId): Promise<FunctionRunHandle>
+r.functions.runs.redrive(projectId, runId, opts?: { retry? }): Promise<FunctionRunHandle>
+r.functions.runs.wait(projectId, runId, opts?: { intervalMs?, timeoutMs?, throwOnFailure? }): Promise<FunctionRunHandle>
+r.idempotency.fromParts(...parts: Array<string | number | boolean | null | undefined>): string
 ```
 
-`FunctionLogEntry` includes `timestamp` and `message`, plus optional `event_id`, `log_stream_name`, `ingestion_time`, and `request_id` metadata when the gateway can provide it. Use `requestId` to follow a routed browser failure exposed as `X-Run402-Request-Id` / JSON `request_id`; SDK calls reject invalid `since` timestamps, invalid request ids, and `tail` values outside 1..1000 locally instead of forwarding them.
+Durable function runs are service-key authed function requests that survive process crashes and support delay/run_at scheduling, expiry, retry, cancellation, logs, and redrive. `idempotencyKey` is required on create; use `r.idempotency.fromParts("reminder", messageId)` or your own stable key so retries do not duplicate logical work. The scoped client exposes the same surface at `(await r.project(id)).functions.runs.*` without repeating `projectId`.
+
+`FunctionLogEntry` includes `timestamp` and `message`, plus optional `event_id`, `log_stream_name`, `ingestion_time`, and `request_id` metadata when the gateway can provide it. Use `requestId` to follow a routed browser failure exposed as `X-Run402-Request-Id` / JSON `request_id`, or to filter by durable run/attempt ids (`fnrun_...`, `fnatt_...`); SDK calls reject invalid `since` timestamps, invalid request ids, and `tail` values outside 1..1000 locally instead of forwarding them.
 
 `rebuild` / `rebuildAll` (capability `function-runtime-rebuild`, gateway v1.69+) refresh a deployed function onto the platform's CURRENT entry wrapper + bundled runtime WITHOUT changing source: they re-bundle from the stored source with dependencies pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — only the platform wrapper/runtime changes. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does not pick it up. Strictly opt-in. Both are **wallet-authed** (project ownership; no service key) and allowed during billing grace (`past_due` / `frozen` / `dormant`). Functions deployed before dependency locking are refused with `CANNOT_REBUILD_UNLOCKED_DEPS` (single: HTTP 409 `ApiError`; `rebuildAll`: a `{ rebuilt: false, code: "CANNOT_REBUILD_UNLOCKED_DEPS", error }` entry that never aborts the batch) — redeploy those from source. Runtime staleness is surfaced read-only on `r.admin.getOperatorStatus().runtime` (`{ stale_function_count, stale_functions: [{ project_id, name }] }`) and per-function as `runtime_stale?` on the functions list; the scoped client exposes `r.project(id).functions.rebuild(name)` / `.rebuildAll()`.
 

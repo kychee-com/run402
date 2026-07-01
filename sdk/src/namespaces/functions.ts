@@ -22,6 +22,15 @@ import type {
   FunctionListResult,
   FunctionLogsOptions,
   FunctionLogsResult,
+  FunctionRunCreateOptions,
+  FunctionRunHandle,
+  FunctionRunListOptions,
+  FunctionRunListResult,
+  FunctionRunLogsOptions,
+  FunctionRunRedriveOptions,
+  FunctionRunRetryPolicy,
+  FunctionRunStatus,
+  FunctionRunWaitOptions,
   FunctionRebuildBatchResult,
   FunctionRebuildResult,
   FunctionUpdateOptions,
@@ -29,7 +38,7 @@ import type {
 } from "./functions.types.js";
 
 const FUNCTION_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,127}$/;
-const FUNCTION_LOG_REQUEST_ID_RE = /^req_[A-Za-z0-9_-]{4,128}$/;
+const FUNCTION_LOG_REQUEST_ID_RE = /^(?:req|fnrun|fnatt)_[A-Za-z0-9_-]{4,128}$/;
 const ISO_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const FUNCTION_LOG_TAIL_MAX = 1000;
 const FUNCTION_DEP_MAX = 30;
@@ -42,8 +51,33 @@ const DISALLOWED_FUNCTION_DEPS = new Set([
   "bcrypt",
 ]);
 
+export class FunctionRunTerminalError extends Error {
+  readonly run: FunctionRunHandle;
+  readonly code?: string;
+
+  constructor(run: FunctionRunHandle) {
+    const message = run.last_error?.message ?? `Function run ${run.run_id} reached terminal status ${run.status}`;
+    super(message);
+    this.name = "FunctionRunTerminalError";
+    this.run = run;
+    this.code = run.last_error?.code;
+  }
+}
+
 export class Functions {
-  constructor(private readonly client: Client) {}
+  readonly runs: FunctionRuns;
+  readonly retry = {
+    standard: (opts: { maxAttempts?: number; minDelaySeconds?: number; maxDelaySeconds?: number } = {}): FunctionRunRetryPolicy => ({
+      preset: "standard",
+      ...(opts.maxAttempts !== undefined ? { maxAttempts: opts.maxAttempts } : {}),
+      ...(opts.minDelaySeconds !== undefined ? { minDelaySeconds: opts.minDelaySeconds } : {}),
+      ...(opts.maxDelaySeconds !== undefined ? { maxDelaySeconds: opts.maxDelaySeconds } : {}),
+    }),
+  };
+
+  constructor(private readonly client: Client) {
+    this.runs = new FunctionRuns(client);
+  }
 
   /**
    * Deploy a serverless function through the unified apply engine. Builds a
@@ -329,6 +363,162 @@ export class Functions {
   }
 }
 
+export class FunctionRuns {
+  constructor(private readonly client: Client) {}
+
+  async create(
+    projectId: string,
+    functionName: string,
+    opts: FunctionRunCreateOptions,
+  ): Promise<FunctionRunHandle> {
+    validateFunctionName(functionName, "functionName", "creating function run");
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "creating function run");
+    const body = normalizeFunctionRunCreate(opts, "creating function run");
+    return this.client.request<FunctionRunHandle>(
+      `/functions/v1/${encodeURIComponent(functionName)}/runs`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${project.service_key}`,
+          "Idempotency-Key": body.idempotency_key,
+        },
+        body,
+        context: "creating function run",
+      },
+    );
+  }
+
+  async list(
+    projectId: string,
+    functionName: string,
+    opts: FunctionRunListOptions = {},
+  ): Promise<FunctionRunListResult> {
+    validateFunctionName(functionName, "functionName", "listing function runs");
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "listing function runs");
+    const search = new URLSearchParams();
+    if (opts.status !== undefined) {
+      validateFunctionRunStatus(opts.status, "status", "listing function runs");
+      search.set("status", opts.status);
+    }
+    if (opts.eventType !== undefined) {
+      validateNonEmptyString(opts.eventType, "eventType", "listing function runs");
+      search.set("event_type", opts.eventType);
+    }
+    if (opts.since !== undefined) search.set("since", isoOrEpochString(opts.since, "since", "listing function runs"));
+    if (opts.until !== undefined) search.set("until", isoOrEpochString(opts.until, "until", "listing function runs"));
+    if (opts.limit !== undefined) {
+      validatePositiveJsonInteger(opts.limit, "limit", "listing function runs", { max: 100 });
+      search.set("limit", String(opts.limit));
+    }
+    if (opts.cursor !== undefined) {
+      validateNonEmptyString(opts.cursor, "cursor", "listing function runs");
+      search.set("cursor", opts.cursor);
+    }
+    const qs = search.toString();
+    return this.client.request<FunctionRunListResult>(
+      `/functions/v1/${encodeURIComponent(functionName)}/runs${qs ? `?${qs}` : ""}`,
+      {
+        headers: { Authorization: `Bearer ${project.service_key}` },
+        context: "listing function runs",
+      },
+    );
+  }
+
+  async get(projectId: string, runId: string): Promise<FunctionRunHandle> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "fetching function run");
+    validateFunctionRunId(runId, "runId", "fetching function run");
+    return this.client.request<FunctionRunHandle>(
+      `/functions/v1/runs/${encodeURIComponent(runId)}`,
+      {
+        headers: { Authorization: `Bearer ${project.service_key}` },
+        context: "fetching function run",
+      },
+    );
+  }
+
+  async logs(
+    projectId: string,
+    runId: string,
+    opts: FunctionRunLogsOptions = {},
+  ): Promise<FunctionLogsResult> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "fetching function run logs");
+    validateFunctionRunId(runId, "runId", "fetching function run logs");
+    const tail = opts.tail ?? 50;
+    validatePositiveJsonInteger(tail, "tail", "fetching function run logs", { max: FUNCTION_LOG_TAIL_MAX });
+    const search = new URLSearchParams({ tail: String(tail) });
+    if (opts.since !== undefined) search.set("since", isoOrEpochString(opts.since, "since", "fetching function run logs"));
+    return this.client.request<FunctionLogsResult>(
+      `/functions/v1/runs/${encodeURIComponent(runId)}/logs?${search.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${project.service_key}` },
+        context: "fetching function run logs",
+      },
+    );
+  }
+
+  async cancel(projectId: string, runId: string): Promise<FunctionRunHandle> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "cancelling function run");
+    validateFunctionRunId(runId, "runId", "cancelling function run");
+    return this.client.request<FunctionRunHandle>(
+      `/functions/v1/runs/${encodeURIComponent(runId)}/cancel`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${project.service_key}` },
+        context: "cancelling function run",
+      },
+    );
+  }
+
+  async redrive(
+    projectId: string,
+    runId: string,
+    opts: FunctionRunRedriveOptions = {},
+  ): Promise<FunctionRunHandle> {
+    const project = await this.client.getProject(projectId);
+    if (!project) throw new ProjectNotFound(projectId, "redriving function run");
+    validateFunctionRunId(runId, "runId", "redriving function run");
+    const body: Record<string, unknown> = {};
+    if (opts.retry !== undefined) body.retry = normalizeRetry(opts.retry);
+    return this.client.request<FunctionRunHandle>(
+      `/functions/v1/runs/${encodeURIComponent(runId)}/redrive`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${project.service_key}` },
+        body,
+        context: "redriving function run",
+      },
+    );
+  }
+
+  async wait(
+    projectId: string,
+    runId: string,
+    opts: FunctionRunWaitOptions = {},
+  ): Promise<FunctionRunHandle> {
+    const deadline = Date.now() + (opts.timeoutMs ?? 300_000);
+    const intervalMs = opts.intervalMs ?? 1000;
+    const throwOnFailure = opts.throwOnFailure ?? true;
+    for (;;) {
+      const run = await this.get(projectId, runId);
+      if (run.terminal) {
+        if (throwOnFailure && run.status !== "succeeded") {
+          throw new FunctionRunTerminalError(run);
+        }
+        return run;
+      }
+      if (Date.now() >= deadline) {
+        throw new LocalError(`Timed out waiting for function run ${runId}`, "waiting for function run");
+      }
+      await sleep(Math.max(0, intervalMs));
+    }
+  }
+}
+
 function parseLogSince(since: string): number {
   const raw = since.trim();
   const ms = /^\d+$/.test(raw)
@@ -343,6 +533,140 @@ function parseLogSince(since: string): number {
     );
   }
   return ms;
+}
+
+function normalizeFunctionRunCreate(
+  opts: FunctionRunCreateOptions,
+  context: string,
+): Record<string, unknown> & { idempotency_key: string } {
+  if (!opts || typeof opts !== "object") {
+    throw new LocalError("function run options must be an object", context);
+  }
+  validateNonEmptyString(opts.eventType, "eventType", context);
+  if (typeof opts.idempotencyKey !== "string" || opts.idempotencyKey.trim() === "") {
+    throw new LocalError("idempotencyKey is required for function run creation", context);
+  }
+  const hasDelay = opts.delay !== undefined || opts.delaySeconds !== undefined;
+  if (hasDelay && opts.runAt !== undefined) {
+    throw new LocalError("runAt and delay are mutually exclusive for function run creation", context);
+  }
+  if (opts.delay !== undefined && opts.delaySeconds !== undefined) {
+    throw new LocalError("delay and delaySeconds are mutually exclusive for function run creation", context);
+  }
+  const body: Record<string, unknown> & { idempotency_key: string } = {
+    event_type: opts.eventType,
+    idempotency_key: opts.idempotencyKey,
+  };
+  if (opts.payload !== undefined) body.payload = validateJsonObject(opts.payload, "payload", context);
+  if (opts.runAt !== undefined) body.run_at = isoFromDateInput(opts.runAt, "runAt", context);
+  if (opts.delay !== undefined) body.delay_seconds = parseDurationSeconds(opts.delay, "delay", context);
+  if (opts.delaySeconds !== undefined) body.delay_seconds = parseDurationSeconds(opts.delaySeconds, "delaySeconds", context);
+  if (opts.expiresAt !== undefined) body.expires_at = isoFromDateInput(opts.expiresAt, "expiresAt", context);
+  if (opts.expiresAfter !== undefined) {
+    const seconds = parseDurationSeconds(opts.expiresAfter, "expiresAfter", context);
+    body.expires_at = new Date(Date.now() + seconds * 1000).toISOString();
+  }
+  if (body.expires_at !== undefined) {
+    const runAtMs = body.run_at
+      ? Date.parse(String(body.run_at))
+      : Date.now() + Number(body.delay_seconds ?? 0) * 1000;
+    if (Date.parse(String(body.expires_at)) <= runAtMs) {
+      throw new LocalError("expiresAt/expiresAfter must be after the function run time", context);
+    }
+  }
+  if (opts.retry !== undefined) body.retry = normalizeRetry(opts.retry);
+  return body;
+}
+
+function normalizeRetry(retry: FunctionRunRetryPolicy): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries({
+      ...retry,
+      ...(retry.maxAttempts !== undefined ? { max_attempts: retry.maxAttempts } : {}),
+      ...(retry.minDelaySeconds !== undefined ? { min_delay_seconds: retry.minDelaySeconds } : {}),
+      ...(retry.maxDelaySeconds !== undefined ? { max_delay_seconds: retry.maxDelaySeconds } : {}),
+    }).filter(([key]) => key !== "maxAttempts" && key !== "minDelaySeconds" && key !== "maxDelaySeconds"),
+  );
+}
+
+function validateJsonObject(value: unknown, resource: string, context: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new LocalError(`${resource} must be a JSON object`, context);
+  }
+  return value as Record<string, unknown>;
+}
+
+function validateNonEmptyString(value: unknown, resource: string, context: string): asserts value is string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new LocalError(`${resource} must be a non-empty string`, context);
+  }
+}
+
+function isoFromDateInput(value: string | Date, resource: string, context: string): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    throw new LocalError(`${resource} must be an ISO-8601 timestamp`, context);
+  }
+  return date.toISOString();
+}
+
+function isoOrEpochString(value: string, resource: string, context: string): string {
+  const raw = value.trim();
+  if (/^\d+$/.test(raw)) {
+    const epoch = Number(raw);
+    if (Number.isSafeInteger(epoch) && epoch >= 0) return raw;
+  }
+  if (ISO_DATE_TIME_RE.test(raw) && Number.isFinite(Date.parse(raw))) return raw;
+  throw new LocalError(`${resource} must be an ISO-8601 timestamp or epoch millisecond integer`, context);
+}
+
+function parseDurationSeconds(value: string | number, resource: string, context: string): number {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new LocalError(`${resource} must be a non-negative duration`, context);
+    }
+    return Math.ceil(value);
+  }
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|milliseconds?|s|sec|secs|seconds?|m|min|mins|minutes?|h|hr|hrs|hours?|d|days?)$/i);
+  if (!match) {
+    throw new LocalError(`${resource} must be a duration such as "10m", "1h", or "3d"`, context);
+  }
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const multiplier =
+    unit.startsWith("ms") ? 0.001 :
+    unit.startsWith("s") ? 1 :
+    unit.startsWith("m") ? 60 :
+    unit.startsWith("h") ? 3600 :
+    86400;
+  return Math.ceil(amount * multiplier);
+}
+
+function validateFunctionRunId(value: unknown, resource: string, context: string): void {
+  if (typeof value !== "string" || !/^fnrun_[A-Za-z0-9_-]{4,128}$/.test(value)) {
+    throw new LocalError(`${resource} must match fnrun_<4-128 url-safe chars>`, context);
+  }
+}
+
+function validateFunctionRunStatus(value: unknown, resource: string, context: string): void {
+  const statuses = new Set<FunctionRunStatus>([
+    "scheduled",
+    "queued",
+    "running",
+    "retrying",
+    "blocked",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "expired",
+  ]);
+  if (typeof value !== "string" || !statuses.has(value as FunctionRunStatus)) {
+    throw new LocalError(`${resource} must be a function run status`, context);
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function validateFunctionConfig(config: unknown, resource: string, context: string): void {
@@ -423,7 +747,7 @@ function validateFunctionSchedule(value: unknown, resource: string, context: str
 
 function validateFunctionLogRequestId(value: unknown, resource: string, context: string): void {
   if (typeof value !== "string" || !FUNCTION_LOG_REQUEST_ID_RE.test(value)) {
-    throw new LocalError(`${resource} must match req_<4-128 url-safe chars>`, context);
+    throw new LocalError(`${resource} must match req_, fnrun_, or fnatt_ followed by 4-128 url-safe chars`, context);
   }
 }
 
