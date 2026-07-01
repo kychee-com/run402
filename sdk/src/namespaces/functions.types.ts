@@ -181,10 +181,10 @@ export interface FunctionRunCreateOptions {
   eventType: string;
   payload?: Record<string, unknown>;
   idempotencyKey?: string;
-  runAt?: string | Date;
+  runAt?: string;
   delay?: string | number;
   delaySeconds?: number;
-  expiresAt?: string | Date;
+  expiresAt?: string;
   expiresAfter?: string | number;
   retry?: FunctionRunRetryPolicy;
 }
