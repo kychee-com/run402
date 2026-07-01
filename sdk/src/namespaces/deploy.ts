@@ -1341,9 +1341,10 @@ async function preflightTierFunctionLimits(
         intervalMinutes !== null &&
         intervalMinutes < limits.minCronIntervalMinutes.value
       ) {
+        const triggerLabel = trigger.id === "__legacy__" ? "schedule" : `trigger ${trigger.id}`;
         throw tierLimitError(
-          `Function ${entry.name} trigger ${trigger.id} runs every ${intervalMinutes} minute(s), below the ${limits.tier} tier minimum interval of ${limits.minCronIntervalMinutes.value} minutes.`,
-          `${entry.fieldPrefix}.triggers.${trigger.id}.cron`,
+          `Function ${entry.name} ${triggerLabel} runs every ${intervalMinutes} minute(s), below the ${limits.tier} tier minimum interval of ${limits.minCronIntervalMinutes.value} minutes.`,
+          `${entry.fieldPrefix}.${trigger.fieldSuffix}`,
           trigger.cron,
           limits,
           limits.minCronIntervalMinutes,
@@ -1599,9 +1600,18 @@ async function readActiveScheduledFunctionNames(
   return scheduled;
 }
 
-function scheduleTriggersForFunction(fn: Pick<NormalizedFunctionSpec, "triggers" | "schedule">): NonNullable<NormalizedFunctionSpec["triggers"]> {
+type ScheduleTriggerForPreflight = NonNullable<NormalizedFunctionSpec["triggers"]>[number] & {
+  fieldSuffix: string;
+};
+
+function scheduleTriggersForFunction(fn: Pick<NormalizedFunctionSpec, "triggers" | "schedule">): ScheduleTriggerForPreflight[] {
   if (fn.triggers && fn.triggers.length > 0) {
-    return fn.triggers.filter((trigger) => trigger.type === "schedule");
+    return fn.triggers
+      .filter((trigger) => trigger.type === "schedule")
+      .map((trigger) => ({
+        ...trigger,
+        fieldSuffix: `triggers.${trigger.id}.cron`,
+      }));
   }
   return isScheduledCron(fn.schedule)
     ? [{
@@ -1612,6 +1622,7 @@ function scheduleTriggersForFunction(fn: Pick<NormalizedFunctionSpec, "triggers"
         misfire_policy: "skip",
         overlap_policy: "allow",
         run: { event_type: "legacy.schedule", payload: {} },
+        fieldSuffix: "schedule",
       }]
     : [];
 }
