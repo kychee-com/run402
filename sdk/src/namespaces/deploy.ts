@@ -951,6 +951,7 @@ function functionToCoreSpec(fn: NormalizedFunctionSpec): Record<string, unknown>
     ...(fn.entrypoint !== undefined ? { entrypoint: fn.entrypoint } : {}),
     ...(fn.config !== undefined ? { config: fn.config } : {}),
     ...(fn.deps !== undefined ? { deps: fn.deps } : {}),
+    ...(fn.triggers !== undefined ? { triggers: fn.triggers } : {}),
     ...(fn.schedule !== undefined ? { schedule: fn.schedule } : {}),
     ...(fn.requireAuth !== undefined ? { requireAuth: fn.requireAuth } : {}),
     ...(fn.requireRole !== undefined ? { requireRole: fn.requireRole } : {}),
@@ -974,6 +975,7 @@ function functionToWire(fn: NormalizedFunctionSpec): Record<string, unknown> {
         }
       : {}),
     ...(fn.deps !== undefined ? { deps: fn.deps } : {}),
+    ...(fn.triggers !== undefined ? { triggers: fn.triggers } : {}),
     ...(fn.schedule !== undefined ? { schedule: fn.schedule } : {}),
     ...(fn.requireAuth !== undefined ? { require_auth: fn.requireAuth } : {}),
     ...(fn.requireRole !== undefined
@@ -1332,16 +1334,17 @@ async function preflightTierFunctionLimits(
       );
     }
 
-    if (isScheduledCron(entry.fn.schedule) && limits.minCronIntervalMinutes) {
-      const intervalMinutes = estimateCronMinimumIntervalMinutes(entry.fn.schedule);
+    for (const trigger of scheduleTriggersForFunction(entry.fn)) {
+      if (!limits.minCronIntervalMinutes) continue;
+      const intervalMinutes = estimateCronMinimumIntervalMinutes(trigger.cron);
       if (
         intervalMinutes !== null &&
         intervalMinutes < limits.minCronIntervalMinutes.value
       ) {
         throw tierLimitError(
-          `Function ${entry.name} schedule runs every ${intervalMinutes} minute(s), below the ${limits.tier} tier minimum interval of ${limits.minCronIntervalMinutes.value} minutes.`,
-          `${entry.fieldPrefix}.schedule`,
-          entry.fn.schedule,
+          `Function ${entry.name} trigger ${trigger.id} runs every ${intervalMinutes} minute(s), below the ${limits.tier} tier minimum interval of ${limits.minCronIntervalMinutes.value} minutes.`,
+          `${entry.fieldPrefix}.triggers.${trigger.id}.cron`,
+          trigger.cron,
           limits,
           limits.minCronIntervalMinutes,
           {
@@ -1377,7 +1380,7 @@ function hasFunctionTierPreflightInputs(functions: NormalizedFunctionsSpec | und
   return collectFunctionPreflightEntries(functions).some((entry) => (
     entry.fn.config?.timeoutSeconds !== undefined ||
     entry.fn.config?.memoryMb !== undefined ||
-    isScheduledCron(entry.fn.schedule)
+    scheduleTriggersForFunction(entry.fn).length > 0
   ));
 }
 
@@ -1538,14 +1541,14 @@ async function computeDesiredScheduledFunctionCount(
 
 function countScheduledFunctionsInSetEntries(functions: NormalizedFunctionsSpec | undefined): number {
   if (!functions) return 0;
-  const names = new Set<string>();
-  for (const [name, fn] of Object.entries(functions.replace ?? {})) {
-    if (isScheduledCron(fn.schedule)) names.add(name);
+  let count = 0;
+  for (const fn of Object.values(functions.replace ?? {})) {
+    count += scheduleTriggersForFunction(fn).length;
   }
-  for (const [name, fn] of Object.entries(functions.patch?.set ?? {})) {
-    if (isScheduledCron(fn.schedule)) names.add(name);
+  for (const fn of Object.values(functions.patch?.set ?? {})) {
+    count += scheduleTriggersForFunction(fn).length;
   }
-  return names.size;
+  return count;
 }
 
 function scheduledFunctionNames(
@@ -1554,7 +1557,7 @@ function scheduledFunctionNames(
   if (!functions) return null;
   const scheduled = new Set<string>();
   for (const [name, fn] of Object.entries(functions)) {
-    if (isScheduledCron(fn.schedule)) scheduled.add(name);
+    if (scheduleTriggersForFunction(fn).length > 0) scheduled.add(name);
   }
   return scheduled;
 }
@@ -1568,7 +1571,7 @@ function applyScheduledFunctionPatch(
   }
   for (const [name, fn] of Object.entries(patch?.set ?? {})) {
     if (fn.schedule === null) scheduled.delete(name);
-    else if (isScheduledCron(fn.schedule)) scheduled.add(name);
+    else if (scheduleTriggersForFunction(fn).length > 0) scheduled.add(name);
   }
 }
 
@@ -1591,9 +1594,26 @@ async function readActiveScheduledFunctionNames(
 
   const scheduled = new Set<string>();
   for (const fn of inventory.functions ?? []) {
-    if (isScheduledCron(fn.schedule)) scheduled.add(fn.name);
+    if (isScheduledCron(fn.schedule) || scheduleTriggersForFunction(fn as NormalizedFunctionSpec).length > 0) scheduled.add(fn.name);
   }
   return scheduled;
+}
+
+function scheduleTriggersForFunction(fn: Pick<NormalizedFunctionSpec, "triggers" | "schedule">): NonNullable<NormalizedFunctionSpec["triggers"]> {
+  if (fn.triggers && fn.triggers.length > 0) {
+    return fn.triggers.filter((trigger) => trigger.type === "schedule");
+  }
+  return isScheduledCron(fn.schedule)
+    ? [{
+        id: "__legacy__",
+        type: "schedule",
+        cron: fn.schedule,
+        timezone: "UTC",
+        misfire_policy: "skip",
+        overlap_policy: "allow",
+        run: { event_type: "legacy.schedule", payload: {} },
+      }]
+    : [];
 }
 
 function scheduledCountTierLimitError(
@@ -2473,6 +2493,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "entrypoint",
   "config",
   "deps",
+  "triggers",
   "schedule",
   "requireAuth",
   "requireRole",
@@ -2480,6 +2501,8 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "capabilities",
 ]);
 const FUNCTION_CONFIG_FIELDS = new Set(["timeoutSeconds", "memoryMb"]);
+const FUNCTION_TRIGGER_FIELDS = new Set(["id", "type", "cron", "timezone", "misfire_policy", "overlap_policy", "run"]);
+const FUNCTION_TRIGGER_RUN_FIELDS = new Set(["event_type", "payload", "retry", "expires_after_seconds"]);
 const SITE_SPEC_FIELDS = new Set(["replace", "patch", "public_paths"]);
 const SITE_PATCH_FIELDS = new Set(["put", "delete"]);
 const SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
@@ -2629,6 +2652,53 @@ function validateFunctionMap(value: unknown, resource: string): void {
     }
     if (entry.files !== undefined) {
       requireObject(entry.files, `${resource}.${name}.files`);
+    }
+    validateFunctionTriggers(entry.triggers, `${resource}.${name}.triggers`);
+  }
+}
+
+function validateFunctionTriggers(value: unknown, resource: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) throw invalidSpec(`ReleaseSpec.${resource} must be an array`, resource);
+  const seen = new Set<string>();
+  for (const [index, trigger] of value.entries()) {
+    const path = `${resource}.${index}`;
+    const obj = requireObject(trigger, path);
+    validateKnownFields(obj, path, FUNCTION_TRIGGER_FIELDS, {
+      delivery: "Remove delivery; schedule triggers always start durable function runs.",
+    });
+    if (typeof obj.id !== "string" || obj.id.trim() === "") {
+      throw invalidSpec(`ReleaseSpec.${path}.id is required for schedule triggers`, `${path}.id`);
+    }
+    if (seen.has(obj.id)) throw invalidSpec(`ReleaseSpec.${path}.id duplicates ${JSON.stringify(obj.id)}`, `${path}.id`);
+    seen.add(obj.id);
+    if (obj.type !== "schedule") throw invalidSpec(`ReleaseSpec.${path}.type must be "schedule"`, `${path}.type`);
+    if (typeof obj.cron !== "string" || obj.cron.trim().split(/\s+/).length !== 5) {
+      throw invalidSpec(`ReleaseSpec.${path}.cron must be a 5-field cron expression`, `${path}.cron`);
+    }
+    if (obj.timezone !== undefined && typeof obj.timezone !== "string") {
+      throw invalidSpec(`ReleaseSpec.${path}.timezone must be a string`, `${path}.timezone`);
+    }
+    if (obj.misfire_policy !== undefined && obj.misfire_policy !== "skip") {
+      throw invalidSpec(`ReleaseSpec.${path}.misfire_policy must be "skip"`, `${path}.misfire_policy`);
+    }
+    if (obj.overlap_policy !== undefined && obj.overlap_policy !== "allow") {
+      throw invalidSpec(`ReleaseSpec.${path}.overlap_policy must be "allow"`, `${path}.overlap_policy`);
+    }
+    const run = requireObject(obj.run, `${path}.run`);
+    validateKnownFields(run, `${path}.run`, FUNCTION_TRIGGER_RUN_FIELDS);
+    if (typeof run.event_type !== "string" || run.event_type.trim() === "") {
+      throw invalidSpec(`ReleaseSpec.${path}.run.event_type is required`, `${path}.run.event_type`);
+    }
+    if (run.payload !== undefined) requireObject(run.payload, `${path}.run.payload`);
+    if (run.retry !== undefined) requireObject(run.retry, `${path}.run.retry`);
+    if (
+      run.expires_after_seconds !== undefined &&
+      (typeof run.expires_after_seconds !== "number" ||
+        !Number.isSafeInteger(run.expires_after_seconds) ||
+        run.expires_after_seconds <= 0)
+    ) {
+      throw invalidSpec(`ReleaseSpec.${path}.run.expires_after_seconds must be a positive integer`, `${path}.run.expires_after_seconds`);
     }
   }
 }
@@ -3748,6 +3818,7 @@ async function normalizeFunction(
   };
   if (fn.config) out.config = fn.config;
   if (fn.deps !== undefined) out.deps = fn.deps;
+  if (fn.triggers !== undefined) out.triggers = normalizeFunctionTriggers(fn.triggers);
   if (fn.schedule !== undefined) out.schedule = fn.schedule;
   if (fn.entrypoint) out.entrypoint = fn.entrypoint;
   if (fn.requireAuth !== undefined) out.requireAuth = fn.requireAuth;
@@ -3763,6 +3834,29 @@ async function normalizeFunction(
     out.files = await normalizeFileSet(fn.files, remember);
   }
   return out;
+}
+
+function normalizeFunctionTriggers(
+  triggers: NonNullable<FunctionSpecInput["triggers"]>,
+): NonNullable<NormalizedFunctionSpec["triggers"]> {
+  return triggers
+    .map((trigger) => ({
+      id: trigger.id,
+      type: "schedule" as const,
+      cron: trigger.cron,
+      timezone: trigger.timezone ?? "UTC",
+      misfire_policy: trigger.misfire_policy ?? "skip",
+      overlap_policy: trigger.overlap_policy ?? "allow",
+      run: {
+        event_type: trigger.run.event_type,
+        payload: trigger.run.payload ?? {},
+        ...(trigger.run.retry !== undefined ? { retry: { ...trigger.run.retry } } : {}),
+        ...(trigger.run.expires_after_seconds !== undefined
+          ? { expires_after_seconds: trigger.run.expires_after_seconds }
+          : {}),
+      },
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 async function normalizeFileSet(

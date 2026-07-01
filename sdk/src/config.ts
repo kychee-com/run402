@@ -2,6 +2,8 @@ import type {
   ContentSource,
   FsFileSource,
   FunctionSpec,
+  FunctionScheduleTriggerSpec,
+  FunctionTriggerRunSpec,
   LocalDirRef,
   ReleaseSpec,
 } from "./namespaces/deploy.types.js";
@@ -40,6 +42,15 @@ export interface Run402NodeFunctionConfigOptions
   runtime?: "node22";
   source?: never;
   files?: never;
+}
+
+export interface Run402ScheduleTriggerOptions {
+  timezone?: string;
+  misfirePolicy?: "skip";
+  misfire_policy?: "skip";
+  overlapPolicy?: "allow";
+  overlap_policy?: "allow";
+  run: FunctionTriggerRunSpec;
 }
 
 export interface Run402FileConfigSource extends FsFileSource {
@@ -125,11 +136,46 @@ export function nodeFunction(
     ...(options.entrypoint !== undefined ? { entrypoint: options.entrypoint } : {}),
     ...(options.config !== undefined ? { config: options.config } : {}),
     ...(options.deps !== undefined ? { deps: [...options.deps] } : {}),
+    ...(options.triggers !== undefined ? { triggers: options.triggers.map((trigger) => ({ ...trigger })) } : {}),
     ...(options.schedule !== undefined ? { schedule: options.schedule } : {}),
     ...(options.class !== undefined ? { class: options.class } : {}),
     ...(options.capabilities !== undefined ? { capabilities: [...options.capabilities] } : {}),
     ...(options.requireAuth !== undefined ? { requireAuth: options.requireAuth } : {}),
     ...(options.requireRole !== undefined ? { requireRole: options.requireRole } : {}),
+  };
+}
+
+export function scheduleTrigger(
+  id: string,
+  cron: string,
+  options: Run402ScheduleTriggerOptions,
+): FunctionScheduleTriggerSpec {
+  if (!options || typeof options !== "object") {
+    throw new TypeError("scheduleTrigger options are required.");
+  }
+  return {
+    id,
+    type: "schedule",
+    cron,
+    ...(options.timezone !== undefined ? { timezone: options.timezone } : {}),
+    ...(options.misfirePolicy !== undefined
+      ? { misfire_policy: options.misfirePolicy }
+      : options.misfire_policy !== undefined
+        ? { misfire_policy: options.misfire_policy }
+        : {}),
+    ...(options.overlapPolicy !== undefined
+      ? { overlap_policy: options.overlapPolicy }
+      : options.overlap_policy !== undefined
+        ? { overlap_policy: options.overlap_policy }
+        : {}),
+    run: {
+      event_type: options.run.event_type,
+      ...(options.run.payload !== undefined ? { payload: options.run.payload } : {}),
+      ...(options.run.retry !== undefined ? { retry: options.run.retry } : {}),
+      ...(options.run.expires_after_seconds !== undefined
+        ? { expires_after_seconds: options.run.expires_after_seconds }
+        : {}),
+    },
   };
 }
 

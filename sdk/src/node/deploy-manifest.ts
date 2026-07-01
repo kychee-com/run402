@@ -85,6 +85,7 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "entrypoint",
   "config",
   "deps",
+  "triggers",
   "schedule",
   "requireAuth",
   "requireRole",
@@ -734,6 +735,7 @@ function mapFunction(
   if (raw.entrypoint !== undefined) out.entrypoint = raw.entrypoint;
   if (raw.config !== undefined) out.config = mapFunctionConfig(raw.config);
   if (raw.deps !== undefined) out.deps = [...raw.deps];
+  if (raw.triggers !== undefined) out.triggers = raw.triggers;
   if (raw.schedule !== undefined) out.schedule = raw.schedule;
   const rawRecord = raw as Record<string, unknown>;
   const requireAuth = rawRecord.requireAuth ?? rawRecord.require_auth;

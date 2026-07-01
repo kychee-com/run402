@@ -290,8 +290,9 @@ export interface FunctionSpec {
    * apply/deploy result.
    */
   deps?: string[];
-  /** 5-field cron expression. Pass `null` to remove an existing schedule;
-   *  omit to leave it unchanged in `patch` mode. */
+  /** Durable function triggers. Schedule triggers create durable function runs. */
+  triggers?: FunctionTriggerSpec[];
+  /** Legacy direct schedule field. Prefer `triggers[]` schedule entries for new manifests. */
   schedule?: string | null;
   /**
    * v1.52+: function class. When `"ssr"`, the gateway provisions the
@@ -348,6 +349,25 @@ export interface FunctionSpec {
    */
   requireRole?: RequireRoleSpec | null;
 }
+
+export interface FunctionTriggerRunSpec {
+  event_type: string;
+  payload?: Record<string, unknown>;
+  retry?: Record<string, unknown>;
+  expires_after_seconds?: number;
+}
+
+export interface FunctionScheduleTriggerSpec {
+  id: string;
+  type: "schedule";
+  cron: string;
+  timezone?: string;
+  misfire_policy?: "skip";
+  overlap_policy?: "allow";
+  run: FunctionTriggerRunSpec;
+}
+
+export type FunctionTriggerSpec = FunctionScheduleTriggerSpec;
 
 /**
  * v1.51+: declarative role-gate descriptor for `FunctionSpec.requireRole`.
@@ -1680,6 +1700,7 @@ export interface ReleaseFunctionEntry {
   timeout_seconds: number;
   memory_mb: number;
   schedule: string | null;
+  triggers?: FunctionTriggerSpec[];
 }
 
 export interface MigrationAppliedEntry {
@@ -2185,6 +2206,7 @@ export interface NormalizedFunctionSpec {
   config?: { timeoutSeconds?: number; memoryMb?: number };
   /** Capability `apply-v1-function-deps` — see `FunctionSpec.deps`. */
   deps?: string[];
+  triggers?: FunctionTriggerSpec[];
   schedule?: string | null;
   /** v1.51+ — see `FunctionSpec.requireAuth`. */
   requireAuth?: boolean;

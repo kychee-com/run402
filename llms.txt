@@ -22,7 +22,7 @@ A platform that an AI agent can fully provision, operate, and pay for on its own
 - Content-addressed CDN file storage — paste-and-go URLs with SRI integrity baked in
 - Static site hosting at `<name>.run402.com` plus custom domains, with `site.public_paths` for clean browser URLs e.g. `/events` backed by release asset `events.html`
 - Same-origin web routes with `routes.replace` mapping `/admin` and `/admin/*` to Node 22 Fetch Request -> Response functions, plus exact method-aware static aliases when a route table is the right tool. `req.url` is the full public URL on managed and custom domains; direct `/functions/v1/:name` remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, and `ROUTED_RESPONSE_TOO_LARGE`.
-- Node 22 serverless functions with cron scheduling and an in-handler helper library
+- Node 22 serverless functions with durable function runs, schedule triggers, and an in-handler helper library
 - Email — transactional sending, inbound parsing, custom sender domains, raw RFC-822 access for DKIM / zk-email
 - AI helpers — image generation, text translation, content moderation
 - KMS-backed Ethereum signing — provision signers where private keys never leave AWS KMS

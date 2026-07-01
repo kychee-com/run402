@@ -965,6 +965,77 @@ describe("Deploy.apply (happy path)", () => {
     assert.equal(result.release_id, "rel_3");
     assert(pollCount >= 1, "polled at least once");
   });
+
+  it("normalizes schedule triggers into the planned ReleaseSpec", async () => {
+    const w = makeWiring();
+    const fnSha = "a".repeat(64);
+    w.setHandler((req) => {
+      if (req.path === "/tiers/v1/status") {
+        return {
+          tier: "prototype",
+          active: true,
+          function_limits: {
+            max_scheduled_functions: 1,
+            min_cron_interval_minutes: 15,
+          },
+        };
+      }
+      if (req.path === "/content/v1/plans") {
+        return {
+          plan_id: "cplan_triggers",
+          expires_at: "2026-07-01T13:00:00.000Z",
+          missing: [],
+          entries: [{ sha256: fnSha, missing: false }],
+        };
+      }
+      if (req.path === "/apply/v1/plans") {
+        return {
+          plan_id: "plan_triggers",
+          base_release_id: null,
+          manifest_digest: "digest",
+          missing_content: [],
+          diff: {},
+        } satisfies PlanResponse;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan({
+      project: "prj_test",
+      functions: {
+        replace: {
+          worker: {
+            runtime: "node22",
+            source: { sha256: fnSha, size: 10 },
+            triggers: [
+              {
+                id: "maintenance_every_15m",
+                type: "schedule",
+                cron: "*/15 * * * *",
+                run: { event_type: "maintenance" },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const planReq = w.requests.find((req) => req.path === "/apply/v1/plans");
+    assert(planReq);
+    const body = planReq.body as { spec: { functions?: { replace?: Record<string, { triggers?: unknown }> } } };
+    assert.deepEqual(body.spec.functions?.replace?.worker.triggers, [
+      {
+        id: "maintenance_every_15m",
+        type: "schedule",
+        cron: "*/15 * * * *",
+        timezone: "UTC",
+        misfire_policy: "skip",
+        overlap_policy: "allow",
+        run: { event_type: "maintenance", payload: {} },
+      },
+    ]);
+  });
 });
 
 describe("Deploy.apply (tier function preflight)", () => {

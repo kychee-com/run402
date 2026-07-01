@@ -373,10 +373,10 @@ No `route_scopes` means no CI route-declaration authority. Route scopes are exac
 
 ### Functions
 
-- `deploy_function` — deploy a Node 22 serverless function. Params: `project_id`, `name`, `code`, `config?` (`{ timeout?, memory? }`), `deps?` (npm specs: bare names → latest; pinned `lodash@4.17.21`; ranges `date-fns@^3.0.0`; max 30 entries / 200 chars; native binaries rejected; don't list `@run402/functions`), `schedule?` (5-field cron). Response surfaces `runtime_version`, `deps_resolved`, `warnings`.
+- `deploy_function` — deploy a Node 22 serverless function. Params: `project_id`, `name`, `code`, `config?` (`{ timeout?, memory? }`), `deps?` (npm specs: bare names → latest; pinned `lodash@4.17.21`; ranges `date-fns@^3.0.0`; max 30 entries / 200 chars; native binaries rejected; don't list `@run402/functions`). Response surfaces `runtime_version`, `deps_resolved`, `warnings`. For scheduled/background work, prefer unified deploy manifests with `functions.replace.<name>.triggers[]`; schedule triggers create durable function runs.
 - `invoke_function` — invoke for testing over the direct `/functions/v1/:name` API-key-protected path. Params: `project_id`, `name`, `method?`, `body?`, `headers?`.
 - `get_function_logs` — recent logs (CloudWatch). Params: `project_id`, `name`, `tail?` (default 50, max 1000), `since?` (ISO 8601, locally validated), `request_id?` (`req_...`, `fnrun_...`, or `fnatt_...` for routed/function/run correlation). Returned lines include optional metadata e.g. `request_id`, `event_id`, log stream, and ingestion time.
-- `update_function` — change schedule / timeout / memory without redeploying code. Params: `project_id`, `name`, `schedule?` (`null` to remove), `timeout?`, `memory?`.
+- `update_function` — change timeout / memory without redeploying code. Legacy schedule mutation exists for old simple-function surfaces; new scheduled work should be declared as ReleaseSpec `triggers[]`.
 - `functions_rebuild` — opt-in refresh onto the platform's current entry wrapper + bundled runtime WITHOUT changing source (gateway v1.69+). Params: `project_id`, `name?` (omit to rebuild every function in the project). Re-bundles from each function's STORED source with deps pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — this is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function; a plain redeploy with unchanged source does NOT pick it up. Wallet-authed (project ownership; no service key) and allowed during billing grace. Functions deployed before dependency locking fail with `CANNOT_REBUILD_UNLOCKED_DEPS` — redeploy them from source via `deploy_function`. Surface stale functions with `list_functions` (`runtime_stale`) or `run402 doctor`.
 - `create_function_run` — create a durable function request. Params: `project_id`, `name`, `event_type`, required `idempotency_key`, optional `payload` JSON object, `delay` or `delay_seconds` or `run_at`, `expires_at` or `expires_after`, `retry` (`preset`, `max_attempts`, `min_delay_seconds`, `max_delay_seconds`), and optional `wait` / `timeout_ms` / `poll_interval_ms`.
 - `list_function_runs` / `get_function_run` / `get_function_run_logs` — inspect durable function runs by function name or `fnrun_...`; logs use the run correlation path.
@@ -385,7 +385,7 @@ No `route_scopes` means no CI route-declaration authority. Route scopes are exac
 
 For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` from the response and call `get_function_logs` with that `request_id`. If the incident is older than the default recent lookup window, also pass `since`.
 
-Scheduled function tier limits: prototype 1 / 15 min, hobby 3 / 5 min, team 10 / 1 min. Deploying a scheduled function beyond the limit returns 403.
+Scheduled function tier limits: prototype 1 trigger / 15 min, hobby 3 / 5 min, team 10 / 1 min. Deploying scheduled triggers beyond the limit returns 403/402 before activation when the cap is known.
 
 ### Secrets
 

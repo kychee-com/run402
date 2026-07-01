@@ -3,6 +3,7 @@ export {
   dir,
   file,
   nodeFunction,
+  scheduleTrigger,
   sqlFile,
 } from "../config.js";
 export type {
@@ -16,6 +17,7 @@ export type {
   Run402NodeFunctionConfigOptions,
   Run402ReleaseConfig,
   Run402ReviewedPlanRequirement,
+  Run402ScheduleTriggerOptions,
   Run402SqlFileConfigMigration,
   Run402SqlFileConfigOptions,
 } from "../config.js";

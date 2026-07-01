@@ -25,12 +25,18 @@ describe("Node deploy manifest helpers", () => {
       const helperUrl = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "config.ts")).href;
       const manifestPath = join(root, "run402.deploy.ts");
       writeFileSync(manifestPath, `
-        import { defineConfig, dir, file, nodeFunction, sqlFile } from ${JSON.stringify(helperUrl)};
+        import { defineConfig, dir, file, nodeFunction, scheduleTrigger, sqlFile } from ${JSON.stringify(helperUrl)};
         export default defineConfig({
           project: "prj_typed",
           site: { replace: dir("./dist"), public_paths: { mode: "implicit" } },
           database: { migrations: [sqlFile("./db/001_init.sql")] },
-          functions: { replace: { api: nodeFunction("./functions/api.mjs") } },
+          functions: { replace: { api: nodeFunction("./functions/api.mjs", {
+            triggers: [
+              scheduleTrigger("maintenance_every_15m", "*/15 * * * *", {
+                run: { event_type: "maintenance", payload: { sweep: true } },
+              }),
+            ],
+          }) } },
           assets: { put: [{ key: "logo.txt", source: file("./dist/index.html") }] },
         });
       `);
@@ -47,6 +53,14 @@ describe("Node deploy manifest helpers", () => {
         (normalized.spec.functions?.replace?.api.source as { path?: string }).path,
         join(root, "functions", "api.mjs"),
       );
+      assert.deepEqual(normalized.spec.functions?.replace?.api.triggers, [
+        {
+          id: "maintenance_every_15m",
+          type: "schedule",
+          cron: "*/15 * * * *",
+          run: { event_type: "maintenance", payload: { sweep: true } },
+        },
+      ]);
       assert.equal(
         (normalized.spec.assets?.put?.[0] as { source?: { path?: string } }).source?.path,
         join(root, "dist", "index.html"),

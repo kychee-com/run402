@@ -381,6 +381,7 @@ export {
   dir,
   file,
   nodeFunction,
+  scheduleTrigger,
   sqlFile,
 } from "./config.js";
 export type * from "./config.js";
