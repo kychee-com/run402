@@ -279,7 +279,12 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
         "runtime": "node22",
         "source": { "data": "export default async (req) => new Response('ok')" },
         "config": { "timeout_seconds": 30, "memory_mb": 256 },
-        "schedule": "*/15 * * * *"
+        "triggers": [{
+          "id": "api_every_15m",
+          "type": "schedule",
+          "cron": "*/15 * * * *",
+          "run": { "event_type": "api.tick", "payload": {} }
+        }]
       }
     }
   },
@@ -305,9 +310,9 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
 
 File entries: bare UTF-8 string; `{ "data": "...", "encoding": "utf-8" | "base64", "content_type": "..." }`; or `{ "path": "dist/index.html", "content_type": "text/html" }`. `site.replace` / `site.patch.put` may also be `{ "__source": "local-dir", "path": "dist/client" }` for a static-site directory. Function `source` may be `{ "path": "dist/run402/functions/api.js" }`. `--manifest` relative paths resolve from manifest dir; `--spec`/stdin paths resolve from cwd. Authoring-only local paths and `__source` markers are stripped/staged before the apply request. Migrations may use `"sql_path"` / `"sql_file"` instead of `"sql"`. CLI/MCP share SDK `normalizeDeployManifest`; JSON can become SDK-native `ReleaseSpec`. Strict adapter: only top-level `$schema` and app-kit evidence `x-run402-omitted_features` are ignored before planning; unknown fields/no-op specs fail (`"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, `"functions.replace.api.config.schedule"`).
 
-Function specs: `runtime: "node22"`, exactly one code source (`source` or `files`+`entrypoint`), `config.timeout_seconds`, `config.memory_mb`, sibling `schedule`. Patch: omit `schedule` to keep; `"schedule": null` removes. `deps: string[]` works under `apply-v1-function-deps`; gateway installs/bundles. `run402 functions deploy --deps` builds one `functions.patch.set` and uses unified apply; legacy standalone deploy route removed.
+Function specs: `runtime: "node22"`, exactly one code source (`source` or `files`+`entrypoint`), `config.timeout_seconds`, `config.memory_mb`, and optional `triggers[]`. Schedule triggers require a stable `id`, `type: "schedule"`, 5-field `cron`, and nested `run: { event_type, payload?, retry?, expires_after_seconds? }`; each tick creates a durable function run. `deps: string[]` works under `apply-v1-function-deps`; gateway installs/bundles. `run402 functions deploy --deps` builds one `functions.patch.set` and uses unified apply; legacy standalone deploy route removed.
 
-Deploy preflights literal function caps after normalization before CAS upload/plan: timeout, memory, cron interval, scheduled-function count. Local failures: `code: "BAD_FIELD"` with `details.field/value/tier`, limit (`tier_max` or `min_interval_minutes`), `details.limit_source` (`tier_status` or `local_static_fallback`). Current caps: prototype 10s/128 MB/1 scheduled fn/15 min; hobby 30s/256 MB/3/5 min; team 60s/512 MB/10/1 min. `tier status` shows live caps/usage when returned.
+Deploy preflights literal function caps after normalization before CAS upload/plan: timeout, memory, schedule-trigger cron interval, scheduled-trigger count. Local failures: `code: "BAD_FIELD"` with `details.field/value/tier`, limit (`tier_max` or `min_interval_minutes`), `details.limit_source` (`tier_status` or `local_static_fallback`). Current caps: prototype 10s/128 MB/1 scheduled trigger/15 min; hobby 30s/256 MB/3/5 min; team 60s/512 MB/10/1 min. `tier status` shows live caps/usage when returned.
 
 Subdomains: one mode per deploy. `"set"` replaces release managed subdomains, `"add"` appends, `"remove"` deletes. Current gateway supports at most one `subdomains.set`; multi-set fails locally with `SUBDOMAIN_MULTI_NOT_SUPPORTED`.
 
@@ -426,7 +431,7 @@ CLI dynamically imports `@run402/astro/release-slice` from the consuming project
 Stuck deploys: `activation_pending` (rare transient between SQL commit and pointer-swap) auto-resumes hourly. Static spec/config activation failures throw structured deploy errors promptly. Explicit resume:
 
 ```bash
-run402 deploy resume <operation_id>
+run402 deploy resume <operation_id> [--project prj_...]
 ```
 
 Gateway reruns only failed phase forward; SQL is never replayed.
@@ -884,7 +889,7 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 
 ### deploy
 - `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag
-- `run402 deploy resume <operation_id> [--quiet]` — re-run a stuck operation forward
+- `run402 deploy resume <operation_id> [--project <id>] [--quiet]` — re-run a stuck operation forward
 - `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline); v1.58+
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
 - `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
@@ -1038,17 +1043,20 @@ const res = await fetch('https://api.run402.com/functions/v1/my-function', {
 });
 ```
 
-- `run402 functions deploy <id> <name> --file <file> [--deps "<spec,...>"] [--timeout <s>] [--memory <mb>] [--schedule "<cron>"]`
+- `run402 functions deploy <id> <name> --file <file> [--deps "<spec,...>"] [--timeout <s>] [--memory <mb>]` — for scheduled work, prefer `run402 deploy apply --manifest` with `functions.replace.<name>.triggers[]` so every tick creates a durable function run.
 - `run402 functions invoke <id> <name> [--body '<json>'] [--method <GET|POST|...>] [--raw]` — default emits a JSON envelope `{ http_status, body, duration_ms }` (HTTP status surfaced as `http_status` to avoid colliding with the reserved top-level `status` sentinel on stderr). Safe to pipe to jq even when the function returns `text/plain`. `--raw` skips the envelope: string body → text + newline, JSON body → pretty-printed JSON. Useful when piping a CSV / binary-blob response straight to a file.
-- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--request-id <req_...>] [--follow]` — `--tail` defaults to 50 and is capped at 1000. Non-follow mode emits a single `{ logs: [...] }` JSON object; `--follow` mode emits **NDJSON** (one log entry per line) so streaming consumers can parse incrementally without a wrapping envelope.
-- `run402 functions update <id> <name> [--schedule "<cron>"] [--schedule-remove] [--timeout <s>] [--memory <mb>]`
+- `run402 functions logs <id> <name> [--tail <n>] [--since <iso-timestamp>] [--request-id <req_...|fnrun_...|fnatt_...>] [--follow]` — `--tail` defaults to 50 and is capped at 1000. Non-follow mode emits a single `{ logs: [...] }` JSON object; `--follow` mode emits **NDJSON** (one log entry per line) so streaming consumers can parse incrementally without a wrapping envelope.
+- `run402 functions runs create <id> <name> --event-type <type> --idempotency-key <key> [--payload-json <json-object>] [--delay <10m|1h|3d> | --run-at <iso>] [--expires-at <iso> | --expires-after <duration>] [--retry-preset standard] [--max-attempts <n>] [--wait]` — creates a durable function request. The idempotency key is required; reuse it when retrying the same logical work item.
+- `run402 functions runs <list|get|logs|cancel|redrive> ...` — list runs by function, fetch one `fnrun_...`, fetch correlated logs, cancel queued/scheduled work, or redrive a terminal run. `redrive` accepts retry options and `--wait`. All outputs are JSON by default.
+- `run402 functions update <id> <name> [--timeout <s>] [--memory <mb>]` — schedule mutation is declarative through ReleaseSpec `triggers[]`; the legacy schedule flags remain only for old simple-function surfaces.
 - `run402 functions rebuild <id> <name>` / `run402 functions rebuild <id> --all` — opt-in refresh of a deployed function onto the platform's current runtime/entry-wrapper. Re-bundles from the **stored source** with deps pinned to the recorded exact versions, so the source `code_hash` is unchanged and no new release is created — only the platform wrapper/runtime changes. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function: a plain redeploy with unchanged source does **not** pick it up. Single returns `{ name, rebuilt, old_fingerprint, new_fingerprint, runtime_version_before, runtime_version_after, code_hash }`; `--all` returns `{ rebuilt_count, total, results: [...] }` where each result is a rebuild record or `{ name, rebuilt: false, code?, error }`. Functions deployed before dependency locking return `CANNOT_REBUILD_UNLOCKED_DEPS` (HTTP 409 for single, a per-function entry for `--all`) — redeploy them from source instead. Wallet-authed; allowed during billing grace (`past_due` / `frozen` / `dormant`).
 - `run402 functions <list|delete> <id> [<name>]`
 
 `run402 doctor` surfaces a `runtime_staleness` check (warning) listing any deployed functions on an older platform runtime, with the `run402 functions rebuild --all` remediation. Staleness is read-only — observing it never mutates a function.
 
 For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` from the response and run `run402 functions logs <project> <function> --request-id req_...`. `--since` is validated locally and should be supplied for incidents older than the default recent lookup window.
-`--tail` must be a positive safe integer no larger than 1000, and `--request-id` must match the routed request id shape (`req_...`). For updates, `--schedule` and `--schedule-remove` are mutually exclusive.
+For durable runs, pass the run id or attempt id as the same filter: `--request-id fnrun_...` or `--request-id fnatt_...`.
+`--tail` must be a positive safe integer no larger than 1000, and `--request-id` must match `req_...`, `fnrun_...`, or `fnatt_...`.
 
 #### --deps semantics, runtime_version, deps_resolved
 
@@ -1072,7 +1080,7 @@ The deploy result still includes an optional top-level `warnings: string[]` (sib
 |---|---|---|---|
 | Max timeout | 10s | 30s | 60s |
 | Max memory | 128 MB | 256 MB | 512 MB |
-| Max scheduled functions | 1 | 3 | 10 |
+| Max scheduled triggers | 1 | 3 | 10 |
 | Min interval | 15 min | 5 min | 1 min |
 
 `run402 deploy apply` preflights literal unified-deploy function specs against these caps before plan/upload when the values are known. Gateway validation remains authoritative; `run402 tier status` includes live function caps and current scheduled usage when returned.

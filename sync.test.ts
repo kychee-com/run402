@@ -1649,7 +1649,8 @@ describe("agent deploy-friction docs stay visible", () => {
       file: "sdk/llms-sdk.txt",
       patterns: [
         [/FunctionSpec/, "FunctionSpec docs"],
-        [/schedule.*sibling of `config`/s, "schedule placement"],
+        [/required-id `triggers\[\]`/s, "schedule trigger placement"],
+        [/Each scheduled tick creates a durable function run/s, "schedule trigger durable run behavior"],
         [/allowWarningCodes/, "SDK warning-code acknowledgement"],
         [/acknowledge_readonly/, "route-level readonly acknowledgement"],
         [/function_limits/, "tier status function caps"],
