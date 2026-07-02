@@ -166,7 +166,12 @@ export async function run(sub, args) {
       await test(args);
       return;
     default:
-      fail({ code: "BAD_USAGE", message: `Unknown notifications subcommand: ${sub}\n\n${HELP}` });
+      fail({
+        code: "UNKNOWN_SUBCOMMAND",
+        message: `Unknown notifications subcommand: ${sub}`,
+        hint: "Run `run402 notifications --help` for usage.",
+        details: { command: "notifications", subcommand: sub },
+      });
   }
 }
 

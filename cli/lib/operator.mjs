@@ -767,9 +767,10 @@ export async function run(sub, args = []) {
       break;
     default:
       fail({
-        code: "BAD_USAGE",
-        message: `Unknown subcommand: operator ${sub}`,
-        hint: "Run 'run402 operator --help' for usage.",
+        code: "UNKNOWN_SUBCOMMAND",
+        message: `Unknown operator subcommand: ${sub}`,
+        hint: "Run `run402 operator --help` for usage.",
+        details: { command: "operator", subcommand: sub },
       });
   }
 }

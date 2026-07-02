@@ -23,7 +23,12 @@ export async function run(sub, rawArgs = []) {
     case "inspect": return inspect(rawArgs);
     case "verify": return verify(rawArgs);
     default:
-      fail({ code: "BAD_USAGE", message: "Usage: run402 archives <inspect|verify> <archive-path> [--json]" });
+      fail({
+        code: "UNKNOWN_SUBCOMMAND",
+        message: `Unknown archives subcommand: ${sub}`,
+        hint: "Run `run402 archives --help` for usage.",
+        details: { command: "archives", subcommand: sub },
+      });
   }
 }
 

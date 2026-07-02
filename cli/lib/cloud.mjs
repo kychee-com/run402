@@ -56,8 +56,10 @@ export async function run(sub, args = []) {
   }
   if (sub !== "archives") {
     fail({
-      code: "BAD_USAGE",
-      message: "Usage: run402 cloud archives <create|download|status> ...",
+      code: "UNKNOWN_SUBCOMMAND",
+      message: `Unknown cloud subcommand: ${sub}`,
+      hint: "Run `run402 cloud --help` for usage.",
+      details: { command: "cloud", subcommand: sub },
       next_actions: [{ type: "run_command", command: "run402 cloud archives --help" }],
     });
   }
@@ -67,8 +69,10 @@ export async function run(sub, args = []) {
   if (action === "download") return download(rest);
   if (action === "status") return status(rest);
   fail({
-    code: "BAD_USAGE",
-    message: "Usage: run402 cloud archives <create|download|status> ...",
+    code: "UNKNOWN_SUBCOMMAND",
+    message: `Unknown cloud archives subcommand: ${action}`,
+    hint: "Run `run402 cloud archives --help` for usage.",
+    details: { command: "cloud archives", subcommand: action },
     next_actions: [{ type: "run_command", command: "run402 cloud archives --help" }],
   });
 }

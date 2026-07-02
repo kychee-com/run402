@@ -28,11 +28,21 @@ export async function run(sub, args = []) {
     return;
   }
   if (sub !== "projects") {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 core projects import <archive-path> [options]" });
+    fail({
+      code: "UNKNOWN_SUBCOMMAND",
+      message: `Unknown core subcommand: ${sub}`,
+      hint: "Run `run402 core --help` for usage.",
+      details: { command: "core", subcommand: sub },
+    });
   }
   const action = args[0];
   if (action === "import") return importProject(args.slice(1));
-  fail({ code: "BAD_USAGE", message: "Usage: run402 core projects import <archive-path> [options]" });
+  fail({
+    code: "UNKNOWN_SUBCOMMAND",
+    message: `Unknown core projects subcommand: ${action}`,
+    hint: "Run `run402 core projects --help` for usage.",
+    details: { command: "core projects", subcommand: action },
+  });
 }
 
 async function importProject(rawArgs) {

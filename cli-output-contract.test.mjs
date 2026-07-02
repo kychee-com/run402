@@ -30,6 +30,43 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_LIB_DIR = join(__dirname, "cli", "lib");
 const CLI_PATH = join(__dirname, "cli", "cli.mjs");
+const GROUPED_COMMANDS = [
+  "admin",
+  "agent",
+  "ai",
+  "allowance",
+  "apps",
+  "archives",
+  "assets",
+  "auth",
+  "billing",
+  "cache",
+  "cdn",
+  "ci",
+  "cloud",
+  "contracts",
+  "core",
+  "domains",
+  "email",
+  "functions",
+  "grants",
+  "image",
+  "jobs",
+  "message",
+  "notifications",
+  "operator",
+  "org",
+  "projects",
+  "secrets",
+  "sender-domain",
+  "service",
+  "sites",
+  "subdomains",
+  "tier",
+  "transfer",
+  "wallets",
+  "webhook-secret",
+];
 
 // Allowlist: file basenames whose `JSON.stringify({ status: ...` emissions
 // are legitimately stderr-bound error envelopes.
@@ -311,6 +348,32 @@ describe("CLI output contract drift protection", () => {
     assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND");
     assert.equal(parsed.details.command, "service");
     assert.equal(parsed.details.subcommand, "does-not-exist");
+  });
+
+  it("every grouped command reports unknown subcommands as JSON-only errors", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "run402-unknown-subcommands-"));
+    const env = { ...process.env, RUN402_CONFIG_DIR: tempDir };
+    delete env.RUN402_WALLET;
+    delete env.RUN402_PROFILE;
+
+    try {
+      for (const command of GROUPED_COMMANDS) {
+        const result = spawnSync(process.execPath, [CLI_PATH, command, "does-not-exist"], {
+          env,
+          encoding: "utf-8",
+          timeout: 10_000,
+        });
+
+        assert.equal(result.status, 1, `${command} should exit 1 for unknown subcommand`);
+        assert.equal(result.stdout, "", `${command} wrote stdout prose: ${JSON.stringify(result.stdout)}`);
+        const parsed = JSON.parse(result.stderr);
+        assert.equal(parsed.status, "error", `${command} stderr must be an error envelope`);
+        assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND", `${command} should use UNKNOWN_SUBCOMMAND`);
+        assert.equal(parsed.details.subcommand, "does-not-exist", `${command} should echo the bad subcommand`);
+      }
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("CLI lib unknown-command branches cannot reintroduce raw prose output", () => {

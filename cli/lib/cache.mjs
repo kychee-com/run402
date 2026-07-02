@@ -100,8 +100,10 @@ export async function run(sub, args) {
       break;
     default:
       fail({
-        code: "BAD_USAGE",
+        code: "UNKNOWN_SUBCOMMAND",
         message: `Unknown cache subcommand: ${sub}`,
+        hint: "Run `run402 cache --help` for usage.",
+        details: { command: "cache", subcommand: sub },
         next_actions: [editRequestAction("run402 cache --help", "Choose a supported cache subcommand.")],
       });
   }

@@ -339,6 +339,11 @@ export async function run(sub, args = []) {
     case "import": return cmdImport(rest);
     case "rm": return cmdRm(rest);
     default:
-      fail({ code: "BAD_USAGE", message: `Unknown wallets subcommand: ${sub}`, hint: "run402 wallets --help" });
+      fail({
+        code: "UNKNOWN_SUBCOMMAND",
+        message: `Unknown wallets subcommand: ${sub}`,
+        hint: "Run `run402 wallets --help` for usage.",
+        details: { command: "wallets", subcommand: sub },
+      });
   }
 }

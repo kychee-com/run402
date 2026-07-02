@@ -28,7 +28,12 @@ export async function run(sub, args = []) {
     process.exit(0);
   }
   if (sub !== "rotate") {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 webhook-secret rotate" });
+    fail({
+      code: "UNKNOWN_SUBCOMMAND",
+      message: `Unknown webhook-secret subcommand: ${sub}`,
+      hint: "Run `run402 webhook-secret --help` for usage.",
+      details: { command: "webhook-secret", subcommand: sub },
+    });
   }
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);
