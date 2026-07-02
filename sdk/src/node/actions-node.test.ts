@@ -186,6 +186,46 @@ test("up app apply blocks with name guidance when manifest needs input.name", as
   }
 });
 
+test("up app apply fails fast when --name collides with an existing project", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-app-up-name-collision-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: {
+      mode: "local",
+      commands: [],
+    },
+  })));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+    existingProjects: [{
+      id: "prj_existing",
+      name: "kysigned5",
+      site_url: "https://kysigned5.run402.com",
+      status: "active",
+      created_at: "2026-07-02T00:00:00.000Z",
+    }],
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await assert.rejects(
+      actions.up({ name: "kysigned5" }, { approval: "yes" }),
+      /Project name "kysigned5" is already in use by prj_existing/,
+    );
+    assert.ok(calls.includes("projects.list"));
+    assert.ok(!calls.some((call) => call.startsWith("projects.provision")));
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up app apply blocks remote build with explicit unsupported next action", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-app-up-remote-build-"));
   writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
@@ -330,6 +370,8 @@ writeFileSync("frontend/dist/index.html", "<h1>" + process.env.RUN402_PUBLIC_ORI
     assert.equal(installStates[0]?.project_id, "prj_new");
     assert.equal(installStates[0]?.app_key, "kysigned");
     assert.match(String(installStates[0]?.manifest_digest), /^sha256:[0-9a-f]{64}$/);
+    assert.equal("error" in installStates[0]!, false);
+    assert.equal("last_operation_id" in installStates[0]!, false);
     assert.equal(installStates[1]?.last_operation_id, "op_123");
     assert.deepEqual((installStates[1]?.resources as { mailboxes?: unknown })?.mailboxes, {
       forward_to_sign: {
@@ -825,6 +867,7 @@ function fakeSdk(opts: {
   secrets?: Array<{ key: string; value: string }>;
   appliedSpecs?: unknown[];
   installStates?: Array<Record<string, unknown>>;
+  existingProjects?: Array<Record<string, unknown>>;
   deployOptions?: Array<{ idempotencyKey?: string }>;
   deployPlanOptions?: Array<{ idempotencyKey?: string }>;
 }) {
@@ -880,6 +923,10 @@ function fakeSdk(opts: {
           service_key: "service",
           schema_slot: "p0001",
         };
+      },
+      async list() {
+        opts.calls.push("projects.list");
+        return { projects: opts.existingProjects ?? [] };
       },
       async keys(projectId: string) {
         opts.calls.push(`projects.keys:${projectId}`);

@@ -45,7 +45,7 @@ import type { Run402ExecutionMode, Run402ReviewedPlanRequirement } from "../conf
 import { LocalError } from "../errors.js";
 import type { Run402 } from "../index.js";
 import type { DeployEvent, PlanResponse, ReleaseSpec } from "../namespaces/deploy.types.js";
-import type { ProvisionResult } from "../namespaces/projects.types.js";
+import type { ProjectSummary, ProvisionResult } from "../namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "../namespaces/tier.js";
 import { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
 
@@ -969,7 +969,7 @@ export class NodeActions implements Run402Actions {
     });
     input.run.setState(step, "running");
     try {
-      await this.sdk.apps.upsertInstallState({
+      const payload = {
         project_id: input.projectId,
         app_key: input.manifest.appSpec.app.id,
         status: input.status,
@@ -986,9 +986,10 @@ export class NodeActions implements Run402Actions {
         bindings: input.resources
           ? { env: Object.keys(input.resources.env).sort() }
           : {},
-        last_operation_id: input.lastOperationId ?? null,
-        error: input.error ?? null,
-      });
+        ...(input.lastOperationId ? { last_operation_id: input.lastOperationId } : {}),
+        ...(input.error ? { error: input.error } : {}),
+      };
+      await this.sdk.apps.upsertInstallState(payload);
       input.run.setState(step, "succeeded");
     } catch (err) {
       input.run.setState(step, "skipped", {
@@ -1505,6 +1506,32 @@ export class NodeActions implements Run402Actions {
           { target: this.#targetKind() },
         );
       }
+      if (!run.dryRun) {
+        const collision = await this.#findNameCollision(input.name, input.orgId);
+        if (collision) {
+          throw run.error(
+            `Project name "${input.name}" is already in use by ${collision.id}. Pass --project ${collision.id} to deploy to that project, or choose a different --name.`,
+            "RUN402_PROJECT_NAME_COLLISION",
+            {
+              name: input.name,
+              existing_project_id: collision.id,
+              existing_site_url: collision.site_url ?? null,
+              next_actions: [
+                {
+                  type: "use_existing_project",
+                  message: `Deploy to the existing project with --project ${collision.id}.`,
+                  command: `run402 up --project ${collision.id} --yes`,
+                },
+                {
+                  type: "choose_new_name",
+                  message: "Choose a different app instance name.",
+                  command: "run402 up --name <new-name> --yes",
+                },
+              ],
+            },
+          );
+        }
+      }
       const idempotencyKey = run.childKey("projects.provision");
       const provisionStep = run.addStep({
         action: Run402Action.ProjectsProvision,
@@ -1589,6 +1616,16 @@ export class NodeActions implements Run402Actions {
       "RUN402_PROJECT_REQUIRED",
       { link_path: linkPath, manifest_path: manifest.manifestPath },
     );
+  }
+
+  async #findNameCollision(name: string, orgId: string | undefined): Promise<ProjectSummary | null> {
+    const result = await this.sdk.projects.list(orgId ? { org: orgId } : {});
+    const normalized = name.trim().toLowerCase();
+    return result.projects.find((project) => {
+      const status = project.status ?? project.effective_status;
+      if (status === "deleted" || status === "archived") return false;
+      return project.name.trim().toLowerCase() === normalized;
+    }) ?? null;
   }
 
   async #writeWorkspaceProjectLink(
