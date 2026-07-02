@@ -11,7 +11,17 @@ import { NodeActions } from "./actions-node.js";
 
 test("up check discovers run402.json app manifest and compiles an install graph locally", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-app-up-check-"));
-  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: {
+      mode: "local",
+      commands: [
+        { id: "install", argv: ["npm", "ci"] },
+        { id: "build", argv: ["npm", "run", "build:run402-cloud"] },
+      ],
+    },
+  })));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
   const calls: string[] = [];
   const sdk = fakeSdk({
     calls,
@@ -41,12 +51,46 @@ test("up check discovers run402.json app manifest and compiles an install graph 
       "mailbox.notifications.ensure",
       "bindings.resolve",
       "secrets.ensure",
-      "build.remote",
+      "build.local",
       "release.apply",
       "verify.http.home",
     ]);
     assert.deepEqual(calls, []);
   } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up check blocks fast with missing required secret usage and no gateway calls", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-app-up-check-missing-secret-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  delete process.env.KYSIGNED_ALLOWED_CREATORS;
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ name: "kysigned2" }, { mode: "check" });
+
+    assert.equal(result.mode, "check");
+    assert.equal(result.dry_run, true);
+    assert.equal(result.result?.app_result?.status, "blocked");
+    assert.equal(result.result?.app_result?.diagnostics[0]?.code, "MISSING_SECRET");
+    assert.match(result.result?.app_result?.diagnostics[0]?.message ?? "", /Allowed request creators/);
+    assert.match(result.result?.app_result?.next_actions[0]?.message ?? "", /Provide KYSIGNED_ALLOWED_CREATORS/);
+    assert.equal(result.result?.app_result?.steps.find((step) => step.id === "secrets.ensure")?.status, "blocked");
+    assert.deepEqual(calls, []);
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
     rmSync(dir, { force: true, recursive: true });
   }
 });

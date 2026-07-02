@@ -296,13 +296,25 @@ export class NodeActions implements Run402Actions {
     const manifest = await this.#discoverAndValidateManifest(input, workspaceDir, source.metadata, run);
 
     if (manifest.manifestKind === "app") {
+      const block = this.#firstAppUpBlock(input, manifest, run);
       const appResult = this.#planAppUpResult(input, manifest, run, {
         startedAt,
-        status: "planned",
+        status: block ? "blocked" : "planned",
         dryRun: run.dryRun || run.executionMode === "check" || run.executionMode === "printSpec",
         projectId: input.projectId ?? (run.dryRun ? "prj_planned" : null),
+        diagnostics: block?.diagnostics,
+        nextActions: block?.nextActions,
+        blockedNodeId: block?.nodeId,
       });
       if (run.executionMode === "check" || run.executionMode === "printSpec" || run.dryRun) {
+        return run.result({
+          project_id: input.projectId ?? "prj_planned",
+          manifest_path: manifest.manifestPath,
+          app_graph: manifest.appGraph,
+          app_result: appResult,
+        });
+      }
+      if (block) {
         return run.result({
           project_id: input.projectId ?? "prj_planned",
           manifest_path: manifest.manifestPath,
@@ -715,8 +727,10 @@ export class NodeActions implements Run402Actions {
       };
     }
 
-    const spendBlock = spendApprovalBlock(input, run);
-    if (spendBlock) return spendBlock;
+    if (run.executionMode !== "check" && run.executionMode !== "printSpec" && !run.dryRun) {
+      const spendBlock = spendApprovalBlock(input, run);
+      if (spendBlock) return spendBlock;
+    }
 
     const buildBlock = appBuildBlock(input, manifest);
     if (buildBlock) return buildBlock;
