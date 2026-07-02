@@ -226,6 +226,67 @@ test("up app apply fails fast when --name collides with an existing project", as
   }
 });
 
+test("up project creation does not reuse a stable idempotency key by default", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-app-up-project-idempotency-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: {
+      mode: "local",
+      commands: [],
+    },
+  })));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await actions.up({ name: "kysigned5" }, { approval: "yes" });
+
+    assert.ok(calls.includes("projects.provision:"), "default up project creation must omit a long-lived idempotency key");
+    assert.ok(!calls.some((call) => call.startsWith("projects.provision:action:up:")));
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up project creation preserves explicit idempotency keys", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-app-up-explicit-project-idempotency-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: {
+      mode: "local",
+      commands: [],
+    },
+  })));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await actions.up({ name: "kysigned5", idempotencyKey: "user-up-key" }, { approval: "yes" });
+
+    assert.ok(calls.includes("projects.provision:user-up-key"));
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up app apply blocks remote build with explicit unsupported next action", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-app-up-remote-build-"));
   writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));

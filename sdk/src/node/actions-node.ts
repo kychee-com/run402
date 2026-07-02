@@ -1532,7 +1532,7 @@ export class NodeActions implements Run402Actions {
           );
         }
       }
-      const idempotencyKey = run.childKey("projects.provision");
+      const idempotencyKey = input.idempotencyKey ?? null;
       const provisionStep = run.addStep({
         action: Run402Action.ProjectsProvision,
         description: "Provision project for workspace",
@@ -1562,7 +1562,7 @@ export class NodeActions implements Run402Actions {
         name: input.name,
         tier: input.tier ?? DEFAULT_BOOTSTRAP_TIER,
         orgId: input.orgId,
-        idempotencyKey,
+        ...(idempotencyKey ? { idempotencyKey } : {}),
       });
       run.setState(provisionStep, "succeeded", { project_id: provisioned.project_id });
       run.setState(step, "succeeded", {
