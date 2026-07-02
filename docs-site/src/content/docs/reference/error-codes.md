@@ -127,7 +127,7 @@ export default async () => {
 
 ### `R402_SDK_OUTSIDE_REQUEST_CONTEXT`
 
-An SDK function (`db`, `getUser`, `cache.*`, etc.) was called outside an active request context. Two common causes:
+An SDK function (`db`, `auth.*`, `cache.*`, etc.) was called outside an active request context. Two common causes:
 
 1. **Module scope** — calling an SDK function at the top level of a module file rather than inside a handler.
 2. **Background timer / unawaited promise** — `setTimeout(() => db()..., 60000)` scheduled inside a handler, fires AFTER the response was materialized. The runtime context's `active.value` is set to `false` post-response so the timer's SDK call throws.
@@ -159,9 +159,9 @@ A response has a `Vary` header referencing something other than `Accept-Language
 
 ### `R402_CACHE_AUTH_TAINTED`
 
-Informational diagnostic (NOT an `ok: false` error). The cache layer detected that the render called `getUser()` or a payment primitive and bypassed storage with `x-run402-cache-reason: auth`. This is the expected behavior — auth-dependent renders are uncacheable by design.
+Informational diagnostic (NOT an `ok: false` error). The cache layer detected that the render called `auth.user()` (or another `auth.*` helper) or a payment primitive and bypassed storage with `x-run402-cache-reason: auth`. This is the expected behavior — auth-dependent renders are uncacheable by design.
 
-**Suggested fix:** none — this is correct behavior. If you want a page to be cacheable, ensure it doesn't call `getUser()` (use `Astro.cookies` directly if you need to check for cookie presence without flipping the taint flag — but consider whether that page should be cached at all).
+**Suggested fix:** none — this is correct behavior. If you want a page to be cacheable, ensure it doesn't call `auth.*` helpers (use `Astro.cookies` directly if you need to check for cookie presence without flipping the taint flag — but consider whether that page should be cached at all).
 
 ---
 

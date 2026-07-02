@@ -16,15 +16,16 @@
 
 This monorepo ships every surface an agent can pick up:
 
-| Package | Use when… |
+| Surface | Use when… |
 |---------|-----------|
 | [`@run402/sdk`](./sdk/) | Calling Run402 from TypeScript — typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 fetch |
 | [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells — JSON in, JSON out, exit code on failure |
 | [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code — core Run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
 | [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) | Imported _inside_ deployed functions (`db(req?)`, `adminDb()`, `auth.user()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor. Source lives in the public [`run402-core`](https://github.com/kychee-com/run402-core) repo under `packages/functions`; Run402 Cloud consumes the published npm package when it bundles function zips. |
+| [`@run402/astro`](./astro/) | Astro integration for SSR, ISR cache, hosted auth components, and image variants |
 
-All five interfaces share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. `@run402/functions` is the in-function helper that runs inside deployed code; the npm package on the registry is the artifact Cloud bundles. Pick whichever interface fits your runtime.
+These interfaces share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. `@run402/functions` is the in-function helper that runs inside deployed code; the npm package on the registry is the artifact Cloud bundles. `@run402/astro` layers the SDK and functions runtime into Astro's build and SSR flow. Pick whichever interface fits your runtime.
 
 ## 30-second start
 
@@ -235,7 +236,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to run402
-        run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
+        run: npx --yes run402@3.7.5 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
 ```
 
 CI deploys are intentionally narrow: `site`, `functions`, `database`, absent/current `base`, and route declarations only when the binding has covering `--route-scope` patterns. Without route scopes, CI cannot ship `routes`. Keep secrets, domains, subdomains, checks, non-current base, and broader trust changes in a local allowance-backed deploy. If the gateway returns `CI_ROUTE_SCOPE_DENIED`, re-link with exact scopes like `/admin` or final-wildcard scopes like `/api/*`, or deploy locally. Manage bindings with `run402 ci list` and `run402 ci revoke`.
@@ -616,8 +617,6 @@ Architecture: every tool / subcommand / skill script is a thin shim over an `@ru
 - CLI docs: <https://docs.run402.com/llms-cli.txt>
 - Status: <https://api.run402.com/status>
 - Health: <https://api.run402.com/health>
-
-[简体中文](./README.zh-CN.md)
 
 ## License
 

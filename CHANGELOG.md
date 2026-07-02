@@ -95,7 +95,7 @@ If your automation parses any of these commands' stdout:
 
 ## 2.16.0 — unreleased — CLI stdout envelope normalization
 
-Drops the `status: "ok"` wrapper from every `run402` CLI success-path stdout emission, unifying an envelope that was applied to roughly half the subcommands and absent from the other half. See [openspec change `cli-drop-status-envelope`](openspec/changes/cli-drop-status-envelope/proposal.md) for the full design.
+Drops the `status: "ok"` wrapper from every `run402` CLI success-path stdout emission, unifying an envelope that was applied to roughly half the subcommands and absent from the other half. The current contract lives in [`cli/llms-cli.txt`](cli/llms-cli.txt).
 
 `@run402/sdk` and `run402-mcp` have **no code changes** in this release. Only the CLI's machine-readable stdout shape moved. Per the lockstep release policy, all three packages bump to 2.16.0 together.
 

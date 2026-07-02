@@ -20,8 +20,6 @@
  *   - sdk/README.md               (Node-entry examples)
  *   - sdk/llms-sdk.txt            (Node-entry examples; some isomorphic)
  *   - README.md                   (top-level project README; mostly Node)
- *   The top-level Chinese translation `README.zh-CN.md` is intentionally
- *   excluded — translated prose only, no executable TypeScript.
  *
  * Schema: see the sdk-docs-fidelity OpenSpec spec.
  */
@@ -39,10 +37,7 @@ const SDK_DIR = resolve(SCRIPT_DIR, "..");
 const REPO_ROOT = resolve(SDK_DIR, "..");
 
 /**
- * Default file list when the script is invoked with no arguments. The Chinese
- * translation `README.zh-CN.md` is intentionally excluded — translated prose
- * with no executable TypeScript fences (verified at the time this list was
- * authored). If a future edit adds TS fences there, include it explicitly.
+ * Default file list when the script is invoked with no arguments.
  */
 const DEFAULT_FILES = [
   resolve(SDK_DIR, "README.md"),

@@ -214,14 +214,15 @@ Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest
 Inside a deployed function, import from `@run402/functions` (auto-bundled at deploy time):
 
 ```ts
-import { db, adminDb, getUser, email, ai, assets } from "@run402/functions";
+import { db, adminDb, auth, email, ai, assets } from "@run402/functions";
 
 export default async (req: Request) => {
-  const user = await getUser(req);
+  const user = await auth.user();
   if (!user) return new Response("unauthorized", { status: 401 });
 
   // Caller-context — Authorization header forwarded; RLS evaluates against the caller's role.
-  const mine = await db(req).from("items").select("*").eq("user_id", user.id);
+  // Do not add `.eq("user_id", user.id)`; RLS already binds the visitor's rows.
+  const mine = await db(req).from("items").select("*");
 
   // Bypass RLS — only when the function acts on behalf of the platform.
   await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
@@ -239,7 +240,8 @@ export default async (req: Request) => {
 - `adminDb().sql(query, params?)` — raw parameterized SQL, always bypass RLS.
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions, billed/rate-limited against the project organization through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - `assets.put(key, source, opts?)` — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
-- `getUserId(req)` / `getRole(req)` (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passes. Both return `string | null`. Use inside a gated function instead of re-decoding the JWT. The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them. See "Function-level auth gates" below for declaring the gate on the deploy spec.
+- `auth.*` — canonical cookie/session auth namespace (`auth.user`, `auth.requireUser`, `auth.requireRole`, `auth.requireMembership`, `auth.fetch`, `auth.sessions.*`, `auth.identities.link`). Bare legacy helpers such as `getUser`, `getUserId`, and `getRole` were retired in `@run402/functions` v3.0 and fail `run402 doctor`.
+- Function-level gate headers — when `FunctionSpec.requireAuth` / `requireRole` passes, read `req.headers.get("x-run402-user-id")` and `req.headers.get("x-run402-user-role")` directly. Use these inside a gated function instead of re-decoding the JWT. See "Function-level auth gates" below for declaring the gate on the deploy spec.
 
 Fluent surface on both: `.select() / .eq() / .neq() / .gt() / .lt() / .gte() / .lte() / .like() / .ilike() / .in() / .order() / .limit() / .offset()` for reads; `.insert(obj | obj[]) / .update(obj) / .delete()` for writes (chain with `.eq()` to scope; return arrays of affected rows).
 

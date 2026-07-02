@@ -311,14 +311,15 @@ function setLanguage(lang) {
 Inside a deployed function, import from `@run402/functions`. Two distinct DB clients keep RLS clean:
 
 ```ts
-import { db, adminDb, getUser, email, ai, assets } from "@run402/functions";
+import { db, adminDb, auth, email, ai, assets } from "@run402/functions";
 
 export default async (req: Request) => {
-  const user = await getUser(req);
+  const user = await auth.user();
   if (!user) return new Response("unauthorized", { status: 401 });
 
   // Caller-context — Authorization header forwarded; RLS evaluates against the caller's role.
-  const mine = await db(req).from("items").select("*").eq("user_id", user.id);
+  // Do not add `.eq("user_id", user.id)`; RLS already binds the visitor's rows.
+  const mine = await db(req).from("items").select("*");
 
   // Bypass RLS — only when the function acts on behalf of the platform.
   await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
@@ -336,7 +337,8 @@ export default async (req: Request) => {
 - **`adminDb().sql(query, params?)`** — raw parameterized SQL, always bypasses RLS.
 - **`ai.generateImage({ prompt, aspect? })`** — live image generation from deployed functions, billed/rate-limited against the project organization through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - **`assets.put(key, source, opts?)`** — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`. v1.50 `opts` accept `metadata` (flat bag, ≤4 KB, leaves `string | number | boolean | string[]`) and `exifPolicy` (`"keep"` | `"strip"`); the returned `AssetRef` includes `image_format`, `image_info`, `image_exif`, and `image_exif_policy` for image MIMEs.
-- **`getUserId(req)` / `getRole(req)`** (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passed. Both return `string | null`. Use these inside a gated function instead of re-decoding the JWT — the gate already verified the caller and resolved the application role. `getRole(req)` is non-null only when `requireRole` ran (the value is guaranteed to be in `requireRole.allowed`). The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them.
+- **`auth.*`** — canonical cookie/session auth namespace (`auth.user`, `auth.requireUser`, `auth.requireRole`, `auth.requireMembership`, `auth.fetch`, `auth.sessions.*`, `auth.identities.link`). Bare legacy helpers such as `getUser`, `getUserId`, and `getRole` were retired in `@run402/functions` v3.0 and fail `run402 doctor`.
+- **Function-level gate headers** — when `FunctionSpec.requireAuth` / `requireRole` passes, read `req.headers.get("x-run402-user-id")` and `req.headers.get("x-run402-user-role")` directly. Use these inside a gated function instead of re-decoding the JWT; the gate already verified the caller and resolved the application role.
 - **`getRun402Context(req)`** (v1.52+, `@run402/functions` 2.7+) — zero-dependency reader for the full per-request context the gateway populates as `x-run402-*` headers. Returns `{ requestId, projectId, releaseId, host, locale, defaultLocale }` (all `string | null`). Use this in non-Astro functions (plain webhook handlers, auth endpoints) instead of hand-rolling `request.headers.get('x-run402-...')` per field — the helper papers over `Request`/`Headers`/plain-object header shapes and any future gateway header renames. Same return shape as `Astro.locals.run402`, so Astro and plain-function code share one mental model. The helper never throws; missing headers come back as `null`.
 - **`assets.fromRef(raw)`** (`@run402/functions` 2.7+) — re-hydrate a stored AssetRef (e.g., a JSONB column read from your DB) back into the typed `AssetRef` shape with camelCase aliases + variant map. Pure-local; no network. The recommended persistence pattern is to store the full `AssetRef` returned by `r.assets.put` as JSONB so the variant SHAs + immutable URLs the gateway computed at upload time survive the round-trip (these can't be re-derived from `(source_sha, key)` alone). Tolerant of partial inputs: pre-v1.49 blobs come back without `variants` / `width_px` rather than synthesizing them. Throws only on null/undefined or non-object input.
 
@@ -394,14 +396,12 @@ Three worked examples — pass these through the `deploy` MCP tool's `spec.funct
 Reading the gate result inside the function:
 
 ```ts
-import { getUserId, getRole } from "@run402/functions";
-
 export default async (req: Request): Promise<Response> => {
-  const userId = getUserId(req);   // string | null
-  const role = getRole(req);       // string | null
+  const userId = req.headers.get("x-run402-user-id");
+  const role = req.headers.get("x-run402-user-role");
   // For a gated function reached through the gateway:
-  //   getUserId is non-null whenever any gate ran;
-  //   getRole is non-null whenever requireRole ran (one of `allowed`).
+  //   x-run402-user-id is non-null whenever any gate ran;
+  //   x-run402-user-role is non-null whenever requireRole ran (one of `allowed`).
   return Response.json({ actor: userId, role });
 };
 ```
@@ -433,7 +433,7 @@ Authoring Astro apps on Run402 uses the `@run402/astro` 1.0+ preset (one-line `e
 
 The gateway provisions SnapStart and reverse-validates the published version before activation; failure surfaces as a non-blocking `DEPLOY_FUNCTION_SSR_SNAPSTART_VALIDATION_FAILED` warning.
 
-**Cache behavior is bypass-by-default.** SSR responses only get stored when `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag — `getUser()` / `getUserId()` / `getRole()` from `@run402/functions` 2.5+ automatically taint per-request caching so personalized renders never get stored. Payment primitives (the `withPaymentTaint()` helper) taint the same way.
+**Cache behavior is bypass-by-default.** SSR responses only get stored when `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag — `auth.*` helpers automatically taint per-request caching so personalized renders never get stored. Payment primitives (the `withPaymentTaint()` helper) taint the same way.
 
 **Invalidation is project-scoped and sub-second.** The MCP-exposed surface is the SDK's `cache` namespace (no direct MCP tool yet; use `mcp__run402_sdk` via the SDK or `mcp__shell` to run `run402 cache invalidate`):
 

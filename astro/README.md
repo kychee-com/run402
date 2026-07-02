@@ -32,11 +32,11 @@ When the preset runs in default mode (`output: 'server'`), every `.astro` page i
 
 ```astro
 ---
-import { db, getUser, cache } from "@run402/functions";
+import { db, auth, cache } from "@run402/functions";
 import { Run402Picture } from "@run402/astro/components";
 
 const { slug } = Astro.params;
-const user = await getUser();   // ALS-aware; taints cache so this response is uncacheable
+const user = await auth.user(); // ALS-aware; taints cache so this response is uncacheable
 const page = await db()
   .from("pages")
   .select("*")
@@ -76,7 +76,7 @@ The SSR Lambda runs in a separate process from your build step. Anything exporte
 Three options if your SSR route needs request-time config:
 
 1. **Run402 secrets** — values you store via `run402 secrets set <key>` are injected into the Lambda env as `process.env.<KEY>` at deploy activation. This is the canonical request-time secret path.
-2. **Request headers** — for per-tenant / per-request values that the gateway already knows (project_id, release_id, locale, user_id, role), read them directly from the Web `Request` headers: `request.headers.get("x-run402-project-id")`, `getUserId(request)` / `getRole(request)` from `@run402/functions`.
+2. **Request headers** — for per-tenant / per-request values that the gateway already knows (project_id, release_id, locale, user_id, role), read them directly from the Web `Request` headers: `request.headers.get("x-run402-project-id")`, `request.headers.get("x-run402-user-id")`, `request.headers.get("x-run402-user-role")`.
 3. **Bake into the bundle at build** — for values that are public and stable across the lifetime of a release (e.g. an analytics site ID), import them in the page module so they get inlined into the bundled SSR source.
 
 The Run402 anon key + service key + project ID + JWT secret + API base ARE auto-injected at deploy time (you'll see `RUN402_ANON_KEY`, `RUN402_SERVICE_KEY`, `RUN402_PROJECT_ID`, `RUN402_JWT_SECRET`, `RUN402_API_BASE` in `process.env` from inside the SSR runtime — those are the platform-managed channel).

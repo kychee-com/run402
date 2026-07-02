@@ -588,7 +588,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to run402
-        run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...' < /dev/null
+        run: npx --yes run402@3.7.5 deploy apply --manifest 'run402.deploy.json' --project 'prj_...' < /dev/null
 ```
 
 Output on success:
@@ -606,7 +606,7 @@ Output on success:
   "github_repository_id_status": "verified",
   "workflow_path": ".github/workflows/run402-deploy.yml",
   "manifest_path": "run402.deploy.json",
-  "run402_version": "1.60.0",
+  "run402_version": "3.7.5",
   "delegation_chain_id": "eip155:84532",
   "bootstrap_caveat": "Commit the generated workflow and manifest before expecting GitHub Actions deploys.",
   "consent_summary": ["..."],
@@ -1472,7 +1472,7 @@ Astro dev wrapper. Loads `.env.local`, verifies `RUN402_PROJECT_ID` + `RUN402_SE
 
 - `run402 dev [--port <n>] [--host <h>] [--project <id>]`
 
-SDK calls (`db`, `getUser`, `cache.invalidate`, `assets.put`) hit the LIVE Run402 project at `https://api.run402.com` — no local DB/S3/KMS setup required. This is shape-parity with production. Offline emulator mode is deferred to v1.5.
+SDK calls (`db`, `auth.user`, `cache.invalidate`, `assets.put`) hit the LIVE Run402 project at `https://api.run402.com` — no local DB/S3/KMS setup required. This is shape-parity with production. Offline emulator mode is deferred to v1.5.
 
 ### init astro
 Project scaffolder. Subroute of `init` (alongside `init` rail setup).

@@ -244,7 +244,7 @@ Two casings coexist by design — classify a field by the shape it belongs to:
   every `DeployEvent` variant's discriminator (`type`, plus per-variant
   fields like `releaseId`, `urls`).
 
-The split stays through `1.x`. CI fails any TypeScript-fenced example that
+The split is stable across the `3.x` line. CI fails any TypeScript-fenced example that
 accesses a field that does not exist on the actual type. Reference tables
 below use plain code fences (no `ts`) — they document the type surface for
 visual scanning, are not runnable, and are exempt from type-checking.
@@ -1902,13 +1902,13 @@ The SQL endpoint blocks: `CREATE EXTENSION`, `COPY ... PROGRAM`, `ALTER SYSTEM`,
 
 ## Stability
 
-This package is on the `1.x` line. The CLI (`run402`), MCP server (`run402-mcp`), SDK (`@run402/sdk`), and `@run402/functions` release in lockstep at the same version. Pin an exact version in production dependencies:
+This package is on the `3.x` line. The in-repo packages (`@run402/sdk`, `run402`, and `run402-mcp`) release in lockstep at the same version. Pin an exact version in production dependencies:
 
 ```json
-{ "dependencies": { "@run402/sdk": "1.60.0" } }
+{ "dependencies": { "@run402/sdk": "3.7.5" } }
 ```
 
-OpenClaw skill packaging follows the same release train.
+OpenClaw skill packaging follows the CLI release train. `@run402/functions` and `@run402/astro` publish on their own cadences.
 
 ## Patterns & gotchas
 

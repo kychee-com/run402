@@ -548,14 +548,15 @@ The deploy response surfaces:
 The one place to write code, not commands. Built-in helpers are auto-bundled:
 
 ```ts
-import { db, adminDb, getUser, email, ai, assets } from "@run402/functions";
+import { db, adminDb, auth, email, ai, assets } from "@run402/functions";
 
 export default async (req: Request) => {
-  const user = await getUser(req);
+  const user = await auth.user();
   if (!user) return new Response("unauthorized", { status: 401 });
 
   // Caller-context — Authorization header is forwarded; RLS evaluates against the caller's role.
-  const mine = await db(req).from("items").select("*").eq("user_id", user.id);
+  // Do not add `.eq("user_id", user.id)`; RLS already binds the visitor's rows.
+  const mine = await db(req).from("items").select("*");
 
   // Bypass RLS — only when the function acts on behalf of the platform.
   await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
@@ -573,7 +574,8 @@ export default async (req: Request) => {
 - `adminDb().sql(query, params?)` — raw parameterized SQL. Always bypass.
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions, billed/rate-limited against the project organization through `RUN402_SERVICE_KEY`. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. For public routed functions, authenticate/rate-limit app users before calling it.
 - `assets.put(key, source, opts?)` — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
-- `getUserId(req)` / `getRole(req)` (v1.51+, `@run402/functions` 2.5+) — typed reads of the `x-run402-user-id` / `x-run402-user-role` headers the gateway injects when a `FunctionSpec.requireAuth` / `requireRole` gate passed. Both return `string | null`. Use these inside a gated function instead of re-decoding the JWT — the gate already verified the caller and resolved the application role. `getRole(req)` is non-null only when `requireRole` ran (the value is guaranteed to be in `requireRole.allowed`). The JWT `role` from `getUser(req)` is the system role (`anon`/`authenticated`/…), NOT the app role — don't conflate them. See "Function-level auth gates" below for the deploy-spec side.
+- `auth.*` — canonical cookie/session auth namespace (`auth.user`, `auth.requireUser`, `auth.requireRole`, `auth.requireMembership`, `auth.fetch`, `auth.sessions.*`, `auth.identities.link`). Bare legacy helpers such as `getUser`, `getUserId`, and `getRole` were retired in `@run402/functions` v3.0 and fail `run402 doctor`.
+- Function-level gate headers — when `FunctionSpec.requireAuth` / `requireRole` passes, read `req.headers.get("x-run402-user-id")` and `req.headers.get("x-run402-user-role")` directly. Use these inside a gated function instead of re-decoding the JWT; the gate already verified the caller and resolved the application role.
 
 Fluent surface on both `db(req).from(t)` and `adminDb().from(t)`:
 - Reads: `.select()`, `.eq()`, `.neq()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`, `.like()`, `.ilike()`, `.in()`, `.order()`, `.limit()`, `.offset()`
@@ -631,14 +633,12 @@ Declare in your deploy manifest and run `run402 deploy apply --manifest run402.d
 Reading the gate result inside the function:
 
 ```ts
-import { getUserId, getRole } from "@run402/functions";
-
 export default async (req: Request): Promise<Response> => {
-  const userId = getUserId(req);   // string | null
-  const role = getRole(req);       // string | null
+  const userId = req.headers.get("x-run402-user-id");
+  const role = req.headers.get("x-run402-user-role");
   // For a gated function reached through the gateway:
-  //   getUserId is non-null whenever any gate ran;
-  //   getRole is non-null whenever requireRole ran (one of `allowed`).
+  //   x-run402-user-id is non-null whenever any gate ran;
+  //   x-run402-user-role is non-null whenever requireRole ran (one of `allowed`).
   return Response.json({ actor: userId, role });
 };
 ```
@@ -670,7 +670,7 @@ Functions opt into the SSR class declaratively:
 
 The gateway provisions SnapStart-enabled Lambda and reverse-validates the published version before activation. Failure ships the function anyway and surfaces `DEPLOY_FUNCTION_SSR_SNAPSTART_VALIDATION_FAILED` as a non-blocking warning.
 
-Cache is bypass-by-default. SSR responses only get cached when `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag — `getUser()` / `getUserId()` / `getRole()` from `@run402/functions` 2.5+ automatically taint per-request caching so personalized renders never get stored.
+Cache is bypass-by-default. SSR responses only get cached when `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag — `auth.*` helpers automatically taint per-request caching so personalized renders never get stored.
 
 **Invalidate from the CLI:**
 

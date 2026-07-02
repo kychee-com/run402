@@ -182,7 +182,7 @@ classify a field by the SHAPE it belongs to:
   every `DeployEvent` variant's discriminator (`type`, plus per-variant
   fields like `releaseId`, `urls`).
 
-This split is intentional and stays through `1.x`. Doc examples in this
+This split is intentional and stable across the `3.x` line. Doc examples in this
 README and in `llms-sdk.txt` use the exact field names the types export —
 copy them verbatim. CI fails any TypeScript-fenced example that accesses a
 field that does not exist on the actual type.
@@ -680,18 +680,17 @@ The SDK never calls `process.exit`. Each interface (MCP tools, CLI, your code) w
 
 ## Stability
 
-This package is on the `1.x` line. The CLI (`run402`), MCP server (`run402-mcp`), SDK (`@run402/sdk`), and `@run402/functions` release in lockstep at the same version. Pin an exact version in production dependencies.
+This package is on the `3.x` line. The in-repo packages (`@run402/sdk`, `run402`, and `run402-mcp`) release in lockstep at the same version. Pin an exact version in production dependencies. `@run402/functions` and `@run402/astro` have independent release cadences.
 
 ## Other interfaces
 
-`@run402/sdk` is the kernel that powers four sibling packages:
+`@run402/sdk` is the kernel that powers the CLI/MCP/OpenClaw edges and is used by adjacent integrations:
 
 - [`run402`](https://www.npmjs.com/package/run402) — CLI (terminal / scripts / CI)
 - [`run402-mcp`](https://www.npmjs.com/package/run402-mcp) — MCP server (Claude Desktop / Cursor / Cline / Claude Code)
 - [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) — in-function helper imported _inside_ deployed functions
+- [`@run402/astro`](https://www.npmjs.com/package/@run402/astro) — Astro SSR, ISR cache, hosted auth, and image integration
 - OpenClaw skill — script-based skill for OpenClaw agents
-
-All five release in lockstep.
 
 ## Links
 

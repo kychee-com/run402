@@ -103,7 +103,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to run402
-        run: npx --yes run402@1.60.0 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
+        run: npx --yes run402@3.7.5 deploy apply --manifest 'run402.deploy.json' --project 'prj_...'
 ```
 
 CI deploys can ship `site`, `functions`, `database`, and absent/current `base` changes. Route declarations are allowed only when the binding was linked with covering `--route-scope` patterns (`/admin` exact, `/api/*` final wildcard); no scopes means no CI route authority. Keep secrets, domains, subdomains, checks, non-current base changes, and out-of-scope routes in a local `run402 deploy apply` where the full allowance-backed authority is present.
@@ -138,7 +138,7 @@ run402 functions rebuild <id> --all      # refresh every function in the project
 Functions run on Node 22 with `@run402/functions` auto-bundled. Inside the handler:
 
 ```ts
-import { db, adminDb, getUser, email, ai } from "@run402/functions";
+import { db, adminDb, auth, email, ai } from "@run402/functions";
 ```
 
 `db(req)` is the caller-context client (RLS applies); `adminDb()` bypasses RLS for platform-authored writes.
@@ -266,14 +266,15 @@ Same content also at [`cli/llms-cli.txt`](./llms-cli.txt) in the repo. Treat tha
 
 ## Other interfaces
 
-`run402` is one of five surfaces:
+`run402` is one of the public Run402 surfaces:
 
 - [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) — typed TypeScript client (isomorphic + Node entry)
 - [`run402-mcp`](https://www.npmjs.com/package/run402-mcp) — MCP server (Claude Desktop, Cursor, Cline, Claude Code)
 - [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) — in-function helper imported inside deployed functions
+- [`@run402/astro`](https://www.npmjs.com/package/@run402/astro) — Astro SSR, ISR cache, hosted auth, and image integration
 - OpenClaw skill — script-based skill for OpenClaw agents
 
-All five release in lockstep at the same version and share `@run402/sdk` as the kernel.
+The in-repo packages `run402`, `run402-mcp`, and `@run402/sdk` release in lockstep. `@run402/astro` and `@run402/functions` publish on their own cadences.
 
 ## License
 
