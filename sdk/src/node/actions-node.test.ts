@@ -768,6 +768,60 @@ test("up apply preserves explicit deploy idempotency keys", async () => {
   }
 });
 
+test("up apply preserves deploy activation phase details in action events", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-deploy-event-details-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+  }));
+  mkdirSync(join(dir, ".run402"), { recursive: true });
+  writeFileSync(join(dir, ".run402", "project.json"), JSON.stringify({
+    schema_version: "run402.workspace-project.v1",
+    project_id: "prj_ready",
+    name: "ready",
+    created_at: "2026-06-30T00:00:00.000Z",
+  }));
+  const calls: string[] = [];
+  const streamed: unknown[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+    deployEvents: [
+      {
+        id: "7",
+        operation_id: "op_123",
+        project_id: "prj_ready",
+        type: "commit.phase.detail",
+        phase: "activate.functions",
+        status: "done",
+        message: null,
+        details: { duration_ms: 42 },
+        created_at: "2026-07-02T00:00:00.000Z",
+        updated_at: "2026-07-02T00:00:00.000Z",
+      },
+    ],
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await actions.up({}, {
+      onEvent: (event) => streamed.push(event),
+    });
+
+    const activationEvent = streamed.find((event) => {
+      const step = (event as { step?: { details?: Record<string, unknown> } }).step;
+      return step?.details?.deploy_phase === "activate.functions";
+    }) as { step?: { details?: Record<string, unknown> } } | undefined;
+    assert.ok(activationEvent, "expected action event for activate.functions");
+    assert.equal(activationEvent.step?.details?.deploy_event, "commit.phase.detail");
+    assert.equal(activationEvent.step?.details?.deploy_status, "done");
+    assert.equal(activationEvent.step?.details?.deploy_duration_ms, 42);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up refuses to reuse a nameless workspace link when --name is supplied", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-up-name-link-conflict-"));
   writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
@@ -931,6 +985,7 @@ function fakeSdk(opts: {
   existingProjects?: Array<Record<string, unknown>>;
   deployOptions?: Array<{ idempotencyKey?: string }>;
   deployPlanOptions?: Array<{ idempotencyKey?: string }>;
+  deployEvents?: unknown[];
 }) {
   const mailboxes: Array<Record<string, unknown>> = [];
   const mailboxSettings: { default_outbound_mailbox_id: string | null; auth_sender_mailbox_id: string | null } = {
@@ -1065,10 +1120,13 @@ function fakeSdk(opts: {
       opts.calls.push(`project:${projectId}`);
       return {
         apply: Object.assign(
-          async (_spec?: unknown, input?: { idempotencyKey?: string }) => {
+          async (_spec?: unknown, input?: { idempotencyKey?: string; onEvent?: (event: unknown) => void }) => {
             opts.deployOptions?.push(input ?? {});
             opts.appliedSpecs?.push(_spec);
             opts.calls.push(`project.apply:${projectId}`);
+            for (const event of opts.deployEvents ?? []) {
+              input?.onEvent?.(event);
+            }
             return {
               release_id: "rel_123",
               operation_id: "op_123",

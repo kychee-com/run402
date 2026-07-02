@@ -2149,6 +2149,8 @@ async function pollSnapshotUntilReady(
   let snapshot = initial;
   const opHeaders = projectId ? await apikeyHeaders(client, projectId) : {};
   let lastPhaseEmitted: OperationStatus | null = null;
+  let recordedEventCursor: string | null = null;
+  let recordedEventsSupported = Boolean(projectId);
   const start = Date.now();
   let interval = COMMIT_POLL_INITIAL_MS;
 
@@ -2190,6 +2192,18 @@ async function pollSnapshotUntilReady(
   };
 
   while (true) {
+    if (recordedEventsSupported && projectId) {
+      const recorded = await emitRecordedOperationEvents(
+        client,
+        snapshot.operation_id,
+        opHeaders,
+        recordedEventCursor,
+        emit,
+      );
+      recordedEventsSupported = recorded.supported;
+      recordedEventCursor = recorded.cursor;
+    }
+
     if (lastPhaseEmitted !== snapshot.status) {
       const ev = phaseFor(snapshot.status);
       if (ev) {
@@ -2273,6 +2287,42 @@ async function pollSnapshotUntilReady(
       { headers: opHeaders, context: "polling deploy operation" },
     );
   }
+}
+
+async function emitRecordedOperationEvents(
+  client: Client,
+  operationId: string,
+  headers: Record<string, string>,
+  cursor: string | null,
+  emit: (event: DeployEvent) => void,
+): Promise<{ cursor: string | null; supported: boolean }> {
+  const query = cursor
+    ? `?limit=100&cursor=${encodeURIComponent(cursor)}`
+    : "?limit=100";
+  let page: DeployEventsResponse;
+  try {
+    page = await client.request<DeployEventsResponse>(
+      `/apply/v1/operations/${encodeURIComponent(operationId)}/events${query}`,
+      { headers, context: "fetching deploy operation events" },
+    );
+  } catch {
+    return { cursor, supported: false };
+  }
+  if (!page || !Array.isArray(page.events)) {
+    return { cursor, supported: false };
+  }
+
+  let nextCursor = cursor;
+  for (const event of page.events) {
+    const maybeRecorded = event as { id?: unknown; details?: unknown };
+    if (maybeRecorded.id === "synthetic") continue;
+    emit(event);
+    const eventId = maybeRecorded.id;
+    if (typeof eventId === "string" && /^\d+$/.test(eventId)) {
+      nextCursor = eventId;
+    }
+  }
+  return { cursor: nextCursor, supported: true };
 }
 
 function isTerminalStaticActivationError(

@@ -2112,6 +2112,7 @@ export interface DeployListResponse {
  *  during an in-flight deploy. */
 export interface DeployEventsResponse {
   events: DeployEvent[];
+  cursor?: string | null;
 }
 
 /** Wire-shape for a structured deploy error from the gateway. The SDK
@@ -2296,6 +2297,18 @@ export type DeployEvent =
        *  agents grouping per-phase telemetry by slice category. Stable
        *  across phase transitions of the same apply. */
       slice_kinds?: ("release" | "asset")[];
+    }
+  | {
+      type: "commit.phase.detail";
+      id?: string;
+      operation_id?: string;
+      project_id?: string;
+      phase: string;
+      status: "started" | "done" | "failed" | "skipped" | "deferred";
+      message: string | null;
+      details: Record<string, unknown>;
+      created_at?: string;
+      updated_at?: string;
     }
   | {
       type: "log";

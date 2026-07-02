@@ -79,6 +79,35 @@ interface DiscoveredManifest {
   manifestProjectId?: string;
 }
 
+function deployEventDetails(event: DeployEvent): Record<string, unknown> {
+  const raw = event as DeployEvent & {
+    id?: unknown;
+    operation_id?: unknown;
+    project_id?: unknown;
+    phase?: unknown;
+    status?: unknown;
+    message?: unknown;
+    details?: unknown;
+    created_at?: unknown;
+    updated_at?: unknown;
+  };
+  const details: Record<string, unknown> = { deploy_event: event.type };
+  if (typeof raw.id === "string") details.deploy_event_id = raw.id;
+  if (typeof raw.operation_id === "string") details.deploy_operation_id = raw.operation_id;
+  if (typeof raw.project_id === "string") details.deploy_project_id = raw.project_id;
+  if (typeof raw.phase === "string") details.deploy_phase = raw.phase;
+  if (typeof raw.status === "string") details.deploy_status = raw.status;
+  if (typeof raw.message === "string") details.deploy_message = raw.message;
+  if (typeof raw.created_at === "string") details.deploy_created_at = raw.created_at;
+  if (typeof raw.updated_at === "string") details.deploy_updated_at = raw.updated_at;
+  if (raw.details && typeof raw.details === "object" && !Array.isArray(raw.details)) {
+    const deployDetails = raw.details as Record<string, unknown>;
+    details.deploy_details = deployDetails;
+    if (typeof deployDetails.duration_ms === "number") details.deploy_duration_ms = deployDetails.duration_ms;
+  }
+  return details;
+}
+
 interface ResolveProjectResult {
   projectId: string;
   source: "explicit" | "workspace_link" | "manifest" | "created" | "active";
@@ -437,7 +466,7 @@ export class NodeActions implements Run402Actions {
           action: Run402Action.Up,
           step: {
             ...deployStep,
-            details: { ...deployStep.details, deploy_event: event.type },
+            details: { ...deployStep.details, ...deployEventDetails(event) },
           },
         });
       },
@@ -870,7 +899,7 @@ export class NodeActions implements Run402Actions {
             action: Run402Action.Up,
             step: {
               ...deployStep,
-              details: { ...deployStep.details, deploy_event: event.type },
+              details: { ...deployStep.details, ...deployEventDetails(event) },
             },
           });
         },

@@ -4668,6 +4668,65 @@ describe("Deploy.apply (retry on retryable CONTENT_UPLOAD_FAILED)", () => {
 });
 
 describe("Deploy.apply (commit.phase done events between transitions)", () => {
+  it("streams recorded operation sub-events while polling a live apply", async () => {
+    const w = makeWiring();
+    const plan = noContentPlan("plan_recorded", "op_recorded");
+    const ready: OperationSnapshot = {
+      operation_id: "op_recorded",
+      status: "ready",
+      plan_id: "plan_recorded",
+      release_id: "rel_recorded",
+      urls: { site: "https://prj.run402.test" },
+    } as OperationSnapshot;
+
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_recorded/commit") {
+        return {
+          operation_id: "op_recorded",
+          status: "activating",
+          release_id: null,
+          urls: null,
+        } as unknown as CommitResponse;
+      }
+      if (req.path === "/apply/v1/operations/op_recorded") return ready;
+      if (req.path === "/apply/v1/operations/op_recorded/events?limit=100") {
+        return {
+          events: [
+            {
+              id: "1",
+              operation_id: "op_recorded",
+              project_id: "prj_test",
+              type: "commit.phase.detail",
+              phase: "activate.functions",
+              status: "done",
+              message: null,
+              details: { release_id: "rel_recorded", duration_ms: 123 },
+              created_at: "2026-07-02T00:00:00.000Z",
+              updated_at: "2026-07-02T00:00:00.000Z",
+            },
+          ],
+          cursor: null,
+        };
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const events: DeployEvent[] = [];
+    const deploy = new Deploy(w.client);
+    await deploy.apply(
+      { project: "prj_test", site: { replace: { "index.html": "<h1>ready</h1>" } } },
+      { onEvent: (e) => events.push(e) },
+    );
+
+    const activationDetail = events.find(
+      (event) => event.type === "commit.phase.detail" && event.phase === "activate.functions",
+    );
+    assert.ok(activationDetail, "activate.functions event should be emitted from the operation event log");
+    assert.equal(activationDetail.status, "done");
+    assert.equal(activationDetail.details.duration_ms, 123);
+  });
+
   it("emits commit.phase done before the next phase's started, plus done on terminal ready (#135)", async () => {
     const w = makeWiring();
     const html = "<html>phase</html>";
@@ -4704,6 +4763,9 @@ describe("Deploy.apply (commit.phase done events between transitions)", () => {
           release_id: null,
           urls: null,
         } as unknown as CommitResponse;
+      }
+      if (req.path.startsWith("/apply/v1/operations/op_phase/events")) {
+        return { events: [], cursor: null };
       }
       if (req.path.startsWith("/apply/v1/operations/op_phase")) {
         const snap = sequence[Math.min(snapshotIndex, sequence.length - 1)];
