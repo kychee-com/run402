@@ -7,6 +7,7 @@ import {
   RUN402_APP_SCHEMA_ID,
   type Run402AppSpec,
 } from "./app-up.js";
+import { isLocalError } from "./errors.js";
 
 const SHA = "a".repeat(64);
 
@@ -126,7 +127,10 @@ describe("app-up install graph", () => {
 
     await assert.rejects(
       () => compileRun402AppInstallGraph(spec, { name: "kysigned2" }),
-      /release\.functions\.replace\.api\.triggers\.0\.mailbox.*RUN402_MAILBOX_UNKNOWN_ID/,
+      (err: unknown) =>
+        isLocalError(err) &&
+        err.code === "APP_SPEC_INVALID" &&
+        /release\.functions\.replace\.api\.triggers\.0\.mailbox.*RUN402_MAILBOX_UNKNOWN_ID/.test(err.message),
     );
   });
 });

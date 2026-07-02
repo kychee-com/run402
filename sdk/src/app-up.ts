@@ -1,3 +1,4 @@
+import { LocalError } from "./errors.js";
 import type { ReleaseSpec } from "./namespaces/deploy.types.js";
 
 export const RUN402_APP_SCHEMA_ID = "https://run402.com/schemas/run402-app.v1.schema.json" as const;
@@ -300,6 +301,7 @@ export interface Run402AppInstallGraph {
 
 const LOGICAL_RESOURCE_NAME = /^[a-z][a-z0-9_]*$/;
 const TEMPLATE_REF = /\$\{([^}]+)\}/g;
+const APP_SPEC_ERROR_CONTEXT = "compiling Run402 app manifest";
 
 export async function compileRun402AppInstallGraph(
   spec: Run402AppSpec,
@@ -671,7 +673,10 @@ function validateTemplateRefsInString(value: string | undefined, resource: strin
   for (const match of value.matchAll(TEMPLATE_REF)) {
     const ref = match[1];
     if (!ref || !allowed.has(ref)) {
-      throw new Error(`${resource} has unresolved template reference '${ref ?? ""}'`);
+      throw appSpecInvalid(`${resource} has unresolved template reference '${ref ?? ""}'`, {
+        field_path: resource,
+        reference: ref ?? "",
+      });
     }
   }
 }
@@ -793,7 +798,9 @@ function canonicalizeJson(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new Error("canonicalizeJson: unsupported non-finite number");
+    if (!Number.isFinite(value)) {
+      throw appSpecInvalid("canonicalizeJson: unsupported non-finite number");
+    }
     return JSON.stringify(value);
   }
   if (typeof value === "string") return JSON.stringify(value);
@@ -804,7 +811,7 @@ function canonicalizeJson(value: unknown): string {
       .sort();
     return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalizeJson(value[key])}`).join(",")}}`;
   }
-  throw new Error("canonicalizeJson: unsupported value type");
+  throw appSpecInvalid("canonicalizeJson: unsupported value type");
 }
 
 function sortedKeys(value: Record<string, unknown> | undefined): string[] {
@@ -813,8 +820,17 @@ function sortedKeys(value: Record<string, unknown> | undefined): string[] {
 
 function assertLogicalResourceName(value: string): void {
   if (!LOGICAL_RESOURCE_NAME.test(value)) {
-    throw new Error(`logical resource name must match [a-z][a-z0-9_]*: ${value}`);
+    throw appSpecInvalid(`logical resource name must match [a-z][a-z0-9_]*: ${value}`, {
+      value,
+    });
   }
+}
+
+function appSpecInvalid(message: string, details?: Record<string, unknown>): LocalError {
+  return new LocalError(message, APP_SPEC_ERROR_CONTEXT, {
+    code: "APP_SPEC_INVALID",
+    details,
+  });
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

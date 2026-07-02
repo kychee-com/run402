@@ -201,7 +201,7 @@ interface Capability {
 
 const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
-  { id: "up",                endpoint: "(compound local+gateway action)",       mcp: null,                            cli: "up",                  openclaw: "up" },
+  { id: "up",                endpoint: "(compound local+gateway action)",       mcp: "app_up",                        cli: "up",                  openclaw: "up" },
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
   { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
 
