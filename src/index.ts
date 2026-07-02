@@ -10,6 +10,7 @@ import { setTierSchema, handleSetTier } from "./tools/set-tier.js";
 import { deploySiteSchema, handleDeploySite } from "./tools/deploy-site.js";
 import { deploySiteDirSchema, handleDeploySiteDir } from "./tools/deploy-site-dir.js";
 import { deploySchema, handleDeploy } from "./tools/deploy.js";
+import { appUpSchema, handleAppUp } from "./tools/app-up.js";
 import { deployDiagnoseUrlSchema, handleDeployDiagnoseUrl } from "./tools/deploy-diagnose-url.js";
 import { deployResumeSchema, handleDeployResume } from "./tools/deploy-resume.js";
 import { deployListSchema, handleDeployList } from "./tools/deploy-list.js";
@@ -342,6 +343,13 @@ server.tool(
   "Validate an auth/expose manifest without applying it. This checks the authorization manifest used by manifest.json, database.expose, and apply_expose; it is not deploy-manifest validation. Optional migration_sql is reference context only and is not executed. Use deploy planning/dry-run surfaces for deploy manifest questions.",
   validateManifestSchema,
   async (args) => handleValidateManifest(args),
+);
+
+server.tool(
+  "app_up",
+  "Plan or run the canonical app-aware `run402 up` workflow from a local path or repo URL. Delegates to the SDK and returns the shared app-up result envelope with graph steps, resources, diagnostics, and next_actions.",
+  appUpSchema,
+  async (args) => handleAppUp(args),
 );
 
 server.tool(

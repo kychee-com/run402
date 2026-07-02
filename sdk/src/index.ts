@@ -395,6 +395,7 @@ export {
   isCiSessionCredentials,
 } from "./ci-credentials.js";
 export type * from "./ci-credentials.js";
+export * from "./app-up.js";
 export {
   CONTROL_PLANE_SESSION_CREDENTIALS,
   controlPlaneSessionCredentials,

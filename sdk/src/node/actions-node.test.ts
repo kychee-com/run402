@@ -1,10 +1,207 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { Run402Action } from "../actions.js";
+import { RUN402_APP_SCHEMA_ID } from "../app-up.js";
 import { NodeActions } from "./actions-node.js";
+
+test("up check discovers run402.json app manifest and compiles an install graph locally", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-app-up-check-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ name: "kysigned2" }, { mode: "check" });
+
+    assert.equal(result.mode, "check");
+    assert.equal(result.dry_run, true);
+    assert.equal(result.result?.manifest_path, join(dir, "run402.json"));
+    assert.equal(result.result?.app_graph?.app_id, "kysigned");
+    assert.equal(result.result?.app_result?.kind, "run402.up.result");
+    assert.equal(result.result?.app_result?.status, "planned");
+    assert.equal(result.result?.app_result?.source?.kind, "local");
+    assert.equal(result.result?.app_result?.resources.mailboxes.forward_to_sign.bindings[0]?.env, "RUN402_MAILBOX_FORWARD_TO_SIGN_ID");
+    assert.deepEqual(result.result?.app_graph?.nodes.map((node) => node.id), [
+      "discover",
+      "account.ensure",
+      "project.ensure",
+      "origin.ensure",
+      "mailbox.forward_to_sign.ensure",
+      "mailbox.notifications.ensure",
+      "bindings.resolve",
+      "secrets.ensure",
+      "build.remote",
+      "release.apply",
+      "verify.http.home",
+    ]);
+    assert.deepEqual(calls, []);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up dry-run for run402.json returns graph without gateway calls or local link writes", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-app-up-dry-run-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ name: "kysigned2" }, { dryRun: true });
+
+    assert.equal(result.dry_run, true);
+    assert.equal(result.result?.project_id, "prj_planned");
+    assert.equal(result.result?.app_result?.dry_run, true);
+    assert.equal(result.result?.app_result?.project.public_origin, "https://kysigned2.run402.com");
+    assert.match(result.result?.app_graph?.graph_digest ?? "", /^sha256:[0-9a-f]{64}$/);
+    assert.deepEqual(calls, []);
+    assert.equal(existsSync(join(dir, ".run402", "project.json")), false);
+    assert.ok(result.steps.some((step) => step.action === "deploy.discover" && step.details?.manifest_kind === "app"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up app apply blocks fast with missing required secret usage as shared next action", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-app-up-missing-secret-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  delete process.env.KYSIGNED_ALLOWED_CREATORS;
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ name: "kysigned2" }, { approval: "yes" });
+
+    assert.equal(result.result?.app_result?.status, "blocked");
+    assert.equal(result.result?.app_result?.diagnostics[0]?.code, "MISSING_SECRET");
+    assert.match(result.result?.app_result?.diagnostics[0]?.message ?? "", /Allowed request creators/);
+    assert.match(result.result?.app_result?.diagnostics[0]?.message ?? "", /\*@example\.com/);
+    assert.equal(result.result?.app_result?.next_actions[0]?.type, "set_user_secret");
+    assert.match(result.result?.app_result?.next_actions[0]?.message ?? "", /Comma-separated emails/);
+    assert.equal(result.result?.app_result?.next_actions[0]?.command, 'KYSIGNED_ALLOWED_CREATORS="<value>" run402 up --name <name> --yes');
+    assert.equal(result.result?.app_result?.steps.find((step) => step.id === "secrets.ensure")?.status, "blocked");
+    assert.deepEqual(calls, []);
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up app apply blocks with name guidance when manifest needs input.name", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-app-up-missing-name-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({}, { approval: "yes" });
+
+    assert.equal(result.result?.app_result?.status, "blocked");
+    assert.equal(result.result?.app_result?.diagnostics[0]?.code, "PROJECT_REQUIRED");
+    assert.match(result.result?.app_result?.diagnostics[0]?.message ?? "", /instance name/);
+    assert.equal(result.result?.app_result?.next_actions[0]?.command, "run402 up --name kysigned3 --yes");
+    assert.equal(result.result?.app_result?.steps.find((step) => step.id === "project.ensure")?.status, "blocked");
+    assert.deepEqual(calls, []);
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up app apply blocks remote build with explicit unsupported next action", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-app-up-remote-build-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "0xcreator";
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ name: "kysigned2" }, { approval: "yes" });
+
+    assert.equal(result.result?.app_result?.status, "blocked");
+    assert.equal(result.result?.app_result?.diagnostics[0]?.code, "REMOTE_BUILD_UNSUPPORTED");
+    assert.equal(result.result?.app_result?.next_actions[0]?.argv?.slice(0, 4).join(" "), "run402 up --build-mode local");
+    assert.equal(result.result?.app_result?.steps.find((step) => step.id === "build.remote")?.status, "blocked");
+    assert.deepEqual(calls, []);
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up accepts repository URL sources and records commit metadata", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "run402-app-up-source-repo-"));
+  writeFileSync(join(repo, "run402.json"), JSON.stringify(appManifest()));
+  execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "agent@example.com"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "Run402 Agent"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["add", "run402.json"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "init"], { cwd: repo, stdio: "ignore" });
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud" });
+    const result = await actions.up({
+      source: pathToFileURL(repo).href,
+      name: "kysigned2",
+    }, { mode: "check" });
+
+    assert.equal(result.result?.app_result?.source?.kind, "repo");
+    assert.match(result.result?.app_result?.source?.commit ?? "", /^[0-9a-f]{40}$/);
+    assert.match(result.result?.manifest_path ?? "", /run402\.json$/);
+    assert.deepEqual(calls, []);
+  } finally {
+    rmSync(repo, { force: true, recursive: true });
+  }
+});
 
 test("up dry-run plans recursive steps without gateway mutations or local writes", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-up-dry-run-"));
@@ -39,6 +236,57 @@ test("up dry-run plans recursive steps without gateway mutations or local writes
     rmSync(dir, { force: true, recursive: true });
   }
 });
+
+function appManifest() {
+  return {
+    $schema: RUN402_APP_SCHEMA_ID,
+    spec_version: 1,
+    app: { id: "kysigned", display_name: "Kysigned" },
+    project: { name: "${input.name}", origin: { subdomain: "${input.name}" } },
+    resources: {
+      mailboxes: {
+        forward_to_sign: { roles: ["auth_sender"] },
+        notifications: { roles: ["default_outbound"] },
+      },
+    },
+    secrets: {
+      KYSIGNED_ALLOWED_CREATORS: {
+        required: true,
+        source_env: "KYSIGNED_ALLOWED_CREATORS",
+        description: "Allowed request creators. Comma-separated emails or domain wildcards such as *@example.com.",
+      },
+    },
+    build: {
+      mode: "remote",
+      commands: [
+        { id: "install", argv: ["npm", "ci"] },
+        { id: "build", argv: ["npm", "run", "build:run402-cloud"] },
+      ],
+    },
+    release: {
+      functions: {
+        replace: {
+          api: {
+            runtime: "node22",
+            source: { sha256: "a".repeat(64), size: 42 },
+            triggers: [
+              {
+                id: "forward-to-sign",
+                type: "email",
+                mailbox: "${RUN402_MAILBOX_FORWARD_TO_SIGN_ID}",
+                events: ["reply_received"],
+                run: { event_type: "kysigned.email.received" },
+              },
+            ],
+          },
+        },
+      },
+    },
+    verify: {
+      http: [{ id: "home", path: "/", expect: { status: 200 } }],
+    },
+  };
+}
 
 test("up check validates locally without gateway calls", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-up-check-"));

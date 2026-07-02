@@ -90,6 +90,24 @@ describe("run402() Node factory", () => {
     assert.deepEqual(calls, ["http://core.local:4020/health"]);
   });
 
+  it("treats RUN402_API_BASE as a Cloud target override for up actions", async () => {
+    configureApiBase("http://core.local:4020", { target_kind: "core" });
+    process.env.RUN402_API_BASE = "https://api.run402.com";
+    writeFileSync(
+      join(tempDir, "run402.deploy.json"),
+      JSON.stringify({
+        project_id: "prj_env_cloud",
+        site: { replace: { "index.html": { data: "<h1>hello</h1>" } } },
+      }),
+    );
+
+    const r = run402({ disablePaidFetch: true });
+    const result = await r.up({ dir: tempDir, projectId: "prj_env_cloud" }, { mode: "check" });
+
+    assert.equal(result.target, "cloud");
+    assert.equal(result.result?.project_id, "prj_env_cloud");
+  });
+
   it("exports NodeCredentialsProvider for advanced consumers", () => {
     const provider = new NodeCredentialsProvider();
     assert.ok(typeof provider.getAuth === "function");
