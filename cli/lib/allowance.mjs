@@ -13,7 +13,7 @@ Subcommands:
   create    Generate a new allowance and save it locally
   fund      Request test funds from the faucet (Base Sepolia or Tempo)
   balance   Show on-chain balances and Run402 billing balance
-  export    Print the allowance address (useful for scripting)
+  export    Print the allowance address as JSON (useful for scripting)
   checkout  Create an org balance checkout session (--amount <usd_micros>)
   history   View billing transaction history (--limit <n>)
 
@@ -245,7 +245,7 @@ async function balance() {
 async function exportAddr() {
   try {
     const address = await getSdk().allowance.export();
-    console.log(address);
+    console.log(JSON.stringify({ address }));
   } catch {
     fail({ code: "NO_ALLOWANCE", message: "No agent allowance." });
   }

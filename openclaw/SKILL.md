@@ -1078,7 +1078,7 @@ The CLI handles all signing automatically — never ask the human for a private 
 
 For real-money tiers, two paths to fund:
 
-- Path A — fund the agent allowance: human sends USDC on Base mainnet to the address from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on.
+- Path A — fund the agent allowance: human sends USDC on Base mainnet to the `address` field from `run402 allowance export`. Agent pays Run402 autonomously via x402 from then on.
 - Path B — Stripe credits: create or pick the organization, then `run402 billing checkout <org_id> --product tier --tier hobby` returns a checkout URL the human pays once.
 
 Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renewal buffer.
@@ -1104,7 +1104,7 @@ run402 allowance status               # address, network, funding state
 run402 allowance fund                 # request testnet USDC from the faucet
 run402 allowance balance              # USDC on mainnet + testnet + billing balance
 run402 allowance history              # ledger
-run402 allowance export               # print the address (NOT the private key)
+run402 allowance export               # print {"address":"0x..."} (NOT the private key)
 run402 allowance checkout --amount 5000000   # Stripe top-up to billing balance ($5)
 ```
 

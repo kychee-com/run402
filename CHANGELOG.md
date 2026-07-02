@@ -8,6 +8,11 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **SDK/MCP:** `@run402/sdk/node` and the MCP SDK singleton inherit the same configured API base by default; explicit constructor options or `RUN402_API_BASE` still override it. Function capabilities now flow through SDK/CLI manifest normalization and the Astro release slice marks SSR functions with `capabilities: ["astro.ssr.v1"]` for Core compatibility.
 - **Tests/docs:** added focused Core-target coverage for init, project provision, deploy apply, SDK config loading, and config precedence; CLI/OpenClaw/SDK docs now show the self-hosted Core command path.
 
+## Unreleased — close final CLI plain-text default
+
+- **CLI:** `run402 allowance export` now emits `{ "address": "0x..." }` instead of a bare address. The CLI contract is JSON-by-default for machine-readable commands; raw/text stdout requires an explicit raw/file-output mode, while help/version/dev remain human surfaces.
+- **Tests/docs/spec:** `cli-output-contract.test.mjs` now subprocess-checks `allowance export`, and the CLI docs/spec no longer advertise a plain-text default-output carve-out.
+
 ## Unreleased — configurable mailbox footer policy
 
 Adds downstream parity for gateway issue `configurable-email-footer` / run402#474.
@@ -75,7 +80,7 @@ Drift-protection tests added in `cli-argv.test.mjs` suite "CLI JSON-only output 
 
 Follow-up to 2.16.0: tightens the CLI's machine-readable contract by closing four "mixed-shape" violations of the JSON-only-by-default stance. `@run402/sdk` and `run402-mcp` have **no code changes**.
 
-The `openspec/specs/cli-output-shape/spec.md` "Plain-Text Output Commands Remain Plain Text" carve-out (which covers `run402 allowance export`, `run402 dev`) is preserved as-is. This change reclassifies the previously-undocumented binary/text-leak paths as **not** carve-outs:
+The historical plain-text carve-out is no longer part of the current CLI contract. This change reclassifies the previously-undocumented binary/text-leak paths as **not** carve-outs:
 
 - **`run402 functions invoke` now JSON-wraps the result by default.** Stdout is `{ http_status, body, duration_ms }`. The HTTP status is exposed as `http_status` (not `status`) so the payload stays clean of the reserved top-level `status` field used in the stderr error envelope. Add `--raw` to opt back into the previous shape — string body → text + trailing newline; JSON body → pretty-printed JSON — useful when piping a CSV / binary-blob function response straight to a file: `run402 functions invoke prj_abc csv --raw > export.csv`.
 - **`run402 functions logs --follow` now emits NDJSON** — one JSON log entry per line, no `[ts] message` text formatting. The non-follow batch path still emits a single `{ logs: [...] }` JSON object (unchanged). Shell consumers that grepped the old `[ts] msg` format need to switch to per-line JSON parsing (`| jq -c '.message'`).

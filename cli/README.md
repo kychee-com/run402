@@ -51,7 +51,7 @@ For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeS
 run402 allowance create    # generate the local allowance
 run402 allowance fund      # request testnet USDC from the faucet
 run402 allowance balance   # mainnet + testnet + billing balance
-run402 allowance export    # print address (for funding)
+run402 allowance export    # print {"address":"0x..."} for funding
 ```
 
 ### Database

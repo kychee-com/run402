@@ -301,6 +301,34 @@ describe("CLI output contract drift protection", () => {
     }
   });
 
+  it("run402 allowance export is JSON by default", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "run402-allowance-export-json-"));
+    const address = "0x1111111111111111111111111111111111111111";
+    try {
+      writeFileSync(join(tempDir, "allowance.json"), JSON.stringify({
+        address,
+        privateKey: `0x${"2".repeat(64)}`,
+        created: "2026-07-02T00:00:00.000Z",
+      }), { mode: 0o600 });
+
+      const result = spawnSync(process.execPath, [CLI_PATH, "allowance", "export"], {
+        env: {
+          ...process.env,
+          RUN402_CONFIG_DIR: tempDir,
+        },
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+
+      assert.equal(result.status, 0, `run402 allowance export failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.equal(result.stderr, "");
+      const parsed = JSON.parse(result.stdout);
+      assert.deepEqual(parsed, { address });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("unknown root commands emit a JSON error envelope only", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "run402-unknown-command-"));
     const env = { ...process.env, RUN402_CONFIG_DIR: tempDir };

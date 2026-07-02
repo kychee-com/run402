@@ -1206,7 +1206,8 @@ describe("CLI e2e happy path", () => {
     captureStart();
     await run("export", []);
     captureStop();
-    assert.ok(captured().includes("0x"), "should print allowance address");
+    const out = JSON.parse(captured());
+    assert.match(out.address, /^0x[a-fA-F0-9]{40}$/, "should emit allowance address JSON");
   });
 
   it("allowance balance", async () => {

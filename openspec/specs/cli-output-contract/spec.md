@@ -1,8 +1,24 @@
 # cli-output-contract Specification
 
 ## Purpose
-TBD - created by archiving change normalize-cli-next-actions-tier3. Update Purpose after archive.
+Define the machine-readable CLI output contract that keeps Run402 friendly to coding agents.
 ## Requirements
+### Requirement: CLI defaults are JSON-only for machine-readable commands
+
+The CLI SHALL emit parseable JSON on stdout for every non-help, non-version command by default. Raw text or binary stdout SHALL require an explicit caller opt-in such as `--raw` or `--output`, or be limited to human-only surfaces such as `run402 dev`.
+
+#### Scenario: Exporting the allowance address
+
+- **WHEN** a user runs `run402 allowance export` with an existing allowance
+- **THEN** stdout is a JSON object with an `address` field
+- **AND** stdout is not a bare newline-terminated address
+
+#### Scenario: Validation fails before network work
+
+- **WHEN** a CLI command rejects invalid or incomplete arguments before calling the SDK/API
+- **THEN** stderr is a JSON error envelope with top-level `status: "error"`
+- **AND** stdout is empty
+
 ### Requirement: CLI-authored next actions are typed
 
 The CLI SHALL emit every locally-authored `next_actions` entry as an object with a `type` field and optional structured fields such as `command`, `method`, `path`, `auth`, and `why`.

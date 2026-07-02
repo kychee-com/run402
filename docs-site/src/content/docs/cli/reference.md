@@ -63,7 +63,7 @@ Uniform contract:
 - Reads/list/info: resource directly, e.g. `projects info` -> `{ project_id, anon_key, ... }`, `projects list` -> `{ projects: [...], scope?, has_more?, next_cursor? }`.
 - Mutations without natural payload: affected ids + boolean action field, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`; never `{}`.
 - Local-state reads (`status`, `allowance status`): nullable typed fields, e.g. `{ wallet: null, hint: "Run: run402 init" }`; absence exits 0.
-- Plain text: a few documented commands (e.g. `allowance export`) emit one newline-terminated value.
+- Raw/text stdout is opt-in only (`functions invoke --raw`, file-output commands, help/version/dev human surfaces). Machine-readable command defaults emit parseable JSON; for example, `allowance export` emits `{ "address": "0x..." }`.
 - Failure: stderr JSON envelope with top-level `status: "error"` + non-zero exit. That sentinel appears on stderr only.
 - Validation commands may exit 0 with payload issues, e.g. `validate-expose` prints `has_errors: true`; branch on payload fields.
 - Payload-internal `status` fields are not envelopes, e.g. `doctor.checks[].status`.
