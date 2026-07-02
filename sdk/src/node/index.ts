@@ -23,6 +23,7 @@
 import {
   DEFAULT_API_BASE,
   getApiBase,
+  getApiBaseSource,
   getApiTargetKind,
 } from "../../core-dist/config.js";
 import { Run402, type Run402Options } from "../index.js";
@@ -112,8 +113,9 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   // Same single-Client pattern as the sites upgrade above.
   (base as unknown as { assets: NodeAssets }).assets = new NodeAssets(client);
   (base as unknown as { archives: NodeArchives }).archives = new NodeArchives(client);
+  const explicitApiBase = opts.apiBase !== undefined || getApiBaseSource() === "env";
   const actions = new NodeActions(base, {
-    targetKind: inferTargetKind(apiBase, opts.apiBase !== undefined),
+    targetKind: inferTargetKind(apiBase, explicitApiBase),
   });
   (base as unknown as { actions: NodeActions }).actions = actions;
   (base as unknown as { up: NodeActions["up"] }).up = actions.up.bind(actions);
@@ -124,7 +126,12 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
 function inferTargetKind(apiBase: string, explicitApiBase: boolean): NodeActionTargetKind {
   const configured = getApiTargetKind();
   if (!explicitApiBase && configured !== "unknown") return configured;
-  return stripSlash(apiBase) === stripSlash(DEFAULT_API_BASE) ? "cloud" : "core";
+  if (stripSlash(apiBase) === stripSlash(DEFAULT_API_BASE)) return "cloud";
+  try {
+    return new URL(apiBase).protocol === "http:" ? "core" : "cloud";
+  } catch {
+    return "unknown";
+  }
 }
 
 function stripSlash(value: string): string {
@@ -220,6 +227,7 @@ export { NodeActions } from "./actions-node.js";
 export type { NodeActionTargetKind, NodeActionsOptions } from "./actions-node.js";
 export { setupPaidFetch, createLazyPaidFetch } from "./paid-fetch.js";
 export { Run402Action } from "../actions.js";
+export * from "../app-up.js";
 export type * from "../index.js";
 // Re-export the isomorphic surface so Node consumers don't need two imports.
 export {

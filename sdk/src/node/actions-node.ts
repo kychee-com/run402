@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import {
   lstat,
   mkdir,
+  mkdtemp,
   readFile,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
+import { tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
+import { promisify } from "node:util";
 import type {
   Run402ActionApproval,
   Run402ActionInput,
@@ -23,6 +27,16 @@ import type {
   Run402UpResult,
 } from "../actions.js";
 import { Run402Action } from "../actions.js";
+import {
+  RUN402_APP_MANIFEST_FILENAME,
+  compileRun402AppInstallGraph,
+  createRun402AppUpResult,
+  type Run402AppInstallGraph,
+  type Run402AppSourceMetadata,
+  type Run402AppSpec,
+  type Run402AppUpDiagnostic,
+  type Run402AppUpNextAction,
+} from "../app-up.js";
 import type { Run402ExecutionMode, Run402ReviewedPlanRequirement } from "../config.js";
 import { LocalError } from "../errors.js";
 import type { Run402 } from "../index.js";
@@ -51,8 +65,11 @@ interface WorkspaceProjectLink {
 }
 
 interface DiscoveredManifest {
+  manifestKind: "app" | "release";
   manifestPath: string;
-  releaseSpec: ReleaseSpec;
+  releaseSpec: ReleaseSpec | null;
+  appGraph?: Run402AppInstallGraph;
+  appSpec?: Run402AppSpec;
   idempotencyKey?: string;
   manifestProjectId?: string;
 }
@@ -67,6 +84,7 @@ interface ResolveProjectResult {
 
 const DEFAULT_BOOTSTRAP_TIER: TierName = "prototype";
 const MANIFEST_CANDIDATES = [
+  RUN402_APP_MANIFEST_FILENAME,
   "run402.deploy.json",
   "app.json",
 ];
@@ -83,6 +101,13 @@ const TIER_RANK: Record<TierName, number> = {
   hobby: 2,
   team: 3,
 };
+const execFileAsync = promisify(execFile);
+
+interface ResolvedUpSource {
+  workspaceDir: string;
+  metadata: Run402AppSourceMetadata;
+  cleanupDir?: string;
+}
 
 /**
  * Node implementation of the action runner. The public CLI should treat this
@@ -232,10 +257,46 @@ export class NodeActions implements Run402Actions {
     input: Run402UpActionInput,
     run: ActionRun,
   ): Promise<Run402ActionResult<Run402UpResult>> {
-    const workspaceDir = resolvePath(this.opts.cwd ?? process.cwd(), input.dir ?? ".");
-    const manifest = await this.#discoverAndValidateManifest(input, workspaceDir, run);
+    if (input.source && input.dir) {
+      throw run.error(
+        "Pass either an app source positional/repo URL or --dir, not both.",
+        "RUN402_SOURCE_CONFLICT",
+        { source: input.source, dir: input.dir },
+      );
+    }
+    const startedAt = new Date().toISOString();
+    const source = await this.#resolveUpSource(input, run);
+    const workspaceDir = source.workspaceDir;
+    const manifest = await this.#discoverAndValidateManifest(input, workspaceDir, source.metadata, run);
+
+    if (manifest.manifestKind === "app") {
+      const appResult = this.#planAppUpResult(input, manifest, run, {
+        startedAt,
+        status: "planned",
+        dryRun: run.dryRun || run.executionMode === "check" || run.executionMode === "printSpec",
+        projectId: input.projectId ?? (run.dryRun ? "prj_planned" : null),
+      });
+      if (run.executionMode === "check" || run.executionMode === "printSpec" || run.dryRun) {
+        return run.result({
+          project_id: input.projectId ?? "prj_planned",
+          manifest_path: manifest.manifestPath,
+          app_graph: manifest.appGraph,
+          app_result: appResult,
+        });
+      }
+      const blocked = this.#blockedAppUpResult(input, manifest, run, startedAt);
+      return run.result({
+        project_id: input.projectId ?? "prj_planned",
+        manifest_path: manifest.manifestPath,
+        app_graph: manifest.appGraph,
+        app_result: blocked,
+      });
+    }
 
     if (run.executionMode === "check" || run.executionMode === "printSpec") {
+      if (!manifest.releaseSpec) {
+        throw run.error("Internal error: release manifest did not produce a ReleaseSpec.", "RUN402_ACTION_INTERNAL");
+      }
       return run.result({
         project_id: manifest.releaseSpec.project,
         manifest_path: manifest.manifestPath,
@@ -364,6 +425,7 @@ export class NodeActions implements Run402Actions {
   async #discoverAndValidateManifest(
     input: Run402UpActionInput,
     workspaceDir: string,
+    source: Run402AppSourceMetadata,
     run: ActionRun,
   ): Promise<DiscoveredManifest> {
     const step = run.addStep({
@@ -401,6 +463,38 @@ export class NodeActions implements Run402Actions {
       );
     }
 
+    if (basename(manifestPath) === RUN402_APP_MANIFEST_FILENAME) {
+      const loadedAppSpec = await loadRun402AppManifest(manifestPath);
+      const appSpec = input.buildMode
+        ? {
+            ...loadedAppSpec,
+            build: {
+              ...(loadedAppSpec.build ?? {}),
+              mode: input.buildMode,
+            },
+          }
+        : loadedAppSpec;
+      const appGraph = await compileRun402AppInstallGraph(appSpec, {
+        source,
+        ...(input.name ? { name: input.name } : {}),
+        ...(input.idempotencyKey ?? run.rootIdempotencyKey
+          ? { root_idempotency_key: input.idempotencyKey ?? run.rootIdempotencyKey }
+          : {}),
+      });
+      run.setState(step, "succeeded", {
+        manifest_kind: "app",
+        manifest_path: manifestPath,
+        app_id: appSpec.app.id,
+        graph_digest: appGraph.graph_digest,
+      });
+      return {
+        manifestKind: "app",
+        manifestPath,
+        releaseSpec: null,
+        appGraph,
+        appSpec,
+      };
+    }
     const loaded = await loadDeployManifest(manifestPath, {
       ...(input.projectId
         ? { project: input.projectId }
@@ -419,12 +513,205 @@ export class NodeActions implements Run402Actions {
       idempotency_key: loaded.idempotencyKey ?? null,
     });
     return {
+      manifestKind: "release",
       manifestPath,
       releaseSpec: loaded.spec,
       idempotencyKey: loaded.idempotencyKey,
       manifestProjectId: loaded.spec.project === "prj_up_preflight_placeholder"
         ? undefined
         : loaded.spec.project,
+    };
+  }
+
+  async #resolveUpSource(input: Run402UpActionInput, run: ActionRun): Promise<ResolvedUpSource> {
+    const baseDir = resolvePath(this.opts.cwd ?? process.cwd());
+    const rawSource = input.source ?? input.dir ?? ".";
+    const step = run.addStep({
+      action: "app.source.resolve",
+      description: "Resolve app source",
+      mutation: false,
+      auto: true,
+      details: { source: rawSource },
+    });
+    run.setState(step, "running");
+
+    if (isRepositoryUrl(rawSource)) {
+      const root = await mkdtemp(join(tmpdir(), "run402-app-source-"));
+      const checkout = join(root, "repo");
+      try {
+        await execFileAsync("git", ["clone", "--depth", "1", rawSource, checkout], {
+          maxBuffer: 1024 * 1024 * 8,
+        });
+        const commit = await gitCommit(checkout);
+        run.setState(step, "succeeded", {
+          kind: "repo",
+          repo_url: rawSource,
+          commit: commit ?? null,
+          checkout,
+        });
+        return {
+          workspaceDir: checkout,
+          metadata: {
+            kind: "repo",
+            repo_url: rawSource,
+            ...(commit ? { commit } : {}),
+          },
+          cleanupDir: root,
+        };
+      } catch (err) {
+        await rm(root, { recursive: true, force: true });
+        throw run.error(
+          `Failed to resolve repository source ${rawSource}.`,
+          "RUN402_SOURCE_RESOLVE_FAILED",
+          { source: rawSource, error: err instanceof Error ? err.message : String(err) },
+        );
+      }
+    }
+
+    const workspaceDir = resolveMaybe(baseDir, rawSource);
+    const stat = await lstat(workspaceDir).catch(() => null);
+    if (!stat || !stat.isDirectory()) {
+      throw run.error(
+        "App source must be an existing directory or repository URL.",
+        "RUN402_SOURCE_INVALID",
+        { source: rawSource, resolved_path: workspaceDir },
+      );
+    }
+    const commit = await gitCommit(workspaceDir);
+    run.setState(step, "succeeded", {
+      kind: "local",
+      path: workspaceDir,
+      commit: commit ?? null,
+    });
+    return {
+      workspaceDir,
+      metadata: {
+        kind: "local",
+        path: workspaceDir,
+        ...(commit ? { commit } : {}),
+      },
+    };
+  }
+
+  #planAppUpResult(
+    input: Run402UpActionInput,
+    manifest: DiscoveredManifest,
+    run: ActionRun,
+    opts: {
+      startedAt: string;
+      status: "planned" | "blocked";
+      dryRun: boolean;
+      projectId?: string | null;
+      diagnostics?: Run402AppUpDiagnostic[];
+      nextActions?: Run402AppUpNextAction[];
+      blockedNodeId?: string;
+    },
+  ) {
+    if (!manifest.appGraph) {
+      throw run.error("Internal error: app manifest did not produce an install graph.", "RUN402_ACTION_INTERNAL");
+    }
+    return createRun402AppUpResult({
+      graph: manifest.appGraph,
+      manifest_path: manifest.manifestPath,
+      status: opts.status,
+      started_at: opts.startedAt,
+      dry_run: opts.dryRun,
+      project_id: opts.projectId,
+      project_name: input.name ?? manifest.appSpec?.project.name ?? null,
+      public_origin: appPublicOrigin(input, manifest.appSpec),
+      approval_policy: {
+        yes: run.approval === "yes",
+        allow_prune: input.allowPrune === true,
+        max_spend_usd: input.maxSpendUsd ?? null,
+        build_mode: input.buildMode ?? manifest.appSpec?.build?.mode ?? null,
+        shell_build_approved: input.allowShellBuild === true,
+      },
+      diagnostics: opts.diagnostics,
+      next_actions: opts.nextActions,
+      blocked_node_id: opts.blockedNodeId,
+    });
+  }
+
+  #blockedAppUpResult(
+    input: Run402UpActionInput,
+    manifest: DiscoveredManifest,
+    run: ActionRun,
+    startedAt: string,
+  ) {
+    const block = this.#firstAppUpBlock(input, manifest, run);
+    return this.#planAppUpResult(input, manifest, run, {
+      startedAt,
+      status: "blocked",
+      dryRun: false,
+      projectId: input.projectId ?? null,
+      diagnostics: block.diagnostics,
+      nextActions: block.nextActions,
+      blockedNodeId: block.nodeId,
+    });
+  }
+
+  #firstAppUpBlock(
+    input: Run402UpActionInput,
+    manifest: DiscoveredManifest,
+    run: ActionRun,
+  ): { nodeId: string; diagnostics: Run402AppUpDiagnostic[]; nextActions: Run402AppUpNextAction[] } {
+    const nameBlock = missingRequiredName(input, manifest);
+    if (nameBlock) return nameBlock;
+
+    const missingSecrets = missingRequiredSecrets(manifest.appSpec);
+    if (missingSecrets.length > 0) {
+      return {
+        nodeId: "secrets.ensure",
+        diagnostics: missingSecrets.map((secret) => ({
+          code: "MISSING_SECRET",
+          severity: "error",
+          node_id: "secrets.ensure",
+          field_path: `secrets.${secret.name}`,
+          message: [
+            `Required user secret ${secret.name} is missing from approved env source ${secret.sourceEnv}.`,
+            secret.description ? `Usage: ${secret.description}` : "",
+          ].filter(Boolean).join(" "),
+          details: {
+            source_env: secret.sourceEnv,
+            ...(secret.description ? { usage: secret.description } : {}),
+          },
+        })),
+        nextActions: missingSecrets.map((secret) => ({
+          type: "set_user_secret",
+          code: "MISSING_SECRET",
+          node_id: "secrets.ensure",
+          field_path: `secrets.${secret.name}`,
+          message: [
+            `Provide ${secret.sourceEnv} in the environment before retrying.`,
+            secret.description ? `Usage: ${secret.description}` : "",
+          ].filter(Boolean).join(" "),
+          command: `${secret.sourceEnv}="<value>" run402 up --name <name> --yes`,
+          argv: ["run402", "secrets", "set", "<project_id>", secret.name, "--env", secret.sourceEnv],
+        })),
+      };
+    }
+
+    const spendBlock = spendApprovalBlock(input, run);
+    if (spendBlock) return spendBlock;
+
+    const buildBlock = appBuildBlock(input, manifest);
+    if (buildBlock) return buildBlock;
+
+    return {
+      nodeId: "project.ensure",
+      diagnostics: [{
+        code: "APP_INSTALL_STATE_UNAVAILABLE",
+        severity: "error",
+        node_id: "project.ensure",
+        message: "Server-side app installation state is required before app-aware up can mutate resources.",
+      }],
+      nextActions: [{
+        type: "wait_for_run402_support",
+        code: "APP_INSTALL_STATE_UNAVAILABLE",
+        node_id: "project.ensure",
+        message: "Use --check or --dry-run to inspect the graph until app installation endpoints are available.",
+        argv: ["run402", "up", "--check"],
+      }],
     };
   }
 
@@ -952,6 +1239,182 @@ function withActionDetails(err: LocalError, run: ActionRun): LocalError {
   return err;
 }
 
+function isRepositoryUrl(value: string): boolean {
+  return /^https?:\/\/.+/.test(value) || /^git@[^:]+:.+/.test(value) || /^ssh:\/\/.+/.test(value) || /^file:\/\/.+/.test(value);
+}
+
+async function gitCommit(dir: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", dir, "rev-parse", "HEAD"], {
+      maxBuffer: 1024 * 1024,
+    });
+    const commit = String(stdout).trim();
+    return /^[0-9a-f]{40}$/i.test(commit) ? commit : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function appPublicOrigin(input: Run402UpActionInput, spec: Run402AppSpec | undefined): string | null {
+  const template = spec?.project.origin?.subdomain;
+  if (!template) return null;
+  const name = input.name ?? spec?.project.name ?? null;
+  const subdomain = template.replace(/\$\{input\.name\}/g, name ?? "");
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) return null;
+  return `https://${subdomain}.run402.com`;
+}
+
+function spendApprovalBlock(
+  input: Run402UpActionInput,
+  run: ActionRun,
+): { nodeId: string; diagnostics: Run402AppUpDiagnostic[]; nextActions: Run402AppUpNextAction[] } | null {
+  const expectedPrototypeSpendUsd = 0.10;
+  if (input.maxSpendUsd !== undefined && input.maxSpendUsd < expectedPrototypeSpendUsd) {
+    return {
+      nodeId: "account.ensure",
+      diagnostics: [{
+        code: "SPEND_APPROVAL_REQUIRED",
+        severity: "error",
+        node_id: "account.ensure",
+        message: `The app install may need up to $${expectedPrototypeSpendUsd.toFixed(2)} for tier readiness, above --max-spend-usd ${input.maxSpendUsd}.`,
+      }],
+      nextActions: [{
+        type: "approve_spend",
+        code: "SPEND_APPROVAL_REQUIRED",
+        node_id: "account.ensure",
+        message: "Raise --max-spend-usd or preconfigure an active tier, then retry with approval.",
+        spend: {
+          amount_usd_micros: 100_000,
+          currency: "USD",
+          description: "prototype tier readiness",
+        },
+      }],
+    };
+  }
+  if (run.approval !== "yes") {
+    return {
+      nodeId: "account.ensure",
+      diagnostics: [{
+        code: "SPEND_APPROVAL_REQUIRED",
+        severity: "error",
+        node_id: "account.ensure",
+        message: "App-aware up needs explicit approval before it can perform spend-impacting readiness steps.",
+      }],
+      nextActions: [{
+        type: "approve_spend",
+        code: "SPEND_APPROVAL_REQUIRED",
+        node_id: "account.ensure",
+        message: "Retry with --yes and an appropriate --max-spend-usd cap, or run --dry-run to inspect the plan.",
+        argv: ["run402", "up", "--yes", "--max-spend-usd", String(expectedPrototypeSpendUsd)],
+        spend: {
+          amount_usd_micros: 100_000,
+          currency: "USD",
+          description: "prototype tier readiness",
+        },
+      }],
+    };
+  }
+  return null;
+}
+
+function missingRequiredName(
+  input: Run402UpActionInput,
+  manifest: DiscoveredManifest,
+): { nodeId: string; diagnostics: Run402AppUpDiagnostic[]; nextActions: Run402AppUpNextAction[] } | null {
+  const spec = manifest.appSpec;
+  if (!spec || input.name || input.projectId || spec.project.id) return null;
+  const needsName = spec.project.name?.includes("${input.name}") === true ||
+    spec.project.origin?.subdomain?.includes("${input.name}") === true;
+  if (!needsName) return null;
+  return {
+    nodeId: "project.ensure",
+    diagnostics: [{
+      code: "PROJECT_REQUIRED",
+      severity: "error",
+      node_id: "project.ensure",
+      field_path: "project.name",
+      message: "This app needs an instance name so Run402 can create the project, public subdomain, and project-scoped mail host.",
+      details: {
+        manifest_path: manifest.manifestPath,
+        template: "${input.name}",
+      },
+    }],
+    nextActions: [{
+      type: "set_project_name",
+      code: "PROJECT_REQUIRED",
+      node_id: "project.ensure",
+      field_path: "project.name",
+      message: "Retry with --name, for example: run402 up --name kysigned3 --yes.",
+      command: "run402 up --name kysigned3 --yes",
+      argv: ["run402", "up", "--name", "kysigned3", "--yes"],
+    }],
+  };
+}
+
+function missingRequiredSecrets(spec: Run402AppSpec | undefined): Array<{ name: string; sourceEnv: string; description?: string }> {
+  const missing: Array<{ name: string; sourceEnv: string; description?: string }> = [];
+  for (const [name, secret] of Object.entries(spec?.secrets ?? {})) {
+    if (secret.required !== true) continue;
+    const sourceEnv = secret.source_env ?? name;
+    if (process.env[sourceEnv]) continue;
+    missing.push({
+      name,
+      sourceEnv,
+      ...(secret.description ? { description: secret.description } : {}),
+    });
+  }
+  return missing;
+}
+
+function appBuildBlock(
+  input: Run402UpActionInput,
+  manifest: DiscoveredManifest,
+): { nodeId: string; diagnostics: Run402AppUpDiagnostic[]; nextActions: Run402AppUpNextAction[] } | null {
+  const build = manifest.appSpec?.build;
+  if (!build) return null;
+  const mode = input.buildMode ?? build.mode ?? "local";
+  const nodeId = `build.${mode}`;
+  const shellCommand = build.commands?.find((command) => command.shell);
+  if (shellCommand && input.allowShellBuild !== true) {
+    return {
+      nodeId,
+      diagnostics: [{
+        code: "BUILD_APPROVAL_REQUIRED",
+        severity: "error",
+        node_id: nodeId,
+        field_path: `build.commands.${shellCommand.id}.shell`,
+        message: "Shell-string build commands require explicit shell build approval.",
+      }],
+      nextActions: [{
+        type: "approve_shell_build",
+        code: "BUILD_APPROVAL_REQUIRED",
+        node_id: nodeId,
+        field_path: `build.commands.${shellCommand.id}.shell`,
+        message: "Review the shell command, then retry with --allow-shell-build or convert it to argv.",
+      }],
+    };
+  }
+  if (mode === "remote" || mode === "sandbox") {
+    return {
+      nodeId,
+      diagnostics: [{
+        code: "REMOTE_BUILD_UNSUPPORTED",
+        severity: "error",
+        node_id: nodeId,
+        message: `${mode} build mode is planned but not available in this SDK build yet.`,
+      }],
+      nextActions: [{
+        type: "choose_build_mode",
+        code: "REMOTE_BUILD_UNSUPPORTED",
+        node_id: nodeId,
+        message: "Retry with --build-mode local after preparing the local toolchain, or wait for Run402 remote build support.",
+        argv: ["run402", "up", "--build-mode", "local", "--yes"],
+      }],
+    };
+  }
+  return null;
+}
+
 async function findManifest(workspaceDir: string): Promise<string | null> {
   for (const candidate of MANIFEST_CANDIDATES) {
     const path = join(workspaceDir, candidate);
@@ -976,6 +1439,32 @@ async function findExecutableManifest(workspaceDir: string): Promise<string | nu
     }
   }
   return null;
+}
+
+async function loadRun402AppManifest(path: string): Promise<Run402AppSpec> {
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf-8");
+  } catch (err) {
+    throw new LocalError(
+      `Failed to read Run402 app manifest '${path}': ${(err as Error).message}`,
+      "loading Run402 app manifest",
+      err,
+    );
+  }
+
+  try {
+    return JSON.parse(raw) as Run402AppSpec;
+  } catch (err) {
+    throw new LocalError(
+      `Run402 app manifest is not valid JSON: ${(err as Error).message}`,
+      "parsing Run402 app manifest",
+      {
+        code: "APP_SPEC_INVALID",
+        details: { path },
+      },
+    );
+  }
 }
 
 function reviewedPlanRequirement(

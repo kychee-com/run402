@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://run402.com/schemas/run402-app.v1.schema.json",
+  "title": "Run402AppSpec",
+  "description": "Canonical run402.json app installation manifest consumed by run402 up.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "spec_version", "app", "project", "release"],
+  "properties": {
+    "$schema": {
+      "const": "https://run402.com/schemas/run402-app.v1.schema.json"
+    },
+    "spec_version": {
+      "const": 1
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "subdomain": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mailboxes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/mailbox"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/logicalName"
+          }
+        },
+        "webhooks": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/webhook"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/logicalName"
+          }
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/userSecret"
+      },
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^(?!RUN402_)[A-Z_][A-Z0-9_]{0,127}$"
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": ["local", "remote", "sandbox"]
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/buildCommand"
+          }
+        }
+      }
+    },
+    "release": {
+      "description": "Release node content. Project selection, build, resources, secret source metadata, lifecycle, and verify stay in the app install graph.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": true,
+        "database": true,
+        "secrets": true,
+        "functions": true,
+        "site": true,
+        "subdomains": true,
+        "routes": true,
+        "checks": true,
+        "assets": true,
+        "i18n": true
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["project"] },
+          { "required": ["idempotency_key"] },
+          { "required": ["build"] },
+          { "required": ["resources"] },
+          { "required": ["lifecycle"] },
+          { "required": ["verify"] }
+        ]
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "enum": ["per_app", "shared"]
+        },
+        "prune": {
+          "enum": ["approval_required", "disabled"]
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "http": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/httpVerify"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "logicalName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "mailbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "enum": ["default_outbound", "auth_sender"]
+          },
+          "uniqueItems": true
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mailbox", "url", "events"],
+      "properties": {
+        "mailbox": {
+          "$ref": "#/$defs/logicalName"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "signing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "userSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "source_env": {
+          "type": "string",
+          "pattern": "^(?!RUN402_)[A-Z_][A-Z0-9_]{0,127}$"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "buildCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "shell": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        { "required": ["argv"] },
+        { "required": ["shell"] }
+      ]
+    },
+    "httpVerify": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "expect"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            }
+          }
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "oneOf": [
+        { "required": ["path"] },
+        { "required": ["url"] }
+      ]
+    }
+  }
+}

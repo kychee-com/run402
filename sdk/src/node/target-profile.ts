@@ -68,7 +68,7 @@ export function resolveRun402TargetProfile(
   const apiBase = getApiBase();
   const apiBaseSource = getApiBaseSource();
   const configuredKind = getApiTargetKind();
-  const targetKind = effectiveTargetKind(apiBase, configuredKind);
+  const targetKind = effectiveTargetKind(apiBase, configuredKind, apiBaseSource);
   const isCore = targetKind === "core";
 
   const projectFromEnv = firstEnv(env, aliases.projectId);
@@ -148,9 +148,23 @@ function mergeAliases(
   };
 }
 
-function effectiveTargetKind(apiBase: string, configuredKind: Run402TargetKind): Run402TargetKind {
+function effectiveTargetKind(
+  apiBase: string,
+  configuredKind: Run402TargetKind,
+  apiBaseSource: Run402TargetProfile["apiBaseSource"],
+): Run402TargetKind {
+  if (apiBaseSource === "env") return inferTargetKindFromApiBase(apiBase);
   if (configuredKind !== "unknown") return configuredKind;
-  return stripSlash(apiBase) === stripSlash(DEFAULT_API_BASE) ? "cloud" : "core";
+  return inferTargetKindFromApiBase(apiBase);
+}
+
+function inferTargetKindFromApiBase(apiBase: string): Run402TargetKind {
+  if (stripSlash(apiBase) === stripSlash(DEFAULT_API_BASE)) return "cloud";
+  try {
+    return new URL(apiBase).protocol === "http:" ? "core" : "cloud";
+  } catch {
+    return "unknown";
+  }
 }
 
 function stripSlash(value: string): string {

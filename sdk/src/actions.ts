@@ -1,4 +1,5 @@
 import type { DeployResult, PlanResponse, ReleaseSpec } from "./namespaces/deploy.types.js";
+import type { Run402AppInstallGraph, Run402AppUpResultEnvelope } from "./app-up.js";
 import type { ProvisionResult } from "./namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "./namespaces/tier.js";
 import type { Run402ExecutionMode } from "./config.js";
@@ -39,6 +40,8 @@ export interface Run402TierSetActionInput {
 
 export interface Run402UpActionInput {
   type: typeof Run402Action.Up;
+  /** Local app path or repository URL. Defaults to `dir` / cwd. */
+  source?: string;
   /** Workspace directory to inspect. Defaults to `process.cwd()` in the Node SDK. */
   dir?: string;
   /** Explicit deploy manifest path. Defaults to manifest discovery inside `dir`. */
@@ -56,6 +59,14 @@ export interface Run402UpActionInput {
   orgId?: string;
   /** Root idempotency key. Child mutation keys are derived from this value. */
   idempotencyKey?: string;
+  /** Approve destructive managed-resource prune/down operations for app-aware up. */
+  allowPrune?: boolean;
+  /** Maximum allowed spend in USD for app-aware up. Spend-impacting nodes block above this cap. */
+  maxSpendUsd?: number;
+  /** Override app build mode for app-aware up. */
+  buildMode?: "local" | "remote" | "sandbox";
+  /** Stronger approval for shell-string build commands in app-aware up. */
+  allowShellBuild?: boolean;
   /** Continue past deploy-plan warnings, forwarded to `apply()`. */
   allowWarnings?: boolean;
   /** Continue past selected deploy-plan warnings, forwarded to `apply()`. */
@@ -85,6 +96,8 @@ export type Run402ActionMutation =
   | "tier.set"
   | "projects.provision"
   | "workspace.link.write"
+  | "app.source.resolve"
+  | "app.install"
   | "deploy.apply";
 
 export interface Run402ActionRunOptions {
@@ -156,6 +169,8 @@ export interface Run402UpResult {
   project_id: string;
   manifest_path: string;
   workspace_link_path?: string;
+  app_graph?: Run402AppInstallGraph;
+  app_result?: Run402AppUpResultEnvelope;
   spec?: ReleaseSpec;
   plan?: PlanResponse;
   deploy?: DeployResult;

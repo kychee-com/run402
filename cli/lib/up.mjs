@@ -7,9 +7,11 @@ import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./ar
 const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
-  run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--quiet]
+  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--json|--json-stream] [--quiet]
 
 Options:
+  repo-or-path        Local app directory or public Git repository URL. Defaults
+                      to the current directory.
   --name <name>       Project display name when up needs to create a project.
                       Not a deploy manifest field and never renames a project.
   --project <id>      Explicit project id. Highest-priority project selector.
@@ -33,6 +35,12 @@ Options:
   --allow-warning <code>
                       Acknowledge a reviewed deploy warning code (repeatable).
   --allow-warnings    Acknowledge all reviewed deploy warnings.
+  --allow-prune       Approve destructive managed-resource prune steps for app manifests.
+  --max-spend-usd <n> Maximum spend up may approve for app readiness.
+  --build-mode <mode> Override app build mode: local, remote, or sandbox.
+  --allow-shell-build Approve shell-string build commands in run402.json.
+  --json              Emit one final JSON object on stdout.
+  --json-stream       Emit NDJSON progress events on stdout and a final result event.
   --quiet             Suppress action progress events on stderr.
 
 Project resolution:
@@ -40,6 +48,7 @@ Project resolution:
   project creation from --name > approved active-project fallback.
 
 Examples:
+  run402 up https://github.com/kychee-com/kysigned --name kysigned2 --yes --json
   run402 up --name my-app -y
   run402 up --manifest run402.deploy.ts --check
   run402 up --manifest run402.deploy.ts --plan
@@ -47,6 +56,7 @@ Examples:
 `;
 
 const TIERS = new Set(["prototype", "hobby", "team"]);
+const BUILD_MODES = new Set(["local", "remote", "sandbox"]);
 
 export async function run(args = []) {
   const parsed = normalizeArgv(args);
@@ -56,8 +66,36 @@ export async function run(args = []) {
   }
   assertKnownFlags(
     parsed,
-    ["--help", "-h", "-y", "--yes", "--dry-run", "--check", "--print-spec", "--plan", "--quiet", "--final-only", "--allow-warnings"],
-    ["--name", "--project", "--manifest", "--dir", "--tier", "--idempotency-key", "--allow-warning", "--require-plan", "--plan-fingerprint"],
+    [
+      "--help",
+      "-h",
+      "-y",
+      "--yes",
+      "--dry-run",
+      "--check",
+      "--print-spec",
+      "--plan",
+      "--quiet",
+      "--final-only",
+      "--allow-warnings",
+      "--allow-prune",
+      "--allow-shell-build",
+      "--json",
+      "--json-stream",
+    ],
+    [
+      "--name",
+      "--project",
+      "--manifest",
+      "--dir",
+      "--tier",
+      "--idempotency-key",
+      "--allow-warning",
+      "--require-plan",
+      "--plan-fingerprint",
+      "--max-spend-usd",
+      "--build-mode",
+    ],
   );
   const extras = positionalArgs(parsed, [
     "--name",
@@ -69,12 +107,22 @@ export async function run(args = []) {
     "--allow-warning",
     "--require-plan",
     "--plan-fingerprint",
+    "--max-spend-usd",
+    "--build-mode",
   ]);
-  if (extras.length > 0) {
+  if (extras.length > 1) {
     fail({
       code: "BAD_USAGE",
-      message: `Unexpected argument for up: ${extras[0]}`,
+      message: `Unexpected argument for up: ${extras[1]}`,
       hint: "Use `run402 up --help`.",
+    });
+  }
+  const source = extras[0] ?? undefined;
+  if (source && flagValue(parsed, "--dir")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Pass either a positional repo/path source or --dir, not both.",
+      details: { source, dir: flagValue(parsed, "--dir") },
     });
   }
 
@@ -87,8 +135,28 @@ export async function run(args = []) {
     });
   }
 
+  const buildMode = flagValue(parsed, "--build-mode") ?? undefined;
+  if (buildMode && !BUILD_MODES.has(buildMode)) {
+    fail({
+      code: "BAD_FLAG",
+      message: "--build-mode must be one of: local, remote, sandbox",
+      details: { flag: "--build-mode", value: buildMode, allowed: [...BUILD_MODES] },
+    });
+  }
+
+  const maxSpendRaw = flagValue(parsed, "--max-spend-usd");
+  const maxSpendUsd = maxSpendRaw === null ? undefined : Number(maxSpendRaw);
+  if (maxSpendRaw !== null && (!Number.isFinite(maxSpendUsd) || maxSpendUsd < 0)) {
+    fail({
+      code: "BAD_FLAG",
+      message: "--max-spend-usd must be a non-negative number",
+      details: { flag: "--max-spend-usd", value: maxSpendRaw },
+    });
+  }
+
   const yes = parsed.includes("-y") || parsed.includes("--yes");
-  const quiet = parsed.includes("--quiet") || parsed.includes("--final-only");
+  const jsonStream = parsed.includes("--json-stream");
+  const quiet = parsed.includes("--quiet") || parsed.includes("--final-only") || jsonStream;
   const mode = parseExecutionMode(parsed);
   const dryRun = parsed.includes("--dry-run");
   if (dryRun && mode !== undefined) {
@@ -110,24 +178,39 @@ export async function run(args = []) {
   try {
     const sdk = getSdk();
     const result = await sdk.up({
+      source,
       name: flagValue(parsed, "--name") ?? undefined,
       projectId: flagValue(parsed, "--project") ?? undefined,
       manifest: flagValue(parsed, "--manifest") ?? undefined,
       dir: flagValue(parsed, "--dir") ?? undefined,
       tier,
       idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined,
+      allowPrune: parsed.includes("--allow-prune") ? true : undefined,
+      maxSpendUsd,
+      buildMode,
+      allowShellBuild: parsed.includes("--allow-shell-build") ? true : undefined,
       allowWarnings: parsed.includes("--allow-warnings") ? true : undefined,
       allowWarningCodes,
     }, {
       ...(mode !== undefined ? { mode } : {}),
       dryRun,
       approval: makeApproval(yes),
-      onEvent: quiet ? undefined : (event) => {
-        console.error(JSON.stringify(event));
-      },
+      onEvent: jsonStream
+        ? (event) => console.log(JSON.stringify({ type: "action.event", event }))
+        : quiet
+          ? undefined
+          : (event) => {
+              console.error(JSON.stringify(event));
+            },
     });
-    if (mode === "printSpec") {
+    if (jsonStream) {
+      console.log(JSON.stringify({ type: "run402.up.result", result }));
+    } else if (mode === "printSpec") {
       console.log(JSON.stringify(result.result?.spec ?? null, null, 2));
+    } else if (result?.result?.app_result && !parsed.includes("--json")) {
+      console.log(formatAppUpHuman(result.result.app_result));
+    } else if (!parsed.includes("--json") && shouldRenderHumanSuccess(result)) {
+      console.log(formatLegacyUpSuccess(result));
     } else {
       console.log(JSON.stringify(result, null, 2));
     }
@@ -206,4 +289,57 @@ function makeApproval(yes) {
       }
     },
   };
+}
+
+function shouldRenderHumanSuccess(result) {
+  return result?.action === "up" &&
+    result?.dry_run === false &&
+    result?.mode === "apply" &&
+    result?.result?.deploy?.release_id;
+}
+
+function formatLegacyUpSuccess(result) {
+  const urls = result?.result?.deploy?.urls ?? {};
+  const origin = urls.site ?? urls.subdomain ?? urls.deployment;
+  const lines = [];
+  if (origin) lines.push(`Success! Project is up at: ${origin}`);
+  else lines.push("Success! Project is up.");
+  const releaseId = result?.result?.deploy?.release_id;
+  if (releaseId) lines.push(`Release: ${releaseId}`);
+  return lines.join("\n");
+}
+
+function formatAppUpHuman(appResult) {
+  const lines = [];
+  const status = appResult?.status ?? "unknown";
+  const origin = appResult?.project?.public_origin;
+
+  if (status === "succeeded" && origin) {
+    lines.push(`Success! Project is up at: ${origin}`);
+  } else if (status === "succeeded") {
+    lines.push("Success! Project is up.");
+  } else if (status === "planned") {
+    lines.push("Run402 up plan is ready.");
+    if (origin) lines.push(`Planned project URL: ${origin}`);
+  } else if (status === "blocked") {
+    lines.push("Run402 up is blocked.");
+  } else {
+    lines.push(`Run402 up status: ${status}`);
+  }
+
+  const diagnostics = Array.isArray(appResult?.diagnostics) ? appResult.diagnostics : [];
+  for (const diagnostic of diagnostics) {
+    if (diagnostic?.message) lines.push(`- ${diagnostic.message}`);
+  }
+
+  const nextActions = Array.isArray(appResult?.next_actions) ? appResult.next_actions : [];
+  if (nextActions.length > 0) {
+    lines.push("Next:");
+    for (const action of nextActions) {
+      if (action?.message) lines.push(`- ${action.message}`);
+      if (action?.command) lines.push(`  ${action.command}`);
+    }
+  }
+
+  return lines.join("\n");
 }

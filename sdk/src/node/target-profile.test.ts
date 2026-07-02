@@ -102,6 +102,18 @@ describe("resolveRun402TargetProfile", () => {
     assert.equal(target.sources.anonKey, "env:ANON_KEY");
   });
 
+  it("lets RUN402_API_BASE override a persisted Core target kind", () => {
+    configureApiBase("http://core.local:4020", { target_kind: "core" });
+    process.env.RUN402_API_BASE = "https://api.run402.com";
+
+    const target = resolveRun402TargetProfile({ requiredTarget: "cloud" });
+
+    assert.equal(target.apiBase, "https://api.run402.com");
+    assert.equal(target.apiBaseSource, "env");
+    assert.equal(target.targetKind, "cloud");
+    assert.equal(target.isCore, false);
+  });
+
   it("throws a structured local error when the target kind is wrong", () => {
     assert.throws(
       () => resolveRun402TargetProfile({ requiredTarget: "core" }),
