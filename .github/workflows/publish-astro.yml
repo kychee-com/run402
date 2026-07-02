@@ -194,40 +194,95 @@ jobs:
       - name: Publish to npm
         if: ${{ !inputs.dry_run }}
         run: |
-          cd astro
-          # --provenance is optional under OIDC (provenance is generated
-          # implicitly), but the flag makes the intent explicit and would
-          # cause the publish to fail loudly if OIDC isn't actually wired
-          # — which is exactly what we want during the first few CI runs.
-          # --access public is redundant (the package is already public from
-          # 0.1.0) but harmless and self-documenting.
-          npm publish --access public --provenance
+          publish_idempotent() {
+            local label="$1"; local attempt=0 out
+            while [ "$attempt" -lt 3 ]; do
+              attempt=$((attempt + 1))
+              # --provenance is optional under OIDC (provenance is generated
+              # implicitly), but the flag makes the intent explicit and fails
+              # loudly if OIDC is not wired. --access public is redundant for
+              # an existing public package, but harmless and self-documenting.
+              if out=$( (cd astro && npm publish --access public --provenance) 2>&1); then
+                echo "$out"; echo "[$label] published (attempt $attempt)"; return 0
+              fi
+              echo "$out"
+              if echo "$out" | grep -qiE "cannot publish over|previously published|EPUBLISHCONFLICT"; then
+                echo "[$label] already published at this version — idempotent skip."; return 0
+              fi
+              if echo "$out" | grep -qiE "TLOG_CREATE_ENTRY_ERROR|rekor\.sigstore\.dev|tlog entry|ETIMEDOUT|ECONNRESET|socket hang up|aborted"; then
+                echo "[$label] transient provenance/network error — retry $attempt/3"; sleep 10; continue
+              fi
+              echo "[$label] non-retryable publish error."; return 1
+            done
+            echo "[$label] exhausted retries."; return 1
+          }
+          publish_idempotent "@run402/astro"
 
-      - name: Commit version bump
+      - name: Commit version bump (rebase-safe — retries against a moving main)
         if: ${{ !inputs.dry_run }}
         run: |
           set -euo pipefail
-          git add astro/package.json package-lock.json
-          git commit -m "chore(astro): bump @run402/astro to v${{ steps.bump.outputs.new }}"
-          git push origin main
+          NEW="${{ steps.bump.outputs.new }}"
+          # @run402/astro is already published at v$NEW (irreversible). This
+          # step records the bump on the latest main. Rebuild the same bump on
+          # top of fresh origin/main each attempt so a concurrent merge cannot
+          # strand npm ahead of the repo.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            node -e "
+              const fs = require('fs');
+              const path = 'astro/package.json';
+              const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+              pkg.version = '$NEW';
+              fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+            "
+            npm install --package-lock-only >/dev/null
+            git add astro/package.json package-lock.json
+            if git diff --cached --quiet; then
+              echo "main is already at @run402/astro v$NEW — nothing to commit."
+              break
+            fi
+            git commit -m "chore(astro): bump @run402/astro to v$NEW"
+            if git push origin HEAD:main; then
+              echo "Pushed @run402/astro v$NEW bump on attempt $attempt."
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::Could not push the @run402/astro v$NEW bump to main after 5 attempts. @run402/astro IS published; main needs a manual commit-back (set astro/package.json to $NEW + npm install --package-lock-only)."
+              exit 1
+            fi
+            echo "Push rejected (main advanced); rebuilding on fresh main and retrying ($attempt/5)…"
+            sleep "$((attempt * 2))"
+          done
 
       - name: Tag and push
         if: ${{ !inputs.dry_run }}
         run: |
           set -euo pipefail
-          git tag "v${{ steps.bump.outputs.new }}-astro"
-          git push origin "v${{ steps.bump.outputs.new }}-astro"
+          TAG="v${{ steps.bump.outputs.new }}-astro"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists on origin — idempotent skip."
+            exit 0
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
 
       - name: Create GitHub release
         if: ${{ !inputs.dry_run }}
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: v${{ steps.bump.outputs.new }}-astro
-          name: '@run402/astro v${{ steps.bump.outputs.new }}'
-          generate_release_notes: true
-          # Compare from the previous astro tag to scope release notes to
-          # this package's commits, not the whole repo's.
-          target_commitish: main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.bump.outputs.new }}-astro"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release $TAG already exists — idempotent skip."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "@run402/astro v${{ steps.bump.outputs.new }}" \
+            --generate-notes \
+            --target main
 
       - name: Summary
         run: |

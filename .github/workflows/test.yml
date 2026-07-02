@@ -58,3 +58,28 @@ jobs:
         run: node scripts/build-docs-deploy-manifest.mjs
       - name: Agent flat docs are regenerated from portal content (single source)
         run: node scripts/build-agent-flat-docs.mjs --check
+
+  # @run402/astro has an independent release cadence, but it still lives in
+  # this monorepo and imports workspace SDK types. Keep its publish-time gates
+  # on ordinary PRs too so Astro regressions are caught before release day.
+  astro:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - name: Build @run402/sdk + core
+        run: |
+          npm run build:core
+          npm run build:sdk
+      - name: Type-check @run402/astro
+        run: npx tsc --noEmit -p astro
+      - name: Test @run402/astro
+        run: npm test --workspace=astro
+      - name: Build @run402/astro
+        run: npm run build --workspace=astro
