@@ -13,7 +13,7 @@ export async function handleSenderDomainStatus(args: {
     const body = await getSdk().senderDomain.status(args.project_id);
 
     if (!body.domain) {
-      return { content: [{ type: "text", text: "## No Sender Domain\n\nNo custom sender domain registered. Email sends from `@mail.run402.com`. Use `register_sender_domain` to set up a custom domain." }] };
+      return { content: [{ type: "text", text: "## No Sender Domain\n\nNo custom sender domain registered. Email sends from each mailbox `managed_address`. Use `register_sender_domain` to set up a custom domain." }] };
     }
 
     return {

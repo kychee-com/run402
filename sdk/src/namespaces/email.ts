@@ -28,7 +28,10 @@ export type MailboxFooterPolicy = (typeof MAILBOX_FOOTER_POLICIES)[number];
 
 export interface MailboxRecord {
   mailbox_id: string;
+  /** Primary address for sends. This is custom-domain address only after DKIM is verified and inbound is enabled. */
   address: string;
+  /** Immutable Run402-managed address, usually `<slug>@<project-mail-host>.mail.run402.com`. */
+  managed_address?: string;
   slug: string;
   project_id: string;
   status: "active" | "suspended" | "deleted";
@@ -44,8 +47,16 @@ export interface MailboxRecord {
   can_send?: boolean;
   /** Present when `can_send` is false, e.g. domain verification or suspension. */
   send_blocked_reason?: string | null;
-  /** Shared run402 domain vs a project-owned sender domain. Future strings are valid. */
+  /** Run402-managed project mail host vs a project-owned sender domain. Future strings are valid. */
   domain_kind?: string;
+  /** Domain portion of `address`. */
+  address_domain?: string;
+  /** Domain portion of `managed_address`. */
+  managed_domain?: string;
+  /** True when a custom sender domain is verified and inbound-enabled, so it can be primary. */
+  custom_domain_ready?: boolean;
+  /** Whether inbound mail can be received at `address`. */
+  can_receive?: boolean;
   /** Configured outbound footer policy for this mailbox. */
   footer_policy?: MailboxFooterPolicy;
   /** Effective policy after tier locks/defaults are applied. */
@@ -112,11 +123,12 @@ export type UpdateMailboxResult = MailboxInfo;
 export interface DeleteMailboxResult {
   mailbox_id: string;
   address: string;
+  managed_address?: string;
 }
 
 export type EmailTemplate = "project_invite" | "magic_link" | "notification";
 
-/** Selects a target mailbox on a multi-mailbox project: a mailbox id (`mbx_…`) or a slug. */
+/** Selects a target mailbox on a project: a mailbox id (`mbx_…`) or a project-scoped local-part slug. */
 export type MailboxSelector = string;
 
 /** A single binary attachment (raw mode only). `content_base64` is the file's bytes, base64-encoded. */
@@ -1042,6 +1054,10 @@ function summarizeMailboxCandidates(mailboxes: MailboxRecord[]): Array<Record<st
     can_send: m.can_send,
     send_blocked_reason: m.send_blocked_reason ?? null,
     domain_kind: m.domain_kind,
+    managed_address: m.managed_address,
+    address_domain: m.address_domain,
+    custom_domain_ready: m.custom_domain_ready,
+    can_receive: m.can_receive,
   }));
 }
 

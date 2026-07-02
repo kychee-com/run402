@@ -14,7 +14,8 @@ function mailboxListResponse(): Response {
     JSON.stringify({
       mailboxes: [{
         mailbox_id: "mbx-001",
-        address: "my-app@mail.run402.com",
+        address: "my-app@proj-001.mail.run402.com",
+        managed_address: "my-app@proj-001.mail.run402.com",
         slug: "my-app",
         project_id: "proj-001",
         status: "active",
@@ -43,7 +44,7 @@ beforeEach(() => {
         anon_key: "ak-123",
         service_key: "sk-456",
         mailbox_id: "mbx-001",
-        mailbox_address: "my-app@mail.run402.com",
+        mailbox_address: "my-app@proj-001.mail.run402.com",
       },
     },
   };

@@ -41,7 +41,8 @@ describe("mailbox defaults MCP tools", () => {
       new Response(JSON.stringify({
         mailboxes: [{
           mailbox_id: "mbx_support",
-          address: "support@mail.run402.com",
+          address: "support@proj-001.mail.run402.com",
+          managed_address: "support@proj-001.mail.run402.com",
           slug: "support",
           project_id: "proj-001",
           status: "active",
@@ -53,7 +54,9 @@ describe("mailbox defaults MCP tools", () => {
           is_auth_sender: false,
           can_send: true,
           send_blocked_reason: null,
-          domain_kind: "shared",
+          domain_kind: "managed",
+          custom_domain_ready: false,
+          can_receive: true,
           footer_policy: "none",
           effective_footer_policy: "none",
           footer_policy_locked_reason: null,
@@ -70,6 +73,8 @@ describe("mailbox defaults MCP tools", () => {
     assert.equal(result.isError, undefined);
     assert.match(result.content[0]!.text, /Default outbound:\*\* mbx_support/);
     assert.match(result.content[0]!.text, /Can send: true/);
+    assert.match(result.content[0]!.text, /Domain kind: managed/);
+    assert.match(result.content[0]!.text, /Can receive: true/);
     assert.match(result.content[0]!.text, /Footer policy: none/);
     assert.match(result.content[0]!.text, /set_mailbox_defaults/);
   });
@@ -118,7 +123,8 @@ describe("mailbox defaults MCP tools", () => {
       });
       return new Response(JSON.stringify({
         mailbox_id: "mbx_support",
-        address: "support@mail.run402.com",
+        address: "support@proj-001.mail.run402.com",
+        managed_address: "support@proj-001.mail.run402.com",
         slug: "support",
         project_id: "proj-001",
         status: "active",

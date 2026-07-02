@@ -35,7 +35,17 @@ describe("get_mailbox tool", () => {
   it("returns mailbox info on success", async () => {
     globalThis.fetch = (async () =>
       new Response(
-        JSON.stringify({ mailboxes: [{ mailbox_id: "mbx-001", address: "my-app@mail.run402.com", slug: "my-app" }] }),
+        JSON.stringify({
+          mailboxes: [{
+            mailbox_id: "mbx-001",
+            address: "my-app@example.com",
+            managed_address: "my-app@proj-001.mail.run402.com",
+            slug: "my-app",
+            domain_kind: "custom",
+            custom_domain_ready: true,
+            can_receive: true,
+          }],
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
@@ -43,7 +53,8 @@ describe("get_mailbox tool", () => {
 
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0]!.text.includes("mbx-001"));
-    assert.ok(result.content[0]!.text.includes("my-app@mail.run402.com"));
+    assert.ok(result.content[0]!.text.includes("my-app@example.com"));
+    assert.ok(result.content[0]!.text.includes("my-app@proj-001.mail.run402.com"));
     assert.ok(result.content[0]!.text.includes("my-app"));
   });
 

@@ -763,7 +763,7 @@ When a job completes, `jobs get` returns an `artifacts` map keyed by filename, e
 
 ## Email
 
-Up to 5 mailboxes per project at `<slug>@mail.run402.com`. Optionally bring your own domain. Configure explicit defaults before relying on omitted `--mailbox` sends.
+Up to 5 mailbox local parts per project. The gateway returns `managed_address` as `<slug>@<project-mail-host>.mail.run402.com`; another project may use the same slug safely. Optionally bring your own domain. Configure explicit defaults before relying on omitted `--mailbox` sends.
 
 ```bash
 run402 email create my-app                          # not idempotent

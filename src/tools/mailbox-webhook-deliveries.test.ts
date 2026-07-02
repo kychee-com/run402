@@ -14,7 +14,8 @@ function mailboxListResponse(): Response {
     JSON.stringify({
       mailboxes: [{
         mailbox_id: "mbx-001",
-        address: "my-app@mail.run402.com",
+        address: "my-app@proj-001.mail.run402.com",
+        managed_address: "my-app@proj-001.mail.run402.com",
         slug: "my-app",
         project_id: "proj-001",
         status: "active",
@@ -38,7 +39,7 @@ beforeEach(() => {
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
   writeFileSync(
     join(tempDir, "projects.json"),
-    JSON.stringify({ projects: { "proj-001": { anon_key: "ak", service_key: "sk", mailbox_id: "mbx-001", mailbox_address: "my-app@mail.run402.com" } } }),
+    JSON.stringify({ projects: { "proj-001": { anon_key: "ak", service_key: "sk", mailbox_id: "mbx-001", mailbox_address: "my-app@proj-001.mail.run402.com" } } }),
   );
 });
 

@@ -7,7 +7,7 @@ export const createMailboxSchema = {
   slug: z
     .string()
     .describe(
-      "Mailbox slug (3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens). Creates <slug>@mail.run402.com",
+      "Project-scoped mailbox local part (3-63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens). Creates <slug>@<project-mail-host>.mail.run402.com",
     ),
 };
 
@@ -21,6 +21,9 @@ export async function handleCreateMailbox(args: {
       "## Mailbox Created",
       "",
       `- **Address:** ${body.address}`,
+      ...(body.managed_address && body.managed_address !== body.address
+        ? [`- **Managed address:** ${body.managed_address}`]
+        : []),
       `- **Mailbox ID:** \`${body.mailbox_id}\``,
       `- **Status:** ${body.status}`,
     ];

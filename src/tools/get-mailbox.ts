@@ -24,6 +24,9 @@ export async function handleGetMailbox(args: {
       "## Mailbox Info",
       "",
       `- **Address:** ${mb.address}`,
+      ...(mb.managed_address && mb.managed_address !== mb.address
+        ? [`- **Managed address:** ${mb.managed_address}`]
+        : []),
       `- **Mailbox ID:** \`${mb.mailbox_id}\`${mb.slug ? `\n- **Slug:** ${mb.slug}` : ""}`,
       `- **Status:** ${mb.status}`,
     ];
@@ -32,6 +35,8 @@ export async function handleGetMailbox(args: {
       lines.push(`- **Can send:** ${mb.can_send}${mb.send_blocked_reason ? ` (${mb.send_blocked_reason})` : ""}`);
     }
     if (mb.domain_kind) lines.push(`- **Domain kind:** ${mb.domain_kind}`);
+    if (mb.can_receive !== undefined) lines.push(`- **Can receive:** ${mb.can_receive}`);
+    if (mb.custom_domain_ready !== undefined) lines.push(`- **Custom domain ready:** ${mb.custom_domain_ready}`);
     if (mb.footer_policy !== undefined) lines.push(`- **Footer policy:** ${mb.footer_policy}`);
     if (mb.effective_footer_policy !== undefined) {
       lines.push(`- **Effective footer policy:** ${mb.effective_footer_policy}`);

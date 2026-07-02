@@ -37,7 +37,14 @@ describe("create_mailbox tool", () => {
   it("returns success on 200 and stores mailbox_id", async () => {
     globalThis.fetch = (async () =>
       new Response(
-        JSON.stringify({ id: "mbx-001", address: "my-app@mail.run402.com", slug: "my-app", status: "active" }),
+        JSON.stringify({
+          id: "mbx-001",
+          address: "my-app@proj-001.mail.run402.com",
+          managed_address: "my-app@proj-001.mail.run402.com",
+          slug: "my-app",
+          status: "active",
+          domain_kind: "managed",
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
@@ -48,7 +55,7 @@ describe("create_mailbox tool", () => {
 
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0]!.text.includes("Mailbox Created"));
-    assert.ok(result.content[0]!.text.includes("my-app@mail.run402.com"));
+    assert.ok(result.content[0]!.text.includes("my-app@proj-001.mail.run402.com"));
   });
 
   it("rejects slug shorter than 3 chars", async () => {
@@ -107,10 +114,10 @@ describe("create_mailbox tool", () => {
     assert.ok(result.content[0]!.text.includes("500"));
   });
 
-  it("surfaces a 409 (slug already in use) as an error without attempting recovery", async () => {
-    // Post multi-mailbox: a 409 means slug-in-use / cooldown / limit-reached —
-    // NOT "you already have this mailbox" — so the SDK must NOT recover by
-    // returning some other existing mailbox. Exactly one call (the POST).
+  it("surfaces a same-project 409 as an error without attempting recovery", async () => {
+    // Mailbox local parts are project-scoped. A 409 means same-project
+    // slug-in-use / cooldown / limit-reached; another project's matching
+    // local part is not a conflict. The SDK must not recover by listing.
     let callCount = 0;
     globalThis.fetch = (async (_url: string, opts?: RequestInit) => {
       callCount++;

@@ -52,7 +52,13 @@ function mockFetchSequence(responses: Array<{ status: number; body: unknown; con
 }
 
 // Standard mailbox list response for resolveMailboxId
-const MAILBOX_LIST = { mailboxes: [{ mailbox_id: "mbx_1", address: "test@mail.run402.com" }] };
+const MAILBOX_LIST = {
+  mailboxes: [{
+    mailbox_id: "mbx_1",
+    address: "test@proj-001.mail.run402.com",
+    managed_address: "test@proj-001.mail.run402.com",
+  }],
+};
 
 describe("get_email_raw tool", () => {
   it("returns base64-encoded raw MIME bytes on success", async () => {

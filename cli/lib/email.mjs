@@ -73,7 +73,7 @@ Usage:
   run402 email <subcommand> [args...]
 
 Subcommands:
-  create <slug> [--project <id>]     Create a mailbox (<slug>@mail.run402.com)
+  create <slug> [--project <id>]     Create a project-scoped mailbox local part
   mailboxes [--project <id>]         List mailboxes with default-role metadata
                                       and gateway next_actions
   defaults [--outbound <slug|id>] [--auth-sender <slug|id>] [--project <id>]
@@ -238,14 +238,15 @@ Usage:
 
 Arguments:
   <slug>              Mailbox slug (3-63 chars, lowercase alphanumeric +
-                      hyphens, no consecutive hyphens). Becomes
-                      <slug>@mail.run402.com.
+                      hyphens, no consecutive hyphens). The response's
+                      managed_address is
+                      <slug>@<project-mail-host>.mail.run402.com.
 
 Options:
   --project <id>      Project ID (defaults to the active project)
 
 Notes:
-  - Up to 5 mailboxes per project (create distinct slugs, e.g. sign, support)
+  - Up to 5 mailboxes per project; the same slug may be used by another project
 
 Examples:
   run402 email create my-app
@@ -320,12 +321,17 @@ function summarizeMailboxForDefaults(m) {
     mailbox_id: m.mailbox_id,
     slug: m.slug,
     address: m.address,
+    managed_address: m.managed_address,
     status: m.status,
     is_default_outbound: m.is_default_outbound ?? false,
     is_auth_sender: m.is_auth_sender ?? false,
     can_send: m.can_send,
+    can_receive: m.can_receive,
     send_blocked_reason: m.send_blocked_reason ?? null,
     domain_kind: m.domain_kind,
+    address_domain: m.address_domain,
+    managed_domain: m.managed_domain,
+    custom_domain_ready: m.custom_domain_ready,
     footer_policy: m.footer_policy,
     effective_footer_policy: m.effective_footer_policy,
     footer_policy_locked_reason: m.footer_policy_locked_reason ?? null,
@@ -336,13 +342,18 @@ function mailboxInfoPayload(m) {
   return {
     mailbox_id: m.mailbox_id,
     address: m.address,
+    managed_address: m.managed_address,
     slug: m.slug,
     status: m.status,
     is_default_outbound: m.is_default_outbound,
     is_auth_sender: m.is_auth_sender,
     can_send: m.can_send,
+    can_receive: m.can_receive,
     send_blocked_reason: m.send_blocked_reason,
     domain_kind: m.domain_kind,
+    address_domain: m.address_domain,
+    managed_domain: m.managed_domain,
+    custom_domain_ready: m.custom_domain_ready,
     footer_policy: m.footer_policy,
     effective_footer_policy: m.effective_footer_policy,
     footer_policy_locked_reason: m.footer_policy_locked_reason,
@@ -428,8 +439,14 @@ async function create(args) {
     console.log(JSON.stringify({
       mailbox_id: data.mailbox_id,
       address: data.address,
+      managed_address: data.managed_address,
       slug: data.slug,
       status: data.status,
+      domain_kind: data.domain_kind,
+      address_domain: data.address_domain,
+      managed_domain: data.managed_domain,
+      custom_domain_ready: data.custom_domain_ready,
+      can_receive: data.can_receive,
       footer_policy: data.footer_policy,
       effective_footer_policy: data.effective_footer_policy,
       footer_policy_locked_reason: data.footer_policy_locked_reason,

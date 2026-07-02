@@ -14,7 +14,7 @@ export async function handleRemoveSenderDomain(args: {
     return {
       content: [{
         type: "text",
-        text: `## Sender Domain Removed\n\nCustom sender domain has been removed. Email will now send from \`@mail.run402.com\`.`,
+        text: "## Sender Domain Removed\n\nCustom sender domain has been removed. Email will now send from each mailbox `managed_address`.",
       }],
     };
   } catch (err) {

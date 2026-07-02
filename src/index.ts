@@ -971,14 +971,14 @@ server.tool(
 
 server.tool(
   "create_mailbox",
-  "Create a project-scoped email mailbox at <slug>@mail.run402.com. Returns mailbox_settings and next_actions when the gateway provides default-role repair guidance. Not idempotent: slug conflicts/cooldowns/limit errors are surfaced.",
+  "Create a project-scoped mailbox local part. The managed address is <slug>@<project-mail-host>.mail.run402.com; matching slugs in other projects are allowed. Returns mailbox_settings and next_actions when the gateway provides default-role repair guidance. Not idempotent: same-project slug conflicts/cooldowns/limit errors are surfaced.",
   createMailboxSchema,
   async (args) => handleCreateMailbox(args),
 );
 
 server.tool(
   "list_mailboxes",
-  "List a project's mailboxes, including default-role metadata (`is_default_outbound`, `is_auth_sender`), readiness (`can_send`, `send_blocked_reason`, `domain_kind`), footer-policy fields, mailbox_settings, and next_actions. Use before choosing or repairing email defaults.",
+  "List a project's mailboxes, including address/managed_address, default-role metadata (`is_default_outbound`, `is_auth_sender`), readiness (`can_send`, `can_receive`, `send_blocked_reason`, `domain_kind`), footer-policy fields, mailbox_settings, and next_actions. Use before choosing or repairing email defaults.",
   listMailboxesSchema,
   async (args) => handleListMailboxes(args),
 );
@@ -1376,7 +1376,7 @@ server.tool(
 
 server.tool(
   "register_sender_domain",
-  "Register a custom email sending domain for a project. Returns DNS records (DKIM CNAMEs + SPF/DMARC) to add. Once verified, email sends from your domain instead of mail.run402.com.",
+  "Register a custom email sending domain for a project. Returns DNS records (DKIM CNAMEs + SPF/DMARC) to add. The mailbox primary address switches to your domain only after the domain is verified and inbound-enabled; managed_address stays stable.",
   registerSenderDomainSchema,
   async (args) => handleRegisterSenderDomain(args),
 );
@@ -1390,7 +1390,7 @@ server.tool(
 
 server.tool(
   "remove_sender_domain",
-  "Remove a project's custom sender domain. Email reverts to sending from mail.run402.com.",
+  "Remove a project's custom sender domain. Email reverts to the mailbox managed_address.",
   removeSenderDomainSchema,
   async (args) => handleRemoveSenderDomain(args),
 );

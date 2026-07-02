@@ -13,7 +13,8 @@ import type { CredentialsProvider } from "../credentials.js";
 function mailboxRecord(slug: string, id = `mbx_${slug}`) {
   return {
     mailbox_id: id,
-    address: `${slug}@mail.run402.com`,
+    address: `${slug}@prj-known.mail.run402.com`,
+    managed_address: `${slug}@prj-known.mail.run402.com`,
     slug,
     project_id: "prj_known",
     status: "active" as const,
@@ -21,6 +22,11 @@ function mailboxRecord(slug: string, id = `mbx_${slug}`) {
     unique_recipients: 0,
     created_at: "2026-05-01T00:00:00.000Z",
     updated_at: "2026-05-01T00:00:00.000Z",
+    domain_kind: "managed",
+    address_domain: "prj-known.mail.run402.com",
+    managed_domain: "prj-known.mail.run402.com",
+    custom_domain_ready: false,
+    can_receive: true,
   };
 }
 
@@ -92,7 +98,8 @@ describe("email.createMailbox", () => {
     const { fetch, calls } = mockFetch(() =>
       jsonResponse({
         mailbox_id: "mbx_abc",
-        address: "qatest456@mail.run402.com",
+        address: "qatest456@prj-known.mail.run402.com",
+        managed_address: "qatest456@prj-known.mail.run402.com",
         slug: "qatest456",
         project_id: "prj_known",
         status: "active",
@@ -100,6 +107,11 @@ describe("email.createMailbox", () => {
         unique_recipients: 0,
         created_at: "2026-05-01T16:51:56.760Z",
         updated_at: "2026-05-01T16:51:56.760Z",
+        domain_kind: "managed",
+        address_domain: "prj-known.mail.run402.com",
+        managed_domain: "prj-known.mail.run402.com",
+        custom_domain_ready: false,
+        can_receive: true,
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
@@ -108,7 +120,8 @@ describe("email.createMailbox", () => {
     assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(result.mailbox_id, "mbx_abc");
-    assert.equal(result.address, "qatest456@mail.run402.com");
+    assert.equal(result.address, "qatest456@prj-known.mail.run402.com");
+    assert.equal(result.managed_address, "qatest456@prj-known.mail.run402.com");
     assert.equal(result.slug, "qatest456");
     assert.equal(result.project_id, "prj_known");
     assert.equal(result.status, "active");
@@ -116,6 +129,9 @@ describe("email.createMailbox", () => {
     assert.equal(result.unique_recipients, 0);
     assert.equal(result.created_at, "2026-05-01T16:51:56.760Z");
     assert.equal(result.updated_at, "2026-05-01T16:51:56.760Z");
+    assert.equal(result.domain_kind, "managed");
+    assert.equal(result.custom_domain_ready, false);
+    assert.equal(result.can_receive, true);
   });
 
   it("normalizes the new create envelope with mailbox_settings and next_actions", async () => {
@@ -123,7 +139,8 @@ describe("email.createMailbox", () => {
       jsonResponse({
         mailbox: {
           mailbox_id: "mbx_new",
-          address: "new@mail.run402.com",
+          address: "new@prj-known.mail.run402.com",
+          managed_address: "new@prj-known.mail.run402.com",
           slug: "new",
           project_id: "prj_known",
           status: "active",
@@ -135,7 +152,11 @@ describe("email.createMailbox", () => {
           is_auth_sender: false,
           can_send: true,
           send_blocked_reason: null,
-          domain_kind: "shared",
+          domain_kind: "managed",
+          address_domain: "prj-known.mail.run402.com",
+          managed_domain: "prj-known.mail.run402.com",
+          custom_domain_ready: false,
+          can_receive: true,
         },
         mailbox_settings: {
           default_outbound_mailbox_id: null,
@@ -160,7 +181,8 @@ describe("email.getMailbox + listMailboxes wire shape", () => {
         mailboxes: [
           {
             mailbox_id: "mbx_envelope",
-            address: "envelope@mail.run402.com",
+            address: "envelope@prj-known.mail.run402.com",
+            managed_address: "envelope@prj-known.mail.run402.com",
             slug: "envelope",
             project_id: "prj_known",
             status: "active",
@@ -182,7 +204,8 @@ describe("email.getMailbox + listMailboxes wire shape", () => {
 
     assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1");
     assert.equal(mb.mailbox_id, "mbx_envelope");
-    assert.equal(mb.address, "envelope@mail.run402.com");
+    assert.equal(mb.address, "envelope@prj-known.mail.run402.com");
+    assert.equal(mb.managed_address, "envelope@prj-known.mail.run402.com");
   });
 
   it("listMailboxes exposes settings and next_actions", async () => {
@@ -194,7 +217,7 @@ describe("email.getMailbox + listMailboxes wire shape", () => {
           is_auth_sender: false,
           can_send: true,
           send_blocked_reason: null,
-          domain_kind: "shared",
+          domain_kind: "managed",
         }],
         mailbox_settings: {
           default_outbound_mailbox_id: "mbx_support",
@@ -212,6 +235,7 @@ describe("email.getMailbox + listMailboxes wire shape", () => {
 
     assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1");
     assert.equal(result.mailboxes[0]!.mailbox_id, "mbx_support");
+    assert.equal(result.mailboxes[0]!.managed_address, "support@prj-known.mail.run402.com");
     assert.equal(result.mailbox_settings?.default_outbound_mailbox_id, "mbx_support");
     assert.equal(result.provider_readiness?.status, "configured");
     assert.equal(result.provider_readiness?.provider, "ses");
@@ -333,7 +357,11 @@ describe("email.updateMailbox", () => {
 describe("email.deleteMailbox", () => {
   it("returns the deleted record { mailbox_id, address }", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ mailbox_id: "mbx_known", address: "old@mail.run402.com" }),
+      jsonResponse({
+        mailbox_id: "mbx_known",
+        address: "old@prj-known.mail.run402.com",
+        managed_address: "old@prj-known.mail.run402.com",
+      }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
     const result = await sdk.email.deleteMailbox("prj_known", "mbx_known");
@@ -341,7 +369,8 @@ describe("email.deleteMailbox", () => {
     assert.equal(calls[0]!.url, "https://api.example.test/mailboxes/v1/mbx_known");
     assert.equal(calls[0]!.method, "DELETE");
     assert.equal(result.mailbox_id, "mbx_known");
-    assert.equal(result.address, "old@mail.run402.com");
+    assert.equal(result.address, "old@prj-known.mail.run402.com");
+    assert.equal(result.managed_address, "old@prj-known.mail.run402.com");
   });
 });
 
@@ -356,7 +385,7 @@ describe("email.send", () => {
         status: "sent",
         sent_at: "2026-05-01T18:30:14.904Z",
         mailbox_id: "mbx_known",
-        from_address: "known@mail.run402.com",
+        from_address: "known@prj-known.mail.run402.com",
       }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
@@ -376,7 +405,7 @@ describe("email.send", () => {
     assert.equal(result.subject, "test");
     assert.equal(result.sent_at, "2026-05-01T18:30:14.904Z");
     assert.equal(result.mailbox_id, "mbx_known");
-    assert.equal(result.from_address, "known@mail.run402.com");
+    assert.equal(result.from_address, "known@prj-known.mail.run402.com");
   });
 
   it("preserves explicit empty optional fields in the send body", async () => {
@@ -788,7 +817,7 @@ describe("email mailbox selector (multi-mailbox)", () => {
           status: "sent",
           sent_at: "now",
           mailbox_id: "mbx_support",
-          from_address: "support@mail.run402.com",
+          from_address: "support@prj-known.mail.run402.com",
         });
       }
       throw new Error(`unexpected call: ${call.method} ${call.url}`);
@@ -799,7 +828,7 @@ describe("email mailbox selector (multi-mailbox)", () => {
 
     assert.equal(calls[1]!.url, "https://api.example.test/mailboxes/v1/mbx_support/messages");
     assert.equal(result.mailbox_id, "mbx_support");
-    assert.equal(result.from_address, "support@mail.run402.com");
+    assert.equal(result.from_address, "support@prj-known.mail.run402.com");
   });
 
   it("send with no selector fails with DEFAULT_MAILBOX_REQUIRED when settings exist but outbound default is unset", async () => {

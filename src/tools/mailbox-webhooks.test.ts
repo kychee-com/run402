@@ -33,7 +33,7 @@ function mockFetchSequence(webhookResponse: Response) {
     if (fetchCallCount === 1) {
       // First call: resolve mailbox
       return new Response(
-        JSON.stringify({ mailboxes: [{ mailbox_id: "mbx-001", address: "app@mail.run402.com" }] }),
+        JSON.stringify({ mailboxes: [{ mailbox_id: "mbx-001", address: "app@proj-001.mail.run402.com", managed_address: "app@proj-001.mail.run402.com" }] }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }

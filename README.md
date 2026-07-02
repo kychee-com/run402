@@ -498,8 +498,8 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `passkey_register_options` / `passkey_register_verify` | Create and verify WebAuthn passkey registration ceremonies. |
 | `passkey_login_options` / `passkey_login_verify` | Create and verify WebAuthn passkey login ceremonies. |
 | `list_passkeys` / `delete_passkey` | List or delete the authenticated user's passkeys. |
-| `create_mailbox` / `get_mailbox` / `update_mailbox` / `delete_mailbox` | Per-project mailboxes at `<slug>@mail.run402.com`; create is not idempotent. `update_mailbox` currently sets `footer_policy` (`run402_transparency` or `none`; `none` requires hobby/team, prototype is locked). |
-| `list_mailboxes` / `set_mailbox_defaults` | Inspect mailbox default-role/readiness/footer-policy metadata and set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` explicitly. |
+| `create_mailbox` / `get_mailbox` / `update_mailbox` / `delete_mailbox` | Per-project mailbox local parts. The managed address is returned as `managed_address` (`<slug>@<project-mail-host>.mail.run402.com`); the same slug may exist in another project. Create is not idempotent. `update_mailbox` currently sets `footer_policy` (`run402_transparency` or `none`; `none` requires hobby/team, prototype is locked). |
+| `list_mailboxes` / `set_mailbox_defaults` | Inspect mailbox `address`/`managed_address`, default-role/readiness/footer-policy metadata, and set `default_outbound_mailbox_id` / `auth_sender_mailbox_id` explicitly. |
 | `send_email` | Template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Omitting `mailbox` uses the configured outbound default; result echoes `mailbox_id` and `from_address` when returned. |
 | `list_emails` / `get_email` / `get_email_raw` | Read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification. |
 | `register_mailbox_webhook` / `list_mailbox_webhooks` / `get_mailbox_webhook` / `update_mailbox_webhook` / `delete_mailbox_webhook` | Email-event webhooks (delivery, bounced, complained, reply_received). |
