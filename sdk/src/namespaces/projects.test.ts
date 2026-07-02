@@ -257,7 +257,7 @@ describe("projects.get", () => {
     site_url: null,
     custom_domains: [],
     last_deploy: null,
-    mailbox: ["hello@mail.run402.com"],
+    mailbox: ["hello@p-abc123.mail.run402.com"],
     usage: { api_calls: 5, storage_bytes: 100, api_calls_limit: 1000, storage_bytes_limit: 10000 },
     created_at: "2026-01-01T00:00:00Z",
   };
@@ -272,7 +272,7 @@ describe("projects.get", () => {
     assert.equal(got.public_id, "p_abc123");
     assert.equal(got.site_url, null);
     assert.equal(got.last_deploy, null);
-    assert.deepEqual(got.mailbox, ["hello@mail.run402.com"]);
+    assert.deepEqual(got.mailbox, ["hello@p-abc123.mail.run402.com"]);
     assert.equal(got.usage.api_calls_limit, 1000);
     assert.equal(got.usage.storage_bytes_limit, 10000);
   });
@@ -659,7 +659,7 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
   it("queries project REST tables with the anon key (GH-181)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse([{ id: 1 }]));
     const sdk = makeSdk(makeCreds(), fetch);
-    const result = await sdk.projects.rest("prj_known", "todos", "select=id&limit=1");
+    const result = await sdk.projects.rest("prj_known", "todos", { query: "select=id&limit=1" });
 
     assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/todos?select=id&limit=1");
     assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
@@ -671,7 +671,7 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
     const { fetch, calls } = mockFetch(() => jsonResponse([{ id: 1 }]));
     const sdk = makeSdk(makeCreds(), fetch);
 
-    await sdk.projects.restResponse("prj_known", "todos", "?select=*");
+    await sdk.projects.restResponse("prj_known", "todos", { query: "?select=*" });
 
     assert.equal(calls[0]!.url, "https://api.example.test/rest/v1/todos?select=*");
   });

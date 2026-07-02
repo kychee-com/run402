@@ -67,7 +67,7 @@ export class SenderDomain {
     });
   }
 
-  /** Remove the custom sender domain; email reverts to `@mail.run402.com`. */
+  /** Remove the custom sender domain; email reverts to each mailbox's managed address. */
   async remove(projectId: string): Promise<void> {
     const project = await this.client.getProject(projectId);
     if (!project) throw new ProjectNotFound(projectId, "removing sender domain");

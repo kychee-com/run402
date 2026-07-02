@@ -13,6 +13,7 @@ RUN npm run build
 
 FROM node:22-slim
 WORKDIR /app
+ENV npm_config_loglevel=silent
 COPY package.json package-lock.json ./
 COPY cli/package.json cli/package.json
 COPY sdk/package.json sdk/package.json

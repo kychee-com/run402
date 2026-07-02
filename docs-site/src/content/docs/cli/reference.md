@@ -1325,8 +1325,8 @@ Run402 Core uses the same CLI after `run402 init --api-base=http://my-core:4020`
 
 Templates: `project_invite` (project_name, invite_url), `magic_link` (project_name, link_url, expires_in), `notification` (project_name, message max 500 chars).
 
-- `run402 email create <slug> [--project <id>]` — create mailbox at `<slug>@mail.run402.com`. NOT idempotent: a conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
-- `run402 email mailboxes [--project <id>]` — list mailboxes plus `mailbox_settings`, default-role/readiness/footer-policy metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, `footer_policy_locked_reason`), and gateway `next_actions`.
+- `run402 email create <slug> [--project <id>]` — create a project-scoped mailbox local part. The response's `managed_address` is `<slug>@<project-mail-host>.mail.run402.com`; another project may use the same slug. NOT idempotent: a same-project conflict (slug already in use, address in cooldown, or the project already has 5 mailboxes) returns a 409 error rather than an existing mailbox.
+- `run402 email mailboxes [--project <id>]` — list mailboxes plus `mailbox_settings`, `address`/`managed_address`, default-role/readiness/footer-policy metadata (`is_default_outbound`, `is_auth_sender`, `can_send`, `can_receive`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, `footer_policy_locked_reason`), and gateway `next_actions`.
 - `run402 email defaults [--outbound <slug|mbx_id>] [--auth-sender <slug|mbx_id>] [--clear-outbound] [--clear-auth-sender] [--project <id>]` — show current defaults with no flags, or set/clear `default_outbound_mailbox_id` and/or `auth_sender_mailbox_id`. Slugs are resolved through `email mailboxes`; SDK PATCH uses mailbox ids.
 - `run402 email update [<slug|mbx_id>] --footer-policy <run402_transparency|none> [--mailbox <slug|mbx_id>] [--project <id>]` — set the mailbox's outbound footer policy through `PATCH /mailboxes/v1/:mailbox_id`. The optional positional target and `--mailbox` are equivalent; omit only on single-mailbox projects.
 - `run402 email status [--mailbox <slug|id>] [--project <id>]` — show mailbox info (ID, address, slug, footer policy)
@@ -1382,11 +1382,11 @@ Manage project user authentication: magic links, trusted invites, passwords, pas
 Magic link flow: request → user clicks email link → frontend extracts token → verify → authenticated. Token expires in 15 minutes, single-use. Rate limited: 5 per email/hour, plus per-project limits by tier.
 
 ### sender-domain
-Manage custom email sender domain. Send from your own brand instead of `@mail.run402.com`.
+Manage custom email sender domain. The mailbox primary `address` switches to your domain only after DKIM is verified and inbound is enabled; `managed_address` stays stable.
 
 - `run402 sender-domain register <domain> [--project <id>]` — register domain, returns DNS records to add
 - `run402 sender-domain status [--project <id>]` — check verification status (pending/verified)
-- `run402 sender-domain remove [--project <id>]` — remove custom domain, revert to mail.run402.com
+- `run402 sender-domain remove [--project <id>]` — remove custom domain, revert to the mailbox `managed_address`
 - `run402 sender-domain inbound-enable <domain> [--project <id>]` — enable inbound email on custom domain (requires DKIM-verified), returns MX record to add
 - `run402 sender-domain inbound-disable <domain> [--project <id>]` — disable inbound email on custom domain
 
@@ -1407,7 +1407,7 @@ Email orgs + Stripe checkouts; pay by card or scale email beyond tier caps.
 
 Auth: `balance`/`history` require SIWX from linked wallet or admin; wallet lookup requires matching SIWX (email lookup admin-only). `link-wallet` requires body wallet SIWX/admin; `checkout`/`auto-recharge` require linked wallet SIWX/admin. CLI signs from local allowance, so allowance wallet must belong to queried/linked/billed org. Non-member/guessed org id -> 403 no existence leak. `create-email` unauthenticated.
 
-Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for `mail.run402.com`).
+Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for Run402-managed mail reputation).
 
 ### contracts
 KMS signers — provision AWS KMS-backed Ethereum signers per project for signing and broadcasting smart-contract transactions. Private keys never leave KMS. **Pricing: $0.04/day rental + $0.000005 per call**. Signer creation requires $1.20 in cash credit (30 days of rent). Non-custodial — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.

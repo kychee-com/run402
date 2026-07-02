@@ -21,8 +21,10 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -200,6 +202,31 @@ describe("CLI output contract drift protection", () => {
         `\`{ type: "edit_request", command: "run402 ..." }\`. Preserve SDK/gateway-provided actions at runtime; ` +
         `do not author bare strings or \`{ action: ... }\` in cli/lib.`,
       );
+    }
+  });
+
+  it("npm start stays stdout-clean for stdio MCP hosts", () => {
+    const npmrc = readFileSync(join(__dirname, ".npmrc"), "utf-8");
+    assert.match(npmrc, /^loglevel=silent$/m, "root .npmrc must keep npm lifecycle banners off stdout");
+
+    const tempDir = mkdtempSync(join(tmpdir(), "run402-npm-start-"));
+    try {
+      writeFileSync(
+        join(tempDir, "package.json"),
+        JSON.stringify({ name: "run402-mcp-stdio-smoke", scripts: { start: "node sleeper.js" } }, null, 2),
+      );
+      writeFileSync(join(tempDir, "sleeper.js"), "setTimeout(function () {}, 2000);\n");
+      writeFileSync(join(tempDir, ".npmrc"), npmrc);
+
+      const result = spawnSync("npm", ["start"], {
+        cwd: tempDir,
+        encoding: "utf-8",
+        timeout: 500,
+      });
+
+      assert.equal(result.stdout, "", `npm start wrote pre-protocol stdout: ${JSON.stringify(result.stdout)}`);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
     }
   });
 });

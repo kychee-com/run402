@@ -238,7 +238,7 @@ export interface ProjectDetail {
   custom_domains: string[];
   /** Active-release pointer, or `null` when nothing is deployed. */
   last_deploy: ProjectLastDeploy | null;
-  /** Active mailbox addresses (formatted, e.g. `hello@mail.run402.com`). */
+  /** Active mailbox addresses (formatted, e.g. `hello@p-abc123.mail.run402.com`). */
   mailbox: string[];
   /** Usage counters paired with the owning account's tier limits. */
   usage: ProjectUsageWithLimits;
