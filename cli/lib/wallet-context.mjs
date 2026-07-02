@@ -4,10 +4,9 @@
  * Runs at the top of cli.mjs BEFORE any subcommand module (and therefore
  * before cli/lib/config.mjs snapshots its paths) is loaded. Resolves which
  * named wallet a command operates on, sets `process.env.RUN402_WALLET` so all
- * core path functions resolve under it, and emits a provenance line for
- * non-default selections. Core itself stays env-only — the `--wallet` flag and
- * the per-directory `.run402.json` binding are translated into the env var
- * here, at the edge.
+ * core path functions resolve under it. Core itself stays env-only — the
+ * `--wallet` flag and the per-directory `.run402.json` binding are translated
+ * into the env var here, at the edge.
  *
  * Precedence (highest first):
  *   1. --wallet <name> / --profile <name>   (flag)
@@ -178,8 +177,9 @@ function walletAddress(name) {
   }
 }
 
-/** Emit the stderr provenance line for non-default selections (silent for default). */
-export function emitProvenance({ name, source, sourceDetail }, { cmd, quiet } = {}) {
+/** Emit the stderr provenance line for non-default selections when explicitly requested. */
+export function emitProvenance({ name, source, sourceDetail }, { cmd, quiet, showProvenance = false } = {}) {
+  if (!showProvenance) return;
   if (quiet) return;
   if (name === DEFAULT) return;
   if (cmd === "wallets") return; // the wallets group reports its own context
@@ -218,6 +218,10 @@ export function applyWalletSelection({ walletFlag, cmd, cwd = process.cwd(), env
     diverged: !!(envName && binding && envName !== binding.wallet),
   });
 
-  emitProvenance(resolved, { cmd, quiet });
+  emitProvenance(resolved, {
+    cmd,
+    quiet,
+    showProvenance: env.RUN402_WALLET_PROVENANCE === "1",
+  });
   return resolved;
 }

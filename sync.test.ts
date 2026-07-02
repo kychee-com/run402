@@ -1141,6 +1141,10 @@ describe("SDK surface alignment", () => {
       // SDK action runner exposes the generic dispatcher alongside the typed
       // `actions.up` convenience mapped to the CLI `up` capability.
       "actions.run",
+      // App install state is the convergence ledger used by `run402 up`; it is
+      // intentionally not a separate user-facing CLI/MCP command surface.
+      "apps.upsertInstallState",
+      "apps.getInstallState",
     ]);
 
     const sdkMethods = await listSdkMethods();

@@ -21,7 +21,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_LIB_DIR = join(__dirname, "cli", "lib");
+const CLI_PATH = join(__dirname, "cli", "cli.mjs");
 
 // Allowlist: file basenames whose `JSON.stringify({ status: ...` emissions
 // are legitimately stderr-bound error envelopes.
@@ -203,6 +204,129 @@ describe("CLI output contract drift protection", () => {
         `do not author bare strings or \`{ action: ... }\` in cli/lib.`,
       );
     }
+  });
+
+  it("run402 status default output stays JSON-only even when a named wallet is selected", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "run402-status-output-"));
+    try {
+      const profileDir = join(tempDir, "profiles", "agent-a");
+      mkdirSync(profileDir, { recursive: true });
+      // Exists for fail-closed wallet selection, but reads as "no allowance"
+      // so status stays offline/hermetic.
+      writeFileSync(join(profileDir, "allowance.json"), "{", { mode: 0o600 });
+
+      const result = spawnSync(process.execPath, [CLI_PATH, "status"], {
+        env: {
+          ...process.env,
+          RUN402_CONFIG_DIR: tempDir,
+          RUN402_WALLET: "agent-a",
+        },
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+
+      assert.equal(result.status, 0, `run402 status failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.equal(result.stderr, "", `stderr must stay empty for status success output; got ${JSON.stringify(result.stderr)}`);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.wallet, null);
+      assert.equal(typeof parsed.target.kind, "string");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("run402 status --json is a JSON-only compatibility no-op", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "run402-status-json-"));
+    try {
+      const profileDir = join(tempDir, "profiles", "agent-a");
+      mkdirSync(profileDir, { recursive: true });
+      // Exists for fail-closed wallet selection, but reads as "no allowance"
+      // so status stays offline/hermetic.
+      writeFileSync(join(profileDir, "allowance.json"), "{", { mode: 0o600 });
+
+      const result = spawnSync(process.execPath, [CLI_PATH, "status", "--json"], {
+        env: {
+          ...process.env,
+          RUN402_CONFIG_DIR: tempDir,
+          RUN402_WALLET: "agent-a",
+        },
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+
+      assert.equal(result.status, 0, `run402 status --json failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.equal(result.stderr, "", `stderr must stay empty for status --json success output; got ${JSON.stringify(result.stderr)}`);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.wallet, null);
+      assert.equal(typeof parsed.target.kind, "string");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("unknown root commands emit a JSON error envelope only", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "run402-unknown-command-"));
+    const env = { ...process.env, RUN402_CONFIG_DIR: tempDir };
+    delete env.RUN402_WALLET;
+    delete env.RUN402_PROFILE;
+    let result;
+    try {
+      result = spawnSync(process.execPath, [CLI_PATH, "does-not-exist"], {
+        env,
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "UNKNOWN_COMMAND");
+    assert.equal(parsed.details.command, "does-not-exist");
+  });
+
+  it("unknown subcommands emit JSON envelopes instead of prose plus help", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "run402-unknown-subcommand-"));
+    const env = { ...process.env, RUN402_CONFIG_DIR: tempDir };
+    delete env.RUN402_WALLET;
+    delete env.RUN402_PROFILE;
+    let result;
+    try {
+      result = spawnSync(process.execPath, [CLI_PATH, "service", "does-not-exist"], {
+        env,
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND");
+    assert.equal(parsed.details.command, "service");
+    assert.equal(parsed.details.subcommand, "does-not-exist");
+  });
+
+  it("CLI lib unknown-command branches cannot reintroduce raw prose output", () => {
+    const offenders = [];
+    for (const entry of readdirSync(CLI_LIB_DIR, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".mjs")) continue;
+      const file = join(CLI_LIB_DIR, entry.name);
+      const source = readFileSync(file, "utf-8");
+      if (/console\.error\(\s*(?:`|'|")Unknown/.test(source)) {
+        offenders.push(`${entry.name}: raw console.error Unknown`);
+      }
+      if (/default:\s*[\s\S]{0,180}console\.log\(HELP\);\s*process\.exit\(1\)/.test(source)) {
+        offenders.push(`${entry.name}: default branch prints HELP before exit(1)`);
+      }
+    }
+    assert.deepEqual(offenders, []);
   });
 
   it("npm start stays stdout-clean for stdio MCP hosts", () => {

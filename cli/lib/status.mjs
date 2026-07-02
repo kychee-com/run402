@@ -14,7 +14,7 @@ import { readMeta } from "../core-dist/profiles.js";
 const HELP = `run402 status — Show full organization state in one shot
 
 Usage:
-  run402 status
+  run402 status [--json]
 
 Displays:
   - Wallet identity (local_label, server_label, address)
@@ -25,8 +25,9 @@ Displays:
   - Active project ID
   - Active API target
 
-Output is JSON. Run402 Cloud status requires an allowance; Core target status
-can still report local project state without one.
+Output is JSON by default. --json is accepted as a compatibility no-op.
+Run402 Cloud status requires an allowance; Core target status can still report
+local project state without one.
 `;
 
 // USDC / pathUSD constants (match allowance.mjs)
@@ -89,7 +90,7 @@ function normalizeProject(raw) {
 export async function run(args = []) {
   args = normalizeArgv(args);
   if (hasHelp(args)) { console.log(HELP); process.exit(0); }
-  assertKnownFlags(args, ["--help", "-h"]);
+  assertKnownFlags(args, ["--help", "-h", "--json"]);
   const allowance = readAllowance();
   const target = {
     api_base: apiBase(),

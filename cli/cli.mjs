@@ -344,9 +344,14 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
-  default:
-    console.error(`Unknown command: ${cmd}\n`);
-    console.log(HELP);
-    process.exit(1);
+  default: {
+    const { fail } = await import("./lib/sdk-errors.mjs");
+    fail({
+      code: "UNKNOWN_COMMAND",
+      message: `Unknown command: ${cmd}`,
+      hint: "Run `run402 --help` for the command list.",
+      details: { command: cmd },
+    });
+  }
 }
 }

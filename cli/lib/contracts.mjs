@@ -483,8 +483,6 @@ export async function run(sub, args) {
     case "drain":            await drain(args[0], args[1], args.slice(2)); break;
     case "delete":           await deleteSigner(args[0], args[1], args.slice(2)); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown contracts subcommand: ${sub}`, hint: "Run `run402 contracts --help` for usage.", details: { command: "contracts", subcommand: sub } });
   }
 }

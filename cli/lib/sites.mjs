@@ -364,8 +364,6 @@ export async function run(sub, args) {
     case "deploy":      await deploy(args); break;
     case "deploy-dir":  await deployDir(args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown sites subcommand: ${sub}`, hint: "Run `run402 sites --help` for usage.", details: { command: "sites", subcommand: sub } });
   }
 }

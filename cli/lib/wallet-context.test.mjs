@@ -212,15 +212,27 @@ describe("emitProvenance", () => {
   it("stays silent for the default wallet", () => {
     assert.equal(captureStderr(() => emitProvenance({ name: "default", source: "default" }, { cmd: "status" })), "");
   });
-  it("emits a provenance line for a named wallet", () => {
+  it("stays silent for a named wallet by default", () => {
     ensureProfileDir("kychon");
     writeFileSync(join(tmp, "profiles", "kychon", "meta.json"), JSON.stringify({ name: "kychon", address: "0x1234567890abcdef" }));
     const out = captureStderr(() => emitProvenance({ name: "kychon", source: "env", sourceDetail: "RUN402_WALLET" }, { cmd: "status" }));
+    assert.equal(out, "");
+  });
+  it("can emit a provenance line when explicitly requested", () => {
+    ensureProfileDir("kychon");
+    writeFileSync(join(tmp, "profiles", "kychon", "meta.json"), JSON.stringify({ name: "kychon", address: "0x1234567890abcdef" }));
+    const out = captureStderr(() => emitProvenance(
+      { name: "kychon", source: "env", sourceDetail: "RUN402_WALLET" },
+      { cmd: "status", showProvenance: true },
+    ));
     assert.match(out, /wallet: kychon/);
     assert.match(out, /RUN402_WALLET/);
   });
   it("honors --quiet", () => {
-    assert.equal(captureStderr(() => emitProvenance({ name: "kychon", source: "env" }, { cmd: "status", quiet: true })), "");
+    assert.equal(captureStderr(() => emitProvenance(
+      { name: "kychon", source: "env" },
+      { cmd: "status", quiet: true, showProvenance: true },
+    )), "");
   });
   it("stays silent for the wallets group", () => {
     assert.equal(captureStderr(() => emitProvenance({ name: "kychon", source: "flag" }, { cmd: "wallets" })), "");

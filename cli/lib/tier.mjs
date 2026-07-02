@@ -160,8 +160,6 @@ export async function run(sub, args) {
     case "status": await status(args); break;
     case "set":    await set(args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown tier subcommand: ${sub}`, hint: "Run `run402 tier --help` for usage.", details: { command: "tier", subcommand: sub } });
   }
 }

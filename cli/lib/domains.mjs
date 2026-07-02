@@ -208,8 +208,6 @@ export async function run(sub, args) {
     case "status": await status(args); break;
     case "delete": await deleteDomain(args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown domains subcommand: ${sub}`, hint: "Run `run402 domains --help` for usage.", details: { command: "domains", subcommand: sub } });
   }
 }

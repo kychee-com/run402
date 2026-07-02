@@ -8,6 +8,7 @@ interface RecordedRequest {
   path: string;
   method?: string;
   body?: unknown;
+  authMeta?: RequestOptions["authMeta"];
 }
 
 interface FakeWiring {
@@ -25,7 +26,7 @@ function makeWiring(): FakeWiring {
   const client: Client = {
     apiBase: "https://test.run402.test",
     request: async <T>(path: string, opts: RequestOptions): Promise<T> => {
-      const recorded: RecordedRequest = { path, method: opts.method, body: opts.body };
+      const recorded: RecordedRequest = { path, method: opts.method, body: opts.body, authMeta: opts.authMeta };
       requests.push(recorded);
       return handler(recorded) as T;
     },
@@ -113,5 +114,88 @@ describe("Apps.browse (AppSummary runtime shape)", () => {
     assert.deepEqual(app.bootstrap_variables, [{ name: "OWNER_EMAIL", required: true }]);
     assert.equal(app.created_at, "2026-04-30T12:00:00Z");
     assert.deepEqual(app.compatibility_warnings, ["uses node22 only"]);
+  });
+});
+
+describe("Apps install state", () => {
+  it("upserts app install state through the apply app-installs route", async () => {
+    const w = makeWiring();
+    const expected = {
+      id: "ain_1",
+      project_id: "prj_1",
+      app_key: "kysigned",
+      status: "active" as const,
+      manifest_digest: "sha256:manifest",
+      graph_digest: "sha256:graph",
+      source: {},
+      manifest: {},
+      resources: {},
+      bindings: {},
+      last_operation_id: "op_1",
+      error: null,
+      created_at: "2026-07-02T00:00:00.000Z",
+      updated_at: "2026-07-02T00:00:01.000Z",
+    };
+    w.setHandler((req) => {
+      assert.equal(req.path, "/apply/v1/app-installs");
+      assert.equal(req.method, "POST");
+      assert.deepEqual(req.authMeta, {
+        capability: "project.deploy",
+        target: { project_id: "prj_1" },
+      });
+      assert.deepEqual(req.body, {
+        project_id: "prj_1",
+        app_key: "kysigned",
+        status: "active",
+        graph_digest: "sha256:graph",
+        last_operation_id: "op_1",
+      });
+      return expected;
+    });
+
+    const apps = new Apps(w.client);
+    const result = await apps.upsertInstallState({
+      project_id: "prj_1",
+      app_key: "kysigned",
+      status: "active",
+      graph_digest: "sha256:graph",
+      last_operation_id: "op_1",
+    });
+
+    assert.deepEqual(result, expected);
+    assert.equal(w.requests.length, 1);
+  });
+
+  it("reads app install state with encoded project/app query params", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      assert.equal(
+        req.path,
+        "/apply/v1/app-installs?project_id=prj_1&app_key=github.com%2Fkychee%2Fkysigned",
+      );
+      assert.equal(req.method, undefined);
+      return {
+        id: "ain_1",
+        project_id: "prj_1",
+        app_key: "github.com/kychee/kysigned",
+        status: "applying",
+        manifest_digest: null,
+        graph_digest: null,
+        source: {},
+        manifest: {},
+        resources: {},
+        bindings: {},
+        last_operation_id: null,
+        error: null,
+        created_at: "2026-07-02T00:00:00.000Z",
+        updated_at: "2026-07-02T00:00:00.000Z",
+      };
+    });
+
+    const apps = new Apps(w.client);
+    const result = await apps.getInstallState("prj_1", "github.com/kychee/kysigned");
+
+    assert.equal(result.app_key, "github.com/kychee/kysigned");
+    assert.equal(result.status, "applying");
   });
 });

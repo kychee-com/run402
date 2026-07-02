@@ -209,8 +209,6 @@ export async function run(sub, args) {
     case "inbound-enable": await inboundToggle("enable", args); break;
     case "inbound-disable": await inboundToggle("disable", args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown sender-domain subcommand: ${sub}`, hint: "Run `run402 sender-domain --help` for usage.", details: { command: "sender-domain", subcommand: sub } });
   }
 }

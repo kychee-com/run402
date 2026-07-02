@@ -36,6 +36,8 @@ import type {
 } from "./namespaces/projects.types.js";
 import type {
   AppDetails,
+  AppInstallState,
+  AppInstallStateInput,
   BrowseAppsResult,
   ForkAppOptions,
   ForkAppResult,
@@ -296,6 +298,14 @@ class ScopedApps {
   }
   getApp(versionId: string): Promise<AppDetails> {
     return this.parent.apps.getApp(versionId);
+  }
+  upsertInstallState(
+    input: Omit<AppInstallStateInput, "project_id"> & { project_id?: string },
+  ): Promise<AppInstallState> {
+    return this.parent.apps.upsertInstallState({ ...input, project_id: input.project_id ?? this.projectId });
+  }
+  getInstallState(appKey: string): Promise<AppInstallState> {
+    return this.parent.apps.getInstallState(this.projectId, appKey);
   }
 }
 

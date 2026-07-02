@@ -84,9 +84,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   if (sub !== "send") {
-    console.error(`Unknown subcommand: ${sub}\n`);
-    console.log(HELP);
-    process.exit(1);
+    fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown message subcommand: ${sub}`, hint: "Run `run402 message --help` for usage.", details: { command: "message", subcommand: sub } });
   }
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);

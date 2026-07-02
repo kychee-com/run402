@@ -216,6 +216,45 @@ describe("ScopedRun402 wrapper routing", () => {
     assert.equal(calls[0]!.headers.Authorization, "Bearer service_xxx");
   });
 
+  it("scoped apps.upsertInstallState binds the project id", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({
+        id: "ais_123",
+        project_id: "prj_known",
+        app_key: "kysigned",
+        status: "active",
+        manifest_digest: "sha256:abc",
+        graph_digest: "sha256:def",
+        source: {},
+        manifest: {},
+        resources: {},
+        bindings: {},
+        last_operation_id: null,
+        error: null,
+        created_at: "2026-07-02T00:00:00.000Z",
+        updated_at: "2026-07-02T00:00:00.000Z",
+      }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const p = await sdk.project("prj_known");
+
+    await p.apps.upsertInstallState({
+      app_key: "kysigned",
+      status: "active",
+      resources: { site: { url: "https://kysigned.run402.com" } },
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]!.url, /\/apply\/v1\/app-installs$/);
+    assert.equal(calls[0]!.method, "POST");
+    assert.deepEqual(JSON.parse(String(calls[0]!.body)), {
+      project_id: "prj_known",
+      app_key: "kysigned",
+      status: "active",
+      resources: { site: { url: "https://kysigned.run402.com" } },
+    });
+  });
+
   it("injects project for options-object methods (apply.list)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ operations: [] }));
     const sdk = makeSdk(makeCreds(), fetch);

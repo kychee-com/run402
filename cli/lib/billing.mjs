@@ -355,8 +355,6 @@ export async function run(sub, args) {
     case "balance": await balance(args); break;
     case "history": await history(args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown billing subcommand: ${sub}`, hint: "Run `run402 billing --help` for usage.", details: { command: "billing", subcommand: sub } });
   }
 }

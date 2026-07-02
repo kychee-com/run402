@@ -262,8 +262,6 @@ export async function run(sub, args) {
     case "deliveries": await deliveries(args); break;
     case "redrive":    await redrive(args); break;
     default:
-      console.error(`Unknown webhooks action: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown webhooks action: ${sub}`, hint: "Run `run402 webhooks --help` for usage.", details: { command: "webhooks", subcommand: sub } });
   }
 }

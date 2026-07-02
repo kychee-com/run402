@@ -150,7 +150,7 @@ describe("up argv and JSON output", () => {
     assert.deepEqual(stderr, [], "--json-stream progress belongs on stdout NDJSON only");
   });
 
-  it("prints a happy app-up success summary by default", async () => {
+  it("prints app-up result JSON by default", async () => {
     upImpl = async () => ({
       kind: "run402.action.result",
       result: {
@@ -174,10 +174,39 @@ describe("up argv and JSON output", () => {
       captureStop();
     }
 
+    const parsed = JSON.parse(stdout.join("\n"));
+    assert.equal(parsed.result.app_result.status, "succeeded");
+    assert.equal(parsed.result.app_result.project.public_origin, "https://kysigned3.run402.com");
+  });
+
+  it("prints a happy app-up success summary with --human", async () => {
+    upImpl = async () => ({
+      kind: "run402.action.result",
+      result: {
+        app_result: {
+          kind: "run402.up.result",
+          status: "succeeded",
+          project: {
+            public_origin: "https://kysigned3.run402.com",
+          },
+          diagnostics: [],
+          next_actions: [],
+        },
+      },
+    });
+    const { run } = await import("./cli/lib/up.mjs");
+
+    captureStart();
+    try {
+      await run(["https://github.com/kychee-com/kysigned", "--name", "kysigned3", "--yes", "--human"]);
+    } finally {
+      captureStop();
+    }
+
     assert.equal(stdout.join("\n"), "Success! Project is up at: https://kysigned3.run402.com");
   });
 
-  it("prints a happy deploy-manifest success summary by default", async () => {
+  it("prints a happy deploy-manifest success summary with --human", async () => {
     upImpl = async () => ({
       action: "up",
       mode: "apply",
@@ -197,7 +226,7 @@ describe("up argv and JSON output", () => {
 
     captureStart();
     try {
-      await run(["--project", "prj_123", "--yes"]);
+      await run(["--project", "prj_123", "--yes", "--human"]);
     } finally {
       captureStop();
     }
@@ -205,7 +234,7 @@ describe("up argv and JSON output", () => {
     assert.equal(stdout.join("\n"), "Success! Project is up at: https://kysigned3.run402.com\nRelease: rel_123");
   });
 
-  it("prints app-up missing secret help by default", async () => {
+  it("prints app-up missing secret details as JSON by default", async () => {
     upImpl = async () => ({
       kind: "run402.action.result",
       result: {
@@ -236,9 +265,10 @@ describe("up argv and JSON output", () => {
       captureStop();
     }
 
-    assert.match(stdout.join("\n"), /Run402 up is blocked/);
-    assert.match(stdout.join("\n"), /\*@example\.com/);
-    assert.match(stdout.join("\n"), /KYSIGNED_ALLOWED_CREATORS="<value>" run402 up --name <name> --yes/);
+    const parsed = JSON.parse(stdout.join("\n"));
+    assert.equal(parsed.result.app_result.status, "blocked");
+    assert.match(parsed.result.app_result.diagnostics[0].message, /\*@example\.com/);
+    assert.match(parsed.result.app_result.next_actions[0].command, /KYSIGNED_ALLOWED_CREATORS="<value>"/);
   });
 
   it("rejects a positional source plus --dir before invoking the SDK", async () => {
@@ -247,6 +277,15 @@ describe("up argv and JSON output", () => {
 
     assert.equal(err.code, "BAD_USAGE");
     assert.match(err.message, /either a positional repo\/path source or --dir/);
+    assert.equal(upCalls.length, 0);
+  });
+
+  it("rejects conflicting up output modes before invoking the SDK", async () => {
+    const { run } = await import("./cli/lib/up.mjs");
+    const err = await expectExit1(() => run([".", "--human", "--json-stream"]));
+
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /--human cannot be combined/);
     assert.equal(upCalls.length, 0);
   });
 

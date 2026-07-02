@@ -53,6 +53,7 @@ export interface Run402Options {
 }
 
 export class Run402 {
+  readonly apiBase: string;
   readonly projects: Projects;
   readonly assets: Assets;
   readonly functions: Functions;
@@ -142,6 +143,7 @@ export class Run402 {
       fetch: opts.fetch ?? globalThis.fetch.bind(globalThis),
       credentials: opts.credentials,
     };
+    this.apiBase = opts.apiBase;
     const client: Client = buildClient(kernel);
     this.#client = client;
     this.projects = new Projects(client);

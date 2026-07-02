@@ -218,8 +218,6 @@ export async function run(sub, args) {
     case "list":   await list(args[0], args.slice(1)); break;
     case "delete": await deleteSecret(args[0], args[1], args.slice(2)); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown secrets subcommand: ${sub}`, hint: "Run `run402 secrets --help` for usage.", details: { command: "secrets", subcommand: sub } });
   }
 }

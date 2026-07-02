@@ -683,8 +683,6 @@ export async function run(sub, args) {
     case "sign":     await sign(defaultProject, args); break;
     case "diagnose": await diagnose(defaultProject, args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown assets subcommand: ${sub}`, hint: "Run `run402 assets --help` for usage.", details: { command: "assets", subcommand: sub } });
   }
 }

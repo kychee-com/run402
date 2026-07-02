@@ -791,8 +791,6 @@ export async function run(sub, args) {
       break;
     }
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown email subcommand: ${sub}`, hint: "Run `run402 email --help` for usage.", details: { command: "email", subcommand: sub } });
   }
 }

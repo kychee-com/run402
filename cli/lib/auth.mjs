@@ -757,8 +757,6 @@ export async function run(sub, args) {
     case "providers": await providers(args); break;
     case "scaffold-roles": scaffoldRoles(args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown auth subcommand: ${sub}`, hint: "Run `run402 auth --help` for usage.", details: { command: "auth", subcommand: sub } });
   }
 }

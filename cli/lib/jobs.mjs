@@ -421,9 +421,7 @@ async function artifacts(args = []) {
     await artifactsGet(args.slice(1));
     return;
   }
-  console.error(`Unknown jobs artifacts action: ${action}\n`);
-  console.log(SUB_HELP.artifacts);
-  process.exit(1);
+  fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown jobs artifacts action: ${action}`, hint: "Run `run402 jobs artifacts --help` for usage.", details: { command: "jobs artifacts", subcommand: action } });
 }
 
 function splitJobIdArg(args = [], valueFlags = []) {
@@ -486,8 +484,6 @@ export async function run(sub, args = []) {
       await purge(args);
       break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown jobs subcommand: ${sub}`, hint: "Run `run402 jobs --help` for usage.", details: { command: "jobs", subcommand: sub } });
   }
 }

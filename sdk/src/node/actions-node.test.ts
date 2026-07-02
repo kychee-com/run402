@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -171,6 +171,143 @@ test("up app apply blocks remote build with explicit unsupported next action", a
   }
 });
 
+test("up app apply runs local build, sets generated bindings, deploys, and registers webhooks", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-app-up-apply-"));
+  mkdirSync(join(dir, "scripts"), { recursive: true });
+  writeFileSync(join(dir, "scripts", "build.mjs"), `
+import { mkdirSync, writeFileSync } from "node:fs";
+mkdirSync("dist/run402/cloud-functions", { recursive: true });
+mkdirSync("frontend/dist", { recursive: true });
+writeFileSync("dist/run402/cloud-functions/api.js", "export default async () => new Response('ok');\\n");
+writeFileSync("frontend/dist/index.html", "<h1>" + process.env.RUN402_PUBLIC_ORIGIN + "</h1>");
+`);
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: {
+      mode: "local",
+      commands: [
+        { id: "build", argv: [process.execPath, "scripts/build.mjs"] },
+      ],
+    },
+    release: {
+      secrets: {
+        require: [
+          "RUN402_PROJECT_ID",
+          "RUN402_SERVICE_KEY",
+          "RUN402_ANON_KEY",
+          "RUN402_PUBLIC_ORIGIN",
+          "RUN402_MAILBOX_FORWARD_TO_SIGN_ID",
+          "RUN402_MAILBOX_NOTIFICATIONS_ID",
+          "KYSIGNED_ALLOWED_CREATORS",
+        ],
+      },
+      functions: {
+        replace: {
+          api: {
+            runtime: "node22",
+            source: { path: "dist/run402/cloud-functions/api.js" },
+          },
+        },
+      },
+      site: {
+        replace: { __source: "local-dir", path: "frontend/dist" },
+        public_paths: { mode: "implicit" },
+      },
+      subdomains: { set: ["${input.name}"] },
+      routes: {
+        replace: [
+          { pattern: "/v1/*", target: { type: "function", name: "api" } },
+        ],
+      },
+    },
+    resources: {
+      mailboxes: {
+        forward_to_sign: { roles: ["auth_sender"] },
+        notifications: { roles: ["default_outbound"] },
+      },
+      webhooks: {
+        inbound: {
+          mailbox: "forward_to_sign",
+          url: "${RUN402_PUBLIC_ORIGIN}/v1/webhooks/inbound",
+          events: ["reply_received"],
+        },
+      },
+    },
+    verify: undefined,
+  })));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
+  const calls: string[] = [];
+  const secrets: Array<{ key: string; value: string }> = [];
+  const appliedSpecs: unknown[] = [];
+  const installStates: Array<Record<string, unknown>> = [];
+  const sdk = fakeSdk({
+    calls,
+    secrets,
+    appliedSpecs,
+    installStates,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ name: "kysigned3" }, { approval: "yes", idempotencyKey: "app-test" });
+
+    assert.equal(result.result?.project_id, "prj_new");
+    assert.equal(result.result?.app_result?.status, "succeeded");
+    assert.equal(result.result?.app_result?.project.public_origin, "https://kysigned3.run402.com");
+    assert.equal(result.result?.app_result?.resources.mailboxes.forward_to_sign.id, "mbx_forward_to_sign");
+    assert.equal(result.result?.app_result?.resources.webhooks.inbound.url, "https://kysigned3.run402.com/v1/webhooks/inbound");
+    assert.equal(readFileSync(join(dir, "frontend/dist/index.html"), "utf-8"), "<h1>https://kysigned3.run402.com</h1>");
+    assert.deepEqual(
+      secrets.map((secret) => secret.key).sort(),
+      [
+        "KYSIGNED_ALLOWED_CREATORS",
+        "RUN402_ANON_KEY",
+        "RUN402_MAILBOX_FORWARD_TO_SIGN_ID",
+        "RUN402_MAILBOX_NOTIFICATIONS_ID",
+        "RUN402_PROJECT_ID",
+        "RUN402_PUBLIC_ORIGIN",
+        "RUN402_SERVICE_KEY",
+      ],
+    );
+    assert.equal(secrets.find((secret) => secret.key === "RUN402_MAILBOX_FORWARD_TO_SIGN_ID")?.value, "mbx_forward_to_sign");
+    assert.equal(secrets.find((secret) => secret.key === "KYSIGNED_ALLOWED_CREATORS")?.value, "*@example.com");
+    assert.equal(appliedSpecs.length, 1);
+    assert.ok(calls.includes("email.createMailbox:prj_new:forward-to-sign"));
+    assert.ok(calls.includes("email.createMailbox:prj_new:notifications"));
+    assert.ok(calls.includes("email.webhooks.register:prj_new:mbx_forward_to_sign"));
+    assert.ok(calls.includes("project.apply:prj_new"));
+    assert.deepEqual(
+      installStates.map((state) => state.status),
+      ["applying", "active"],
+    );
+    assert.equal(installStates[0]?.project_id, "prj_new");
+    assert.equal(installStates[0]?.app_key, "kysigned");
+    assert.match(String(installStates[0]?.manifest_digest), /^sha256:[0-9a-f]{64}$/);
+    assert.equal(installStates[1]?.last_operation_id, "op_123");
+    assert.deepEqual((installStates[1]?.resources as { mailboxes?: unknown })?.mailboxes, {
+      forward_to_sign: {
+        id: "mbx_forward_to_sign",
+        slug: "forward-to-sign",
+        address: "forward-to-sign@kysigned3.mail.run402.com",
+        managed_address: "forward-to-sign@kysigned3.mail.run402.com",
+      },
+      notifications: {
+        id: "mbx_notifications",
+        slug: "notifications",
+        address: "notifications@kysigned3.mail.run402.com",
+        managed_address: "notifications@kysigned3.mail.run402.com",
+      },
+    });
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up accepts repository URL sources and records commit metadata", async () => {
   const repo = mkdtempSync(join(tmpdir(), "run402-app-up-source-repo-"));
   writeFileSync(join(repo, "run402.json"), JSON.stringify(appManifest()));
@@ -237,7 +374,7 @@ test("up dry-run plans recursive steps without gateway mutations or local writes
   }
 });
 
-function appManifest() {
+function appManifest(overrides: Record<string, unknown> = {}) {
   return {
     $schema: RUN402_APP_SCHEMA_ID,
     spec_version: 1,
@@ -285,6 +422,7 @@ function appManifest() {
     verify: {
       http: [{ id: "home", path: "/", expect: { status: 200 } }],
     },
+    ...overrides,
   };
 }
 
@@ -483,6 +621,85 @@ test("up apply preserves explicit deploy idempotency keys", async () => {
   }
 });
 
+test("up refuses to reuse a nameless workspace link when --name is supplied", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-name-link-conflict-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+  }));
+  mkdirSync(join(dir, ".run402"), { recursive: true });
+  writeFileSync(join(dir, ".run402", "project.json"), JSON.stringify({
+    schema_version: "run402.workspace-project.v1",
+    project_id: "prj_kysigned3",
+    target: { kind: "cloud" },
+    created_at: "2026-06-30T00:00:00.000Z",
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await assert.rejects(
+      () => actions.up({ name: "kysigned4" }, { approval: "yes" }),
+      (err) => {
+        const e = err as { code?: string; details?: { reason?: string; linked_project_id?: string; name?: string } };
+        assert.equal(e.code, "RUN402_WORKSPACE_LINK_CONFLICT");
+        assert.equal(e.details?.reason, "name_missing");
+        assert.equal(e.details?.linked_project_id, "prj_kysigned3");
+        assert.equal(e.details?.name, "kysigned4");
+        return true;
+      },
+    );
+    assert.ok(!calls.some((call) => call.startsWith("project.apply:")));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up refuses to reuse a workspace link from another target", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-target-link-conflict-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+  }));
+  mkdirSync(join(dir, ".run402"), { recursive: true });
+  writeFileSync(join(dir, ".run402", "project.json"), JSON.stringify({
+    schema_version: "run402.workspace-project.v1",
+    project_id: "prj_core",
+    name: "kysigned3",
+    target: { kind: "core" },
+    created_at: "2026-06-30T00:00:00.000Z",
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await assert.rejects(
+      () => actions.up({}, { approval: "yes" }),
+      (err) => {
+        const e = err as { code?: string; details?: { reason?: string; linked_target?: string; target?: string } };
+        assert.equal(e.code, "RUN402_WORKSPACE_LINK_CONFLICT");
+        assert.equal(e.details?.reason, "target_mismatch");
+        assert.equal(e.details?.linked_target, "core");
+        assert.equal(e.details?.target, "cloud");
+        return true;
+      },
+    );
+    assert.ok(!calls.some((call) => call.startsWith("project.apply:")));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("projects provision can run SDK-owned recursive prerequisites when explicitly enabled", async () => {
   const calls: string[] = [];
   const sdk = fakeSdk({
@@ -561,10 +778,20 @@ function fakeSdk(opts: {
   allowanceConfigured: boolean;
   tierActive: boolean;
   activeProject: string | null;
+  secrets?: Array<{ key: string; value: string }>;
+  appliedSpecs?: unknown[];
+  installStates?: Array<Record<string, unknown>>;
   deployOptions?: Array<{ idempotencyKey?: string }>;
   deployPlanOptions?: Array<{ idempotencyKey?: string }>;
 }) {
+  const mailboxes: Array<Record<string, unknown>> = [];
+  const mailboxSettings: { default_outbound_mailbox_id: string | null; auth_sender_mailbox_id: string | null } = {
+    default_outbound_mailbox_id: null,
+    auth_sender_mailbox_id: null,
+  };
+  const webhooks: Array<Record<string, unknown>> = [];
   return {
+    apiBase: "https://api.example.test",
     allowance: {
       async status() {
         opts.calls.push("allowance.status");
@@ -612,7 +839,74 @@ function fakeSdk(opts: {
       },
       async keys(projectId: string) {
         opts.calls.push(`projects.keys:${projectId}`);
-        return { anon_key: "anon", service_key: "service" };
+        return { anon_key: "anon", service_key: "service", site_url: `https://${projectId}.run402.test` };
+      },
+    },
+    apps: {
+      async upsertInstallState(input: Record<string, unknown>) {
+        opts.calls.push(`apps.upsertInstallState:${input.project_id}:${input.app_key}:${input.status}`);
+        opts.installStates?.push(input);
+        return {
+          id: "ain_test",
+          ...input,
+          created_at: "2026-06-30T00:00:00.000Z",
+          updated_at: "2026-06-30T00:00:00.000Z",
+        };
+      },
+    },
+    email: {
+      async listMailboxes(projectId: string) {
+        opts.calls.push(`email.listMailboxes:${projectId}`);
+        return { mailboxes, mailbox_settings: mailboxSettings };
+      },
+      async createMailbox(projectId: string, slug: string) {
+        opts.calls.push(`email.createMailbox:${projectId}:${slug}`);
+        const mailbox = {
+          mailbox_id: `mbx_${slug.replace(/-/g, "_")}`,
+          slug,
+          address: `${slug}@kysigned3.mail.run402.com`,
+          managed_address: `${slug}@kysigned3.mail.run402.com`,
+          project_id: projectId,
+          status: "active",
+          sends_today: 0,
+          unique_recipients: 0,
+          created_at: "2026-06-30T00:00:00.000Z",
+          updated_at: "2026-06-30T00:00:00.000Z",
+        };
+        mailboxes.push(mailbox);
+        return mailbox;
+      },
+      async setMailboxDefaults(projectId: string, patch: { default_outbound_mailbox_id?: string; auth_sender_mailbox_id?: string }) {
+        opts.calls.push(`email.setMailboxDefaults:${projectId}`);
+        if (patch.default_outbound_mailbox_id !== undefined) mailboxSettings.default_outbound_mailbox_id = patch.default_outbound_mailbox_id;
+        if (patch.auth_sender_mailbox_id !== undefined) mailboxSettings.auth_sender_mailbox_id = patch.auth_sender_mailbox_id;
+        return { mailboxes, mailbox_settings: mailboxSettings };
+      },
+      webhooks: {
+        async list(projectId: string, input: { mailbox?: string } = {}) {
+          opts.calls.push(`email.webhooks.list:${projectId}:${input.mailbox ?? ""}`);
+          return {
+            webhooks: webhooks.filter((webhook) => webhook.mailbox_id === input.mailbox),
+          };
+        },
+        async register(projectId: string, input: { mailbox?: string; url: string; events: string[] }) {
+          opts.calls.push(`email.webhooks.register:${projectId}:${input.mailbox ?? ""}`);
+          const webhook = {
+            webhook_id: `whk_${webhooks.length + 1}`,
+            mailbox_id: input.mailbox,
+            url: input.url,
+            events: input.events,
+            created_at: "2026-06-30T00:00:00.000Z",
+          };
+          webhooks.push(webhook);
+          return webhook;
+        },
+      },
+    },
+    secrets: {
+      async set(projectId: string, key: string, input: { value: string }) {
+        opts.calls.push(`secrets.set:${projectId}:${key}`);
+        opts.secrets?.push({ key, value: input.value });
       },
     },
     async project(projectId: string) {
@@ -621,6 +915,7 @@ function fakeSdk(opts: {
         apply: Object.assign(
           async (_spec?: unknown, input?: { idempotencyKey?: string }) => {
             opts.deployOptions?.push(input ?? {});
+            opts.appliedSpecs?.push(_spec);
             opts.calls.push(`project.apply:${projectId}`);
             return {
               release_id: "rel_123",

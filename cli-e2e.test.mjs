@@ -4268,7 +4268,12 @@ describe("CLI e2e happy path", () => {
     try { await run("foo", []); } catch (e) { threw = e; }
     captureStop();
     assert.equal(threw?.message, "process.exit(1)");
-    assert.ok(captured().includes("Unknown subcommand"));
+    assert.equal(capturedStdout(), "");
+    const parsed = JSON.parse(capturedStderr());
+    assert.equal(parsed.status, "error");
+    assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND");
+    assert.equal(parsed.details.command, "service");
+    assert.equal(parsed.details.subcommand, "foo");
   });
 
   // ── MPP rail ─────────────────────────────────────────────────────────────

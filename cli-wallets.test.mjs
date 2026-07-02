@@ -165,9 +165,16 @@ describe("wallets — conflict + fail-closed", () => {
 });
 
 describe("wallets — provenance", () => {
-  it("emits a provenance line for a non-default selection", () => {
+  it("does not emit a provenance line for a non-default selection by default", () => {
     run(["wallets", "new", "kychon"]);
     const r = run(["--wallet", "kychon", "allowance", "export"]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!/↪ wallet:/.test(r.stderr), `expected no provenance line, got: ${r.stderr}`);
+  });
+
+  it("can emit a provenance line when explicitly requested", () => {
+    run(["wallets", "new", "kychon"]);
+    const r = run(["--wallet", "kychon", "allowance", "export"], { env: { RUN402_WALLET_PROVENANCE: "1" } });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stderr, /wallet: kychon/);
   });

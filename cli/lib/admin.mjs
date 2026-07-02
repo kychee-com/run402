@@ -192,8 +192,6 @@ export async function run(sub, args) {
     case "archive":         await archive(args); break;
     case "reactivate":      await reactivate(args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown admin subcommand: ${sub}`, hint: "Run `run402 admin --help` for usage.", details: { command: "admin", subcommand: sub } });
   }
 }

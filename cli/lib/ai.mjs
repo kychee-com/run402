@@ -230,8 +230,6 @@ export async function run(sub, args) {
     case "moderate":  await moderate(args); break;
     case "usage":     await usage(args); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown ai subcommand: ${sub}`, hint: "Run `run402 ai --help` for usage.", details: { command: "ai", subcommand: sub } });
   }
 }

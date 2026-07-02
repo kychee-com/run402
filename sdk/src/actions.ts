@@ -98,6 +98,11 @@ export type Run402ActionMutation =
   | "workspace.link.write"
   | "app.source.resolve"
   | "app.install"
+  | "app.mailbox.ensure"
+  | "app.secret.ensure"
+  | "app.build"
+  | "app.webhook.ensure"
+  | "app.verify"
   | "deploy.apply";
 
 export interface Run402ActionRunOptions {

@@ -201,8 +201,6 @@ export async function run(sub, args) {
       await passkey(args);
       return;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown agent subcommand: ${sub}`, hint: "Run `run402 agent --help` for usage.", details: { command: "agent", subcommand: sub } });
   }
 }

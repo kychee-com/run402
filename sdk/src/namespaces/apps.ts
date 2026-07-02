@@ -83,6 +83,44 @@ export interface UpdateVersionOptions {
 
 export type AppDetails = AppSummary;
 
+export type AppInstallStateStatus =
+  | "requested"
+  | "planning"
+  | "applying"
+  | "active"
+  | "failed";
+
+export interface AppInstallStateInput {
+  project_id: string;
+  app_key: string;
+  status?: AppInstallStateStatus;
+  manifest_digest?: string | null;
+  graph_digest?: string | null;
+  source?: Record<string, unknown>;
+  manifest?: Record<string, unknown>;
+  resources?: Record<string, unknown>;
+  bindings?: Record<string, unknown>;
+  last_operation_id?: string | null;
+  error?: Record<string, unknown> | null;
+}
+
+export interface AppInstallState {
+  id: string;
+  project_id: string;
+  app_key: string;
+  status: AppInstallStateStatus;
+  manifest_digest: string | null;
+  graph_digest: string | null;
+  source: Record<string, unknown>;
+  manifest: Record<string, unknown>;
+  resources: Record<string, unknown>;
+  bindings: Record<string, unknown>;
+  last_operation_id: string | null;
+  error: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export class Apps {
   constructor(private readonly client: Client) {}
 
@@ -95,6 +133,30 @@ export class Apps {
       context: "browsing apps",
       withAuth: false,
     });
+  }
+
+  /** Upsert declarative app-install convergence state for `run402 up`. */
+  async upsertInstallState(input: AppInstallStateInput): Promise<AppInstallState> {
+    return this.client.request<AppInstallState>("/apply/v1/app-installs", {
+      method: "POST",
+      body: input,
+      context: "upserting app install state",
+      authMeta: {
+        capability: "project.deploy",
+        target: { project_id: input.project_id },
+      },
+    });
+  }
+
+  /** Read declarative app-install convergence state for diagnostics/resume. */
+  async getInstallState(projectId: string, appKey: string): Promise<AppInstallState> {
+    const params = new URLSearchParams({ project_id: projectId, app_key: appKey });
+    return this.client.request<AppInstallState>(
+      `/apply/v1/app-installs?${params.toString()}`,
+      {
+        context: "reading app install state",
+      },
+    );
   }
 
   /**

@@ -135,8 +135,6 @@ export async function run(sub, args) {
       await waitFresh(defaultProject, args);
       break;
     default:
-      console.error(`Unknown subcommand: ${sub}`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown cdn subcommand: ${sub}`, hint: "Run `run402 cdn --help` for usage.", details: { command: "cdn", subcommand: sub } });
   }
 }

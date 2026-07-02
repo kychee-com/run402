@@ -7,7 +7,7 @@ import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./ar
 const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
-  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--json|--json-stream] [--quiet]
+  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--human|--json-stream] [--quiet]
 
 Options:
   repo-or-path        Local app directory or public Git repository URL. Defaults
@@ -15,8 +15,8 @@ Options:
   --name <name>       Project display name when up needs to create a project.
                       Not a deploy manifest field and never renames a project.
   --project <id>      Explicit project id. Highest-priority project selector.
-  --manifest <path>   Deploy manifest path. Defaults to run402.deploy.json,
-                      then app.json in --dir/current directory.
+  --manifest <path>   Manifest path. Defaults to run402.json, then
+                      run402.deploy.json, then app.json in --dir/current directory.
   --dir <path>        Workspace directory to inspect (default: current dir).
   --tier <tier>       Bootstrap tier if no active Cloud tier exists
                       (prototype, hobby, team; default prototype).
@@ -39,7 +39,8 @@ Options:
   --max-spend-usd <n> Maximum spend up may approve for app readiness.
   --build-mode <mode> Override app build mode: local, remote, or sandbox.
   --allow-shell-build Approve shell-string build commands in run402.json.
-  --json              Emit one final JSON object on stdout.
+  --json              Emit one final JSON object on stdout (default; compatibility no-op).
+  --human             Emit the legacy human success/blocking summary on stdout.
   --json-stream       Emit NDJSON progress events on stdout and a final result event.
   --quiet             Suppress action progress events on stderr.
 
@@ -81,6 +82,7 @@ export async function run(args = []) {
       "--allow-prune",
       "--allow-shell-build",
       "--json",
+      "--human",
       "--json-stream",
     ],
     [
@@ -156,9 +158,17 @@ export async function run(args = []) {
 
   const yes = parsed.includes("-y") || parsed.includes("--yes");
   const jsonStream = parsed.includes("--json-stream");
+  const human = parsed.includes("--human");
   const quiet = parsed.includes("--quiet") || parsed.includes("--final-only") || jsonStream;
   const mode = parseExecutionMode(parsed);
   const dryRun = parsed.includes("--dry-run");
+  if (human && (parsed.includes("--json") || jsonStream)) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--human cannot be combined with --json or --json-stream.",
+      details: { flags: parsed.filter((arg) => arg === "--human" || arg === "--json" || arg === "--json-stream") },
+    });
+  }
   if (dryRun && mode !== undefined) {
     fail({
       code: "BAD_USAGE",
@@ -207,9 +217,9 @@ export async function run(args = []) {
       console.log(JSON.stringify({ type: "run402.up.result", result }));
     } else if (mode === "printSpec") {
       console.log(JSON.stringify(result.result?.spec ?? null, null, 2));
-    } else if (result?.result?.app_result && !parsed.includes("--json")) {
+    } else if (human && result?.result?.app_result) {
       console.log(formatAppUpHuman(result.result.app_result));
-    } else if (!parsed.includes("--json") && shouldRenderHumanSuccess(result)) {
+    } else if (human && shouldRenderHumanSuccess(result)) {
       console.log(formatLegacyUpSuccess(result));
     } else {
       console.log(JSON.stringify(result, null, 2));

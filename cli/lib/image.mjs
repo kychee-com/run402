@@ -67,9 +67,7 @@ export async function run(sub, args) {
   }
 
   if (sub !== "generate") {
-    console.error(`Unknown subcommand: ${sub}\n`);
-    console.log(HELP);
-    process.exit(1);
+    fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown image subcommand: ${sub}`, hint: "Run `run402 image --help` for usage.", details: { command: "image", subcommand: sub } });
   }
 
   const parsedArgs = normalizeArgv(args);

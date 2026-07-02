@@ -823,9 +823,7 @@ export async function run(sub, args) {
     case "list":   await list(args[0], args.slice(1)); break;
     case "delete": await deleteFunction(args[0], args[1], args.slice(2)); break;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown functions subcommand: ${sub}`, hint: "Run `run402 functions --help` for usage.", details: { command: "functions", subcommand: sub } });
   }
 }
 

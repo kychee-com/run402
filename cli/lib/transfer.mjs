@@ -391,8 +391,6 @@ export async function run(sub, args) {
       await cancel(args);
       return;
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown transfer subcommand: ${sub}`, hint: "Run `run402 transfer --help` for usage.", details: { command: "transfer", subcommand: sub } });
   }
 }

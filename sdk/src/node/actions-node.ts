@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import type {
   Run402ActionApproval,
@@ -32,8 +33,11 @@ import {
   compileRun402AppInstallGraph,
   createRun402AppUpResult,
   type Run402AppInstallGraph,
+  type Run402AppMailboxSpec,
+  type Run402AppReleaseSpec,
   type Run402AppSourceMetadata,
   type Run402AppSpec,
+  type Run402AppUpResultEnvelope,
   type Run402AppUpDiagnostic,
   type Run402AppUpNextAction,
 } from "../app-up.js";
@@ -43,7 +47,7 @@ import type { Run402 } from "../index.js";
 import type { DeployEvent, PlanResponse, ReleaseSpec } from "../namespaces/deploy.types.js";
 import type { ProvisionResult } from "../namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "../namespaces/tier.js";
-import { loadDeployManifest } from "./deploy-manifest.js";
+import { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
 
 export type NodeActionTargetKind = "cloud" | "core" | "unknown";
 
@@ -70,6 +74,7 @@ interface DiscoveredManifest {
   releaseSpec: ReleaseSpec | null;
   appGraph?: Run402AppInstallGraph;
   appSpec?: Run402AppSpec;
+  source?: Run402AppSourceMetadata;
   idempotencyKey?: string;
   manifestProjectId?: string;
 }
@@ -107,6 +112,27 @@ interface ResolvedUpSource {
   workspaceDir: string;
   metadata: Run402AppSourceMetadata;
   cleanupDir?: string;
+}
+
+interface AppMailboxState {
+  id: string;
+  slug: string;
+  address: string;
+  managed_address?: string;
+}
+
+interface AppWebhookState {
+  id: string;
+  mailbox: string;
+  url: string;
+  events: string[];
+  created: boolean;
+}
+
+interface AppResourceState {
+  mailboxes: Record<string, AppMailboxState>;
+  webhooks: Record<string, AppWebhookState>;
+  env: Record<string, string>;
 }
 
 /**
@@ -284,13 +310,7 @@ export class NodeActions implements Run402Actions {
           app_result: appResult,
         });
       }
-      const blocked = this.#blockedAppUpResult(input, manifest, run, startedAt);
-      return run.result({
-        project_id: input.projectId ?? "prj_planned",
-        manifest_path: manifest.manifestPath,
-        app_graph: manifest.appGraph,
-        app_result: blocked,
-      });
+      return this.#applyAppManifest(input, manifest, workspaceDir, run, startedAt);
     }
 
     if (run.executionMode === "check" || run.executionMode === "printSpec") {
@@ -493,6 +513,7 @@ export class NodeActions implements Run402Actions {
         releaseSpec: null,
         appGraph,
         appSpec,
+        source,
       };
     }
     const loaded = await loadDeployManifest(manifestPath, {
@@ -639,6 +660,9 @@ export class NodeActions implements Run402Actions {
     startedAt: string,
   ) {
     const block = this.#firstAppUpBlock(input, manifest, run);
+    if (!block) {
+      throw run.error("Internal error: app manifest was marked blocked without a blocking condition.", "RUN402_ACTION_INTERNAL");
+    }
     return this.#planAppUpResult(input, manifest, run, {
       startedAt,
       status: "blocked",
@@ -654,7 +678,7 @@ export class NodeActions implements Run402Actions {
     input: Run402UpActionInput,
     manifest: DiscoveredManifest,
     run: ActionRun,
-  ): { nodeId: string; diagnostics: Run402AppUpDiagnostic[]; nextActions: Run402AppUpNextAction[] } {
+  ): { nodeId: string; diagnostics: Run402AppUpDiagnostic[]; nextActions: Run402AppUpNextAction[] } | null {
     const nameBlock = missingRequiredName(input, manifest);
     if (nameBlock) return nameBlock;
 
@@ -697,22 +721,557 @@ export class NodeActions implements Run402Actions {
     const buildBlock = appBuildBlock(input, manifest);
     if (buildBlock) return buildBlock;
 
-    return {
-      nodeId: "project.ensure",
-      diagnostics: [{
-        code: "APP_INSTALL_STATE_UNAVAILABLE",
-        severity: "error",
-        node_id: "project.ensure",
-        message: "Server-side app installation state is required before app-aware up can mutate resources.",
-      }],
-      nextActions: [{
-        type: "wait_for_run402_support",
-        code: "APP_INSTALL_STATE_UNAVAILABLE",
-        node_id: "project.ensure",
-        message: "Use --check or --dry-run to inspect the graph until app installation endpoints are available.",
-        argv: ["run402", "up", "--check"],
-      }],
+    return null;
+  }
+
+  async #applyAppManifest(
+    input: Run402UpActionInput,
+    manifest: DiscoveredManifest,
+    workspaceDir: string,
+    run: ActionRun,
+    startedAt: string,
+  ): Promise<Run402ActionResult<Run402UpResult>> {
+    if (!manifest.appSpec || !manifest.appGraph) {
+      throw run.error("Internal error: app manifest did not produce an install graph.", "RUN402_ACTION_INTERNAL");
+    }
+    const block = this.#firstAppUpBlock(input, manifest, run);
+    if (block) {
+      const blocked = this.#planAppUpResult(input, manifest, run, {
+        startedAt,
+        status: "blocked",
+        dryRun: false,
+        projectId: input.projectId ?? null,
+        diagnostics: block.diagnostics,
+        nextActions: block.nextActions,
+        blockedNodeId: block.nodeId,
+      });
+      return run.result({
+        project_id: input.projectId ?? "prj_planned",
+        manifest_path: manifest.manifestPath,
+        app_graph: manifest.appGraph,
+        app_result: blocked,
+      });
+    }
+    if (this.#targetKind() === "core") {
+      const blocked = this.#planAppUpResult(input, manifest, run, {
+        startedAt,
+        status: "blocked",
+        dryRun: false,
+        projectId: input.projectId ?? null,
+        diagnostics: [{
+          code: "UNSUPPORTED_RESOURCE_KIND",
+          severity: "error",
+          node_id: "project.ensure",
+          message: "App-aware up currently targets Run402 Cloud because it provisions Cloud projects, mailboxes, secrets, and managed subdomains.",
+        }],
+        nextActions: [{
+          type: "choose_cloud_target",
+          code: "UNSUPPORTED_RESOURCE_KIND",
+          node_id: "project.ensure",
+          message: "Select the Run402 Cloud target, then retry.",
+          argv: ["run402", "init", "--api-base", "https://api.run402.com"],
+        }],
+        blockedNodeId: "project.ensure",
+      });
+      return run.result({
+        project_id: input.projectId ?? "prj_planned",
+        manifest_path: manifest.manifestPath,
+        app_graph: manifest.appGraph,
+        app_result: blocked,
+      });
+    }
+
+    await this.#ensureCloudTier(run, input.tier ?? DEFAULT_BOOTSTRAP_TIER);
+    const resolved = await this.#resolveProject(input, manifest, workspaceDir, run);
+    await this.#recordAppInstallState({
+      projectId: resolved.projectId,
+      manifest,
+      status: "applying",
+      run,
+    });
+    if (resolved.shouldWriteLink && run.executionMode !== "plan") {
+      await this.#writeWorkspaceProjectLink(
+        resolved.linkPath,
+        {
+          schema_version: "run402.workspace-project.v1",
+          project_id: resolved.projectId,
+          ...(input.name ? { name: input.name } : {}),
+          target: { kind: this.#targetKind() },
+          created_at: resolved.link?.created_at ?? new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        resolved.link,
+        run,
+      );
+    }
+
+    try {
+      const projectKeys = await this.sdk.projects.keys(resolved.projectId);
+      const publicOrigin = appPublicOrigin(input, manifest.appSpec) ?? projectKeys.site_url ?? null;
+      const resources = await this.#ensureAppMailboxes(resolved.projectId, manifest.appSpec, run);
+      const env = {
+        ...this.#generatedAppEnv(resolved.projectId, projectKeys, publicOrigin, resources),
+        ...this.#userSecretEnv(manifest.appSpec),
+      };
+      resources.env = env;
+      await this.#ensureAppSecrets(resolved.projectId, manifest.appSpec, env, run);
+      await this.#runAppBuild(workspaceDir, manifest.appSpec, env, run);
+
+      const releaseInput = materializeTemplates(manifest.appSpec.release, {
+        ...env,
+        "input.name": input.name ?? manifest.appSpec.project.name ?? "",
+      }) as Run402AppReleaseSpec;
+      const normalized = await normalizeDeployManifest(releaseInput, {
+        project: resolved.projectId,
+        baseDir: dirname(manifest.manifestPath),
+      });
+      if (!hasDeployableContent(normalized.spec)) {
+        throw run.error(
+          "App release contains no deployable sections.",
+          "MANIFEST_EMPTY",
+          { manifest_path: manifest.manifestPath },
+        );
+      }
+
+      const deployStep = run.addStep({
+        action: "deploy.apply",
+        description: "Apply app release",
+        mutation: true,
+        auto: false,
+        details: {
+          project_id: resolved.projectId,
+          manifest_path: manifest.manifestPath,
+        },
+      });
+      run.setState(deployStep, "running");
+      const scoped = await this.sdk.project(resolved.projectId);
+      const deploy = await scoped.apply(normalized.spec, {
+        idempotencyKey: input.idempotencyKey ?? normalized.idempotencyKey,
+        allowWarnings: input.allowWarnings,
+        allowWarningCodes: input.allowWarningCodes,
+        target: "cloud",
+        onEvent: (event: DeployEvent) => {
+          run.options.onEvent?.({
+            type: "action.step",
+            action: Run402Action.Up,
+            step: {
+              ...deployStep,
+              details: { ...deployStep.details, deploy_event: event.type },
+            },
+          });
+        },
+      });
+      run.setState(deployStep, "succeeded", {
+        release_id: deploy.release_id,
+        operation_id: deploy.operation_id,
+      });
+
+      const webhooks = await this.#ensureAppWebhooks(resolved.projectId, manifest.appSpec, resources, run);
+      resources.webhooks = webhooks;
+      const verification = await this.#verifyAppHttp(manifest.appSpec, publicOrigin, run);
+      markAppGraphNodes(manifest.appGraph, verification.ok ? "succeeded" : "failed");
+      const appResult = createRun402AppUpResult({
+        graph: manifest.appGraph,
+        manifest_path: manifest.manifestPath,
+        status: verification.ok ? "succeeded" : "deployed_unverified",
+        started_at: startedAt,
+        dry_run: false,
+        project_id: resolved.projectId,
+        project_name: input.name ?? manifest.appSpec.project.name ?? null,
+        public_origin: publicOrigin,
+        operation_id: deploy.operation_id ?? null,
+        diagnostics: verification.diagnostics,
+        approval_policy: {
+          yes: run.approval === "yes",
+          allow_prune: input.allowPrune === true,
+          max_spend_usd: input.maxSpendUsd ?? null,
+          build_mode: input.buildMode ?? manifest.appSpec.build?.mode ?? null,
+          shell_build_approved: input.allowShellBuild === true,
+        },
+      });
+      applyResourceStateToAppResult(appResult, resources);
+      appResult.release.operation_id = deploy.operation_id ?? null;
+      appResult.release.release_id = deploy.release_id ?? null;
+      appResult.release.spec = normalized.manifest as Run402AppReleaseSpec;
+      for (const check of appResult.verification.http) {
+        const actual = verification.results.get(check.id);
+        if (actual !== undefined) {
+          check.actual_status = actual;
+          check.status = actual === check.expected_status ? "succeeded" : "failed";
+        }
+      }
+      await this.#recordAppInstallState({
+        projectId: resolved.projectId,
+        manifest,
+        status: verification.ok ? "active" : "failed",
+        run,
+        resources,
+        lastOperationId: deploy.operation_id ?? null,
+        error: verification.ok ? null : { code: "VERIFY_FAILED", diagnostics: verification.diagnostics },
+      });
+
+      return run.result({
+        project_id: resolved.projectId,
+        manifest_path: manifest.manifestPath,
+        ...(resolved.shouldWriteLink ? { workspace_link_path: resolved.linkPath } : {}),
+        app_graph: manifest.appGraph,
+        deploy,
+        app_result: appResult,
+      });
+    } catch (err) {
+      await this.#recordAppInstallState({
+        projectId: resolved.projectId,
+        manifest,
+        status: "failed",
+        run,
+        error: actionErrorDetails(err),
+      });
+      throw err;
+    }
+  }
+
+  async #recordAppInstallState(input: {
+    projectId: string;
+    manifest: DiscoveredManifest;
+    status: "applying" | "active" | "failed";
+    run: ActionRun;
+    resources?: AppResourceState;
+    lastOperationId?: string | null;
+    error?: Record<string, unknown> | null;
+  }): Promise<void> {
+    if (!input.manifest.appSpec || !input.manifest.appGraph) return;
+    const step = input.run.addStep({
+      action: "app.install",
+      description: input.status === "applying"
+        ? "Record app install state"
+        : "Record app install result",
+      mutation: true,
+      auto: true,
+      details: {
+        project_id: input.projectId,
+        app_key: input.manifest.appSpec.app.id,
+        status: input.status,
+      },
+    });
+    input.run.setState(step, "running");
+    try {
+      await this.sdk.apps.upsertInstallState({
+        project_id: input.projectId,
+        app_key: input.manifest.appSpec.app.id,
+        status: input.status,
+        manifest_digest: `sha256:${sha256Hex(stableJson(input.manifest.appSpec))}`,
+        graph_digest: input.manifest.appGraph.graph_digest,
+        source: input.manifest.source as Record<string, unknown> | undefined,
+        manifest: input.manifest.appSpec as unknown as Record<string, unknown>,
+        resources: input.resources
+          ? {
+              mailboxes: input.resources.mailboxes,
+              webhooks: input.resources.webhooks,
+            }
+          : {},
+        bindings: input.resources
+          ? { env: Object.keys(input.resources.env).sort() }
+          : {},
+        last_operation_id: input.lastOperationId ?? null,
+        error: input.error ?? null,
+      });
+      input.run.setState(step, "succeeded");
+    } catch (err) {
+      input.run.setState(step, "skipped", {
+        reason: "app_install_state_unavailable",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async #ensureAppMailboxes(
+    projectId: string,
+    spec: Run402AppSpec,
+    run: ActionRun,
+  ): Promise<AppResourceState> {
+    const state: AppResourceState = { mailboxes: {}, webhooks: {}, env: {} };
+    const entries = Object.entries(spec.resources?.mailboxes ?? {}).sort(([a], [b]) => a.localeCompare(b));
+    if (entries.length === 0) return state;
+
+    const step = run.addStep({
+      action: "app.mailbox.ensure",
+      description: "Ensure app mailboxes",
+      mutation: true,
+      auto: true,
+      details: { project_id: projectId, count: entries.length },
+    });
+    await run.approve(step, ["app.mailbox.ensure"], "Create or reuse app mailboxes.");
+    run.setState(step, "running");
+
+    let envelope = await this.sdk.email.listMailboxes(projectId);
+    for (const [logicalName, mailboxSpec] of entries) {
+      const slug = appMailboxSlug(logicalName, mailboxSpec);
+      let mailbox = envelope.mailboxes.find((candidate: { slug?: string }) => candidate.slug === slug);
+      if (!mailbox) {
+        mailbox = await this.sdk.email.createMailbox(projectId, slug);
+        envelope = await this.sdk.email.listMailboxes(projectId);
+      }
+      state.mailboxes[logicalName] = {
+        id: mailbox.mailbox_id,
+        slug: mailbox.slug,
+        address: mailbox.address,
+        ...(mailbox.managed_address ? { managed_address: mailbox.managed_address } : {}),
+      };
+    }
+
+    const defaults: { default_outbound_mailbox_id?: string; auth_sender_mailbox_id?: string } = {};
+    for (const [logicalName, mailboxSpec] of entries) {
+      const mailbox = state.mailboxes[logicalName];
+      if (!mailbox) continue;
+      if (mailboxSpec.roles?.includes("default_outbound")) defaults.default_outbound_mailbox_id = mailbox.id;
+      if (mailboxSpec.roles?.includes("auth_sender")) defaults.auth_sender_mailbox_id = mailbox.id;
+    }
+    if (
+      (defaults.default_outbound_mailbox_id && envelope.mailbox_settings?.default_outbound_mailbox_id !== defaults.default_outbound_mailbox_id) ||
+      (defaults.auth_sender_mailbox_id && envelope.mailbox_settings?.auth_sender_mailbox_id !== defaults.auth_sender_mailbox_id)
+    ) {
+      await this.sdk.email.setMailboxDefaults(projectId, defaults);
+    }
+
+    run.setState(step, "succeeded", {
+      mailboxes: Object.fromEntries(Object.entries(state.mailboxes).map(([name, mailbox]) => [
+        name,
+        { mailbox_id: mailbox.id, slug: mailbox.slug, address: mailbox.address },
+      ])),
+    });
+    return state;
+  }
+
+  #generatedAppEnv(
+    projectId: string,
+    projectKeys: { anon_key: string; service_key: string },
+    publicOrigin: string | null,
+    resources: AppResourceState,
+  ): Record<string, string> {
+    const env: Record<string, string> = {
+      RUN402_PROJECT_ID: projectId,
+      RUN402_ANON_KEY: projectKeys.anon_key,
+      RUN402_SERVICE_KEY: projectKeys.service_key,
+      RUN402_API_BASE: this.sdk.apiBase,
+      RUN402_API_BASE_URL: this.sdk.apiBase,
     };
+    if (publicOrigin) env.RUN402_PUBLIC_ORIGIN = publicOrigin;
+    for (const [logicalName, mailbox] of Object.entries(resources.mailboxes)) {
+      const suffix = logicalName.toUpperCase();
+      env[`RUN402_MAILBOX_${suffix}_ID`] = mailbox.id;
+      env[`RUN402_MAILBOX_${suffix}_ADDRESS`] = mailbox.address;
+      if (mailbox.managed_address) env[`RUN402_MAILBOX_${suffix}_MANAGED_ADDRESS`] = mailbox.managed_address;
+    }
+    return env;
+  }
+
+  #userSecretEnv(spec: Run402AppSpec): Record<string, string> {
+    const env: Record<string, string> = {};
+    for (const [name, secret] of Object.entries(spec.secrets ?? {})) {
+      const sourceEnv = secret.source_env ?? name;
+      const value = process.env[sourceEnv];
+      if (value !== undefined) env[name] = value;
+    }
+    return env;
+  }
+
+  async #ensureAppSecrets(
+    projectId: string,
+    spec: Run402AppSpec,
+    env: Record<string, string>,
+    run: ActionRun,
+  ): Promise<void> {
+    const required = new Set<string>();
+    for (const [name, secret] of Object.entries(spec.secrets ?? {})) {
+      if (secret.required === true || process.env[secret.source_env ?? name] !== undefined) required.add(name);
+    }
+    for (const name of releaseRequiredSecretNames(spec.release)) required.add(name);
+    const names = [...required].sort();
+    if (names.length === 0) return;
+
+    const step = run.addStep({
+      action: "app.secret.ensure",
+      description: "Ensure app runtime secrets",
+      mutation: true,
+      auto: true,
+      details: { project_id: projectId, keys: names },
+    });
+    await run.approve(step, ["app.secret.ensure"], "Set generated and user-provided app runtime secrets.");
+    run.setState(step, "running");
+    for (const name of names) {
+      const value = env[name];
+      if (value === undefined) {
+        throw run.error(
+          `App secret ${name} is required by the release but no generated or user-provided value is available.`,
+          "MISSING_SECRET",
+          { key: name },
+        );
+      }
+      await this.sdk.secrets.set(projectId, name, { value });
+    }
+    run.setState(step, "succeeded", { keys: names });
+  }
+
+  async #runAppBuild(
+    workspaceDir: string,
+    spec: Run402AppSpec,
+    env: Record<string, string>,
+    run: ActionRun,
+  ): Promise<void> {
+    const commands = spec.build?.commands ?? [];
+    if (commands.length === 0) return;
+    const mode = spec.build?.mode ?? "local";
+    if (mode !== "local") {
+      throw run.error(
+        `${mode} build mode is not executable by this SDK build.`,
+        "REMOTE_BUILD_UNSUPPORTED",
+        { mode },
+      );
+    }
+    const step = run.addStep({
+      action: "app.build",
+      description: "Run app build commands",
+      mutation: true,
+      auto: false,
+      details: { mode, commands: commands.map((command) => command.id) },
+    });
+    run.setState(step, "running");
+    for (const command of commands) {
+      const cwd = resolveMaybe(workspaceDir, command.cwd ?? ".");
+      if (command.argv && command.argv.length > 0) {
+        const [file, ...args] = command.argv;
+        await execFileAsync(file, args, {
+          cwd,
+          env: { ...process.env, ...env },
+          maxBuffer: 1024 * 1024 * 16,
+        });
+      } else if (command.shell) {
+        await execFileAsync("/bin/sh", ["-c", command.shell], {
+          cwd,
+          env: { ...process.env, ...env },
+          maxBuffer: 1024 * 1024 * 16,
+        });
+      } else {
+        throw run.error(
+          `Build command ${command.id} must define argv or shell.`,
+          "APP_SPEC_INVALID",
+          { command_id: command.id },
+        );
+      }
+    }
+    run.setState(step, "succeeded");
+  }
+
+  async #ensureAppWebhooks(
+    projectId: string,
+    spec: Run402AppSpec,
+    resources: AppResourceState,
+    run: ActionRun,
+  ): Promise<Record<string, AppWebhookState>> {
+    const entries = Object.entries(spec.resources?.webhooks ?? {}).sort(([a], [b]) => a.localeCompare(b));
+    const webhooks: Record<string, AppWebhookState> = {};
+    if (entries.length === 0) return webhooks;
+    const step = run.addStep({
+      action: "app.webhook.ensure",
+      description: "Ensure app mailbox webhooks",
+      mutation: true,
+      auto: true,
+      details: { project_id: projectId, count: entries.length },
+    });
+    await run.approve(step, ["app.webhook.ensure"], "Create or reuse app mailbox webhooks.");
+    run.setState(step, "running");
+    for (const [logicalName, webhook] of entries) {
+      const mailbox = resources.mailboxes[webhook.mailbox];
+      if (!mailbox) {
+        throw run.error(
+          `Webhook ${logicalName} references unknown mailbox ${webhook.mailbox}.`,
+          "APP_SPEC_INVALID",
+          { webhook: logicalName, mailbox: webhook.mailbox },
+        );
+      }
+      const url = materializeTemplates(webhook.url, resources.env) as string;
+      const events = [...webhook.events].sort();
+      const current = await this.sdk.email.webhooks.list(projectId, { mailbox: mailbox.id });
+      const existing = current.webhooks.find((candidate: { url?: string; events?: string[] }) =>
+        candidate.url === url && sameStringSet(candidate.events ?? [], events)
+      );
+      const summary = existing ?? await this.sdk.email.webhooks.register(projectId, {
+        mailbox: mailbox.id,
+        url,
+        events,
+      });
+      webhooks[logicalName] = {
+        id: summary.webhook_id,
+        mailbox: webhook.mailbox,
+        url,
+        events,
+        created: existing === undefined,
+      };
+    }
+    run.setState(step, "succeeded", { webhooks });
+    return webhooks;
+  }
+
+  async #verifyAppHttp(
+    spec: Run402AppSpec,
+    publicOrigin: string | null,
+    run: ActionRun,
+  ): Promise<{
+    ok: boolean;
+    results: Map<string, number | null>;
+    diagnostics: Run402AppUpDiagnostic[];
+  }> {
+    const checks = spec.verify?.http ?? [];
+    const results = new Map<string, number | null>();
+    const diagnostics: Run402AppUpDiagnostic[] = [];
+    if (checks.length === 0) return { ok: true, results, diagnostics };
+    const step = run.addStep({
+      action: "app.verify",
+      description: "Verify app HTTP checks",
+      mutation: false,
+      auto: true,
+      details: { count: checks.length },
+    });
+    run.setState(step, "running");
+    for (const check of checks) {
+      const url = check.url ?? (publicOrigin && check.path ? new URL(check.path, publicOrigin).toString() : null);
+      if (!url) {
+        results.set(check.id, null);
+        diagnostics.push({
+          code: "VERIFY_FAILED",
+          severity: "error",
+          node_id: `verify.http.${check.id}`,
+          message: `HTTP verification ${check.id} needs either url or project public origin + path.`,
+        });
+        continue;
+      }
+      const retries = Math.max(1, check.retries ?? 1);
+      let status: number | null = null;
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          const res = await fetch(url, { method: "GET" });
+          status = res.status;
+          if (status === check.expect.status) break;
+        } catch {
+          status = null;
+        }
+        if (attempt + 1 < retries) await delay(1_000);
+      }
+      results.set(check.id, status);
+      if (status !== check.expect.status) {
+        diagnostics.push({
+          code: "VERIFY_FAILED",
+          severity: "error",
+          node_id: `verify.http.${check.id}`,
+          message: `HTTP verification ${check.id} expected ${check.expect.status}, got ${status ?? "network_error"}.`,
+          details: { url, expected_status: check.expect.status, actual_status: status },
+        });
+      }
+    }
+    run.setState(step, diagnostics.length === 0 ? "succeeded" : "failed", {
+      checks: Object.fromEntries(results),
+    });
+    return { ok: diagnostics.length === 0, results, diagnostics };
   }
 
   async #ensureAllowance(run: ActionRun, opts: { fund: boolean } = { fund: false }): Promise<void> {
@@ -876,11 +1435,12 @@ export class NodeActions implements Run402Actions {
     });
     run.setState(step, "running");
 
-    if (input.name && link?.name && input.name !== link.name) {
+    const linkConflict = workspaceLinkConflict(link, input, this.#targetKind(), linkPath);
+    if (linkConflict && !input.projectId) {
       throw run.error(
-        "--name is only used when creating/linking a project and conflicts with the workspace link name.",
-        "RUN402_NAME_PROJECT_CONFLICT",
-        { name: input.name, linked_name: link.name, link_path: linkPath },
+        linkConflict.message,
+        "RUN402_WORKSPACE_LINK_CONFLICT",
+        linkConflict.details,
       );
     }
 
@@ -1264,6 +1824,77 @@ function appPublicOrigin(input: Run402UpActionInput, spec: Run402AppSpec | undef
   return `https://${subdomain}.run402.com`;
 }
 
+function materializeTemplates(value: unknown, values: Record<string, string>): unknown {
+  if (typeof value === "string") {
+    return value.replace(/\$\{([^}]+)\}/g, (_match, key: string) => values[key] ?? "");
+  }
+  if (Array.isArray(value)) return value.map((item) => materializeTemplates(item, values));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+        key,
+        materializeTemplates(nested, values),
+      ]),
+    );
+  }
+  return value;
+}
+
+function appMailboxSlug(logicalName: string, spec: Run402AppMailboxSpec): string {
+  return spec.slug ?? logicalName.replace(/_/g, "-");
+}
+
+function releaseRequiredSecretNames(release: Run402AppReleaseSpec): string[] {
+  const secrets = release.secrets;
+  if (!secrets || typeof secrets !== "object" || Array.isArray(secrets)) return [];
+  const required = (secrets as { require?: unknown }).require;
+  return Array.isArray(required)
+    ? required.filter((value): value is string => typeof value === "string")
+    : [];
+}
+
+function sameStringSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort();
+  const right = [...b].sort();
+  return left.every((value, index) => value === right[index]);
+}
+
+function markAppGraphNodes(graph: Run402AppInstallGraph, status: "succeeded" | "failed"): void {
+  for (const node of graph.nodes) {
+    node.status = status;
+  }
+}
+
+function applyResourceStateToAppResult(appResult: Run402AppUpResultEnvelope, resources: AppResourceState): void {
+  for (const [name, mailbox] of Object.entries(resources.mailboxes)) {
+    if (!appResult.resources.mailboxes[name]) continue;
+    appResult.resources.mailboxes[name].id = mailbox.id;
+    appResult.resources.mailboxes[name].address = mailbox.address;
+  }
+  for (const [name, webhook] of Object.entries(resources.webhooks)) {
+    appResult.resources.webhooks[name] = {
+      id: webhook.id,
+      mailbox: webhook.mailbox,
+      url: webhook.url,
+      events: webhook.events,
+      enabled: true,
+    };
+  }
+  appResult.resources.bindings = appResult.resources.bindings.map((binding) => {
+    const value = resources.env[binding.env];
+    return value === undefined
+      ? binding
+      : { ...binding, value, redacted: /KEY|SECRET|TOKEN/.test(binding.env) };
+  });
+  appResult.resources.user_secrets = Object.fromEntries(
+    Object.entries(appResult.resources.user_secrets).map(([name, secret]) => [
+      name,
+      { ...secret, satisfied: resources.env[name] !== undefined },
+    ]),
+  );
+}
+
 function spendApprovalBlock(
   input: Run402UpActionInput,
   run: ActionRun,
@@ -1598,6 +2229,53 @@ function workspaceProjectLinksEqual(a: WorkspaceProjectLink | null, b: Workspace
   );
 }
 
+function workspaceLinkConflict(
+  link: WorkspaceProjectLink | null,
+  input: Run402UpActionInput,
+  targetKind: NodeActionTargetKind,
+  linkPath: string,
+): { message: string; details: Record<string, unknown> } | null {
+  if (!link) return null;
+  const linkedTarget = link.target?.kind;
+  if (linkedTarget && targetKind !== "unknown" && linkedTarget !== targetKind) {
+    return {
+      message: "Workspace project link was created for a different Run402 target.",
+      details: {
+        reason: "target_mismatch",
+        linked_project_id: link.project_id,
+        linked_target: linkedTarget,
+        target: targetKind,
+        link_path: linkPath,
+      },
+    };
+  }
+  if (!input.name) return null;
+  if (!link.name) {
+    return {
+      message: "--name was supplied, but this workspace is already linked to a project without a recorded name.",
+      details: {
+        reason: "name_missing",
+        linked_project_id: link.project_id,
+        name: input.name,
+        link_path: linkPath,
+      },
+    };
+  }
+  if (input.name !== link.name) {
+    return {
+      message: "--name conflicts with the existing workspace project link.",
+      details: {
+        reason: "name_mismatch",
+        linked_project_id: link.project_id,
+        linked_name: link.name,
+        name: input.name,
+        link_path: linkPath,
+      },
+    };
+  }
+  return null;
+}
+
 function deriveStableRootKey(input: Run402ActionInput): string | null {
   if (input.type === Run402Action.ProjectsProvision && input.name) {
     return `projects.provision:${input.name}`;
@@ -1631,6 +2309,29 @@ function hasContent(value: unknown): boolean {
   }
   if (typeof value === "string") return value.length > 0;
   return true;
+}
+
+function stableJson(value: unknown): string {
+  if (value === undefined) return "null";
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(",")}}`;
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function actionErrorDetails(err: unknown): Record<string, unknown> {
+  const maybe = err as { code?: unknown; details?: unknown };
+  return {
+    message: err instanceof Error ? err.message : String(err),
+    ...(typeof maybe.code === "string" ? { code: maybe.code } : {}),
+    ...(maybe.details && typeof maybe.details === "object" ? { details: maybe.details } : {}),
+  };
 }
 
 function assertNever(value: never): never {

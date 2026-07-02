@@ -810,8 +810,6 @@ export async function run(sub, args) {
     case "promote-user": { const { projectId, rest } = resolvePositionalProject(args); await promoteUser(projectId, rest[0]); break; }
     case "demote-user":  { const { projectId, rest } = resolvePositionalProject(args); await demoteUser(projectId, rest[0]); break; }
     default:
-      console.error(`Unknown subcommand: ${sub}\n`);
-      console.log(HELP);
-      process.exit(1);
+      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown projects subcommand: ${sub}`, hint: "Run `run402 projects --help` for usage.", details: { command: "projects", subcommand: sub } });
   }
 }
