@@ -4727,6 +4727,53 @@ describe("Deploy.apply (commit.phase done events between transitions)", () => {
     assert.equal(activationDetail.details.duration_ms, 123);
   });
 
+  it("flushes recorded operation sub-events when commit returns ready synchronously", async () => {
+    const w = makeWiring();
+    const plan = noContentPlan("plan_sync_events", "op_sync_events");
+
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") return plan;
+      if (req.path === "/apply/v1/plans/plan_sync_events/commit") {
+        return readyCommit("op_sync_events", "rel_sync_events");
+      }
+      if (req.path === "/apply/v1/operations/op_sync_events/events?limit=100") {
+        return {
+          events: [
+            {
+              id: "10",
+              operation_id: "op_sync_events",
+              project_id: "prj_test",
+              type: "commit.phase.detail",
+              phase: "activate.functions",
+              status: "done",
+              message: null,
+              details: { release_id: "rel_sync_events", duration_ms: 321 },
+              created_at: "2026-07-02T00:00:00.000Z",
+              updated_at: "2026-07-02T00:00:00.000Z",
+            },
+          ],
+          cursor: null,
+        };
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const events: DeployEvent[] = [];
+    const deploy = new Deploy(w.client);
+    await deploy.apply(
+      { project: "prj_test", site: { replace: { "index.html": "<h1>ready</h1>" } } },
+      { onEvent: (e) => events.push(e) },
+    );
+
+    const detailIndex = events.findIndex(
+      (event) => event.type === "commit.phase.detail" && event.phase === "activate.functions",
+    );
+    const readyIndex = events.findIndex((event) => event.type === "ready");
+    assert.notEqual(detailIndex, -1, "synchronous ready commits should still flush operation event rows");
+    assert.notEqual(readyIndex, -1, "ready event should still be emitted");
+    assert(detailIndex < readyIndex, "operation detail rows should be emitted before ready");
+  });
+
   it("emits commit.phase done before the next phase's started, plus done on terminal ready (#135)", async () => {
     const w = makeWiring();
     const html = "<html>phase</html>";

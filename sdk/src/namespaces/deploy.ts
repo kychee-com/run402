@@ -2106,6 +2106,16 @@ async function pollUntilReady(
         },
       );
     }
+    if (projectId) {
+      const headers = await apikeyHeaders(client, projectId);
+      await drainRecordedOperationEvents(
+        client,
+        commit.operation_id,
+        headers,
+        null,
+        emit,
+      );
+    }
     emit({
       type: "ready",
       releaseId: commit.release_id,
@@ -2229,6 +2239,17 @@ async function pollSnapshotUntilReady(
           },
         );
       }
+      if (recordedEventsSupported && projectId) {
+        const recorded = await drainRecordedOperationEvents(
+          client,
+          snapshot.operation_id,
+          opHeaders,
+          recordedEventCursor,
+          emit,
+        );
+        recordedEventsSupported = recorded.supported;
+        recordedEventCursor = recorded.cursor;
+      }
       closePreviousPhase();
       emit(withSliceKinds({ type: "ready", releaseId: snapshot.release_id, urls: snapshot.urls }));
       return {
@@ -2289,13 +2310,37 @@ async function pollSnapshotUntilReady(
   }
 }
 
-async function emitRecordedOperationEvents(
+async function drainRecordedOperationEvents(
   client: Client,
   operationId: string,
   headers: Record<string, string>,
   cursor: string | null,
   emit: (event: DeployEvent) => void,
 ): Promise<{ cursor: string | null; supported: boolean }> {
+  let nextCursor = cursor;
+  for (let i = 0; i < 10; i += 1) {
+    const recorded = await emitRecordedOperationEvents(
+      client,
+      operationId,
+      headers,
+      nextCursor,
+      emit,
+    );
+    nextCursor = recorded.cursor;
+    if (!recorded.supported || !recorded.hasMore) {
+      return { cursor: nextCursor, supported: recorded.supported };
+    }
+  }
+  return { cursor: nextCursor, supported: true };
+}
+
+async function emitRecordedOperationEvents(
+  client: Client,
+  operationId: string,
+  headers: Record<string, string>,
+  cursor: string | null,
+  emit: (event: DeployEvent) => void,
+): Promise<{ cursor: string | null; supported: boolean; hasMore: boolean }> {
   const query = cursor
     ? `?limit=100&cursor=${encodeURIComponent(cursor)}`
     : "?limit=100";
@@ -2306,10 +2351,10 @@ async function emitRecordedOperationEvents(
       { headers, context: "fetching deploy operation events" },
     );
   } catch {
-    return { cursor, supported: false };
+    return { cursor, supported: false, hasMore: false };
   }
   if (!page || !Array.isArray(page.events)) {
-    return { cursor, supported: false };
+    return { cursor, supported: false, hasMore: false };
   }
 
   let nextCursor = cursor;
@@ -2322,7 +2367,7 @@ async function emitRecordedOperationEvents(
       nextCursor = eventId;
     }
   }
-  return { cursor: nextCursor, supported: true };
+  return { cursor: nextCursor, supported: true, hasMore: typeof page.cursor === "string" && page.cursor.length > 0 };
 }
 
 function isTerminalStaticActivationError(

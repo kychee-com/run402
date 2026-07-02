@@ -460,6 +460,9 @@ async function mockFetch(input, init) {
       },
     }));
   }
+  if (pathNoQuery.match(/^\/apply\/v1\/operations\/[^/]+\/events$/) && method === "GET") {
+    return Promise.resolve(json({ events: [], cursor: null }));
+  }
   if (path.match(/^\/apply\/v1\/operations\/[^/]+$/) && method === "GET") {
     return Promise.resolve(json({
       operation_id: "op_v2_test",
