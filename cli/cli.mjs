@@ -24,6 +24,7 @@ Commands:
   init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
   status      Show full account state (allowance, balance, tier, projects)
   wallets     Manage multiple named wallets (list, new, use, rename, bind, import)
+  credentials Manage local credential material (project-keys)
   allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
   projects    Manage projects (provision, list, query, inspect, delete)
@@ -151,6 +152,11 @@ switch (cmd) {
   }
   case "wallets": {
     const { run } = await import("./lib/wallets.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "credentials": {
+    const { run } = await import("./lib/credentials.mjs");
     await run(sub, rest);
     break;
   }

@@ -2,6 +2,13 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — remove `projects.json` as project truth
+
+- **CLI/SDK:** normal project reads and active selection are now server-authoritative. `run402 projects use <id>` / `r.projects.use(id)` validate through the control plane and store only an active project id; `r.project(id)` no longer requires local key-cache membership before server-capable operations.
+- **Credential cache:** local anon/service-key material moved behind explicit `run402 credentials project-keys list|status|import|export|remove` commands. Redacted reads identify `source: "local_cache"`; secret export requires `--reveal`, and imports use stdin/env rather than literal argv secrets. Legacy `projects.json` is one-way migration input only.
+- **Domains:** custom-domain commands default to principal auth with explicit `project_id`; `--auth service-key` opts into the local service-key cache path and reports `PROJECT_CREDENTIAL_NOT_FOUND` when the selected profile lacks keys.
+- **Tests/docs:** sync now tracks the new local credential-cache commands and guards custom-domain handlers against local cache preflights; CLI docs, README, SDK README, SKILL, and OpenClaw docs teach the server-vs-cache split.
+
 ## Unreleased — self-hosted Core target config
 
 - **CLI:** `run402 init --api-base=<url>` now persists the active API target for the current profile without creating a Cloud allowance, requesting faucet funds, or requiring a Cloud tier. `run402 projects provision --name ...` and `run402 deploy apply --manifest ...` use that configured Core target and active project.

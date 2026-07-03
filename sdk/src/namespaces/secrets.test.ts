@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Run402 } from "../index.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectCredentialNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 function creds(): CredentialsProvider {
@@ -88,9 +88,9 @@ describe("secrets", () => {
     assert.equal(result.key, "STRIPE_KEY");
   });
 
-  it("throws ProjectNotFound without any fetch for unknown project", async () => {
+  it("throws ProjectCredentialNotFound without any fetch for missing local credentials", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
-    await assert.rejects(sdk(fetch).secrets.set("prj_missing", "K", "V"), ProjectNotFound);
+    await assert.rejects(sdk(fetch).secrets.set("prj_missing", "K", "V"), ProjectCredentialNotFound);
     assert.equal(calls.length, 0);
   });
 });
@@ -145,7 +145,11 @@ describe("domains (custom)", () => {
     );
     await sdk(fetch).domains.add("prj_k", "ex.com", "app");
     assert.equal(calls[0]!.url, "https://api.test/domains/v1");
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), { domain: "ex.com", subdomain_name: "app" });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      project_id: "prj_k",
+      domain: "ex.com",
+      subdomain_name: "app",
+    });
   });
 
   it("status GETs the domain path", async () => {
@@ -153,7 +157,7 @@ describe("domains (custom)", () => {
       json({ domain: "ex.com", subdomain_name: "app", url: "u", subdomain_url: "su", status: "active", dns_instructions: null, created_at: "t" }),
     );
     const res = await sdk(fetch).domains.status("prj_k", "ex.com");
-    assert.equal(calls[0]!.url, "https://api.test/domains/v1/ex.com");
+    assert.equal(calls[0]!.url, "https://api.test/domains/v1/ex.com?project_id=prj_k");
     assert.equal(res.status, "active");
   });
 
@@ -162,7 +166,7 @@ describe("domains (custom)", () => {
     await sdk(fetch).domains.remove("ex.com");
     assert.equal(calls[0]!.method, "DELETE");
     assert.equal(calls[0]!.headers["Authorization"], undefined);
-    await sdk(fetch).domains.remove("ex.com", { projectId: "prj_k" });
+    await sdk(fetch).domains.remove("ex.com", { projectId: "prj_k", authMode: "service_key" });
     assert.equal(calls[1]!.headers["Authorization"], "Bearer s");
   });
 

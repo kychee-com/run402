@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { ProjectNotFound, ApiError, LocalError } from "../errors.js";
+import { ProjectCredentialNotFound, ApiError, LocalError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -767,12 +767,12 @@ describe("blobs.diagnoseUrl", () => {
     );
   });
 
-  it("throws ProjectNotFound for unknown project", async () => {
+  it("throws ProjectCredentialNotFound for missing local credentials", async () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
       sdk.assets.diagnoseUrl("prj_missing", "https://app.run402.com/_blob/x"),
-      ProjectNotFound,
+      ProjectCredentialNotFound,
     );
   });
 });
@@ -829,12 +829,12 @@ describe("blobs.waitFresh", () => {
     assert.ok(result.elapsedMs >= 250 - 50);
   });
 
-  it("throws ProjectNotFound for unknown project", async () => {
+  it("throws ProjectCredentialNotFound for missing local credentials", async () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
       sdk.assets.waitFresh("prj_missing", { url: "https://app.run402.com/_blob/k", sha256: "ff" }),
-      ProjectNotFound,
+      ProjectCredentialNotFound,
     );
   });
 

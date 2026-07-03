@@ -46,6 +46,7 @@ const GROUPED_COMMANDS = [
   "cloud",
   "contracts",
   "core",
+  "credentials",
   "domains",
   "email",
   "functions",

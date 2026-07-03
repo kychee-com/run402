@@ -4,7 +4,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 
 export interface TranslateOptions {
   text: string;
@@ -55,8 +56,7 @@ export class Ai {
 
   /** Translate text. Requires the AI Translation add-on on the project. */
   async translate(projectId: string, opts: TranslateOptions): Promise<TranslateResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "translating text");
+    const project = await requireProjectCredentials(this.client, projectId, "translating text");
 
     const body: Record<string, string> = { text: opts.text, to: opts.to };
     if (opts.from) body.from = opts.from;
@@ -72,8 +72,7 @@ export class Ai {
 
   /** Run content moderation on text. Free for all projects; requires service key. */
   async moderate(projectId: string, text: string): Promise<ModerateResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "moderating content");
+    const project = await requireProjectCredentials(this.client, projectId, "moderating content");
 
     return this.client.request<ModerateResult>("/ai/v1/moderate", {
       method: "POST",
@@ -85,8 +84,7 @@ export class Ai {
 
   /** Get AI translation usage for the current billing cycle. */
   async usage(projectId: string): Promise<AiUsageResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "fetching AI usage");
+    const project = await requireProjectCredentials(this.client, projectId, "fetching AI usage");
 
     return this.client.request<AiUsageResult>("/ai/v1/usage", {
       headers: { Authorization: `Bearer ${project.service_key}` },

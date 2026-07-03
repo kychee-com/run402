@@ -211,7 +211,7 @@ describe("config", () => {
     process.env.RUN402_CONFIG_DIR = "/tmp/test-config";
     // Use path.join in the expected value so the test passes on both POSIX
     // and Windows (Windows produces backslashes via path.join).
-    assert.equal(getKeystorePath(), join("/tmp/test-config", "projects.json"));
+    assert.equal(getKeystorePath(), join("/tmp/test-config", "credentials", "project-keys.v1.json"));
   });
 
   it("derives allowance path from config dir", () => {
@@ -259,7 +259,7 @@ describe("config — wallet profiles", () => {
     assert.equal(getActiveProfile(), "default");
     assert.equal(getConfigDir(), "/tmp/test-config");
     assert.equal(getConfigBaseDir(), "/tmp/test-config");
-    assert.equal(getKeystorePath(), join("/tmp/test-config", "projects.json"));
+    assert.equal(getKeystorePath(), join("/tmp/test-config", "credentials", "project-keys.v1.json"));
     assert.equal(getAllowancePath(), join("/tmp/test-config", "allowance.json"));
   });
 
@@ -267,7 +267,7 @@ describe("config — wallet profiles", () => {
     process.env.RUN402_WALLET = "kychon";
     assert.equal(getActiveProfile(), "kychon");
     assert.equal(getConfigDir(), join("/tmp/test-config", "profiles", "kychon"));
-    assert.equal(getKeystorePath(), join("/tmp/test-config", "profiles", "kychon", "projects.json"));
+    assert.equal(getKeystorePath(), join("/tmp/test-config", "profiles", "kychon", "credentials", "project-keys.v1.json"));
     assert.equal(getAllowancePath(), join("/tmp/test-config", "profiles", "kychon", "allowance.json"));
     // base dir + profiles dir are unaffected by the active profile
     assert.equal(getConfigBaseDir(), "/tmp/test-config");

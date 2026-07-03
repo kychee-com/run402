@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 
 import { Run402 } from "./index.js";
 import { ScopedRun402 } from "./scoped.js";
-import { ProjectNotFound, LocalError } from "./errors.js";
+import { ProjectCredentialNotFound, NotAuthorizedError, LocalError } from "./errors.js";
 import type { CredentialsProvider } from "./credentials.js";
 
 interface FetchCall {
@@ -157,18 +157,20 @@ describe("r.useProject() sugar", () => {
     assert.ok(p instanceof ScopedRun402);
   });
 
-  it("propagates ProjectNotFound when id is unknown", async () => {
+  it("does not set the active project when the server rejects the id", async () => {
     const setCalls: string[] = [];
     const creds = makeCreds({
       async setActiveProject(id) {
         setCalls.push(id);
       },
     });
-    const { fetch } = mockFetch(() => jsonResponse({}));
+    const { fetch } = mockFetch(() =>
+      jsonResponse({ code: "NOT_AUTHORIZED", message: "no project access" }, 403),
+    );
     const sdk = makeSdk(creds, fetch);
     await assert.rejects(
       sdk.useProject("prj_unknown"),
-      (err: unknown) => err instanceof ProjectNotFound && err.projectId === "prj_unknown",
+      NotAuthorizedError,
     );
     assert.deepEqual(setCalls, [], "setActiveProject must NOT be called when id lookup fails");
   });
@@ -404,13 +406,13 @@ describe("ScopedRun402 wrapper routing", () => {
     assert.equal(url.searchParams.get("org_id"), "11111111-2222-3333-4444-555555555555");
   });
 
-  it("ProjectNotFound surfaces unchanged from the scoped client", async () => {
+  it("ProjectCredentialNotFound surfaces unchanged from the scoped client", async () => {
     const { fetch } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
     const p = await sdk.project("prj_ghost");
     await assert.rejects(
       p.projects.getUsage(),
-      (err: unknown) => err instanceof ProjectNotFound && err.projectId === "prj_ghost",
+      (err: unknown) => err instanceof ProjectCredentialNotFound && err.projectId === "prj_ghost",
     );
   });
 

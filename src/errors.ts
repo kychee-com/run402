@@ -3,6 +3,7 @@
 import {
   Run402Error,
   NetworkError,
+  ProjectCredentialNotFound as SdkProjectCredentialNotFound,
   ProjectNotFound as SdkProjectNotFound,
 } from "../sdk/dist/index.js";
 
@@ -334,6 +335,22 @@ export function projectNotFound(projectId: string): ToolResult {
 }
 
 /**
+ * Consistent local project credential-cache miss error.
+ */
+export function projectCredentialNotFound(err: SdkProjectCredentialNotFound): ToolResult {
+  const lines = [
+    `Error: No local project credentials cached for \`${err.projectId}\` (not found in key store).`,
+    `Code: \`PROJECT_CREDENTIAL_NOT_FOUND\``,
+    `This is a local credential-cache miss, not proof that the project does not exist.`,
+  ];
+  lines.push(...formatCanonicalErrorContext(err, { includeDetails: true }));
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    isError: true,
+  };
+}
+
+/**
  * Translate an SDK error into the MCP tool-result shape.
  *
  * Routing:
@@ -346,6 +363,9 @@ export function projectNotFound(projectId: string): ToolResult {
  * nothing but delegate to an SDK method and format the successful result.
  */
 export function mapSdkError(err: unknown, context: string): ToolResult {
+  if (err instanceof SdkProjectCredentialNotFound) {
+    return projectCredentialNotFound(err);
+  }
   if (err instanceof SdkProjectNotFound) {
     return projectNotFound(err.projectId);
   }

@@ -3,7 +3,8 @@
  * All methods require the project's service key.
  */
 
-import { ApiError, ProjectNotFound } from "../errors.js";
+import { ApiError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import type { Client } from "../kernel.js";
 
 export type ManagedJobType = string;
@@ -154,8 +155,7 @@ export class Jobs {
 
   /** Submit a platform-managed job run for a run402-configured job type. */
   async submit(projectId: string, request: ManagedJobSubmitRequestInput): Promise<ManagedJobResponse> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "submitting job");
+    const project = await requireProjectCredentials(this.client, projectId, "submitting job");
 
     const body = managedJobSubmitRequestToWire(request);
     return this.client.request<ManagedJobResponse>("/jobs/v1/runs", {
@@ -171,8 +171,7 @@ export class Jobs {
 
   /** Get a job run by id. */
   async get(projectId: string, jobId: string): Promise<ManagedJobResponse> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "getting job");
+    const project = await requireProjectCredentials(this.client, projectId, "getting job");
 
     return this.client.request<ManagedJobResponse>(jobRunPath(jobId), {
       headers: { Authorization: `Bearer ${project.service_key}` },
@@ -192,8 +191,7 @@ export class Jobs {
    *   completed or the filename was not recorded for the run.
    */
   async downloadArtifact(projectId: string, jobId: string, filename: string): Promise<Response> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "downloading job artifact");
+    const project = await requireProjectCredentials(this.client, projectId, "downloading job artifact");
 
     const url = `${this.client.apiBase}${jobRunPath(jobId)}/artifacts/${encodeURIComponent(filename)}`;
     const res = await this.client.fetch(url, {
@@ -217,8 +215,7 @@ export class Jobs {
     jobId: string,
     opts: ManagedJobLogsOptions = {},
   ): Promise<ManagedJobLogsResponse> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "getting job logs");
+    const project = await requireProjectCredentials(this.client, projectId, "getting job logs");
 
     const query = new URLSearchParams();
     if (opts.tail !== undefined) query.set("tail", String(opts.tail));
@@ -233,8 +230,7 @@ export class Jobs {
 
   /** Cancel a queued or running job. */
   async cancel(projectId: string, jobId: string): Promise<ManagedJobResponse> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "cancelling job");
+    const project = await requireProjectCredentials(this.client, projectId, "cancelling job");
 
     return this.client.request<ManagedJobResponse>(jobRunPath(jobId), {
       method: "DELETE",
@@ -245,8 +241,7 @@ export class Jobs {
 
   /** Purge all managed job runs for a project. Active runners are terminated when known. */
   async purge(projectId: string): Promise<ManagedJobPurgeResponse> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "purging jobs");
+    const project = await requireProjectCredentials(this.client, projectId, "purging jobs");
 
     return this.client.request<ManagedJobPurgeResponse>("/jobs/v1/runs", {
       method: "DELETE",

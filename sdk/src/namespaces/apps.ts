@@ -3,7 +3,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ProjectNotFound } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import type { ProjectTier } from "./projects.types.js";
 
 export interface AppSummary {
@@ -190,8 +190,7 @@ export class Apps {
 
   /** Publish a project as a forkable app version. */
   async publish(projectId: string, opts: PublishAppOptions = {}): Promise<PublishedVersion> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "publishing app");
+    const project = await requireProjectCredentials(this.client, projectId, "publishing app");
 
     const body: Record<string, unknown> = {};
     if (opts.description !== undefined) body.description = opts.description;
@@ -212,8 +211,7 @@ export class Apps {
 
   /** List all published versions of a project. */
   async listVersions(projectId: string): Promise<ListVersionsResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing versions");
+    const project = await requireProjectCredentials(this.client, projectId, "listing versions");
 
     return this.client.request<ListVersionsResult>(
       `/projects/v1/admin/${projectId}/versions`,
@@ -230,8 +228,7 @@ export class Apps {
     versionId: string,
     opts: UpdateVersionOptions,
   ): Promise<void> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "updating version");
+    const project = await requireProjectCredentials(this.client, projectId, "updating version");
 
     const body: Record<string, unknown> = {};
     if (opts.description !== undefined) body.description = opts.description;
@@ -252,8 +249,7 @@ export class Apps {
 
   /** Delete a published version. */
   async deleteVersion(projectId: string, versionId: string): Promise<void> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting version");
+    const project = await requireProjectCredentials(this.client, projectId, "deleting version");
 
     await this.client.request<unknown>(
       `/projects/v1/admin/${projectId}/versions/${versionId}`,

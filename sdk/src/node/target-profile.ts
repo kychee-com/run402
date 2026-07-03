@@ -7,6 +7,7 @@ import {
   getConfigDir,
 } from "../../core-dist/config.js";
 import { loadKeyStore, type StoredProject } from "../../core-dist/keystore.js";
+import { getActiveProjectId } from "../../core-dist/profile-state.js";
 import { LocalError } from "../errors.js";
 
 export type Run402TargetKind = "cloud" | "core" | "unknown";
@@ -65,6 +66,7 @@ export function resolveRun402TargetProfile(
   const env = options.env ?? process.env;
   const aliases = mergeAliases(options.envAliases);
   const store = loadKeyStore();
+  const activeProjectId = getActiveProjectId();
   const apiBase = getApiBase();
   const apiBaseSource = getApiBaseSource();
   const configuredKind = getApiTargetKind();
@@ -72,7 +74,7 @@ export function resolveRun402TargetProfile(
   const isCore = targetKind === "core";
 
   const projectFromEnv = firstEnv(env, aliases.projectId);
-  const projectId = firstString(options.projectId, projectFromEnv?.value, store.active_project_id);
+  const projectId = firstString(options.projectId, projectFromEnv?.value, activeProjectId);
   const project = projectId ? store.projects[projectId] : undefined;
   const anonFromEnv = firstEnv(env, aliases.anonKey);
   const serviceFromEnv = firstEnv(env, aliases.serviceKey);
@@ -126,13 +128,13 @@ export function resolveRun402TargetProfile(
     sources: {
       apiBase: apiBaseSource,
       ...(projectId
-        ? { project: options.projectId ? "option:projectId" : projectFromEnv?.source ?? "profile:active_project_id" }
+        ? { project: options.projectId ? "option:projectId" : projectFromEnv?.source ?? "profile:state.json" }
         : {}),
       ...(anonKey
-        ? { anonKey: options.anonKey ? "option:anonKey" : anonFromEnv?.source ?? "profile:projects.json" }
+        ? { anonKey: options.anonKey ? "option:anonKey" : anonFromEnv?.source ?? "profile:project-keys.v1.json" }
         : {}),
       ...(serviceKey
-        ? { serviceKey: options.serviceKey ? "option:serviceKey" : serviceFromEnv?.source ?? "profile:projects.json" }
+        ? { serviceKey: options.serviceKey ? "option:serviceKey" : serviceFromEnv?.source ?? "profile:project-keys.v1.json" }
         : {}),
     },
   };

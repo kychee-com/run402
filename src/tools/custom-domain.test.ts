@@ -68,15 +68,36 @@ describe("add_custom_domain tool", () => {
     assert.ok(text.includes("verify-token-123"));
   });
 
-  it("returns isError when project not in keystore", async () => {
+  it("does not require cached project keys for principal-auth registration", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    let capturedHeaders: Record<string, string> = {};
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      capturedBody = JSON.parse(init?.body as string);
+      return new Response(
+        JSON.stringify({
+          domain: "example.com",
+          subdomain_name: "myapp",
+          url: "https://example.com",
+          subdomain_url: "https://myapp.run402.com",
+          status: "pending",
+          dns_instructions: null,
+          project_id: "no-such-proj",
+          created_at: "2026-04-01T00:00:00Z",
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
     const result = await handleAddCustomDomain({
       domain: "example.com",
       subdomain_name: "myapp",
       project_id: "no-such-proj",
     });
 
-    assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("not found in key store"));
+    assert.equal(result.isError, undefined);
+    assert.equal(capturedHeaders.Authorization, undefined);
+    assert.equal(capturedBody?.project_id, "no-such-proj");
   });
 
   it("returns isError on 400 invalid domain", async () => {
@@ -157,11 +178,20 @@ describe("list_custom_domains tool", () => {
     assert.ok(result.content[0]!.text.includes("No custom domains"));
   });
 
-  it("returns isError when project not in keystore", async () => {
+  it("does not require cached project keys for principal-auth listing", async () => {
+    let capturedUrl = "";
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      capturedUrl = typeof url === "string" ? url : url.toString();
+      return new Response(
+        JSON.stringify({ domains: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
     const result = await handleListCustomDomains({ project_id: "nope" });
 
-    assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("not found in key store"));
+    assert.equal(result.isError, undefined);
+    assert.ok(capturedUrl.endsWith("/domains/v1?project_id=nope"));
   });
 });
 
@@ -256,14 +286,31 @@ describe("check_domain_status tool", () => {
     assert.equal(result.isError, true);
   });
 
-  it("returns isError when project not in keystore", async () => {
+  it("does not require cached project keys for principal-auth status checks", async () => {
+    let capturedUrl = "";
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      capturedUrl = typeof url === "string" ? url : url.toString();
+      return new Response(
+        JSON.stringify({
+          domain: "example.com",
+          subdomain_name: "myapp",
+          url: "https://example.com",
+          subdomain_url: "https://myapp.run402.com",
+          status: "active",
+          dns_instructions: null,
+          created_at: "2026-04-01T00:00:00Z",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
     const result = await handleCheckDomainStatus({
       domain: "example.com",
       project_id: "nope",
     });
 
-    assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("not found in key store"));
+    assert.equal(result.isError, undefined);
+    assert.ok(capturedUrl.endsWith("/domains/v1/example.com?project_id=nope"));
   });
 });
 
@@ -314,13 +361,25 @@ describe("remove_custom_domain tool", () => {
     assert.equal(result.isError, true);
   });
 
-  it("returns isError when project not in keystore", async () => {
+  it("does not require cached project keys for principal-auth removal", async () => {
+    let capturedUrl = "";
+    let capturedMethod = "";
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      capturedUrl = typeof url === "string" ? url : url.toString();
+      capturedMethod = init?.method ?? "GET";
+      return new Response(
+        JSON.stringify({ status: "deleted", domain: "example.com" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
     const result = await handleRemoveCustomDomain({
       domain: "example.com",
       project_id: "nope",
     });
 
-    assert.equal(result.isError, true);
-    assert.ok(result.content[0]!.text.includes("not found in key store"));
+    assert.equal(result.isError, undefined);
+    assert.equal(capturedMethod, "DELETE");
+    assert.ok(capturedUrl.endsWith("/domains/v1/example.com?project_id=nope"));
   });
 });

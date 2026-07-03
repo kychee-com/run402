@@ -4,7 +4,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import { deprecatePositional } from "../deprecate.js";
 
 const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
@@ -46,8 +47,7 @@ export class Secrets {
     }
     validateSecretKey(key, "setting secret");
     validateSecretValue(value);
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "setting secret");
+    const project = await requireProjectCredentials(this.client, projectId, "setting secret");
 
     await this.client.request<unknown>(
       `/projects/v1/admin/${projectId}/secrets`,
@@ -62,8 +62,7 @@ export class Secrets {
 
   /** List secret keys for a project. Values and value-derived hashes are never returned. */
   async list(projectId: string): Promise<SecretListResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing secrets");
+    const project = await requireProjectCredentials(this.client, projectId, "listing secrets");
 
     const body = await this.client.request<SecretListResult | SecretSummary[]>(
       `/projects/v1/admin/${projectId}/secrets`,
@@ -77,8 +76,7 @@ export class Secrets {
 
   /** Delete a secret. */
   async delete(projectId: string, key: string): Promise<DeleteSecretResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting secret");
+    const project = await requireProjectCredentials(this.client, projectId, "deleting secret");
 
     return this.client.request<DeleteSecretResult>(
       `/projects/v1/admin/${projectId}/secrets/${encodeURIComponent(key)}`,

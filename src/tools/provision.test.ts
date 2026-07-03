@@ -18,6 +18,7 @@ mock.module("../allowance-auth.js", {
 
 const { handleProvision, provisionSchema } = await import("./provision.js");
 const { getProject, getActiveProjectId } = await import("../keystore.js");
+const { getProjectCredentialsPath, getProfileStatePath } = await import("../config.js");
 
 const originalFetch = globalThis.fetch;
 let tempDir: string;
@@ -25,9 +26,9 @@ let storePath: string;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-provision-test-"));
-  storePath = join(tempDir, "projects.json");
   process.env.RUN402_CONFIG_DIR = tempDir;
   process.env.RUN402_API_BASE = "https://test-api.run402.com";
+  storePath = getProjectCredentialsPath();
   allowanceAuthReturn = {
     headers: {
       "SIGN-IN-WITH-X": "dGVzdA==",
@@ -64,7 +65,7 @@ describe("provision tool", () => {
     assert.ok(stored);
     assert.equal(stored!.anon_key, "ak-123");
     assert.equal(stored!.service_key, "sk-456");
-    assert.equal(getActiveProjectId(storePath), "proj-001");
+    assert.equal(getActiveProjectId(getProfileStatePath()), "proj-001");
   });
 
   it("returns allowance auth error when no allowance configured", async () => {

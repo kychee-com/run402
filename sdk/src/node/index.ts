@@ -40,8 +40,10 @@ import { NodeActions, type NodeActionTargetKind } from "./actions-node.js";
 export interface NodeRun402Options {
   /** Override the API base URL. Defaults to `getApiBase()` (env var or production URL). */
   apiBase?: string;
-  /** Override the keystore file path. Defaults to the standard location. */
+  /** Override the local project-key cache path. Defaults to credentials/project-keys.v1.json. */
   keystorePath?: string;
+  /** Override the non-secret profile state path. Defaults to state.json. */
+  profileStatePath?: string;
   /** Override the allowance file path. Defaults to the standard location. */
   allowancePath?: string;
   /** Override the credentials provider. Defaults to the local Node keystore + allowance provider. */
@@ -91,6 +93,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   const credentials = opts.credentials ?? new NodeCredentialsProvider({
     allowancePath: opts.allowancePath,
     keystorePath: opts.keystorePath,
+    profileStatePath: opts.profileStatePath,
     surface: opts.surface,
     authMode: opts.authMode,
   });
@@ -234,6 +237,7 @@ export {
   Run402,
   Run402Error,
   PaymentRequired,
+  ProjectCredentialNotFound,
   ProjectNotFound,
   Unauthorized,
   NotAuthorizedError,
@@ -250,6 +254,8 @@ export {
   Orgs,
   ScopedOrg,
   Grants,
+  PROJECT_CREDENTIAL_ERROR_CODES,
+  PROJECT_OPERATION_AUTH_CLASSIFICATIONS,
   files,
   CI_AUDIENCE,
   CI_GITHUB_ACTIONS_ISSUER,
@@ -265,6 +271,11 @@ export {
   githubActionsCredentials,
   isRun402Error,
   isPaymentRequired,
+  isProjectCredentialError,
+  isProjectCredentialExpired,
+  isProjectCredentialInvalid,
+  isProjectCredentialNotFound,
+  isProjectCredentialProjectMismatch,
   isProjectNotFound,
   isUnauthorized,
   isNotAuthorized,
@@ -276,6 +287,7 @@ export {
   isDeployError,
   isRetryableRun402Error,
   isCiSessionCredentials,
+  projectOperationAuthClassification,
   isDeployResolveRouteHit,
   isDeployResolveStaticHit,
   normalizeCiRouteScopes,

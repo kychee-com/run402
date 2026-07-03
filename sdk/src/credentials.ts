@@ -2,15 +2,15 @@
  * Credential provider interface for the Run402 SDK.
  *
  * The SDK's request kernel calls `getAuth` before each request to obtain
- * signed auth headers, and `getProject` to resolve per-project anon/service
- * keys. All filesystem, environment, and session-state access lives inside
- * provider implementations — never in the kernel.
+ * signed auth headers, and `getProjectCredentials` to resolve per-project
+ * anon/service keys. All filesystem, environment, and session-state access
+ * lives inside provider implementations — never in the kernel.
  *
  * Node consumers use {@link NodeCredentialsProvider} from `@run402/sdk/node`
  * which wraps the local keystore + allowance. Sandbox consumers supply their
  * own implementation bound to a session token issued by the supervisor.
  *
- * The two required methods (`getAuth`, `getProject`) support every API call.
+ * The two required methods (`getAuth`, `getProjectCredentials`) support every API call.
  * The optional methods let providers opt in to local persistence (keystore
  * writes, active-project tracking). Namespace methods that need a missing
  * optional method throw a descriptive error at runtime.
@@ -24,6 +24,14 @@ export interface ProjectKeys {
   last_deployment_id?: string;
   mailbox_id?: string;
   mailbox_address?: string;
+  cached_at?: string;
+}
+
+export interface ProjectCredentialCacheInfo {
+  source: "local_cache";
+  cache_path?: string;
+  wallet?: string;
+  profile?: string;
 }
 
 export interface AllowanceData {
@@ -90,10 +98,20 @@ export interface CredentialsProvider {
   getAuth(path: string, metadata?: AuthRequestMeta): Promise<Record<string, string> | null>;
 
   /**
-   * Resolve the anon/service keys for a project. Returns null if the project
-   * is not known to this provider — the kernel then throws ProjectNotFound.
+   * Resolve the anon/service keys for a project. Returns null when local
+   * credentials are absent. This is a credential-cache lookup, not a project
+   * existence check.
    */
-  getProject(id: string): Promise<ProjectKeys | null>;
+  getProjectCredentials?(id: string): Promise<ProjectKeys | null>;
+
+  /**
+   * @deprecated Use `getProjectCredentials`. This alias is retained only for
+   * older custom providers; first-party SDK code must use the explicit name.
+   */
+  getProject?(id: string): Promise<ProjectKeys | null>;
+
+  /** List locally cached project credentials. Optional and local-cache only; not project inventory. */
+  listProjectCredentials?(): Promise<Record<string, ProjectKeys>>;
 
   /**
    * Persist project keys after a successful provision or deploy. Optional:
@@ -124,6 +142,9 @@ export interface CredentialsProvider {
 
   /** Return the absolute path to the local allowance file, for diagnostic output. Optional. */
   getAllowancePath?(): string;
+
+  /** Return safe provenance for the local project credential cache. Optional. */
+  getProjectCredentialCacheInfo?(): ProjectCredentialCacheInfo;
 
   /**
    * Return the active wallet's display identity (local name + address + cached

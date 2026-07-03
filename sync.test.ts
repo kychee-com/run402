@@ -59,6 +59,16 @@ function parseSubcommands(filePath: string): string[] {
   return [...new Set(cmds)].filter(c => c !== "help" && !c.startsWith("-")).sort();
 }
 
+function readCommandSource(filePath: string): string | null {
+  if (!existsSync(filePath)) return null;
+  const src = readFileSync(filePath, "utf-8");
+  const reExportMatch = src.match(/export\s+\{[^}]*run[^}]*\}\s+from\s+["']([^"']+)["']/);
+  if (reExportMatch) {
+    return readCommandSource(join(dirname(filePath), reExportMatch[1]));
+  }
+  return src;
+}
+
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
@@ -67,6 +77,7 @@ function parseCliCommands(): string[] {
       cmds.push(`${mod}:${sub}`);
     }
   }
+  for (const action of parseCredentialsProjectKeyActions("cli/lib/credentials.mjs")) cmds.push(`credentials:project-keys:${action}`);
   for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
   for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
   for (const action of parseDeployReleaseActions()) {
@@ -94,6 +105,7 @@ function parseOpenClawCommands(): string[] {
       cmds.push(`${mod}:${sub}`);
     }
   }
+  for (const action of parseCredentialsProjectKeyActions("openclaw/scripts/credentials.mjs")) cmds.push(`credentials:project-keys:${action}`);
   for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
   for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
   for (const action of parseDeployReleaseActions()) {
@@ -134,6 +146,16 @@ function parseJobsArtifactsActions(): string[] {
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
   const re = /if\s*\(\s*action\s*===\s*"([\w-]+)"\s*\)/g;
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].sort();
+}
+
+function parseCredentialsProjectKeyActions(relativePath: string): string[] {
+  const src = readCommandSource(join(__dirname, relativePath));
+  if (!src) return [];
+  const actions: string[] = [];
+  const re = /case\s+"(list|status|import|export|remove)":/g;
   let m;
   while ((m = re.exec(src))) actions.push(m[1]);
   return [...new Set(actions)].sort();
@@ -338,9 +360,15 @@ const SURFACE: Capability[] = [
   { id: "list_projects",     endpoint: "GET /projects/v1",                           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
   { id: "rename_project",    endpoint: "PATCH /projects/v1/:project_id",             mcp: "rename_project", cli: "projects:rename", openclaw: "projects:rename" },
   { id: "project_get",       endpoint: "GET /projects/v1/:project_id",               mcp: "project_get",    cli: "projects:get",   openclaw: "projects:get" },
-  { id: "project_info",      endpoint: "(local)",                                    mcp: "project_info",   cli: "projects:info",  openclaw: "projects:info" },
-  { id: "project_use",       endpoint: "(local)",                                    mcp: "project_use",    cli: "projects:use",   openclaw: "projects:use" },
-  { id: "project_keys",      endpoint: "(local)",                                    mcp: "project_keys",   cli: "projects:keys",  openclaw: "projects:keys" },
+  { id: "project_info_moved", endpoint: "(moved local credential command)",           mcp: null,             cli: "projects:info",  openclaw: "projects:info" },
+  { id: "project_use",       endpoint: "GET /projects/v1/:project_id + local active state", mcp: "project_use", cli: "projects:use", openclaw: "projects:use" },
+  { id: "project_keys_moved", endpoint: "(moved local credential command)",           mcp: null,             cli: "projects:keys",  openclaw: "projects:keys" },
+  { id: "project_current",   endpoint: "(local active-project state)",               mcp: null,             cli: "projects:current", openclaw: "projects:current" },
+  { id: "project_key_cache_list",   endpoint: "(local credential cache)",            mcp: null,             cli: "credentials:project-keys:list",   openclaw: "credentials:project-keys:list" },
+  { id: "project_key_cache_status", endpoint: "(local credential cache)",            mcp: "project_key_cache_status", cli: "credentials:project-keys:status", openclaw: "credentials:project-keys:status" },
+  { id: "project_key_cache_import", endpoint: "(local credential cache)",            mcp: null,             cli: "credentials:project-keys:import", openclaw: "credentials:project-keys:import" },
+  { id: "project_key_cache_export", endpoint: "(local credential cache)",            mcp: "project_key_cache_export", cli: "credentials:project-keys:export", openclaw: "credentials:project-keys:export" },
+  { id: "project_key_cache_remove", endpoint: "(local credential cache)",            mcp: null,             cli: "credentials:project-keys:remove", openclaw: "credentials:project-keys:remove" },
 
   // ── Image generation ─────────────────────────────────────────────────────
   { id: "generate_image",    endpoint: "POST /generate-image/v1",           mcp: "generate_image",   cli: "image:generate",   openclaw: "image:generate" },
@@ -646,9 +674,15 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   list_projects: "projects.list",
   rename_project: "projects.rename",
   project_get: "projects.get",
-  project_info: "projects.info",
+  project_info_moved: "projects.info",
   project_use: "projects.use",
-  project_keys: "projects.keys",
+  project_keys_moved: "projects.keys",
+  project_current: "projects.active",
+  project_key_cache_list: "credentials.projectKeys.list",
+  project_key_cache_status: "credentials.projectKeys.status",
+  project_key_cache_import: "credentials.projectKeys.import",
+  project_key_cache_export: "credentials.projectKeys.export",
+  project_key_cache_remove: "credentials.projectKeys.remove",
   create_checkout: "billing.createCheckout",
   allowance_checkout: "billing.createCheckout",
   billing_history: "billing.history",
@@ -1205,6 +1239,33 @@ describe("CLI/MCP SDK-boundary guard", () => {
       [],
       "Production CLI/MCP handlers must call Run402 through @run402/sdk. " +
         "Only presigned storage PUTs and non-Run402 external RPC/API calls may be allowlisted.",
+    );
+  });
+
+  it("keeps server-capable custom-domain handlers from preflighting local project-key cache", () => {
+    const serverCapableDomainHandlers = [
+      "cli/lib/domains.mjs",
+      "src/tools/add-custom-domain.ts",
+      "src/tools/list-custom-domains.ts",
+      "src/tools/check-domain-status.ts",
+      "src/tools/remove-custom-domain.ts",
+    ];
+    const forbiddenLookup = /\b(?:getProject|findProject|loadKeyStore|projectsFile|projectCredentialsFile)\s*\(/g;
+    const violations: string[] = [];
+
+    for (const relativePath of serverCapableDomainHandlers) {
+      const source = readFileSync(join(__dirname, relativePath), "utf-8");
+      const matches = [...source.matchAll(forbiddenLookup)].map((match) => match[0]);
+      if (matches.length > 0) {
+        violations.push(`${relativePath}: ${matches.join(", ")}`);
+      }
+    }
+
+    assert.deepEqual(
+      violations,
+      [],
+      "Server-capable domain handlers must not prove project existence by reading local project-key cache. " +
+        "They should resolve the project id and call the SDK domain namespace.",
     );
   });
 });

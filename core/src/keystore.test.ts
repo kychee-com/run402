@@ -12,20 +12,27 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let tempDir: string;
 let storePath: string;
+let statePath: string;
+let originalConfigDir: string | undefined;
 
 beforeEach(() => {
+  originalConfigDir = process.env.RUN402_CONFIG_DIR;
   tempDir = mkdtempSync(join(tmpdir(), "run402-core-keystore-test-"));
-  storePath = join(tempDir, "projects.json");
+  process.env.RUN402_CONFIG_DIR = tempDir;
+  storePath = join(tempDir, "project-keys.v1.json");
+  statePath = join(tempDir, "state.json");
 });
 
 afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
+  if (originalConfigDir === undefined) delete process.env.RUN402_CONFIG_DIR;
+  else process.env.RUN402_CONFIG_DIR = originalConfigDir;
 });
 
 describe("core keystore", () => {
   it("returns empty store when file does not exist", () => {
     const store = loadKeyStore(storePath);
-    assert.deepEqual(store, { projects: {} });
+    assert.deepEqual(store, { version: 1, source: "local_cache", projects: {} });
   });
 
   it("saves and loads a project", () => {
@@ -35,7 +42,9 @@ describe("core keystore", () => {
     };
     saveProject("proj-001", project, storePath);
     const loaded = getProject("proj-001", storePath);
-    assert.deepEqual(loaded, project);
+    assert.equal(loaded?.anon_key, project.anon_key);
+    assert.equal(loaded?.service_key, project.service_key);
+    assert.equal(typeof loaded?.cached_at, "string");
   });
 
   it("creates file with 0600 permissions", { skip: process.platform === "win32" ? "POSIX file modes not enforced on Windows NTFS" : false }, () => {
@@ -56,12 +65,19 @@ describe("core keystore", () => {
     assert.equal(getProject("proj-rm", storePath), undefined);
   });
 
-  it("removes active_project_id when deleting the active project", () => {
+  it("removes active_project_id when deleting the active project through default paths", () => {
+    saveProject("proj-active", { anon_key: "ak", service_key: "sk" });
+    setActiveProjectId("proj-active");
+    assert.equal(getActiveProjectId(), "proj-active");
+    removeProject("proj-active");
+    assert.equal(getActiveProjectId(), undefined);
+  });
+
+  it("does not clear active state when removing an explicit credential-cache path", () => {
     saveProject("proj-active", { anon_key: "ak", service_key: "sk" }, storePath);
-    setActiveProjectId("proj-active", storePath);
-    assert.equal(getActiveProjectId(storePath), "proj-active");
+    setActiveProjectId("proj-active", statePath);
     removeProject("proj-active", storePath);
-    assert.equal(getActiveProjectId(storePath), undefined);
+    assert.equal(getActiveProjectId(statePath), "proj-active");
   });
 
   it("auto-migrates array format to object format", () => {
@@ -120,14 +136,14 @@ describe("core keystore", () => {
 
   it("sets and gets active project id", () => {
     saveProject("prj_act", { anon_key: "ak", service_key: "sk" }, storePath);
-    setActiveProjectId("prj_act", storePath);
-    assert.equal(getActiveProjectId(storePath), "prj_act");
+    setActiveProjectId("prj_act", statePath);
+    assert.equal(getActiveProjectId(statePath), "prj_act");
   });
 
   it("handles corrupt JSON gracefully", () => {
     writeFileSync(storePath, "NOT VALID JSON{{{", "utf-8");
     const store = loadKeyStore(storePath);
-    assert.deepEqual(store, { projects: {} });
+    assert.deepEqual(store, { version: 1, source: "local_cache", projects: {} });
   });
 
   it("preserves all entries under concurrent saveProject calls (GH-208)", async () => {
@@ -163,68 +179,68 @@ describe("core keystore", () => {
   it("setActiveProjectId stamps previous_active_project_id when overwriting a different active", () => {
     saveProject("prj_one", { anon_key: "a1", service_key: "s1" }, storePath);
     saveProject("prj_two", { anon_key: "a2", service_key: "s2" }, storePath);
-    setActiveProjectId("prj_one", storePath);
-    setActiveProjectId("prj_two", storePath);
-    const raw = JSON.parse(readFileSync(storePath, "utf-8"));
+    setActiveProjectId("prj_one", statePath);
+    setActiveProjectId("prj_two", statePath);
+    const raw = JSON.parse(readFileSync(statePath, "utf-8"));
     assert.equal(raw.active_project_id, "prj_two");
     assert.equal(raw.previous_active_project_id, "prj_one");
   });
 
   it("setActiveProjectId does not stamp previous when active was unset", () => {
     saveProject("prj_one", { anon_key: "a1", service_key: "s1" }, storePath);
-    setActiveProjectId("prj_one", storePath);
-    const raw = JSON.parse(readFileSync(storePath, "utf-8"));
+    setActiveProjectId("prj_one", statePath);
+    const raw = JSON.parse(readFileSync(statePath, "utf-8"));
     assert.equal(raw.active_project_id, "prj_one");
     assert.equal(raw.previous_active_project_id, undefined);
   });
 
   it("setActiveProjectId does not stamp previous when re-setting same active", () => {
     saveProject("prj_one", { anon_key: "a1", service_key: "s1" }, storePath);
-    setActiveProjectId("prj_one", storePath);
-    setActiveProjectId("prj_one", storePath);
-    const raw = JSON.parse(readFileSync(storePath, "utf-8"));
+    setActiveProjectId("prj_one", statePath);
+    setActiveProjectId("prj_one", statePath);
+    const raw = JSON.parse(readFileSync(statePath, "utf-8"));
     assert.equal(raw.active_project_id, "prj_one");
     assert.equal(raw.previous_active_project_id, undefined);
   });
 
   it("removeProject(activeId) falls back to previous_active_project_id when prior project still exists (GH-183)", () => {
-    saveProject("prj_one", { anon_key: "a1", service_key: "s1" }, storePath);
-    setActiveProjectId("prj_one", storePath);
-    saveProject("prj_two", { anon_key: "a2", service_key: "s2" }, storePath);
-    setActiveProjectId("prj_two", storePath);
+    saveProject("prj_one", { anon_key: "a1", service_key: "s1" });
+    setActiveProjectId("prj_one");
+    saveProject("prj_two", { anon_key: "a2", service_key: "s2" });
+    setActiveProjectId("prj_two");
 
-    removeProject("prj_two", storePath);
+    removeProject("prj_two");
 
-    assert.equal(getActiveProjectId(storePath), "prj_one");
-    const raw = JSON.parse(readFileSync(storePath, "utf-8"));
+    assert.equal(getActiveProjectId(), "prj_one");
+    const raw = JSON.parse(readFileSync(statePath, "utf-8"));
     assert.equal(raw.previous_active_project_id, undefined);
   });
 
-  it("removeProject(activeId) clears both pointers when prior project is gone (GH-183)", () => {
-    saveProject("prj_one", { anon_key: "a1", service_key: "s1" }, storePath);
-    setActiveProjectId("prj_one", storePath);
-    saveProject("prj_two", { anon_key: "a2", service_key: "s2" }, storePath);
-    setActiveProjectId("prj_two", storePath);
+  it("removeProject(activeId) falls back to previous active id without consulting credential cache", () => {
+    saveProject("prj_one", { anon_key: "a1", service_key: "s1" });
+    setActiveProjectId("prj_one");
+    saveProject("prj_two", { anon_key: "a2", service_key: "s2" });
+    setActiveProjectId("prj_two");
 
-    removeProject("prj_one", storePath);
-    removeProject("prj_two", storePath);
+    removeProject("prj_one");
+    removeProject("prj_two");
 
-    assert.equal(getActiveProjectId(storePath), undefined);
-    const raw = JSON.parse(readFileSync(storePath, "utf-8"));
-    assert.equal(raw.active_project_id, undefined);
+    assert.equal(getActiveProjectId(), "prj_one");
+    const raw = JSON.parse(readFileSync(statePath, "utf-8"));
+    assert.equal(raw.active_project_id, "prj_one");
     assert.equal(raw.previous_active_project_id, undefined);
   });
 
   it("removeProject of non-active project leaves previous_active_project_id untouched", () => {
     saveProject("prj_one", { anon_key: "a1", service_key: "s1" }, storePath);
-    setActiveProjectId("prj_one", storePath);
+    setActiveProjectId("prj_one", statePath);
     saveProject("prj_two", { anon_key: "a2", service_key: "s2" }, storePath);
-    setActiveProjectId("prj_two", storePath);
+    setActiveProjectId("prj_two", statePath);
     saveProject("prj_three", { anon_key: "a3", service_key: "s3" }, storePath);
 
     removeProject("prj_three", storePath);
 
-    const raw = JSON.parse(readFileSync(storePath, "utf-8"));
+    const raw = JSON.parse(readFileSync(statePath, "utf-8"));
     assert.equal(raw.active_project_id, "prj_two");
     assert.equal(raw.previous_active_project_id, "prj_one");
   });

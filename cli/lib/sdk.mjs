@@ -8,7 +8,7 @@
  */
 
 import { run402 } from "#sdk/node";
-import { allowanceFile, projectsFile } from "./config.mjs";
+import { allowanceFile, profileStateFile, projectCredentialsFile } from "./config.mjs";
 
 export function getSdk(opts = {}) {
   // surface: "cli" opts the default credential resolution into `auto` — wallet
@@ -16,7 +16,8 @@ export function getSdk(opts = {}) {
   return run402({
     surface: "cli",
     allowancePath: allowanceFile(),
-    keystorePath: projectsFile(),
+    keystorePath: projectCredentialsFile(),
+    profileStatePath: profileStateFile(),
     ...opts,
   });
 }

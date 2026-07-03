@@ -97,12 +97,12 @@ Examples:
 
 ## Project credentials
 
-After `provision_postgres_project`, two keys are saved automatically to `~/.config/run402/projects.json` and reused by every subsequent tool call:
+After `provision_postgres_project`, two project keys are cached locally in the selected profile's `credentials/project-keys.v1.json` for operations that truly need anon/service-key material:
 
 - **`anon_key`** — read-only by default; safe in browser HTML. RLS still applies.
 - **`service_key`** — server-side admin. **Never embed in browser code.** CORS is intentionally open for x402 clients, so a leaked service_key is exploitable from any origin. Use only inside functions or when calling tools as the agent.
 
-Neither key expires. Lease enforcement happens server-side. To inspect, call **`project_keys`**; to switch the active project for sticky-default tools, call **`project_use`**.
+Neither key expires. Lease enforcement happens server-side. The cache is not project inventory: server project reads and `project_use` authorize through the current principal. Inspect or export local cached keys with the CLI **`run402 credentials project-keys ...`** commands; missing cache entries surface as `PROJECT_CREDENTIAL_NOT_FOUND` with `details.source: "local_cache"`.
 
 ## The patterns
 
@@ -593,7 +593,9 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`rename_project`** — rename a project to fix an auto-generated name. Needs org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal. Works even if the project isn't in the local key store (uses the wallet's SIWX auth, not a service key).
 - **`admin_set_lease_perpetual`** — operator escape hatch (v1.57+). Toggles the organization's `lease_perpetual` flag so the organization never advances past `active` regardless of lease expiry. Replaces the v1.56 per-project pin tool (gateway endpoint was removed). Enabling on a grace-state organization reactivates inline.
 - **`admin_archive_project`** / **`admin_reactivate_project`** — operator moderation actions on a single project (`projects.archived_at`). Independent of organization-level lifecycle.
-- **`project_info`** / **`project_keys`** / **`project_use`** — inspect / set the active project.
+- **`project_get`** — server-authoritative project detail. Returns no keys.
+- **`project_use`** — server-validates a project and stores only the active project id pointer for this local profile.
+- **`project_key_cache_status`** / **`project_key_cache_export`** — explicit local project-key cache tools. `status` is redacted; `export` requires `reveal: true` and emits cached secret key material.
 - **`send_message`** — send feedback to the Run402 team.
 - **`set_agent_contact`** / **`get_agent_contact_status`** / **`verify_agent_contact_email`** — register agent contact info, read assurance status, and start the operator email reply challenge.
 - **`start_operator_passkey_enrollment`** — email a Run402 operator passkey enrollment link to the verified contact email.

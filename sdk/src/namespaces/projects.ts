@@ -13,8 +13,9 @@
 
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError } from "../errors.js";
 import { deprecatePositional } from "../deprecate.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
   ExposeManifestValidationInput,
@@ -83,8 +84,7 @@ export class Projects {
     this.usage = this.getUsage.bind(this);
     this.quote = this.getQuote.bind(this);
     const role = async (id: string, email: string, action: "promote-user" | "demote-user", context: string) => {
-      const keys = await this.client.getProject(id);
-      if (!keys) throw new ProjectNotFound(id, context);
+      const keys = await requireProjectCredentials(this.client, id, context);
       await this.client.request<unknown>(`/projects/v1/admin/${id}/${action}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${keys.service_key}` },
@@ -152,11 +152,10 @@ export class Projects {
    * release subdomains, tombstone mailbox, wipe secrets). Local keystore
    * is cleaned via the credential provider when supported.
    *
-   * @throws {ProjectNotFound} if the id is unknown to the provider.
+   * @throws {ProjectCredentialNotFound} if local project credentials are absent.
    */
   async delete(id: string): Promise<void> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "deleting project");
+    const keys = await requireProjectCredentials(this.client, id, "deleting project");
 
     await this.client.request<unknown>(`/projects/v1/${id}`, {
       method: "DELETE",
@@ -257,8 +256,7 @@ export class Projects {
    * lease expiry.
    */
   async getUsage(id: string): Promise<UsageReport> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "fetching usage");
+    const keys = await requireProjectCredentials(this.client, id, "fetching usage");
 
     return this.client.request<UsageReport>(`/projects/v1/admin/${id}/usage`, {
       headers: { Authorization: `Bearer ${keys.service_key}` },
@@ -271,8 +269,7 @@ export class Projects {
    * constraints, and RLS policies.
    */
   async getSchema(id: string): Promise<SchemaReport> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "fetching schema");
+    const keys = await requireProjectCredentials(this.client, id, "fetching schema");
 
     return this.client.request<SchemaReport>(`/projects/v1/admin/${id}/schema`, {
       headers: { Authorization: `Bearer ${keys.service_key}` },
@@ -282,8 +279,7 @@ export class Projects {
 
   /** Run SQL against the project's database using the service key. */
   async sql(id: string, sql: string, params?: unknown[]): Promise<unknown> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "running SQL");
+    const keys = await requireProjectCredentials(this.client, id, "running SQL");
 
     const useParams = Array.isArray(params) && params.length > 0;
     const result = await this.client.request<unknown>(`/projects/v1/admin/${id}/sql`, {
@@ -314,8 +310,7 @@ export class Projects {
     table: string,
     queryOrOptions?: string | ProjectRestOptions,
   ): Promise<ProjectRestResponse<T>> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "querying REST");
+    const keys = await requireProjectCredentials(this.client, id, "querying REST");
 
     let opts: ProjectRestOptions;
     if (typeof queryOrOptions === "string") {
@@ -352,8 +347,7 @@ export class Projects {
 
   /** Apply the project's declarative expose manifest. */
   async applyExpose(id: string, manifest: ExposeManifest): Promise<unknown> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "applying expose manifest");
+    const keys = await requireProjectCredentials(this.client, id, "applying expose manifest");
     return this.client.request<unknown>(`/projects/v1/admin/${id}/expose`, {
       method: "POST",
       headers: { Authorization: `Bearer ${keys.service_key}` },
@@ -382,8 +376,7 @@ export class Projects {
     if (opts.migrationSql !== undefined) body.migration_sql = opts.migrationSql;
 
     if (project) {
-      const keys = await this.client.getProject(project);
-      if (!keys) throw new ProjectNotFound(project, "validating expose manifest");
+      const keys = await requireProjectCredentials(this.client, project, "validating expose manifest");
       const result = await this.client.request<ExposeManifestValidationResult | { has_errors?: boolean; errors?: ExposeManifestValidationIssue[]; warnings?: ExposeManifestValidationIssue[] }>(
         `/projects/v1/admin/${project}/expose/validate`,
         {
@@ -407,8 +400,7 @@ export class Projects {
 
   /** Fetch the project's current expose manifest. */
   async getExpose(id: string): Promise<ExposeManifest> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "getting expose manifest");
+    const keys = await requireProjectCredentials(this.client, id, "getting expose manifest");
     return this.client.request<ExposeManifest>(`/projects/v1/admin/${id}/expose`, {
       headers: { Authorization: `Bearer ${keys.service_key}` },
       context: "getting expose manifest",
@@ -448,11 +440,10 @@ export class Projects {
    * Inspect a project from local state. Combines the project id with the
    * stored keys. Does not make an API call.
    *
-   * @throws {ProjectNotFound} if the id is unknown to the provider.
+   * @throws {ProjectCredentialNotFound} if local project credentials are absent.
    */
   async info(id: string): Promise<ProjectInfo> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "fetching project info");
+    const keys = await requireProjectCredentials(this.client, id, "fetching project info");
     return { project_id: id, ...keys };
   }
 
@@ -460,12 +451,10 @@ export class Projects {
    * Return the stored anon/service keys for a project from local state.
    * Does not make an API call.
    *
-   * @throws {ProjectNotFound} if the id is unknown to the provider.
+   * @throws {ProjectCredentialNotFound} if local project credentials are absent.
    */
   async keys(id: string): Promise<ProjectKeys> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "fetching project keys");
-    return keys;
+    return requireProjectCredentials(this.client, id, "fetching project keys");
   }
 
   /**
@@ -478,12 +467,11 @@ export class Projects {
    *   const p = await r.useProject("prj_xxx");
    *   await p.apply.apply({ site: { ... } });
    *
-   * @throws {ProjectNotFound} if the id is unknown to the provider.
+   * @throws {Run402Error} if the authoritative project read is not allowed.
    * @throws {LocalError} if the provider does not support active-project state.
    */
   async use(id: string): Promise<void> {
-    const keys = await this.client.getProject(id);
-    if (!keys) throw new ProjectNotFound(id, "setting active project");
+    await this.get(id);
 
     const setter = this.client.credentials.setActiveProject;
     if (!setter) {

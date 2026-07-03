@@ -11,6 +11,7 @@ import { Run402 } from "../index.js";
 import {
   LocalError,
   NotAuthorizedError,
+  ProjectCredentialNotFound,
   ProjectNotFound,
   PaymentRequired,
   Run402Error,
@@ -218,11 +219,11 @@ describe("projects.provision", () => {
 });
 
 describe("projects.delete", () => {
-  it("throws ProjectNotFound before any API call for unknown ids", async () => {
+  it("throws ProjectCredentialNotFound before any API call for missing local credentials", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}, 200));
     const creds = makeCreds();
     const sdk = makeSdk(creds, fetch);
-    await assert.rejects(sdk.projects.delete("prj_missing"), ProjectNotFound);
+    await assert.rejects(sdk.projects.delete("prj_missing"), ProjectCredentialNotFound);
     assert.equal(calls.length, 0);
   });
 
@@ -546,10 +547,10 @@ describe("projects.getUsage", () => {
       "gateway omits lease_expires_at; type is optional so callers don't read a non-existent string");
   });
 
-  it("throws ProjectNotFound for unknown ids before hitting the network", async () => {
+  it("throws ProjectCredentialNotFound for missing local credentials before hitting the network", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}, 200));
     const sdk = makeSdk(makeCreds(), fetch);
-    await assert.rejects(sdk.projects.getUsage("prj_missing"), ProjectNotFound);
+    await assert.rejects(sdk.projects.getUsage("prj_missing"), ProjectCredentialNotFound);
     assert.equal(calls.length, 0);
   });
 });
@@ -790,7 +791,7 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
 
     await assert.rejects(
       sdk.projects.validateExpose({ version: "1" }, { project_id: "prj_missing" }),
-      ProjectNotFound,
+      ProjectCredentialNotFound,
     );
     assert.equal(calls.length, 0);
   });
@@ -818,10 +819,10 @@ describe("projects.info / .keys / .use / .active (local)", () => {
     assert.equal(calls.length, 0);
   });
 
-  it("info throws ProjectNotFound for unknown ids", async () => {
+  it("info throws ProjectCredentialNotFound for missing local credentials", async () => {
     const { fetch } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
-    await assert.rejects(sdk.projects.info("prj_missing"), ProjectNotFound);
+    await assert.rejects(sdk.projects.info("prj_missing"), ProjectCredentialNotFound);
   });
 
   it("keys returns just the stored keys", async () => {
@@ -838,9 +839,10 @@ describe("projects.info / .keys / .use / .active (local)", () => {
         active.push(id);
       },
     });
-    const { fetch } = mockFetch(() => jsonResponse({}));
+    const { fetch, calls } = mockFetch(() => jsonResponse({ project_id: "prj_known" }));
     const sdk = makeSdk(creds, fetch);
     await sdk.projects.use("prj_known");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known");
     assert.deepEqual(active, ["prj_known"]);
   });
 

@@ -10,7 +10,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import { assertEvmAddress, assertStringInSet, assertWeiString } from "../validation.js";
 
 export type EvmChain = "base-mainnet" | "base-sepolia";
@@ -147,8 +148,7 @@ export class Contracts {
     if (opts.recoveryAddress) {
       assertEvmAddress(opts.recoveryAddress, "recoveryAddress", "provisioning KMS signer");
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "provisioning KMS signer");
+    const project = await requireProjectCredentials(this.client, projectId, "provisioning KMS signer");
     const body: Record<string, unknown> = { chain: opts.chain };
     if (opts.recoveryAddress) body.recovery_address = opts.recoveryAddress;
     return this.client.request<ProvisionSignerResult>("/contracts/v1/signers", {
@@ -161,8 +161,7 @@ export class Contracts {
 
   /** Get a signer's metadata + live balance. */
   async getSigner(projectId: string, signerId: string): Promise<SignerSummary> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "fetching signer");
+    const project = await requireProjectCredentials(this.client, projectId, "fetching signer");
     return this.client.request<SignerSummary>(
       `/contracts/v1/signers/${encodeURIComponent(signerId)}`,
       {
@@ -174,8 +173,7 @@ export class Contracts {
 
   /** List all signers owned by the project, including deleted ones. */
   async listSigners(projectId: string): Promise<ListSignersResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing signers");
+    const project = await requireProjectCredentials(this.client, projectId, "listing signers");
     return this.client.request<ListSignersResult>("/contracts/v1/signers", {
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "listing signers",
@@ -187,8 +185,7 @@ export class Contracts {
     if (recoveryAddress !== null) {
       assertEvmAddress(recoveryAddress, "recoveryAddress", "setting recovery address");
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "setting recovery address");
+    const project = await requireProjectCredentials(this.client, projectId, "setting recovery address");
     await this.client.request<unknown>(
       `/contracts/v1/signers/${encodeURIComponent(signerId)}/recovery-address`,
       {
@@ -203,8 +200,7 @@ export class Contracts {
   /** Set the low-balance threshold (in wei) for email alerts. */
   async setLowBalanceAlert(projectId: string, signerId: string, thresholdWei: string): Promise<void> {
     assertWeiString(thresholdWei, "thresholdWei", "setting low-balance threshold");
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "setting low-balance threshold");
+    const project = await requireProjectCredentials(this.client, projectId, "setting low-balance threshold");
     await this.client.request<unknown>(
       `/contracts/v1/signers/${encodeURIComponent(signerId)}/alert`,
       {
@@ -233,8 +229,7 @@ export class Contracts {
     assertStringInSet(opts.chain, EVM_CHAINS, "chain", "submitting contract call");
     assertEvmAddress(contractAddress, "contractAddress", "submitting contract call");
 
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "submitting contract call");
+    const project = await requireProjectCredentials(this.client, projectId, "submitting contract call");
 
     const headers: Record<string, string> = { Authorization: `Bearer ${project.service_key}` };
     if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
@@ -290,8 +285,7 @@ export class Contracts {
     }
     assertStringInSet(opts.chain, EVM_CHAINS, "chain", "deploying contract");
 
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deploying contract");
+    const project = await requireProjectCredentials(this.client, projectId, "deploying contract");
 
     const headers: Record<string, string> = { Authorization: `Bearer ${project.service_key}` };
     if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
@@ -347,8 +341,7 @@ export class Contracts {
 
   /** Look up a previously submitted call by id. */
   async callStatus(projectId: string, callId: string): Promise<ContractCallResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "fetching call status");
+    const project = await requireProjectCredentials(this.client, projectId, "fetching call status");
     return this.client.request<ContractCallResult>(
       `/contracts/v1/calls/${encodeURIComponent(callId)}`,
       {
@@ -365,8 +358,7 @@ export class Contracts {
    */
   async drain(projectId: string, signerId: string, destinationAddress: string): Promise<DrainResult> {
     assertEvmAddress(destinationAddress, "destinationAddress", "draining signer");
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "draining signer");
+    const project = await requireProjectCredentials(this.client, projectId, "draining signer");
     return this.client.request<DrainResult>(
       `/contracts/v1/signers/${encodeURIComponent(signerId)}/drain`,
       {
@@ -386,8 +378,7 @@ export class Contracts {
    * if the signer has on-chain balance >= dust — drain first.
    */
   async deleteSigner(projectId: string, signerId: string): Promise<DeleteSignerResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting signer");
+    const project = await requireProjectCredentials(this.client, projectId, "deleting signer");
     return this.client.request<DeleteSignerResult>(
       `/contracts/v1/signers/${encodeURIComponent(signerId)}`,
       {

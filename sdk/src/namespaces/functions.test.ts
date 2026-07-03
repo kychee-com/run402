@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
+import { ApiError, LocalError, ProjectCredentialNotFound } from "../errors.js";
 import { FunctionRunTerminalError } from "./functions.js";
 import type { CredentialsProvider } from "../credentials.js";
 
@@ -252,12 +252,12 @@ describe("functions.deploy", () => {
     }
   });
 
-  it("throws ProjectNotFound without any fetch", async () => {
+  it("throws ProjectCredentialNotFound without any fetch when local credentials are missing", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
     await assert.rejects(
       sdk.functions.deploy("prj_missing", { name: "x", code: "..." }),
-      ProjectNotFound,
+      ProjectCredentialNotFound,
     );
     assert.equal(calls.length, 0);
   });

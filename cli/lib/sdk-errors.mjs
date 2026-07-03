@@ -4,9 +4,8 @@
  * Maps SDK `Run402Error` subclasses into the CLI's canonical error envelope:
  * `{status: "error", code, message, retryable, safe_to_retry, ...}` on stderr,
  * `process.exit(1)`. Preserves specific behaviors:
- *   - `ProjectNotFound` → canonical envelope with `code: "PROJECT_NOT_FOUND"`
- *     and `details.source: "local_registry"` so callers can distinguish the
- *     local-registry miss from a gateway 404.
+ *   - `ProjectCredentialNotFound` → preserves
+ *     `code: "PROJECT_CREDENTIAL_NOT_FOUND"` and local-cache provenance.
  *   - HTML / non-JSON error bodies → `body_preview` field (first 500 chars),
  *     matching GH-84 behavior.
  *   - Network errors → `{status: "error", message: "..."}`.
@@ -66,6 +65,18 @@ export function parseFlagJson(name, value) {
 }
 
 export function reportSdkError(err) {
+  if (err?.name === "ProjectCredentialNotFound" || err?.code === "PROJECT_CREDENTIAL_NOT_FOUND") {
+    fail({
+      code: "PROJECT_CREDENTIAL_NOT_FOUND",
+      message: err?.message || "Local project credentials are not cached.",
+      hint: "This is a local credential-cache miss, not proof that the project does not exist. Use a principal-auth command, or import keys with `run402 credentials project-keys import --project <id> --service-key-stdin` for credential-required operations.",
+      details: err?.details,
+      next_actions: err?.nextActions,
+      retryable: err?.retryable ?? false,
+      safe_to_retry: err?.safeToRetry ?? true,
+    });
+  }
+
   if (err?.name === "ProjectNotFound") {
     const id = err.projectId || "";
     const hint = id && !String(id).startsWith("prj_")
@@ -115,6 +126,16 @@ export function reportSdkError(err) {
       "decides access via membership role (owner > admin > developer > billing > viewer) or a per-project grant. " +
       "High-stakes actions (delete, transfer, membership change) require an active `owner` membership. " +
       "Returned as 403 even when the project does not exist, so verify the project id too.";
+  }
+
+  if (typeof payload.code === "string" && payload.code.startsWith("PROJECT_CREDENTIAL_") && payload.hint === undefined) {
+    if (payload.code === "PROJECT_CREDENTIAL_PROJECT_MISMATCH") {
+      payload.hint =
+        "The supplied service key belongs to a different project than the explicit project id. Select the matching project key, or omit service-key mode and use the default principal-auth path when the command supports it.";
+    } else if (payload.code === "PROJECT_CREDENTIAL_INVALID" || payload.code === "PROJECT_CREDENTIAL_EXPIRED") {
+      payload.hint =
+        "The project credential was present but rejected by the server. Re-import or rotate the project key, or use a principal-auth command when available.";
+    }
   }
 
   // Keep `status: "error"` as the outer envelope even if the response body

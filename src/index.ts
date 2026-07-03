@@ -281,10 +281,10 @@ import { getAppSchema, handleGetApp } from "./tools/get-app.js";
 import { tierStatusSchema, handleTierStatus } from "./tools/tier-status.js";
 import { initSchema, handleInit } from "./tools/init.js";
 import { statusSchema, handleStatus } from "./tools/status.js";
-import { projectInfoSchema, handleProjectInfo } from "./tools/project-info.js";
+import { projectKeyCacheExportSchema, handleProjectKeyCacheExport } from "./tools/project-key-cache-export.js";
+import { projectKeyCacheStatusSchema, handleProjectKeyCacheStatus } from "./tools/project-key-cache-status.js";
 import { projectGetSchema, handleProjectGet } from "./tools/project-get.js";
 import { projectUseSchema, handleProjectUse } from "./tools/project-use.js";
-import { projectKeysSchema, handleProjectKeys } from "./tools/project-keys.js";
 
 // New tools — KMS contract wallets
 import { provisionSignerSchema, handleProvisionSigner } from "./tools/provision-signer.js";
@@ -1260,31 +1260,31 @@ server.tool(
 // ─── Local project tools ──────────────────────────────────────────────────
 
 server.tool(
-  "project_info",
-  "Show local project details — REST URL, keys, site URL, and deployment info. Reads from local keystore only.",
-  projectInfoSchema,
-  async (args) => handleProjectInfo(args),
-);
-
-server.tool(
   "project_get",
-  "Authoritative server read of a project — name, owning org, tier, effective status, active deploy, mailbox addresses, and usage vs. tier limits. Live API call; returns no keys (use project_keys for those).",
+  "Authoritative server read of a project — name, owning org, tier, effective status, active deploy, mailbox addresses, and usage vs. tier limits. Live API call; returns no keys (use project_key_cache_status/export for local cached keys).",
   projectGetSchema,
   async (args) => handleProjectGet(args),
 );
 
 server.tool(
   "project_use",
-  "Set the active/default project in the local keystore.",
+  "Server-validate a project and store its id as the active project pointer for this local profile.",
   projectUseSchema,
   async (args) => handleProjectUse(args),
 );
 
 server.tool(
-  "project_keys",
-  "Get anon_key and service_key for a project from the local keystore.",
-  projectKeysSchema,
-  async (args) => handleProjectKeys(args),
+  "project_key_cache_status",
+  "Read redacted local project-key cache status for one project. Local cache only; not authoritative project inventory and never returns full keys.",
+  projectKeyCacheStatusSchema,
+  async (args) => handleProjectKeyCacheStatus(args),
+);
+
+server.tool(
+  "project_key_cache_export",
+  "Export local cached anon/service keys for one project. Requires reveal:true and emits secret material; use only when a credential-required operation needs keys.",
+  projectKeyCacheExportSchema,
+  async (args) => handleProjectKeyCacheExport(args),
 );
 
 // --- Magic link auth ---

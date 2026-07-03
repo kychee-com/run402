@@ -10,7 +10,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import { Deploy } from "./deploy.js";
 import type { FunctionSpec, ReleaseSpec, WarningEntry } from "./deploy.types.js";
 import type {
@@ -118,8 +119,7 @@ export class Functions {
     // Fast-fail on an unknown project id before planning (and the spec needs
     // the id). The deploy authorizes via the apply credential, not the
     // service key — the legacy service-key route no longer exists.
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deploying function");
+    const project = await requireProjectCredentials(this.client, projectId, "deploying function");
 
     const fn: FunctionSpec = {
       runtime: "node22",
@@ -169,8 +169,7 @@ export class Functions {
     name: string,
     opts: FunctionInvokeOptions = {},
   ): Promise<FunctionInvokeResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "invoking function");
+    const project = await requireProjectCredentials(this.client, projectId, "invoking function");
 
     const method = opts.method ?? "POST";
     const headers: Record<string, string> = {
@@ -210,8 +209,7 @@ export class Functions {
     name: string,
     opts: FunctionLogsOptions = {},
   ): Promise<FunctionLogsResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "fetching function logs");
+    const project = await requireProjectCredentials(this.client, projectId, "fetching function logs");
 
     const tail = opts.tail ?? 50;
     validatePositiveJsonInteger(tail, "tail", "fetching function logs", { max: FUNCTION_LOG_TAIL_MAX });
@@ -233,8 +231,7 @@ export class Functions {
 
   /** List deployed functions for a project. */
   async list(projectId: string): Promise<FunctionListResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing functions");
+    const project = await requireProjectCredentials(this.client, projectId, "listing functions");
 
     return this.client.request<FunctionListResult>(
       `/projects/v1/admin/${projectId}/functions`,
@@ -247,8 +244,7 @@ export class Functions {
 
   /** Delete a deployed function. */
   async delete(projectId: string, name: string): Promise<DeleteFunctionResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting function");
+    const project = await requireProjectCredentials(this.client, projectId, "deleting function");
 
     return this.client.request<DeleteFunctionResult>(
       `/projects/v1/admin/${projectId}/functions/${encodeURIComponent(name)}`,
@@ -281,8 +277,7 @@ export class Functions {
       );
     }
 
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "updating function");
+    const project = await requireProjectCredentials(this.client, projectId, "updating function");
 
     const body: Record<string, unknown> = {};
     if (opts.schedule !== undefined) body.schedule = opts.schedule;
@@ -372,8 +367,7 @@ export class FunctionRuns {
     opts: FunctionRunCreateOptions,
   ): Promise<FunctionRunHandle> {
     validateFunctionName(functionName, "functionName", "creating function run");
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "creating function run");
+    const project = await requireProjectCredentials(this.client, projectId, "creating function run");
     const body = normalizeFunctionRunCreate(opts, "creating function run");
     return this.client.request<FunctionRunHandle>(
       `/functions/v1/${encodeURIComponent(functionName)}/runs`,
@@ -395,8 +389,7 @@ export class FunctionRuns {
     opts: FunctionRunListOptions = {},
   ): Promise<FunctionRunListResult> {
     validateFunctionName(functionName, "functionName", "listing function runs");
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing function runs");
+    const project = await requireProjectCredentials(this.client, projectId, "listing function runs");
     const search = new URLSearchParams();
     if (opts.status !== undefined) {
       validateFunctionRunStatus(opts.status, "status", "listing function runs");
@@ -427,8 +420,7 @@ export class FunctionRuns {
   }
 
   async get(projectId: string, runId: string): Promise<FunctionRunHandle> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "fetching function run");
+    const project = await requireProjectCredentials(this.client, projectId, "fetching function run");
     validateFunctionRunId(runId, "runId", "fetching function run");
     return this.client.request<FunctionRunHandle>(
       `/functions/v1/runs/${encodeURIComponent(runId)}`,
@@ -444,8 +436,7 @@ export class FunctionRuns {
     runId: string,
     opts: FunctionRunLogsOptions = {},
   ): Promise<FunctionLogsResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "fetching function run logs");
+    const project = await requireProjectCredentials(this.client, projectId, "fetching function run logs");
     validateFunctionRunId(runId, "runId", "fetching function run logs");
     const tail = opts.tail ?? 50;
     validatePositiveJsonInteger(tail, "tail", "fetching function run logs", { max: FUNCTION_LOG_TAIL_MAX });
@@ -461,8 +452,7 @@ export class FunctionRuns {
   }
 
   async cancel(projectId: string, runId: string): Promise<FunctionRunHandle> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "cancelling function run");
+    const project = await requireProjectCredentials(this.client, projectId, "cancelling function run");
     validateFunctionRunId(runId, "runId", "cancelling function run");
     return this.client.request<FunctionRunHandle>(
       `/functions/v1/runs/${encodeURIComponent(runId)}/cancel`,
@@ -479,8 +469,7 @@ export class FunctionRuns {
     runId: string,
     opts: FunctionRunRedriveOptions = {},
   ): Promise<FunctionRunHandle> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "redriving function run");
+    const project = await requireProjectCredentials(this.client, projectId, "redriving function run");
     validateFunctionRunId(runId, "runId", "redriving function run");
     const body: Record<string, unknown> = {};
     if (opts.retry !== undefined) body.retry = normalizeRetry(opts.retry);

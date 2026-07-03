@@ -4,7 +4,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
+import { ApiError, LocalError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import {
   assertEmailAddress,
   assertHttpUrl,
@@ -478,8 +479,7 @@ export class Email {
     mode: "unique" | "default_outbound" = "unique",
     context = "resolving mailbox",
   ): Promise<{ id: string; serviceKey: string }> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, context);
+    const project = await requireProjectCredentials(this.client, projectId, context);
 
     if (selector && /^mbx_/.test(selector)) {
       return { id: selector, serviceKey: project.service_key };
@@ -629,8 +629,7 @@ export class Email {
 
   /** List project mailboxes plus default-role settings and gateway repair hints. */
   async listMailboxes(projectId: string): Promise<MailboxListResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing mailboxes");
+    const project = await requireProjectCredentials(this.client, projectId, "listing mailboxes");
     return this.listMailboxEnvelope(project.service_key);
   }
 
@@ -659,8 +658,7 @@ export class Email {
     validateOptionalMailboxId(opts.default_outbound_mailbox_id, "default_outbound_mailbox_id");
     validateOptionalMailboxId(opts.auth_sender_mailbox_id, "auth_sender_mailbox_id");
 
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "setting mailbox defaults");
+    const project = await requireProjectCredentials(this.client, projectId, "setting mailbox defaults");
     return this.client.request<SetMailboxDefaultsResult>("/mailboxes/v1/settings", {
       method: "PATCH",
       headers: { Authorization: `Bearer ${project.service_key}` },
@@ -711,8 +709,7 @@ export class Email {
    * Callers that want create-or-get should `list`/`getMailbox` explicitly.
    */
   async createMailbox(projectId: string, slug: string): Promise<CreateMailboxResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "creating mailbox");
+    const project = await requireProjectCredentials(this.client, projectId, "creating mailbox");
 
     if (slug.length < 3 || slug.length > 63) {
       throw new LocalError("Slug must be 3-63 characters.", "creating mailbox");
@@ -886,8 +883,7 @@ export class Email {
    * throws an ambiguity error when it has more than one.
    */
   async getMailbox(projectId: string, selector?: MailboxSelector): Promise<MailboxInfo> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "getting mailbox");
+    const project = await requireProjectCredentials(this.client, projectId, "getting mailbox");
     const list = await this.listMailboxEnvelope(project.service_key);
     const mb = this.pickMailbox(list.mailboxes, selector, "getting mailbox");
     if (!selector && list.mailboxes.length === 1) await this.cacheMailbox(projectId, mb);
@@ -901,8 +897,7 @@ export class Email {
    * the deleted record echoed by the gateway.
    */
   async deleteMailbox(projectId: string, selector?: MailboxSelector): Promise<DeleteMailboxResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting mailbox");
+    const project = await requireProjectCredentials(this.client, projectId, "deleting mailbox");
 
     let id: string;
     if (selector && /^mbx_/.test(selector)) {

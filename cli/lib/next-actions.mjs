@@ -46,6 +46,13 @@ export function createProjectAction() {
   });
 }
 
+export function selectProjectAction() {
+  return nextAction("edit_request", {
+    command: "run402 projects use <project_id>",
+    why: "Select a server-visible project, or pass --project <project_id> on the command.",
+  });
+}
+
 export function setTierAction(tier = "prototype") {
   return nextAction("renew_tier", {
     command: `run402 tier set ${tier}`,

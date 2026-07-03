@@ -11,7 +11,7 @@ let storePath: string;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "run402-keystore-test-"));
-  storePath = join(tempDir, "projects.json");
+  storePath = join(tempDir, "project-keys.v1.json");
 });
 
 afterEach(() => {
@@ -21,7 +21,7 @@ afterEach(() => {
 describe("keystore", () => {
   it("returns empty store when file does not exist", () => {
     const store = loadKeyStore(storePath);
-    assert.deepEqual(store, { projects: {} });
+    assert.deepEqual(store, { version: 1, source: "local_cache", projects: {} });
   });
 
   it("saves and loads a project", () => {
@@ -32,7 +32,9 @@ describe("keystore", () => {
     saveProject("proj-001", project, storePath);
 
     const loaded = getProject("proj-001", storePath);
-    assert.deepEqual(loaded, project);
+    assert.equal(loaded?.anon_key, project.anon_key);
+    assert.equal(loaded?.service_key, project.service_key);
+    assert.equal(typeof loaded?.cached_at, "string");
   });
 
   it("creates file with 0600 permissions", { skip: process.platform === "win32" ? "POSIX file modes not enforced on Windows NTFS" : false }, () => {
@@ -60,8 +62,8 @@ describe("keystore", () => {
     saveProject("proj-a", p1, storePath);
     saveProject("proj-b", p2, storePath);
 
-    assert.deepEqual(getProject("proj-a", storePath), p1);
-    assert.deepEqual(getProject("proj-b", storePath), p2);
+    assert.equal(getProject("proj-a", storePath)?.anon_key, p1.anon_key);
+    assert.equal(getProject("proj-b", storePath)?.anon_key, p2.anon_key);
   });
 
   it("returns undefined for non-existent project", () => {
@@ -81,19 +83,20 @@ describe("keystore", () => {
     saveProject("proj-x", v1, storePath);
     saveProject("proj-x", v2, storePath);
 
-    assert.deepEqual(getProject("proj-x", storePath), v2);
+    assert.equal(getProject("proj-x", storePath)?.anon_key, v2.anon_key);
+    assert.equal(getProject("proj-x", storePath)?.service_key, v2.service_key);
   });
 
   it("handles corrupt JSON gracefully", () => {
     writeFileSync(storePath, "NOT VALID JSON{{{", "utf-8");
     const store = loadKeyStore(storePath);
-    assert.deepEqual(store, { projects: {} });
+    assert.deepEqual(store, { version: 1, source: "local_cache", projects: {} });
   });
 
   it("handles file with missing projects key", () => {
     writeFileSync(storePath, '{"version": 1}', "utf-8");
     const store = loadKeyStore(storePath);
-    assert.deepEqual(store, { projects: {} });
+    assert.deepEqual(store, { version: 1, source: "local_cache", projects: {} });
   });
 
   it("atomic write survives — file is valid JSON after save", () => {
@@ -106,6 +109,9 @@ describe("keystore", () => {
     // Verify the file is valid JSON
     const raw = readFileSync(storePath, "utf-8");
     const parsed = JSON.parse(raw) as KeyStore;
-    assert.deepEqual(parsed.projects["proj-atomic"], project);
+    assert.equal(parsed.source, "local_cache");
+    assert.equal(parsed.projects["proj-atomic"]?.anon_key, project.anon_key);
+    assert.equal(parsed.projects["proj-atomic"]?.service_key, project.service_key);
+    assert.equal(typeof parsed.projects["proj-atomic"]?.cached_at, "string");
   });
 });

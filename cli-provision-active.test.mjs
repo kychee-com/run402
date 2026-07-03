@@ -182,10 +182,12 @@ describe("CLI projects provision active-project banner (GH-183)", () => {
     assert.equal(parsed.previous_active_project_id, "prj_first");
   });
 
-  it("subsequent provision keystore reflects previous_active_project_id for safe revert", async () => {
-    const { loadKeyStore } = await import("./cli/lib/config.mjs");
-    const store = loadKeyStore();
-    assert.equal(store.active_project_id, "prj_second");
-    assert.equal(store.previous_active_project_id, "prj_first");
+  it("subsequent provision profile state reflects previous_active_project_id for safe revert", async () => {
+    const { getActiveProjectId, profileStateFile } = await import("./cli/lib/config.mjs");
+    const { readFileSync } = await import("node:fs");
+    const state = JSON.parse(readFileSync(profileStateFile(), "utf-8"));
+    assert.equal(getActiveProjectId(), "prj_second");
+    assert.equal(state.active_project_id, "prj_second");
+    assert.equal(state.previous_active_project_id, "prj_first");
   });
 });

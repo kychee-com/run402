@@ -716,6 +716,9 @@ async function mockFetch(input, init) {
   }
 
   // Domains
+  if (pathNoQuery === "/domains/v1" && method === "GET") {
+    return Promise.resolve(json({ domains: [] }));
+  }
   if (path.match(/^\/domains\/v1\//) && method === "DELETE") {
     return Promise.resolve(noContent());
   }
@@ -1385,9 +1388,11 @@ describe("CLI e2e happy path", () => {
     await run("provision", ["--tier", "prototype"]);
     captureStop();
     assert.ok(captured().includes("prj_test123"), "should return project_id");
-    // Verify project saved locally (unified object-based keystore format)
-    const store = JSON.parse(readFileSync(join(tempDir, "projects.json"), "utf-8"));
+    // Verify project credentials saved locally without using projects.json as inventory.
+    const store = JSON.parse(readFileSync(join(tempDir, "credentials", "project-keys.v1.json"), "utf-8"));
     assert.ok(store.projects && store.projects["prj_test123"], "project should be saved locally");
+    const state = JSON.parse(readFileSync(join(tempDir, "state.json"), "utf-8"));
+    assert.equal(state.active_project_id, "prj_test123");
   });
 
   // GH-176: --name validation rejects empty string, control chars, over-length.
@@ -1867,38 +1872,42 @@ describe("CLI e2e happy path", () => {
       `body_preview should include the HTML body, got: ${parsed.body_preview}`);
   });
 
-  // GH-102: subcommands default to active project
-  // The "projects provision" test above saves prj_test123 to the keystore
-  // and sets it as the active project, so these tests can omit the id.
+  // Legacy local-cache reads moved out of the projects command family.
 
-  it("projects info defaults to active project (GH-102)", async () => {
+  it("projects info is a structured COMMAND_MOVED failure", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const { setActiveProjectId } = await import("./cli/lib/config.mjs");
     setActiveProjectId("prj_test123");
+    let threw = null;
     captureStart();
-    await run("info", []);
+    try {
+      await run("info", []);
+    } catch (e) {
+      threw = e;
+    }
     captureStop();
-    const stdout = capturedStdout();
-    assert.ok(stdout.includes("prj_test123"),
-      `should use active project in info output; got: ${stdout}`);
-    assert.ok(!/not found/i.test(stdout),
-      `should not complain about missing project; got: ${stdout}`);
-    assert.ok(!/undefined/.test(stdout),
-      `should not include "undefined"; got: ${stdout}`);
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = JSON.parse(capturedStderr());
+    assert.equal(parsed.code, "COMMAND_MOVED");
+    assert.equal(capturedStdout(), "");
   });
 
-  it("projects keys defaults to active project (GH-102)", async () => {
+  it("projects keys is a structured COMMAND_MOVED failure", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const { setActiveProjectId } = await import("./cli/lib/config.mjs");
     setActiveProjectId("prj_test123");
+    let threw = null;
     captureStart();
-    await run("keys", []);
+    try {
+      await run("keys", []);
+    } catch (e) {
+      threw = e;
+    }
     captureStop();
-    const stdout = capturedStdout();
-    assert.ok(stdout.includes("prj_test123"),
-      `should use active project in keys output; got: ${stdout}`);
-    assert.ok(stdout.includes("anon_test_key"),
-      `should print anon key from active project; got: ${stdout}`);
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = JSON.parse(capturedStderr());
+    assert.equal(parsed.code, "COMMAND_MOVED");
+    assert.equal(capturedStdout(), "");
   });
 
   it("projects usage defaults to active project (GH-102)", async () => {
@@ -3393,8 +3402,8 @@ describe("CLI e2e happy path", () => {
     setActiveProjectId("prj_test123");
     // Explicitly clear the env var escape hatch so only the active project
     // fallback can satisfy the command.
-    const prevEnv = process.env.RUN402_PROJECT;
-    delete process.env.RUN402_PROJECT;
+    const prevEnv = process.env.RUN402_PROJECT_ID;
+    delete process.env.RUN402_PROJECT_ID;
     let threw = null;
     captureStart();
     try {
@@ -3403,7 +3412,7 @@ describe("CLI e2e happy path", () => {
       threw = e;
     } finally {
       captureStop();
-      if (prevEnv !== undefined) process.env.RUN402_PROJECT = prevEnv;
+      if (prevEnv !== undefined) process.env.RUN402_PROJECT_ID = prevEnv;
     }
     assert.equal(threw, null, `should not throw, got: ${threw?.message}\nout: ${captured()}`);
     assert.ok(captured().includes("defaults/file.txt"), `should list blobs; got: ${captured()}`);
@@ -3411,13 +3420,12 @@ describe("CLI e2e happy path", () => {
 
   it("blob ls errors cleanly when no project and no active project (GH-40)", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
-    const { setActiveProjectId, loadKeyStore, saveKeyStore } = await import("./cli/core-dist/keystore.js");
-    // Clear active project + RUN402_PROJECT env var.
-    const store = loadKeyStore();
-    delete store.active_project_id;
-    saveKeyStore(store);
-    const prevEnv = process.env.RUN402_PROJECT;
-    delete process.env.RUN402_PROJECT;
+    const { setActiveProjectId } = await import("./cli/core-dist/keystore.js");
+    const { clearActiveProjectId } = await import("./cli/core-dist/profile-state.js");
+    // Clear active project + RUN402_PROJECT_ID env var.
+    clearActiveProjectId("prj_test123");
+    const prevEnv = process.env.RUN402_PROJECT_ID;
+    delete process.env.RUN402_PROJECT_ID;
     let threw = null;
     captureStart();
     try {
@@ -3426,7 +3434,7 @@ describe("CLI e2e happy path", () => {
       threw = e;
     } finally {
       captureStop();
-      if (prevEnv !== undefined) process.env.RUN402_PROJECT = prevEnv;
+      if (prevEnv !== undefined) process.env.RUN402_PROJECT_ID = prevEnv;
       // Restore the active project so subsequent tests still work.
       setActiveProjectId("prj_test123");
     }
@@ -5279,7 +5287,7 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     assert.ok(/run402 domains add/.test(parsed.hint || ""), `hint should mention usage, got: ${parsed.hint}`);
   });
 
-  it("blob put with unknown local project emits PROJECT_NOT_FOUND with details.source: local_registry", async () => {
+  it("blob put with unknown local project emits PROJECT_CREDENTIAL_NOT_FOUND with details.source: local_cache", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
     const tmpFile = join(tempDir, "blob-put-canary.bin");
     const { writeFileSync: wf } = await import("node:fs");
@@ -5294,10 +5302,10 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     assert.equal(threw?.message, "process.exit(1)");
     const parsed = parseStderrJson();
     assert.equal(parsed.status, "error");
-    assert.equal(parsed.code, "PROJECT_NOT_FOUND");
+    assert.equal(parsed.code, "PROJECT_CREDENTIAL_NOT_FOUND");
     assert.equal(parsed.details?.project_id, "prj_xxx_unknown");
-    assert.equal(parsed.details?.source, "local_registry",
-      `must distinguish local-registry miss from gateway 404, got: ${JSON.stringify(parsed.details)}`);
+    assert.equal(parsed.details?.source, "local_cache",
+      `must distinguish local-cache credential misses from gateway 404, got: ${JSON.stringify(parsed.details)}`);
   });
 });
 
@@ -5552,7 +5560,7 @@ describe("CLI domains list --project", () => {
         // non-URL input — leave as raw
       }
       calls.push({ method, path, url });
-      if (method === "GET" && path === "/domains/v1") {
+      if (method === "GET" && path.split("?")[0] === "/domains/v1") {
         return Promise.resolve(json({ domains: [] }));
       }
       return Promise.resolve(new Response("Not Found", { status: 404 }));
@@ -5579,8 +5587,8 @@ describe("CLI domains list --project", () => {
       !/Project\s+--project\s+not found/.test(capturedStderr()),
       `must not parse '--project' as the positional id, got stderr: ${capturedStderr()}`,
     );
-    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
-    assert.ok(get, `must issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+    const get = calls.find(c => c.method === "GET" && c.path.startsWith("/domains/v1?"));
+    assert.ok(get, `must issue GET /domains/v1?project_id=..., calls: ${JSON.stringify(calls)}`);
   });
 
   it("domains list positional project id is rejected", async () => {
@@ -5599,7 +5607,7 @@ describe("CLI domains list --project", () => {
     }
     assert.equal(threw?.message, "process.exit(1)");
     assert.match(capturedStderr(), /Unexpected argument/);
-    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
+    const get = calls.find(c => c.method === "GET" && c.path.startsWith("/domains/v1"));
     assert.equal(get, undefined, `must not issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
   });
 
@@ -5619,8 +5627,8 @@ describe("CLI domains list --project", () => {
     }
     assert.equal(threw, null,
       `'domains list' (no args) should resolve via active project, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
-    const get = calls.find(c => c.method === "GET" && c.path === "/domains/v1");
-    assert.ok(get, `must still issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+    const get = calls.find(c => c.method === "GET" && c.path.startsWith("/domains/v1?"));
+    assert.ok(get, `must still issue GET /domains/v1?project_id=..., calls: ${JSON.stringify(calls)}`);
   });
 });
 

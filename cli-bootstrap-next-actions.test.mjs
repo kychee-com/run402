@@ -80,21 +80,22 @@ after(() => {
 });
 
 describe("cold-start bootstrap next_actions (config.mjs chokepoint)", () => {
-  it("resolveProjectId with no active project names create_project", async () => {
+  it("resolveProjectId with no active project names project selection", async () => {
     const { resolveProjectId } = await import("./cli/lib/config.mjs");
     const env = expectFailEnvelope(() => resolveProjectId(null));
-    assert.equal(env.code, "NO_ACTIVE_PROJECT");
+    assert.equal(env.code, "PROJECT_REQUIRED");
     assert.ok(Array.isArray(env.next_actions) && env.next_actions.length > 0, "non-empty next_actions");
-    assert.equal(env.next_actions[0].type, "create_project");
-    assert.equal(env.next_actions[0].command, "run402 projects provision");
+    assert.equal(env.next_actions[0].type, "edit_request");
+    assert.equal(env.next_actions[0].command, "run402 projects use <project_id>");
   });
 
-  it("findProject for an unknown id names create_project", async () => {
+  it("findProject for an unknown local credential names the project-key cache", async () => {
     const { findProject } = await import("./cli/lib/config.mjs");
     const env = expectFailEnvelope(() => findProject("prj_does_not_exist"));
-    assert.equal(env.code, "PROJECT_NOT_FOUND");
-    assert.equal(env.next_actions[0].type, "create_project");
-    assert.equal(env.next_actions[0].command, "run402 projects provision");
+    assert.equal(env.code, "PROJECT_CREDENTIAL_NOT_FOUND");
+    assert.equal(env.details.source, "local_cache");
+    assert.equal(env.next_actions[0].type, "run_command");
+    assert.equal(env.next_actions[0].command, "run402 credentials project-keys status --project prj_does_not_exist");
   });
 
   it("allowanceAuthHeaders with no allowance names initialize_wallet", async () => {

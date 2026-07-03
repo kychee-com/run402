@@ -309,7 +309,7 @@ npm install @run402/sdk
 Two entry points:
 
 - **`@run402/sdk`** — isomorphic. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). Works in Node 22, Deno, Bun, V8 isolates.
-- **`@run402/sdk/node`** — Node-only convenience. Reads `~/.config/run402/projects.json`, signs x402 payments from the local allowance, exposes `sites.deployDir(...)`, `fileSetFromDir(...)`, typed deploy-manifest helpers (`loadDeployManifest`, `normalizeDeployManifest`), and `resolveRun402TargetProfile()` for app build scripts that need the same Core/Cloud target the CLI uses.
+- **`@run402/sdk/node`** — Node-only convenience. Reads local profile state plus the project-key credential cache (`credentials/project-keys.v1.json`), signs x402 payments from the local allowance, exposes `sites.deployDir(...)`, `fileSetFromDir(...)`, typed deploy-manifest helpers (`loadDeployManifest`, `normalizeDeployManifest`), and `resolveRun402TargetProfile()` for app build scripts that need the same Core/Cloud target the CLI uses.
 
 ```ts
 import { run402 } from "@run402/sdk/node";
@@ -363,7 +363,7 @@ run402 core projects import ./project.r402ar --name imported-project --env-file 
 
 Archive v1 excludes secret values, auth credentials, logs, billing/allowance state, Cloud operations metadata, Cloud import, and existing-project merge import. Verify is local/offline and checks integrity plus compatibility; archives remain untrusted input until Core import verifies and stages them.
 
-The active project is sticky: `run402 projects use <id>` makes `<id>` the default for every subsequent `<id>`-taking subcommand, so most commands work without it.
+The active project is sticky: `run402 projects use <id>` server-validates `<id>` and stores it as the default for subsequent `<id>`-taking subcommands, so most commands work without it. Local key material is managed separately under `run402 credentials project-keys ...`; that cache is never project inventory.
 
 ## MCP server — `run402-mcp`
 
@@ -564,7 +564,8 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `check_balance` | USDC balance for an allowance address. |
 | `list_projects` | Named, domain-aware project inventory (name, site_url, custom_domains, org). Membership-scoped; supports `org_id` filter, `all` cross-wallet read, and pagination. |
 | `rename_project` | Rename a project to fix an auto-generated name (org admin / `project:write` grant). |
-| `project_info` / `project_keys` / `project_use` | Inspect / set the active project. |
+| `project_get` / `project_use` | Server project detail and active-project selection. `project_use` validates through the server, then stores only an active id pointer. |
+| `project_key_cache_status` / `project_key_cache_export` | Explicit local project-key cache tools. `status` is redacted; `export` requires `reveal: true` and emits cached secret key material. |
 | `create_checkout` | Org checkout for balance top-ups, tiers, or email packs. |
 | `send_message` | Send feedback to the Run402 team. |
 | `set_agent_contact` / `get_agent_contact_status` / `verify_agent_contact_email` | Register agent contact info, read assurance status, and start the operator email reply challenge. |
@@ -593,10 +594,11 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 
 Local state lives at:
 
-- `~/.config/run402/projects.json` (`0600`) — `{ projects: { <id>: { anon_key, service_key, tier, lease_expires_at } } }`
+- profile `state.json` — active project pointer and profile state
+- profile `credentials/project-keys.v1.json` (`0600`) — local anon/service key cache for explicit credential-required operations
 - `~/.config/run402/allowance.json` (`0600`) — wallet for x402 signing
 
-`anon_key` and `service_key` have no expiry — lease enforcement happens server-side. Rotate them by deleting the project and re-provisioning.
+Legacy `projects.json` files are one-way migration input only. `anon_key` and `service_key` have no expiry — lease enforcement happens server-side. Inspect cache state with `run402 credentials project-keys status --project <id>` and export secrets only with `run402 credentials project-keys export --project <id> --reveal`.
 
 ## Development
 

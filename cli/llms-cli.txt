@@ -37,12 +37,12 @@ run402 deploy apply --manifest app.json      # uses the active Core project
 
 `init --api-base` stores the API base in the active profile (`target.json`) so the CLI, Node SDK, and MCP use the same target by default. Against Core, `projects provision` and `deploy apply` do not require Cloud tier, allowance, or x402 setup. Unsupported Cloud-only manifest slices fail as Core capability errors; they are not silently deployed to Run402 Cloud.
 
-App build scripts should read the same target/profile store through `resolveRun402TargetProfile()` from `@run402/sdk/node`, not by parsing `target.json` or `projects.json` themselves.
+App build scripts should read the same target/profile store through `resolveRun402TargetProfile()` from `@run402/sdk/node`, not by parsing `target.json` or local project-key cache files themselves.
 
 ## Core facts
 
-- Allowance: `~/.config/run402/allowance.json` (0600); projects: `~/.config/run402/projects.json` (0600)
-- Credentials saved automatically after provision or fork
+- Allowance: `~/.config/run402/allowance.json` (0600); active project state: profile `state.json`; local project-key cache: profile `credentials/project-keys.v1.json` (0600). Legacy `projects.json` is migration input only.
+- Project keys are cached automatically after provision or fork for operations that truly need anon/service keys. They are not project inventory.
 - `<id>` in commands = `project_id` from `run402 projects list`
 - Output: JSON stdout on success; JSON stderr on failure; exit 0 success, non-zero error. See Output Contract.
 - CLI handles x402 signing; do not request private keys or payment libraries.
@@ -56,7 +56,7 @@ App build scripts should read the same target/profile store through `resolveRun4
 
 Uniform contract:
 - Success: stdout emits the natural payload, never wrapped; no top-level `status`.
-- Reads/list/info: resource directly, e.g. `projects info` -> `{ project_id, anon_key, ... }`, `projects list` -> `{ projects: [...], scope?, has_more?, next_cursor? }`.
+- Reads/lists: resource directly, e.g. `projects get` -> `{ project_id, public_id, name, ... }`, `projects list` -> `{ projects: [...], scope?, has_more?, next_cursor? }`, `credentials project-keys status` -> local-cache provenance.
 - Mutations without natural payload: affected ids + boolean action field, e.g. `{ key, project_id, set: true }`, `{ name, project_id, deleted: true }`, `{ domain, project_id, released: true }`; never `{}`.
 - Local-state reads (`status`, `allowance status`): nullable typed fields, e.g. `{ wallet: null, hint: "Run: run402 init" }`; absence exits 0.
 - Raw/text stdout is opt-in only (`functions invoke --raw`, file-output commands, help/version/dev human surfaces). Machine-readable command defaults emit parseable JSON; for example, `allowance export` emits `{ "address": "0x..." }`.
@@ -101,7 +101,7 @@ Output: stdout is the action result, e.g. `{ "action": "up", "dry_run": false, "
 CLI errors: JSON stderr with outer `"status": "error"`. Run402 JSON bodies may merge into the envelope. Branch on `code`, not `message`/legacy `error`.
 
 Canonical fields:
-- `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON, unknown local project) default to `BAD_USAGE`; specific client-side cases use richer codes e.g. `UNKNOWN_FLAG`, `BAD_FLAG`, `PROJECT_NOT_FOUND` (with `details.source: "local_registry"`), `NO_DEPLOYMENT`, `NO_ALLOWANCE`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
+- `code`: stable machine-readable reason, e.g. `PROJECT_FROZEN`, `PAYMENT_REQUIRED`, `MIGRATION_FAILED`, `MIGRATE_GATE_ACTIVE`. Client-side validation failures (missing flag, malformed JSON) default to `BAD_USAGE`; specific client-side cases use richer codes e.g. `UNKNOWN_FLAG`, `BAD_FLAG`, `PROJECT_CREDENTIAL_NOT_FOUND` (with `details.source: "local_cache"`), `NO_DEPLOYMENT`, `NO_ALLOWANCE`, `BAD_JSON_FLAG`, `CONFIRMATION_REQUIRED`.
 - `retryable`: the same request may succeed later
 - `safe_to_retry`: repeating the same request should not duplicate or corrupt a mutation
 - `mutation_state`: one of `none`, `not_started`, `committed`, `rolled_back`, `partial`, `unknown`
@@ -848,17 +848,26 @@ Tier and quotas are per organization (not per project) — `set` is organization
 - `run402 tier status`
 - `run402 tier set <prototype|hobby|team>`
 
+### credentials
+- `run402 credentials project-keys list` — LOCAL CACHE read. Lists cached project-key entries with `source: "local_cache"`, `cache_path`, `wallet`/`profile`, key presence, prefixes, fingerprints, and timestamps. Never prints full keys.
+- `run402 credentials project-keys status --project <id>` — LOCAL CACHE read for one project id. `configured: false` means this selected wallet/profile lacks cached keys; it does not mean the server project is missing.
+- `run402 credentials project-keys import --project <id> --service-key-stdin` — import a service key from stdin. Optional anon key comes from `--anon-key-env <env>`.
+- `run402 credentials project-keys import --project <id> --service-key-env <env>` — import a service key from an environment variable. Do not pass service keys as argv values.
+- `run402 credentials project-keys export --project <id> --reveal` — print cached secret key material. Requires `--reveal`.
+- `run402 credentials project-keys remove --project <id>` — remove one local cache entry without deleting or changing the server project.
+
 ### projects
 - `run402 projects quote`
 - `run402 projects list [--org <id>] [--all]` — SERVER read of the named, domain-aware inventory (NOT the local keystore). Membership-scoped by default: every project owned by an org your wallet is an active member of, each row `{ project_id, name, site_url, custom_domains, org_id, status, active }` (`active` from local state). `--org <id>` filters to one org (authorize-before-reveal: non-member/guessed id -> 403, non-UUID -> 400). `--all` reads the cross-wallet inventory across every wallet controlling your operator email — run `run402 operator login` first for the union, else it falls back to the current wallet's slice and echoes `scope`. Bare `run402 projects list` is the cold-start path (no login needed). Tier/lifecycle live on the organization — use `run402 status` / `run402 tier status`.
 - `run402 projects rename <id> --name <label>` — rename a project (fix an auto-generated name). Needs org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Works even if the project isn't in the local keystore. Server-validated name (1-200 chars, no control characters).
 - `run402 projects provision [--name <name>] [--org <id>]` — `--org` provisions into an EXISTING org (you need `developer`+ on it); omit for the cold-start path (the wallet's organization). Tier is org-governed — a client-supplied `--tier` is ignored when targeting an org. Against a configured Core target, creates a local Core project without Cloud payment and saves it as the active project.
-- `run402 projects use <id>`
-- `run402 projects get <id>` — SERVER read of one project's authoritative view: `{ project_id, public_id, name, org_id, tier, effective_status, organization_lifecycle_state, site_url, custom_domains[], last_deploy, mailbox[], usage{api_calls, storage_bytes, api_calls_limit, storage_bytes_limit}, created_at }`. Caller-authed (SIWX/control-plane, no project keys) and works even if the project isn't in the local keystore; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Returns NO keys — use `run402 projects keys <id>` for those. Contrast `info`/`keys`, which read the LOCAL keystore only.
-- `run402 projects info <id>`
+- `run402 projects use <id>` — SERVER validation, then stores only the active project id in profile state. It does not require a matching local project-key cache entry.
+- `run402 projects current` — LOCAL STATE read of the active project pointer with profile-state provenance and validation status.
+- `run402 projects get <id>` — SERVER read of one project's authoritative view: `{ project_id, public_id, name, org_id, tier, effective_status, organization_lifecycle_state, site_url, custom_domains[], last_deploy, mailbox[], usage{api_calls, storage_bytes, api_calls_limit, storage_bytes_limit}, created_at }`. Caller-authed (SIWX/control-plane, no project keys) and works even if the project isn't in the local keystore; authorize-before-reveal (unauthorized/guessed id -> 403, never a not-found oracle). Returns NO keys — use `run402 credentials project-keys ...` for local credential-cache inspection/export.
+- `run402 projects info <id>` — moved before public launch. Returns structured `COMMAND_MOVED`; use `projects get <id>` for server detail or `credentials project-keys status --project <id>` for local cache status.
 - `run402 projects sql <id> "<sql>" [--file <path>] [--params '<json_array>']`
 - `run402 projects rest <id> <table> "<query>"`
-- `run402 projects keys <id>` — print anon_key + service_key as JSON
+- `run402 projects keys <id>` — moved before public launch. Returns structured `COMMAND_MOVED`; use `credentials project-keys export --project <id> --reveal` for cached key material.
 - `run402 projects costs <id> [--window <24h|7d|30d|90d>]` — admin-only per-project finance: revenue, direct cost, margin, and cost breakdown. Uses the configured allowance wallet for admin auth; `RUN402_ADMIN_COOKIE='run402_admin=...'` is an optional browser-session override.
 - `run402 projects promote-user <id> <email>` — promote a user to project_admin role
 - `run402 projects demote-user <id> <email>` — demote a user from project_admin role
@@ -1275,12 +1284,14 @@ All options default to the active project. `claim` also defaults to the project'
 Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### domains
-- `run402 domains add <domain> <subdomain_name> [--project <id>]`
-- `run402 domains list [--project <id>]`
-- `run402 domains status <domain> [--project <id>]`
-- `run402 domains delete <domain> --confirm [--project <id>]` — `--confirm` required (irreversible release).
+- `run402 domains add <domain> <subdomain_name> [--project <id>] [--auth principal|service-key]`
+- `run402 domains list [--project <id>] [--auth principal|service-key]`
+- `run402 domains status <domain> [--project <id>] [--auth principal|service-key]`
+- `run402 domains delete <domain> --confirm [--project <id>] [--auth principal|service-key]` — `--confirm` required (irreversible release).
 
 Point a custom domain (e.g. `example.com`) at a Run402 subdomain. The human must already own the domain.
+
+Default auth is `principal`: the command sends an explicit `project_id` and authorizes through the current wallet, control-plane session, or delegate. It does not require the selected wallet/profile to have a local project-key cache entry. `--auth service-key` is the compatibility override for service-key auth; that path reads the local project-key cache and fails with `PROJECT_CREDENTIAL_NOT_FOUND` / `details.source: "local_cache"` if the selected profile lacks keys.
 
 **Setup flow:**
 1. `run402 domains add example.com myapp` — registers the domain, returns DNS instructions

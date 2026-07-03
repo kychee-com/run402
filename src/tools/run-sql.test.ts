@@ -256,16 +256,22 @@ describe("run_sql tool", () => {
       tier: "prototype",
       lease_expires_at: "2026-03-06T00:00:00Z",
     }, storePath);
-    await getSdk().projects.use("proj-active"); // mark active in local state
 
     let capturedUrl = "";
     globalThis.fetch = (async (url: string | URL | Request) => {
       capturedUrl = typeof url === "string" ? url : url.toString();
+      if (capturedUrl.endsWith("/projects/v1/proj-active")) {
+        return new Response(
+          JSON.stringify({ project_id: "proj-active" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
       return new Response(
         JSON.stringify({ status: "ok", schema: "p0001", rows: [], rowCount: 3 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
+    await getSdk().projects.use("proj-active"); // mark active in local state
 
     const result = await handleRunSql({ sql: "INSERT INTO t (id) VALUES (1),(2),(3)" });
     assert.ok(!result.isError);

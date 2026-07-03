@@ -8,7 +8,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ApiError, LocalError, ProjectNotFound } from "../errors.js";
+import { ApiError, LocalError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import { assertPositiveSafeInteger } from "../validation.js";
 import type {
   BlobCacheKind,
@@ -596,8 +597,7 @@ export class Assets {
 
     // Check credentials early so callers get ProjectNotFound rather than a
     // generic error from inside the apply flow.
-    const projectKeys = await this.client.getProject(projectId);
-    if (!projectKeys) throw new ProjectNotFound(projectId, "uploading asset");
+    const projectKeys = await requireProjectCredentials(this.client, projectId, "uploading asset");
 
     // v1.48 unified-apply: route through the apply hero. Bytes upload via
     // /content/v1/plans (CAS substrate) and the asset slice promotes in the
@@ -755,8 +755,7 @@ export class Assets {
    *   if (diag.observedSha256 !== diag.expectedSha256) console.log(diag.hint);
    */
   async diagnoseUrl(projectId: string, url: string): Promise<BlobDiagnoseEnvelope> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "diagnosing blob URL");
+    const project = await requireProjectCredentials(this.client, projectId, "diagnosing blob URL");
 
     const path = `/storage/v1/blobs/diagnose?url=${encodeURIComponent(url)}`;
     const env = await this.client.request<WireBlobDiagnoseEnvelope>(path, {
@@ -794,8 +793,7 @@ export class Assets {
     const timeoutMs = opts.timeoutMs ?? 60_000;
     assertPositiveSafeInteger(timeoutMs, "timeoutMs", "waiting for CDN freshness");
 
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "waiting for CDN freshness");
+    const project = await requireProjectCredentials(this.client, projectId, "waiting for CDN freshness");
 
     const expected = opts.sha256.toLowerCase();
     const start = Date.now();
@@ -844,8 +842,7 @@ export class Assets {
    * @throws {ApiError} on non-2xx (includes the error text from the response body).
    */
   async get(projectId: string, key: string): Promise<Response> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "downloading blob");
+    const project = await requireProjectCredentials(this.client, projectId, "downloading blob");
 
     const url = `${this.client.apiBase}/storage/v1/blob/${encodeKey(key)}`;
     const res = await this.client.fetch(url, {
@@ -880,8 +877,7 @@ export class Assets {
       assertAssetFilter(opts.filter, "listing blobs");
     }
 
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing blobs");
+    const project = await requireProjectCredentials(this.client, projectId, "listing blobs");
 
     const qs = new URLSearchParams();
     if (opts.prefix) qs.set("prefix", opts.prefix);
@@ -903,8 +899,7 @@ export class Assets {
 
   /** Delete a blob and decrement the project's storage_bytes. */
   async rm(projectId: string, key: string): Promise<void> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting blob");
+    const project = await requireProjectCredentials(this.client, projectId, "deleting blob");
 
     await this.client.request<unknown>(`/storage/v1/blob/${encodeKey(key)}`, {
       method: "DELETE",
@@ -922,8 +917,7 @@ export class Assets {
       assertIntegerInRange(opts.ttl_seconds, "ttl_seconds", 60, 604800, "signing blob URL");
     }
 
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "signing blob URL");
+    const project = await requireProjectCredentials(this.client, projectId, "signing blob URL");
 
     const body: Record<string, unknown> = {};
     if (opts.ttl_seconds !== undefined) body.ttl_seconds = opts.ttl_seconds;

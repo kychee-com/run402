@@ -5,7 +5,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import { deprecatePositional } from "../deprecate.js";
 
 export interface SubdomainClaimOptions {
@@ -88,8 +89,7 @@ export class Subdomains {
     }
 
     const projectId = await this.#resolveProjectId(options, "claiming subdomain");
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "claiming subdomain");
+    const project = await requireProjectCredentials(this.client, projectId, "claiming subdomain");
 
     return this.client.request<SubdomainClaimResult>("/subdomains/v1", {
       method: "POST",
@@ -105,8 +105,7 @@ export class Subdomains {
     opts: SubdomainClaimOptions = {},
   ): Promise<SubdomainDeleteResult> {
     const projectId = await this.#resolveProjectId(opts, "deleting subdomain");
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting subdomain");
+    const project = await requireProjectCredentials(this.client, projectId, "deleting subdomain");
 
     return this.client.request<SubdomainDeleteResult>(
       `/subdomains/v1/${encodeURIComponent(name)}`,
@@ -120,8 +119,7 @@ export class Subdomains {
 
   /** List all subdomains claimed by a project. */
   async list(projectId: string): Promise<SubdomainSummary[]> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing subdomains");
+    const project = await requireProjectCredentials(this.client, projectId, "listing subdomains");
 
     // Gateway responds `{ subdomains: [...] }`; unwrap so callers get the
     // array shape the type promises (regression: GH-163).

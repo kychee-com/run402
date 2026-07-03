@@ -299,36 +299,84 @@ export class LocalError extends Run402Error {
    * @param message Human-readable error message.
    * @param context Short verb phrase identifying the operation (used for triage).
    * @param opts Optional. Pass a raw `unknown` for back-compat (treated as `cause`),
-   *   or an options bag `{ cause?, code?, details? }` to thread a stable error
+   *   or an options bag `{ cause?, code?, details?, next_actions? }` to thread a stable error
    *   `code` (mirrors a gateway error code so client-side validators throw with
    *   the same `code` field consumers branch on).
    */
   constructor(
     message: string,
     context: string,
-    opts?: unknown | { cause?: unknown; code?: string; details?: unknown },
+    opts?: unknown | { cause?: unknown; code?: string; details?: unknown; next_actions?: unknown[] },
   ) {
     const bag =
       opts && typeof opts === "object" && !Array.isArray(opts) &&
       ("cause" in (opts as object) ||
         "code" in (opts as object) ||
-        "details" in (opts as object))
-        ? (opts as { cause?: unknown; code?: string; details?: unknown })
+        "details" in (opts as object) ||
+        "next_actions" in (opts as object))
+        ? (opts as { cause?: unknown; code?: string; details?: unknown; next_actions?: unknown[] })
         : null;
     const code = bag?.code;
     const details = bag?.details;
+    const nextActions = bag?.next_actions;
     const cause = bag ? bag.cause : opts;
     const envelope: Record<string, unknown> | null =
-      code !== undefined || details !== undefined
+      code !== undefined || details !== undefined || nextActions !== undefined
         ? {
             ...(code !== undefined ? { code } : {}),
             ...(details !== undefined ? { details } : {}),
+            ...(nextActions !== undefined ? { next_actions: nextActions } : {}),
           }
         : null;
     super(message, null, envelope, context);
     if (cause !== undefined) this.cause = cause;
   }
 }
+
+/** Local credential-cache miss — the project may exist, but no cached keys are available locally. */
+export class ProjectCredentialNotFound extends LocalError {
+  readonly projectId: string;
+
+  constructor(
+    projectId: string,
+    context: string,
+    details: Record<string, unknown> = {},
+  ) {
+    super(`No local project credentials cached for ${projectId}`, context, {
+      code: "PROJECT_CREDENTIAL_NOT_FOUND",
+      details: {
+        project_id: projectId,
+        source: "local_cache",
+        ...details,
+      },
+      next_actions: [
+        {
+          type: "run_command",
+          command: `run402 credentials project-keys status --project ${projectId}`,
+          why: "Inspect whether this profile has cached project keys without revealing secrets.",
+        },
+        {
+          type: "run_command",
+          command: `run402 credentials project-keys import --project ${projectId} --service-key-stdin`,
+          why: "Import a service key only when this operation is classified as credential-required.",
+        },
+      ],
+    });
+    this.name = "ProjectCredentialNotFound";
+    this.projectId = projectId;
+  }
+}
+
+export const PROJECT_CREDENTIAL_ERROR_CODES = [
+  "PROJECT_CREDENTIAL_NOT_FOUND",
+  "PROJECT_CREDENTIAL_INVALID",
+  "PROJECT_CREDENTIAL_EXPIRED",
+  "PROJECT_CREDENTIAL_PROJECT_MISMATCH",
+] as const;
+
+export type ProjectCredentialErrorCode = typeof PROJECT_CREDENTIAL_ERROR_CODES[number];
+
+const PROJECT_CREDENTIAL_ERROR_CODE_SET = new Set<string>(PROJECT_CREDENTIAL_ERROR_CODES);
 
 /**
  * Deploy-state-machine failure surfaced from the v2 deploy flow. Carries the
@@ -714,6 +762,31 @@ export function isPaymentRequired(e: unknown): e is PaymentRequired {
 /** True if `e` is a {@link ProjectNotFound}. */
 export function isProjectNotFound(e: unknown): e is ProjectNotFound {
   return isRun402Error(e) && e.kind === "project_not_found";
+}
+
+/** True if `e` is a local project credential-cache miss. */
+export function isProjectCredentialNotFound(e: unknown): e is ProjectCredentialNotFound {
+  return isLocalError(e) && e.code === "PROJECT_CREDENTIAL_NOT_FOUND";
+}
+
+/** True if `e` carries any stable project-credential error code. */
+export function isProjectCredentialError(e: unknown): e is Run402Error & { code: ProjectCredentialErrorCode } {
+  return isRun402Error(e) && typeof e.code === "string" && PROJECT_CREDENTIAL_ERROR_CODE_SET.has(e.code);
+}
+
+/** True if cached or supplied project credentials were rejected as invalid. */
+export function isProjectCredentialInvalid(e: unknown): e is Run402Error & { code: "PROJECT_CREDENTIAL_INVALID" } {
+  return isRun402Error(e) && e.code === "PROJECT_CREDENTIAL_INVALID";
+}
+
+/** True if cached or supplied project credentials were rejected as expired. */
+export function isProjectCredentialExpired(e: unknown): e is Run402Error & { code: "PROJECT_CREDENTIAL_EXPIRED" } {
+  return isRun402Error(e) && e.code === "PROJECT_CREDENTIAL_EXPIRED";
+}
+
+/** True if service-key auth was supplied for a different explicit project id. */
+export function isProjectCredentialProjectMismatch(e: unknown): e is Run402Error & { code: "PROJECT_CREDENTIAL_PROJECT_MISMATCH" } {
+  return isRun402Error(e) && e.code === "PROJECT_CREDENTIAL_PROJECT_MISMATCH";
 }
 
 /** True if `e` is an {@link Unauthorized}. */

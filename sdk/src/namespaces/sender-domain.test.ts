@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Run402 } from "../index.js";
-import { ProjectNotFound } from "../errors.js";
+import { ProjectCredentialNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 function creds(): CredentialsProvider {
@@ -51,11 +51,11 @@ describe("senderDomain.disableInbound", () => {
     assert.equal(result.status, "disabled");
   });
 
-  it("throws ProjectNotFound without any fetch for unknown project", async () => {
+  it("throws ProjectCredentialNotFound without any fetch for missing local credentials", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     await assert.rejects(
       sdk(fetch).senderDomain.disableInbound("prj_missing", "ex.com"),
-      ProjectNotFound,
+      ProjectCredentialNotFound,
     );
     assert.equal(calls.length, 0);
   });

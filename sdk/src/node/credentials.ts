@@ -1,23 +1,33 @@
 /**
- * Node credential provider — wraps the local keystore + allowance-auth.
- * Reproduces today's CLI/MCP behavior: reads `~/.config/run402/keystore.json`
- * (or `RUN402_CONFIG_DIR` override), signs SIWX headers from the allowance
- * private key, and serves project anon/service keys from disk.
+ * Node credential provider — wraps the local project-key cache + allowance-auth.
+ * Reads `credentials/project-keys.v1.json` (or an explicit `keystorePath`),
+ * signs SIWX headers from the allowance private key, and serves project
+ * anon/service keys from disk only for operations classified as credential-
+ * required.
  */
 
 import { randomBytes, createECDH } from "node:crypto";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import {
   getProject as coreGetProject,
+  loadKeyStore as coreLoadKeyStore,
   saveProject as coreSaveProject,
   updateProject as coreUpdateProject,
   removeProject as coreRemoveProject,
-  setActiveProjectId,
-  getActiveProjectId,
 } from "../../core-dist/keystore.js";
+import {
+  getActiveProjectId,
+  setActiveProjectId,
+} from "../../core-dist/profile-state.js";
 import { getAllowanceAuthHeaders } from "../../core-dist/allowance-auth.js";
 import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance } from "../../core-dist/allowance.js";
-import { getAllowancePath as coreGetAllowancePath, getActiveProfile, getApiBase } from "../../core-dist/config.js";
+import {
+  getAllowancePath as coreGetAllowancePath,
+  getActiveProfile,
+  getApiBase,
+  getProfileStatePath as coreGetProfileStatePath,
+  getProjectCredentialsPath as coreGetProjectCredentialsPath,
+} from "../../core-dist/config.js";
 import { readMeta } from "../../core-dist/profiles.js";
 import { loadLiveControlPlaneSession } from "../../core-dist/control-plane-session.js";
 import { loadLiveApproval, hashControlPlaneSession } from "../../core-dist/write-auth-session.js";
@@ -30,7 +40,10 @@ export type AuthMode = "auto" | "wallet" | "operator" | "none";
 
 export interface NodeCredentialsOptions {
   allowancePath?: string;
+  /** Local project-key credential cache path. Defaults to credentials/project-keys.v1.json. */
   keystorePath?: string;
+  /** Non-secret profile state path for active project pointers. Defaults to state.json. */
+  profileStatePath?: string;
   /** Default is `wallet` (no ambient operator authority); `cli` opts into `auto`. */
   surface?: CredentialSurface;
   /** Explicit override; otherwise derived from `surface`. */
@@ -95,9 +108,17 @@ export class NodeCredentialsProvider implements CredentialsProvider {
     }
   }
 
-  async getProject(id: string): Promise<ProjectKeys | null> {
+  async getProjectCredentials(id: string): Promise<ProjectKeys | null> {
     const p = coreGetProject(id, this.options.keystorePath);
     return p ?? null;
+  }
+
+  async listProjectCredentials(): Promise<Record<string, ProjectKeys>> {
+    return coreLoadKeyStore(this.options.keystorePath).projects;
+  }
+
+  async getProject(id: string): Promise<ProjectKeys | null> {
+    return this.getProjectCredentials(id);
   }
 
   async saveProject(id: string, project: ProjectKeys): Promise<void> {
@@ -113,11 +134,11 @@ export class NodeCredentialsProvider implements CredentialsProvider {
   }
 
   async setActiveProject(id: string): Promise<void> {
-    setActiveProjectId(id, this.options.keystorePath);
+    setActiveProjectId(id, this.options.profileStatePath, this.activeScope());
   }
 
   async getActiveProject(): Promise<string | null> {
-    return getActiveProjectId(this.options.keystorePath) ?? null;
+    return getActiveProjectId(this.options.profileStatePath, this.activeScope()) ?? null;
   }
 
   async readAllowance(): Promise<AllowanceData | null> {
@@ -151,6 +172,29 @@ export class NodeCredentialsProvider implements CredentialsProvider {
 
   getAllowancePath(): string {
     return this.options.allowancePath ?? coreGetAllowancePath();
+  }
+
+  getProjectCredentialCacheInfo() {
+    const profile = getActiveProfile();
+    return {
+      source: "local_cache" as const,
+      cache_path: this.options.keystorePath ?? coreGetProjectCredentialsPath(),
+      wallet: profile,
+      profile,
+    };
+  }
+
+  getProfileStatePath(): string {
+    return this.options.profileStatePath ?? coreGetProfileStatePath();
+  }
+
+  private activeScope() {
+    const allowance = coreReadAllowance(this.options.allowancePath);
+    return {
+      api_base: getApiBase(),
+      profile: getActiveProfile(),
+      principal: allowance?.address ?? null,
+    };
   }
 
   async getWalletIdentity(): Promise<WalletIdentity | null> {

@@ -1352,12 +1352,12 @@ describe("numeric flag validation", () => {
 });
 
 describe("project-id heuristic", () => {
-  it("projects info refuses non-prj first positional instead of using active project (GH-184)", async () => {
+  it("projects info is a moved local-cache command and does not inspect active project (GH-184)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     const err = await expectExit1(() => run("info", ["proj-001"]));
 
-    assert.equal(err.code, "BAD_PROJECT_ID");
-    assert.match(err.message, /proj-001/);
+    assert.equal(err.code, "COMMAND_MOVED");
+    assert.match(err.hint, /credentials project-keys/);
     assert.equal(calls.length, 0);
   });
 

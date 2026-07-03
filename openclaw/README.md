@@ -13,7 +13,7 @@ cp -r openclaw ~/.openclaw/skills/run402
 cd ~/.openclaw/skills/run402/scripts && npm install
 ```
 
-The skill's frontmatter declares `install: run402` so OpenClaw also installs the [`run402`](https://www.npmjs.com/package/run402) CLI globally — every script in `scripts/` re-exports from `cli/lib/`, so the CLI is the runtime. Allowance and project credentials live at `~/.config/run402/` and are shared across the CLI / MCP server / OpenClaw skill.
+The skill's frontmatter declares `install: run402` so OpenClaw also installs the [`run402`](https://www.npmjs.com/package/run402) CLI globally — every script in `scripts/` re-exports from `cli/lib/`, so the CLI is the runtime. Allowance, active-project state, and the local project-key credential cache live under `~/.config/run402/` and are shared across the CLI / MCP server / OpenClaw skill.
 
 ## How it works
 

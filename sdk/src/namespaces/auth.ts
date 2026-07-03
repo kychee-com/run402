@@ -7,7 +7,8 @@
  */
 
 import type { Client } from "../kernel.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 import {
   assertEmailAddress,
   assertHttpUrl,
@@ -234,8 +235,7 @@ export class Auth {
     if (opts.intent !== undefined) {
       assertStringInSet(opts.intent, MAGIC_LINK_INTENTS, "intent", "requesting magic link");
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "requesting magic link");
+    const project = await requireProjectCredentials(this.client, projectId, "requesting magic link");
 
     const body: Record<string, unknown> = {
       email: opts.email,
@@ -258,8 +258,7 @@ export class Auth {
   /** Exchange a magic-link token for access + refresh tokens. */
   async verifyMagicLink(projectId: string, token: string): Promise<MagicLinkVerifyResult> {
     assertNonEmptyString(token, "token", "verifying magic link");
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "verifying magic link");
+    const project = await requireProjectCredentials(this.client, projectId, "verifying magic link");
 
     return this.client.request<MagicLinkVerifyResult>(
       "/auth/v1/token?grant_type=magic_link",
@@ -292,8 +291,7 @@ export class Auth {
     if (opts.currentPassword !== undefined) {
       assertNonEmptyString(opts.currentPassword, "currentPassword", "setting user password");
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "setting user password");
+    const project = await requireProjectCredentials(this.client, projectId, "setting user password");
 
     const body: Record<string, string> = { new_password: opts.newPassword };
     if (opts.currentPassword !== undefined) body.current_password = opts.currentPassword;
@@ -318,8 +316,7 @@ export class Auth {
       );
     }
     validateAuthSettings(settings);
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "updating auth settings");
+    const project = await requireProjectCredentials(this.client, projectId, "updating auth settings");
 
     return this.client.request<AuthSettingsResult>("/auth/v1/settings", {
       method: "PATCH",
@@ -350,8 +347,7 @@ export class Auth {
     if (opts.sendInvite !== undefined && typeof opts.sendInvite !== "boolean") {
       throw new LocalError("sendInvite must be a boolean when provided.", "creating auth user");
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "creating auth user");
+    const project = await requireProjectCredentials(this.client, projectId, "creating auth user");
 
     const body: Record<string, unknown> = { email: opts.email };
     if (typeof opts.isAdmin === "boolean") body.is_admin = opts.isAdmin;
@@ -386,8 +382,7 @@ export class Auth {
         "creating passkey registration options",
       );
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "creating passkey registration options");
+    const project = await requireProjectCredentials(this.client, projectId, "creating passkey registration options");
 
     return this.client.request<PasskeyOptionsResult>("/auth/v1/passkeys/register/options", {
       method: "POST",
@@ -411,8 +406,7 @@ export class Auth {
         "verifying passkey registration",
       );
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "verifying passkey registration");
+    const project = await requireProjectCredentials(this.client, projectId, "verifying passkey registration");
 
     const body: Record<string, unknown> = {
       challenge_id: opts.challengeId,
@@ -439,8 +433,7 @@ export class Auth {
         "creating passkey login options",
       );
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "creating passkey login options");
+    const project = await requireProjectCredentials(this.client, projectId, "creating passkey login options");
 
     const body: Record<string, unknown> = { app_origin: opts.appOrigin };
     if (opts.email) body.email = opts.email;
@@ -464,8 +457,7 @@ export class Auth {
         "verifying passkey login",
       );
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "verifying passkey login");
+    const project = await requireProjectCredentials(this.client, projectId, "verifying passkey login");
 
     return this.client.request<AuthSessionResult>("/auth/v1/passkeys/login/verify", {
       method: "POST",
@@ -489,8 +481,7 @@ export class Auth {
         "listing passkeys",
       );
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing passkeys");
+    const project = await requireProjectCredentials(this.client, projectId, "listing passkeys");
 
     return this.client.request<{ passkeys: PasskeyRecord[] }>("/auth/v1/passkeys", {
       headers: {
@@ -510,8 +501,7 @@ export class Auth {
         "deleting passkey",
       );
     }
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "deleting passkey");
+    const project = await requireProjectCredentials(this.client, projectId, "deleting passkey");
 
     await this.client.request<unknown>(`/auth/v1/passkeys/${encodeURIComponent(opts.passkeyId)}`, {
       method: "DELETE",
@@ -525,8 +515,7 @@ export class Auth {
 
   /** List configured auth providers for a project. Uses the project's anon key. */
   async providers(projectId: string): Promise<unknown> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing auth providers");
+    const project = await requireProjectCredentials(this.client, projectId, "listing auth providers");
 
     return this.client.request<unknown>("/auth/v1/providers", {
       headers: {
@@ -540,8 +529,7 @@ export class Auth {
 
   /** Promote a user (by email) to `project_admin`. Requires service key. */
   async promote(projectId: string, email: string): Promise<void> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "promoting user");
+    const project = await requireProjectCredentials(this.client, projectId, "promoting user");
 
     await this.client.request<unknown>(
       `/projects/v1/admin/${projectId}/promote-user`,
@@ -556,8 +544,7 @@ export class Auth {
 
   /** Demote a user (by email) from `project_admin` back to the default role. */
   async demote(projectId: string, email: string): Promise<void> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "demoting user");
+    const project = await requireProjectCredentials(this.client, projectId, "demoting user");
 
     await this.client.request<unknown>(
       `/projects/v1/admin/${projectId}/demote-user`,

@@ -27,6 +27,7 @@ import { Wallets, ScopedWallet } from "./namespaces/wallets.js";
 import { Apps } from "./namespaces/apps.js";
 import { Email } from "./namespaces/email.js";
 import { Contracts } from "./namespaces/contracts.js";
+import { Credentials } from "./namespaces/credentials.js";
 import { Admin } from "./namespaces/admin.js";
 import { Deploy } from "./namespaces/deploy.js";
 import { Ci } from "./namespaces/ci.js";
@@ -74,6 +75,7 @@ export class Run402 {
   readonly apps: Apps;
   readonly email: Email;
   readonly contracts: Contracts;
+  readonly credentials: Credentials;
   readonly admin: Admin;
   /**
    * Internal engine. Unified apply has no public `r.deploy` or `r.apply`
@@ -131,10 +133,13 @@ export class Run402 {
     }
     if (
       typeof opts.credentials.getAuth !== "function" ||
-      typeof opts.credentials.getProject !== "function"
+      (
+        typeof opts.credentials.getProjectCredentials !== "function" &&
+        typeof opts.credentials.getProject !== "function"
+      )
     ) {
       throw new LocalError(
-        "Run402 credentials provider is missing required methods (getAuth, getProject)",
+        "Run402 credentials provider is missing required methods (getAuth, getProjectCredentials)",
         "constructing client",
       );
     }
@@ -169,6 +174,7 @@ export class Run402 {
     this.apps = new Apps(client);
     this.email = new Email(client);
     this.contracts = new Contracts(client);
+    this.credentials = new Credentials(client);
     this.admin = new Admin(client);
     this._applyEngine = new Deploy(client);
     this.ci = new Ci(client);
@@ -341,6 +347,7 @@ export function run402(opts: Run402Options): Run402 {
 export {
   Run402Error,
   PaymentRequired,
+  ProjectCredentialNotFound,
   ProjectNotFound,
   Unauthorized,
   NotAuthorizedError,
@@ -351,8 +358,14 @@ export {
   TransferFreezeError,
   StepUpRequiredError,
   OperatorApprovalRequiredError,
+  PROJECT_CREDENTIAL_ERROR_CODES,
   isRun402Error,
   isPaymentRequired,
+  isProjectCredentialError,
+  isProjectCredentialExpired,
+  isProjectCredentialInvalid,
+  isProjectCredentialNotFound,
+  isProjectCredentialProjectMismatch,
   isProjectNotFound,
   isUnauthorized,
   isNotAuthorized,
@@ -371,6 +384,7 @@ export type {
   Run402DeployErrorFix,
   Run402ErrorKind,
   Run402QuotaScope,
+  ProjectCredentialErrorCode,
   NextAction,
   NextActionType,
 } from "./errors.js";
@@ -390,6 +404,11 @@ export {
 export type * from "./config.js";
 export type * from "./credentials.js";
 export type * from "./kernel.js";
+export {
+  PROJECT_OPERATION_AUTH_CLASSIFICATIONS,
+  projectOperationAuthClassification,
+} from "./project-auth-classification.js";
+export type * from "./project-auth-classification.js";
 export {
   CI_SESSION_CREDENTIALS,
   createCiSessionCredentials,
@@ -446,6 +465,7 @@ export type * from "./namespaces/cache.js";
 export type * from "./namespaces/assets.types.js";
 export type * from "./namespaces/ci.types.js";
 export type * from "./namespaces/contracts.js";
+export type * from "./namespaces/credentials.js";
 export type * from "./namespaces/deploy.types.js";
 export { Deploy } from "./namespaces/deploy.js";
 export type { ByteReader } from "./namespaces/deploy.js";

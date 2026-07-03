@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectCredentialNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface FetchCall {
@@ -92,10 +92,10 @@ describe("contracts.listSigners", () => {
     assert.equal(s.created_at, "2025-01-01T00:00:00Z");
   });
 
-  it("throws ProjectNotFound for unknown ids before any fetch", async () => {
+  it("throws ProjectCredentialNotFound for missing local credentials before any fetch", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(fetch);
-    await assert.rejects(sdk.contracts.listSigners("prj_missing"), ProjectNotFound);
+    await assert.rejects(sdk.contracts.listSigners("prj_missing"), ProjectCredentialNotFound);
     assert.equal(calls.length, 0);
   });
 });

@@ -61,6 +61,8 @@ export interface Client {
   readonly apiBase: string;
   request<T>(path: string, opts: RequestOptions): Promise<T>;
   requestWithResponse<T>(path: string, opts: RequestOptions): Promise<ResponseEnvelope<T>>;
+  getProjectCredentials(id: string): Promise<ProjectKeys | null>;
+  /** @deprecated Use getProjectCredentials. */
   getProject(id: string): Promise<ProjectKeys | null>;
   /** The underlying credentials provider. Namespaces use this to access optional methods (saveProject, setActiveProject, ...). */
   readonly credentials: CredentialsProvider;
@@ -234,12 +236,17 @@ function envelopeCode(body: unknown): string | null {
 }
 
 export function buildClient(kernel: KernelConfig): Client {
+  const getProjectCredentials = (id: string) =>
+    kernel.credentials.getProjectCredentials
+      ? kernel.credentials.getProjectCredentials(id)
+      : kernel.credentials.getProject?.(id) ?? Promise.resolve(null);
   return {
     apiBase: kernel.apiBase,
     request: <T>(path: string, opts: RequestOptions) => request<T>(kernel, path, opts),
     requestWithResponse: <T>(path: string, opts: RequestOptions) =>
       requestWithResponse<T>(kernel, path, opts),
-    getProject: (id: string) => kernel.credentials.getProject(id),
+    getProjectCredentials,
+    getProject: getProjectCredentials,
     credentials: kernel.credentials,
     fetch: kernel.fetch,
   };

@@ -7,8 +7,11 @@ import {
   getApiBase,
   getApiBaseSource,
   getApiTargetKind,
+  getActiveProfile,
   getConfigDir,
-  getKeystorePath,
+  getLegacyProjectsPath,
+  getProfileStatePath,
+  getProjectCredentialsPath,
   getAllowancePath,
   configureApiBase,
   isCoreApiTarget,
@@ -18,18 +21,22 @@ import { readAllowance as coreReadAllowance, saveAllowance as coreSaveAllowance 
 import { loadKeyStore, getProject, saveProject, updateProject, removeProject, saveKeyStore, getActiveProjectId, setActiveProjectId } from "../core-dist/keystore.js";
 import { getAllowanceAuthHeaders as coreGetAllowanceAuthHeaders } from "../core-dist/allowance-auth.js";
 import { fail } from "./sdk-errors.mjs";
-import { initializeWalletAction, createProjectAction } from "./next-actions.mjs";
+import { initializeWalletAction, selectProjectAction } from "./next-actions.mjs";
 
 // Wallet-dependent paths are exposed as getters (preferred — they always
 // reflect the active profile, even if some future code path imports this module
 // before wallet resolution). Production code (init/doctor/allowance) uses these.
 export function configDir() { return getConfigDir(); }
 export function allowanceFile() { return getAllowancePath(); }
-export function projectsFile() { return getKeystorePath(); }
+export function projectCredentialsFile() { return getProjectCredentialsPath(); }
+export function profileStateFile() { return getProfileStatePath(); }
+export function legacyProjectsFile() { return getLegacyProjectsPath(); }
+export function projectsFile() { return projectCredentialsFile(); }
 export function apiBase() { return getApiBase(); }
 export function apiBaseSource() { return getApiBaseSource(); }
 export function apiTargetKind() { return getApiTargetKind(); }
 export function coreTarget() { return isCoreApiTarget(); }
+export function activeProfile() { return getActiveProfile(); }
 
 // Snapshot constants, retained for backward compatibility (tests, the OpenClaw
 // config re-export). These are evaluated when this module is first imported.
@@ -39,7 +46,9 @@ export function coreTarget() { return isCoreApiTarget(); }
 // prefer the getters above.
 export const CONFIG_DIR = getConfigDir();
 export const ALLOWANCE_FILE = getAllowancePath();
-export const PROJECTS_FILE = getKeystorePath();
+export const PROJECTS_FILE = getProjectCredentialsPath();
+export const PROJECT_CREDENTIALS_FILE = getProjectCredentialsPath();
+export const PROFILE_STATE_FILE = getProfileStatePath();
 
 // API base is independent of the active wallet, so a module-load snapshot is safe.
 export const API = getApiBase();
@@ -89,41 +98,42 @@ export function findProject(id) {
   const p = getProject(id);
   if (!p) {
     const idStr = id ?? "";
-    const hint = idStr && !String(idStr).startsWith("prj_")
-      ? `project IDs start with "prj_". Check that the argument order is <project_id> <name>.`
-      : undefined;
     fail({
-      code: "PROJECT_NOT_FOUND",
-      message: `Project ${idStr} not found in local registry.`,
-      hint,
-      details: { project_id: idStr, source: "local_registry" },
-      next_actions: [createProjectAction()],
+      code: "PROJECT_CREDENTIAL_NOT_FOUND",
+      message: `No local project credentials cached for ${idStr}.`,
+      hint: "Use a principal-auth command, or import project keys with `run402 credentials project-keys import --project <id> --service-key-stdin`.",
+      details: { project_id: idStr, source: "local_cache", cache_path: projectCredentialsFile(), wallet: activeProfile(), profile: activeProfile() },
+      next_actions: [{
+        type: "run_command",
+        command: `run402 credentials project-keys status --project ${idStr || "<id>"}`,
+        why: "Inspect the local project-key cache without revealing secrets.",
+      }],
     });
   }
   return p;
 }
 
 export function resolveProject(id) {
-  const projectId = id || getActiveProjectId();
+  const projectId = id || process.env.RUN402_PROJECT_ID || getActiveProjectId();
   if (!projectId) {
     fail({
-      code: "NO_ACTIVE_PROJECT",
+      code: "PROJECT_REQUIRED",
       message: "no project specified and no active project set.",
-      hint: "Run: run402 projects provision",
-      next_actions: [createProjectAction()],
+      hint: "Pass --project <id>, set RUN402_PROJECT_ID, or run: run402 projects use <id>",
+      next_actions: [selectProjectAction()],
     });
   }
   return findProject(projectId);
 }
 
 export function resolveProjectId(id) {
-  const projectId = id || getActiveProjectId();
+  const projectId = id || process.env.RUN402_PROJECT_ID || getActiveProjectId();
   if (!projectId) {
     fail({
-      code: "NO_ACTIVE_PROJECT",
+      code: "PROJECT_REQUIRED",
       message: "no project specified and no active project set.",
-      hint: "Run: run402 projects provision",
-      next_actions: [createProjectAction()],
+      hint: "Pass --project <id>, set RUN402_PROJECT_ID, or run: run402 projects use <id>",
+      next_actions: [selectProjectAction()],
     });
   }
   return projectId;
@@ -134,6 +144,7 @@ export {
   configureApiBase,
   isCoreApiTarget,
   readApiTargetConfig,
+  getProject,
   loadKeyStore,
   saveProject,
   updateProject,

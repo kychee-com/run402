@@ -74,8 +74,8 @@ describe("resolveRun402TargetProfile", () => {
     assert.equal(target.projectId, "prj_profile");
     assert.equal(target.anonKey, "anon_profile");
     assert.equal(target.serviceKey, "service_profile");
-    assert.equal(target.sources.project, "profile:active_project_id");
-    assert.equal(target.sources.anonKey, "profile:projects.json");
+    assert.equal(target.sources.project, "profile:state.json");
+    assert.equal(target.sources.anonKey, "profile:project-keys.v1.json");
   });
 
   it("supports app-specific env aliases without app repos parsing projects.json", () => {

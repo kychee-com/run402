@@ -10,7 +10,7 @@ npm install @run402/sdk
 
 | Import | Use when |
 |---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance. Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/node` | Running in Node 22 with the local profile state, project-key credential cache, and allowance. Auto-loads the configured API base, profile `credentials/project-keys.v1.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk` | Isomorphic — works in Node, Deno, Bun, V8 isolates. No filesystem access. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). |
 
 ## Quick start (Node)
@@ -58,7 +58,7 @@ await r.up(
 
 For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
 
-App build scripts should use the same target/profile store instead of parsing `target.json` or `projects.json`:
+App build scripts should use the same target/profile store instead of parsing `target.json` or project-key cache files:
 
 ```ts
 import { resolveRun402TargetProfile } from "@run402/sdk/node";
@@ -89,6 +89,8 @@ resolveRun402TargetProfile({
 
 Most operations are project-scoped. Bind once and skip the id arg on every call:
 
+`r.projects.list()` and `r.projects.get(id)` are server-authoritative project reads. `r.projects.use(id)` validates the project with the current principal and stores only an active project id in profile state; it does not require local project-key cache membership. `r.project(id)` binds the id without local lookup. Each namespace then follows its declared auth mode: control-plane operations such as custom domains default to principal/delegate auth with explicit `project_id`, while true data-plane/key operations use local project credentials and fail with `PROJECT_CREDENTIAL_NOT_FOUND` when the selected profile lacks cached keys.
+
 ```ts
 const p = await r.useProject(projectId);                                  // persists active project + returns scoped handle
 await p.assets.put("hello.txt", { content: "hi" });                       // no projectId arg
@@ -97,6 +99,18 @@ await p.apply({ site: { replace: files({ "index.html": "<h1>hi</h1>" }) } });
 ```
 
 `r.useProject(id)` writes the active project to the keystore (shared with concurrent CLI runs). For transient in-script scoping that does NOT mutate that state, use `r.project(id)` (or `r.project()` with no arg to resolve from whatever the keystore currently considers active).
+
+Local project keys live behind an explicit credential-cache namespace. These helpers are local/offline and are not authoritative project reads:
+
+```ts
+const status = await r.credentials.projectKeys.status(projectId); // redacted
+const serviceKey = process.env.RUN402_SERVICE_KEY!;
+await r.credentials.projectKeys.import(projectId, { serviceKey });
+const keys = await r.credentials.projectKeys.export(projectId, { reveal: true });
+await r.credentials.projectKeys.remove(projectId);
+```
+
+`status`/`list` report `source: "local_cache"`, profile/cache-path provenance, key presence, prefixes, and fingerprints without full secrets. `export(..., { reveal: true })` is the only SDK helper that emits cached secret key material.
 
 ## Quick start (isomorphic)
 
@@ -119,7 +133,8 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | Namespace | Highlights |
 |---|---|
 | `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
-| `projects` | `provision`, `delete`, `list`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `use`, `active`, `pin`, `getQuote` |
+| `projects` | `provision`, `delete`, `list`, `get`, `use`, `active`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `pin`, `getQuote`. `list`/`get`/`use` are server-authoritative; local key reads are moving to `credentials.projectKeys`. |
+| `credentials` | `projectKeys.list`, `projectKeys.status`, `projectKeys.import`, `projectKeys.export`, `projectKeys.remove` for explicit local project-key cache management. |
 | `r.project(id).apply` | **The unified apply primitive.** Callable hero — `r.project(id).apply(spec)` for atomic mixed writes (release slices + assets slice). Sub-methods: `.plan`, `.start`, `.resume`, `.upload`, `.commit`, `.status`, `.list`, `.events`, `.resolve`, `.getRelease`, `.getActiveRelease`, `.diff`. Underlying engine routes to `/apply/v1/*`. |
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |
 | `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |
@@ -577,12 +592,15 @@ All failures throw subclasses of `Run402Error`. Every subclass carries a stable
 | Class | `kind` | When | Notable fields |
 |---|---|---|---|
 | `PaymentRequired` | `"payment_required"` | HTTP 402 | x402 payment requirements in `body` |
-| `ProjectNotFound` | `"project_not_found"` | Project ID not in the credential provider | `projectId` |
+| `ProjectNotFound` | `"project_not_found"` | Server-authoritative project lookup/authorization reports not found or hidden | `projectId` |
+| `ProjectCredentialNotFound` | `"local_error"` | A local project-key cache entry is required but missing for the selected profile | `projectId`, `details.source="local_cache"`, `nextActions` |
 | `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 | — |
 | `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
 | `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
+
+Project credential codes are deliberately distinct from project existence/authz. Branch on `isProjectCredentialNotFound`, `isProjectCredentialInvalid`, `isProjectCredentialExpired`, `isProjectCredentialProjectMismatch`, or the broad `isProjectCredentialError`. Gateway-returned `PROJECT_CREDENTIAL_INVALID`, `PROJECT_CREDENTIAL_EXPIRED`, and `PROJECT_CREDENTIAL_PROJECT_MISMATCH` pass through unchanged; the SDK does not rewrite them to `PROJECT_CREDENTIAL_NOT_FOUND`.
 
 **Branch with type guards, not `instanceof`.** `instanceof X` is an identity
 check on the class object — it fails silently when the consumer's runtime

@@ -146,7 +146,19 @@ export function getConfigDir(): string {
 }
 
 export function getKeystorePath(): string {
+  return getProjectCredentialsPath();
+}
+
+export function getLegacyProjectsPath(): string {
   return join(getConfigDir(), "projects.json");
+}
+
+export function getProjectCredentialsPath(): string {
+  return join(getConfigDir(), "credentials", "project-keys.v1.json");
+}
+
+export function getProfileStatePath(): string {
+  return join(getConfigDir(), "state.json");
 }
 
 export function getApiTargetConfigPath(): string {

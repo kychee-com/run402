@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { ApiError, ProjectNotFound } from "../errors.js";
+import { ApiError, ProjectCredentialNotFound } from "../errors.js";
 import { Run402 } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type { ManagedJobSubmitRequest } from "./jobs.js";
@@ -247,21 +247,21 @@ describe("jobs", () => {
     );
   });
 
-  it("downloadArtifact throws ProjectNotFound without fetch for unknown project", async () => {
+  it("downloadArtifact throws ProjectCredentialNotFound without fetch for missing local credentials", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
 
     await assert.rejects(
       sdk(fetch).jobs.downloadArtifact("prj_missing", "job_123", "proof.json"),
-      ProjectNotFound,
+      ProjectCredentialNotFound,
     );
 
     assert.equal(calls.length, 0);
   });
 
-  it("throws ProjectNotFound without fetch for unknown project", async () => {
+  it("throws ProjectCredentialNotFound without fetch for missing local credentials", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
 
-    await assert.rejects(sdk(fetch).jobs.get("prj_missing", "job_123"), ProjectNotFound);
+    await assert.rejects(sdk(fetch).jobs.get("prj_missing", "job_123"), ProjectCredentialNotFound);
 
     assert.equal(calls.length, 0);
   });

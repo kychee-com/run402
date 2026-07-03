@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { LocalError, ProjectNotFound } from "../errors.js";
+import { LocalError, ProjectCredentialNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type {
   CreateAuthUserOptions,
@@ -201,12 +201,12 @@ describe("auth.settings", () => {
     assert.equal(calls.length, 0);
   });
 
-  it("throws ProjectNotFound for unknown ids before hitting the network", async () => {
+  it("throws ProjectCredentialNotFound for missing local credentials before hitting the network", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
     await assert.rejects(
       sdk.auth.settings("prj_missing", { allow_password_set: true }),
-      ProjectNotFound,
+      ProjectCredentialNotFound,
     );
     assert.equal(calls.length, 0);
   });
@@ -228,10 +228,10 @@ describe("auth.providers", () => {
     assert.deepEqual(result, { providers: ["email", "google"] });
   });
 
-  it("throws ProjectNotFound for unknown ids before hitting the network", async () => {
+  it("throws ProjectCredentialNotFound for missing local credentials before hitting the network", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     const sdk = makeSdk(makeCreds(), fetch);
-    await assert.rejects(sdk.auth.providers("prj_missing"), ProjectNotFound);
+    await assert.rejects(sdk.auth.providers("prj_missing"), ProjectCredentialNotFound);
     assert.equal(calls.length, 0);
   });
 });

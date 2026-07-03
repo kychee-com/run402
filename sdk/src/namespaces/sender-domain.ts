@@ -4,7 +4,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ProjectNotFound } from "../errors.js";
+import { requireProjectCredentials } from "../project-credentials.js";
 
 export interface DnsRecord {
   type: string;
@@ -45,8 +45,7 @@ export class SenderDomain {
 
   /** Register a custom email sending domain. Returns DKIM + SPF/DMARC DNS records. */
   async register(projectId: string, domain: string): Promise<SenderDomainRegisterResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "registering sender domain");
+    const project = await requireProjectCredentials(this.client, projectId, "registering sender domain");
 
     return this.client.request<SenderDomainRegisterResult>("/email/v1/domains", {
       method: "POST",
@@ -58,8 +57,7 @@ export class SenderDomain {
 
   /** Get the project's current sender-domain registration state (polls SES). */
   async status(projectId: string): Promise<SenderDomainStatusResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "checking sender domain status");
+    const project = await requireProjectCredentials(this.client, projectId, "checking sender domain status");
 
     return this.client.request<SenderDomainStatusResult>("/email/v1/domains", {
       headers: { Authorization: `Bearer ${project.service_key}` },
@@ -69,8 +67,7 @@ export class SenderDomain {
 
   /** Remove the custom sender domain; email reverts to each mailbox's managed address. */
   async remove(projectId: string): Promise<void> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "removing sender domain");
+    const project = await requireProjectCredentials(this.client, projectId, "removing sender domain");
 
     await this.client.request<unknown>("/email/v1/domains", {
       method: "DELETE",
@@ -81,8 +78,7 @@ export class SenderDomain {
 
   /** Enable inbound email on a verified custom sender domain. */
   async enableInbound(projectId: string, domain: string): Promise<InboundEnableResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "enabling inbound email");
+    const project = await requireProjectCredentials(this.client, projectId, "enabling inbound email");
 
     return this.client.request<InboundEnableResult>("/email/v1/domains/inbound", {
       method: "POST",
@@ -94,8 +90,7 @@ export class SenderDomain {
 
   /** Disable inbound email for a custom sender domain. */
   async disableInbound(projectId: string, domain: string): Promise<DisableInboundResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "disabling inbound email");
+    const project = await requireProjectCredentials(this.client, projectId, "disabling inbound email");
 
     return this.client.request<DisableInboundResult>("/email/v1/domains/inbound", {
       method: "DELETE",

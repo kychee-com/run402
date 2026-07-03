@@ -63,7 +63,7 @@ For Core, `init --api-base` stores the target in the active profile and does not
 | Sign on-chain | `run402 contracts call` |
 | One-call full-stack deploy | `run402 deploy apply --manifest app.json` |
 
-The active project is sticky — `run402 projects use <id>` makes it the default for every subsequent `<id>`-taking command. Most commands work without an explicit `<id>` once a project is active.
+The active project is sticky — `run402 projects use <id>` server-validates the project and makes it the default for every subsequent `<id>`-taking command. Most commands work without an explicit `<id>` once a project is active.
 
 ## Multiple wallets (profiles)
 
@@ -82,16 +82,18 @@ Selection precedence for every command: `--wallet <name>` flag > `RUN402_WALLET`
 
 ## Project credentials
 
-After `provision`, two keys land in `~/.config/run402/projects.json` (per active wallet):
+After `provision`, two keys are cached in the selected profile's `credentials/project-keys.v1.json`:
 
 - `anon_key` — for the browser. Read-only by default; safe to embed in HTML. RLS still applies.
 - `service_key` — server-side admin. Never embed in browser code. CORS is intentionally open for x402 clients, so a leaked service_key is exploitable from any origin. Use only inside functions or when running CLI as the agent.
 
-Neither expires. Lease enforcement happens server-side.
+Neither expires. Lease enforcement happens server-side. This is a local credential cache, not project inventory; server-visible projects come from `run402 projects list/get/use`.
 
 ```bash
-run402 projects keys <id>     # print the project's anon_key + service_key as JSON
-run402 projects info <id>     # tier, lease, schema slot, host, …
+run402 credentials project-keys list
+run402 credentials project-keys status --project <id>      # redacted cache status
+run402 credentials project-keys export --project <id> --reveal
+run402 projects get <id>                                   # server project detail, no keys
 ```
 
 ## Error Envelopes and Safe Retry
@@ -847,6 +849,8 @@ run402 domains status example.com                 # poll until active
 run402 domains list
 run402 domains delete example.com --confirm
 ```
+
+Domain commands default to principal auth with explicit `project_id`, so a project shown by `run402 projects list` is not vetoed by a missing local key cache entry. Use `--auth service-key` only when you intentionally want the local service-key path.
 
 Subdomain auto-reassignment: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new deployment. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
 

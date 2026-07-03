@@ -101,7 +101,7 @@ describe("options-object reshapes match the deprecated positional wire body", ()
     await r.domains.add("prj_1", { domain: "ex.com", subdomainName: "sub" });
     await r.domains.add("prj_1", "ex.com", "sub");
     assert.deepEqual(bodies[0], bodies[1]);
-    assert.deepEqual(bodies[0], { domain: "ex.com", subdomain_name: "sub" });
+    assert.deepEqual(bodies[0], { project_id: "prj_1", domain: "ex.com", subdomain_name: "sub" });
   });
 
   it("secrets.set", async () => {
@@ -155,7 +155,7 @@ describe("scoped wrappers use the canonical form", () => {
     const r = sdkCapturing(bodies);
     const p = await r.project("prj_1");
     await p.domains.add({ domain: "ex.com", subdomainName: "sub" });
-    assert.deepEqual(bodies[0], { domain: "ex.com", subdomain_name: "sub" });
+    assert.deepEqual(bodies[0], { project_id: "prj_1", domain: "ex.com", subdomain_name: "sub" });
   });
 });
 

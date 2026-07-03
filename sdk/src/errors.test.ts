@@ -16,6 +16,7 @@ import {
   NetworkError,
   NotAuthorizedError,
   PaymentRequired,
+  ProjectCredentialNotFound,
   ProjectNotFound,
   Run402DeployError,
   Run402Error,
@@ -28,6 +29,11 @@ import {
   isNetworkError,
   isNotAuthorized,
   isPaymentRequired,
+  isProjectCredentialError,
+  isProjectCredentialExpired,
+  isProjectCredentialInvalid,
+  isProjectCredentialNotFound,
+  isProjectCredentialProjectMismatch,
   isProjectNotFound,
   isRetryableRun402Error,
   isRun402Error,
@@ -199,6 +205,26 @@ describe("subclass type guards narrow correctly", () => {
   it("isProjectNotFound matches only ProjectNotFound", () => {
     assert.equal(isProjectNotFound(new ProjectNotFound("prj_x", "c")), true);
     assert.equal(isProjectNotFound(new ApiError("a", 404, null, "c")), false);
+  });
+
+  it("project credential guards preserve local and gateway credential codes", () => {
+    const missing = new ProjectCredentialNotFound("prj_x", "exporting local project keys");
+    const invalid = new Unauthorized("bad key", 401, { code: "PROJECT_CREDENTIAL_INVALID" }, "calling endpoint");
+    const expired = new Unauthorized("expired key", 401, { code: "PROJECT_CREDENTIAL_EXPIRED" }, "calling endpoint");
+    const mismatch = new Unauthorized(
+      "mismatch",
+      403,
+      { code: "PROJECT_CREDENTIAL_PROJECT_MISMATCH", details: { source: "service_key" } },
+      "listing custom domains",
+    );
+
+    assert.equal(isProjectCredentialNotFound(missing), true);
+    assert.equal(isProjectCredentialError(missing), true);
+    assert.equal(isProjectCredentialInvalid(invalid), true);
+    assert.equal(isProjectCredentialExpired(expired), true);
+    assert.equal(isProjectCredentialProjectMismatch(mismatch), true);
+    assert.equal(isProjectCredentialError(new ProjectNotFound("prj_x", "c")), false);
+    assert.equal(mismatch.details && (mismatch.details as { source?: string }).source, "service_key");
   });
 
   it("isUnauthorized matches only Unauthorized", () => {

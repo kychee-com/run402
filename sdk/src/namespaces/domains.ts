@@ -5,12 +5,15 @@
  */
 
 import type { Client } from "../kernel.js";
-import { ProjectNotFound } from "../errors.js";
 import { deprecatePositional } from "../deprecate.js";
+import { requireProjectCredentials } from "../project-credentials.js";
+
+export type DomainAuthMode = "principal" | "service_key";
 
 export interface DomainAddOptions {
   domain: string;
   subdomainName: string;
+  authMode?: DomainAuthMode;
 }
 
 export interface DnsInstructions {
@@ -55,11 +58,21 @@ export interface CustomDomainStatusResult {
 
 export interface CustomDomainRemoveOptions {
   projectId?: string;
+  authMode?: DomainAuthMode;
 }
 
 export interface CustomDomainRemoveResult {
   status: string;
   domain: string;
+}
+
+export interface DomainRequestOptions {
+  authMode?: DomainAuthMode;
+}
+
+function withProjectId(path: string, projectId: string): string {
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}project_id=${encodeURIComponent(projectId)}`;
 }
 
 export class Domains {
@@ -76,46 +89,65 @@ export class Domains {
   ): Promise<CustomDomainAddResult> {
     let domain: string;
     let subdomain: string;
+    let authMode: DomainAuthMode | undefined;
     if (typeof domainOrOpts === "object" && domainOrOpts !== null) {
       domain = domainOrOpts.domain;
       subdomain = domainOrOpts.subdomainName;
+      authMode = domainOrOpts.authMode;
     } else {
       deprecatePositional("domains.add", "use add(projectId, { domain, subdomainName })");
       domain = domainOrOpts;
       subdomain = subdomainName as string;
     }
 
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "registering custom domain");
+    if (authMode === "service_key") {
+      const project = await requireProjectCredentials(this.client, projectId, "registering custom domain");
+      return this.client.request<CustomDomainAddResult>("/domains/v1", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${project.service_key}` },
+        body: { domain, subdomain_name: subdomain },
+        context: "registering custom domain",
+      });
+    }
 
     return this.client.request<CustomDomainAddResult>("/domains/v1", {
       method: "POST",
-      headers: { Authorization: `Bearer ${project.service_key}` },
-      body: { domain, subdomain_name: subdomain },
+      body: { project_id: projectId, domain, subdomain_name: subdomain },
       context: "registering custom domain",
     });
   }
 
   /** List all custom domains registered for a project. */
-  async list(projectId: string): Promise<CustomDomainListResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "listing custom domains");
+  async list(projectId: string, opts: DomainRequestOptions = {}): Promise<CustomDomainListResult> {
+    if (opts.authMode === "service_key") {
+      const project = await requireProjectCredentials(this.client, projectId, "listing custom domains");
+      return this.client.request<CustomDomainListResult>("/domains/v1", {
+        headers: { Authorization: `Bearer ${project.service_key}` },
+        context: "listing custom domains",
+      });
+    }
 
-    return this.client.request<CustomDomainListResult>("/domains/v1", {
-      headers: { Authorization: `Bearer ${project.service_key}` },
+    return this.client.request<CustomDomainListResult>(withProjectId("/domains/v1", projectId), {
       context: "listing custom domains",
     });
   }
 
   /** Check verification/SSL status for a specific custom domain. */
-  async status(projectId: string, domain: string): Promise<CustomDomainStatusResult> {
-    const project = await this.client.getProject(projectId);
-    if (!project) throw new ProjectNotFound(projectId, "checking domain status");
+  async status(projectId: string, domain: string, opts: DomainRequestOptions = {}): Promise<CustomDomainStatusResult> {
+    if (opts.authMode === "service_key") {
+      const project = await requireProjectCredentials(this.client, projectId, "checking domain status");
+      return this.client.request<CustomDomainStatusResult>(
+        `/domains/v1/${encodeURIComponent(domain)}`,
+        {
+          headers: { Authorization: `Bearer ${project.service_key}` },
+          context: "checking domain status",
+        },
+      );
+    }
 
     return this.client.request<CustomDomainStatusResult>(
-      `/domains/v1/${encodeURIComponent(domain)}`,
+      withProjectId(`/domains/v1/${encodeURIComponent(domain)}`, projectId),
       {
-        headers: { Authorization: `Bearer ${project.service_key}` },
         context: "checking domain status",
       },
     );
@@ -127,14 +159,16 @@ export class Domains {
     opts: CustomDomainRemoveOptions = {},
   ): Promise<CustomDomainRemoveResult> {
     const headers: Record<string, string> = {};
-    if (opts.projectId) {
-      const project = await this.client.getProject(opts.projectId);
-      if (!project) throw new ProjectNotFound(opts.projectId, "removing custom domain");
+    if (opts.projectId && opts.authMode === "service_key") {
+      const project = await requireProjectCredentials(this.client, opts.projectId, "removing custom domain");
       headers.Authorization = `Bearer ${project.service_key}`;
     }
+    const path = opts.projectId && opts.authMode !== "service_key"
+      ? withProjectId(`/domains/v1/${encodeURIComponent(domain)}`, opts.projectId)
+      : `/domains/v1/${encodeURIComponent(domain)}`;
 
     return this.client.request<CustomDomainRemoveResult>(
-      `/domains/v1/${encodeURIComponent(domain)}`,
+      path,
       {
         method: "DELETE",
         headers,

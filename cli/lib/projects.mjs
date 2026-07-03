@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { loadKeyStore, API, allowanceAuthHeaders, resolveProjectId, getActiveProjectId, isCoreApiTarget } from "./config.mjs";
+import { allowanceAuthHeaders, resolveProjectId, getActiveProjectId, isCoreApiTarget } from "./config.mjs";
 import { loadLiveOperatorSession } from "../core-dist/operator-session.js";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./operator.mjs";
@@ -19,8 +19,7 @@ Subcommands:
   list [--org <id>] [--all]               List your projects from the server (name, site_url, custom domains, org_id, active marker)
   rename <id> --name <label>              Rename a project (fix an auto-generated name)
   get   [id]                              Authoritative server read: status, org, tier, active deploy, mailbox, usage vs limits (live; no keys)
-  info  [id]                              Show local project details: REST URL, keys (local keystore only)
-  keys  [id]                              Print anon_key and service_key as JSON (local keystore only)
+  current                                 Show the active project pointer and validation status
   sql   [id] "<query>" [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
   rest  [id] <table> [params]             Query a table via the REST API (PostgREST)
   usage [id]                              Show compute/storage usage for a project
@@ -45,7 +44,7 @@ Examples:
   run402 projects list --all
   run402 projects rename prj_abc123 --name "My Site"
   run402 projects get prj_abc123
-  run402 projects info prj_abc123
+  run402 projects current
   run402 projects sql prj_abc123 "SELECT * FROM users LIMIT 5"
   run402 projects sql prj_abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
   run402 projects sql prj_abc123 --file setup.sql
@@ -56,7 +55,6 @@ Examples:
   run402 projects validate-expose prj_abc123 --file manifest.json
   run402 projects apply-expose prj_abc123 --file manifest.json
   run402 projects get-expose prj_abc123
-  run402 projects keys prj_abc123
   run402 projects delete prj_abc123 --confirm
 
 Global options (any command):
@@ -69,7 +67,9 @@ Notes:
   - Most commands that take <id> default to the active project when omitted
     (set it with 'run402 projects use <id>'). Project IDs start with 'prj_';
     any first positional that doesn't is treated as the next argument instead.
-  - 'list' is a SERVER read, not the local keystore: it shows every project the
+  - 'list', 'get', and 'use' are SERVER-authoritative project identity flows.
+    Local project keys live under 'run402 credentials project-keys ...'.
+  - 'list' is a SERVER read, not the local key cache: it shows every project the
     active wallet can reach (membership-scoped), with name, site_url, custom
     domains, and org_id. '--org <id>' filters to one org; '--all' reads the
     cross-wallet inventory for every wallet controlling your operator email
@@ -129,7 +129,7 @@ Examples:
   run402 projects list --all
   run402 projects list --wallet work
 `,
-  rename: `run402 projects rename — Rename a project
+	  rename: `run402 projects rename — Rename a project
 
 Usage:
   run402 projects rename <id> --name <label>
@@ -147,6 +147,16 @@ Notes:
 
 Examples:
   run402 projects rename prj_abc123 --name "My Site"
+	`,
+  current: `run402 projects current — Inspect active project selection
+
+Usage:
+  run402 projects current
+
+Notes:
+  - The active project pointer is local non-secret profile state, not proof that
+    local project keys exist.
+  - The command attempts an authoritative server read and reports validation.
 `,
   provision: `run402 projects provision — Provision a new Postgres project
 
@@ -541,28 +551,55 @@ async function get(projectId) {
   }
 }
 
-async function info(projectId) {
-  try {
-    const data = await getSdk().projects.info(projectId);
-    console.log(JSON.stringify({
-      project_id: projectId,
-      rest_url: `${API}/rest/v1`,
-      anon_key: data.anon_key,
-      service_key: data.service_key,
-      site_url: data.site_url || null,
-    }, null, 2));
-  } catch (err) {
-    reportSdkError(err);
+async function current() {
+  const projectId = getActiveProjectId();
+  const out = {
+    active_project_id: projectId ?? null,
+    source: "profile_state",
+    validation: { checked: false, ok: false },
+  };
+  if (!projectId) {
+    console.log(JSON.stringify(out, null, 2));
+    return;
   }
+  try {
+    const detail = await getSdk().projects.get(projectId);
+    out.validation = { checked: true, ok: true };
+    out.project = detail;
+  } catch (err) {
+    out.validation = {
+      checked: true,
+      ok: false,
+      code: err?.code ?? null,
+      message: err?.message ?? String(err),
+    };
+  }
+  console.log(JSON.stringify(out, null, 2));
 }
 
-async function keys(projectId) {
-  try {
-    const data = await getSdk().projects.keys(projectId);
-    console.log(JSON.stringify({ project_id: projectId, anon_key: data.anon_key, service_key: data.service_key }, null, 2));
-  } catch (err) {
-    reportSdkError(err);
-  }
+function commandMoved(name) {
+  fail({
+    code: "COMMAND_MOVED",
+    message: `run402 projects ${name} moved to the explicit local credential-cache surface.`,
+    hint: "Use `run402 credentials project-keys status/export --project <id>`.",
+    details: {
+      old_command: `projects ${name}`,
+      new_command: name === "keys" ? "credentials project-keys export --reveal" : "credentials project-keys status",
+      source: "local_cache",
+    },
+    next_actions: [
+      {
+        type: "run_command",
+        command: "run402 credentials project-keys status --project <id>",
+        why: "Inspect cached key presence without revealing secrets.",
+      },
+      {
+        type: "run_command",
+        command: "run402 credentials project-keys export --project <id> --reveal",
+        why: "Reveal cached project keys only when you explicitly need secret material.",
+      },
+    ],
+  });
 }
 
 async function sqlCmd(projectId, args = []) {
@@ -794,10 +831,11 @@ export async function run(sub, args) {
     case "provision": await provision(args); break;
     case "use":       await use(args[0]); break;
     case "list":      await list(args); break;
+    case "current":   await current(); break;
     case "rename":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.rename.values }); await rename(projectId, rest); break; }
     case "get":       { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await get(projectId); break; }
-    case "info":      { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await info(projectId); break; }
-    case "keys":      { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await keys(projectId); break; }
+    case "info":      commandMoved("info"); break;
+    case "keys":      commandMoved("keys"); break;
     case "sql":       { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB.sql.values, rejectBareFirstWhenFlagPresent: ["--file"] }); await sqlCmd(projectId, rest); break; }
     case "rest":      { const { projectId, rest: restArgs } = resolvePositionalProject(args); await rest(projectId, restArgs[0], restArgs[1]); break; }
     case "usage":     { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await usage(projectId); break; }
