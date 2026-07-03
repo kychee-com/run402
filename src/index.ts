@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
@@ -303,9 +304,15 @@ import { deleteSignerSchema, handleDeleteSigner } from "./tools/delete-signer.js
 import { serviceStatusSchema, handleServiceStatus } from "./tools/service-status.js";
 import { serviceHealthSchema, handleServiceHealth } from "./tools/service-health.js";
 
+function currentPackageVersion(): string {
+  const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  return typeof parsed.version === "string" ? parsed.version : "0.0.0";
+}
+
 const server = new McpServer({
   name: "run402",
-  version: "1.3.0",
+  version: currentPackageVersion(),
 });
 
 // ─── Core database tools ────────────────────────────────────────────────────
