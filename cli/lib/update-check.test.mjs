@@ -222,6 +222,28 @@ describe("CLI install-context detection", () => {
     assert.equal(action.mutates_project, true);
   }));
 
+  it("treats package-declared shims and pnpm exec as local project installs", () => withTemp((dir) => {
+    packageJson(dir, { packageManager: "npm@11.0.0", devDependencies: { run402: "3.7.14" } });
+    let install = detectInstallContext({
+      cwd: dir,
+      execPath: "node_modules/.bin/run402",
+      env: {},
+    });
+    assert.equal(install.kind, "local_project");
+    assert.equal(install.package_manager, "npm");
+    assert.deepEqual(upgradeNextActions({ install })[0].argv, ["npm", "install", "-D", "run402@latest"]);
+
+    packageJson(dir, { packageManager: "pnpm@10.0.0", devDependencies: { run402: "3.7.14" } });
+    install = detectInstallContext({
+      cwd: dir,
+      execPath: "/opt/pnpm/run402",
+      env: { npm_command: "exec", npm_config_user_agent: "pnpm/10.0.0 npm/? node/v22" },
+    });
+    assert.equal(install.kind, "local_project");
+    assert.equal(install.package_manager, "pnpm");
+    assert.deepEqual(upgradeNextActions({ install })[0].argv, ["pnpm", "add", "-D", "run402@latest"]);
+  }));
+
   it("uses packageManager over conflicting lockfiles and gives custom paths low-confidence doctor guidance", () => withTemp((dir) => {
     packageJson(dir, { packageManager: "pnpm@10.0.0" });
     writeFileSync(join(dir, "package-lock.json"), "{}");

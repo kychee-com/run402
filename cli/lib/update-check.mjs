@@ -393,8 +393,19 @@ export function detectInstallContext({
   const executableUnderProject = projectRoot ? isPathInside(executable, projectRoot) : false;
   const localNodeModules = executableUnderProject &&
     (containsPathSegment(executable, "node_modules") || command === "yarn_pnp");
+  const packageManagerShim = isPackageManagerShim(executable);
+  const globalRun402Path = looksLikeGlobalRun402Path(executable, env, platform);
+  const explicitNpxCachePath = containsPathSegment(executable, "_npx");
+  const packageExecUsesDeclaredRun402 = run402Declared &&
+    !globalRun402Path &&
+    !explicitNpxCachePath &&
+    (localNodeModules ||
+      packageManagerShim ||
+      command === "npm_exec" ||
+      command === "yarn_pnp" ||
+      command === "direct");
 
-  if (command === "npx" || command === "npm_exec" || command === "bunx") {
+  if (!packageExecUsesDeclaredRun402 && (command === "npx" || command === "npm_exec" || command === "bunx")) {
     return {
       kind: "ephemeral_exec",
       confidence: command === "npx" || command === "bunx" ? "high" : "medium",
@@ -405,22 +416,25 @@ export function detectInstallContext({
     };
   }
 
-  if (localNodeModules || (command === "yarn_pnp" && run402Declared)) {
+  if (packageExecUsesDeclaredRun402) {
     return {
       kind: "local_project",
-      confidence: run402Declared || localNodeModules ? "high" : "medium",
+      confidence: localNodeModules || packageManagerShim ? "high" : "medium",
       package_manager: packageManager.name,
       cwd: packageInfo?.dir ?? resolvedCwd,
       package_root: packageInfo?.dir ?? nearestPackageInfo?.dir ?? null,
       reasons: [
-        localNodeModules ? "project_node_modules" : "yarn_pnp",
-        ...(run402Declared ? ["package_declares_run402"] : []),
+        ...(localNodeModules ? ["project_node_modules"] : []),
+        ...(packageManagerShim ? ["package_manager_shim"] : []),
+        ...(command === "npm_exec" ? ["package_manager_exec"] : []),
+        ...(command === "yarn_pnp" ? ["yarn_pnp"] : []),
+        "package_declares_run402",
         ...(workspacePackageInfo && workspacePackageInfo !== nearestPackageInfo ? ["workspace_root"] : []),
       ],
     };
   }
 
-  if (looksLikeGlobalRun402Path(executable, env, platform)) {
+  if (globalRun402Path) {
     return {
       kind: "global_npm",
       confidence: "high",
@@ -442,7 +456,7 @@ export function detectInstallContext({
     };
   }
 
-  if (isPackageManagerShim(executable)) {
+  if (packageManagerShim) {
     return {
       kind: "package_manager_shim",
       confidence: "low",
