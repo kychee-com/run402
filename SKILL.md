@@ -493,7 +493,8 @@ Archive v1 exports active release/apply state, supported Postgres/RLS/REST data,
 - **`deploy_site_dir`** — deploy from a local directory. Routes through the unified apply primitive (CAS-backed) — only uploads bytes the gateway doesn't have.
 - **`claim_subdomain`** — claim `<name>.run402.com` (idempotent; auto-reassigns to latest deployment on subsequent deploys, no re-claim needed).
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
-- **`add_custom_domain`** / **`list_custom_domains`** / **`check_domain_status`** / **`remove_custom_domain`** — point your own domain at a Run402 subdomain.
+- **`domains_ensure`** / **`domains_get`** / **`domains_list`** / **`domains_check`** — manage project-scoped ProjectDomain desired state for web, email sending, inbound receive, mailbox addresses, and health checks.
+- **`domains_apply`** / **`domains_repair`** / **`domains_test_receive`** / **`domains_activate`** / **`domains_disconnect`** — apply safe provider actions, repair Run402-owned routing, create inbound receive tests, activate custom mailbox addresses, or disconnect a domain.
 - **`deploy`** / **`deploy_resume`** / **`deploy_list`** / **`deploy_events`** — apply, resume, list, and inspect deploy operations.
 - **`deploy_release_get`** / **`deploy_release_active`** / **`deploy_release_diff`** — inspect release inventory and release-to-release diffs.
 - **`deploy_diagnose_url`** — URL-first public deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`.
@@ -534,8 +535,7 @@ Function authoring limits per tier: prototype 10s / 128 MB / 1 scheduled trigger
 - **`list_emails`** / **`get_email`** / **`get_email_raw`** — read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification.
 - **`register_mailbox_webhook`** / **`list_mailbox_webhooks`** / **`get_mailbox_webhook`** / **`update_mailbox_webhook`** / **`delete_mailbox_webhook`** — email-event webhooks (delivery, bounced, complained, reply_received).
 - **`list_mailbox_webhook_deliveries`** / **`redrive_mailbox_webhook_delivery`** — durable-delivery visibility + replay. Delivery is at-least-once (bounded retries + exponential backoff); failures land in `failed_permanent`, the dead-letter queue. The delivered body is the canonical envelope `{ id, type, created_at, schema_version, idempotency_key, payload }` — consumers MUST dedupe on `idempotency_key`. `list_emails` accepts an optional `direction` (`inbound`|`outbound`); `inbound` lists received replies as the reconciliation backstop if a `reply_received` webhook is lost.
-- **`register_sender_domain`** / **`sender_domain_status`** / **`remove_sender_domain`** — send from your own domain (DKIM verified).
-- **`enable_sender_domain_inbound`** / **`disable_sender_domain_inbound`** — receive replies on your custom sender domain.
+- **ProjectDomain email** — use **`domains_ensure`**, **`domains_check`**, **`domains_repair`**, and **`domains_test_receive`** for custom email sending and inbound receive. The retired `sender-domain` workflow now fails locally with `COMMAND_REMOVED`.
 
 Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients per lease: 25 / 200 / 1000. Google OAuth is on for all projects with zero config — `http://localhost:*` and any claimed subdomain are allowed redirect origins.
 

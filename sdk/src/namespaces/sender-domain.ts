@@ -1,10 +1,13 @@
 /**
- * `senderDomain` namespace — custom email sending domains with DKIM
- * verification and optional inbound routing.
+ * `senderDomain` namespace — removed compatibility shim.
+ *
+ * Sender-domain APIs are now folded into the project-scoped ProjectDomain
+ * lifecycle under `domains`. Methods remain present so existing imports fail
+ * loudly and locally with a replacement path instead of calling retired
+ * `/email/v1/domains` endpoints.
  */
 
-import type { Client } from "../kernel.js";
-import { requireProjectCredentials } from "../project-credentials.js";
+import { LocalError } from "../errors.js";
 
 export interface DnsRecord {
   type: string;
@@ -38,65 +41,60 @@ export class SenderDomain {
   readonly inboundEnable: (projectId: string, domain: string) => Promise<InboundEnableResult>;
   readonly inboundDisable: (projectId: string, domain: string) => Promise<DisableInboundResult>;
 
-  constructor(private readonly client: Client) {
+  constructor(_client: unknown) {
     this.inboundEnable = this.enableInbound.bind(this);
     this.inboundDisable = this.disableInbound.bind(this);
   }
 
-  /** Register a custom email sending domain. Returns DKIM + SPF/DMARC DNS records. */
+  /** @deprecated Use `domains.ensure(projectId, domain, { desired })`. */
   async register(projectId: string, domain: string): Promise<SenderDomainRegisterResult> {
-    const project = await requireProjectCredentials(this.client, projectId, "registering sender domain");
-
-    return this.client.request<SenderDomainRegisterResult>("/email/v1/domains", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${project.service_key}` },
-      body: { domain },
-      context: "registering sender domain",
-    });
+    return removed(
+      "senderDomain.register",
+      `run402 domains connect ${domain} --project ${projectId} --email-send`,
+    );
   }
 
-  /** Get the project's current sender-domain registration state (polls SES). */
+  /** @deprecated Use `domains.list(projectId)` or `domains.get(projectId, domain)`. */
   async status(projectId: string): Promise<SenderDomainStatusResult> {
-    const project = await requireProjectCredentials(this.client, projectId, "checking sender domain status");
-
-    return this.client.request<SenderDomainStatusResult>("/email/v1/domains", {
-      headers: { Authorization: `Bearer ${project.service_key}` },
-      context: "checking sender domain status",
-    });
+    return removed(
+      "senderDomain.status",
+      `run402 domains list --project ${projectId}`,
+    );
   }
 
-  /** Remove the custom sender domain; email reverts to each mailbox's managed address. */
+  /** @deprecated Use `domains.disconnect(projectId, domain)`. */
   async remove(projectId: string): Promise<void> {
-    const project = await requireProjectCredentials(this.client, projectId, "removing sender domain");
-
-    await this.client.request<unknown>("/email/v1/domains", {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${project.service_key}` },
-      context: "removing sender domain",
-    });
+    return removed(
+      "senderDomain.remove",
+      `run402 domains disconnect <domain> --project ${projectId} --confirm`,
+    );
   }
 
-  /** Enable inbound email on a verified custom sender domain. */
+  /** @deprecated Use `domains.ensure(..., { desired: { email: { receive: ... }}})`. */
   async enableInbound(projectId: string, domain: string): Promise<InboundEnableResult> {
-    const project = await requireProjectCredentials(this.client, projectId, "enabling inbound email");
-
-    return this.client.request<InboundEnableResult>("/email/v1/domains/inbound", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${project.service_key}` },
-      body: { domain },
-      context: "enabling inbound email",
-    });
+    return removed(
+      "senderDomain.enableInbound",
+      `run402 domains connect ${domain} --project ${projectId} --email-receive`,
+    );
   }
 
-  /** Disable inbound email for a custom sender domain. */
+  /** @deprecated Use `domains.ensure` with receive disabled or `domains.disconnect`. */
   async disableInbound(projectId: string, domain: string): Promise<DisableInboundResult> {
-    const project = await requireProjectCredentials(this.client, projectId, "disabling inbound email");
-
-    return this.client.request<DisableInboundResult>("/email/v1/domains/inbound", {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${project.service_key}` },
-      body: { domain },
-      context: "disabling inbound email",
-    });
+    return removed(
+      "senderDomain.disableInbound",
+      `run402 domains disconnect ${domain} --project ${projectId} --confirm`,
+    );
   }
+}
+
+function removed(command: string, replacement: string): never {
+  throw new LocalError(
+    `${command} has been removed. Use ${replacement}.`,
+    command,
+    {
+      code: "COMMAND_REMOVED",
+      details: { command, replacement },
+      next_actions: [{ type: "use_replacement_command", command: replacement }],
+    },
+  );
 }

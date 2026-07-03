@@ -324,11 +324,18 @@ const SURFACE: Capability[] = [
   { id: "delete_subdomain",  endpoint: "DELETE /subdomains/v1/:name",      mcp: "delete_subdomain",  cli: "subdomains:delete",  openclaw: "subdomains:delete" },
   { id: "list_subdomains",   endpoint: "GET /subdomains/v1",               mcp: "list_subdomains",   cli: "subdomains:list",    openclaw: "subdomains:list" },
 
-  // ── Custom domains ──────────────────────────────────────────────────────
-  { id: "add_custom_domain",    endpoint: "POST /domains/v1",              mcp: "add_custom_domain",    cli: "domains:add",    openclaw: "domains:add" },
-  { id: "list_custom_domains",  endpoint: "GET /domains/v1",               mcp: "list_custom_domains",  cli: "domains:list",   openclaw: "domains:list" },
-  { id: "check_domain_status",  endpoint: "GET /domains/v1/:domain",       mcp: "check_domain_status",  cli: "domains:status", openclaw: "domains:status" },
-  { id: "remove_custom_domain", endpoint: "DELETE /domains/v1/:domain",    mcp: "remove_custom_domain", cli: "domains:delete", openclaw: "domains:delete" },
+  // ── Project domains ─────────────────────────────────────────────────────
+  { id: "domains_ensure",       endpoint: "PUT /projects/v1/:project_id/domains/:domain",       mcp: "domains_ensure",       cli: "domains:connect",      openclaw: "domains:connect" },
+  { id: "domains_list",         endpoint: "GET /projects/v1/:project_id/domains",               mcp: "domains_list",         cli: "domains:list",         openclaw: "domains:list" },
+  { id: "domains_get",          endpoint: "GET /projects/v1/:project_id/domains/:domain",       mcp: "domains_get",          cli: "domains:status",       openclaw: "domains:status" },
+  { id: "domains_dns",          endpoint: "GET /projects/v1/:project_id/domains/:domain",       mcp: null,                   cli: "domains:dns",          openclaw: "domains:dns" },
+  { id: "domains_check",        endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/check", mcp: "domains_check", cli: "domains:check",        openclaw: "domains:check" },
+  { id: "domains_apply",        endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/apply", mcp: "domains_apply", cli: "domains:apply",        openclaw: "domains:apply" },
+  { id: "domains_repair",       endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/repair", mcp: "domains_repair", cli: "domains:repair",      openclaw: "domains:repair" },
+  { id: "domains_test_receive", endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/test_receive", mcp: "domains_test_receive", cli: "domains:test-receive", openclaw: "domains:test-receive" },
+  { id: "domains_wait",         endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/check (poll)", mcp: null, cli: "domains:wait", openclaw: "domains:wait" },
+  { id: "domains_activate",     endpoint: "POST /projects/v1/:project_id/domains/:domain/actions/activate_mailbox_addresses", mcp: "domains_activate", cli: "domains:activate", openclaw: "domains:activate" },
+  { id: "domains_disconnect",   endpoint: "DELETE /projects/v1/:project_id/domains/:domain",    mcp: "domains_disconnect",   cli: "domains:disconnect",   openclaw: "domains:disconnect" },
 
   // ── Unified apply ────────────────────────────────────────────────────────
   { id: "deploy",            endpoint: "POST /apply/v1/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
@@ -494,13 +501,6 @@ const SURFACE: Capability[] = [
   { id: "auth_providers",    endpoint: "GET /auth/v1/providers",              mcp: null,                 cli: "auth:providers",     openclaw: "auth:providers" },
   { id: "auth_scaffold_roles", endpoint: "(local)",                           mcp: "scaffold_roles",     cli: "auth:scaffold-roles", openclaw: "auth:scaffold-roles" },
 
-  // ── Custom sender domains ─────────────────────────────────────────────
-  { id: "register_sender_domain", endpoint: "POST /email/v1/domains",    mcp: "register_sender_domain", cli: "sender-domain:register", openclaw: "sender-domain:register" },
-  { id: "sender_domain_status",  endpoint: "GET /email/v1/domains",     mcp: "sender_domain_status",  cli: "sender-domain:status",   openclaw: "sender-domain:status" },
-  { id: "remove_sender_domain",  endpoint: "DELETE /email/v1/domains",  mcp: "remove_sender_domain",  cli: "sender-domain:remove",   openclaw: "sender-domain:remove" },
-  { id: "enable_sender_domain_inbound",  endpoint: "POST /email/v1/domains/inbound",   mcp: "enable_sender_domain_inbound",  cli: "sender-domain:inbound-enable",  openclaw: "sender-domain:inbound-enable" },
-  { id: "disable_sender_domain_inbound", endpoint: "DELETE /email/v1/domains/inbound", mcp: "disable_sender_domain_inbound", cli: "sender-domain:inbound-disable", openclaw: "sender-domain:inbound-disable" },
-
   // ── Email organizations + org checkout ─────────────────────────────
   { id: "create_email_organization", endpoint: "POST /orgs/v1/email",                   mcp: "create_email_organization", cli: "billing:create-email",   openclaw: "billing:create-email" },
   { id: "link_wallet_to_organization",       endpoint: "POST /orgs/v1/:org_id/wallets",   mcp: "link_wallet_to_organization",       cli: "billing:link-wallet",    openclaw: "billing:link-wallet" },
@@ -635,11 +635,18 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   delete_subdomain: "subdomains.delete",
   list_subdomains: "subdomains.list",
 
-  // Custom domains
-  add_custom_domain: "domains.add",
-  list_custom_domains: "domains.list",
-  check_domain_status: "domains.status",
-  remove_custom_domain: "domains.remove",
+  // Project domains
+  domains_ensure: "domains.ensure",
+  domains_list: "domains.list",
+  domains_get: "domains.get",
+  domains_dns: "domains.get",
+  domains_check: "domains.check",
+  domains_apply: "domains.apply",
+  domains_repair: "domains.repair",
+  domains_test_receive: "domains.testReceive",
+  domains_wait: "domains.wait",
+  domains_activate: "domains.activate",
+  domains_disconnect: "domains.disconnect",
 
   // Unified apply. The engine lives
   // at r._applyEngine internally; the public hero is r.project(id).apply.
@@ -799,13 +806,6 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   auth_providers: "auth.providers",
   auth_scaffold_roles: null, // offline CLI/MCP generator — no SDK method
 
-  // Sender domains
-  register_sender_domain: "senderDomain.register",
-  sender_domain_status: "senderDomain.status",
-  remove_sender_domain: "senderDomain.remove",
-  enable_sender_domain_inbound: "senderDomain.enableInbound",
-  disable_sender_domain_inbound: "senderDomain.disableInbound",
-
   // Tier
   tier_status: "tier.status",
 
@@ -939,7 +939,17 @@ const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:release", "cloud:archiv
 // CLI aliases that route to the same handler as a primary command already in
 // SURFACE. Listed here so the "no untracked commands" check doesn't fail.
 // Primary name is what appears in SURFACE; the alias is kept for backward compat.
-const CLI_ALIAS_COMMANDS = ["email:status"]; // alias of email:info
+const CLI_ALIAS_COMMANDS = [
+  "email:status", // alias of email:info
+  // Removed compatibility commands that intentionally fail with COMMAND_REMOVED.
+  "domains:add",
+  "domains:delete",
+  "sender-domain:register",
+  "sender-domain:status",
+  "sender-domain:remove",
+  "sender-domain:inbound-enable",
+  "sender-domain:inbound-disable",
+];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -1122,6 +1132,16 @@ describe("SDK surface alignment", () => {
       "admin.org",
       "admin.project",
       "admin._setLeasePerpetual",
+      // Removed ProjectDomain predecessor methods: kept only as local
+      // COMMAND_REMOVED shims so old callers get a replacement path.
+      "domains.add",
+      "domains.status",
+      "domains.remove",
+      "senderDomain.register",
+      "senderDomain.status",
+      "senderDomain.remove",
+      "senderDomain.enableInbound",
+      "senderDomain.disableInbound",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
       // shares the `run402 functions rebuild --all` CLI verb (and the

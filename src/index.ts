@@ -167,12 +167,6 @@ import {
 import { promoteUserSchema, handlePromoteUser } from "./tools/promote-user.js";
 import { demoteUserSchema, handleDemoteUser } from "./tools/demote-user.js";
 
-// New tools — custom domains
-import { addCustomDomainSchema, handleAddCustomDomain } from "./tools/add-custom-domain.js";
-import { listCustomDomainsSchema, handleListCustomDomains } from "./tools/list-custom-domains.js";
-import { checkDomainStatusSchema, handleCheckDomainStatus } from "./tools/check-domain-status.js";
-import { removeCustomDomainSchema, handleRemoveCustomDomain } from "./tools/remove-custom-domain.js";
-
 // New tools — billing
 import { checkBalanceSchema, handleCheckBalance } from "./tools/check-balance.js";
 import { listProjectsSchema, handleListProjects } from "./tools/list-projects.js";
@@ -242,12 +236,27 @@ import {
   passkeyRegisterVerifySchema,
 } from "./tools/passkeys.js";
 
-// New tools — custom sender domains
-import { registerSenderDomainSchema, handleRegisterSenderDomain } from "./tools/register-sender-domain.js";
-import { senderDomainStatusSchema, handleSenderDomainStatus } from "./tools/sender-domain-status.js";
-import { removeSenderDomainSchema, handleRemoveSenderDomain } from "./tools/remove-sender-domain.js";
-import { enableInboundSchema, handleEnableInbound } from "./tools/enable-inbound.js";
-import { disableInboundSchema, handleDisableInbound } from "./tools/disable-inbound.js";
+// New tools — project domains
+import {
+  domainsActivateSchema,
+  domainsApplySchema,
+  domainsCheckSchema,
+  domainsDisconnectSchema,
+  domainsEnsureSchema,
+  domainsGetSchema,
+  domainsListSchema,
+  domainsRepairSchema,
+  domainsTestReceiveSchema,
+  handleDomainsActivate,
+  handleDomainsApply,
+  handleDomainsCheck,
+  handleDomainsDisconnect,
+  handleDomainsEnsure,
+  handleDomainsGet,
+  handleDomainsList,
+  handleDomainsRepair,
+  handleDomainsTestReceive,
+} from "./tools/domains.js";
 
 // New tools — email organizations + org checkout
 import { createEmailOrganizationSchema, handleCreateEmailOrganization } from "./tools/create-email-organization.js";
@@ -740,36 +749,6 @@ server.tool(
   "List all subdomains claimed by a project.",
   listSubdomainsSchema,
   async (args) => handleListSubdomains(args),
-);
-
-// ─── Custom domain tools ────────────────────────────────────────────────────
-
-server.tool(
-  "add_custom_domain",
-  "Register a custom domain (e.g. example.com) to point at a Run402 subdomain. Returns DNS instructions for the human to configure.",
-  addCustomDomainSchema,
-  async (args) => handleAddCustomDomain(args),
-);
-
-server.tool(
-  "list_custom_domains",
-  "List all custom domains registered for a project.",
-  listCustomDomainsSchema,
-  async (args) => handleListCustomDomains(args),
-);
-
-server.tool(
-  "check_domain_status",
-  "Check if a custom domain's DNS is configured and SSL is active. Poll this after registering a domain.",
-  checkDomainStatusSchema,
-  async (args) => handleCheckDomainStatus(args),
-);
-
-server.tool(
-  "remove_custom_domain",
-  "Release a custom domain mapping. Traffic to the domain will no longer route to Run402.",
-  removeCustomDomainSchema,
-  async (args) => handleRemoveCustomDomain(args),
 );
 
 // ─── Marketplace tools ───────────────────────────────────────────────────────
@@ -1387,41 +1366,69 @@ server.tool(
   async (args) => handleDeletePasskey(args),
 );
 
-// --- Custom sender domains ---
+// --- Project domains ---
 
 server.tool(
-  "register_sender_domain",
-  "Register a custom email sending domain for a project. Returns DNS records (DKIM CNAMEs + SPF/DMARC) to add. The mailbox primary address switches to your domain only after the domain is verified and inbound-enabled; managed_address stays stable.",
-  registerSenderDomainSchema,
-  async (args) => handleRegisterSenderDomain(args),
+  "domains_ensure",
+  "Create or update a project-scoped ProjectDomain desired state for web, email sending, inbound receive, mailbox addresses, and activation. Returns the aggregate with checks, DNS records, and next actions.",
+  domainsEnsureSchema,
+  async (args) => handleDomainsEnsure(args),
 );
 
 server.tool(
-  "sender_domain_status",
-  "Check the verification status of a project's custom sender domain. Polls SES for pending domains.",
-  senderDomainStatusSchema,
-  async (args) => handleSenderDomainStatus(args),
+  "domains_get",
+  "Get one ProjectDomain aggregate with desired, observed, effective, DNS records, checks, and next actions.",
+  domainsGetSchema,
+  async (args) => handleDomainsGet(args),
 );
 
 server.tool(
-  "remove_sender_domain",
-  "Remove a project's custom sender domain. Email reverts to the mailbox managed_address.",
-  removeSenderDomainSchema,
-  async (args) => handleRemoveSenderDomain(args),
+  "domains_list",
+  "List all ProjectDomain aggregates for a project.",
+  domainsListSchema,
+  async (args) => handleDomainsList(args),
 );
 
 server.tool(
-  "enable_sender_domain_inbound",
-  "Enable inbound email on a verified custom sender domain. Replies to <slug>@<your-domain> will route through run402. Requires DKIM-verified domain. Returns the MX record to add to DNS.",
-  enableInboundSchema,
-  async (args) => handleEnableInbound(args),
+  "domains_check",
+  "Re-observe DNS/provider state for a ProjectDomain and return the current checks. Useful as a preflight and drift detector before validation cycles.",
+  domainsCheckSchema,
+  async (args) => handleDomainsCheck(args),
 );
 
 server.tool(
-  "disable_sender_domain_inbound",
-  "Disable inbound email on a custom sender domain. Replies to <slug>@<your-domain> will no longer be delivered.",
-  disableInboundSchema,
-  async (args) => handleDisableInbound(args),
+  "domains_apply",
+  "Apply safe provider-managed ProjectDomain changes when authority is available. Manual-DNS domains return a typed next action instead of mutating external DNS.",
+  domainsApplySchema,
+  async (args) => handleDomainsApply(args),
+);
+
+server.tool(
+  "domains_repair",
+  "Repair Run402-owned ProjectDomain infrastructure, such as missing SES receipt-rule recipients, without changing external DNS.",
+  domainsRepairSchema,
+  async (args) => handleDomainsRepair(args),
+);
+
+server.tool(
+  "domains_test_receive",
+  "Create a ProjectDomain receive test token for a mailbox address. Send mail to the returned address/token and poll domains_check for receive readiness.",
+  domainsTestReceiveSchema,
+  async (args) => handleDomainsTestReceive(args),
+);
+
+server.tool(
+  "domains_activate",
+  "Activate custom mailbox addresses once ProjectDomain receive checks have passed. This switches addresses from managed fallback to the custom domain.",
+  domainsActivateSchema,
+  async (args) => handleDomainsActivate(args),
+);
+
+server.tool(
+  "domains_disconnect",
+  "Disconnect a ProjectDomain from the project and return mailbox addresses to managed fallback.",
+  domainsDisconnectSchema,
+  async (args) => handleDomainsDisconnect(args),
 );
 
 // --- Email organizations + org checkout ---

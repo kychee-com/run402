@@ -1290,22 +1290,29 @@ All options default to the active project. `claim` also defaults to the project'
 Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### domains
-- `run402 domains add <domain> <subdomain_name> [--project <id>] [--auth principal|service-key]`
-- `run402 domains list [--project <id>] [--auth principal|service-key]`
-- `run402 domains status <domain> [--project <id>] [--auth principal|service-key]`
-- `run402 domains delete <domain> --confirm [--project <id>] [--auth principal|service-key]` — `--confirm` required (irreversible release).
+- `run402 domains connect <domain> --project <id> [--web] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
+- `run402 domains list [--project <id>]`
+- `run402 domains status <domain> [--project <id>]`
+- `run402 domains dns <domain> [--project <id>] [--format json|bind]`
+- `run402 domains check <domain> [--project <id>]`
+- `run402 domains repair <domain> [--project <id>]`
+- `run402 domains test-receive <domain> --to <local-part|address> [--project <id>]`
+- `run402 domains wait <domain> [--project <id>] [--until active|safe|receive-active]`
+- `run402 domains activate <domain> [--project <id>]`
+- `run402 domains disconnect <domain> --confirm [--project <id>]` — `--confirm` required.
 
-Point a custom domain (e.g. `example.com`) at a Run402 subdomain. The human must already own the domain.
+ProjectDomain is the project-scoped lifecycle surface for web custom domains, custom email sending, inbound receive routing, mailbox address activation, and drift checks.
 
-Default auth is `principal`: the command sends an explicit `project_id` and authorizes through the current wallet, control-plane session, or delegate. It does not require the selected wallet/profile to have a local project-key cache entry. `--auth service-key` is the compatibility override for service-key auth; that path reads the local project-key cache and fails with `PROJECT_CREDENTIAL_NOT_FOUND` / `details.source: "local_cache"` if the selected profile lacks keys.
+Auth is control-plane auth: current wallet, operator session, or delegate. Domain commands do not require a local project-key cache entry.
 
 **Setup flow:**
-1. `run402 domains add example.com myapp` — registers the domain, returns DNS instructions
-2. Human configures DNS at their registrar (CNAME to `domains.run402.com`, or ALIAS + TXT for apex domains)
-3. `run402 domains status example.com` — poll until status is `active` (DNS propagation ~60s)
-4. Traffic to `example.com` now serves the same site as `myapp.run402.com`
+1. `run402 domains connect example.com --project prj_123 --web --email-send --email-receive --mailbox-addresses primary --addresses info`
+2. `run402 domains dns example.com --project prj_123 --format bind` — copy DNS records to your registrar without clobbering existing MX unless full takeover is explicitly confirmed
+3. `run402 domains check example.com --project prj_123` — preflight desired vs observed state and drift
+4. `run402 domains test-receive example.com --project prj_123 --to info` — create an inbound token and send the test mail
+5. `run402 domains activate example.com --project prj_123` — switch mailbox addresses after receive checks pass
 
-When the linked subdomain is redeployed, the custom domain automatically serves the new deployment.
+Removed compatibility commands: `run402 domains add` and `run402 domains delete` fail locally with `COMMAND_REMOVED`; use `connect` and `disconnect`.
 
 ### apps
 - `run402 apps browse [--tag <tag>]`
@@ -1395,16 +1402,14 @@ Manage project user authentication: magic links, trusted invites, passwords, pas
 Magic link flow: request → user clicks email link → frontend extracts token → verify → authenticated. Token expires in 15 minutes, single-use. Rate limited: 5 per email/hour, plus per-project limits by tier.
 
 ### sender-domain
-Manage custom email sender domain. The mailbox primary `address` switches to your domain only after DKIM is verified and inbound is enabled; `managed_address` stays stable.
+Removed. Use ProjectDomain commands instead:
 
-- `run402 sender-domain register <domain> [--project <id>]` — register domain, returns DNS records to add
-- `run402 sender-domain status [--project <id>]` — check verification status (pending/verified)
-- `run402 sender-domain remove [--project <id>]` — remove custom domain, revert to the mailbox `managed_address`
-- `run402 sender-domain inbound-enable <domain> [--project <id>]` — enable inbound email on custom domain (requires DKIM-verified), returns MX record to add
-- `run402 sender-domain inbound-disable <domain> [--project <id>]` — disable inbound email on custom domain
+- `run402 domains connect <domain> --project <id> --email-send`
+- `run402 domains connect <domain> --project <id> --email-receive`
+- `run402 domains check <domain> --project <id>`
+- `run402 domains repair <domain> --project <id>`
 
-Flow: register → add DKIM CNAME records to DNS → poll status until verified → email auto-sends from your domain.
-Inbound (opt-in): inbound-enable → add MX record to DNS → replies to `<slug>@<your-domain>` route through run402.
+Old `run402 sender-domain ...` subcommands fail locally with `COMMAND_REMOVED`.
 
 ### billing
 Email orgs + Stripe checkouts; pay by card or scale email beyond tier caps.
@@ -1420,7 +1425,7 @@ Email orgs + Stripe checkouts; pay by card or scale email beyond tier caps.
 
 Auth: `balance`/`history` require SIWX from linked wallet or admin; wallet lookup requires matching SIWX (email lookup admin-only). `link-wallet` requires body wallet SIWX/admin; `checkout`/`auto-recharge` require linked wallet SIWX/admin. CLI signs from local allowance, so allowance wallet must belong to queried/linked/billed org. Non-member/guessed org id -> 403 no existence leak. `create-email` unauthenticated.
 
-Email packs only activate when the tier daily limit is exhausted AND the project has a verified custom sender domain (spam protection for Run402-managed mail reputation).
+Email packs only activate when the tier daily limit is exhausted AND the project has a ProjectDomain with verified custom email sending (spam protection for Run402-managed mail reputation).
 
 ### contracts
 KMS signers — provision AWS KMS-backed Ethereum signers per project for signing and broadcasting smart-contract transactions. Private keys never leave KMS. **Pricing: $0.04/day rental + $0.000005 per call**. Signer creation requires $1.20 in cash credit (30 days of rent). Non-custodial — see https://run402.com/humans/terms.html#non-custodial-kms-wallets.

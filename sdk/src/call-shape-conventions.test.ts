@@ -95,13 +95,21 @@ describe("admin lease verb-split", () => {
 });
 
 describe("options-object reshapes match the deprecated positional wire body", () => {
-  it("domains.add", async () => {
+  it("domains.ensure", async () => {
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
-    await r.domains.add("prj_1", { domain: "ex.com", subdomainName: "sub" });
-    await r.domains.add("prj_1", "ex.com", "sub");
-    assert.deepEqual(bodies[0], bodies[1]);
-    assert.deepEqual(bodies[0], { project_id: "prj_1", domain: "ex.com", subdomain_name: "sub" });
+    await r.domains.ensure("prj_1", "ex.com", {
+      desired: {
+        web: { enabled: true, target: "sub" },
+        email: { send: { enabled: true } },
+      },
+    });
+    assert.deepEqual(bodies[0], {
+      desired: {
+        web: { enabled: true, target: "sub" },
+        email: { send: { enabled: true } },
+      },
+    });
   });
 
   it("secrets.set", async () => {
@@ -150,12 +158,12 @@ describe("scoped wrappers use the canonical form", () => {
     assert.deepEqual(bodies[0], { key: "API_KEY", value: "v1" });
   });
 
-  it("r.project(id).domains.add({ domain, subdomainName }) sends the mapped body", async () => {
+  it("r.project(id).domains.ensure(domain, { desired }) sends the desired state", async () => {
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
     const p = await r.project("prj_1");
-    await p.domains.add({ domain: "ex.com", subdomainName: "sub" });
-    assert.deepEqual(bodies[0], { project_id: "prj_1", domain: "ex.com", subdomain_name: "sub" });
+    await p.domains.ensure("ex.com", { desired: { email: { receive: { enabled: true } } } });
+    assert.deepEqual(bodies[0], { desired: { email: { receive: { enabled: true } } } });
   });
 });
 

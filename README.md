@@ -465,7 +465,8 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `deploy_site_dir` | Deploy a static site from a local directory. Routes through the unified apply primitive (CAS-backed) — only uploads bytes the gateway doesn't have. |
 | `claim_subdomain` | Claim `<name>.run402.com` (idempotent; reassigns to latest deployment on subsequent deploys). |
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
-| `add_custom_domain` / `list_custom_domains` / `check_domain_status` / `remove_custom_domain` | Point your own domain at a Run402 subdomain. |
+| `domains_ensure` / `domains_get` / `domains_list` / `domains_check` | Manage project-scoped web/email ProjectDomain desired state and health checks. |
+| `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` | Apply safe provider actions, repair Run402-owned routing, verify inbound receive, activate mailbox addresses, or disconnect a domain. |
 | `deploy` / `deploy_resume` / `deploy_list` / `deploy_events` | Apply, resume, list, and inspect deploy operations. |
 | `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
 | `deploy_diagnose_url` | URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`; returns `would_serve`, `diagnostic_status`, `match`, warnings, next steps, and fenced JSON. |
@@ -508,8 +509,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `send_email` | Template (`project_invite`, `magic_link`, `notification`) or raw HTML. Single recipient. Omitting `mailbox` uses the configured outbound default; result echoes `mailbox_id` and `from_address` when returned. |
 | `list_emails` / `get_email` / `get_email_raw` | Read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification. |
 | `register_mailbox_webhook` / `list_mailbox_webhooks` / `get_mailbox_webhook` / `update_mailbox_webhook` / `delete_mailbox_webhook` | Email-event webhooks (delivery, bounced, complained, reply_received). |
-| `register_sender_domain` / `sender_domain_status` / `remove_sender_domain` | Send from your own domain (DKIM verified). |
-| `enable_sender_domain_inbound` / `disable_sender_domain_inbound` | Receive replies on your custom sender domain. |
+| `domains_ensure` / `domains_check` / `domains_repair` / `domains_test_receive` | Use ProjectDomain for custom email sending and inbound receive instead of the retired sender-domain workflow. |
 
 ### AI helpers
 

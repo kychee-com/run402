@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Run402 } from "../index.js";
-import { ProjectCredentialNotFound } from "../errors.js";
+import { LocalError } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 function creds(): CredentialsProvider {
@@ -35,27 +35,26 @@ function json(b: unknown, s = 200): Response {
   return new Response(JSON.stringify(b), { status: s, headers: { "content-type": "application/json" } });
 }
 
-describe("senderDomain.disableInbound", () => {
-  it("DELETEs /email/v1/domains/inbound with the domain in the body", async () => {
+describe("senderDomain removed shim", () => {
+  it("fails locally with COMMAND_REMOVED and no fetch", async () => {
     const { fetch, calls } = mockFetch(() => json({ status: "disabled" }));
-    await sdk(fetch).senderDomain.disableInbound("prj_k", "ex.com");
-    assert.equal(calls[0]!.url, "https://api.test/email/v1/domains/inbound");
-    assert.equal(calls[0]!.method, "DELETE");
-    assert.equal(calls[0]!.headers["Authorization"], "Bearer s");
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), { domain: "ex.com" });
+    await assert.rejects(
+      sdk(fetch).senderDomain.disableInbound("prj_k", "ex.com"),
+      (err: unknown) => {
+        assert.ok(err instanceof LocalError);
+        assert.equal((err as LocalError).code, "COMMAND_REMOVED");
+        assert.match((err as Error).message, /run402 domains disconnect ex\.com --project prj_k --confirm/);
+        return true;
+      },
+    );
+    assert.equal(calls.length, 0);
   });
 
-  it("returns the gateway envelope with status", async () => {
-    const { fetch } = mockFetch(() => json({ status: "disabled" }));
-    const result = await sdk(fetch).senderDomain.disableInbound("prj_k", "ex.com");
-    assert.equal(result.status, "disabled");
-  });
-
-  it("throws ProjectCredentialNotFound without any fetch for missing local credentials", async () => {
+  it("does not require local project credentials before throwing", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     await assert.rejects(
-      sdk(fetch).senderDomain.disableInbound("prj_missing", "ex.com"),
-      ProjectCredentialNotFound,
+      sdk(fetch).senderDomain.register("prj_missing", "ex.com"),
+      (err: unknown) => err instanceof LocalError && (err as LocalError).code === "COMMAND_REMOVED",
     );
     assert.equal(calls.length, 0);
   });

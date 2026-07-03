@@ -44,14 +44,14 @@ Commands:
   sites       Deploy static sites
   cdn         CloudFront CDN diagnostics (wait-fresh) for public asset URLs
   subdomains  Manage custom subdomains (claim, list, delete)
-  domains     Manage custom domains (add, list, status, delete)
+  domains     Manage ProjectDomain lifecycle (connect, check, repair, wait)
   apps        Browse and manage the app marketplace
   ai          AI translation and moderation tools
   image       Generate AI images via x402 or MPP micropayments
   email       Send template-based emails from your project
   message     Send messages to Run402 developers
   auth        Manage project user authentication (magic link, passwords, settings)
-  sender-domain  Manage custom email sender domain (register, status, remove)
+  sender-domain  Removed; use domains connect/status/repair
   billing     Email organizations, Stripe tier checkout, email packs
   contracts   KMS signers ($0.04/day rental + $0.000005/sign)
   agent       Manage agent identity (contact info)

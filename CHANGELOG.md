@@ -2,6 +2,12 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## 4.0.0 — ProjectDomain lifecycle and retired split domain commands
+
+- **SDK:** `domains.ensure/get/list/check/apply/repair/testReceive/wait/activate/disconnect` now target the project-scoped ProjectDomain API (`/projects/v1/:project_id/domains/:domain`) with control-plane auth and no local project-key cache preflight. Legacy `domains.add/status/remove` and `senderDomain.*` fail locally with `COMMAND_REMOVED` and replacement guidance.
+- **CLI:** `run402 domains connect/list/status/dns/check/apply/repair/test-receive/wait/activate/disconnect` is the canonical custom-domain workflow. Removed `run402 domains add`, `run402 domains delete`, and all `run402 sender-domain *` subcommands now return machine-readable `COMMAND_REMOVED` envelopes.
+- **MCP/OpenClaw/docs:** ProjectDomain tools and docs replace the old sender-domain/inbound-domain split, including DNS/check output, receive tests, repair actions, managed fallback, first-contact inbound policy, suppression management, and validation-safe raw send behavior.
+
 ## Unreleased — remove `projects.json` as project truth
 
 - **CLI/SDK:** normal project reads and active selection are now server-authoritative. `run402 projects use <id>` / `r.projects.use(id)` validate through the control plane and store only an active project id; `r.project(id)` no longer requires local key-cache membership before server-capable operations.

@@ -96,11 +96,12 @@ import type {
   ProvisionSignerOptions,
 } from "./namespaces/contracts.js";
 import type {
-  CustomDomainAddResult,
-  CustomDomainListResult,
-  CustomDomainRemoveResult,
-  CustomDomainStatusResult,
   DomainAddOptions,
+  ProjectDomain,
+  ProjectDomainEnsureOptions,
+  ProjectDomainListResult,
+  ProjectDomainTestReceiveResult,
+  ProjectDomainWaitOptions,
 } from "./namespaces/domains.js";
 import type {
   CreateMailboxResult,
@@ -633,26 +634,57 @@ function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHe
 class ScopedDomains {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  add(opts: DomainAddOptions): Promise<CustomDomainAddResult>;
-  /** @deprecated Use `add({ domain, subdomainName })`. */
-  add(domain: string, subdomainName: string): Promise<CustomDomainAddResult>;
-  add(domainOrOpts: string | DomainAddOptions, subdomainName?: string): Promise<CustomDomainAddResult> {
+  ensure(domain: string, opts: ProjectDomainEnsureOptions): Promise<ProjectDomain> {
+    return this.parent.domains.ensure(this.projectId, domain, opts);
+  }
+  get(domain: string): Promise<ProjectDomain> {
+    return this.parent.domains.get(this.projectId, domain);
+  }
+  list(): Promise<ProjectDomainListResult> {
+    return this.parent.domains.list(this.projectId);
+  }
+  check(domain: string): Promise<ProjectDomain> {
+    return this.parent.domains.check(this.projectId, domain);
+  }
+  apply(domain: string): Promise<ProjectDomain> {
+    return this.parent.domains.apply(this.projectId, domain);
+  }
+  repair(domain: string): Promise<ProjectDomain> {
+    return this.parent.domains.repair(this.projectId, domain);
+  }
+  testReceive(domain: string, to: string): Promise<ProjectDomainTestReceiveResult> {
+    return this.parent.domains.testReceive(this.projectId, domain, to);
+  }
+  activate(domain: string): Promise<ProjectDomain> {
+    return this.parent.domains.activate(this.projectId, domain);
+  }
+  disconnect(domain: string): Promise<{ status: string; domain: string }> {
+    return this.parent.domains.disconnect(this.projectId, domain);
+  }
+  wait(domain: string, opts?: ProjectDomainWaitOptions): Promise<ProjectDomain> {
+    return this.parent.domains.wait(this.projectId, domain, opts);
+  }
+
+  /** @deprecated Removed. Use `ensure(domain, { desired })`. */
+  add(opts: DomainAddOptions): ReturnType<Run402["domains"]["add"]>;
+  /** @deprecated Removed. Use `ensure(domain, { desired })`. */
+  add(domain: string, subdomainName: string): ReturnType<Run402["domains"]["add"]>;
+  add(domainOrOpts: string | DomainAddOptions, subdomainName?: string): ReturnType<Run402["domains"]["add"]> {
     if (typeof domainOrOpts === "object" && domainOrOpts !== null) {
       return this.parent.domains.add(this.projectId, domainOrOpts);
     }
-    deprecatePositional("domains.add", "use add({ domain, subdomainName })");
+    deprecatePositional("domains.add", "use ensure(domain, { desired })");
     return this.parent.domains.add(this.projectId, {
       domain: domainOrOpts,
       subdomainName: subdomainName as string,
     });
   }
-  list(): Promise<CustomDomainListResult> {
-    return this.parent.domains.list(this.projectId);
-  }
-  status(domain: string): Promise<CustomDomainStatusResult> {
+  /** @deprecated Removed. Use `get(domain)` or `check(domain)`. */
+  status(domain: string): ReturnType<Run402["domains"]["status"]> {
     return this.parent.domains.status(this.projectId, domain);
   }
-  remove(domain: string, opts: { projectId?: string } = {}): Promise<CustomDomainRemoveResult> {
+  /** @deprecated Removed. Use `disconnect(domain)`. */
+  remove(domain: string, opts: { projectId?: string } = {}): ReturnType<Run402["domains"]["remove"]> {
     return this.parent.domains.remove(domain, { projectId: opts.projectId ?? this.projectId });
   }
 }

@@ -1,160 +1,118 @@
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { handleRegisterSenderDomain } from "./register-sender-domain.js";
-import { handleSenderDomainStatus } from "./sender-domain-status.js";
-import { handleRemoveSenderDomain } from "./remove-sender-domain.js";
-import { handleEnableInbound } from "./enable-inbound.js";
-import { handleDisableInbound } from "./disable-inbound.js";
-import { saveProject } from "../keystore.js";
+import { z } from "zod";
 
-const originalFetch = globalThis.fetch;
-let tempDir: string;
+let calls: Array<{ method: string; args: unknown[] }> = [];
+
+const domainAggregate = {
+  project_id: "prj_123",
+  domain: "kysigned.com",
+  status: "waiting",
+  desired: {},
+  observed: {},
+  effective: {},
+  authority: { recommended_mode: "manual_dns", options: [] },
+  dns_records: [],
+  checks: [],
+  next_action: null,
+  alternate_actions: [],
+  provenance: {},
+};
+
+mock.module("../sdk.js", {
+  namedExports: {
+    getSdk: () => ({
+      domains: {
+        ensure: async (...args: unknown[]) => {
+          calls.push({ method: "ensure", args });
+          return domainAggregate;
+        },
+        check: async (...args: unknown[]) => {
+          calls.push({ method: "check", args });
+          return { ...domainAggregate, status: "active" };
+        },
+        testReceive: async (...args: unknown[]) => {
+          calls.push({ method: "testReceive", args });
+          return {
+            ...domainAggregate,
+            receive_test: {
+              id: "rt_1",
+              local_part: "info",
+              address: "info@kysigned.com",
+              target_managed_address: "info@prj.mail.run402.com",
+              token: "rt_abcdefabcdefabcdefabcdef",
+              status: "pending",
+              created_at: "2026-07-03T00:00:00Z",
+            },
+          };
+        },
+        disconnect: async (...args: unknown[]) => {
+          calls.push({ method: "disconnect", args });
+          return { status: "deleted", domain: "kysigned.com" };
+        },
+      },
+    }),
+    _resetSdk: () => {},
+  },
+});
+
+const {
+  domainsEnsureSchema,
+  handleDomainsEnsure,
+  handleDomainsCheck,
+  handleDomainsTestReceive,
+  handleDomainsDisconnect,
+} = await import("./domains.js");
 
 beforeEach(() => {
-  tempDir = mkdtempSync(join(tmpdir(), "run402-sender-test-"));
-  process.env.RUN402_CONFIG_DIR = tempDir;
-  process.env.RUN402_API_BASE = "https://test-api.run402.com";
+  calls = [];
 });
 
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-  rmSync(tempDir, { recursive: true, force: true });
-  delete process.env.RUN402_CONFIG_DIR;
-  delete process.env.RUN402_API_BASE;
-});
-
-describe("register_sender_domain tool", () => {
-  it("sends Authorization: Bearer <service_key> header and no apikey header", async () => {
-    saveProject("proj-sd1", {
-      anon_key: "ak-sd1",
-      service_key: "sk-sd1",
-      tier: "prototype",
-      lease_expires_at: "2026-04-01T00:00:00Z",
+describe("project domain MCP tools", () => {
+  it("accepts desired ProjectDomain state and forwards it to the SDK", async () => {
+    const desired = {
+      email: {
+        send: { enabled: true },
+        receive: { enabled: true, strategy: "forwarding_mode" },
+      },
+    };
+    const parsed = z.object(domainsEnsureSchema).parse({
+      project_id: "prj_123",
+      domain: "kysigned.com",
+      desired,
     });
 
-    let capturedHeaders: Record<string, string> = {};
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      capturedHeaders = init?.headers as Record<string, string>;
-      return new Response(
-        JSON.stringify({
-          domain: "example.com",
-          status: "pending",
-          dns_records: [{ type: "CNAME", name: "mail.example.com", value: "dkim.run402.com" }],
-          instructions: "Add the DNS records above.",
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
+    const result = await handleDomainsEnsure(parsed);
 
-    await handleRegisterSenderDomain({
-      project_id: "proj-sd1",
-      domain: "example.com",
-    });
-
-    assert.equal(capturedHeaders["Authorization"], "Bearer sk-sd1");
-    assert.equal(capturedHeaders["apikey"], undefined);
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(calls, [
+      {
+        method: "ensure",
+        args: ["prj_123", "kysigned.com", { desired }],
+      },
+    ]);
+    assert.match(result.content[0]!.text, /Project Domain Ensured/);
+    assert.match(result.content[0]!.text, /kysigned\.com/);
   });
-});
 
-describe("sender_domain_status tool", () => {
-  it("sends Authorization: Bearer <service_key> header and no apikey header", async () => {
-    saveProject("proj-sd2", {
-      anon_key: "ak-sd2",
-      service_key: "sk-sd2",
-      tier: "prototype",
-      lease_expires_at: "2026-04-01T00:00:00Z",
+  it("checks, creates receive tests, and disconnects through the ProjectDomain SDK", async () => {
+    await handleDomainsCheck({ project_id: "prj_123", domain: "kysigned.com" });
+    const testResult = await handleDomainsTestReceive({
+      project_id: "prj_123",
+      domain: "kysigned.com",
+      to: "info",
+    });
+    const disconnectResult = await handleDomainsDisconnect({
+      project_id: "prj_123",
+      domain: "kysigned.com",
     });
 
-    let capturedHeaders: Record<string, string> = {};
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      capturedHeaders = init?.headers as Record<string, string>;
-      return new Response(
-        JSON.stringify({ domain: "example.com", status: "verified", verified_at: "2026-04-01T00:00:00Z" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
-
-    await handleSenderDomainStatus({ project_id: "proj-sd2" });
-
-    assert.equal(capturedHeaders["Authorization"], "Bearer sk-sd2");
-    assert.equal(capturedHeaders["apikey"], undefined);
-  });
-});
-
-describe("remove_sender_domain tool", () => {
-  it("sends Authorization: Bearer <service_key> header and no apikey header", async () => {
-    saveProject("proj-sd3", {
-      anon_key: "ak-sd3",
-      service_key: "sk-sd3",
-      tier: "prototype",
-      lease_expires_at: "2026-04-01T00:00:00Z",
-    });
-
-    let capturedHeaders: Record<string, string> = {};
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      capturedHeaders = init?.headers as Record<string, string>;
-      return new Response(
-        JSON.stringify({ status: "deleted" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
-
-    await handleRemoveSenderDomain({ project_id: "proj-sd3" });
-
-    assert.equal(capturedHeaders["Authorization"], "Bearer sk-sd3");
-    assert.equal(capturedHeaders["apikey"], undefined);
-  });
-});
-
-describe("enable_inbound tool", () => {
-  it("sends Authorization: Bearer <service_key> header and no apikey header", async () => {
-    saveProject("proj-sd4", {
-      anon_key: "ak-sd4",
-      service_key: "sk-sd4",
-      tier: "prototype",
-      lease_expires_at: "2026-04-01T00:00:00Z",
-    });
-
-    let capturedHeaders: Record<string, string> = {};
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      capturedHeaders = init?.headers as Record<string, string>;
-      return new Response(
-        JSON.stringify({ status: "enabled", mx_record: "10 mx.run402.com" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
-
-    await handleEnableInbound({ project_id: "proj-sd4", domain: "example.com" });
-
-    assert.equal(capturedHeaders["Authorization"], "Bearer sk-sd4");
-    assert.equal(capturedHeaders["apikey"], undefined);
-  });
-});
-
-describe("disable_inbound tool", () => {
-  it("sends Authorization: Bearer <service_key> header and no apikey header", async () => {
-    saveProject("proj-sd5", {
-      anon_key: "ak-sd5",
-      service_key: "sk-sd5",
-      tier: "prototype",
-      lease_expires_at: "2026-04-01T00:00:00Z",
-    });
-
-    let capturedHeaders: Record<string, string> = {};
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      capturedHeaders = init?.headers as Record<string, string>;
-      return new Response(
-        JSON.stringify({ status: "disabled" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }) as typeof fetch;
-
-    await handleDisableInbound({ project_id: "proj-sd5", domain: "example.com" });
-
-    assert.equal(capturedHeaders["Authorization"], "Bearer sk-sd5");
-    assert.equal(capturedHeaders["apikey"], undefined);
+    assert.deepEqual(calls, [
+      { method: "check", args: ["prj_123", "kysigned.com"] },
+      { method: "testReceive", args: ["prj_123", "kysigned.com", "info"] },
+      { method: "disconnect", args: ["prj_123", "kysigned.com"] },
+    ]);
+    assert.match(testResult.content[0]!.text, /rt_abcdef/);
+    assert.match(disconnectResult.content[0]!.text, /deleted/);
   });
 });

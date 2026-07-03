@@ -715,11 +715,11 @@ async function mockFetch(input, init) {
     return Promise.resolve(json({ status: "ok" }));
   }
 
-  // Domains
-  if (pathNoQuery === "/domains/v1" && method === "GET") {
+  // ProjectDomain
+  if (/^\/projects\/v1\/[^/]+\/domains$/.test(pathNoQuery) && method === "GET") {
     return Promise.resolve(json({ domains: [] }));
   }
-  if (path.match(/^\/domains\/v1\//) && method === "DELETE") {
+  if (/^\/projects\/v1\/[^/]+\/domains\/[^/]+$/.test(pathNoQuery) && method === "DELETE") {
     return Promise.resolve(noContent());
   }
 
@@ -5034,7 +5034,7 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
     assert.ok(del, `must issue DELETE /subdomains/v1/my-app, calls: ${JSON.stringify(calls)}`);
   });
 
-  it("domains delete <domain> (no --confirm) refuses and does not call gateway", async () => {
+  it("domains delete <domain> is removed and does not call gateway", async () => {
     await seedActiveProject();
     const { run } = await import("./cli/lib/domains.mjs");
     const calls = [];
@@ -5050,11 +5050,11 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
     }
     assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
     assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
-    assert.ok(/CONFIRMATION_REQUIRED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
-    assert.ok(/--confirm/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
+    assert.ok(/COMMAND_REMOVED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
+    assert.ok(/domains disconnect/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
   });
 
-  it("domains delete <domain> --confirm proceeds and DELETEs the domain", async () => {
+  it("domains delete <domain> --confirm is still removed before network work", async () => {
     await seedActiveProject();
     const { run } = await import("./cli/lib/domains.mjs");
     const calls = [];
@@ -5068,9 +5068,9 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
       captureStop();
       globalThis.fetch = prevFetch;
     }
-    assert.equal(threw, null, `should succeed, got: ${threw?.message || ""} / ${capturedStderr()}`);
-    const del = calls.find(c => c.method === "DELETE" && c.path.startsWith("/domains/v1/"));
-    assert.ok(del, `must issue DELETE /domains/v1/example.com, calls: ${JSON.stringify(calls)}`);
+    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
+    assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
+    assert.ok(/COMMAND_REMOVED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
   });
 });
 
@@ -5271,7 +5271,7 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     }], `next_actions should populate with typed deploy guidance, got: ${JSON.stringify(parsed.next_actions)}`);
   });
 
-  it("domains add with no args emits BAD_USAGE envelope with usage hint", async () => {
+  it("domains add with no args emits COMMAND_REMOVED with replacement", async () => {
     const { run } = await import("./cli/lib/domains.mjs");
     let threw = null;
     captureStart();
@@ -5283,8 +5283,8 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
     assert.equal(threw?.message, "process.exit(1)");
     const parsed = parseStderrJson();
     assert.equal(parsed.status, "error");
-    assert.equal(parsed.code, "BAD_USAGE");
-    assert.ok(/run402 domains add/.test(parsed.hint || ""), `hint should mention usage, got: ${parsed.hint}`);
+    assert.equal(parsed.code, "COMMAND_REMOVED");
+    assert.ok(/run402 domains connect/.test(parsed.details?.replacement || ""), `replacement should mention connect, got: ${JSON.stringify(parsed)}`);
   });
 
   it("blob put with unknown local project emits PROJECT_CREDENTIAL_NOT_FOUND with details.source: local_cache", async () => {
@@ -5560,7 +5560,7 @@ describe("CLI domains list --project", () => {
         // non-URL input — leave as raw
       }
       calls.push({ method, path, url });
-      if (method === "GET" && path.split("?")[0] === "/domains/v1") {
+      if (method === "GET" && /^\/projects\/v1\/[^/]+\/domains$/.test(path.split("?")[0])) {
         return Promise.resolve(json({ domains: [] }));
       }
       return Promise.resolve(new Response("Not Found", { status: 404 }));
@@ -5587,8 +5587,8 @@ describe("CLI domains list --project", () => {
       !/Project\s+--project\s+not found/.test(capturedStderr()),
       `must not parse '--project' as the positional id, got stderr: ${capturedStderr()}`,
     );
-    const get = calls.find(c => c.method === "GET" && c.path.startsWith("/domains/v1?"));
-    assert.ok(get, `must issue GET /domains/v1?project_id=..., calls: ${JSON.stringify(calls)}`);
+    const get = calls.find(c => c.method === "GET" && c.path === `/projects/v1/${TEST_PROJECT.project_id}/domains`);
+    assert.ok(get, `must issue GET /projects/v1/:project_id/domains, calls: ${JSON.stringify(calls)}`);
   });
 
   it("domains list positional project id is rejected", async () => {
@@ -5607,8 +5607,8 @@ describe("CLI domains list --project", () => {
     }
     assert.equal(threw?.message, "process.exit(1)");
     assert.match(capturedStderr(), /Unexpected argument/);
-    const get = calls.find(c => c.method === "GET" && c.path.startsWith("/domains/v1"));
-    assert.equal(get, undefined, `must not issue GET /domains/v1, calls: ${JSON.stringify(calls)}`);
+    const get = calls.find(c => c.method === "GET" && /^\/projects\/v1\/[^/]+\/domains/.test(c.path));
+    assert.equal(get, undefined, `must not issue ProjectDomain list request, calls: ${JSON.stringify(calls)}`);
   });
 
   it("domains list (no args) falls back to active project", async () => {
@@ -5627,8 +5627,8 @@ describe("CLI domains list --project", () => {
     }
     assert.equal(threw, null,
       `'domains list' (no args) should resolve via active project, got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
-    const get = calls.find(c => c.method === "GET" && c.path.startsWith("/domains/v1?"));
-    assert.ok(get, `must still issue GET /domains/v1?project_id=..., calls: ${JSON.stringify(calls)}`);
+    const get = calls.find(c => c.method === "GET" && c.path === `/projects/v1/${TEST_PROJECT.project_id}/domains`);
+    assert.ok(get, `must still issue GET /projects/v1/:project_id/domains, calls: ${JSON.stringify(calls)}`);
   });
 });
 

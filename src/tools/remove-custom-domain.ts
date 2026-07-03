@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { getSdk } from "../sdk.js";
-import { mapSdkError } from "../errors.js";
 
 export const removeCustomDomainSchema = {
   domain: z.string().describe("The custom domain to release (e.g. 'example.com')"),
@@ -14,17 +12,11 @@ export async function handleRemoveCustomDomain(args: {
   domain: string;
   project_id?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  try {
-    await getSdk().domains.remove(args.domain, { projectId: args.project_id });
-    return {
-      content: [
-        {
-          type: "text",
-          text: `## Custom Domain Removed\n\nDomain \`${args.domain}\` has been released. Traffic to this domain will no longer be routed to Run402.`,
-        },
-      ],
-    };
-  } catch (err) {
-    return mapSdkError(err, "removing custom domain");
-  }
+  return removed(
+    `remove_custom_domain has been removed. Use domains_disconnect for ${args.domain}${args.project_id ? ` in project ${args.project_id}` : ""}.`,
+  );
+}
+
+function removed(text: string): { content: Array<{ type: "text"; text: string }>; isError: true } {
+  return { content: [{ type: "text", text: `Error: ${text}` }], isError: true };
 }

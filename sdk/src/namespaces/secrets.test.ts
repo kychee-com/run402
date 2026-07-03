@@ -138,41 +138,43 @@ describe("subdomains", () => {
   });
 });
 
-describe("domains (custom)", () => {
-  it("add POSTs domain+subdomain", async () => {
+describe("domains (ProjectDomain)", () => {
+  it("ensure PUTs desired state to the project-scoped domain path", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({ domain: "ex.com", subdomain_name: "app", url: "https://ex.com", subdomain_url: "https://app.run402.com", status: "pending", dns_instructions: null, project_id: "prj_k", created_at: "t" }),
+      json({ project_id: "prj_k", domain: "ex.com", status: "waiting", desired: {}, observed: {}, effective: {}, authority: { recommended_mode: "manual_dns", options: [] }, dns_records: [], checks: [], next_action: null, alternate_actions: [], provenance: {} }),
     );
-    await sdk(fetch).domains.add("prj_k", "ex.com", "app");
-    assert.equal(calls[0]!.url, "https://api.test/domains/v1");
+    await sdk(fetch).domains.ensure("prj_k", "ex.com", {
+      desired: {
+        web: { enabled: true, target: "app" },
+        email: { send: { enabled: true } },
+      },
+    });
+    assert.equal(calls[0]!.url, "https://api.test/projects/v1/prj_k/domains/ex.com");
+    assert.equal(calls[0]!.method, "PUT");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      project_id: "prj_k",
-      domain: "ex.com",
-      subdomain_name: "app",
+      desired: {
+        web: { enabled: true, target: "app" },
+        email: { send: { enabled: true } },
+      },
     });
   });
 
-  it("status GETs the domain path", async () => {
+  it("check POSTs the action path", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({ domain: "ex.com", subdomain_name: "app", url: "u", subdomain_url: "su", status: "active", dns_instructions: null, created_at: "t" }),
+      json({ project_id: "prj_k", domain: "ex.com", status: "active", desired: {}, observed: {}, effective: {}, authority: { recommended_mode: "manual_dns", options: [] }, dns_records: [], checks: [], next_action: null, alternate_actions: [], provenance: {} }),
     );
-    const res = await sdk(fetch).domains.status("prj_k", "ex.com");
-    assert.equal(calls[0]!.url, "https://api.test/domains/v1/ex.com?project_id=prj_k");
+    const res = await sdk(fetch).domains.check("prj_k", "ex.com");
+    assert.equal(calls[0]!.url, "https://api.test/projects/v1/prj_k/domains/ex.com/actions/check");
+    assert.equal(calls[0]!.method, "POST");
     assert.equal(res.status, "active");
   });
 
-  it("remove DELETEs with optional projectId auth", async () => {
-    const { fetch, calls } = mockFetch(() => json({}));
-    await sdk(fetch).domains.remove("ex.com");
+  it("disconnect DELETEs the project-scoped domain path", async () => {
+    const { fetch, calls } = mockFetch(() => json({ status: "deleted", domain: "ex.com" }));
+    const result = await sdk(fetch).domains.disconnect("prj_k", "ex.com");
     assert.equal(calls[0]!.method, "DELETE");
-    assert.equal(calls[0]!.headers["Authorization"], undefined);
-    await sdk(fetch).domains.remove("ex.com", { projectId: "prj_k", authMode: "service_key" });
-    assert.equal(calls[1]!.headers["Authorization"], "Bearer s");
-  });
-
-  it("remove returns the gateway envelope with status and domain", async () => {
-    const { fetch } = mockFetch(() => json({ status: "deleted", domain: "ex.com" }));
-    const result = await sdk(fetch).domains.remove("ex.com");
+    assert.equal(calls[0]!.url, "https://api.test/projects/v1/prj_k/domains/ex.com");
     assert.equal(result.status, "deleted");
     assert.equal(result.domain, "ex.com");
   });

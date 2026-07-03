@@ -84,7 +84,13 @@ const MATRIX = {
   },
   sites: { shared: ["status"], specific: ["deploy", "deploy-dir"] },
   subdomains: { shared: [], specific: ["claim", "list", "delete"] },
-  domains: { shared: [], specific: ["add", "list", "status", "delete"] },
+  domains: {
+    shared: [],
+    specific: [
+      "connect", "list", "status", "dns", "check", "apply", "repair",
+      "test-receive", "wait", "activate", "disconnect",
+    ],
+  },
   apps: {
     shared: [],
     specific: ["browse", "fork", "publish", "update", "versions", "inspect", "delete"],
@@ -105,10 +111,7 @@ const MATRIX = {
       "scaffold-roles",
     ],
   },
-  "sender-domain": {
-    shared: [],
-    specific: ["register", "status", "remove", "inbound-enable", "inbound-disable"],
-  },
+  "sender-domain": { shared: [], specific: [] },
   billing: {
     shared: [],
     specific: ["checkout", "auto-recharge", "history", "create-email", "link-wallet", "balance"],
@@ -460,11 +463,11 @@ describe("CLI --help contract", () => {
       // [command sequence, parent-help heading that should NOT appear]
       [["secrets", "list"],            "run402 secrets — Manage project secrets"],
       [["functions", "list"],          "run402 functions — Manage serverless functions"],
-      [["domains", "list"],            "run402 domains — Manage custom domains"],
+      [["domains", "list"],            "run402 domains — Manage ProjectDomain lifecycle"],
       [["ai", "moderate"],             "run402 ai — AI translation and moderation tools"],
       [["tier", "status"],             "run402 tier — Manage your Run402 tier subscription"],
       [["service", "status"],          "run402 service — Run402 service health and availability"],
-      [["sender-domain", "register"],  "run402 sender-domain — Manage custom email sender domain"],
+      [["domains", "connect"],         "run402 domains — Manage ProjectDomain lifecycle"],
       [["contracts", "get-signer"],    "run402 contracts — KMS-backed Ethereum signers"],
     ];
     for (const [argv, parentHeading] of cases) {

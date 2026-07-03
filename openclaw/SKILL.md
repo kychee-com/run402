@@ -811,12 +811,14 @@ run402 email webhooks redrive <delivery_id>                  # replay a dead-let
 run402 email list --direction inbound
 ```
 
-### Custom sender domain
+### Project domains for email
 
 ```bash
-run402 sender-domain register example.com         # → DKIM CNAMEs to add to DNS
-run402 sender-domain status                       # poll until verified
-run402 sender-domain inbound-enable example.com   # → MX record (opt-in)
+run402 domains connect example.com --email-send --email-receive --mailbox-addresses primary --addresses info
+run402 domains dns example.com --format bind      # records to add/check
+run402 domains check example.com                  # health/drift preflight
+run402 domains repair example.com                 # repair Run402-owned routing
+run402 domains test-receive example.com --to info # create inbound receive token
 ```
 
 ## User auth
@@ -837,20 +839,21 @@ Magic-link tokens are single-use, expire in 15 min, and are rate-limited. The `a
 
 For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https://docs.run402.com/llms-cli.txt>.
 
-## Subdomains and custom domains
+## Subdomains and project domains
 
 ```bash
 run402 subdomains claim my-app                    # → https://my-app.run402.com
 run402 subdomains list
 run402 subdomains delete my-app --confirm
 
-run402 domains add example.com my-app             # → DNS records to set
-run402 domains status example.com                 # poll until active
+run402 domains connect example.com --web --web-target production
+run402 domains status example.com                 # aggregate desired/observed/effective state
+run402 domains dns example.com                    # DNS records to set
 run402 domains list
-run402 domains delete example.com --confirm
+run402 domains disconnect example.com --confirm
 ```
 
-Domain commands default to principal auth with explicit `project_id`, so a project shown by `run402 projects list` is not vetoed by a missing local key cache entry. Use `--auth service-key` only when you intentionally want the local service-key path.
+Domain commands use project-scoped control-plane auth (wallet, operator session, or delegate), so a project shown by `run402 projects list` is not vetoed by a missing local project-key cache entry.
 
 Subdomain auto-reassignment: claim once. Every subsequent `run402 sites deploy-dir` to the same project automatically points the subdomain at the new deployment. The deploy response includes `subdomain_urls` showing what got reassigned. No re-claim needed.
 
@@ -1157,7 +1160,7 @@ Top-level command groups:
 run402 init | status | message | service
 run402 allowance   | tier      | projects | sites      | subdomains
 run402 domains     | functions | secrets  | jobs       | assets     | cdn
-run402 email       | sender-domain | auth | apps       | image
+run402 email       | auth       | apps      | image
 run402 deploy      | ai        | contracts | billing   | agent
 ```
 
