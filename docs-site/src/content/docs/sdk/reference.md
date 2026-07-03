@@ -28,6 +28,8 @@ Two entry points:
 | `@run402/sdk/node/config` | Loading explicit executable deploy configs in Node | Re-exports config helpers plus `loadDeployManifest`, `loadExecutableDeployConfig`, and `normalizeDeployManifest`. |
 | `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
 
+Node SDK requests include bounded client metadata through `Run402-Client`, such as `surface="sdk", version="3.7.14", sdk="3.7.14"`. CLI-created SDK instances use `surface="cli"`. The header is semantic version/surface metadata only: no cwd, executable path, package manager, wallet/org/project ids, secrets, or install confidence. The isomorphic entry omits the header by default to avoid browser/CORS surprises; only callers that explicitly pass `clientMetadata` opt in.
+
 ## Quick start (Node)
 
 ```ts

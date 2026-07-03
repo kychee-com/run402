@@ -144,7 +144,7 @@ Examples:
 ## Step 1: Install
 
 ```bash
-npm install -g run402@latest
+npm install -g run402
 ```
 
 ## Step 2: Set Up Allowance and Funding
