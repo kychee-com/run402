@@ -38,6 +38,7 @@ import { normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./operator.mjs";
 import { editRequestAction, nextAction, retryAction } from "./next-actions.mjs";
+import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs";
 
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
@@ -444,6 +445,7 @@ function parsePromoteArgs(args) {
 
 async function promoteCmd(args) {
   const opts = parsePromoteArgs(args);
+  emitDeployUpdateNotice("promote", args, { quiet: opts.quiet });
   const projectId = opts.project ?? resolveProjectId(null);
 
   // Preserve the aggressive early-exit when no allowance is configured
@@ -498,6 +500,13 @@ function makeStderrEventWriter(quiet) {
   return (event) => {
     console.error(JSON.stringify(event));
   };
+}
+
+function emitDeployUpdateNotice(subcommand, args, { quiet = false } = {}) {
+  const scheduler = createUpdateCheckScheduler({
+    command: ["run402", "deploy", subcommand, ...args],
+  });
+  emitUpdateNotice(scheduler.cachedNotice, { quiet });
 }
 
 function parseApplyArgs(args) {
@@ -787,6 +796,7 @@ async function applyCmd(args) {
   const opts = parseApplyArgs(args);
   const { source, error: sourceError } = resolveApplySource(opts, hasStdinSource());
   if (sourceError) fail(sourceError);
+  emitDeployUpdateNotice("apply", args, { quiet: opts.quiet });
 
   let raw;
   let manifestPath = null;
@@ -1377,6 +1387,7 @@ async function resumeCmd(args) {
     project: parsed.flags["--project"] ?? null,
     quiet: Boolean(parsed.flags["--quiet"]),
   };
+  emitDeployUpdateNotice("resume", args, { quiet: opts.quiet });
   const project = resolveProjectId(opts.project);
 
   allowanceAuthHeaders("/apply/v1/operations");

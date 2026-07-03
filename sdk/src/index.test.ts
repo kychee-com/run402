@@ -113,6 +113,24 @@ describe("Run402 constructor validation", () => {
     assert.ok(r.service);
   });
 
+  it("omits client metadata by default in the isomorphic entry point", async () => {
+    let headers: Record<string, string> = {};
+    const r = new Run402({
+      apiBase: "https://api.example.test",
+      credentials: makeCreds({ getAuth: async () => ({}) }),
+      fetch: (async (_input, init) => {
+        headers = init?.headers as Record<string, string>;
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof globalThis.fetch,
+    });
+
+    await r.service.health();
+    assert.equal(headers["Run402-Client"], undefined);
+  });
+
   it("exposes CLI-style SDK aliases for grep-friendly parity (GH-179)", () => {
     const r = new Run402({
       apiBase: "https://api.example.test",

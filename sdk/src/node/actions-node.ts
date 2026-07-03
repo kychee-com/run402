@@ -1180,21 +1180,46 @@ export class NodeActions implements Run402Actions {
       details: { mode, commands: commands.map((command) => command.id) },
     });
     run.setState(step, "running");
-    for (const command of commands) {
+    for (const [index, command] of commands.entries()) {
       const cwd = resolveMaybe(workspaceDir, command.cwd ?? ".");
+      const startedAt = Date.now();
+      run.setState(step, "running", {
+        current_command_id: command.id,
+        current_command_index: index + 1,
+        command_count: commands.length,
+        command_cwd: relative(workspaceDir, cwd) || ".",
+      });
       if (command.argv && command.argv.length > 0) {
-        const [file, ...args] = command.argv;
-        await execFileAsync(file, args, {
-          cwd,
-          env: { ...process.env, ...env },
-          maxBuffer: 1024 * 1024 * 16,
-        });
+        try {
+          const [file, ...args] = command.argv;
+          await execFileAsync(file, args, {
+            cwd,
+            env: { ...process.env, ...env },
+            maxBuffer: 1024 * 1024 * 16,
+          });
+        } catch (err) {
+          run.setState(step, "failed", {
+            failed_command_id: command.id,
+            command_duration_ms: Date.now() - startedAt,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
+        }
       } else if (command.shell) {
-        await execFileAsync("/bin/sh", ["-c", command.shell], {
-          cwd,
-          env: { ...process.env, ...env },
-          maxBuffer: 1024 * 1024 * 16,
-        });
+        try {
+          await execFileAsync("/bin/sh", ["-c", command.shell], {
+            cwd,
+            env: { ...process.env, ...env },
+            maxBuffer: 1024 * 1024 * 16,
+          });
+        } catch (err) {
+          run.setState(step, "failed", {
+            failed_command_id: command.id,
+            command_duration_ms: Date.now() - startedAt,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
+        }
       } else {
         throw run.error(
           `Build command ${command.id} must define argv or shell.`,
@@ -1202,6 +1227,10 @@ export class NodeActions implements Run402Actions {
           { command_id: command.id },
         );
       }
+      run.setState(step, "running", {
+        last_command_id: command.id,
+        last_command_duration_ms: Date.now() - startedAt,
+      });
     }
     run.setState(step, "succeeded");
   }
@@ -2055,9 +2084,9 @@ function missingRequiredName(
       code: "PROJECT_REQUIRED",
       node_id: "project.ensure",
       field_path: "project.name",
-      message: "Retry with --name, for example: run402 up --name kysigned3 --yes.",
-      command: "run402 up --name kysigned3 --yes",
-      argv: ["run402", "up", "--name", "kysigned3", "--yes"],
+      message: "Retry with --name, for example: run402 up --name <name> --yes.",
+      command: "run402 up --name <name> --yes",
+      argv: ["run402", "up", "--name", "<name>", "--yes"],
     }],
   };
 }

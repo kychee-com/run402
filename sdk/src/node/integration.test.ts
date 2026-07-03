@@ -68,6 +68,51 @@ describe("run402() Node factory", () => {
     assert.ok(r instanceof Run402);
   });
 
+  it("sends Node SDK client metadata for direct SDK and CLI surfaces", async () => {
+    const headersSeen: string[] = [];
+    const customFetch = (async (_input, init) => {
+      const headers = init?.headers as Record<string, string>;
+      headersSeen.push(headers["Run402-Client"] ?? "");
+      return new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof globalThis.fetch;
+
+    await run402({
+      fetch: customFetch,
+      authMode: "none",
+      clientVersion: "9.9.9",
+      sdkVersion: "9.9.9",
+    }).service.health();
+    await run402({
+      fetch: customFetch,
+      authMode: "none",
+      surface: "cli",
+      clientVersion: "9.9.9",
+      sdkVersion: "9.9.9",
+    }).service.health();
+
+    assert.equal(headersSeen[0], 'surface="sdk", version="9.9.9", sdk="9.9.9"');
+    assert.equal(headersSeen[1], 'surface="cli", version="9.9.9", sdk="9.9.9"');
+    assert.equal(headersSeen.some((value) => /RUN402_CONFIG_DIR|package_manager|wallet|project|secret/i.test(value)), false);
+  });
+
+  it("can disable Node SDK client metadata for custom transports", async () => {
+    let header: string | undefined;
+    const customFetch = (async (_input, init) => {
+      const headers = init?.headers as Record<string, string>;
+      header = headers["Run402-Client"];
+      return new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof globalThis.fetch;
+
+    await run402({ fetch: customFetch, authMode: "none", clientMetadata: false }).service.health();
+    assert.equal(header, undefined);
+  });
+
   it("uses the persisted Core API base when env override is unset", async () => {
     const prev = process.env.RUN402_API_BASE;
     delete process.env.RUN402_API_BASE;

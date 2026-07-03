@@ -3,6 +3,7 @@ import { stdin as input, stderr as output } from "node:process";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs";
 
 const HELP = `run402 up — Provision/link/deploy the current app
 
@@ -43,6 +44,11 @@ Options:
   --human             Emit the legacy human success/blocking summary on stdout.
   --json-stream       Emit NDJSON progress events on stdout and a final result event.
   --quiet             Suppress action progress events on stderr.
+
+Update notices:
+  Stale CLI notices are advisory and never change the result payload or exit
+  code. Non-streaming notices are JSON on stderr; --json-stream emits
+  cli.update_available as an NDJSON event.
 
 Project resolution:
   explicit --project > .run402/project.json > manifest project_id > approved
@@ -184,6 +190,10 @@ export async function run(args = []) {
     });
   }
   const allowWarningCodes = collectRepeatedValues(parsed, "--allow-warning");
+  const updateScheduler = createUpdateCheckScheduler({
+    command: ["run402", "up", ...parsed],
+  });
+  emitUpdateNotice(updateScheduler.cachedNotice, { jsonStream, quiet });
 
   try {
     const sdk = getSdk();
@@ -224,9 +234,18 @@ export async function run(args = []) {
     } else {
       console.log(JSON.stringify(result, null, 2));
     }
+    if (shouldExitNonZeroForUpResult(result)) {
+      process.exitCode = 1;
+    }
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+export function shouldExitNonZeroForUpResult(result) {
+  return result?.action === "up" &&
+    result?.mode === "apply" &&
+    result?.result?.app_result?.status === "deployed_unverified";
 }
 
 function parseExecutionMode(args) {

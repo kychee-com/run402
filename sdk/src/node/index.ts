@@ -20,6 +20,7 @@
  * are uploaded. Re-deploying an unchanged tree issues no S3 PUTs.
  */
 
+import { readFileSync } from "node:fs";
 import {
   DEFAULT_API_BASE,
   getApiBase,
@@ -28,7 +29,7 @@ import {
 } from "../../core-dist/config.js";
 import { Run402, type Run402Options } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
-import type { Client } from "../kernel.js";
+import type { Client, Run402ClientMetadata } from "../kernel.js";
 import { NodeCredentialsProvider } from "./credentials.js";
 import type { AuthMode, CredentialSurface } from "./credentials.js";
 import { createLazyPaidFetch } from "./paid-fetch.js";
@@ -64,6 +65,12 @@ export interface NodeRun402Options {
   disablePaidFetch?: boolean;
   /** Fully custom fetch implementation. Takes precedence over `disablePaidFetch`. */
   fetch?: typeof globalThis.fetch;
+  /** Override or disable the bounded Run402-Client metadata header. */
+  clientMetadata?: Run402ClientMetadata | false;
+  /** Client package version to report; defaults to the SDK package version. */
+  clientVersion?: string;
+  /** SDK package version to report; defaults to the SDK package version. */
+  sdkVersion?: string;
 }
 
 /** Run402 instance with Node-only helpers wired in: `sites.deployDir`
@@ -103,6 +110,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
     fetch:
       opts.fetch ??
       (opts.disablePaidFetch ? globalThis.fetch.bind(globalThis) : createLazyPaidFetch()),
+    clientMetadata: nodeClientMetadata(opts),
   };
   const base = new Run402(runOpts);
 
@@ -139,6 +147,29 @@ function inferTargetKind(apiBase: string, explicitApiBase: boolean): NodeActionT
 
 function stripSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+const SDK_PACKAGE_VERSION = readSdkPackageVersion();
+
+function nodeClientMetadata(opts: NodeRun402Options): Run402ClientMetadata | false {
+  if (opts.clientMetadata === false) return false;
+  const base = opts.clientMetadata && typeof opts.clientMetadata === "object" ? opts.clientMetadata : {};
+  const version = opts.clientVersion ?? base.version ?? SDK_PACKAGE_VERSION;
+  const sdkVersion = opts.sdkVersion ?? base.sdkVersion ?? SDK_PACKAGE_VERSION;
+  return {
+    surface: base.surface ?? opts.surface ?? "sdk",
+    ...(version ? { version } : {}),
+    ...(sdkVersion ? { sdkVersion } : {}),
+  };
+}
+
+function readSdkPackageVersion(): string | undefined {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export { NodeSites } from "./sites-node.js";

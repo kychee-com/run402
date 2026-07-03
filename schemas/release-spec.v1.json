@@ -165,7 +165,7 @@
     "functionSpec": {
       "type": "object",
       "additionalProperties": false,
-      "description": "FunctionSpec. schedule is a sibling of runtime/source/files/config, not config.schedule. Unified deploy manifests do not accept deps in this version; bundle dependencies into source or use run402 functions deploy.",
+      "description": "FunctionSpec. schedule is a sibling of runtime/source/files/config, not config.schedule.",
       "properties": {
         "runtime": { "enum": ["node22"] },
         "source": { "$ref": "#/$defs/fileEntry" },
@@ -190,7 +190,61 @@
             { "type": "string", "description": "5-field cron expression." },
             { "type": "null", "description": "Remove an existing schedule in patch mode." }
           ]
+        },
+        "deps": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "triggers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/functionTrigger" }
+        },
+        "requireAuth": { "type": "boolean" },
+        "require_auth": { "type": "boolean" },
+        "requireRole": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/functionRequireRole" }
+          ]
+        },
+        "require_role": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/functionRequireRole" }
+          ]
+        },
+        "class": { "enum": ["ssr", "standard"] },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
         }
+      }
+    },
+    "functionTrigger": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "functionRequireRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["table", "id_column", "role_column", "allowed"],
+      "properties": {
+        "table": { "type": "string", "minLength": 1 },
+        "id_column": { "type": "string", "minLength": 1 },
+        "role_column": { "type": "string", "minLength": 1 },
+        "allowed": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "cache_ttl": { "type": "integer", "minimum": 0 },
+        "on_deny": { "enum": ["envelope", "redirect"] },
+        "sign_in_path": { "type": "string", "minLength": 1 }
       }
     },
     "site": {

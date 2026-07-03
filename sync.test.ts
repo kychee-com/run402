@@ -1705,6 +1705,8 @@ describe("agent deploy-friction docs stay visible", () => {
         [/--stdin/, "secret stdin guidance"],
         [/--allow-warning <code>/, "warning-code acknowledgement flag"],
         [/--final-only/, "final-only deploy output"],
+        [/cli\.update_available/, "CLI stale-version update notice"],
+        [/doctor --refresh/, "CLI live update check"],
         [/Function authoring limits by tier/, "tier function caps"],
         [/BAD_FIELD/, "structured tier preflight errors"],
         [/ai\.generateImage/, "runtime image helper"],
@@ -1717,6 +1719,7 @@ describe("agent deploy-friction docs stay visible", () => {
         [/required-id `triggers\[\]`/s, "schedule trigger placement"],
         [/Each scheduled tick creates a durable function run/s, "schedule trigger durable run behavior"],
         [/allowWarningCodes/, "SDK warning-code acknowledgement"],
+        [/Run402-Client/, "SDK client metadata header"],
         [/acknowledge_readonly/, "route-level readonly acknowledgement"],
         [/function_limits/, "tier status function caps"],
         [/BAD_FIELD/, "structured tier preflight errors"],
@@ -1755,6 +1758,7 @@ describe("agent deploy-friction docs stay visible", () => {
       file: "sdk/README.md",
       patterns: [
         [/allowWarningCodes/, "SDK README warning-code acknowledgement"],
+        [/Run402-Client/, "SDK README client metadata header"],
         [/BAD_FIELD/, "SDK README tier preflight error"],
         [/activation_pending/, "SDK README activation failure classifier"],
       ],
@@ -1774,6 +1778,9 @@ describe("agent deploy-friction docs stay visible", () => {
     const schemaText = readFileSync(RELEASE_SPEC_SCHEMA_PATH, "utf-8");
     assert.match(schemaText, /acknowledge_readonly/, "schema must document readonly route acknowledgement");
     assert.match(schemaText, /schedule/, "schema must document function schedules");
+    assert.match(schemaText, /capabilities/, "schema must document function capabilities");
+    assert.match(schemaText, /require_auth/, "schema must document function auth gates");
+    assert.match(schemaText, /"class": \{ "enum": \["ssr", "standard"\] \}/, "schema must document SSR function class");
 
     const deployTypes = readFileSync(join(__dirname, "sdk/src/namespaces/deploy.types.ts"), "utf-8");
     assert.match(deployTypes, /allowWarningCodes/, "ApplyOptions must expose allowWarningCodes");

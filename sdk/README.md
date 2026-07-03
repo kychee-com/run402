@@ -13,6 +13,8 @@ npm install @run402/sdk
 | `@run402/sdk/node` | Running in Node 22 with the local profile state, project-key credential cache, and allowance. Auto-loads the configured API base, profile `credentials/project-keys.v1.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk` | Isomorphic — works in Node, Deno, Bun, V8 isolates. No filesystem access. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). |
 
+The Node entry sends bounded client-version metadata on gateway requests using the unprefixed `Run402-Client` header, for example `surface="sdk", version="3.7.14", sdk="3.7.14"`. The CLI passes `surface: "cli"`, so gateway compatibility hints can distinguish CLI-created SDK traffic from direct SDK callers. Metadata never includes local paths, package manager details, wallet/org/project ids, secrets, or install confidence. The isomorphic entry does not send this header by default; pass `clientMetadata` explicitly only in runtimes where custom headers are expected.
+
 ## Quick start (Node)
 
 ```ts

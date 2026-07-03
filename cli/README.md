@@ -7,13 +7,13 @@ For the full CLI reference (every flag, every subcommand) see **<https://docs.ru
 ## Install
 
 ```bash
-npm install -g run402
+npm install -g run402@latest
 ```
 
 Or run without installing:
 
 ```bash
-npx run402 <command>
+npx -y run402@latest <command>
 ```
 
 ## 30-second start
@@ -28,6 +28,8 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 ## Output contract
 
 Every command prints **JSON to stdout**, **JSON errors to stderr**, and exits **0 on success / 1 on failure**. Designed for shells, scripts, and agent loops — pipe everything to `jq`.
+
+Stale CLI notices are advisory and never pollute success stdout. When a cached npm check says a newer `run402` exists, normal commands may emit a structured `cli.update_available` JSON object on stderr, or an NDJSON event in `--json-stream`. Run `run402 doctor --refresh` for the explicit live check; it reports whether this invocation is local, global, npx/npm exec, pnpm/yarn/bun, or custom, and includes an `upgrade_client` action with both `command` and `argv`.
 
 ## Common commands
 

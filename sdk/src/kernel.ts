@@ -34,6 +34,13 @@ export interface KernelConfig {
   apiBase: string;
   fetch: typeof globalThis.fetch;
   credentials: CredentialsProvider;
+  clientMetadata?: Run402ClientMetadata | false;
+}
+
+export interface Run402ClientMetadata {
+  surface?: string;
+  version?: string;
+  sdkVersion?: string;
 }
 
 export interface RequestOptions {
@@ -108,6 +115,9 @@ export async function requestWithResponse<T>(
   const url = `${apiBase}${path}`;
 
   const fetchHeaders: Record<string, string> = { ...headers };
+  for (const [k, v] of Object.entries(clientMetadataHeaders(kernel.clientMetadata))) {
+    if (!hasHeader(fetchHeaders, k)) fetchHeaders[k] = v;
+  }
 
   if (withAuth) {
     const auth = await credentials.getAuth(path, opts.authMeta);
@@ -250,4 +260,30 @@ export function buildClient(kernel: KernelConfig): Client {
     credentials: kernel.credentials,
     fetch: kernel.fetch,
   };
+}
+
+export function clientMetadataHeaders(metadata: KernelConfig["clientMetadata"]): Record<string, string> {
+  if (!metadata || typeof metadata !== "object") return {};
+  const parts: string[] = [];
+  const surface = sanitizeMetadataToken(metadata.surface, 40);
+  const version = sanitizeMetadataToken(metadata.version, 64);
+  const sdk = sanitizeMetadataToken(metadata.sdkVersion, 64);
+  if (surface) parts.push(`surface=${quoteStructuredValue(surface)}`);
+  if (version) parts.push(`version=${quoteStructuredValue(version)}`);
+  if (sdk) parts.push(`sdk=${quoteStructuredValue(sdk)}`);
+  const value = parts.join(", ");
+  if (!value || value.length > 200) return {};
+  return { "Run402-Client": value };
+}
+
+function sanitizeMetadataToken(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > maxLength) return null;
+  if (!/^[A-Za-z0-9_.+-]+$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function quoteStructuredValue(value: string): string {
+  return `"${value.replace(/["\\]/g, "\\$&")}"`;
 }

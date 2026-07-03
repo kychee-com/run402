@@ -21,7 +21,7 @@ describe("ReleaseSpec JSON Schema", () => {
     assert.ok(schema.properties.project_id);
   });
 
-  it("documents FunctionSpec schedule and rejects deps by shape", () => {
+  it("documents FunctionSpec scheduling, deps, gates, and rejects unknown fields", () => {
     const schema = readSchema();
     const functionSpec = schema.$defs.functionSpec;
 
@@ -33,7 +33,14 @@ describe("ReleaseSpec JSON Schema", () => {
     assert.ok(functionSpec.properties.config.properties.memoryMb);
     assert.ok(functionSpec.properties.schedule);
     assert.equal(functionSpec.additionalProperties, false);
-    assert.equal(Object.hasOwn(functionSpec.properties, "deps"), false);
+    assert.equal(functionSpec.properties.deps.items.type, "string");
+    assert.ok(functionSpec.properties.triggers.items.$ref);
+    assert.equal(functionSpec.properties.requireAuth.type, "boolean");
+    assert.equal(functionSpec.properties.require_auth.type, "boolean");
+    assert.ok(functionSpec.properties.requireRole.oneOf);
+    assert.ok(functionSpec.properties.require_role.oneOf);
+    assert.deepEqual(functionSpec.properties.class.enum, ["ssr", "standard"]);
+    assert.equal(functionSpec.properties.capabilities.items.type, "string");
   });
 
   it("covers public paths, routes, subdomains, and known cache class documentation", () => {

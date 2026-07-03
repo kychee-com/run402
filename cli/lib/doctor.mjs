@@ -19,22 +19,25 @@ import {
   scanSourceTree,
   SCAN_SEVERITY,
 } from "./doctor-source-scan.mjs";
+import { doctorUpdateCheck } from "./update-check.mjs";
 
 const HELP = `run402 doctor — Health and config diagnostics
 
 Usage:
-  run402 doctor [--verbose] [--no-scan] [--scan-dir <D>]
+  run402 doctor [--verbose] [--refresh] [--no-scan] [--scan-dir <D>]
 
 Output:
   Stdout is a JSON report { ok, checks: [{ name, status, value?, hint?, message? }] }.
 
 Options:
   --verbose      Include extra detail (timing, error messages)
+  --refresh      Wait for a bounded live npm version check for the run402 CLI
   --no-scan      Skip the source-tree scan (config / health checks only)
   --scan-dir D   Scan a custom directory instead of \`<cwd>/src\`
 
 Checks performed:
   - Config directory exists and is writable
+  - Installed run402 CLI version and update guidance
   - Allowance is configured and on a valid rail (x402 / mpp)
   - Keystore has at least one wallet
   - API_BASE is reachable (network check via /health)
@@ -60,6 +63,7 @@ export async function run(sub, args = []) {
     return;
   }
   const verbose = all.includes("--verbose");
+  const refresh = all.includes("--refresh");
   const skipScan = all.includes("--no-scan");
   const scanDirArgIdx = all.indexOf("--scan-dir");
   const scanDirOverride = scanDirArgIdx >= 0 ? all[scanDirArgIdx + 1] : null;
@@ -83,6 +87,18 @@ export async function run(sub, args = []) {
     checks.push({
       name: "config_dir",
       status: "error",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // 1b. CLI version/update state. This is advisory: stale or unknown version
+  // state should help the user, not hide the rest of doctor.
+  try {
+    checks.push(await doctorUpdateCheck({ refresh }));
+  } catch (err) {
+    checks.push({
+      name: "cli_update",
+      status: "unknown",
       message: err instanceof Error ? err.message : String(err),
     });
   }
@@ -324,7 +340,7 @@ export async function run(sub, args = []) {
   // 'warning' counts as ok for exit-code purposes — gaps are surfaced in
   // output but don't fail the doctor. Only hard 'error' / 'missing' /
   // 'empty' fail.
-  const allOk = checks.every((c) => c.status === "ok" || c.status === "warning" || c.status === "skipped");
+  const allOk = checks.every((c) => c.status === "ok" || c.status === "warning" || c.status === "skipped" || c.status === "unknown");
 
   console.log(JSON.stringify({ ok: allOk, checks }, null, 2));
   process.exit(allOk ? 0 : 1);

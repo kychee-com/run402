@@ -6,7 +6,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { request, type KernelConfig } from "./kernel.js";
+import { clientMetadataHeaders, request, type KernelConfig } from "./kernel.js";
 import {
   ApiError,
   NetworkError,
@@ -86,6 +86,57 @@ describe("kernel request", () => {
     );
     const body = await request<string>(kernel, "/ping", { context: "pinging" });
     assert.equal(body, "plain text body");
+    exitSpy.restore();
+  });
+
+  it("attaches bounded unprefixed client metadata when provided", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    const kernel: KernelConfig = {
+      ...makeKernel(async (_input, init) => {
+        capturedHeaders = init?.headers as Record<string, string>;
+        return makeRes({ ok: true });
+      }),
+      clientMetadata: {
+        surface: "cli",
+        version: "3.7.14",
+        sdkVersion: "3.7.14",
+      },
+    };
+    await request(kernel, "/projects/v1", { context: "listing projects" });
+    assert.equal(
+      capturedHeaders["Run402-Client"],
+      'surface="cli", version="3.7.14", sdk="3.7.14"',
+    );
+    assert.equal(Object.keys(capturedHeaders).some((name) => name.startsWith("X-Run402-Client")), false);
+    assert.doesNotMatch(capturedHeaders["Run402-Client"], /cwd|wallet|project|package_manager|secret/i);
+    exitSpy.restore();
+  });
+
+  it("does not override caller-provided metadata headers and omits invalid values", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    const kernel: KernelConfig = {
+      ...makeKernel(async (_input, init) => {
+        capturedHeaders = init?.headers as Record<string, string>;
+        return makeRes({ ok: true });
+      }),
+      clientMetadata: {
+        surface: "sdk",
+        version: "3.7.14",
+        sdkVersion: "3.7.14",
+      },
+    };
+    await request(kernel, "/projects/v1", {
+      context: "listing projects",
+      headers: { "run402-client": 'surface="custom", version="1.0.0"' },
+    });
+    assert.equal(capturedHeaders["run402-client"], 'surface="custom", version="1.0.0"');
+    assert.equal(capturedHeaders["Run402-Client"], undefined);
+
+    assert.deepEqual(clientMetadataHeaders({
+      surface: "../cli",
+      version: "x".repeat(100),
+      sdkVersion: "3.7.14 with spaces",
+    }), {});
     exitSpy.restore();
   });
 

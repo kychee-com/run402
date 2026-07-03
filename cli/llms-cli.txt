@@ -1,6 +1,6 @@
 # Run402 CLI -- Agent Reference
 
-> CLI: `npm install -g run402`
+> CLI: `npm install -g run402@latest`
 > SDK: `npm install @run402/sdk` (typed TS client; same namespaces; Node/Deno/Bun/V8 isolates)
 > Docs URL: https://docs.run402.com/llms-cli.txt
 > API Docs: https://run402.com/llms.txt
@@ -20,16 +20,18 @@ Agent-critical facts:
 Install + deploy:
 
 ```bash
-npm install -g run402
+npm install -g run402@latest
 run402 up --name "my-app" -y                 # validates manifest, bootstraps prerequisites, deploys
 ```
 
 `up` is the agent-first path when the repo has `run402.deploy.json` or `app.json`. It is a thin CLI shim over the SDK action runner; the SDK owns manifest validation, project resolution, recursive prerequisites, idempotency-key derivation, and deploy apply. Provision before writing frontend code when you need the real `anon_key` embedded. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
 
+CLI update awareness is advisory and fail-open. Normal commands never wait for npm; they use cached update state and keep success stdout as the command payload. Stale notices appear as structured JSON on stderr, or as `{"type":"cli.update_available",...}` in `--json-stream`. `RUN402_NO_UPDATE_CHECK=1` suppresses notices/checks; CI skips live checks unless `RUN402_UPDATE_CHECK=1`; `run402 doctor --refresh` is the explicit bounded live check.
+
 Self-hosted Run402 Core target:
 
 ```bash
-npm install -g run402
+npm install -g run402@latest
 run402 init --api-base=http://my-core:4020
 run402 projects provision --name "my-app"    # returns anon_key, service_key, project_id
 run402 deploy apply --manifest app.json      # uses the active Core project
@@ -68,7 +70,7 @@ Uniform contract:
 
 ## `run402 up` (SDK action runner)
 
-`run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
+`run402 up [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--json|--json-stream|--human] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
 
 Use `up` for a repo-level app deploy when the workspace has a deploy manifest. It discovers `run402.deploy.json`, then `app.json` under `--dir` / cwd, validates the manifest and filesystem references before any mutation, then executes the SDK action plan.
 
@@ -142,7 +144,7 @@ Examples:
 ## Step 1: Install
 
 ```bash
-npm install -g run402
+npm install -g run402@latest
 ```
 
 ## Step 2: Set Up Allowance and Funding
@@ -1476,7 +1478,7 @@ Every invalidate returns `{ deleted, generation, host, path? }`. `generation` is
 ### doctor
 Health + config diagnostics. Agent-DX entrypoint — agents run this first to verify environment before attempting anything else.
 
-- `run402 doctor [--verbose] [--no-scan] [--scan-dir <D>]` — checks: config dir presence, allowance + rail, keystore wallet count, API base reachability, active tier + lifecycle state, operator health snapshot (binding state + per-attempt verification failure detail since v2.4 / gateway v1.56), **source scan** (auth-aware-ssr). Exit 0 on all-pass, 1 on any failure. Stdout is JSON `{ ok: boolean, checks: [{ name, status, value?, hint?, message? }] }`. When operator email verification is `pending`, the doctor surfaces the per-reason hint from `email_verification.last_challenge.hint` along with `attempt_count` / `remaining_attempts` so the operator sees what to fix. The source scan walks `<cwd>/src` and flags hallucinated SDK auth names (`R402_AUTH_UNKNOWN_EXPORT`), state-changing GET handlers (`R402_AUTH_STATE_CHANGING_GET`), `auth.*` calls in `export const prerender = true` pages (`R402_AUTH_PRERENDERED`), and direct mutation of `internal.sessions.authz_version` (`R402_AUTH_AUTHZ_VERSION_PROHIBITED`). `--no-scan` skips the scan (config-only checks). `--scan-dir <D>` overrides the scan root. `run402 deploy apply` runs the scan as pre-flight and refuses to deploy on any `error`-severity finding (bypass with `RUN402_DEPLOY_SKIP_SCAN=1`). (The legacy `--json` flag is removed — JSON is the default.)
+- `run402 doctor [--verbose] [--refresh] [--no-scan] [--scan-dir <D>]` — checks: config dir presence, installed CLI update state (`cli_update`), allowance + rail, keystore wallet count, API base reachability, active tier + lifecycle state, operator health snapshot (binding state + per-attempt verification failure detail since v2.4 / gateway v1.56), **source scan** (auth-aware-ssr). `--refresh` waits for a bounded live npm version check; plain doctor uses cache/unknown state. Exit 0 on all-pass, 1 on any failure. Stdout is JSON `{ ok: boolean, checks: [{ name, status, value?, hint?, message? }] }`. When stale, `cli_update.value.next_actions[]` includes an `upgrade_client` action with `command`, `argv`, install context, confidence, `cwd`, and mutation flags. When operator email verification is `pending`, the doctor surfaces the per-reason hint from `email_verification.last_challenge.hint` along with `attempt_count` / `remaining_attempts` so the operator sees what to fix. The source scan walks `<cwd>/src` and flags hallucinated SDK auth names (`R402_AUTH_UNKNOWN_EXPORT`), state-changing GET handlers (`R402_AUTH_STATE_CHANGING_GET`), `auth.*` calls in `export const prerender = true` pages (`R402_AUTH_PRERENDERED`), and direct mutation of `internal.sessions.authz_version` (`R402_AUTH_AUTHZ_VERSION_PROHIBITED`). `--no-scan` skips the scan (config-only checks). `--scan-dir <D>` overrides the scan root. `run402 deploy apply` runs the scan as pre-flight and refuses to deploy on any `error`-severity finding (bypass with `RUN402_DEPLOY_SKIP_SCAN=1`). (The legacy `--json` flag is removed — JSON is the default.)
 
 ### dev
 Astro dev wrapper. Loads `.env.local`, verifies `RUN402_PROJECT_ID` + `RUN402_SERVICE_KEY`, then spawns `astro dev` with the env inherited.

@@ -30,7 +30,7 @@ These interfaces share a single typed kernel where appropriate: `@run402/sdk`. M
 ## 30-second start
 
 ```bash
-npm install -g run402
+npm install -g run402@latest
 run402 up --name my-app -y                           # bootstrap allowance/tier/project/link, then deploy manifest
 run402 subdomains claim my-app                       # → https://my-app.run402.com
 ```
@@ -38,6 +38,8 @@ run402 subdomains claim my-app                       # → https://my-app.run402
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
 Prefer `run402 up` when a repo has `run402.deploy.json` or `app.json`. The CLI stays a thin shim over the Node SDK action runner (`r.actions.run(...)` / `r.up(...)`): it validates the manifest first, then recursively performs only the missing prerequisites. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--name` is project creation/link metadata only; it is not part of the deploy manifest and never renames an existing project. Use `--check` for local validation and `--plan` for gateway-reviewed intent before applying.
+
+The CLI checks for newer `run402` releases opportunistically and fail-open. Success stdout stays the command result; stale-version notices are advisory JSON on stderr, or `cli.update_available` NDJSON events in `--json-stream`. `run402 doctor --refresh` is the explicit live npm check and reports the install context plus the safest upgrade command for local, global, or ephemeral installs.
 
 Typed deploy configs use the same commands. Executable configs are trusted local code, so v1 only runs them when passed explicitly:
 
@@ -327,7 +329,7 @@ The SDK is organised as 26 namespaces: `actions` (Node recursive action runner),
 ## CLI — `run402`
 
 ```bash
-npm install -g run402
+npm install -g run402@latest
 ```
 
 Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure — designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://docs.run402.com/llms-cli.txt>).

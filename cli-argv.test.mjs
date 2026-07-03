@@ -12,11 +12,16 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import { writeUpdateCache } from "./cli/lib/update-check.mjs";
 
 const tempDir = mkdtempSync(join(tmpdir(), "run402-argv-"));
+const updateCachePath = join(tempDir, "cli-update-check.json");
 const API = "https://test-api.run402.com";
+const CURRENT_CLI_VERSION = JSON.parse(readFileSync(new URL("./cli/package.json", import.meta.url), "utf8")).version;
+const STALE_LATEST_VERSION = nextPatchVersion(CURRENT_CLI_VERSION);
 process.env.RUN402_CONFIG_DIR = tempDir;
 process.env.RUN402_API_BASE = API;
+process.env.RUN402_NPM_REGISTRY = `${API}/npm/`;
 
 const originalFetch = globalThis.fetch;
 const originalLog = console.log;
@@ -47,10 +52,20 @@ function requestJsonBody(init) {
   return JSON.parse(init.body);
 }
 
+function nextPatchVersion(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  assert.ok(match, `expected simple package version, got ${version}`);
+  return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
+}
+
 function mockFetch(input, init) {
   const info = requestInfo(input, init);
   calls.push(info);
   const pathNoQuery = info.path.split("?")[0];
+
+  if (pathNoQuery === "/npm/run402/latest" && info.method === "GET") {
+    return Promise.resolve(json({ version: CURRENT_CLI_VERSION }));
+  }
 
   if (pathNoQuery === "/storage/v1/blobs" && info.method === "GET") {
     return Promise.resolve(json({ blobs: [{ key: "file.txt" }] }));
@@ -202,11 +217,13 @@ after(() => {
   Object.defineProperty(process, "stdin", { value: originalStdin, configurable: true });
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
+  delete process.env.RUN402_NPM_REGISTRY;
   rmSync(tempDir, { recursive: true, force: true });
 });
 
 beforeEach(() => {
   calls = [];
+  rmSync(updateCachePath, { force: true });
   captureStop();
 });
 
@@ -1827,6 +1844,49 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     const parsed = JSON.parse(out);
     assert.equal(typeof parsed.ok, "boolean", "doctor stdout should be { ok, checks }");
     assert.ok(Array.isArray(parsed.checks), "doctor stdout should have checks array");
+  });
+
+  it("doctor reports stale cli_update state and --refresh updates it in the JSON payload", async () => {
+    writeUpdateCache({
+      current: CURRENT_CLI_VERSION,
+      latest: STALE_LATEST_VERSION,
+      checked_at: "2026-07-03T10:18:20.000Z",
+      source: "cache",
+      error: null,
+    }, { path: updateCachePath });
+
+    const { run } = await import("./cli/lib/doctor.mjs");
+    captureStart();
+    let threw = null;
+    try {
+      await run(undefined, ["--no-scan"]);
+    } catch (e) { threw = e; }
+    finally {
+      captureStop();
+    }
+    assert.ok(threw, "doctor should call process.exit");
+    let parsed = JSON.parse(stdout.join("\n").trim());
+    let check = parsed.checks.find((entry) => entry.name === "cli_update");
+    assert.equal(check.status, "warning");
+    assert.equal(check.value.current, CURRENT_CLI_VERSION);
+    assert.equal(check.value.latest, STALE_LATEST_VERSION);
+    assert.equal(check.value.next_actions[0].type, "upgrade_client");
+    assert.ok(Array.isArray(check.value.next_actions[0].argv));
+
+    captureStart();
+    threw = null;
+    try {
+      await run(undefined, ["--refresh", "--no-scan"]);
+    } catch (e) { threw = e; }
+    finally {
+      captureStop();
+    }
+    assert.ok(threw, "doctor should call process.exit");
+    parsed = JSON.parse(stdout.join("\n").trim());
+    check = parsed.checks.find((entry) => entry.name === "cli_update");
+    assert.equal(check.status, "ok");
+    assert.equal(check.value.latest, CURRENT_CLI_VERSION);
+    assert.ok(calls.some((call) => call.path === "/npm/run402/latest"));
   });
 });
 

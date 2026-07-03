@@ -9,10 +9,16 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **Domains:** custom-domain commands default to principal auth with explicit `project_id`; `--auth service-key` opts into the local service-key cache path and reports `PROJECT_CREDENTIAL_NOT_FOUND` when the selected profile lacks keys.
 - **Tests/docs:** sync now tracks the new local credential-cache commands and guards custom-domain handlers against local cache preflights; CLI docs, README, SDK README, SKILL, and OpenClaw docs teach the server-vs-cache split.
 
+## Unreleased — CLI update awareness and client metadata
+
+- **CLI:** `run402 up` and other deploy-oriented flows can now surface cached stale-CLI notices without changing success stdout or exit code. Notices are structured JSON on stderr, or `cli.update_available` NDJSON events in `--json-stream`, with install-context-aware `upgrade_client` actions for local, global, npx/npm exec, pnpm/yarn/bun, and custom-path invocations. `run402 doctor --refresh` is the explicit bounded live npm check.
+- **SDK:** `@run402/sdk/node` attaches bounded unprefixed `Run402-Client` metadata on gateway requests (`surface`, client version, SDK version). Direct Node SDK callers identify as `sdk`; CLI-created clients identify as `cli`; browser/isomorphic clients remain header-free unless explicitly opted in.
+- **Tests/docs:** added update-check cache/fail-open/install-context coverage, CLI stdout/stderr channel tests, SDK metadata tests, and docs for the advisory update contract.
+
 ## Unreleased — self-hosted Core target config
 
-- **CLI:** `run402 init --api-base=<url>` now persists the active API target for the current profile without creating a Cloud allowance, requesting faucet funds, or requiring a Cloud tier. `run402 projects provision --name ...` and `run402 deploy apply --manifest ...` use that configured Core target and active project.
-- **SDK/MCP:** `@run402/sdk/node` and the MCP SDK singleton inherit the same configured API base by default; explicit constructor options or `RUN402_API_BASE` still override it. Function capabilities now flow through SDK/CLI manifest normalization and the Astro release slice marks SSR functions with `capabilities: ["astro.ssr.v1"]` for Core compatibility.
+- **CLI:** `run402 init --api-base=<url>` now persists the active API target for the current profile without creating a Cloud allowance, requesting faucet funds, or requiring a Cloud tier. `run402 projects provision --name ...` and `run402 deploy apply --manifest ...` use that configured Core target and active project. `run402 up` now exits nonzero when app HTTP verification fails after deployment instead of looking successful while recording the app install as failed.
+- **SDK/MCP:** `@run402/sdk/node` and the MCP SDK singleton inherit the same configured API base by default; explicit constructor options or `RUN402_API_BASE` still override it. Function capabilities now flow through SDK/CLI manifest normalization, the ReleaseSpec schema documents the same function metadata accepted by the normalizer, and the Astro release slice marks SSR functions with `capabilities: ["astro.ssr.v1"]` for Core compatibility.
 - **Tests/docs:** added focused Core-target coverage for init, project provision, deploy apply, SDK config loading, and config precedence; CLI/OpenClaw/SDK docs now show the self-hosted Core command path.
 
 ## Unreleased — close final CLI plain-text default

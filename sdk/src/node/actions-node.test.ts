@@ -176,7 +176,7 @@ test("up app apply blocks with name guidance when manifest needs input.name", as
     assert.equal(result.result?.app_result?.status, "blocked");
     assert.equal(result.result?.app_result?.diagnostics[0]?.code, "PROJECT_REQUIRED");
     assert.match(result.result?.app_result?.diagnostics[0]?.message ?? "", /instance name/);
-    assert.equal(result.result?.app_result?.next_actions[0]?.command, "run402 up --name kysigned3 --yes");
+    assert.equal(result.result?.app_result?.next_actions[0]?.command, "run402 up --name <name> --yes");
     assert.equal(result.result?.app_result?.steps.find((step) => step.id === "project.ensure")?.status, "blocked");
     assert.deepEqual(calls, []);
   } finally {
@@ -382,6 +382,7 @@ writeFileSync("frontend/dist/index.html", "<h1>" + process.env.RUN402_PUBLIC_ORI
   const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
   process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
   const calls: string[] = [];
+  const streamed: unknown[] = [];
   const secrets: Array<{ key: string; value: string }> = [];
   const appliedSpecs: unknown[] = [];
   const installStates: Array<Record<string, unknown>> = [];
@@ -397,7 +398,14 @@ writeFileSync("frontend/dist/index.html", "<h1>" + process.env.RUN402_PUBLIC_ORI
 
   try {
     const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
-    const result = await actions.up({ name: "kysigned3" }, { approval: "yes", idempotencyKey: "app-test" });
+    const result = await actions.up(
+      { name: "kysigned3" },
+      {
+        approval: "yes",
+        idempotencyKey: "app-test",
+        onEvent: (event) => streamed.push(event),
+      },
+    );
 
     assert.equal(result.result?.project_id, "prj_new");
     assert.equal(result.result?.app_result?.status, "succeeded");
@@ -434,6 +442,13 @@ writeFileSync("frontend/dist/index.html", "<h1>" + process.env.RUN402_PUBLIC_ORI
     assert.equal("error" in installStates[0]!, false);
     assert.equal("last_operation_id" in installStates[0]!, false);
     assert.equal(installStates[1]?.last_operation_id, "op_123");
+    assert.ok(streamed.some((event) => {
+      const step = (event as { step?: { action?: string; details?: Record<string, unknown> } }).step;
+      return step?.action === "app.build" &&
+        step.details?.current_command_id === "build" &&
+        step.details?.current_command_index === 1 &&
+        step.details?.command_count === 1;
+    }), "expected app.build progress to include the current command");
     assert.deepEqual((installStates[1]?.resources as { mailboxes?: unknown })?.mailboxes, {
       forward_to_sign: {
         id: "mbx_forward_to_sign",

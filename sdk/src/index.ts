@@ -6,7 +6,7 @@
  * defaults (keystore + allowance + x402), use `@run402/sdk/node` instead.
  */
 
-import { buildClient, type Client, type KernelConfig } from "./kernel.js";
+import { buildClient, type Client, type KernelConfig, type Run402ClientMetadata } from "./kernel.js";
 import type { CredentialsProvider } from "./credentials.js";
 import { Projects } from "./namespaces/projects.js";
 import { Assets } from "./namespaces/assets.js";
@@ -51,6 +51,13 @@ export interface Run402Options {
    * session-bound fetch provided by their supervisor.
    */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Optional bounded client-version metadata for Node/supervised runtimes.
+   * The SDK does not set this automatically in the isomorphic entry point, so
+   * browser clients avoid surprise CORS preflights unless the caller explicitly
+   * opts in.
+   */
+  clientMetadata?: Run402ClientMetadata | false;
 }
 
 export class Run402 {
@@ -147,6 +154,7 @@ export class Run402 {
       apiBase: opts.apiBase,
       fetch: opts.fetch ?? globalThis.fetch.bind(globalThis),
       credentials: opts.credentials,
+      clientMetadata: opts.clientMetadata,
     };
     this.apiBase = opts.apiBase;
     const client: Client = buildClient(kernel);
@@ -343,6 +351,8 @@ export function fromParts(...parts: Array<string | number | boolean | null | und
 export function run402(opts: Run402Options): Run402 {
   return new Run402(opts);
 }
+
+export type { Run402ClientMetadata } from "./kernel.js";
 
 export {
   Run402Error,

@@ -1,9 +1,16 @@
 import { after, before, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { writeUpdateCache } from "./cli/lib/update-check.mjs";
 
 const originalLog = console.log;
 const originalError = console.error;
 const originalExit = process.exit;
+const originalConfigDir = process.env.RUN402_CONFIG_DIR;
+const CURRENT_CLI_VERSION = JSON.parse(readFileSync(new URL("./cli/package.json", import.meta.url), "utf8")).version;
+const STALE_LATEST_VERSION = nextPatchVersion(CURRENT_CLI_VERSION);
 
 let stdout = [];
 let stderr = [];
@@ -68,13 +75,36 @@ after(() => {
   console.log = originalLog;
   console.error = originalError;
   process.exit = originalExit;
+  if (originalConfigDir === undefined) delete process.env.RUN402_CONFIG_DIR;
+  else process.env.RUN402_CONFIG_DIR = originalConfigDir;
 });
 
 beforeEach(() => {
   upCalls = [];
   upImpl = async () => ({ ok: true });
   captureStop();
+  if (originalConfigDir === undefined) delete process.env.RUN402_CONFIG_DIR;
+  else process.env.RUN402_CONFIG_DIR = originalConfigDir;
 });
+
+function seedStaleUpdateCache() {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-update-"));
+  process.env.RUN402_CONFIG_DIR = dir;
+  writeUpdateCache({
+    current: CURRENT_CLI_VERSION,
+    latest: STALE_LATEST_VERSION,
+    checked_at: "2026-07-03T10:18:20.000Z",
+    source: "cache",
+    error: null,
+  }, { path: join(dir, "cli-update-check.json") });
+  return dir;
+}
+
+function nextPatchVersion(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  assert.ok(match, `expected simple package version, got ${version}`);
+  return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
+}
 
 describe("up argv and JSON output", () => {
   it("passes app-up source, spend, prune, and build controls to the SDK", async () => {
@@ -148,6 +178,67 @@ describe("up argv and JSON output", () => {
       "run402.up.result",
     ]);
     assert.deepEqual(stderr, [], "--json-stream progress belongs on stdout NDJSON only");
+  });
+
+  it("emits stale update notices on stderr without polluting up --json stdout", async () => {
+    const dir = seedStaleUpdateCache();
+    upImpl = async () => ({ ok: true, project_id: "prj_123" });
+    const { run } = await import("./cli/lib/up.mjs");
+
+    captureStart();
+    try {
+      await run([".", "--json"]);
+    } finally {
+      captureStop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    assert.deepEqual(JSON.parse(stdout.join("\n")), { ok: true, project_id: "prj_123" });
+    const notice = stderr.map((line) => JSON.parse(line)).find((line) => line.type === "cli.update_available");
+    assert.equal(notice.current, CURRENT_CLI_VERSION);
+    assert.equal(notice.latest, STALE_LATEST_VERSION);
+  });
+
+  it("emits stale update notices as json-stream events and suppresses non-stream quiet notices", async () => {
+    let dir = seedStaleUpdateCache();
+    upImpl = async () => ({ ok: true });
+    const { run } = await import("./cli/lib/up.mjs");
+
+    captureStart();
+    try {
+      await run([".", "--json-stream"]);
+    } finally {
+      captureStop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    assert.equal(JSON.parse(stdout[0]).type, "cli.update_available");
+    assert.equal(JSON.parse(stdout.at(-1)).type, "run402.up.result");
+    assert.deepEqual(stderr, []);
+
+    dir = seedStaleUpdateCache();
+    captureStart();
+    try {
+      await run([".", "--quiet", "--json"]);
+    } finally {
+      captureStop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+    assert.deepEqual(stderr, []);
+    assert.deepEqual(JSON.parse(stdout.join("\n")), { ok: true });
+  });
+
+  it("keeps failure stderr as the canonical error envelope when an update is cached", async () => {
+    const dir = seedStaleUpdateCache();
+    const { run } = await import("./cli/lib/up.mjs");
+
+    const err = await expectExit1(() => run([".", "--max-spend-usd", "-1"]));
+    rmSync(dir, { recursive: true, force: true });
+
+    assert.equal(err.status, "error");
+    assert.equal(err.code, "BAD_FLAG");
+    assert.equal(err.details.flag, "--max-spend-usd");
+    assert.equal(stderr.filter((line) => line.includes("cli.update_available")).length, 0);
   });
 
   it("prints app-up result JSON by default", async () => {
