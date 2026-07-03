@@ -19,7 +19,7 @@ Two entry points:
 
 | Import | Use when | Bundles |
 |---|---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local keystore + allowance | Auto-loads the configured API base, `~/.config/run402/projects.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/node` | Running in Node 22 with local profile state, project-key cache, and allowance | Auto-loads the configured API base, active project state, local project-key cache, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk/config` | Authoring typed deploy configs that normalize to `ReleaseSpec` | Browser-safe helper descriptors and types: `defineConfig`, `dir`, `file`, `sqlFile`, `nodeFunction`, `Run402ExecutionMode`. No filesystem, env, credential, or network side effects. |
 | `@run402/sdk/node/config` | Loading explicit executable deploy configs in Node | Re-exports config helpers plus `loadDeployManifest`, `loadExecutableDeployConfig`, and `normalizeDeployManifest`. |
 | `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
@@ -70,7 +70,7 @@ await r.up(
 
 For a self-hosted Run402 Core Gateway, run `run402 init --api-base=http://my-core:4020` once. The Node SDK then targets that API base by default; explicit `run402({ apiBase })` still wins.
 
-App build scripts should use `resolveRun402TargetProfile()` instead of parsing `target.json` or `projects.json`:
+App build scripts should use `resolveRun402TargetProfile()` instead of parsing `target.json` or local project-key cache files:
 
 ```ts
 import { resolveRun402TargetProfile } from "@run402/sdk/node";
@@ -127,7 +127,7 @@ The SDK is the canonical kernel. A single typed `Run402` class with one namespac
 - Throws a typed subclass of `Run402Error` on failure
 - Never calls `process.exit`
 
-The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share the configured API target and `~/.config/run402/projects.json` so target selection and credentials carry across surfaces.
+The MCP server's tools and the CLI's subcommands are argv-/schema-parsing wrappers around these methods. They share the configured API target, active project state, allowance, and local project-key cache so target selection and credentials carry across surfaces without treating cached keys as project inventory.
 
 ### Action runner (`@run402/sdk/node`)
 
@@ -256,12 +256,12 @@ units in the name (`expires_in`, `duration_ms`, `elapsedMs`, `ttl_seconds`).
 
 ## Project credentials
 
-After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `service_key`, `schema_slot`. The Node entry's credentials provider auto-saves these to `~/.config/run402/projects.json`.
+After `r.projects.provision(...)`, the result has `project_id`, `anon_key`, `service_key`, `schema_slot`. The Node entry's credentials provider auto-saves keys to the active profile's local project-key cache (`credentials/project-keys.v1.json`). Legacy `projects.json` files are one-way migration input only.
 
 - `anon_key` — read-only by default; safe in browser HTML. RLS policies apply.
 - `service_key` — server-side admin. Never embed in browser code.
 
-Neither key expires. Lease enforcement happens server-side.
+Neither key expires. Lease enforcement happens server-side. Server project reads such as `r.projects.list()`, `r.projects.get(id)`, and `r.projects.use(id)` authorize with the current principal and do not require local cache membership.
 
 ```ts
 await r.projects.use(projectId);             // make this the active project
@@ -875,9 +875,9 @@ demoteUser(id, email): Promise<void>
 
 `r.projects.list(opts?)` reads the named, domain-aware inventory (`GET /projects/v1`, project-findability). Each `ProjectSummary` carries `id`, `name`, `tier`, `site_url` (first claimed run402.com subdomain → else first custom domain → else null), `custom_domains[]`, `status` / `effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `organization_id` (the owning org), `created_by` (provisioning principal), and `created_at`. The response is `{ projects, has_more?, next_cursor?, scope? }`. Membership-scoped by default — org-owned control plane (v1.77+): a wallet *authenticates* (SIWX signed from the provider; mandatory server-side) but does not *own* — this lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Options: `{ org }` filters to one org (`?org_id`; authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `{ limit, cursor }` paginate (`?limit` default 50 max 200, `?after`), and `{ all: true }` reads the operator email-union inventory (`GET /agent/v1/operator/projects`) across every wallet controlling the operator's verified email — pass `{ all: true, token }` (operator-session token) for the cross-wallet union, else `all` falls back to the SIWX wallet's own slice and echoes `scope`. `all` + `org` together throws `LocalError` (mutually exclusive). The legacy thin wallet-scoped shape (`api_calls` / `storage_bytes` via `GET /wallets/v1/:wallet/projects`) is retired; those two fields remain optional on `ProjectSummary` for back-compat but the named inventory does not populate them — read `r.projects.getUsage(id)` for live usage. The v1.56 `projects.pin(id)` SDK method was removed — use `r.admin.org(org_id).pinLease()`.
 
-`r.projects.get(id)` is the authoritative single-project read (`GET /projects/v1/:id`, gateway `project.read`) — a `ProjectDetail` superset of a list row: `project_id`, `public_id`, `name`, `org_id`, `tier`, `effective_status`, `organization_lifecycle_state`, `site_url` (`| null`), `custom_domains[]`, `last_deploy` (`{ release_id, activated_at } | null`), `mailbox[]` (active addresses), `usage` (`{ api_calls, storage_bytes, api_calls_limit, storage_bytes_limit }`), and `created_at`. Caller-authed (SIWX/control-plane, no project keys) and works without the project in the local keystore. It returns NO secrets — authorize-before-reveal means an unauthorized/guessed id throws `Unauthorized` (403, or `NotAuthorizedError` for an org-membership denial), never a not-found oracle. Distinct from the offline, keystore-only `r.projects.info(id)` / `r.projects.keys(id)` (no API call), which remain the way to read the anon/service keys. Scoped form: `(await r.project(id)).projects.get()`.
+`r.projects.get(id)` is the authoritative single-project read (`GET /projects/v1/:id`, gateway `project.read`) — a `ProjectDetail` superset of a list row: `project_id`, `public_id`, `name`, `org_id`, `tier`, `effective_status`, `organization_lifecycle_state`, `site_url` (`| null`), `custom_domains[]`, `last_deploy` (`{ release_id, activated_at } | null`), `mailbox[]` (active addresses), `usage` (`{ api_calls, storage_bytes, api_calls_limit, storage_bytes_limit }`), and `created_at`. Caller-authed (SIWX/control-plane, no project keys) and works without the project in the local project-key cache. It returns NO secrets — authorize-before-reveal means an unauthorized/guessed id throws `Unauthorized` (403, or `NotAuthorizedError` for an org-membership denial), never a not-found oracle. Use `r.credentials.projectKeys.status(...)` / `export(...)` for explicit local cache inspection or secret export. Scoped form: `(await r.project(id)).projects.get()`.
 
-`r.projects.rename(projectId, name)` renames a project (`PATCH /projects/v1/:id`, project-findability) and returns `{ project_id, name }`. Caller-authed (SIWX/control-plane, not a project service key), so it works without the project in the local keystore. Authorization is org `admin`+ (or a `project:write` grant) on the owning org and authorize-before-reveal — an unauthorized/guessed id throws `Unauthorized` (403), never a not-found oracle; an invalid name throws `ApiError` (400). Scoped form: `r.project(id).rename(name)`.
+`r.projects.rename(projectId, name)` renames a project (`PATCH /projects/v1/:id`, project-findability) and returns `{ project_id, name }`. Caller-authed (SIWX/control-plane, not a project service key), so it works without the project in the local project-key cache. Authorization is org `admin`+ (or a `project:write` grant) on the owning org and authorize-before-reveal — an unauthorized/guessed id throws `Unauthorized` (403), never a not-found oracle; an invalid name throws `ApiError` (400). Scoped form: `r.project(id).rename(name)`.
 
 `r.projects.getUsage(id)` still surfaces `effective_status` and `organization_lifecycle_state` because that endpoint scopes to a single project and the derivation collapses per-project `archived_at` / `deleted_at` together with the organization's lifecycle.
 
