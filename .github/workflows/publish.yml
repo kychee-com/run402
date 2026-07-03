@@ -1,6 +1,6 @@
 # Publish run402-mcp + run402 + @run402/sdk to npm via Trusted Publisher OIDC.
 #
-# Triggered manually via `gh workflow run publish.yml -f bump=<patch|minor|major>`.
+# Triggered manually via `gh workflow run publish.yml -f bump=<none|patch|minor|major>`.
 # This is the canonical publish path for the three repo packages as of v2.4.0+
 # (matching the same OIDC model used by .github/workflows/publish-astro.yml).
 #
@@ -35,11 +35,12 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Version bump kind (lockstep across all three packages)'
+        description: 'Version bump kind (lockstep across all three packages), or none to publish committed versions'
         required: true
         default: 'patch'
         type: choice
         options:
+          - none
           - patch
           - minor
           - major
@@ -128,23 +129,28 @@ jobs:
         run: |
           set -euo pipefail
           CUR=$(node -p "require('./package.json').version")
-          # `npm version <kind> --no-git-tag-version` on the root modifies
-          # the root package.json. We then mirror the exact NEW version to
-          # cli/package.json and sdk/package.json via `node -e` (not `npm
-          # version` from inside those dirs — that would bump from the
-          # subpackage's current version, which can diverge after subset
-          # releases).
-          npm version "${{ inputs.bump }}" --no-git-tag-version >/dev/null
-          NEW=$(node -p "require('./package.json').version")
-          node -e "
-            const fs = require('fs');
-            for (const path of ['cli/package.json', 'sdk/package.json']) {
-              const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-              pkg.version = '$NEW';
-              fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
-              console.log('Bumped ' + path + ' to ' + pkg.version);
-            }
-          "
+          if [ "${{ inputs.bump }}" = "none" ]; then
+            NEW="$CUR"
+            echo "No version bump requested; publishing committed lockstep version $NEW"
+          else
+            # `npm version <kind> --no-git-tag-version` on the root modifies
+            # the root package.json. We then mirror the exact NEW version to
+            # cli/package.json and sdk/package.json via `node -e` (not `npm
+            # version` from inside those dirs — that would bump from the
+            # subpackage's current version, which can diverge after subset
+            # releases).
+            npm version "${{ inputs.bump }}" --no-git-tag-version >/dev/null
+            NEW=$(node -p "require('./package.json').version")
+            node -e "
+              const fs = require('fs');
+              for (const path of ['cli/package.json', 'sdk/package.json']) {
+                const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+                pkg.version = '$NEW';
+                fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+                console.log('Bumped ' + path + ' to ' + pkg.version);
+              }
+            "
+          fi
           echo "Lockstep bump: $CUR → $NEW"
           echo "old=$CUR" >> "$GITHUB_OUTPUT"
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
