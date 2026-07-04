@@ -1599,6 +1599,13 @@ export interface PlanResponse {
   asset_sync?: AssetSyncPlanBlock;
   /** v1.48 unified-apply: structured cost preview. Design D18. */
   cost?: PlanCostPreview;
+  /** v1.111+ rehearsal affordance for migration-bearing plans. */
+  rehearsal?: PlanRehearsalEnvelope;
+}
+
+export interface PlanRehearsalEnvelope {
+  available: boolean;
+  rehearse_url: string | null;
 }
 
 /** Resolved AssetRef envelope per `assets.put` entry at plan time. */
@@ -2135,6 +2142,13 @@ export interface CommitResponse {
   urls?: Record<string, string>;
   error?: GatewayDeployError | null;
   subdomain_bindings?: SubdomainBindingFreshness[];
+  restore_point?: CommitRestorePoint;
+  snapshot_skipped_reason?: string;
+}
+
+export interface CommitRestorePoint {
+  snapshot_id: string;
+  restore_url: string;
 }
 
 export interface OperationSnapshot {
@@ -2153,6 +2167,72 @@ export interface OperationSnapshot {
   last_activate_attempt_at: string | null;
   created_at: string;
   updated_at: string;
+  rehearsal_report?: ApplyRehearsalReport;
+}
+
+export type RehearsalTeardownPolicy = "keep" | "on_pass" | "always";
+export type RehearsalStatus = "passed" | "failed";
+export type RehearsalStepStatus = "passed" | "failed" | "skipped";
+
+export interface RehearsePlanOptions {
+  teardown?: RehearsalTeardownPolicy;
+  project?: string;
+}
+
+export interface RehearsalMigrationResult {
+  id: string;
+  status: RehearsalStepStatus;
+  error?: string;
+}
+
+export interface RehearsalCheckResult {
+  name: string;
+  type: "migration" | "static" | "function" | "declared" | (string & {});
+  status: RehearsalStepStatus;
+  target?: string;
+  method?: string;
+  expected_status?: number | number[];
+  actual_status?: number | null;
+  duration_ms: number;
+  error?: string;
+}
+
+export interface ApplyRehearsalReport {
+  kind: "rehearsal_report";
+  status: RehearsalStatus;
+  operation_id: string;
+  source_project_id: string;
+  plan_id: string;
+  branch_project_id: string | null;
+  branch_url: string | null;
+  branch_plan_id: string | null;
+  branch_operation_id: string | null;
+  snapshot_id: string | null;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  migrations: RehearsalMigrationResult[];
+  checks: RehearsalCheckResult[];
+  teardown: {
+    policy: RehearsalTeardownPolicy;
+    action: "kept" | "deleted" | "delete_failed" | "skipped" | (string & {});
+    error?: string;
+  };
+  next_actions: Array<{
+    type: "commit_plan" | "discard_branch" | "keep_branch" | (string & {});
+    command?: string;
+    method?: string;
+    url?: string;
+    message: string;
+  }>;
+  error?: GatewayDeployError;
+}
+
+export interface RehearsePlanResult {
+  operation_id: string;
+  status: OperationStatus;
+  poll_url: string;
+  report: ApplyRehearsalReport;
 }
 
 /** Response from `GET /apply/v1/operations`. The gateway may return a
@@ -2400,6 +2480,8 @@ export interface DeployResult {
    *  app installers can distinguish fresh propagation misses from real verify
    *  failures. */
   subdomain_bindings?: SubdomainBindingFreshness[];
+  restore_point?: CommitRestorePoint;
+  snapshot_skipped_reason?: string;
   /** v1.48 unified-apply: present when the spec carried an `assets` slice.
    *  Built from the plan response's `asset_entries[].asset_ref` (gateway-
    *  authoritative URLs) plus the realised `content.upload.*` event stream

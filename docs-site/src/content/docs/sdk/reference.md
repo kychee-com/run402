@@ -291,6 +291,14 @@ const keys = await r.projects.keys(projectId);
 const info = await r.projects.info(projectId);
 ```
 
+## Rehearsals, snapshots, and branches
+
+For database-bearing deploys, rehearse before commit. Create a reviewed plan with `r.project(id).apply.plan(spec, { mode: "reviewedPlan" })`, upload missing bytes, then call `r.project(id).apply.rehearse(plan.plan.plan_id, { teardown: "on_pass" })`. The rehearsal creates a contained branch, applies migrations and checks there, and returns `report.status`, migration/check results, branch URL, snapshot id, and `next_actions`. A passing report does not mutate the source project until you commit the original plan.
+
+Manual restore points are exposed as `r.snapshots` and the scoped `r.project(id).snapshots`. `restorePlan()` is the no-mutation loss-statement step; `restore()` requires the confirm token from the plan and performs the atomic offline-materialize-then-flip restore. Auth users/passkeys are restored only with `{ includeAuth: true }`; sessions and tokens are never restored.
+
+Contained branch projects are exposed as `r.branches` and `r.project(id).branches`. Branch creation can capture a fresh snapshot or start from an existing snapshot, saves returned branch keys to the Node credential cache when available, defaults email to sandboxed, keeps cron off unless requested, and expires by TTL.
+
 ## Portable project archives
 
 Portable archives are the SDK path for proving Cloud is the easiest place to start, not the only place the supported application can run. They are a vendor-lock-in trust artifact and are separate from allowance/spend-cap financial-risk controls. Archive v1 exports the supported Run402 Core runtime slice of a Cloud project, not an entire Cloud project.
@@ -841,7 +849,7 @@ The helper makes raw `fetch()` calls to the project's own gateway endpoints usin
 
 ## Namespaces — full surface
 
-The `Run402` class exposes 26 namespaces. Click into the SDK source for full method signatures.
+The `Run402` class exposes 28 namespaces. Click into the SDK source for full method signatures.
 
 > Reference tables below use plain fences, not `ts` fences. They document the
 > type surface in compact form — they are not runnable programs. Runnable example
@@ -933,6 +941,7 @@ r.project(id).apply.diff(opts: { from, to, limit? }): Promise<ReleaseToReleaseDi
 // Low-level upload/commit (CLI debugging — most agents call apply()):
 r.project(id).apply.upload(plan, opts: { byteReaders, onEvent? }): Promise<void>
 r.project(id).apply.commit(planId, opts?: { idempotencyKey?, onEvent? }): Promise<DeployResult>
+r.project(id).apply.rehearse(planId, opts?: { teardown?: "keep" | "on_pass" | "always" }): Promise<RehearsePlanResult>
 ```
 
 Top-level deploy summary helper:
@@ -961,6 +970,42 @@ For live event streaming during an in-flight apply, use `(await r.project(spec.p
 iterate `op.events()` (an `AsyncIterable<DeployEvent>`). The `r.project(id).apply.events(operationId)`
 method returns the events the gateway has recorded so far for an operation —
 useful for inspecting an apply after the fact, not for live streaming.
+
+### `r.snapshots`
+
+Project snapshots are internal restore points, not portable archives.
+
+```
+create(projectId): Promise<ProjectSnapshotDto>
+list(projectId, opts?: { kind?, limit?, after? }): Promise<ProjectSnapshotsListResult>
+get(projectId, snapshotId): Promise<ProjectSnapshotDto>
+delete(projectId, snapshotId): Promise<void>
+restorePlan(projectId, snapshotId, opts?: { includeAuth? }): Promise<SnapshotRestorePlanEnvelope>
+restore(projectId, snapshotId, confirm, opts?: { includeAuth? }): Promise<SnapshotRestoreResult>
+```
+
+`ProjectSnapshotDto` preserves gateway snake_case: `snapshot_id`, `operation_id`, `project_id`, `kind` (`manual` / `pre_migration` / `pre_restore` / `scheduled`), `profile`, `status`, `manifest_sha256`, `size_bytes`, `live_release_id`, `captured_at`, `expires_at`, `error`, `created_at`, `updated_at`, and `next_actions`.
+
+`restorePlan()` returns `{ restore_plan }` with `data_loss_statement`, auth counts/mode, capture-time/current releases, target slot behavior, `confirm.token`, `confirm.expires_at`, and next actions. `restore()` requires that token and returns `operation_id`, `pre_restore_snapshot_id`, old/new schema slots, restored migration registry row count, status, and next actions. Scoped form: `(await r.project(id)).snapshots.*`.
+
+### `r.branches`
+
+Project branches are contained, expiring data copies for rehearsal and inspection.
+
+```
+create(projectId, opts?: {
+  fromSnapshotId?: string,
+  name?: string,
+  emailMode?: "sandbox" | "off",
+  enableCron?: boolean,
+  ttlDays?: number,
+}): Promise<ProjectBranchCreateResult>
+list(projectId): Promise<ProjectBranchesListResult>
+renew(projectId, branchProjectId, opts?: { ttlDays?: number }): Promise<ProjectBranchDto>
+delete(projectId, branchProjectId): Promise<void>
+```
+
+`ProjectBranchDto` includes `branch_project_id`, `parent_project_id`, `name`, `branch_url`, `subdomain`, `status`, `email_mode`, `enable_cron`, `data_from`, `release`, `expires_at`, `created_at`, and `next_actions`. `ProjectBranchCreateResult` additionally returns `operation_id`, `materialization_id`, `anon_key`, and `service_key`; the SDK saves those branch keys when the credential provider supports `saveProject`. Scoped form: `(await r.project(id)).branches.*`.
 
 ### `r.ci`
 

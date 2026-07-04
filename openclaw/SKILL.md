@@ -693,6 +693,32 @@ Host ownership is server-validated; cross-project hosts throw `R402_CACHE_INVALI
 
 Reference: [`astro/README.md`](../astro/README.md) (top section), [`cli/llms-cli.txt`](../cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 
+## Rehearsals, snapshots, and branches
+
+For database-bearing deploys, rehearse before commit:
+
+```bash
+run402 apply --manifest app.json --rehearse --json
+run402 deploy rehearse <plan_id> --project prj_... --teardown on_pass --json
+```
+
+`run402 apply --rehearse` is the canonical one-shot path: plan, upload missing CAS bytes, create a contained branch, apply the candidate plan there, run checks, and exit nonzero on a failed rehearsal. Add `--commit` only after the rehearsal report is acceptable.
+
+Manual restore points and branches are reference primitives:
+
+```bash
+run402 snapshots create prj_... --json
+run402 snapshots list prj_... --json
+run402 snapshots restore prj_... snap_... --json        # plan only
+run402 snapshots restore prj_... snap_... --confirm <token> --json
+run402 branches create prj_... --ttl-days 7 --json
+run402 branches list prj_... --json
+run402 branches renew prj_... br_... --ttl-days 7 --json
+run402 branches delete prj_... br_... --json
+```
+
+Snapshot restore is deliberately two-step so the user/agent sees the data-loss plan before mutation. Branches default to a 7-day TTL, use derived noindex hosts, sandbox email unless explicitly disabled, and keep scheduled functions off unless requested.
+
 ## Portable project archives (Cloud -> Core)
 
 Use portable archives when the user wants no vendor lock-in for the supported Run402 Core runtime slice. This is a portability trust claim: Cloud is the easiest place to start, not the only place the supported application can run. Keep it separate from allowance/spend-cap financial-risk claims.
@@ -704,9 +730,11 @@ run402 cloud archives create <project_id> --scope portable-runtime-v1 --auth stu
 run402 archives inspect ./project.r402ar --json
 run402 archives verify ./project.r402ar --json
 run402 core projects import ./project.r402ar --name imported-project --env-file ./required.env --json
+run402 projects export <project_id> --output ./project.r402ar --json
+run402 core projects apply ./project.r402ar --name imported-project --env-file ./required.env --json
 ```
 
-MCP tools mirror the same flow: `export_project_archive`, `inspect_project_archive`, `verify_project_archive`, and `import_project_archive`. SDK helpers live under `r.archives`; the Node entry adds local `inspect`, `verify`, and `importToCore`, plus standalone `inspectArchive`, `verifyArchive`, and `importArchiveToCore`.
+`projects export` aliases the Cloud archive export flow; `core projects apply` aliases Core archive import. MCP tools mirror the same flow: `export_project_archive`, `inspect_project_archive`, `verify_project_archive`, and `import_project_archive`. SDK helpers live under `r.archives`; the Node entry adds local `inspect`, `verify`, and `importToCore`, plus standalone `inspectArchive`, `verifyArchive`, and `importArchiveToCore`.
 
 Archive v1 exports active release/apply state, supported Postgres/RLS/REST data, storage/static bytes, functions, Astro SSR artifacts, disabled auth subject stubs, and value-free secret requirements. It does not export secret values, auth credentials, logs, billing/allowance/spend state, Cloud provider/fleet operations metadata, Cloud import, or existing-project merge import. `verify` is local/offline integrity and compatibility checking, not trust; Core import verifies again and creates a new local project only.
 

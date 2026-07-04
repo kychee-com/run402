@@ -28,6 +28,9 @@ Commands:
   allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
   projects    Manage projects (provision, list, query, inspect, delete)
+  apply       Alias for deploy apply; supports --rehearse for migration rehearsal
+  snapshots   Create/list/restore/delete project data snapshots
+  branches    Create/list/renew/delete contained project branches
   admin       Platform-admin operations (lease-perpetual, archive, reactivate)
   cloud       Cloud portability archive export (archives create/download/status)
   archives    Inspect and verify portable project archives locally
@@ -73,6 +76,9 @@ Examples:
   run402 allowance create
   run402 allowance fund
   run402 deploy apply --manifest app.json
+  run402 apply --manifest app.json --rehearse --json
+  run402 snapshots list prj_...
+  run402 branches create prj_... --ttl-days 7 --json
   run402 cloud archives create prj_... --wait --output ./project.r402ar --json
   run402 core projects import ./project.r402ar --name imported-project --env-file ./required.env --json
   run402 jobs submit --file job.json
@@ -172,6 +178,21 @@ switch (cmd) {
   }
   case "projects": {
     const { run } = await import("./lib/projects.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "apply": {
+    const { runDeployV2 } = await import("./lib/deploy-v2.mjs");
+    await runDeployV2("apply", [sub, ...rest].filter(Boolean));
+    break;
+  }
+  case "snapshots": {
+    const { run } = await import("./lib/snapshots.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "branches": {
+    const { run } = await import("./lib/branches.mjs");
     await run(sub, rest);
     break;
   }

@@ -325,7 +325,7 @@ const p = await r.project(project.project_id);
 await p.assets.put("hello.txt", { content: "hi" });
 ```
 
-The SDK is organised as 26 namespaces: `actions` (Node recursive action runner), `projects`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session — browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), and `grants` (per-project capability grants), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
+The SDK is organised into focused namespaces: `actions` (Node recursive action runner), `projects`, `snapshots`, `branches`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session — browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), and `grants` (per-project capability grants), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
 
 **Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+ — `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `auth.*` helpers / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 
@@ -349,6 +349,9 @@ run402 projects apply-expose <id> --file manifest.json
 run402 sites deploy-dir ./dist
 run402 deploy release active --project <id>  # inspect current-live release inventory
 run402 deploy diagnose --project <id> https://example.com/events --method GET
+run402 apply --manifest app.json --rehearse --json
+run402 snapshots list prj_...
+run402 branches create prj_... --ttl-days 7 --json
 run402 functions deploy <id> <name> --file fn.ts
 run402 functions runs create <id> <name> --event-type reminder.send --idempotency-key reminder:123 --delay 10m
 run402 ci link github --project <id>       # GitHub Actions OIDC deploy binding (--route-scope for CI routes)
@@ -359,15 +362,19 @@ run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the n
 
 `up` is the only compound CLI command: it calls the SDK action runner, emits `steps[]`, and writes `.run402/project.json` when it needs to remember the workspace project. Against Run402 Core it skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected.
 
+For database-bearing deploys, rehearse before commit. `run402 apply --manifest app.json --rehearse --json` plans, uploads missing CAS bytes, creates a contained branch, runs migrations/checks there, and exits nonzero on a failed rehearsal. If you already have a persisted plan id, use `run402 deploy rehearse <plan_id> --project <id> --json`. Manual restore points live under `run402 snapshots create|list|get|restore|delete`; restore is a two-step plan/confirm flow. Branch projects live under `run402 branches create|list|renew|delete`, default to a 7-day TTL, use sandboxed email by default, and are marked noindex.
+
 Portable archives export the supported Run402 Core runtime slice of a Cloud project for local Core import. This is the no-lock-in trust path, separate from allowance/spend-cap financial-risk controls.
 
 ```bash
 run402 cloud archives create <project_id> --scope portable-runtime-v1 --auth stubs --consistency pause-writes --wait --output ./project.r402ar --json
 run402 archives verify ./project.r402ar --json
 run402 core projects import ./project.r402ar --name imported-project --env-file ./required.env --json
+run402 projects export <project_id> --output ./project.r402ar --json
+run402 core projects apply ./project.r402ar --name imported-project --env-file ./required.env --json
 ```
 
-Archive v1 excludes secret values, auth credentials, logs, billing/allowance state, Cloud operations metadata, Cloud import, and existing-project merge import. Verify is local/offline and checks integrity plus compatibility; archives remain untrusted input until Core import verifies and stages them.
+`projects export` is an alias for the Cloud archive export flow; `core projects apply` is an alias for Core archive import. Archive v1 excludes secret values, auth credentials, logs, billing/allowance state, Cloud operations metadata, Cloud import, and existing-project merge import. Verify is local/offline and checks integrity plus compatibility; archives remain untrusted input until Core import verifies and stages them.
 
 The active project is sticky: `run402 projects use <id>` server-validates `<id>` and stores it as the default for subsequent `<id>`-taking subcommands, so most commands work without it. Local key material is managed separately under `run402 credentials project-keys ...`; that cache is never project inventory.
 
@@ -471,9 +478,18 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `domains_ensure` / `domains_get` / `domains_list` / `domains_check` | Manage project-scoped web/email ProjectDomain desired state and health checks. |
 | `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` | Apply safe provider actions, repair Run402-owned routing, verify inbound receive, activate mailbox addresses, or disconnect a domain. |
-| `deploy` / `deploy_resume` / `deploy_list` / `deploy_events` | Apply, resume, list, and inspect deploy operations. |
+| `deploy` / `deploy_resume` / `deploy_rehearse` / `deploy_list` / `deploy_events` | Apply, resume, rehearse persisted plans on contained branches, list, and inspect deploy operations. |
 | `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
 | `deploy_diagnose_url` | URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`; returns `would_serve`, `diagnostic_status`, `match`, warnings, next steps, and fenced JSON. |
+
+### Snapshots & branches
+
+| Tool | Description |
+|------|-------------|
+| `create_project_snapshot` / `list_project_snapshots` / `get_project_snapshot` | Create and inspect manual project restore points. Snapshot artifacts are internal and are never downloadable as portable archives. |
+| `restore_project_snapshot` | Two-step restore: first returns a restore plan plus confirm token; second call with `confirm` flips the project to the materialized snapshot and reports next actions. |
+| `delete_project_snapshot` | Delete a manual snapshot and release its CAS references. |
+| `create_project_branch` / `list_project_branches` / `renew_project_branch` / `delete_project_branch` | Create contained, expiring data branches from a snapshot or live project, extend their TTL, or clean them up. |
 
 ### CI/OIDC bindings
 

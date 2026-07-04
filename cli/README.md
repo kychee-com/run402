@@ -74,6 +74,7 @@ run402 projects schema <id>                              # introspect tables + R
 ```bash
 run402 sites deploy-dir ./dist                # incremental upload (plan/commit transport)
 run402 deploy apply --manifest app.json       # one-call full stack deploy
+run402 apply --manifest app.json --rehearse --json
 run402 deploy release active                  # inspect current-live release inventory
 run402 deploy release diff --from empty --to active
 run402 deploy diagnose --project prj_123 https://example.com/events --method GET
@@ -83,6 +84,8 @@ run402 subdomains claim my-app                # → my-app.run402.com (auto-reas
 
 `deploy-dir` hashes each file client-side and only uploads bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. Progress events stream to stderr.
 Release inspection commands print `{ release: ... }` or `{ diff: ... }` (raw payload, no envelope — see the "Output Contract" section in [llms-cli.txt](llms-cli.txt)); use them after deploys to compare release inventory without starting another mutation. Inventories include `release_generation`, `static_manifest_sha256`, and nullable `static_manifest_metadata`; diffs include `static_assets` counters such as unchanged/changed/added/removed and CAS byte reuse. `deploy diagnose` / `deploy resolve --url` print URL-first diagnostics with `would_serve`, `diagnostic_status`, `match`, warnings, `edge_propagation`, and next steps; host misses are successful diagnostic calls with `would_serve: false`. Stable-host resolve fields can include `authorization_result`, `cas_object`, `response_variant`, `allow`, `route_pattern`, `target_type`, `target_name`, `target_file`, and `edge_propagation` (`settled`, `propagating`, or `sync_pending`).
+
+For database-bearing changes, use `run402 apply --manifest app.json --rehearse --json` before commit. It creates a contained branch, applies the candidate plan there, runs checks, and exits nonzero on a failed rehearsal. Manual restore points live under `run402 snapshots create|list|get|restore|delete`; temporary data branches live under `run402 branches create|list|renew|delete`.
 
 ### GitHub Actions OIDC deploys
 

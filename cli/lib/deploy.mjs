@@ -7,6 +7,7 @@ Usage:
 
 Subcommands:
   apply --manifest <file>       Apply a v2 ReleaseSpec manifest
+  rehearse <plan_id>            Rehearse a persisted plan on a contained branch
   resume <operation_id>         Resume a stuck operation
   list [--project <id>]         List recent deploy operations
   events <operation_id>         Fetch event stream for an operation
@@ -48,7 +49,8 @@ export async function run(args) {
   }
 
   switch (sub) {
-    case "apply":
+  case "apply":
+    case "rehearse":
     case "promote":
     case "resume":
     case "list":

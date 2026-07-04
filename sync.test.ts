@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -100,7 +100,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -259,6 +259,15 @@ const SURFACE: Capability[] = [
   { id: "inspect_project_archive", endpoint: "(local archive inspect)", mcp: "inspect_project_archive", cli: "archives:inspect", openclaw: "archives:inspect" },
   { id: "verify_project_archive", endpoint: "(local archive verify)", mcp: "verify_project_archive", cli: "archives:verify", openclaw: "archives:verify" },
   { id: "import_project_archive", endpoint: "POST /archives/v1/import (Run402 Core)", mcp: "import_project_archive", cli: "core:projects:import", openclaw: "core:projects:import" },
+  { id: "create_project_snapshot", endpoint: "POST /projects/v1/:project_id/snapshots", mcp: "create_project_snapshot", cli: "snapshots:create", openclaw: "snapshots:create" },
+  { id: "list_project_snapshots", endpoint: "GET /projects/v1/:project_id/snapshots", mcp: "list_project_snapshots", cli: "snapshots:list", openclaw: "snapshots:list" },
+  { id: "get_project_snapshot", endpoint: "GET /projects/v1/:project_id/snapshots/:snapshot_id", mcp: "get_project_snapshot", cli: "snapshots:get", openclaw: "snapshots:get" },
+  { id: "restore_project_snapshot", endpoint: "POST /projects/v1/:project_id/snapshots/:snapshot_id/restore", mcp: "restore_project_snapshot", cli: "snapshots:restore", openclaw: "snapshots:restore" },
+  { id: "delete_project_snapshot", endpoint: "DELETE /projects/v1/:project_id/snapshots/:snapshot_id", mcp: "delete_project_snapshot", cli: "snapshots:delete", openclaw: "snapshots:delete" },
+  { id: "create_project_branch", endpoint: "POST /projects/v1/:project_id/branches", mcp: "create_project_branch", cli: "branches:create", openclaw: "branches:create" },
+  { id: "list_project_branches", endpoint: "GET /projects/v1/:project_id/branches", mcp: "list_project_branches", cli: "branches:list", openclaw: "branches:list" },
+  { id: "renew_project_branch", endpoint: "POST /projects/v1/:project_id/branches/:branch_project_id/renew", mcp: "renew_project_branch", cli: "branches:renew", openclaw: "branches:renew" },
+  { id: "delete_project_branch", endpoint: "DELETE /projects/v1/:project_id/branches/:branch_project_id", mcp: "delete_project_branch", cli: "branches:delete", openclaw: "branches:delete" },
 
   // ── Faucet ───────────────────────────────────────────────────────────────
   { id: "faucet",            endpoint: "POST /faucet/v1",                        mcp: "request_faucet",                cli: "allowance:fund",      openclaw: "allowance:fund" },
@@ -339,6 +348,7 @@ const SURFACE: Capability[] = [
 
   // ── Unified apply ────────────────────────────────────────────────────────
   { id: "deploy",            endpoint: "POST /apply/v1/plans",                            mcp: "deploy",            cli: "deploy:apply",      openclaw: "deploy:apply" },
+  { id: "deploy_rehearse",   endpoint: "POST /apply/v1/plans/:plan_id/rehearse",           mcp: "deploy_rehearse",   cli: "deploy:rehearse",   openclaw: "deploy:rehearse" },
   { id: "deploy_resume",     endpoint: "POST /apply/v1/operations/:operation_id/resume",            mcp: "deploy_resume",     cli: "deploy:resume",     openclaw: "deploy:resume" },
   { id: "deploy_promote",    endpoint: "POST /apply/v1/releases/:release_id/promote",              mcp: null,                cli: "deploy:promote",    openclaw: "deploy:promote" },
   { id: "deploy_list",       endpoint: "GET /apply/v1/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
@@ -579,6 +589,15 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   inspect_project_archive: "archives.inspect",
   verify_project_archive: "archives.verify",
   import_project_archive: "archives.importToCore",
+  create_project_snapshot: "snapshots.create",
+  list_project_snapshots: "snapshots.list",
+  get_project_snapshot: "snapshots.get",
+  restore_project_snapshot: "snapshots.restore",
+  delete_project_snapshot: "snapshots.delete",
+  create_project_branch: "branches.create",
+  list_project_branches: "branches.list",
+  renew_project_branch: "branches.renew",
+  delete_project_branch: "branches.delete",
   faucet: "allowance.faucet",
 
   // Database / Admin
@@ -652,6 +671,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // at r._applyEngine internally; the public hero is r.project(id).apply.
   // SDK_BY_CAPABILITY targets the engine instance for resolution checks.
   deploy: "_applyEngine.apply",
+  deploy_rehearse: "_applyEngine.rehearse",
   deploy_promote: "_applyEngine.promote",
   deploy_resume: "_applyEngine.resume",
   deploy_list: "_applyEngine.list",
@@ -949,6 +969,8 @@ const CLI_ALIAS_COMMANDS = [
   "sender-domain:remove",
   "sender-domain:inbound-enable",
   "sender-domain:inbound-disable",
+  "projects:export", // alias of cloud:archives:create
+  "core:projects:apply", // alias of core:projects:import
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -1157,6 +1179,10 @@ describe("SDK surface alignment", () => {
       // wrappers to surface progress and idempotent resume behavior.
       "archives.create",
       "archives.wait",
+      // Snapshot restore is a two-step handshake. The SURFACE capability maps
+      // to the mutating confirm call; restorePlan is the typed planning half
+      // used by CLI/MCP before confirming the same endpoint.
+      "snapshots.restorePlan",
       // ─── operator session (human/email, RFC 8628) ────────────────────────
       // `operator login` brokers the device flow via deviceStart + devicePoll;
       // devicePoll shares the `login` verb (no dedicated capability), like the

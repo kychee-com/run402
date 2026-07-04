@@ -447,6 +447,17 @@ Host ownership is server-validated — cross-project invalidation throws `R402_C
 
 Reference: [`astro/README.md`](./astro/README.md) (top section), [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 
+## Rehearsals, snapshots, and branches
+
+For database-bearing deploys, rehearse before commit. Use **`deploy_rehearse`** when you already have a persisted apply plan id; it snapshots the source project, creates a contained branch, applies the candidate plan to that branch, runs built-in and plan-declared checks, and returns a report with `commit_plan`, `discard_branch`, or `keep_branch` next actions. CI sessions cannot rehearse in v1; run the rehearse step from a local allowance/control-plane session.
+
+Snapshot tools are the restore surface, not the portability surface:
+
+- **`create_project_snapshot`**, **`list_project_snapshots`**, **`get_project_snapshot`**, **`delete_project_snapshot`** manage manual restore points.
+- **`restore_project_snapshot`** is a two-step flow: call without `confirm` to receive a restore plan and HMAC confirm token, then call again with `confirm` to materialize, flip, and receive undo/promote next actions.
+
+Branch tools create isolated copies for inspection or collaboration: **`create_project_branch`**, **`list_project_branches`**, **`renew_project_branch`**, and **`delete_project_branch`**. Branches default to a 7-day TTL, use derived noindex hosts, sandbox email unless explicitly disabled, and keep scheduled functions off unless requested.
+
 ## Portable project archives (Cloud -> Core)
 
 Use portable archives when the user wants no vendor lock-in for the supported Run402 Core runtime slice. This is a portability trust claim: Cloud is the easiest place to start, not the only place the supported application can run. Keep it separate from allowance/spend-cap financial-risk claims.
@@ -473,6 +484,8 @@ Archive v1 exports active release/apply state, supported Postgres/RLS/REST data,
 - **`rest_query`** — query/mutate via PostgREST. Pass `key_type: "anon"` (default) for RLS-applied access, `"service"` to bypass.
 - **`validate_manifest`** / **`apply_expose`** / **`get_expose`** — declarative authorization manifest (see "expose manifest" above).
 - **`get_schema`** — introspect tables, columns, types, constraints, RLS policies.
+- **`create_project_snapshot`** / **`list_project_snapshots`** / **`get_project_snapshot`** / **`restore_project_snapshot`** / **`delete_project_snapshot`** — project restore points and confirmed restores.
+- **`create_project_branch`** / **`list_project_branches`** / **`renew_project_branch`** / **`delete_project_branch`** — contained data branches with TTL and sandboxed email.
 - **`get_usage`** — per-project usage counters (API calls, storage, lease expiry). The reported tier and capacity limits are **organization-level** — pooled across every project on the same organization. Use `tier_status` for the authoritative pooled total.
 - **`promote_user`** / **`demote_user`** — manage `project_admin` role on a project user.
 - **`delete_project`** — cascade purge. Irreversible.
@@ -495,7 +508,7 @@ Archive v1 exports active release/apply state, supported Postgres/RLS/REST data,
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`domains_ensure`** / **`domains_get`** / **`domains_list`** / **`domains_check`** — manage project-scoped ProjectDomain desired state for web, email sending, inbound receive, mailbox addresses, and health checks.
 - **`domains_apply`** / **`domains_repair`** / **`domains_test_receive`** / **`domains_activate`** / **`domains_disconnect`** — apply safe provider actions, repair Run402-owned routing, create inbound receive tests, activate custom mailbox addresses, or disconnect a domain.
-- **`deploy`** / **`deploy_resume`** / **`deploy_list`** / **`deploy_events`** — apply, resume, list, and inspect deploy operations.
+- **`deploy`** / **`deploy_resume`** / **`deploy_rehearse`** / **`deploy_list`** / **`deploy_events`** — apply, resume, rehearse persisted plans on contained branches, list, and inspect deploy operations.
 - **`deploy_release_get`** / **`deploy_release_active`** / **`deploy_release_diff`** — inspect release inventory and release-to-release diffs.
 - **`deploy_diagnose_url`** — URL-first public deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`. Includes `edge_propagation` diagnostics for fresh stable-host misses.
 

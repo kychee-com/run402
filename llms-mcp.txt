@@ -141,7 +141,7 @@ Prefer `deploy_site_dir` over `deploy_site` whenever you have a directory path. 
 
 The response's `content` array includes a fenced `json` block of buffered unified `DeployEvent` objects you can `JSON.parse`.
 
-For full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use `deploy` / `deploy_resume`. Set secret values first with `set_secret`, then deploy with `secrets.require[]`; never put secret values in a deploy spec.
+For full-stack deploys (database + migrations + manifest + value-free secret declarations + functions + site + subdomain), use `deploy` / `deploy_resume`. Set secret values first with `set_secret`, then deploy with `secrets.require[]`; never put secret values in a deploy spec. For database-bearing plans, use `deploy_rehearse` before commit when you already have a persisted plan id; it snapshots the source, creates a contained branch, applies migrations and checks there, and returns a report without mutating the source project.
 
 The `deploy` tool also accepts `site.public_paths` for clean static browser URLs and apply-v1 web routes to functions or exact method-aware static aliases. Release static asset paths and public browser paths are distinct: `events.html` can be a private release asset while `/events` is the public static URL.
 
@@ -350,6 +350,7 @@ Each `AssetPutEntry` carries the locally-computed `sha256` so the gateway can de
 - `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` — apply safe provider actions, repair Run402-owned routing, create inbound receive tests, activate custom mailbox addresses, or disconnect a domain.
 - `deploy` — the unified apply primitive (with first-class assets slice). Pass a `ReleaseSpec` with replace-vs-patch semantics per resource, value-free `secrets.require` / `secrets.delete`, and optional `assets: { put: [...], sync?: { prefix, prune, confirm? } }` for batch/declarative-sync asset directories. Returns the apply operation and structured warnings; stops before upload/commit on confirmation-required warnings unless every blocking code is covered by `allow_warning_codes` or broad `allow_warnings`.
 - Typed `run402.deploy.ts` configs are executable local code and are not a separate MCP tool in v1. For that workflow, use the canonical CLI/SDK path: `run402 up --manifest run402.deploy.ts --check` -> `run402 up --manifest run402.deploy.ts --plan` -> `run402 up --manifest run402.deploy.ts --require-plan <plan_id>`, or the SDK `r.up({ manifest }, { mode })` execution-mode union. MCP callers should pass already-normalized `ReleaseSpec` objects to `deploy`; do not ask MCP to auto-execute TypeScript configs from a checkout.
+- `deploy_rehearse` — run a persisted apply plan against a contained branch. Params: `plan_id`, optional `project_id`, optional `teardown` (`keep` / `on_pass` / `always`). Returns the rehearsal report, branch URL, migration/check results, snapshot id, next actions, and a commit command for passing reports.
 - `deploy_resume` — resume a deploy operation by `operation_id`.
 - `deploy_list` — list recent deploy operations. Params: `project_id`, `limit?`, `cursor?`.
 - `deploy_events` — fetch recorded events for a deploy operation. Params: `project_id`, `operation_id`.
@@ -357,6 +358,20 @@ Each `AssetPutEntry` carries the locally-computed `sha256` so the gateway can de
 - `deploy_release_active` — fetch the current-live release inventory. Params: `project_id`, `site_limit?`.
 - `deploy_release_diff` — diff release targets. Params: `project_id`, `from` (`empty` / `active` / release id), `to` (`active` / release id), `limit?`. Returns `migrations.applied_between_releases`; secret and subdomain diffs expose `added` / `removed` only; route diffs expose `added` / `removed` / `changed`; `static_assets` exposes unchanged/changed/added/removed, newly uploaded CAS bytes, reused CAS bytes, eliminated deployment-copy bytes, `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 - `deploy_diagnose_url` — URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`. Returns `would_serve`, `diagnostic_status`, `match`, summary, warnings, `edge_propagation` diagnostics, next steps, and fenced JSON with the full resolution.
+
+### Rehearsals, snapshots, and branches
+
+Snapshots are internal restore points. They are not downloadable portable archives; use the archive tools when you need a Cloud-to-Core portability artifact.
+
+- `create_project_snapshot` — capture a manual project data snapshot. Params: `project_id`.
+- `list_project_snapshots` — list snapshots. Params: `project_id`, optional `kind` (`manual` / `pre_migration` / `pre_restore` / `scheduled`), `limit`, and `after`.
+- `get_project_snapshot` — inspect one snapshot. Params: `project_id`, `snapshot_id`.
+- `restore_project_snapshot` — plan or confirm a restore. Params: `project_id`, `snapshot_id`, optional `include_auth`, optional `confirm`. Omit `confirm` for the no-mutation restore plan and loss statement; pass the plan's confirm token to execute the atomic restore. Auth users/passkeys restore only when `include_auth` is true; sessions and tokens are never restored.
+- `delete_project_snapshot` — delete a snapshot and release its CAS references. Params: `project_id`, `snapshot_id`.
+- `create_project_branch` — create a contained branch project from a fresh or existing snapshot. Params: `project_id`, optional `from_snapshot_id`, `name`, `email_mode` (`sandbox` / `off`), `enable_cron`, and `ttl_days`. Email defaults to sandboxed; cron defaults off.
+- `list_project_branches` — list active contained branches for a parent project. Params: `project_id`.
+- `renew_project_branch` — extend a branch TTL. Params: `project_id`, `branch_project_id`, optional `ttl_days`.
+- `delete_project_branch` — delete a branch project and purge its resources. Params: `project_id`, `branch_project_id`.
 
 ### Portable archives
 

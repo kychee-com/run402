@@ -8,6 +8,12 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **CLI/SDK:** `run402 up verify` and `r.up({ verifyOnly: true })` rerun app HTTP verification without uploading, deploying, creating projects, or mutating resources.
 - **MCP/docs:** deploy resolve/diagnose surfaces now preserve `edge_propagation` diagnostics and non-settled retry guidance so agents can tell propagation from an actual broken deploy.
 
+## Unreleased — data snapshots, branches, and apply rehearsal
+
+- **SDK:** added typed `snapshots` and `branches` namespaces, scoped project helpers, `p.apply.rehearse(planId, { teardown })`, and deploy response types for `rehearsal`, `restore_point`, and `snapshot_skipped_reason`.
+- **CLI/OpenClaw:** added `run402 apply --rehearse`, `run402 deploy rehearse`, `run402 snapshots create|list|get|restore|delete`, `run402 branches create|list|renew|delete`, and archive aliases `projects export` / `core projects apply`.
+- **MCP/docs:** added `deploy_rehearse`, project snapshot tools, branch tools, and sync coverage for the new public surface.
+
 ## 4.0.0 — ProjectDomain lifecycle and retired split domain commands
 
 - **SDK:** `domains.ensure/get/list/check/apply/repair/testReceive/wait/activate/disconnect` now target the project-scoped ProjectDomain API (`/projects/v1/:project_id/domains/:domain`) with control-plane auth and no local project-key cache preflight. Legacy `domains.add/status/remove` and `senderDomain.*` fail locally with `COMMAND_REMOVED` and replacement guidance.

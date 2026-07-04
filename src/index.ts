@@ -180,6 +180,32 @@ import {
   inspectProjectArchiveSchema,
   verifyProjectArchiveSchema,
 } from "./tools/project-archives.js";
+import {
+  createProjectSnapshotSchema,
+  deleteProjectSnapshotSchema,
+  getProjectSnapshotSchema,
+  handleCreateProjectSnapshot,
+  handleDeleteProjectSnapshot,
+  handleGetProjectSnapshot,
+  handleListProjectSnapshots,
+  handleRestoreProjectSnapshot,
+  listProjectSnapshotsSchema,
+  restoreProjectSnapshotSchema,
+} from "./tools/project-snapshots.js";
+import {
+  createProjectBranchSchema,
+  deleteProjectBranchSchema,
+  handleCreateProjectBranch,
+  handleDeleteProjectBranch,
+  handleListProjectBranches,
+  handleRenewProjectBranch,
+  listProjectBranchesSchema,
+  renewProjectBranchSchema,
+} from "./tools/project-branches.js";
+import {
+  deployRehearseSchema,
+  handleDeployRehearse,
+} from "./tools/deploy-rehearse.js";
 
 // New tools — allowance, faucet, image
 import { allowanceStatusSchema, handleAllowanceStatus } from "./tools/allowance-status.js";
@@ -415,6 +441,76 @@ server.tool(
   "Import a verified portable archive into a new local Run402 Core project through the Core gateway. Automatically verifies before import, supports dry_run and require_runnable, and reports SECRET_VALUES_REQUIRED with next actions.",
   importProjectArchiveSchema,
   async (args) => handleImportProjectArchive(args),
+);
+
+server.tool(
+  "create_project_snapshot",
+  "Capture a manual project data snapshot. Snapshots are internal restore points, not downloadable archives.",
+  createProjectSnapshotSchema,
+  async (args) => handleCreateProjectSnapshot(args),
+);
+
+server.tool(
+  "list_project_snapshots",
+  "List project data snapshots with optional kind filter and keyset pagination.",
+  listProjectSnapshotsSchema,
+  async (args) => handleListProjectSnapshots(args),
+);
+
+server.tool(
+  "get_project_snapshot",
+  "Get one project data snapshot and its next actions.",
+  getProjectSnapshotSchema,
+  async (args) => handleGetProjectSnapshot(args),
+);
+
+server.tool(
+  "restore_project_snapshot",
+  "Plan or confirm a project snapshot restore. Omit confirm for the loss statement and confirm token; pass confirm to execute the atomic restore.",
+  restoreProjectSnapshotSchema,
+  async (args) => handleRestoreProjectSnapshot(args),
+);
+
+server.tool(
+  "delete_project_snapshot",
+  "Delete a project data snapshot and release its CAS references.",
+  deleteProjectSnapshotSchema,
+  async (args) => handleDeleteProjectSnapshot(args),
+);
+
+server.tool(
+  "create_project_branch",
+  "Create a contained branch project from a fresh or existing snapshot. Email is sandboxed/off and cron is off unless explicitly enabled.",
+  createProjectBranchSchema,
+  async (args) => handleCreateProjectBranch(args),
+);
+
+server.tool(
+  "list_project_branches",
+  "List active contained branch projects for a parent project.",
+  listProjectBranchesSchema,
+  async (args) => handleListProjectBranches(args),
+);
+
+server.tool(
+  "renew_project_branch",
+  "Extend a contained branch project's TTL.",
+  renewProjectBranchSchema,
+  async (args) => handleRenewProjectBranch(args),
+);
+
+server.tool(
+  "delete_project_branch",
+  "Delete a contained branch project and purge its resources.",
+  deleteProjectBranchSchema,
+  async (args) => handleDeleteProjectBranch(args),
+);
+
+server.tool(
+  "deploy_rehearse",
+  "Run a persisted apply plan against a contained branch and return the rehearsal report. Source project and plan stay untouched.",
+  deployRehearseSchema,
+  async (args) => handleDeployRehearse(args),
 );
 
 // ─── Storage tools ──────────────────────────────────────────────────────────

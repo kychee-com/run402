@@ -6,6 +6,7 @@ const HELP = `run402 core — Local Run402 Core commands
 
 Usage:
   run402 core projects import <archive-path> --name <project-name> [options]
+  run402 core projects apply  <archive-path> --name <project-name> [options]
 
 Options:
   --name <name>             New Core project name (default imported-project)
@@ -36,7 +37,7 @@ export async function run(sub, args = []) {
     });
   }
   const action = args[0];
-  if (action === "import") return importProject(args.slice(1));
+  if (action === "import" || action === "apply") return importProject(args.slice(1));
   fail({
     code: "UNKNOWN_SUBCOMMAND",
     message: `Unknown core projects subcommand: ${action}`,

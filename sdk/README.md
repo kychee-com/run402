@@ -133,14 +133,16 @@ const r = new Run402({
 
 The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readAllowance`, `saveAllowance`, …) for hosts that want full sticky-default behavior.
 
-## Namespaces (26)
+## Namespaces
 
 | Namespace | Highlights |
 |---|---|
 | `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
 | `projects` | `provision`, `delete`, `list`, `get`, `use`, `active`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `pin`, `getQuote`. `list`/`get`/`use` are server-authoritative; local key reads are moving to `credentials.projectKeys`. |
+| `snapshots` | Internal project restore points: `create`, `list`, `get`, `restorePlan`, `restore`, `delete`. Restore is a two-step plan/confirm handshake. |
+| `branches` | Contained project data branches: `create`, `list`, `renew`, `delete`. Branches default to expiring, noindex, sandboxed-email copies. |
 | `credentials` | `projectKeys.list`, `projectKeys.status`, `projectKeys.import`, `projectKeys.export`, `projectKeys.remove` for explicit local project-key cache management. |
-| `r.project(id).apply` | **The unified apply primitive.** Callable hero — `r.project(id).apply(spec)` for atomic mixed writes (release slices + assets slice). Sub-methods: `.plan`, `.start`, `.resume`, `.upload`, `.commit`, `.status`, `.list`, `.events`, `.resolve`, `.getRelease`, `.getActiveRelease`, `.diff`. Underlying engine routes to `/apply/v1/*`. |
+| `r.project(id).apply` | **The unified apply primitive.** Callable hero — `r.project(id).apply(spec)` for atomic mixed writes (release slices + assets slice). Sub-methods: `.plan`, `.start`, `.resume`, `.upload`, `.commit`, `.rehearse`, `.status`, `.list`, `.events`, `.resolve`, `.getRelease`, `.getActiveRelease`, `.diff`. Underlying engine routes to `/apply/v1/*`. |
 | `ci` | GitHub Actions OIDC federation over `/ci/v1/*`: `createBinding`, `listBindings`, `getBinding`, `revokeBinding`, `exchangeToken`; plus canonical delegation helpers. `createBinding` accepts `asset_key_scopes` for per-key CI write authorization. |
 | `r.project(id).sites` | `deployDir` — Node entry only (`@run402/sdk/node`); thin wrapper over `r.project(id).apply({ site: dir(...) })` |
 | `r.project(id).assets` | `put` (single asset), `putMany`, `uploadDir` (Node, additive), `syncDir` (Node, destructive only with `prune: true` + confirm token), `prepareDir` (returns `{ manifest, applySlice }` for pre-commit URL injection), `get`, `ls`, `rm`, `sign`, `diagnoseUrl`, `waitFresh`, `diff`. Returns `AssetRef` (single) or `AssetManifest` (batch). |
@@ -379,6 +381,19 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
 - **Deploy summaries are SDK-owned convenience.** `summarizeDeployResult(result)` returns `DeploySummary` (`schema_version: "deploy-summary.v1"`) with a headline plus reliable current buckets for site path counts, CAS new/reused bytes, functions, migrations, routes, secrets, subdomains, and warning counts. It is derived from `DeployResult.diff` / `DeployResult.warnings`; it makes no extra gateway calls, omits sections the gateway did not return, and intentionally excludes timings, client-side duration estimates, and function old/new code hashes.
 - **Safe release-race retries are SDK-owned.** `apply()` automatically re-plans and retries omitted/current-base specs when the gateway returns `BASE_RELEASE_CONFLICT` with `safe_to_retry: true`. Static activation/config failures reported from `activation_pending` throw immediately with gateway metadata preserved. The default retry budget is two retries after the initial attempt; pass `{ maxRetries: 0 }` to opt out.
 - **Planning has two explicit non-deploying modes.** `(await r.project(spec.project)).apply.plan(spec, { mode: "reviewedPlan" })` calls the gateway reviewed-plan route and returns `plan_id`, `plan_fingerprint`, `plan_expires_at`, diff, warnings, and `next_actions[]` without uploading bytes or committing. Exact apply passes `{ requiredPlan: { planId, planFingerprint? } }` to `apply()` / `start()` / `commit()`; the SDK verifies before upload and commit. Legacy `{ dryRun: true }` still calls the no-row debug route and returns `plan_id: null`, but it is not require-able.
+- **Rehearsals run candidate plans on contained branches.** Use the lower-level sequence when you want an explicit gate before commit:
+
+  ```ts
+  const p = await r.project(spec.project);
+  const { plan, byteReaders } = await p.apply.plan(spec);
+  await p.apply.upload(plan, { byteReaders });
+  if (!plan.plan_id) throw new Error("Preview plans cannot be rehearsed");
+  const rehearsal = await p.apply.rehearse(plan.plan_id, { teardown: "on_pass" });
+  if (rehearsal.report.status !== "passed") throw new Error("Rehearsal failed");
+  const committed = await p.apply.commit(plan.plan_id);
+  ```
+
+  Plan responses may advertise `rehearsal: { available, rehearse_url }`; commit results may carry `restore_point` or `snapshot_skipped_reason`.
 - **Release observability is typed.** Use `r.project(id).apply.getRelease(releaseId, { siteLimit? })`, `r.project(id).apply.getActiveRelease({ siteLimit? })`, and `r.project(id).apply.diff({ from, to, limit? })` to inspect release inventory and release-to-release diffs (there is no bare `r.deploy` surface). Inventories include `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and `static_public_paths[]` when returned. `site.paths` lists release static assets; `static_public_paths[]` lists browser reachability with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `diff` returns `ReleaseToReleaseDiff` with `migrations.applied_between_releases`; secret diffs expose keys only; `static_assets` exposes unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
 - **Server-authoritative manifest digest** — no byte-for-byte canonicalize requirement on the client.
 - The Node entry adds `fileSetFromDir(path)` for filesystem byte sources:
@@ -519,8 +534,35 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
   bundling path. Typed configs may declare `secrets.require[]` / `delete[]`,
   but never embed secret values. Config functions receive
   `{ manifestPath, rootDir, env }`; reading through `env.get()`,
-  `env.required()`, or `env.RUN402_*` records `config.env_accessed` metadata
-  on executable manifest loads so agents can explain spec drift.
+	  `env.required()`, or `env.RUN402_*` records `config.env_accessed` metadata
+	  on executable manifest loads so agents can explain spec drift.
+
+### Snapshots and branches
+
+Project snapshots are internal restore points. They are separate from portable archives and are never downloadable:
+
+```ts
+const snapshot = await r.snapshots.create(projectId);
+const page = await r.snapshots.list(projectId, { limit: 20 });
+const plan = await r.snapshots.restorePlan(projectId, snapshot.snapshot_id);
+await r.snapshots.restore(projectId, snapshot.snapshot_id, plan.restore_plan.confirm.token, {
+  includeAuth: true,
+});
+await r.snapshots.delete(projectId, snapshot.snapshot_id);
+```
+
+Branches are contained project copies for inspecting migrations and sharing temporary data state:
+
+```ts
+const branch = await r.branches.create(projectId, {
+  ttlDays: 7,
+  emailMode: "sandbox",
+});
+await r.branches.renew(projectId, branch.branch_project_id, { ttlDays: 7 });
+await r.branches.delete(projectId, branch.branch_project_id);
+```
+
+Scoped handles expose the same surface as `p.snapshots.*` and `p.branches.*`.
 
 ### GitHub Actions OIDC — CI credentials drive deploy
 

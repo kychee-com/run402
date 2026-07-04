@@ -26,9 +26,12 @@ Install + deploy:
 ```bash
 npm install -g run402@latest
 run402 up --name "my-app" -y                 # validates manifest, bootstraps prerequisites, deploys
+run402 apply --manifest app.json --rehearse --json
 ```
 
 `up` is the agent-first path when the repo has `run402.deploy.json` or `app.json`. It is a thin CLI shim over the SDK action runner; the SDK owns manifest validation, project resolution, recursive prerequisites, idempotency-key derivation, and deploy apply. Provision before writing frontend code when you need the real `anon_key` embedded. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
+
+For database-bearing deploys, rehearse before commit. `run402 apply --manifest app.json --rehearse --json` plans, uploads missing CAS bytes, creates a contained branch, applies migrations and checks there, and prints a rehearsal report without touching the source project. If the report passes, re-run with `--commit` or commit the reviewed plan with `run402 deploy apply --require-plan <plan_id>`. Manual restore points live under `run402 snapshots`; contained, expiring data branches live under `run402 branches`.
 
 CLI update awareness is advisory and fail-open. Normal commands never wait for npm; they use cached update state and keep success stdout as the command payload. Stale notices appear as structured JSON on stderr, or as `{"type":"cli.update_available",...}` in `--json-stream`. `RUN402_NO_UPDATE_CHECK=1` suppresses notices/checks; CI skips live checks unless `RUN402_UPDATE_CHECK=1`; `run402 doctor --refresh` is the explicit bounded live check.
 
@@ -908,8 +911,22 @@ User auth: password + Google OAuth. See "User Auth" section below.
 
 All admin subcommands require a platform-admin allowance wallet (or an admin OAuth session). Project owners with a non-admin wallet receive `403 admin_required`.
 
+### apply, rehearsal, snapshots, branches
+- `run402 apply --manifest app.json [--project <id>] [--rehearse] [--teardown keep|on_pass|always] [--commit] [--json]` — alias for `run402 deploy apply`; `--rehearse` runs the reviewed plan on a contained branch first and does not commit unless `--commit` is present.
+- `run402 deploy rehearse <plan_id> [--project <id>] [--teardown keep|on_pass|always] [--json]` — rehearse an already-persisted reviewed plan. Source project data and the original plan stay untouched.
+- `run402 snapshots create [project-id] [--json]` — capture a manual internal restore point.
+- `run402 snapshots list [project-id] [--kind manual|pre_migration|pre_restore|scheduled] [--limit <n>] [--after <cursor>] [--json]` — keyset-paginated snapshot list.
+- `run402 snapshots get [project-id] <snapshot-id> [--json]` — inspect one snapshot and its next actions.
+- `run402 snapshots restore [project-id] <snapshot-id> [--include-auth] [--json]` — plan a restore and print `restore_plan.confirm.token`; no mutation.
+- `run402 snapshots restore [project-id] <snapshot-id> --confirm <token> [--include-auth] [--json]` — execute the atomic offline-materialize-then-flip restore. Auth users/passkeys are restored only with `--include-auth`; sessions and tokens are never restored.
+- `run402 snapshots delete [project-id] <snapshot-id> [--json]` — delete a snapshot and release its CAS references.
+- `run402 branches create [project-id] [--from-snapshot <snapshot-id>] [--name <label>] [--email-mode sandbox|off] [--enable-cron] [--ttl-days <1..30>] [--json]` — create a contained branch project. Email defaults to sandboxed, scheduled functions default off, and TTL defaults to 7 days.
+- `run402 branches list [project-id] [--json]` — list active branches for the parent project.
+- `run402 branches renew [project-id] <branch-project-id> [--ttl-days <1..30>] [--json]` — extend a branch TTL.
+- `run402 branches delete [project-id] <branch-project-id> [--json]` — delete a branch project and purge its resources.
+
 ### deploy
-- `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--plan|--require-plan <id>] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag
+- `run402 deploy apply --manifest app.json [--project <id>] [--check|--print-spec|--plan|--rehearse|--require-plan <id>] [--teardown keep|on_pass|always] [--commit] [--json] [--quiet|--final-only] [--allow-warning <code> ...] [--allow-warnings]` — unified apply primitive with `assets` slice support; accepts JSON data manifests and explicit executable typed configs through the same `--manifest` flag. `--rehearse` runs migrations/checks against a contained branch first; `--json` is accepted as a no-op because success output is always JSON.
 - `run402 deploy resume <operation_id> [--project <id>] [--quiet]` — re-run a stuck operation forward
 - `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline); v1.58+
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations

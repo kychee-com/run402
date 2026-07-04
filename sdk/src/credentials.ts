@@ -62,7 +62,9 @@ export type WriteAuthCapability =
   | "org.project.create"
   | "project.deploy"
   | "project.secret.write"
-  | "project.archives.export";
+  | "project.archives.export"
+  | "project.snapshots.manage"
+  | "project.branches.manage";
 
 /** A write-capability target: an org (for `org.project.create`) or a project. */
 export interface WriteAuthTarget {

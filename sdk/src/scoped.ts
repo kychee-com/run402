@@ -169,6 +169,21 @@ import type {
   ProjectArchiveWaitOptions,
 } from "./namespaces/archives.types.js";
 import type {
+  ProjectSnapshotDto,
+  ProjectSnapshotsListOptions,
+  ProjectSnapshotsListResult,
+  SnapshotRestoreOptions,
+  SnapshotRestorePlanEnvelope,
+  SnapshotRestoreResult,
+} from "./namespaces/snapshots.types.js";
+import type {
+  ProjectBranchCreateOptions,
+  ProjectBranchCreateResult,
+  ProjectBranchDto,
+  ProjectBranchesListResult,
+  ProjectBranchRenewOptions,
+} from "./namespaces/branches.types.js";
+import type {
   DisableInboundResult,
   InboundEnableResult,
   SenderDomainRegisterResult,
@@ -196,6 +211,8 @@ import type {
   PlanResponse,
   PromoteOptions,
   PromoteResult,
+  RehearsePlanOptions,
+  RehearsePlanResult,
   ReleaseDiffOptions,
   ReleaseInventory,
   ReleaseInventoryOptions,
@@ -356,6 +373,46 @@ class ScopedArchives {
   }
   export(opts?: ProjectArchiveExportOptions): Promise<ProjectArchiveExportResult> {
     return this.parent.archives.export(this.projectId, opts);
+  }
+}
+
+class ScopedSnapshots {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(): Promise<ProjectSnapshotDto> {
+    return this.parent.snapshots.create(this.projectId);
+  }
+  list(opts?: ProjectSnapshotsListOptions): Promise<ProjectSnapshotsListResult> {
+    return this.parent.snapshots.list(this.projectId, opts);
+  }
+  get(snapshotId: string): Promise<ProjectSnapshotDto> {
+    return this.parent.snapshots.get(this.projectId, snapshotId);
+  }
+  delete(snapshotId: string): Promise<void> {
+    return this.parent.snapshots.delete(this.projectId, snapshotId);
+  }
+  restorePlan(snapshotId: string, opts?: SnapshotRestoreOptions): Promise<SnapshotRestorePlanEnvelope> {
+    return this.parent.snapshots.restorePlan(this.projectId, snapshotId, opts);
+  }
+  restore(snapshotId: string, confirm: string, opts?: SnapshotRestoreOptions): Promise<SnapshotRestoreResult> {
+    return this.parent.snapshots.restore(this.projectId, snapshotId, confirm, opts);
+  }
+}
+
+class ScopedBranches {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(opts?: ProjectBranchCreateOptions): Promise<ProjectBranchCreateResult> {
+    return this.parent.branches.create(this.projectId, opts);
+  }
+  list(): Promise<ProjectBranchesListResult> {
+    return this.parent.branches.list(this.projectId);
+  }
+  renew(branchProjectId: string, opts?: ProjectBranchRenewOptions): Promise<ProjectBranchDto> {
+    return this.parent.branches.renew(this.projectId, branchProjectId, opts);
+  }
+  delete(branchProjectId: string): Promise<void> {
+    return this.parent.branches.delete(this.projectId, branchProjectId);
   }
 }
 
@@ -543,6 +600,10 @@ export interface ScopedApplyHero {
       project?: string;
     },
   ): Promise<DeployResult>;
+  rehearse(
+    planId: string,
+    opts?: Omit<RehearsePlanOptions, "project"> & { project?: string },
+  ): Promise<RehearsePlanResult>;
   status(
     operationId: string,
     opts?: { project?: string },
@@ -589,6 +650,11 @@ function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHe
     });
   hero.commit = (planId, opts = {}) =>
     parent._applyEngine.commit(planId, {
+      ...opts,
+      project: opts.project ?? projectId,
+    });
+  hero.rehearse = (planId, opts = {}) =>
+    parent._applyEngine.rehearse(planId, {
       ...opts,
       project: opts.project ?? projectId,
     });
@@ -944,6 +1010,8 @@ export class ScopedRun402 {
   /** Per-project capability grants (agent/CI principals), project-id pre-bound. */
   readonly grants: ScopedGrants;
   readonly archives: ScopedArchives;
+  readonly snapshots: ScopedSnapshots;
+  readonly branches: ScopedBranches;
 
   constructor(parent: Run402, _client: Client, projectId: string) {
     this.projectId = projectId;
@@ -963,5 +1031,7 @@ export class ScopedRun402 {
     this.subdomains = new ScopedSubdomains(parent, projectId);
     this.grants = new ScopedGrants(parent, projectId);
     this.archives = new ScopedArchives(parent, projectId);
+    this.snapshots = new ScopedSnapshots(parent, projectId);
+    this.branches = new ScopedBranches(parent, projectId);
   }
 }

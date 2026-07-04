@@ -33,6 +33,8 @@ import { Deploy } from "./namespaces/deploy.js";
 import { Ci } from "./namespaces/ci.js";
 import { Jobs } from "./namespaces/jobs.js";
 import { Archives } from "./namespaces/archives.js";
+import { Snapshots } from "./namespaces/snapshots.js";
+import { Branches } from "./namespaces/branches.js";
 import { Operator } from "./namespaces/operator.js";
 import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
@@ -95,6 +97,8 @@ export class Run402 {
   readonly ci: Ci;
   readonly jobs: Jobs;
   readonly archives: Archives;
+  readonly snapshots: Snapshots;
+  readonly branches: Branches;
   /**
    * The *human* (email) principal — browser-delegated operator session (RFC
    * 8628 device flow), distinct from the agent's per-wallet SIWX identity.
@@ -188,6 +192,8 @@ export class Run402 {
     this.ci = new Ci(client);
     this.jobs = new Jobs(client);
     this.archives = new Archives(client);
+    this.snapshots = new Snapshots(client);
+    this.branches = new Branches(client);
     this.operator = new Operator(client);
     this.orgs = new Orgs(client);
     this.grants = new Grants(client);
@@ -493,6 +499,10 @@ export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";
 export { Archives } from "./namespaces/archives.js";
 export type * from "./namespaces/archives.types.js";
+export { Snapshots } from "./namespaces/snapshots.js";
+export type * from "./namespaces/snapshots.types.js";
+export { Branches } from "./namespaces/branches.js";
+export type * from "./namespaces/branches.types.js";
 export type * from "./namespaces/projects.types.js";
 export type * from "./namespaces/secrets.js";
 export type * from "./namespaces/sender-domain.js";

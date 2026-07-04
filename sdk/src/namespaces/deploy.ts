@@ -80,6 +80,8 @@ import type {
   ReleaseInventoryOptions,
   ReleaseSpec,
   ReleaseToReleaseDiff,
+  RehearsePlanOptions,
+  RehearsePlanResult,
   StartOptions,
   WarningEntry,
 } from "./deploy.types.js";
@@ -289,6 +291,40 @@ export class Deploy {
       "committing deploy",
     );
     return await pollUntilReady(this.client, commit, {}, [], emit, opts.project);
+  }
+
+  async rehearse(planId: string, opts: RehearsePlanOptions = {}): Promise<RehearsePlanResult> {
+    if (!planId || typeof planId !== "string") {
+      throw new Run402DeployError(`Invalid plan id: "${String(planId)}"`, {
+        code: "BAD_REQUEST",
+        phase: "rehearsal",
+        retryable: false,
+        context: "rehearsing deploy plan",
+      });
+    }
+    const body: Record<string, unknown> = {};
+    if (opts.teardown !== undefined) body.teardown = opts.teardown;
+    try {
+      return await this.client.request<RehearsePlanResult>(
+        `/apply/v1/plans/${encodeURIComponent(planId)}/rehearse`,
+        {
+          method: "POST",
+          body,
+          ...(opts.project
+            ? {
+                authMeta: {
+                  method: "deploy.rehearse",
+                  capability: "project.deploy" as const,
+                  target: { project_id: opts.project },
+                },
+              }
+            : {}),
+          context: "rehearsing deploy plan",
+        },
+      );
+    } catch (err) {
+      throw translateDeployError(err, "rehearsal", planId, null);
+    }
   }
 
   /**
