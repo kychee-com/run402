@@ -33,8 +33,25 @@ export interface Run402DirConfigOptions {
   includeSensitive?: boolean;
 }
 
-export interface Run402SqlFileConfigOptions {
-  id?: string;
+export type Run402SqlFileConfigOptions =
+  | {
+      id?: string;
+      name?: never;
+      checksum?: string;
+      transaction?: "required" | "none";
+    }
+  | {
+      /** Content-tracked migration name. The SDK compiles this to
+       *  `<name>_<sha256(sql)[0:16]>`; SQL MUST be idempotent because changed
+       *  content applies again against a database with prior versions. */
+      name: string;
+      id?: never;
+      checksum?: string;
+      transaction?: "required" | "none";
+    };
+
+export interface Run402SqlFileConfigBaseMigration {
+  sql_file: string;
   checksum?: string;
   transaction?: "required" | "none";
 }
@@ -64,12 +81,19 @@ export interface Run402FileConfigSource extends FsFileSource {
   readonly content_type?: string;
 }
 
-export interface Run402SqlFileConfigMigration {
+export interface Run402SqlFileConfigIdMigration extends Run402SqlFileConfigBaseMigration {
   id: string;
-  sql_file: string;
-  checksum?: string;
-  transaction?: "required" | "none";
+  name?: never;
 }
+
+export interface Run402SqlFileConfigNameMigration extends Run402SqlFileConfigBaseMigration {
+  name: string;
+  id?: never;
+}
+
+export type Run402SqlFileConfigMigration =
+  | Run402SqlFileConfigIdMigration
+  | Run402SqlFileConfigNameMigration;
 
 export type Run402ReleaseConfig = Omit<ReleaseSpec, "project"> & {
   project?: string;
@@ -125,12 +149,17 @@ export function sqlFile(
   path: string,
   options: Run402SqlFileConfigOptions = {},
 ): Run402SqlFileConfigMigration {
+  if (options.id !== undefined && options.name !== undefined) {
+    throw new TypeError("sqlFile options must use either id or name, not both.");
+  }
   return {
-    id: options.id ?? defaultIdFromPath(path),
+    ...(options.name !== undefined
+      ? { name: options.name }
+      : { id: options.id ?? defaultIdFromPath(path) }),
     sql_file: path,
     ...(options.checksum !== undefined ? { checksum: options.checksum } : {}),
     ...(options.transaction !== undefined ? { transaction: options.transaction } : {}),
-  };
+  } as Run402SqlFileConfigMigration;
 }
 
 export function nodeFunction(

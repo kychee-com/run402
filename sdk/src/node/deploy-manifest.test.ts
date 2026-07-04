@@ -103,6 +103,32 @@ describe("Node deploy manifest helpers", () => {
     }
   });
 
+  it("loads content-tracked migrations from typed config sqlFile name options", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-content-migration-"));
+    try {
+      mkdirSync(join(root, "db"), { recursive: true });
+      writeFileSync(join(root, "db", "seed.sql"), "insert into seed values (1);\n");
+      const helperUrl = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "config.ts")).href;
+      const manifestPath = join(root, "run402.deploy.ts");
+      writeFileSync(manifestPath, `
+        import { defineConfig, sqlFile } from ${JSON.stringify(helperUrl)};
+        export default defineConfig({
+          project: "prj_typed",
+          database: { migrations: [sqlFile("./db/seed.sql", { name: "seed" })] },
+        });
+      `);
+
+      const normalized = await loadDeployManifest(manifestPath);
+
+      assert.deepEqual(normalized.spec.database?.migrations?.[0], {
+        name: "seed",
+        sql: "insert into seed values (1);\n",
+      });
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
   it("rejects executable configs with missing or non-object exports", async () => {
     const root = mkdtempSync(join(tmpdir(), "run402-exec-config-invalid-"));
     try {
@@ -544,6 +570,56 @@ describe("Node deploy manifest helpers", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("accepts content-tracked migration names and loads sql_path bytes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-deploy-manifest-name-test-"));
+    try {
+      writeFileSync(join(root, "seed.sql"), "insert into seed values (1);\n");
+      const normalized = await normalizeDeployManifest({
+        project_id: "prj_name",
+        database: { migrations: [{ name: "seed", sql_path: "seed.sql" }] },
+      }, { baseDir: root });
+
+      assert.deepEqual(normalized.spec.database?.migrations?.[0], {
+        name: "seed",
+        sql: "insert into seed values (1);\n",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects invalid content-tracked migration identity declarations", async () => {
+    const cases: Array<[unknown, RegExp]> = [
+      [{ id: "001", name: "seed", sql: "select 1;" }, /both id and name/],
+      [{ sql: "select 1;" }, /exactly one of id or name/],
+      [{ name: "bad seed!", sql: "select 1;" }, /must match/],
+    ];
+    for (const [migration, pattern] of cases) {
+      await assert.rejects(
+        () =>
+          normalizeDeployManifest({
+            project_id: "prj_invalid",
+            database: { migrations: [migration as never] },
+          }),
+        (err: unknown) => err instanceof LocalError && pattern.test(err.message),
+      );
+    }
+
+    await assert.rejects(
+      () =>
+        normalizeDeployManifest({
+          project_id: "prj_invalid",
+          database: {
+            migrations: [
+              { name: "seed", sql: "select 1;" },
+              { name: "seed", sql: "select 2;" },
+            ],
+          },
+        }),
+      (err: unknown) => err instanceof LocalError && /duplicates/.test(err.message),
+    );
   });
 
   it("loads local-dir site refs relative to the manifest directory", async () => {

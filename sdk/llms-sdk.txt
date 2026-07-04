@@ -215,7 +215,7 @@ Helper semantics:
 - `defineConfig(config)` preserves type inference. The export may be an object or `(context) => object`; context has `manifestPath`, `rootDir`, and `env`. Use `env.get("NAME")`, `env.required("NAME")`, or `env.RUN402_*` property reads; executable manifest loads report `config.env_accessed` metadata for those reads.
 - `dir(path, { prefix?, ignore?, includeSensitive? })` resolves from the config directory, walks deterministically by normalized `/` path, skips sensitive defaults unless opted in, rejects symlinks, infers content type, and produces local directory descriptors consumed by the Node normalizer.
 - `file(path, { contentType? })` produces a local file source; the Node normalizer reads bytes later and keeps secrets out of config examples.
-- `sqlFile(path, { id?, checksum?, transaction? })` derives `id` from the filename when omitted and keeps checksum/transaction metadata stable.
+- `sqlFile(path, { id?, name?, checksum?, transaction? })` derives `id` from the filename when omitted and keeps checksum/transaction metadata stable. Pass `{ name: "seed" }` for generated/idempotent SQL; the SDK compiles `<name>_<sha256(sql)[0:16]>` from the post-build SQL bytes, changed content applies once under a new id, and unchanged re-deploys noop. SQL declared with `name` MUST be idempotent because it re-runs whenever content changes against a database where prior versions may already exist.
 - `nodeFunction(path, opts)` creates a Node 22 `FunctionSpec` from built JavaScript. TypeScript function sources (`.ts`, `.tsx`, `.mts`, `.cts`) currently fail locally with `TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE`; build them first and point at `.js`.
 
 Executable trust policy:
@@ -501,7 +501,7 @@ The full type is exported as `ReleaseSpec` from `@run402/sdk` and `@run402/sdk/n
   project: "prj_…",                        // SDK field is `project`, not `project_id`
   base?: { release: "current" | "empty" } | { release_id: "rel_…" },
   database?: {
-    migrations?: MigrationSpec[],          // each has { id, sql? | sql_ref?, checksum?, transaction? }
+    migrations?: MigrationSpec[],          // each has exactly one of id or name, plus sql? | sql_ref?, checksum?, transaction?
     expose?: ExposeManifest,               // dark-by-default authorization manifest
     zero_downtime?: boolean,
   },
@@ -578,7 +578,7 @@ const inMemory = await normalizeDeployManifest({
 await (await r.project(inMemory.spec.project)).apply(inMemory.spec, { idempotencyKey: inMemory.idempotencyKey });
 ```
 
-`DeployManifestInput` is the agent-facing JSON shape: `project_id` becomes SDK `project`, `idempotency_key` is returned separately for deploy options, `{ data, encoding: "base64", content_type? }` decodes to bytes, `{ path, content_type? }` becomes a lazy `FsFileSource`, and `database.migrations[].sql_path` / `sql_file` are read as UTF-8 SQL. Snake manifest fields such as `config.timeout_seconds`, `require_auth`, `require_role.id_column`, and `i18n.default_locale` normalize to the SDK's camelCase `ReleaseSpec`. `loadDeployManifest(path)` resolves relative paths against the manifest file's directory; `normalizeDeployManifest(input, { baseDir? })` defaults relative paths to `process.cwd()`. Manifest normalization is strict too: unknown fields are rejected instead of dropped, so a valid site deploy plus typoed `subdomain` cannot become a partial site-only deploy.
+`DeployManifestInput` is the agent-facing JSON shape: `project_id` becomes SDK `project`, `idempotency_key` is returned separately for deploy options, `{ data, encoding: "base64", content_type? }` decodes to bytes, `{ path, content_type? }` becomes a lazy `FsFileSource`, and `database.migrations[].sql_path` / `sql_file` are read as UTF-8 SQL. Each migration declares exactly one of `id` or `name`: use `id` for immutable versioned migrations, and `name` for generated/idempotent SQL whose compiled id should track content changes. Snake manifest fields such as `config.timeout_seconds`, `require_auth`, `require_role.id_column`, and `i18n.default_locale` normalize to the SDK's camelCase `ReleaseSpec`. `loadDeployManifest(path)` resolves relative paths against the manifest file's directory; `normalizeDeployManifest(input, { baseDir? })` defaults relative paths to `process.cwd()`. Manifest normalization is strict too: unknown fields are rejected instead of dropped, so a valid site deploy plus typoed `subdomain` cannot become a partial site-only deploy.
 
 Route manifest example:
 

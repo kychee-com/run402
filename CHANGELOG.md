@@ -8,6 +8,12 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **CLI:** `run402 domains connect/list/status/dns/check/apply/repair/test-receive/wait/activate/disconnect` is the canonical custom-domain workflow. Removed `run402 domains add`, `run402 domains delete`, and all `run402 sender-domain *` subcommands now return machine-readable `COMMAND_REMOVED` envelopes.
 - **MCP/OpenClaw/docs:** ProjectDomain tools and docs replace the old sender-domain/inbound-domain split, including DNS/check output, receive tests, repair actions, managed fallback, first-contact inbound policy, suppression management, and validation-safe raw send behavior.
 
+## Unreleased — content-tracked deploy migrations
+
+- **SDK/CLI/MCP:** deploy migration authoring now accepts exactly one of `id` or `name`. `id` keeps the existing immutable versioned semantics; `name` is content-tracked and compiles client-side to `<name>_<sha256(sql)[0:16]>` from inline SQL, post-build `sql_path`/`sql_file` bytes, or `sql_ref.sha256`. The gateway wire spec still receives only `id`.
+- **Typed configs:** `sqlFile(path, { name })` exposes the same content-tracked path for generated/idempotent SQL.
+- **Docs/schemas:** release/app schemas, examples, CLI/SDK/MCP references, and recovery guidance now document the idempotency contract and the `id` -> `name` recovery path for generated SQL that hit `MIGRATION_CHECKSUM_MISMATCH`.
+
 ## Unreleased — remove `projects.json` as project truth
 
 - **CLI/SDK:** normal project reads and active selection are now server-authoritative. `run402 projects use <id>` / `r.projects.use(id)` validate through the control plane and store only an active project id; `r.project(id)` no longer requires local key-cache membership before server-capable operations.

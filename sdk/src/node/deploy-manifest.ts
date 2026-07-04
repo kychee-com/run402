@@ -69,6 +69,7 @@ const MANIFEST_I18N_FIELDS = new Set([
 const MANIFEST_DATABASE_FIELDS = new Set(["migrations", "expose", "zero_downtime"]);
 const MANIFEST_MIGRATION_FIELDS = new Set([
   "id",
+  "name",
   "checksum",
   "sql",
   "sql_ref",
@@ -135,6 +136,7 @@ const TYPESCRIPT_MANIFEST_EXTENSIONS = new Set([".ts", ".mts", ".cts"]);
 const TYPESCRIPT_FUNCTION_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts"]);
 const EXECUTABLE_CONFIG_TIMEOUT_MS = 5_000;
 const EXECUTABLE_CONFIG_METADATA = Symbol("run402.executableConfigMetadata");
+const MIGRATION_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 export interface LoadExecutableDeployConfigOptions {
   /** Test/advanced override for executable config evaluation timeout. Defaults to 5000ms. */
@@ -164,8 +166,7 @@ export type DeployManifestFileEntry =
 
 export type DeployManifestFileSet = Record<string, DeployManifestFileEntry>;
 
-export interface DeployManifestMigrationSpec {
-  id: string;
+interface DeployManifestMigrationBaseSpec {
   checksum?: string;
   sql?: string;
   sql_ref?: ContentRef;
@@ -173,6 +174,23 @@ export interface DeployManifestMigrationSpec {
   sql_file?: string;
   transaction?: "required" | "none";
 }
+
+export interface DeployManifestVersionedMigrationSpec extends DeployManifestMigrationBaseSpec {
+  id: string;
+  name?: never;
+}
+
+export interface DeployManifestContentTrackedMigrationSpec extends DeployManifestMigrationBaseSpec {
+  /** Content-tracked migration name. The SDK compiles this to
+   *  `<name>_<sha256(sql)[0:16]>`; SQL MUST be idempotent because changed
+   *  content applies again against a database with prior versions. */
+  name: string;
+  id?: never;
+}
+
+export type DeployManifestMigrationSpec =
+  | DeployManifestVersionedMigrationSpec
+  | DeployManifestContentTrackedMigrationSpec;
 
 export interface DeployManifestDatabaseSpec {
   migrations?: DeployManifestMigrationSpec[];
@@ -586,8 +604,9 @@ async function mapDatabase(
       );
     }
     out.migrations = [];
-    for (const migration of raw.migrations) {
-      out.migrations.push(await mapMigration(migration, opts));
+    const seenNames = new Map<string, number>();
+    for (const [index, migration] of raw.migrations.entries()) {
+      out.migrations.push(await mapMigration(migration, opts, index, seenNames));
     }
   }
   return out;
@@ -596,6 +615,8 @@ async function mapDatabase(
 async function mapMigration(
   migration: DeployManifestMigrationSpec,
   opts: NormalizeDeployManifestOptions,
+  index: number,
+  seenNames: Map<string, number>,
 ): Promise<NonNullable<NonNullable<ReleaseSpec["database"]>["migrations"]>[number]> {
   assertPlainRecord(migration, "Deploy manifest database.migrations[]");
   assertKnownFields(
@@ -603,9 +624,38 @@ async function mapMigration(
     "Deploy manifest database.migrations[]",
     MANIFEST_MIGRATION_FIELDS,
   );
-  const out: NonNullable<NonNullable<ReleaseSpec["database"]>["migrations"]>[number] = {
-    id: migration.id,
-  };
+  const hasId = Object.prototype.hasOwnProperty.call(migration, "id") && migration.id !== undefined;
+  const hasName = Object.prototype.hasOwnProperty.call(migration, "name") && migration.name !== undefined;
+  const label = migrationLabel(migration, index);
+  if (hasId && hasName) {
+    throw new LocalError(`${label} declares both id and name; use exactly one`, CONTEXT);
+  }
+  if (!hasId && !hasName) {
+    throw new LocalError(`${label} must declare exactly one of id or name`, CONTEXT);
+  }
+  let out: NonNullable<NonNullable<ReleaseSpec["database"]>["migrations"]>[number];
+  if (hasName) {
+    if (typeof migration.name !== "string" || !MIGRATION_NAME_RE.test(migration.name)) {
+      throw new LocalError(
+        `${label}.name must match /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/`,
+        CONTEXT,
+      );
+    }
+    const firstIndex = seenNames.get(migration.name);
+    if (firstIndex !== undefined) {
+      throw new LocalError(
+        `${label}.name duplicates database.migrations[${firstIndex}].name ${JSON.stringify(migration.name)}`,
+        CONTEXT,
+      );
+    }
+    seenNames.set(migration.name, index);
+    out = { name: migration.name };
+  } else {
+    if (typeof migration.id !== "string" || migration.id.trim() === "") {
+      throw new LocalError(`${label}.id must be a non-empty string`, CONTEXT);
+    }
+    out = { id: migration.id };
+  }
   if (migration.sql !== undefined) out.sql = migration.sql;
   if (migration.sql_ref !== undefined) out.sql_ref = migration.sql_ref;
   if (migration.checksum !== undefined) out.checksum = migration.checksum;
@@ -618,7 +668,7 @@ async function mapMigration(
     migration.sql_path !== migration.sql_file
   ) {
     throw new LocalError(
-      `Migration ${migration.id} has both sql_path and sql_file with different values`,
+      `${label} has both sql_path and sql_file with different values`,
       CONTEXT,
     );
   }
@@ -629,7 +679,7 @@ async function mapMigration(
       out.sql = await readFile(abs, "utf-8");
     } catch (err) {
       throw new LocalError(
-        `Failed to read migration ${field} '${sqlPath}': ${(err as Error).message}`,
+        `Failed to read migration ${field} '${sqlPath}' for ${label}: ${(err as Error).message}`,
         CONTEXT,
         err,
       );
@@ -637,6 +687,18 @@ async function mapMigration(
   }
 
   return out;
+}
+
+function migrationLabel(migration: Partial<DeployManifestMigrationSpec>, index: number): string {
+  const identity =
+    typeof migration.id === "string"
+      ? migration.id
+      : typeof migration.name === "string"
+        ? migration.name
+        : null;
+  return identity
+    ? `Deploy manifest database.migrations[${index}] (${identity})`
+    : `Deploy manifest database.migrations[${index}]`;
 }
 
 function mapFunctions(

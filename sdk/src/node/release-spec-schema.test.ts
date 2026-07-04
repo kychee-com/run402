@@ -6,9 +6,14 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaPath = join(here, "../../../schemas/release-spec.v1.json");
+const appSchemaPath = join(here, "../../../schemas/run402-app.v1.schema.json");
 
 function readSchema(): Record<string, any> {
   return JSON.parse(readFileSync(schemaPath, "utf8"));
+}
+
+function readAppSchema(): Record<string, any> {
+  return JSON.parse(readFileSync(appSchemaPath, "utf8"));
 }
 
 describe("ReleaseSpec JSON Schema", () => {
@@ -55,6 +60,24 @@ describe("ReleaseSpec JSON Schema", () => {
     assert.match(schema.$defs.staticCacheClass.description, /html/);
     assert.match(schema.$defs.staticCacheClass.description, /immutable_versioned/);
     assert.match(schema.$defs.staticCacheClass.description, /revalidating_asset/);
+  });
+
+  it("documents content-tracked migration names and id/name exclusivity", () => {
+    const schema = readSchema();
+    const migration = schema.$defs.migration;
+
+    assert.ok(migration.oneOf);
+    assert.equal(migration.properties.name.pattern, "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$");
+    assert.match(migration.properties.name.description, /content/i);
+    assert.match(migration.properties.name.description, /idempotent/i);
+    assert.match(migration.properties.id.description, /immutable/i);
+
+    const appSchema = readAppSchema();
+    assert.deepEqual(appSchema.properties.release.properties.database, {
+      $ref: "#/$defs/releaseDatabase",
+    });
+    assert.ok(appSchema.$defs.migration.oneOf);
+    assert.equal(appSchema.$defs.migration.properties.name.pattern, "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$");
   });
 
   it("declares routed-locale-context i18n slice with the platform's tag/cookie rules", () => {

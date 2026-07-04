@@ -82,8 +82,16 @@ const migrationEntry = z
   .object({
     id: z
       .string()
+      .optional()
       .describe(
-        "Stable migration id (e.g. '001_init'). Same id+checksum across re-deploys is a registry noop; same id+different checksum is a hard error.",
+        "Stable versioned migration id (e.g. '001_init'). Same id+checksum across re-deploys is a registry noop; same id+different checksum is a hard error. Use name instead for generated/idempotent SQL.",
+      ),
+    name: z
+      .string()
+      .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/)
+      .optional()
+      .describe(
+        "Content-tracked migration name for generated/idempotent SQL. The SDK compiles this to <name>_<sha256(sql)[0:16]>; changed content applies once under a new id and identical re-deploys noop. SQL declared with name MUST be idempotent.",
       ),
     sql: z.string().optional().describe("Inline SQL (UTF-8). Either sql or sql_ref is required."),
     sql_ref: z
@@ -102,7 +110,11 @@ const migrationEntry = z
       ),
     transaction: z.enum(["required", "none"]).optional(),
   })
-  .strict();
+  .strict()
+  .refine((entry) => (entry.id === undefined) !== (entry.name === undefined), {
+    message: "Migration entries must declare exactly one of id or name.",
+    path: ["id"],
+  });
 
 const functionSpec = z
   .object({

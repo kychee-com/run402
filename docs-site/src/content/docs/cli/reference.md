@@ -265,6 +265,10 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
       {
         "id": "001_init",
         "sql": "CREATE TABLE IF NOT EXISTS items (id serial PRIMARY KEY, title text NOT NULL); INSERT INTO items (title) VALUES ('Buy groceries');"
+      },
+      {
+        "name": "seed_items",
+        "sql": "INSERT INTO items (title) SELECT 'Welcome' WHERE NOT EXISTS (SELECT 1 FROM items WHERE title = 'Welcome');"
       }
     ],
     "expose": {
@@ -310,7 +314,7 @@ Manifest format mirrors a v2 `ReleaseSpec`. For editor autocomplete, use top-lev
 }
 ```
 
-File entries: bare UTF-8 string; `{ "data": "...", "encoding": "utf-8" | "base64", "content_type": "..." }`; or `{ "path": "dist/index.html", "content_type": "text/html" }`. `site.replace` / `site.patch.put` may also be `{ "__source": "local-dir", "path": "dist/client" }` for a static-site directory. Function `source` may be `{ "path": "dist/run402/functions/api.js" }`. `--manifest` relative paths resolve from manifest dir; `--spec`/stdin paths resolve from cwd. Authoring-only local paths and `__source` markers are stripped/staged before the apply request. Migrations may use `"sql_path"` / `"sql_file"` instead of `"sql"`. CLI/MCP share SDK `normalizeDeployManifest`; JSON can become SDK-native `ReleaseSpec`. Strict adapter: only top-level `$schema` and app-kit evidence `x-run402-omitted_features` are ignored before planning; unknown fields/no-op specs fail (`"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, `"functions.replace.api.config.schedule"`).
+File entries: bare UTF-8 string; `{ "data": "...", "encoding": "utf-8" | "base64", "content_type": "..." }`; or `{ "path": "dist/index.html", "content_type": "text/html" }`. `site.replace` / `site.patch.put` may also be `{ "__source": "local-dir", "path": "dist/client" }` for a static-site directory. Function `source` may be `{ "path": "dist/run402/functions/api.js" }`. `--manifest` relative paths resolve from manifest dir; `--spec`/stdin paths resolve from cwd. Authoring-only local paths and `__source` markers are stripped/staged before the apply request. Migrations may use `"sql_path"` / `"sql_file"` instead of `"sql"`. Each migration declares exactly one of `"id"` or `"name"`: use `id` for immutable versioned migrations, and `name` for generated/idempotent SQL whose compiled id should track content changes. CLI/MCP share SDK `normalizeDeployManifest`; JSON can become SDK-native `ReleaseSpec`. Strict adapter: only top-level `$schema` and app-kit evidence `x-run402-omitted_features` are ignored before planning; unknown fields/no-op specs fail (`"subdomain"`, `"site.replcae"`, `"functions.replace.api.deps"`, `"functions.replace.api.config.schedule"`).
 
 Function specs: `runtime: "node22"`, exactly one code source (`source` or `files`+`entrypoint`), `config.timeout_seconds`, `config.memory_mb`, and optional `triggers[]`. Schedule triggers require a stable `id`, `type: "schedule"`, 5-field `cron`, and nested `run: { event_type, payload?, retry?, expires_after_seconds? }`; each tick creates a durable function run. Email triggers use `{ id, type: "email", mailbox, events, run }`, where `mailbox` is a mailbox slug/id and `events` is any of `reply_received`, `delivery`, `bounced`, `complained`; each matching email event creates a durable function run with the canonical event payload under `payload.event`. `deps: string[]` works under `apply-v1-function-deps`; gateway installs/bundles. `run402 functions deploy --deps` builds one `functions.patch.set` and uses unified apply; legacy standalone deploy route removed.
 
@@ -401,7 +405,7 @@ export default defineConfig(({ env }) => ({
 }));
 ```
 
-Helper semantics: `dir()` walks files in stable path order, skips private/dev patterns by default like the existing directory deploy helpers, normalizes `/` separators, rejects symlinks, and infers content types. `file()` resolves relative to the config file directory. `sqlFile()` derives the migration id from the filename unless `id` is supplied and fails duplicate ids/checksum mismatches locally. `nodeFunction()` stages a Node 22 function from built JavaScript; TypeScript function source paths are rejected with `TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE` until a deterministic bundler path is introduced.
+Helper semantics: `dir()` walks files in stable path order, skips private/dev patterns by default like the existing directory deploy helpers, normalizes `/` separators, rejects symlinks, and infers content types. `file()` resolves relative to the config file directory. `sqlFile()` derives the migration id from the filename unless `id` is supplied; pass `{ name: "seed" }` for generated/idempotent SQL so the SDK compiles `<name>_<sha256(sql)[0:16]>` from post-build file bytes. `nodeFunction()` stages a Node 22 function from built JavaScript; TypeScript function source paths are rejected with `TYPESCRIPT_FUNCTION_REQUIRES_BUNDLE` until a deterministic bundler path is introduced.
 
 Patch semantics — only the listed file changes:
 
@@ -533,7 +537,7 @@ function setLanguage(lang) {
 
 Deploy with `"detect": ["cookie:wl_locale", "accept-language"]`.
 
-Migration registry: key = `(id, checksum)`. Same id+SQL = noop; same id+different SQL = `MIGRATION_CHECKSUM_MISMATCH`. Use idempotent migrations (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` in `DO` block).
+Migration registry: key = `(id, checksum)`. There are two authoring kinds. Versioned migrations use `id`: same id+SQL = noop; same id+different SQL = `MIGRATION_CHECKSUM_MISMATCH`; if you revise one, ship a new id. Content-tracked migrations use `name`: the SDK compiles `<name>_<sha256(sql)[0:16]>`, so changed generated SQL applies once under a new id and unchanged re-ups noop. SQL declared with `name` MUST be idempotent (`CREATE TABLE IF NOT EXISTS`, `CREATE OR REPLACE`, upserts, `ADD COLUMN IF NOT EXISTS` in a `DO` block) because changed content re-runs against a database where prior versions may already exist. If generated SQL is trapped behind a static id mismatch, replace `"id": "seed"` with `"name": "seed"` as the primary recovery path; admin checksum adoption is only for legacy/out-of-band cases.
 
 ---
 ### GitHub Actions OIDC Deploys

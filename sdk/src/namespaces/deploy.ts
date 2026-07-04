@@ -2591,7 +2591,7 @@ const DEPLOYABLE_SPEC_FIELDS = [
 ] as const;
 const BASE_SPEC_FIELDS = new Set(["release", "release_id"]);
 const DATABASE_SPEC_FIELDS = new Set(["migrations", "expose", "zero_downtime"]);
-const MIGRATION_SPEC_FIELDS = new Set(["id", "checksum", "sql", "sql_ref", "transaction"]);
+const MIGRATION_SPEC_FIELDS = new Set(["id", "name", "checksum", "sql", "sql_ref", "transaction"]);
 const FUNCTIONS_SPEC_FIELDS = new Set(["replace", "patch"]);
 const FUNCTIONS_PATCH_FIELDS = new Set(["set", "delete"]);
 const FUNCTION_SPEC_FIELDS = new Set([
@@ -2626,6 +2626,7 @@ const I18N_LOCALE_TAG_REGEX = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const I18N_COOKIE_NAME_REGEX = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const I18N_MAX_LOCALES = 50;
 const I18N_MAX_DETECT_SOURCES = 10;
+const MIGRATION_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 function validateSpec(spec: ReleaseSpec): void {
   if (!spec || typeof spec !== "object") {
@@ -2716,13 +2717,53 @@ function validateDatabaseSpec(database: unknown): void {
     if (!Array.isArray(obj.migrations)) {
       throw invalidSpec("ReleaseSpec.database.migrations must be an array", "database.migrations");
     }
+    const seenNames = new Map<string, number>();
     for (const [index, migration] of obj.migrations.entries()) {
       const m = requireObject(migration, `database.migrations.${index}`);
       validateKnownFields(m, `database.migrations.${index}`, MIGRATION_SPEC_FIELDS);
+      validateMigrationIdentity(m, index, seenNames);
     }
   }
   if (obj.expose !== undefined) {
     requireObject(obj.expose, "database.expose");
+  }
+}
+
+function validateMigrationIdentity(
+  migration: Record<string, unknown>,
+  index: number,
+  seenNames: Map<string, number>,
+): void {
+  const resource = `database.migrations.${index}`;
+  const hasId = hasOwn(migration, "id") && migration.id !== undefined;
+  const hasName = hasOwn(migration, "name") && migration.name !== undefined;
+  if (hasId && hasName) {
+    throw invalidSpec(
+      `ReleaseSpec.${resource} declares both id and name; use exactly one`,
+      resource,
+    );
+  }
+  if (!hasId && !hasName) {
+    throw invalidSpec(
+      `ReleaseSpec.${resource} must declare exactly one of id or name`,
+      resource,
+    );
+  }
+  if (hasName) {
+    if (typeof migration.name !== "string" || !MIGRATION_NAME_RE.test(migration.name)) {
+      throw invalidSpec(
+        `ReleaseSpec.${resource}.name must match /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/`,
+        `${resource}.name`,
+      );
+    }
+    const firstIndex = seenNames.get(migration.name);
+    if (firstIndex !== undefined) {
+      throw invalidSpec(
+        `ReleaseSpec.${resource}.name duplicates database.migrations.${firstIndex}.name ${JSON.stringify(migration.name)}`,
+        `${resource}.name`,
+      );
+    }
+    seenNames.set(migration.name, index);
   }
 }
 
@@ -3873,6 +3914,7 @@ async function normalizeReleaseSpec(
           normalizeMigration(client, spec.project, m, rememberRelease, opts),
         ),
       );
+      assertUniqueMigrationIds(db.migrations);
     }
     normalized.database = db;
   }
@@ -4334,8 +4376,10 @@ async function normalizeMigration(
   remember: (r: ResolvedContent) => ContentRef,
   opts: { inlineMigrationSql?: boolean } = {},
 ): Promise<NormalizedMigrationSpec> {
-  if (!m.id) {
-    throw new Run402DeployError("MigrationSpec.id is required", {
+  const originalId = "id" in m ? m.id : undefined;
+  const name = "name" in m ? m.name : undefined;
+  if (!originalId && !name) {
+    throw new Run402DeployError("MigrationSpec.id or MigrationSpec.name is required", {
       code: "INVALID_SPEC",
       phase: "validate",
       resource: "database.migrations",
@@ -4348,38 +4392,43 @@ async function normalizeMigration(
   let sql_ref: ContentRef | undefined;
   let sql: string | undefined;
   let checksum: string;
+  let contentHash: string;
+  const identityLabel = originalId ?? name ?? "<unknown>";
   if (m.sql_ref) {
     sql_ref = m.sql_ref;
+    contentHash = m.sql_ref.sha256;
     checksum = m.checksum ?? m.sql_ref.sha256;
   } else if (m.sql !== undefined) {
     const bytes = new TextEncoder().encode(m.sql);
     const sha256 = await sha256Hex(bytes);
+    contentHash = sha256;
     if (opts.inlineMigrationSql) {
       sql = m.sql;
     } else {
       const ref: ContentRef = { sha256, size: bytes.byteLength, contentType: "application/sql" };
-      remember({ ref, reader: makeBytesReader(bytes, `migration:${m.id}`) });
+      remember({ ref, reader: makeBytesReader(bytes, `migration:${identityLabel}`) });
       sql_ref = ref;
     }
     checksum = m.checksum ?? sha256;
   } else {
     throw new Run402DeployError(
-      `MigrationSpec ${m.id} must include sql or sql_ref`,
+      `MigrationSpec ${identityLabel} must include sql or sql_ref`,
       {
         code: "INVALID_SPEC",
         phase: "validate",
-        resource: `database.migrations.${m.id}`,
+        resource: `database.migrations.${identityLabel}`,
         retryable: false,
         fix: {
           action: "set_field",
-          path: `database.migrations.${m.id}.sql`,
+          path: `database.migrations.${identityLabel}.sql`,
         },
         context: "validating spec",
       },
     );
   }
 
-  const out: NormalizedMigrationSpec = { id: m.id, checksum };
+  const id = originalId ?? `${name}_${contentHash.slice(0, 16)}`;
+  const out: NormalizedMigrationSpec = { id, checksum };
   if (sql_ref) out.sql_ref = sql_ref;
   if (sql !== undefined) out.sql = sql;
   if (m.transaction) out.transaction = m.transaction;
@@ -4387,6 +4436,27 @@ async function normalizeMigration(
   // projectId / client params reserved for future content-presence preflight.
   void client;
   void projectId;
+}
+
+function assertUniqueMigrationIds(migrations: NormalizedMigrationSpec[]): void {
+  const seen = new Map<string, number>();
+  for (const [index, migration] of migrations.entries()) {
+    const firstIndex = seen.get(migration.id);
+    if (firstIndex !== undefined) {
+      throw new Run402DeployError(
+        `ReleaseSpec.database.migrations.${index}.id duplicates database.migrations.${firstIndex}.id ${JSON.stringify(migration.id)}`,
+        {
+          code: "INVALID_SPEC",
+          phase: "validate",
+          resource: `database.migrations.${index}.id`,
+          retryable: false,
+          fix: { action: "set_field", path: `database.migrations.${index}.id` },
+          context: "validating spec",
+        },
+      );
+    }
+    seen.set(migration.id, index);
+  }
 }
 
 // ─── Content source resolution ───────────────────────────────────────────────

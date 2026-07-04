@@ -575,6 +575,8 @@ Operator moderation actions are independent of lifecycle and scoped to a single 
 
 ## Idempotent migrations
 
+Deploy migration entries declare exactly one of `id` or `name`. Use `id` for immutable versioned migrations: same id+SQL noops, same id+different SQL fails with `MIGRATION_CHECKSUM_MISMATCH`, and real revisions need a new id. Use `name` for generated/idempotent SQL; the SDK compiles `<name>_<sha256(sql)[0:16]>` before calling the gateway, so changed content applies once and unchanged re-ups noop. SQL declared with `name` MUST be idempotent because it re-runs when content changes.
+
 `CREATE TABLE IF NOT EXISTS` only handles "already exists" — it won't add new columns. For evolving schemas, wrap `ALTER TABLE` in a `DO` block:
 
 ```sql

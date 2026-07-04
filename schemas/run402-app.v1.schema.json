@@ -109,7 +109,9 @@
       "additionalProperties": false,
       "properties": {
         "base": true,
-        "database": true,
+        "database": {
+          "$ref": "#/$defs/releaseDatabase"
+        },
         "secrets": true,
         "functions": true,
         "site": true,
@@ -260,6 +262,59 @@
         { "required": ["argv"] },
         { "required": ["shell"] }
       ]
+    },
+    "releaseDatabase": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "migrations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/migration" }
+        },
+        "expose": true,
+        "zero_downtime": {
+          "type": "boolean"
+        }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Versioned immutable migration id, e.g. 001_init. Same id plus same checksum noops; same id plus different SQL is MIGRATION_CHECKSUM_MISMATCH. Use name instead for generated/idempotent SQL whose identity should track content changes."
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$",
+          "description": "Content-tracked migration name for generated/idempotent SQL. The SDK compiles this to <name>_<sha256(sql)[0:16]>; changed content applies once under a new id and identical re-deploys noop. SQL declared with name MUST be idempotent because it re-runs whenever content changes against a database where prior versions may already exist."
+        },
+        "checksum": { "type": "string" },
+        "sql": { "type": "string" },
+        "sql_ref": { "$ref": "#/$defs/contentRef" },
+        "sql_path": { "type": "string" },
+        "sql_file": { "type": "string" },
+        "transaction": { "enum": ["required", "none"] }
+      },
+      "oneOf": [
+        { "required": ["id"], "not": { "required": ["name"] } },
+        { "required": ["name"], "not": { "required": ["id"] } }
+      ]
+    },
+    "contentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "size"],
+      "properties": {
+        "sha256": { "type": "string" },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contentType": { "type": "string" },
+        "integrity": { "type": "string" }
+      }
     },
     "httpVerify": {
       "type": "object",

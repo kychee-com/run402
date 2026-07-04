@@ -3150,7 +3150,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
     );
   });
 
-  it("populates phase/resource/fix when a migration is missing its id", async () => {
+  it("populates phase/resource/fix when a migration has neither id nor name", async () => {
     const w = makeWiring();
     const deploy = new Deploy(w.client);
     await assert.rejects(
@@ -3164,7 +3164,7 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
         const e = err as Run402DeployError;
         assert.equal(e.code, "INVALID_SPEC");
         assert.equal(e.phase, "validate");
-        assert.equal(e.resource, "database.migrations");
+        assert.equal(e.resource, "database.migrations.0");
         assert(e.fix !== null);
         assert.equal(e.fix!.action, "set_field");
         assert.equal(typeof e.fix!.path, "string");
@@ -3195,6 +3195,65 @@ describe("Deploy.apply (validate-phase structured error context)", () => {
         return true;
       },
     );
+  });
+
+  it("rejects migration entries with both id and name before gateway requests", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () =>
+        deploy.apply({
+          project: "prj_test",
+          database: { migrations: [{ id: "001_init", name: "seed", sql: "SELECT 1" } as never] },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "INVALID_SPEC");
+        assert.equal(err.resource, "database.migrations.0");
+        assert.match(err.message, /both id and name/);
+        return true;
+      },
+    );
+    assert.equal(w.requests.length, 0);
+  });
+
+  it("rejects invalid and duplicate content-tracked migration names", async () => {
+    const invalid = makeWiring();
+    await assert.rejects(
+      () =>
+        new Deploy(invalid.client).apply({
+          project: "prj_test",
+          database: { migrations: [{ name: "bad seed!", sql: "SELECT 1" }] },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.resource, "database.migrations.0.name");
+        assert.match(err.message, /must match/);
+        return true;
+      },
+    );
+    assert.equal(invalid.requests.length, 0);
+
+    const duplicate = makeWiring();
+    await assert.rejects(
+      () =>
+        new Deploy(duplicate.client).apply({
+          project: "prj_test",
+          database: {
+            migrations: [
+              { name: "seed", sql: "SELECT 1" },
+              { name: "seed", sql: "SELECT 2" },
+            ],
+          },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.resource, "database.migrations.1.name");
+        assert.match(err.message, /duplicates/);
+        return true;
+      },
+    );
+    assert.equal(duplicate.requests.length, 0);
   });
 });
 
@@ -3236,6 +3295,108 @@ describe("Deploy.apply (byte source normalization)", () => {
 
     const sent = JSON.stringify(plannedSpec);
     assert(sent.includes(expected), "manifest contains the SHA-256 of the file content");
+  });
+
+  it("compiles content-tracked inline migrations to content-derived ids and strips name", async () => {
+    const w = makeWiring();
+    const sql = "select 1;\n";
+    const expected = shaHex(sql);
+    let migration: Record<string, unknown> | undefined;
+
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        const body = req.body as { spec: { database?: { migrations?: Array<Record<string, unknown>> } } };
+        migration = body.spec.database?.migrations?.[0];
+        return noContentPlan("p", "o");
+      }
+      if (req.path === "/apply/v1/plans/p/commit") return readyCommit("o", "r");
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    await new Deploy(w.client).apply({
+      project: "prj_test",
+      database: { migrations: [{ name: "seed", sql }] },
+    });
+
+    assert.equal(migration?.id, `seed_${expected.slice(0, 16)}`);
+    assert.equal(migration?.checksum, expected);
+    assert.equal((migration?.sql_ref as { sha256?: string } | undefined)?.sha256, expected);
+    assert.equal("name" in (migration ?? {}), false);
+  });
+
+  it("derives content-tracked migration ids from sql_ref without reading bytes", async () => {
+    const w = makeWiring();
+    const sha256 = "0123456789abcdef".repeat(4);
+    let migration: Record<string, unknown> | undefined;
+
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        const body = req.body as { spec: { database?: { migrations?: Array<Record<string, unknown>> } } };
+        migration = body.spec.database?.migrations?.[0];
+        return noContentPlan("p", "o");
+      }
+      if (req.path === "/apply/v1/plans/p/commit") return readyCommit("o", "r");
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    await new Deploy(w.client).apply({
+      project: "prj_test",
+      database: { migrations: [{ name: "seed_ref", sql_ref: { sha256, size: 1234 } }] },
+    });
+
+    assert.equal(migration?.id, `seed_ref_${sha256.slice(0, 16)}`);
+    assert.equal(migration?.checksum, sha256);
+    assert.equal("name" in (migration ?? {}), false);
+  });
+
+  it("keeps content-tracked migration ids stable for unchanged content and changes them for changed content", async () => {
+    const w = makeWiring();
+    const ids: string[] = [];
+    let count = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        const body = req.body as { spec: { database?: { migrations?: Array<Record<string, unknown>> } } };
+        ids.push(String(body.spec.database?.migrations?.[0]?.id));
+        count += 1;
+        return noContentPlan(`p${count}`, `o${count}`);
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    await deploy.plan({ project: "prj_test", database: { migrations: [{ name: "seed", sql: "select 1;" }] } });
+    await deploy.plan({ project: "prj_test", database: { migrations: [{ name: "seed", sql: "select 1;" }] } });
+    await deploy.plan({ project: "prj_test", database: { migrations: [{ name: "seed", sql: "select 2;" }] } });
+
+    assert.equal(ids[0], ids[1]);
+    assert.notEqual(ids[1], ids[2]);
+  });
+
+  it("rejects duplicate compiled migration ids before gateway requests", async () => {
+    const w = makeWiring();
+    const sql = "select 1;";
+    const id = `seed_${shaHex(sql).slice(0, 16)}`;
+
+    await assert.rejects(
+      () =>
+        new Deploy(w.client).apply({
+          project: "prj_test",
+          database: {
+            migrations: [
+              { name: "seed", sql },
+              { id, sql },
+            ],
+          },
+        }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "INVALID_SPEC");
+        assert.equal(err.resource, "database.migrations.1.id");
+        assert.match(err.message, /duplicates/);
+        return true;
+      },
+    );
+    assert.equal(w.requests.length, 0);
   });
 
   it("hashes Uint8Array sources", async () => {

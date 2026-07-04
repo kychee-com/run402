@@ -470,6 +470,57 @@ writeFileSync("frontend/dist/index.html", "<h1>" + process.env.RUN402_PUBLIC_ORI
   }
 });
 
+test("up app hashes content-tracked migrations from post-build sql_path output", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-app-up-content-migration-"));
+  mkdirSync(join(dir, "scripts"), { recursive: true });
+  writeFileSync(join(dir, "scripts", "build.mjs"), `
+import { mkdirSync, writeFileSync } from "node:fs";
+mkdirSync("dist", { recursive: true });
+writeFileSync("dist/seed.sql", "insert into seed values ('post-build');\\n");
+`);
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: {
+      mode: "local",
+      commands: [
+        { id: "build", argv: [process.execPath, "scripts/build.mjs"] },
+      ],
+    },
+    release: {
+      database: {
+        migrations: [{ name: "seed", sql_path: "dist/seed.sql" }],
+      },
+    },
+    resources: {},
+    secrets: {},
+    verify: undefined,
+  })));
+  const calls: string[] = [];
+  const appliedSpecs: unknown[] = [];
+  const sdk = fakeSdk({
+    calls,
+    appliedSpecs,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await actions.up({ name: "seeded" }, { approval: "yes" });
+
+    const migration = (appliedSpecs[0] as {
+      database?: { migrations?: Array<{ name?: string; sql?: string }> };
+    }).database?.migrations?.[0];
+    assert.deepEqual(migration, {
+      name: "seed",
+      sql: "insert into seed values ('post-build');\n",
+    });
+    assert.ok(calls.includes("project.apply:prj_new"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up accepts repository URL sources and records commit metadata", async () => {
   const repo = mkdtempSync(join(tmpdir(), "run402-app-up-source-repo-"));
   writeFileSync(join(repo, "run402.json"), JSON.stringify(appManifest()));

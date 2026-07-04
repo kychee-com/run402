@@ -222,11 +222,9 @@ export interface DatabaseSpec {
   zero_downtime?: boolean;
 }
 
-export interface MigrationSpec {
-  /** Stable migration id, e.g. `"001_init"`. Same id + same checksum across
-   *  re-deploys is a registry noop; same id + different checksum is a hard
-   *  error. */
-  id: string;
+export type MigrationSpec = VersionedMigrationSpec | ContentTrackedMigrationSpec;
+
+export interface BaseMigrationSpec {
   /** Lowercase hex SHA-256 of the migration SQL. Computed by the SDK from
    *  `sql` if not provided. */
   checksum?: string;
@@ -239,6 +237,25 @@ export interface MigrationSpec {
    *  `"none"` opts out (and on failure, sends the operation to
    *  `needs_repair` rather than rolling back). */
   transaction?: "required" | "none";
+}
+
+export interface VersionedMigrationSpec extends BaseMigrationSpec {
+  /** Stable migration id, e.g. `"001_init"`. Same id + same checksum across
+   *  re-deploys is a registry noop; same id + different checksum is a hard
+   *  error. Use `name` instead for generated/idempotent SQL whose identity
+   *  should track content changes. */
+  id: string;
+  name?: never;
+}
+
+export interface ContentTrackedMigrationSpec extends BaseMigrationSpec {
+  /** Content-tracked migration name for generated/idempotent SQL. The SDK
+   *  compiles this to `id = <name>_<sha256(sql)[0:16]>`; changed content
+   *  applies once under a new id, identical re-deploys noop. SQL declared
+   *  with `name` MUST be idempotent because it re-runs whenever content
+   *  changes against a database where prior versions may already exist. */
+  name: string;
+  id?: never;
 }
 
 /** Declarative authorization manifest. Pass-through shape — the gateway

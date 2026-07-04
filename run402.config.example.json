@@ -8,6 +8,10 @@
       {
         "id": "001_init",
         "sql": "CREATE TABLE IF NOT EXISTS items (id bigserial PRIMARY KEY, title text NOT NULL, created_at timestamptz NOT NULL DEFAULT NOW());"
+      },
+      {
+        "name": "seed_items",
+        "sql": "INSERT INTO items (title) SELECT 'Welcome to Run402' WHERE NOT EXISTS (SELECT 1 FROM items WHERE title = 'Welcome to Run402');"
       }
     ],
     "expose": {
