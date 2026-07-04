@@ -652,6 +652,29 @@ Route matching and routed HTTP contract:
 - Request/response bodies are capped at 6 MiB. Run402 adds no wildcard CORS, does not store routed dynamic responses in a shared cache, and adds `Cache-Control: private, no-store` plus `x-run402-cache: dynamic-bypass` when the function sets no cache header.
 - The function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and not trusting spoofable forwarding headers.
 
+Recipe — static home page + SPA shell. A SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html` and add an exact root static route alias:
+
+```ts
+const spaWithStaticHome: ReleaseSpec = {
+  project: projectId,
+  site: { replace: {
+    "index.html": "<!doctype html><main id='app'></main><script src='/app.js'></script>",
+    "home.html": "<!doctype html><h1>Welcome</h1><a href='/dashboard'>Open the app</a>",
+    "app.js": "/* SPA bootstrap */",
+  } },
+  routes: { replace: [
+    { pattern: "/", target: { type: "static", file: "home.html" } },
+  ] },
+};
+await (await r.project(spaWithStaticHome.project)).apply(spaWithStaticHome);
+```
+
+- Route matching runs before all static resolution — including the implicit `/` -> `index.html` root mapping — and SPA-fallback derivation is independent of the route table. So `GET /` serves `home.html` (match `route_static_alias`), unmatched app routes e.g. `/dashboard` still serve the `index.html` shell (match `spa_fallback`), and named static pages keep serving unchanged (match `static_exact`).
+- Root placement of `home.html` keeps its relative asset URLs resolving identically to the direct file and avoids the `STATIC_ALIAS_RELATIVE_ASSET_RISK` warning.
+- Expected non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn — the alias overrides what `/` would otherwise serve; for this recipe that is accurate and expected, and the commit proceeds) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info — `/home.html` stays directly reachable in implicit public-path mode; add `<link rel="canonical" href="https://<your-site>/">` to `home.html` if duplicate-content SEO matters).
+- Omitting `routes` on later deploys carries the alias forward (informational `ROUTE_TARGET_CARRIED_FORWARD`); a pipeline that sends `routes.replace` must include the alias every time because replace is total.
+- Verify with `p.apply.resolve({ url: "https://<your-site>/", method: "GET" })` (below) and confirm `match: "route_static_alias"` with `target_file: "home.html"`.
+
 URL-first public diagnostics:
 
 ```ts

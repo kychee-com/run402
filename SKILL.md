@@ -232,6 +232,30 @@ Use **`deploy_diagnose_url`** before changing deploys when the question is "what
 
 Known route warning recovery: `PUBLIC_ROUTED_FUNCTION` means review app auth, CSRF, CORS/`OPTIONS`, and cookies before retrying with `allow_warning_codes` for that code; broad `allow_warnings` is last resort after every warning is reviewed. `ROUTE_SHADOWS_STATIC_PATH` and `WILDCARD_ROUTE_SHADOWS_STATIC_PATHS` mean inspect affected paths, active routes, `static_public_paths`, and resolve diagnostics before confirming. `STATIC_ALIAS_SHADOWS_STATIC_PATH`, `STATIC_ALIAS_RELATIVE_ASSET_RISK`, `STATIC_ALIAS_DUPLICATE_CANONICAL_URL`, `STATIC_ALIAS_EXTENSIONLESS_NON_HTML`, and `STATIC_ALIAS_TABLE_NEAR_LIMIT` are route-only static alias warnings; prefer `site.public_paths` for ordinary clean URLs, inspect the backing `asset_path`, fix relative assets/canonical URLs, and avoid table-exhausting page-by-page routes. `ROUTE_TARGET_CARRIED_FORWARD` means inspect carried-forward function targets. `METHOD_SPECIFIC_ROUTE_ALLOWS_GET_STATIC_FALLBACK` means confirm static fallback is intended. `WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS` means a wildcard API prefix only allows `GET`/`HEAD`; add mutation methods such as `POST`, omit methods for an API prefix, or set `acknowledge_readonly: true` on an intentionally read-only GET/HEAD final-wildcard function route. `ROUTE_TABLE_NEAR_LIMIT` means consolidate routes. `ROUTES_NOT_ENABLED` means deploy without `routes` or request enablement. Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
+#### Recipe: static home page + SPA shell
+
+A SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html` and add an exact root static route alias in the same **`deploy`** manifest:
+
+```json
+{
+  "project_id": "prj_...",
+  "site": { "replace": {
+    "index.html": { "data": "<!doctype html><main id='app'></main><script src='/app.js'></script>" },
+    "home.html": { "data": "<!doctype html><h1>Welcome</h1><a href='/dashboard'>Open the app</a>" },
+    "app.js": { "data": "/* SPA bootstrap */" }
+  } },
+  "routes": {
+    "replace": [
+      { "pattern": "/", "target": { "type": "static", "file": "home.html" } }
+    ]
+  }
+}
+```
+
+Route matching runs before all static resolution — including the implicit `/` -> `index.html` root mapping — and SPA-fallback derivation is independent of the route table. So `GET /` serves `home.html` (match `route_static_alias`), unmatched app routes such as `/dashboard` still serve the `index.html` shell (match `spa_fallback`), and named static pages keep serving unchanged (match `static_exact`). Root placement of `home.html` keeps its relative asset URLs resolving identically to the direct file and avoids the `STATIC_ALIAS_RELATIVE_ASSET_RISK` warning.
+
+Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn — the alias overrides what `/` would otherwise serve; for this recipe that is accurate and expected, and the commit proceeds) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info — `/home.html` stays directly reachable in implicit public-path mode; add `<link rel="canonical" href="https://<your-site>/">` to `home.html` if duplicate-content SEO matters). Omitting `routes` on later deploys carries the alias forward (informational `ROUTE_TARGET_CARRIED_FORWARD`); a pipeline that sends `routes.replace` must include the alias every time because replace is total. Verify with **`deploy_diagnose_url`** on the site root URL and confirm `match: "route_static_alias"` with `target_file: "home.html"`.
+
 #### Routed functions: locale awareness
 
 Declare supported locales as a `spec.i18n` release slice and the gateway negotiates a locale per routed-function request, then surfaces it to user code through two request headers. Use the unified **`deploy`** tool with an `i18n` block alongside `functions` and `routes`:

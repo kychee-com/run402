@@ -205,6 +205,30 @@ Route warning recovery:
 
 Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
+#### Recipe: static home page + SPA shell
+
+A SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html` and add an exact root static route alias in the same `deploy` manifest:
+
+```json
+{
+  "project_id": "prj_...",
+  "site": { "replace": {
+    "index.html": { "data": "<!doctype html><main id='app'></main><script src='/app.js'></script>" },
+    "home.html": { "data": "<!doctype html><h1>Welcome</h1><a href='/dashboard'>Open the app</a>" },
+    "app.js": { "data": "/* SPA bootstrap */" }
+  } },
+  "routes": {
+    "replace": [
+      { "pattern": "/", "target": { "type": "static", "file": "home.html" } }
+    ]
+  }
+}
+```
+
+Route matching runs before all static resolution — including the implicit `/` -> `index.html` root mapping — and SPA-fallback derivation is independent of the route table. So `GET /` serves `home.html` (match `route_static_alias`), unmatched app routes e.g. `/dashboard` still serve the `index.html` shell (match `spa_fallback`), and named static pages keep serving unchanged (match `static_exact`). Root placement of `home.html` keeps its relative asset URLs resolving identically to the direct file and avoids the `STATIC_ALIAS_RELATIVE_ASSET_RISK` warning.
+
+Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn — the alias overrides what `/` would otherwise serve; for this recipe that is accurate and expected, and the commit proceeds) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info — `/home.html` stays directly reachable in implicit public-path mode; add `<link rel="canonical" href="https://<your-site>/">` to `home.html` if duplicate-content SEO matters). Omitting `routes` on later deploys carries the alias forward (informational `ROUTE_TARGET_CARRIED_FORWARD`); a pipeline that sends `routes.replace` must include the alias every time because replace is total. Verify with `deploy_diagnose_url` on the site root URL and confirm `match: "route_static_alias"` with `target_file: "home.html"`.
+
 ### In-function helpers — `db(req)` vs `adminDb()`
 
 Inside a deployed function, import from `@run402/functions` (auto-bundled at deploy time):

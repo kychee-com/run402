@@ -445,6 +445,8 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
 
   Routed functions use Node 22 Fetch Request -> Response. `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. The raw `run402.routed_http.v1` envelope is internal; direct `/functions/v1/:name` remains API-key protected.
 
+  Recipe — static home page + SPA shell: a root alias `{ pattern: "/", target: { type: "static", file: "home.html" } }` (with `home.html` shipped at the site root) serves real static bytes at `GET /` (`route_static_alias`) while unmatched app routes such as `/dashboard` keep the `index.html` shell (`spa_fallback`) — route matching runs before all static resolution, including the implicit `/` -> `index.html` root mapping, and SPA-fallback derivation is independent of the route table. Expect non-blocking `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info) plan lints; omitted `routes` carries the alias forward, and `routes.replace` is total, so include the alias every time your pipeline sends it.
+
 - URL-first public diagnostics:
 
   ```ts

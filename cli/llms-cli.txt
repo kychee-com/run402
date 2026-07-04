@@ -378,6 +378,24 @@ run402 deploy apply --manifest app.json
 
 Stdout final result includes `release_id`, `operation_id`, `urls`, etc. Stderr streams JSON-line progress events. `--quiet` / `--final-only` silence stderr while preserving stdout.
 
+Recipe — static home page + SPA shell: a SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` — real bytes under curl and without JavaScript — while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html`, add an exact root static route alias, and `run402 deploy apply --manifest app.json`:
+
+```json
+{
+  "project_id": "prj_...",
+  "site": { "replace": {
+    "index.html": { "data": "<!doctype html><main id='app'></main><script src='/app.js'></script>" },
+    "home.html": { "data": "<!doctype html><h1>Welcome</h1><a href='/dashboard'>Open the app</a>" },
+    "app.js": { "data": "/* SPA bootstrap */" }
+  } },
+  "routes": { "replace": [
+    { "pattern": "/", "target": { "type": "static", "file": "home.html" } }
+  ] }
+}
+```
+
+Route matching runs before all static resolution — including the implicit `/` -> `index.html` root mapping — and SPA-fallback derivation is independent of the route table. So `GET /` serves `home.html` (match `route_static_alias`), unmatched app routes like `/dashboard` still serve the `index.html` shell (match `spa_fallback`), and named static pages keep serving unchanged (match `static_exact`). Root placement of `home.html` keeps its relative asset URLs resolving identically to the direct file and avoids the `STATIC_ALIAS_RELATIVE_ASSET_RISK` warning. Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn — the alias overrides what `/` would otherwise serve; for this recipe that is accurate and expected, and the commit proceeds) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info — `/home.html` stays directly reachable in implicit public-path mode; add `<link rel="canonical" href="https://<your-site>/">` to `home.html` if duplicate-content SEO matters). Omitting `routes` on later deploys carries the alias forward (informational `ROUTE_TARGET_CARRIED_FORWARD`); a pipeline that sends `routes.replace` must include the alias every time because replace is total. Verify with `run402 deploy resolve --project prj_123 --url https://<your-site>/ --method GET` and confirm `match: "route_static_alias"` with `target_file: "home.html"`.
+
 Typed deploy configs are an authoring format for the same `deploy apply` and `up` verbs, not a separate command family. JSON data manifests (`run402.deploy.json`, `app.json`) may be auto-discovered. TypeScript/JavaScript configs are executable local code, so v1 requires explicit trust with `--manifest`:
 
 ```bash
