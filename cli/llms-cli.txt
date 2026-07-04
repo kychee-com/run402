@@ -73,7 +73,7 @@ Uniform contract:
 
 ## `run402 up` (SDK action runner)
 
-`run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
+`run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--verify] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet] [--allow-warning <code> ...] [--allow-warnings]`
 
 `run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--json|--json-stream|--human] [--quiet]`
 
@@ -102,6 +102,7 @@ Approval and recursion:
 - Deploy warnings use the same review surface as `deploy apply`: prefer repeatable `--allow-warning <code>` and reserve broad `--allow-warnings` for reviewed exceptional cases.
 - App manifests can define `verify.http[]`. After apply, `up` fetches those URLs and records per-check status in `result.app_result.verification.http[]`. Fresh managed-subdomain or custom-domain misses that carry Run402 edge sentinels (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) are treated as propagation, not as permanent verify failure, while the deploy binding is fresh or `deploy resolve` reports `edge_propagation.status !== "settled"`.
 - `--propagation-budget-s` controls the wall-clock wait for those fresh edge misses (default 120 seconds). `--no-propagation-wait` returns immediately with app `status: "propagation_pending"` and `verify.status: "propagation_pending"`; the result includes `propagation_wait_ms`, warnings, `next_action`, and diagnostic `edge_propagation` / `resolve` payloads when available.
+- `--verify` waits after a successful deploy apply for gateway/edge release coherence and attaches `result.edge_coherence` plus `result.deploy.edge_coherence`. It uses the same `--propagation-budget-s` budget (default 120 seconds), emits `deploy.verify.poll` progress events, and exits 2 if the report is valid but still not coherent.
 - `run402 up verify` reruns the app manifest HTTP verification without resource mutation, upload, deploy, or project creation. It resolves the project from `--project`, `.run402/project.json`, the manifest project id, then active project, and is the recovery command to run after propagation settles.
 
 Output: stdout is the action result, e.g. `{ "action": "up", "dry_run": false, "target": "cloud", "steps": [...], "result": { "project_id": "prj_...", "manifest_path": "...", "deploy": {...} } }`. Stderr carries JSON action-step events unless `--quiet`.
@@ -479,6 +480,7 @@ Deploy history/observability:
 ```bash
 run402 deploy list --project prj_... --limit 10
 run402 deploy events <operation_id> --project prj_...
+run402 deploy verify <operation_id> --project prj_... --wait --timeout 120
 run402 deploy release active --project prj_... --site-limit 5000
 run402 deploy release get rel_... --project prj_...
 run402 deploy release diff --from empty --to active --project prj_... --limit 1000
@@ -487,7 +489,7 @@ run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#h
 run402 deploy resolve --project prj_123 --host example.com --path /events --method GET
 ```
 
-`list` -> `{ operations, cursor }`; SDK/MCP accept non-null cursor. `events` returns same `DeployEvent` shapes as inline apply events.
+`list` -> `{ operations, cursor }`; SDK/MCP accept non-null cursor. `events` returns same `DeployEvent` shapes as inline apply events. `verify` calls the edge-coherence report endpoint and returns `{ status: "coherent"|"not_coherent", coherent, report }`; with `--wait`, stderr emits per-poll path summaries and exit code 2 means the report was valid but still not coherent before timeout.
 
 `release active|get` -> `{ release: ReleaseInventory }`: metadata, `state_kind` (`current_live|effective|desired_manifest`), `site.paths` (capped by `--site-limit`), `static_public_paths`, functions, secret keys only, subdomains, routes, migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, `i18n` (`{ defaultLocale, locales, detect }` or `null`), warnings. `static_public_paths[]` has `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, content type. `static_manifest_metadata: null` = unavailable; when present has `file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`. Verify i18n with `jq '.release.i18n'`; absent field (older gateway) = unknown, not null.
 
@@ -845,7 +847,7 @@ run402 subdomains claim my-app
 ## Command Reference
 
 ### up
-- `run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--quiet]` — SDK-owned recursive app deploy. Validates `run402.deploy.json`/`app.json`, requires explicit `--manifest` for executable `.ts/.js` configs, ensures missing Cloud prerequisites when approved, resolves/creates/links a project, then applies the manifest. Output includes `steps[]`; success has no top-level `status`. Use `--check` for local-only validation, `--print-spec` for normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan` for exact reviewed apply. App HTTP verification reports fresh edge misses as `propagation_pending`, waits up to `--propagation-budget-s` (default 120), and `--no-propagation-wait` returns the pending state immediately.
+- `run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--verify] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--quiet]` — SDK-owned recursive app deploy. Validates `run402.deploy.json`/`app.json`, requires explicit `--manifest` for executable `.ts/.js` configs, ensures missing Cloud prerequisites when approved, resolves/creates/links a project, then applies the manifest. Output includes `steps[]`; success has no top-level `status`. Use `--check` for local-only validation, `--print-spec` for normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan` for exact reviewed apply. App HTTP verification reports fresh edge misses as `propagation_pending`, waits up to `--propagation-budget-s` (default 120), and `--no-propagation-wait` returns the pending state immediately. Add `--verify` to wait for gateway/edge release coherence after the deploy and attach `edge_coherence`; non-coherence exits 2.
 - `run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--quiet]` — rerun app manifest HTTP verification without deploying, uploading, creating a project, or mutating resources. Use it after `propagation_pending` or before declaring a consumer copy healthy.
 
 ### init
@@ -945,6 +947,7 @@ All admin subcommands require a platform-admin allowance wallet (or an admin OAu
 - `run402 deploy promote <release-id> [--project <id>] [--allow-warning <code>] [--allow-warnings]` — operator pointer-swap (re-point live release without re-running the apply pipeline); v1.58+
 - `run402 deploy list [--project <id>] [--limit <n>]` — list recent deploy operations
 - `run402 deploy events <operation_id> [--project <id>]` — fetch the recorded event stream for an operation
+- `run402 deploy verify <operation_id>|--operation <operation_id> [--project <id>] [--wait] [--timeout <seconds>] [--json]` — verify gateway/edge release coherence; exits 2 when a valid report remains not coherent
 - `run402 deploy release get <release_id> [--project <id>] [--site-limit <n>]` — fetch release inventory
 - `run402 deploy release active [--project <id>] [--site-limit <n>]` — fetch current-live release inventory
 - `run402 deploy release diff --from <empty|active|release_id> --to <active|release_id> [--project <id>] [--limit <n>]` — diff release targets

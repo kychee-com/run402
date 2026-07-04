@@ -34,7 +34,7 @@ Six tool calls, zero-to-deployed:
 
 Optional next: **`deploy_function`** for server logic, **`assets_put`** to host images/JS/CSS with paste-and-go URLs, **`create_mailbox` → `list_mailboxes` / `set_mailbox_defaults` / `update_mailbox` → `send_email`** for transactional mail.
 
-Typed `run402.deploy.ts` config files are executable local code and are handled by the CLI/SDK, not by a separate MCP tool in v1. For repo-level typed config, run `run402 up --manifest run402.deploy.ts --check`, then `--plan`, then `--require-plan <plan_id>`. `--check` is local-only; `--plan` is gateway-reviewed and returns `plan_fingerprint`; `--require-plan` applies only that reviewed intent. If an app manifest defines `verify.http[]`, `run402 up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; run `run402 up verify` to rerun those HTTP checks without deploying.
+Typed `run402.deploy.ts` config files are executable local code and are handled by the CLI/SDK, not by a separate MCP tool in v1. For repo-level typed config, run `run402 up --manifest run402.deploy.ts --check`, then `--plan`, then `--require-plan <plan_id>`. `--check` is local-only; `--plan` is gateway-reviewed and returns `plan_fingerprint`; `--require-plan` applies only that reviewed intent. If an app manifest defines `verify.http[]`, `run402 up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; run `run402 up verify` to rerun those HTTP checks without deploying. Add `run402 up --verify` when applying a deploy if you need gateway/edge release coherence evidence in the final result.
 
 ## Error Envelopes and Safe Retry
 
@@ -182,6 +182,8 @@ The response's `content` array includes a fenced `json` block of buffered unifie
 For full-stack deploys (database + migrations + manifest + secret dependencies + functions + site + subdomain), use **`deploy`**. Set secret values first with **`set_secret`**, then deploy with value-free `secrets.require[]`; never put secret values in deploy specs.
 
 After deploys, use read-only release observability instead of starting another mutation: **`deploy_release_active`** for the current-live inventory, **`deploy_release_get`** for a specific release id, and **`deploy_release_diff`** to compare `empty`, `active`, or release-id targets. Inventories expose site paths, `static_public_paths` when returned, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and warnings when returned. `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. Diffs use `migrations.applied_between_releases`, route `added` / `removed` / `changed` buckets, and `static_assets` counters for unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
+
+Use **`deploy_verify_edge`** after a deploy operation when you need coherence evidence across gateway and edge pointers. Pass `project_id`, `operation_id`, and optionally `wait` / `timeout_seconds`. The report includes `coherent`, `pending_count`, pointer updates, probed paths, stale-release observations, and `next_actions`; not-coherent is a valid diagnostic state, not a transport failure.
 
 #### Same-origin web routes
 
@@ -532,7 +534,7 @@ Archive v1 exports active release/apply state, supported Postgres/RLS/REST data,
 - **`list_subdomains`** / **`delete_subdomain`** — manage subdomains.
 - **`domains_ensure`** / **`domains_get`** / **`domains_list`** / **`domains_check`** — manage project-scoped ProjectDomain desired state for web, email sending, inbound receive, mailbox addresses, and health checks.
 - **`domains_apply`** / **`domains_repair`** / **`domains_test_receive`** / **`domains_activate`** / **`domains_disconnect`** — apply safe provider actions, repair Run402-owned routing, create inbound receive tests, activate custom mailbox addresses, or disconnect a domain.
-- **`deploy`** / **`deploy_resume`** / **`deploy_rehearse`** / **`deploy_list`** / **`deploy_events`** — apply, resume, rehearse persisted plans on contained branches, list, and inspect deploy operations.
+- **`deploy`** / **`deploy_resume`** / **`deploy_rehearse`** / **`deploy_list`** / **`deploy_events`** / **`deploy_verify_edge`** — apply, resume, rehearse persisted plans on contained branches, list, inspect deploy operations, and verify gateway/edge coherence.
 - **`deploy_release_get`** / **`deploy_release_active`** / **`deploy_release_diff`** — inspect release inventory and release-to-release diffs.
 - **`deploy_diagnose_url`** — URL-first public deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`. Includes `edge_propagation` diagnostics for fresh stable-host misses.
 

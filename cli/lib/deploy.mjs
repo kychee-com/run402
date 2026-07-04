@@ -11,6 +11,7 @@ Subcommands:
   resume <operation_id>         Resume a stuck operation
   list [--project <id>]         List recent deploy operations
   events <operation_id>         Fetch event stream for an operation
+  verify <operation_id>         Verify gateway and edge coherence
   diagnose <url>                Diagnose public URL routing
   resolve --url <url>           Low-level resolve diagnostics
   release ...                   Inspect release inventory and diffs
@@ -55,6 +56,7 @@ export async function run(args) {
     case "resume":
     case "list":
     case "events":
+    case "verify":
     case "diagnose":
     case "resolve":
     case "release": {

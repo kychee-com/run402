@@ -56,6 +56,9 @@ import type {
   DeployResult,
   DeployResolveOptions,
   DeployResolveResponse,
+  EdgeCoherenceReport,
+  EdgeCoherenceWaitOptions,
+  EdgeCoherenceWaitResult,
   FileSet,
   FsFileSource,
   GatewayDeployError,
@@ -529,6 +532,83 @@ export class Deploy {
       );
     } catch (err) {
       throw translateDeployError(err, "events", null, operationId);
+    }
+  }
+
+  /**
+   * Probe whether the gateway and edge pointers agree on the active release
+   * for an operation. The endpoint requires `apikey` auth, so `project` is
+   * required. Use `waitEdgeCoherent` when you want bounded polling.
+   */
+  async edgeCoherence(
+    operationId: string,
+    opts: { project: string },
+  ): Promise<EdgeCoherenceReport> {
+    if (!operationId || !operationId.startsWith("op_")) {
+      throw new Run402DeployError(`Invalid operation id: "${operationId}"`, {
+        code: "OPERATION_NOT_FOUND",
+        retryable: false,
+        context: "verifying deploy edge coherence",
+      });
+    }
+    if (!opts?.project) {
+      throw new LocalError(
+        "apply.edgeCoherence requires a project id ({ project: 'prj_...' })",
+        "verifying deploy edge coherence",
+      );
+    }
+    const headers = await apikeyHeaders(this.client, opts.project);
+    try {
+      return await this.client.request<EdgeCoherenceReport>(
+        `/apply/v1/operations/${encodeURIComponent(operationId)}/edge-coherence`,
+        { headers, context: "verifying deploy edge coherence" },
+      );
+    } catch (err) {
+      throw translateDeployError(err, "edge-coherence", null, operationId);
+    }
+  }
+
+  /**
+   * Poll `edgeCoherence` until the report is coherent or the timeout elapses.
+   * Returns the last report either way so automation can explain stale paths
+   * without issuing a second request.
+   */
+  async waitEdgeCoherent(
+    operationId: string,
+    opts: EdgeCoherenceWaitOptions,
+  ): Promise<EdgeCoherenceWaitResult> {
+    const timeoutMs = normalizePositiveSafeIntegerQueryOption(
+      opts?.timeoutMs ?? 60_000,
+      "apply.waitEdgeCoherent timeoutMs",
+      "waiting for deploy edge coherence",
+    ) ?? 60_000;
+    const intervalMs = normalizePositiveSafeIntegerQueryOption(
+      opts?.intervalMs ?? 1_000,
+      "apply.waitEdgeCoherent intervalMs",
+      "waiting for deploy edge coherence",
+    ) ?? 1_000;
+    if (!opts?.project) {
+      throw new LocalError(
+        "apply.waitEdgeCoherent requires a project id ({ project: 'prj_...' })",
+        "waiting for deploy edge coherence",
+      );
+    }
+
+    const start = Date.now();
+    let attempts = 0;
+
+    while (true) {
+      attempts += 1;
+      const report = await this.edgeCoherence(operationId, { project: opts.project });
+      const elapsedMs = Date.now() - start;
+      opts.onPoll?.({ attempts, elapsedMs, report });
+      if (report.coherent) {
+        return { coherent: true, attempts, elapsedMs, report };
+      }
+      if (elapsedMs >= timeoutMs) {
+        return { coherent: false, attempts, elapsedMs, report };
+      }
+      await sleep(Math.min(intervalMs, Math.max(timeoutMs - elapsedMs, 0)));
     }
   }
 
@@ -2165,6 +2245,7 @@ async function pollUntilReady(
       diff,
       warnings,
       ...(commit.subdomain_bindings ? { subdomain_bindings: commit.subdomain_bindings } : {}),
+      ...(commit.edge ? { edge: commit.edge } : {}),
     };
   }
 
@@ -2296,6 +2377,7 @@ async function pollSnapshotUntilReady(
         diff,
         warnings,
         ...(snapshot.subdomain_bindings ? { subdomain_bindings: snapshot.subdomain_bindings } : {}),
+        ...(snapshot.edge ? { edge: snapshot.edge } : {}),
       };
     }
 

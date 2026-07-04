@@ -207,6 +207,9 @@ import type {
   DeployOperation,
   DeployResolveResponse,
   DeployResult,
+  EdgeCoherenceReport,
+  EdgeCoherenceWaitOptions,
+  EdgeCoherenceWaitResult,
   OperationSnapshot,
   PlanResponse,
   PromoteOptions,
@@ -615,6 +618,14 @@ export interface ScopedApplyHero {
     operationId: string,
     opts?: { project?: string },
   ): Promise<DeployEventsResponse>;
+  edgeCoherence(
+    operationId: string,
+    opts?: { project?: string },
+  ): Promise<EdgeCoherenceReport>;
+  waitEdgeCoherent(
+    operationId: string,
+    opts?: Omit<EdgeCoherenceWaitOptions, "project"> & { project?: string },
+  ): Promise<EdgeCoherenceWaitResult>;
   getRelease(
     releaseId: string,
     opts?: Partial<ReleaseInventoryOptions>,
@@ -671,6 +682,15 @@ function createScopedApplyHero(parent: Run402, projectId: string): ScopedApplyHe
     });
   hero.events = (operationId, opts = {}) =>
     parent._applyEngine.events(operationId, {
+      project: opts.project ?? projectId,
+    });
+  hero.edgeCoherence = (operationId, opts = {}) =>
+    parent._applyEngine.edgeCoherence(operationId, {
+      project: opts.project ?? projectId,
+    });
+  hero.waitEdgeCoherent = (operationId, opts = {}) =>
+    parent._applyEngine.waitEdgeCoherent(operationId, {
+      ...opts,
       project: opts.project ?? projectId,
     });
   hero.getRelease = (releaseId, opts = {}) =>

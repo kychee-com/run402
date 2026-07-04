@@ -2108,6 +2108,88 @@ export interface DeploySummary {
   warnings: DeploySummaryWarnings;
 }
 
+// ─── Edge coherence ─────────────────────────────────────────────────────────
+
+export type EdgePointerTarget = "kvs" | "cloudfront_invalidation" | "cloudflare_kv";
+export type EdgePointerStatus = "pending" | "applied" | "failed" | "not_applicable";
+
+export interface EdgePointerUpdateStatus {
+  target: EdgePointerTarget;
+  status: EdgePointerStatus;
+  attempts?: number;
+  last_error?: string | null;
+  updated_at?: string | null;
+}
+
+export type EdgeBlockState = "converging" | "coherent" | "unknown" | "not_applicable";
+
+export interface EdgeBlock {
+  state: EdgeBlockState;
+  expected_max_lag_seconds?: number | null;
+  pointer_updates: Record<EdgePointerTarget, EdgePointerUpdateStatus | undefined>;
+  verify_url?: string | null;
+}
+
+export type EdgeProbePathState = "coherent" | "stale_prior_release" | "unknown" | "error";
+export type EdgeProbeObservedConfidence = "identity" | "body_hash" | "weak" | "error";
+
+export interface EdgeCoherencePathObservation {
+  path: string;
+  host: string;
+  state: EdgeProbePathState;
+  observed_confidence: EdgeProbeObservedConfidence;
+  expected_release_id: string;
+  expected_release_generation: number | null;
+  observed_release_id?: string | null;
+  observed_release_generation?: number | null;
+  expected_sha256?: string | null;
+  observed_sha256?: string | null;
+  status?: number | null;
+  content_type?: string | null;
+  content_length?: number | null;
+  x_cache?: string | null;
+  age_seconds?: number | null;
+  error?: string | null;
+}
+
+export interface EdgeCoherenceReport {
+  coherent: boolean;
+  operation_id: string;
+  project_id: string;
+  release_id: string;
+  release_generation: number | null;
+  paths: EdgeCoherencePathObservation[];
+  pending_count: number;
+  paths_truncated: boolean;
+  path_count: number;
+  total_path_count: number;
+  vantage: string;
+  probe_may_have_warmed_cache: boolean;
+  pointer_updates: Record<EdgePointerTarget, EdgePointerUpdateStatus | undefined>;
+  next_actions: string[];
+  probe_basis?: "no_mutable_paths";
+}
+
+export interface EdgeCoherencePollEvent {
+  attempts: number;
+  elapsedMs: number;
+  report: EdgeCoherenceReport;
+}
+
+export interface EdgeCoherenceWaitOptions {
+  project: string;
+  timeoutMs?: number;
+  intervalMs?: number;
+  onPoll?: (event: EdgeCoherencePollEvent) => void;
+}
+
+export interface EdgeCoherenceWaitResult {
+  coherent: boolean;
+  attempts: number;
+  elapsedMs: number;
+  report: EdgeCoherenceReport;
+}
+
 /** All operation states the gateway exposes. The SDK polls until it reaches
  *  a terminal state. */
 export type OperationStatus =
@@ -2141,6 +2223,7 @@ export interface CommitResponse {
   release_id?: string;
   urls?: Record<string, string>;
   error?: GatewayDeployError | null;
+  edge?: EdgeBlock;
   subdomain_bindings?: SubdomainBindingFreshness[];
   restore_point?: CommitRestorePoint;
   snapshot_skipped_reason?: string;
@@ -2162,6 +2245,7 @@ export interface OperationSnapshot {
   urls: Record<string, string> | null;
   payment_required: PaymentRequiredHint | null;
   error: GatewayDeployError | null;
+  edge?: EdgeBlock;
   subdomain_bindings?: SubdomainBindingFreshness[];
   activate_attempts: number;
   last_activate_attempt_at: string | null;
@@ -2470,6 +2554,11 @@ export interface DeployResult {
   release_id: string;
   operation_id: string;
   urls: Record<string, string>;
+  /** Public-edge coherence/convergence hint returned by the gateway. When
+   *  `state` is `converging`, call `p.apply.edgeCoherence(operationId)` or
+   *  `p.apply.waitEdgeCoherent(operationId)` before declaring mutable public
+   *  URLs freshly visible everywhere. */
+  edge?: EdgeBlock;
   /** The `diff` from the plan response — useful for "what changed in this
    *  deploy" UX. */
   diff: DeployDiff;
