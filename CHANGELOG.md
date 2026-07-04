@@ -2,6 +2,12 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — propagation-aware app verification
+
+- **SDK/CLI:** app-manifest HTTP verification now distinguishes fresh Run402 edge propagation misses from permanent failures. `run402 up` and `r.up()` report `propagation_pending` with diagnostics, warnings, `next_action`, and per-check `propagation_wait_ms` while a managed subdomain/custom domain is still converging; `--propagation-budget-s` / `propagationBudgetSeconds` control the wait and `--no-propagation-wait` / `propagationWait: false` return immediately.
+- **CLI/SDK:** `run402 up verify` and `r.up({ verifyOnly: true })` rerun app HTTP verification without uploading, deploying, creating projects, or mutating resources.
+- **MCP/docs:** deploy resolve/diagnose surfaces now preserve `edge_propagation` diagnostics and non-settled retry guidance so agents can tell propagation from an actual broken deploy.
+
 ## 4.0.0 — ProjectDomain lifecycle and retired split domain commands
 
 - **SDK:** `domains.ensure/get/list/check/apply/repair/testReceive/wait/activate/disconnect` now target the project-scoped ProjectDomain API (`/projects/v1/:project_id/domains/:domain`) with control-plane auth and no local project-key cache preflight. Legacy `domains.add/status/remove` and `senderDomain.*` fail locally with `COMMAND_REMOVED` and replacement guidance.

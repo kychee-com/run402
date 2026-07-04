@@ -2128,6 +2128,7 @@ async function pollUntilReady(
       urls: commit.urls,
       diff,
       warnings,
+      ...(commit.subdomain_bindings ? { subdomain_bindings: commit.subdomain_bindings } : {}),
     };
   }
 
@@ -2258,6 +2259,7 @@ async function pollSnapshotUntilReady(
         urls: snapshot.urls,
         diff,
         warnings,
+        ...(snapshot.subdomain_bindings ? { subdomain_bindings: snapshot.subdomain_bindings } : {}),
       };
     }
 

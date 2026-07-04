@@ -781,9 +781,29 @@ export interface DeployResolveResponse {
   error_code?: string | null;
   legacy_immutable_risk?: Array<Record<string, unknown>>;
   emergency_fallback?: Record<string, unknown> | null;
+  edge_propagation?: EdgePropagationDiagnostics | null;
   /** Diagnostic body status. This is not necessarily the HTTP response status. */
   result: number;
   [key: string]: unknown;
+}
+
+export type EdgePropagationStatus = "settled" | "propagating" | "sync_pending";
+export type EdgePropagationSource = "present" | "missing" | "unknown";
+
+export interface EdgePropagationDiagnostics {
+  binding: string;
+  claimed_at: string;
+  kvs_synced_at: string | null;
+  kvs_source: EdgePropagationSource;
+  status: EdgePropagationStatus;
+  expected_visible_by: string | null;
+  hint: string;
+}
+
+export interface SubdomainBindingFreshness {
+  host: string;
+  claimed_at: string;
+  kvs_synced_at: string | null;
 }
 
 export interface DeployResolveWarning {
@@ -918,7 +938,7 @@ export function buildDeployResolveSummary(
   response: DeployResolveResponse,
   request: NormalizedDeployResolveRequest,
 ): DeployResolveSummary {
-  const warnings = deployResolveWarningsForRequest(request);
+  const warnings = deployResolveWarningsForRequest(request, response);
   const next_steps = deployResolveNextSteps(response);
   const would_serve =
     response.authorized === true &&
@@ -1198,6 +1218,7 @@ function displayResolveUrl(request: NormalizedDeployResolveRequest): string {
 
 function deployResolveWarningsForRequest(
   request: NormalizedDeployResolveRequest,
+  response?: DeployResolveResponse,
 ): DeployResolveWarning[] {
   const warnings: DeployResolveWarning[] = [];
   if (request.ignored?.query) {
@@ -1210,6 +1231,13 @@ function deployResolveWarningsForRequest(
     warnings.push({
       code: "fragment_ignored",
       message: "URL fragments are never sent to the server and do not affect resolution.",
+    });
+  }
+  const edge = response?.edge_propagation;
+  if (edge && edge.status !== "settled") {
+    warnings.push({
+      code: `edge_${edge.status}`,
+      message: edge.hint,
     });
   }
   return warnings;
@@ -1310,6 +1338,22 @@ function deployResolveSummaryText(
 function deployResolveNextSteps(
   response: DeployResolveResponse,
 ): DeployResolveNextStep[] {
+  const edge = response.edge_propagation;
+  if (edge && edge.status !== "settled") {
+    return [
+      {
+        code: edge.status === "sync_pending" ? "retry_after_edge_sync" : "retry_after_edge_propagation",
+        message: edge.status === "sync_pending"
+          ? "Retry after the edge-store source write is confirmed; the Run402 reconciler will rewrite the binding."
+          : "Retry after edge propagation settles, or run `run402 up verify` for the app workspace.",
+      },
+      {
+        code: "inspect_edge_propagation",
+        message: "Inspect resolution.edge_propagation for claimed_at, kvs_synced_at, expected_visible_by, and hint.",
+      },
+    ];
+  }
+
   if (isDeployResolveCasFailure(response)) {
     switch (response.authorization_result) {
       case "unauthorized_cas_object":
@@ -2090,6 +2134,7 @@ export interface CommitResponse {
   release_id?: string;
   urls?: Record<string, string>;
   error?: GatewayDeployError | null;
+  subdomain_bindings?: SubdomainBindingFreshness[];
 }
 
 export interface OperationSnapshot {
@@ -2103,6 +2148,7 @@ export interface OperationSnapshot {
   urls: Record<string, string> | null;
   payment_required: PaymentRequiredHint | null;
   error: GatewayDeployError | null;
+  subdomain_bindings?: SubdomainBindingFreshness[];
   activate_attempts: number;
   last_activate_attempt_at: string | null;
   created_at: string;
@@ -2349,6 +2395,11 @@ export interface DeployResult {
   diff: DeployDiff;
   /** Structured plan warnings that were observed before commit. */
   warnings: WarningEntry[];
+  /** Freshness hints for stable hosts affected by this deploy. Managed
+   *  subdomains and custom domains are eventually consistent at the edge, so
+   *  app installers can distinguish fresh propagation misses from real verify
+   *  failures. */
+  subdomain_bindings?: SubdomainBindingFreshness[];
   /** v1.48 unified-apply: present when the spec carried an `assets` slice.
    *  Built from the plan response's `asset_entries[].asset_ref` (gateway-
    *  authoritative URLs) plus the realised `content.upload.*` event stream

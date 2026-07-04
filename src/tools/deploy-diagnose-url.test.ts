@@ -173,6 +173,38 @@ describe("deploy_diagnose_url", () => {
     assert.match(result.content[1]!.text, /"route_pattern": "\/events"/);
   });
 
+  it("renders edge propagation diagnostics and retry guidance", async () => {
+    nextResolveImpl = async () => ({
+      hostname: "fresh.run402.com",
+      result: 404,
+      match: "host_missing",
+      authorized: false,
+      fallback_state: "not_used",
+      edge_propagation: {
+        binding: "fresh.run402.com",
+        claimed_at: "2026-07-04T09:00:00.000Z",
+        kvs_synced_at: null,
+        kvs_source: "missing",
+        status: "sync_pending",
+        expected_visible_by: "2026-07-04T09:01:00.000Z",
+        hint: "Binding write is not confirmed at the edge-store source yet.",
+      },
+    });
+
+    const result = await handleDeployDiagnoseUrl({
+      project_id: "prj_test",
+      url: "https://fresh.run402.com/",
+      method: "GET",
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.match(result.content[0]!.text, /Edge Propagation/);
+    assert.match(result.content[0]!.text, /sync_pending/);
+    assert.match(result.content[0]!.text, /retry_after_edge_sync/);
+    assert.match(result.content[1]!.text, /"edge_propagation"/);
+    assert.match(result.content[1]!.text, /"status": "sync_pending"/);
+  });
+
   it("rejects URL and host/path conflicts before SDK calls", async () => {
     const result = await handleDeployDiagnoseUrl({
       project_id: "prj_test",

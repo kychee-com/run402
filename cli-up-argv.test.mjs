@@ -82,6 +82,7 @@ after(() => {
 beforeEach(() => {
   upCalls = [];
   upImpl = async () => ({ ok: true });
+  process.exitCode = undefined;
   captureStop();
   if (originalConfigDir === undefined) delete process.env.RUN402_CONFIG_DIR;
   else process.env.RUN402_CONFIG_DIR = originalConfigDir;
@@ -129,10 +130,11 @@ describe("up argv and JSON output", () => {
         "--yes",
         "--allow-prune",
         "--max-spend-usd", "0.10",
-        "--build-mode", "remote",
-        "--allow-shell-build",
-        "--json",
-      ]);
+      "--build-mode", "remote",
+      "--allow-shell-build",
+      "--propagation-budget-s", "45",
+      "--json",
+    ]);
     } finally {
       captureStop();
     }
@@ -144,11 +146,96 @@ describe("up argv and JSON output", () => {
     assert.equal(upCalls[0].input.maxSpendUsd, 0.10);
     assert.equal(upCalls[0].input.buildMode, "remote");
     assert.equal(upCalls[0].input.allowShellBuild, true);
+    assert.equal(upCalls[0].input.propagationBudgetSeconds, 45);
     assert.equal(upCalls[0].options.approval, "yes");
     assert.equal(stdout.length, 1);
     const parsed = JSON.parse(stdout[0]);
     assert.equal(parsed.result.app_result.kind, "run402.up.result");
     assert.equal(stderr.length, 0, "--json should not emit progress JSON on stderr when the SDK emits no events");
+  });
+
+  it("runs up verify as a no-deploy verify-only action", async () => {
+    upImpl = async () => ({
+      action: "up",
+      mode: "apply",
+      dry_run: false,
+      result: {
+        app_result: {
+          kind: "run402.up.result",
+          status: "succeeded",
+          verify: {
+            status: "verified",
+            warnings: [],
+            next_action: null,
+            propagation_wait_ms: 0,
+          },
+          project: { public_origin: "https://kysigned3.run402.com" },
+          diagnostics: [],
+          next_actions: [],
+        },
+      },
+    });
+    const { run } = await import("./cli/lib/up.mjs");
+
+    captureStart();
+    try {
+      await run([
+        "verify",
+        ".",
+        "--project", "prj_ready",
+        "--propagation-budget-s", "0",
+        "--no-propagation-wait",
+        "--json",
+      ]);
+    } finally {
+      captureStop();
+    }
+
+    assert.equal(upCalls.length, 1);
+    assert.equal(upCalls[0].input.verifyOnly, true);
+    assert.equal(upCalls[0].input.projectId, "prj_ready");
+    assert.equal(upCalls[0].input.propagationBudgetSeconds, 0);
+    assert.equal(upCalls[0].input.propagationWait, false);
+    assert.equal(upCalls[0].options.autoPrerequisites, false);
+    assert.equal(upCalls[0].options.approval, "never");
+    assert.equal(JSON.parse(stdout[0]).result.app_result.verify.status, "verified");
+  });
+
+  it("prints propagation pending app-up summaries without a nonzero exit", async () => {
+    upImpl = async () => ({
+      action: "up",
+      mode: "apply",
+      dry_run: false,
+      result: {
+        app_result: {
+          kind: "run402.up.result",
+          status: "propagation_pending",
+          project: {
+            public_origin: "https://kysigned3.run402.com",
+          },
+          diagnostics: [{
+            code: "VERIFY_PROPAGATION_PENDING",
+            message: "HTTP verification home is waiting on edge propagation.",
+          }],
+          next_actions: [{
+            type: "retry_verify",
+            message: "Rerun app verification after edge propagation settles.",
+            command: "run402 up verify",
+          }],
+        },
+      },
+    });
+    const { run } = await import("./cli/lib/up.mjs");
+
+    captureStart();
+    try {
+      await run([".", "--human"]);
+    } finally {
+      captureStop();
+    }
+
+    assert.match(stdout.join("\n"), /waiting on edge propagation/);
+    assert.equal(process.exitCode ?? 0, 0);
   });
 
   it("emits NDJSON events and a final result for --json-stream", async () => {

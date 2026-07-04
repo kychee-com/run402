@@ -1677,6 +1677,7 @@ async function printResolveEnvelope(input) {
       summary: summary.summary,
       request,
       warnings: summary.warnings,
+      edge_propagation: resolution.edge_propagation ?? null,
       resolution,
       next_steps: summary.next_steps,
     }, null, 2));

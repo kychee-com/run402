@@ -41,9 +41,12 @@ run402 up --manifest run402.deploy.ts --check
 run402 up --manifest run402.deploy.ts --plan
 run402 up --manifest run402.deploy.ts --require-plan plan_...
 run402 up --manifest run402.deploy.json --project prj_...
+run402 up verify --project prj_...
 ```
 
 `up` is a thin CLI shim over the Node SDK action runner. It discovers `run402.deploy.json` then `app.json`, validates the deploy input before any mutation, resolves the project as `--project` → `.run402/project.json` → manifest `project_id` → approved creation from `--name` → approved active-project fallback, then applies the manifest. `--name` is creation/link metadata only; it is not a manifest field and never renames an existing project. When everything is already configured, plain `run402 up` deploys. Non-interactive recursive prerequisites/local writes require `-y/--yes`.
+
+For app manifests with `verify.http[]`, `up` runs HTTP checks after deploy. Fresh Run402 edge sentinel misses (`x-run402-edge` or sentinel JSON bodies) become `propagation_pending` with diagnostics instead of hard failure while the host binding is still converging. Use `--propagation-budget-s <seconds>` to tune the default 120 second wait, `--no-propagation-wait` to return immediately, and `run402 up verify` to rerun the same checks without upload, deploy, project creation, or resource mutation.
 
 For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeScript/JavaScript configs execute local code. Use `--check` for local-only import/normalize/file validation, `--print-spec` to inspect the normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan <plan_id>` to apply only that reviewed intent. Warning flags are not used with `--require-plan`; the reviewed plan binds the exact warning/destructive set. Run402 Core skips Cloud allowance/tier prerequisites and fails closed when no Core project is selected.
 
@@ -79,7 +82,7 @@ run402 subdomains claim my-app                # → my-app.run402.com (auto-reas
 ```
 
 `deploy-dir` hashes each file client-side and only uploads bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. Progress events stream to stderr.
-Release inspection commands print `{ release: ... }` or `{ diff: ... }` (raw payload, no envelope — see the "Output Contract" section in [llms-cli.txt](llms-cli.txt)); use them after deploys to compare release inventory without starting another mutation. Inventories include `release_generation`, `static_manifest_sha256`, and nullable `static_manifest_metadata`; diffs include `static_assets` counters such as unchanged/changed/added/removed and CAS byte reuse. `deploy diagnose` / `deploy resolve --url` print URL-first diagnostics with `would_serve`, `diagnostic_status`, `match`, warnings, and next steps; host misses are successful diagnostic calls with `would_serve: false`. Stable-host resolve fields can include `authorization_result`, `cas_object`, `response_variant`, `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`.
+Release inspection commands print `{ release: ... }` or `{ diff: ... }` (raw payload, no envelope — see the "Output Contract" section in [llms-cli.txt](llms-cli.txt)); use them after deploys to compare release inventory without starting another mutation. Inventories include `release_generation`, `static_manifest_sha256`, and nullable `static_manifest_metadata`; diffs include `static_assets` counters such as unchanged/changed/added/removed and CAS byte reuse. `deploy diagnose` / `deploy resolve --url` print URL-first diagnostics with `would_serve`, `diagnostic_status`, `match`, warnings, `edge_propagation`, and next steps; host misses are successful diagnostic calls with `would_serve: false`. Stable-host resolve fields can include `authorization_result`, `cas_object`, `response_variant`, `allow`, `route_pattern`, `target_type`, `target_name`, `target_file`, and `edge_propagation` (`settled`, `propagating`, or `sync_pending`).
 
 ### GitHub Actions OIDC deploys
 

@@ -37,14 +37,23 @@ import {
   type Run402AppReleaseSpec,
   type Run402AppSourceMetadata,
   type Run402AppSpec,
+  type Run402AppHttpVerifySpec,
   type Run402AppUpResultEnvelope,
   type Run402AppUpDiagnostic,
   type Run402AppUpNextAction,
+  type Run402AppUpVerifyResult,
 } from "../app-up.js";
 import type { Run402ExecutionMode, Run402ReviewedPlanRequirement } from "../config.js";
 import { LocalError } from "../errors.js";
 import type { Run402 } from "../index.js";
-import type { DeployEvent, PlanResponse, ReleaseSpec } from "../namespaces/deploy.types.js";
+import type {
+  DeployEvent,
+  DeployResolveResponse,
+  EdgePropagationDiagnostics,
+  PlanResponse,
+  ReleaseSpec,
+  SubdomainBindingFreshness,
+} from "../namespaces/deploy.types.js";
 import type { ProjectSummary, ProvisionResult } from "../namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "../namespaces/tier.js";
 import { loadDeployManifest, normalizeDeployManifest } from "./deploy-manifest.js";
@@ -135,6 +144,14 @@ const TIER_RANK: Record<TierName, number> = {
   hobby: 2,
   team: 3,
 };
+const DEFAULT_PROPAGATION_BUDGET_SECONDS = 120;
+const EDGE_PROPAGATION_FRESH_WINDOW_MS = 300_000;
+const EDGE_PROPAGATION_TYPICAL_SECONDS = 60;
+const VERIFY_SENTINEL_CODES = new Set([
+  "SUBDOMAIN_NOT_CONFIGURED",
+  "HOST_NOT_CONFIGURED",
+  "NO_SITE_DEPLOYED",
+]);
 const execFileAsync = promisify(execFile);
 
 interface ResolvedUpSource {
@@ -162,6 +179,49 @@ interface AppResourceState {
   mailboxes: Record<string, AppMailboxState>;
   webhooks: Record<string, AppWebhookState>;
   env: Record<string, string>;
+}
+
+interface AppVerifyContext {
+  projectId: string;
+  claimedHosts: Set<string>;
+  bindings: SubdomainBindingFreshness[];
+  propagationBudgetMs: number;
+  propagationWait: boolean;
+  resolve?: (opts: { project: string; url: string; method?: string }) => Promise<DeployResolveResponse>;
+}
+
+interface AppHttpVerifyAttempt {
+  status: number | null;
+  edgeCode: string | null;
+  edgeHeader: string | null;
+  error: string | null;
+}
+
+interface AppHttpVerifyCheckResult {
+  id: string;
+  ok: boolean;
+  propagationPending: boolean;
+  status: number | null;
+  propagationWaitMs: number;
+  diagnostic?: Record<string, unknown>;
+}
+
+interface AppHttpVerifyResult {
+  ok: boolean;
+  propagationPending: boolean;
+  results: Map<string, AppHttpVerifyCheckResult>;
+  diagnostics: Run402AppUpDiagnostic[];
+  warnings: Run402AppUpDiagnostic[];
+  nextAction: Run402AppUpNextAction | null;
+  propagationWaitMs: number;
+}
+
+interface VerifyClassification {
+  kind: "success" | "propagating" | "failed";
+  reason?: string;
+  bindingAgeSeconds?: number | null;
+  edge?: EdgePropagationDiagnostics | null;
+  diagnosis?: DeployResolveResponse | null;
 }
 
 /**
@@ -325,6 +385,9 @@ export class NodeActions implements Run402Actions {
     const manifest = await this.#discoverAndValidateManifest(input, workspaceDir, source.metadata, run);
 
     if (manifest.manifestKind === "app") {
+      if (input.verifyOnly) {
+        return this.#verifyAppManifestOnly(input, manifest, workspaceDir, run, startedAt);
+      }
       const block = this.#firstAppUpBlock(input, manifest, run);
       const appResult = this.#planAppUpResult(input, manifest, run, {
         startedAt,
@@ -715,6 +778,84 @@ export class NodeActions implements Run402Actions {
     });
   }
 
+  async #verifyAppManifestOnly(
+    input: Run402UpActionInput,
+    manifest: DiscoveredManifest,
+    workspaceDir: string,
+    run: ActionRun,
+    startedAt: string,
+  ): Promise<Run402ActionResult<Run402UpResult>> {
+    if (!manifest.appSpec || !manifest.appGraph) {
+      throw run.error("Internal error: app manifest did not produce an install graph.", "RUN402_ACTION_INTERNAL");
+    }
+    if ((manifest.appSpec.verify?.http ?? []).length === 0) {
+      throw run.error(
+        "App manifest does not define verify.http checks.",
+        "VERIFY_CHECKS_REQUIRED",
+        { manifest_path: manifest.manifestPath },
+      );
+    }
+
+    const resolved = await this.#resolveProjectForVerify(input, manifest, workspaceDir, run);
+    const projectKeys = await this.sdk.projects.keys(resolved.projectId);
+    const publicOrigin = appPublicOrigin(input, manifest.appSpec) ?? projectKeys.site_url ?? null;
+    const scoped = await this.sdk.project(resolved.projectId);
+    const verification = await this.#verifyAppHttp(manifest.appSpec, publicOrigin, run, {
+      projectId: resolved.projectId,
+      claimedHosts: new Set(),
+      bindings: [],
+      propagationBudgetMs: propagationBudgetMs(input),
+      propagationWait: input.propagationWait !== false,
+      resolve: (opts) => scoped.apply.resolve(opts),
+    });
+    markAppGraphNodesForVerify(manifest.appGraph, verification);
+    const appStatus = verification.ok
+      ? "succeeded"
+      : verification.propagationPending
+        ? "propagation_pending"
+        : "deployed_unverified";
+    const appResult = createRun402AppUpResult({
+      graph: manifest.appGraph,
+      manifest_path: manifest.manifestPath,
+      status: appStatus,
+      started_at: startedAt,
+      dry_run: false,
+      project_id: resolved.projectId,
+      project_name: input.name ?? manifest.appSpec.project.name ?? resolved.link?.name ?? null,
+      public_origin: publicOrigin,
+      diagnostics: verification.diagnostics,
+      next_actions: verification.nextAction ? [verification.nextAction] : [],
+      verify: appVerifyResult(verification),
+      approval_policy: {
+        yes: run.approval === "yes",
+        allow_prune: input.allowPrune === true,
+        max_spend_usd: input.maxSpendUsd ?? null,
+        build_mode: input.buildMode ?? manifest.appSpec.build?.mode ?? null,
+        shell_build_approved: input.allowShellBuild === true,
+      },
+    });
+    for (const check of appResult.verification.http) {
+      const actual = verification.results.get(check.id);
+      if (actual !== undefined) {
+        check.actual_status = actual.status;
+        check.propagation_wait_ms = actual.propagationWaitMs;
+        if (actual.diagnostic) check.diagnostic = actual.diagnostic;
+        check.status = actual.ok
+          ? "succeeded"
+          : actual.propagationPending
+            ? "propagation_pending"
+            : "failed";
+      }
+    }
+
+    return run.result({
+      project_id: resolved.projectId,
+      manifest_path: manifest.manifestPath,
+      app_graph: manifest.appGraph,
+      app_result: appResult,
+    });
+  }
+
   #firstAppUpBlock(
     input: Run402UpActionInput,
     manifest: DiscoveredManifest,
@@ -911,12 +1052,25 @@ export class NodeActions implements Run402Actions {
 
       const webhooks = await this.#ensureAppWebhooks(resolved.projectId, manifest.appSpec, resources, run);
       resources.webhooks = webhooks;
-      const verification = await this.#verifyAppHttp(manifest.appSpec, publicOrigin, run);
-      markAppGraphNodes(manifest.appGraph, verification.ok ? "succeeded" : "failed");
+      const verifyContext: AppVerifyContext = {
+        projectId: resolved.projectId,
+        claimedHosts: claimedHostsFromRelease(normalized.spec, publicOrigin),
+        bindings: deploy.subdomain_bindings ?? [],
+        propagationBudgetMs: propagationBudgetMs(input),
+        propagationWait: input.propagationWait !== false,
+        resolve: (opts) => scoped.apply.resolve(opts),
+      };
+      const verification = await this.#verifyAppHttp(manifest.appSpec, publicOrigin, run, verifyContext);
+      markAppGraphNodesForVerify(manifest.appGraph, verification);
+      const appStatus = verification.ok
+        ? "succeeded"
+        : verification.propagationPending
+          ? "propagation_pending"
+          : "deployed_unverified";
       const appResult = createRun402AppUpResult({
         graph: manifest.appGraph,
         manifest_path: manifest.manifestPath,
-        status: verification.ok ? "succeeded" : "deployed_unverified",
+        status: appStatus,
         started_at: startedAt,
         dry_run: false,
         project_id: resolved.projectId,
@@ -924,6 +1078,8 @@ export class NodeActions implements Run402Actions {
         public_origin: publicOrigin,
         operation_id: deploy.operation_id ?? null,
         diagnostics: verification.diagnostics,
+        next_actions: verification.nextAction ? [verification.nextAction] : [],
+        verify: appVerifyResult(verification),
         approval_policy: {
           yes: run.approval === "yes",
           allow_prune: input.allowPrune === true,
@@ -939,8 +1095,14 @@ export class NodeActions implements Run402Actions {
       for (const check of appResult.verification.http) {
         const actual = verification.results.get(check.id);
         if (actual !== undefined) {
-          check.actual_status = actual;
-          check.status = actual === check.expected_status ? "succeeded" : "failed";
+          check.actual_status = actual.status;
+          check.propagation_wait_ms = actual.propagationWaitMs;
+          if (actual.diagnostic) check.diagnostic = actual.diagnostic;
+          check.status = actual.ok
+            ? "succeeded"
+            : actual.propagationPending
+              ? "propagation_pending"
+              : "failed";
         }
       }
       await this.#recordAppInstallState({
@@ -1289,27 +1451,40 @@ export class NodeActions implements Run402Actions {
     spec: Run402AppSpec,
     publicOrigin: string | null,
     run: ActionRun,
-  ): Promise<{
-    ok: boolean;
-    results: Map<string, number | null>;
-    diagnostics: Run402AppUpDiagnostic[];
-  }> {
+    context: AppVerifyContext,
+  ): Promise<AppHttpVerifyResult> {
     const checks = spec.verify?.http ?? [];
-    const results = new Map<string, number | null>();
+    const results = new Map<string, AppHttpVerifyCheckResult>();
     const diagnostics: Run402AppUpDiagnostic[] = [];
-    if (checks.length === 0) return { ok: true, results, diagnostics };
+    const warnings: Run402AppUpDiagnostic[] = [];
+    let nextAction: Run402AppUpNextAction | null = null;
+    let propagationWaitMs = 0;
+    if (checks.length === 0) {
+      return { ok: true, propagationPending: false, results, diagnostics, warnings, nextAction, propagationWaitMs };
+    }
     const step = run.addStep({
       action: "app.verify",
       description: "Verify app HTTP checks",
       mutation: false,
       auto: true,
-      details: { count: checks.length },
+      details: {
+        count: checks.length,
+        propagation_budget_s: Math.floor(context.propagationBudgetMs / 1000),
+        propagation_wait: context.propagationWait,
+      },
     });
     run.setState(step, "running");
+    const verifyStarted = Date.now();
     for (const check of checks) {
       const url = check.url ?? (publicOrigin && check.path ? new URL(check.path, publicOrigin).toString() : null);
       if (!url) {
-        results.set(check.id, null);
+        results.set(check.id, {
+          id: check.id,
+          ok: false,
+          propagationPending: false,
+          status: null,
+          propagationWaitMs: 0,
+        });
         diagnostics.push({
           code: "VERIFY_FAILED",
           severity: "error",
@@ -1320,31 +1495,113 @@ export class NodeActions implements Run402Actions {
       }
       const retries = Math.max(1, check.retries ?? 1);
       let status: number | null = null;
-      for (let attempt = 0; attempt < retries; attempt++) {
-        try {
-          const res = await fetch(url, { method: "GET" });
-          status = res.status;
-          if (status === check.expect.status) break;
-        } catch {
-          status = null;
+      let attempt = 0;
+      let propagationAttempts = 0;
+      let checkPropagationWaitMs = 0;
+      let pendingDiagnosis: DeployResolveResponse | null = null;
+      while (true) {
+        const observed = await fetchAppVerifyUrl(url);
+        status = observed.status;
+        const classification = await classifyAppVerifyAttempt({
+          attempt: observed,
+          check,
+          url,
+          context,
+        });
+        if (classification.kind === "success") {
+          results.set(check.id, {
+            id: check.id,
+            ok: true,
+            propagationPending: false,
+            status,
+            propagationWaitMs: checkPropagationWaitMs,
+          });
+          break;
         }
-        if (attempt + 1 < retries) await delay(1_000);
-      }
-      results.set(check.id, status);
-      if (status !== check.expect.status) {
+
+        if (classification.kind === "propagating") {
+          propagationAttempts += 1;
+          pendingDiagnosis = classification.diagnosis ?? null;
+          const elapsed = Date.now() - verifyStarted;
+          const remaining = Math.max(0, context.propagationBudgetMs - elapsed);
+          run.setState(step, "running", {
+            verify_event: "propagating",
+            check_id: check.id,
+            url,
+            reason: classification.reason ?? "edge_propagation",
+            binding_age_s: classification.bindingAgeSeconds ?? null,
+            typical_s: EDGE_PROPAGATION_TYPICAL_SECONDS,
+            budget_remaining_s: Math.ceil(remaining / 1000),
+            propagation_wait_ms: propagationWaitMs,
+            edge_propagation: classification.edge ?? pendingDiagnosis?.edge_propagation ?? null,
+          });
+          if (!context.propagationWait || remaining <= 0) {
+            const warning = propagationWarning(check.id, url, classification, remaining);
+            warnings.push(warning);
+            diagnostics.push(warning);
+            nextAction ??= verifyNextAction();
+            results.set(check.id, {
+              id: check.id,
+              ok: false,
+              propagationPending: true,
+              status,
+              propagationWaitMs: checkPropagationWaitMs,
+              ...(pendingDiagnosis ? { diagnostic: { edge_propagation: pendingDiagnosis.edge_propagation ?? null, resolve: pendingDiagnosis } } : {}),
+            });
+            break;
+          }
+          const sleepMs = Math.min(remaining, propagationBackoffMs(propagationAttempts));
+          await delay(sleepMs);
+          propagationWaitMs += sleepMs;
+          checkPropagationWaitMs += sleepMs;
+          continue;
+        }
+
+        attempt += 1;
+        if (attempt < retries) {
+          await delay(1_000);
+          continue;
+        }
+        const diagnosis = classification.diagnosis ?? await diagnoseAppVerifyFailure(context, url, check);
         diagnostics.push({
           code: "VERIFY_FAILED",
           severity: "error",
           node_id: `verify.http.${check.id}`,
           message: `HTTP verification ${check.id} expected ${check.expect.status}, got ${status ?? "network_error"}.`,
-          details: { url, expected_status: check.expect.status, actual_status: status },
+          details: {
+            url,
+            expected_status: check.expect.status,
+            actual_status: status,
+            ...(observed.error ? { error: observed.error } : {}),
+            ...(diagnosis ? { resolve: diagnosis, edge_propagation: diagnosis.edge_propagation ?? null } : {}),
+          },
         });
+        results.set(check.id, {
+          id: check.id,
+          ok: false,
+          propagationPending: false,
+          status,
+          propagationWaitMs: checkPropagationWaitMs,
+          ...(diagnosis ? { diagnostic: { edge_propagation: diagnosis.edge_propagation ?? null, resolve: diagnosis } } : {}),
+        });
+        break;
       }
     }
-    run.setState(step, diagnostics.length === 0 ? "succeeded" : "failed", {
-      checks: Object.fromEntries(results),
+    const propagationPending = [...results.values()].some((result) => result.propagationPending);
+    const failed = [...results.values()].some((result) => !result.ok && !result.propagationPending);
+    run.setState(step, failed ? "failed" : propagationPending ? "propagation_pending" : "succeeded", {
+      checks: Object.fromEntries([...results].map(([id, result]) => [id, result.status])),
+      propagation_wait_ms: propagationWaitMs,
     });
-    return { ok: diagnostics.length === 0, results, diagnostics };
+    return {
+      ok: !failed && !propagationPending,
+      propagationPending,
+      results,
+      diagnostics,
+      warnings,
+      nextAction,
+      propagationWaitMs,
+    };
   }
 
   async #ensureAllowance(run: ActionRun, opts: { fund: boolean } = { fund: false }): Promise<void> {
@@ -1676,6 +1933,62 @@ export class NodeActions implements Run402Actions {
     );
   }
 
+  async #resolveProjectForVerify(
+    input: Run402UpActionInput,
+    manifest: DiscoveredManifest,
+    workspaceDir: string,
+    run: ActionRun,
+  ): Promise<ResolveProjectResult> {
+    const linkPath = join(workspaceDir, ".run402", "project.json");
+    const link = await readWorkspaceProjectLink(linkPath);
+    const step = run.addStep({
+      action: "project.resolve",
+      description: "Resolve project for app verification",
+      mutation: false,
+      auto: true,
+      details: {
+        explicit_project_id: input.projectId ?? null,
+        linked_project_id: link?.project_id ?? null,
+        manifest_project_id: manifest.manifestProjectId ?? manifest.appSpec?.project.id ?? null,
+        verify_only: true,
+      },
+    });
+    run.setState(step, "running");
+
+    const projectId = input.projectId ?? link?.project_id ?? manifest.manifestProjectId ?? manifest.appSpec?.project.id ?? await this.sdk.projects.active();
+    if (!projectId) {
+      throw run.error(
+        "`run402 up verify` needs an existing project. Pass --project, keep .run402/project.json, add project.id to run402.json, or select an active project.",
+        "RUN402_PROJECT_REQUIRED",
+        { link_path: linkPath, manifest_path: manifest.manifestPath, verify_only: true },
+      );
+    }
+    run.setState(step, "succeeded", {
+      project_id: projectId,
+      source: input.projectId
+        ? "explicit"
+        : link?.project_id
+          ? "workspace_link"
+          : manifest.manifestProjectId ?? manifest.appSpec?.project.id
+            ? "manifest"
+            : "active",
+      link_path: linkPath,
+    });
+    return {
+      projectId,
+      source: input.projectId
+        ? "explicit"
+        : link?.project_id
+          ? "workspace_link"
+          : manifest.manifestProjectId ?? manifest.appSpec?.project.id
+            ? "manifest"
+            : "active",
+      link,
+      linkPath,
+      shouldWriteLink: false,
+    };
+  }
+
   async #findNameCollision(name: string, orgId: string | undefined): Promise<ProjectSummary | null> {
     const result = await this.sdk.projects.list(orgId ? { org: orgId } : {});
     const normalized = name.trim().toLowerCase();
@@ -1973,6 +2286,226 @@ function markAppGraphNodes(graph: Run402AppInstallGraph, status: "succeeded" | "
   for (const node of graph.nodes) {
     node.status = status;
   }
+}
+
+function markAppGraphNodesForVerify(graph: Run402AppInstallGraph, verification: AppHttpVerifyResult): void {
+  const terminal = verification.ok || verification.propagationPending ? "succeeded" : "failed";
+  markAppGraphNodes(graph, terminal);
+  for (const node of graph.nodes) {
+    if (node.kind !== "verify.http") continue;
+    const id = node.id.replace(/^verify\.http\./, "");
+    const result = verification.results.get(id);
+    if (!result) continue;
+    node.status = result.ok
+      ? "succeeded"
+      : result.propagationPending
+        ? "propagation_pending"
+        : "failed";
+  }
+}
+
+function appVerifyResult(verification: AppHttpVerifyResult): Run402AppUpVerifyResult {
+  return {
+    status: verification.ok
+      ? "verified"
+      : verification.propagationPending
+        ? "propagation_pending"
+        : "failed",
+    warnings: verification.warnings,
+    next_action: verification.nextAction,
+    propagation_wait_ms: verification.propagationWaitMs,
+  };
+}
+
+function propagationBudgetMs(input: Run402UpActionInput): number {
+  const seconds = input.propagationBudgetSeconds ?? DEFAULT_PROPAGATION_BUDGET_SECONDS;
+  if (!Number.isFinite(seconds) || seconds < 0) return DEFAULT_PROPAGATION_BUDGET_SECONDS * 1000;
+  return Math.floor(seconds * 1000);
+}
+
+async function fetchAppVerifyUrl(url: string): Promise<AppHttpVerifyAttempt> {
+  try {
+    const res = await fetch(url, { method: "GET" });
+    const text = await res.text().catch(() => "");
+    return {
+      status: res.status,
+      edgeCode: edgeCodeFromBody(text),
+      edgeHeader: res.headers.get("x-run402-edge"),
+      error: null,
+    };
+  } catch (err) {
+    return {
+      status: null,
+      edgeCode: null,
+      edgeHeader: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function edgeCodeFromBody(text: string): string | null {
+  if (!text || text.length > 4096) return null;
+  try {
+    const parsed = JSON.parse(text) as { code?: unknown; error?: { code?: unknown } };
+    const code = typeof parsed.code === "string"
+      ? parsed.code
+      : typeof parsed.error?.code === "string"
+        ? parsed.error.code
+        : null;
+    return code && VERIFY_SENTINEL_CODES.has(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+async function classifyAppVerifyAttempt(input: {
+  attempt: AppHttpVerifyAttempt;
+  check: Run402AppHttpVerifySpec;
+  url: string;
+  context: AppVerifyContext;
+}): Promise<VerifyClassification> {
+  if (input.attempt.status === input.check.expect.status) {
+    return { kind: "success" };
+  }
+  const host = hostnameFromUrl(input.url);
+  const freshness = host ? freshnessForHost(input.context, host) : { fresh: false, ageSeconds: null };
+  if (
+    freshness.fresh &&
+    (
+      input.attempt.edgeCode !== null ||
+      input.attempt.edgeHeader === "kvs-miss" ||
+      input.attempt.edgeHeader === "kv-miss"
+    )
+  ) {
+    return {
+      kind: "propagating",
+      reason: input.attempt.edgeCode ?? input.attempt.edgeHeader ?? "edge_miss",
+      bindingAgeSeconds: freshness.ageSeconds,
+    };
+  }
+
+  const diagnosis = await diagnoseAppVerifyFailure(input.context, input.url, input.check);
+  const edge = diagnosis?.edge_propagation ?? null;
+  if (edge && edge.status !== "settled") {
+    return {
+      kind: "propagating",
+      reason: edge.status,
+      bindingAgeSeconds: bindingAgeSeconds(edge.claimed_at),
+      edge,
+      diagnosis,
+    };
+  }
+  return { kind: "failed", diagnosis };
+}
+
+async function diagnoseAppVerifyFailure(
+  context: AppVerifyContext,
+  url: string,
+  check: Run402AppHttpVerifySpec,
+): Promise<DeployResolveResponse | null> {
+  if (!context.resolve) return null;
+  try {
+    return await context.resolve({
+      project: context.projectId,
+      url,
+      method: "GET",
+    });
+  } catch {
+    try {
+      return await context.resolve({
+        project: context.projectId,
+        url,
+        method: String(check.expect.status) === "405" ? "POST" : "GET",
+      });
+    } catch {
+      return null;
+    }
+  }
+}
+
+function propagationWarning(
+  checkId: string,
+  url: string,
+  classification: VerifyClassification,
+  remainingMs: number,
+): Run402AppUpDiagnostic {
+  const edge = classification.edge;
+  const visibleBy = edge?.expected_visible_by ? ` Expected visible by ${edge.expected_visible_by}.` : "";
+  const reason = classification.reason ?? edge?.status ?? "edge_propagation";
+  return {
+    code: "VERIFY_PROPAGATION_PENDING",
+    severity: "warning",
+    node_id: `verify.http.${checkId}`,
+    message: `HTTP verification ${checkId} is waiting on edge propagation for ${url} (${reason}).${visibleBy}`,
+    details: {
+      url,
+      reason,
+      binding_age_s: classification.bindingAgeSeconds ?? null,
+      typical_s: EDGE_PROPAGATION_TYPICAL_SECONDS,
+      budget_remaining_s: Math.ceil(Math.max(0, remainingMs) / 1000),
+      edge_propagation: edge ?? null,
+    },
+  };
+}
+
+function verifyNextAction(): Run402AppUpNextAction {
+  return {
+    type: "retry_verify",
+    code: "VERIFY_PROPAGATION_PENDING",
+    message: "Rerun app verification after edge propagation settles.",
+    command: "run402 up verify",
+    argv: ["run402", "up", "verify"],
+  };
+}
+
+function propagationBackoffMs(attempt: number): number {
+  const base = Math.min(10_000, 1_000 * 2 ** Math.min(4, attempt - 1));
+  const jitter = Math.floor(Math.random() * 250);
+  return base + jitter;
+}
+
+function hostnameFromUrl(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function freshnessForHost(
+  context: AppVerifyContext,
+  host: string,
+): { fresh: boolean; ageSeconds: number | null } {
+  const normalized = host.toLowerCase();
+  const binding = context.bindings.find((candidate) => candidate.host.toLowerCase() === normalized);
+  const ageSeconds = binding ? bindingAgeSeconds(binding.claimed_at) : null;
+  if (context.claimedHosts.has(normalized)) return { fresh: true, ageSeconds };
+  if (ageSeconds === null) return { fresh: false, ageSeconds: null };
+  return { fresh: ageSeconds * 1000 < EDGE_PROPAGATION_FRESH_WINDOW_MS, ageSeconds };
+}
+
+function bindingAgeSeconds(claimedAtIso: string | null | undefined): number | null {
+  if (!claimedAtIso) return null;
+  const ms = Date.parse(claimedAtIso);
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.floor((Date.now() - ms) / 1000));
+}
+
+function claimedHostsFromRelease(spec: ReleaseSpec, publicOrigin: string | null): Set<string> {
+  const hosts = new Set<string>();
+  const subdomains = spec.subdomains as { set?: unknown; add?: unknown } | null | undefined;
+  for (const value of [...arrayOfStrings(subdomains?.set), ...arrayOfStrings(subdomains?.add)]) {
+    hosts.add(`${value}.run402.com`.toLowerCase());
+  }
+  if (publicOrigin) {
+    const host = hostnameFromUrl(publicOrigin);
+    if (host) hosts.add(host);
+  }
+  return hosts;
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
 function applyResourceStateToAppResult(appResult: Run402AppUpResultEnvelope, resources: AppResourceState): void {

@@ -9,6 +9,7 @@ const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
   run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--human|--json-stream] [--quiet]
+  run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--human|--json-stream]
 
 Options:
   repo-or-path        Local app directory or public Git repository URL. Defaults
@@ -40,6 +41,12 @@ Options:
   --max-spend-usd <n> Maximum spend up may approve for app readiness.
   --build-mode <mode> Override app build mode: local, remote, or sandbox.
   --allow-shell-build Approve shell-string build commands in run402.json.
+  --propagation-budget-s <n>
+                      Maximum wall-clock seconds to wait for fresh edge
+                      propagation during app HTTP verification (default 120).
+  --no-propagation-wait
+                      Return propagation_pending immediately when the edge is
+                      still settling.
   --json              Emit one final JSON object on stdout (default; compatibility no-op).
   --human             Emit the legacy human success/blocking summary on stdout.
   --json-stream       Emit NDJSON progress events on stdout and a final result event.
@@ -57,9 +64,35 @@ Project resolution:
 Examples:
   run402 up https://github.com/kychee-com/kysigned --name kysigned2 --yes --json
   run402 up --name my-app -y
+  run402 up verify
   run402 up --manifest run402.deploy.ts --check
   run402 up --manifest run402.deploy.ts --plan
   run402 up --manifest run402.deploy.ts --require-plan pln_...
+`;
+
+const VERIFY_HELP = `run402 up verify — Rerun app manifest HTTP verification
+
+Usage:
+  run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--name <name>] [--human|--json-stream]
+
+Options:
+  repo-or-path        Local app directory or public Git repository URL. Defaults
+                      to the current directory.
+  --project <id>      Existing project id. Defaults to .run402/project.json,
+                      run402.json project.id, then active project.
+  --manifest <path>   App manifest path. Defaults to run402.json.
+  --dir <path>        Workspace directory to inspect (default: current dir).
+  --name <name>       Instance name used only to materialize templated public origins.
+  --propagation-budget-s <n>
+                      Maximum wall-clock seconds to wait for fresh edge
+                      propagation (default 120).
+  --no-propagation-wait
+                      Return propagation_pending immediately when the edge is
+                      still settling.
+  --json              Emit one final JSON object on stdout (default).
+  --human             Emit a compact human verification summary on stdout.
+  --json-stream       Emit NDJSON progress events on stdout and a final result event.
+  --quiet             Suppress action progress events on stderr.
 `;
 
 const TIERS = new Set(["prototype", "hobby", "team"]);
@@ -67,6 +100,7 @@ const BUILD_MODES = new Set(["local", "remote", "sandbox"]);
 
 export async function run(args = []) {
   const parsed = normalizeArgv(args);
+  if (parsed[0] === "verify") return await runVerify(parsed.slice(1));
   if (parsed.includes("--help") || parsed.includes("-h")) {
     console.log(HELP);
     process.exit(0);
@@ -87,6 +121,7 @@ export async function run(args = []) {
       "--allow-warnings",
       "--allow-prune",
       "--allow-shell-build",
+      "--no-propagation-wait",
       "--json",
       "--human",
       "--json-stream",
@@ -103,6 +138,7 @@ export async function run(args = []) {
       "--plan-fingerprint",
       "--max-spend-usd",
       "--build-mode",
+      "--propagation-budget-s",
     ],
   );
   const extras = positionalArgs(parsed, [
@@ -117,6 +153,7 @@ export async function run(args = []) {
     "--plan-fingerprint",
     "--max-spend-usd",
     "--build-mode",
+    "--propagation-budget-s",
   ]);
   if (extras.length > 1) {
     fail({
@@ -161,6 +198,7 @@ export async function run(args = []) {
       details: { flag: "--max-spend-usd", value: maxSpendRaw },
     });
   }
+  const propagationBudgetSeconds = parsePropagationBudget(parsed);
 
   const yes = parsed.includes("-y") || parsed.includes("--yes");
   const jsonStream = parsed.includes("--json-stream");
@@ -211,6 +249,8 @@ export async function run(args = []) {
       allowShellBuild: parsed.includes("--allow-shell-build") ? true : undefined,
       allowWarnings: parsed.includes("--allow-warnings") ? true : undefined,
       allowWarningCodes,
+      propagationBudgetSeconds,
+      propagationWait: parsed.includes("--no-propagation-wait") ? false : undefined,
     }, {
       ...(mode !== undefined ? { mode } : {}),
       dryRun,
@@ -231,6 +271,94 @@ export async function run(args = []) {
       console.log(formatAppUpHuman(result.result.app_result));
     } else if (human && shouldRenderHumanSuccess(result)) {
       console.log(formatLegacyUpSuccess(result));
+    } else {
+      console.log(JSON.stringify(result, null, 2));
+    }
+    if (shouldExitNonZeroForUpResult(result)) {
+      process.exitCode = 1;
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function runVerify(args = []) {
+  const parsed = normalizeArgv(args);
+  if (parsed.includes("--help") || parsed.includes("-h")) {
+    console.log(VERIFY_HELP);
+    process.exit(0);
+  }
+  assertKnownFlags(
+    parsed,
+    ["--help", "-h", "--no-propagation-wait", "--json", "--human", "--json-stream", "--quiet"],
+    ["--name", "--project", "--manifest", "--dir", "--idempotency-key", "--propagation-budget-s"],
+  );
+  const extras = positionalArgs(parsed, [
+    "--name",
+    "--project",
+    "--manifest",
+    "--dir",
+    "--idempotency-key",
+    "--propagation-budget-s",
+  ]);
+  if (extras.length > 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for up verify: ${extras[1]}`,
+      hint: "Use `run402 up verify --help`.",
+    });
+  }
+  const source = extras[0] ?? undefined;
+  if (source && flagValue(parsed, "--dir")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Pass either a positional repo/path source or --dir, not both.",
+      details: { source, dir: flagValue(parsed, "--dir") },
+    });
+  }
+  const jsonStream = parsed.includes("--json-stream");
+  const human = parsed.includes("--human");
+  const quiet = parsed.includes("--quiet") || jsonStream;
+  if (human && (parsed.includes("--json") || jsonStream)) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--human cannot be combined with --json or --json-stream.",
+      details: { flags: parsed.filter((arg) => arg === "--human" || arg === "--json" || arg === "--json-stream") },
+    });
+  }
+  const propagationBudgetSeconds = parsePropagationBudget(parsed);
+  const updateScheduler = createUpdateCheckScheduler({
+    command: ["run402", "up", "verify", ...parsed],
+  });
+  emitUpdateNotice(updateScheduler.cachedNotice, { jsonStream, quiet });
+
+  try {
+    const sdk = getSdk();
+    const result = await sdk.up({
+      source,
+      name: flagValue(parsed, "--name") ?? undefined,
+      projectId: flagValue(parsed, "--project") ?? undefined,
+      manifest: flagValue(parsed, "--manifest") ?? undefined,
+      dir: flagValue(parsed, "--dir") ?? undefined,
+      idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined,
+      verifyOnly: true,
+      propagationBudgetSeconds,
+      propagationWait: parsed.includes("--no-propagation-wait") ? false : undefined,
+    }, {
+      approval: "never",
+      autoPrerequisites: false,
+      onEvent: jsonStream
+        ? (event) => console.log(JSON.stringify({ type: "action.event", event }))
+        : quiet
+          ? undefined
+          : (event) => {
+              console.error(JSON.stringify(event));
+            },
+    });
+    if (jsonStream) {
+      console.log(JSON.stringify({ type: "run402.up.result", result }));
+    } else if (human && result?.result?.app_result) {
+      console.log(formatAppUpHuman(result.result.app_result));
     } else {
       console.log(JSON.stringify(result, null, 2));
     }
@@ -303,6 +431,20 @@ function collectRepeatedValues(args, flag) {
   return values;
 }
 
+function parsePropagationBudget(args) {
+  const raw = flagValue(args, "--propagation-budget-s");
+  if (raw === null) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    fail({
+      code: "BAD_FLAG",
+      message: "--propagation-budget-s must be a non-negative number",
+      details: { flag: "--propagation-budget-s", value: raw },
+    });
+  }
+  return value;
+}
+
 function makeApproval(yes) {
   if (yes) return "yes";
   if (!input.isTTY || !output.isTTY) return "never";
@@ -347,6 +489,10 @@ function formatAppUpHuman(appResult) {
     lines.push(`Success! Project is up at: ${origin}`);
   } else if (status === "succeeded") {
     lines.push("Success! Project is up.");
+  } else if (status === "propagation_pending" && origin) {
+    lines.push(`Project deployed; verification is waiting on edge propagation at: ${origin}`);
+  } else if (status === "propagation_pending") {
+    lines.push("Project deployed; verification is waiting on edge propagation.");
   } else if (status === "planned") {
     lines.push("Run402 up plan is ready.");
     if (origin) lines.push(`Planned project URL: ${origin}`);

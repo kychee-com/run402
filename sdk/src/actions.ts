@@ -71,6 +71,12 @@ export interface Run402UpActionInput {
   allowWarnings?: boolean;
   /** Continue past selected deploy-plan warnings, forwarded to `apply()`. */
   allowWarningCodes?: string[];
+  /** Verify only: rerun the app manifest's verify block without deploy or resource mutation. */
+  verifyOnly?: boolean;
+  /** Maximum wall-clock propagation wait for app HTTP verification. Defaults to 120 seconds. */
+  propagationBudgetSeconds?: number;
+  /** Disable waiting for fresh edge propagation. Verify returns propagation_pending immediately. */
+  propagationWait?: boolean;
 }
 
 export type Run402ActionApproval =
@@ -143,7 +149,8 @@ export type Run402ActionStepState =
   | "succeeded"
   | "skipped"
   | "blocked"
-  | "failed";
+  | "failed"
+  | "propagation_pending";
 
 export interface Run402ActionStep {
   id: string;

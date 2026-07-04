@@ -2366,6 +2366,33 @@ describe("Deploy.apply (validation)", () => {
     assert.equal(summary.next_steps[0]?.code, "redeploy_static_asset");
   });
 
+  it("summarizes non-settled edge propagation as retryable", () => {
+    const response = {
+      hostname: "fresh.run402.com",
+      result: 404,
+      match: "host_missing",
+      authorized: false,
+      fallback_state: "not_used",
+      edge_propagation: {
+        binding: "fresh.run402.com",
+        claimed_at: "2026-07-04T09:00:00.000Z",
+        kvs_synced_at: null,
+        kvs_source: "missing",
+        status: "sync_pending",
+        expected_visible_by: "2026-07-04T09:01:00.000Z",
+        hint: "Binding write is not confirmed at the edge-store source yet.",
+      },
+    } satisfies DeployResolveResponse;
+    const summary = buildDeployResolveSummary(
+      response,
+      normalizeDeployResolveRequest({ project: "prj_test", host: "fresh.run402.com" }),
+    );
+
+    assert.equal(summary.would_serve, false);
+    assert.equal(summary.warnings[0]?.code, "edge_sync_pending");
+    assert.equal(summary.next_steps[0]?.code, "retry_after_edge_sync");
+  });
+
   it("preserves hostname-specific HTML response variant diagnostics", async () => {
     const w = makeWiring();
     w.setHandler(() => ({

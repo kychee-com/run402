@@ -112,7 +112,14 @@ export interface CompileRun402AppInstallGraphOptions {
   root_idempotency_key?: string;
 }
 
-export type Run402AppInstallNodeStatus = "planned" | "running" | "succeeded" | "blocked" | "failed" | "skipped";
+export type Run402AppInstallNodeStatus =
+  | "planned"
+  | "running"
+  | "succeeded"
+  | "blocked"
+  | "failed"
+  | "skipped"
+  | "propagation_pending";
 export type Run402AppInstallMutation = "none" | "local" | "remote" | "destructive";
 export type Run402AppUpStatus =
   | "planned"
@@ -121,7 +128,8 @@ export type Run402AppUpStatus =
   | "blocked"
   | "failed"
   | "partial"
-  | "deployed_unverified";
+  | "deployed_unverified"
+  | "propagation_pending";
 export type Run402AppUpErrorCode =
   | "APP_SPEC_INVALID"
   | "PROJECT_REQUIRED"
@@ -136,6 +144,7 @@ export type Run402AppUpErrorCode =
   | "UNSUPPORTED_RESOURCE_KIND"
   | "RELEASE_APPLY_FAILED"
   | "VERIFY_FAILED"
+  | "VERIFY_PROPAGATION_PENDING"
   | "CONCURRENT_UP_IN_PROGRESS"
   | "APP_INSTALL_STATE_UNAVAILABLE"
   | "REMOTE_BUILD_UNSUPPORTED";
@@ -222,6 +231,15 @@ export interface Run402AppUpResourceSummary {
   }>;
 }
 
+export type Run402AppVerifyStatus = "verified" | "propagation_pending" | "failed";
+
+export interface Run402AppUpVerifyResult {
+  status: Run402AppVerifyStatus;
+  warnings: Run402AppUpDiagnostic[];
+  next_action: Run402AppUpNextAction | null;
+  propagation_wait_ms: number;
+}
+
 export interface Run402AppUpResultEnvelope {
   kind: typeof RUN402_APP_UP_RESULT_KIND;
   schema_version: typeof RUN402_APP_UP_RESULT_SCHEMA_VERSION;
@@ -258,8 +276,11 @@ export interface Run402AppUpResultEnvelope {
       url?: string;
       expected_status: number;
       actual_status?: number | null;
+      propagation_wait_ms?: number;
+      diagnostic?: Record<string, unknown>;
     }>;
   };
+  verify?: Run402AppUpVerifyResult;
   diagnostics: Run402AppUpDiagnostic[];
   next_actions: Run402AppUpNextAction[];
   graph: Run402AppInstallGraph;
@@ -559,6 +580,7 @@ export function createRun402AppUpResult(input: {
   diagnostics?: Run402AppUpDiagnostic[];
   next_actions?: Run402AppUpNextAction[];
   blocked_node_id?: string;
+  verify?: Run402AppUpVerifyResult;
 }): Run402AppUpResultEnvelope {
   const endedAt = input.ended_at ?? new Date().toISOString();
   const started = Date.parse(input.started_at);
@@ -623,6 +645,7 @@ export function createRun402AppUpResult(input: {
     verification: {
       http: verificationSummary(input.graph),
     },
+    ...(input.verify ? { verify: input.verify } : {}),
     diagnostics,
     next_actions: nextActions,
     graph: input.graph,

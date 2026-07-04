@@ -83,6 +83,7 @@ export async function handleDeployDiagnoseUrl(args: {
       summary: summary.summary,
       request,
       warnings: summary.warnings,
+      edge_propagation: resolution.edge_propagation ?? null,
       resolution,
       next_steps: summary.next_steps,
     };
@@ -105,6 +106,11 @@ function formatResolveEnvelope(envelope: {
   request: { host: string; path: string; method?: string; ignored?: Record<string, string | undefined> };
   warnings: Array<{ code: string; message: string }>;
   next_steps: Array<{ code: string; message: string }>;
+  edge_propagation?: null | {
+    status?: string;
+    hint?: string;
+    expected_visible_by?: string | null;
+  };
 }): string {
   const lines = [
     "## Deploy URL Diagnostic",
@@ -120,6 +126,19 @@ function formatResolveEnvelope(envelope: {
     "",
     envelope.summary,
   ];
+  if (envelope.edge_propagation && envelope.edge_propagation.status !== "settled") {
+    lines.push(
+      "",
+      "### Edge Propagation",
+      `- status: \`${envelope.edge_propagation.status ?? "unknown"}\``,
+    );
+    if (envelope.edge_propagation.expected_visible_by) {
+      lines.push(`- expected_visible_by: \`${envelope.edge_propagation.expected_visible_by}\``);
+    }
+    if (envelope.edge_propagation.hint) {
+      lines.push(`- ${envelope.edge_propagation.hint}`);
+    }
+  }
   if (envelope.warnings.length > 0) {
     lines.push("", "### Warnings");
     for (const warning of envelope.warnings) {

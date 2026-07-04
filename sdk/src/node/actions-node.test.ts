@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import test from "node:test";
+import test, { mock } from "node:test";
 import { pathToFileURL } from "node:url";
 import { Run402Action } from "../actions.js";
 import { RUN402_APP_SCHEMA_ID } from "../app-up.js";
@@ -466,6 +466,102 @@ writeFileSync("frontend/dist/index.html", "<h1>" + process.env.RUN402_PUBLIC_ORI
   } finally {
     if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
     else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up app apply reports propagation_pending for a fresh edge sentinel miss", async (t) => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-app-up-propagation-pending-"));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest({
+    build: { mode: "local", commands: [] },
+    release: {
+      subdomains: { set: ["${input.name}"] },
+      site: {
+        replace: { "index.html": { data: "<h1>ready</h1>" } },
+        public_paths: { mode: "implicit" },
+      },
+    },
+  })));
+  const previous = process.env.KYSIGNED_ALLOWED_CREATORS;
+  process.env.KYSIGNED_ALLOWED_CREATORS = "*@example.com";
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+    deploySubdomainBindings: [{
+      host: "kysigned6.run402.com",
+      claimed_at: new Date().toISOString(),
+      kvs_synced_at: null,
+    }],
+  });
+  const fetchMock = mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({ code: "SUBDOMAIN_NOT_CONFIGURED" }), {
+      status: 404,
+      headers: {
+        "content-type": "application/json",
+        "x-run402-edge": "kvs-miss",
+      },
+    })
+  );
+  t.after(() => fetchMock.mock.restore());
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up(
+      { name: "kysigned6", propagationWait: false },
+      { approval: "yes" },
+    );
+
+    assert.equal(result.result?.app_result?.status, "propagation_pending");
+    assert.equal(result.result?.app_result?.verify?.status, "propagation_pending");
+    assert.equal(result.result?.app_result?.verify?.next_action?.command, "run402 up verify");
+    assert.equal(result.result?.app_result?.verification.http[0]?.status, "propagation_pending");
+    assert.equal(result.result?.app_result?.verification.http[0]?.actual_status, 404);
+    assert.equal(result.result?.app_result?.diagnostics[0]?.code, "VERIFY_PROPAGATION_PENDING");
+    assert.equal(calls.includes("project.apply:prj_new"), true);
+  } finally {
+    if (previous === undefined) delete process.env.KYSIGNED_ALLOWED_CREATORS;
+    else process.env.KYSIGNED_ALLOWED_CREATORS = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up verify reruns app HTTP checks without deploying", async (t) => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-app-up-verify-only-"));
+  mkdirSync(join(dir, ".run402"), { recursive: true });
+  writeFileSync(join(dir, ".run402", "project.json"), JSON.stringify({
+    schema_version: "run402.workspace-project.v1",
+    project_id: "prj_ready",
+    name: "ready",
+    created_at: "2026-06-30T00:00:00.000Z",
+  }));
+  writeFileSync(join(dir, "run402.json"), JSON.stringify(appManifest()));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+  const fetchMock = mock.method(globalThis, "fetch", async () =>
+    new Response("ok", { status: 200 })
+  );
+  t.after(() => fetchMock.mock.restore());
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ verifyOnly: true });
+
+    assert.equal(result.result?.project_id, "prj_ready");
+    assert.equal(result.result?.app_result?.status, "succeeded");
+    assert.equal(result.result?.app_result?.verify?.status, "verified");
+    assert.equal(result.result?.app_result?.verification.http[0]?.actual_status, 200);
+    assert.ok(!calls.some((call) => call.startsWith("project.apply:")));
+    assert.ok(calls.includes("projects.keys:prj_ready"));
+    assert.ok(calls.includes("project:prj_ready"));
+  } finally {
     rmSync(dir, { force: true, recursive: true });
   }
 });
@@ -1052,6 +1148,7 @@ function fakeSdk(opts: {
   deployOptions?: Array<{ idempotencyKey?: string }>;
   deployPlanOptions?: Array<{ idempotencyKey?: string }>;
   deployEvents?: unknown[];
+  deploySubdomainBindings?: Array<{ host: string; claimed_at: string; kvs_synced_at: string | null }>;
 }) {
   const mailboxes: Array<Record<string, unknown>> = [];
   const mailboxSettings: { default_outbound_mailbox_id: string | null; auth_sender_mailbox_id: string | null } = {
@@ -1199,6 +1296,7 @@ function fakeSdk(opts: {
               urls: {},
               diff: {},
               warnings: [],
+              ...(opts.deploySubdomainBindings ? { subdomain_bindings: opts.deploySubdomainBindings } : {}),
             };
           },
           {
@@ -1229,6 +1327,16 @@ function fakeSdk(opts: {
                   routes: { added: [], removed: [], changed: [] },
                 },
                 byteReaders: new Map(),
+              };
+            },
+            async resolve(_input?: unknown) {
+              opts.calls.push(`project.apply.resolve:${projectId}`);
+              return {
+                hostname: "example.com",
+                result: 200,
+                match: "static_exact",
+                authorized: true,
+                fallback_state: "not_used",
               };
             },
           },

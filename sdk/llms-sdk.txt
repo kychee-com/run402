@@ -148,7 +148,20 @@ export type Run402ActionType =
 type Run402ActionInput =
   | { type: typeof Run402Action.ProjectsProvision; name?: string; tier?: "prototype" | "hobby" | "team"; orgId?: string; idempotencyKey?: string }
   | { type: typeof Run402Action.TierSet; tier: "prototype" | "hobby" | "team"; idempotencyKey?: string }
-  | { type: typeof Run402Action.Up; dir?: string; manifest?: string; projectId?: string; name?: string; tier?: "prototype" | "hobby" | "team"; orgId?: string; idempotencyKey?: string };
+  | {
+      type: typeof Run402Action.Up;
+      source?: string;
+      dir?: string;
+      manifest?: string;
+      projectId?: string;
+      name?: string;
+      tier?: "prototype" | "hobby" | "team";
+      orgId?: string;
+      idempotencyKey?: string;
+      verifyOnly?: boolean;
+      propagationBudgetSeconds?: number;
+      propagationWait?: boolean;
+    };
 
 type Run402ExecutionMode =
   | "apply"
@@ -164,6 +177,9 @@ type Run402ExecutionMode =
 - Discover `run402.deploy.json`, then `app.json` under `dir` / cwd; explicit `manifest` wins.
 - Validate the deploy manifest and referenced local files before allowance, tier, project, link, upload, or deploy mutations.
 - Resolve project as explicit `projectId`, then `.run402/project.json`, then manifest `project_id`, then approved project creation from `name`, then approved active-project fallback.
+- For app manifests with `verify.http[]`, fetch verification URLs after apply and write per-check details to `result.app_result.verification.http[]`. Fresh edge sentinel misses (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) and non-settled deploy-resolve diagnostics become `propagation_pending` instead of permanent failures while the binding is fresh.
+- Set `propagationBudgetSeconds` to control the wait for edge convergence (default 120). Set `propagationWait: false` to return `status: "propagation_pending"` immediately with `verify.status`, `propagation_wait_ms`, warnings, `next_action`, and diagnostic `edge_propagation` / `resolve` payloads.
+- Set `verifyOnly: true` to rerun app HTTP verification without upload, deploy, resource mutation, or project creation. This is the SDK equivalent of `run402 up verify`.
 - `name` is only project creation/link metadata. It is not a manifest field and never renames an existing project.
 - Write `.run402/project.json` atomically when `up` needs to remember an explicit/created/active project. Schema: `{ schema_version: "run402.workspace-project.v1", project_id, name?, target?, created_at, updated_at? }`.
 - On Run402 Cloud, recursively ensure allowance and tier (default bootstrap tier `prototype`) only when missing; existing active tiers are not downgraded or renewed just because `up` ran.
@@ -653,7 +669,7 @@ console.log(summary.would_serve, summary.diagnostic_status, summary.match, reque
 void auth; void cas; void variant;
 ```
 
-`r.project(id).apply.resolve({ url, method })` also accepts lower-level `{ host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, and route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`. Current known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle; branch on structured fields e.g. `cache_class`, `allow`, and `cas_object`, and preserve unknown cache classes.
+`r.project(id).apply.resolve({ url, method })` also accepts lower-level `{ host, path?, method? }`. URL query strings/fragments are ignored for lookup and surfaced in `request.ignored`. When returned, `asset_path`, `reachability_authority`, and `direct` explain which release asset backs the public URL and whether reachability came from implicit file-path mode, explicit `site.public_paths`, or a route-only static alias. Stable-host diagnostics may also include `authorization_result`, `cas_object` (`sha256`, `exists`, `expected_size`, `actual_size`), hostname-specific `response_variant`, route/static fields e.g. `allow`, `route_pattern`, `target_type`, `target_name`, and `target_file`, plus `edge_propagation` (`status`, `claimed_at`, `kvs_synced_at`, `expected_visible_by`, `hint`). Current known `edge_propagation.status` literals are `settled`, `propagating`, and `sync_pending`; non-settled statuses add `edge_propagating` / `edge_sync_pending` warnings and next steps such as `retry_after_edge_propagation` or `retry_after_edge_sync`. Current known `match` literals are `host_missing`, `manifest_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `none`, `static_exact`, `static_index`, `spa_fallback`, `spa_fallback_missing`, `route_function`, `route_static_alias`, and `route_method_miss`; preserve unknown future strings. Known `authorization_result` values include `authorized`, `not_public`, `not_applicable`, `manifest_missing`, `target_missing`, `active_release_missing`, `unsupported_manifest_version`, `path_error`, `missing_cas_object`, `unfinalized_or_deleting_cas_object`, `size_mismatch`, and `unauthorized_cas_object`. Known `fallback_state` values include `active_release_missing`, `unsupported_manifest_version`, and `negative_cache_hit`; preserve unknown future strings. `result` is diagnostic body status, not SDK HTTP transport status, so host misses can be successful calls with `would_serve: false`. Do not use resolve as a fetch, cache purge, or cache-policy oracle; branch on structured fields e.g. `cache_class`, `allow`, `cas_object`, and `edge_propagation`, and preserve unknown cache classes.
 
 Known route warning codes and recovery:
 
