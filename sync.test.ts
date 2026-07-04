@@ -353,6 +353,7 @@ const SURFACE: Capability[] = [
   { id: "deploy_promote",    endpoint: "POST /apply/v1/releases/:release_id/promote",              mcp: null,                cli: "deploy:promote",    openclaw: "deploy:promote" },
   { id: "deploy_list",       endpoint: "GET /apply/v1/operations",                        mcp: "deploy_list",       cli: "deploy:list",       openclaw: "deploy:list" },
   { id: "deploy_events",     endpoint: "GET /apply/v1/operations/:operation_id/events",             mcp: "deploy_events",     cli: "deploy:events",     openclaw: "deploy:events" },
+  { id: "deploy_verify_edge", endpoint: "GET /apply/v1/operations/:operation_id/edge-coherence",     mcp: "deploy_verify_edge", cli: "deploy:verify",     openclaw: "deploy:verify" },
   { id: "deploy_release_get",    endpoint: "GET /apply/v1/releases/:release_id",                  mcp: "deploy_release_get",    cli: "deploy:release:get",    openclaw: "deploy:release:get" },
   { id: "deploy_release_active", endpoint: "GET /apply/v1/releases/active",               mcp: "deploy_release_active", cli: "deploy:release:active", openclaw: "deploy:release:active" },
   { id: "deploy_release_diff",   endpoint: "GET /apply/v1/releases/diff",                 mcp: "deploy_release_diff",   cli: "deploy:release:diff",   openclaw: "deploy:release:diff" },
@@ -676,6 +677,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   deploy_resume: "_applyEngine.resume",
   deploy_list: "_applyEngine.list",
   deploy_events: "_applyEngine.events",
+  deploy_verify_edge: "_applyEngine.edgeCoherence",
   deploy_release_get: "_applyEngine.getRelease",
   deploy_release_active: "_applyEngine.getActiveRelease",
   deploy_release_diff: "_applyEngine.diff",
@@ -1131,6 +1133,7 @@ describe("SDK surface alignment", () => {
       "_applyEngine.upload",
       "_applyEngine.commit",
       "_applyEngine.status",
+      "_applyEngine.waitEdgeCoherent",
       // CI token exchange is intentionally credential-helper-only in v1.
       "ci.exchangeToken",
       // ─── SSR origin cache (v1.52) — flag-variants of `run402 cache invalidate` ─

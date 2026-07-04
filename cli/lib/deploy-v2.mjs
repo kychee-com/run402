@@ -190,6 +190,33 @@ Output:
   stdout: { "events": [...] }
 `;
 
+const VERIFY_HELP = `run402 deploy verify — Verify gateway and edge coherence
+
+Usage:
+  run402 deploy verify <operation_id> [--project <id>] [--wait] [--timeout <seconds>] [--json]
+  run402 deploy verify --operation <operation_id> [--project <id>] [--wait] [--timeout <seconds>] [--json]
+
+Checks that the gateway's live release and the edge pointers observed by
+Run402 agree for the deployment operation. Use --wait to poll until the report
+is coherent or the timeout elapses.
+
+Options:
+  --operation <id>       Operation id to verify. Equivalent to the positional id.
+  --project <id>         Project ID that owns the operation (default: active project)
+  --wait                 Poll until coherent or timeout
+  --timeout <seconds>    Maximum wait time with --wait (default 60)
+  --json                 No-op compatibility flag; output is always JSON
+
+Exit codes:
+  0  coherent
+  2  valid report, but not coherent before timeout
+  1  usage, auth, network, or gateway error
+
+Output:
+  stdout: { "status": "coherent"|"not_coherent", "coherent": boolean, "report": {...} }
+  stderr: one JSON poll progress line per attempt when --wait is set
+`;
+
 const REHEARSE_HELP = `run402 deploy rehearse — Run a persisted plan on a contained branch
 
 Usage:
@@ -301,6 +328,7 @@ export async function runDeployV2(sub, args) {
   if (sub === "resume") return await resumeCmd(args);
   if (sub === "list") return await listCmd(args);
   if (sub === "events") return await eventsCmd(args);
+  if (sub === "verify") return await verifyCmd(args);
   if (sub === "release") return await releaseCmd(args);
   if (sub === "diagnose") return await diagnoseCmd(args);
   if (sub === "resolve") return await resolveCmd(args);
@@ -1594,6 +1622,100 @@ async function eventsCmd(args) {
   }
 }
 
+async function verifyCmd(args) {
+  const parsed = parseDeploySubcommandArgs(args, {
+    command: "deploy verify",
+    help: VERIFY_HELP,
+    valueFlags: ["--project", "--operation", "--timeout"],
+    booleanFlags: ["--wait", "--json"],
+  });
+  const positionals = expectPositionals(parsed.positionals, {
+    command: "run402 deploy verify <operation_id> [--project <id>] [--wait]",
+    max: 1,
+  });
+  const positionalOperationId = positionals[0] ?? null;
+  const flaggedOperationId = parsed.flags["--operation"] ?? null;
+  if (positionalOperationId && flaggedOperationId && positionalOperationId !== flaggedOperationId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Pass the operation id either positionally or with --operation, not both.",
+      details: { positional: positionalOperationId, operation: flaggedOperationId },
+    });
+  }
+  const operationId = flaggedOperationId ?? positionalOperationId;
+  if (!operationId) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Missing <operation_id>.",
+      hint: "run402 deploy verify <operation_id> [--project <id>] [--wait]",
+    });
+  }
+  const project = resolveProjectId(parsed.flags["--project"] ?? null);
+  const wait = Boolean(parsed.flags["--wait"]);
+  const timeoutSeconds = parsed.flags["--timeout"] === undefined
+    ? 60
+    : parsePositiveInt(parsed.flags["--timeout"], "--timeout");
+
+  allowanceAuthHeaders("/apply/v1/operations");
+
+  try {
+    let result;
+    if (wait) {
+      result = await getSdk()._applyEngine.waitEdgeCoherent(operationId, {
+        project,
+        timeoutMs: timeoutSeconds * 1000,
+        onPoll: (event) => {
+          console.error(JSON.stringify({
+            type: "deploy.verify.poll",
+            coherent: event.report.coherent,
+            attempts: event.attempts,
+            elapsed_ms: event.elapsedMs,
+            pending_count: event.report.pending_count,
+            path_count: event.report.path_count,
+            total_path_count: event.report.total_path_count,
+            paths_truncated: event.report.paths_truncated,
+            paths: summarizeEdgeCoherencePaths(event.report.paths),
+          }));
+        },
+      });
+    } else {
+      const report = await getSdk()._applyEngine.edgeCoherence(operationId, { project });
+      result = { coherent: report.coherent, attempts: 1, elapsedMs: 0, report };
+    }
+    const output = {
+      status: result.coherent ? "coherent" : "not_coherent",
+      coherent: result.coherent,
+      operation_id: result.report.operation_id,
+      project_id: result.report.project_id,
+      attempts: result.attempts,
+      elapsed_ms: result.elapsedMs,
+      report: result.report,
+    };
+    console.log(JSON.stringify(output, null, 2));
+    if (!result.coherent) process.exitCode = 2;
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+function summarizeEdgeCoherencePaths(paths) {
+  if (!Array.isArray(paths)) return [];
+  return paths.map((path) => ({
+    path: path.path,
+    host: path.host,
+    state: path.state,
+    observed_confidence: path.observed_confidence,
+    expected_release_id: path.expected_release_id,
+    observed_release_id: path.observed_release_id,
+    expected_release_generation: path.expected_release_generation,
+    observed_release_generation: path.observed_release_generation,
+    status: path.status,
+    x_cache: path.x_cache,
+    age_seconds: path.age_seconds,
+    error: path.error,
+  }));
+}
+
 async function releaseCmd(args) {
   const action = args[0];
   if (!action || action === "--help" || action === "-h") {
@@ -1843,7 +1965,7 @@ function parseDeploySubcommandArgs(rawArgs, { command, help, valueFlags = [], bo
   const args = normalizeArgv(rawArgs);
   const valueFlagSet = new Set(valueFlags);
   const booleanFlagSet = new Set(booleanFlags);
-  const numericFlagSet = new Set(["--limit", "--site-limit"]);
+  const numericFlagSet = new Set(["--limit", "--site-limit", "--timeout"]);
   const allowedFlags = new Set([...valueFlags, ...booleanFlags, "--help", "-h"]);
   const flags = {};
   const positionals = [];

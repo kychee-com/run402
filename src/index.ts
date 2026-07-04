@@ -16,6 +16,7 @@ import { deployDiagnoseUrlSchema, handleDeployDiagnoseUrl } from "./tools/deploy
 import { deployResumeSchema, handleDeployResume } from "./tools/deploy-resume.js";
 import { deployListSchema, handleDeployList } from "./tools/deploy-list.js";
 import { deployEventsSchema, handleDeployEvents } from "./tools/deploy-events.js";
+import { deployVerifyEdgeSchema, handleDeployVerifyEdge } from "./tools/deploy-verify-edge.js";
 import {
   deployReleaseActiveSchema,
   deployReleaseDiffSchema,
@@ -773,6 +774,13 @@ server.tool(
   "Fetch the recorded phase-event stream for a deploy operation. Returns the same `DeployEvent` shapes the `deploy` tool emits inline during an in-flight deploy — useful for inspecting a deploy after the fact (e.g., a deploy that the agent didn't observe directly, or one being resumed from a different process).",
   deployEventsSchema,
   async (args) => handleDeployEvents(args),
+);
+
+server.tool(
+  "deploy_verify_edge",
+  "Verify gateway/edge release coherence for a deploy operation. Returns the canonical edge-coherence report, including pointer-update state, probed paths, stale-release evidence, and next actions. Set wait=true to poll until coherent or timeout_seconds elapses.",
+  deployVerifyEdgeSchema,
+  async (args) => handleDeployVerifyEdge(args),
 );
 
 server.tool(

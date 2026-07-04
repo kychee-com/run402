@@ -26,6 +26,7 @@ import {
 import type {
   CommitResponse,
   DeployEvent,
+  EdgeCoherenceReport,
   DeployResolveResponse,
   OperationSnapshot,
   PlanResponse,
@@ -5385,6 +5386,104 @@ describe("Deploy.events", () => {
         err instanceof Run402DeployError &&
         (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
     );
+  });
+});
+
+describe("Deploy.edgeCoherence", () => {
+  function report(overrides: Partial<EdgeCoherenceReport> = {}): EdgeCoherenceReport {
+    return {
+      coherent: true,
+      operation_id: "op_42",
+      project_id: "prj_test",
+      release_id: "rel_1",
+      release_generation: 7,
+      paths: [
+        {
+          path: "/",
+          host: "example.com",
+          state: "coherent",
+          observed_confidence: "identity",
+          expected_release_id: "rel_1",
+          expected_release_generation: 7,
+          observed_release_id: "rel_1",
+          observed_release_generation: 7,
+          status: 200,
+        },
+      ],
+      pending_count: 0,
+      paths_truncated: false,
+      path_count: 1,
+      total_path_count: 1,
+      vantage: "gateway",
+      probe_may_have_warmed_cache: false,
+      pointer_updates: {
+        kvs: { target: "kvs", status: "applied" },
+        cloudfront_invalidation: { target: "cloudfront_invalidation", status: "not_applicable" },
+        cloudflare_kv: { target: "cloudflare_kv", status: "applied" },
+      },
+      next_actions: [],
+      ...overrides,
+    };
+  }
+
+  it("GETs /edge-coherence with apikey auth", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/operations/op_42/edge-coherence") return report();
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const deploy = new Deploy(w.client);
+    const result = await deploy.edgeCoherence("op_42", { project: "prj_test" });
+
+    assert.equal(result.coherent, true);
+    assert.equal(result.release_id, "rel_1");
+    assert.equal(w.requests[0].headers?.apikey, "ak");
+  });
+
+  it("polls until coherent and emits poll events", async () => {
+    const w = makeWiring();
+    let attempts = 0;
+    w.setHandler((req) => {
+      if (req.path !== "/apply/v1/operations/op_42/edge-coherence") {
+        throw new Error(`unexpected ${req.path}`);
+      }
+      attempts += 1;
+      return report({
+        coherent: attempts >= 2,
+        pending_count: attempts >= 2 ? 0 : 1,
+        paths: attempts >= 2
+          ? report().paths
+          : [{ ...report().paths[0], state: "stale_prior_release", observed_release_id: "rel_0" }],
+      });
+    });
+
+    const events: Array<{ attempts: number; report: EdgeCoherenceReport }> = [];
+    const deploy = new Deploy(w.client);
+    const result = await deploy.waitEdgeCoherent("op_42", {
+      project: "prj_test",
+      timeoutMs: 100,
+      intervalMs: 1,
+      onPoll: (event) => events.push({ attempts: event.attempts, report: event.report }),
+    });
+
+    assert.equal(result.coherent, true);
+    assert.equal(result.attempts, 2);
+    assert.equal(events.length, 2);
+    assert.equal(events[0].report.coherent, false);
+    assert.equal(events[1].report.coherent, true);
+  });
+
+  it("rejects invalid operation ids without issuing a request", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+    await assert.rejects(
+      () => deploy.edgeCoherence("notop_42", { project: "prj_test" }),
+      (err: unknown) =>
+        err instanceof Run402DeployError &&
+        (err as Run402DeployError).code === "OPERATION_NOT_FOUND",
+    );
+    assert.equal(w.requests.length, 0);
   });
 });
 

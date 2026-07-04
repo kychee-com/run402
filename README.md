@@ -33,6 +33,7 @@ These interfaces share a single typed kernel where appropriate: `@run402/sdk`. M
 npm install -g run402@latest
 run402 up --name my-app -y                           # bootstrap allowance/tier/project/link, then deploy manifest
 run402 up verify                                     # rerun app HTTP verification without deploying
+run402 up --verify                                   # deploy, then wait for gateway/edge coherence
 run402 subdomains claim my-app                       # → https://my-app.run402.com
 ```
 
@@ -349,6 +350,7 @@ run402 projects sql <id> "CREATE TABLE …"
 run402 projects validate-expose <id> --file manifest.json
 run402 projects apply-expose <id> --file manifest.json
 run402 sites deploy-dir ./dist
+run402 deploy verify op_... --project <id> --wait  # confirm gateway/edge release coherence
 run402 deploy release active --project <id>  # inspect current-live release inventory
 run402 deploy diagnose --project <id> https://example.com/events --method GET
 run402 apply --manifest app.json --rehearse --json
@@ -480,7 +482,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `domains_ensure` / `domains_get` / `domains_list` / `domains_check` | Manage project-scoped web/email ProjectDomain desired state and health checks. |
 | `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` | Apply safe provider actions, repair Run402-owned routing, verify inbound receive, activate mailbox addresses, or disconnect a domain. |
-| `deploy` / `deploy_resume` / `deploy_rehearse` / `deploy_list` / `deploy_events` | Apply, resume, rehearse persisted plans on contained branches, list, and inspect deploy operations. |
+| `deploy` / `deploy_resume` / `deploy_rehearse` / `deploy_list` / `deploy_events` / `deploy_verify_edge` | Apply, resume, rehearse persisted plans on contained branches, list, inspect deploy operations, and verify gateway/edge coherence. |
 | `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
 | `deploy_diagnose_url` | URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`; returns `would_serve`, `diagnostic_status`, `match`, warnings, next steps, and fenced JSON. |
 

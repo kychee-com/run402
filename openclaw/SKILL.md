@@ -26,12 +26,13 @@ Every example below is a CLI command. The CLI prints JSON to stdout, JSON errors
 ```bash
 run402 up --name my-app -y                 # bootstrap/link/deploy run402.deploy.json or app.json
 run402 up verify                           # rerun app HTTP verification without deploying
+run402 up --verify                         # deploy, then wait for gateway/edge release coherence
 run402 subdomains claim my-app             # → https://my-app.run402.com
 ```
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
-`run402 up` is the CLI path for local repos with a deploy manifest. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--dry-run` prints planned `steps[]` without mutating. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation.
+`run402 up` is the CLI path for local repos with a deploy manifest. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--dry-run` prints planned `steps[]` without mutating. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
 
 ## Self-hosted Core target
 
@@ -51,6 +52,7 @@ For Core, `init --api-base` stores the target in the active profile and does not
 |---|---|
 | Set up a wallet from scratch | `run402 init` |
 | Bootstrap/link/deploy a manifest repo | `run402 up --name <name> -y` |
+| Bootstrap/link/deploy and wait for edge coherence | `run402 up --name <name> -y --verify` |
 | Rerun app HTTP verification | `run402 up verify --project <project_id>` |
 | Point at self-hosted Core | `run402 init --api-base=<url>` |
 | Make a database | `run402 projects provision` |
@@ -170,6 +172,7 @@ After deploys, inspect release state without starting another mutation:
 
 ```bash
 run402 deploy release active --project prj_...
+run402 deploy verify op_... --project prj_... --wait --timeout 120
 run402 deploy release get rel_... --project prj_...
 run402 deploy release diff --from empty --to active --project prj_...
 ```

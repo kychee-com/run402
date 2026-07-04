@@ -8,7 +8,7 @@ import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs
 const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
-  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--human|--json-stream] [--quiet]
+  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--verify] [--human|--json-stream] [--quiet]
   run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--human|--json-stream]
 
 Options:
@@ -44,6 +44,8 @@ Options:
   --propagation-budget-s <n>
                       Maximum wall-clock seconds to wait for fresh edge
                       propagation during app HTTP verification (default 120).
+  --verify            After a deploy apply, wait for gateway/edge release
+                      coherence and attach the report to the final result.
   --no-propagation-wait
                       Return propagation_pending immediately when the edge is
                       still settling.
@@ -121,6 +123,7 @@ export async function run(args = []) {
       "--allow-warnings",
       "--allow-prune",
       "--allow-shell-build",
+      "--verify",
       "--no-propagation-wait",
       "--json",
       "--human",
@@ -206,6 +209,7 @@ export async function run(args = []) {
   const quiet = parsed.includes("--quiet") || parsed.includes("--final-only") || jsonStream;
   const mode = parseExecutionMode(parsed);
   const dryRun = parsed.includes("--dry-run");
+  const verifyEdge = parsed.includes("--verify");
   if (human && (parsed.includes("--json") || jsonStream)) {
     fail({
       code: "BAD_USAGE",
@@ -218,6 +222,13 @@ export async function run(args = []) {
       code: "BAD_USAGE",
       message: "--dry-run cannot be combined with --check, --print-spec, --plan, or --require-plan.",
       details: { flag: "--dry-run" },
+    });
+  }
+  if (verifyEdge && (dryRun || isNonApplyingMode(mode))) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--verify can only be used when run402 up applies a deploy.",
+      details: { flag: "--verify", mode: dryRun ? "dry-run" : mode },
     });
   }
   if (isApplyReviewedMode(mode) && (parsed.includes("--allow-warnings") || parsed.includes("--allow-warning"))) {
@@ -263,6 +274,14 @@ export async function run(args = []) {
               console.error(JSON.stringify(event));
             },
     });
+    const edgeWait = verifyEdge
+      ? await attachEdgeVerification(result, {
+          sdk,
+          timeoutSeconds: propagationBudgetSeconds ?? 120,
+          jsonStream,
+          quiet,
+        })
+      : null;
     if (jsonStream) {
       console.log(JSON.stringify({ type: "run402.up.result", result }));
     } else if (mode === "printSpec") {
@@ -276,6 +295,9 @@ export async function run(args = []) {
     }
     if (shouldExitNonZeroForUpResult(result)) {
       process.exitCode = 1;
+    }
+    if (edgeWait && !edgeWait.coherent && process.exitCode !== 1) {
+      process.exitCode = 2;
     }
   } catch (err) {
     reportSdkError(err);
@@ -413,6 +435,62 @@ function parseExecutionMode(args) {
 
 function isApplyReviewedMode(mode) {
   return mode && typeof mode === "object" && mode.kind === "applyReviewed";
+}
+
+function isNonApplyingMode(mode) {
+  return mode === "check" || mode === "printSpec" || mode === "plan";
+}
+
+async function attachEdgeVerification(result, { sdk, timeoutSeconds, jsonStream, quiet }) {
+  const deploy = result?.result?.deploy;
+  const operationId = deploy?.operation_id;
+  const projectId = result?.result?.project_id;
+  if (!operationId || !projectId || String(operationId).startsWith("core:")) {
+    return null;
+  }
+  const scoped = await sdk.project(projectId);
+  const wait = await scoped.apply.waitEdgeCoherent(operationId, {
+    timeoutMs: timeoutSeconds * 1000,
+    onPoll: (event) => {
+      const line = {
+        type: "deploy.verify.poll",
+        coherent: event.report.coherent,
+        attempts: event.attempts,
+        elapsed_ms: event.elapsedMs,
+        pending_count: event.report.pending_count,
+        path_count: event.report.path_count,
+        total_path_count: event.report.total_path_count,
+        paths_truncated: event.report.paths_truncated,
+        paths: summarizeEdgeCoherencePaths(event.report.paths),
+      };
+      if (jsonStream) console.log(JSON.stringify({ type: "action.event", event: line }));
+      else if (!quiet) console.error(JSON.stringify(line));
+    },
+  });
+  result.result.edge_coherence = wait;
+  result.result.deploy = {
+    ...deploy,
+    edge_coherence: wait.report,
+  };
+  return wait;
+}
+
+function summarizeEdgeCoherencePaths(paths) {
+  if (!Array.isArray(paths)) return [];
+  return paths.map((path) => ({
+    path: path.path,
+    host: path.host,
+    state: path.state,
+    observed_confidence: path.observed_confidence,
+    expected_release_id: path.expected_release_id,
+    observed_release_id: path.observed_release_id,
+    expected_release_generation: path.expected_release_generation,
+    observed_release_generation: path.observed_release_generation,
+    status: path.status,
+    x_cache: path.x_cache,
+    age_seconds: path.age_seconds,
+    error: path.error,
+  }));
 }
 
 function collectRepeatedValues(args, flag) {

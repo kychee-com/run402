@@ -223,6 +223,7 @@ after(() => {
 
 beforeEach(() => {
   calls = [];
+  process.exitCode = undefined;
   rmSync(updateCachePath, { force: true });
   captureStop();
 });
@@ -1986,6 +1987,120 @@ describe("deploy apply manifest source precedence", () => {
     const r = resolveApplySource({ manifest: null, spec: null, dir: null }, false);
     assert.equal(r.error.code, "BAD_USAGE");
     assert.match(r.error.message, /No deploy manifest provided/);
+  });
+});
+
+describe("deploy verify edge coherence", () => {
+  async function saveTestAllowance() {
+    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
+    saveAllowance({
+      address: "0x0000000000000000000000000000000000000001",
+      privateKey: "0x" + "11".repeat(32),
+      rail: "x402",
+      funded: true,
+      created: new Date().toISOString(),
+    });
+  }
+
+  function edgeReport(overrides = {}) {
+    return {
+      coherent: true,
+      operation_id: "op_cli",
+      project_id: "prj_test123",
+      release_id: "rel_cli",
+      release_generation: 12,
+      paths: [{
+        path: "/",
+        host: "example.com",
+        state: "coherent",
+        observed_confidence: "identity",
+        expected_release_id: "rel_cli",
+        expected_release_generation: 12,
+        observed_release_id: "rel_cli",
+        observed_release_generation: 12,
+        status: 200,
+      }],
+      pending_count: 0,
+      paths_truncated: false,
+      path_count: 1,
+      total_path_count: 1,
+      vantage: "gateway",
+      probe_may_have_warmed_cache: false,
+      pointer_updates: {
+        kvs: { target: "kvs", status: "applied" },
+        cloudfront_invalidation: { target: "cloudfront_invalidation", status: "not_applicable" },
+        cloudflare_kv: { target: "cloudflare_kv", status: "applied" },
+      },
+      next_actions: [],
+      ...overrides,
+    };
+  }
+
+  it("prints a coherent report and poll progress for --wait", async () => {
+    await saveTestAllowance();
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/apply/v1/operations/op_cli/edge-coherence") {
+        return json(edgeReport());
+      }
+      return mockFetch(input, init);
+    };
+
+    captureStart();
+    try {
+      await run(["verify", "op_cli", "--project", "prj_test123", "--wait", "--timeout", "5", "--json"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    const parsed = JSON.parse(stdout.join("\n"));
+    assert.equal(parsed.status, "coherent");
+    assert.equal(parsed.coherent, true);
+    assert.equal(parsed.report.release_id, "rel_cli");
+    assert.equal(calls.some((call) => call.path === "/apply/v1/operations/op_cli/edge-coherence"), true);
+    const progress = stderr.map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean).find((line) => line.type === "deploy.verify.poll");
+    assert.ok(progress, `expected poll progress, got ${stderr.join("\n")}`);
+    assert.equal(progress.coherent, true);
+    assert.equal(process.exitCode, undefined);
+  });
+
+  it("sets exitCode 2 for a valid non-coherent report", async () => {
+    await saveTestAllowance();
+    const { run } = await import("./cli/lib/deploy.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/apply/v1/operations/op_cli/edge-coherence") {
+        return json(edgeReport({
+          coherent: false,
+          pending_count: 1,
+          paths: [{ ...edgeReport().paths[0], state: "stale_prior_release", observed_release_id: "rel_old" }],
+          next_actions: ["retry deploy verify --wait"],
+        }));
+      }
+      return mockFetch(input, init);
+    };
+
+    captureStart();
+    try {
+      await run(["verify", "--operation", "op_cli", "--project", "prj_test123"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    const parsed = JSON.parse(stdout.join("\n"));
+    assert.equal(parsed.status, "not_coherent");
+    assert.equal(parsed.coherent, false);
+    assert.equal(parsed.report.pending_count, 1);
+    assert.equal(process.exitCode, 2);
   });
 });
 
