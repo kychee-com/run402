@@ -56,6 +56,13 @@ Exit codes:
   1  — one or more checks failed (details in output)
 `;
 
+function redactAllowanceForDiagnostics(allowance) {
+  if (!allowance || typeof allowance !== "object") return allowance;
+  const safe = { ...allowance };
+  delete safe.privateKey;
+  return safe;
+}
+
 export async function run(sub, args = []) {
   const all = [sub, ...args].filter(Boolean);
   if (all.includes("--help") || all.includes("-h")) {
@@ -113,8 +120,9 @@ export async function run(sub, args = []) {
         value: {
           rail: allowance.rail,
           // Don't surface amounts or addresses unless --verbose; agents
-          // checking for config presence don't need wallet details.
-          ...(verbose && { details: allowance }),
+          // checking for config presence don't need wallet details. Never
+          // include keystore secrets in diagnostics, even in verbose mode.
+          ...(verbose && { details: redactAllowanceForDiagnostics(allowance) }),
         },
       });
     } else {
@@ -182,19 +190,34 @@ export async function run(sub, args = []) {
     const sdk = getSdk();
     const tier = await sdk.tier.status();
     const tierName = tier?.tier ?? null;
-    if (tierName && tierName !== "past_due" && tierName !== "frozen" && tierName !== "dormant") {
+    const lifecycle = tier?.organization_lifecycle_state ?? null;
+    const active = tier?.active === true;
+    if (tierName && active && lifecycle === "active") {
       checks.push({
         name: "tier",
         status: "ok",
-        value: { tier: tierName },
+        value: { tier: tierName, active, organization_lifecycle_state: lifecycle },
       });
     } else {
+      const status = lifecycle && lifecycle !== "active"
+        ? lifecycle
+        : tierName && !active
+          ? "inactive"
+          : tierName && lifecycle === null
+            ? "unknown"
+            : tierName ?? "missing";
       checks.push({
         name: "tier",
-        status: tierName ?? "missing",
-        ...(tierName && {
-          hint: "Run 'run402 tier set prototype' to subscribe (or upgrade).",
-        }),
+        status,
+        value: {
+          tier: tierName,
+          active,
+          organization_lifecycle_state: lifecycle,
+          lease_expires_at: tier?.lease_expires_at ?? null,
+        },
+        hint: lifecycle === null && tierName
+          ? "Tier resolved, but organization lifecycle could not be determined. Check `run402 tier status` before assuming the account is healthy."
+          : "Run 'run402 tier set prototype' to subscribe, renew, or reactivate the tier.",
       });
     }
   } catch (err) {

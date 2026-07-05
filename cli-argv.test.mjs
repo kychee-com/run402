@@ -276,6 +276,15 @@ describe("unknown flags", () => {
     assert.equal(calls.length, 0, "invalid argv must not hit the network");
   });
 
+  it("allowance export rejects unknown flags before doing any work (GH-572)", async () => {
+    const { run } = await import("./cli/lib/allowance.mjs");
+    const err = await expectExit1(() => run("export", ["--bogusflag"]));
+
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details.flag, "--bogusflag");
+    assert.equal(calls.length, 0, "invalid argv must not hit the network");
+  });
+
   it("functions logs rejects unknown flags before fetching logs (GH-190)", async () => {
     const { run } = await import("./cli/lib/functions.mjs");
     const err = await expectExit1(() =>
@@ -1845,6 +1854,79 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     const parsed = JSON.parse(out);
     assert.equal(typeof parsed.ok, "boolean", "doctor stdout should be { ok, checks }");
     assert.ok(Array.isArray(parsed.checks), "doctor stdout should have checks array");
+  });
+
+  it("doctor --verbose output redacts allowance privateKey (GH-571)", async () => {
+    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
+    saveAllowance({
+      address: "0x0000000000000000000000000000000000000001",
+      privateKey: "0x" + "11".repeat(32),
+      rail: "x402",
+      funded: true,
+      created: "2026-07-05T00:00:00.000Z",
+    });
+
+    const { run } = await import("./cli/lib/doctor.mjs");
+    captureStart();
+    let threw = null;
+    try {
+      await run(undefined, ["--verbose", "--no-scan"]);
+    } catch (e) { threw = e; }
+    finally {
+      captureStop();
+    }
+    assert.ok(threw, "doctor should call process.exit");
+    const out = stdout.join("\n").trim();
+    assert.doesNotMatch(out, /privateKey/);
+    const parsed = JSON.parse(out);
+    const allowance = parsed.checks.find((c) => c.name === "allowance");
+    assert.equal(allowance?.status, "ok");
+    assert.equal(allowance.value.details.address, "0x0000000000000000000000000000000000000001");
+    assert.equal(allowance.value.details.privateKey, undefined);
+  });
+
+  it("doctor reports frozen or inactive tier as non-ok (GH-570)", async () => {
+    const { saveAllowance } = await import("./cli/core-dist/allowance.js");
+    saveAllowance({
+      address: "0x0000000000000000000000000000000000000001",
+      privateKey: "0x" + "11".repeat(32),
+      rail: "x402",
+      funded: true,
+      created: "2026-07-05T00:00:00.000Z",
+    });
+
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path.split("?")[0] === "/tiers/v1/status") {
+        return Promise.resolve(json({
+          tier: "prototype",
+          active: false,
+          organization_lifecycle_state: "frozen",
+          lease_started_at: "2026-04-08T19:04:44Z",
+          lease_expires_at: "2026-04-15T19:04:44Z",
+        }));
+      }
+      return mockFetch(input, init);
+    };
+
+    const { run } = await import("./cli/lib/doctor.mjs");
+    captureStart();
+    let threw = null;
+    try {
+      await run(undefined, ["--no-scan"]);
+    } catch (e) { threw = e; }
+    finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    const parsed = JSON.parse(stdout.join("\n").trim());
+    const tier = parsed.checks.find((c) => c.name === "tier");
+    assert.equal(tier?.status, "frozen");
+    assert.equal(tier.value.tier, "prototype");
+    assert.equal(tier.value.active, false);
   });
 
   it("doctor reports stale cli_update state and --refresh updates it in the JSON payload", async () => {

@@ -27,7 +27,7 @@ Commands:
   credentials Manage local credential material (project-keys)
   allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
-  projects    Manage projects (provision, list, query, inspect, delete)
+  projects    Manage projects (provision, list, get, sql, delete)
   apply       Alias for deploy apply; supports --rehearse for migration rehearsal
   snapshots   Create/list/restore/delete project data snapshots
   branches    Create/list/renew/delete contained project branches

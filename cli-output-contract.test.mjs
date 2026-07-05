@@ -330,6 +330,20 @@ describe("CLI output contract drift protection", () => {
     }
   });
 
+  it("top-level projects help lists real subcommands only (GH-573)", () => {
+    const result = spawnSync(process.execPath, [CLI_PATH, "--help"], {
+      encoding: "utf-8",
+      timeout: 10_000,
+    });
+
+    assert.equal(result.status, 0, `run402 --help failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+    const projectsLine = result.stdout.split("\n").find((line) => line.trim().startsWith("projects"));
+    assert.ok(projectsLine, `projects help line missing:\n${result.stdout}`);
+    assert.match(projectsLine, /provision, list, get, sql, delete/);
+    assert.doesNotMatch(projectsLine, /\bquery\b/);
+    assert.doesNotMatch(projectsLine, /\binspect\b/);
+  });
+
   it("unknown root commands emit a JSON error envelope only", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "run402-unknown-command-"));
     const env = { ...process.env, RUN402_CONFIG_DIR: tempDir };

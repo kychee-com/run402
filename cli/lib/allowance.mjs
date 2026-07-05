@@ -242,7 +242,17 @@ async function balance() {
   }, null, 2));
 }
 
-async function exportAddr() {
+async function exportAddr(args = []) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, [], []);
+  const bare = positionalArgs(parsedArgs, []);
+  if (bare.length > 0) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for allowance export: ${bare[0]}`,
+      details: { argument: bare[0] },
+    });
+  }
   try {
     const address = await getSdk().allowance.export();
     console.log(JSON.stringify({ address }));
@@ -333,7 +343,7 @@ export async function run(sub, args) {
     case "create":  await create(); break;
     case "fund":    await fund(); break;
     case "balance": await balance(); break;
-    case "export":   await exportAddr(); break;
+    case "export":   await exportAddr(args); break;
     case "checkout": await checkout(args); break;
     case "history":  await history(args); break;
     default:
