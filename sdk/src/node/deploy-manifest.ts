@@ -126,7 +126,7 @@ const MANIFEST_ASSETS_SYNC_CONFIRM_FIELDS = new Set([
   "expected_delete_count",
 ]);
 const MANIFEST_ROUTES_FIELDS = new Set(["replace"]);
-const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "acknowledge_readonly"]);
+const MANIFEST_ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing", "acknowledge_readonly"]);
 const MANIFEST_FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const MANIFEST_STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);

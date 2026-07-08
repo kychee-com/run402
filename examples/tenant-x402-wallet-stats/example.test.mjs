@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +20,38 @@ describe("tenant x402 wallet-stats example", () => {
     assert.match(manifest, /pay_to:\s*"org_default_payout"/);
     assert.match(manifest, /networks:\s*\["testnet"\]/);
     assert.match(manifest, /expect:\s*\{\s*status:\s*402\s*\}/);
+  });
+
+  it("accepts route pricing in deploy manifest normalization", () => {
+    const output = execFileSync(process.execPath, [
+      "--import",
+      "tsx",
+      "--input-type=module",
+      "--eval",
+      `
+        import { normalizeDeployManifest } from "../../sdk/src/node/deploy-manifest.ts";
+        const out = await normalizeDeployManifest({
+          project: "prj_test",
+          routes: {
+            replace: [{
+              pattern: "/wallet-stats",
+              methods: ["POST"],
+              target: { type: "function", name: "wallet_stats" },
+              pricing: {
+                mode: "always",
+                amount_usd_micros: 30_000,
+                pay_to: "org_default_payout",
+                networks: ["testnet"],
+              },
+            }],
+          },
+        });
+        console.log(JSON.stringify(out.spec.routes.replace[0].pricing));
+      `,
+    ], { cwd: ROOT, encoding: "utf8" });
+    const parsed = JSON.parse(output);
+    assert.equal(parsed.amount_usd_micros, 30_000);
+    assert.deepEqual(parsed.networks, ["testnet"]);
   });
 
   it("sends settled wallet stats to the requested mailbox", () => {
