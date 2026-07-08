@@ -106,6 +106,47 @@ export interface OrgDetail extends OrgSummary {
   role: OrgRole | null;
 }
 
+/** Input to {@link ScopedOrg.setPayoutWallet}. */
+export interface SetPayoutWalletInput {
+  /**
+   * Active wallet linked to the same org, or `null` to clear the explicit
+   * default. The gateway may still resolve a single active org wallet.
+   */
+  walletAddress: string | null;
+}
+
+export interface PayoutWalletNextAction {
+  type: "edit_request" | "resume_deploy";
+  method: "POST" | "PATCH";
+  path: string;
+  auth: string;
+  why: string;
+  [key: string]: unknown;
+}
+
+export interface PayoutWalletRecovery {
+  status: "ready" | "required" | "ambiguous" | string;
+  active_wallet_count: number;
+  next_actions: PayoutWalletNextAction[];
+  /** Present when status is ready. */
+  mode?: "default" | "single_active_wallet";
+  /** Present when status is ready. */
+  wallet_address?: string;
+  /** Present when setup needs recovery, e.g. PAYOUT_WALLET_REQUIRED. */
+  code?: string;
+  [key: string]: unknown;
+}
+
+/** Result of setting or clearing the org default payout wallet for tenant priced routes. */
+export interface SetPayoutWalletResult {
+  status: "set" | "cleared";
+  org_id: string;
+  default_payout_wallet: string | null;
+  previous_default_payout_wallet: string | null;
+  recovery: PayoutWalletRecovery;
+  [key: string]: unknown;
+}
+
 /** A member row from {@link OrgMembers.list} (`GET /orgs/v1/:org_id/members`). */
 export interface OrgMember {
   principal_id: string;

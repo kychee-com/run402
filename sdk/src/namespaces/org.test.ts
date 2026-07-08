@@ -215,6 +215,74 @@ describe("r.org(id).rename", () => {
   });
 });
 
+describe("r.org(id).setPayoutWallet", () => {
+  it("PATCHes /orgs/v1/:org_id/payout-wallet with wallet_address", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "PATCH");
+      assert.equal(call.url, "https://api.example.test/orgs/v1/org_abc/payout-wallet");
+      assert.deepEqual(parseBody(call.body), {
+        wallet_address: "0xabc0000000000000000000000000000000000001",
+      });
+      return jsonResponse({
+        status: "set",
+        org_id: "org_abc",
+        default_payout_wallet: "0xabc0000000000000000000000000000000000001",
+        previous_default_payout_wallet: null,
+        recovery: {
+          status: "ready",
+          mode: "default",
+          wallet_address: "0xabc0000000000000000000000000000000000001",
+          active_wallet_count: 2,
+          next_actions: [],
+        },
+      });
+    });
+    const result = await makeSdk(fetch).org("org_abc").setPayoutWallet({
+      walletAddress: "0xabc0000000000000000000000000000000000001",
+    });
+    assert.equal(result.default_payout_wallet, "0xabc0000000000000000000000000000000000001");
+    assert.equal(result.recovery.status, "ready");
+    assert.equal(calls.length, 1);
+  });
+
+  it("sends wallet_address: null to clear the explicit payout wallet", async () => {
+    const { fetch } = mockFetch((call) => {
+      assert.deepEqual(parseBody(call.body), { wallet_address: null });
+      return jsonResponse({
+        status: "cleared",
+        org_id: "org_abc",
+        default_payout_wallet: null,
+        previous_default_payout_wallet: "0xabc0000000000000000000000000000000000001",
+        recovery: {
+          status: "required",
+          code: "PAYOUT_WALLET_REQUIRED",
+          active_wallet_count: 0,
+          next_actions: [
+            {
+              type: "edit_request",
+              method: "POST",
+              path: "/orgs/v1/org_abc/wallets",
+              auth: "org owner/admin + step-up",
+              why: "Link a wallet before deploying priced routes.",
+            },
+          ],
+        },
+      });
+    });
+    const result = await makeSdk(fetch).org("org_abc").setPayoutWallet({ walletAddress: null });
+    assert.equal(result.status, "cleared");
+    assert.equal(result.recovery.code, "PAYOUT_WALLET_REQUIRED");
+  });
+
+  it("throws a LocalError when walletAddress is omitted", async () => {
+    const { fetch } = mockFetch(() => jsonResponse({}));
+    await assert.rejects(
+      () => makeSdk(fetch).org("org_abc").setPayoutWallet({} as { walletAddress: string | null }),
+      isLocalError,
+    );
+  });
+});
+
 describe("r.org(id) — id binding", () => {
   it("throws a LocalError when constructed without an org id", () => {
     const { fetch } = mockFetch(() => jsonResponse({}));

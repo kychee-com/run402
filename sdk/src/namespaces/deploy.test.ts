@@ -1902,6 +1902,22 @@ describe("Deploy.apply (validation)", () => {
               pattern: "/api/*",
               methods: ["GET", "POST"],
               target: { type: "function", name: "api" },
+              pricing: {
+                mode: "always",
+                amount_usd_micros: 250000,
+                pay_to: "org_default_payout",
+              },
+            },
+            {
+              pattern: "/api/test-credits",
+              methods: ["POST"],
+              target: { type: "function", name: "api" },
+              pricing: {
+                mode: "always",
+                amount_usd_micros: 250000,
+                pay_to: "org_default_payout",
+                networks: ["testnet"],
+              },
             },
           ],
         },
@@ -1917,6 +1933,22 @@ describe("Deploy.apply (validation)", () => {
             pattern: "/api/*",
             methods: ["GET", "POST"],
             target: { type: "function", name: "api" },
+            pricing: {
+              mode: "always",
+              amount_usd_micros: 250000,
+              pay_to: "org_default_payout",
+            },
+          },
+          {
+            pattern: "/api/test-credits",
+            methods: ["POST"],
+            target: { type: "function", name: "api" },
+            pricing: {
+              mode: "always",
+              amount_usd_micros: 250000,
+              pay_to: "org_default_payout",
+              networks: ["testnet"],
+            },
           },
         ],
       },
@@ -2092,6 +2124,41 @@ describe("Deploy.apply (validation)", () => {
         { replace: [{ pattern: "/api/*", methods: ["GET", "GET"], target: { type: "function", name: "api" } }] },
         "routes.replace.0.methods",
         /duplicate method/,
+      ],
+      [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "sometimes", amount_usd_micros: 250000, pay_to: "org_default_payout" } }] },
+        "routes.replace.0.pricing.mode",
+        /must be "always"/,
+      ],
+      [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 0, pay_to: "org_default_payout" } }] },
+        "routes.replace.0.pricing.amount_usd_micros",
+        /positive safe JSON integer/,
+      ],
+      [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "seller_address" } }] },
+        "routes.replace.0.pricing.pay_to",
+        /org_default_payout/,
+      ],
+      [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", networks: ["eip155:84532"] } }] },
+        "routes.replace.0.pricing.networks",
+        /Unsupported route pricing network/,
+      ],
+      [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", networks: ["testnet", "testnet"] } }] },
+        "routes.replace.0.pricing.networks",
+        /duplicate network/,
+      ],
+      [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", extra: true } }] },
+        "routes.replace.0.pricing.extra",
+        /Unknown ReleaseSpec field/,
+      ],
+      [
+        { replace: [{ pattern: "/events", methods: ["GET"], target: { type: "static", file: "events.html" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout" } }] },
+        "routes.replace.0.pricing",
+        /only supported on function route targets/,
       ],
       [
         { replace: [{ pattern: "/share", methods: ["GET"], target: { type: "function", name: "share" }, acknowledge_readonly: true }] },

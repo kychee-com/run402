@@ -517,6 +517,80 @@ describe("projects.rename", () => {
   });
 });
 
+describe("projects.listTenantPayments", () => {
+  const payment = {
+    payment_id: "pay_1",
+    status: "settled",
+    org_id: "org_1",
+    project_id: "prj_known",
+    release_id: "rel_1",
+    route_pattern: "/api/credits",
+    route_method: "POST",
+    route_target_function: "credits",
+    amount_usd_micros: 250000,
+    settled_amount_usd_micros: 250000,
+    network: "base",
+    asset: "USDC",
+    asset_address: null,
+    payer: "0xpayer",
+    pay_to: "0xpayto",
+    scheme: "x402",
+    scheme_version: "1",
+    facilitator: "run402",
+    settlement_reference: "settle_1",
+    settlement_tx_hash: "0xtx",
+    request_id: "req_1",
+    host: "app.example.com",
+    path: "/api/credits",
+    operation_id: "op_1",
+    attempts: 1,
+    last_error_code: null,
+    last_error_message: null,
+    next_reconcile_at: null,
+    last_reconciled_at: null,
+    reconciliation_attempts: 0,
+    reuse_expires_at: null,
+    last_seen_at: "2026-07-07T12:00:00.000Z",
+    created_at: "2026-07-07T12:00:00.000Z",
+    updated_at: "2026-07-07T12:00:01.000Z",
+    settled_at: "2026-07-07T12:00:01.000Z",
+  };
+
+  it("GETs the project tenant payment page with filters", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ project_id: "prj_known", payments: [payment], has_more: true, next_cursor: "cur_1" }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.listTenantPayments("prj_known", {
+      limit: 25,
+      after: "cur_0",
+      status: "settled",
+    });
+
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.pathname, "/projects/v1/prj_known/tenant-payments");
+    assert.equal(url.searchParams.get("limit"), "25");
+    assert.equal(url.searchParams.get("after"), "cur_0");
+    assert.equal(url.searchParams.get("status"), "settled");
+    assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
+    assert.equal(result.payments[0]!.payment_id, "pay_1");
+    assert.equal(result.payments[0]!.org_id, "org_1");
+    assert.equal(result.next_cursor, "cur_1");
+  });
+
+  it("is exposed on the scoped client as r.project(id).projects.listTenantPayments()", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ project_id: "prj_known", payments: [], has_more: false, next_cursor: null }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const scoped = await sdk.project("prj_known");
+    const result = await scoped.projects.listTenantPayments();
+
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/tenant-payments");
+    assert.deepEqual(result.payments, []);
+  });
+});
+
 describe("projects.getUsage", () => {
   it("GETs /projects/v1/admin/:id/usage with service key", async () => {
     // Mirrors the live gateway shape — `lease_expires_at` is intentionally

@@ -33,6 +33,8 @@ import type {
   QuoteResult,
   RenameProjectResult,
   SchemaReport,
+  ListTenantPaymentsOptions,
+  TenantPaymentListResult,
   UsageReport,
   ValidateExposeOptions,
 } from "./projects.types.js";
@@ -249,6 +251,24 @@ export class Projects {
       body: { name },
       context: "renaming project",
     });
+  }
+
+  /**
+   * List redacted tenant x402 payment records for priced function web routes
+   * (`GET /projects/v1/:project_id/tenant-payments`). Requires
+   * project.tenant_payments.read server-side: org developer+ or read-scoped
+   * project grant/delegate.
+   */
+  async listTenantPayments(projectId: string, opts: ListTenantPaymentsOptions = {}): Promise<TenantPaymentListResult> {
+    const qs = new URLSearchParams();
+    if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+    if (opts.after !== undefined) qs.set("after", opts.after);
+    if (opts.status !== undefined) qs.set("status", opts.status);
+    const query = qs.toString();
+    return this.client.request<TenantPaymentListResult>(
+      `/projects/v1/${encodeURIComponent(projectId)}/tenant-payments${query ? `?${query}` : ""}`,
+      { context: "listing tenant payments" },
+    );
   }
 
   /**

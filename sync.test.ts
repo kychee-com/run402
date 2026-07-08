@@ -376,6 +376,7 @@ const SURFACE: Capability[] = [
   // ── Billing ──────────────────────────────────────────────────────────────
   { id: "check_balance",     endpoint: "GET /orgs/v1/lookup?wallet=",           mcp: "check_balance",  cli: "allowance:balance", openclaw: "allowance:balance" },
   { id: "list_projects",     endpoint: "GET /projects/v1",                           mcp: "list_projects",  cli: "projects:list",  openclaw: "projects:list" },
+  { id: "list_tenant_payments", endpoint: "GET /projects/v1/:project_id/tenant-payments", mcp: "list_tenant_payments", cli: "projects:tenant-payments", openclaw: "projects:tenant-payments" },
   { id: "rename_project",    endpoint: "PATCH /projects/v1/:project_id",             mcp: "rename_project", cli: "projects:rename", openclaw: "projects:rename" },
   { id: "project_get",       endpoint: "GET /projects/v1/:project_id",               mcp: "project_get",    cli: "projects:get",   openclaw: "projects:get" },
   { id: "project_info_moved", endpoint: "(moved local credential command)",           mcp: null,             cli: "projects:info",  openclaw: "projects:info" },
@@ -483,6 +484,7 @@ const SURFACE: Capability[] = [
   { id: "create_org",          endpoint: "POST /orgs/v1",                                 mcp: "create_org",            cli: "org:create",        openclaw: "org:create" },
   { id: "get_org",             endpoint: "GET /orgs/v1/:org_id",                          mcp: "get_org",               cli: "org:get",           openclaw: "org:get" },
   { id: "rename_org",          endpoint: "PATCH /orgs/v1/:org_id",                        mcp: "rename_org",            cli: "org:rename",        openclaw: "org:rename" },
+  { id: "set_org_payout_wallet", endpoint: "PATCH /orgs/v1/:org_id/payout-wallet",         mcp: "set_org_payout_wallet", cli: "org:payout-wallet", openclaw: "org:payout-wallet" },
   { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "org:whoami",        openclaw: "org:whoami" },
   { id: "list_orgs",           endpoint: "GET /orgs/v1",                                  mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
   { id: "list_org_members",    endpoint: "GET /orgs/v1/:org_id/members",                      mcp: "list_org_members",      cli: "org:member:list",   openclaw: "org:member:list" },
@@ -701,6 +703,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Billing
   check_balance: "billing.checkBalance",
   list_projects: "projects.list",
+  list_tenant_payments: "projects.listTenantPayments",
   rename_project: "projects.rename",
   project_get: "projects.get",
   project_info_moved: "projects.info",
@@ -799,6 +802,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   create_org: "orgs.create",
   get_org: "org.get",
   rename_org: "org.rename",
+  set_org_payout_wallet: "org.setPayoutWallet",
   whoami: "orgs.whoami",
   list_orgs: "orgs.list",
   list_org_members: "org.members.list",

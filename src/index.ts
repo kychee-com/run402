@@ -152,6 +152,8 @@ import {
   handleListOrgMembers,
   addOrgMemberSchema,
   handleAddOrgMember,
+  setOrgPayoutWalletSchema,
+  handleSetOrgPayoutWallet,
   setOrgMemberRoleSchema,
   handleSetOrgMemberRole,
   removeOrgMemberSchema,
@@ -171,6 +173,7 @@ import { demoteUserSchema, handleDemoteUser } from "./tools/demote-user.js";
 // New tools — billing
 import { checkBalanceSchema, handleCheckBalance } from "./tools/check-balance.js";
 import { listProjectsSchema, handleListProjects } from "./tools/list-projects.js";
+import { listTenantPaymentsSchema, handleListTenantPayments } from "./tools/list-tenant-payments.js";
 import {
   exportProjectArchiveSchema,
   handleExportProjectArchive,
@@ -1026,6 +1029,13 @@ server.tool(
   async (args) => handleListProjects(args),
 );
 
+server.tool(
+  "list_tenant_payments",
+  "List redacted tenant x402 payment records for priced function web routes on a project (GET /projects/v1/:project_id/tenant-payments). Requires project.tenant_payments.read: org developer+ or read-scoped project grant/delegate. Raw X-PAYMENT headers, authorization hashes, and internal metadata are never returned.",
+  listTenantPaymentsSchema,
+  async (args) => handleListTenantPayments(args),
+);
+
 // ─── Allowance & faucet tools ─────────────────────────────────────────────
 
 server.tool(
@@ -1674,6 +1684,13 @@ server.tool(
   "Set or clear an organization's display label (PATCH /orgs/v1/:org_id). Owner-only + step-up gated. Pass `display_name: null` (or `\"\"`) to clear. Returns the updated `org_id`, `display_name`, `tier`, `lease_started_at`, and `lease_expires_at`. Params: `org_id`, `display_name`.",
   renameOrgSchema,
   async (args) => handleRenameOrg(args),
+);
+
+server.tool(
+  "set_org_payout_wallet",
+  "Set or clear an organization's default payout wallet for tenant priced routes (PATCH /orgs/v1/:org_id/payout-wallet). Admin/owner-only + step-up gated. `wallet_address` must already be an active wallet linked to the org; pass null to clear the explicit default. Response includes recovery.status, active_wallet_count, and next_actions for PAYOUT_WALLET_REQUIRED / PAYOUT_WALLET_AMBIGUOUS.",
+  setOrgPayoutWalletSchema,
+  async (args) => handleSetOrgPayoutWallet(args),
 );
 
 server.tool(

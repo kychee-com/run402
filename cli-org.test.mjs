@@ -86,6 +86,31 @@ async function mockFetch(input, init) {
       lease_expires_at: LEASE_EXPIRES_AT,
     }));
   }
+  if (url.endsWith("/orgs/v1/org_abc/payout-wallet") && method === "PATCH") {
+    return Promise.resolve(json({
+      org_id: "org_abc",
+      default_payout_wallet: body?.wallet_address ?? null,
+      active_wallet_count: 1,
+      recovery: { status: body?.wallet_address ? "ready" : "required" },
+      next_actions: [],
+    }));
+  }
+  if (url.includes("/projects/v1/prj_1/tenant-payments") && method === "GET") {
+    return Promise.resolve(json({
+      payments: [
+        {
+          payment_id: "txp_1",
+          project_id: "prj_1",
+          status: "settled",
+          amount_usd_micros: 250000,
+          route: { method: "POST", pattern: "/api/credits" },
+          created_at: "2026-07-07T12:00:00.000Z",
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    }));
+  }
   if (url.endsWith("/projects/v1") && method === "POST") {
     return Promise.resolve(json({ project_id: "prj_1", anon_key: "a", service_key: "s", schema_slot: "p1" }));
   }
@@ -220,6 +245,21 @@ describe("run402 org", () => {
     capture(); await runOrg("rename", ["org_abc", "--clear"]); uncapture();
     assert.deepEqual(lastCall().body, { display_name: null });
   });
+
+  it("payout-wallet PATCHes wallet_address", async () => {
+    capture(); await runOrg("payout-wallet", ["org_abc", TEST_ADDRESS]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/org_abc/payout-wallet`);
+    assert.equal(lastCall().method, "PATCH");
+    assert.deepEqual(lastCall().body, { wallet_address: TEST_ADDRESS });
+    assert.match(stdout.join("\n"), /"default_payout_wallet":/);
+  });
+
+  it("payout-wallet --clear PATCHes wallet_address null", async () => {
+    capture(); await runOrg("payout-wallet", ["org_abc", "--clear"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/org_abc/payout-wallet`);
+    assert.equal(lastCall().method, "PATCH");
+    assert.deepEqual(lastCall().body, { wallet_address: null });
+  });
 });
 
 describe("run402 provision --org", () => {
@@ -228,6 +268,19 @@ describe("run402 provision --org", () => {
     const post = calls.find((c) => c.url === `${API}/projects/v1` && c.method === "POST");
     assert.ok(post, "should POST /projects/v1");
     assert.equal(post.body.org_id, "org_abc");
+  });
+
+  it("tenant-payments forwards filters to the redacted tenant payment listing route", async () => {
+    capture();
+    await runProjects("tenant-payments", ["prj_1", "--status", "settled", "--limit", "25", "--after", "cur_1"]);
+    uncapture();
+    const url = new URL(lastCall().url);
+    assert.equal(`${url.origin}${url.pathname}`, `${API}/projects/v1/prj_1/tenant-payments`);
+    assert.equal(url.searchParams.get("status"), "settled");
+    assert.equal(url.searchParams.get("after"), "cur_1");
+    assert.equal(url.searchParams.get("limit"), "25");
+    assert.equal(lastCall().method, "GET");
+    assert.match(stdout.join("\n"), /"payment_id": "txp_1"/);
   });
 });
 

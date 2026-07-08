@@ -23,6 +23,7 @@ import type { Client } from "../kernel.js";
 import { isCiSessionCredentials } from "../ci-credentials.js";
 import { assertCiDeployableSpec } from "./ci.js";
 import {
+  ROUTE_PRICING_NETWORKS,
   ROUTE_HTTP_METHODS,
   normalizeDeployResolveRequest,
 } from "./deploy.types.js";
@@ -2737,10 +2738,12 @@ const SITE_PUBLIC_PATHS_FIELDS = new Set(["mode", "replace"]);
 const PUBLIC_STATIC_PATH_FIELDS = new Set(["asset", "cache_class"]);
 const SUBDOMAINS_SPEC_FIELDS = new Set(["set", "add", "remove"]);
 const ROUTES_SPEC_FIELDS = new Set(["replace"]);
-const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "acknowledge_readonly"]);
+const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing", "acknowledge_readonly"]);
 const FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
+const ROUTE_PRICING_FIELDS = new Set(["mode", "amount_usd_micros", "pay_to", "networks"]);
+const ROUTE_PRICING_NETWORK_SET = new Set<string>(ROUTE_PRICING_NETWORKS);
 const I18N_SPEC_FIELDS = new Set(["defaultLocale", "locales", "detect", "unknownLocalePolicy"]);
 const I18N_LOCALE_TAG_REGEX = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const I18N_COOKIE_NAME_REGEX = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -3230,9 +3233,73 @@ function validateRouteEntry(route: unknown, resource: string): void {
     }
   }
   const targetType = validateRouteTarget(entry.target, `${resource}.target`);
+  validateRoutePricing(entry.pricing, resource, targetType);
   validateRouteReadOnlyAcknowledgement(entry, targetType, resource);
   if (targetType === "static") {
     validateStaticRouteEntry(entry, resource);
+  }
+}
+
+function validateRoutePricing(
+  pricing: unknown,
+  resource: string,
+  targetType: "function" | "static",
+): void {
+  if (pricing === undefined) return;
+  if (targetType !== "function") {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing is only supported on function route targets`,
+      `${resource}.pricing`,
+    );
+  }
+  const obj = requireObject(pricing, `${resource}.pricing`);
+  validateKnownFields(obj, `${resource}.pricing`, ROUTE_PRICING_FIELDS);
+  if (obj.mode !== "always") {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing.mode must be "always"`,
+      `${resource}.pricing.mode`,
+    );
+  }
+  if (typeof obj.amount_usd_micros !== "number" || !Number.isSafeInteger(obj.amount_usd_micros) || obj.amount_usd_micros <= 0) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing.amount_usd_micros must be a positive safe JSON integer`,
+      `${resource}.pricing.amount_usd_micros`,
+    );
+  }
+  if (obj.pay_to !== "org_default_payout") {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing.pay_to must be "org_default_payout"`,
+      `${resource}.pricing.pay_to`,
+    );
+  }
+  if (obj.networks === undefined) return;
+  if (!Array.isArray(obj.networks)) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing.networks must be an array`,
+      `${resource}.pricing.networks`,
+    );
+  }
+  if (obj.networks.length === 0) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing.networks must not be empty; omit networks for production mainnet only`,
+      `${resource}.pricing.networks`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const network of obj.networks) {
+    if (typeof network !== "string" || !ROUTE_PRICING_NETWORK_SET.has(network)) {
+      throw invalidRouteSpec(
+        `Unsupported route pricing network ${JSON.stringify(network)} at ReleaseSpec.${resource}.pricing.networks. Supported networks: ${ROUTE_PRICING_NETWORKS.join(", ")}`,
+        `${resource}.pricing.networks`,
+      );
+    }
+    if (seen.has(network)) {
+      throw invalidRouteSpec(
+        `ReleaseSpec.${resource}.pricing.networks contains duplicate network ${JSON.stringify(network)}`,
+        `${resource}.pricing.networks`,
+      );
+    }
+    seen.add(network);
   }
 }
 

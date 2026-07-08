@@ -31,6 +31,8 @@ import type {
   OrgMembership,
   OrgRole,
   OrgSummary,
+  SetPayoutWalletInput,
+  SetPayoutWalletResult,
   SetMemberRoleOptions,
   WhoAmIResult,
 } from "./org.types.js";
@@ -183,6 +185,29 @@ export class ScopedOrg {
       body: { display_name: displayName },
       context: "renaming org",
     });
+  }
+
+  /**
+   * Set or clear the default payout wallet for tenant priced routes
+   * (`PATCH /orgs/v1/:org_id/payout-wallet`). Requires org admin/owner plus
+   * server-side step-up or fresh SIWX. The wallet must already be active and
+   * linked to this org; pass `null` to clear the explicit default.
+   */
+  async setPayoutWallet(input: SetPayoutWalletInput): Promise<SetPayoutWalletResult> {
+    if (!input || !("walletAddress" in input)) {
+      throw new LocalError(
+        "org.setPayoutWallet requires { walletAddress } (use null to clear)",
+        "setting org payout wallet",
+      );
+    }
+    return this.client.request<SetPayoutWalletResult>(
+      `/orgs/v1/${encodeURIComponent(this.orgId)}/payout-wallet`,
+      {
+        method: "PATCH",
+        body: { wallet_address: input.walletAddress },
+        context: "setting org payout wallet",
+      },
+    );
   }
 
   /**

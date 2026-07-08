@@ -192,6 +192,70 @@ export interface RenameProjectResult {
   name: string;
 }
 
+// ─── tenant x402 payment history ───────────────────────────────────────────
+
+export type TenantPaymentStatus = "settling" | "settled" | "settle_failed" | "ambiguous";
+
+export interface ListTenantPaymentsOptions {
+  /** Page size. Server default 50, max 200. */
+  limit?: number;
+  /** Opaque keyset cursor from a previous response's `next_cursor`. */
+  after?: string;
+  /** Optional status filter. */
+  status?: TenantPaymentStatus;
+}
+
+/**
+ * Redacted project-scoped tenant x402 payment record. Raw x402 authorization
+ * headers, canonical authorization hashes, and internal metadata are never
+ * returned by the gateway.
+ */
+export interface TenantPaymentRecord {
+  payment_id: string;
+  status: TenantPaymentStatus;
+  org_id: string;
+  project_id: string;
+  release_id: string | null;
+  route_pattern: string;
+  route_method: string;
+  route_target_function: string | null;
+  amount_usd_micros: number;
+  settled_amount_usd_micros: number | null;
+  network: string;
+  asset: string | null;
+  asset_address: string | null;
+  payer: string | null;
+  pay_to: string;
+  scheme: "x402" | string;
+  scheme_version: string | null;
+  facilitator: string | null;
+  settlement_reference: string | null;
+  settlement_tx_hash: string | null;
+  request_id: string | null;
+  host: string | null;
+  path: string | null;
+  operation_id: string | null;
+  attempts: number;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  next_reconcile_at: string | null;
+  last_reconciled_at: string | null;
+  reconciliation_attempts: number;
+  reuse_expires_at: string | null;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+  settled_at: string | null;
+  [key: string]: unknown;
+}
+
+export interface TenantPaymentListResult {
+  project_id: string;
+  payments: TenantPaymentRecord[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
 // ─── single-project read (server, authoritative) ─────────────────────────
 
 /** Active-release pointer on {@link ProjectDetail}. `null` when nothing is live. */

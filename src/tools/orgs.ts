@@ -120,6 +120,52 @@ export async function handleRenameOrg(args: { org_id: string; display_name: stri
   }
 }
 
+// ─── set_org_payout_wallet ────────────────────────────────────────────────
+
+export const setOrgPayoutWalletSchema = {
+  org_id: z.string().describe("The org id."),
+  wallet_address: z
+    .string()
+    .nullable()
+    .describe("Active wallet linked to this organization, or null to clear the explicit default. Admin/owner + step-up gated."),
+};
+
+export async function handleSetOrgPayoutWallet(args: {
+  org_id: string;
+  wallet_address: string | null;
+}): Promise<ToolResult> {
+  try {
+    const result = await getSdk().org(args.org_id).setPayoutWallet({
+      walletAddress: args.wallet_address,
+    });
+    const recovery = result.recovery;
+    const lines = [
+      result.default_payout_wallet
+        ? `Default payout wallet for \`${result.org_id}\` is \`${result.default_payout_wallet}\`.`
+        : `Explicit default payout wallet for \`${result.org_id}\` is cleared.`,
+      `- previous_default_payout_wallet: ${result.previous_default_payout_wallet ?? "null"}`,
+      `- recovery.status: ${recovery.status}`,
+      `- active_wallet_count: ${recovery.active_wallet_count}`,
+    ];
+    if (recovery.wallet_address) lines.push(`- resolved_wallet: \`${recovery.wallet_address}\``);
+    if (recovery.code) lines.push(`- recovery.code: ${recovery.code}`);
+    if (recovery.next_actions?.length) {
+      lines.push("- next_actions:");
+      for (const action of recovery.next_actions) {
+        lines.push(`  - ${action.type}: ${action.method} ${action.path} (${action.auth}) — ${action.why}`);
+      }
+    }
+    return {
+      content: [
+        { type: "text", text: lines.join("\n") },
+        { type: "text", text: JSON.stringify(result, null, 2) },
+      ],
+    };
+  } catch (err) {
+    return mapSdkError(err, "setting org payout wallet");
+  }
+}
+
 // ─── whoami ─────────────────────────────────────────────────────────────────
 
 export const whoamiSchema = {};

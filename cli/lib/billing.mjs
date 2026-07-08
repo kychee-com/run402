@@ -9,7 +9,7 @@ Usage:
 
 Subcommands:
   create-email <email>                     Create an email organization
-  link-wallet <org_id> <wallet>            Link a wallet to an email organization
+  link-wallet <org_id> <wallet_address>    Link a wallet to an email organization
   checkout <identifier> --product <p>      Create an org checkout
   auto-recharge <org_id> <on|off> [--threshold <n>]
   balance <identifier>                     Balance by organization id (UUID), wallet (0x...), or email
@@ -114,11 +114,11 @@ Examples:
   "link-wallet": `run402 billing link-wallet — Link a wallet to an email organization
 
 Usage:
-  run402 billing link-wallet <org_id> <wallet>
+  run402 billing link-wallet <org_id> <wallet_address>
 
 Arguments:
   <org_id>        Organization ID (e.g. org_abc123)
-  <wallet>            Wallet address (0x...) to link
+  <wallet_address>    Wallet address (0x...) to link
 
 Notes:
   - Tier and quotas are per-organization. Linking a wallet merges its
@@ -242,8 +242,8 @@ async function linkWallet(args) {
   if (!organizationId || !wallet) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <org_id> and/or <wallet>.",
-      hint: "run402 billing link-wallet <org_id> <wallet>",
+      message: "Missing <org_id> and/or <wallet_address>.",
+      hint: "run402 billing link-wallet <org_id> <wallet_address>",
     });
   }
   try {
@@ -305,7 +305,7 @@ async function balance(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <identifier>.",
-      hint: "run402 billing balance <org-id | wallet | email>",
+      hint: "run402 billing balance <org_id | wallet | email>",
     });
   }
   try {
@@ -329,7 +329,7 @@ async function history(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <identifier>.",
-      hint: "run402 billing history <org-id | wallet | email> [--limit <n>] [--after <cursor>]",
+      hint: "run402 billing history <org_id | wallet | email> [--limit <n>] [--after <cursor>]",
     });
   }
   const limit = parsedArgs.includes("--limit")

@@ -18,6 +18,7 @@ Subcommands:
   use   <id>                              Set the active project (used as default for other commands)
   list [--org <id>] [--all]               List your projects from the server (name, site_url, custom domains, org_id, active marker)
   rename <id> --name <label>              Rename a project (fix an auto-generated name)
+  tenant-payments [project_id] [--status <s>]  List redacted tenant x402 payments for priced routes
   get   [id]                              Authoritative server read: status, org, tier, active deploy, mailbox, usage vs limits (live; no keys)
   current                                 Show the active project pointer and validation status
   sql   [id] "<query>" [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
@@ -44,6 +45,7 @@ Examples:
   run402 projects list --org 11111111-2222-3333-4444-555555555555
   run402 projects list --all
   run402 projects rename prj_abc123 --name "My Site"
+  run402 projects tenant-payments prj_abc123 --status settled
   run402 projects get prj_abc123
   run402 projects current
   run402 projects sql prj_abc123 "SELECT * FROM users LIMIT 5"
@@ -150,6 +152,25 @@ Notes:
 Examples:
   run402 projects rename prj_abc123 --name "My Site"
 	`,
+  "tenant-payments": `run402 projects tenant-payments — List tenant x402 payments
+
+Usage:
+  run402 projects tenant-payments [project_id] [--status <settling|settled|settle_failed|ambiguous>] [--limit N] [--after <cursor>]
+
+Arguments:
+  [project_id]        Project ID (defaults to the active project if omitted)
+
+Options:
+  --status <s>        Optional payment status filter
+  --limit N           Page size (server default 50, max 200)
+  --after <cursor>    Opaque cursor from a previous next_cursor
+
+Notes:
+  - Requires project.tenant_payments.read: org developer+ or a read-scoped
+    project grant/delegate.
+  - Output is the gateway's redacted payment page. Raw X-PAYMENT headers,
+    authorization hashes, and internal metadata are never returned.
+`,
   current: `run402 projects current — Inspect active project selection
 
 Usage:
@@ -544,6 +565,34 @@ async function rename(projectId, args = []) {
   }
 }
 
+async function tenantPayments(projectId, args = []) {
+  const status = flagValue(args, "--status") ?? undefined;
+  const after = flagValue(args, "--after") ?? undefined;
+  const limitFlag = flagValue(args, "--limit");
+  const limit = limitFlag === null ? undefined : Number(limitFlag);
+  if (limitFlag !== null && (!Number.isInteger(limit) || limit <= 0 || limit > 200)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--limit must be an integer from 1 to 200; got ${limitFlag}.`,
+      details: { flag: "--limit", value: limitFlag },
+    });
+  }
+  const allowed = new Set(["settling", "settled", "settle_failed", "ambiguous"]);
+  if (status !== undefined && !allowed.has(status)) {
+    fail({
+      code: "BAD_FLAG",
+      message: `--status must be one of settling, settled, settle_failed, ambiguous; got ${status}.`,
+      details: { flag: "--status", value: status },
+    });
+  }
+  try {
+    const data = await getSdk().projects.listTenantPayments(projectId, { status, after, limit });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function get(projectId) {
   try {
     const data = await getSdk().projects.get(projectId);
@@ -793,6 +842,7 @@ const FLAGS_BY_SUB = {
   },
   list: { known: ["--org", "--all"], values: ["--org"] },
   rename: { known: ["--name"], values: ["--name"] },
+  "tenant-payments": { known: ["--status", "--limit", "--after"], values: ["--status", "--limit", "--after"] },
   sql: { known: ["--file", "--params"], values: ["--file", "--params"] },
   costs: { known: ["--window"], values: ["--window"] },
   "apply-expose": { known: ["--file"], values: ["--file"] },
@@ -839,6 +889,7 @@ export async function run(sub, args) {
     case "list":      await list(args); break;
     case "current":   await current(); break;
     case "rename":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.rename.values }); await rename(projectId, rest); break; }
+    case "tenant-payments": { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB["tenant-payments"].values }); await tenantPayments(projectId, rest); break; }
     case "get":       { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await get(projectId); break; }
     case "info":      commandMoved("info"); break;
     case "keys":      commandMoved("keys"); break;

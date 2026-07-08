@@ -541,6 +541,21 @@ export const ROUTE_HTTP_METHODS = [
 
 export type RouteHttpMethod = (typeof ROUTE_HTTP_METHODS)[number];
 
+export const ROUTE_PRICING_NETWORKS = [
+  "mainnet",
+  "testnet",
+] as const;
+
+export type RoutePricingNetwork = (typeof ROUTE_PRICING_NETWORKS)[number];
+
+export interface RoutePricingSpec {
+  mode: "always";
+  amount_usd_micros: number;
+  pay_to: "org_default_payout";
+  /** Omit to accept production mainnet only. Add `"testnet"` explicitly for testnet acceptance. */
+  networks?: readonly RoutePricingNetwork[];
+}
+
 export interface FunctionRouteTarget {
   type: "function";
   /** Materialized release function name, not a file name or handler export. */
@@ -561,6 +576,8 @@ export interface RouteSpec {
   /** Omit to allow every supported method. Empty arrays are invalid. */
   methods?: readonly RouteHttpMethod[];
   target: RouteTarget;
+  /** Fixed-price tenant x402 policy for function routes. Static routes cannot be priced. */
+  pricing?: RoutePricingSpec;
   /** Durable acknowledgement for intentional read-only wildcard function routes.
    *  Valid only with final-wildcard function routes whose methods are limited
    *  to GET/HEAD. */

@@ -31,6 +31,8 @@ import type {
   QuoteResult,
   RenameProjectResult,
   SchemaReport,
+  ListTenantPaymentsOptions,
+  TenantPaymentListResult,
   UsageReport,
   ValidateExposeOptions,
 } from "./namespaces/projects.types.js";
@@ -267,6 +269,9 @@ class ScopedProjects {
   }
   rename(name: string): Promise<RenameProjectResult> {
     return this.parent.projects.rename(this.projectId, name);
+  }
+  listTenantPayments(opts?: ListTenantPaymentsOptions): Promise<TenantPaymentListResult> {
+    return this.parent.projects.listTenantPayments(this.projectId, opts);
   }
   promoteUser(email: string): Promise<void> {
     return this.parent.projects.promoteUser(this.projectId, email);
