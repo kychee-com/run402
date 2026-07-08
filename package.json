@@ -70,7 +70,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@run402/functions": "^3.0.0",
+    "@run402/functions": "^3.7.0",
     "@types/node": "^22.0.0",
     "@x402/evm": "^2.6.0",
     "@x402/fetch": "^2.6.0",

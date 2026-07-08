@@ -59,6 +59,7 @@ describe("tenant x402 wallet-stats example", () => {
   it("sends settled wallet stats to the requested mailbox", () => {
     const fn = read("functions/wallet-stats.js");
     assert.match(fn, /major\.tal@gmail\.com/);
+    assert.match(fn, /import\s*\{\s*email,\s*getRoutedPaymentContext\s*\}\s*from\s*"@run402\/functions"/);
     assert.match(fn, /getRoutedPaymentContext\(req\)/);
     assert.match(fn, /email\.send\(/);
     assert.match(fn, /payment\.payer/);

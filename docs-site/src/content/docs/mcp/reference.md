@@ -238,7 +238,7 @@ Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn —
 Inside a deployed function, import from `@run402/functions` (auto-bundled at deploy time):
 
 ```ts
-import { db, adminDb, auth, email, ai, assets } from "@run402/functions";
+import { db, adminDb, auth, email, ai, assets, getRoutedPaymentContext } from "@run402/functions";
 
 export default async (req: Request) => {
   const user = await auth.user();
@@ -266,6 +266,7 @@ export default async (req: Request) => {
 - `assets.put(key, source, opts?)` — upload runtime bytes through the same CAS-backed apply substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }`; returns an SDK-compatible `AssetRef`.
 - `auth.*` — canonical cookie/session auth namespace (`auth.user`, `auth.requireUser`, `auth.requireRole`, `auth.requireMembership`, `auth.fetch`, `auth.sessions.*`, `auth.identities.link`). Bare legacy helpers such as `getUser`, `getUserId`, and `getRole` were retired in `@run402/functions` v3.0 and fail `run402 doctor`.
 - Function-level gate headers — when `FunctionSpec.requireAuth` / `requireRole` passes, read `req.headers.get("x-run402-user-id")` and `req.headers.get("x-run402-user-role")` directly. Use these inside a gated function instead of re-decoding the JWT. See "Function-level auth gates" below for declaring the gate on the deploy spec.
+- `getRoutedPaymentContext(req)` (`@run402/functions` 3.7+) — confirmed x402 payment context for priced routed function requests. Returns `{ scheme, paymentId, amountUsdMicros, payer, network, asset, payTo, transaction, settledAt }` or `null`; key app-side idempotency by `payment.paymentId`.
 
 Fluent surface on both: `.select() / .eq() / .neq() / .gt() / .lt() / .gte() / .lte() / .like() / .ilike() / .in() / .order() / .limit() / .offset()` for reads; `.insert(obj | obj[]) / .update(obj) / .delete()` for writes (chain with `.eq()` to scope; return arrays of affected rows).
 

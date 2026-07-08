@@ -849,7 +849,7 @@ The trigger only fills omitted or explicit `null` owner values; it does not over
 A separate package. Imported _inside_ a deployed serverless function, not by the SDK. Auto-bundled at deploy time (don't list `@run402/functions` in `--deps`). See <https://www.npmjs.com/package/@run402/functions> for full details.
 
 ```ts
-import { db, adminDb, auth, email, ai, assets } from "@run402/functions";
+import { db, adminDb, auth, email, ai, assets, getRoutedPaymentContext } from "@run402/functions";
 
 export default async (req: Request) => {
   const user = await auth.requireUser();
@@ -867,6 +867,7 @@ export default async (req: Request) => {
 - `adminDb().sql(query, params?)` — raw parameterized SQL.
 - `auth.user()` / `auth.requireUser()` — read the verified actor from the SSR runtime context. `auth.user()` returns `Actor | null`; `auth.requireUser()` returns `Actor` and throws (303 redirect for HTML / 401 envelope for JSON, decided by the gateway from the `Accept` header). `Actor` has `id`, `projectId`, `sessionId`, `email`, `emailVerified`, `authTime`, `amr`, `amrTimes`. Calling either taints the SSR ISR cache (the response now depends on per-request actor state). Do NOT catch the throw from `auth.requireUser()` — the platform decides response shape. Bare `getUser` / `getUserId` / `getRole` / `getSession` / `currentUser` / `getCurrentUser` / `getServerSession` exports were retired in `@run402/functions` v3.0 — they throw `R402_AUTH_UNKNOWN_EXPORT` at runtime AND fail `run402 doctor` source scan at deploy.
 - For per-user gating in functions OUTSIDE the cookie-session flow (a `requireAuth` / `requireRole` deploy-spec gate, not the SSR auth namespace), read the gateway-injected headers directly: `req.headers.get("x-run402-user-id")` / `req.headers.get("x-run402-user-role")`. The gateway strips inbound `x-run402-*` headers before injection, so the values are trustworthy. Returns `null` when no corresponding gate ran (function has no gate, only `requireAuth` declared without `requireRole`, or local-invoke outside the gateway).
+- `getRoutedPaymentContext(req)` (`@run402/functions` 3.7+) — confirmed x402 payment context for priced routed function requests. Returns `{ scheme, paymentId, amountUsdMicros, payer, network, asset, payTo, transaction, settledAt }` or `null` for unpriced/direct/malformed calls. Use `payment.paymentId` for app-side idempotency.
 - `ai.generateImage({ prompt, aspect? })` — project-billed runtime image generation for deployed functions. `aspect` is `"square" | "landscape" | "portrait"`; result is `{ image, content_type, aspect }` with base64 image bytes. Uses `RUN402_SERVICE_KEY` against `/ai/v1/generate-image`, not the wallet/x402 `/generate-image/v1` endpoint. Gateway rate limits and spend caps are project-owned; public routed functions should add app auth or their own rate limiting before calling it.
 - `assets.put(key, source, opts?)` — runtime asset upload through `/apply/v1/service-asset-put`. Uses `RUN402_SERVICE_KEY`, shares the deploy-time CAS/activation substrate, and returns an SDK-compatible `AssetRef`.
 
