@@ -34,6 +34,9 @@ describe("tenant x402 wallet-stats example", () => {
   it("uses x402 paid fetch for the agent call", () => {
     const script = read("scripts/call-paid-wallet-stats.mjs");
     assert.match(script, /wrapFetchWithPayment/);
+    assert.match(script, /NodeCredentialsProvider/);
+    assert.match(script, /\["wallets",\s*"current",\s*"--json"\]/);
+    assert.match(script, /process\.env\.RUN402_WALLET\s*=\s*profile/);
     assert.match(script, /BUYER_PRIVATE_KEY/);
     assert.match(script, /X402_NETWORK\s*\|\|\s*"eip155:84532"/);
     assert.match(script, /fetchPaid\(url/);

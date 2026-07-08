@@ -39,10 +39,15 @@ The deploy check expects unauthenticated `POST /wallet-stats` to return `402`.
 ## Agent Paid Call
 
 ```sh
-WALLET_STATS_URL="https://<your-project-host>/wallet-stats" \
-BUYER_PRIVATE_KEY="0x..." \
-node scripts/call-paid-wallet-stats.mjs
+run402 wallets use <wallet-name>   # select your default payer wallet
+run402 wallets current --json      # confirm the active wallet
+
+WALLET_STATS_URL="https://<your-project-host>/wallet-stats" node scripts/call-paid-wallet-stats.mjs
 ```
+
+By default the script uses the active `run402 wallets use` wallet and reads its
+local allowance key. Set `BUYER_PRIVATE_KEY=0x...` only when you want an
+explicit CI/test payer wallet instead of the default Run402 wallet.
 
 Optional:
 
