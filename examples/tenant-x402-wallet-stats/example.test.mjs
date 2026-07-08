@@ -19,7 +19,9 @@ describe("tenant x402 wallet-stats example", () => {
     assert.match(manifest, /amount_usd_micros:\s*30_000/);
     assert.match(manifest, /pay_to:\s*"org_default_payout"/);
     assert.match(manifest, /networks:\s*\["testnet"\]/);
-    assert.match(manifest, /expect:\s*\{\s*status:\s*402\s*\}/);
+    assert.match(manifest, /tenant-x402-wallet-stats-20260708/);
+    assert.match(manifest, /static\/index\.html/);
+    assert.doesNotMatch(manifest, /\bchecks\s*:/);
   });
 
   it("accepts route pricing in deploy manifest normalization", () => {

@@ -1,4 +1,4 @@
-import { email, getRoutedPaymentContext } from "@run402/functions";
+import { email } from "@run402/functions";
 
 const EMAIL_TO = process.env.WALLET_STATS_EMAIL_TO || "major.tal@gmail.com";
 const EXPECTED_AMOUNT_USD_MICROS = 30_000;
@@ -66,6 +66,24 @@ export default async function walletStats(req) {
     email_message_id: mail.message_id ?? mail.id ?? null,
     stats,
   });
+}
+
+function getRoutedPaymentContext(req) {
+  const paymentId = req.headers.get("x-run402-payment-id");
+  const amountRaw = req.headers.get("x-run402-payment-amount-usd-micros");
+  const amountUsdMicros = amountRaw === null ? NaN : Number(amountRaw);
+  if (!paymentId || !Number.isSafeInteger(amountUsdMicros)) return null;
+  return {
+    paymentId,
+    scheme: req.headers.get("x-run402-payment-scheme"),
+    amountUsdMicros,
+    network: req.headers.get("x-run402-payment-network"),
+    payTo: req.headers.get("x-run402-payment-pay-to"),
+    settledAt: req.headers.get("x-run402-payment-settled-at"),
+    payer: req.headers.get("x-run402-payment-payer"),
+    asset: req.headers.get("x-run402-payment-asset"),
+    transaction: req.headers.get("x-run402-payment-transaction"),
+  };
 }
 
 async function readJson(req) {
