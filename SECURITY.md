@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.x     | Yes       |
-| < 1.0   | No        |
+| 4.x     | Yes       |
+| < 4.0   | No        |
 
 ## Reporting a Vulnerability
 
@@ -13,7 +13,7 @@ Email **info@run402.com** with:
 
 - Description of the vulnerability
 - Steps to reproduce
-- Affected package(s): `run402-mcp`, `run402` CLI, or OpenClaw skill
+- Affected package(s): `@run402/sdk`, `run402` CLI, `run402-mcp`, `@run402/functions`, `@run402/astro`, or the OpenClaw skill
 - Impact assessment (if known)
 
 We will acknowledge receipt within 48 hours and aim to provide a fix or mitigation within 7 days for critical issues.
@@ -26,10 +26,11 @@ This policy covers:
 
 - The `run402-mcp` MCP server (npm package)
 - The `run402` CLI (npm package)
+- The `@run402/sdk` and `@run402/astro` npm packages
 - The OpenClaw skill (`openclaw/`)
 - Local credential storage (`~/.config/run402/`)
 
-The Run402 API (`api.run402.com`) is operated by Kychee LLC. Report API-side vulnerabilities to the same email address.
+The run402 API (`api.run402.com`) is operated by Kychee LLC. Report API-side vulnerabilities to the same email address.
 
 ## Security Design
 

@@ -2,7 +2,7 @@
   <img src=".github/logo.svg" width="120" alt="run402 logo">
 </p>
 
-<h1 align="center">run402 — Postgres, storage & deploys for AI agents</h1>
+<h1 align="center">run402: Postgres, storage & deploys for AI agents</h1>
 
 [![Tests](https://github.com/kychee-com/run402/actions/workflows/test.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/test.yml)
 [![CodeQL](https://github.com/kychee-com/run402/actions/workflows/codeql.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/codeql.yml)
@@ -12,17 +12,19 @@
 [![npm: @run402/functions](https://img.shields.io/npm/v/@run402/functions?label=%40run402%2Ffunctions)](https://www.npmjs.com/package/@run402/functions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-[Run402](https://run402.com) gives an agent a full Postgres database, REST API, user auth, content-addressed file storage, static site hosting, serverless functions, and image generation — provisioned with one call, paid with x402 USDC on Base (or Stripe credits). The prototype tier is free on testnet.
+This is the backend Kychee's open products run on. We needed a layer an agent can drive end to end, with room for whatever each app turns out to need, and nothing off the shelf had all of it, so we built it and opened it the same way we open the apps: this repo holds the agent surfaces (MIT), [`run402-core`](https://github.com/kychee-com/run402-core) holds the full backend (Apache-2.0), and [kysigned](https://github.com/kychee-com/kysigned) is the first product running on it.
+
+One call to [run402](https://run402.com) gives an agent a full Postgres database, REST API, user auth, content-addressed file storage, static site hosting, serverless functions, and image generation, paid with x402 USDC on Base (or Stripe credits). The prototype tier is free on testnet.
 
 This monorepo ships every surface an agent can pick up:
 
 | Surface | Use when… |
 |---------|-----------|
-| [`@run402/sdk`](./sdk/) | Calling Run402 from TypeScript — typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 fetch |
-| [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells — JSON in, JSON out, exit code on failure |
-| [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code — core Run402 operations as MCP tools |
+| [`@run402/sdk`](./sdk/) | Calling run402 from TypeScript: typed kernel, isomorphic (Node 22 / Deno / Bun / V8 isolates) with a Node entry that auto-loads the local keystore + allowance + x402 fetch |
+| [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells: JSON in, JSON out, exit code on failure |
+| [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code: core run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
-| [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) | Imported _inside_ deployed functions (`db(req?)`, `adminDb()`, `auth.user()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor. Source lives in the public [`run402-core`](https://github.com/kychee-com/run402-core) repo under `packages/functions`; Run402 Cloud consumes the published npm package when it bundles function zips. |
+| [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) | Imported _inside_ deployed functions (`db(req?)`, `adminDb()`, `auth.user()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor. Source lives in the public [`run402-core`](https://github.com/kychee-com/run402-core) repo under `packages/functions`; run402 Cloud consumes the published npm package when it bundles function zips. |
 | [`@run402/astro`](./astro/) | Astro integration for SSR, ISR cache, hosted auth components, and image variants |
 
 These interfaces share a single typed kernel where appropriate: `@run402/sdk`. MCP tools, CLI subcommands, and OpenClaw scripts are thin shims over SDK calls. `@run402/functions` is the in-function helper that runs inside deployed code; the npm package on the registry is the artifact Cloud bundles. `@run402/astro` layers the SDK and functions runtime into Astro's build and SSR flow. Pick whichever interface fits your runtime.
@@ -41,7 +43,7 @@ That's a real Postgres database + a deployed static site, paid for autonomously 
 
 Prefer `run402 up` when a repo has `run402.deploy.json` or `app.json`. The CLI stays a thin shim over the Node SDK action runner (`r.actions.run(...)` / `r.up(...)`): it validates the manifest first, then recursively performs only the missing prerequisites. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--name` is project creation/link metadata only; it is not part of the deploy manifest and never renames an existing project. Use `--check` for local validation and `--plan` for gateway-reviewed intent before applying.
 
-If an app manifest defines `verify.http[]`, `run402 up` verifies those URLs after deploy. Fresh Run402 edge sentinel misses are reported as `propagation_pending` rather than permanent failures while the binding is still converging; tune that wait with `--propagation-budget-s` (default 120) or return immediately with `--no-propagation-wait`. `run402 up verify` reruns the same HTTP checks without uploading, deploying, creating projects, or mutating resources.
+If an app manifest defines `verify.http[]`, `run402 up` verifies those URLs after deploy. Fresh run402 edge sentinel misses are reported as `propagation_pending` rather than permanent failures while the binding is still converging; tune that wait with `--propagation-budget-s` (default 120) or return immediately with `--no-propagation-wait`. `run402 up verify` reruns the same HTTP checks without uploading, deploying, creating projects, or mutating resources.
 
 The CLI checks for newer `run402` releases opportunistically and fail-open. Success stdout stays the command result; stale-version notices are advisory JSON on stderr, or `cli.update_available` NDJSON events in `--json-stream`. `run402 doctor --refresh` is the explicit live npm check and reports the install context plus the safest upgrade command for local, global, or ephemeral installs.
 
@@ -71,7 +73,7 @@ Helpers normalize to the same `ReleaseSpec` as JSON manifests. `dir()` walks det
 
 ## The patterns
 
-### Paste-and-go assets — content-addressed URLs with SRI
+### Paste-and-go assets: content-addressed URLs with SRI
 
 `assets.put()` returns an `AssetRef` whose `scriptTag()` / `linkTag()` / `imgTag()` emitters produce HTML with the URL, the SRI integrity hash, and modern best-practice attributes (`defer`, `loading="lazy"`, `decoding="async"`, `crossorigin`) already wired. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through the v1.33 CDN, and never needs invalidation:
 
@@ -93,11 +95,11 @@ const html = `
 `;
 ```
 
-`immutable: true` is the default — the SDK computes the SHA-256 client-side, the gateway returns a content-hashed URL, and the browser refuses execution on byte mismatch. No cache-invalidation choreography, no waiting, no integrity-attribute construction.
+`immutable: true` is the default: the SDK computes the SHA-256 client-side, the gateway returns a content-hashed URL, and the browser refuses execution on byte mismatch. No cache-invalidation choreography, no waiting, no integrity-attribute construction.
 
 ### Dark-by-default tables + the expose manifest
 
-Tables you create are unreachable via `/rest/v1/*` until you declare them in a manifest. That closes the "agent created a table, forgot to set RLS, data leaked" footgun. The manifest is convergent — applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+Tables you create are unreachable via `/rest/v1/*` until you declare them in a manifest. That closes the "agent created a table, forgot to set RLS, data leaked" footgun. The manifest is convergent: applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
 
 ```bash
 cat > manifest.json <<'EOF'
@@ -123,13 +125,13 @@ run402 projects apply-expose    <project_id> --file manifest.json
 run402 projects get-expose   <project_id>
 ```
 
-Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; with `force_owner_on_insert: true` a BEFORE INSERT trigger sets it), `public_read_authenticated_write` (anyone reads, any authenticated user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), and `custom` (escape hatch — your own `CREATE POLICY` SQL).
+Built-in policies: `user_owns_rows` (rows where `owner_column = auth.uid()`; with `force_owner_on_insert: true` a BEFORE INSERT trigger sets it), `public_read_authenticated_write` (anyone reads, any authenticated user writes), `public_read_write_UNRESTRICTED` (fully open; requires `i_understand_this_is_unrestricted: true`), and `custom` (escape hatch: your own `CREATE POLICY` SQL).
 
 Use `run402 projects validate-expose` or the MCP `validate_manifest` tool for a non-mutating feedback loop before applying. Optional migration SQL is used only to check manifest references; it is not executed as a PostgreSQL dry run, and this does not validate deploy manifests.
 
 **Auth-as-SDLC:** put the same JSON under `database.expose` in your v2 `ReleaseSpec`. The gateway validates it against your migration SQL during deploy and rejects mismatches with a structured `errors` array listing every violation.
 
-### Slick deploys — `deployDir` + plan/commit + progress
+### Slick deploys: `deployDir` + plan/commit + progress
 
 `deployDir` walks a local directory, hashes every file client-side, asks the gateway _which_ bytes it doesn't already have, and PUTs only those. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`.
 
@@ -153,7 +155,7 @@ CLI:
 run402 sites deploy-dir ./dist --project prj_… > result.json 2> events.log
 ```
 
-### Same-origin web routes — static site + function ingress
+### Same-origin web routes: static site + function ingress
 
 Apply-v1 routes and static public paths are release resources: they activate atomically with the site, functions, migrations, secrets, and subdomains in the same `deploy apply`. Release static asset paths such as `events.html` are distinct from browser-visible public static paths such as `/events`. Use `site.public_paths` for ordinary clean static URLs; keep routes for function ingress and exact, method-aware static aliases.
 
@@ -205,7 +207,7 @@ Matching is exact or final-prefix-wildcard only. `/admin` and `/admin/` are exac
 
 Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. On priced routes, import `getRoutedPaymentContext` from `@run402/functions`, read `const payment = getRoutedPaymentContext(req)`, and key app-side idempotency by `payment.paymentId`. The helper reads gateway-confirmed `x-run402-payment-*` headers and returns `null` for unpriced or direct calls. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
 
-**Recipe — static home page + SPA shell.** A SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html` and add an exact root static route alias: `"routes": { "replace": [ { "pattern": "/", "target": { "type": "static", "file": "home.html" } } ] }`. Route matching runs before all static resolution — including the implicit `/` -> `index.html` root mapping — and SPA-fallback derivation is independent of the route table, so `GET /` serves `home.html` (`route_static_alias`), unmatched app routes such as `/dashboard` still serve the shell (`spa_fallback`), and named static pages keep serving unchanged (`static_exact`). Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn — the alias overrides what `/` would otherwise serve; accurate and expected here) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info — `/home.html` stays directly reachable in implicit public-path mode; add `<link rel="canonical">` to `home.html` if duplicate-content SEO matters). Omitting `routes` on later deploys carries the alias forward; `routes.replace` is total, so a pipeline that sends it must include the alias every time. Verify with `run402 deploy resolve --url https://<your-site>/ --method GET` or `deploy_diagnose_url` and confirm `match: "route_static_alias"` with `target_file: "home.html"`.
+**Recipe: static home page + SPA shell.** A SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html` and add an exact root static route alias: `"routes": { "replace": [ { "pattern": "/", "target": { "type": "static", "file": "home.html" } } ] }`. Route matching runs before all static resolution (including the implicit `/` -> `index.html` root mapping), and SPA-fallback derivation is independent of the route table, so `GET /` serves `home.html` (`route_static_alias`), unmatched app routes such as `/dashboard` still serve the shell (`spa_fallback`), and named static pages keep serving unchanged (`static_exact`). Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn: the alias overrides what `/` would otherwise serve; accurate and expected here) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info: `/home.html` stays directly reachable in implicit public-path mode; add `<link rel="canonical">` to `home.html` if duplicate-content SEO matters). Omitting `routes` on later deploys carries the alias forward; `routes.replace` is total, so a pipeline that sends it must include the alias every time. Verify with `run402 deploy resolve --url https://<your-site>/ --method GET` or `deploy_diagnose_url` and confirm `match: "route_static_alias"` with `target_file: "home.html"`.
 
 Avoid routing every static file, broad method lists by default, wildcard static route targets, leading-slash static files, directory shorthand, and one-static-route-target-per-page tables that exhaust route limits. Also watch wildcard function routes that shadow direct public static paths. Warning codes to handle include `STATIC_ALIAS_SHADOWS_STATIC_PATH`, `STATIC_ALIAS_RELATIVE_ASSET_RISK`, `STATIC_ALIAS_DUPLICATE_CANONICAL_URL`, `STATIC_ALIAS_EXTENSIONLESS_NON_HTML`, and `STATIC_ALIAS_TABLE_NEAR_LIMIT`; inspect active routes, `static_public_paths`, and resolve diagnostics to distinguish the route pattern from the backing `asset_path`.
 
@@ -223,9 +225,9 @@ Release observability exposes stable asset identity and public reachability. Inv
 
 Runtime route failure codes to branch on: `ROUTE_MANIFEST_LOAD_FAILED` (manifest/propagation), `ROUTED_INVOKE_WORKER_SECRET_MISSING` (custom-domain Worker secret), `ROUTED_INVOKE_AUTH_FAILED` (internal invoke signature), `ROUTED_ROUTE_STALE` (selected route failed release revalidation), `ROUTE_METHOD_NOT_ALLOWED` (method mismatch), `PAYOUT_WALLET_REQUIRED` / `PAYOUT_WALLET_AMBIGUOUS` / `PAYOUT_WALLET_UNRESOLVED` (priced-route payout setup), `PAYMENT_PROOF_MISMATCH` (stale or wrong x402 proof), and `ROUTED_RESPONSE_TOO_LARGE` (body over 6 MiB).
 
-### GitHub Actions OIDC deploys — link once, deploy with the same CLI
+### GitHub Actions OIDC deploys: link once, deploy with the same CLI
 
-For repo-driven deploys, Run402 does not need service keys or allowance files in GitHub secrets. Run a local link command once:
+For repo-driven deploys, run402 does not need service keys or allowance files in GitHub secrets. Run a local link command once:
 
 ```bash
 run402 ci link github --project prj_... --manifest run402.deploy.json
@@ -251,7 +253,7 @@ jobs:
 
 CI deploys are intentionally narrow: `site`, `functions`, `database`, absent/current `base`, and route declarations only when the binding has covering `--route-scope` patterns. Without route scopes, CI cannot ship `routes`. Keep secrets, domains, subdomains, checks, non-current base, and broader trust changes in a local allowance-backed deploy. If the gateway returns `CI_ROUTE_SCOPE_DENIED`, re-link with exact scopes like `/admin` or final-wildcard scopes like `/api/*`, or deploy locally. Manage bindings with `run402 ci list` and `run402 ci revoke`.
 
-### In-function helpers — caller-context vs BYPASSRLS
+### In-function helpers: caller-context vs BYPASSRLS
 
 Inside a deployed function, import from `@run402/functions`. Two distinct DB clients keep RLS clean:
 
@@ -261,12 +263,12 @@ import { db, adminDb, auth, email, ai } from "@run402/functions";
 export default async (req: Request) => {
   const user = await auth.requireUser();
 
-  // Caller-context — db() mints a 60s actor JWT so run402.current_user_id() resolves in RLS.
-  // No .eq("user_id", user.id) needed — RLS already binds the visitor's rows; the redundant
+  // Caller-context: db() mints a 60s actor JWT so run402.current_user_id() resolves in RLS.
+  // No .eq("user_id", user.id) needed: RLS already binds the visitor's rows; the redundant
   // filter is a deploy-fail (R402_AUTH_REDUNDANT_USER_FILTER) under @run402/functions v3.0+.
   const mine = await db().from("items").select("*");
 
-  // BYPASSRLS — for platform-authored writes (audit logs, cron cleanup, webhook handlers).
+  // BYPASSRLS: for platform-authored writes (audit logs, cron cleanup, webhook handlers).
   await adminDb().from("audit").insert({ event: "items_read", user_id: user.id });
 
   // Send mail from the configured default outbound mailbox.
@@ -278,7 +280,7 @@ export default async (req: Request) => {
 };
 ```
 
-`adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS. It returns a flat `Promise<Record<string, unknown>[]>` (just the rows — no envelope):
+`adminDb().sql(query, params?)` runs raw parameterized SQL and always bypasses RLS. It returns a flat `Promise<Record<string, unknown>[]>` (just the rows, no envelope):
 
 ```ts
 import { adminDb, auth } from "@run402/functions";
@@ -301,7 +303,7 @@ export default async (req: Request) => {
 
 `assets.put(key, source, opts?)` uploads bytes from inside a deployed function through the same CAS-backed apply substrate as deploy-time assets. It uses `RUN402_SERVICE_KEY`, accepts a string, `Uint8Array`, or `{ content | bytes }`, and returns an SDK-compatible `AssetRef` with mutable and immutable URLs.
 
-**Calling from outside a function entirely** (raw `curl`/`fetch` from CI scripts, bash bootstrappers, non-TS runtimes) — service-key writes go to `/admin/v1/rest/<table>`, not `/rest/v1/*`. The gateway 403s service-role tokens on `/rest/v1/*` so a leaked key can't silently bypass RLS, which means `curl ... > /dev/null` against the wrong path looks like success but writes nothing. SQL-shaped admin work uses `POST /projects/v1/admin/:id/sql` (or `run402 projects sql`).
+**Calling from outside a function entirely** (raw `curl`/`fetch` from CI scripts, bash bootstrappers, non-TS runtimes): service-key writes go to `/admin/v1/rest/<table>`, not `/rest/v1/*`. The gateway 403s service-role tokens on `/rest/v1/*` so a leaked key can't silently bypass RLS, which means `curl ... > /dev/null` against the wrong path looks like success but writes nothing. SQL-shaped admin work uses `POST /projects/v1/admin/:id/sql` (or `run402 projects sql`).
 
 ```bash
 curl -X POST https://api.run402.com/admin/v1/rest/audit \
@@ -310,7 +312,7 @@ curl -X POST https://api.run402.com/admin/v1/rest/audit \
   -d '{"event":"seed","ts":"2026-04-30"}'
 ```
 
-## SDK — `@run402/sdk`
+## SDK: `@run402/sdk`
 
 ```bash
 npm install @run402/sdk
@@ -318,8 +320,8 @@ npm install @run402/sdk
 
 Two entry points:
 
-- **`@run402/sdk`** — isomorphic. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). Works in Node 22, Deno, Bun, V8 isolates.
-- **`@run402/sdk/node`** — Node-only convenience. Reads local profile state plus the project-key credential cache (`credentials/project-keys.v1.json`), signs x402 payments from the local allowance, exposes `sites.deployDir(...)`, `fileSetFromDir(...)`, typed deploy-manifest helpers (`loadDeployManifest`, `normalizeDeployManifest`), and `resolveRun402TargetProfile()` for app build scripts that need the same Core/Cloud target the CLI uses.
+- **`@run402/sdk`**: isomorphic. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). Works in Node 22, Deno, Bun, V8 isolates.
+- **`@run402/sdk/node`**: Node-only convenience. Reads local profile state plus the project-key credential cache (`credentials/project-keys.v1.json`), signs x402 payments from the local allowance, exposes `sites.deployDir(...)`, `fileSetFromDir(...)`, typed deploy-manifest helpers (`loadDeployManifest`, `normalizeDeployManifest`), and `resolveRun402TargetProfile()` for app build scripts that need the same Core/Cloud target the CLI uses.
 
 ```ts
 import { run402 } from "@run402/sdk/node";
@@ -330,17 +332,17 @@ const p = await r.project(project.project_id);
 await p.assets.put("hello.txt", { content: "hi" });
 ```
 
-The SDK is organised into focused namespaces: `actions` (Node recursive action runner), `projects`, `snapshots`, `branches`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session — browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), and `grants` (per-project capability grants), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
+The SDK is organised into focused namespaces: `actions` (Node recursive action runner), `projects`, `snapshots`, `branches`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session: browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), and `grants` (per-project capability grants), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
 
-**Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+ — `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `auth.*` helpers / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
+**Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+: `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `auth.*` helpers / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 
-## CLI — `run402`
+## CLI: `run402`
 
 ```bash
 npm install -g run402@latest
 ```
 
-Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure — designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://docs.run402.com/llms-cli.txt>).
+Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on success and 1 on failure: designed for an agent shell, not a human. Full reference: [`cli/llms-cli.txt`](./cli/llms-cli.txt) (also at <https://docs.run402.com/llms-cli.txt>).
 
 ```bash
 run402 up --name my-app -y                # recursive SDK action runner: init/tier/project/link/deploy
@@ -366,11 +368,11 @@ run402 assets diagnose <url>             # inspect live CDN state for a public U
 run402 cdn wait-fresh <url> --sha <hex>  # poll until a mutable URL serves the new SHA
 ```
 
-`up` is the only compound CLI command: it calls the SDK action runner, emits `steps[]`, and writes `.run402/project.json` when it needs to remember the workspace project. Against Run402 Core it skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected.
+`up` is the only compound CLI command: it calls the SDK action runner, emits `steps[]`, and writes `.run402/project.json` when it needs to remember the workspace project. Against run402 Core it skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected.
 
 For database-bearing deploys, rehearse before commit. `run402 apply --manifest app.json --rehearse --json` plans, uploads missing CAS bytes, creates a contained branch, runs migrations/checks there, and exits nonzero on a failed rehearsal. If you already have a persisted plan id, use `run402 deploy rehearse <plan_id> --project <id> --json`. Manual restore points live under `run402 snapshots create|list|get|restore|delete`; restore is a two-step plan/confirm flow. Branch projects live under `run402 branches create|list|renew|delete`, default to a 7-day TTL, use sandboxed email by default, and are marked noindex.
 
-Portable archives export the supported Run402 Core runtime slice of a Cloud project for local Core import. This is the no-lock-in trust path, separate from allowance/spend-cap financial-risk controls.
+Portable archives export the supported run402 Core runtime slice of a Cloud project for local Core import. This is the no-lock-in trust path, separate from allowance/spend-cap financial-risk controls.
 
 ```bash
 run402 cloud archives create <project_id> --scope portable-runtime-v1 --auth stubs --consistency pause-writes --wait --output ./project.r402ar --json
@@ -384,7 +386,7 @@ run402 core projects apply ./project.r402ar --name imported-project --env-file .
 
 The active project is sticky: `run402 projects use <id>` server-validates `<id>` and stores it as the default for subsequent `<id>`-taking subcommands, so most commands work without it. Local key material is managed separately under `run402 credentials project-keys ...`; that cache is never project inventory.
 
-## MCP server — `run402-mcp`
+## MCP server: `run402-mcp`
 
 ```bash
 npx -y run402-mcp                        # standalone test
@@ -441,11 +443,11 @@ cp -r openclaw ~/.openclaw/skills/run402
 cd ~/.openclaw/skills/run402/scripts && npm install
 ```
 
-Each script re-exports from `cli/lib/*.mjs` — the OpenClaw command surface is identical to the CLI command surface by construction. See [`openclaw/README.md`](./openclaw/README.md).
+Each script re-exports from `cli/lib/*.mjs`: the OpenClaw command surface is identical to the CLI command surface by construction. See [`openclaw/README.md`](./openclaw/README.md).
 
 ## MCP tools
 
-The full MCP surface — every tool is a thin shim over an SDK call.
+The full MCP surface: every tool is a thin shim over an SDK call.
 
 ### Database
 
@@ -454,13 +456,13 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `provision_postgres_project` | Provision a new database. Auto-handles x402 payment. |
 | `run_sql` | Execute SQL (DDL or queries). Returns a markdown table. |
 | `rest_query` | Query/mutate via PostgREST. |
-| `apply_expose` | Apply the declarative authorization manifest (tables, views, RPCs). Convergent — drops items removed between applies. |
+| `apply_expose` | Apply the declarative authorization manifest (tables, views, RPCs). Convergent: drops items removed between applies. |
 | `validate_manifest` | Validate the auth/expose manifest without applying it. Accepts manifest object/string, optional `migration_sql`, optional `project_id`. |
 | `get_expose` | Return the current manifest. `source` is either `applied` (from the tracking table) or `introspected` (regenerated from live DB state). |
 | `get_schema` | Introspect tables, columns, types, constraints, RLS policies. |
 | `get_usage` | Per-project usage report (API calls, storage, lease expiry). |
 | `promote_user` / `demote_user` | Manage `project_admin` role on a project user. |
-| `delete_project` | Cascade purge — schema, Lambdas, S3 site files, deployments, secrets, published versions. Irreversible. |
+| `delete_project` | Cascade purge: schema, Lambdas, S3 site files, deployments, secrets, published versions. Irreversible. |
 
 ### Asset storage (content-addressed CDN)
 
@@ -471,7 +473,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `assets_ls` | Keyset-paginated list with prefix filter. |
 | `assets_rm` | Delete an asset. |
 | `assets_sign` | Time-boxed presigned GET URL for a private asset. |
-| `diagnose_public_url` | Live CDN state for a public URL — expected vs observed SHA, cache headers, invalidation status. |
+| `diagnose_public_url` | Live CDN state for a public URL: expected vs observed SHA, cache headers, invalidation status. |
 | `wait_for_cdn_freshness` | Poll a mutable URL until it serves the expected SHA-256. |
 
 ### Sites & subdomains
@@ -479,11 +481,11 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | Tool | Description |
 |------|-------------|
 | `deploy_site` | Deploy a static site from inline file bytes. |
-| `deploy_site_dir` | Deploy a static site from a local directory. Routes through the unified apply primitive (CAS-backed) — only uploads bytes the gateway doesn't have. |
+| `deploy_site_dir` | Deploy a static site from a local directory. Routes through the unified apply primitive (CAS-backed); only uploads bytes the gateway doesn't have. |
 | `claim_subdomain` | Claim `<name>.run402.com` (idempotent; reassigns to latest deployment on subsequent deploys). |
 | `list_subdomains` / `delete_subdomain` | Manage subdomains. |
 | `domains_ensure` / `domains_get` / `domains_list` / `domains_check` | Manage project-scoped web/email ProjectDomain desired state and health checks. |
-| `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` | Apply safe provider actions, repair Run402-owned routing, verify inbound receive, activate mailbox addresses, or disconnect a domain. |
+| `domains_apply` / `domains_repair` / `domains_test_receive` / `domains_activate` / `domains_disconnect` | Apply safe provider actions, repair run402-owned routing, verify inbound receive, activate mailbox addresses, or disconnect a domain. |
 | `deploy` / `deploy_resume` / `deploy_rehearse` / `deploy_list` / `deploy_events` / `deploy_verify_edge` | Apply, resume, rehearse persisted plans on contained branches, list, inspect deploy operations, and verify gateway/edge coherence. |
 | `deploy_release_get` / `deploy_release_active` / `deploy_release_diff` | Inspect release inventory and release-to-release diffs without starting a new deploy mutation. |
 | `deploy_diagnose_url` | URL-first deploy resolver diagnostics. Params: `project_id`, either `url` or `host`/`path`, optional `method`; returns `would_serve`, `diagnostic_status`, `match`, warnings, next steps, and fenced JSON. |
@@ -578,7 +580,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `contract_call` | Submit a write call (chain gas at-cost + KMS sign fee). |
 | `contract_read` | Read-only call (free). |
 | `get_contract_call_status` | Lifecycle, gas, receipt. |
-| `drain_signer` | Drain native balance (works on suspended signers — the safety valve). |
+| `drain_signer` | Drain native balance (works on suspended signers, the safety valve). |
 | `delete_signer` | Schedule KMS key deletion (refused if balance ≥ dust). |
 
 ### Allowance & organization
@@ -597,10 +599,10 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | `project_get` / `project_use` | Server project detail and active-project selection. `project_use` validates through the server, then stores only an active id pointer. |
 | `project_key_cache_status` / `project_key_cache_export` | Explicit local project-key cache tools. `status` is redacted; `export` requires `reveal: true` and emits cached secret key material. |
 | `create_checkout` | Org checkout for balance top-ups, tiers, or email packs. |
-| `send_message` | Send feedback to the Run402 team. |
+| `send_message` | Send feedback to the run402 team. |
 | `set_agent_contact` / `get_agent_contact_status` / `verify_agent_contact_email` | Register agent contact info, read assurance status, and start the operator email reply challenge. |
-| `start_operator_passkey_enrollment` | Email a Run402 operator passkey enrollment link to the verified contact email. |
-| `get_operator_status` | Compact operator-health snapshot — contact assurance state, critical items, skipped notifications, organizations, projects, active thresholds. Read via `run402 doctor` or directly. |
+| `start_operator_passkey_enrollment` | Email a run402 operator passkey enrollment link to the verified contact email. |
+| `get_operator_status` | Compact operator-health snapshot: contact assurance state, critical items, skipped notifications, organizations, projects, active thresholds. Read via `run402 doctor` or directly. |
 | `get_notification_preferences` / `set_notification_preferences` | Read/update operator notification preferences (cadence, channels, per-class toggles, locale, timezone). Cross-wallet effects require `email_verified`; webhook URL changes require `operator_passkey`. |
 | `list_notifications` | Per-delivery-attempt audit log. Paginated, filterable by event_type / since. |
 | `test_notification` | Fire a real test notification through the full worker pipeline. Audit row marked `is_test=true`. Rate-limited per wallet at 1/min. |
@@ -610,7 +612,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `service_status` | Public availability report — 24h/7d/30d uptime per capability, operator, deployment topology. |
+| `service_status` | Public availability report: 24h/7d/30d uptime per capability, operator, deployment topology. |
 | `service_health` | Liveness probe with per-dependency results. |
 
 ## Configuration
@@ -624,11 +626,11 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 
 Local state lives at:
 
-- profile `state.json` — active project pointer and profile state
-- profile `credentials/project-keys.v1.json` (`0600`) — local anon/service key cache for explicit credential-required operations
-- `~/.config/run402/allowance.json` (`0600`) — wallet for x402 signing
+- profile `state.json`: active project pointer and profile state
+- profile `credentials/project-keys.v1.json` (`0600`): local anon/service key cache for explicit credential-required operations
+- `~/.config/run402/allowance.json` (`0600`): wallet for x402 signing
 
-Legacy `projects.json` files are one-way migration input only. `anon_key` and `service_key` have no expiry — lease enforcement happens server-side. Inspect cache state with `run402 credentials project-keys status --project <id>` and export secrets only with `run402 credentials project-keys export --project <id> --reveal`.
+Legacy `projects.json` files are one-way migration input only. `anon_key` and `service_key` have no expiry; lease enforcement happens server-side. Inspect cache state with `run402 credentials project-keys status --project <id>` and export secrets only with `run402 credentials project-keys export --project <id> --reveal`.
 
 ## Development
 
@@ -645,6 +647,7 @@ Architecture: every tool / subcommand / skill script is a thin shim over an `@ru
 ## Links
 
 - Web: <https://run402.com>
+- Self-host backend (run402 Core): <https://github.com/kychee-com/run402-core>
 - API docs (HTTP): <https://run402.com/llms.txt> · <https://run402.com/openapi.json>
 - CLI docs: <https://docs.run402.com/llms-cli.txt>
 - Status: <https://api.run402.com/status>
@@ -652,4 +655,4 @@ Architecture: every tool / subcommand / skill script is a thin shim over an `@ru
 
 ## License
 
-MIT
+MIT for this repo (the agent surfaces: SDK, CLI, MCP server, Astro integration, OpenClaw skill). The full backend, [`run402-core`](https://github.com/kychee-com/run402-core), is Apache-2.0.
