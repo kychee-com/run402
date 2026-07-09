@@ -509,7 +509,7 @@ The full MCP surface — every tool is a thin shim over an SDK call.
 | Tool | Description |
 |------|-------------|
 | `deploy_function` | Deploy a Node 22 serverless function; use ReleaseSpec `triggers[]` for schedule or email event durable runs. |
-| `invoke_function` | Invoke a deployed function over the direct API-key-protected test path. |
+| `invoke_function` | Invoke a deployed function over the direct API-key-protected path. Paid calls require `idempotency_key` and may return a pollable `run_id`; set `wait` to replay the retained result. |
 | `get_function_logs` | Recent logs (CloudWatch), filterable by `since` and routed `request_id`. |
 | `update_function` | Update timeout / memory without redeploying code; use ReleaseSpec `triggers[]` for new schedule/email triggers. |
 | `list_functions` / `delete_function` | List / remove functions. |

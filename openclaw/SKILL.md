@@ -556,6 +556,7 @@ run402 functions deploy <id> my-fn --file fn.ts \
   --deps "stripe,zod@^3,date-fns@3.6.0"
 
 run402 functions invoke <id> my-fn --body '{"hello":"world"}'
+run402 functions invoke <id> paid-fn --body '{"text":"hi"}' --idempotency-key paid:call:123 --wait
 run402 functions logs   <id> my-fn --tail 100 --request-id req_abc123 --follow
 run402 functions runs create <id> my-fn --event-type reminder.send --idempotency-key reminder:123 --delay 10m
 run402 functions update <id> my-fn --schedule "0 */6 * * *"

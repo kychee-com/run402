@@ -80,9 +80,14 @@ export interface FunctionInvokeOptions {
   body?: string | Record<string, unknown>;
   /** Extra headers to forward. */
   headers?: Record<string, string>;
+  /** Stable idempotency key required by paid function invocations. */
+  idempotencyKey?: string;
+  /** Optional paid-facade wait. On a 202 run handle, poll the run and replay the same key for the retained result. */
+  wait?: FunctionRunWaitOptions;
 }
 
 export interface FunctionInvokeResult {
+  /** HTTP status from the direct invocation facade. Paid calls may return 202 with a pollable run handle. */
   status: number;
   /** Parsed JSON body if the response was JSON, otherwise the raw text. */
   body: unknown;

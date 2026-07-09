@@ -138,6 +138,7 @@ run402 functions deploy <id> my-fn --file fn.ts \
   --deps "stripe,zod@^3"
 run402 functions logs <id> my-fn --tail 100 --request-id req_abc123 --follow
 run402 functions invoke <id> my-fn --body '{"hello":"world"}'
+run402 functions invoke <id> paid-fn --body '{"text":"hi"}' --idempotency-key paid:call:123 --wait
 run402 functions rebuild <id> my-fn      # refresh ONE function onto the current runtime
 run402 functions rebuild <id> --all      # refresh every function in the project
 ```

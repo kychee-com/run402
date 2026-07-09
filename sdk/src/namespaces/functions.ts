@@ -176,6 +176,7 @@ export class Functions {
       apikey: project.service_key,
       ...(opts.headers ?? {}),
     };
+    if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
 
     const requestOpts: Parameters<Client["request"]>[1] = {
       method,
@@ -191,10 +192,17 @@ export class Functions {
     }
 
     const start = Date.now();
-    const body = await this.client.request<unknown>(`/functions/v1/${name}`, requestOpts);
+    let response = await this.client.requestWithResponse<unknown>(`/functions/v1/${name}`, requestOpts);
+    const runId = paidFacadeRunId(response.body);
+    if (opts.wait && response.status === 202 && runId) {
+      await this.runs.wait(projectId, runId, opts.wait);
+      if (opts.idempotencyKey) {
+        response = await this.client.requestWithResponse<unknown>(`/functions/v1/${name}`, requestOpts);
+      }
+    }
     return {
-      status: 200,
-      body,
+      status: response.status,
+      body: response.body,
       duration_ms: Date.now() - start,
     };
   }
@@ -356,6 +364,12 @@ export class Functions {
       },
     );
   }
+}
+
+function paidFacadeRunId(body: unknown): string | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const runId = (body as Record<string, unknown>).run_id;
+  return typeof runId === "string" && /^fnrun_[A-Za-z0-9_-]+$/.test(runId) ? runId : null;
 }
 
 export class FunctionRuns {

@@ -1562,6 +1562,67 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.equal(typeof parsed.duration_ms, "number");
   });
 
+  it("functions invoke --wait replays a paid run with the same idempotency key", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/functions/v1/paid" && info.method === "POST" && calls.filter((c) => c.path === info.path).length === 1) {
+        return Promise.resolve(json({
+          code: "idempotency_in_progress",
+          state: "in_progress",
+          run_id: "fnrun_paid",
+          operation_id: "fnrun_paid",
+          next_actions: [{ type: "poll", path: "/functions/v1/runs/fnrun_paid" }],
+        }, 202));
+      }
+      if (info.path === "/functions/v1/runs/fnrun_paid" && info.method === "GET") {
+        return Promise.resolve(json({
+          run_id: "fnrun_paid",
+          function_name: "paid",
+          event_type: "paid.invoke",
+          status: "succeeded",
+          terminal: true,
+          generation: 1,
+          run_at: "2026-07-09T00:00:00.000Z",
+          source: {},
+          attempts: { current: 1, max: 1, total: 1 },
+          created_at: "2026-07-09T00:00:00.000Z",
+          updated_at: "2026-07-09T00:00:01.000Z",
+          completed_at: "2026-07-09T00:00:01.000Z",
+          next_actions: [],
+        }));
+      }
+      if (info.path === "/functions/v1/paid" && info.method === "POST") {
+        return Promise.resolve(json({ result: "done" }));
+      }
+      return mockFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("invoke", [
+        "prj_test123",
+        "paid",
+        "--body", "{\"text\":\"hi\"}",
+        "--idempotency-key", "paid-call-1",
+        "--wait",
+        "--timeout-ms", "1000",
+        "--poll-interval-ms", "0",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const parsed = JSON.parse(stdout.join("\n"));
+    const paidPosts = calls.filter((c) => c.path === "/functions/v1/paid" && c.method === "POST");
+    assert.equal(paidPosts.length, 2);
+    assert.equal(paidPosts[0].init.headers["Idempotency-Key"], "paid-call-1");
+    assert.equal(paidPosts[1].init.headers["Idempotency-Key"], "paid-call-1");
+    assert.equal(parsed.http_status, 200);
+    assert.deepEqual(parsed.body, { result: "done" });
+  });
+
   it("functions invoke --raw emits the body verbatim (object → JSON, string → text+newline)", async () => {
     const { run } = await import("./cli/lib/functions.mjs");
     const prevFetch = globalThis.fetch;

@@ -288,6 +288,74 @@ describe("functions.invoke", () => {
     assert.equal(calls[0]!.body, "raw-text");
   });
 
+  it("passes idempotencyKey and preserves a paid facade 202 run handle", async () => {
+    const { fetch, calls } = mockFetch(() => json({
+      code: "idempotency_in_progress",
+      state: "in_progress",
+      run_id: "fnrun_paid",
+      operation_id: "fnrun_paid",
+      next_actions: [{ type: "poll", path: "/functions/v1/runs/fnrun_paid" }],
+    }, 202));
+    const sdk = makeSdk(fetch);
+
+    const result = await sdk.functions.invoke("prj_known", "paid", {
+      body: { text: "hello" },
+      idempotencyKey: "paid-call-1",
+    });
+
+    assert.equal(calls[0]!.headers["Idempotency-Key"], "paid-call-1");
+    assert.equal(result.status, 202);
+    assert.equal((result.body as { run_id?: string }).run_id, "fnrun_paid");
+  });
+
+  it("waits on a paid facade run and replays the same idempotency key for the retained result", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      if (call.method === "POST" && call.url.endsWith("/functions/v1/paid") && calls.length === 1) {
+        return json({
+          code: "idempotency_in_progress",
+          state: "in_progress",
+          run_id: "fnrun_paid",
+          operation_id: "fnrun_paid",
+          next_actions: [{ type: "poll", path: "/functions/v1/runs/fnrun_paid" }],
+        }, 202);
+      }
+      if (call.method === "GET" && call.url.endsWith("/functions/v1/runs/fnrun_paid")) {
+        return json({
+          run_id: "fnrun_paid",
+          function_name: "paid",
+          event_type: "paid.invoke",
+          status: "succeeded",
+          terminal: true,
+          generation: 1,
+          run_at: "2026-07-09T00:00:00.000Z",
+          source: {},
+          attempts: { current: 1, max: 1, total: 1 },
+          created_at: "2026-07-09T00:00:00.000Z",
+          updated_at: "2026-07-09T00:00:01.000Z",
+          completed_at: "2026-07-09T00:00:01.000Z",
+          next_actions: [],
+        });
+      }
+      if (call.method === "POST" && call.url.endsWith("/functions/v1/paid")) {
+        return json({ result: { translated: "hoi" } });
+      }
+      throw new Error(`unexpected fetch ${call.method} ${call.url}`);
+    });
+    const sdk = makeSdk(fetch);
+
+    const result = await sdk.functions.invoke("prj_known", "paid", {
+      body: { text: "hello" },
+      idempotencyKey: "paid-call-1",
+      wait: { intervalMs: 0, timeoutMs: 1000 },
+    });
+
+    assert.equal(calls.length, 3);
+    assert.equal(calls[0]!.headers["Idempotency-Key"], "paid-call-1");
+    assert.equal(calls[2]!.headers["Idempotency-Key"], "paid-call-1");
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, { result: { translated: "hoi" } });
+  });
+
   it("defaults method to POST", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);

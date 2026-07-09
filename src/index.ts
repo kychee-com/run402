@@ -579,8 +579,15 @@ server.tool(
 
 server.tool(
   "invoke_function",
-  "Invoke a deployed function via HTTP. Returns the function's response body and status code. Useful for testing functions without building a frontend.",
+  "Invoke a deployed function via HTTP. Free functions behave like the direct test path; paid functions require idempotency_key and may spend allowance, returning a result or pollable run_id. Stable errors preserve code and set isError=true.",
   invokeFunctionSchema,
+  {
+    title: "Invoke function",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
   async (args) => handleInvokeFunction(args),
 );
 

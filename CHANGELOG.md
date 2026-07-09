@@ -2,6 +2,12 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — paid function idempotency
+
+- **SDK:** `functions.invoke()` accepts `idempotencyKey` for paid direct invocations and preserves the real HTTP status, including 202 run handles. Passing `wait` polls the returned run and replays the same key for the retained result.
+- **CLI/MCP:** `run402 functions invoke` and `invoke_function` expose the same paid-call contract: stable key in, pollable run id or final replayed result out, with structured errors left intact for agents to branch on.
+- **Docs/tests:** CLI, SDK, MCP, OpenClaw, and agent references now document paid invoke retry safety and cover replay-after-wait.
+
 ## Unreleased — propagation-aware app verification
 
 - **SDK/CLI:** app-manifest HTTP verification now distinguishes fresh Run402 edge propagation misses from permanent failures. `run402 up` and `r.up()` report `propagation_pending` with diagnostics, warnings, `next_action`, and per-check `propagation_wait_ms` while a managed subdomain/custom domain is still converging; `--propagation-budget-s` / `propagationBudgetSeconds` control the wait and `--no-propagation-wait` / `propagationWait: false` return immediately.

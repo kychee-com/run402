@@ -17,7 +17,7 @@ Usage:
 Subcommands:
   deploy <id> <name> --file <file> [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
                                        Deploy a function to a project
-  invoke <id> <name> [--method <M>] [--body <json>] [--raw]
+  invoke <id> <name> [--method <M>] [--body <json>] [--idempotency-key <key>] [--wait] [--timeout-ms <ms>] [--poll-interval-ms <ms>] [--raw]
                                        Invoke a deployed function. Default
                                        wraps the SDK result as JSON on stdout.
                                        --raw prints the response body verbatim
@@ -118,6 +118,16 @@ Arguments:
 Options:
   --method <M>        HTTP method (default POST)
   --body <json>       Request body (ignored for GET/HEAD)
+  --idempotency-key <key>
+                      Stable idempotency key required by paid function
+                      invocations. Reuse it when retrying the same paid
+                      intent; use a new key only for a new paid intent.
+  --wait              When a paid invocation returns a 202 run handle, poll
+                      that run and replay the same idempotency key for the
+                      retained result.
+  --timeout-ms <ms>   Max wait time when --wait is set
+  --poll-interval-ms <ms>
+                      Poll interval when --wait is set
   --raw               Skip JSON wrapping. Prints the response body verbatim:
                       string body → text + trailing newline; JSON body →
                       pretty-printed JSON. Useful when piping a text/plain
@@ -129,9 +139,12 @@ Output (default — without --raw):
   The HTTP status is exposed as http_status (not status) so the payload
   stays clean of the reserved top-level "status" field used in error
   envelopes on stderr.
+  Paid functions may return http_status 202 with run_id/operation_id and
+  next_actions[]. Poll the run id rather than minting a new key.
 
 Examples:
   run402 functions invoke prj_abc123 stripe-webhook --body '{"event":"test"}'
+  run402 functions invoke prj_abc123 paid-translate --body '{"text":"hi"}' --idempotency-key paid:translate:123
   run402 functions invoke prj_abc123 ping --method GET
   run402 functions invoke prj_abc123 csv --raw > export.csv
 `,
@@ -317,18 +330,29 @@ async function deploy(projectId, name, args) {
 }
 
 async function invoke(projectId, name, args) {
-  assertRequiredProjectAndName(projectId, name, "run402 functions invoke <project_id> <name> [--method <M>] [--body <json>] [--raw]");
-  assertKnownFlags(args, ["--method", "--body", "--raw", "--help", "-h"], ["--method", "--body"]);
-  const opts = { method: "POST", body: undefined, raw: false };
+  assertRequiredProjectAndName(projectId, name, "run402 functions invoke <project_id> <name> [--method <M>] [--body <json>] [--idempotency-key <key>] [--wait] [--raw]");
+  assertKnownFlags(
+    args,
+    ["--method", "--body", "--idempotency-key", "--wait", "--timeout-ms", "--poll-interval-ms", "--raw", "--help", "-h"],
+    ["--method", "--body", "--idempotency-key", "--timeout-ms", "--poll-interval-ms"],
+  );
+  const opts = { method: "POST", body: undefined, idempotencyKey: undefined, raw: false, wait: false };
+  const waitOpts = {};
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--method" && args[i + 1]) opts.method = args[++i];
     if (args[i] === "--body" && args[i + 1]) opts.body = args[++i];
+    if (args[i] === "--idempotency-key" && args[i + 1]) opts.idempotencyKey = args[++i];
+    if (args[i] === "--wait") opts.wait = true;
+    if (args[i] === "--timeout-ms") waitOpts.timeoutMs = parseIntegerFlag("--timeout-ms", args[++i], { min: 1 });
+    if (args[i] === "--poll-interval-ms") waitOpts.intervalMs = parseIntegerFlag("--poll-interval-ms", args[++i], { min: 0 });
     if (args[i] === "--raw") opts.raw = true;
   }
   const invokeOpts = { method: opts.method };
   if (opts.body !== undefined && opts.method !== "GET" && opts.method !== "HEAD") {
     invokeOpts.body = opts.body;
   }
+  if (opts.idempotencyKey !== undefined) invokeOpts.idempotencyKey = opts.idempotencyKey;
+  if (opts.wait) invokeOpts.wait = waitOpts;
   try {
     const result = await getSdk().functions.invoke(projectId, name, invokeOpts);
     if (opts.raw) {
