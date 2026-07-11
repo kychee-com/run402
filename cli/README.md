@@ -83,6 +83,15 @@ run402 deploy resolve --project prj_123 --url https://example.com/events?utm=x#h
 run402 subdomains claim my-app                # → my-app.run402.com (auto-reassigns on next deploy)
 ```
 
+For pointer-swap recovery, verify the returned operation before declaring the public rollback complete:
+
+```bash
+run402 deploy promote RELEASE_ID --project PROJECT_ID
+run402 deploy verify --operation OPERATION_ID --wait
+```
+
+Promote success means the origin pointer is active; mutable public URLs may still be converging. The result's `edge.state` reports convergence, and `edge.verify_url` is the direct operation-scoped HTTP verification endpoint.
+
 `deploy-dir` hashes each file client-side and only uploads bytes the gateway doesn't already have. Re-deploying an unchanged tree returns immediately with `bytes_uploaded: 0`. Progress events stream to stderr.
 Release inspection commands print `{ release: ... }` or `{ diff: ... }` (raw payload, no envelope — see the "Output Contract" section in [llms-cli.txt](llms-cli.txt)); use them after deploys to compare release inventory without starting another mutation. `deploy verify` prints the canonical edge-coherence report and exits 2 when the report is valid but not yet coherent. Inventories include `release_generation`, `static_manifest_sha256`, and nullable `static_manifest_metadata`; diffs include `static_assets` counters such as unchanged/changed/added/removed and CAS byte reuse. `deploy diagnose` / `deploy resolve --url` print URL-first diagnostics with `would_serve`, `diagnostic_status`, `match`, warnings, `edge_propagation`, and next steps; host misses are successful diagnostic calls with `would_serve: false`. Stable-host resolve fields can include `authorization_result`, `cas_object`, `response_variant`, `allow`, `route_pattern`, `target_type`, `target_name`, `target_file`, and `edge_propagation` (`settled`, `propagating`, or `sync_pending`).
 

@@ -422,6 +422,15 @@ Worked example: recover from a destructive apply
   run402 deploy promote rel_old_abc123 --project prj_xyz \\
     --allow-warning MIGRATIONS_NOT_REVERSIBLE
 
+Promotion commits the origin pointer before returning. Public mutable URLs
+may still be converging at the edge, so use the returned operation_id to wait
+for coherence before declaring recovery complete:
+
+  run402 deploy verify --operation op_... --wait
+
+The result's edge.state reports convergence and edge.verify_url is the direct,
+operation-scoped HTTP verification endpoint.
+
 Options:
   <release-id>            Required positional. The release to promote to.
                           Format: rel_*
@@ -441,7 +450,13 @@ Output:
     "operation_id": "op_...",
     "previous_release_id": "rel_new_xxx",
     "diff": { "functions": {...}, "migrations": {...}, "site_paths": {...} },
-    "warnings": [...]
+    "warnings": [...],
+    "edge": {
+      "state": "converging" | "coherent" | "unknown" | "not_applicable",
+      "expected_max_lag_seconds": 300,
+      "pointer_updates": {...},
+      "verify_url": "/apply/v1/operations/op_.../edge-coherence"
+    }
   }
 
   Errors map to structured envelopes with codes:

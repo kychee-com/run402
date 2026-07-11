@@ -70,7 +70,7 @@ const MATRIX = {
     shared: [],
     specific: ["lease-perpetual", "archive", "reactivate"],
   },
-  deploy: { shared: [], specific: ["apply", "resume", "list", "events", "diagnose", "resolve", "release"] },
+  deploy: { shared: [], specific: ["apply", "promote", "resume", "list", "events", "verify", "diagnose", "resolve", "release"] },
   ci: { shared: [], specific: ["link", "list", "revoke"] },
   functions: {
     shared: [],
@@ -283,6 +283,18 @@ describe("CLI --help contract", () => {
     assert.match(result.stdout, /--stdin/);
     assert.doesNotMatch(result.stdout, /"routes"\s*:\s*\{\s*"\/api\/\*"/);
     assert.doesNotMatch(result.stdout, /routedHttp\.json\(\{ ok: true, path: event\.path \}\)/);
+  });
+
+  it("deploy promote help closes the promote-to-verify loop", async () => {
+    const result = await runCli(["deploy", "promote", "--help"]);
+    assertHelp(result, "run402 deploy promote --help", {
+      expectHeadingStartsWith: "run402 deploy promote",
+    });
+    assert.match(result.stdout, /origin pointer before returning/);
+    assert.match(result.stdout, /public mutable URLs\s+may still be converging/i);
+    assert.match(result.stdout, /run402 deploy verify --operation op_\.\.\. --wait/);
+    assert.match(result.stdout, /edge\.state/);
+    assert.match(result.stdout, /edge\.verify_url/);
   });
 
   it("up help includes action-runner control flags", async () => {

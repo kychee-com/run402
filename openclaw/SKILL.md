@@ -177,6 +177,15 @@ run402 deploy release get rel_... --project prj_...
 run402 deploy release diff --from empty --to active --project prj_...
 ```
 
+After pointer-swap recovery, compose promote with verification:
+
+```bash
+run402 deploy promote RELEASE_ID --project PROJECT_ID
+run402 deploy verify --operation OPERATION_ID --wait
+```
+
+Take `OPERATION_ID` from the promote result. A successful promote means the origin pointer is active, while mutable public URLs can still be converging. Inspect `edge.state`; `edge.verify_url` is the direct operation-scoped HTTP verification endpoint.
+
 Inventories expose site paths, `static_public_paths` when returned, functions, secret keys only, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata`, and warnings when returned. `site.paths` is the release static asset inventory; `static_public_paths[]` is the browser reachability inventory with `public_path`, `asset_path`, `reachability_authority`, `direct`, cache class, and content type. `static_manifest_metadata: null` means unavailable, not zero. Release diffs use `migrations.applied_between_releases`, route `added` / `removed` / `changed` buckets, and `static_assets` counters for unchanged/changed/added/removed files, CAS byte reuse, eliminated deployment-copy bytes, and immutable/CAS warning counts.
 
 #### Same-origin web routes

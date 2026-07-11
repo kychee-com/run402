@@ -471,7 +471,12 @@ Destructive apply recovery (v1.58+): `run402 deploy promote <release-id>` re-poi
 # rel_old (good)  →  rel_new (bad, destructive)  →  promote back
 run402 deploy promote rel_old_abc123 --project prj_xyz \
   --allow-warning MIGRATIONS_NOT_REVERSIBLE
+
+# Promotion is origin-active when it returns; wait for public edge coherence.
+run402 deploy verify --operation op_... --wait
 ```
+
+Read `operation_id` from the promote result and pass it to `deploy verify`. Promote success means the origin pointer is active; mutable public URLs can still be converging. The additive `edge` block reports `state`, `expected_max_lag_seconds`, and pointer-update status. `edge.verify_url` is the direct operation-scoped HTTP verification endpoint.
 
 Promote warnings/errors: `MIGRATIONS_NOT_REVERSIBLE` requires ack when target predates applied migrations; migrations remain applied against current schema. `FUNCTION_VERSION_MISMATCH` informational when overlapping names have different `code_hash` (Lambda code = current `$LATEST`). Rejects: `PROMOTE_TARGET_NOT_FOUND`, `PROMOTE_PROJECT_MISMATCH`, `PROMOTE_RELEASE_NOT_READY` (needs `ready|active|superseded`), `PROMOTE_NO_OP` (use `cache.invalidateAll`), `PROMOTE_WARNING_REQUIRES_ACK`.
 
