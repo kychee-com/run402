@@ -38,6 +38,7 @@ import { Branches } from "./namespaces/branches.js";
 import { Operator } from "./namespaces/operator.js";
 import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
+import { Events } from "./namespaces/events.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -117,6 +118,11 @@ export class Run402 {
    * project-scoped as `r.project(id).grants`.
    */
   readonly grants: Grants;
+  /**
+   * Cursored project events feed — "what happened since I last looked".
+   * Also available project-scoped as `r.project(id).events`.
+   */
+  readonly events: Events;
   readonly idempotency = {
     fromParts,
   };
@@ -197,6 +203,7 @@ export class Run402 {
     this.operator = new Operator(client);
     this.orgs = new Orgs(client);
     this.grants = new Grants(client);
+    this.events = new Events(client);
   }
 
   /**
@@ -497,6 +504,8 @@ export { Orgs, ScopedOrg, OrgMembers, OrgInvites } from "./namespaces/org.js";
 export type * from "./namespaces/org.types.js";
 export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";
+export { Events } from "./namespaces/events.js";
+export type * from "./namespaces/events.types.js";
 export { Archives } from "./namespaces/archives.js";
 export type * from "./namespaces/archives.types.js";
 export { Snapshots } from "./namespaces/snapshots.js";

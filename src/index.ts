@@ -311,6 +311,7 @@ import { getOperatorStatusSchema, handleGetOperatorStatus } from "./tools/get-op
 import { getNotificationPreferencesSchema, handleGetNotificationPreferences } from "./tools/get-notification-preferences.js";
 import { setNotificationPreferencesSchema, handleSetNotificationPreferences } from "./tools/set-notification-preferences.js";
 import { listNotificationsSchema, handleListNotifications } from "./tools/list-notifications.js";
+import { listProjectEventsSchema, handleListProjectEvents } from "./tools/list-project-events.js";
 import { testNotificationSchema, handleTestNotification } from "./tools/test-notification.js";
 import { rotateWebhookSecretSchema, handleRotateWebhookSecret } from "./tools/rotate-webhook-secret.js";
 import { createCheckoutSchema, handleCreateCheckout } from "./tools/create-checkout.js";
@@ -1291,6 +1292,13 @@ server.tool(
   "List the operator's notification audit log (delivered, failed, and skipped attempts). Paginated; filter by event type or since timestamp.",
   listNotificationsSchema,
   async (args) => handleListNotifications(args),
+);
+
+server.tool(
+  "list_project_events",
+  "Catch up on what happened to a project since you last looked: the durable, cursored feed of deploy activations, mailbox suspensions, transfers, lifecycle cliffs, and verification outcomes, each with platform-suggested next_actions. Reach for this after any deploy (the apply/promote response hands you a positioned cursor) and at the start of a session on an existing project. Store the returned cursor and pass it back next time; an expired cursor returns reset:true + earliest_cursor instead of an error. Read-only; works even on frozen projects.",
+  listProjectEventsSchema,
+  async (args) => handleListProjectEvents(args),
 );
 
 server.tool(

@@ -40,6 +40,7 @@ Commands:
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
   org         Org membership, invites & audit (whoami, list, member, invite, audit)
   grants      Per-project capability grants for agent/CI principals (create, revoke)
+  events      What happened to your project since you last looked (cursored feed)
   jobs        Submit and inspect platform-managed jobs
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
@@ -238,6 +239,11 @@ switch (cmd) {
   }
   case "grants": {
     const { run } = await import("./lib/grants.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "events": {
+    const { run } = await import("./lib/events.mjs");
     await run(sub, rest);
     break;
   }

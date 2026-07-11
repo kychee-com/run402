@@ -92,6 +92,7 @@ function parseCliCommands(): string[] {
   if (existsSync(join(__dirname, "cli/lib/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
+  if (existsSync(join(__dirname, "cli/lib/events.mjs"))) cmds.push("events");
   if (existsSync(join(__dirname, "cli/lib/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "cli/lib/logs.mjs"))) cmds.push("logs");
   return cmds.sort();
@@ -120,6 +121,7 @@ function parseOpenClawCommands(): string[] {
   if (existsSync(join(__dirname, "openclaw/scripts/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
+  if (existsSync(join(__dirname, "openclaw/scripts/events.mjs"))) cmds.push("events");
   if (existsSync(join(__dirname, "openclaw/scripts/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "openclaw/scripts/logs.mjs"))) cmds.push("logs");
   return cmds.sort();
@@ -436,6 +438,12 @@ const SURFACE: Capability[] = [
   { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     mcp: "set_notification_preferences", cli: null,                            openclaw: null },
   { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             mcp: "test_notification",            cli: "notifications:test",            openclaw: "notifications:test" },
   { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/webhook-secret/rotate",          mcp: "rotate_webhook_secret",        cli: "webhook-secret:rotate",         openclaw: "webhook-secret:rotate" },
+
+  // ── Project events feed (project-events-outbox) ─────────────────────────
+  // One CLI command + one MCP tool cover both scopes: the org-wide union
+  // (GET /orgs/v1/:org_id/events) is the same surface addressed with
+  // --org / org_id; the SDK's events.listForOrg is tracked in SDK_ONLY_METHODS.
+  { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   mcp: "list_project_events",          cli: "events",                        openclaw: "events" },
 
   // ── Operator session (human/email principal, RFC 8628 device-auth) ──────
   // The operator is the human (email), distinct from the agent (wallet/SIWX).
@@ -761,6 +769,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Operator health notifications (v1.55)
   get_operator_status: "admin.getOperatorStatus",
   list_notifications: "admin.listNotifications",
+  list_project_events: "events.list",
   get_notification: "admin.getNotification",
   get_notification_preferences: "admin.getNotificationPreferences",
   set_notification_preferences: "admin.setNotificationPreferences",
@@ -1140,6 +1149,10 @@ describe("SDK surface alignment", () => {
       "_applyEngine.waitEdgeCoherent",
       // CI token exchange is intentionally credential-helper-only in v1.
       "ci.exchangeToken",
+      // ─── Project events feed — org-wide union ──────────────────────────
+      // Shares the `events` CLI command (--org) and the list_project_events
+      // MCP tool (org_id param); no dedicated verb/tool of its own.
+      "events.listForOrg",
       // ─── SSR origin cache (v1.52) — flag-variants of `run402 cache invalidate` ─
       // Single-URL form is the canonical CLI; prefix/all/many are SDK-side
       // convenience methods that share the same CLI verb with flags.

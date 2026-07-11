@@ -1007,6 +1007,17 @@ Wallet authenticates; org owns projects. Authorization = org role (`owner > admi
 
 `org member role`/`org member rm` that would drop the org's only active owner fail with `409 LAST_OWNER` — promote another member to `owner` first. Principal ids (`prn_…`) come from `run402 org member list`.
 
+### events — what happened since you last looked
+
+The cursored project events feed: deploy activations, mailbox suspensions, transfers, lifecycle cliffs, verification outcomes — one durable, ordered record, each event carrying platform-suggested `next_actions[]`.
+
+- `run402 events [--project <id>] [--cursor <cursor>] [--limit <n>]` — read a page of the project's feed (JSON envelope `{events, cursor, has_more, reset}` to stdout). `--project` defaults to the active project.
+- `run402 events --org <org_id> [--cursor <cursor>] [--limit <n>]` — the org-wide union across every project the org owns (members only; a project service_key cannot read sibling feeds).
+
+Cursor contract: the response's `cursor` is the high-water mark — store it (a file in your repo, wherever you keep state) and pass it back as `--cursor` next time; one call returns everything you missed. Cursors are opaque (`evc_…`, never parse); any event's `id` is also a valid `--cursor`. Events become visible within seconds of commit and are never lost after that. An expired/malformed cursor returns `reset: true` + `earliest_cursor` (restart point) — never a bare error, never a silent skip. Retention 90 days (365 for security/recovery/billing-critical classes). Read-only and never lifecycle-gated: a frozen project's feed stays readable.
+
+After every deploy, the apply/promote response's `next_actions[]` includes a poll entry for this feed with a cursor positioned just before your own `deploy_activated` event — poll once before signing off to establish your cursor.
+
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
 Built-in helper: `import { auth, db, adminDb, email, ai, assets, getRoutedPaymentContext } from '@run402/functions'`
