@@ -566,6 +566,10 @@ The wallet-org CLAIM flow is CLI/SDK only (browser loopback login + step-up); th
 - `create_project_grant` — issue a per-project capability grant to a wallet (agent/CI principals). Params: `project_id`, `wallet`, `capability` (e.g. `deploy`, `functions:write`), optional `policy` / `expires_at`. Requires owner of the project's org.
 - `revoke_project_grant` — revoke a grant. Params: `project_id`, `grant_id`. Requires owner of the project's org.
 
+### Project events feed
+
+- `list_project_events` — catch up on what happened to a project since you last looked: the durable, cursored feed of deploy activations, mailbox suspensions, transfers, lifecycle cliffs, and verification outcomes, each with platform-suggested `next_actions`. Params: `project_id` (or `org_id` for the org-wide union), optional `cursor` + `limit`. Store the returned `cursor` and pass it back next time; an expired cursor returns `reset: true` + `earliest_cursor` instead of an error. Reach for this after any deploy (the apply/promote response hands you a positioned cursor) and at the start of a session on an existing project. Read-only; works even on frozen projects.
+
 ### Service status (no auth, no setup)
 
 - `service_status` — public availability report (24h/7d/30d uptime per capability, operator, deployment topology, schema `run402-status-v1`). Cache: server-side 30s.

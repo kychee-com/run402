@@ -128,6 +128,7 @@ const MATRIX = {
   service: { shared: [], specific: ["status", "health"] },
   org: { shared: [], specific: ["create", "get", "rename", "whoami", "list", "audit", "member", "invite"] },
   grants: { shared: [], specific: ["create", "revoke"] },
+  events: { shared: [], specific: [] },
 };
 
 // `run402 email webhooks <action>` delegates to lib/webhooks.mjs.

@@ -1042,6 +1042,18 @@ run402 transfer list --outgoing
 
 `run402 tier status` also surfaces `incoming_transfers[]` at the top level (each entry carries `preview_path`) so a single status call shows pending offers without a separate fetch.
 
+## Post-deploy catch-up — the events feed
+
+`run402 events` reads the platform's durable, cursored per-project feed: deploy activations, mailbox suspensions, transfers, lifecycle cliffs, verification outcomes — each with platform-suggested `next_actions`.
+
+```bash
+run402 events                     # active project, from the earliest retained event
+run402 events --cursor evc_1a2b   # everything since last time
+run402 events --org <org_id>      # org-wide union across all the org's projects
+```
+
+Store the response's `cursor` (a file in the repo works) and pass it back as `--cursor` next session — one call returns everything you missed. Cursors are opaque; never parse them. An expired cursor returns `reset: true` + `earliest_cursor` to restart from, never a bare error. Every successful apply/promote response also hands you a poll entry positioned at your own `deploy_activated` event. The feed is read-only and works even on frozen projects.
+
 ## Image generation
 
 ```bash

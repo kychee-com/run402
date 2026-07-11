@@ -1487,6 +1487,19 @@ status(projectId, domain): Promise<DomainStatus> // poll until "active"
 remove(projectId, domain): Promise<void>
 ```
 
+### `r.events`
+
+The cursored project events feed — "what happened to my project since I last looked". Also project-scoped as `r.project(id).events.list(opts)`.
+
+```
+list(projectId, { cursor?, limit? }): Promise<ProjectEventFeedPage>
+listForOrg(orgId, { cursor?, limit? }): Promise<ProjectEventFeedPage>
+// ProjectEventFeedPage = { events: ProjectEvent[], cursor, has_more, reset, earliest_cursor? }
+// ProjectEvent = { id, event_type, class, occurred_at, payload, next_actions[] }
+```
+
+Cursors are opaque (`evc_…`): store the page's `cursor` and pass it back as `{ cursor }` — never parse or compare. An unusable cursor never throws; the page returns `reset: true` + `earliest_cursor` to restart from. Events become visible within seconds of the underlying commit and are never lost after that. `list` accepts the project's own service_key, a wallet/control-plane principal with `project.read`, or a scoped delegate; `listForOrg` is principal-only (active org membership). Never lifecycle-gated — a frozen project's feed stays readable. Retention 90d (365d for mandatory classes).
+
 ### `r.email`
 
 ```

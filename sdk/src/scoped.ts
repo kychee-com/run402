@@ -163,6 +163,10 @@ import type {
   GrantRevokeResult,
 } from "./namespaces/grants.types.js";
 import type {
+  ListEventsOptions,
+  ProjectEventFeedPage,
+} from "./namespaces/events.types.js";
+import type {
   ProjectArchiveCreateOptions,
   ProjectArchiveDownload,
   ProjectArchiveDto,
@@ -361,6 +365,15 @@ class ScopedGrants {
   }
   revoke(grantId: string): Promise<GrantRevokeResult> {
     return this.parent.grants.revoke(this.projectId, grantId);
+  }
+}
+
+class ScopedEvents {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  /** Read a page of this project's events feed (cursor is opaque — store and echo). */
+  list(opts?: ListEventsOptions): Promise<ProjectEventFeedPage> {
+    return this.parent.events.list(this.projectId, opts);
   }
 }
 
@@ -1034,6 +1047,8 @@ export class ScopedRun402 {
   readonly subdomains: ScopedSubdomains;
   /** Per-project capability grants (agent/CI principals), project-id pre-bound. */
   readonly grants: ScopedGrants;
+  /** Cursored project events feed, project-id pre-bound. */
+  readonly events: ScopedEvents;
   readonly archives: ScopedArchives;
   readonly snapshots: ScopedSnapshots;
   readonly branches: ScopedBranches;
@@ -1055,6 +1070,7 @@ export class ScopedRun402 {
     this.senderDomain = new ScopedSenderDomain(parent, projectId);
     this.subdomains = new ScopedSubdomains(parent, projectId);
     this.grants = new ScopedGrants(parent, projectId);
+    this.events = new ScopedEvents(parent, projectId);
     this.archives = new ScopedArchives(parent, projectId);
     this.snapshots = new ScopedSnapshots(parent, projectId);
     this.branches = new ScopedBranches(parent, projectId);

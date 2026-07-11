@@ -768,6 +768,18 @@ A wallet **authenticates**; an **org** owns projects. What a principal may do is
 
 Provision before authoring HTML — the `anon_key` is permanent and you embed it in your frontend.
 
+## Post-deploy catch-up — the events feed
+
+After a deploy, don't guess whether the project is healthy — the platform keeps a durable, cursored per-project feed of everything that happens (deploy activations, mailbox suspensions, transfers, lifecycle cliffs, verification outcomes), each event carrying platform-suggested `next_actions`.
+
+The loop:
+
+1. Every successful apply/promote response includes a `next_actions` poll entry pointing at the feed with a cursor positioned just before your own `deploy_activated` event. Poll it once before signing off (`list_project_events` with that cursor) — you'll see your activation land and get a fresh `cursor` back.
+2. **Store the cursor** wherever you keep project state (a file in the repo, a memory note).
+3. Next session, call `list_project_events` with the stored cursor: one call returns everything that happened while you were away, oldest first, with drill-down `next_actions` on each event. Store the new `cursor`.
+
+Cursors are opaque (`evc_…`) — never parse them. If your cursor is too old (retention: 90 days; a year for security/recovery/billing classes), the response is still 200 with `reset: true` and `earliest_cursor` to restart from — nothing is silently skipped. The feed is read-only and works even on a frozen project.
+
 ## Payment Handling
 
 Two payment rails work with the same wallet key:
