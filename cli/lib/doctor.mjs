@@ -251,6 +251,18 @@ export async function run(sub, args = []) {
     if (status.operator_contact.passkey_status !== "verified") {
       gaps.push("operator passkey not bound — run 'run402 agent passkey enroll' after email verification");
     }
+    // recovery-event-reachability: org-level reachability of mandatory
+    // (recovery/security) notifications. Distinct from the per-wallet contact
+    // check above — an org can be reachable via a member's verified email
+    // even when this wallet has no contact, and vice versa. Omitted by older
+    // gateways.
+    const reach = status.operator_reachability;
+    if (reach && reach.reachable === false) {
+      const skipped = reach.skipped_last_90d > 0
+        ? ` (${reach.skipped_last_90d} notification(s) already skipped in the last 90 days)`
+        : "";
+      gaps.push(`no verified notification recipient — mandatory recovery/security notifications currently reach nobody${skipped}; run 'run402 agent contact --email ...' then reply to the challenge`);
+    }
     if (Array.isArray(status.skipped_notifications) && status.skipped_notifications.length > 0) {
       gaps.push(`${status.skipped_notifications.length} notification(s) skipped due to missing verified recipient`);
     }

@@ -15,7 +15,7 @@ import {
 } from "../validation.js";
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
-const WEBHOOK_EVENTS = ["delivery", "bounced", "complained", "reply_received"] as const;
+const WEBHOOK_EVENTS = ["delivery", "bounced", "complained", "reply_received", "mailbox_suspended"] as const;
 const MESSAGE_DIRECTIONS = ["inbound", "outbound"] as const;
 const DELIVERY_STATUSES = ["pending", "in_flight", "delivered", "failed_permanent"] as const;
 const MAILBOX_FOOTER_POLICIES = ["run402_transparency", "none"] as const;

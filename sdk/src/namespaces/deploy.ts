@@ -111,7 +111,7 @@ const SECRET_KEY_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const APPLY_SAFE_RETRY_CODES = new Set<Run402DeployErrorCode>([
   "BASE_RELEASE_CONFLICT",
 ]);
-const EMAIL_TRIGGER_EVENTS = new Set(["reply_received", "delivery", "bounced", "complained"]);
+const EMAIL_TRIGGER_EVENTS = new Set(["reply_received", "delivery", "bounced", "complained", "mailbox_suspended"]);
 const STATIC_ACTIVATION_FAILURE_CODES = new Set<string>([
   "BAD_FIELD",
   "INVALID_SPEC",
