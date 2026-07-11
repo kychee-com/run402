@@ -248,6 +248,24 @@ export interface OperatorStatusResult {
     stale_function_count: number;
     stale_functions: Array<{ project_id: string; name: string }>;
   };
+  /**
+   * Whether a mandatory-class (recovery/security/billing/verification)
+   * notification can reach a verified human for the caller's org(s) —
+   * computed from the union of the verified `agent_contacts` chain and
+   * org-membership verified emails (recovery-event-reachability). When
+   * `reachable` is false the response also carries a top-level
+   * `next_actions[]` entry pointing at `POST /agent/v1/contact`. Omitted by
+   * older gateways.
+   */
+  operator_reachability?: {
+    reachable: boolean;
+    verified_recipient_count: number;
+    sources: Array<"agent_contacts" | "org_membership">;
+    /** Notifications skipped with no resolvable recipient, trailing 90 days. */
+    skipped_last_90d: number;
+  };
+  /** Present when `operator_reachability.reachable` is false — the remedy. */
+  next_actions?: Array<{ type: string; method?: string; path?: string; why?: string }>;
 }
 
 export class Admin {

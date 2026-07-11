@@ -384,7 +384,15 @@ export interface FunctionScheduleTriggerSpec {
   run: FunctionTriggerRunSpec;
 }
 
-export type EmailTriggerEvent = "reply_received" | "delivery" | "bounced" | "complained";
+/**
+ * `mailbox_suspended` (recovery-event-reachability, gateway 2026-07): fires
+ * when the mailbox is abuse-suspended, so the project's own agent observes
+ * the suspension as a durable function run — no public callback URL, no
+ * polling. The run payload carries `{event: {mailbox_id, suspended_reason,
+ * suspended_at, evidence, recovery_actions}}` and executes independently of
+ * the suspended mailbox's send capability.
+ */
+export type EmailTriggerEvent = "reply_received" | "delivery" | "bounced" | "complained" | "mailbox_suspended";
 
 export interface FunctionEmailTriggerSpec {
   id: string;

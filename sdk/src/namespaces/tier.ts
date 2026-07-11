@@ -126,6 +126,19 @@ export interface TierStatusResult {
     functions?: TierFunctionLimits;
     [key: string]: unknown;
   };
+  /**
+   * Org-level advisories (recovery-event-reachability). Present only when at
+   * least one applies; absent on older gateways. `operator_unreachable`
+   * means the owning organization resolves to ZERO verified notification
+   * recipients — mandatory recovery/security events currently reach nobody —
+   * with the registration remedy carried in `next_actions[]`
+   * (`POST /agent/v1/contact`).
+   */
+  advisories?: Array<{
+    type: "operator_unreachable" | (string & {});
+    summary: string;
+    next_actions: Array<{ type: string; method?: string; path?: string; why?: string }>;
+  }>;
 }
 
 export interface TierSetResult {

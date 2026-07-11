@@ -6,7 +6,7 @@
       "type": "skill-md",
       "description": "Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.",
       "url": "https://docs.run402.com/SKILL.md",
-      "digest": "sha256:27bb547fa158aef56b69bbbbf2f15c348d05d62eee1f58d7e34850c1d20fcfe1"
+      "digest": "sha256:b3fe7408a7a29b262d55f89566f9c807a416721da03c8813afb8f8c1587c9f33"
     }
   ]
 }
