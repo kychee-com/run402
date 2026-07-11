@@ -2,6 +2,12 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — function runtime compatibility metadata
+
+- **SDK/CLI:** function-list records now type and preserve the deployed `runtime_version`, gateway `runtime_current_version`, guaranteed `runtime_minimum_version`, and `runtime_stale` fields.
+- **MCP:** `list_functions` renders those fields as a compatibility table, includes legacy/unknown deployed versions, and points stale rows at `functions_rebuild`.
+- **Docs/tests:** public references explain that the `3.7.0` minimum includes `getRoutedPaymentContext()` for priced routes and cover SDK, CLI, and MCP pass-through/rendering.
+
 ## Unreleased — paid function idempotency
 
 - **SDK:** `functions.invoke()` accepts `idempotencyKey` for paid direct invocations and preserves the real HTTP status, including 202 run handles. Passing `wait` polls the returned run and replays the same key for the retained result.

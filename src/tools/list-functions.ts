@@ -70,25 +70,52 @@ export async function handleListFunctions(args: {
       }
     }
 
-    // "Functions runtime version" labels the bundled @run402/functions
-    // version — never bare "runtime", which collides with the existing
-    // runtime: "node22" field. Legacy functions (deployed before the
-    // bundling-at-deploy regime) have null for both fields and are omitted
-    // from this section.
-    const withRuntime = body.functions.filter((fn) => fn.runtime_version != null);
+    // "Functions runtime" labels the injected @run402/functions package —
+    // never bare "runtime", which collides with the existing Node runtime.
+    // Include legacy rows when the gateway supplies current/minimum/stale
+    // metadata: those are precisely the functions agents need to identify.
+    const withRuntime = body.functions.filter((fn) =>
+      fn.runtime_version != null ||
+      fn.runtime_current_version != null ||
+      fn.runtime_minimum_version != null ||
+      fn.runtime_stale != null
+    );
     if (withRuntime.length > 0) {
       lines.push(``);
-      lines.push(`### Functions runtime version & resolved deps`);
+      lines.push(`### Functions runtime compatibility`);
+      lines.push(``);
+      lines.push(`| Function | Deployed | Current | Minimum | Status | Resolved deps |`);
+      lines.push(`|----------|----------|---------|---------|--------|---------------|`);
       for (const fn of withRuntime) {
         const depsCount = Object.keys(fn.deps_resolved ?? {}).length;
-        const depsBit = depsCount > 0
-          ? `, ${depsCount} resolved dep${depsCount === 1 ? "" : "s"}`
-          : "";
-        lines.push(`- **${fn.name}** — \`@run402/functions@${fn.runtime_version}\`${depsBit}`);
-        if (fn.deps_resolved && depsCount > 0) {
-          for (const [name, version] of Object.entries(fn.deps_resolved)) {
-            lines.push(`  - \`${name}@${version}\``);
-          }
+        const deployed = fn.runtime_version == null ? "legacy / unknown" : `\`${fn.runtime_version}\``;
+        const current = fn.runtime_current_version == null ? "—" : `\`${fn.runtime_current_version}\``;
+        const minimum = fn.runtime_minimum_version == null ? "—" : `\`${fn.runtime_minimum_version}\``;
+        const status = fn.runtime_stale === true
+          ? "stale"
+          : fn.runtime_stale === false
+            ? "current"
+            : "unknown";
+        lines.push(
+          `| **${fn.name}** | ${deployed} | ${current} | ${minimum} | ${status} | ${depsCount} |`,
+        );
+      }
+      const stale = withRuntime.filter((fn) => fn.runtime_stale === true);
+      if (stale.length > 0) {
+        lines.push(``);
+        lines.push(
+          `Stale: ${stale.map((fn) => `**${fn.name}**`).join(", ")}. Use \`functions_rebuild\` to refresh the injected runtime; an unchanged-source redeploy does not refresh it.`,
+        );
+      }
+      const withDeps = withRuntime.filter((fn) => Object.keys(fn.deps_resolved ?? {}).length > 0);
+      if (withDeps.length > 0) {
+        lines.push(``);
+        lines.push(`#### Resolved direct dependencies`);
+      }
+      for (const fn of withDeps) {
+        lines.push(`- **${fn.name}**`);
+        for (const [name, version] of Object.entries(fn.deps_resolved ?? {})) {
+          lines.push(`  - \`${name}@${version}\``);
         }
       }
     }

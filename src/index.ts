@@ -601,7 +601,7 @@ server.tool(
 
 server.tool(
   "list_functions",
-  "List all deployed functions for a project. Shows names, URLs, runtime, timeout, memory, and (for functions deployed under bundling-at-deploy) the Functions runtime version (`@run402/functions` version) and resolved direct deps. Functions deployed before that change have `runtime_version` and `deps_resolved` set to null.",
+  "List all deployed functions for a project. Shows names, URLs, Node runtime, timeout, memory, resolved direct deps, and injected `@run402/functions` compatibility metadata: deployed `runtime_version`, gateway `runtime_current_version`, guaranteed `runtime_minimum_version`, and `runtime_stale`. Rebuild stale functions with `functions_rebuild`; an unchanged-source redeploy does not refresh the injected runtime.",
   listFunctionsSchema,
   async (args) => handleListFunctions(args),
 );
