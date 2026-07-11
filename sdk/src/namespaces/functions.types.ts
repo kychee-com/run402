@@ -251,6 +251,18 @@ export interface FunctionSummary {
    */
   runtime_version?: string | null;
   /**
+   * The `@run402/functions` version the gateway injects into new function
+   * deployments. `null` when the gateway cannot resolve its installed
+   * package version; omitted by older gateways.
+   */
+  runtime_current_version?: string | null;
+  /**
+   * Minimum injected `@run402/functions` version guaranteed by the gateway.
+   * Use this to determine whether a helper surface is platform-guaranteed,
+   * independently of the version recorded on this deployed function.
+   */
+  runtime_minimum_version?: string;
+  /**
    * Resolved direct user dependency versions from `--deps`. Map of dep
    * name → actually-installed concrete version. `{}` for empty-deps
    * deploys under the new regime; `null` for legacy functions.

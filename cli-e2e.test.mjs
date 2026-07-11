@@ -370,7 +370,17 @@ async function mockFetch(input, init) {
     return Promise.resolve(json({ name: "hello", url: `${API}/functions/v1/hello`, runtime: "node22", status: "deployed" }, 201));
   }
   if (path.match(/\/functions$/) && method === "GET") {
-    return Promise.resolve(json([{ name: "hello", url: `${API}/functions/v1/hello`, runtime: "node22" }]));
+    return Promise.resolve(json({
+      functions: [{
+        name: "hello",
+        url: `${API}/functions/v1/hello`,
+        runtime: "node22",
+        runtime_version: "3.6.0",
+        runtime_current_version: "3.8.0",
+        runtime_minimum_version: "3.7.0",
+        runtime_stale: true,
+      }],
+    }));
   }
   if (path.match(/\/functions\/[^/]+$/) && method === "DELETE") {
     return Promise.resolve(json({ status: "ok" }));
@@ -3282,10 +3292,16 @@ describe("CLI e2e happy path", () => {
 
   it("functions list", async () => {
     const { run } = await import("./cli/lib/functions.mjs");
+    await seedTestProject();
     captureStart();
     await run("list", ["prj_test123"]);
     captureStop();
-    assert.ok(captured().includes("hello"), "should list functions");
+    const output = JSON.parse(captured());
+    assert.equal(output.functions[0].name, "hello");
+    assert.equal(output.functions[0].runtime_version, "3.6.0");
+    assert.equal(output.functions[0].runtime_current_version, "3.8.0");
+    assert.equal(output.functions[0].runtime_minimum_version, "3.7.0");
+    assert.equal(output.functions[0].runtime_stale, true);
   });
 
   it("functions invoke", async () => {

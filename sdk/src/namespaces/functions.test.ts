@@ -617,11 +617,27 @@ describe("functions.runs", () => {
 
 describe("functions.list", () => {
   it("GETs /projects/v1/admin/:id/functions", async () => {
-    const { fetch, calls } = mockFetch(() => json({ functions: [] }));
+    const functionSummary = {
+      name: "hello",
+      url: "https://api.example.test/functions/v1/hello",
+      runtime: "node22",
+      timeout: 15,
+      memory: 128,
+      created_at: "2026-07-11T00:00:00Z",
+      updated_at: "2026-07-11T00:00:00Z",
+      runtime_version: "3.6.0",
+      runtime_current_version: "3.8.0",
+      runtime_minimum_version: "3.7.0",
+      runtime_stale: true,
+    };
+    const { fetch, calls } = mockFetch(() => json({ functions: [functionSummary] }));
     const sdk = makeSdk(fetch);
     const result = await sdk.functions.list("prj_known");
     assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/admin/prj_known/functions");
-    assert.deepEqual(result.functions, []);
+    assert.deepEqual(result.functions, [functionSummary]);
+    assert.equal(result.functions[0]!.runtime_current_version, "3.8.0");
+    assert.equal(result.functions[0]!.runtime_minimum_version, "3.7.0");
+    assert.equal(result.functions[0]!.runtime_stale, true);
   });
 });
 

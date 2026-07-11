@@ -1144,8 +1144,11 @@ For durable runs, pass the run id or attempt id as the same filter: `--request-i
 - Limits: max 30 entries, max 200 chars per spec.
 - Native binary modules (sharp, canvas, native bcrypt, etc.) are rejected.
 
-`run402 functions deploy` routes through the unified apply engine, so its **result** sets `runtime_version` and `deps_resolved` to `null` (apply returns release-level data, not per-function build metadata). Read the resolved values from `run402 functions list` (and `update`), whose records carry both fields populated under bundling-at-deploy:
+`run402 functions deploy` routes through the unified apply engine, so its **result** sets `runtime_version` and `deps_resolved` to `null` (apply returns release-level data, not per-function build metadata). Read the resolved values from `run402 functions list` (and `update`). Function-list JSON carries the recorded, current, and guaranteed-minimum injected-runtime versions so agents can decide whether a deployed function has the helper surface they need:
 - `runtime_version` — the bundled `@run402/functions` version (e.g. `"1.48.0"`). Surface this as "Functions runtime version" — never bare "runtime", which already names the Node runtime (e.g. `node22`). `null` for legacy functions.
+- `runtime_current_version` — the version the gateway injects into new deployments; nullable only when the gateway cannot resolve its installed package version.
+- `runtime_minimum_version` — the minimum injected helper version guaranteed by the platform. The current `3.7.0` floor includes `getRoutedPaymentContext()` for priced routes.
+- `runtime_stale` — whether the deployed bundle predates the current gateway wrapper/runtime. Use `run402 functions rebuild <id> <name>` (or `--all`) to refresh it; a plain unchanged-source redeploy does not.
 - `deps_resolved` — map of each `--deps` name to the -installed concrete version (e.g. `{"date-fns": "3.7.0"}` for a `^3.6.0` spec). Direct deps only; this is not a lockfile. `{}` for an empty `--deps`; `null` for legacy functions.
 
 The deploy result still includes an optional top-level `warnings: string[]` (sibling to the function record, not inside it) for non-fatal deploy notes e.g. bundle-size advisories. Omitted or `[]` when there are no warnings.
