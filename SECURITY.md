@@ -30,7 +30,7 @@ This policy covers:
 - The OpenClaw skill (`openclaw/`)
 - Local credential storage (`~/.config/run402/`)
 
-The run402 API (`api.run402.com`) is operated by Kychee LLC. Report API-side vulnerabilities to the same email address.
+The run402 API (`api.run402.com`) is operated by Kychee, Inc.. Report API-side vulnerabilities to the same email address.
 
 ## Security Design
 

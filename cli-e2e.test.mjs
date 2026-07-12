@@ -808,7 +808,7 @@ async function mockFetch(input, init) {
       schema_version: "run402-status-v1",
       service: "Run402",
       current_status: "operational",
-      operator: { legal_name: "Kychee LLC" },
+      operator: { legal_name: "Kychee, Inc." },
       availability: {
         last_24h: { uptime_pct: 100 },
         last_7d: { uptime_pct: 99.99 },
