@@ -1500,6 +1500,34 @@ listForOrg(orgId, { cursor?, limit? }): Promise<ProjectEventFeedPage>
 
 Cursors are opaque (`evc_…`): store the page's `cursor` and pass it back as `{ cursor }` — never parse or compare. An unusable cursor never throws; the page returns `reset: true` + `earliest_cursor` to restart from. Events become visible within seconds of the underlying commit and are never lost after that. `list` accepts the project's own service_key, a wallet/control-plane principal with `project.read`, or a scoped delegate; `listForOrg` is principal-only (active org membership). Never lifecycle-gated — a frozen project's feed stays readable. Retention 90d (365d for mandatory classes).
 
+### `r.errors`
+
+Grouped error fingerprints + a release-baselined promote-vs-revert verdict — "did my new release make things worse?". Also project-scoped as `r.project(id).errors.{list,get,watch}(…)`.
+
+```
+list(projectId, ListErrorsOptions): Promise<ErrorsPage>
+get(projectId, fingerprintId): Promise<ErrorFingerprintDetail>
+watch(projectId, WatchErrorsOptions): Promise<WatchErrorsResult>
+
+// ListErrorsOptions = { since?, until?, function?, kind?, fingerprint?, newIn?, limit?, cursor? }
+//   newIn (a release id or "active") → wire param new_in; drives verdict.new_fingerprints + baseline.
+// ErrorsPage = { verdict, errors: ErrorFingerprint[], has_more, next_cursor? }
+//   verdict = { window{since,until}, compared_release_id, baseline_release_id,
+//               new_fingerprints, recurring_fingerprints, invocations_in_window,
+//               coverage{full_fidelity_functions, coarse_functions}, row_cap{limit, at_cap} }
+//   ErrorFingerprint = { fingerprint_id, function, kind, fingerprint_quality, error_name,
+//               message_template, stable_frames[], count, first_seen, last_seen,
+//               first_seen_release_id, last_seen_release_id, samples{first, recent[]}, next_actions[] }
+// WatchErrorsOptions = { newIn (required), durationMs?=600000, intervalMs?=15000, signal?, onPoll?, failFast?=true }
+// WatchErrorsResult = { clean, verdict, new_errors: ErrorFingerprint[], polls, elapsed_ms, aborted? }
+```
+
+**The verdict math is the GATEWAY'S — the SDK never recomputes it.** No client-side fingerprinting, re-baselining, or re-counting of `new_fingerprints`; `list` / `get` pass the envelope through untouched and `watch` reads `verdict.new_fingerprints` as the truth (`clean === (verdict.new_fingerprints === 0)`, the gateway's number). The **baseline** is the previously ACTIVE release by activation history (not lineage) — rollback-safe: after A → B → rollback to A → C, C's baseline is A. Cursors (`next_cursor`) are opaque keyset tokens — store and echo as `{ cursor }`, never parse.
+
+`watch` is the promote-gate poll loop: run it right after an apply/promote activates a release. It polls immediately, then every `intervalMs`, plus one final poll when `durationMs` elapses; with `failFast` (the default) it stops the moment a poll reports a new identity. **An outage can never masquerade as a clean verdict:** a 4xx other than 408/429 rethrows immediately (auth/validation won't heal), while network errors, 5xx, 408, and 429 are tolerated — but three CONSECUTIVE failed polls rethrow the last error (a success resets the counter). `signal` aborts cleanly: with ≥1 successful poll it returns the result-so-far with `aborted: true`, otherwise it throws.
+
+Auth: the addressed project's OWN key (apikey-authed read). A key for a different project gets `403`, never a `404` that would confirm existence. Read-only; never lifecycle-gated.
+
 ### `r.email`
 
 ```

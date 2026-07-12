@@ -312,6 +312,7 @@ import { getNotificationPreferencesSchema, handleGetNotificationPreferences } fr
 import { setNotificationPreferencesSchema, handleSetNotificationPreferences } from "./tools/set-notification-preferences.js";
 import { listNotificationsSchema, handleListNotifications } from "./tools/list-notifications.js";
 import { listProjectEventsSchema, handleListProjectEvents } from "./tools/list-project-events.js";
+import { errorsListSchema, handleErrorsList } from "./tools/errors-list.js";
 import { testNotificationSchema, handleTestNotification } from "./tools/test-notification.js";
 import { rotateWebhookSecretSchema, handleRotateWebhookSecret } from "./tools/rotate-webhook-secret.js";
 import { createCheckoutSchema, handleCreateCheckout } from "./tools/create-checkout.js";
@@ -1299,6 +1300,13 @@ server.tool(
   "Catch up on what happened to a project since you last looked: the durable, cursored feed of deploy activations, mailbox suspensions, transfers, lifecycle cliffs, and verification outcomes, each with platform-suggested next_actions. Reach for this after any deploy (the apply/promote response hands you a positioned cursor) and at the start of a session on an existing project. Store the returned cursor and pass it back next time; an expired cursor returns reset:true + earliest_cursor instead of an error. Read-only; works even on frozen projects.",
   listProjectEventsSchema,
   async (args) => handleListProjectEvents(args),
+);
+
+server.tool(
+  "errors_list",
+  "Grouped, release-baselined error memory for a project, verdict-first: every page leads with a computed promote-vs-revert verdict (the gateway's numbers — never recomputed here), then the collapsed error identities. The post-promote watch: right after an apply/promote activates a release, call errors_list with new_in set to the just-activated release id (the promote response's next_actions carries a ready-made watch_errors command for the CLI equivalent). verdict.new_fingerprints > 0 means the release introduced NEW error identities — inspect errors[] (each row has samples with request ids + a runnable logs command) and consider reverting; new_fingerprints === 0 with healthy verdict.invocations_in_window means clean under real traffic (0 errors over 0 invocations is absence of signal, not proven health). Filter by since/until/function/kind/fingerprint; pass fingerprint_id to fetch one fingerprint's full detail (all samples + also_seen_in_functions). Quality tier coarse = the function predates the error side-channel; redeploy to upgrade fidelity. Read-only, own-project service-key auth; cursors are opaque.",
+  errorsListSchema,
+  async (args) => handleErrorsList(args),
 );
 
 server.tool(

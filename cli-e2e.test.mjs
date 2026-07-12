@@ -6303,3 +6303,363 @@ describe("CLI ai active-project default (GH-187)", () => {
       `stdout should include translation usage block, got: ${capturedStdout()}`);
   });
 });
+
+// ── errors — release-error-rollup verdict + promote gate ─────────────────────
+// kychee-com/run402#493 parity slice (CLI leg): prove the CLI↔wire link at
+// runtime. `--json` prints the SDK page, which is the gateway envelope passed
+// through untouched — so a `--json` list/detail must deep-equal the exact wire
+// envelope the mock returned (the CLI↔wire parity assertion). Plus the promote
+// gate's three exit codes (0 clean / 1 new fingerprints / 2 verdict-unavailable)
+// against a mocked wire, and the 1:1 filter→query-param mapping (newIn → new_in).
+// --watch is deliberately NOT exercised here (timers) — the SDK watch loop is
+// unit-tested and the CLI watch driver reuses these same gate helpers.
+
+describe("CLI errors verdict + promote gate", () => {
+  // A canned wire envelope CONSTANT. `--json` reprints this verbatim, so the
+  // parity tests deep-equal parsed stdout against it.
+  const ERRORS_PAGE_CLEAN = {
+    verdict: {
+      window: { since: "2026-07-11T00:00:00.000Z", until: "2026-07-12T00:00:00.000Z" },
+      compared_release_id: "rel_new1",
+      baseline_release_id: "rel_old1",
+      new_fingerprints: 0,
+      recurring_fingerprints: 2,
+      invocations_in_window: 1204,
+      coverage: { full_fidelity_functions: 3, coarse_functions: 1 },
+      row_cap: { limit: 5000, at_cap: false },
+    },
+    errors: [
+      {
+        fingerprint_id: "fp_recur01",
+        function: "checkout",
+        kind: "handled_5xx",
+        fingerprint_quality: "frame_names",
+        error_name: "TypeError",
+        message_template: 'Cannot read properties of undefined (reading "id")',
+        stable_frames: ["user_default", "chargeCard"],
+        count: 34,
+        first_seen: "2026-07-11T08:00:00.000Z",
+        last_seen: "2026-07-11T09:30:00.000Z",
+        first_seen_release_id: "rel_old1",
+        last_seen_release_id: "rel_new1",
+        samples: {
+          first: { id: "req_first01", at: "2026-07-11T08:00:00.000Z", release_id: "rel_old1" },
+          recent: [{ id: "req_recent01", at: "2026-07-11T09:30:00.000Z", release_id: "rel_new1" }],
+        },
+        next_actions: [
+          { type: "fetch_logs", command: "run402 logs checkout --request-id req_recent01", why: "Retrieve the logs for this fingerprint." },
+        ],
+      },
+    ],
+    has_more: false,
+  };
+
+  // A regression page — two NEW identities first seen under rel_new1, each with
+  // a sample request id + a runnable `run402 logs` drill-down in next_actions.
+  const ERRORS_PAGE_REGRESSION = {
+    verdict: {
+      window: { since: "2026-07-11T00:00:00.000Z", until: "2026-07-12T00:00:00.000Z" },
+      compared_release_id: "rel_new1",
+      baseline_release_id: "rel_old1",
+      new_fingerprints: 2,
+      recurring_fingerprints: 1,
+      invocations_in_window: 2048,
+      coverage: { full_fidelity_functions: 4, coarse_functions: 0 },
+      row_cap: { limit: 5000, at_cap: false },
+    },
+    errors: [
+      {
+        fingerprint_id: "fp_reg1",
+        function: "checkout",
+        kind: "uncaught",
+        fingerprint_quality: "frame_names",
+        error_name: "TypeError",
+        message_template: 'Cannot read properties of null (reading "total")',
+        stable_frames: ["user_default", "computeTotal"],
+        count: 7,
+        first_seen: "2026-07-11T10:00:00.000Z",
+        last_seen: "2026-07-11T10:20:00.000Z",
+        first_seen_release_id: "rel_new1",
+        last_seen_release_id: "rel_new1",
+        samples: {
+          first: { id: "req_reg1a", at: "2026-07-11T10:00:00.000Z", release_id: "rel_new1" },
+          recent: [{ id: "req_reg1a", at: "2026-07-11T10:20:00.000Z", release_id: "rel_new1" }],
+        },
+        next_actions: [
+          { type: "fetch_logs", command: "run402 logs checkout --request-id req_reg1a", why: "Retrieve the logs." },
+        ],
+      },
+      {
+        fingerprint_id: "fp_reg2",
+        function: "webhook",
+        kind: "invoke_failed",
+        fingerprint_quality: "message_only",
+        error_name: "CustomError",
+        message_template: "downstream timeout",
+        stable_frames: [],
+        count: 3,
+        first_seen: "2026-07-11T10:05:00.000Z",
+        last_seen: "2026-07-11T10:18:00.000Z",
+        first_seen_release_id: "rel_new1",
+        last_seen_release_id: "rel_new1",
+        samples: {
+          first: { id: "req_reg2a", at: "2026-07-11T10:05:00.000Z", release_id: "rel_new1" },
+          recent: [{ id: "req_reg2a", at: "2026-07-11T10:18:00.000Z", release_id: "rel_new1" }],
+        },
+        next_actions: [
+          { type: "fetch_logs", command: "run402 logs webhook --request-id req_reg2a", why: "Retrieve the logs." },
+        ],
+      },
+    ],
+    has_more: false,
+  };
+
+  // A canned detail row (fingerprint_id addressed) with also_seen_in_functions.
+  const ERRORS_DETAIL = {
+    fingerprint_id: "fp_paritytest01",
+    function: "checkout",
+    kind: "uncaught",
+    fingerprint_quality: "frame_names",
+    error_name: "TypeError",
+    message_template: 'Cannot read properties of undefined (reading "id")',
+    stable_frames: ["user_default", "chargeCard"],
+    count: 12,
+    first_seen: "2026-07-11T09:00:00.000Z",
+    last_seen: "2026-07-11T09:30:00.000Z",
+    first_seen_release_id: "rel_new1",
+    last_seen_release_id: "rel_new1",
+    samples: {
+      first: { id: "req_aaa", at: "2026-07-11T09:00:00.000Z", release_id: "rel_new1" },
+      recent: [
+        { id: "req_bbb", at: "2026-07-11T09:30:00.000Z", release_id: "rel_new1" },
+        { id: "req_ccc", at: "2026-07-11T09:15:00.000Z", release_id: "rel_new1" },
+      ],
+    },
+    next_actions: [
+      { type: "fetch_logs", command: "run402 logs checkout --request-id req_bbb", why: "Retrieve the logs." },
+    ],
+    also_seen_in_functions: ["reports", "webhook"],
+  };
+
+  async function seedActiveProject() {
+    const { saveProject, setActiveProjectId } = await import("./cli/lib/config.mjs");
+    saveProject(TEST_PROJECT.project_id, {
+      anon_key: TEST_PROJECT.anon_key,
+      service_key: TEST_PROJECT.service_key,
+    });
+    setActiveProjectId(TEST_PROJECT.project_id);
+  }
+
+  // A spy fetch that answers the errors list + detail routes with a canned
+  // scenario (CLEAN / REGRESSION / a 500 outage) and records every call so the
+  // query-param mapping test can inspect the wire URL. Everything else 404s.
+  function buildErrorsSpyFetch({ calls, listResponse, listStatus = 200 }) {
+    const apiOrigin = new URL(API).origin;
+    const errorsPath = `/projects/v1/${TEST_PROJECT.project_id}/errors`;
+    return async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      let path = url;
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === apiOrigin) path = parsed.pathname + parsed.search;
+      } catch {
+        // non-URL input — leave as raw
+      }
+      calls.push({ method, path, url });
+      const pathNoQuery = path.split("?")[0];
+      if (method === "GET" && pathNoQuery === `${errorsPath}/fp_paritytest01`) {
+        return Promise.resolve(json(ERRORS_DETAIL));
+      }
+      if (method === "GET" && pathNoQuery === errorsPath) {
+        return Promise.resolve(json(listResponse, listStatus));
+      }
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    };
+  }
+
+  // Reconstruct the flat `run402 errors <argv>` dispatch: cli.mjs calls
+  // run(sub, rest) where the full post-"errors" argv is [sub, ...rest].
+  async function invokeErrors(argv) {
+    const { run } = await import("./cli/lib/errors.mjs");
+    return run(argv[0], argv.slice(1));
+  }
+
+  it("--json list emits the wire envelope VERBATIM (CLI↔wire parity)", async () => {
+    await seedActiveProject();
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildErrorsSpyFetch({ calls, listResponse: ERRORS_PAGE_CLEAN });
+    let threw = null;
+    captureStart();
+    try {
+      await invokeErrors(["--project", TEST_PROJECT.project_id, "--json"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `--json list must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    // CLI↔wire parity: `--json` prints JSON.stringify(page) of the SDK page, and
+    // the SDK passes the gateway envelope through untouched — so parsed stdout
+    // deep-equals the exact wire envelope the mock returned, byte-for-byte.
+    const parsed = JSON.parse(capturedStdout());
+    assert.deepEqual(parsed, ERRORS_PAGE_CLEAN);
+  });
+
+  it("human render leads with the verdict before any fingerprint line", async () => {
+    await seedActiveProject();
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildErrorsSpyFetch({ calls, listResponse: ERRORS_PAGE_CLEAN });
+    let threw = null;
+    captureStart();
+    try {
+      await invokeErrors(["--project", TEST_PROJECT.project_id]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `human list must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const out = capturedStdout();
+    const invIdx = out.indexOf("1,204"); // invocations_in_window, thousands-separated
+    const fpIdx = out.indexOf("fp_recur01");
+    assert.ok(invIdx >= 0, `verdict invocations should render, got: ${out}`);
+    assert.ok(fpIdx >= 0, `fingerprint row should render, got: ${out}`);
+    assert.ok(invIdx < fpIdx,
+      `the verdict must lead BEFORE any fingerprint line (absence-of-signal is not health), got: ${out}`);
+    // Coarse-coverage note is surfaced (1 coarse function in the CLEAN verdict).
+    assert.ok(out.includes("redeploy the coarse functions"),
+      `coarse-coverage note should render, got: ${out}`);
+  });
+
+  it("detail --json emits the wire detail row VERBATIM (CLI↔wire parity)", async () => {
+    await seedActiveProject();
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildErrorsSpyFetch({ calls, listResponse: ERRORS_PAGE_CLEAN });
+    let threw = null;
+    captureStart();
+    try {
+      await invokeErrors(["fp_paritytest01", "--project", TEST_PROJECT.project_id, "--json"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `detail --json must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const parsed = JSON.parse(capturedStdout());
+    assert.deepEqual(parsed, ERRORS_DETAIL);
+    // Addressed the fingerprint detail route, not the list route.
+    const get = calls.find((c) => c.method === "GET" && c.path.split("?")[0].endsWith("/errors/fp_paritytest01"));
+    assert.ok(get, `must GET the fingerprint detail route, calls: ${JSON.stringify(calls)}`);
+  });
+
+  it("gate: clean verdict (--new-in --fail-on-new) exits 0", async () => {
+    await seedActiveProject();
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildErrorsSpyFetch({ calls, listResponse: ERRORS_PAGE_CLEAN });
+    let threw = null;
+    captureStart();
+    try {
+      await invokeErrors(["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(0)",
+      `clean gate must exit 0; got: ${threw?.message || "no exit"} / stderr: ${capturedStderr()}`);
+  });
+
+  it("gate: regression exits 1 with actionable ids + a runnable logs command", async () => {
+    await seedActiveProject();
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildErrorsSpyFetch({ calls, listResponse: ERRORS_PAGE_REGRESSION });
+    let threw = null;
+    captureStart();
+    try {
+      await invokeErrors(["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)",
+      `new fingerprints must exit 1; got: ${threw?.message || "no exit"} / stderr: ${capturedStderr()}`);
+    const out = capturedStdout();
+    assert.ok(out.includes("fp_reg1") && out.includes("fp_reg2"),
+      `both new fingerprint ids must be printed, got: ${out}`);
+    assert.ok(out.includes("req_reg1a"), `a sample request id must be printed, got: ${out}`);
+    assert.ok(out.includes("run402 logs checkout --request-id req_reg1a"),
+      `a runnable logs drill-down must be printed, got: ${out}`);
+  });
+
+  it("gate: outage (500) exits 2 with a VERDICT_UNAVAILABLE envelope", async () => {
+    await seedActiveProject();
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildErrorsSpyFetch({
+      calls,
+      listResponse: { error: "internal", code: "INTERNAL", message: "boom" },
+      listStatus: 500,
+    });
+    let threw = null;
+    captureStart();
+    try {
+      await invokeErrors(["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new"]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    // An outage means the verdict is UNKNOWN — distinct from clean (0) / new (1).
+    assert.equal(threw?.message, "process.exit(2)",
+      `outage must exit 2; got: ${threw?.message || "no exit"} / stderr: ${capturedStderr()}`);
+    const line = capturedStderr().split("\n").map((s) => s.trim()).find((s) => s.startsWith("{") && s.endsWith("}"));
+    assert.ok(line, `expected a JSON error envelope on stderr, got: ${capturedStderr()}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.code, "VERDICT_UNAVAILABLE",
+      `outage envelope code must be VERDICT_UNAVAILABLE, got: ${JSON.stringify(parsed)}`);
+  });
+
+  it("maps every filter flag 1:1 onto wire query params (newIn → new_in)", async () => {
+    await seedActiveProject();
+    const calls = [];
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = buildErrorsSpyFetch({ calls, listResponse: ERRORS_PAGE_CLEAN });
+    let threw = null;
+    captureStart();
+    try {
+      await invokeErrors([
+        "--project", TEST_PROJECT.project_id,
+        "--since", "2026-07-01T00:00:00Z",
+        "--until", "2026-07-02T00:00:00Z",
+        "--function", "checkout",
+        "--kind", "uncaught",
+        "--fingerprint", "fp_abc",
+        "--new-in", "rel_new1",
+        "--limit", "25",
+        "--cursor", "cur_opaque",
+        "--json",
+      ]);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw, null,
+      `filtered list must not exit; got: ${threw?.message || ""} / stderr: ${capturedStderr()}`);
+    const call = calls.find((c) => c.method === "GET" && c.path.split("?")[0] === `/projects/v1/${TEST_PROJECT.project_id}/errors`);
+    assert.ok(call, `must issue the errors GET, calls: ${JSON.stringify(calls)}`);
+    const sp = new URL(call.url).searchParams;
+    assert.equal(sp.get("since"), "2026-07-01T00:00:00Z");
+    assert.equal(sp.get("until"), "2026-07-02T00:00:00Z");
+    assert.equal(sp.get("function"), "checkout");
+    assert.equal(sp.get("kind"), "uncaught");
+    assert.equal(sp.get("fingerprint"), "fp_abc");
+    assert.equal(sp.get("new_in"), "rel_new1"); // snake_case on the wire
+    assert.equal(sp.get("limit"), "25");
+    assert.equal(sp.get("cursor"), "cur_opaque");
+    assert.equal(sp.has("newIn"), false, "wire param must be snake_case new_in, never camelCase newIn");
+  });
+});

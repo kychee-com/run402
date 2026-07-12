@@ -1063,6 +1063,22 @@ run402 events --org <org_id>      # org-wide union across all the org's projects
 
 Store the response's `cursor` (a file in the repo works) and pass it back as `--cursor` next session — one call returns everything you missed. Cursors are opaque; never parse them. An expired cursor returns `reset: true` + `earliest_cursor` to restart from, never a bare error. Every successful apply/promote response also hands you a poll entry positioned at your own `deploy_activated` event. The feed is read-only and works even on frozen projects.
 
+## After a promote — gate on new error identities
+
+`run402 errors` reads the platform's durable, grouped error memory. Every 5xx at the function invoke choke points is fingerprinted into one hot row per distinct failure *identity* (normalized message + stable stack frames), baselined against the previously ACTIVE release. Each read leads with a **verdict**.
+
+```bash
+run402 errors                                   # last 24h: verdict + grouped identities
+run402 errors --function checkout --kind uncaught
+run402 errors fp_9b21fa                          # one fingerprint, all samples + logs drill-down
+run402 errors --new-in active                    # what's new under the live release
+run402 errors --new-in <release_id> --watch 10m --fail-on-new   # the promote gate
+```
+
+**Verdict-first:** the verdict pairs new-vs-recurring identity counts with `invocations_in_window`. Zero errors over zero traffic is absence of signal, not proven health — `invocations_in_window` disambiguates. The baseline is rollback-safe (activation history, not lineage): after A → B → rollback to A → C, C's baseline is A.
+
+With `--fail-on-new` (requires `--new-in`) the run is a gate. Exit codes: **0** clean (no identity first seen under that release), **1** new identities appeared (each printed with a sample id + a runnable `run402 logs` command — revert, then drill in; under `--watch` it fails fast the instant one lands), **2** a verdict could NOT be produced (network / auth / API failure) — distinct from 1 so a script never reads an outage as clean. Every successful promote/apply response hands you the exact `run402 errors --new-in <rel> --watch 10m --fail-on-new` command in its `next_actions` (`watch_errors`) — copy it verbatim. Rows tagged `coarse` come from a function that predates the error side-channel; redeploy it to upgrade future fidelity. Read-only; a project A key requesting project B's errors gets `403`, never a `404`.
+
 ## Image generation
 
 ```bash

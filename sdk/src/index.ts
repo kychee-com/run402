@@ -39,6 +39,7 @@ import { Operator } from "./namespaces/operator.js";
 import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
 import { Events } from "./namespaces/events.js";
+import { Errors } from "./namespaces/errors.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -123,6 +124,13 @@ export class Run402 {
    * Also available project-scoped as `r.project(id).events`.
    */
   readonly events: Events;
+  /**
+   * Release-error-rollup query surface — verdict-first, grouped error
+   * fingerprints with a gateway-computed promote-vs-revert verdict, plus the
+   * `watch` promote-gate poll loop. Also available project-scoped as
+   * `r.project(id).errors`.
+   */
+  readonly errors: Errors;
   readonly idempotency = {
     fromParts,
   };
@@ -204,6 +212,7 @@ export class Run402 {
     this.orgs = new Orgs(client);
     this.grants = new Grants(client);
     this.events = new Events(client);
+    this.errors = new Errors(client);
   }
 
   /**
@@ -506,6 +515,8 @@ export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";
 export { Events } from "./namespaces/events.js";
 export type * from "./namespaces/events.types.js";
+export { Errors } from "./namespaces/errors.js";
+export type * from "./namespaces/errors.types.js";
 export { Archives } from "./namespaces/archives.js";
 export type * from "./namespaces/archives.types.js";
 export { Snapshots } from "./namespaces/snapshots.js";

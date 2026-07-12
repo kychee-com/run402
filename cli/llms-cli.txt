@@ -1014,6 +1014,70 @@ Cursor contract: the response's `cursor` is the high-water mark — store it (a 
 
 After every deploy, the apply/promote response's `next_actions[]` includes a poll entry for this feed with a cursor positioned just before your own `deploy_activated` event — poll once before signing off to establish your cursor.
 
+### errors — grouped fingerprints + a promote/revert verdict
+
+`run402 errors` reads the platform's durable, grouped error memory. Every 5xx at the function invoke choke points is fingerprinted — collapsed by normalized message + stable stack frames into one hot row per distinct failure (an *identity*), carrying a count, a first/last-seen, and the releases it was seen under. You read identities, not a firehose of individual lines.
+
+Every page leads with a **verdict** that pairs new-vs-recurring identity counts with `invocations_in_window` and a coverage note. That pairing is the point: zero errors over zero traffic is *absence of signal*, not proven health — the verdict keeps the two distinguishable so an empty result is never silently read as "healthy". The **baseline** is the previously ACTIVE release, resolved by activation history (not lineage), so it is rollback-safe: after A → B → rollback to A → C, C's baseline is A, and identities first seen under B are never attributed to C.
+
+- `run402 errors [--project <id>] [filters] [--json]` — list + verdict.
+- `run402 errors <fingerprint_id> [--project <id>] [--json]` — one identity's full detail (all samples, per-sample `run402 logs` drill-down). The detail view accepts only `--project` / `--json`.
+- `run402 errors --new-in <release_id|active> --fail-on-new [--json]` — the one-shot promote gate (exit codes below).
+- `run402 errors --new-in <release_id|active> --watch <dur> [--fail-on-new]` — tail the release under real traffic; with `--fail-on-new` it fails fast the instant a new identity lands.
+
+Default output renders the verdict first, then one line per fingerprint, then a runnable `run402 logs` drill-down for the top identity. `--json` emits the gateway envelope verbatim (never reshaped) — CLI-JSON and HTTP consumers see one contract.
+
+Flags map 1:1 to the HTTP query params:
+
+| Flag | Query param | Meaning |
+|---|---|---|
+| `--project <id>` | (path) | Project to read (defaults to the active project) |
+| `--since <iso>` | `since` | Window start (ISO-8601). Default: 24h before `--until` |
+| `--until <iso>` | `until` | Window end (ISO-8601). Default: now |
+| `--function <name>` | `function` | Only this function's fingerprints |
+| `--kind <kind>` | `kind` | One of `uncaught`, `boot_crash`, `invoke_failed`, `handled_5xx` |
+| `--fingerprint <id>` | `fingerprint` | Only this fingerprint id (exact) |
+| `--new-in <rel\|active>` | `new_in` | Only identities first seen under this release (a release id, or the literal `active` for the live release). Drives the verdict's `new_fingerprints` + baseline |
+| `--limit <n>` | `limit` | Page size (default 50, max 200) |
+| `--cursor <cursor>` | `cursor` | Opaque keyset cursor from a prior response's `next_cursor`. Never parse or compare it — pass it back as-is |
+| `--watch <dur>` | (client poll) | Poll for `<dur>` (`90s`, `10m`, `2h`, or a bare seconds count), then stop. Requires `--new-in`; progress ticks go to stderr so stdout stays pipeable |
+| `--interval <dur>` | (client poll) | `--watch` cadence (default 15s, floor 5s) |
+| `--fail-on-new` | (client gate) | Turn the run into the promote gate (exit codes below). Requires `--new-in` |
+| `--json` | — | Emit the gateway envelope verbatim |
+
+Exit codes apply **only when `--fail-on-new` is set** (otherwise failures are the usual exit 1):
+
+| Code | Meaning |
+|---|---|
+| `0` clean | no identity was first seen under the `--new-in` release |
+| `1` new | new identities appeared (each printed with a sample id + a runnable `run402 logs` command, so you can act without another query). Under `--watch` this fails FAST the instant a new identity lands |
+| `2` unknown | a verdict could NOT be produced — network / auth / API failure, or gate misuse (`--fail-on-new` without `--new-in`). Distinct from `1` so a script can never mistake an outage for a clean verdict |
+
+Quality tiers (`fingerprint_quality` on each row): `frame_names` = full fidelity (grouped by stable stack frames); `message_only` = medium (grouped by normalized message); `coarse` = the function predates the error side-channel — **redeploy it** and future occurrences fingerprint at full fidelity (already-recorded coarse rows stay coarse). The verdict's `coverage` line counts how many functions are still coarse.
+
+Auth: the addressed project's own `anon_key` / `service_key`. A key for project A requesting project B's errors gets `403` (never a `404` that would leak existence). Read-only; never lifecycle-gated.
+
+The golden path — gate a promote:
+
+```bash
+run402 deploy promote --project <id> --release <rel>
+run402 errors --project <id> --new-in <rel> --watch 10m --fail-on-new
+# exit 0 → the new release is clean; exit 1 → revert, drill in via the printed run402 logs command.
+```
+
+The promote/apply response already hands you that exact command in `next_actions` as the `watch_errors` action — copy it verbatim.
+
+Examples:
+
+```bash
+run402 errors                                   # last 24h: verdict + grouped identities
+run402 errors --function checkout --kind uncaught
+run402 errors fp_9b21fa                          # one fingerprint, all samples
+run402 errors --new-in active                    # what's new under the live release
+run402 errors --new-in rel_01JX --fail-on-new    # one-shot gate (CI)
+run402 errors --new-in rel_01JX --watch 10m --interval 30s --fail-on-new
+```
+
 ### functions
 Node 22 runtime. Must export `default async (req: Request) => Response`.
 Built-in helper: `import { auth, db, adminDb, email, ai, assets, getRoutedPaymentContext } from '@run402/functions'`

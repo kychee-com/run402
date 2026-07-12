@@ -167,6 +167,13 @@ import type {
   ProjectEventFeedPage,
 } from "./namespaces/events.types.js";
 import type {
+  ErrorFingerprintDetail,
+  ErrorsPage,
+  ListErrorsOptions,
+  WatchErrorsOptions,
+  WatchErrorsResult,
+} from "./namespaces/errors.types.js";
+import type {
   ProjectArchiveCreateOptions,
   ProjectArchiveDownload,
   ProjectArchiveDto,
@@ -374,6 +381,23 @@ class ScopedEvents {
   /** Read a page of this project's events feed (cursor is opaque — store and echo). */
   list(opts?: ListEventsOptions): Promise<ProjectEventFeedPage> {
     return this.parent.events.list(this.projectId, opts);
+  }
+}
+
+class ScopedErrors {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  /** Read a verdict-first page of this project's grouped error fingerprints. */
+  list(opts?: ListErrorsOptions): Promise<ErrorsPage> {
+    return this.parent.errors.list(this.projectId, opts);
+  }
+  /** Read one fingerprint's full detail (all samples + per-sample drill-downs). */
+  get(fingerprintId: string): Promise<ErrorFingerprintDetail> {
+    return this.parent.errors.get(this.projectId, fingerprintId);
+  }
+  /** Run the promote-gate poll loop against a release (`{ newIn }` required). */
+  watch(opts: WatchErrorsOptions): Promise<WatchErrorsResult> {
+    return this.parent.errors.watch(this.projectId, opts);
   }
 }
 
@@ -1049,6 +1073,8 @@ export class ScopedRun402 {
   readonly grants: ScopedGrants;
   /** Cursored project events feed, project-id pre-bound. */
   readonly events: ScopedEvents;
+  /** Release-error-rollup query surface (list / get / watch), project-id pre-bound. */
+  readonly errors: ScopedErrors;
   readonly archives: ScopedArchives;
   readonly snapshots: ScopedSnapshots;
   readonly branches: ScopedBranches;
@@ -1071,6 +1097,7 @@ export class ScopedRun402 {
     this.subdomains = new ScopedSubdomains(parent, projectId);
     this.grants = new ScopedGrants(parent, projectId);
     this.events = new ScopedEvents(parent, projectId);
+    this.errors = new ScopedErrors(parent, projectId);
     this.archives = new ScopedArchives(parent, projectId);
     this.snapshots = new ScopedSnapshots(parent, projectId);
     this.branches = new ScopedBranches(parent, projectId);
