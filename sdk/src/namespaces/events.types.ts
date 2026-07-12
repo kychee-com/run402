@@ -5,10 +5,13 @@
  *
  * The feed is the platform's durable, ordered record of operationally
  * significant facts (deploy activations, mailbox suspensions, transfers,
- * lifecycle cliffs, verification outcomes). Cursors are OPAQUE (`evc_…`):
- * store the page's `cursor` and pass it back as `{ cursor }` next time —
- * never parse it. The platform owns the event vocabulary, `next_actions`
- * synthesis, and reset behavior; the SDK passes everything through.
+ * lifecycle cliffs, verification outcomes, and `platform_incident`
+ * fault-attribution events). Cursors are OPAQUE (`evc_…`): store the page's
+ * `cursor` and pass it back as `{ cursor }` next time — never parse it. The
+ * platform owns the event vocabulary, `next_actions` synthesis, and reset
+ * behavior; the SDK passes everything through (index signatures keep unknown
+ * future fields, including the additive `platform_incidents[]` overlay and
+ * `platform_status` rider on the page).
  */
 
 /** A platform-synthesized drill-down suggestion attached to a feed event. */
@@ -67,5 +70,20 @@ export interface ProjectEventFeedPage {
   reset: boolean;
   /** Present only when `reset` is true: a cursor just before the earliest retained event. */
   earliest_cursor?: string;
+  /**
+   * Sidecar overlay of open GLOBAL (unattributed) platform incidents, each
+   * with a stable `id` for dedup across reads. Present only while such an
+   * incident is open; NEVER interleaved into `events[]` (the cursor stays
+   * monotonic). Attributed incidents instead land as a `platform_incident`
+   * row inside `events[]`. Access via the index signature — pass-through.
+   */
+  platform_incidents?: Array<Record<string, unknown>>;
+  /**
+   * Health rider: `"degraded"` while an open platform incident is global or
+   * affects one of your projects; omitted when clear. The same rider appears
+   * on `r.admin.getOperatorStatus()` and `r.tiers.status()`. Pass-through via
+   * the index signature.
+   */
+  platform_status?: string;
   [key: string]: unknown;
 }
