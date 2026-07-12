@@ -64,7 +64,8 @@ Important fields:
 - `trace_id` — include this when reporting an issue
 - `request_id` — routed/function failure handle. Use `get_function_logs` with `request_id` for function diagnostics; it is distinct from gateway `trace_id`.
 - `details` — structured route-specific context
-- `next_actions` — `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`
+- `next_actions` — `authenticate`, `submit_payment`, `renew_tier`, `check_usage`, `retry`, `resume_deploy`, `edit_request`, `edit_migration`, `poll`
+- `correlated_platform_incident` — present ONLY while an OPEN platform incident correlates with this error's `code`: `{ id: "inc_…", subsystem, status: "ongoing" | "resolved" }`, with a `poll` appended to `next_actions`. A CORRELATION, not an exoneration — the platform states it was degraded when the call failed and leaves the judgment to you (an app can still cause its own throttling). Poll the events feed (`list_project_events`) and check `platform_status` before debugging your own code; the follow-up `platform_incident` feed event carries the project's real failed-invocation count once the incident resolves. Absent when no open incident correlates.
 
 Safe retry policy:
 - `retryable: true` + `safe_to_retry: true` → retry, ideally with the same idempotency key for mutations
@@ -569,7 +570,7 @@ The wallet-org CLAIM flow is CLI/SDK only (browser loopback login + step-up); th
 
 ### Project events feed
 
-- `list_project_events` — catch up on what happened to a project since you last looked: the durable, cursored feed of deploy activations, mailbox suspensions, transfers, lifecycle cliffs, and verification outcomes, each with platform-suggested `next_actions`. Params: `project_id` (or `org_id` for the org-wide union), optional `cursor` + `limit`. Store the returned `cursor` and pass it back next time; an expired cursor returns `reset: true` + `earliest_cursor` instead of an error. Reach for this after any deploy (the apply/promote response hands you a positioned cursor) and at the start of a session on an existing project. Read-only; works even on frozen projects.
+- `list_project_events` — catch up on what happened to a project since you last looked: the durable, cursored feed of deploy activations, mailbox suspensions, transfers, lifecycle cliffs, and verification outcomes, each with platform-suggested `next_actions`. Params: `project_id` (or `org_id` for the org-wide union), optional `cursor` + `limit`. Store the returned `cursor` and pass it back next time; an expired cursor returns `reset: true` + `earliest_cursor` instead of an error. Reach for this after any deploy (the apply/promote response hands you a positioned cursor) and at the start of a session on an existing project. Read-only; works even on frozen projects. **Platform incidents — my bug or yours?** A platform incident attributed to your project lands here as a `platform_incident` event (365-day retention) whose payload's `impact.count` is the real number of your invocations the platform, not your code, made fail (may be `null` for a manually-declared impact). During an open incident the page also carries a sidecar `platform_incidents[]` overlay (open GLOBAL incidents with stable `id`s for dedup, never mixed into `events`) and a `platform_status: "degraded"` rider — the same rider `get_operator_status` and the tier-status read expose.
 
 ### Release error rollup
 

@@ -54,7 +54,19 @@ export abstract class Run402Error extends Error {
   abstract readonly kind: Run402ErrorKind;
   /** HTTP status, or null for local/network failures that produced no response. */
   readonly status: number | null;
-  /** Parsed response body, or null when no body was received. */
+  /**
+   * Parsed response body, or null when no body was received. Holds the raw
+   * gateway envelope, so additive fields not lifted onto typed properties stay
+   * reachable here — notably `correlated_platform_incident`
+   * (`{ id, subsystem, status: "ongoing" | "resolved" }`), present ONLY while
+   * an OPEN platform incident correlates with this error's `code` (a `poll`
+   * action also rides in {@link nextActions}). It is a CORRELATION, not an
+   * exoneration: the platform states it was degraded when the call failed and
+   * leaves the judgment to you. Treat it as a strong signal to poll the events
+   * feed (`r.events.list`) before debugging your own code; the follow-up
+   * `platform_incident` feed event carries the project's real failed-invocation
+   * count once the incident resolves.
+   */
   readonly body: unknown;
   /** Short verb phrase identifying the attempted operation (e.g. "provisioning project"). */
   readonly context: string;

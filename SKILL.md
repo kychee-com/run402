@@ -798,6 +798,8 @@ The loop:
 
 MCP consumers use the `errors_list` tool: poll it with `new_in: "<release_id>"` after a promote — `verdict.new_fingerprints > 0` means new error identities under the new release; pass `fingerprint_id` for one identity's full detail. If a function's rows come back `fingerprint_quality: "coarse"`, that function predates the error side-channel — redeploy it and future occurrences fingerprint at full fidelity.
 
+**My bug or yours?** If an error envelope carries `correlated_platform_incident` (`{ id, subsystem, status }`), the platform was degraded when your call failed — poll the events feed (the stamp's own `poll` next_action, `list_project_events`) and check `platform_status` before you start debugging your own code. It's a correlation, not an exoneration (your code can still be at fault), but it's a strong signal to look at the platform first; when the incident resolves, the matching `platform_incident` feed event carries your project's real count of platform-caused failed invocations.
+
 ## Payment Handling
 
 Two payment rails work with the same wallet key:
