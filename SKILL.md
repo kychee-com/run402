@@ -781,6 +781,23 @@ The loop:
 
 Cursors are opaque (`evc_…`) — never parse them. If your cursor is too old (retention: 90 days; a year for security/recovery/billing classes), the response is still 200 with `reset: true` and `earliest_cursor` to restart from — nothing is silently skipped. The feed is read-only and works even on a frozen project.
 
+## After a promote — gate on new error identities
+
+Deploying without checking is a coin flip. The platform keeps a durable, grouped error memory: every 5xx at the function invoke choke points is fingerprinted into one hot row per distinct failure *identity* (normalized message + stable stack frames), each baselined against the previously ACTIVE release. Ask it whether YOUR new release made things worse instead of eyeballing logs.
+
+**Verdict-first mindset — this is the whole point.** Every read leads with a verdict that pairs new-vs-recurring identity counts with `invocations_in_window`. **Zero errors over zero traffic is absence of signal, not proven health** — `invocations_in_window` is what disambiguates "clean under load" from "nothing has hit it yet". Never sign off on an empty error list without checking that traffic actually flowed. The baseline is rollback-safe (resolved by activation history, not lineage): after A → B → rollback to A → C, C's baseline is A.
+
+The loop:
+
+1. Every promote/apply response includes a `watch_errors` next_action carrying the exact runnable command. Copy it verbatim — it is:
+   ```bash
+   run402 errors --new-in <release_id> --watch 10m --fail-on-new
+   ```
+2. `--watch` tails the release under real traffic; `--fail-on-new` turns the run into a gate. Exit codes: **0** = clean (no identity first seen under that release), **1** = new identities appeared (each printed with a sample id + a runnable `run402 logs` command — revert, then drill in), **2** = a verdict could NOT be produced (network / auth / API failure) — a script must never mistake an outage for a clean verdict, so this is distinct from 1.
+3. Drill into any identity with `run402 errors <fingerprint_id>` (all samples + per-sample logs command), or filter the list with `--function` / `--kind` / `--since`.
+
+MCP consumers use the `errors_list` tool: poll it with `new_in: "<release_id>"` after a promote — `verdict.new_fingerprints > 0` means new error identities under the new release; pass `fingerprint_id` for one identity's full detail. If a function's rows come back `fingerprint_quality: "coarse"`, that function predates the error side-channel — redeploy it and future occurrences fingerprint at full fidelity.
+
 ## Payment Handling
 
 Two payment rails work with the same wallet key:

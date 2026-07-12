@@ -93,6 +93,7 @@ function parseCliCommands(): string[] {
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
   if (existsSync(join(__dirname, "cli/lib/events.mjs"))) cmds.push("events");
+  if (existsSync(join(__dirname, "cli/lib/errors.mjs"))) cmds.push("errors");
   if (existsSync(join(__dirname, "cli/lib/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "cli/lib/logs.mjs"))) cmds.push("logs");
   return cmds.sort();
@@ -122,6 +123,7 @@ function parseOpenClawCommands(): string[] {
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
   if (existsSync(join(__dirname, "openclaw/scripts/events.mjs"))) cmds.push("events");
+  if (existsSync(join(__dirname, "openclaw/scripts/errors.mjs"))) cmds.push("errors");
   if (existsSync(join(__dirname, "openclaw/scripts/dev.mjs"))) cmds.push("dev");
   if (existsSync(join(__dirname, "openclaw/scripts/logs.mjs"))) cmds.push("logs");
   return cmds.sort();
@@ -444,6 +446,14 @@ const SURFACE: Capability[] = [
   // (GET /orgs/v1/:org_id/events) is the same surface addressed with
   // --org / org_id; the SDK's events.listForOrg is tracked in SDK_ONLY_METHODS.
   { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   mcp: "list_project_events",          cli: "events",                        openclaw: "events" },
+
+  // ── Release error rollup (release-error-rollup) ─────────────────────────
+  // One CLI command (`run402 errors`) + one MCP tool (`errors_list`) cover the
+  // whole surface: the list+verdict, the single-fingerprint detail (CLI
+  // positional / MCP `fingerprint_id` param), and the promote-gate watch (CLI
+  // `--watch`). The SDK's errors.get / errors.watch are tracked in
+  // SDK_ONLY_METHODS (no dedicated verb/tool of their own).
+  { id: "errors_list",                  endpoint: "GET /projects/v1/:id/errors",                   mcp: "errors_list",                  cli: "errors",                        openclaw: "errors" },
 
   // ── Operator session (human/email principal, RFC 8628 device-auth) ──────
   // The operator is the human (email), distinct from the agent (wallet/SIWX).
@@ -770,6 +780,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_operator_status: "admin.getOperatorStatus",
   list_notifications: "admin.listNotifications",
   list_project_events: "events.list",
+  errors_list: "errors.list",
   get_notification: "admin.getNotification",
   get_notification_preferences: "admin.getNotificationPreferences",
   set_notification_preferences: "admin.setNotificationPreferences",
@@ -1153,6 +1164,13 @@ describe("SDK surface alignment", () => {
       // Shares the `events` CLI command (--org) and the list_project_events
       // MCP tool (org_id param); no dedicated verb/tool of its own.
       "events.listForOrg",
+      // ─── Release error rollup — detail + promote-gate watch ────────────
+      // `errors.list` is the SURFACE capability (errors_list). get + watch
+      // share the same `errors` CLI command (positional fingerprint id / the
+      // --watch tail) and the `errors_list` MCP tool (fingerprint_id param);
+      // neither has a dedicated verb/tool of its own.
+      "errors.get",
+      "errors.watch",
       // ─── SSR origin cache (v1.52) — flag-variants of `run402 cache invalidate` ─
       // Single-URL form is the canonical CLI; prefix/all/many are SDK-side
       // convenience methods that share the same CLI verb with flags.

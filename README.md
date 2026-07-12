@@ -608,6 +608,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `test_notification` | Fire a real test notification through the full worker pipeline. Audit row marked `is_test=true`. Rate-limited per wallet at 1/min. |
 | `rotate_webhook_secret` | Generate a new HMAC signing secret for the operator webhook (returned exactly once). Previous secret remains valid for 24h. Requires `operator_passkey`. |
 | `list_project_events` | Cursored project events feed — catch up on deploy activations, suspensions, transfers, lifecycle cliffs since your stored cursor. Also reads the org-wide union via `org_id`. |
+| `errors_list` | Grouped error fingerprints + a release-baselined promote/revert verdict. Poll with `new_in` after a promote to gate on new error identities; pass `fingerprint_id` for one identity's full detail. |
 
 ### Service status (no auth)
 
