@@ -42,6 +42,17 @@ await (await r.project(project.project_id)).assets.put("hello.txt", { content: "
 
 That's it — credentials are read, x402 payments are signed, results are typed.
 
+Before creating an x402 payment payload, the Node entry confirms USDC with
+bounded retry/backoff and independent RPC failover on Base and Base Sepolia.
+RPC exhaustion is never treated as a zero balance. Branch on the exported
+`X402BalanceError.code`: `X402_RPC_TIMEOUT`, `X402_RPC_RATE_LIMITED`, and
+`X402_RPC_UNAVAILABLE` are pre-payment failures with `safeToRetry === true`
+and `mutationState === "not_started"`; `X402_INSUFFICIENT_FUNDS` means the
+relevant balance reads succeeded and the confirmed funds do not cover any
+accepted requirement. A retryable preflight failure is not cached, so the next
+request checks provider health again. Error details contain provider indexes
+and failure classes, never RPC credentials, wallet keys, or signed proofs.
+
 Repo-level deploy through the same SDK action runner used by `run402 up`:
 
 ```ts
@@ -365,6 +376,7 @@ single-copy single-realm callers as a back-compat path.
 | `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
+| `X402BalanceError` (Node entry) | `"local_error"` | x402 USDC balance preflight could not be confirmed, or confirmed funds are insufficient | `code`, `safeToRetry`, `mutationState="not_started"`, `details`, `nextActions` |
 | `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 | `TransferFreezeError` | `"transfer_freeze"` | HTTP 409 with `code: "PROJECT_HAS_PENDING_TRANSFER"` from the v1.59 transfer-freeze middleware blocking owner-side mutations during a pending transfer | `transferId`, `projectId`, `cancelPath`, `previewPath` |
 

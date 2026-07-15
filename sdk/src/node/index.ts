@@ -259,7 +259,8 @@ export {
 export { NodeCredentialsProvider } from "./credentials.js";
 export { NodeActions } from "./actions-node.js";
 export type { NodeActionTargetKind, NodeActionsOptions } from "./actions-node.js";
-export { setupPaidFetch, createLazyPaidFetch } from "./paid-fetch.js";
+export { setupPaidFetch, createLazyPaidFetch, X402BalanceError } from "./paid-fetch.js";
+export type { X402BalanceErrorCode } from "./paid-fetch.js";
 export { Run402Action } from "../actions.js";
 export * from "../app-up.js";
 export type * from "../index.js";

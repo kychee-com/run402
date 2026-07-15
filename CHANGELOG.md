@@ -2,6 +2,12 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — resilient x402 balance preflight
+
+- **Node SDK:** x402 USDC balance reads now use bounded retry/backoff with independent Base and Base Sepolia RPC failover. RPC exhaustion remains an unknown balance and never collapses to numeric zero.
+- **Errors/recovery:** `X402BalanceError` distinguishes timeout, rate-limit, general RPC-unavailable, and confirmed-insufficient states. Only pre-payment RPC errors are marked `safeToRetry`, and transient failures are not permanently cached by lazy paid-fetch initialization.
+- **Tests/docs:** deterministic tests cover retry, provider failover, faithful insufficient-funds classification, and recovery on the next request; SDK references document the stable codes and no-secret error details.
+
 ## Unreleased — function runtime compatibility metadata
 
 - **SDK/CLI:** function-list records now type and preserve the deployed `runtime_version`, gateway `runtime_current_version`, guaranteed `runtime_minimum_version`, and `runtime_stale` fields.
