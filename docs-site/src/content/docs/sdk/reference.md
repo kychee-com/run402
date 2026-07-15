@@ -23,7 +23,7 @@ Two entry points:
 
 | Import | Use when | Bundles |
 |---|---|---|
-| `@run402/sdk/node` | Running in Node 22 with local profile state, project-key cache, and allowance | Auto-loads the configured API base, active project state, local project-key cache, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/node` | Running in Node 22 with local profile state, project-key cache, and allowance | Auto-loads the configured API base, active project state, local project-key cache, and signs x402 payments from the selected allowance or opaque signer. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk/config` | Authoring typed deploy configs that normalize to `ReleaseSpec` | Browser-safe helper descriptors and types: `defineConfig`, `dir`, `file`, `sqlFile`, `nodeFunction`, `Run402ExecutionMode`. No filesystem, env, credential, or network side effects. |
 | `@run402/sdk/node/config` | Loading explicit executable deploy configs in Node | Re-exports config helpers plus `loadDeployManifest`, `loadExecutableDeployConfig`, and `normalizeDeployManifest`. |
 | `@run402/sdk` | Isomorphic — Node, Deno, Bun, V8 isolates. No filesystem. | Bring your own `CredentialsProvider`. |
@@ -49,9 +49,69 @@ RPC exhaustion is never treated as a zero balance. Branch on the exported
 `X402_RPC_UNAVAILABLE` are pre-payment failures with `safeToRetry === true`
 and `mutationState === "not_started"`; `X402_INSUFFICIENT_FUNDS` means the
 relevant balance reads succeeded and the confirmed funds do not cover any
-accepted requirement. A retryable preflight failure is not cached, so the next
-request checks provider health again. Error details contain provider indexes
+accepted requirement. After a retryable preflight failure, the next request
+refreshes only mutable RPC balance state while retaining the originally
+selected signer and payer provenance. Error details contain provider indexes
 and failure classes, never RPC credentials, wallet keys, or signed proofs.
+
+### Payment signer selection (Node)
+
+Authentication and payment are separate authorities. A custom `credentials`
+provider controls API authentication; the x402 payer is resolved exactly once
+in this order:
+
+1. `paymentSigner` — an explicit async EVM signer provider (KMS/HSM friendly).
+2. `allowancePath` — an explicit local allowance file.
+3. `credentials.readAllowance()` — when a supplied provider implements it.
+4. The Node default provider's active-profile allowance — only when the caller
+   did not supply a custom credentials provider.
+
+Once a source is selected, the SDK never falls back to the ambient/global
+wallet. `paymentSigner` and `allowancePath` together throw
+`PAYMENT_SOURCE_CONFLICT`. Passing both `credentials` and `allowancePath` is
+valid: auth uses `credentials`, while payment intentionally uses that file.
+`fetch` still takes precedence over built-in paid fetch, and
+`disablePaidFetch: true` disables automatic payment entirely.
+
+An opaque signer returns only its public payer address and signing operation;
+raw keys and replayable payment authorizations do not cross the provider
+boundary:
+
+```ts
+import {
+  run402,
+  type CredentialsProvider,
+  type EvmPaymentSigner,
+  type EvmPaymentSignerProvider,
+  type PaymentPublicClient,
+  type X402PaymentNetwork,
+} from "@run402/sdk/node";
+
+declare const sessionCredentials: CredentialsProvider;
+declare function kmsSignerFor(
+  network: X402PaymentNetwork,
+  publicClient: PaymentPublicClient,
+): Promise<EvmPaymentSigner>;
+
+const paymentSigner: EvmPaymentSignerProvider = {
+  async getSigner({ network, publicClient }) {
+    return kmsSignerFor(network, publicClient); // address + signTypedData
+  },
+};
+
+const r = run402({ credentials: sessionCredentials, paymentSigner });
+const payer = await r.paymentPayer();
+// { source: "payment_signer", rail: "x402", payers: [{ address, network }, ...] }
+```
+
+The provider may return `null` for an unsupported Base network. Paid-fetch
+initialization is lazy and retries after missing/recoverable local state, so a
+long-lived client can start paying after its selected allowance/provider
+becomes available without being reconstructed. `r.paymentPayer()` initializes
+the selected source if necessary and returns only its source, rail, public
+address(es), and network(s); it never returns a key, signed authorization, or
+replayable proof. It returns `null` when automatic paid fetch is disabled, a
+custom `fetch` owns payment, or the selected source is not currently available.
 
 Repo-level deploy through the same SDK action runner used by `run402 up`:
 

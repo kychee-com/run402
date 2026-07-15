@@ -17,8 +17,10 @@
  */
 
 import { readAllowance } from "../../core-dist/allowance.js";
-import { Run402Error } from "../errors.js";
+import type { AllowanceData, CredentialsProvider } from "../credentials.js";
+import { LocalError, Run402Error } from "../errors.js";
 import { PaidStackUnavailable, loadMppStack, loadX402Stack } from "./_paid-stack.js";
+import type { MppStack, X402Stack } from "./_paid-stack.js";
 
 type FetchFn = typeof globalThis.fetch;
 type RpcFailureReason = "timeout" | "rate_limited" | "network" | "rpc_error";
@@ -123,6 +125,76 @@ export class X402BalanceError extends Run402Error {
   }
 }
 
+export type X402PaymentNetwork = "eip155:8453" | "eip155:84532";
+
+/** Public-chain operations exposed to an opaque signer provider. */
+export interface PaymentPublicClient {
+  readContract(args: unknown): Promise<bigint>;
+}
+
+/**
+ * Minimum EVM signer shape needed by x402. Implementations may keep key
+ * material behind KMS/HSM boundaries; only the public payer address and
+ * signing operation cross into the SDK.
+ */
+export interface EvmPaymentSigner {
+  readonly address: `0x${string}`;
+  signTypedData(message: {
+    domain: Record<string, unknown>;
+    types: Record<string, unknown>;
+    primaryType: string;
+    message: Record<string, unknown>;
+  }): Promise<`0x${string}`>;
+  readContract?(args: unknown): Promise<unknown>;
+  signTransaction?(args: unknown): Promise<`0x${string}`>;
+  getTransactionCount?(args: { address: `0x${string}` }): Promise<number>;
+  estimateFeesPerGas?(): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }>;
+}
+
+/** Async, opaque x402 payer. Returning null means that network is unsupported. */
+export interface EvmPaymentSignerProvider {
+  getSigner(context: {
+    network: X402PaymentNetwork;
+    publicClient: PaymentPublicClient;
+  }): Promise<EvmPaymentSigner | null>;
+}
+
+export type PaymentPayerSource =
+  | "payment_signer"
+  | "allowance_path"
+  | "credentials"
+  | "default_allowance";
+
+/** Safe, key-free provenance for the payer selected by paid fetch. */
+export interface PaymentPayerProvenance {
+  readonly source: PaymentPayerSource;
+  readonly rail: "x402" | "mpp";
+  readonly payers: readonly {
+    readonly address: string;
+    readonly network?: X402PaymentNetwork;
+  }[];
+}
+
+export type ConfiguredPaidFetch = FetchFn & {
+  readonly payer: PaymentPayerProvenance;
+  /** Refreshes mutable balance state without re-resolving the selected payer. */
+  refreshBalances(): Promise<void>;
+};
+
+export type LazyPaidFetch = FetchFn & {
+  /** Initializes the selected source if needed and returns public payer provenance only. */
+  getPayer(): Promise<PaymentPayerProvenance | null>;
+};
+
+export interface PaidFetchOptions {
+  /** Explicit local allowance file. When set, no other allowance is consulted. */
+  allowancePath?: string;
+  /** Auth provider whose optional allowance capability may also fund payments. */
+  credentials?: Pick<CredentialsProvider, "readAllowance">;
+  /** Explicit opaque x402 signer. Mutually exclusive with allowancePath. */
+  paymentSigner?: EvmPaymentSignerProvider;
+}
+
 const USDC_ABI = [
   {
     name: "balanceOf",
@@ -153,6 +225,22 @@ const MAX_PENDING_POLICY_ERRORS = 32;
 let warnedMissingDeps = false;
 let policyErrorSequence = 0;
 const policyErrors = new Map<string, X402BalanceError>();
+
+let stackLoaders = {
+  x402: loadX402Stack,
+  mpp: loadMppStack,
+};
+
+/** @internal Test seam; not re-exported from `@run402/sdk/node`. */
+export function _setPaidStackLoadersForTest(loaders?: {
+  x402?: () => Promise<X402Stack>;
+  mpp?: () => Promise<MppStack>;
+}): void {
+  stackLoaders = {
+    x402: loaders?.x402 ?? loadX402Stack,
+    mpp: loaders?.mpp ?? loadMppStack,
+  };
+}
 
 function classifyRpcFailure(err: unknown): RpcFailureReason {
   const record = err && typeof err === "object" ? (err as Record<string, unknown>) : null;
@@ -358,49 +446,76 @@ async function balanceState(
   }
 }
 
-export async function setupPaidFetch(): Promise<FetchFn | null> {
-  // GH-194: malformed local allowance state remains a local setup concern.
-  // No request can be paid without a valid allowance, so callers receive the
-  // ordinary unwrapped 402 flow rather than any secret-bearing parse details.
-  let allowance;
-  try {
-    allowance = readAllowance();
-  } catch {
-    return null;
-  }
-  if (!allowance) return null;
+export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<ConfiguredPaidFetch | null> {
+  validatePaymentSource(options);
+
+  // Malformed or missing selected local state degrades to an unwrapped 402,
+  // but it never falls back to a different wallet source.
+  const resolvedAllowance = options.paymentSigner ? null : await resolveAllowance(options);
+  const allowance = resolvedAllowance?.allowance ?? null;
+  if (!allowance && !options.paymentSigner) return null;
 
   try {
-    if (allowance.rail === "mpp") {
-      const stack = await loadMppStack();
+    if (allowance?.rail === "mpp") {
+      const stack = await stackLoaders.mpp();
       const account = stack.privateKeyToAccount(allowance.privateKey as `0x${string}`);
       const mppx = stack.Mppx.create({
         polyfill: false,
         methods: [stack.tempo({ account })],
       });
-      return mppx.fetch;
+      return withPayer(mppx.fetch, {
+        source: resolvedAllowance!.source,
+        rail: "mpp",
+        payers: [{ address: allowance.address }],
+      });
     }
 
     // Default: x402 on Base + Base Sepolia. Each chain has its own independent
     // provider list; one degraded chain does not erase a confirmed balance on
     // the other chain.
-    const stack = await loadX402Stack();
-    const account = stack.privateKeyToAccount(allowance.privateKey as `0x${string}`);
+    const stack = await stackLoaders.x402();
     const mainnetClients = createRpcClients(stack, stack.base, BASE_RPC_URLS);
     const sepoliaClients = createRpcClients(stack, stack.baseSepolia, BASE_SEPOLIA_RPC_URLS);
 
-    const [mainnet, sepolia] = await Promise.all([
-      balanceState(mainnetClients, USDC_MAINNET, allowance.address, "eip155:8453"),
-      balanceState(sepoliaClients, USDC_SEPOLIA, allowance.address, "eip155:84532"),
-    ]);
-    const balances: BalanceStates = {
-      "eip155:8453": mainnet,
-      "eip155:84532": sepolia,
+    const [mainnetSigner, sepoliaSigner] = options.paymentSigner
+      ? await Promise.all([
+          options.paymentSigner.getSigner({ network: "eip155:8453", publicClient: mainnetClients[0] }),
+          options.paymentSigner.getSigner({ network: "eip155:84532", publicClient: sepoliaClients[0] }),
+        ])
+      : localAllowanceSigners(stack, allowance!, mainnetClients[0], sepoliaClients[0]);
+
+    if (!mainnetSigner && !sepoliaSigner) return null;
+
+    const balances: BalanceStates = {};
+    const refreshBalances = async (): Promise<void> => {
+      const [mainnet, sepolia] = await Promise.all([
+        mainnetSigner
+          ? balanceState(mainnetClients, USDC_MAINNET, mainnetSigner.address, "eip155:8453")
+          : null,
+        sepoliaSigner
+          ? balanceState(sepoliaClients, USDC_SEPOLIA, sepoliaSigner.address, "eip155:84532")
+          : null,
+      ]);
+      if (mainnet) balances["eip155:8453"] = mainnet;
+      else delete balances["eip155:8453"];
+      if (sepolia) balances["eip155:84532"] = sepolia;
+      else delete balances["eip155:84532"];
     };
+    await refreshBalances();
 
     const client = new stack.x402Client();
-    client.register("eip155:8453", new stack.ExactEvmScheme(stack.toClientEvmSigner(account, mainnetClients[0])));
-    client.register("eip155:84532", new stack.ExactEvmScheme(stack.toClientEvmSigner(account, sepoliaClients[0])));
+    if (mainnetSigner) {
+      client.register(
+        "eip155:8453",
+        new stack.ExactEvmScheme(stack.toClientEvmSigner(mainnetSigner, mainnetClients[0])),
+      );
+    }
+    if (sepoliaSigner) {
+      client.register(
+        "eip155:84532",
+        new stack.ExactEvmScheme(stack.toClientEvmSigner(sepoliaSigner, sepoliaClients[0])),
+      );
+    }
     client.registerPolicy((_version, requirements) => {
       try {
         return filterAffordableRequirements(requirements as PaymentRequirementLike[], balances);
@@ -417,13 +532,25 @@ export async function setupPaidFetch(): Promise<FetchFn | null> {
     // global fetch after setupPaidFetch has already run still see their mocks.
     const dynamicFetch: FetchFn = (input, init) => globalThis.fetch(input, init);
     const paidFetch = stack.wrapFetchWithPayment(dynamicFetch, client);
-    return async (input, init) => {
+    const structuredFetch: FetchFn = async (input, init) => {
       try {
         return await paidFetch(input, init);
       } catch (err) {
         throw unwrapPolicyError(err) ?? err;
       }
     };
+    return withPayer(
+      structuredFetch,
+      {
+        source: options.paymentSigner ? "payment_signer" : resolvedAllowance!.source,
+        rail: "x402",
+        payers: [
+          ...(mainnetSigner ? [{ address: mainnetSigner.address, network: "eip155:8453" as const }] : []),
+          ...(sepoliaSigner ? [{ address: sepoliaSigner.address, network: "eip155:84532" as const }] : []),
+        ],
+      },
+      refreshBalances,
+    );
   } catch (err) {
     // Missing optional peers are a stable local capability state. Other setup
     // failures are thrown so lazy initialization can try again on a later call
@@ -484,8 +611,115 @@ function createLazyPaidFetchFrom(setup: () => Promise<FetchFn | null>): FetchFn 
  * Failed initialization is not cached; concurrent first calls share one
  * attempt, and a later request can recover after transient RPC/setup failure.
  */
-export function createLazyPaidFetch(): FetchFn {
-  return createLazyPaidFetchFrom(setupPaidFetch);
+export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFetch {
+  let cached: ConfiguredPaidFetch | undefined;
+  let pending: Promise<ConfiguredPaidFetch | null> | undefined;
+  let refreshBeforeNextCall = false;
+
+  const initialize = async (): Promise<ConfiguredPaidFetch | null> => {
+    if (cached === undefined) {
+      pending ??= setupPaidFetch(options).finally(() => {
+        pending = undefined;
+      });
+      const initialized = await pending;
+      // Cache only a successful wrapper. Missing/recoverable local state is
+      // retried on the next request instead of pinning an unwrapped fetch for
+      // the lifetime of the client.
+      if (initialized) cached = initialized;
+    }
+    return cached ?? null;
+  };
+
+  const lazy = async (input: Parameters<FetchFn>[0], init?: Parameters<FetchFn>[1]) => {
+    await initialize();
+    // Read `globalThis.fetch` fresh each call so test suites that override
+    // it after the SDK is constructed still see their mocks.
+    if (cached) {
+      if (refreshBeforeNextCall) {
+        await cached.refreshBalances();
+        refreshBeforeNextCall = false;
+      }
+      try {
+        return await cached(input, init);
+      } catch (err) {
+        // Preserve the selected signer/address. Only mutable RPC-derived
+        // balance state is refreshed before the caller's next retry.
+        if (isRetryableBalanceError(err)) refreshBeforeNextCall = true;
+        throw err;
+      }
+    }
+    return globalThis.fetch(input, init);
+  };
+
+  return Object.assign(lazy as FetchFn, {
+    async getPayer(): Promise<PaymentPayerProvenance | null> {
+      return (await initialize())?.payer ?? null;
+    },
+  });
+}
+
+function validatePaymentSource(options: PaidFetchOptions): void {
+  if (options.paymentSigner && options.allowancePath) {
+    throw new LocalError(
+      "Configure exactly one explicit payment source: paymentSigner or allowancePath",
+      "configuring paid fetch",
+      {
+        code: "PAYMENT_SOURCE_CONFLICT",
+        details: { fields: ["paymentSigner", "allowancePath"] },
+      },
+    );
+  }
+}
+
+async function resolveAllowance(options: PaidFetchOptions): Promise<{
+  allowance: AllowanceData;
+  source: Exclude<PaymentPayerSource, "payment_signer">;
+} | null> {
+  try {
+    // An explicit payment path is authoritative even when auth uses a custom
+    // credentials provider. Do not fall back if it is absent or malformed.
+    if (options.allowancePath !== undefined) {
+      const allowance = readAllowance(options.allowancePath);
+      return allowance ? { allowance, source: "allowance_path" } : null;
+    }
+
+    // Once a credentials provider is supplied it is the only implicit payment
+    // source. Providers without allowance capability fail closed; they never
+    // inherit the process-global wallet.
+    if (options.credentials !== undefined) {
+      if (typeof options.credentials.readAllowance !== "function") return null;
+      const allowance = await options.credentials.readAllowance();
+      return allowance ? { allowance, source: "credentials" } : null;
+    }
+
+    // Direct setupPaidFetch()/createLazyPaidFetch() calls retain the Node
+    // default for backwards compatibility.
+    const allowance = readAllowance();
+    return allowance ? { allowance, source: "default_allowance" } : null;
+  } catch {
+    return null;
+  }
+}
+
+function withPayer(
+  fetchFn: FetchFn,
+  payer: PaymentPayerProvenance,
+  refreshBalances: () => Promise<void> = async () => {},
+): ConfiguredPaidFetch {
+  return Object.assign(fetchFn, { payer, refreshBalances });
+}
+
+function localAllowanceSigners(
+  stack: X402Stack,
+  allowance: AllowanceData,
+  mainnetClient: PaymentPublicClient,
+  sepoliaClient: PaymentPublicClient,
+): [EvmPaymentSigner, EvmPaymentSigner] {
+  const account = stack.privateKeyToAccount(allowance.privateKey as `0x${string}`);
+  return [
+    stack.toClientEvmSigner(account, mainnetClient) as EvmPaymentSigner,
+    stack.toClientEvmSigner(account, sepoliaClient) as EvmPaymentSigner,
+  ];
 }
 
 /** @internal Source-level unit-test seam; not re-exported by the package. */

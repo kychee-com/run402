@@ -16,7 +16,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { run402, Run402, NodeCredentialsProvider } from "./index.js";
+import { run402, Run402, NodeCredentialsProvider, LocalError } from "./index.js";
 import { configureApiBase } from "../../core-dist/config.js";
 
 let tempDir: string;
@@ -50,6 +50,11 @@ describe("run402() Node factory", () => {
     assert.ok(r.projects);
   });
 
+  it("reports no payer when automatic paid fetch is disabled", async () => {
+    const r = run402({ disablePaidFetch: true });
+    assert.equal(await r.paymentPayer(), null);
+  });
+
   it("constructs with a populated keystore", () => {
     writeFileSync(
       join(tempDir, "projects.json"),
@@ -66,6 +71,20 @@ describe("run402() Node factory", () => {
       new Response("test", { status: 200 })) as typeof globalThis.fetch;
     const r = run402({ fetch: customFetch });
     assert.ok(r instanceof Run402);
+  });
+
+  it("rejects ambiguous explicit payment configuration at construction", () => {
+    assert.throws(
+      () => run402({
+        allowancePath: join(tempDir, "payer.json"),
+        paymentSigner: {
+          async getSigner() {
+            return null;
+          },
+        },
+      }),
+      (err: unknown) => err instanceof LocalError && err.code === "PAYMENT_SOURCE_CONFLICT",
+    );
   });
 
   it("sends Node SDK client metadata for direct SDK and CLI surfaces", async () => {

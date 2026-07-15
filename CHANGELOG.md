@@ -8,6 +8,12 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **Errors/recovery:** `X402BalanceError` distinguishes timeout, rate-limit, general RPC-unavailable, and confirmed-insufficient states. Only pre-payment RPC errors are marked `safeToRetry`, and transient failures are not permanently cached by lazy paid-fetch initialization.
 - **Tests/docs:** deterministic tests cover retry, provider failover, faithful insufficient-funds classification, and recovery on the next request; SDK references document the stable codes and no-secret error details.
 
+## Unreleased — deterministic x402 payer selection
+
+- **Node SDK:** `run402({ allowancePath, credentials })` now uses the explicit allowance as the x402 payer while retaining the supplied provider for API auth. Custom providers with `readAllowance()` also fund paid fetch without rereading the ambient wallet.
+- **Opaque signers:** `paymentSigner` supports async Base x402 signers backed by KMS/HSM-style providers without exposing raw private keys; conflicting explicit signer/path configuration fails with `PAYMENT_SOURCE_CONFLICT`. `r.paymentPayer()` reports only safe source/rail/public-address/network provenance.
+- **Recovery/tests:** lazy paid-fetch initialization retries after the selected allowance/provider becomes available, while successful initialization remains cached. Focused tests cover path/provider precedence, fail-closed behavior, conflicts, opaque signer provenance, and recovery.
+
 ## Unreleased — function runtime compatibility metadata
 
 - **SDK/CLI:** function-list records now type and preserve the deployed `runtime_version`, gateway `runtime_current_version`, guaranteed `runtime_minimum_version`, and `runtime_stale` fields.
