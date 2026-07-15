@@ -19,7 +19,10 @@ export interface ToolResult {
  * Always includes: HTTP status, API error message, and actionable next-step guidance.
  * Extracts optional fields: hint, retry_after, renew_url, usage, expires_at,
  * and lifecycle signals (lifecycle_state, entered_state_at, next_transition_at,
- * scheduled_purge_at) when the gateway returns them on grace-state 402s.
+ * scheduled_purge_at) when the gateway returns them on a grace-state denial.
+ * Grace-state (frozen/dormant) control-plane denials are HTTP 403 — 402 is
+ * reserved for genuine payment challenges — but both statuses are handled
+ * here so the richer "soft-delete grace window" guidance renders either way.
  *
  * @param res  A response-like object with `status` and `body`.
  * @param context  Short verb phrase: "running SQL", "deploying function", etc.
@@ -98,6 +101,13 @@ export function formatApiError(
       case 403:
         if (body && body.admin_required) {
           lines.push(`\nThis command requires admin access.`);
+        } else if (inGrace) {
+          // Lifecycle (frozen/dormant) denials are 403, not 402 — style.md
+          // reserves 402 for genuine payment challenges. Give the same
+          // richer grace-window guidance as the 402 branch above.
+          lines.push(
+            `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`set_tier\` to renew/upgrade and reactivate the project in one transaction.`,
+          );
         } else {
           lines.push(
             `\nNext step: The project lease may have expired. Use \`get_usage\` to check status, or \`set_tier\` to renew the lease.`,
@@ -122,7 +132,7 @@ export function formatApiError(
           lines.push(`\nNext step: Server error. Try again in a moment.`);
         }
     }
-  } else if (res.status === 402 && inGrace) {
+  } else if ((res.status === 402 || res.status === 403) && inGrace) {
     lines.push(
       `\nNext step: Project is in the soft-delete grace window — control-plane mutations are blocked. Use \`set_tier\` to renew/upgrade and reactivate the project in one transaction.`,
     );

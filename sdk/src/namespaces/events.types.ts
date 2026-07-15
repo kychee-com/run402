@@ -12,6 +12,16 @@
  * behavior; the SDK passes everything through (index signatures keep unknown
  * future fields, including the additive `platform_incidents[]` overlay and
  * `platform_status` rider on the page).
+ *
+ * The feed also carries app-emitted business facts alongside platform
+ * events (the `app-events-emit-lane` capability): every row is
+ * `source`-discriminated — `"app"` for a deployed function's own
+ * `events.emit(...)` calls, `"platform"` for everything else (the
+ * platform's internal sources, e.g. `gateway` / `email-lambda`, collapse
+ * under that one value). `list` / `listForOrg` accept optional `source` and
+ * `eventType` filters (see {@link ListEventsOptions}); consumers should key
+ * on `(source, event_type)` together — a platform type added later can
+ * share a name with an app's own vocabulary, and only the pair disambiguates.
  */
 
 /** A platform-synthesized drill-down suggestion attached to a feed event. */
@@ -50,6 +60,18 @@ export interface ListEventsOptions {
   cursor?: string;
   /** Page size (server default 50, max 200). */
   limit?: number;
+  /**
+   * Restrict to the app-emitted lane (`"app"`) or every other source
+   * (`"platform"` — `source <> 'app'`). Omit for the unfiltered feed
+   * (platform + app together). Composes with cursor pagination unchanged.
+   */
+  source?: "app" | "platform";
+  /**
+   * Restrict to one or more event types (OR match). Pass a single name, or
+   * an array for readability — either way it serializes to the wire as the
+   * comma-joined `event_type` query param (`event_type=a,b`).
+   */
+  eventType?: string | string[];
 }
 
 /** One page of the events feed, oldest-first. */

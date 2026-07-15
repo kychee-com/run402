@@ -110,6 +110,54 @@ describe("events.list", () => {
     const page = await scoped.events.list({ cursor: "evc_2" });
     assert.equal(page.has_more, false);
   });
+
+  it("passes source through as the wire `source` param", async () => {
+    const { fetch } = mockFetch((call) => {
+      assert.equal(call.url, "https://api.example.test/projects/v1/prj_1/events?source=app");
+      return jsonResponse({ events: [], cursor: "evc_0", has_more: false, reset: false });
+    });
+    await makeSdk(fetch).events.list("prj_1", { source: "app" });
+  });
+
+  it("serializes a single eventType string as the wire `event_type` param", async () => {
+    const { fetch } = mockFetch((call) => {
+      assert.equal(
+        call.url,
+        "https://api.example.test/projects/v1/prj_1/events?event_type=signature_completed",
+      );
+      return jsonResponse({ events: [], cursor: "evc_0", has_more: false, reset: false });
+    });
+    await makeSdk(fetch).events.list("prj_1", { eventType: "signature_completed" });
+  });
+
+  it("serializes an eventType array as a comma-joined `event_type` param", async () => {
+    const { fetch } = mockFetch((call) => {
+      assert.equal(
+        call.url,
+        "https://api.example.test/projects/v1/prj_1/events?event_type=signature_completed%2Cbooking_created",
+      );
+      return jsonResponse({ events: [], cursor: "evc_0", has_more: false, reset: false });
+    });
+    await makeSdk(fetch).events.list("prj_1", {
+      eventType: ["signature_completed", "booking_created"],
+    });
+  });
+
+  it("composes source + eventType with cursor/limit unchanged", async () => {
+    const { fetch } = mockFetch((call) => {
+      assert.equal(
+        call.url,
+        "https://api.example.test/projects/v1/prj_1/events?cursor=evc_1a2b&limit=5&source=platform&event_type=deploy_activated",
+      );
+      return jsonResponse({ events: [], cursor: "evc_1a2b", has_more: false, reset: false });
+    });
+    await makeSdk(fetch).events.list("prj_1", {
+      cursor: "evc_1a2b",
+      limit: 5,
+      source: "platform",
+      eventType: "deploy_activated",
+    });
+  });
 });
 
 describe("events.listForOrg", () => {
@@ -133,5 +181,19 @@ describe("events.listForOrg", () => {
       (err: unknown) => isLocalError(err),
     );
     assert.equal(calls.length, 0);
+  });
+
+  it("passes source + eventType through on the org-wide union", async () => {
+    const { fetch } = mockFetch((call) => {
+      assert.equal(
+        call.url,
+        "https://api.example.test/orgs/v1/00000000-0000-0000-0000-aaaaaaaaaaaa/events?source=app&event_type=signature_completed",
+      );
+      return jsonResponse({ events: [], cursor: "evc_0", has_more: false, reset: false });
+    });
+    await makeSdk(fetch).events.listForOrg("00000000-0000-0000-0000-aaaaaaaaaaaa", {
+      source: "app",
+      eventType: "signature_completed",
+    });
   });
 });
