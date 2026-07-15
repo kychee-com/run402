@@ -19,7 +19,7 @@
 
 import { describe, it, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -713,7 +713,7 @@ describe("createTrackedX402Fetch", () => {
       mutation_state: "not_started",
       method: "GET",
       origin: "https://paid.example",
-      path: "/envelopes",
+      path_sha256: "d7d8df1a2d96e1690a93ddb8cef7f64798bbfcbe030210adc1096e8d6d12527c",
       created_at: records.get(attemptId)!.created_at,
       updated_at: records.get(attemptId)!.updated_at,
       last_error_code: "X402_PAYMENT_SIGNING_FAILED",
@@ -769,6 +769,127 @@ describe("createTrackedX402Fetch", () => {
     assert.doesNotMatch(JSON.stringify(record), /PAYMENT-SIGNATURE|replayable|proof/);
   });
 
+  it("throws an ambiguous attempt error for a signed non-success response", async () => {
+    const { store, records } = memoryStore();
+    let outboundCalls = 0;
+    const fetchFn = createTrackedX402Fetch(
+      (baseFetch) => async (input, init) => {
+        await baseFetch(input, init);
+        return baseFetch(input, {
+          ...init,
+          headers: { "PAYMENT-SIGNATURE": "signed-proof" },
+        });
+      },
+      {},
+      {
+        store,
+        createAttemptId: () => attemptId,
+        fetch: async () => {
+          outboundCalls += 1;
+          return outboundCalls === 1
+            ? new Response("payment required", { status: 402 })
+            : new Response("provider unavailable", { status: 503 });
+        },
+      },
+    );
+
+    await assert.rejects(fetchFn("https://paid.example/envelopes"), (err) => {
+      assert.ok(err instanceof PaymentAttemptError);
+      assert.equal(err.code, "X402_PAYMENT_OUTCOME_AMBIGUOUS");
+      assert.equal(err.phase, "payment_response");
+      assert.equal(err.responseStatus, 503);
+      assert.equal(err.safeToRetry, false);
+      assert.equal(err.paymentAttemptId, attemptId);
+      return true;
+    });
+    assert.equal(records.get(attemptId)?.state, "ambiguous");
+    assert.equal(records.get(attemptId)?.response_status, 503);
+  });
+
+  it("fails closed without overwriting or dispatching an existing attempt id", async () => {
+    const { store, records } = memoryStore();
+    const existing: PaymentAttemptRecord = {
+      version: 1,
+      payment_attempt_id: attemptId,
+      rail: "x402",
+      state: "ambiguous",
+      mutation_state: "ambiguous",
+      method: "POST",
+      origin: "https://paid.example",
+      path_sha256: "d7d8df1a2d96e1690a93ddb8cef7f64798bbfcbe030210adc1096e8d6d12527c",
+      created_at: "2026-07-15T12:00:00.000Z",
+      updated_at: "2026-07-15T12:00:01.000Z",
+      provider_started_at: "2026-07-15T12:00:00.500Z",
+      last_error_code: "X402_PAYMENT_OUTCOME_AMBIGUOUS",
+    };
+    store.write(existing);
+    let outboundCalls = 0;
+    const fetchFn = createTrackedX402Fetch(
+      (baseFetch) => baseFetch,
+      {},
+      {
+        store,
+        fetch: async () => {
+          outboundCalls += 1;
+          return new Response("must not run");
+        },
+      },
+    );
+
+    await assert.rejects(
+      fetchFn("https://paid.example/envelopes", {
+        headers: { [PAYMENT_ATTEMPT_HEADER]: attemptId },
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof PaymentAttemptError);
+        assert.equal(err.code, "X402_ATTEMPT_ID_ALREADY_EXISTS");
+        assert.equal(err.safeToRetry, false);
+        assert.equal(err.mutationState, "ambiguous");
+        return true;
+      },
+    );
+    assert.equal(outboundCalls, 0);
+    assert.deepEqual(records.get(attemptId), existing);
+  });
+
+  it("reports corrupt attempt records as payment-safe but not automatically retryable", async () => {
+    let outboundCalls = 0;
+    const { store } = memoryStore();
+    store.read = () => {
+      throw new LocalError(
+        "invalid attempt record",
+        "reading x402 payment attempt",
+        { code: "PAYMENT_ATTEMPT_RECORD_INVALID" },
+      );
+    };
+    const fetchFn = createTrackedX402Fetch(
+      (baseFetch) => baseFetch,
+      {},
+      {
+        store,
+        fetch: async () => {
+          outboundCalls += 1;
+          return new Response("must not run");
+        },
+      },
+    );
+
+    await assert.rejects(
+      fetchFn("https://paid.example/envelopes", {
+        headers: { [PAYMENT_ATTEMPT_HEADER]: attemptId },
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof PaymentAttemptError);
+        assert.equal(err.code, "PAYMENT_ATTEMPT_RECORD_INVALID");
+        assert.equal(err.safeToRetry, true);
+        assert.equal(err.retryable, false);
+        assert.deepEqual(err.nextActions?.map((action) => action.type), ["contact_support"]);
+        return true;
+      },
+    );
+    assert.equal(outboundCalls, 0);
+  });
+
   it("persists completed state without payment headers or proofs", async () => {
     const { store, records } = memoryStore();
     const seenAttemptIds: string[] = [];
@@ -813,9 +934,8 @@ describe("createTrackedX402Fetch", () => {
     assert.doesNotMatch(serialized, /signed-secret|do-not-store|private-document|X-PAYMENT/);
   });
 
-  it("accepts only canonical caller-supplied attempt ids and scopes the id to a non-redirecting paid call", async () => {
+  it("rejects malformed caller-supplied ids and scopes a canonical id to a non-redirecting paid call", async () => {
     const { store } = memoryStore();
-    const generatedId = "pat_ffffffffffffffffffffffffffffffff";
     const calls: Array<{ attemptId: string | null; redirect?: RequestRedirect }> = [];
     let outboundCalls = 0;
     const fetchFn = createTrackedX402Fetch(
@@ -847,21 +967,59 @@ describe("createTrackedX402Fetch", () => {
     await fetchFn("https://paid.example/one", {
       headers: { [PAYMENT_ATTEMPT_HEADER]: validId },
     });
-    await fetchFn("https://paid.example/two", {
-      headers: { [PAYMENT_ATTEMPT_HEADER]: "invalid-attempt-id" },
-    });
+    await assert.rejects(
+      fetchFn("https://paid.example/two", {
+        headers: { [PAYMENT_ATTEMPT_HEADER]: "invalid-attempt-id" },
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof LocalError);
+        assert.equal(err.code, "INVALID_PAYMENT_ATTEMPT_ID");
+        return true;
+      },
+    );
 
     assert.deepEqual(calls, [
       { attemptId: null, redirect: undefined },
       { attemptId: validId, redirect: "error" },
-      { attemptId: null, redirect: undefined },
-      { attemptId: generatedId, redirect: "error" },
     ]);
+  });
+
+  it("atomically rejects concurrent use of the same fresh caller-supplied id", async () => {
+    const { store } = memoryStore();
+    let outboundCalls = 0;
+    const fetchFn = createTrackedX402Fetch(
+      (baseFetch) => baseFetch,
+      {},
+      {
+        store,
+        fetch: async () => {
+          outboundCalls += 1;
+          await Promise.resolve();
+          return new Response("ok");
+        },
+      },
+    );
+    const init = { headers: { [PAYMENT_ATTEMPT_HEADER]: attemptId } };
+    const results = await Promise.allSettled([
+      fetchFn("https://paid.example/envelopes", init),
+      fetchFn("https://paid.example/envelopes", init),
+    ]);
+
+    assert.equal(outboundCalls, 1);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    const rejected = results.find((result) => result.status === "rejected");
+    assert.ok(rejected && rejected.status === "rejected");
+    assert.ok(rejected.reason instanceof PaymentAttemptError);
+    assert.equal(rejected.reason.code, "X402_ATTEMPT_ID_ALREADY_EXISTS");
+    assert.equal(rejected.reason.safeToRetry, false);
   });
 
   it("fails closed before provider dispatch when the durable intent cannot be written", async () => {
     let outboundCalls = 0;
     const store: PaymentAttemptStore = {
+      claim() {
+        throw new Error("disk full");
+      },
       write() {
         throw new Error("disk full");
       },
@@ -912,18 +1070,39 @@ describe("payment attempt file journal", () => {
       mutation_state: "not_started",
       method: "POST",
       origin: "https://paid.example",
-      path: "/envelopes",
+      path_sha256: "d7d8df1a2d96e1690a93ddb8cef7f64798bbfcbe030210adc1096e8d6d12527c",
       created_at: "2026-07-15T12:00:00.000Z",
       updated_at: "2026-07-15T12:00:00.000Z",
     };
-    store.write(record);
+    assert.equal(store.claim(record), true);
+    assert.equal(store.claim(record), false);
+    store.write({ ...record, state: "completed" });
 
     const path = join(dir, `${id}.json`);
     assert.equal(statSync(path).mode & 0o777, 0o600);
     assert.equal(statSync(dir).mode & 0o777, 0o700);
-    assert.deepEqual(store.read(id), record);
+    assert.deepEqual(store.read(id), { ...record, state: "completed" });
     const bytes = readFileSync(path, "utf8");
     assert.doesNotMatch(bytes, /header|query|body|private|signature|proof/i);
+  });
+
+  it("distinguishes a missing attempt from a corrupt existing record", () => {
+    const dir = join(tempDir, "corrupt-attempt-journal");
+    const store = createFilePaymentAttemptStore(dir);
+    const missing = "pat_cccccccccccccccccccccccccccccccc";
+    const corrupt = "pat_dddddddddddddddddddddddddddddddd";
+
+    assert.equal(store.read(missing), null);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${corrupt}.json`), "{not-json", { mode: 0o600 });
+    assert.throws(
+      () => store.read(corrupt),
+      (err: unknown) => {
+        assert.ok(err instanceof LocalError);
+        assert.equal(err.code, "PAYMENT_ATTEMPT_RECORD_INVALID");
+        return true;
+      },
+    );
   });
 });
 
@@ -935,6 +1114,11 @@ function memoryStore(): {
   return {
     records,
     store: {
+      claim(record) {
+        if (records.has(record.payment_attempt_id)) return false;
+        records.set(record.payment_attempt_id, structuredClone(record));
+        return true;
+      },
       write(record) {
         records.set(record.payment_attempt_id, structuredClone(record));
       },

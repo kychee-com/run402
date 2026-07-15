@@ -260,7 +260,7 @@ export function _setPaidStackLoadersForTest(loaders?: {
 
 interface TrackedPaymentContext {
   id: string;
-  request: { method: string; origin: string | null; path: string | null };
+  request: { method: string; origin: string | null; path_sha256: string | null };
   createdAt: string;
   phase: PaymentAttemptPhase;
   providerStarted: boolean;
@@ -844,9 +844,56 @@ export function createTrackedX402Fetch(
   const paidFetch = wrapFetchWithPayment(baseFetch, client);
 
   return async (input, init) => {
+    const suppliedAttemptId = attemptIdFromRequest(input, init);
+    const request = requestSummary(input, init);
+    if (suppliedAttemptId) {
+      let existing: PaymentAttemptRecord | null;
+      try {
+        existing = store.read(suppliedAttemptId);
+      } catch (cause) {
+        const code =
+          cause instanceof Run402Error && cause.code
+            ? cause.code
+            : "X402_ATTEMPT_JOURNAL_FAILED";
+        throw new PaymentAttemptError({
+          code,
+          message: "The existing x402 payment attempt could not be inspected; no payment was dispatched.",
+          phase: "initial_request",
+          paymentAttemptId: suppliedAttemptId,
+          providerStarted: false,
+          mutationState: "not_started",
+          safeToRetry: true,
+          retryable: false,
+          nextActions: [
+            {
+              type: "contact_support",
+              payment_attempt_id: suppliedAttemptId,
+              safe_to_auto_execute: false,
+              why: "Preserve and repair the unreadable local payment-attempt record before creating a fresh attempt.",
+            },
+          ],
+          cause,
+          request,
+        });
+      }
+      if (existing) {
+        throw new PaymentAttemptError({
+          code: "X402_ATTEMPT_ID_ALREADY_EXISTS",
+          message: "This x402 payment attempt id already exists; reconcile it before authorizing another payment.",
+          phase: "payment_response",
+          paymentAttemptId: suppliedAttemptId,
+          providerStarted: existing.mutation_state !== "not_started",
+          responseStatus: existing.response_status ?? null,
+          mutationState: existing.mutation_state,
+          safeToRetry: false,
+          cause: null,
+          request,
+        });
+      }
+    }
     const context: TrackedPaymentContext = {
-      id: attemptIdFromRequest(input, init) ?? makeId(),
-      request: requestSummary(input, init),
+      id: suppliedAttemptId ?? makeId(),
+      request,
       createdAt: now(),
       phase: "initial_request",
       providerStarted: false,
@@ -855,6 +902,37 @@ export function createTrackedX402Fetch(
       journalFailure: false,
       now,
     };
+    if (suppliedAttemptId) {
+      let claimed: boolean;
+      try {
+        claimed = claimIntent(context, store, now);
+      } catch (cause) {
+        throw new PaymentAttemptError({
+          code: "X402_ATTEMPT_JOURNAL_FAILED",
+          message: "The x402 payment attempt id could not be reserved durably; no request was dispatched.",
+          phase: "initial_request",
+          paymentAttemptId: suppliedAttemptId,
+          providerStarted: false,
+          mutationState: "not_started",
+          safeToRetry: true,
+          cause: cause instanceof AttemptJournalWriteError ? cause.cause : cause,
+          request,
+        });
+      }
+      if (!claimed) {
+        throw new PaymentAttemptError({
+          code: "X402_ATTEMPT_ID_ALREADY_EXISTS",
+          message: "This x402 payment attempt id was claimed concurrently; reconcile it before authorizing another payment.",
+          phase: "initial_request",
+          paymentAttemptId: suppliedAttemptId,
+          providerStarted: true,
+          mutationState: "ambiguous",
+          safeToRetry: false,
+          cause: null,
+          request,
+        });
+      }
+    }
     return storage.run(context, async () => {
       try {
         const response = await paidFetch(input, init);
@@ -865,11 +943,38 @@ export function createTrackedX402Fetch(
             mutation_state: completed ? "completed" : "ambiguous",
             response_status: response.status,
           });
+          if (!completed) {
+            throw new PaymentAttemptError({
+              code: "X402_PAYMENT_OUTCOME_AMBIGUOUS",
+              message: "The x402 payment target returned a non-success response after provider dispatch; reconcile the attempt before paying again.",
+              phase: "payment_response",
+              paymentAttemptId: context.id,
+              providerStarted: true,
+              responseStatus: response.status,
+              mutationState: "ambiguous",
+              safeToRetry: false,
+              cause: null,
+              request: context.request,
+            });
+          }
+        } else if (context.record && context.phase === "initial_request") {
+          writeRecordBestEffort(context, store, {
+            state: "completed",
+            mutation_state: "not_started",
+            response_status: response.status,
+          });
         }
         return response;
       } catch (cause) {
         const balanceError = cause instanceof X402BalanceError ? cause : unwrapPolicyError(cause);
-        if (balanceError) throw balanceError;
+        if (balanceError) {
+          writeRecordBestEffort(context, store, {
+            state: "failed",
+            mutation_state: "not_started",
+            last_error_code: balanceError.code,
+          });
+          throw balanceError;
+        }
         if (cause instanceof PaymentAttemptError) throw cause;
         if (cause instanceof Run402Error && !context.providerStarted) {
           writeRecordBestEffort(context, store, {
@@ -931,6 +1036,23 @@ function ensureIntent(
   now: () => string,
 ): void {
   if (context.record) return;
+  if (!claimIntent(context, store, now)) {
+    throw new AttemptJournalWriteError(
+      new LocalError(
+        "The generated x402 payment attempt id already exists.",
+        "reserving x402 payment attempt",
+        { code: "X402_ATTEMPT_ID_COLLISION" },
+      ),
+    );
+  }
+}
+
+function claimIntent(
+  context: TrackedPaymentContext,
+  store: PaymentAttemptStore,
+  now: () => string,
+): boolean {
+  if (context.record) return true;
   const updatedAt = now();
   const record: PaymentAttemptRecord = {
     version: 1,
@@ -940,13 +1062,14 @@ function ensureIntent(
     mutation_state: "not_started",
     method: context.request.method,
     origin: context.request.origin,
-    path: context.request.path,
+    path_sha256: context.request.path_sha256,
     created_at: context.createdAt,
     updated_at: updatedAt,
   };
   try {
-    store.write(record);
-    context.record = record;
+    const claimed = store.claim(record);
+    if (claimed) context.record = record;
+    return claimed;
   } catch (cause) {
     context.journalFailure = true;
     throw new AttemptJournalWriteError(cause);

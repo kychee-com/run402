@@ -368,32 +368,39 @@ export class PaymentAttemptError extends Run402Error {
     responseStatus?: number | null;
     mutationState: PaymentAttemptMutationState;
     safeToRetry: boolean;
+    /** Operational retryability; defaults to safeToRetry. */
+    retryable?: boolean;
+    nextActions?: NextAction[];
     cause: unknown;
-    request?: { method: string; origin: string | null; path: string | null };
+    request?: { method: string; origin: string | null; path_sha256: string | null };
   }) {
-    const retryable = init.safeToRetry;
-    const nextActions: NextAction[] = init.safeToRetry
-      ? [
-          {
-            type: "retry",
-            payment_attempt_id: init.paymentAttemptId,
-            why: "No payment-bearing request was dispatched; retrying the original request is safe.",
-          },
-        ]
-      : [
-          {
-            type: "reconcile_payment",
-            payment_attempt_id: init.paymentAttemptId,
-            safe_to_auto_execute: false,
-            why: "A payment-bearing request may have reached the provider. Reconcile this attempt before issuing another payment.",
-          },
-          {
-            type: "poll",
-            payment_attempt_id: init.paymentAttemptId,
-            safe_to_auto_execute: true,
-            why: "Poll the target or payment provider for the final state of this attempt.",
-          },
-        ];
+    const retryable = init.retryable ?? init.safeToRetry;
+    const nextActions: NextAction[] =
+      init.nextActions ??
+      (init.safeToRetry && retryable
+        ? [
+            {
+              type: "retry",
+              payment_attempt_id: init.paymentAttemptId,
+              why: "No payment-bearing request was dispatched; retrying the original request is safe.",
+            },
+          ]
+        : !init.safeToRetry
+          ? [
+              {
+                type: "reconcile_payment",
+                payment_attempt_id: init.paymentAttemptId,
+                safe_to_auto_execute: false,
+                why: "A payment-bearing request may have reached the provider. Reconcile this attempt before issuing another payment.",
+              },
+              {
+                type: "poll",
+                payment_attempt_id: init.paymentAttemptId,
+                safe_to_auto_execute: true,
+                why: "Poll the target or payment provider for the final state of this attempt.",
+              },
+            ]
+          : []);
     const details = {
       payment_attempt_id: init.paymentAttemptId,
       phase: init.phase,

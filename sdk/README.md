@@ -100,9 +100,9 @@ custom `fetch` owns payment, or the selected source is not currently available.
 
 ### Automatic x402 attempt recovery
 
-Automatic paid requests persist a redacted mode-0600 intent before sending a signed payment. A `PaymentAttemptError` before provider dispatch has `mutationState: "not_started"` and `safeToRetry: true`; after dispatch, an unknown outcome is `mutationState: "ambiguous"`, `safeToRetry: false`, with `reconcile_payment` and `poll` actions. Reconcile `paymentAttemptId` before authorizing another payment.
+Automatic paid requests persist a redacted mode-0600 intent before sending a signed payment. A `PaymentAttemptError` before provider dispatch has `mutationState: "not_started"` and `safeToRetry: true`; check `retryable` separately because persistent local-journal corruption is safe from duplicate payment but requires repair rather than an automatic retry. After dispatch, an unknown outcome is `mutationState: "ambiguous"`, `safeToRetry: false`, with `reconcile_payment` and `poll` actions. Reconcile `paymentAttemptId` before authorizing another payment.
 
-Use `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })` from `@run402/sdk/node` to inspect the active profile's local journal. It never stores keys, signed headers/proofs, request bodies, query strings, or raw causes. `X-Run402-Payment-Attempt-Id` is sent only on the payment-bearing call, with redirects disabled so payment metadata cannot cross to another target.
+Use `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })` from `@run402/sdk/node` to inspect the active profile's local journal. It never stores keys, signed headers/proofs, raw paths, request bodies, query strings, or raw causes; only a SHA-256 pathname fingerprint is retained. `X-Run402-Payment-Attempt-Id` is reserved atomically and sent only on the payment-bearing call, with redirects disabled so payment metadata cannot cross to another target. Existing ids fail with `X402_ATTEMPT_ID_ALREADY_EXISTS`; malformed ids fail with `INVALID_PAYMENT_ATTEMPT_ID`, both before network dispatch.
 
 For repo-level app deploys, the Node entry also exposes the action runner used by `run402 up`:
 

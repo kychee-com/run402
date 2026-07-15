@@ -9,7 +9,11 @@
 
 import {
   chmodSync,
+  closeSync,
+  fchmodSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   readdirSync,
@@ -17,8 +21,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
 import { getConfigDir } from "../../core-dist/config.js";
 import { LocalError } from "../errors.js";
 
@@ -41,7 +45,8 @@ export interface PaymentAttemptRecord {
   mutation_state: "not_started" | "in_progress" | "completed" | "ambiguous";
   method: string;
   origin: string | null;
-  path: string | null;
+  /** SHA-256 of the URL pathname; raw path/query values are never persisted. */
+  path_sha256: string | null;
   created_at: string;
   updated_at: string;
   provider_started_at?: string;
@@ -50,6 +55,8 @@ export interface PaymentAttemptRecord {
 }
 
 export interface PaymentAttemptStore {
+  /** Atomically reserve a new id; returns false when it already exists. */
+  claim(record: PaymentAttemptRecord): boolean;
   write(record: PaymentAttemptRecord): void;
   read(paymentAttemptId: string): PaymentAttemptRecord | null;
 }
@@ -66,32 +73,103 @@ export function createFilePaymentAttemptStore(
   dir = paymentAttemptJournalDir(),
 ): PaymentAttemptStore {
   return {
+    claim(record) {
+      assertPaymentAttemptId(record.payment_attempt_id);
+      ensureJournalDir(dir);
+      const path = join(dir, `${record.payment_attempt_id}.json`);
+      let fd: number;
+      try {
+        fd = openSync(path, "wx", 0o600);
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException)?.code === "EEXIST") return false;
+        throw cause;
+      }
+      try {
+        writeFileSync(fd, `${JSON.stringify(record, null, 2)}\n`);
+        fchmodSync(fd, 0o600);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+      fsyncDirectory(dir);
+      return true;
+    },
     write(record) {
       assertPaymentAttemptId(record.payment_attempt_id);
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-      chmodSync(dir, 0o700);
+      ensureJournalDir(dir);
       const path = join(dir, `${record.payment_attempt_id}.json`);
       const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
       try {
-        writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
+        const fd = openSync(tmp, "wx", 0o600);
+        try {
+          writeFileSync(fd, `${JSON.stringify(record, null, 2)}\n`);
+          fchmodSync(fd, 0o600);
+          fsyncSync(fd);
+        } finally {
+          closeSync(fd);
+        }
         renameSync(tmp, path);
-        chmodSync(path, 0o600);
+        fsyncDirectory(dir);
       } finally {
         rmSync(tmp, { force: true });
       }
     },
     read(paymentAttemptId) {
       assertPaymentAttemptId(paymentAttemptId);
+      const path = join(dir, `${paymentAttemptId}.json`);
+      let raw: string;
       try {
-        const parsed = JSON.parse(
-          readFileSync(join(dir, `${paymentAttemptId}.json`), "utf8"),
-        ) as unknown;
-        return isPaymentAttemptRecord(parsed) ? parsed : null;
-      } catch {
-        return null;
+        raw = readFileSync(path, "utf8");
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+        throw new LocalError(
+          "The local x402 payment attempt could not be read.",
+          "reading x402 payment attempt",
+          { code: "PAYMENT_ATTEMPT_READ_FAILED", cause },
+        );
       }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw) as unknown;
+      } catch (cause) {
+        throw new LocalError(
+          "The local x402 payment attempt record is not valid JSON.",
+          "reading x402 payment attempt",
+          { code: "PAYMENT_ATTEMPT_RECORD_INVALID", cause },
+        );
+      }
+      if (!isPaymentAttemptRecord(parsed)) {
+        throw new LocalError(
+          "The local x402 payment attempt record has an invalid shape.",
+          "reading x402 payment attempt",
+          { code: "PAYMENT_ATTEMPT_RECORD_INVALID" },
+        );
+      }
+      return parsed;
     },
   };
+}
+
+function ensureJournalDir(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  // Persist both the directory metadata and its entry in the parent before a
+  // payment can depend on a claim within it.
+  fsyncDirectory(dir);
+  fsyncDirectory(dirname(dir));
+}
+
+function fsyncDirectory(dir: string): void {
+  // Node cannot open directory handles for fsync on Windows. Exclusive create
+  // and atomic replace still apply there; POSIX needs this extra durability
+  // barrier for the directory entry itself.
+  if (process.platform === "win32") return;
+  const fd = openSync(dir, "r");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Read one sanitized attempt from the active wallet profile's journal. */
@@ -133,21 +211,27 @@ export function listPaymentAttempts(opts: { limit?: number } = {}): PaymentAttem
 export function requestSummary(input: RequestInfo | URL, init?: RequestInit): {
   method: string;
   origin: string | null;
-  path: string | null;
+  path_sha256: string | null;
 } {
   const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
   try {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    return { method, origin: url.origin, path: url.pathname };
+    return {
+      method,
+      origin: url.origin,
+      path_sha256: createHash("sha256").update(url.pathname).digest("hex"),
+    };
   } catch {
-    return { method, origin: null, path: null };
+    return { method, origin: null, path_sha256: null };
   }
 }
 
 export function attemptIdFromRequest(input: RequestInfo | URL, init?: RequestInit): string | null {
   const headers = mergedHeaders(input, init);
   const supplied = headers.get(PAYMENT_ATTEMPT_HEADER);
-  return supplied && PAYMENT_ATTEMPT_ID_PATTERN.test(supplied) ? supplied : null;
+  if (!supplied) return null;
+  assertPaymentAttemptId(supplied);
+  return supplied;
 }
 
 export function withPaymentAttemptHeader(
@@ -201,7 +285,8 @@ function isPaymentAttemptRecord(value: unknown): value is PaymentAttemptRecord {
     typeof record.mutation_state === "string" &&
     typeof record.method === "string" &&
     (record.origin === null || typeof record.origin === "string") &&
-    (record.path === null || typeof record.path === "string") &&
+    (record.path_sha256 === null ||
+      (typeof record.path_sha256 === "string" && /^[0-9a-f]{64}$/.test(record.path_sha256))) &&
     typeof record.created_at === "string" &&
     typeof record.updated_at === "string"
   );
