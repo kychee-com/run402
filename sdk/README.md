@@ -98,6 +98,12 @@ address(es), and network(s); it never returns a key, signed authorization, or
 replayable proof. It returns `null` when automatic paid fetch is disabled, a
 custom `fetch` owns payment, or the selected source is not currently available.
 
+### Automatic x402 attempt recovery
+
+Automatic paid requests persist a redacted mode-0600 intent before sending a signed payment. A `PaymentAttemptError` before provider dispatch has `mutationState: "not_started"` and `safeToRetry: true`; after dispatch, an unknown outcome is `mutationState: "ambiguous"`, `safeToRetry: false`, with `reconcile_payment` and `poll` actions. Reconcile `paymentAttemptId` before authorizing another payment.
+
+Use `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })` from `@run402/sdk/node` to inspect the active profile's local journal. It never stores keys, signed headers/proofs, request bodies, query strings, or raw causes. `X-Run402-Payment-Attempt-Id` is sent only on the payment-bearing call, with redirects disabled so payment metadata cannot cross to another target.
+
 For repo-level app deploys, the Node entry also exposes the action runner used by `run402 up`:
 
 ```ts
@@ -723,6 +729,7 @@ All failures throw subclasses of `Run402Error`. Every subclass carries a stable
 | `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 | — |
 | `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
+| `PaymentAttemptError` | `"payment_attempt_error"` | Automatic x402 setup/signing/submission failed | `code`, `phase`, `paymentAttemptId`, `safeToRetry`, `mutationState`, `nextActions` |
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
 | `X402BalanceError` (Node entry) | `"local_error"` | x402 USDC balance preflight could not be confirmed, or confirmed funds are insufficient | `code`, `safeToRetry`, `mutationState="not_started"`, `details`, `nextActions` |
 | `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |

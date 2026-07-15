@@ -17,10 +17,26 @@
  */
 
 import { readAllowance } from "../../core-dist/allowance.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { AllowanceData, CredentialsProvider } from "../credentials.js";
-import { LocalError, Run402Error } from "../errors.js";
+import {
+  LocalError,
+  PaymentAttemptError,
+  Run402Error,
+  type PaymentAttemptPhase,
+} from "../errors.js";
 import { PaidStackUnavailable, loadMppStack, loadX402Stack } from "./_paid-stack.js";
 import type { MppStack, X402Stack } from "./_paid-stack.js";
+import {
+  attemptIdFromRequest,
+  createFilePaymentAttemptStore,
+  createPaymentAttemptId,
+  hasPaymentAuthorization,
+  requestSummary,
+  withPaymentAttemptHeader,
+  type PaymentAttemptRecord,
+  type PaymentAttemptStore,
+} from "./payment-attempts.js";
 
 type FetchFn = typeof globalThis.fetch;
 type RpcFailureReason = "timeout" | "rate_limited" | "network" | "rpc_error";
@@ -240,6 +256,32 @@ export function _setPaidStackLoadersForTest(loaders?: {
     x402: loaders?.x402 ?? loadX402Stack,
     mpp: loaders?.mpp ?? loadMppStack,
   };
+}
+
+interface TrackedPaymentContext {
+  id: string;
+  request: { method: string; origin: string | null; path: string | null };
+  createdAt: string;
+  phase: PaymentAttemptPhase;
+  providerStarted: boolean;
+  responseStatus: number | null;
+  record: PaymentAttemptRecord | null;
+  journalFailure: boolean;
+  now: () => string;
+}
+
+interface TrackedPaidFetchOptions {
+  store?: PaymentAttemptStore;
+  createAttemptId?: () => string;
+  now?: () => string;
+  fetch?: FetchFn;
+}
+
+class AttemptJournalWriteError extends Error {
+  constructor(readonly cause: unknown) {
+    super("Could not persist the x402 payment attempt journal");
+    this.name = "AttemptJournalWriteError";
+  }
 }
 
 function classifyRpcFailure(err: unknown): RpcFailureReason {
@@ -528,19 +570,21 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
       }
     });
 
-    // Read `globalThis.fetch` fresh each call so test suites that swap the
-    // global fetch after setupPaidFetch has already run still see their mocks.
-    const dynamicFetch: FetchFn = (input, init) => globalThis.fetch(input, init);
-    const paidFetch = stack.wrapFetchWithPayment(dynamicFetch, client);
-    const structuredFetch: FetchFn = async (input, init) => {
-      try {
-        return await paidFetch(input, init);
-      } catch (err) {
-        throw unwrapPolicyError(err) ?? err;
-      }
-    };
+    const trackedFetch = createTrackedX402Fetch(
+      (baseFetch, rawClient) => {
+        const wrapped = stack.wrapFetchWithPayment(baseFetch, rawClient);
+        return async (input, init) => {
+          try {
+            return await wrapped(input, init);
+          } catch (err) {
+            throw unwrapPolicyError(err) ?? err;
+          }
+        };
+      },
+      client,
+    );
     return withPayer(
-      structuredFetch,
+      trackedFetch,
       {
         source: options.paymentSigner ? "payment_signer" : resolvedAllowance!.source,
         rail: "x402",
@@ -574,6 +618,13 @@ function isRetryableBalanceError(error: unknown): boolean {
     candidate.code.startsWith("X402_RPC_") &&
     candidate.safeToRetry === true
   );
+}
+
+function isBalancePreflightError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" &&
+    (code.startsWith("X402_RPC_") || code === "X402_INSUFFICIENT_FUNDS");
 }
 
 function createLazyPaidFetchFrom(setup: () => Promise<FetchFn | null>): FetchFn {
@@ -644,7 +695,7 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
       } catch (err) {
         // Preserve the selected signer/address. Only mutable RPC-derived
         // balance state is refreshed before the caller's next retry.
-        if (isRetryableBalanceError(err)) refreshBeforeNextCall = true;
+        if (isBalancePreflightError(err)) refreshBeforeNextCall = true;
         throw err;
       }
     }
@@ -726,3 +777,218 @@ function localAllowanceSigners(
 export const __paidFetchInternals = {
   createLazyPaidFetchFrom,
 };
+
+/**
+ * Request-scoped payment tracker around `@x402/fetch`.
+ *
+ * The wrapped package may call its base fetch twice: first without payment to
+ * obtain the 402 challenge, then with a signed payment authorization. The
+ * AsyncLocalStorage context lets the base-fetch boundary update the correct
+ * durable attempt even when multiple paid requests run concurrently.
+ *
+ * Exported from this module for deterministic boundary tests, but intentionally
+ * not re-exported from the package entry point.
+ */
+export function createTrackedX402Fetch(
+  wrapFetchWithPayment: (fetch: FetchFn, client: unknown) => FetchFn,
+  client: unknown,
+  opts: TrackedPaidFetchOptions = {},
+): FetchFn {
+  const storage = new AsyncLocalStorage<TrackedPaymentContext>();
+  const store = opts.store ?? createFilePaymentAttemptStore();
+  const makeId = opts.createAttemptId ?? createPaymentAttemptId;
+  const now = opts.now ?? (() => new Date().toISOString());
+  const baseFetch: FetchFn = async (input, init) => {
+    const context = storage.getStore();
+    if (!context) return (opts.fetch ?? globalThis.fetch)(input, init);
+
+    const paymentBearing = hasPaymentAuthorization(input, init);
+    if (paymentBearing) {
+      ensureIntent(context, store, now);
+      context.phase = "payment_submission";
+      const startedAt = now();
+      writeRecord(context, store, {
+        state: "submitting",
+        mutation_state: "in_progress",
+        provider_started_at: startedAt,
+      });
+    }
+
+    const [nextInput, nextInit] = withPaymentAttemptHeader(
+      input,
+      init,
+      context.id,
+      paymentBearing,
+    );
+    if (paymentBearing) {
+      // This assignment is deliberately immediately before the external call.
+      // From this line onward a thrown transport error has an unknown outcome.
+      context.providerStarted = true;
+    }
+    const response = await (opts.fetch ?? globalThis.fetch)(nextInput, nextInit);
+
+    if (!paymentBearing && response.status === 402) {
+      context.phase = "challenge_received";
+      ensureIntent(context, store, now);
+    } else if (paymentBearing) {
+      context.phase = "payment_response";
+      context.responseStatus = response.status;
+      writeRecord(context, store, {
+        state: "response_received",
+        mutation_state: "in_progress",
+        response_status: response.status,
+      });
+    }
+    return response;
+  };
+  const paidFetch = wrapFetchWithPayment(baseFetch, client);
+
+  return async (input, init) => {
+    const context: TrackedPaymentContext = {
+      id: attemptIdFromRequest(input, init) ?? makeId(),
+      request: requestSummary(input, init),
+      createdAt: now(),
+      phase: "initial_request",
+      providerStarted: false,
+      responseStatus: null,
+      record: null,
+      journalFailure: false,
+      now,
+    };
+    return storage.run(context, async () => {
+      try {
+        const response = await paidFetch(input, init);
+        if (context.providerStarted) {
+          const completed = response.ok;
+          writeRecordBestEffort(context, store, {
+            state: completed ? "completed" : "ambiguous",
+            mutation_state: completed ? "completed" : "ambiguous",
+            response_status: response.status,
+          });
+        }
+        return response;
+      } catch (cause) {
+        const balanceError = cause instanceof X402BalanceError ? cause : unwrapPolicyError(cause);
+        if (balanceError) throw balanceError;
+        if (cause instanceof PaymentAttemptError) throw cause;
+        if (cause instanceof Run402Error && !context.providerStarted) {
+          writeRecordBestEffort(context, store, {
+            state: "failed",
+            mutation_state: "not_started",
+            last_error_code: cause.code,
+          });
+          throw cause;
+        }
+        const providerStarted = context.providerStarted;
+        const journalFailure = cause instanceof AttemptJournalWriteError || context.journalFailure;
+        const code = journalFailure
+          ? "X402_ATTEMPT_JOURNAL_FAILED"
+          : providerStarted
+            ? "X402_PAYMENT_OUTCOME_AMBIGUOUS"
+            : context.phase === "challenge_received"
+              ? "X402_PAYMENT_SIGNING_FAILED"
+              : "X402_INITIAL_REQUEST_FAILED";
+        const phase = providerStarted
+          ? context.responseStatus === null
+            ? "payment_submission"
+            : "payment_response"
+          : context.phase === "challenge_received"
+            ? "payment_signing"
+            : context.phase;
+        const mutationState = providerStarted ? "ambiguous" : "not_started";
+        writeRecordBestEffort(context, store, {
+          state: providerStarted ? "ambiguous" : "failed",
+          mutation_state: mutationState,
+          ...(context.responseStatus !== null ? { response_status: context.responseStatus } : {}),
+          last_error_code: code,
+        });
+        throw new PaymentAttemptError({
+          code,
+          message: providerStarted
+            ? "The x402 payment request failed after provider dispatch; its outcome is unknown."
+            : journalFailure
+              ? "The x402 payment was not dispatched because its durable attempt could not be recorded."
+              : phase === "payment_signing"
+                ? "The x402 payment authorization could not be created; no payment was dispatched."
+                : "The initial request failed before an x402 payment was dispatched.",
+          phase,
+          paymentAttemptId: context.id,
+          providerStarted,
+          responseStatus: context.responseStatus,
+          mutationState,
+          safeToRetry: !providerStarted,
+          cause: cause instanceof AttemptJournalWriteError ? cause.cause : cause,
+          request: context.request,
+        });
+      }
+    });
+  };
+}
+
+function ensureIntent(
+  context: TrackedPaymentContext,
+  store: PaymentAttemptStore,
+  now: () => string,
+): void {
+  if (context.record) return;
+  const updatedAt = now();
+  const record: PaymentAttemptRecord = {
+    version: 1,
+    payment_attempt_id: context.id,
+    rail: "x402",
+    state: "intent",
+    mutation_state: "not_started",
+    method: context.request.method,
+    origin: context.request.origin,
+    path: context.request.path,
+    created_at: context.createdAt,
+    updated_at: updatedAt,
+  };
+  try {
+    store.write(record);
+    context.record = record;
+  } catch (cause) {
+    context.journalFailure = true;
+    throw new AttemptJournalWriteError(cause);
+  }
+}
+
+function writeRecord(
+  context: TrackedPaymentContext,
+  store: PaymentAttemptStore,
+  patch: Partial<PaymentAttemptRecord>,
+): void {
+  if (!context.record) throw new AttemptJournalWriteError("payment intent missing");
+  const next: PaymentAttemptRecord = {
+    ...context.record,
+    ...patch,
+    updated_at: context.now(),
+  };
+  try {
+    store.write(next);
+    context.record = next;
+  } catch (cause) {
+    context.journalFailure = true;
+    throw new AttemptJournalWriteError(cause);
+  }
+}
+
+function writeRecordBestEffort(
+  context: TrackedPaymentContext,
+  store: PaymentAttemptStore,
+  patch: Partial<PaymentAttemptRecord>,
+): void {
+  if (!context.record) return;
+  try {
+    const next: PaymentAttemptRecord = {
+      ...context.record,
+      ...patch,
+      updated_at: context.now(),
+    };
+    store.write(next);
+    context.record = next;
+  } catch {
+    // The failure already carries the in-process structured outcome. Never
+    // replace a known successful response with a local journal write error.
+  }
+}

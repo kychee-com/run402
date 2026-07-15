@@ -23,6 +23,7 @@ export type Run402ErrorKind =
   | "not_authorized"
   | "api_error"
   | "network_error"
+  | "payment_attempt_error"
   | "local_error"
   | "deploy_error"
   | "transfer_freeze"
@@ -318,6 +319,127 @@ export class NetworkError extends Run402Error {
   }
 }
 
+/**
+ * Phase of an automatic x402 payment attempt. `initial_request` and
+ * `payment_signing` occur before a payment-bearing request is dispatched;
+ * `payment_submission` and `payment_response` are at/after that boundary.
+ */
+export type PaymentAttemptPhase =
+  | "initial_request"
+  | "challenge_received"
+  | "payment_signing"
+  | "payment_submission"
+  | "payment_response";
+
+export type PaymentAttemptMutationState =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "ambiguous";
+
+/**
+ * Node paid-fetch failure with an explicit payment-effect boundary.
+ *
+ * A caller may repeat the request only when `safeToRetry === true`. Once a
+ * payment-bearing request may have reached the target, the SDK reports an
+ * ambiguous mutation and directs the caller to reconcile by
+ * `paymentAttemptId`; it never turns a post-dispatch transport error into a
+ * blind retry. The raw cause remains available in-process but is deliberately
+ * omitted from `toJSON()` and the canonical body.
+ */
+export class PaymentAttemptError extends Run402Error {
+  readonly kind = "payment_attempt_error" as const;
+  readonly code: string;
+  readonly phase: PaymentAttemptPhase;
+  readonly paymentAttemptId: string;
+  readonly providerStarted: boolean;
+  readonly responseStatus: number | null;
+  readonly retryable: boolean;
+  readonly safeToRetry: boolean;
+  readonly mutationState: PaymentAttemptMutationState;
+  readonly cause: unknown;
+
+  constructor(init: {
+    code: string;
+    message: string;
+    phase: PaymentAttemptPhase;
+    paymentAttemptId: string;
+    providerStarted: boolean;
+    responseStatus?: number | null;
+    mutationState: PaymentAttemptMutationState;
+    safeToRetry: boolean;
+    cause: unknown;
+    request?: { method: string; origin: string | null; path: string | null };
+  }) {
+    const retryable = init.safeToRetry;
+    const nextActions: NextAction[] = init.safeToRetry
+      ? [
+          {
+            type: "retry",
+            payment_attempt_id: init.paymentAttemptId,
+            why: "No payment-bearing request was dispatched; retrying the original request is safe.",
+          },
+        ]
+      : [
+          {
+            type: "reconcile_payment",
+            payment_attempt_id: init.paymentAttemptId,
+            safe_to_auto_execute: false,
+            why: "A payment-bearing request may have reached the provider. Reconcile this attempt before issuing another payment.",
+          },
+          {
+            type: "poll",
+            payment_attempt_id: init.paymentAttemptId,
+            safe_to_auto_execute: true,
+            why: "Poll the target or payment provider for the final state of this attempt.",
+          },
+        ];
+    const details = {
+      payment_attempt_id: init.paymentAttemptId,
+      phase: init.phase,
+      provider_started: init.providerStarted,
+      response_status: init.responseStatus ?? null,
+      ...(init.request ? { request: init.request } : {}),
+    };
+    super(
+      init.message,
+      null,
+      {
+        error: "payment_attempt_failed",
+        message: init.message,
+        code: init.code,
+        category: "payment",
+        source: "sdk",
+        retryable,
+        safe_to_retry: init.safeToRetry,
+        mutation_state: init.mutationState,
+        details,
+        next_actions: nextActions,
+      },
+      "executing x402 paid fetch",
+    );
+    this.code = init.code;
+    this.phase = init.phase;
+    this.paymentAttemptId = init.paymentAttemptId;
+    this.providerStarted = init.providerStarted;
+    this.responseStatus = init.responseStatus ?? null;
+    this.retryable = retryable;
+    this.safeToRetry = init.safeToRetry;
+    this.mutationState = init.mutationState;
+    this.cause = init.cause;
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      phase: this.phase,
+      paymentAttemptId: this.paymentAttemptId,
+      providerStarted: this.providerStarted,
+      responseStatus: this.responseStatus,
+    };
+  }
+}
+
 /** Local/filesystem error — input validation, missing path, unreadable dir. No HTTP involved. */
 export class LocalError extends Run402Error {
   static readonly DEFAULT_CODE = "LOCAL_ERROR";
@@ -569,6 +691,8 @@ export class TransferFreezeError extends Run402Error {
  */
 export type NextActionType =
   | "retry"
+  | "poll"
+  | "reconcile_payment"
   | "authenticate"
   | "submit_payment"
   | "renew_tier"
@@ -837,6 +961,11 @@ export function isApiError(e: unknown): e is ApiError {
 /** True if `e` is a {@link NetworkError}. */
 export function isNetworkError(e: unknown): e is NetworkError {
   return isRun402Error(e) && e.kind === "network_error";
+}
+
+/** True if `e` is a phase-aware automatic x402 payment failure. */
+export function isPaymentAttemptError(e: unknown): e is PaymentAttemptError {
+  return isRun402Error(e) && e.kind === "payment_attempt_error";
 }
 
 /** True if `e` is a {@link LocalError}. */

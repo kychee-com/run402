@@ -14,6 +14,12 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **Opaque signers:** `paymentSigner` supports async Base x402 signers backed by KMS/HSM-style providers without exposing raw private keys; conflicting explicit signer/path configuration fails with `PAYMENT_SOURCE_CONFLICT`. `r.paymentPayer()` reports only safe source/rail/public-address/network provenance.
 - **Recovery/tests:** lazy paid-fetch initialization retries after the selected allowance/provider becomes available, while successful initialization remains cached. Focused tests cover path/provider precedence, fail-closed behavior, conflicts, opaque signer provenance, and recovery.
 
+## Unreleased — phase-aware durable x402 attempts
+
+- **Node SDK:** automatic x402 failures now throw `PaymentAttemptError` with a stable `paymentAttemptId`, phase, canonical code, retry safety, mutation state, and structured next actions instead of leaking raw `@x402/fetch` `TypeError`s.
+- **Safety:** a sanitized mode-0600 intent is committed before the payment-bearing request. Failures before provider dispatch are `not_started` and safe to retry; failures after dispatch are `ambiguous`, never safe to retry, and require polling/reconciliation by attempt id. Signed payment headers, keys, request bodies, query strings, and raw causes are never journaled or serialized.
+- **Correlation:** the reserved `X-Run402-Payment-Attempt-Id` header is attached only to the payment-bearing request, with redirects disabled for that request so neither the correlation id nor signed payment authorization can cross to a redirect target. `readPaymentAttempt()` and `listPaymentAttempts()` expose the local redacted journal for diagnostics.
+
 ## Unreleased — function runtime compatibility metadata
 
 - **SDK/CLI:** function-list records now type and preserve the deployed `runtime_version`, gateway `runtime_current_version`, guaranteed `runtime_minimum_version`, and `runtime_stale` fields.

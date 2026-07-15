@@ -309,6 +309,15 @@ export type {
   X402BalanceErrorCode,
   X402PaymentNetwork,
 } from "./paid-fetch.js";
+export {
+  listPaymentAttempts,
+  readPaymentAttempt,
+  PAYMENT_ATTEMPT_HEADER,
+} from "./payment-attempts.js";
+export type {
+  PaymentAttemptJournalState,
+  PaymentAttemptRecord,
+} from "./payment-attempts.js";
 export { Run402Action } from "../actions.js";
 export * from "../app-up.js";
 export type * from "../index.js";
@@ -324,6 +333,7 @@ export {
   StepUpRequiredError,
   ApiError,
   NetworkError,
+  PaymentAttemptError,
   LocalError,
   Run402DeployError,
   EMPTY_STATIC_MANIFEST_METADATA,
@@ -363,6 +373,7 @@ export {
   isOperatorApprovalRequired,
   isApiError,
   isNetworkError,
+  isPaymentAttemptError,
   isLocalError,
   isDeployError,
   isRetryableRun402Error,

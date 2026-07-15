@@ -15,6 +15,7 @@ import {
   LocalError,
   NetworkError,
   NotAuthorizedError,
+  PaymentAttemptError,
   PaymentRequired,
   ProjectCredentialNotFound,
   ProjectNotFound,
@@ -28,6 +29,7 @@ import {
   isLocalError,
   isNetworkError,
   isNotAuthorized,
+  isPaymentAttemptError,
   isPaymentRequired,
   isProjectCredentialError,
   isProjectCredentialExpired,
@@ -67,6 +69,10 @@ describe("Run402Error kind discriminators", () => {
   it("NetworkError carries kind='network_error'", () => {
     const e = new NetworkError("nope", new Error("boom"), "ctx");
     assert.equal(e.kind, "network_error");
+  });
+  it("PaymentAttemptError carries kind='payment_attempt_error'", () => {
+    const e = paymentAttemptError(false);
+    assert.equal(e.kind, "payment_attempt_error");
   });
   it("LocalError carries kind='local_error'", () => {
     const e = new LocalError("nope", "ctx");
@@ -251,6 +257,11 @@ describe("subclass type guards narrow correctly", () => {
     assert.equal(isNetworkError(new ApiError("a", 0, null, "c")), false);
   });
 
+  it("isPaymentAttemptError matches only PaymentAttemptError", () => {
+    assert.equal(isPaymentAttemptError(paymentAttemptError(false)), true);
+    assert.equal(isPaymentAttemptError(new NetworkError("a", new Error("b"), "c")), false);
+  });
+
   it("isLocalError matches only LocalError", () => {
     assert.equal(isLocalError(new LocalError("a", "c")), true);
     assert.equal(isLocalError(new ApiError("a", 500, null, "c")), false);
@@ -280,6 +291,46 @@ describe("subclass type guards narrow correctly", () => {
     }
   });
 });
+
+describe("PaymentAttemptError contract", () => {
+  it("serializes canonical pre-dispatch retry fields without its raw cause", () => {
+    const e = paymentAttemptError(false);
+    const json = e.toJSON();
+    assert.equal(json.code, "X402_PAYMENT_SIGNING_FAILED");
+    assert.equal(json.safeToRetry, true);
+    assert.equal(json.mutationState, "not_started");
+    assert.equal(json.paymentAttemptId, "pat_0123456789abcdef0123456789abcdef");
+    assert.doesNotMatch(JSON.stringify(json), /private-key-value/);
+  });
+
+  it("requires reconciliation after provider start and is not retryable", () => {
+    const e = paymentAttemptError(true);
+    assert.equal(e.safeToRetry, false);
+    assert.equal(e.retryable, false);
+    assert.equal(e.mutationState, "ambiguous");
+    assert.equal(isRetryableRun402Error(e), false);
+    assert.deepEqual(e.nextActions?.map((action) => action.type), [
+      "reconcile_payment",
+      "poll",
+    ]);
+  });
+});
+
+function paymentAttemptError(providerStarted: boolean): PaymentAttemptError {
+  return new PaymentAttemptError({
+    code: providerStarted
+      ? "X402_PAYMENT_OUTCOME_AMBIGUOUS"
+      : "X402_PAYMENT_SIGNING_FAILED",
+    message: providerStarted ? "outcome unknown" : "signing failed",
+    phase: providerStarted ? "payment_submission" : "payment_signing",
+    paymentAttemptId: "pat_0123456789abcdef0123456789abcdef",
+    providerStarted,
+    mutationState: providerStarted ? "ambiguous" : "not_started",
+    safeToRetry: !providerStarted,
+    cause: new Error("private-key-value"),
+    request: { method: "POST", origin: "https://example.test", path: "/paid" },
+  });
+}
 
 // ─── NotAuthorizedError structured fields ────────────────────────────────────
 
