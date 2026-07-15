@@ -180,7 +180,15 @@ function extractQuotaScope(
   return scope === "organization" || scope === "project" ? scope : undefined;
 }
 
-/** HTTP 402 — the gateway requires payment (lease expired, insufficient balance, or x402 quote). */
+/**
+ * HTTP 402 — a genuine protocol payment challenge (x402 or a successor
+ * rail): insufficient balance, or a priced quote that must be paid before
+ * the request can proceed. style.md reserves 402 for exactly this; quota,
+ * lifecycle (frozen/dormant lease expiry), and budget-cap denials return
+ * 403 instead with their own canonical `code` (see the api-error-envelope
+ * `HTTP 402 is reserved for protocol payment challenges` requirement,
+ * kychee-com/run402#497).
+ */
 export class PaymentRequired extends Run402Error {
   static readonly DEFAULT_CODE = "PAYMENT_REQUIRED";
   static readonly DEFAULT_CATEGORY = "payment_required";
@@ -201,7 +209,17 @@ export class ProjectNotFound extends Run402Error {
   }
 }
 
-/** HTTP 401 or 403 — authentication missing, invalid, or insufficient for the operation. */
+/**
+ * HTTP 401 or 403 — the generic denial bucket: authentication missing,
+ * invalid, or insufficient for the operation. Also the fallback for any
+ * other 403 that isn't one of the more specific subclasses below (e.g.
+ * `NOT_AUTHORIZED`, `STEP_UP_REQUIRED`) — since 402 is reserved for
+ * genuine payment challenges, this now also covers non-payment 403 denials
+ * such as quota (`QUOTA_EXCEEDED`), lifecycle (`PROJECT_FROZEN` /
+ * `PROJECT_DORMANT`), and delegate spend-cap denials. Check `body.code` (or
+ * use `formatCanonicalErrorContext`-style parsing) to distinguish these
+ * from a true auth failure.
+ */
 export class Unauthorized extends Run402Error {
   static readonly DEFAULT_CODE = "UNAUTHORIZED";
   static readonly DEFAULT_CATEGORY = "auth";

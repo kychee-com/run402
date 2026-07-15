@@ -15,6 +15,11 @@
  * Exposed both unscoped (`r.events.list(projectId, …)`) and project-scoped
  * (`r.project(id).events.list(…)`), mirroring `r.grants` / `r.functions`.
  * The read is never lifecycle-gated: a frozen project's feed stays readable.
+ *
+ * `{ source, eventType }` filter the app-emitted lane from the platform's
+ * own events — see {@link ListEventsOptions}. Consumers should key on
+ * `(source, event_type)` together, since the platform's vocabulary and an
+ * app's own `event_type` names are only disambiguated by the pair.
  */
 
 import type { Client } from "../kernel.js";
@@ -25,6 +30,10 @@ function feedQuery(opts: ListEventsOptions = {}): string {
   const params = new URLSearchParams();
   if (opts.cursor !== undefined) params.set("cursor", opts.cursor);
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.source !== undefined) params.set("source", opts.source);
+  if (opts.eventType !== undefined) {
+    params.set("event_type", Array.isArray(opts.eventType) ? opts.eventType.join(",") : opts.eventType);
+  }
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -36,7 +45,9 @@ export class Events {
    * Read a page of a project's events feed
    * (`GET /projects/v1/:project_id/events`). Accepted credentials: the
    * project's own service_key, a SIWX/control-plane principal with
-   * `project.read`, or a scoped delegate.
+   * `project.read`, or a scoped delegate. `opts.source` / `opts.eventType`
+   * filter to the app lane, the platform lane, or one-or-more event types;
+   * both compose with `cursor`/`limit` unchanged.
    */
   async list(projectId: string, opts: ListEventsOptions = {}): Promise<ProjectEventFeedPage> {
     if (!projectId) {
@@ -51,7 +62,8 @@ export class Events {
   /**
    * Read the org-wide feed — the union across every project the org owns
    * (`GET /orgs/v1/:org_id/events`). Principal-only: requires an active org
-   * membership; a project service_key is rejected by the gateway.
+   * membership; a project service_key is rejected by the gateway. Same
+   * `opts.source` / `opts.eventType` filters as {@link list}.
    */
   async listForOrg(orgId: string, opts: ListEventsOptions = {}): Promise<ProjectEventFeedPage> {
     if (!orgId) {

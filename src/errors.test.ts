@@ -211,10 +211,13 @@ describe("formatApiError", () => {
     assert.equal(result.isError, true);
   });
 
-  it("renders full lifecycle fields on a 402 with a reactivate hint", () => {
+  it("renders full lifecycle fields on a 403 with a reactivate hint", () => {
+    // Lifecycle (frozen/dormant/past_due) denials are 403 — style.md reserves
+    // 402 for genuine payment challenges (see the app-events-emit-lane 402->403
+    // migration, kychee-com/run402#497).
     const result = formatApiError(
       {
-        status: 402,
+        status: 403,
         body: {
           message: "Project is past_due",
           lifecycle_state: "past_due",
@@ -239,7 +242,7 @@ describe("formatApiError", () => {
   it("renders partial lifecycle fields without undefined/null placeholders", () => {
     const result = formatApiError(
       {
-        status: 402,
+        status: 403,
         body: {
           message: "Project is frozen",
           lifecycle_state: "frozen",
@@ -255,6 +258,25 @@ describe("formatApiError", () => {
     assert.ok(!text.includes("null"));
     assert.ok(!text.includes("next="));
     assert.ok(!text.includes("purge_at="));
+  });
+
+  it("still renders the grace-window hint on a legacy 402+lifecycle_state response", () => {
+    // Back-compat: a 402 carrying lifecycle_state (pre-migration shape) still
+    // gets the richer grace-window guidance, not just the generic 402 fallthrough.
+    const result = formatApiError(
+      {
+        status: 402,
+        body: {
+          message: "Project is frozen",
+          lifecycle_state: "frozen",
+          entered_state_at: "2026-04-14T00:00:00Z",
+        },
+      },
+      "rotating secret",
+    );
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("soft-delete grace window"));
+    assert.ok(text.includes("set_tier"));
   });
 
   it("leaves non-lifecycle 402 guidance unchanged when lifecycle_state is absent", () => {

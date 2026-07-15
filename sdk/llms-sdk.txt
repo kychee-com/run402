@@ -1490,14 +1490,16 @@ remove(projectId, domain): Promise<void>
 The cursored project events feed — "what happened to my project since I last looked". Also project-scoped as `r.project(id).events.list(opts)`.
 
 ```
-list(projectId, { cursor?, limit? }): Promise<ProjectEventFeedPage>
-listForOrg(orgId, { cursor?, limit? }): Promise<ProjectEventFeedPage>
+list(projectId, { cursor?, limit?, source?, eventType? }): Promise<ProjectEventFeedPage>
+listForOrg(orgId, { cursor?, limit?, source?, eventType? }): Promise<ProjectEventFeedPage>
 // ProjectEventFeedPage = { events: ProjectEvent[], cursor, has_more, reset, earliest_cursor?,
 //                          platform_incidents?, platform_status? }
 // ProjectEvent = { id, event_type, class, occurred_at, payload, next_actions[] }
 ```
 
 Cursors are opaque (`evc_…`): store the page's `cursor` and pass it back as `{ cursor }` — never parse or compare. An unusable cursor never throws; the page returns `reset: true` + `earliest_cursor` to restart from. Events become visible within seconds of the underlying commit and are never lost after that. `list` accepts the project's own service_key, a wallet/control-plane principal with `project.read`, or a scoped delegate; `listForOrg` is principal-only (active org membership). Never lifecycle-gated — a frozen project's feed stays readable. Retention 90d (365d for mandatory classes).
+
+**App events vs platform events.** The feed also carries app-emitted business facts (a deployed function's own `events.emit(...)` calls, `@run402/functions`) alongside the platform events above; every row is `source`-discriminated (`"app"` vs `"platform"` — every non-app source, e.g. the platform's internal `gateway` / `email-lambda` producers, collapses under `"platform"`). `source?: "app" | "platform"` restricts to one lane; `eventType?: string | string[]` restricts to one or more event types (an array serializes as the comma-joined wire param `event_type=a,b`; a plain string is passed through as-is). Both filters compose with `cursor`/`limit` unchanged and are additive — omit either to keep reading the unfiltered feed. Consumers should key on the pair `(source, event_type)` together: app-chosen `event_type` names are free-form per app, so only the pair disambiguates them from the platform's own vocabulary.
 
 **Platform incidents — my bug or yours?** When a platform incident (a debounced CloudWatch-alarm window or a human-declared incident) is attributed to your project, its feed gains one `platform_incident` event (class `platform_incident`, mandatory retention 365d) with a compact-fact payload `{ incident_id, subsystem, severity, scope, status, started_at, resolved_at, summary, impact: { count } }` — `impact.count` is the real number of your invocations the platform, not your code, caused to fail (may be `null` for a manually-declared impact). Its `next_actions[]` carry a `poll` on this feed plus a `check_usage` drill-down into `r.errors` so you can confirm those failures were platform-excluded from your fingerprints. The page also carries two additive fields during an OPEN incident: `platform_incidents[]` — a sidecar overlay of open GLOBAL (unattributed) incidents, each with a stable `id` for dedup, never interleaved into `events[]` so the cursor stays monotonic — and `platform_status: "degraded"` (omitted when clear), the same health rider surfaced on `r.admin.getOperatorStatus()` and `r.tiers.status()`. Both are absent when nothing applies; existing consumers ignore them.
 

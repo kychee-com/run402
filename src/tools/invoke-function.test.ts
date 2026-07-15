@@ -138,7 +138,11 @@ describe("invoke_function tool", () => {
     assert.equal(result.isError, undefined);
   });
 
-  it("returns isError with stable code on 402", async () => {
+  it("returns isError with stable code on 403 (insufficient allowance, non-payable)", async () => {
+    // The gateway migrated the paid-function insufficient_allowance gate off
+    // HTTP 402 (style.md reserves 402 for genuine x402 protocol payment
+    // challenges) — a non-inline-payable denial is now 403 with the same
+    // canonical code/next_actions (kychee-com/run402#497).
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
@@ -147,7 +151,7 @@ describe("invoke_function tool", () => {
           code: "insufficient_allowance",
           next_actions: [{ type: "submit_payment" }],
         }),
-        { status: 402, headers: { "Content-Type": "application/json" } },
+        { status: 403, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
     const result = await handleInvokeFunction({

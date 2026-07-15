@@ -1000,7 +1000,7 @@ Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `int
 |---|---|---|
 | `active` | — | Full read/write |
 | `past_due` | day 0 | Site, REST, email keep serving. Owner gets first email. |
-| `frozen` | +14d | Control plane (deploys, secrets, subdomain claims, function upload) returns 402 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved so the brand can't be claimed by another wallet. |
+| `frozen` | +14d | Control plane (deploys, secrets, subdomain claims, function upload) returns 403 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved so the brand can't be claimed by another wallet. |
 | `dormant` | +44d | Scheduled (cron) functions pause. |
 | `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become claimable 14 days later. |
 
@@ -1053,15 +1053,17 @@ run402 transfer list --outgoing
 
 ## Post-deploy catch-up — the events feed
 
-`run402 events` reads the platform's durable, cursored per-project feed: deploy activations, mailbox suspensions, transfers, lifecycle cliffs, verification outcomes — each with platform-suggested `next_actions`.
+`run402 events` reads the platform's durable, cursored per-project feed: deploy activations, mailbox suspensions, transfers, lifecycle cliffs, verification outcomes — each with platform-suggested `next_actions`. The feed also carries app-emitted business facts (a deployed function's own `events.emit(...)` calls) alongside those platform events, source-discriminated.
 
 ```bash
 run402 events                     # active project, from the earliest retained event
 run402 events --cursor evc_1a2b   # everything since last time
 run402 events --org <org_id>      # org-wide union across all the org's projects
+run402 events --source app        # just this project's own emitted business facts
+run402 events --source app --type signature_completed,booking_created
 ```
 
-Store the response's `cursor` (a file in the repo works) and pass it back as `--cursor` next session — one call returns everything you missed. Cursors are opaque; never parse them. An expired cursor returns `reset: true` + `earliest_cursor` to restart from, never a bare error. Every successful apply/promote response also hands you a poll entry positioned at your own `deploy_activated` event. The feed is read-only and works even on frozen projects.
+Store the response's `cursor` (a file in the repo works) and pass it back as `--cursor` next session — one call returns everything you missed. Cursors are opaque; never parse them. An expired cursor returns `reset: true` + `earliest_cursor` to restart from, never a bare error. Every successful apply/promote response also hands you a poll entry positioned at your own `deploy_activated` event. The feed is read-only and works even on frozen projects. `--source app|platform` and `--type <name[,name]>` filter the feed; consumers should key on the (source, event_type) pair since app-chosen type names are free-form per app.
 
 ## After a promote — gate on new error identities
 
@@ -1240,7 +1242,7 @@ run402 operator logout           # revoke server-side + clear the local cache
 | You see | Likely cause / fix |
 |---|---|
 | `402 payment_required` on `tier set` | Allowance is empty. `run402 allowance fund` (testnet) or fund with real USDC. |
-| `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `run402 tier set <tier>` reactivates instantly. |
+| `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `run402 tier set <tier>` reactivates instantly. |
 | `403 admin_required` | Subcommand is platform-admin only (e.g., `run402 admin lease-perpetual`, `run402 admin archive`, `run402 admin reactivate`). Use a platform admin allowance wallet; project owners can't toggle these. |
 | Empty `[]` from `/rest/v1/items` for anon | Table not in manifest with `expose: true`. Run `run402 projects apply-expose`. |
 | `403 forbidden_function` calling an RPC | Function's not in the manifest's `rpcs[]`. Add `{ name, signature, grant_to: ["authenticated"] }`. |

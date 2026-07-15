@@ -1297,7 +1297,7 @@ server.tool(
 
 server.tool(
   "list_project_events",
-  "Catch up on what happened to a project since you last looked: the durable, cursored feed of deploy activations, mailbox suspensions, transfers, lifecycle cliffs, and verification outcomes, each with platform-suggested next_actions. Reach for this after any deploy (the apply/promote response hands you a positioned cursor) and at the start of a session on an existing project. Store the returned cursor and pass it back next time; an expired cursor returns reset:true + earliest_cursor instead of an error. Read-only; works even on frozen projects.",
+  "Catch up on what happened to a project since you last looked: the durable, cursored feed of deploy activations, mailbox suspensions, transfers, lifecycle cliffs, and verification outcomes, each with platform-suggested next_actions. The feed also carries app-emitted business facts (a deployed function's own events.emit calls) alongside the platform's own events — pass source:\"app\" to read just the app's facts, source:\"platform\" for just the platform's operational record, or event_type (comma-separated) to filter to one-or-more specific types; key on (source, event_type) together since app-chosen type names are free-form. Reach for this after any deploy (the apply/promote response hands you a positioned cursor) and at the start of a session on an existing project. Store the returned cursor and pass it back next time; an expired cursor returns reset:true + earliest_cursor instead of an error. Read-only; works even on frozen projects.",
   listProjectEventsSchema,
   async (args) => handleListProjectEvents(args),
 );

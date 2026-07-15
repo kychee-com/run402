@@ -3,7 +3,9 @@
  * project-events-outbox). One call answers "what happened to my project
  * since I last looked": deploy activations, mailbox suspensions, transfers,
  * lifecycle cliffs, verification outcomes — each with platform-synthesized
- * next_actions drill-downs.
+ * next_actions drill-downs. The feed also carries app-emitted business
+ * facts (a deployed function's own `events.emit(...)` calls) alongside the
+ * platform's own events — filter with --source/--type.
  *
  * JSON envelope to stdout (pipe contract); flags map 1:1 to the HTTP query.
  * The CLI passes the cursor through opaquely and never reinterprets
@@ -13,13 +15,18 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+
+/** Wire `source` vocabulary (mirrors the gateway's app/platform dichotomy). */
+export const SOURCES = ["app", "platform"];
 
 const HELP = `run402 events — what happened to your project since you last looked
 
 Usage:
   run402 events [--project <project_id>] [--cursor <cursor>] [--limit <n>]
+                [--source <app|platform>] [--type <name[,name]>]
   run402 events --org <org_id> [--cursor <cursor>] [--limit <n>]
+                [--source <app|platform>] [--type <name[,name]>]
 
 Options:
   --project <id>    Project to read (defaults to the active project)
@@ -28,6 +35,22 @@ Options:
                     after it. Omit on first contact to start from the earliest
                     retained event.
   --limit <n>       Page size (default 50, max 200)
+  --source <s>      Restrict to one source: ${SOURCES.join(" | ")}
+  --type <names>    Restrict to one or more event types, comma-separated
+                     (e.g. signature_completed,booking_created)
+
+App events vs platform events:
+  Every row is source-discriminated. "platform" is the platform's own
+  operational record (deploy activations, mailbox suspensions, transfers,
+  lifecycle cliffs, verification outcomes, ...) — the platform's internal
+  producers (gateway, email-lambda, ...) all collapse under this one value.
+  "app" is business facts a deployed function emitted itself via
+  \`events.emit(type, payload?, {idempotencyKey?})\` from @run402/functions —
+  e.g. "signature_completed" or "booking_created". Consumers should key on
+  the PAIR (source, event_type) together: app event_type names are free-form
+  per app, so a future platform type could in principle share a name with
+  one your app already uses — the source field is what disambiguates.
+  Omit --source to read both lanes in one merged, cursor-ordered feed.
 
 The cursor model:
   - Every response carries "cursor": the high-water mark. Store it (a file in
@@ -74,6 +97,9 @@ Examples:
   run402 events --cursor evc_1a2b              # everything since last time
   run402 events --project prj_abc --limit 200
   run402 events --org 00000000-0000-0000-0000-aaaaaaaaaaaa --cursor evc_9z
+  run402 events --source app                   # just this project's own emitted business facts
+  run402 events --source app --type signature_completed,booking_created
+  run402 events --source platform              # just the platform's operational record
 `;
 
 export async function run(sub, args) {
@@ -84,7 +110,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   const a = normalizeArgv(argv);
-  const valueFlags = ["--project", "--org", "--cursor", "--limit"];
+  const valueFlags = ["--project", "--org", "--cursor", "--limit", "--source", "--type"];
   assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(a, valueFlags);
   if (extra.length > 0) {
@@ -108,8 +134,15 @@ export async function run(sub, args) {
   const opts = {};
   const cursor = flagValue(a, "--cursor");
   const limit = flagValue(a, "--limit");
+  const source = flagValue(a, "--source");
+  const type = flagValue(a, "--type");
   if (cursor != null) opts.cursor = cursor;
   if (limit != null) opts.limit = Number(limit);
+  if (source != null) {
+    assertAllowedValue(source, SOURCES, "--source");
+    opts.source = source;
+  }
+  if (type != null) opts.eventType = type;
 
   try {
     const page = org

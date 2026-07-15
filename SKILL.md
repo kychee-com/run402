@@ -697,7 +697,7 @@ Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `int
 |-------|------|--------------|
 | `active` | — | Full read/write |
 | `past_due` | day 0 | Site, REST, email keep serving. Owner gets first email. |
-| `frozen` | +14d | Control plane (deploys, secrets, subdomain claims, function upload) returns 402 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved so the brand can't be claimed by another wallet. |
+| `frozen` | +14d | Control plane (deploys, secrets, subdomain claims, function upload) returns 403 with `lifecycle_state` / `entered_state_at` / `next_transition_at`. Site still serves. Subdomain reserved so the brand can't be claimed by another wallet. |
 | `dormant` | +44d | Scheduled functions pause. |
 | `purged` | +104d | Cascade: schemas dropped, Lambdas deleted, mailboxes tombstoned. Subdomains become claimable 14 days later. |
 
@@ -781,6 +781,8 @@ The loop:
 
 Cursors are opaque (`evc_…`) — never parse them. If your cursor is too old (retention: 90 days; a year for security/recovery/billing classes), the response is still 200 with `reset: true` and `earliest_cursor` to restart from — nothing is silently skipped. The feed is read-only and works even on a frozen project.
 
+The feed also carries app-emitted business facts (a deployed function's own `events.emit(...)` calls) alongside the platform's events above — pass `source: "app"` to `list_project_events` to read just those, `source: "platform"` for just the platform's own record, or `event_type` (comma-separated) to watch for one-or-more specific types.
+
 ## After a promote — gate on new error identities
 
 Deploying without checking is a coin flip. The platform keeps a durable, grouped error memory: every 5xx at the function invoke choke points is fingerprinted into one hot row per distinct failure *identity* (normalized message + stable stack frames), each baselined against the previously ACTIVE release. Ask it whether YOUR new release made things worse instead of eyeballing logs.
@@ -845,7 +847,7 @@ Other allowance options:
 | You see | Likely cause / fix |
 |---|---|
 | `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
-| `402` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
+| `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
 | `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist, so also re-check the project id. |
 | `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
