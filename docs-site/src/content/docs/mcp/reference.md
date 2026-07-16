@@ -537,6 +537,18 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0
 - `verify_agent_contact_email` — start or resend the operator email reply challenge. The challenge secret is never returned.
 - `start_operator_passkey_enrollment` — email a short-lived passkey enrollment link to the verified contact email. Requires `email_verified`.
 
+### Notification channels & routing rules (Telegram)
+
+Self-serve Telegram push on top of the operator-notifications substrate: connect a chat, then add rules so ONLY matching events page it. **No rule = no Telegram traffic** for that operator; the mandatory email floor (security/recovery/billing_critical/destructive_lifecycle/verification classes) is unaffected by any rule.
+
+- `list_notification_channels` — every notification channel (email, webhook, and every live Telegram binding with its id/status/chat metadata/label) for the operator. Use this to find a `telegram_binding_id` for `create_notification_rule`.
+- `list_notification_rules` — the operator's Telegram routing rules.
+- `create_notification_rule` — `telegram_binding_id` (required) + optional `project_id` / `source` (`"app"` or `"platform"`) / `event_types[]` / `classes[]`, all ANDed, each omitted field a wildcard. Requires `operator_passkey` assurance. An unusable or foreign `telegram_binding_id` returns the same 404 as a nonexistent one.
+- `delete_notification_rule` — `rule_id`. Requires `operator_passkey` assurance.
+- `test_notification` (extended) — optional `source` / `event_type` args now exercise a specific rule's filters; the response's `telegram.destinations[]` reports one delivered/failed outcome per matched Telegram binding.
+
+**Connecting and revoking a Telegram binding are CLI/SDK-only in this MCP server** — `connect` blocks on a human tapping a Telegram deep link out-of-band (the CLI polls `notifications channels list` for the flip to `active`; a single MCP tool call can't sensibly block on that), and neither tool was in scope for the initial MCP cascade. Use `run402 notifications channels connect telegram` / `channels revoke <binding_id>`, or `r.admin.channels.connectTelegram()` / `.revokeTelegram()` on the SDK, then come back to `list_notification_channels` here to read the resulting binding id.
+
 ### Project transfer (unified noun, owned-org recipient v1.96+)
 
 Hand off or move a project without redeploying — one noun, three recipient shapes. A **wallet** recipient completes via `accept_project_transfer` (both sides sign SIWX); an **email** recipient completes via `claim_project_transfer` (the recipient claims into an org); an **owned org** recipient (`to_org_id`) is a same-actor move into another org the caller already owns and completes immediately in the first gateway release. Owner-side mutations on pending wallet/email transfers return `409 PROJECT_HAS_PENDING_TRANSFER` for the 72h pending window, so the recipient reviews exactly what they take on.

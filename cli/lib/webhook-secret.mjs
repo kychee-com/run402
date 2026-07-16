@@ -27,6 +27,12 @@ export async function run(sub, args = []) {
     console.log(HELP);
     process.exit(0);
   }
+  // --help/-h anywhere in the argv must short-circuit BEFORE auth/config side
+  // effects (the cli-help.test.mjs contract) — same check as notifications.mjs.
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   if (sub !== "rotate") {
     fail({
       code: "UNKNOWN_SUBCOMMAND",

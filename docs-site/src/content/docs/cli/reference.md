@@ -1590,6 +1590,29 @@ KMS signers — provision AWS KMS-backed Ethereum signers per project for signin
 
 `contact` returns `email_verification_status`, `passkey_binding_status`, `assurance_level`. New/changed emails start reply challenge and remain `email_pending` until owner replies. `passkey enroll` requires `email_verified`, emails enrollment link, never prints token.
 
+### notifications
+Operator health notifications (audit log, preferences) plus the self-serve Telegram push channel and its routing rules.
+
+- `run402 notifications list [--type <event_type>] [--since <iso>] [--limit N] [--after <cursor>]` — paginated delivery-attempt audit log.
+- `run402 notifications get <id>` — one audit row.
+- `run402 notifications preferences` / `preferences set <key>=<value> ...` — read/update cadence, per-class toggles, `webhook_url`, locale, timezone. Cross-wallet effects need `email_verified`; `webhook_url` changes need `operator_passkey`.
+- `run402 notifications test [--source app|platform] [--type <event_type>]` — fires a real synthetic event through the FULL pipeline (email/webhook AND Telegram routing rules), rate-limited to 1/min. Omit the flags for the default sample event, or set them to exercise a specific rule's filters. The response's `telegram.destinations[]` reports one delivered/failed outcome per matched Telegram binding — empty when no rule matches (not an error).
+
+**Telegram channel** (`notification-channel-routing-telegram`):
+- `run402 notifications channels connect telegram [--label <name>]` — creates a PENDING binding, prints `connect_url` (private chat) and `connect_group_url` (group chat) — single-use, 15-minute deep links — then POLLS `channels list` until the binding flips to `active` or the code expires, printing progress to stderr. Requires `operator_passkey` assurance AND a VERIFIED operator email (bindings are addressed to it). Until the platform's dedicated bot is provisioned on this deployment, this returns `503 TELEGRAM_CHANNEL_NOT_CONFIGURED` with a `next_actions` entry — printed verbatim.
+- `run402 notifications channels list` — every channel (email, webhook, and every live Telegram binding) for the authenticated wallet.
+- `run402 notifications channels revoke <binding_id>` — requires `operator_passkey`; a missing/already-revoked/foreign binding id all return the same not-found error (no existence oracle).
+
+**Routing rules** — one rule routes to exactly ONE Telegram binding; every match dimension you set (`--project`, `--source`, `--type`, `--class`) is ANDed, and an OMITTED dimension is a wildcard. `--type`/`--class` accept comma-separated lists (matches ANY listed value). **No rules = no Telegram traffic** — Telegram is opt-in per event, per rule; the mandatory email floor (security/recovery/billing_critical/destructive_lifecycle/verification classes) is completely untouched by rules and can never be silenced by one.
+- `run402 notifications rules add --binding <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]` — requires `operator_passkey`; an unusable/foreign `telegram_binding_id` returns the same 404 as a nonexistent one.
+- `run402 notifications rules list` — the operator's routing rules.
+- `run402 notifications rules rm <rule_id>` — requires `operator_passkey`.
+
+Full rule-model explanation: `run402 notifications channels --help` / `run402 notifications rules --help`.
+
+### webhook-secret
+- `run402 webhook-secret rotate` — new HMAC signing secret for the operator webhook, returned EXACTLY once (store it immediately). Previous secret remains valid for 24h (dual-secret grace window). Requires `operator_passkey` assurance.
+
 ### operator
 Operator = human email identity, distinct from agent wallet/SIWX. One browser login spans wallets that verified the email; `operator overview` returns cross-wallet union. Single-wallet org state: `run402 status`; operator login/approval state: `run402 operator status`.
 

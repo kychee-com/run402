@@ -318,3 +318,301 @@ describe("admin.reactivateProject (v1.57)", () => {
     assert.equal(result.reactivated, undefined);
   });
 });
+
+// ---------------------------------------------------------------------------
+// notification-channel-routing-telegram — r.admin.channels / r.admin.rules.
+// ---------------------------------------------------------------------------
+
+describe("admin.channels.connectTelegram", () => {
+  it("POSTs /agent/v1/notifications/channels/telegram with the label", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json(
+        {
+          binding_id: "bnd_1",
+          status: "pending",
+          connect_url: "https://t.me/run402_notify_bot?start=abc123",
+          connect_group_url: "https://t.me/run402_notify_bot?startgroup=abc123",
+          code_expires_at: "2026-07-16T12:15:00.000Z",
+          label: "kychon alerts",
+          next_actions: [{ type: "open_telegram_connect_url", why: "tap it" }],
+        },
+        201,
+      ),
+    );
+    const result = await sdk(fetch).admin.channels.connectTelegram({ label: "kychon alerts" });
+
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/notifications/channels/telegram");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { label: "kychon alerts" });
+    assert.equal(result.binding_id, "bnd_1");
+    assert.equal(result.status, "pending");
+    assert.equal(result.connect_url, "https://t.me/run402_notify_bot?start=abc123");
+    assert.equal(result.connect_group_url, "https://t.me/run402_notify_bot?startgroup=abc123");
+    assert.equal(result.next_actions.length, 1);
+  });
+
+  it("sends an empty body when no label is given", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        binding_id: "bnd_2",
+        status: "pending",
+        connect_url: "https://t.me/run402_notify_bot?start=xyz",
+        connect_group_url: "https://t.me/run402_notify_bot?startgroup=xyz",
+        code_expires_at: "2026-07-16T12:15:00.000Z",
+        label: null,
+        next_actions: [],
+      }),
+    );
+    await sdk(fetch).admin.channels.connectTelegram();
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {});
+  });
+});
+
+describe("admin.channels.list", () => {
+  it("GETs /agent/v1/notifications/channels and returns email/webhook/telegram", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        email: { address: "ops@example.com", verified: true },
+        webhook: { configured: false, url: null, secret_configured: false },
+        telegram: [
+          {
+            id: "bnd_1",
+            recipient_email: "ops@example.com",
+            status: "active",
+            chat_id: 12345,
+            chat_type: "private",
+            chat_title: null,
+            label: "kychon alerts",
+            consecutive_failures: 0,
+            disabled_at: null,
+            code_expires_at: null,
+            created_at: "2026-07-16T12:00:00.000Z",
+            activated_at: "2026-07-16T12:05:00.000Z",
+          },
+        ],
+      }),
+    );
+    const result = await sdk(fetch).admin.channels.list();
+
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/notifications/channels");
+    assert.equal(result.email.verified, true);
+    assert.equal(result.telegram.length, 1);
+    assert.equal(result.telegram[0]!.status, "active");
+  });
+});
+
+describe("admin.channels.revokeTelegram", () => {
+  it("DELETEs /agent/v1/notifications/channels/telegram/:binding_id", async () => {
+    const { fetch, calls } = mockFetch(() => json({ status: "revoked", binding_id: "bnd_1" }));
+    const result = await sdk(fetch).admin.channels.revokeTelegram("bnd_1");
+
+    assert.equal(calls[0]!.method, "DELETE");
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/notifications/channels/telegram/bnd_1");
+    assert.equal(result.status, "revoked");
+    assert.equal(result.binding_id, "bnd_1");
+  });
+
+  it("URI-encodes the binding id", async () => {
+    const { fetch, calls } = mockFetch(() => json({ status: "revoked", binding_id: "bnd/weird id" }));
+    await sdk(fetch).admin.channels.revokeTelegram("bnd/weird id");
+    assert.equal(
+      calls[0]!.url,
+      "https://api.test/agent/v1/notifications/channels/telegram/bnd%2Fweird%20id",
+    );
+  });
+});
+
+describe("admin.rules.list", () => {
+  it("GETs /agent/v1/notifications/rules", async () => {
+    const { fetch, calls } = mockFetch(() => json({ rules: [] }));
+    const result = await sdk(fetch).admin.rules.list();
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/notifications/rules");
+    assert.deepEqual(result.rules, []);
+  });
+});
+
+describe("admin.rules.create", () => {
+  it("POSTs snake_case body with only telegram_binding_id when no filters are given", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json(
+        {
+          id: "rule_1",
+          recipient_email: "ops@example.com",
+          project_id: null,
+          source: null,
+          event_types: null,
+          classes: null,
+          channel: "telegram",
+          telegram_binding_id: "bnd_1",
+          enabled: true,
+          created_at: "2026-07-16T12:00:00.000Z",
+          updated_at: "2026-07-16T12:00:00.000Z",
+          next_actions: [{ type: "test_notification", method: "POST", path: "/agent/v1/notifications/test" }],
+        },
+        201,
+      ),
+    );
+    const result = await sdk(fetch).admin.rules.create({ telegramBindingId: "bnd_1" });
+
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/notifications/rules");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { telegram_binding_id: "bnd_1" });
+    assert.equal(result.id, "rule_1");
+    assert.equal(result.telegram_binding_id, "bnd_1");
+    assert.equal(result.next_actions.length, 1);
+  });
+
+  it("forwards every match dimension in snake_case", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        id: "rule_2",
+        recipient_email: "ops@example.com",
+        project_id: "prj_abc",
+        source: "app",
+        event_types: ["signature_failed"],
+        classes: null,
+        channel: "telegram",
+        telegram_binding_id: "bnd_1",
+        enabled: true,
+        created_at: "2026-07-16T12:00:00.000Z",
+        updated_at: "2026-07-16T12:00:00.000Z",
+        next_actions: [],
+      }),
+    );
+    await sdk(fetch).admin.rules.create({
+      telegramBindingId: "bnd_1",
+      projectId: "prj_abc",
+      source: "app",
+      eventTypes: ["signature_failed"],
+      classes: null,
+    });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      telegram_binding_id: "bnd_1",
+      project_id: "prj_abc",
+      source: "app",
+      event_types: ["signature_failed"],
+      classes: null,
+    });
+  });
+});
+
+describe("admin.rules.update — PATCH null-vs-absent semantics", () => {
+  it("omits a field entirely from the wire body when not present in the patch", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        id: "rule_1",
+        recipient_email: "ops@example.com",
+        project_id: "prj_abc",
+        source: null,
+        event_types: null,
+        classes: null,
+        channel: "telegram",
+        telegram_binding_id: "bnd_1",
+        enabled: false,
+        created_at: "2026-07-16T12:00:00.000Z",
+        updated_at: "2026-07-16T12:10:00.000Z",
+      }),
+    );
+    await sdk(fetch).admin.rules.update("rule_1", { enabled: false });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { enabled: false });
+  });
+
+  it("sends an explicit null to CLEAR a dimension back to wildcard", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        id: "rule_1",
+        recipient_email: "ops@example.com",
+        project_id: null,
+        source: null,
+        event_types: null,
+        classes: null,
+        channel: "telegram",
+        telegram_binding_id: "bnd_1",
+        enabled: true,
+        created_at: "2026-07-16T12:00:00.000Z",
+        updated_at: "2026-07-16T12:10:00.000Z",
+      }),
+    );
+    await sdk(fetch).admin.rules.update("rule_1", { projectId: null });
+    const body = JSON.parse(calls[0]!.body as string);
+    assert.equal("project_id" in body, true);
+    assert.equal(body.project_id, null);
+  });
+
+  it("PATCHes /agent/v1/notifications/rules/:rule_id (URI-encoded)", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        id: "rule/weird",
+        recipient_email: "ops@example.com",
+        project_id: null,
+        source: null,
+        event_types: null,
+        classes: null,
+        channel: "telegram",
+        telegram_binding_id: "bnd_1",
+        enabled: true,
+        created_at: "2026-07-16T12:00:00.000Z",
+        updated_at: "2026-07-16T12:10:00.000Z",
+      }),
+    );
+    await sdk(fetch).admin.rules.update("rule/weird", { telegramBindingId: "bnd_2" });
+    assert.equal(calls[0]!.method, "PATCH");
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/notifications/rules/rule%2Fweird");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { telegram_binding_id: "bnd_2" });
+  });
+});
+
+describe("admin.rules.delete", () => {
+  it("DELETEs /agent/v1/notifications/rules/:rule_id", async () => {
+    const { fetch, calls } = mockFetch(() => json({ deleted: true, rule_id: "rule_1" }));
+    const result = await sdk(fetch).admin.rules.delete("rule_1");
+    assert.equal(calls[0]!.method, "DELETE");
+    assert.equal(calls[0]!.url, "https://api.test/agent/v1/notifications/rules/rule_1");
+    assert.equal(result.deleted, true);
+    assert.equal(result.rule_id, "rule_1");
+  });
+});
+
+describe("admin.testNotification — optional source/event_type override", () => {
+  it("sends an empty body when no override is given", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        status: "queued",
+        source_event_id: "0xabc:123",
+        drained: { claimed: 0, delivered: 0, skipped: 0, failed_transient: 0, failed_permanent: 0 },
+        telegram: { destinations: [] },
+        note: "queued",
+      }),
+    );
+    await sdk(fetch).admin.testNotification();
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {});
+  });
+
+  it("forwards source/event_type in snake_case and returns telegram.destinations", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      json({
+        status: "delivered",
+        source_event_id: "0xabc:123",
+        drained: { claimed: 1, delivered: 1, skipped: 0, failed_transient: 0, failed_permanent: 0 },
+        telegram: {
+          destinations: [
+            { binding_id: "bnd_1", label: "kychon alerts", delivered: true },
+            { binding_id: "bnd_2", label: null, delivered: false, transient: false, description: "http_403" },
+          ],
+        },
+        note: "delivered",
+      }),
+    );
+    const result = await sdk(fetch).admin.testNotification({ source: "app", eventType: "signature_failed" });
+
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      source: "app",
+      event_type: "signature_failed",
+    });
+    assert.equal(result.telegram.destinations.length, 2);
+    assert.equal(result.telegram.destinations[0]!.delivered, true);
+    assert.equal(result.telegram.destinations[1]!.description, "http_403");
+  });
+});

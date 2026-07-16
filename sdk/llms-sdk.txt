@@ -1999,6 +1999,31 @@ ArchiveProjectResult:    { status, project_id, archived_at?, reason?, note? }   
 ReactivateProjectResult: { status, project_id, reactivated?: true, note? }      // note: "not archived"
 ```
 
+### `r.admin.channels` + `r.admin.rules` (Telegram notification channel + routing rules)
+
+Self-serve Telegram push on top of the v1.55 operator-notifications substrate: connect a chat, then add filter rules so ONLY matching events page that chat. Two sub-namespaces on `r.admin`, same shape as `r.admin.transfers`.
+
+```
+r.admin.channels.connectTelegram(opts?: { label?: string }): Promise<ConnectTelegramResult>
+r.admin.channels.list(): Promise<NotificationChannelsResult>
+r.admin.channels.revokeTelegram(bindingId: string): Promise<RevokeTelegramResult>
+
+r.admin.rules.list(): Promise<ListRoutingRulesResult>
+r.admin.rules.create(input: CreateRoutingRuleInput): Promise<CreateRoutingRuleResult>
+r.admin.rules.update(ruleId: string, patch: UpdateRoutingRulePatch): Promise<RoutingRule>
+r.admin.rules.delete(ruleId: string): Promise<DeleteRoutingRuleResult>
+```
+
+`connectTelegram` returns two single-use, 15-minute deep links — `connect_url` (private chat) and `connect_group_url` (group chat) — plus a `pending` binding id. A human taps ONE of the links and starts the bot; poll `r.admin.channels.list()` until the matching entry in `telegram[]` shows `status: "active"` (or `code_expires_at` passes and it's swept back to `"revoked"`). Until the platform's dedicated bot is provisioned on this deployment, `connectTelegram` throws with `code: "TELEGRAM_CHANNEL_NOT_CONFIGURED"` (HTTP 503, with a `next_actions` entry); a caller with no verified operator email yet gets `code: "OPERATOR_EMAIL_NOT_VERIFIED"` (HTTP 412) — bindings are addressed to the verified email, the recipient grain every rule/binding keys on. `connectTelegram` / `revokeTelegram` require `operator_passkey` assurance (same ladder as `rotateWebhookSecret`); `list()` is a plain SIWX read.
+
+**Routing rules (design D4).** One rule always targets exactly one Telegram binding — "N destinations" is N rules. Every match dimension you set (`projectId`, `source`, `eventTypes`, `classes`) is ANDed; an OMITTED field is a wildcard (matches anything for that dimension); an explicit empty array (`eventTypes: []`) matches NOTHING (Postgres `TEXT[]` semantics — deliberately different from the "`[]` = unfiltered" convention some read-filter query params use elsewhere in this SDK). `source` is `"app"` (a deployed function's `events.emit(...)` calls) or `"platform"` (deploys, lifecycle, verification, ...); omit to match both. **No rules = no Telegram traffic** for that operator — the channel is opt-in per event, per rule, with no "send everything" default. Rules govern the Telegram channel ONLY in v1: the mandatory email floor (`security`/`recovery`/`billing_critical`/`destructive_lifecycle`/`verification` classes) is completely untouched and can never be silenced by a rule.
+
+`rules.update`'s `patch` uses PATCH semantics at the wire level: a field OMITTED from the object leaves the stored value unchanged; a field explicitly set to `null` CLEARS that dimension back to wildcard. There's no wire difference between "omitted" and "set to `undefined`" — both drop the key from the JSON body, so build the patch object by only assigning the keys you actually want to change.
+
+`rules.create`/`rules.update` reject an unusable or foreign `telegramBindingId` (revoked, not yours, or nonexistent) with the SAME 404 either way (authorize-before-reveal) — call `r.admin.channels.list()` first to confirm the binding is `"active"`.
+
+`admin.testNotification(opts?: { source?, eventType? })` (v1.55, extended) fires the sample event through the FULL pipeline — email/webhook AND Telegram — and its result carries `telegram: { destinations: [...] }`, one delivered/failed outcome per matched Telegram binding (empty when no rule matches — Faithful, not an error). Pass `opts.source` / `opts.eventType` to exercise a specific rule's filters precisely instead of the default sample event.
+
 ### `r.admin.transfers` (unified project transfer, owned-org recipient v1.96+)
 
 Project transfer is exposed as a sub-namespace at `r.admin.transfers` — one noun, three recipient shapes. A **wallet** recipient completes via `accept` (both sides sign SIWX); an **email** recipient completes via `claim` (the recipient claims into an org); an **owned org** recipient completes immediately at initiate time in the same-actor first release. `initiate` is body-discriminated (`toWallet` XOR `toEmail` XOR `toOrgId`); `preview` / `cancel` / `listIncoming` / `listOutgoing` are kind-agnostic for pending rows and tag each row with `recipient_kind`. (The pre-v1.93 `*Handoff` methods and `/handoffs` routes are gone.)

@@ -315,6 +315,10 @@ import { listProjectEventsSchema, handleListProjectEvents } from "./tools/list-p
 import { errorsListSchema, handleErrorsList } from "./tools/errors-list.js";
 import { testNotificationSchema, handleTestNotification } from "./tools/test-notification.js";
 import { rotateWebhookSecretSchema, handleRotateWebhookSecret } from "./tools/rotate-webhook-secret.js";
+import { listNotificationChannelsSchema, handleListNotificationChannels } from "./tools/list-notification-channels.js";
+import { listNotificationRulesSchema, handleListNotificationRules } from "./tools/list-notification-rules.js";
+import { createNotificationRuleSchema, handleCreateNotificationRule } from "./tools/create-notification-rule.js";
+import { deleteNotificationRuleSchema, handleDeleteNotificationRule } from "./tools/delete-notification-rule.js";
 import { createCheckoutSchema, handleCreateCheckout } from "./tools/create-checkout.js";
 import { billingHistorySchema, handleBillingHistory } from "./tools/billing-history.js";
 import { updateVersionSchema, handleUpdateVersion } from "./tools/update-version.js";
@@ -1321,6 +1325,46 @@ server.tool(
   "Generate a fresh HMAC signing secret for the operator's webhook endpoint. Returned EXACTLY once. Previous secret remains valid for 24h. Requires operator_passkey assurance.",
   rotateWebhookSecretSchema,
   async (args) => handleRotateWebhookSecret(args),
+);
+
+// ─── Telegram notification channel + routing rules
+//     (notification-channel-routing-telegram) ──────────────────────────────
+// Self-serve Telegram push on top of the operator-notifications substrate
+// above: connect a chat, then add per-project/source/event_type/class rules
+// so ONLY matching events page that chat. No rule = no Telegram traffic;
+// the mandatory email floor (security/recovery/billing_critical/
+// destructive_lifecycle/verification) is unaffected by any rule. Connecting
+// and revoking a Telegram binding are CLI/SDK-only in v1 (connect blocks on
+// a human tapping a Telegram deep link out-of-band — the CLI polls for
+// that; a single MCP tool call can't sensibly block on it) — use
+// list_notification_channels here to read binding ids and status.
+
+server.tool(
+  "list_notification_channels",
+  "List every notification channel for the operator: email, webhook, and every live (non-revoked) Telegram binding with its id, status (pending/active/revoked), chat metadata, and label. Use this to find a telegram_binding_id for create_notification_rule.",
+  listNotificationChannelsSchema,
+  async (args) => handleListNotificationChannels(args),
+);
+
+server.tool(
+  "list_notification_rules",
+  "List the operator's Telegram routing rules. Each rule ANDs its match dimensions (project_id, source, event_types, classes); an omitted dimension is a wildcard. One rule always targets exactly one Telegram binding.",
+  listNotificationRulesSchema,
+  async (args) => handleListNotificationRules(args),
+);
+
+server.tool(
+  "create_notification_rule",
+  "Create a Telegram routing rule: one match (project_id / source / event_types / classes, all ANDed, each optional — omitted = wildcard) routes to one Telegram binding. Requires operator_passkey assurance. An unusable or foreign telegram_binding_id returns the same 404 as a nonexistent one.",
+  createNotificationRuleSchema,
+  async (args) => handleCreateNotificationRule(args),
+);
+
+server.tool(
+  "delete_notification_rule",
+  "Delete a Telegram routing rule. Requires operator_passkey assurance.",
+  deleteNotificationRuleSchema,
+  async (args) => handleDeleteNotificationRule(args),
 );
 
 // ─── Billing tools ─────────────────────────────────────────────────────────
