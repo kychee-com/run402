@@ -126,6 +126,11 @@ const MATRIX = {
   agent: { shared: [], specific: ["contact"] },
   operator: { shared: ["login", "logout", "overview", "whoami", "claim-wallet-org"], specific: [] },
   service: { shared: [], specific: ["status", "health"] },
+  notifications: {
+    shared: ["list", "get", "preferences", "test"],
+    specific: ["channels", "rules"],
+  },
+  "webhook-secret": { shared: ["rotate"], specific: [] },
   org: { shared: [], specific: ["create", "get", "rename", "whoami", "list", "audit", "member", "invite"] },
   grants: { shared: [], specific: ["create", "revoke"] },
   events: { shared: [], specific: [] },
@@ -147,6 +152,18 @@ const DEPLOY_RELEASE = {
 const JOBS_ARTIFACTS = {
   shared: [],
   specific: ["get"],
+};
+
+// `run402 notifications channels|rules <action>` are nested groups dispatched
+// in lib/notifications.mjs; every action falls back to its GROUP's help (the
+// group --help itself is covered via MATRIX.notifications.specific).
+const NOTIFICATIONS_CHANNELS = {
+  shared: ["connect", "list", "revoke"],
+  specific: [],
+};
+const NOTIFICATIONS_RULES = {
+  shared: ["add", "list", "rm"],
+  specific: [],
 };
 
 // ─── Mock API server ────────────────────────────────────────────────────────
@@ -414,6 +431,26 @@ describe("CLI --help contract", () => {
         assertHelp(await runCli(["jobs", "artifacts", action, "--help"]),
           `run402 jobs artifacts ${action} --help`,
           { expectHeadingStartsWith: `run402 jobs artifacts ${action}` });
+      });
+    }
+  });
+
+  describe("run402 notifications channels (nested)", () => {
+    for (const action of NOTIFICATIONS_CHANNELS.shared) {
+      it(`notifications channels ${action} --help prints usage (group-level help)`, async () => {
+        assertHelp(await runCli(["notifications", "channels", action, "--help"]),
+          `run402 notifications channels ${action} --help`,
+          { expectHeadingStartsWith: "run402 notifications channels" });
+      });
+    }
+  });
+
+  describe("run402 notifications rules (nested)", () => {
+    for (const action of NOTIFICATIONS_RULES.shared) {
+      it(`notifications rules ${action} --help prints usage (group-level help)`, async () => {
+        assertHelp(await runCli(["notifications", "rules", action, "--help"]),
+          `run402 notifications rules ${action} --help`,
+          { expectHeadingStartsWith: "run402 notifications rules" });
       });
     }
   });

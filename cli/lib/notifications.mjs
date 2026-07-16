@@ -565,6 +565,13 @@ export async function run(sub, args) {
     await runRules(args ?? []);
     return;
   }
+  // Flat subcommands share the module-level HELP: --help/-h anywhere in the
+  // argv must short-circuit BEFORE the handlers touch auth/config (the
+  // cli-help.test.mjs contract) — same pre-switch check as cli/lib/org.mjs.
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(HELP);
+    process.exit(0);
+  }
   switch (sub) {
     case "list":
       await list(args);
