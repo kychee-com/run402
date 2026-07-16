@@ -130,6 +130,10 @@ const MATRIX = {
   grants: { shared: [], specific: ["create", "revoke"] },
   events: { shared: [], specific: [] },
   errors: { shared: [], specific: [] },
+  // doctor and logs are flag-based commands (no subcommands): --help must
+  // short-circuit at the top of run() before any check runs or getSdk() call.
+  doctor: { shared: [], specific: [] },
+  logs: { shared: [], specific: [] },
 };
 
 // `run402 email webhooks <action>` delegates to lib/webhooks.mjs.
