@@ -21,6 +21,15 @@ Workspace layout: `package.json` declares `cli`, `sdk`, and `astro` as npm works
 
 The three packages in this repo (`run402-mcp`, `run402`, `@run402/sdk`) release in lockstep via the `/publish` skill at the same version (the skill also supports per-package selection for off-cycle patches). MCP, CLI, OpenClaw, and the Node SDK all share the request kernel via `@run402/sdk`. `@run402/astro` is a sibling integration on its own release cadence via the `/publish-astro` skill — not part of the kernel lockstep. `@run402/functions` is published separately from `run402-core`, but ships at the same npm name. `core/` holds filesystem primitives (keystore, allowance, SIWE signing) that the Node SDK provider wraps.
 
+## Git workflow — worktrees, never branches, never stash
+
+Multiple agent sessions work locally in parallel. Isolation is by git worktree, not by branching or stashing:
+
+- **ALWAYS worktree.** Do work inside a dedicated worktree. Never edit, branch-switch, or otherwise disturb a shared checkout another session may be using — add a worktree instead.
+- **NEVER `git stash`.**
+- **NEVER create branches.** No feature-branch or PR ceremony on your own initiative. A worktree's auto-created backing branch is plumbing, not workflow.
+- **Small changes commit directly to `main`, no ceremony.**
+
 ## Build & Test Commands
 
 ```bash
