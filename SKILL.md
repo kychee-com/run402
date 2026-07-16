@@ -648,6 +648,7 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`list_notifications`** — per-delivery-attempt audit log. Paginated; filter by event_type / since.
 - **`test_notification`** — fire a real test through the full pipeline. Audit row marked `is_test=true`. Rate-limited per wallet at 1/min.
 - **`rotate_webhook_secret`** — new HMAC signing secret for the operator webhook (returned once). Previous remains valid 24h. Requires `operator_passkey`.
+- **`list_notification_channels`** / **`list_notification_rules`** / **`create_notification_rule`** / **`delete_notification_rule`** — self-serve Telegram push: connect a chat via `run402 notifications channels connect telegram` (CLI/SDK-only — MCP reads channels but doesn't connect/revoke), then add rules (project/source/event_types/classes, all ANDed, omitted = wildcard) so only matching events page it. No rules = no Telegram traffic; the mandatory email floor is untouched.
 
 ### Service status (no auth, no setup)
 

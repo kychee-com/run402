@@ -88,6 +88,8 @@ function parseCliCommands(): string[] {
   }
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`org:member:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
+  for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
+  for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "cli/lib/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
@@ -118,6 +120,8 @@ function parseOpenClawCommands(): string[] {
   }
   for (const action of parseOrgGroupActions("memberAction")) cmds.push(`org:member:${action}`);
   for (const action of parseOrgGroupActions("inviteAction")) cmds.push(`org:invite:${action}`);
+  for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
+  for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
@@ -193,6 +197,22 @@ function parseCoreProjectActions(relativePath: string): string[] {
  *  so parseSubcommands skips them; these surface their leaves instead. */
 function parseOrgGroupActions(varName: "memberAction" | "inviteAction"): string[] {
   const filePath = join(__dirname, "cli/lib/org.mjs");
+  if (!existsSync(filePath)) return [];
+  const src = readFileSync(filePath, "utf-8");
+  const actions: string[] = [];
+  const re = new RegExp(`${varName}\\s*===\\s*"([\\w-]+)"`, "g");
+  let m;
+  while ((m = re.exec(src))) actions.push(m[1]);
+  return [...new Set(actions)].filter((c) => c !== "help" && !c.startsWith("-")).sort();
+}
+
+/** Parse the nested `notifications channels <action>` / `notifications rules
+ *  <action>` leaf actions from cli/lib/notifications.mjs (matched on
+ *  `channelsAction === "..."` / `rulesAction === "..."`), mirroring `org
+ *  member`/`org invite`. Both groups dispatch via `if (sub === ...)` so
+ *  parseSubcommands skips them; these surface their leaves instead. */
+function parseNotificationsGroupActions(varName: "channelsAction" | "rulesAction"): string[] {
+  const filePath = join(__dirname, "cli/lib/notifications.mjs");
   if (!existsSync(filePath)) return [];
   const src = readFileSync(filePath, "utf-8");
   const actions: string[] = [];
@@ -440,6 +460,22 @@ const SURFACE: Capability[] = [
   { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     mcp: "set_notification_preferences", cli: null,                            openclaw: null },
   { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             mcp: "test_notification",            cli: "notifications:test",            openclaw: "notifications:test" },
   { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/webhook-secret/rotate",          mcp: "rotate_webhook_secret",        cli: "webhook-secret:rotate",         openclaw: "webhook-secret:rotate" },
+
+  // ── Telegram notification channel + routing rules
+  //    (notification-channel-routing-telegram) ─────────────────────────────
+  // `connect`/`revoke` are CLI/SDK-only by design: connect blocks on a human
+  // tapping a Telegram deep link out-of-band (the CLI polls; a single MCP
+  // tool call can't sensibly block on that), and neither was in the MCP
+  // scope this change shipped (channels list + rules list/add/rm only) — see
+  // the PR description for the full write-tool-parity rationale.
+  { id: "connect_telegram_channel", endpoint: "POST /agent/v1/notifications/channels/telegram",              mcp: null,                          cli: "notifications:channels:connect", openclaw: "notifications:channels:connect" },
+  { id: "list_notification_channels", endpoint: "GET /agent/v1/notifications/channels",                      mcp: "list_notification_channels", cli: "notifications:channels:list",    openclaw: "notifications:channels:list" },
+  { id: "revoke_telegram_channel",  endpoint: "DELETE /agent/v1/notifications/channels/telegram/:binding_id", mcp: null,                          cli: "notifications:channels:revoke",  openclaw: "notifications:channels:revoke" },
+  { id: "list_notification_rules",  endpoint: "GET /agent/v1/notifications/rules",                           mcp: "list_notification_rules",    cli: "notifications:rules:list",       openclaw: "notifications:rules:list" },
+  { id: "create_notification_rule", endpoint: "POST /agent/v1/notifications/rules",                          mcp: "create_notification_rule",   cli: "notifications:rules:add",        openclaw: "notifications:rules:add" },
+  // update_notification_rule (PATCH .../rules/:rule_id) is SDK-typed only in
+  // v1 (admin.rules.update) — no CLI verb or MCP tool; see SDK_ONLY_METHODS.
+  { id: "delete_notification_rule", endpoint: "DELETE /agent/v1/notifications/rules/:rule_id",               mcp: "delete_notification_rule",   cli: "notifications:rules:rm",         openclaw: "notifications:rules:rm" },
 
   // ── Project events feed (project-events-outbox) ─────────────────────────
   // One CLI command + one MCP tool cover both scopes: the org-wide union
@@ -787,6 +823,16 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   test_notification: "admin.testNotification",
   rotate_webhook_secret: "admin.rotateWebhookSecret",
   start_operator_passkey_enrollment: "admin.startOperatorPasskeyEnrollment",
+
+  // Telegram notification channel + routing rules
+  // (notification-channel-routing-telegram) — sub-namespaces on admin, same
+  // shape as admin.transfers.
+  connect_telegram_channel: "admin.channels.connectTelegram",
+  list_notification_channels: "admin.channels.list",
+  revoke_telegram_channel: "admin.channels.revokeTelegram",
+  list_notification_rules: "admin.rules.list",
+  create_notification_rule: "admin.rules.create",
+  delete_notification_rule: "admin.rules.delete",
 
   // Operator session (human/email, RFC 8628 device-auth). `operator login`
   // brokers deviceStart + devicePoll; devicePoll has no dedicated capability
@@ -1192,6 +1238,13 @@ describe("SDK surface alignment", () => {
       "admin.org",
       "admin.project",
       "admin._setLeasePerpetual",
+      // notification-channel-routing-telegram: admin.rules.update (PATCH
+      // .../rules/:rule_id) is SDK-typed for programmatic PATCH null-vs-absent
+      // semantics but has no dedicated CLI verb or MCP tool in v1 — the
+      // shipped surface is list/create(add)/delete(rm) only (create + delete
+      // already cover the "toggle enabled" / "change binding" use cases via
+      // rm-then-add for the CLI's flag-based UX).
+      "admin.rules.update",
       // Removed ProjectDomain predecessor methods: kept only as local
       // COMMAND_REMOVED shims so old callers get a replacement path.
       "domains.add",

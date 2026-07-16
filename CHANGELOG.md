@@ -2,6 +2,13 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — Telegram notification channel + routing rules
+
+- **SDK:** added `r.admin.channels.{connectTelegram, list, revokeTelegram}` and `r.admin.rules.{list, create, update, delete}` (self-serve Telegram push on top of the v1.55 operator-notifications substrate). `admin.testNotification(opts?)` now accepts `{ source?, eventType? }` and its result carries `telegram.destinations[]`, the per-binding delivery outcome for the synthetic event.
+- **CLI:** `run402 notifications channels connect telegram [--label X]` prints the connect/connect-group deep links and polls `channels list` until the binding activates or the code expires; `channels list`/`channels revoke <binding_id>`; `notifications rules add --binding <id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]` / `rules list` / `rules rm <rule_id>`; `notifications test` gained `--source`/`--type`. `--help` on `channels`/`rules` teaches the full rule model (ANDed match dimensions, absent = wildcard, one rule -> one chat, no rules -> no Telegram traffic, mandatory email floor untouched).
+- **MCP:** added `list_notification_channels`, `list_notification_rules`, `create_notification_rule`, `delete_notification_rule`; `test_notification` gained optional `source`/`event_type` params. Connecting/revoking a Telegram binding stays CLI/SDK-only (blocks on a human tapping a Telegram deep link out-of-band).
+- **Docs/tests:** CLI/SDK/MCP references and `llms-*.txt` document the new surface; `sync.test.ts` SURFACE/SDK_BY_CAPABILITY cover it end-to-end.
+
 ## Unreleased — resilient x402 balance preflight
 
 - **Node SDK:** x402 USDC balance reads now use bounded retry/backoff with independent Base and Base Sepolia RPC failover. RPC exhaustion remains an unknown balance and never collapses to numeric zero.

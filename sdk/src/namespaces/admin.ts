@@ -155,9 +155,50 @@ export type NotificationPreferencesPatch = Partial<
   security_events?: "always";
 };
 
+export interface TestNotificationOptions {
+  /**
+   * Route the synthetic test event as if it came from the app lane
+   * (`project_events.source = 'app'`) or the platform. Defaults to
+   * `"platform"` on the gateway when omitted.
+   */
+  source?: "app" | "platform";
+  /**
+   * Synthetic `event_type` override (flat snake_case,
+   * `^[a-z][a-z0-9_]{2,63}$`). Use this to exercise a specific routing rule's
+   * `event_types` filter precisely. Defaults to the gateway's built-in
+   * sample event when omitted.
+   */
+  eventType?: string;
+}
+
+/** One Telegram destination's outcome from a `testNotification()` call —
+ *  present only when the operator has a routing rule matching the synthetic
+ *  event. Empty `telegram.destinations` is Faithful (no matching rule), not
+ *  an error. */
+export interface TestNotificationDestination {
+  binding_id: string;
+  label: string | null;
+  delivered: boolean;
+  /** Present on failures. `true` = retryable (429/5xx/timeout/rate-limited);
+   *  `false` = permanent (bad chat, bot blocked/removed). */
+  transient?: boolean;
+  description?: string;
+}
+
 export interface TestNotificationResult {
-  status: "queued";
+  status: "delivered" | "skipped" | "queued";
   source_event_id: string;
+  drained: {
+    claimed: number;
+    delivered: number;
+    skipped: number;
+    failed_transient: number;
+    failed_permanent: number;
+  };
+  /** Telegram delivery report for the synthetic event, routed through the
+   *  operator's normal rules — the full binding + rule + render + send
+   *  chain, not just email/webhook. */
+  telegram: { destinations: TestNotificationDestination[] };
   note: string;
 }
 
@@ -166,6 +207,272 @@ export interface RotateWebhookSecretResult {
   rotated_at: string;
   grace_window_hours: number;
   note: string;
+}
+
+// ---------------------------------------------------------------------------
+// Telegram notification channel + routing rules
+// (notification-channel-routing-telegram). Exposed as `r.admin.channels.*`
+// and `r.admin.rules.*` — nested sub-namespaces on `r.admin`, the same shape
+// as `r.admin.transfers`.
+// ---------------------------------------------------------------------------
+
+export type TelegramBindingStatus = "pending" | "active" | "revoked";
+
+/**
+ * One Telegram binding as returned by `GET /agent/v1/notifications/channels`
+ * (`telegram[]`) and `r.admin.channels.list()`. Never carries the raw
+ * connect code — codes are single-use, hashed at rest, and returned only
+ * once, inline in {@link ConnectTelegramResult}.
+ */
+export interface TelegramChannelBinding {
+  id: string;
+  recipient_email: string;
+  status: TelegramBindingStatus;
+  chat_id: number | null;
+  chat_type: string | null;
+  chat_title: string | null;
+  label: string | null;
+  consecutive_failures: number;
+  /** Set once auto-disabled after 10 consecutive hard delivery failures. */
+  disabled_at: string | null;
+  /** Only set while `status === "pending"` — the connect code's 15-min TTL. */
+  code_expires_at: string | null;
+  created_at: string;
+  activated_at: string | null;
+}
+
+export interface ConnectTelegramOptions {
+  /** Human-readable label for the chat (e.g. `"kychon alerts"`), 1-64 chars. */
+  label?: string;
+}
+
+export interface ConnectTelegramNextAction {
+  type: string;
+  method?: string;
+  path?: string;
+  why?: string;
+}
+
+export interface ConnectTelegramResult {
+  binding_id: string;
+  status: "pending";
+  /** `t.me/<bot>?start=<code>` — tap to bind a PRIVATE chat. Single-use, 15-min TTL. */
+  connect_url: string;
+  /** `t.me/<bot>?startgroup=<code>` — tap to bind a GROUP chat. Same code/TTL as {@link connect_url} (whichever is tapped first consumes it). */
+  connect_group_url: string;
+  code_expires_at: string;
+  label: string | null;
+  next_actions: ConnectTelegramNextAction[];
+}
+
+export interface NotificationChannelsResult {
+  email: { address: string | null; verified: boolean };
+  webhook: { configured: boolean; url: string | null; secret_configured: boolean };
+  /** Every live (non-revoked) Telegram binding for this operator, newest first. */
+  telegram: TelegramChannelBinding[];
+}
+
+export interface RevokeTelegramResult {
+  status: "revoked";
+  binding_id: string;
+}
+
+// ─── Routing rules ──────────────────────────────────────────────────────
+
+/**
+ * `"app"` = app-emitted business events (`project_events.source = 'app'`,
+ * e.g. `events.emit(...)` from `@run402/functions`); `"platform"` = every
+ * non-app platform event (deploys, lifecycle, verification, ...). Absent /
+ * `null` on a rule is a wildcard — matches both.
+ */
+export type RoutingRuleSource = "app" | "platform";
+
+/**
+ * Wire-shaped routing rule. Every match dimension (`project_id`, `source`,
+ * `event_types`, `classes`) is ANDed; `null` is a wildcard for that
+ * dimension. An explicit empty array (`event_types: []` / `classes: []`)
+ * matches NOTHING — Postgres `TEXT[]` semantics, deliberately different from
+ * the "`[]` means unfiltered" convention used by some read-filter query
+ * params elsewhere in this SDK. One rule always targets exactly one Telegram
+ * binding; overlapping rules that resolve to the same binding are deduped by
+ * the gateway at delivery time (one message, not one per matching rule).
+ */
+export interface RoutingRule {
+  id: string;
+  recipient_email: string;
+  project_id: string | null;
+  source: RoutingRuleSource | null;
+  event_types: string[] | null;
+  classes: string[] | null;
+  channel: "telegram";
+  telegram_binding_id: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * `r.admin.rules.create(...)` input. Every match dimension is optional
+ * (absent = wildcard); `telegramBindingId` is the only required field. An
+ * all-wildcard rule (every event on every project routes to one chat) is
+ * legal.
+ */
+export interface CreateRoutingRuleInput {
+  telegramBindingId: string;
+  projectId?: string | null;
+  source?: RoutingRuleSource | null;
+  eventTypes?: string[] | null;
+  classes?: string[] | null;
+}
+
+/**
+ * `r.admin.rules.update(...)` patch. PATCH semantics: a field OMITTED from
+ * this object leaves the stored value unchanged; a field explicitly set to
+ * `null` CLEARS that dimension back to wildcard. There is no wire difference
+ * between "omitted" and "set to `undefined`" — both drop the key from the
+ * JSON request body, so the gateway sees no instruction to change it.
+ */
+export interface UpdateRoutingRulePatch {
+  projectId?: string | null;
+  source?: RoutingRuleSource | null;
+  eventTypes?: string[] | null;
+  classes?: string[] | null;
+  telegramBindingId?: string;
+  enabled?: boolean;
+}
+
+export interface ListRoutingRulesResult {
+  rules: RoutingRule[];
+}
+
+export interface CreateRoutingRuleResult extends RoutingRule {
+  next_actions: ConnectTelegramNextAction[];
+}
+
+export interface DeleteRoutingRuleResult {
+  deleted: true;
+  rule_id: string;
+}
+
+/**
+ * `r.admin.channels` — the Telegram notification-channel binding lifecycle
+ * (connect / list / revoke). Mutations (`connectTelegram`, `revokeTelegram`)
+ * require `operator_passkey` assurance; `connectTelegram` additionally
+ * requires a VERIFIED operator email (bindings are addressed to it). See
+ * `r.admin.setAgentContact` / `r.admin.verifyAgentContactEmail` and
+ * `r.admin.startOperatorPasskeyEnrollment` to reach that assurance level —
+ * same ladder as {@link Admin.rotateWebhookSecret}.
+ */
+export class Channels {
+  constructor(private readonly client: Client) {}
+
+  /**
+   * Start binding a Telegram chat. Returns two single-use, 15-minute deep
+   * links — `connect_url` for a private chat, `connect_group_url` for a
+   * group — plus a `pending` binding id. A human taps ONE of the links and
+   * starts the bot; poll {@link Channels.list} until the binding's `status`
+   * flips to `"active"` (or `code_expires_at` passes and it's swept back to
+   * `"revoked"`).
+   *
+   * Throws (via the generic SDK error hierarchy — check `err.code`) HTTP 503
+   * `TELEGRAM_CHANNEL_NOT_CONFIGURED` until the platform's dedicated
+   * notification bot is provisioned, and HTTP 412
+   * `OPERATOR_EMAIL_NOT_VERIFIED` when the caller has no verified email yet.
+   */
+  async connectTelegram(opts: ConnectTelegramOptions = {}): Promise<ConnectTelegramResult> {
+    const body: Record<string, unknown> = {};
+    if (opts.label !== undefined) body.label = opts.label;
+    return this.client.request<ConnectTelegramResult>(
+      "/agent/v1/notifications/channels/telegram",
+      { method: "POST", body, context: "connecting a Telegram notification channel" },
+    );
+  }
+
+  /** List every notification channel — email, webhook, and every live
+   *  (non-revoked) Telegram binding — for the authenticated wallet. */
+  async list(): Promise<NotificationChannelsResult> {
+    return this.client.request<NotificationChannelsResult>(
+      "/agent/v1/notifications/channels",
+      { context: "listing notification channels" },
+    );
+  }
+
+  /**
+   * Revoke a Telegram binding. Missing / already-revoked / another
+   * operator's binding id all return the SAME not-found error
+   * (authorize-before-reveal) — no existence oracle.
+   */
+  async revokeTelegram(bindingId: string): Promise<RevokeTelegramResult> {
+    return this.client.request<RevokeTelegramResult>(
+      `/agent/v1/notifications/channels/telegram/${encodeURIComponent(bindingId)}`,
+      { method: "DELETE", context: "revoking a Telegram notification channel" },
+    );
+  }
+}
+
+/**
+ * `r.admin.rules` — Telegram routing rules (design D4): one match (ANDed
+ * dimensions; an omitted dimension is a wildcard) → one Telegram binding.
+ * Rules govern the Telegram channel ONLY in v1 — email/webhook keep their
+ * existing preference-toggle semantics untouched. Mutations require
+ * `operator_passkey` assurance.
+ */
+export class Rules {
+  constructor(private readonly client: Client) {}
+
+  /** List the operator's routing rules, newest first. */
+  async list(): Promise<ListRoutingRulesResult> {
+    return this.client.request<ListRoutingRulesResult>(
+      "/agent/v1/notifications/rules",
+      { context: "listing notification routing rules" },
+    );
+  }
+
+  /**
+   * Create a routing rule. `telegramBindingId` must reference a binding this
+   * operator owns and that is currently usable (`status: "active"`); an
+   * unusable or foreign binding id returns the same 404 as a nonexistent one
+   * (authorize-before-reveal).
+   */
+  async create(input: CreateRoutingRuleInput): Promise<CreateRoutingRuleResult> {
+    const body: Record<string, unknown> = { telegram_binding_id: input.telegramBindingId };
+    if (input.projectId !== undefined) body.project_id = input.projectId;
+    if (input.source !== undefined) body.source = input.source;
+    if (input.eventTypes !== undefined) body.event_types = input.eventTypes;
+    if (input.classes !== undefined) body.classes = input.classes;
+    return this.client.request<CreateRoutingRuleResult>(
+      "/agent/v1/notifications/rules",
+      { method: "POST", body, context: "creating a notification routing rule" },
+    );
+  }
+
+  /**
+   * Patch a routing rule. PATCH semantics: only fields PRESENT on `patch`
+   * are sent — `{ projectId: null }` clears that dimension back to
+   * wildcard; omitting a field leaves it unchanged (see
+   * {@link UpdateRoutingRulePatch}).
+   */
+  async update(ruleId: string, patch: UpdateRoutingRulePatch): Promise<RoutingRule> {
+    const body: Record<string, unknown> = {};
+    if ("projectId" in patch) body.project_id = patch.projectId;
+    if ("source" in patch) body.source = patch.source;
+    if ("eventTypes" in patch) body.event_types = patch.eventTypes;
+    if ("classes" in patch) body.classes = patch.classes;
+    if ("telegramBindingId" in patch) body.telegram_binding_id = patch.telegramBindingId;
+    if ("enabled" in patch) body.enabled = patch.enabled;
+    return this.client.request<RoutingRule>(
+      `/agent/v1/notifications/rules/${encodeURIComponent(ruleId)}`,
+      { method: "PATCH", body, context: "updating a notification routing rule" },
+    );
+  }
+
+  /** Delete a routing rule. */
+  async delete(ruleId: string): Promise<DeleteRoutingRuleResult> {
+    return this.client.request<DeleteRoutingRuleResult>(
+      `/agent/v1/notifications/rules/${encodeURIComponent(ruleId)}`,
+      { method: "DELETE", context: "deleting a notification routing rule" },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -276,8 +583,22 @@ export class Admin {
    */
   readonly transfers: Transfers;
 
+  /**
+   * Telegram notification-channel binding lifecycle. Access via
+   * `r.admin.channels.{connectTelegram, list, revokeTelegram}`.
+   */
+  readonly channels: Channels;
+
+  /**
+   * Telegram routing rules — one match (ANDed dimensions) to one binding.
+   * Access via `r.admin.rules.{list, create, update, delete}`.
+   */
+  readonly rules: Rules;
+
   constructor(private readonly client: Client) {
     this.transfers = new Transfers(client);
+    this.channels = new Channels(client);
+    this.rules = new Rules(client);
   }
 
   /**
@@ -397,13 +718,21 @@ export class Admin {
 
   /**
    * Trigger a real test notification. Sends a sample `project_past_due`
-   * event through the normal worker pipeline; the audit row is marked
-   * `is_test: true`. Rate-limited per wallet at 1/min.
+   * event through the normal worker pipeline (email/webhook); the audit row
+   * is marked `is_test: true`. ALSO delivers a synthetic event through the
+   * operator's Telegram routing rules end-to-end (binding + rule + render +
+   * send) and reports a per-destination outcome in `telegram.destinations`
+   * — pass `opts.source` / `opts.eventType` to target a specific rule's
+   * filters instead of the default sample event. Rate-limited per wallet at
+   * 1/min.
    */
-  async testNotification(): Promise<TestNotificationResult> {
+  async testNotification(opts: TestNotificationOptions = {}): Promise<TestNotificationResult> {
+    const body: Record<string, unknown> = {};
+    if (opts.source !== undefined) body.source = opts.source;
+    if (opts.eventType !== undefined) body.event_type = opts.eventType;
     return this.client.request<TestNotificationResult>(
       "/agent/v1/notifications/test",
-      { method: "POST", context: "triggering test notification" },
+      { method: "POST", body, context: "triggering test notification" },
     );
   }
 
