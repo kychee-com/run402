@@ -3757,7 +3757,10 @@ describe("CLI e2e happy path", () => {
         // Headers and body may be on init (direct fetch) or on the Request
         // object (when a wrapper like @x402/fetch normalizes the args).
         if (init?.headers) {
-          capturedHeaders = init.headers;
+          // Fetch wrappers may normalize HeadersInit into a real Headers
+          // instance. Convert every valid shape to a plain object so this
+          // assertion tests wire values instead of one caller representation.
+          capturedHeaders = Object.fromEntries(new Headers(init.headers).entries());
         } else if (input instanceof Request) {
           capturedHeaders = Object.fromEntries(input.headers.entries());
         } else {
