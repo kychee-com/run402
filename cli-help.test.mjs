@@ -156,6 +156,10 @@ const MATRIX = {
   grants: { shared: [], specific: ["create", "revoke"] },
   events: { shared: [], specific: [] },
   errors: { shared: [], specific: [] },
+  // doctor and logs are flag-based commands (no subcommands): --help must
+  // short-circuit at the top of run() before any check runs or getSdk() call.
+  doctor: { shared: [], specific: [] },
+  logs: { shared: [], specific: [] },
   // `run402 dev` wraps `astro dev`; its --help must print usage and exit
   // WITHOUT spawning anything (the runner's signal/timeout assert catches a
   // hung child).
