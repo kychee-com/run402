@@ -10,7 +10,7 @@ npm install @run402/sdk
 
 | Import | Use when |
 |---|---|
-| `@run402/sdk/node` | Running in Node 22 with the local profile state, project-key credential cache, and allowance. Auto-loads the configured API base, profile `credentials/project-keys.v1.json`, and signs x402 payments from `~/.config/run402/allowance.json`. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
+| `@run402/sdk/node` | Running in Node 22 with the local profile state, project-key credential cache, and allowance. Auto-loads the configured API base, profile `credentials/project-keys.v1.json`, and signs x402 payments from the selected allowance or opaque signer. Includes `r.actions.run(...)`, `r.up(...)`, `r.sites.deployDir(dir)`, `fileSetFromDir(dir)`, `loadDeployManifest(path)`, `normalizeDeployManifest(input)`, and `resolveRun402TargetProfile()`. |
 | `@run402/sdk` | Isomorphic — works in Node, Deno, Bun, V8 isolates. No filesystem access. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). |
 
 The Node entry sends bounded client-version metadata on gateway requests using the unprefixed `Run402-Client` header, for example `surface="sdk", version="3.7.14", sdk="3.7.14"`. The CLI passes `surface: "cli"`, so gateway compatibility hints can distinguish CLI-created SDK traffic from direct SDK callers. Metadata never includes local paths, package manager details, wallet/org/project ids, secrets, or install confidence. The isomorphic entry does not send this header by default; pass `clientMetadata` explicitly only in runtimes where custom headers are expected.
@@ -26,6 +26,83 @@ await (await r.project(project.project_id)).assets.put("hello.txt", { content: "
 ```
 
 That's it — credentials are read, x402 payments are signed, results are typed.
+
+Before creating an x402 payment payload, the Node entry confirms USDC with
+bounded retry/backoff and independent RPC failover on Base and Base Sepolia.
+RPC exhaustion is never treated as a zero balance. Branch on the exported
+`X402BalanceError.code`: `X402_RPC_TIMEOUT`, `X402_RPC_RATE_LIMITED`, and
+`X402_RPC_UNAVAILABLE` are pre-payment failures with `safeToRetry === true`
+and `mutationState === "not_started"`; `X402_INSUFFICIENT_FUNDS` means the
+relevant balance reads succeeded and the confirmed funds do not cover any
+accepted requirement. After a retryable preflight failure, the next request
+refreshes only mutable RPC balance state while retaining the originally
+selected signer and payer provenance. Error details contain provider indexes
+and failure classes, never RPC credentials, wallet keys, or signed proofs.
+
+### Payment signer selection (Node)
+
+Authentication and payment are separate authorities. A custom `credentials`
+provider controls API authentication; the x402 payer is resolved exactly once
+in this order:
+
+1. `paymentSigner` — an explicit async EVM signer provider (KMS/HSM friendly).
+2. `allowancePath` — an explicit local allowance file.
+3. `credentials.readAllowance()` — when a supplied provider implements it.
+4. The Node default provider's active-profile allowance — only when the caller
+   did not supply a custom credentials provider.
+
+Once a source is selected, the SDK never falls back to the ambient/global
+wallet. `paymentSigner` and `allowancePath` together throw
+`PAYMENT_SOURCE_CONFLICT`. Passing both `credentials` and `allowancePath` is
+valid: auth uses `credentials`, while payment intentionally uses that file.
+`fetch` still takes precedence over built-in paid fetch, and
+`disablePaidFetch: true` disables automatic payment entirely.
+
+An opaque signer returns only its public payer address and signing operation;
+raw keys and replayable payment authorizations do not cross the provider
+boundary:
+
+```ts
+import {
+  run402,
+  type CredentialsProvider,
+  type EvmPaymentSigner,
+  type EvmPaymentSignerProvider,
+  type PaymentPublicClient,
+  type X402PaymentNetwork,
+} from "@run402/sdk/node";
+
+declare const sessionCredentials: CredentialsProvider;
+declare function kmsSignerFor(
+  network: X402PaymentNetwork,
+  publicClient: PaymentPublicClient,
+): Promise<EvmPaymentSigner>;
+
+const paymentSigner: EvmPaymentSignerProvider = {
+  async getSigner({ network, publicClient }) {
+    return kmsSignerFor(network, publicClient); // address + signTypedData
+  },
+};
+
+const r = run402({ credentials: sessionCredentials, paymentSigner });
+const payer = await r.paymentPayer();
+// { source: "payment_signer", rail: "x402", payers: [{ address, network }, ...] }
+```
+
+The provider may return `null` for an unsupported Base network. Paid-fetch
+initialization is lazy and retries after missing/recoverable local state, so a
+long-lived client can start paying after its selected allowance/provider
+becomes available without being reconstructed. `r.paymentPayer()` initializes
+the selected source if necessary and returns only its source, rail, public
+address(es), and network(s); it never returns a key, signed authorization, or
+replayable proof. It returns `null` when automatic paid fetch is disabled, a
+custom `fetch` owns payment, or the selected source is not currently available.
+
+### Automatic x402 attempt recovery
+
+Automatic paid requests persist a redacted mode-0600 intent before sending a signed payment. A `PaymentAttemptError` before provider dispatch has `mutationState: "not_started"` and `safeToRetry: true`; check `retryable` separately because persistent local-journal corruption is safe from duplicate payment but requires repair rather than an automatic retry. After dispatch, an unknown outcome is `mutationState: "ambiguous"`, `safeToRetry: false`, with `reconcile_payment` and `poll` actions. Reconcile `paymentAttemptId` before authorizing another payment.
+
+Use `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })` from `@run402/sdk/node` to inspect the active profile's local journal. It never stores keys, signed headers/proofs, raw paths, request bodies, query strings, or raw causes; only a SHA-256 pathname fingerprint is retained. `X-Run402-Payment-Attempt-Id` is reserved atomically and sent only on the payment-bearing call, with redirects disabled so payment metadata cannot cross to another target. Existing ids fail with `X402_ATTEMPT_ID_ALREADY_EXISTS`; malformed ids fail with `INVALID_PAYMENT_ATTEMPT_ID`, both before network dispatch.
 
 For repo-level app deploys, the Node entry also exposes the action runner used by `run402 up`:
 
@@ -652,7 +729,9 @@ All failures throw subclasses of `Run402Error`. Every subclass carries a stable
 | `Unauthorized` | `"unauthorized"` | HTTP 401 / 403 | — |
 | `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
+| `PaymentAttemptError` | `"payment_attempt_error"` | Automatic x402 setup/signing/submission failed | `code`, `phase`, `paymentAttemptId`, `safeToRetry`, `mutationState`, `nextActions` |
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
+| `X402BalanceError` (Node entry) | `"local_error"` | x402 USDC balance preflight could not be confirmed, or confirmed funds are insufficient | `code`, `safeToRetry`, `mutationState="not_started"`, `details`, `nextActions` |
 | `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 
 Project credential codes are deliberately distinct from project existence/authz. Branch on `isProjectCredentialNotFound`, `isProjectCredentialInvalid`, `isProjectCredentialExpired`, `isProjectCredentialProjectMismatch`, or the broad `isProjectCredentialError`. Gateway-returned `PROJECT_CREDENTIAL_INVALID`, `PROJECT_CREDENTIAL_EXPIRED`, and `PROJECT_CREDENTIAL_PROJECT_MISMATCH` pass through unchanged; the SDK does not rewrite them to `PROJECT_CREDENTIAL_NOT_FOUND`.

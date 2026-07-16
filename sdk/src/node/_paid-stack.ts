@@ -60,7 +60,7 @@ class LoadCollector {
 export interface X402Stack {
   privateKeyToAccount: (pk: `0x${string}`) => unknown;
   createPublicClient: (opts: unknown) => { readContract: (args: unknown) => Promise<bigint> };
-  http: () => unknown;
+  http: (url?: string) => unknown;
   base: unknown;
   baseSepolia: unknown;
   x402Client: new () => {

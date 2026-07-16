@@ -29,10 +29,16 @@ import {
 } from "../../core-dist/config.js";
 import { Run402, type Run402Options } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
+import { LocalError } from "../errors.js";
 import type { Client, Run402ClientMetadata } from "../kernel.js";
 import { NodeCredentialsProvider } from "./credentials.js";
 import type { AuthMode, CredentialSurface } from "./credentials.js";
-import { createLazyPaidFetch } from "./paid-fetch.js";
+import {
+  createLazyPaidFetch,
+  type EvmPaymentSignerProvider,
+  type LazyPaidFetch,
+  type PaymentPayerProvenance,
+} from "./paid-fetch.js";
 import { NodeSites } from "./sites-node.js";
 import { NodeAssets } from "./assets-node.js";
 import { NodeArchives } from "./archives-node.js";
@@ -49,6 +55,13 @@ export interface NodeRun402Options {
   allowancePath?: string;
   /** Override the credentials provider. Defaults to the local Node keystore + allowance provider. */
   credentials?: CredentialsProvider;
+  /**
+   * Explicit async x402 signer (for example KMS/HSM backed). The provider
+   * exposes only a public address plus signing operations, never a raw key.
+   * Mutually exclusive with `allowancePath`. Auth still comes from
+   * `credentials`, so the authenticated principal and payer may differ.
+   */
+  paymentSigner?: EvmPaymentSignerProvider;
   /**
    * Which surface is constructing the client — selects the default credential
    * mode. `"cli"` opts into `auto` (wallet, else operator-approval); `"mcp"` /
@@ -83,6 +96,8 @@ export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives"> & {
   archives: NodeArchives;
   actions: NodeActions;
   up: NodeActions["up"];
+  /** Public address/source selected for automatic payment; never includes keys or signed proofs. */
+  paymentPayer(): Promise<PaymentPayerProvenance | null>;
 };
 
 /**
@@ -96,6 +111,16 @@ export type NodeRun402 = Omit<Run402, "sites" | "assets" | "archives"> & {
  * exposes the `deployDir({ dir })` helper.
  */
 export function run402(opts: NodeRun402Options = {}): NodeRun402 {
+  if (opts.paymentSigner && opts.allowancePath) {
+    throw new LocalError(
+      "Configure exactly one explicit payment source: paymentSigner or allowancePath",
+      "constructing client",
+      {
+        code: "PAYMENT_SOURCE_CONFLICT",
+        details: { fields: ["paymentSigner", "allowancePath"] },
+      },
+    );
+  }
   const apiBase = opts.apiBase ?? getApiBase();
   const credentials = opts.credentials ?? new NodeCredentialsProvider({
     allowancePath: opts.allowancePath,
@@ -104,12 +129,22 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
     surface: opts.surface,
     authMode: opts.authMode,
   });
+  let lazyPaidFetch: LazyPaidFetch | undefined;
+  if (!opts.fetch && !opts.disablePaidFetch) {
+    lazyPaidFetch = createLazyPaidFetch({
+      allowancePath: opts.allowancePath,
+      credentials: opts.credentials ? credentials : undefined,
+      paymentSigner: opts.paymentSigner,
+    });
+  }
   const runOpts: Run402Options = {
     apiBase,
     credentials,
     fetch:
       opts.fetch ??
-      (opts.disablePaidFetch ? globalThis.fetch.bind(globalThis) : createLazyPaidFetch()),
+      (opts.disablePaidFetch
+        ? globalThis.fetch.bind(globalThis)
+        : lazyPaidFetch!),
     clientMetadata: nodeClientMetadata(opts),
   };
   const base = new Run402(runOpts);
@@ -130,6 +165,8 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
   });
   (base as unknown as { actions: NodeActions }).actions = actions;
   (base as unknown as { up: NodeActions["up"] }).up = actions.up.bind(actions);
+  (base as unknown as { paymentPayer: NodeRun402["paymentPayer"] }).paymentPayer = async () =>
+    lazyPaidFetch?.getPayer() ?? null;
 
   return base as unknown as NodeRun402;
 }
@@ -259,7 +296,28 @@ export {
 export { NodeCredentialsProvider } from "./credentials.js";
 export { NodeActions } from "./actions-node.js";
 export type { NodeActionTargetKind, NodeActionsOptions } from "./actions-node.js";
-export { setupPaidFetch, createLazyPaidFetch } from "./paid-fetch.js";
+export { setupPaidFetch, createLazyPaidFetch, X402BalanceError } from "./paid-fetch.js";
+export type {
+  EvmPaymentSigner,
+  EvmPaymentSignerProvider,
+  ConfiguredPaidFetch,
+  LazyPaidFetch,
+  PaidFetchOptions,
+  PaymentPayerProvenance,
+  PaymentPayerSource,
+  PaymentPublicClient,
+  X402BalanceErrorCode,
+  X402PaymentNetwork,
+} from "./paid-fetch.js";
+export {
+  listPaymentAttempts,
+  readPaymentAttempt,
+  PAYMENT_ATTEMPT_HEADER,
+} from "./payment-attempts.js";
+export type {
+  PaymentAttemptJournalState,
+  PaymentAttemptRecord,
+} from "./payment-attempts.js";
 export { Run402Action } from "../actions.js";
 export * from "../app-up.js";
 export type * from "../index.js";
@@ -275,6 +333,7 @@ export {
   StepUpRequiredError,
   ApiError,
   NetworkError,
+  PaymentAttemptError,
   LocalError,
   Run402DeployError,
   EMPTY_STATIC_MANIFEST_METADATA,
@@ -314,6 +373,7 @@ export {
   isOperatorApprovalRequired,
   isApiError,
   isNetworkError,
+  isPaymentAttemptError,
   isLocalError,
   isDeployError,
   isRetryableRun402Error,

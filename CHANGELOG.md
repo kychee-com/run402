@@ -2,6 +2,24 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — resilient x402 balance preflight
+
+- **Node SDK:** x402 USDC balance reads now use bounded retry/backoff with independent Base and Base Sepolia RPC failover. RPC exhaustion remains an unknown balance and never collapses to numeric zero.
+- **Errors/recovery:** `X402BalanceError` distinguishes timeout, rate-limit, general RPC-unavailable, and confirmed-insufficient states. Only pre-payment RPC errors are marked `safeToRetry`, and transient failures are not permanently cached by lazy paid-fetch initialization.
+- **Tests/docs:** deterministic tests cover retry, provider failover, faithful insufficient-funds classification, and recovery on the next request; SDK references document the stable codes and no-secret error details.
+
+## Unreleased — deterministic x402 payer selection
+
+- **Node SDK:** `run402({ allowancePath, credentials })` now uses the explicit allowance as the x402 payer while retaining the supplied provider for API auth. Custom providers with `readAllowance()` also fund paid fetch without rereading the ambient wallet.
+- **Opaque signers:** `paymentSigner` supports async Base x402 signers backed by KMS/HSM-style providers without exposing raw private keys; conflicting explicit signer/path configuration fails with `PAYMENT_SOURCE_CONFLICT`. `r.paymentPayer()` reports only safe source/rail/public-address/network provenance.
+- **Recovery/tests:** lazy paid-fetch initialization retries after the selected allowance/provider becomes available, while successful initialization remains cached. Focused tests cover path/provider precedence, fail-closed behavior, conflicts, opaque signer provenance, and recovery.
+
+## Unreleased — phase-aware durable x402 attempts
+
+- **Node SDK:** automatic x402 failures now throw `PaymentAttemptError` with a stable `paymentAttemptId`, phase, canonical code, retry safety, mutation state, and structured next actions instead of leaking raw `@x402/fetch` `TypeError`s.
+- **Safety:** a sanitized mode-0600 intent is committed before the payment-bearing request. Failures before provider dispatch are `not_started` and safe to retry; transport failures and non-success responses after dispatch are `ambiguous`, never safe to retry, and require polling/reconciliation by attempt id. Signed payment headers, keys, raw paths, request bodies, query strings, and raw causes are never journaled or serialized; URL paths are represented only by SHA-256 fingerprints.
+- **Correlation:** the reserved `X-Run402-Payment-Attempt-Id` is claimed atomically across processes and attached only to the payment-bearing request, with redirects disabled for that request so neither the correlation id nor signed payment authorization can cross to a redirect target. Existing and malformed attempt ids fail closed before network dispatch to prevent accidental payment replay. `readPaymentAttempt()` and `listPaymentAttempts()` expose the local redacted journal for diagnostics and surface corrupt records distinctly from missing ones; corruption is payment-safe but not advertised as automatically retryable.
+
 ## Unreleased — function runtime compatibility metadata
 
 - **SDK/CLI:** function-list records now type and preserve the deployed `runtime_version`, gateway `runtime_current_version`, guaranteed `runtime_minimum_version`, and `runtime_stale` fields.

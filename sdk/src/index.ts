@@ -385,6 +385,7 @@ export {
   NotAuthorizedError,
   ApiError,
   NetworkError,
+  PaymentAttemptError,
   LocalError,
   Run402DeployError,
   TransferFreezeError,
@@ -403,6 +404,7 @@ export {
   isNotAuthorized,
   isApiError,
   isNetworkError,
+  isPaymentAttemptError,
   isLocalError,
   isDeployError,
   isTransferFreezeError,
@@ -419,6 +421,8 @@ export type {
   ProjectCredentialErrorCode,
   NextAction,
   NextActionType,
+  PaymentAttemptPhase,
+  PaymentAttemptMutationState,
 } from "./errors.js";
 export { withRetry } from "./retry.js";
 export type * from "./retry.js";

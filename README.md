@@ -321,7 +321,7 @@ npm install @run402/sdk
 Two entry points:
 
 - **`@run402/sdk`**: isomorphic. Bring your own `CredentialsProvider` (a session-token shim, a remote vault, anything that resolves project keys + auth headers). Works in Node 22, Deno, Bun, V8 isolates.
-- **`@run402/sdk/node`**: Node-only convenience. Reads local profile state plus the project-key credential cache (`credentials/project-keys.v1.json`), signs x402 payments from the local allowance, exposes `sites.deployDir(...)`, `fileSetFromDir(...)`, typed deploy-manifest helpers (`loadDeployManifest`, `normalizeDeployManifest`), and `resolveRun402TargetProfile()` for app build scripts that need the same Core/Cloud target the CLI uses.
+- **`@run402/sdk/node`**: Node-only convenience. Reads local profile state plus the project-key credential cache (`credentials/project-keys.v1.json`) and signs x402 payments from one deterministic source: an explicit opaque `paymentSigner`, explicit `allowancePath`, the supplied provider's `readAllowance()`, or the default active-profile allowance. Auth and payer may intentionally differ; a selected payment source never falls back to an ambient wallet. `r.paymentPayer()` reports only safe public payer/source provenance. Also exposes `sites.deployDir(...)`, `fileSetFromDir(...)`, typed deploy-manifest helpers (`loadDeployManifest`, `normalizeDeployManifest`), and `resolveRun402TargetProfile()` for app build scripts that need the same Core/Cloud target the CLI uses.
 
 ```ts
 import { run402 } from "@run402/sdk/node";
