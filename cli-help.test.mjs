@@ -58,6 +58,7 @@ const MATRIX = {
     shared: ["list", "current", "new", "use", "rename", "bind", "unbind", "import", "rm"],
     specific: [],
   },
+  credentials: { shared: [], specific: ["project-keys"] },
   tier: { shared: [], specific: ["status", "set"] },
   projects: {
     shared: [
@@ -66,12 +67,30 @@ const MATRIX = {
     ],
     specific: ["provision", "list", "rename", "sql", "costs", "validate-expose"],
   },
+  // `run402 apply` is a root alias for `run402 deploy apply` (see cli.mjs); its
+  // --help prints the deploy-apply help (heading-checked in a dedicated suite).
+  apply: { shared: [], specific: [] },
+  snapshots: {
+    shared: ["create", "list", "get", "restore", "delete"],
+    specific: [],
+  },
+  branches: {
+    shared: ["create", "list", "renew", "delete"],
+    specific: [],
+  },
   admin: {
     shared: [],
     specific: ["lease-perpetual", "archive", "reactivate"],
   },
-  deploy: { shared: [], specific: ["apply", "promote", "resume", "list", "events", "verify", "diagnose", "resolve", "release"] },
+  cloud: { shared: ["archives"], specific: [] },
+  archives: { shared: ["inspect", "verify"], specific: [] },
+  core: { shared: ["projects"], specific: [] },
+  deploy: { shared: [], specific: ["apply", "rehearse", "promote", "resume", "list", "events", "verify", "diagnose", "resolve", "release"] },
   ci: { shared: [], specific: ["link", "list", "revoke"] },
+  transfer: {
+    shared: [],
+    specific: ["init", "preview", "list", "accept", "claim", "cancel"],
+  },
   functions: {
     shared: [],
     specific: ["deploy", "invoke", "logs", "runs", "update", "rebuild", "list", "delete"],
@@ -82,6 +101,7 @@ const MATRIX = {
     shared: [],
     specific: ["put", "get", "ls", "rm", "sign"],
   },
+  cdn: { shared: [], specific: ["wait-fresh"] },
   sites: { shared: ["status"], specific: ["deploy", "deploy-dir"] },
   subdomains: { shared: [], specific: ["claim", "list", "delete"] },
   domains: {
@@ -126,6 +146,7 @@ const MATRIX = {
   agent: { shared: [], specific: ["contact"] },
   operator: { shared: ["login", "logout", "overview", "whoami", "claim-wallet-org"], specific: [] },
   service: { shared: [], specific: ["status", "health"] },
+  cache: { shared: ["inspect", "invalidate"], specific: [] },
   notifications: {
     shared: ["list", "get", "preferences", "test"],
     specific: ["channels", "rules"],
@@ -135,6 +156,10 @@ const MATRIX = {
   grants: { shared: [], specific: ["create", "revoke"] },
   events: { shared: [], specific: [] },
   errors: { shared: [], specific: [] },
+  // `run402 dev` wraps `astro dev`; its --help must print usage and exit
+  // WITHOUT spawning anything (the runner's signal/timeout assert catches a
+  // hung child).
+  dev: { shared: [], specific: [] },
 };
 
 // `run402 email webhooks <action>` delegates to lib/webhooks.mjs.
@@ -152,6 +177,25 @@ const DEPLOY_RELEASE = {
 const JOBS_ARTIFACTS = {
   shared: [],
   specific: ["get"],
+};
+
+// `run402 credentials project-keys <action>` is a nested group dispatched in
+// lib/credentials.mjs; every action falls back to the GROUP's help (the group
+// --help itself is covered via MATRIX.credentials.specific).
+const CREDENTIALS_PROJECT_KEYS = {
+  shared: ["list", "status", "import", "export", "remove"],
+  specific: [],
+};
+
+// `run402 cloud archives <action>` and `run402 core projects <action>` are
+// nested groups whose --help (at any depth) falls back to the MODULE help.
+const CLOUD_ARCHIVES = {
+  shared: ["create", "download", "status"],
+  specific: [],
+};
+const CORE_PROJECTS = {
+  shared: ["import", "apply"],
+  specific: [],
 };
 
 // `run402 notifications channels|rules <action>` are nested groups dispatched
@@ -451,6 +495,55 @@ describe("CLI --help contract", () => {
         assertHelp(await runCli(["notifications", "rules", action, "--help"]),
           `run402 notifications rules ${action} --help`,
           { expectHeadingStartsWith: "run402 notifications rules" });
+      });
+    }
+  });
+
+  // `run402 apply` is a root-level alias that dispatches straight into
+  // runDeployV2("apply", ...) — its help must be the deploy-apply help, not a
+  // separate (drifting) page.
+  describe("run402 apply (root alias for deploy apply)", () => {
+    it("apply --help prints the deploy-apply help", async () => {
+      const result = await runCli(["apply", "--help"]);
+      assertHelp(result, "run402 apply --help", {
+        expectHeadingStartsWith: "run402 deploy apply",
+      });
+      assert.match(result.stdout, /--rehearse/,
+        `run402 apply --help must document the --rehearse gate\nstdout:\n${result.stdout}`);
+    });
+    it("apply -h prints the deploy-apply help", async () => {
+      assertHelp(await runCli(["apply", "-h"]), "run402 apply -h", {
+        expectHeadingStartsWith: "run402 deploy apply",
+      });
+    });
+  });
+
+  describe("run402 credentials project-keys (nested)", () => {
+    for (const action of CREDENTIALS_PROJECT_KEYS.shared) {
+      it(`credentials project-keys ${action} --help prints usage (group-level help)`, async () => {
+        assertHelp(await runCli(["credentials", "project-keys", action, "--help"]),
+          `run402 credentials project-keys ${action} --help`,
+          { expectHeadingStartsWith: "run402 credentials project-keys" });
+      });
+    }
+  });
+
+  describe("run402 cloud archives (nested)", () => {
+    for (const action of CLOUD_ARCHIVES.shared) {
+      it(`cloud archives ${action} --help prints usage (module-level help)`, async () => {
+        assertHelp(await runCli(["cloud", "archives", action, "--help"]),
+          `run402 cloud archives ${action} --help`,
+          { expectHeadingStartsWith: "run402 cloud" });
+      });
+    }
+  });
+
+  describe("run402 core projects (nested)", () => {
+    for (const action of CORE_PROJECTS.shared) {
+      it(`core projects ${action} --help prints usage (module-level help)`, async () => {
+        assertHelp(await runCli(["core", "projects", action, "--help"]),
+          `run402 core projects ${action} --help`,
+          { expectHeadingStartsWith: "run402 core" });
       });
     }
   });
