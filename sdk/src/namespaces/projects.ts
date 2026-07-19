@@ -57,13 +57,11 @@ function normalizeListProjectsResult(result: ListProjectsResult | { projects?: W
   };
 }
 
-function normalizeAdminSqlResponse(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-  const rowCount = (value as { row_count?: unknown }).row_count;
-  if (rowCount === undefined) return value;
-  const { row_count: _drop, ...rest } = value as Record<string, unknown>;
-  return { ...rest, rowCount };
-}
+// The SQL response is returned VERBATIM in the wire shape:
+// { status, schema, rows, row_count, fields } (snake_case, docs/style.md).
+// A former normalization here renamed row_count -> rowCount, which made the
+// SDK the odd layer out — the gateway, the in-function `adminDb().sql()`
+// runtime, and the CLI all speak row_count. One logical operation, one shape.
 
 function normalizeExposeValidationResult(value: ExposeManifestValidationResult | { has_errors?: boolean; errors?: ExposeManifestValidationIssue[]; warnings?: ExposeManifestValidationIssue[] }): ExposeManifestValidationResult {
   if ("hasErrors" in value) return value as ExposeManifestValidationResult;
@@ -297,12 +295,13 @@ export class Projects {
     });
   }
 
-  /** Run SQL against the project's database using the service key. */
+  /** Run SQL against the project's database using the service key. Returns
+   *  the gateway envelope verbatim: `{ status, schema, rows, row_count, fields }`. */
   async sql(id: string, sql: string, params?: unknown[]): Promise<unknown> {
     const keys = await requireProjectCredentials(this.client, id, "running SQL");
 
     const useParams = Array.isArray(params) && params.length > 0;
-    const result = await this.client.request<unknown>(`/projects/v1/admin/${id}/sql`, {
+    return this.client.request<unknown>(`/projects/v1/admin/${id}/sql`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${keys.service_key}`,
@@ -312,7 +311,6 @@ export class Projects {
       rawBody: useParams ? undefined : sql,
       context: "running SQL",
     });
-    return normalizeAdminSqlResponse(result);
   }
 
   /** Query or mutate a project table through PostgREST. */

@@ -232,18 +232,20 @@ async function createEmail(args) {
 
 async function linkWallet(args) {
   const parsedArgs = normalizeArgv(args);
-  assertKnownFlags(parsedArgs, ["--help", "-h"]);
-  const positionals = positionalArgs(parsedArgs);
+  assertKnownFlags(parsedArgs, ["--wallet", "--help", "-h"], ["--wallet"]);
+  const walletFlag = flagValue(parsedArgs, "--wallet");
+  const positionals = positionalArgs(parsedArgs, ["--wallet"]);
   const organizationId = positionals[0];
-  const wallet = positionals[1];
-  if (positionals.length > 2) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing link-wallet: ${positionals[2]}` });
+  const wallet = walletFlag ?? positionals[1];
+  const max = walletFlag ? 1 : 2;
+  if (positionals.length > max) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing link-wallet: ${positionals[max]}` });
   }
   if (!organizationId || !wallet) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <org_id> and/or <wallet_address>.",
-      hint: "run402 billing link-wallet <org_id> <wallet_address>",
+      hint: "run402 billing link-wallet <org_id> --wallet <wallet_address>",
     });
   }
   try {
@@ -262,19 +264,21 @@ async function linkWallet(args) {
 
 async function autoRecharge(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--threshold"];
+  const valueFlags = ["--threshold", "--state"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const stateFlag = flagValue(parsedArgs, "--state");
   const positionals = positionalArgs(parsedArgs, valueFlags);
   const organizationId = positionals[0];
-  const state = positionals[1];
-  if (positionals.length > 2) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing auto-recharge: ${positionals[2]}` });
+  const state = stateFlag ?? positionals[1];
+  const max = stateFlag ? 1 : 2;
+  if (positionals.length > max) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing auto-recharge: ${positionals[max]}` });
   }
   if (!organizationId || !state || !["on", "off"].includes(state)) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <org_id> and/or <on|off>.",
-      hint: "run402 billing auto-recharge <org_id> <on|off> [--threshold <n>]",
+      hint: "run402 billing auto-recharge <org_id> --state <on|off> [--threshold <n>]",
     });
   }
   const thresholdStr = flagValue(parsedArgs, "--threshold");

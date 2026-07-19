@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, validateRegularFile } from "./argparse.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, resolveProjectSelector, validateRegularFile } from "./argparse.mjs";
 import { cliCommandAction } from "./next-actions.mjs";
 
 const FUNCTION_LOG_REQUEST_ID_RE = /^(?:req|fnrun|fnatt)_[A-Za-z0-9_-]{4,128}$/;
@@ -15,47 +15,52 @@ Usage:
   run402 functions <subcommand> [args...]
 
 Subcommands:
-  deploy <id> <name> --file <file> [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
+  deploy <name> --file <file> [--project <id>] [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
                                        Deploy a function to a project
-  invoke <id> <name> [--method <M>] [--body <json>] [--idempotency-key <key>] [--wait] [--timeout-ms <ms>] [--poll-interval-ms <ms>] [--raw]
+  invoke <name> [--project <id>] [--method <M>] [--body <json>] [--idempotency-key <key>] [--wait] [--timeout-ms <ms>] [--poll-interval-ms <ms>] [--raw]
                                        Invoke a deployed function. Default
                                        wraps the SDK result as JSON on stdout.
                                        --raw prints the response body verbatim
                                        (string body → text + newline, JSON
                                        body → pretty-printed JSON).
-  logs   <id> <name> [--tail <n>] [--since <ts>] [--request-id <req_...>] [--follow]
+  logs   <name> [--project <id>] [--tail <n>] [--since <ts>] [--request-id <req_...>] [--follow]
                                        Get function logs
   runs   <action> ...                  Create, inspect, cancel, redrive, and
                                        wait for durable function runs
-  update <id> <name> [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
+  update <name> [--project <id>] [--schedule <cron>] [--schedule-remove] [--timeout <s>] [--memory <mb>]
                                        Update function schedule or config without re-deploying
-  rebuild <id> [<name>] [--all]        Refresh function(s) onto the current platform
+  rebuild [<name>] [--all] [--project <id>]
+                                       Refresh function(s) onto the current platform
                                        runtime (re-bundles from stored source; no
                                        source change). Pass <name> for one function
                                        or --all for every function in the project.
-  list   <id>                          List all functions for a project
-  delete <id> <name>                   Delete a function
+  list   [--project <id>]              List all functions for a project
+  delete <name> [--project <id>]       Delete a function
+
+Legacy (still supported): a leading prj_... positional selects the project,
+e.g. run402 functions deploy prj_abc123 stripe-webhook --file handler.ts
 
 Examples:
-  run402 functions deploy prj_abc123 stripe-webhook --file handler.ts
-  run402 functions deploy prj_abc123 send-reminders --file remind.ts --schedule '*/15 * * * *'
-  run402 functions deploy prj_abc123 send-reminders --file remind.ts --schedule ''   # remove schedule
-  run402 functions invoke prj_abc123 stripe-webhook --body '{"event":"test"}'
-  run402 functions logs prj_abc123 stripe-webhook --tail 100
-  run402 functions logs prj_abc123 stripe-webhook --since 2026-03-29T14:00:00Z
-  run402 functions logs prj_abc123 stripe-webhook --request-id req_abc123
-  run402 functions logs prj_abc123 stripe-webhook --follow
-  run402 functions runs create prj_abc123 worker --event-type reminder.send --idempotency-key reminder:123 --delay 10m
-  run402 functions runs get prj_abc123 fnrun_abc123
-  run402 functions update prj_abc123 send-reminders --schedule '0 */4 * * *'
-  run402 functions update prj_abc123 send-reminders --schedule-remove
-  run402 functions update prj_abc123 my-func --timeout 15 --memory 256
-  run402 functions rebuild prj_abc123 stripe-webhook
-  run402 functions rebuild prj_abc123 --all
-  run402 functions list prj_abc123
-  run402 functions delete prj_abc123 stripe-webhook
+  run402 functions deploy stripe-webhook --file handler.ts --project prj_abc123
+  run402 functions deploy send-reminders --file remind.ts --schedule '*/15 * * * *'
+  run402 functions deploy send-reminders --file remind.ts --schedule ''   # remove schedule
+  run402 functions invoke stripe-webhook --body '{"event":"test"}' --project prj_abc123
+  run402 functions logs stripe-webhook --tail 100
+  run402 functions logs stripe-webhook --since 2026-03-29T14:00:00Z
+  run402 functions logs stripe-webhook --request-id req_abc123
+  run402 functions logs stripe-webhook --follow
+  run402 functions runs create worker --event-type reminder.send --idempotency-key reminder:123 --delay 10m
+  run402 functions runs get fnrun_abc123 --project prj_abc123
+  run402 functions update send-reminders --schedule '0 */4 * * *'
+  run402 functions update send-reminders --schedule-remove
+  run402 functions update my-func --timeout 15 --memory 256
+  run402 functions rebuild stripe-webhook --project prj_abc123
+  run402 functions rebuild --all
+  run402 functions list --project prj_abc123
+  run402 functions delete stripe-webhook --project prj_abc123
 
 Notes:
+  - --project defaults to the active project ('run402 projects use')
   - Code must export a default async function: export default async (req: Request) => Response
   - Deploy may require payment if the project lease has expired
   - 'rebuild' is opt-in and never changes your source: it re-bundles the stored
@@ -67,13 +72,16 @@ const SUB_HELP = {
   deploy: `run402 functions deploy — Deploy a function to a project
 
 Usage:
+  run402 functions deploy <name> --file <file> [--project <id>] [options]
+
+Legacy (still supported):
   run402 functions deploy <project_id> <name> --file <file> [options]
 
 Arguments:
-  <project_id>        Target project ID
   <name>              Function name (used in the invoke URL path)
 
 Options:
+  --project <id>      Target project ID (defaults to the active project)
   --file <file>       Required: path to the function source file
   --timeout <s>       Runtime timeout in seconds
   --memory <mb>       Memory in MB
@@ -109,13 +117,16 @@ Examples:
   invoke: `run402 functions invoke — Invoke a deployed function
 
 Usage:
+  run402 functions invoke <name> [--project <id>] [options]
+
+Legacy (still supported):
   run402 functions invoke <project_id> <name> [options]
 
 Arguments:
-  <project_id>        Target project ID
   <name>              Function name
 
 Options:
+  --project <id>      Target project ID (defaults to the active project)
   --method <M>        HTTP method (default POST)
   --body <json>       Request body (ignored for GET/HEAD)
   --idempotency-key <key>
@@ -151,13 +162,16 @@ Examples:
   logs: `run402 functions logs — Fetch or tail function logs
 
 Usage:
+  run402 functions logs <name> [--project <id>] [options]
+
+Legacy (still supported):
   run402 functions logs <project_id> <name> [options]
 
 Arguments:
-  <project_id>        Target project ID
   <name>              Function name
 
 Options:
+  --project <id>      Target project ID (defaults to the active project)
   --tail <n>          Number of most-recent entries (default 50, max 1000)
   --since <ts>        ISO timestamp or epoch ms; only entries after this
   --request-id <id>   Only entries correlated to this req_, fnrun_, or fnatt_ id
@@ -175,12 +189,15 @@ Examples:
   runs: `run402 functions runs — Manage durable function runs
 
 Usage:
-  run402 functions runs create <project_id> <function_name> --event-type <type> --idempotency-key <key> [options]
-  run402 functions runs list <project_id> <function_name> [options]
-  run402 functions runs get <project_id> <run_id>
-  run402 functions runs logs <project_id> <run_id> [--tail <n>] [--since <ts>]
-  run402 functions runs cancel <project_id> <run_id>
-  run402 functions runs redrive <project_id> <run_id> [options]
+  run402 functions runs create <function_name> --event-type <type> --idempotency-key <key> [--project <id>] [options]
+  run402 functions runs list <function_name> [--project <id>] [options]
+  run402 functions runs get <run_id> [--project <id>]
+  run402 functions runs logs <run_id> [--project <id>] [--tail <n>] [--since <ts>]
+  run402 functions runs cancel <run_id> [--project <id>]
+  run402 functions runs redrive <run_id> [--project <id>] [options]
+
+Legacy (still supported): a leading prj_... positional selects the project,
+e.g. run402 functions runs get <project_id> <run_id>
 
 Create options:
   --payload-json <json>     Inline JSON object payload
@@ -211,13 +228,16 @@ Examples:
   update: `run402 functions update — Update function config without re-deploying
 
 Usage:
+  run402 functions update <name> [--project <id>] [options]
+
+Legacy (still supported):
   run402 functions update <project_id> <name> [options]
 
 Arguments:
-  <project_id>        Target project ID
   <name>              Function name
 
 Options:
+  --project <id>      Target project ID (defaults to the active project)
   --schedule <cron>   New cron schedule (pass '' to clear)
   --schedule-remove   Explicitly remove the schedule
   --timeout <s>       Runtime timeout in seconds
@@ -234,14 +254,18 @@ Examples:
   rebuild: `run402 functions rebuild — Refresh function(s) onto the current platform runtime
 
 Usage:
+  run402 functions rebuild <name> [--project <id>]
+  run402 functions rebuild --all [--project <id>]
+
+Legacy (still supported):
   run402 functions rebuild <project_id> <name>
   run402 functions rebuild <project_id> --all
 
 Arguments:
-  <project_id>        Target project ID
   <name>              Function name to rebuild (omit when using --all)
 
 Options:
+  --project <id>      Target project ID (defaults to the active project)
   --all               Rebuild every function in the project
 
 What it does:
@@ -273,25 +297,33 @@ Examples:
   list: `run402 functions list — List all functions for a project
 
 Usage:
+  run402 functions list [--project <id>]
+
+Legacy (still supported):
   run402 functions list <project_id>
 
-Arguments:
-  <project_id>        Target project ID
+Options:
+  --project <id>      Target project ID (defaults to the active project)
 
 Examples:
-  run402 functions list prj_abc123
+  run402 functions list --project prj_abc123
 `,
   delete: `run402 functions delete — Delete a function from a project
 
 Usage:
+  run402 functions delete <name> [--project <id>]
+
+Legacy (still supported):
   run402 functions delete <project_id> <name>
 
 Arguments:
-  <project_id>        Target project ID
   <name>              Function name to delete
 
+Options:
+  --project <id>      Target project ID (defaults to the active project)
+
 Examples:
-  run402 functions delete prj_abc123 stripe-webhook
+  run402 functions delete stripe-webhook --project prj_abc123
 `,
 };
 
@@ -514,12 +546,21 @@ async function runs(action, args = []) {
     console.log(SUB_HELP.runs);
     process.exit(0);
   }
-  if (action === "create") return runsCreate(args[0], args[1], args.slice(2));
-  if (action === "list") return runsList(args[0], args[1], args.slice(2));
-  if (action === "get") return runsGet(args[0], args[1], args.slice(2));
-  if (action === "logs") return runsLogs(args[0], args[1], args.slice(2));
-  if (action === "cancel") return runsCancel(args[0], args[1], args.slice(2));
-  if (action === "redrive") return runsRedrive(args[0], args[1], args.slice(2));
+  const KNOWN_ACTIONS = new Set(["create", "list", "get", "logs", "cancel", "redrive"]);
+  if (!KNOWN_ACTIONS.has(action)) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unknown functions runs action: ${action}`,
+      hint: "run402 functions runs <create|list|get|logs|cancel|redrive> ...",
+    });
+  }
+  const { projectId, rest } = resolveProjectSelector(args);
+  if (action === "create") return runsCreate(projectId, rest[0], rest.slice(1));
+  if (action === "list") return runsList(projectId, rest[0], rest.slice(1));
+  if (action === "get") return runsGet(projectId, rest[0], rest.slice(1));
+  if (action === "logs") return runsLogs(projectId, rest[0], rest.slice(1));
+  if (action === "cancel") return runsCancel(projectId, rest[0], rest.slice(1));
+  if (action === "redrive") return runsRedrive(projectId, rest[0], rest.slice(1));
   fail({
     code: "BAD_USAGE",
     message: `Unknown functions runs action: ${action}`,
@@ -837,15 +878,19 @@ export async function run(sub, args) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
+  // Project selection (CLI-wide convention): `--project <id>` wins, else a
+  // legacy leading `prj_...` positional, else the active project. Computed
+  // lazily so unknown subcommands never trip project resolution.
+  const select = () => resolveProjectSelector(args);
   switch (sub) {
-    case "deploy": await deploy(args[0], args[1], args.slice(2)); break;
-    case "invoke": await invoke(args[0], args[1], args.slice(2)); break;
-    case "logs":   await logs(args[0], args[1], args.slice(2)); break;
+    case "deploy": { const { projectId, rest } = select(); await deploy(projectId, rest[0], rest.slice(1)); break; }
+    case "invoke": { const { projectId, rest } = select(); await invoke(projectId, rest[0], rest.slice(1)); break; }
+    case "logs":   { const { projectId, rest } = select(); await logs(projectId, rest[0], rest.slice(1)); break; }
     case "runs": await runs(args[0], args.slice(1)); break;
-    case "update": await update(args[0], args[1], args.slice(2)); break;
-    case "rebuild": await rebuild(args[0], args.slice(1)); break;
-    case "list":   await list(args[0], args.slice(1)); break;
-    case "delete": await deleteFunction(args[0], args[1], args.slice(2)); break;
+    case "update": { const { projectId, rest } = select(); await update(projectId, rest[0], rest.slice(1)); break; }
+    case "rebuild": { const { projectId, rest } = select(); await rebuild(projectId, rest); break; }
+    case "list":   { const { projectId, rest } = select(); await list(projectId, rest); break; }
+    case "delete": { const { projectId, rest } = select(); await deleteFunction(projectId, rest[0], rest.slice(1)); break; }
     default:
       fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown functions subcommand: ${sub}`, hint: "Run `run402 functions --help` for usage.", details: { command: "functions", subcommand: sub } });
   }

@@ -8,24 +8,28 @@ import {
   normalizeArgv,
   parseIntegerFlag,
   positionalArgs,
+  resolveProjectSelector,
 } from "./argparse.mjs";
-import { resolveProjectId } from "./config.mjs";
 
 const HELP = `run402 snapshots — Project database restore points
 
 Usage:
-  run402 snapshots create [project-id] [--json]
-  run402 snapshots list [project-id] [--kind <kind>] [--limit <n>] [--after <cursor>] [--json]
-  run402 snapshots get [project-id] <snapshot-id> [--json]
-  run402 snapshots restore [project-id] <snapshot-id> [--include-auth] [--confirm <token>] [--json]
-  run402 snapshots delete [project-id] <snapshot-id> [--json]
+  run402 snapshots create [--project <id>] [--json]
+  run402 snapshots list [--project <id>] [--kind <kind>] [--limit <n>] [--after <cursor>] [--json]
+  run402 snapshots get <snapshot-id> [--project <id>] [--json]
+  run402 snapshots restore <snapshot-id> [--project <id>] [--include-auth] [--confirm <token>] [--json]
+  run402 snapshots delete <snapshot-id> [--project <id>] [--json]
+
+Legacy (still supported): a leading prj_... positional selects the project,
+e.g. run402 snapshots restore prj_abc123 <snapshot-id>. --project defaults to
+the active project.
 
 Restore is a two-step handshake. First call without --confirm to get a
 restore_plan.confirm.token, then re-run with --confirm after reviewing the
 data-loss statement.
 `;
 
-const FLAG_VALUES = ["--kind", "--limit", "--after", "--confirm"];
+const FLAG_VALUES = ["--project", "--kind", "--limit", "--after", "--confirm"];
 const FLAGS = new Set([...FLAG_VALUES, "--include-auth", "--json", "--help", "-h"]);
 const SNAPSHOT_KINDS = ["manual", "pre_migration", "pre_restore", "scheduled"];
 
@@ -54,7 +58,7 @@ export async function run(sub, args = []) {
 }
 
 async function create(args) {
-  const projectId = resolveOptionalProject(positionalArgs(args, FLAG_VALUES)[0]);
+  const { projectId } = resolveProjectSelector(args, { valueFlags: FLAG_VALUES });
   try {
     const snapshot = await getSdk().snapshots.create(projectId);
     console.log(JSON.stringify({ ok: snapshot.status === "ready", snapshot }, null, 2));
@@ -64,7 +68,7 @@ async function create(args) {
 }
 
 async function list(args) {
-  const projectId = resolveOptionalProject(positionalArgs(args, FLAG_VALUES)[0]);
+  const { projectId } = resolveProjectSelector(args, { valueFlags: FLAG_VALUES });
   const kind = flagValue(args, "--kind") ?? undefined;
   if (kind !== undefined) assertAllowedValue(kind, SNAPSHOT_KINDS, "--kind");
   const limitFlag = flagValue(args, "--limit");
@@ -124,14 +128,12 @@ async function deleteSnapshot(args) {
   }
 }
 
-function resolveOptionalProject(value) {
-  if (value && String(value).startsWith("prj_")) return value;
-  return resolveProjectId(null);
-}
-
 function resolveProjectAndSnapshot(args, usage) {
-  const pos = positionalArgs(args, FLAG_VALUES);
-  if (pos.length === 1) return { projectId: resolveProjectId(null), snapshotId: pos[0] };
-  if (pos.length === 2 && pos[0].startsWith("prj_")) return { projectId: pos[0], snapshotId: pos[1] };
-  fail({ code: "BAD_USAGE", message: `Usage: ${usage}` });
+  // Canonical: `<snapshot-id> [--project <id>]`; legacy `<prj_id> <snapshot-id>`
+  // still works (requireRestPositional keeps a lone snapshot id that happens to
+  // start with prj_ from being eaten as the project selector).
+  const { projectId, rest } = resolveProjectSelector(args, { valueFlags: FLAG_VALUES, requireRestPositional: true });
+  const pos = positionalArgs(rest, FLAG_VALUES);
+  if (pos.length !== 1) fail({ code: "BAD_USAGE", message: `Usage: ${usage}` });
+  return { projectId, snapshotId: pos[0] };
 }

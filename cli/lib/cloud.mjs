@@ -3,14 +3,18 @@ import { dirname, resolve } from "node:path";
 
 import { getSdk } from "./sdk.mjs";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
-import { assertAllowedValue, assertKnownFlags, flagValue, hasHelp, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, hasHelp, normalizeArgv, parseIntegerFlag, positionalArgs, resolveProjectSelector } from "./argparse.mjs";
 
 const HELP = `run402 cloud — Run402 Cloud portability commands
 
 Usage:
-  run402 cloud archives create <project-id> [options]
-  run402 cloud archives download <project-id> <archive-id> --output <file> [--json]
-  run402 cloud archives status <project-id> <archive-id> [--json]
+  run402 cloud archives create [--project <id>] [options]
+  run402 cloud archives download <archive-id> --output <file> [--project <id>] [--json]
+  run402 cloud archives status <archive-id> [--project <id>] [--json]
+
+Legacy (still supported): a leading prj_... positional selects the project,
+e.g. run402 cloud archives download <project-id> <archive-id> --output <file>.
+--project defaults to the active project.
 
 Canonical agent path:
   run402 cloud archives create prj_... \\
@@ -31,6 +35,7 @@ Options for create:
 `;
 
 const FLAG_VALUES = [
+  "--project",
   "--scope",
   "--auth",
   "--consistency",
@@ -80,10 +85,10 @@ export async function run(sub, args = []) {
 async function create(rawArgs) {
   const args = normalizeArgv(rawArgs);
   assertKnownFlags(args, [...FLAGS], FLAG_VALUES);
-  const pos = positionalArgs(args, FLAG_VALUES);
-  const projectId = pos[0];
-  if (!projectId) {
-    fail({ code: "BAD_PROJECT_ID", message: "Missing project id." });
+  const { projectId, rest } = resolveProjectSelector(args, { valueFlags: FLAG_VALUES });
+  const extraPos = positionalArgs(rest, FLAG_VALUES);
+  if (extraPos.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for cloud archives create: ${extraPos[0]}` });
   }
   const scope = flagValue(args, "--scope") ?? "portable-runtime-v1";
   const auth = flagValue(args, "--auth") ?? "stubs";
@@ -170,12 +175,13 @@ async function create(rawArgs) {
 
 async function download(rawArgs) {
   const args = normalizeArgv(rawArgs);
-  assertKnownFlags(args, ["--output", "--json", "--help", "-h"], ["--output"]);
-  const pos = positionalArgs(args, ["--output"]);
-  const [projectId, archiveId] = pos;
+  assertKnownFlags(args, ["--project", "--output", "--json", "--help", "-h"], ["--project", "--output"]);
+  const { projectId, rest } = resolveProjectSelector(args, { valueFlags: ["--project", "--output"] });
+  const pos = positionalArgs(rest, ["--project", "--output"]);
+  const [archiveId] = pos;
   const output = flagValue(args, "--output");
-  if (!projectId || !archiveId || !output) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 cloud archives download <project-id> <archive-id> --output <file> [--json]" });
+  if (!archiveId || pos.length > 1 || !output) {
+    fail({ code: "BAD_USAGE", message: "Usage: run402 cloud archives download <archive-id> --output <file> [--project <id>] [--json]" });
   }
   try {
     const download = await getSdk().archives.download(projectId, archiveId);
@@ -200,11 +206,12 @@ async function download(rawArgs) {
 
 async function status(rawArgs) {
   const args = normalizeArgv(rawArgs);
-  assertKnownFlags(args, ["--json", "--help", "-h"], []);
-  const pos = positionalArgs(args, []);
-  const [projectId, archiveId] = pos;
-  if (!projectId || !archiveId) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 cloud archives status <project-id> <archive-id> [--json]" });
+  assertKnownFlags(args, ["--project", "--json", "--help", "-h"], ["--project"]);
+  const { projectId, rest } = resolveProjectSelector(args, { valueFlags: ["--project"] });
+  const pos = positionalArgs(rest, ["--project"]);
+  const [archiveId] = pos;
+  if (!archiveId || pos.length > 1) {
+    fail({ code: "BAD_USAGE", message: "Usage: run402 cloud archives status <archive-id> [--project <id>] [--json]" });
   }
   try {
     const archive = await getSdk().archives.get(projectId, archiveId);

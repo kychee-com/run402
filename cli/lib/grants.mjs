@@ -5,6 +5,7 @@ import {
   assertKnownFlags,
   flagValue,
   requirePositionalCount,
+  resolveProjectSelector,
 } from "./argparse.mjs";
 
 const HELP = `run402 grants — per-project capability grants (agent/CI principals)
@@ -13,10 +14,14 @@ Usage:
   run402 grants <subcommand> [args...]
 
 Subcommands:
-  create <project_id> <wallet> <capability> [--policy <json>] [--expires <iso8601>]
+  create <wallet> --capability <cap> [--project <id>] [--policy <json>] [--expires <iso8601>]
                                  Issue a capability grant (owner of the project's org)
-  revoke <project_id> <grant_id>
+  revoke <grant_id> [--project <id>]
                                  Revoke a capability grant
+
+Legacy (still supported):
+  run402 grants create <project_id> <wallet> <capability> [...]
+  run402 grants revoke <project_id> <grant_id>
 
 Notes:
   - Grants let a non-member wallet (an agent or CI principal) act on ONE project,
@@ -25,23 +30,26 @@ Notes:
   - JSON in, JSON out.
 
 Examples:
-  run402 grants create prj_abc 0xf39Fd6...92266 deploy
-  run402 grants create prj_abc 0xf39Fd6...92266 functions:write --expires 2026-12-31T00:00:00Z
-  run402 grants revoke prj_abc grt_xyz
+  run402 grants create 0xf39Fd6...92266 --capability deploy --project prj_abc
+  run402 grants create 0xf39Fd6...92266 --capability functions:write --expires 2026-12-31T00:00:00Z
+  run402 grants revoke grt_xyz --project prj_abc
 `;
 
 const SUB_HELP = {
   create: `run402 grants create — issue a per-project capability grant
 
 Usage:
-  run402 grants create <project_id> <wallet> <capability> [--policy <json>] [--expires <iso8601>]
+  run402 grants create <wallet> --capability <cap> [--project <id>] [--policy <json>] [--expires <iso8601>]
+
+Legacy (still supported):
+  run402 grants create <project_id> <wallet> <capability> [options]
 
 Arguments:
-  <project_id>   Project to grant access to
   <wallet>       EVM address or named wallet the grant is issued to
-  <capability>   e.g. deploy, functions:write
 
 Options:
+  --project <id>      Project to grant access to (defaults to the active project)
+  --capability <cap>  e.g. deploy, functions:write (alternative to the legacy positional)
   --policy <json>     Capability-scoping policy object (gateway-interpreted)
   --expires <iso8601> Expiry timestamp; omit for a non-expiring grant
 
@@ -50,23 +58,33 @@ Requires you to be an owner of the project's org.
   revoke: `run402 grants revoke — revoke a per-project capability grant
 
 Usage:
+  run402 grants revoke <grant_id> [--project <id>]
+
+Legacy (still supported):
   run402 grants revoke <project_id> <grant_id>
 
 Requires you to be an owner of the project's org.
 `,
 };
 
+const CREATE_VALUE_FLAGS = ["--project", "--capability", "--policy", "--expires"];
+
 async function create(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, ["--policy", "--expires", "--help", "-h"], ["--policy", "--expires"]);
+  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--help", "-h"], CREATE_VALUE_FLAGS);
   const policyRaw = flagValue(a, "--policy");
   const expiresAt = flagValue(a, "--expires");
-  const [projectId, wallet, capability] = requirePositionalCount(a, ["--policy", "--expires"], {
-    min: 3,
-    max: 3,
-    command: "run402 grants create <project_id> <wallet> <capability> [--policy <json>] [--expires <iso8601>]",
-    missing: "Missing <project_id>, <wallet>, and/or <capability>.",
+  const capabilityFlag = flagValue(a, "--capability");
+  const { projectId, rest } = resolveProjectSelector(a, { valueFlags: CREATE_VALUE_FLAGS });
+  const expected = capabilityFlag ? 1 : 2;
+  const pos = requirePositionalCount(rest, CREATE_VALUE_FLAGS, {
+    min: expected,
+    max: expected,
+    command: "run402 grants create <wallet> --capability <cap> [--project <id>] [--policy <json>] [--expires <iso8601>]",
+    missing: capabilityFlag ? "Missing <wallet>." : "Missing <wallet> and/or <capability>.",
   });
+  const wallet = pos[0];
+  const capability = capabilityFlag ?? pos[1];
   const policy = policyRaw != null ? parseFlagJson("--policy", policyRaw) : undefined;
   try {
     const res = await getSdk().grants.create(projectId, {
@@ -83,12 +101,13 @@ async function create(args) {
 
 async function revoke(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, ["--help", "-h"]);
-  const [projectId, grantId] = requirePositionalCount(a, [], {
-    min: 2,
-    max: 2,
-    command: "run402 grants revoke <project_id> <grant_id>",
-    missing: "Missing <project_id> and/or <grant_id>.",
+  assertKnownFlags(a, ["--project", "--help", "-h"], ["--project"]);
+  const { projectId, rest } = resolveProjectSelector(a, { valueFlags: ["--project"] });
+  const [grantId] = requirePositionalCount(rest, ["--project"], {
+    min: 1,
+    max: 1,
+    command: "run402 grants revoke <grant_id> [--project <id>]",
+    missing: "Missing <grant_id>.",
   });
   try {
     console.log(JSON.stringify(await getSdk().grants.revoke(projectId, grantId), null, 2));

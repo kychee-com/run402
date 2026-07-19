@@ -27,7 +27,7 @@ Subcommands:
   logs            <job_id>                Read job logs
   cancel          <job_id>                Cancel a queued or running job
   purge                                   Purge all job runs for the project
-  artifacts get   <job_id> <file>         Download a completed job's artifact
+  artifacts get   <job_id> --file <name>  Download a completed job's artifact (legacy: <job_id> <file>)
 
 Examples:
   run402 jobs submit --file job.json
@@ -120,6 +120,9 @@ recorded filenames on a given run.
   "artifacts get": `run402 jobs artifacts get — Download a completed job's artifact
 
 Usage:
+  run402 jobs artifacts get <job_id> --file <name> --output <path> [--project <id>]
+
+Legacy (still supported):
   run402 jobs artifacts get <job_id> <file> --output <path> [--project <id>]
 
 Options:
@@ -355,24 +358,27 @@ async function artifactsGet(args = []) {
     process.exit(0);
   }
   const parsed = normalizeArgv(args);
-  const valueFlags = ["--project", "--output", "-o"];
-  assertKnownFlags(parsed, ["--project", "--output", "-o", "--help", "-h"], valueFlags);
+  const valueFlags = ["--project", "--output", "-o", "--file"];
+  assertKnownFlags(parsed, ["--project", "--output", "-o", "--file", "--help", "-h"], valueFlags);
+  const fileFlag = flagValue(parsed, "--file");
+  const expected = fileFlag ? 1 : 2;
   const positionals = positionalArgs(parsed, valueFlags);
-  if (positionals.length < 2) {
+  if (positionals.length < expected) {
     fail({
       code: "BAD_USAGE",
       message: "Missing job_id and/or artifact filename.",
-      hint: "Use `run402 jobs artifacts get <job_id> <file> --output <path>`.",
+      hint: "Use `run402 jobs artifacts get <job_id> --file <name> --output <path>`.",
     });
   }
-  if (positionals.length > 2) {
+  if (positionals.length > expected) {
     fail({
       code: "BAD_USAGE",
-      message: `Unexpected argument: ${positionals[2]}`,
-      hint: "Use `run402 jobs artifacts get <job_id> <file> --output <path>`.",
+      message: `Unexpected argument: ${positionals[expected]}`,
+      hint: "Use `run402 jobs artifacts get <job_id> --file <name> --output <path>`.",
     });
   }
-  const [jobId, filename] = positionals;
+  const jobId = positionals[0];
+  const filename = fileFlag ?? positionals[1];
   const output = flagValue(parsed, "--output") ?? flagValue(parsed, "-o");
   if (!output) {
     fail({

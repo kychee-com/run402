@@ -1,7 +1,7 @@
 import { allowanceAuthHeaders, saveProject } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs, resolveProjectSelector } from "./argparse.mjs";
 
 const HELP = `run402 apps — Browse and manage the app marketplace
 
@@ -10,15 +10,20 @@ Usage:
 
 Subcommands:
   browse  [--tag <tag>]                   Browse public apps
-  fork    <version_id> <name> [--subdomain <name>]
+  fork    <version_id> --name <name> [--subdomain <name>]
                                            Fork a published app into your own project
-  publish <id> [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed]
+  publish [--project <id>] [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed]
                                            Publish a project as an app
-  versions <id>                            List published versions of a project
+  versions [--project <id>]                List published versions of a project
   inspect <version_id>                     Inspect a published app version
-  update  <project_id> <version_id> [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed] [--no-fork]
+  update  <version_id> [--project <id>] [--description <desc>] [--tags <t1,t2>] [--visibility <v>] [--fork-allowed] [--no-fork]
                                            Update a published version
-  delete  <project_id> <version_id>        Delete a published version
+  delete  <version_id> [--project <id>]    Delete a published version
+
+Legacy (still supported): the old positional forms keep working, e.g.
+  run402 apps fork <version_id> <name>
+  run402 apps publish <project_id> / versions <project_id>
+  run402 apps update <project_id> <version_id> / delete <project_id> <version_id>
 
 Examples:
   run402 apps browse
@@ -48,13 +53,16 @@ Examples:
   fork: `run402 apps fork — Fork a published app into your own project
 
 Usage:
+  run402 apps fork <version_id> --name <name> [options]
+
+Legacy (still supported):
   run402 apps fork <version_id> <name> [options]
 
 Arguments:
   <version_id>        Published version ID (e.g. ver_abc123)
-  <name>              Name for the forked project
 
 Options:
+  --name <name>       Name for the forked project (alternative to the legacy positional)
   --subdomain <name>  Claim a subdomain for the forked project
 
 Examples:
@@ -64,10 +72,13 @@ Examples:
   publish: `run402 apps publish — Publish a project as an app
 
 Usage:
-  run402 apps publish <id> [options]
+  run402 apps publish [--project <id>] [options]
 
-Arguments:
-  <id>                Project ID to publish
+Legacy (still supported):
+  run402 apps publish <project_id> [options]
+
+Options (project):
+  --project <id>      Project ID to publish (defaults to the active project)
 
 Options:
   --description <d>   Human-readable description of the app
@@ -82,10 +93,12 @@ Examples:
   update: `run402 apps update — Update a published version's metadata
 
 Usage:
+  run402 apps update <version_id> [--project <id>] [options]
+
+Legacy (still supported):
   run402 apps update <project_id> <version_id> [options]
 
 Arguments:
-  <project_id>        Project ID that owns the version
   <version_id>        Published version ID to update
 
 Options:
@@ -114,10 +127,10 @@ Examples:
   versions: `run402 apps versions — List published versions of a project
 
 Usage:
-  run402 apps versions <id>
+  run402 apps versions [--project <id>]
 
-Arguments:
-  <id>                Project ID (e.g. prj_abc123)
+Legacy (still supported):
+  run402 apps versions <project_id>
 
 Examples:
   run402 apps versions prj_abc123
@@ -125,10 +138,12 @@ Examples:
   delete: `run402 apps delete — Delete a published version
 
 Usage:
+  run402 apps delete <version_id> [--project <id>]
+
+Legacy (still supported):
   run402 apps delete <project_id> <version_id>
 
 Arguments:
-  <project_id>        Project ID that owns the version
   <version_id>        Published version ID to delete
 
 Examples:
@@ -158,14 +173,16 @@ async function browse(args) {
 
 async function fork(versionId, name, args) {
   const parsedArgs = normalizeArgv([versionId, name, ...args].filter((arg) => arg !== undefined));
-  const valueFlags = ["--subdomain"];
+  const valueFlags = ["--subdomain", "--name"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
+  const nameFlag = flagValue(parsedArgs, "--name");
+  const expected = nameFlag ? 1 : 2;
   const positionals = positionalArgs(parsedArgs, valueFlags);
-  if (positionals.length < 2) {
-    fail({ code: "BAD_USAGE", message: "Missing <version_id> and/or <name>." });
+  if (positionals.length < expected) {
+    fail({ code: "BAD_USAGE", message: nameFlag ? "Missing <version_id>." : "Missing <version_id> and/or <name>." });
   }
-  if (positionals.length > 2) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps fork: ${positionals[2]}` });
+  if (positionals.length > expected) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps fork: ${positionals[expected]}` });
   }
   const opts = { subdomain: flagValue(parsedArgs, "--subdomain") ?? undefined };
   // Preserve the aggressive early exit when no allowance is configured.
@@ -174,7 +191,7 @@ async function fork(versionId, name, args) {
   try {
     const data = await getSdk().apps.fork({
       versionId: positionals[0],
-      name: positionals[1],
+      name: nameFlag ?? positionals[1],
       subdomain: opts.subdomain,
     });
 
@@ -195,14 +212,12 @@ async function fork(versionId, name, args) {
 
 async function publish(projectId, args) {
   const parsedArgs = normalizeArgv([projectId, ...args].filter((arg) => arg !== undefined));
-  const valueFlags = ["--description", "--tags", "--visibility"];
+  const valueFlags = ["--project", "--description", "--tags", "--visibility"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--fork-allowed", "--help", "-h"], valueFlags);
-  const positionals = positionalArgs(parsedArgs, valueFlags);
-  if (positionals.length < 1) {
-    fail({ code: "BAD_USAGE", message: "Missing <id>." });
-  }
-  if (positionals.length > 1) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps publish: ${positionals[1]}` });
+  const { projectId: resolvedProject, rest } = resolveProjectSelector(parsedArgs, { valueFlags });
+  const positionals = positionalArgs(rest, valueFlags);
+  if (positionals.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps publish: ${positionals[0]}` });
   }
   const opts = { description: undefined, tags: undefined, visibility: undefined, forkAllowed: undefined };
   opts.description = flagValue(parsedArgs, "--description") ?? undefined;
@@ -211,7 +226,7 @@ async function publish(projectId, args) {
   if (opts.visibility) assertAllowedValue(opts.visibility, ["public", "unlisted", "private"], "--visibility");
   if (parsedArgs.includes("--fork-allowed")) opts.forkAllowed = true;
   try {
-    const data = await getSdk().apps.publish(positionals[0], {
+    const data = await getSdk().apps.publish(resolvedProject, {
       description: opts.description,
       tags: opts.tags,
       visibility: opts.visibility,
@@ -225,13 +240,14 @@ async function publish(projectId, args) {
 
 async function versions(projectId, args = []) {
   const parsedArgs = normalizeArgv([projectId, ...args].filter((arg) => arg !== undefined));
-  assertKnownFlags(parsedArgs, ["--help", "-h"]);
-  const positionals = positionalArgs(parsedArgs);
-  if (positionals.length !== 1) {
-    fail({ code: "BAD_USAGE", message: positionals.length === 0 ? "Missing <id>." : `Unexpected argument for apps versions: ${positionals[1]}` });
+  assertKnownFlags(parsedArgs, ["--project", "--help", "-h"], ["--project"]);
+  const { projectId: resolvedProject, rest } = resolveProjectSelector(parsedArgs, { valueFlags: ["--project"] });
+  const positionals = positionalArgs(rest, ["--project"]);
+  if (positionals.length > 0) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps versions: ${positionals[0]}` });
   }
   try {
-    const data = await getSdk().apps.listVersions(positionals[0]);
+    const data = await getSdk().apps.listVersions(resolvedProject);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -255,14 +271,15 @@ async function inspect(versionId, args = []) {
 
 async function update(projectId, versionId, args) {
   const parsedArgs = normalizeArgv([projectId, versionId, ...args].filter((arg) => arg !== undefined));
-  const valueFlags = ["--description", "--tags", "--visibility"];
+  const valueFlags = ["--project", "--description", "--tags", "--visibility"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--fork-allowed", "--no-fork", "--help", "-h"], valueFlags);
-  const positionals = positionalArgs(parsedArgs, valueFlags);
-  if (positionals.length < 2) {
-    fail({ code: "BAD_USAGE", message: "Missing <project_id> and/or <version_id>." });
+  const { projectId: resolvedProject, rest } = resolveProjectSelector(parsedArgs, { valueFlags });
+  const positionals = positionalArgs(rest, valueFlags);
+  if (positionals.length < 1) {
+    fail({ code: "BAD_USAGE", message: "Missing <version_id>." });
   }
-  if (positionals.length > 2) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps update: ${positionals[2]}` });
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps update: ${positionals[1]}` });
   }
   if (parsedArgs.includes("--fork-allowed") && parsedArgs.includes("--no-fork")) {
     fail({ code: "BAD_USAGE", message: "Provide either --fork-allowed or --no-fork, not both." });
@@ -275,8 +292,8 @@ async function update(projectId, versionId, args) {
   if (parsedArgs.includes("--fork-allowed")) opts.fork_allowed = true;
   if (parsedArgs.includes("--no-fork")) opts.fork_allowed = false;
   try {
-    await getSdk().apps.updateVersion(positionals[0], positionals[1], opts);
-    console.log(JSON.stringify({ project_id: positionals[0], version_id: positionals[1], updated: true }));
+    await getSdk().apps.updateVersion(resolvedProject, positionals[0], opts);
+    console.log(JSON.stringify({ project_id: resolvedProject, version_id: positionals[0], updated: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -284,17 +301,18 @@ async function update(projectId, versionId, args) {
 
 async function deleteVersion(projectId, versionId, args = []) {
   const parsedArgs = normalizeArgv([projectId, versionId, ...args].filter((arg) => arg !== undefined));
-  assertKnownFlags(parsedArgs, ["--help", "-h"]);
-  const positionals = positionalArgs(parsedArgs);
-  if (positionals.length < 2) {
-    fail({ code: "BAD_USAGE", message: "Missing <project_id> and/or <version_id>." });
+  assertKnownFlags(parsedArgs, ["--project", "--help", "-h"], ["--project"]);
+  const { projectId: resolvedProject, rest } = resolveProjectSelector(parsedArgs, { valueFlags: ["--project"] });
+  const positionals = positionalArgs(rest, ["--project"]);
+  if (positionals.length < 1) {
+    fail({ code: "BAD_USAGE", message: "Missing <version_id>." });
   }
-  if (positionals.length > 2) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps delete: ${positionals[2]}` });
+  if (positionals.length > 1) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for apps delete: ${positionals[1]}` });
   }
   try {
-    await getSdk().apps.deleteVersion(positionals[0], positionals[1]);
-    console.log(JSON.stringify({ project_id: positionals[0], version_id: positionals[1], deleted: true }));
+    await getSdk().apps.deleteVersion(resolvedProject, positionals[0]);
+    console.log(JSON.stringify({ project_id: resolvedProject, version_id: positionals[0], deleted: true }));
   } catch (err) {
     reportSdkError(err);
   }

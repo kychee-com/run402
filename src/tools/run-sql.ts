@@ -44,7 +44,7 @@ export async function handleRunSql(args: {
     status: string;
     schema: string;
     rows: Record<string, unknown>[];
-    rowCount: number | null;
+    row_count: number | null;
     fields?: { name: string; type?: string }[];
   };
   try {
@@ -53,12 +53,16 @@ export async function handleRunSql(args: {
     return mapSdkError(err, "running SQL");
   }
 
-  const { rows, rowCount, schema, fields } = body;
+  // The wire field is snake_case `row_count` (docs/style.md). This tool
+  // previously destructured a nonexistent camelCase `rowCount`, which was
+  // always undefined — every mutation rendered as "Statement executed"
+  // instead of "N rows affected" (2026-07-19 review finding).
+  const { rows, row_count: rowCount, schema, fields } = body;
   const columns = formatColumns(fields);
 
-  // The gateway distinguishes statement kinds by `rowCount`: a result set
+  // The gateway distinguishes statement kinds by `row_count`: a result set
   // (SELECT / ... RETURNING) populates `rows`; an INSERT/UPDATE/DELETE returns
-  // `rows: []` with a numeric affected-row count; DDL returns `rowCount: null`.
+  // `rows: []` with a numeric affected-row count; DDL returns `row_count: null`.
   // Surface each kind explicitly — never report a mutation that changed rows
   // as "0 rows returned", which reads to an agent like the statement no-op'd.
   // `fields` (present only for result-set queries) carries the column names +
@@ -77,7 +81,7 @@ export async function handleRunSql(args: {
     const head = `**0 rows** (schema: ${schema})`;
     text = columns ? `${head}\n${columns}` : head;
   } else {
-    // DDL and other statements with no row semantics (rowCount === null).
+    // DDL and other statements with no row semantics (row_count === null).
     text = `**Statement executed** (schema: ${schema})`;
   }
 

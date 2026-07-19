@@ -1155,14 +1155,17 @@ await adminDb().from('sessions').delete().lt('expires_at', new Date().toISOStrin
 
 #### adminDb().sql(query, params?) — raw SQL, always BYPASSRLS
 
-Returns `{ status, schema, rows, rowCount }`.
-- SELECT: `rows` = matching rows, `rowCount` = row count
-- INSERT/UPDATE/DELETE: `rows` = `[]`, `rowCount` = affected rows
+Returns `{ status, schema, rows, row_count, fields }` (typed as `AdminSqlResult` in `@run402/functions` 3.10+). Field names are snake_case — the wire contract, NOT camelCase (`rowCount` was a docs error; it never existed at runtime).
+- SELECT: `rows` = matching rows, `row_count` = row count
+- INSERT/UPDATE/DELETE: `rows` = `[]`, `row_count` = affected rows
+- INSERT/UPDATE/DELETE with `RETURNING`: `rows` = the returned rows
+- `fields` = column metadata: `[{ name, type }]` (Postgres type names, e.g. `int4`, `timestamptz`)
 - Parameterized: `adminDb().sql('SELECT * FROM t WHERE id = $1', [42])`
 
 ```
 const result = await adminDb().sql('SELECT * FROM users WHERE active = true');
-// { status: "ok", schema: "p0001", rows: [{ id: 1, name: "Alice" }], rowCount: 1 }
+// { status: "ok", schema: "p0001", rows: [{ id: 1, name: "Alice" }], row_count: 1,
+//   fields: [{ name: "id", type: "int4" }, { name: "name", type: "text" }] }
 const rows = result.rows;
 ```
 

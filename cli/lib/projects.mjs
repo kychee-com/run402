@@ -5,7 +5,7 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 import { withAutoApprove } from "./operator.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
-import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolvePositionalProject, validateRegularFile } from "./argparse.mjs";
+import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolveProjectSelector, validateRegularFile } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -21,8 +21,8 @@ Subcommands:
   tenant-payments [project_id] [--status <s>]  List redacted tenant x402 payments for priced routes
   get   [id]                              Authoritative server read: status, org, tier, active deploy, mailbox, usage vs limits (live; no keys)
   current                                 Show the active project pointer and validation status
-  sql   [id] "<query>" [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
-  rest  [id] <table> [params]             Query a table via the REST API (PostgREST)
+  sql   "<query>" [--project <id>] [--file <path>] [--params '<json>']  Run a SQL query (supports parameterized queries)
+  rest  <table> [--query "<params>"] [--project <id>]  Query a table via the REST API (PostgREST)
   usage [id]                              Show compute/storage usage for a project
   costs [id] [--window <w>]               Show admin-only per-project revenue/cost/margin
   schema [id]                             Inspect the database schema
@@ -210,23 +210,25 @@ Examples:
   sql: `run402 projects sql — Run a SQL query against a project's database
 
 Usage:
-  run402 projects sql [id] "<query>" [options]
-  run402 projects sql [id] --file <path> [options]
+  run402 projects sql "<query>" [--project <id>] [options]
+  run402 projects sql --file <path> [--project <id>] [options]
+
+Legacy (still supported):
+  run402 projects sql <prj_id> "<query>" [options]
 
 Arguments:
-  [id]                Project ID (defaults to the active project if omitted;
-                      must start with 'prj_' — any other first arg is treated
-                      as the query instead)
   <query>             Inline SQL query (quote it to preserve spaces)
 
 Options:
+  --project <id>      Project ID (defaults to the active project; a leading
+                      prj_... positional is also still accepted)
   --file <path>       Read SQL from a file instead of an inline query
   --params '<json>'   JSON array of parameters for a parameterized query
 
 Examples:
-  run402 projects sql prj_abc123 "SELECT * FROM users LIMIT 5"
-  run402 projects sql prj_abc123 "SELECT * FROM users WHERE id = $1" --params '[42]'
-  run402 projects sql prj_abc123 --file setup.sql
+  run402 projects sql "SELECT * FROM users LIMIT 5" --project prj_abc123
+  run402 projects sql "SELECT * FROM users WHERE id = $1" --params '[42]'
+  run402 projects sql --file setup.sql --project prj_abc123
 `,
   costs: `run402 projects costs — Show admin-only per-project finance
 
@@ -411,6 +413,12 @@ async function applyExpose(projectId, args = []) {
 
 async function validateExpose(args = []) {
   let projectId = null;
+  let projectFlag = null;
+  if (args.includes("--project")) {
+    projectFlag = flagValue(args, "--project");
+    const idx = args.indexOf("--project");
+    args = [...args.slice(0, idx), ...args.slice(idx + 2)];
+  }
   let file = null;
   let inline = null;
   let migrationFile = null;
@@ -473,8 +481,15 @@ async function validateExpose(args = []) {
     });
   }
 
+  if (projectFlag !== null && projectId !== null && projectFlag !== projectId) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Conflicting project ids: --project ${projectFlag} vs positional ${projectId}`,
+      details: { project_flag: projectFlag, positional: projectId },
+    });
+  }
   const activeProjectId = getActiveProjectId();
-  const project = projectId || activeProjectId || undefined;
+  const project = projectFlag || projectId || activeProjectId || undefined;
   if (!project) allowanceAuthHeaders("/projects/v1/expose/validate");
   const migration = migrationFile ? readFileSync(migrationFile, "utf-8") : migrationSql;
 
@@ -697,6 +712,10 @@ function toCliExposeValidationResult(data) {
   return { has_errors: hasErrors, ...rest };
 }
 
+// The SDK now returns the gateway SQL envelope verbatim (snake_case
+// row_count) — the wire shape is uniform end-to-end. This shim survives one
+// release as belt-and-braces against a stale local SDK build that still
+// camelCases, then can be deleted.
 function toCliSqlResult(data) {
   if (!data || typeof data !== "object" || Array.isArray(data)) return data;
   if ("row_count" in data) return data;
@@ -705,12 +724,15 @@ function toCliSqlResult(data) {
   return { ...rest, row_count: rowCount };
 }
 
-async function rest(projectId, table, queryParams) {
+async function rest(projectId, restArgs = []) {
+  const positionals = positionalArgs(restArgs, FLAGS_BY_SUB.rest.values);
+  const table = positionals[0];
+  const queryParams = flagValue(restArgs, "--query") ?? positionals[1];
   if (!table) {
     fail({
       code: "BAD_USAGE",
-      message: "Missing <table> argument. Usage: run402 projects rest [id] <table> [\"<query>\"]",
-      hint: "Run 'run402 projects schema <id>' to list tables.",
+      message: "Missing <table> argument. Usage: run402 projects rest <table> [--query \"<query>\"] [--project <id>]",
+      hint: "Run 'run402 projects schema' to list tables.",
     });
   }
   try {
@@ -841,19 +863,26 @@ const FLAGS_BY_SUB = {
     values: ["--tier", "--name", "--org", "--idempotency-key"],
   },
   list: { known: ["--org", "--all"], values: ["--org"] },
-  rename: { known: ["--name"], values: ["--name"] },
-  "tenant-payments": { known: ["--status", "--limit", "--after"], values: ["--status", "--limit", "--after"] },
-  sql: { known: ["--file", "--params"], values: ["--file", "--params"] },
-  costs: { known: ["--window"], values: ["--window"] },
-  "apply-expose": { known: ["--file"], values: ["--file"] },
+  rename: { known: ["--project", "--name"], values: ["--project", "--name"] },
+  "tenant-payments": { known: ["--project", "--status", "--limit", "--after"], values: ["--project", "--status", "--limit", "--after"] },
+  get: { known: ["--project"], values: ["--project"] },
+  rest: { known: ["--project", "--query"], values: ["--project", "--query"] },
+  usage: { known: ["--project"], values: ["--project"] },
+  schema: { known: ["--project"], values: ["--project"] },
+  "get-expose": { known: ["--project"], values: ["--project"] },
+  "promote-user": { known: ["--project"], values: ["--project"] },
+  "demote-user": { known: ["--project"], values: ["--project"] },
+  sql: { known: ["--project", "--file", "--params"], values: ["--project", "--file", "--params"] },
+  costs: { known: ["--project", "--window"], values: ["--project", "--window"] },
+  "apply-expose": { known: ["--project", "--file"], values: ["--project", "--file"] },
   "validate-expose": {
-    known: ["--file", "--migration-file", "--migration-sql"],
-    values: ["--file", "--migration-file", "--migration-sql"],
+    known: ["--project", "--file", "--migration-file", "--migration-sql"],
+    values: ["--project", "--file", "--migration-file", "--migration-sql"],
   },
-  delete: { known: ["--confirm"], values: [] },
+  delete: { known: ["--project", "--confirm"], values: ["--project"] },
   export: {
-    known: ["--scope", "--auth", "--consistency", "--idempotency-key", "--output", "--poll-interval", "--timeout", "--wait", "--json", "--json-stream"],
-    values: ["--scope", "--auth", "--consistency", "--idempotency-key", "--output", "--poll-interval", "--timeout"],
+    known: ["--project", "--scope", "--auth", "--consistency", "--idempotency-key", "--output", "--poll-interval", "--timeout", "--wait", "--json", "--json-stream"],
+    values: ["--project", "--scope", "--auth", "--consistency", "--idempotency-key", "--output", "--poll-interval", "--timeout"],
   },
 };
 
@@ -888,27 +917,27 @@ export async function run(sub, args) {
     case "use":       await use(args[0]); break;
     case "list":      await list(args); break;
     case "current":   await current(); break;
-    case "rename":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.rename.values }); await rename(projectId, rest); break; }
-    case "tenant-payments": { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB["tenant-payments"].values }); await tenantPayments(projectId, rest); break; }
-    case "get":       { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await get(projectId); break; }
+    case "rename":    { const { projectId, rest } = resolveProjectSelector(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.rename.values }); await rename(projectId, rest); break; }
+    case "tenant-payments": { const { projectId, rest } = resolveProjectSelector(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB["tenant-payments"].values }); await tenantPayments(projectId, rest); break; }
+    case "get":       { const { projectId } = resolveProjectSelector(args, { rejectBareFirst: true }); await get(projectId); break; }
     case "info":      commandMoved("info"); break;
     case "keys":      commandMoved("keys"); break;
-    case "sql":       { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB.sql.values, rejectBareFirstWhenFlagPresent: ["--file"] }); await sqlCmd(projectId, rest); break; }
-    case "rest":      { const { projectId, rest: restArgs } = resolvePositionalProject(args); await rest(projectId, restArgs[0], restArgs[1]); break; }
-    case "usage":     { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await usage(projectId); break; }
-    case "costs":     { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.costs.values }); await costs(projectId, rest); break; }
-    case "schema":    { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await schema(projectId); break; }
-    case "apply-expose": { const { projectId, rest } = resolvePositionalProject(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB["apply-expose"].values, rejectBareFirstWhenFlagPresent: ["--file"] }); await applyExpose(projectId, rest); break; }
+    case "sql":       { const { projectId, rest } = resolveProjectSelector(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB.sql.values, rejectBareFirstWhenFlagPresent: ["--file"] }); await sqlCmd(projectId, rest); break; }
+    case "rest":      { const { projectId, rest: restArgs } = resolveProjectSelector(args, { valueFlags: FLAGS_BY_SUB.rest.values }); await rest(projectId, restArgs); break; }
+    case "usage":     { const { projectId } = resolveProjectSelector(args, { rejectBareFirst: true }); await usage(projectId); break; }
+    case "costs":     { const { projectId, rest } = resolveProjectSelector(args, { rejectBareFirst: true, valueFlags: FLAGS_BY_SUB.costs.values }); await costs(projectId, rest); break; }
+    case "schema":    { const { projectId } = resolveProjectSelector(args, { rejectBareFirst: true }); await schema(projectId); break; }
+    case "apply-expose": { const { projectId, rest } = resolveProjectSelector(args, { maxBarePositionals: 1, valueFlags: FLAGS_BY_SUB["apply-expose"].values, rejectBareFirstWhenFlagPresent: ["--file"] }); await applyExpose(projectId, rest); break; }
     case "validate-expose": await validateExpose(args); break;
-    case "get-expose":   { const { projectId } = resolvePositionalProject(args, { rejectBareFirst: true }); await getExpose(projectId); break; }
-    case "delete":    { const { projectId, rest } = resolvePositionalProject(args, { rejectBareFirst: true }); await deleteProject(projectId, rest); break; }
+    case "get-expose":   { const { projectId } = resolveProjectSelector(args, { rejectBareFirst: true }); await getExpose(projectId); break; }
+    case "delete":    { const { projectId, rest } = resolveProjectSelector(args, { rejectBareFirst: true }); await deleteProject(projectId, rest); break; }
     case "export": {
       const { run } = await import("./cloud.mjs");
       await run("archives", ["create", ...args]);
       break;
     }
-    case "promote-user": { const { projectId, rest } = resolvePositionalProject(args); await promoteUser(projectId, rest[0]); break; }
-    case "demote-user":  { const { projectId, rest } = resolvePositionalProject(args); await demoteUser(projectId, rest[0]); break; }
+    case "promote-user": { const { projectId, rest } = resolveProjectSelector(args); await promoteUser(projectId, rest[0]); break; }
+    case "demote-user":  { const { projectId, rest } = resolveProjectSelector(args); await demoteUser(projectId, rest[0]); break; }
     default:
       fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown projects subcommand: ${sub}`, hint: "Run `run402 projects --help` for usage.", details: { command: "projects", subcommand: sub } });
   }

@@ -8,19 +8,23 @@ import {
   normalizeArgv,
   parseIntegerFlag,
   positionalArgs,
+  resolveProjectSelector,
 } from "./argparse.mjs";
-import { resolveProjectId } from "./config.mjs";
 
 const HELP = `run402 branches — Contained project data branches
 
 Usage:
-  run402 branches create [project-id] [--from-snapshot <snapshot-id>] [--name <label>] [--email-mode sandbox|off] [--enable-cron] [--ttl-days <n>] [--json]
-  run402 branches list [project-id] [--json]
-  run402 branches renew [project-id] <branch-project-id> [--ttl-days <n>] [--json]
-  run402 branches delete [project-id] <branch-project-id> [--json]
+  run402 branches create [--project <id>] [--from-snapshot <snapshot-id>] [--name <label>] [--email-mode sandbox|off] [--enable-cron] [--ttl-days <n>] [--json]
+  run402 branches list [--project <id>] [--json]
+  run402 branches renew <branch-project-id> [--project <id>] [--ttl-days <n>] [--json]
+  run402 branches delete <branch-project-id> [--project <id>] [--json]
+
+Legacy (still supported): a leading prj_... parent-project positional,
+e.g. run402 branches renew prj_parent prj_branch. --project defaults to the
+active project.
 `;
 
-const FLAG_VALUES = ["--from-snapshot", "--name", "--email-mode", "--ttl-days"];
+const FLAG_VALUES = ["--project", "--from-snapshot", "--name", "--email-mode", "--ttl-days"];
 const FLAGS = new Set([...FLAG_VALUES, "--enable-cron", "--json", "--help", "-h"]);
 
 export async function run(sub, args = []) {
@@ -47,7 +51,7 @@ export async function run(sub, args = []) {
 }
 
 async function create(args) {
-  const projectId = resolveOptionalProject(positionalArgs(args, FLAG_VALUES)[0]);
+  const { projectId } = resolveProjectSelector(args, { valueFlags: FLAG_VALUES });
   const emailMode = flagValue(args, "--email-mode") ?? undefined;
   if (emailMode !== undefined) assertAllowedValue(emailMode, ["sandbox", "off"], "--email-mode");
   const ttlDaysFlag = flagValue(args, "--ttl-days");
@@ -67,7 +71,7 @@ async function create(args) {
 }
 
 async function list(args) {
-  const projectId = resolveOptionalProject(positionalArgs(args, FLAG_VALUES)[0]);
+  const { projectId } = resolveProjectSelector(args, { valueFlags: FLAG_VALUES });
   try {
     const result = await getSdk().branches.list(projectId);
     console.log(JSON.stringify({ project_id: projectId, ...result }, null, 2));
@@ -100,14 +104,13 @@ async function deleteBranch(args) {
   }
 }
 
-function resolveOptionalProject(value) {
-  if (value && String(value).startsWith("prj_")) return value;
-  return resolveProjectId(null);
-}
-
 function resolveProjectAndBranch(args, usage) {
-  const pos = positionalArgs(args, FLAG_VALUES);
-  if (pos.length === 1) return { projectId: resolveProjectId(null), branchProjectId: pos[0] };
-  if (pos.length === 2 && pos[0].startsWith("prj_")) return { projectId: pos[0], branchProjectId: pos[1] };
-  fail({ code: "BAD_USAGE", message: `Usage: ${usage}` });
+  // Canonical: `<branch-project-id> [--project <parent-id>]`. Branch ids are
+  // themselves prj_..., so a leading prj_ positional is only treated as the
+  // PARENT project when a second positional follows (requireRestPositional) —
+  // the legacy `renew prj_parent prj_branch` form.
+  const { projectId, rest } = resolveProjectSelector(args, { valueFlags: FLAG_VALUES, requireRestPositional: true });
+  const pos = positionalArgs(rest, FLAG_VALUES);
+  if (pos.length !== 1) fail({ code: "BAD_USAGE", message: `Usage: ${usage}` });
+  return { projectId, branchProjectId: pos[0] };
 }

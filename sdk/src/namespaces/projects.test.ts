@@ -706,8 +706,15 @@ describe("projects.getQuote", () => {
 });
 
 describe("projects admin helpers (SDK/CLI parity)", () => {
-  it("runs SQL via the same admin endpoint as the CLI (GH-181)", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ rows: [{ ok: true }], rowCount: 1 }));
+  it("runs SQL via the same admin endpoint as the CLI (GH-181) and returns the wire envelope verbatim", async () => {
+    const wireBody = {
+      status: "ok",
+      schema: "p0001",
+      rows: [{ ok: true }],
+      row_count: 1,
+      fields: [{ name: "ok", type: "bool" }],
+    };
+    const { fetch, calls } = mockFetch(() => jsonResponse(wireBody));
     const sdk = makeSdk(makeCreds(), fetch);
     const result = await sdk.projects.sql("prj_known", "SELECT $1::int AS n", [42]);
 
@@ -719,11 +726,13 @@ describe("projects admin helpers (SDK/CLI parity)", () => {
       sql: "SELECT $1::int AS n",
       params: [42],
     });
-    assert.deepEqual(result, { rows: [{ ok: true }], rowCount: 1 });
+    // Uniform-JSON contract: the SDK passes the gateway body through verbatim
+    // (snake_case row_count) — no camelCase renaming layer.
+    assert.deepEqual(result, wireBody);
   });
 
   it("runs raw SQL as text/plain when no params are provided (GH-181)", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ rows: [], rowCount: 0 }));
+    const { fetch, calls } = mockFetch(() => jsonResponse({ rows: [], row_count: 0 }));
     const sdk = makeSdk(makeCreds(), fetch);
     await sdk.projects.sql("prj_known", "SELECT 1");
 

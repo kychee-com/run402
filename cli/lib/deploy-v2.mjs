@@ -34,7 +34,7 @@ import {
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApiTarget } from "./config.mjs";
-import { normalizeArgv } from "./argparse.mjs";
+import { flagValue, normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./operator.mjs";
 import { editRequestAction, nextAction, retryAction } from "./next-actions.mjs";
@@ -220,7 +220,12 @@ Output:
 const REHEARSE_HELP = `run402 deploy rehearse — Run a persisted plan on a contained branch
 
 Usage:
-  run402 deploy rehearse <plan_id> [--project <id>] [--teardown keep|on_pass|always] [--json]
+  run402 deploy rehearse <plan_id> [--project <id>] [--teardown on_pass|keep|always] [--json]
+
+Options:
+  --teardown <mode>   on_pass (default: passed rehearsals delete their branch;
+                      failed rehearsals keep it), keep, always. When omitted,
+                      the gateway default (on_pass) applies.
 
 Use \`run402 apply --manifest app.json --rehearse --json\` for the canonical
 one-shot plan → upload → rehearse report flow.
@@ -367,11 +372,13 @@ async function rehearseCmd(rawArgs) {
   }
   const planId = positionals[0];
   if (!planId || positionals.length > 1) {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 deploy rehearse <plan_id> [--project <id>] [--teardown keep|on_pass|always] [--json]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 deploy rehearse <plan_id> [--project <id>] [--teardown on_pass|keep|always] [--json]" });
   }
-  const teardown = flagValue(args, "--teardown") ?? "keep";
-  if (!["keep", "on_pass", "always"].includes(teardown)) {
-    fail({ code: "BAD_USAGE", message: "--teardown must be one of: keep, on_pass, always", details: { flag: "--teardown", value: teardown } });
+  // When --teardown is absent, omit it from the request body entirely — the
+  // gateway defaults to on_pass (passed rehearsals delete their branch).
+  const teardown = flagValue(args, "--teardown") ?? undefined;
+  if (teardown !== undefined && !["keep", "on_pass", "always"].includes(teardown)) {
+    fail({ code: "BAD_USAGE", message: "--teardown must be one of: on_pass, keep, always", details: { flag: "--teardown", value: teardown } });
   }
   const project = flagValue(args, "--project") ?? undefined;
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) {
@@ -482,6 +489,7 @@ function parsePromoteArgs(args) {
     "--allow-warnings",
     "--quiet",
     "--final-only",
+    "--json",
     "--help",
     "-h",
   ];
@@ -513,6 +521,7 @@ function parsePromoteArgs(args) {
       opts.quiet = true;
       continue;
     }
+    if (arg === "--json") { continue; }
     if (arg === "--allow-warnings") {
       opts.allowWarnings = true;
       continue;
@@ -1856,6 +1865,7 @@ async function diagnoseCmd(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") { console.log(DIAGNOSE_HELP); process.exit(0); }
+    if (arg === "--json") { continue; }
     if (arg === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
     if (arg === "--method" && args[i + 1]) { opts.method = args[++i]; continue; }
     if (arg?.startsWith("--project=")) { opts.project = arg.slice("--project=".length); continue; }
@@ -1890,6 +1900,7 @@ async function resolveCmd(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") { console.log(RESOLVE_HELP); process.exit(0); }
+    if (arg === "--json") { continue; }
     if (arg === "--project" && args[i + 1]) { opts.project = args[++i]; continue; }
     if (arg === "--url" && args[i + 1]) { opts.url = args[++i]; continue; }
     if (arg === "--host" && args[i + 1]) { opts.host = args[++i]; continue; }
@@ -1979,9 +1990,11 @@ function redactResolveInput(input) {
 function parseDeploySubcommandArgs(rawArgs, { command, help, valueFlags = [], booleanFlags = [] }) {
   const args = normalizeArgv(rawArgs);
   const valueFlagSet = new Set(valueFlags);
-  const booleanFlagSet = new Set(booleanFlags);
+  // CLI-wide convention: --json is accepted by every deploy subcommand (a
+  // no-op where stdout is already JSON).
+  const booleanFlagSet = new Set([...booleanFlags, "--json"]);
   const numericFlagSet = new Set(["--limit", "--site-limit", "--timeout"]);
-  const allowedFlags = new Set([...valueFlags, ...booleanFlags, "--help", "-h"]);
+  const allowedFlags = new Set([...valueFlags, ...booleanFlags, "--json", "--help", "-h"]);
   const flags = {};
   const positionals = [];
 

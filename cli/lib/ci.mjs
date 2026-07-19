@@ -96,6 +96,8 @@ function parseFlags(args, allowed, { repeatable = new Set() } = {}) {
       positional.push(arg);
       continue;
     }
+    // CLI-wide convention: --json is accepted everywhere (stdout is already JSON).
+    if (arg === "--json") continue;
     if (!allowed.has(arg)) {
       fail({
         code: "BAD_USAGE",

@@ -54,7 +54,7 @@ Options:
   --exif-policy keep|strip  v1.50: EXIF retention policy for image uploads (default keep).
   --stream            NDJSON per-file progress events (for agent consumption).
                       Without --stream, only the final results array is
-                      printed. --json is a deprecated alias for --stream.
+                      printed. --json is an accepted alias for --stream.
   --prefix <p>        Prefix filter (ls only)
   --limit <n>         Max results (ls only; default 100, max 1000)
   --sort <key>        v1.50 ls only: key:asc | createdAt:asc | createdAt:desc (default key:asc).
@@ -103,7 +103,7 @@ Options:
                       from the stored bytes and the image_exif response field.
   --stream            Emit NDJSON per-file progress events on stdout (for
                       agent consumption). Default: emit only the final
-                      results array (also JSON). --json is a deprecated
+                      results array (also JSON). --json is an accepted
                       alias for --stream.
 
 Examples:
@@ -256,12 +256,10 @@ function parseArgs(rawArgs) {
     else if (a === "--concurrency") out.concurrency = parseIntegerFlag("--concurrency", args[++i], { min: 1 });
     else if (a === "--no-resume") out.resume = false;
     else if (a === "--stream") out.stream = true;
-    else if (a === "--json") {
-      out.stream = true;
-      process.stderr.write(
-        "# warning: `--json` on `assets put` is deprecated and will be removed in a future release. Use `--stream` (alias means the same thing — NDJSON progress events on stdout).\n",
-      );
-    }
+    // `--json` and `--stream` are permanent aliases on `assets put` (both mean
+    // NDJSON progress events on stdout); elsewhere `--json` is a no-op since
+    // stdout is already JSON.
+    else if (a === "--json") { out.stream = true; }
     else if (a === "--prefix") out.prefix = args[++i];
     else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];

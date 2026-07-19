@@ -1,6 +1,6 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, resolveProjectSelector } from "./argparse.mjs";
 
 const HELP = `run402 admin — Platform-admin operations (v1.57+)
 
@@ -17,12 +17,12 @@ Subcommands:
                                          (\`reactivated: true\` in the response).
                                          Replaces the v1.56 per-project pin.
 
-  archive <project_id> [--reason "..."]  Moderate-archive a single project. Sets
+  archive [--project <id>] [--reason "..."]  Moderate-archive a single project. Sets
                                          projects.archived_at = NOW(). Independent
                                          of organization lifecycle; the rest of the
                                          organization's projects keep serving.
 
-  reactivate <project_id>                Un-archive a project (flips archived_at
+  reactivate [--project <id>]            Un-archive a project (flips archived_at
                                          back to NULL). In v1.57 this no longer
                                          touches organization-level lifecycle — to
                                          reactivate a grace-state account, use
@@ -65,6 +65,9 @@ Examples:
   archive: `run402 admin archive — Moderate-archive a single project
 
 Usage:
+  run402 admin archive [--project <id>] [--reason "..."]
+
+Legacy (still supported):
   run402 admin archive <project_id> [--reason "..."]
 
 Options:
@@ -84,6 +87,9 @@ Examples:
   reactivate: `run402 admin reactivate — Un-archive a project
 
 Usage:
+  run402 admin reactivate [--project <id>]
+
+Legacy (still supported):
   run402 admin reactivate <project_id>
 
 Notes:
@@ -100,8 +106,8 @@ Examples:
 
 const FLAGS_BY_SUB = {
   "lease-perpetual": { known: ["--enable", "--disable"], values: [] },
-  archive: { known: ["--reason"], values: ["--reason"] },
-  reactivate: { known: [], values: [] },
+  archive: { known: ["--project", "--reason"], values: ["--project", "--reason"] },
+  reactivate: { known: ["--project"], values: ["--project"] },
 };
 
 function validateFlags(sub, args) {
@@ -137,18 +143,12 @@ async function leasePerpetual(args) {
 }
 
 async function archive(args) {
-  const projectId = args.find((a) => typeof a === "string" && !a.startsWith("--"));
-  if (!projectId) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <project_id>.",
-      hint: "run402 admin archive <project_id> [--reason \"...\"]",
-    });
-  }
+  // Canonical: --project <id>; legacy leading prj_... positional kept.
+  const { projectId, rest } = resolveProjectSelector(args, { valueFlags: FLAGS_BY_SUB.archive.values });
   let reason;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--reason" && args[i + 1] !== undefined) {
-      reason = args[++i];
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === "--reason" && rest[i + 1] !== undefined) {
+      reason = rest[++i];
     }
   }
   try {
@@ -160,14 +160,7 @@ async function archive(args) {
 }
 
 async function reactivate(args) {
-  const projectId = args.find((a) => typeof a === "string" && !a.startsWith("--"));
-  if (!projectId) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <project_id>.",
-      hint: "run402 admin reactivate <project_id>",
-    });
-  }
+  const { projectId } = resolveProjectSelector(args, { valueFlags: FLAGS_BY_SUB.reactivate.values });
   try {
     const data = await getSdk().admin.reactivateProject(projectId);
     console.log(JSON.stringify(data, null, 2));

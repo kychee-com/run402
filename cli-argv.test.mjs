@@ -1173,9 +1173,11 @@ describe("function list/delete argv validation", () => {
     assert.equal(calls.length, 0, "extra list arg must not hit the network");
 
     calls = [];
-    err = await expectExit1(() => run("list", ["prj_test123", "--json"]));
+    // `--json` is a CLI-wide accepted no-op now (cli-conventions-gate); use a
+    // genuinely unknown flag to keep the rejection contract covered.
+    err = await expectExit1(() => run("list", ["prj_test123", "--bogus"]));
     assert.equal(err.code, "UNKNOWN_FLAG");
-    assert.equal(err.details.flag, "--json");
+    assert.equal(err.details.flag, "--bogus");
     assert.equal(calls.length, 0, "unknown list flag must not hit the network");
   });
 
@@ -1726,9 +1728,9 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.ok(existsSync(outFile), "MIME bytes must land in --output, never stdout");
   });
 
-  it("assets put --json is a deprecated alias for --stream (warns on stderr, still streams NDJSON)", async () => {
+  it("assets put --json is a permanent alias for --stream (no deprecation warning, streams NDJSON)", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
-    const file = join(tempDir, "deprecated-json.txt");
+    const file = join(tempDir, "alias-json.txt");
     writeFileSync(file, "hi");
     const prevFetch = globalThis.fetch;
     const prevStderrWrite = process.stderr.write.bind(process.stderr);
@@ -1743,8 +1745,10 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
       process.stderr.write = prevStderrWrite;
       globalThis.fetch = prevFetch;
     }
-    assert.match(stderrCapture, /--json.*deprecated/i,
-      `expected deprecation warning on stderr, got: ${JSON.stringify(stderrCapture)}`);
+    // cli-conventions-gate: --json and --stream are both accepted aliases,
+    // permanently — no deprecation warning.
+    assert.doesNotMatch(stderrCapture, /deprecated/i,
+      `--json must not warn any more, got: ${JSON.stringify(stderrCapture)}`);
     const lines = stdout.join("\n").split("\n").filter(Boolean);
     assert.ok(lines.length >= 1, "should emit at least one NDJSON event");
     for (const line of lines) {
@@ -1783,18 +1787,34 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
   // opt-in. They now emit JSON by default; --json is removed (no users yet —
   // pre-launch cleanup). Informational lines on init / init astro go to stderr.
 
-  it("cache inspect --json is now UNKNOWN_FLAG (default is JSON)", async () => {
+  it("cache inspect --json is accepted as a no-op (cli-conventions-gate)", async () => {
     const { run } = await import("./cli/lib/cache.mjs");
-    const err = await expectExit1(() => run("inspect", ["https://example.run402.com/x", "--json"]));
-    assert.equal(err.code, "UNKNOWN_FLAG");
-    assert.equal(err.details.flag, "--json");
+    captureStart();
+    try {
+      await run("inspect", ["https://example.run402.com/x", "--json"]);
+    } catch {
+      // Non-flag failures (mock shape) are fine; only flag rejection matters.
+    } finally {
+      captureStop();
+    }
+    const envelopes = stderr.map((l) => l.trim()).filter((l) => l.startsWith("{")).map((l) => JSON.parse(l));
+    assert.ok(!envelopes.some((e) => e.code === "UNKNOWN_FLAG" && e.details?.flag === "--json"),
+      `--json must be accepted, got: ${stderr.join("\n")}`);
   });
 
-  it("cache invalidate --json is now UNKNOWN_FLAG (default is JSON)", async () => {
+  it("cache invalidate --json is accepted as a no-op (cli-conventions-gate)", async () => {
     const { run } = await import("./cli/lib/cache.mjs");
-    const err = await expectExit1(() => run("invalidate", ["https://example.run402.com/x", "--json"]));
-    assert.equal(err.code, "UNKNOWN_FLAG");
-    assert.equal(err.details.flag, "--json");
+    captureStart();
+    try {
+      await run("invalidate", ["https://example.run402.com/x", "--json"]);
+    } catch {
+      // Non-flag failures are fine; only flag rejection matters.
+    } finally {
+      captureStop();
+    }
+    const envelopes = stderr.map((l) => l.trim()).filter((l) => l.startsWith("{")).map((l) => JSON.parse(l));
+    assert.ok(!envelopes.some((e) => e.code === "UNKNOWN_FLAG" && e.details?.flag === "--json"),
+      `--json must be accepted, got: ${stderr.join("\n")}`);
   });
 
   it("logs default emits JSON on stdout (no [ts] [fn] msg text lines)", async () => {

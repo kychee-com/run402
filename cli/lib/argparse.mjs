@@ -19,8 +19,14 @@ export function hasHelp(args = []) {
   return args.includes("--help") || args.includes("-h");
 }
 
+// CLI-wide convention: every command accepts `--json`. Where stdout is already
+// JSON (the vast majority of commands) it is a no-op; commands with a human
+// default switch on it explicitly. Baking it into the baseline known set here
+// makes the convention self-maintaining for future commands.
+const ALWAYS_KNOWN_FLAGS = ["--json"];
+
 export function assertKnownFlags(args = [], knownFlags = [], flagsWithValues = []) {
-  const known = new Set(knownFlags);
+  const known = new Set([...knownFlags, ...ALWAYS_KNOWN_FLAGS]);
   const valueFlags = new Set(flagsWithValues);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -299,6 +305,67 @@ export function resolvePositionalProject(args, opts = {}) {
     }
   }
   return { projectId: resolveProjectId(null), rest: Array.isArray(args) ? args : [] };
+}
+
+// Resolve the project id for a project-scoped command from BOTH accepted
+// forms — the canonical `--project <id>` flag and the legacy leading
+// positional `prj_...` — with active-project fallback (CLI-wide convention).
+//
+// Precedence:
+//   1. explicit `--project <id>` (canonical)
+//   2. a leading positional starting with "prj_" (legacy compat, no warning)
+//   3. the active project (`resolveProjectId(null)`)
+//
+// If BOTH a `--project` flag and a leading `prj_` positional are present and
+// they DIFFER, fail with BAD_USAGE ("Conflicting project ids"). If they agree,
+// the duplicate positional is consumed silently.
+//
+// Returns { projectId, rest } where `rest` is args with the project selector
+// tokens (the flag+value pair and/or the leading positional) removed.
+//
+// Options (in addition to every `resolvePositionalProject` option, which this
+// helper delegates to for the no-flag path):
+//   requireRestPositional: only treat a leading `prj_` positional as the
+//     project selector when at least one more bare positional follows (counted
+//     with opts.valueFlags). Needed by commands whose OWN attribute is itself a
+//     project id (e.g. `branches renew <branch-project-id>`).
+export function resolveProjectSelector(args, opts = {}) {
+  const list = Array.isArray(args) ? [...args] : [];
+  let flagProject = null;
+  const flagIdx = list.indexOf("--project");
+  if (flagIdx !== -1) {
+    flagProject = flagValue(list, "--project");
+    list.splice(flagIdx, 2);
+  }
+
+  const first = list[0];
+  let leadingIsProject = typeof first === "string" && first.startsWith("prj_");
+  if (leadingIsProject && opts.requireRestPositional) {
+    const remainder = positionalArgs(list.slice(1), opts.valueFlags ?? []);
+    if (remainder.length === 0) leadingIsProject = false;
+  }
+
+  if (flagProject !== null) {
+    if (leadingIsProject) {
+      if (first !== flagProject) {
+        fail({
+          code: "BAD_USAGE",
+          message: `Conflicting project ids: --project ${flagProject} vs positional ${first}`,
+          hint: "Pass the project once — prefer --project <id>.",
+          details: { project_flag: flagProject, positional: first },
+        });
+      }
+      list.shift();
+    }
+    return { projectId: flagProject, rest: list };
+  }
+
+  if (!leadingIsProject && typeof first === "string" && first.startsWith("prj_")) {
+    // A lone prj_ positional deliberately NOT consumed as the selector
+    // (requireRestPositional): it is the command's own attribute.
+    return { projectId: resolveProjectId(null), rest: list };
+  }
+  return resolvePositionalProject(list, opts);
 }
 
 function closestFlag(flag, candidates) {

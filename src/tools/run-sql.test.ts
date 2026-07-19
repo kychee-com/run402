@@ -42,7 +42,7 @@ describe("run_sql tool", () => {
       capturedHeaders = init?.headers as Record<string, string>;
       capturedBody = init?.body as string;
       return new Response(
-        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ "?column?": 1 }], rowCount: 1 }),
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ "?column?": 1 }], row_count: 1 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
@@ -79,7 +79,7 @@ describe("run_sql tool", () => {
             { id: 1, name: "Alice" },
             { id: 2, name: "Bob" },
           ],
-          rowCount: 2,
+          row_count: 2,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
@@ -109,9 +109,9 @@ describe("run_sql tool", () => {
   }
 
   it("reports rows affected for a mutation with no returned rows", async () => {
-    // INSERT/UPDATE/DELETE without RETURNING: rows: [], rowCount: N>0.
+    // INSERT/UPDATE/DELETE without RETURNING: rows: [], row_count: N>0.
     const result = await runWithResponse(
-      { status: "ok", schema: "p0001", rows: [], rowCount: 3 },
+      { status: "ok", schema: "p0001", rows: [], row_count: 3 },
       "INSERT INTO t (id) VALUES (1),(2),(3)",
     );
     const text = result.content[0]!.text;
@@ -121,16 +121,16 @@ describe("run_sql tool", () => {
 
   it("uses singular 'row' for a single affected row", async () => {
     const result = await runWithResponse(
-      { status: "ok", schema: "p0001", rows: [], rowCount: 1 },
+      { status: "ok", schema: "p0001", rows: [], row_count: 1 },
       "DELETE FROM t WHERE id = 1",
     );
     assert.ok(result.content[0]!.text.includes("1 row affected"));
   });
 
-  it("reports 'Statement executed' for DDL (rowCount null)", async () => {
-    // Real gateway returns rowCount: null for CREATE TABLE / CREATE INDEX / etc.
+  it("reports 'Statement executed' for DDL (row_count null)", async () => {
+    // Real gateway returns row_count: null for CREATE TABLE / CREATE INDEX / etc.
     const result = await runWithResponse(
-      { status: "ok", schema: "p0001", rows: [], rowCount: null },
+      { status: "ok", schema: "p0001", rows: [], row_count: null },
       "CREATE TABLE test (id INT)",
     );
     const text = result.content[0]!.text;
@@ -138,9 +138,9 @@ describe("run_sql tool", () => {
     assert.ok(!text.includes("0 rows"));
   });
 
-  it("reports neutral '0 rows' for a no-match mutation or empty result (rowCount 0)", async () => {
+  it("reports neutral '0 rows' for a no-match mutation or empty result (row_count 0)", async () => {
     const result = await runWithResponse(
-      { status: "ok", schema: "p0001", rows: [], rowCount: 0 },
+      { status: "ok", schema: "p0001", rows: [], row_count: 0 },
       "UPDATE t SET x = 1 WHERE false",
     );
     const text = result.content[0]!.text;
@@ -163,7 +163,7 @@ describe("run_sql tool", () => {
       capturedHeaders = init?.headers as Record<string, string>;
       capturedBody = init?.body as string;
       return new Response(
-        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ id: 42 }], rowCount: 1 }),
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ id: 42 }], row_count: 1 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
@@ -189,7 +189,7 @@ describe("run_sql tool", () => {
       capturedHeaders = init?.headers as Record<string, string>;
       capturedBody = init?.body as string;
       return new Response(
-        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ "?column?": 1 }], rowCount: 1 }),
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ "?column?": 1 }], row_count: 1 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
@@ -213,7 +213,7 @@ describe("run_sql tool", () => {
       capturedHeaders = init?.headers as Record<string, string>;
       capturedBody = init?.body as string;
       return new Response(
-        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ "?column?": 1 }], rowCount: 1 }),
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [{ "?column?": 1 }], row_count: 1 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
@@ -267,7 +267,7 @@ describe("run_sql tool", () => {
         );
       }
       return new Response(
-        JSON.stringify({ status: "ok", schema: "p0001", rows: [], rowCount: 3 }),
+        JSON.stringify({ status: "ok", schema: "p0001", rows: [], row_count: 3 }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }) as typeof fetch;
@@ -291,7 +291,7 @@ describe("run_sql tool", () => {
         status: "ok",
         schema: "p0001",
         rows: [],
-        rowCount: 0,
+        row_count: 0,
         fields: [
           { name: "id", type: "uuid" },
           { name: "email", type: "text" },
@@ -314,7 +314,7 @@ describe("run_sql tool", () => {
         status: "ok",
         schema: "p0001",
         rows: [{ id: 1, name: "Alice" }],
-        rowCount: 1,
+        row_count: 1,
         fields: [
           { name: "id", type: "int4" },
           { name: "name", type: "text" },
@@ -330,7 +330,7 @@ describe("run_sql tool", () => {
 
   it("stays a bare '0 rows' for a no-match mutation (no fields)", async () => {
     const result = await runWithResponse(
-      { status: "ok", schema: "p0001", rows: [], rowCount: 0 },
+      { status: "ok", schema: "p0001", rows: [], row_count: 0 },
       "UPDATE t SET x = 1 WHERE false",
     );
     const text = result.content[0]!.text;

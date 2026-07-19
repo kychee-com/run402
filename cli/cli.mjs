@@ -79,15 +79,15 @@ Examples:
   run402 allowance fund
   run402 deploy apply --manifest app.json
   run402 apply --manifest app.json --rehearse --json
-  run402 snapshots list prj_...
-  run402 branches create prj_... --ttl-days 7 --json
-  run402 cloud archives create prj_... --wait --output ./project.r402ar --json
+  run402 snapshots list --project prj_...
+  run402 branches create --project prj_... --ttl-days 7 --json
+  run402 cloud archives create --project prj_... --wait --output ./project.r402ar --json
   run402 core projects import ./project.r402ar --name imported-project --env-file ./required.env --json
   run402 jobs submit --file job.json
   run402 projects list
-  run402 projects sql <project_id> "SELECT * FROM users LIMIT 5"
-  run402 functions deploy <project_id> my-fn --file handler.ts
-  run402 secrets set <project_id> API_KEY sk-1234
+  run402 projects sql "SELECT * FROM users LIMIT 5" --project <project_id>
+  run402 functions deploy my-fn --file handler.ts --project <project_id>
+  run402 secrets set API_KEY --value sk-1234 --project <project_id>
   run402 image generate "a startup mascot, pixel art" --output logo.png
 
 Getting started:

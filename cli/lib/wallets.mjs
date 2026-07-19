@@ -42,7 +42,7 @@ Usage:
   run402 wallets current              Show the resolved active wallet + how it was selected
   run402 wallets new <name>           Create a new named wallet (key stays local)
   run402 wallets use <name>           Set the global default wallet
-  run402 wallets rename <old> <new>   Rename a wallet (migrates the default's files when old=default)
+  run402 wallets rename <old> --to <new>   Rename a wallet (legacy: rename <old> <new>)
   run402 wallets bind [<name>]        Write ./.run402.json binding this directory to a wallet
   run402 wallets unbind               Remove ./.run402.json
   run402 wallets import <name> --key <path|->   Adopt an existing private key as a named wallet
@@ -174,9 +174,10 @@ function cmdUse(args) {
 }
 
 async function cmdRename(args) {
-  const positionals = args.filter((a) => a && !a.startsWith("-"));
+  const toFlag = flagVal(args, "--to");
+  const positionals = args.filter((a, i) => a && !a.startsWith("-") && args[i - 1] !== "--to");
   const oldName = requireName(positionals[0], "old wallet name");
-  const newName = requireName(positionals[1], "new wallet name");
+  const newName = requireName(toFlag ?? positionals[1], "new wallet name");
   if (newName === DEFAULT) {
     fail({ code: "BAD_WALLET_NAME", message: "Cannot rename a wallet to the reserved name 'default'.", details: { name: newName } });
   }

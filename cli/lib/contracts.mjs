@@ -6,6 +6,7 @@ import {
   flagValue,
   normalizeArgv,
   positionalArgs,
+  resolveProjectSelector,
   validateEvmAddress,
 } from "./argparse.mjs";
 
@@ -51,6 +52,9 @@ const SUB_HELP = {
   "provision-signer": `run402 contracts provision-signer — Provision a KMS-backed signer
 
 Usage:
+  run402 contracts provision-signer --chain <chain> [--project <id>] [options]
+
+Legacy (still supported):
   run402 contracts provision-signer <project_id> --chain <chain> [options]
 
 Arguments:
@@ -64,16 +68,25 @@ Options:
   "set-recovery": `run402 contracts set-recovery — Set or clear the signer recovery address
 
 Usage:
+  run402 contracts set-recovery <signer_id> [--project <id>] [options]
+
+Legacy (still supported):
   run402 contracts set-recovery <project_id> <signer_id> [options]
 `,
   "set-alert": `run402 contracts set-alert — Set the low-balance alert threshold
 
 Usage:
+  run402 contracts set-alert <signer_id> --threshold-wei <n> [--project <id>]
+
+Legacy (still supported):
   run402 contracts set-alert <project_id> <signer_id> --threshold-wei <n>
 `,
   call: `run402 contracts call — Submit a contract write call
 
 Usage:
+  run402 contracts call <signer_id> --to 0x... --abi <json> [--project <id>]
+
+Legacy (still supported):
   run402 contracts call <project_id> <signer_id> --to 0x... --abi <json>
     --fn <name> --args <json> [options]
 `,
@@ -84,6 +97,9 @@ Returns the deterministic CREATE address synchronously — known from (signer, n
 before the tx confirms. Cost: chain gas at-cost + $0.000005 KMS sign fee.
 
 Usage:
+  run402 contracts deploy <signer_id> --bytecode 0x... [--project <id>] [options]
+
+Legacy (still supported):
   run402 contracts deploy <project_id> <signer_id> --bytecode 0x... [options]
 
 Options:
@@ -108,16 +124,25 @@ Usage:
   drain: `run402 contracts drain — Drain native balance to a destination address
 
 Usage:
+  run402 contracts drain <signer_id> --to 0x... --confirm [--project <id>]
+
+Legacy (still supported):
   run402 contracts drain <project_id> <signer_id> --to 0x... --confirm
 `,
   delete: `run402 contracts delete — Schedule the KMS key for deletion
 
 Usage:
+  run402 contracts delete <signer_id> --confirm [--project <id>]
+
+Legacy (still supported):
   run402 contracts delete <project_id> <signer_id> --confirm
 `,
   "get-signer": `run402 contracts get-signer — Get signer metadata + live balance
 
 Usage:
+  run402 contracts get-signer <signer_id> [--project <id>]
+
+Legacy (still supported):
   run402 contracts get-signer <project_id> <signer_id>
 
 Arguments:
@@ -130,6 +155,9 @@ Examples:
   "list-signers": `run402 contracts list-signers — List all KMS signers for a project
 
 Usage:
+  run402 contracts list-signers [--project <id>]
+
+Legacy (still supported):
   run402 contracts list-signers <project_id>
 
 Arguments:
@@ -144,6 +172,9 @@ Examples:
   status: `run402 contracts status — Get a contract call's status and receipt
 
 Usage:
+  run402 contracts status <call_id> [--project <id>]
+
+Legacy (still supported):
   run402 contracts status <project_id> <call_id>
 
 Arguments:
@@ -470,18 +501,24 @@ async function deleteSigner(projectId, signerId, args) {
 export async function run(sub, args) {
   if (!sub || sub === "--help" || sub === "-h") { console.log(HELP); process.exit(0); }
   if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) { console.log(SUB_HELP[sub] || HELP); process.exit(0); }
+  // Project selection (CLI-wide convention): `--project <id>` wins, else a
+  // legacy leading `prj_...` positional, else the active project. The signer /
+  // call id stays positional (`cwlt_...` / `ccall_...`). Computed lazily so
+  // unknown subcommands (and the anonymous `read`) never trip project
+  // resolution.
+  const select = () => resolveProjectSelector(normalizeArgv(Array.isArray(args) ? args : []));
   switch (sub) {
-    case "provision-signer": await provisionSigner(args[0], args.slice(1)); break;
-    case "get-signer":       await getSigner(args[0], args[1], args.slice(2)); break;
-    case "list-signers":     await listSigners(args[0], args.slice(1)); break;
-    case "set-recovery":     await setRecovery(args[0], args[1], args.slice(2)); break;
-    case "set-alert":        await setAlert(args[0], args[1], args.slice(2)); break;
-    case "call":             await call(args[0], args[1], args.slice(2)); break;
-    case "deploy":           await deploy(args[0], args[1], args.slice(2)); break;
+    case "provision-signer": { const { projectId, rest } = select(); await provisionSigner(projectId, rest); break; }
+    case "get-signer":       { const { projectId, rest } = select(); await getSigner(projectId, rest[0], rest.slice(1)); break; }
+    case "list-signers":     { const { projectId, rest } = select(); await listSigners(projectId, rest); break; }
+    case "set-recovery":     { const { projectId, rest } = select(); await setRecovery(projectId, rest[0], rest.slice(1)); break; }
+    case "set-alert":        { const { projectId, rest } = select(); await setAlert(projectId, rest[0], rest.slice(1)); break; }
+    case "call":             { const { projectId, rest } = select(); await call(projectId, rest[0], rest.slice(1)); break; }
+    case "deploy":           { const { projectId, rest } = select(); await deploy(projectId, rest[0], rest.slice(1)); break; }
     case "read":             await read(args); break;
-    case "status":           await status(args[0], args[1], args.slice(2)); break;
-    case "drain":            await drain(args[0], args[1], args.slice(2)); break;
-    case "delete":           await deleteSigner(args[0], args[1], args.slice(2)); break;
+    case "status":           { const { projectId, rest } = select(); await status(projectId, rest[0], rest.slice(1)); break; }
+    case "drain":            { const { projectId, rest } = select(); await drain(projectId, rest[0], rest.slice(1)); break; }
+    case "delete":           { const { projectId, rest } = select(); await deleteSigner(projectId, rest[0], rest.slice(1)); break; }
     default:
       fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown contracts subcommand: ${sub}`, hint: "Run `run402 contracts --help` for usage.", details: { command: "contracts", subcommand: sub } });
   }
