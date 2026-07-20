@@ -8,7 +8,7 @@ import {
   removeProject,
   saveProject,
 } from "./config.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 import { fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 credentials — Manage local credential material
@@ -245,12 +245,7 @@ async function runProjectKeys(sub, args) {
     case "export": await exportKey(args); break;
     case "remove": await remove(args); break;
     default:
-      fail({
-        code: "UNKNOWN_SUBCOMMAND",
-        message: `Unknown credentials project-keys subcommand: ${sub}`,
-        hint: "Run `run402 credentials project-keys --help` for usage.",
-        details: { command: "credentials project-keys", subcommand: sub },
-      });
+      failUnknownSubcommand("credentials project-keys", sub);
   }
 }
 
@@ -264,10 +259,5 @@ export async function run(sub, args = []) {
     await runProjectKeys(projectKeySub, rest);
     return;
   }
-  fail({
-    code: "UNKNOWN_SUBCOMMAND",
-    message: `Unknown credentials subcommand: ${sub}`,
-    hint: "Run `run402 credentials --help` for usage.",
-    details: { command: "credentials", subcommand: sub },
-  });
+  failUnknownSubcommand("credentials", sub);
 }

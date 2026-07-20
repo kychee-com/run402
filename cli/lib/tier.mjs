@@ -1,6 +1,6 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, normalizeArgv, positionalArgs, flagValue } from "./argparse.mjs";
+import { assertKnownFlags, normalizeArgv, positionalArgs, flagValue, failUnknownSubcommand } from "./argparse.mjs";
 import { setTierAction } from "./next-actions.mjs";
 
 const HELP = `run402 tier — Manage your Run402 tier subscription
@@ -160,6 +160,6 @@ export async function run(sub, args) {
     case "status": await status(args); break;
     case "set":    await set(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown tier subcommand: ${sub}`, hint: "Run `run402 tier --help` for usage.", details: { command: "tier", subcommand: sub } });
+      failUnknownSubcommand("tier", sub);
   }
 }

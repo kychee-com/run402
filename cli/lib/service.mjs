@@ -1,5 +1,6 @@
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { failUnknownSubcommand } from "./argparse.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
 
 const HELP = `run402 service — Run402 service health and availability
 
@@ -70,6 +71,6 @@ export async function run(sub, args) {
     case "status": await status(); break;
     case "health": await health(); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown service subcommand: ${sub}`, hint: "Run `run402 service --help` for usage.", details: { command: "service", subcommand: sub } });
+      failUnknownSubcommand("service", sub);
   }
 }

@@ -24,7 +24,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
 import { getSdk } from "./sdk.mjs";
 import { claimWalletOrg, isStepUpRequired, isOperatorApprovalRequired } from "#sdk/node";
-import { normalizeArgv, hasHelp, assertKnownFlags, flagValue } from "./argparse.mjs";
+import { normalizeArgv, hasHelp, assertKnownFlags, flagValue, failUnknownSubcommand } from "./argparse.mjs";
 import {
   saveOperatorSession,
   clearOperatorSession,
@@ -766,11 +766,6 @@ export async function run(sub, args = []) {
       await status(args);
       break;
     default:
-      fail({
-        code: "UNKNOWN_SUBCOMMAND",
-        message: `Unknown operator subcommand: ${sub}`,
-        hint: "Run `run402 operator --help` for usage.",
-        details: { command: "operator", subcommand: sub },
-      });
+      failUnknownSubcommand("operator", sub, { extraSubcommands: ["status"] });
   }
 }

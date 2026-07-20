@@ -13,6 +13,7 @@ import type {
   Run402ReleaseConfig,
 } from "../config.js";
 import { LocalError } from "../errors.js";
+import type { Run402AppHttpVerifySpec } from "../app-up.js";
 import { ROUTE_HTTP_METHODS } from "../namespaces/deploy.types.js";
 import type {
   AssetPutEntryInput,
@@ -57,7 +58,18 @@ const MANIFEST_FIELDS = new Set([
   "routes",
   "checks",
   "i18n",
+  "verify",
 ]);
+const MANIFEST_VERIFY_FIELDS = new Set(["http"]);
+const MANIFEST_VERIFY_HTTP_CHECK_FIELDS = new Set([
+  "id",
+  "path",
+  "url",
+  "expect",
+  "expected_status",
+  "retries",
+]);
+const MANIFEST_VERIFY_EXPECT_FIELDS = new Set(["status"]);
 const MANIFEST_I18N_FIELDS = new Set([
   "default_locale",
   "defaultLocale",
@@ -241,6 +253,37 @@ export interface DeployManifestAssetSpec {
   };
 }
 
+/**
+ * One post-apply HTTP verification check. Mirrors the app-spec
+ * `Run402AppHttpVerifySpec` shape (`app-up.ts`): `id` + (`path` or `url`) +
+ * `expect.status`. The deploy-manifest flavor additionally accepts the
+ * snake_case `expected_status` alias for `expect.status`.
+ */
+export interface DeployManifestVerifyHttpCheck {
+  id: string;
+  path?: string;
+  url?: string;
+  expect?: { status: number };
+  /** Snake-case alias for `expect.status`. Conflicting values are rejected. */
+  expected_status?: number;
+  retries?: number;
+}
+
+/**
+ * Authoring-only top-level `verify` block. Stripped from the wire
+ * `ReleaseSpec` (like `$schema`) and returned separately from
+ * `normalizeDeployManifest` / `loadDeployManifest` so the `up` runner can
+ * execute the checks after a successful apply.
+ */
+export interface DeployManifestVerifySpec {
+  http?: DeployManifestVerifyHttpCheck[];
+}
+
+/** Normalized verify metadata: checks in the canonical app-spec shape. */
+export interface NormalizedDeployManifestVerify {
+  http: Run402AppHttpVerifySpec[];
+}
+
 export interface DeployManifestInput
   extends Omit<ReleaseSpec, "project" | "database" | "functions" | "site" | "assets" | "i18n"> {
   /** JSON Schema metadata for editors. Stripped before deploy planning. */
@@ -255,6 +298,8 @@ export interface DeployManifestInput
   functions?: DeployManifestFunctionsSpec;
   site?: DeployManifestSiteSpec;
   assets?: DeployManifestAssetSpec;
+  /** Authoring-only post-apply HTTP verification. Never sent on the wire. */
+  verify?: DeployManifestVerifySpec;
   /** Routed-locale-context slice. Omit to carry forward, `null` to clear,
    *  `{ default_locale, locales, detect?, unknown_locale_policy? }` to replace. */
   i18n?: I18nSpec | (Omit<I18nSpec, "defaultLocale" | "unknownLocalePolicy"> & {
@@ -287,6 +332,9 @@ export interface NormalizedDeployManifest {
   spec: ReleaseSpec;
   /** Optional idempotency key from `idempotency_key` / `idempotencyKey`. */
   idempotencyKey?: string;
+  /** Authoring-only verify metadata (stripped from `spec`). Present when the
+   *  manifest declared a top-level `verify` block. */
+  verify?: NormalizedDeployManifestVerify;
   /** Parsed manifest object supplied by the caller or loaded from disk. */
   manifest: DeployManifestInput;
   /** Absolute path when produced by `loadDeployManifest(path)`. */
@@ -530,10 +578,142 @@ export async function normalizeDeployManifest(
     spec.assets = mapAssets(manifest.assets, opts);
   }
 
+  // Authoring-only: `verify` never reaches the wire ReleaseSpec (like
+  // `$schema`); it is validated here and returned as sidecar metadata.
+  const verify = manifest.verify !== undefined ? mapVerify(manifest.verify) : undefined;
+
   const idempotencyKey = resolveIdempotencyKey(manifest);
-  return idempotencyKey === undefined
-    ? { spec, manifest }
-    : { spec, idempotencyKey, manifest };
+  return {
+    spec,
+    manifest,
+    ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+    ...(verify !== undefined ? { verify } : {}),
+  };
+}
+
+const VERIFY_HINT =
+  'Minimal valid shape: "verify": { "http": [{ "id": "home", "path": "/", "expect": { "status": 200 } }] }';
+
+function verifyError(message: string, field: string): LocalError {
+  return new LocalError(message, CONTEXT, {
+    code: "INVALID_VERIFY_SPEC",
+    details: { field, hint: VERIFY_HINT },
+  });
+}
+
+function mapVerify(verify: unknown): NormalizedDeployManifestVerify {
+  if (!isRecord(verify) || Array.isArray(verify)) {
+    throw verifyError("Deploy manifest verify must be a JSON object", "verify");
+  }
+  assertKnownFields(verify, "Deploy manifest verify", MANIFEST_VERIFY_FIELDS, {
+    checks: "Use `verify.http` (an array of HTTP checks).",
+  });
+  const raw = verify as { http?: unknown };
+  const http: Run402AppHttpVerifySpec[] = [];
+  if (raw.http !== undefined) {
+    if (!Array.isArray(raw.http)) {
+      throw verifyError("Deploy manifest verify.http must be an array of checks", "verify.http");
+    }
+    const seenIds = new Map<string, number>();
+    for (const [index, check] of raw.http.entries()) {
+      http.push(mapVerifyHttpCheck(check, index, seenIds));
+    }
+  }
+  return { http };
+}
+
+function mapVerifyHttpCheck(
+  check: unknown,
+  index: number,
+  seenIds: Map<string, number>,
+): Run402AppHttpVerifySpec {
+  const field = `verify.http[${index}]`;
+  if (!isRecord(check) || Array.isArray(check)) {
+    throw verifyError(`Deploy manifest ${field} must be a JSON object`, field);
+  }
+  assertKnownFields(check, `Deploy manifest ${field}`, MANIFEST_VERIFY_HTTP_CHECK_FIELDS, {
+    method: "verify.http checks are always fetched with GET; there is no method field.",
+    status: "Use `expect: { status }` (or the `expected_status` alias).",
+  });
+  const raw = check as unknown as DeployManifestVerifyHttpCheck;
+  if (typeof raw.id !== "string" || raw.id.length === 0) {
+    throw verifyError(`Deploy manifest ${field}.id must be a non-empty string`, `${field}.id`);
+  }
+  const firstIndex = seenIds.get(raw.id);
+  if (firstIndex !== undefined) {
+    throw verifyError(
+      `Deploy manifest ${field}.id duplicates verify.http[${firstIndex}].id ${JSON.stringify(raw.id)}`,
+      `${field}.id`,
+    );
+  }
+  seenIds.set(raw.id, index);
+  if (raw.path !== undefined && (typeof raw.path !== "string" || raw.path.length === 0)) {
+    throw verifyError(`Deploy manifest ${field}.path must be a non-empty string`, `${field}.path`);
+  }
+  if (raw.url !== undefined && (typeof raw.url !== "string" || raw.url.length === 0)) {
+    throw verifyError(`Deploy manifest ${field}.url must be a non-empty string`, `${field}.url`);
+  }
+  if (raw.path === undefined && raw.url === undefined) {
+    throw verifyError(
+      `Deploy manifest ${field} must declare \`path\` (resolved against the project public origin) or \`url\``,
+      field,
+    );
+  }
+
+  let expectStatus: number | undefined;
+  if (raw.expect !== undefined) {
+    if (!isRecord(raw.expect) || Array.isArray(raw.expect)) {
+      throw verifyError(`Deploy manifest ${field}.expect must be a JSON object`, `${field}.expect`);
+    }
+    assertKnownFields(raw.expect, `Deploy manifest ${field}.expect`, MANIFEST_VERIFY_EXPECT_FIELDS);
+    const status = (raw.expect as { status?: unknown }).status;
+    if (!isHttpStatus(status)) {
+      throw verifyError(
+        `Deploy manifest ${field}.expect.status must be an integer HTTP status (100-599)`,
+        `${field}.expect.status`,
+      );
+    }
+    expectStatus = status;
+  }
+  if (raw.expected_status !== undefined) {
+    if (!isHttpStatus(raw.expected_status)) {
+      throw verifyError(
+        `Deploy manifest ${field}.expected_status must be an integer HTTP status (100-599)`,
+        `${field}.expected_status`,
+      );
+    }
+    if (expectStatus !== undefined && expectStatus !== raw.expected_status) {
+      throw verifyError(
+        `Deploy manifest ${field} must not set both expect.status and expected_status with different values`,
+        `${field}.expected_status`,
+      );
+    }
+    expectStatus = raw.expected_status;
+  }
+  if (expectStatus === undefined) {
+    throw verifyError(
+      `Deploy manifest ${field} must declare the expected HTTP status via \`expect: { status }\` (or \`expected_status\`)`,
+      `${field}.expect.status`,
+    );
+  }
+  if (raw.retries !== undefined && (!Number.isSafeInteger(raw.retries) || raw.retries < 1)) {
+    throw verifyError(
+      `Deploy manifest ${field}.retries must be a positive integer`,
+      `${field}.retries`,
+    );
+  }
+
+  return {
+    id: raw.id,
+    ...(raw.path !== undefined ? { path: raw.path } : {}),
+    ...(raw.url !== undefined ? { url: raw.url } : {}),
+    expect: { status: expectStatus },
+    ...(raw.retries !== undefined ? { retries: raw.retries } : {}),
+  };
+}
+
+function isHttpStatus(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 100 && value <= 599;
 }
 
 function resolveProject(

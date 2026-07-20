@@ -1,7 +1,7 @@
 import { allowanceAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, normalizeArgv } from "./argparse.mjs";
+import { assertKnownFlags, normalizeArgv, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 message — Send messages to Run402 developers
 
@@ -84,7 +84,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   if (sub !== "send") {
-    fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown message subcommand: ${sub}`, hint: "Run `run402 message --help` for usage.", details: { command: "message", subcommand: sub } });
+    failUnknownSubcommand("message", sub);
   }
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);

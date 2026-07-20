@@ -5,7 +5,7 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 import { withAutoApprove } from "./operator.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
-import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolveProjectSelector, validateRegularFile } from "./argparse.mjs";
+import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolveProjectSelector, validateRegularFile, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
 
@@ -939,6 +939,6 @@ export async function run(sub, args) {
     case "promote-user": { const { projectId, rest } = resolveProjectSelector(args); await promoteUser(projectId, rest[0]); break; }
     case "demote-user":  { const { projectId, rest } = resolveProjectSelector(args); await demoteUser(projectId, rest[0]); break; }
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown projects subcommand: ${sub}`, hint: "Run `run402 projects --help` for usage.", details: { command: "projects", subcommand: sub } });
+      failUnknownSubcommand("projects", sub);
   }
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, resolveProjectSelector, validateRegularFile } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, resolveProjectSelector, validateRegularFile, failUnknownSubcommand } from "./argparse.mjs";
 import { editRequestAction } from "./next-actions.mjs";
 
 const HELP = `run402 secrets — Manage project secrets
@@ -256,7 +256,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   if (!["set", "list", "delete"].includes(sub)) {
-    fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown secrets subcommand: ${sub}`, hint: "Run `run402 secrets --help` for usage.", details: { command: "secrets", subcommand: sub } });
+    failUnknownSubcommand("secrets", sub);
   }
   const parsed = normalizeArgv(Array.isArray(args) ? args : []);
   switch (sub) {
@@ -276,6 +276,6 @@ export async function run(sub, args) {
       break;
     }
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown secrets subcommand: ${sub}`, hint: "Run `run402 secrets --help` for usage.", details: { command: "secrets", subcommand: sub } });
+      failUnknownSubcommand("secrets", sub);
   }
 }

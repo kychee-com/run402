@@ -31,7 +31,8 @@ import { pipeline } from "node:stream/promises";
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag } from "./argparse.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, failUnknownSubcommand } from "./argparse.mjs";
+import { toWireAssetRef } from "./asset-wire.mjs";
 
 const HELP = `run402 blob — Direct-to-S3 blob storage
 
@@ -458,8 +459,11 @@ async function putOne(projectId, filePath, opts) {
     ...(opts.metadata ? { metadata: opts.metadata } : {}),
     ...(opts.exifPolicy ? { exifPolicy: opts.exifPolicy } : {}),
   });
-  log(opts, { event: "done", ...result });
-  return result;
+  // Canonical wire shape only on stdout: snake_case keys, no camelCase
+  // duplicates (the SDK's AssetRef carries both; toWireAssetRef projects).
+  const wire = toWireAssetRef(result);
+  log(opts, { event: "done", ...wire });
+  return wire;
 }
 
 function computeDestKey(filePath, keyOpt) {
@@ -681,6 +685,6 @@ export async function run(sub, args) {
     case "sign":     await sign(defaultProject, args); break;
     case "diagnose": await diagnose(defaultProject, args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown assets subcommand: ${sub}`, hint: "Run `run402 assets --help` for usage.", details: { command: "assets", subcommand: sub } });
+      failUnknownSubcommand("assets", sub);
   }
 }

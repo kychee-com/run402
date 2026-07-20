@@ -1096,6 +1096,193 @@ test("projects provision can run SDK-owned recursive prerequisites when explicit
   assert.ok(result.steps.some((step) => step.action === Run402Action.TierSet && step.details?.idempotency_key === "action:provision-root:tier.set"));
 });
 
+test("up runs deploy-manifest verify.http checks after apply and surfaces verification.http[]", async (t) => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-deploy-verify-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    project_id: "prj_ready",
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+    verify: { http: [{ id: "home", path: "/", expect: { status: 200 } }] },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+  const fetched: string[] = [];
+  const fetchMock = mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+    fetched.push(String(input));
+    return new Response("ok", { status: 200 });
+  });
+  t.after(() => fetchMock.mock.restore());
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({});
+
+    // Apply ran first, then verification against the project public origin.
+    assert.ok(calls.includes("project.apply:prj_ready"));
+    assert.deepEqual(fetched, ["https://prj_ready.run402.test/"]);
+    assert.equal(result.result?.verify?.status, "verified");
+    assert.deepEqual(result.result?.verification?.http, [{
+      id: "home",
+      status: "succeeded",
+      path: "/",
+      expected_status: 200,
+      actual_status: 200,
+      propagation_wait_ms: 0,
+    }]);
+    const verifyStep = result.steps.find((step) => step.action === "app.verify");
+    assert.ok(verifyStep, "verification step recorded");
+    assert.equal(verifyStep?.state, "succeeded");
+    // Ordering: the verify step comes after the deploy.apply step.
+    const applyIndex = result.steps.findIndex((step) => step.action === "deploy.apply");
+    const verifyIndex = result.steps.findIndex((step) => step.action === "app.verify");
+    assert.ok(verifyIndex > applyIndex, "verify runs after apply");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up verify.http prefers the deploy result's own site url over a missing keystore site_url", async (t) => {
+  // Live regression (2026-07-19): a project provisioned in another workspace
+  // has keys WITHOUT a cached site_url; verification resolved the origin
+  // from the keystore only, fetched against null, and every check failed
+  // with an unexplained actual_status: null. The deploy result's urls are
+  // authoritative for the release that was just applied.
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-deploy-verify-origin-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    project_id: "prj_ready",
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+    verify: { http: [{ id: "home", path: "/", expect: { status: 200 } }] },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+    keysSiteUrl: null,
+    deployUrls: { site: "https://fresh-claim.run402.test", deployment: "https://dpl-x.sites.run402.test" },
+  });
+  const fetched: string[] = [];
+  const fetchMock = mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+    fetched.push(String(input));
+    return new Response("ok", { status: 200 });
+  });
+  t.after(() => fetchMock.mock.restore());
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({});
+
+    assert.deepEqual(fetched, ["https://fresh-claim.run402.test/"]);
+    assert.equal(result.result?.verify?.status, "verified");
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up verify.http with no resolvable origin fails loudly with a missing_public_origin diagnostic", async (t) => {
+  // The failure must explain itself — an entry with actual_status: null and
+  // no diagnostic reads as a mystery network error (2026-07-19 live find).
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-deploy-verify-noorigin-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    project_id: "prj_ready",
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+    verify: { http: [{ id: "home", path: "/", expect: { status: 200 } }] },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+    keysSiteUrl: null,
+    deployUrls: {},
+  });
+  const fetched: string[] = [];
+  const fetchMock = mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+    fetched.push(String(input));
+    return new Response("ok", { status: 200 });
+  });
+  t.after(() => fetchMock.mock.restore());
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({});
+
+    assert.deepEqual(fetched, [], "no fetch without an origin");
+    assert.equal(result.result?.verify?.status, "failed");
+    const entry = result.result?.verification?.http?.[0] as Record<string, unknown> | undefined;
+    assert.ok(entry, "check entry present");
+    const diagnostic = entry?.diagnostic as Record<string, unknown> | undefined;
+    assert.equal(diagnostic?.error, "missing_public_origin");
+    assert.match(String(diagnostic?.hint ?? ""), /absolute `url`|subdomain/);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up verify reruns deploy-manifest verify.http checks without deploying", async (t) => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-deploy-verify-only-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    project_id: "prj_ready",
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+    verify: { http: [{ id: "home", path: "/", expect: { status: 200 } }] },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response("ok", { status: 200 }));
+  t.after(() => fetchMock.mock.restore());
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({ verifyOnly: true });
+
+    assert.equal(result.result?.project_id, "prj_ready");
+    assert.equal(result.result?.verify?.status, "verified");
+    assert.equal(result.result?.verification?.http[0]?.status, "succeeded");
+    assert.equal(result.result?.verification?.http[0]?.actual_status, 200);
+    assert.ok(!calls.some((call) => call.startsWith("project.apply:")), "verify-only must not deploy");
+    assert.ok(calls.includes("projects.keys:prj_ready"));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up verify fails VERIFY_CHECKS_REQUIRED for a deploy manifest without a verify block", async () => {
+  const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-deploy-verify-missing-"));
+  writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
+    project_id: "prj_ready",
+    site: { replace: { "index.html": { data: "<h1>ready</h1>" } } },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: true,
+    tierActive: true,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await assert.rejects(
+      actions.up({ verifyOnly: true }),
+      (err: unknown) => (err as { code?: string }).code === "VERIFY_CHECKS_REQUIRED",
+    );
+    assert.ok(!calls.some((call) => call.startsWith("project.apply:")));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up refuses to overwrite a workspace link changed during execution", async () => {
   const dir = mkdtempSync(join(process.cwd(), ".tmp-run402-up-link-conflict-"));
   writeFileSync(join(dir, "run402.deploy.json"), JSON.stringify({
@@ -1149,6 +1336,9 @@ function fakeSdk(opts: {
   deployPlanOptions?: Array<{ idempotencyKey?: string }>;
   deployEvents?: unknown[];
   deploySubdomainBindings?: Array<{ host: string; claimed_at: string; kvs_synced_at: string | null }>;
+  /** null = keystore has keys but NO cached site_url (provisioned elsewhere). */
+  keysSiteUrl?: string | null;
+  deployUrls?: Record<string, string>;
 }) {
   const mailboxes: Array<Record<string, unknown>> = [];
   const mailboxSettings: { default_outbound_mailbox_id: string | null; auth_sender_mailbox_id: string | null } = {
@@ -1209,7 +1399,13 @@ function fakeSdk(opts: {
       },
       async keys(projectId: string) {
         opts.calls.push(`projects.keys:${projectId}`);
-        return { anon_key: "anon", service_key: "service", site_url: `https://${projectId}.run402.test` };
+        return {
+          anon_key: "anon",
+          service_key: "service",
+          ...(opts.keysSiteUrl === null
+            ? {}
+            : { site_url: opts.keysSiteUrl ?? `https://${projectId}.run402.test` }),
+        };
       },
     },
     apps: {
@@ -1293,7 +1489,7 @@ function fakeSdk(opts: {
             return {
               release_id: "rel_123",
               operation_id: "op_123",
-              urls: {},
+              urls: opts.deployUrls ?? {},
               diff: {},
               warnings: [],
               ...(opts.deploySubdomainBindings ? { subdomain_bindings: opts.deploySubdomainBindings } : {}),

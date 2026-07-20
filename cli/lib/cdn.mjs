@@ -16,7 +16,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 cdn — CloudFront CDN diagnostics for public blob URLs
 
@@ -135,6 +135,6 @@ export async function run(sub, args) {
       await waitFresh(defaultProject, args);
       break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown cdn subcommand: ${sub}`, hint: "Run `run402 cdn --help` for usage.", details: { command: "cdn", subcommand: sub } });
+      failUnknownSubcommand("cdn", sub);
   }
 }

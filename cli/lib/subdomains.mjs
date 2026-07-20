@@ -1,7 +1,7 @@
 import { resolveProject, resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 import { cliCommandAction } from "./next-actions.mjs";
 
 const HELP = `run402 subdomains — Manage custom subdomains
@@ -197,6 +197,6 @@ export async function run(sub, args) {
     case "delete": await deleteSubdomain(args); break;
     case "list":   await list(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown subdomains subcommand: ${sub}`, hint: "Run `run402 subdomains --help` for usage.", details: { command: "subdomains", subcommand: sub } });
+      failUnknownSubcommand("subdomains", sub);
   }
 }

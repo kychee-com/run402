@@ -18,7 +18,7 @@
 
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, failUnknownSubcommand } from "./argparse.mjs";
 import { editRequestAction } from "./next-actions.mjs";
 
 // Locally-defined helpers — argparse.mjs's normalized form is a flat
@@ -99,11 +99,7 @@ export async function run(sub, args) {
       await invalidate(args);
       break;
     default:
-      fail({
-        code: "UNKNOWN_SUBCOMMAND",
-        message: `Unknown cache subcommand: ${sub}`,
-        hint: "Run `run402 cache --help` for usage.",
-        details: { command: "cache", subcommand: sub },
+      failUnknownSubcommand("cache", sub, {
         next_actions: [editRequestAction("run402 cache --help", "Choose a supported cache subcommand.")],
       });
   }

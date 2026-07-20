@@ -1,7 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, resolvePositionalProject } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, resolvePositionalProject, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 ai — AI translation and moderation tools
 
@@ -230,6 +230,6 @@ export async function run(sub, args) {
     case "moderate":  await moderate(args); break;
     case "usage":     await usage(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown ai subcommand: ${sub}`, hint: "Run `run402 ai --help` for usage.", details: { command: "ai", subcommand: sub } });
+      failUnknownSubcommand("ai", sub);
   }
 }

@@ -64,6 +64,10 @@
         { "type": "null" },
         { "$ref": "#/$defs/i18n" }
       ]
+    },
+    "verify": {
+      "$ref": "#/$defs/verify",
+      "description": "Authoring-only post-apply HTTP verification, run by `run402 up` after a successful apply and rerunnable with `run402 up verify`. Stripped before deploy planning (never part of the wire ReleaseSpec)."
     }
   },
   "anyOf": [
@@ -638,6 +642,49 @@
           "description": "Confirmation token echoed back from a prior plan; required to commit a destructive sync."
         }
       }
+    },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "http": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/verifyHttpCheck" }
+        }
+      }
+    },
+    "verifyHttpCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Request path resolved against the project public origin."
+        },
+        "url": { "type": "string", "minLength": 1 },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "type": "integer", "minimum": 100, "maximum": 599 }
+          }
+        },
+        "expected_status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599,
+          "description": "Snake-case alias for expect.status."
+        },
+        "retries": { "type": "integer", "minimum": 1 }
+      },
+      "allOf": [
+        { "anyOf": [ { "required": ["path"] }, { "required": ["url"] } ] },
+        { "anyOf": [ { "required": ["expect"] }, { "required": ["expected_status"] } ] }
+      ]
     }
   }
 }

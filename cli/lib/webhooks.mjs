@@ -1,7 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateWebhookUrl } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateWebhookUrl, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 email webhooks — Manage mailbox webhooks
 
@@ -262,6 +262,6 @@ export async function run(sub, args) {
     case "deliveries": await deliveries(args); break;
     case "redrive":    await redrive(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown webhooks action: ${sub}`, hint: "Run `run402 webhooks --help` for usage.", details: { command: "webhooks", subcommand: sub } });
+      failUnknownSubcommand("email webhooks", sub, { label: "webhooks" });
   }
 }

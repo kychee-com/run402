@@ -6,6 +6,7 @@ import {
   flagValue,
   parseIntegerFlag,
   requirePositionalCount,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 const ROLE_LIST = "owner | admin | developer | billing | viewer";
@@ -472,6 +473,6 @@ export async function run(sub, args) {
     case "whoami": await whoami(args); break;
     case "audit": await audit(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown org subcommand: ${sub}`, hint: "Run `run402 org --help` for usage.", details: { command: "org", subcommand: sub } });
+      failUnknownSubcommand("org", sub);
   }
 }

@@ -8,6 +8,7 @@ import {
   positionalArgs,
   resolveProjectSelector,
   validateEvmAddress,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 const HELP = `run402 contracts — KMS-backed Ethereum signers for smart-contract calls
@@ -520,6 +521,6 @@ export async function run(sub, args) {
     case "drain":            { const { projectId, rest } = select(); await drain(projectId, rest[0], rest.slice(1)); break; }
     case "delete":           { const { projectId, rest } = select(); await deleteSigner(projectId, rest[0], rest.slice(1)); break; }
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown contracts subcommand: ${sub}`, hint: "Run `run402 contracts --help` for usage.", details: { command: "contracts", subcommand: sub } });
+      failUnknownSubcommand("contracts", sub);
   }
 }

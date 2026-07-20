@@ -19,7 +19,7 @@
 //   - SDK/gateway-provided `next_actions` pass through at runtime; this scanner
 //     targets literals authored in cli/lib source files.
 
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -463,5 +463,374 @@ describe("CLI output contract drift protection", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// CLI-wide dual-casing gate (item 8)
+//
+// The gateway wire shape is snake_case. The SDK's typed surfaces add
+// camelCase conveniences, and the CLI must project them away before JSON
+// stdout — the same value must never appear under two casings
+// (`size_bytes` AND `size`… was observed live on `assets put`).
+// `assertNoDualCaseKeys` recursively fails on any object level carrying
+// both a camelCase key and its snake_case twin, and is applied to the
+// stdout of the commands most likely to regress.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function assertNoDualCaseKeys(value, path = "$") {
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => assertNoDualCaseKeys(entry, `${path}[${index}]`));
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  const keys = Object.keys(value);
+  const keySet = new Set(keys);
+  for (const key of keys) {
+    if (/[A-Z]/.test(key)) {
+      const snakeTwin = key.replace(/[A-Z]+/g, (m) => `_${m.toLowerCase()}`);
+      if (keySet.has(snakeTwin)) {
+        assert.fail(
+          `dual-cased key pair at ${path}: "${key}" + "${snakeTwin}" — emit the canonical snake_case key only ` +
+          `(project SDK objects through toWireAssetRef or an equivalent projector before stdout)`,
+        );
+      }
+    }
+    assertNoDualCaseKeys(value[key], `${path}.${key}`);
+  }
+}
+
+describe("CLI dual-case output gate (canonical snake_case stdout)", () => {
+  const API = "https://test-api.run402.com";
+  const gateDir = mkdtempSync(join(tmpdir(), "run402-dualcase-"));
+  const savedEnv = {
+    configDir: process.env.RUN402_CONFIG_DIR,
+    apiBase: process.env.RUN402_API_BASE,
+  };
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalExit = process.exit;
+  let stdoutLines = [];
+  let stderrLines = [];
+
+  function captureStart() {
+    stdoutLines = [];
+    stderrLines = [];
+    console.log = (...args) => stdoutLines.push(args.map(String).join(" "));
+    console.error = (...args) => stderrLines.push(args.map(String).join(" "));
+  }
+
+  function captureStop() {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  function stdoutJson() {
+    const text = stdoutLines.join("\n");
+    assert.ok(/^\s*[[{]/.test(text), `expected JSON stdout, got: ${text}\nstderr: ${stderrLines.join("\n")}`);
+    return JSON.parse(text);
+  }
+
+  function jsonResponse(body, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  async function runCaptured(fn) {
+    captureStart();
+    try {
+      await fn();
+    } catch (err) {
+      err.message = `${err.message}\nstdout:\n${stdoutLines.join("\n")}\nstderr:\n${stderrLines.join("\n")}`;
+      throw err;
+    } finally {
+      captureStop();
+    }
+  }
+
+  // Happy-path unified-apply mock for `assets put`: plan → content plan →
+  // S3 PUT → content commit → apply commit. Mirrors the SDK's
+  // installApplyHandler fixture (sdk/src/namespaces/assets.test.ts); the
+  // plan response asset_ref is the canonical snake_case gateway shape.
+  function installAssetPutFetchMock() {
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      const rawBody = input instanceof Request ? await input.clone().text().catch(() => "") : init?.body;
+      if (url.endsWith("/apply/v1/plans") && method === "POST") {
+        const body = JSON.parse(String(rawBody));
+        const put = body.spec.assets.put;
+        const missing_content = put.map((e) => ({
+          sha256: e.sha256, size: e.size_bytes, content_type: e.content_type, present: false,
+        }));
+        const asset_entries = put.map((e) => {
+          const suffix = e.sha256.slice(0, 8);
+          const dot = e.key.lastIndexOf(".");
+          const suffixedKey = dot > 0 ? `${e.key.slice(0, dot)}-${suffix}${e.key.slice(dot)}` : `${e.key}-${suffix}`;
+          const host = "pr-abc.run402.com";
+          const urlField = `https://${host}/_blob/${e.key}`;
+          const immutableUrl = e.immutable ? `https://${host}/_blob/${suffixedKey}` : null;
+          const sriB64 = Buffer.from(e.sha256, "hex").toString("base64");
+          return {
+            key: e.key,
+            sha256: e.sha256,
+            size_bytes: e.size_bytes,
+            content_type: e.content_type,
+            visibility: e.visibility,
+            immutable: e.immutable,
+            status: "upload_pending",
+            asset_ref: {
+              key: e.key,
+              sha256: e.sha256,
+              size_bytes: e.size_bytes,
+              content_type: e.content_type,
+              visibility: e.visibility,
+              immutable: e.immutable,
+              url: urlField,
+              immutable_url: immutableUrl,
+              cdn_url: urlField,
+              cdn_immutable_url: immutableUrl,
+              sri: e.immutable ? `sha256-${sriB64}` : null,
+              etag: `"sha256-${e.sha256}"`,
+              content_digest: `sha-256=:${sriB64}:`,
+            },
+          };
+        });
+        return jsonResponse({
+          plan_id: "plan_gate",
+          operation_id: "op_gate",
+          base_release_id: null,
+          manifest_digest: "d".repeat(64),
+          missing_content,
+          asset_entries,
+          diff: { resources: {} },
+          warnings: [],
+        });
+      }
+      if (url.endsWith("/content/v1/plans") && method === "POST") {
+        const body = JSON.parse(String(rawBody));
+        return jsonResponse({
+          plan_id: "cplan_gate",
+          expires_at: "2030-01-01T00:00:00Z",
+          missing: body.content.map((c) => ({
+            sha256: c.sha256,
+            mode: "single",
+            part_size_bytes: c.size,
+            part_count: 1,
+            parts: [{ part_number: 1, url: `https://s3.test/${c.sha256}/p1`, byte_start: 0, byte_end: c.size - 1 }],
+            upload_id: `u_${c.sha256.slice(0, 8)}`,
+            staging_key: `_staging/u/${c.sha256}`,
+            expires_at: "2030-01-01T00:00:00Z",
+          })),
+          entries: body.content.map((c) => ({ sha256: c.sha256, missing: true })),
+        });
+      }
+      if (url.startsWith("https://s3.test/") && method === "PUT") {
+        return new Response("", { status: 200, headers: { etag: '"e"' } });
+      }
+      if (/\/content\/v1\/plans\/[^/]+\/commit$/.test(url) && method === "POST") {
+        return jsonResponse({});
+      }
+      if (/\/apply\/v1\/plans\/[^/]+\/commit$/.test(url) && method === "POST") {
+        return jsonResponse({
+          operation_id: "op_gate",
+          status: "ready",
+          release_id: "rel_gate",
+          urls: { project: "https://prj.run402.test", project_public_id: "abc" },
+        });
+      }
+      throw new Error(`unexpected fetch in assets-put gate: ${method} ${url}`);
+    };
+  }
+
+  before(async () => {
+    process.env.RUN402_CONFIG_DIR = gateDir;
+    process.env.RUN402_API_BASE = API;
+    process.exit = (code) => { throw new Error(`process.exit(${code})`); };
+    const { saveProject, setActiveProjectId } = await import("./cli/core-dist/keystore.js");
+    saveProject("prj_test123", { anon_key: "anon_test_key", service_key: "svc_test_key" });
+    setActiveProjectId("prj_test123");
+    const { saveAllowance } = await import("./cli/lib/config.mjs");
+    saveAllowance({
+      address: "0x0000000000000000000000000000000000000001",
+      privateKey: "0x" + "11".repeat(32),
+      rail: "x402",
+      funded: true,
+      created: "2026-07-01T00:00:00.000Z",
+    });
+  });
+
+  after(() => {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+    console.error = originalError;
+    process.exit = originalExit;
+    if (savedEnv.configDir === undefined) delete process.env.RUN402_CONFIG_DIR;
+    else process.env.RUN402_CONFIG_DIR = savedEnv.configDir;
+    if (savedEnv.apiBase === undefined) delete process.env.RUN402_API_BASE;
+    else process.env.RUN402_API_BASE = savedEnv.apiBase;
+    rmSync(gateDir, { recursive: true, force: true });
+  });
+
+  it("assets put emits the canonical snake_case wire shape only (no camelCase duplicates)", async () => {
+    const file = join(gateDir, "hello.txt");
+    writeFileSync(file, "hello world\n");
+    installAssetPutFetchMock();
+    try {
+      await runCaptured(async () => {
+        const { run } = await import("./cli/lib/assets.mjs");
+        await run("put", [file, "--project", "prj_test123", "--immutable"]);
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const results = stdoutJson();
+    assert.equal(Array.isArray(results), true);
+    const ref = results[0];
+    assert.equal(ref.key, "hello.txt");
+    // Canonical snake_case keys present.
+    assert.equal(ref.size_bytes, 12);
+    assert.match(ref.sha256 ?? "", /^[0-9a-f]{64}$/);
+    assert.equal(ref.content_type, "text/plain");
+    assert.equal(ref.visibility, "public");
+    assert.equal(ref.immutable, true);
+    assert.ok(ref.url, "url present");
+    assert.ok(ref.immutable_url, "immutable_url present");
+    assert.ok(ref.cdn_url, "cdn_url present");
+    assert.ok(ref.cdn_immutable_url, "cdn_immutable_url present");
+    assert.ok(ref.sri, "sri present");
+    assert.ok(ref.etag, "etag present");
+    assert.ok(ref.content_digest, "content_digest present");
+    // No camelCase duplicates or SDK-only conveniences.
+    for (const banned of [
+      "size", "contentSha256", "contentType", "immutableUrl", "cdnUrl",
+      "cdnMutableUrl", "contentDigest", "cacheKind", "cdn", "thumbUrl", "displayUrl",
+    ]) {
+      assert.equal(banned in ref, false, `assets put stdout must not carry SDK key "${banned}"`);
+    }
+    assertNoDualCaseKeys(results);
+  });
+
+  it("assets ls stdout has no dual-cased keys", async () => {
+    globalThis.fetch = async () => jsonResponse({
+      blobs: [{
+        key: "hello.txt",
+        size_bytes: 12,
+        sha256: "a".repeat(64),
+        content_type: "text/plain",
+        visibility: "public",
+        created_at: "2026-07-01T00:00:00.000Z",
+      }],
+      cursor: null,
+    });
+    try {
+      await runCaptured(async () => {
+        const { run } = await import("./cli/lib/assets.mjs");
+        await run("ls", ["--project", "prj_test123"]);
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    assertNoDualCaseKeys(stdoutJson());
+  });
+
+  it("projects sql stdout has no dual-cased keys", async () => {
+    globalThis.fetch = async () => jsonResponse({
+      rows: [{ n: 1 }],
+      row_count: 1,
+      fields: [{ name: "n" }],
+    });
+    try {
+      await runCaptured(async () => {
+        const { run } = await import("./cli/lib/projects.mjs");
+        await run("sql", ["SELECT 1", "--project", "prj_test123"]);
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const out = stdoutJson();
+    assert.equal(out.row_count, 1);
+    assertNoDualCaseKeys(out);
+  });
+
+  it("secrets list stdout has no dual-cased keys", async () => {
+    globalThis.fetch = async () => jsonResponse({
+      secrets: [{ key: "API_KEY", created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" }],
+    });
+    try {
+      await runCaptured(async () => {
+        const { run } = await import("./cli/lib/secrets.mjs");
+        await run("list", ["--project", "prj_test123"]);
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    assertNoDualCaseKeys(stdoutJson());
+  });
+
+  it("deploy resolve stdout has no dual-cased keys", async () => {
+    globalThis.fetch = async () => jsonResponse({
+      hostname: "example.com",
+      result: 200,
+      match: "static_exact",
+      authorized: true,
+      authorization_result: "authorized",
+      edge_propagation: { status: "settled", claimed_at: null, kvs_synced_at: null },
+    });
+    try {
+      await runCaptured(async () => {
+        const { runDeployV2 } = await import("./cli/lib/deploy-v2.mjs");
+        await runDeployV2("resolve", ["--url", "https://example.com/", "--project", "prj_test123"]);
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    assertNoDualCaseKeys(stdoutJson());
+  });
+
+  it("toWireAssetRef strips every SDK camelCase alias and preserves unknown snake_case keys", async () => {
+    const { toWireAssetRef } = await import("./cli/lib/asset-wire.mjs");
+    const wire = toWireAssetRef({
+      key: "x.png",
+      size_bytes: 5,
+      sha256: "b".repeat(64),
+      visibility: "public",
+      url: "https://h/_blob/x.png",
+      immutable_url: "https://h/_blob/x-bbbbbbbb.png",
+      // SDK camelCase conveniences + aliases (must be dropped/mapped).
+      size: 5,
+      contentSha256: "b".repeat(64),
+      contentType: "image/png",
+      immutableUrl: "https://h/_blob/x-bbbbbbbb.png",
+      cdnUrl: "https://cdn/_blob/x-bbbbbbbb.png",
+      cdnMutableUrl: "https://cdn/_blob/x.png",
+      etag: '"sha256-b"',
+      sri: "sha256-u/8=",
+      contentDigest: "sha-256=:u/8=:",
+      cacheKind: "immutable",
+      cdn: { version: "blob-gateway-v2", invalidationId: null, invalidationStatus: null, ready: true, hint: "x" },
+      thumbUrl: "https://cdn/t.webp",
+      displayUrl: "https://cdn/d.png",
+      display_url: "https://cdn/d.png",
+      metadata: null,
+      image_format: "png",
+      // A hypothetical newer-gateway snake field must survive.
+      future_snake_field: "keep-me",
+      scriptTag() { return "<script>"; },
+    });
+    assert.equal(wire.content_type, "image/png");
+    assert.equal(wire.cdn_url, "https://cdn/_blob/x.png");
+    assert.equal(wire.cdn_immutable_url, "https://cdn/_blob/x-bbbbbbbb.png");
+    assert.equal(wire.content_digest, "sha-256=:u/8=:");
+    assert.equal(wire.immutable, true);
+    assert.equal(wire.future_snake_field, "keep-me");
+    assert.equal(wire.display_url, "https://cdn/d.png");
+    for (const banned of ["size", "cdn", "cacheKind", "thumbUrl", "displayUrl", "contentType", "cdnUrl", "cdnMutableUrl", "immutableUrl", "contentSha256", "contentDigest", "scriptTag"]) {
+      assert.equal(banned in wire, false, `toWireAssetRef must drop "${banned}"`);
+    }
+    assertNoDualCaseKeys(wire);
   });
 });

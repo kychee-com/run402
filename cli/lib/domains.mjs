@@ -1,7 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, parseIntegerFlag } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, parseIntegerFlag, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 domains — Manage ProjectDomain lifecycle
 
@@ -398,6 +398,6 @@ export async function run(sub, args) {
     case "add": removed("run402 domains add", "run402 domains connect <domain> --project <id> --web"); break;
     case "delete": removed("run402 domains delete", "run402 domains disconnect <domain> --project <id> --confirm"); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown domains subcommand: ${sub}`, hint: "Run `run402 domains --help` for usage.", details: { command: "domains", subcommand: sub } });
+      failUnknownSubcommand("domains", sub);
   }
 }

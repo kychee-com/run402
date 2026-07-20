@@ -1,4 +1,4 @@
-import { fail } from "./sdk-errors.mjs";
+import { failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 deploy — Unified deploy operations
 
@@ -65,11 +65,8 @@ export async function run(args) {
       return;
     }
     default:
-      fail({
-        code: "BAD_USAGE",
-        message: `Unknown deploy subcommand: ${sub}`,
+      failUnknownSubcommand("deploy", sub, {
         hint: "Use `run402 deploy apply --manifest <file>` for deployments.",
-        details: { subcommand: sub },
       });
   }
 }

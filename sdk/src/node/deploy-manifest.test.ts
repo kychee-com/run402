@@ -908,4 +908,106 @@ describe("Node deploy manifest helpers", () => {
     assert.equal(ssr?.class, "ssr");
     assert.deepEqual(ssr?.capabilities, ["astro.ssr.v1"]);
   });
+
+  // ── verify.http[] (authoring-only, item 5) ────────────────────────────────
+
+  it("accepts top-level verify.http[], strips it from the wire spec, and returns it as metadata", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_verify",
+      site: { replace: { "index.html": { data: "<h1>x</h1>" } } },
+      verify: {
+        http: [
+          { id: "home", path: "/", expect: { status: 200 } },
+          { id: "api", url: "https://prj.test/health", expected_status: 204, retries: 3 },
+        ],
+      },
+    });
+    // Authoring-only: never on the wire ReleaseSpec.
+    assert.equal("verify" in normalized.spec, false);
+    assert.deepEqual(normalized.verify, {
+      http: [
+        { id: "home", path: "/", expect: { status: 200 } },
+        { id: "api", url: "https://prj.test/health", expect: { status: 204 }, retries: 3 },
+      ],
+    });
+  });
+
+  it("loadDeployManifest carries verify metadata through for JSON manifests", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-manifest-verify-"));
+    try {
+      const manifestPath = join(root, "run402.deploy.json");
+      writeFileSync(manifestPath, JSON.stringify({
+        project_id: "prj_verify",
+        site: { replace: { "index.html": { data: "<h1>x</h1>" } } },
+        verify: { http: [{ id: "home", path: "/", expect: { status: 200 } }] },
+      }));
+      const normalized = await loadDeployManifest(manifestPath);
+      assert.equal("verify" in normalized.spec, false);
+      assert.deepEqual(normalized.verify, { http: [{ id: "home", path: "/", expect: { status: 200 } }] });
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects malformed verify shapes with the structured INVALID_VERIFY_SPEC error", async () => {
+    const base = {
+      project_id: "prj_verify",
+      site: { replace: { "index.html": { data: "x" } } },
+    };
+    const cases: Array<{ verify: unknown; field: RegExp; message: RegExp }> = [
+      { verify: [], field: /^verify$/, message: /verify must be a JSON object/ },
+      { verify: { http: {} }, field: /^verify\.http$/, message: /verify\.http must be an array/ },
+      { verify: { http: [{ path: "/", expect: { status: 200 } }] }, field: /verify\.http\[0\]\.id/, message: /id must be a non-empty string/ },
+      {
+        verify: { http: [
+          { id: "dup", path: "/", expect: { status: 200 } },
+          { id: "dup", path: "/x", expect: { status: 200 } },
+        ] },
+        field: /verify\.http\[1\]\.id/,
+        message: /duplicates verify\.http\[0\]\.id/,
+      },
+      { verify: { http: [{ id: "a", expect: { status: 200 } }] }, field: /verify\.http\[0\]$/, message: /must declare `path`.*or `url`/ },
+      { verify: { http: [{ id: "a", path: "/" }] }, field: /verify\.http\[0\]\.expect\.status/, message: /expected HTTP status/ },
+      { verify: { http: [{ id: "a", path: "/", expect: { status: "200" } }] }, field: /verify\.http\[0\]\.expect\.status/, message: /must be an integer HTTP status/ },
+      {
+        verify: { http: [{ id: "a", path: "/", expect: { status: 200 }, expected_status: 204 }] },
+        field: /verify\.http\[0\]\.expected_status/,
+        message: /both expect\.status and expected_status/,
+      },
+      { verify: { http: [{ id: "a", path: "/", expect: { status: 200 }, retries: 0 }] }, field: /verify\.http\[0\]\.retries/, message: /retries must be a positive integer/ },
+    ];
+    for (const testCase of cases) {
+      await assert.rejects(
+        normalizeDeployManifest({ ...base, verify: testCase.verify } as never),
+        (err: unknown) => {
+          assert.ok(err instanceof LocalError, `expected LocalError, got ${String(err)}`);
+          assert.equal(err.code, "INVALID_VERIFY_SPEC");
+          assert.match(err.message, testCase.message);
+          const details = err.details as { field?: string; hint?: string };
+          assert.match(details.field ?? "", testCase.field);
+          assert.match(details.hint ?? "", /"verify": \{ "http"/);
+          return true;
+        },
+      );
+    }
+  });
+
+  it("rejects unknown verify fields via the existing Unknown-field mechanism (method hint)", async () => {
+    await assert.rejects(
+      normalizeDeployManifest({
+        project_id: "prj_verify",
+        site: { replace: { "index.html": { data: "x" } } },
+        verify: { http: [{ id: "a", path: "/", method: "POST", expect: { status: 200 } }] },
+      } as never),
+      /Unknown Deploy manifest verify\.http\[0\] field: method\..*always fetched with GET/,
+    );
+    await assert.rejects(
+      normalizeDeployManifest({
+        project_id: "prj_verify",
+        site: { replace: { "index.html": { data: "x" } } },
+        verify: { checks: [] },
+      } as never),
+      /Unknown Deploy manifest verify field: checks\..*Use `verify\.http`/,
+    );
+  });
 });

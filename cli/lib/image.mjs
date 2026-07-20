@@ -1,7 +1,7 @@
 import { writeFileSync } from "fs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 image — Generate AI images via x402 micropayments
 
@@ -67,7 +67,7 @@ export async function run(sub, args) {
   }
 
   if (sub !== "generate") {
-    fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown image subcommand: ${sub}`, hint: "Run `run402 image --help` for usage.", details: { command: "image", subcommand: sub } });
+    failUnknownSubcommand("image", sub);
   }
 
   const parsedArgs = normalizeArgv(args);

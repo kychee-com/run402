@@ -8,6 +8,7 @@ import {
   normalizeArgv,
   parseIntegerFlag,
   positionalArgs,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 const HELP = `run402 transfer — Project transfer, one noun for wallet, email, and owned-org recipients
@@ -391,6 +392,6 @@ export async function run(sub, args) {
       await cancel(args);
       return;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown transfer subcommand: ${sub}`, hint: "Run `run402 transfer --help` for usage.", details: { command: "transfer", subcommand: sub } });
+      failUnknownSubcommand("transfer", sub);
   }
 }

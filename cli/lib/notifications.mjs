@@ -40,6 +40,7 @@ import {
   normalizeArgv,
   positionalArgs,
   requirePositionalCount,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 const HELP = `run402 notifications — Operator health notifications + Telegram channel/rules
@@ -435,9 +436,8 @@ async function runChannels(args) {
     await channelsRevoke(rest);
     return;
   }
-  fail({
-    code: "BAD_USAGE",
-    message: `Unknown 'notifications channels' action: ${channelsAction}. Try connect | list | revoke.`,
+  failUnknownSubcommand("notifications channels", channelsAction, {
+    hint: "Run `run402 notifications channels --help` for usage.",
   });
 }
 
@@ -539,9 +539,8 @@ async function runRules(args) {
     await rulesRm(rest);
     return;
   }
-  fail({
-    code: "BAD_USAGE",
-    message: `Unknown 'notifications rules' action: ${rulesAction}. Try add | list | rm.`,
+  failUnknownSubcommand("notifications rules", rulesAction, {
+    hint: "Run `run402 notifications rules --help` for usage.",
   });
 }
 
@@ -586,12 +585,7 @@ export async function run(sub, args) {
       await test(args);
       return;
     default:
-      fail({
-        code: "UNKNOWN_SUBCOMMAND",
-        message: `Unknown notifications subcommand: ${sub}`,
-        hint: "Run `run402 notifications --help` for usage.",
-        details: { command: "notifications", subcommand: sub },
-      });
+      failUnknownSubcommand("notifications", sub);
   }
 }
 

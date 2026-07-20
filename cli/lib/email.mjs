@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 // Extension → content-type for `--attach <path>` without an explicit `:type`.
 const ATTACH_EXT_CONTENT_TYPES = {
@@ -791,6 +791,6 @@ export async function run(sub, args) {
       break;
     }
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown email subcommand: ${sub}`, hint: "Run `run402 email --help` for usage.", details: { command: "email", subcommand: sub } });
+      failUnknownSubcommand("email", sub);
   }
 }

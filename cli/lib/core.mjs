@@ -1,6 +1,6 @@
 import { importArchiveToCore } from "#sdk/node";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, hasHelp, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, hasHelp, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 core — Local Run402 Core commands
 
@@ -29,21 +29,11 @@ export async function run(sub, args = []) {
     return;
   }
   if (sub !== "projects") {
-    fail({
-      code: "UNKNOWN_SUBCOMMAND",
-      message: `Unknown core subcommand: ${sub}`,
-      hint: "Run `run402 core --help` for usage.",
-      details: { command: "core", subcommand: sub },
-    });
+    failUnknownSubcommand("core", sub);
   }
   const action = args[0];
   if (action === "import" || action === "apply") return importProject(args.slice(1));
-  fail({
-    code: "UNKNOWN_SUBCOMMAND",
-    message: `Unknown core projects subcommand: ${action}`,
-    hint: "Run `run402 core projects --help` for usage.",
-    details: { command: "core projects", subcommand: action },
-  });
+  failUnknownSubcommand("core projects", action, { extraSubcommands: ["apply"] });
 }
 
 async function importProject(rawArgs) {

@@ -1,7 +1,7 @@
 import { allowanceAuthHeaders, saveProject } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs, resolveProjectSelector } from "./argparse.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, normalizeArgv, positionalArgs, resolveProjectSelector, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 apps — Browse and manage the app marketplace
 
@@ -330,6 +330,6 @@ export async function run(sub, args) {
     case "update":   await update(args[0], args[1], args.slice(2)); break;
     case "delete":   await deleteVersion(args[0], args[1], args.slice(2)); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown apps subcommand: ${sub}`, hint: "Run `run402 apps --help` for usage.", details: { command: "apps", subcommand: sub } });
+      failUnknownSubcommand("apps", sub);
   }
 }

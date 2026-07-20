@@ -8,8 +8,8 @@
 
 import { allowanceAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, normalizeArgv } from "./argparse.mjs";
+import { reportSdkError } from "./sdk-errors.mjs";
+import { assertKnownFlags, normalizeArgv, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 webhook-secret — Manage the operator webhook signing secret
 
@@ -34,12 +34,7 @@ export async function run(sub, args = []) {
     process.exit(0);
   }
   if (sub !== "rotate") {
-    fail({
-      code: "UNKNOWN_SUBCOMMAND",
-      message: `Unknown webhook-secret subcommand: ${sub}`,
-      hint: "Run `run402 webhook-secret --help` for usage.",
-      details: { command: "webhook-secret", subcommand: sub },
-    });
+    failUnknownSubcommand("webhook-secret", sub);
   }
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);

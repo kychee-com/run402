@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { findProject, API } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, resolveProjectSelector, validateRegularFile } from "./argparse.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, resolveProjectSelector, validateRegularFile, failUnknownSubcommand } from "./argparse.mjs";
 import { cliCommandAction } from "./next-actions.mjs";
 
 const FUNCTION_LOG_REQUEST_ID_RE = /^(?:req|fnrun|fnatt)_[A-Za-z0-9_-]{4,128}$/;
@@ -892,7 +892,7 @@ export async function run(sub, args) {
     case "list":   { const { projectId, rest } = select(); await list(projectId, rest); break; }
     case "delete": { const { projectId, rest } = select(); await deleteFunction(projectId, rest[0], rest.slice(1)); break; }
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown functions subcommand: ${sub}`, hint: "Run `run402 functions --help` for usage.", details: { command: "functions", subcommand: sub } });
+      failUnknownSubcommand("functions", sub);
   }
 }
 

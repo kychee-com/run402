@@ -1,5 +1,10 @@
 import type { DeployResult, PlanResponse, ReleaseSpec } from "./namespaces/deploy.types.js";
-import type { Run402AppInstallGraph, Run402AppUpResultEnvelope } from "./app-up.js";
+import type {
+  Run402AppInstallGraph,
+  Run402AppInstallNodeStatus,
+  Run402AppUpResultEnvelope,
+  Run402AppUpVerifyResult,
+} from "./app-up.js";
 import type { ProvisionResult } from "./namespaces/projects.types.js";
 import type { TierName, TierSetResult } from "./namespaces/tier.js";
 import type { Run402ExecutionMode } from "./config.js";
@@ -177,6 +182,19 @@ export interface Run402ActionResult<T = unknown> {
   result?: T;
 }
 
+/** One post-apply HTTP verification result entry (deploy-manifest `verify.http[]`).
+ *  Same shape as `Run402AppUpResultEnvelope["verification"]["http"][number]`. */
+export interface Run402UpVerificationHttpEntry {
+  id: string;
+  status: Run402AppInstallNodeStatus;
+  path?: string;
+  url?: string;
+  expected_status: number;
+  actual_status?: number | null;
+  propagation_wait_ms?: number;
+  diagnostic?: Record<string, unknown>;
+}
+
 export interface Run402UpResult {
   project_id: string;
   manifest_path: string;
@@ -186,6 +204,11 @@ export interface Run402UpResult {
   spec?: ReleaseSpec;
   plan?: PlanResponse;
   deploy?: DeployResult;
+  /** Deploy-manifest `verify.http[]` per-check results (app manifests report
+   *  the same shape under `app_result.verification.http[]`). */
+  verification?: { http: Run402UpVerificationHttpEntry[] };
+  /** Deploy-manifest verify rollup (app manifests: `app_result.verify`). */
+  verify?: Run402AppUpVerifyResult;
 }
 
 export type Run402ProjectsProvisionActionResult =

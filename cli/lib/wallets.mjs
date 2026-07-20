@@ -14,6 +14,7 @@
  */
 
 import { writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { failUnknownSubcommand } from "./argparse.mjs";
 import { join } from "node:path";
 import { fail } from "./sdk-errors.mjs";
 import { isValidProfileName, getActiveProfile } from "../core-dist/config.js";
@@ -340,11 +341,6 @@ export async function run(sub, args = []) {
     case "import": return cmdImport(rest);
     case "rm": return cmdRm(rest);
     default:
-      fail({
-        code: "UNKNOWN_SUBCOMMAND",
-        message: `Unknown wallets subcommand: ${sub}`,
-        hint: "Run `run402 wallets --help` for usage.",
-        details: { command: "wallets", subcommand: sub },
-      });
+      failUnknownSubcommand("wallets", sub);
   }
 }

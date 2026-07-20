@@ -1,6 +1,6 @@
 import { inspectArchive, verifyArchive } from "#sdk/node";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, hasHelp, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 archives — Inspect and verify portable Run402 project archives
 
@@ -23,12 +23,7 @@ export async function run(sub, rawArgs = []) {
     case "inspect": return inspect(rawArgs);
     case "verify": return verify(rawArgs);
     default:
-      fail({
-        code: "UNKNOWN_SUBCOMMAND",
-        message: `Unknown archives subcommand: ${sub}`,
-        hint: "Run `run402 archives --help` for usage.",
-        details: { command: "archives", subcommand: sub },
-      });
+      failUnknownSubcommand("archives", sub);
   }
 }
 

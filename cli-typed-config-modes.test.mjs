@@ -397,4 +397,45 @@ describe("typed release config CLI modes", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("up --check accepts a deploy manifest with a top-level verify block (local-only)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-cli-up-verify-check-"));
+    try {
+      const manifestPath = join(root, "run402.deploy.json");
+      writeFileSync(manifestPath, JSON.stringify({
+        project_id: "prj_test123",
+        site: { replace: { "index.html": { data: "verify-check" } } },
+        verify: { http: [{ id: "home", path: "/", expect: { status: 200 } }] },
+      }));
+      const { run } = await import("./cli/lib/up.mjs");
+      calls = [];
+      const checked = await captureSuccess(() => run(["--manifest", manifestPath, "--check"]));
+      assert.equal(checked.json.mode, "check");
+      assert.equal(checked.json.result.project_id, "prj_test123");
+      assert.equal(checked.json.result.manifest_path, manifestPath);
+      assert.equal(calls.some((call) => call.path === "/apply/v1/plans"), false, "--check must stay local-only");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("up --check rejects a malformed verify block with the structured INVALID_VERIFY_SPEC envelope", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-cli-up-verify-bad-"));
+    try {
+      const manifestPath = join(root, "run402.deploy.json");
+      writeFileSync(manifestPath, JSON.stringify({
+        project_id: "prj_test123",
+        site: { replace: { "index.html": { data: "verify-bad" } } },
+        verify: { http: [{ id: "home" }] },
+      }));
+      const { run } = await import("./cli/lib/up.mjs");
+      calls = [];
+      const err = await expectExit1(() => run(["--manifest", manifestPath, "--check"]));
+      assert.equal(err.code, "INVALID_VERIFY_SPEC");
+      assert.match(err.message, /verify\.http\[0\]/);
+      assert.equal(calls.length, 0, "validation must fail before any gateway call");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

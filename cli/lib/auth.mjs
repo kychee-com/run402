@@ -1,7 +1,7 @@
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, hasHelp, normalizeArgv } from "./argparse.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 auth — Manage project user authentication
 
@@ -757,6 +757,6 @@ export async function run(sub, args) {
     case "providers": await providers(args); break;
     case "scaffold-roles": scaffoldRoles(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown auth subcommand: ${sub}`, hint: "Run `run402 auth --help` for usage.", details: { command: "auth", subcommand: sub } });
+      failUnknownSubcommand("auth", sub);
   }
 }

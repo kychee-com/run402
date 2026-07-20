@@ -385,11 +385,23 @@ switch (cmd) {
   }
   default: {
     const { fail } = await import("./lib/sdk-errors.mjs");
+    // Did-you-mean candidates: manifest families ∪ the allowlisted skipped
+    // families — together these cover every case in this switch (the
+    // cli-conventions gate keeps them in lockstep), so no second list.
+    const { COMMAND_MANIFEST, SKIPPED_FAMILIES } = await import("./lib/command-manifest.mjs");
+    const { closestWord } = await import("./lib/argparse.mjs");
+    const families = new Set([
+      ...COMMAND_MANIFEST.map((entry) => entry.path[0]),
+      ...Object.keys(SKIPPED_FAMILIES),
+    ]);
+    const closest = typeof cmd === "string" ? closestWord(cmd, [...families]) : null;
     fail({
       code: "UNKNOWN_COMMAND",
-      message: `Unknown command: ${cmd}`,
+      message: closest
+        ? `Unknown command: ${cmd}. Did you mean ${closest}?`
+        : `Unknown command: ${cmd}`,
       hint: "Run `run402 --help` for the command list.",
-      details: { command: cmd },
+      details: { command: cmd, closest: closest ? [closest] : [] },
     });
   }
 }

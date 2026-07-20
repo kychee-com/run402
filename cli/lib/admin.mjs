@@ -1,6 +1,6 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, hasHelp, normalizeArgv, resolveProjectSelector } from "./argparse.mjs";
+import { assertKnownFlags, hasHelp, normalizeArgv, resolveProjectSelector, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 admin — Platform-admin operations (v1.57+)
 
@@ -185,6 +185,6 @@ export async function run(sub, args) {
     case "archive":         await archive(args); break;
     case "reactivate":      await reactivate(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown admin subcommand: ${sub}`, hint: "Run `run402 admin --help` for usage.", details: { command: "admin", subcommand: sub } });
+      failUnknownSubcommand("admin", sub);
   }
 }

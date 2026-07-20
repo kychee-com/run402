@@ -1,7 +1,7 @@
 import { allowanceAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateWebhookUrl } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateWebhookUrl, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 agent — Manage agent identity
 
@@ -201,6 +201,6 @@ export async function run(sub, args) {
       await passkey(args);
       return;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown agent subcommand: ${sub}`, hint: "Run `run402 agent --help` for usage.", details: { command: "agent", subcommand: sub } });
+      failUnknownSubcommand("agent", sub);
   }
 }

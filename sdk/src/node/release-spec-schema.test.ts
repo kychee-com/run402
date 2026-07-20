@@ -104,4 +104,22 @@ describe("ReleaseSpec JSON Schema", () => {
     assert.ok(Array.isArray(oneOf));
     assert.ok(oneOf.some((entry: { type?: string }) => entry.type === "null"));
   });
+
+  it("declares the authoring-only verify block (deploy-manifest verify.http[])", () => {
+    const schema = readSchema();
+    assert.ok(schema.properties.verify, "verify is a top-level property");
+    assert.match(schema.properties.verify.description, /Stripped before deploy planning/);
+
+    const verify = schema.$defs.verify;
+    assert.ok(verify, "$defs.verify is defined");
+    assert.equal(verify.additionalProperties, false);
+
+    const check = schema.$defs.verifyHttpCheck;
+    assert.ok(check, "$defs.verifyHttpCheck is defined");
+    assert.equal(check.additionalProperties, false);
+    assert.deepEqual(check.required, ["id"]);
+    assert.equal(check.properties.expect.properties.status.minimum, 100);
+    assert.equal(check.properties.expect.properties.status.maximum, 599);
+    assert.ok(check.properties.expected_status, "snake alias expected_status declared");
+  });
 });

@@ -14,6 +14,7 @@ import {
   positionalArgs,
   requirePositionalCount,
   validateRegularFile,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 const HELP = `run402 jobs — Submit and inspect platform-managed jobs
@@ -427,7 +428,7 @@ async function artifacts(args = []) {
     await artifactsGet(args.slice(1));
     return;
   }
-  fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown jobs artifacts action: ${action}`, hint: "Run `run402 jobs artifacts --help` for usage.", details: { command: "jobs artifacts", subcommand: action } });
+  failUnknownSubcommand("jobs artifacts", action);
 }
 
 function splitJobIdArg(args = [], valueFlags = []) {
@@ -490,6 +491,6 @@ export async function run(sub, args = []) {
       await purge(args);
       break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown jobs subcommand: ${sub}`, hint: "Run `run402 jobs --help` for usage.", details: { command: "jobs", subcommand: sub } });
+      failUnknownSubcommand("jobs", sub);
   }
 }

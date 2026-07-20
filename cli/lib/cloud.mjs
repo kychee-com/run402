@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 
 import { getSdk } from "./sdk.mjs";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
-import { assertAllowedValue, assertKnownFlags, flagValue, hasHelp, normalizeArgv, parseIntegerFlag, positionalArgs, resolveProjectSelector } from "./argparse.mjs";
+import { assertAllowedValue, assertKnownFlags, flagValue, hasHelp, normalizeArgv, parseIntegerFlag, positionalArgs, resolveProjectSelector, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 cloud — Run402 Cloud portability commands
 
@@ -60,11 +60,7 @@ export async function run(sub, args = []) {
     return;
   }
   if (sub !== "archives") {
-    fail({
-      code: "UNKNOWN_SUBCOMMAND",
-      message: `Unknown cloud subcommand: ${sub}`,
-      hint: "Run `run402 cloud --help` for usage.",
-      details: { command: "cloud", subcommand: sub },
+    failUnknownSubcommand("cloud", sub, {
       next_actions: [{ type: "run_command", command: "run402 cloud archives --help" }],
     });
   }
@@ -73,11 +69,7 @@ export async function run(sub, args = []) {
   if (action === "create") return create(rest);
   if (action === "download") return download(rest);
   if (action === "status") return status(rest);
-  fail({
-    code: "UNKNOWN_SUBCOMMAND",
-    message: `Unknown cloud archives subcommand: ${action}`,
-    hint: "Run `run402 cloud archives --help` for usage.",
-    details: { command: "cloud archives", subcommand: action },
+  failUnknownSubcommand("cloud archives", action, {
     next_actions: [{ type: "run_command", command: "run402 cloud archives --help" }],
   });
 }

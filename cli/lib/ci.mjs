@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { failUnknownSubcommand } from "./argparse.mjs";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -459,6 +460,6 @@ export async function run(sub, args) {
     case "revoke": await revoke(args); break;
     case "set-asset-scopes": await setAssetScopes(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown ci subcommand: ${sub}`, hint: "Run `run402 ci --help` for usage.", details: { command: "ci", subcommand: sub } });
+      failUnknownSubcommand("ci", sub);
   }
 }

@@ -9,6 +9,7 @@ import {
   parseIntegerFlag,
   positionalArgs,
   resolveProjectSelector,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 const HELP = `run402 branches — Contained project data branches
@@ -41,12 +42,7 @@ export async function run(sub, args = []) {
     case "renew": return renew(rest);
     case "delete": return deleteBranch(rest);
     default:
-      fail({
-        code: "UNKNOWN_SUBCOMMAND",
-        message: `Unknown branches subcommand: ${sub}`,
-        hint: "Run `run402 branches --help` for usage.",
-        details: { command: "branches", subcommand: sub },
-      });
+      failUnknownSubcommand("branches", sub);
   }
 }
 

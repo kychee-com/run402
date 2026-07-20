@@ -1,7 +1,7 @@
 import { readAllowance, saveAllowance, allowanceFile } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 allowance — Manage your agent allowance
 
@@ -347,6 +347,6 @@ export async function run(sub, args) {
     case "checkout": await checkout(args); break;
     case "history":  await history(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown allowance subcommand: ${sub}`, hint: "Run `run402 allowance --help` for usage.", details: { command: "allowance", subcommand: sub } });
+      failUnknownSubcommand("allowance", sub);
   }
 }

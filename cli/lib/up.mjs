@@ -72,7 +72,10 @@ Examples:
   run402 up --manifest run402.deploy.ts --require-plan pln_...
 `;
 
-const VERIFY_HELP = `run402 up verify — Rerun app manifest HTTP verification
+const VERIFY_HELP = `run402 up verify — Rerun manifest HTTP verification (verify.http[])
+
+Works for both app manifests (run402.json) and deploy manifests
+(run402.deploy.json / app.json) that declare a top-level verify block.
 
 Usage:
   run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--name <name>] [--human|--json-stream]
@@ -81,8 +84,9 @@ Options:
   repo-or-path        Local app directory or public Git repository URL. Defaults
                       to the current directory.
   --project <id>      Existing project id. Defaults to .run402/project.json,
-                      run402.json project.id, then active project.
-  --manifest <path>   App manifest path. Defaults to run402.json.
+                      manifest project id, then active project.
+  --manifest <path>   Manifest path. Defaults to run402.json, then
+                      run402.deploy.json, then app.json.
   --dir <path>        Workspace directory to inspect (default: current dir).
   --name <name>       Instance name used only to materialize templated public origins.
   --propagation-budget-s <n>
@@ -393,9 +397,11 @@ async function runVerify(args = []) {
 }
 
 export function shouldExitNonZeroForUpResult(result) {
-  return result?.action === "up" &&
-    result?.mode === "apply" &&
-    result?.result?.app_result?.status === "deployed_unverified";
+  if (result?.action !== "up" || result?.mode !== "apply") return false;
+  if (result?.result?.app_result?.status === "deployed_unverified") return true;
+  // Deploy-manifest verify.http[]: a hard verify failure (not propagation)
+  // mirrors the app path's deployed_unverified exit semantics.
+  return result?.result?.verify?.status === "failed";
 }
 
 function parseExecutionMode(args) {

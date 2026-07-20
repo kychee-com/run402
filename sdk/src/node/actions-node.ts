@@ -26,6 +26,7 @@ import type {
   Run402TierSetActionInput,
   Run402UpActionInput,
   Run402UpResult,
+  Run402UpVerificationHttpEntry,
 } from "../actions.js";
 import { Run402Action } from "../actions.js";
 import {
@@ -86,6 +87,8 @@ interface DiscoveredManifest {
   source?: Run402AppSourceMetadata;
   idempotencyKey?: string;
   manifestProjectId?: string;
+  /** Deploy-manifest authoring-only `verify.http[]` checks (release kind). */
+  verify?: { http: Run402AppHttpVerifySpec[] };
 }
 
 function deployEventDetails(event: DeployEvent): Record<string, unknown> {
@@ -417,6 +420,10 @@ export class NodeActions implements Run402Actions {
       return this.#applyAppManifest(input, manifest, workspaceDir, run, startedAt);
     }
 
+    if (input.verifyOnly) {
+      return this.#verifyDeployManifestOnly(input, manifest, workspaceDir, run);
+    }
+
     if (run.executionMode === "check" || run.executionMode === "printSpec") {
       if (!manifest.releaseSpec) {
         throw run.error("Internal error: release manifest did not produce a ReleaseSpec.", "RUN402_ACTION_INTERNAL");
@@ -496,7 +503,7 @@ export class NodeActions implements Run402Actions {
     }
 
     run.setState(deployStep, "running");
-    await this.#assertLocalProjectKeys(resolved.projectId, run);
+    const projectKeys = await this.#assertLocalProjectKeys(resolved.projectId, run);
     const scoped = await this.sdk.project(resolved.projectId);
     const explicitDeployIdempotencyKey = input.idempotencyKey ?? normalized.idempotencyKey ?? manifest.idempotencyKey;
     if (run.executionMode === "plan") {
@@ -538,11 +545,85 @@ export class NodeActions implements Run402Actions {
       release_id: deploy.release_id,
       operation_id: deploy.operation_id,
     });
+
+    // Deploy-manifest verify.http[] — same propagation-tolerant checks the
+    // app-spec path runs, surfaced as `verification.http[]` + `verify` on
+    // the up result.
+    const verifyChecks = manifest.verify?.http ?? [];
+    let verifyBlock: Pick<Run402UpResult, "verification" | "verify"> = {};
+    if (verifyChecks.length > 0) {
+      // The deploy result's own urls are the authoritative origin for THIS
+      // release (fresh subdomain claims included); the keystore's cached
+      // site_url is only a fallback. Resolving from the stale keystore alone
+      // produced silent null-origin check failures (2026-07-19 live find).
+      const publicOrigin =
+        deploy.urls?.site ?? deploy.urls?.subdomain ?? projectKeys.site_url ?? null;
+      const verification = await this.#verifyHttpChecks(verifyChecks, publicOrigin, run, {
+        projectId: resolved.projectId,
+        claimedHosts: claimedHostsFromRelease(releaseSpec, publicOrigin),
+        bindings: deploy.subdomain_bindings ?? [],
+        propagationBudgetMs: propagationBudgetMs(input),
+        propagationWait: input.propagationWait !== false,
+        resolve: (opts) => scoped.apply.resolve(opts),
+      });
+      verifyBlock = {
+        verification: { http: buildVerificationHttpEntries(verifyChecks, verification) },
+        verify: appVerifyResult(verification),
+      };
+    }
+
     return run.result({
       project_id: resolved.projectId,
       manifest_path: manifest.manifestPath,
       ...(resolved.shouldWriteLink ? { workspace_link_path: resolved.linkPath } : {}),
       deploy,
+      ...verifyBlock,
+    });
+  }
+
+  async #verifyDeployManifestOnly(
+    input: Run402UpActionInput,
+    manifest: DiscoveredManifest,
+    workspaceDir: string,
+    run: ActionRun,
+  ): Promise<Run402ActionResult<Run402UpResult>> {
+    const checks = manifest.verify?.http ?? [];
+    if (checks.length === 0) {
+      throw run.error(
+        "Deploy manifest does not define verify.http checks.",
+        "VERIFY_CHECKS_REQUIRED",
+        { manifest_path: manifest.manifestPath },
+      );
+    }
+    const resolved = await this.#resolveProjectForVerify(input, manifest, workspaceDir, run);
+    const projectKeys = await this.sdk.projects.keys(resolved.projectId);
+    // Keystore site_url first (no network), else the server-authoritative
+    // project record — a project provisioned elsewhere has keys without a
+    // cached site_url, and path checks need a real origin.
+    let publicOrigin: string | null = projectKeys.site_url ?? null;
+    if (publicOrigin === null) {
+      try {
+        const detail = await this.sdk.projects.get(resolved.projectId);
+        publicOrigin = (detail as { site_url?: string | null }).site_url ?? null;
+      } catch {
+        // Fall through with null; the checker reports a per-check
+        // missing-origin diagnostic instead of failing silently.
+      }
+    }
+    const scoped = await this.sdk.project(resolved.projectId);
+    const verification = await this.#verifyHttpChecks(checks, publicOrigin, run, {
+      projectId: resolved.projectId,
+      claimedHosts: new Set(),
+      bindings: [],
+      propagationBudgetMs: propagationBudgetMs(input),
+      propagationWait: input.propagationWait !== false,
+      resolve: (opts) => scoped.apply.resolve(opts),
+    });
+    return run.result({
+      project_id: resolved.projectId,
+      manifest_path: manifest.manifestPath,
+      verification: { http: buildVerificationHttpEntries(checks, verification) },
+      verify: appVerifyResult(verification),
     });
   }
 
@@ -645,6 +726,7 @@ export class NodeActions implements Run402Actions {
       manifestProjectId: loaded.spec.project === "prj_up_preflight_placeholder"
         ? undefined
         : loaded.spec.project,
+      ...(loaded.verify ? { verify: loaded.verify } : {}),
     };
   }
 
@@ -800,7 +882,7 @@ export class NodeActions implements Run402Actions {
     const projectKeys = await this.sdk.projects.keys(resolved.projectId);
     const publicOrigin = appPublicOrigin(input, manifest.appSpec) ?? projectKeys.site_url ?? null;
     const scoped = await this.sdk.project(resolved.projectId);
-    const verification = await this.#verifyAppHttp(manifest.appSpec, publicOrigin, run, {
+    const verification = await this.#verifyHttpChecks(manifest.appSpec.verify?.http ?? [], publicOrigin, run, {
       projectId: resolved.projectId,
       claimedHosts: new Set(),
       bindings: [],
@@ -1060,7 +1142,7 @@ export class NodeActions implements Run402Actions {
         propagationWait: input.propagationWait !== false,
         resolve: (opts) => scoped.apply.resolve(opts),
       };
-      const verification = await this.#verifyAppHttp(manifest.appSpec, publicOrigin, run, verifyContext);
+      const verification = await this.#verifyHttpChecks(manifest.appSpec.verify?.http ?? [], publicOrigin, run, verifyContext);
       markAppGraphNodesForVerify(manifest.appGraph, verification);
       const appStatus = verification.ok
         ? "succeeded"
@@ -1447,13 +1529,12 @@ export class NodeActions implements Run402Actions {
     return webhooks;
   }
 
-  async #verifyAppHttp(
-    spec: Run402AppSpec,
+  async #verifyHttpChecks(
+    checks: Run402AppHttpVerifySpec[],
     publicOrigin: string | null,
     run: ActionRun,
     context: AppVerifyContext,
   ): Promise<AppHttpVerifyResult> {
-    const checks = spec.verify?.http ?? [];
     const results = new Map<string, AppHttpVerifyCheckResult>();
     const diagnostics: Run402AppUpDiagnostic[] = [];
     const warnings: Run402AppUpDiagnostic[] = [];
@@ -1478,18 +1559,26 @@ export class NodeActions implements Run402Actions {
     for (const check of checks) {
       const url = check.url ?? (publicOrigin && check.path ? new URL(check.path, publicOrigin).toString() : null);
       if (!url) {
+        const message = `HTTP verification ${check.id} needs either url or project public origin + path.`;
         results.set(check.id, {
           id: check.id,
           ok: false,
           propagationPending: false,
           status: null,
           propagationWaitMs: 0,
+          // Surface WHY on the per-check entry itself — an unexplained
+          // `actual_status: null` reads as a mystery network failure.
+          diagnostic: {
+            error: "missing_public_origin",
+            message,
+            hint: "Path checks resolve against the project's public origin. Use an absolute `url` in the check, or deploy/claim a subdomain so the project has a site URL.",
+          },
         });
         diagnostics.push({
           code: "VERIFY_FAILED",
           severity: "error",
           node_id: `verify.http.${check.id}`,
-          message: `HTTP verification ${check.id} needs either url or project public origin + path.`,
+          message,
         });
         continue;
       }
@@ -1582,7 +1671,18 @@ export class NodeActions implements Run402Actions {
           propagationPending: false,
           status,
           propagationWaitMs: checkPropagationWaitMs,
-          ...(diagnosis ? { diagnostic: { edge_propagation: diagnosis.edge_propagation ?? null, resolve: diagnosis } } : {}),
+          // A network-level fetch failure (status null) must carry its error
+          // on the entry, not only in the diagnostics array.
+          ...(diagnosis || observed.error
+            ? {
+                diagnostic: {
+                  ...(observed.error ? { error: observed.error } : {}),
+                  ...(diagnosis
+                    ? { edge_propagation: diagnosis.edge_propagation ?? null, resolve: diagnosis }
+                    : {}),
+                },
+              }
+            : {}),
         });
         break;
       }
@@ -2043,9 +2143,12 @@ export class NodeActions implements Run402Actions {
     run.setState(step, "succeeded", { path });
   }
 
-  async #assertLocalProjectKeys(projectId: string, run: ActionRun): Promise<void> {
+  async #assertLocalProjectKeys(
+    projectId: string,
+    run: ActionRun,
+  ): Promise<{ anon_key: string; service_key: string; site_url?: string | null }> {
     try {
-      await this.sdk.projects.keys(projectId);
+      return await this.sdk.projects.keys(projectId);
     } catch (err) {
       throw withActionDetails(
         new LocalError(
@@ -2302,6 +2405,32 @@ function markAppGraphNodesForVerify(graph: Run402AppInstallGraph, verification: 
         ? "propagation_pending"
         : "failed";
   }
+}
+
+function buildVerificationHttpEntries(
+  checks: Run402AppHttpVerifySpec[],
+  verification: AppHttpVerifyResult,
+): Run402UpVerificationHttpEntry[] {
+  return checks.map((check) => {
+    const actual = verification.results.get(check.id);
+    const status: Run402UpVerificationHttpEntry["status"] = actual === undefined
+      ? "planned"
+      : actual.ok
+        ? "succeeded"
+        : actual.propagationPending
+          ? "propagation_pending"
+          : "failed";
+    return {
+      id: check.id,
+      status,
+      ...(check.path !== undefined ? { path: check.path } : {}),
+      ...(check.url !== undefined ? { url: check.url } : {}),
+      expected_status: check.expect.status,
+      ...(actual !== undefined ? { actual_status: actual.status } : {}),
+      ...(actual !== undefined ? { propagation_wait_ms: actual.propagationWaitMs } : {}),
+      ...(actual?.diagnostic ? { diagnostic: actual.diagnostic } : {}),
+    };
+  });
 }
 
 function appVerifyResult(verification: AppHttpVerifyResult): Run402AppUpVerifyResult {

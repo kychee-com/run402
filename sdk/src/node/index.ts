@@ -269,8 +269,11 @@ export type {
   DeployManifestInput,
   DeployManifestMigrationSpec,
   DeployManifestSiteSpec,
+  DeployManifestVerifyHttpCheck,
+  DeployManifestVerifySpec,
   LoadDeployManifestOptions,
   NormalizedDeployManifest,
+  NormalizedDeployManifestVerify,
   NormalizeDeployManifestOptions,
 } from "./deploy-manifest.js";
 export { resolveRun402TargetProfile } from "./target-profile.js";

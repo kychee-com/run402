@@ -9,6 +9,7 @@ import {
   parseIntegerFlag,
   positionalArgs,
   resolveProjectSelector,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 const HELP = `run402 snapshots — Project database restore points
@@ -48,12 +49,7 @@ export async function run(sub, args = []) {
     case "restore": return restore(rest);
     case "delete": return deleteSnapshot(rest);
     default:
-      fail({
-        code: "UNKNOWN_SUBCOMMAND",
-        message: `Unknown snapshots subcommand: ${sub}`,
-        hint: "Run `run402 snapshots --help` for usage.",
-        details: { command: "snapshots", subcommand: sub },
-      });
+      failUnknownSubcommand("snapshots", sub);
   }
 }
 

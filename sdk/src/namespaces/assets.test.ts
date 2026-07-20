@@ -1543,3 +1543,102 @@ describe("assets.put — issue #415 — re-plan merge threads v1.50 + v1.54 fiel
     assert.ok(ref.variants?.thumb, "thumb variant copied through");
   });
 });
+
+// ─── AssetRef alias-consistency gate (canonical snake ↔ camelCase) ───────────
+//
+// The gateway wire shape is snake_case; the SDK's AssetRef adds camelCase
+// conveniences for typed consumers (e.g. @run402/astro reads `cdnUrl`).
+// This gate pins two invariants:
+//   (a) every documented camelCase alias STRICTLY equals its canonical
+//       snake-cased source value, and
+//   (b) the AssetRef exposes NO camelCase data key outside the documented
+//       set below — a new field added only-camel, or dual-cased with
+//       diverging values, fails here.
+describe("AssetRef alias consistency (never-regress gate)", () => {
+  // Documented camelCase surface on AssetRef, enumerated from buildAssetRef
+  // in assets.ts. Two groups:
+  //   aliases  — camel key duplicating a canonical wire value
+  //   conveniences — SDK-only computed fields with no snake twin by design
+  const DOCUMENTED_CAMEL_ALIASES = new Set([
+    "size",           // ↔ size_bytes (lowercase, still an alias)
+    "contentSha256",  // ↔ sha256
+    "contentType",    // ↔ wire content_type
+    "immutableUrl",   // ↔ immutable_url
+    "cdnUrl",         // ↔ wire cdn_immutable_url (immutable CDN form)
+    "cdnMutableUrl",  // ↔ wire cdn_url (mutable CDN form)
+    "contentDigest",  // ↔ wire content_digest
+    "displayUrl",     // ↔ display_url (image refs only)
+  ]);
+  const DOCUMENTED_CAMEL_CONVENIENCES = new Set([
+    "cacheKind", // semantic cache-kind hint (no snake twin on the wire)
+    "thumbUrl",  // variants.thumb.cdn_url ?? displayUrl (image refs only)
+  ]);
+
+  it("every camelCase alias strictly equals its snake twin and no undocumented camelCase key exists", async () => {
+    const ref = await putWithImageOverrides("alias-hero.jpg", {
+      width_px: 4032,
+      height_px: 3024,
+      blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+      variant_spec_version: "v1",
+      display_url: "https://pr-abc.run402.com/_blob/alias-hero-3a7fc02e.jpg",
+      display_immutable_url: "https://pr-abc.run402.com/_blob/alias-hero-3a7fc02e.jpg",
+      variants: {
+        thumb: { url: "https://h/t.webp", cdn_url: "https://cdn/t.webp", width_px: 320, height_px: 240, format: "webp", sha256: "9b21fa" + "0".repeat(58) },
+        medium: { url: "https://h/m.webp", cdn_url: "https://cdn/m.webp", width_px: 800, height_px: 600, format: "webp", sha256: "ab19c4" + "0".repeat(58) },
+        large: { url: "https://h/l.webp", cdn_url: "https://cdn/l.webp", width_px: 1920, height_px: 1440, format: "webp", sha256: "7e2c11" + "0".repeat(58) },
+      },
+    });
+    const sha = await applySha256Hex(new Uint8Array([1, 2, 3, 4]));
+    const sriBase64 = Buffer.from(sha, "hex").toString("base64");
+
+    // (a) alias values strictly equal their canonical snake source.
+    assert.equal(ref.size, ref.size_bytes);
+    assert.equal(ref.contentSha256, ref.sha256);
+    assert.equal(ref.immutableUrl, ref.immutable_url);
+    assert.equal(ref.displayUrl, ref.display_url);
+    // The mock gateway sets cdn_immutable_url = immutable_url and
+    // cdn_url = url, so the CDN aliases must land on those wire values.
+    assert.equal(ref.cdnUrl, ref.immutable_url);
+    assert.equal(ref.cdnMutableUrl, ref.url);
+    // contentType echoes the effective content type.
+    assert.equal(ref.contentType, "image/jpeg");
+    // Integrity fields must agree with the canonical SHA (same derivation
+    // the gateway uses for wire sri/etag/content_digest).
+    assert.equal(ref.etag, `"sha256-${sha}"`);
+    assert.equal(ref.sri, `sha256-${sriBase64}`);
+    assert.equal(ref.contentDigest, `sha-256=:${sriBase64}:`);
+
+    // (b) never-regress: no camelCase data key outside the documented set.
+    const documented = new Set([...DOCUMENTED_CAMEL_ALIASES, ...DOCUMENTED_CAMEL_CONVENIENCES]);
+    const undocumented = Object.entries(ref)
+      .filter(([, value]) => typeof value !== "function")
+      .map(([key]) => key)
+      .filter((key) => /[A-Z]/.test(key) && !documented.has(key));
+    assert.deepEqual(
+      undocumented,
+      [],
+      `AssetRef grew undocumented camelCase key(s): ${undocumented.join(", ")}. ` +
+      "Either add the canonical snake_case field (preferred) or extend the documented alias map here AND in cli/lib/asset-wire.mjs.",
+    );
+  });
+
+  it("non-image refs carry the same alias guarantees (no image conveniences)", async () => {
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "report.pdf", size_bytes: 3, content_type: "application/pdf", visibility: "public", immutable: true, missing: true },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
+    const sdk = makeSdk(fetch);
+    const ref = await sdk.assets.put("prj_known", "report.pdf", { content: "abc" }, { immutable: true });
+
+    assert.equal(ref.size, ref.size_bytes);
+    assert.equal(ref.contentSha256, ref.sha256);
+    assert.equal(ref.immutableUrl, ref.immutable_url);
+    assert.equal(ref.cdnUrl, ref.immutable_url);
+    assert.equal(ref.cdnMutableUrl, ref.url);
+    assert.equal(ref.thumbUrl, undefined);
+    assert.equal(ref.displayUrl, undefined);
+  });
+});

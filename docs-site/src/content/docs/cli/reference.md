@@ -104,10 +104,10 @@ Approval and recursion:
 - Run402 Core `up` skips Cloud allowance/tier prerequisites and fails closed if no Core project is selected by `--project`, workspace link, or manifest.
 - The SDK derives child idempotency keys for recursive gateway mutations from the root action key; pass `--idempotency-key` when you need a stable external key.
 - Deploy warnings use the same review surface as `deploy apply`: prefer repeatable `--allow-warning <code>` and reserve broad `--allow-warnings` for reviewed exceptional cases.
-- App manifests can define `verify.http[]`. After apply, `up` fetches those URLs and records per-check status in `result.app_result.verification.http[]`. Fresh managed-subdomain or custom-domain misses that carry Run402 edge sentinels (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) are treated as propagation, not as permanent verify failure, while the deploy binding is fresh or `deploy resolve` reports `edge_propagation.status !== "settled"`.
+- App manifests AND deploy manifests can define `verify.http[]`. After apply, `up` fetches those URLs and records per-check status in `result.app_result.verification.http[]` (app manifests) or `result.verification.http[]` + a `result.verify` rollup (deploy manifests; a hard verify failure exits 1). Fresh managed-subdomain or custom-domain misses that carry Run402 edge sentinels (`x-run402-edge` or JSON codes such as `SUBDOMAIN_NOT_CONFIGURED`) are treated as propagation, not as permanent verify failure, while the deploy binding is fresh or `deploy resolve` reports `edge_propagation.status !== "settled"`.
 - `--propagation-budget-s` controls the wall-clock wait for those fresh edge misses (default 120 seconds). `--no-propagation-wait` returns immediately with app `status: "propagation_pending"` and `verify.status: "propagation_pending"`; the result includes `propagation_wait_ms`, warnings, `next_action`, and diagnostic `edge_propagation` / `resolve` payloads when available.
 - `--verify` waits after a successful deploy apply for gateway/edge release coherence and attaches `result.edge_coherence` plus `result.deploy.edge_coherence`. It uses the same `--propagation-budget-s` budget (default 120 seconds), emits `deploy.verify.poll` progress events, and exits 2 if the report is valid but still not coherent.
-- `run402 up verify` reruns the app manifest HTTP verification without resource mutation, upload, deploy, or project creation. It resolves the project from `--project`, `.run402/project.json`, the manifest project id, then active project, and is the recovery command to run after propagation settles.
+- `run402 up verify` reruns the manifest HTTP verification (app or deploy manifest) without resource mutation, upload, deploy, or project creation. It resolves the project from `--project`, `.run402/project.json`, the manifest project id, then active project, and is the recovery command to run after propagation settles. A manifest without `verify.http[]` fails `VERIFY_CHECKS_REQUIRED`.
 
 Output: stdout is the action result, e.g. `{ "action": "up", "dry_run": false, "target": "cloud", "steps": [...], "result": { "project_id": "prj_...", "manifest_path": "...", "deploy": {...} } }`. Stderr carries JSON action-step events unless `--quiet`.
 
@@ -769,6 +769,17 @@ Additive batch: locally computed `sha256`; gateway dedupes CAS; only new shas up
 
 Declarative sync: `prune: true` deletes keys under explicit `prefix` absent from new `put`; no implicit project-root prune. First apply without `confirm` returns `asset_sync` (`base_revision`, `delete_set_digest`, `expected_delete_count`, `sample_keys`); re-run with `confirm`. Activation rechecks and fails `ASSET_SYNC_DRIFT` if inventory mutates between commit/activation. No `run402 assets sync`; use manifest + `deploy apply` or SDK helpers (`uploadDir`, `syncDir`, `prepareDir`, `putMany`).
 
+Verify block (authoring-only): deploy manifests accept a top-level `verify` with post-apply HTTP checks — the same `verify.http[]` shape app manifests use. It is stripped before the wire `ReleaseSpec` (like `$schema`); `run402 up` runs the checks after a successful apply (propagation-tolerant, results in `result.verification.http[]` + a `result.verify` rollup) and `run402 up verify` reruns them on demand. Each check: `id` (unique, required), `path` (resolved against the project public origin) or `url`, `expect: { status }` (snake alias `expected_status`), optional `retries`.
+
+```json
+"verify": {
+  "http": [
+    { "id": "home", "path": "/", "expect": { "status": 200 } },
+    { "id": "api", "path": "/v1/health", "expected_status": 204 }
+  ]
+}
+```
+
 Migrations: inline `sql` or per-entry `sql_path` / `sql_file`. Make re-runnable: `CREATE TABLE/INDEX IF NOT EXISTS`; new columns need `ALTER TABLE ... ADD COLUMN` in an idempotent `DO` block:
 
 ```sql
@@ -858,7 +869,7 @@ run402 subdomains claim my-app
 
 ### up
 - `run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <prototype|hobby|team>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--verify] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--quiet]` — SDK-owned recursive app deploy. Validates `run402.deploy.json`/`app.json`, requires explicit `--manifest` for executable `.ts/.js` configs, ensures missing Cloud prerequisites when approved, resolves/creates/links a project, then applies the manifest. Output includes `steps[]`; success has no top-level `status`. Use `--check` for local-only validation, `--print-spec` for normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan` for exact reviewed apply. App HTTP verification reports fresh edge misses as `propagation_pending`, waits up to `--propagation-budget-s` (default 120), and `--no-propagation-wait` returns the pending state immediately. Add `--verify` to wait for gateway/edge release coherence after the deploy and attach `edge_coherence`; non-coherence exits 2.
-- `run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--quiet]` — rerun app manifest HTTP verification without deploying, uploading, creating a project, or mutating resources. Use it after `propagation_pending` or before declaring a consumer copy healthy.
+- `run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--propagation-budget-s <seconds>] [--no-propagation-wait] [--quiet]` — rerun manifest HTTP verification (app manifest `verify.http[]` or deploy-manifest top-level `verify`) without deploying, uploading, creating a project, or mutating resources. Use it after `propagation_pending` or before declaring a consumer copy healthy.
 
 ### init
 - `run402 init` — set up with x402 (Base Sepolia). Creates allowance, requests faucet, checks tier, lists projects.
@@ -1281,7 +1292,7 @@ Direct-to-S3 asset storage, 1 byte to 5 TiB. Flat key namespace per project; ren
 
 Bulk directories: use `deploy apply` with `assets` slice: additive `assets: { put: [...] }`; declarative sync `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. No `run402 assets sync`; apply is canonical so HTML + asset URLs stage atomically.
 
-- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--stream]` — without `--stream`, stdout is the final results array (JSON). With `--stream`, stdout is NDJSON per-file progress events. `--json` is a deprecated alias for `--stream` (writes a deprecation warning to stderr).
+- `run402 assets put <file> [files...] [--project <id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--meta <k=v>] [--exif-policy keep|strip] [--concurrency N] [--no-resume] [--stream]` — without `--stream`, stdout is the final results array (JSON). With `--stream`, stdout is NDJSON per-file progress events. `--json` is a deprecated alias for `--stream` (writes a deprecation warning to stderr). Stdout carries the canonical snake_case wire shape only (see the `assets put` output example below); the SDK's camelCase `AssetRef` conveniences never appear on CLI stdout.
 - `run402 assets get <key> --output <file> [--project <id>]`
 - `run402 assets ls [--project <id>] [--prefix <p>] [--limit <n>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
 - `run402 assets rm <key> [--project <id>]`
@@ -1313,7 +1324,37 @@ run402 assets diagnose https://app.run402.com/_blob/avatar.png --project prj_abc
 run402 cdn wait-fresh https://app.run402.com/_blob/avatar.png --sha ba78... --timeout 120
 ```
 
-`put` response (`AssetRef`):
+CLI `assets put` output (canonical snake_case wire shape — one entry per file, plus the local `file` path):
+
+```json
+[
+  {
+    "file": "./hero.png",
+    "key": "hero.png",
+    "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    "size_bytes": 1234,
+    "content_type": "image/png",
+    "visibility": "public",
+    "immutable": true,
+    "url": "https://pr-abc.run402.com/_blob/hero.png",
+    "immutable_url": "https://pr-abc.run402.com/_blob/hero-ba7816bf.png",
+    "cdn_url": "https://pr-abc.run402.com/_blob/hero.png",
+    "cdn_immutable_url": "https://pr-abc.run402.com/_blob/hero-ba7816bf.png",
+    "sri": "sha256-unhbz…",
+    "etag": "\"sha256-ba7816bf…\"",
+    "content_digest": "sha-256=:unhbz…:",
+    "metadata": null,
+    "image_format": "png",
+    "image_info": { "has_alpha": true },
+    "image_exif": null,
+    "image_exif_policy": "keep"
+  }
+]
+```
+
+Image uploads additionally carry the snake_case image fields (`width_px`, `height_px`, `blurhash`, `variant_spec_version`, `display_url`, `display_immutable_url`, `variants`, `blurhash_data_url`, `asset_schema`). The SDK's typed `AssetRef` (below) exposes camelCase conveniences (`cdnUrl`, `immutableUrl`, `contentSha256`, `size`, …) whose values are guaranteed identical to their snake_case wire twins; the CLI emits the wire shape only.
+
+SDK `put` response (`AssetRef`):
 
 ```js
 const asset = await client.assets.put(projectId, key, { bytes });  // v1.45 defaults to immutable: true

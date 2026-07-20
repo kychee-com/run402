@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { fail } from "./sdk-errors.mjs";
 import { resolveProjectId } from "./config.mjs";
+import { COMMAND_MANIFEST } from "./command-manifest.mjs";
 
 export function normalizeArgv(argv = []) {
   const out = [];
@@ -368,11 +369,17 @@ export function resolveProjectSelector(args, opts = {}) {
   return resolvePositionalProject(list, opts);
 }
 
-function closestFlag(flag, candidates) {
+/**
+ * Reusable did-you-mean helper: the closest candidate within Levenshtein
+ * distance ≤ 3, or null when nothing is close enough. Used for flags
+ * (`closestFlag`), top-level commands (cli.mjs's dispatch default), and
+ * subcommands (`failUnknownSubcommand`).
+ */
+export function closestWord(word, candidates) {
   let best = null;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const candidate of candidates) {
-    const d = levenshtein(flag, candidate);
+    const d = levenshtein(word, candidate);
     if (d < bestDistance) {
       best = candidate;
       bestDistance = d;
@@ -380,6 +387,60 @@ function closestFlag(flag, candidates) {
   }
   if (!best) return null;
   return bestDistance <= 3 ? best : null;
+}
+
+function closestFlag(flag, candidates) {
+  return closestWord(flag, candidates);
+}
+
+/**
+ * Known subcommands of a command family, derived from COMMAND_MANIFEST
+ * (never hand-maintained). `family` may be multi-word for nested groups
+ * (e.g. "cloud archives", "email webhooks").
+ */
+export function knownSubcommands(family) {
+  const familyWords = String(family).split(" ").filter(Boolean);
+  const subs = new Set();
+  for (const entry of COMMAND_MANIFEST) {
+    if (entry.path.length <= familyWords.length) continue;
+    if (!familyWords.every((word, i) => entry.path[i] === word)) continue;
+    subs.add(entry.path[familyWords.length]);
+  }
+  return [...subs].sort();
+}
+
+/**
+ * Shared unknown-subcommand failure: derives the family's known
+ * subcommands from COMMAND_MANIFEST and adds a `Did you mean <sub>?`
+ * suggestion plus `details.closest` / `details.known_subcommands`.
+ *
+ * Options:
+ *   hint               override the default `Run \`run402 <family> --help\`…` line
+ *   label              display label when it differs from the manifest family
+ *                      (e.g. the email-webhooks group is dispatched as
+ *                      `run402 webhooks …` but lives at ["email","webhooks",…])
+ *   extraSubcommands   candidates handled by the module but absent from the
+ *                      manifest (nested group heads, aliases)
+ *   next_actions       forwarded to the error envelope
+ */
+export function failUnknownSubcommand(family, sub, { hint, label, extraSubcommands = [], next_actions } = {}) {
+  const displayLabel = label ?? family;
+  const known = [...new Set([...knownSubcommands(family), ...extraSubcommands])].sort();
+  const closest = typeof sub === "string" ? closestWord(sub, known) : null;
+  fail({
+    code: "UNKNOWN_SUBCOMMAND",
+    message: closest
+      ? `Unknown ${displayLabel} subcommand: ${sub}. Did you mean ${closest}?`
+      : `Unknown ${displayLabel} subcommand: ${sub}`,
+    hint: hint ?? `Run \`run402 ${displayLabel} --help\` for usage.`,
+    details: {
+      command: displayLabel,
+      subcommand: sub,
+      closest: closest ? [closest] : [],
+      known_subcommands: known,
+    },
+    ...(next_actions ? { next_actions } : {}),
+  });
 }
 
 function levenshtein(a, b) {

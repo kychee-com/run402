@@ -63,6 +63,27 @@ function redactAllowanceForDiagnostics(allowance) {
   return safe;
 }
 
+/**
+ * Compose a check-failure message context-first.
+ *
+ * The SDK kernel composes thrown messages as `<envelope message> while
+ * <context>`, which reads as two jammed fragments when the envelope message
+ * ends with a period ("…header. while checking tier status"). Strip the
+ * SDK's trailing ` while <context>` segment (using the error's own
+ * `context` field) and lead with the check label instead.
+ */
+function describeCheckFailure(label, err) {
+  const raw = err instanceof Error ? err.message : String(err);
+  const context = typeof err?.context === "string" && err.context.length > 0 ? err.context : null;
+  let reason = raw;
+  if (context) {
+    const marker = ` while ${context}`;
+    const idx = raw.indexOf(marker);
+    if (idx !== -1) reason = (raw.slice(0, idx) + raw.slice(idx + marker.length)).trim();
+  }
+  return `${label} failed: ${reason}`;
+}
+
 export async function run(sub, args = []) {
   const all = [sub, ...args].filter(Boolean);
   if (all.includes("--help") || all.includes("-h")) {
@@ -111,9 +132,11 @@ export async function run(sub, args = []) {
   }
 
   // 2. Allowance.
+  let allowanceConfigured = false;
   try {
     const allowance = readAllowance();
     if (allowance) {
+      allowanceConfigured = true;
       checks.push({
         name: "allowance",
         status: "ok",
@@ -152,8 +175,13 @@ export async function run(sub, args = []) {
       name: "projects",
       status: "ok",
       value: { project_count: projectCount },
+      // State-aware parenthetical: only claim the wallet is set up when the
+      // allowance check above actually passed; pre-init installs are pointed
+      // at `run402 init` first.
       ...(projectCount === 0 && {
-        hint: "No projects yet — run 'run402 projects provision' to create one (wallet is already set up).",
+        hint: allowanceConfigured
+          ? "No projects yet — run 'run402 projects provision' to create one (wallet is already set up)."
+          : "No projects yet — run 'run402 init' to set up the wallet first, then 'run402 projects provision'.",
       }),
     });
   } catch (err) {
@@ -224,7 +252,7 @@ export async function run(sub, args = []) {
     checks.push({
       name: "tier",
       status: "error",
-      message: err instanceof Error ? err.message : String(err),
+      message: describeCheckFailure("tier status check", err),
     });
   }
 
@@ -324,13 +352,13 @@ export async function run(sub, args = []) {
     checks.push({
       name: "operator_health",
       status: "skipped",
-      message: err instanceof Error ? err.message : String(err),
+      message: describeCheckFailure("operator status check", err),
       ...(verbose && { hint: "GET /agent/v1/operator/status not reachable; requires v1.55+ gateway." }),
     });
     checks.push({
       name: "runtime_staleness",
       status: "skipped",
-      message: err instanceof Error ? err.message : String(err),
+      message: describeCheckFailure("operator status check", err),
     });
   }
 

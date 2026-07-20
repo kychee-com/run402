@@ -1,11 +1,12 @@
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError, parseFlagJson, fail } from "./sdk-errors.mjs";
+import { reportSdkError, parseFlagJson } from "./sdk-errors.mjs";
 import {
   normalizeArgv,
   assertKnownFlags,
   flagValue,
   requirePositionalCount,
   resolveProjectSelector,
+  failUnknownSubcommand,
 } from "./argparse.mjs";
 
 const HELP = `run402 grants — per-project capability grants (agent/CI principals)
@@ -129,6 +130,6 @@ export async function run(sub, args) {
     case "create": await create(args); break;
     case "revoke": await revoke(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown grants subcommand: ${sub}`, hint: "Run `run402 grants --help` for usage.", details: { command: "grants", subcommand: sub } });
+      failUnknownSubcommand("grants", sub);
   }
 }

@@ -6,7 +6,7 @@ import { allowanceAuthHeaders, resolveProjectId, updateProject } from "./config.
 import { resolveFilePathsInManifest } from "./manifest.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 const SMALL_DIR_THRESHOLD = 5;
 
@@ -364,6 +364,6 @@ export async function run(sub, args) {
     case "deploy":      await deploy(args); break;
     case "deploy-dir":  await deployDir(args); break;
     default:
-      fail({ code: "UNKNOWN_SUBCOMMAND", message: `Unknown sites subcommand: ${sub}`, hint: "Run `run402 sites --help` for usage.", details: { command: "sites", subcommand: sub } });
+      failUnknownSubcommand("sites", sub);
   }
 }
