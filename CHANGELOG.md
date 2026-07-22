@@ -2,6 +2,13 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — arbitrary x402 buyer
+
+- **SDK:** added `r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey? })`, with a $0.10 default ceiling, unpriced pass-through, faithful settlement receipts, and structured `PaymentBuyerError` codes.
+- **Retry safety:** the Node buyer retains signed proofs only in memory and re-presents the byte-identical proof for an identical retry after an ambiguous transport failure. Used-proof responses report `already_settled` without inventing a transaction receipt; durable attempt journals remain proof-free.
+- **CLI/MCP/OpenClaw:** added `run402 pay <url>` and `pay_url` as thin SDK shims, including exact USD-to-micros CLI parsing and Idempotency-Key forwarding.
+- **Docs/tests:** unit coverage pins price ceilings, insufficient funds, unsupported networks, self-pay rejection, settlement receipts, proof reuse, CLI/MCP delegation, sync parity, and an opt-in live paid-route test. SDK docs include the raw challenge → proof → settlement → identical-proof retry protocol.
+
 ## Unreleased — Telegram notification channel + routing rules
 
 - **SDK:** added `r.admin.channels.{connectTelegram, list, revokeTelegram}` and `r.admin.rules.{list, create, update, delete}` (self-serve Telegram push on top of the v1.55 operator-notifications substrate). `admin.testNotification(opts?)` now accepts `{ source?, eventType? }` and its result carries `telegram.destinations[]`, the per-binding delivery outcome for the synthetic event.

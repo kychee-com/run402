@@ -388,8 +388,9 @@ function synthesize(snippet: Snippet): SnippetSource {
 
 /**
  * Build an in-memory TypeScript program over all synthesized snippet files,
- * resolving `@run402/sdk` and `@run402/sdk/node` from disk normally so we hit
- * the workspace's `sdk/dist/`.
+ * resolving SDK entrypoints directly to this checkout's built declarations.
+ * This keeps the gate faithful in linked worktrees where a shared root
+ * `node_modules` may otherwise point at another checkout's workspace package.
  */
 function compile(sources: SnippetSource[]): readonly ts.Diagnostic[] {
   const fileMap = new Map<string, string>();
@@ -411,10 +412,15 @@ function compile(sources: SnippetSource[]): readonly ts.Diagnostic[] {
     sourceMap: false,
     composite: false,
     incremental: false,
-    // Ensure snippets resolve `@run402/sdk` and `@run402/sdk/node` against
-    // the workspace's local install; baseUrl + paths would shadow that.
-    baseUrl: undefined,
-    paths: undefined,
+    // Compile against the candidate checkout's declarations, never a sibling
+    // worktree reached through a shared node_modules workspace symlink.
+    baseUrl: REPO_ROOT,
+    paths: {
+      "@run402/sdk": ["sdk/dist/index.d.ts"],
+      "@run402/sdk/config": ["sdk/dist/config.d.ts"],
+      "@run402/sdk/node": ["sdk/dist/node/index.d.ts"],
+      "@run402/sdk/node/config": ["sdk/dist/node/config.d.ts"],
+    },
     // Bundler resolution lets snippets use bare specifiers without `.js`.
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     module: ts.ModuleKind.ESNext,

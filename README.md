@@ -41,6 +41,21 @@ run402 subdomains claim my-app                       # → https://my-app.run402
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
+Buy from any x402 seller with the same allowance and a default $0.10 ceiling:
+
+```bash
+run402 pay https://seller.example/translate --method POST \
+  --body '{"text":"hello"}' --max-usd 0.05 \
+  --idempotency-key translation:1
+```
+
+The SDK equivalent is `r.pay.fetch(url, init, { maxUsdMicros, idempotencyKey })`;
+MCP callers use `pay_url`. All three return the HTTP response plus structured
+payment metadata and pass unpriced URLs through with `payment: null`. The SDK
+and MCP can re-present an ambiguous proof while their client process remains
+alive; if the one-shot CLI reports `funds_moved: "unknown"`, reconcile that
+settlement before running a command that could authorize a new proof.
+
 Prefer `run402 up` when a repo has `run402.deploy.json` or `app.json`. The CLI stays a thin shim over the Node SDK action runner (`r.actions.run(...)` / `r.up(...)`): it validates the manifest first, then recursively performs only the missing prerequisites. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--name` is project creation/link metadata only; it is not part of the deploy manifest and never renames an existing project. Use `--check` for local validation and `--plan` for gateway-reviewed intent before applying.
 
 If an app manifest defines `verify.http[]`, `run402 up` verifies those URLs after deploy. Fresh run402 edge sentinel misses are reported as `propagation_pending` rather than permanent failures while the binding is still converging; tune that wait with `--propagation-budget-s` (default 120) or return immediately with `--no-propagation-wait`. `run402 up verify` reruns the same HTTP checks without uploading, deploying, creating projects, or mutating resources.
@@ -332,7 +347,7 @@ const p = await r.project(project.project_id);
 await p.assets.put("hello.txt", { content: "hi" });
 ```
 
-The SDK is organised into focused namespaces: `actions` (Node recursive action runner), `projects`, `snapshots`, `branches`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session: browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), and `grants` (per-project capability grants), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
+The SDK is organised into focused namespaces: `actions` (Node recursive action runner), `pay` (bounded arbitrary-URL x402 buyer), `projects`, `snapshots`, `branches`, `archives`, `assets`, `cache`, `ci`, `sites`, `functions`, `jobs`, `secrets`, `subdomains`, `domains`, `email` (+ `webhooks`), `senderDomain`, `auth`, `apps`, `tier`, `billing`, `contracts`, `ai`, `allowance`, `service`, `admin`, `operator` (the human/email operator session: browser-delegated `login` + `overview` across every wallet that verified your email), `wallets` (signed server-side wallet label), `orgs` (org-owned control plane + `r.org(id)` sub-client), and `grants` (per-project capability grants), plus the `r.project(id).apply` hero for atomic mixed writes (release slices + assets slice via `/apply/v1/*`). Every operation throws a typed `Run402Error` subclass on failure: `PaymentRequired`, `PaymentBuyerError`, `ProjectNotFound`, `Unauthorized`, `ApiError`, `NetworkError`, `LocalError`, `Run402DeployError`. `apply()` automatically re-plans safe current-base `BASE_RELEASE_CONFLICT` races and emits `apply.retry` progress events. See [`sdk/README.md`](./sdk/README.md).
 
 **Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+: `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `auth.*` helpers / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 
@@ -348,6 +363,7 @@ Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on succes
 run402 up --name my-app -y                # recursive SDK action runner: init/tier/project/link/deploy
 run402 up verify                          # rerun app HTTP verification without a deploy
 run402 init                              # one-shot allowance + faucet + tier check
+run402 pay https://seller.example/resource --max-usd 0.05
 run402 status                            # organization snapshot (wallet, rail, balances, tier, projects)
 run402 projects provision --name my-app
 run402 projects sql <id> "CREATE TABLE …"
@@ -547,6 +563,12 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `ai_translate` | Translate text. Metered per project. |
 | `ai_moderate` | Moderate text (free). |
 | `ai_usage` | Translation quota (used / included / remaining). |
+
+### External x402 buyer
+
+| Tool | Description |
+|------|-------------|
+| `pay_url` | Call an arbitrary HTTP(S) URL, satisfy a supported exact x402 challenge up to `max_usd_micros` (default 100000), and return the response plus payment receipt metadata. |
 
 ### Apps marketplace
 

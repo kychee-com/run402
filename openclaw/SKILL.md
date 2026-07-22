@@ -51,6 +51,7 @@ For Core, `init --api-base` stores the target in the active profile and does not
 | You want to… | Reach for… |
 |---|---|
 | Set up a wallet from scratch | `run402 init` |
+| Buy from an x402-priced URL | `run402 pay <url> --max-usd <amount>` |
 | Bootstrap/link/deploy a manifest repo | `run402 up --name <name> -y` |
 | Bootstrap/link/deploy and wait for edge coherence | `run402 up --name <name> -y --verify` |
 | Rerun app HTTP verification | `run402 up verify --project <project_id>` |
@@ -1082,6 +1083,21 @@ run402 errors --new-in <release_id> --watch 10m --fail-on-new   # the promote ga
 With `--fail-on-new` (requires `--new-in`) the run is a gate. Exit codes: **0** clean (no identity first seen under that release), **1** new identities appeared (each printed with a sample id + a runnable `run402 logs` command — revert, then drill in; under `--watch` it fails fast the instant one lands), **2** a verdict could NOT be produced (network / auth / API failure) — distinct from 1 so a script never reads an outage as clean. Every successful promote/apply response hands you the exact `run402 errors --new-in <rel> --watch 10m --fail-on-new` command in its `next_actions` (`watch_errors`) — copy it verbatim. Rows tagged `coarse` come from a function that predates the error side-channel; redeploy it to upgrade future fidelity. Read-only; a project A key requesting project B's errors gets `403`, never a `404`.
 
 **My bug or yours?** If an error envelope carries `correlated_platform_incident` (`{ id, subsystem, status }`), the platform was degraded when your call failed — poll the events feed (`run402 events`, the stamp's own `poll` next_action) and check `platform_status` before debugging your own code. It's a correlation, not an exoneration, but a strong signal to look at the platform first; when the incident resolves, the matching `platform_incident` feed event carries your project's real count of platform-caused failed invocations.
+
+## External x402 buyer
+
+```bash
+run402 pay https://seller.example/translate --method POST \
+  --body '{"text":"hello"}' --max-usd 0.05 \
+  --idempotency-key translation:1
+```
+
+The default ceiling is $0.10. Output is
+`{ http_status, body, payment, outcome, replay }`. An unpriced URL has
+`payment: null`. If the CLI reports `funds_moved: "unknown"`, reconcile the
+original settlement before running another command; the one-shot CLI process
+does not persist signed proofs. Use the long-lived MCP `pay_url` tool when
+identical-proof replay across calls is required.
 
 ## Image generation
 

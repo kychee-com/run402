@@ -45,6 +45,7 @@ export const COMMAND_MANIFEST = [
   { path: ["up"], positionals: [p("source", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--check", "-y"], runStyle: "flat", skipBehavioral: "orchestrates a full provision/build/deploy against the real cwd" },
   { path: ["up", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat", skipBehavioral: "polls live edge coherence" },
   { path: ["init"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat", skipBehavioral: "creates a wallet and polls funding" },
+  { path: ["pay"], positionals: [p("url")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["https://example.com/"], runStyle: "flat", skipBehavioral: "calls an external URL and may authorize an x402 payment" },
   { path: ["status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat" },
 
   // ── wallets ──────────────────────────────────────────────────────────────

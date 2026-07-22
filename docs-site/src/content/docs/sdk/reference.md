@@ -113,13 +113,65 @@ address(es), and network(s); it never returns a key, signed authorization, or
 replayable proof. It returns `null` when automatic paid fetch is disabled, a
 custom `fetch` owns payment, or the selected source is not currently available.
 
+### Buy arbitrary x402 URLs (Node)
+
+`r.pay.fetch(url, init?, options?)` is the canonical buyer surface for an
+arbitrary x402-priced HTTP endpoint. It passes unpriced endpoints through,
+defaults `maxUsdMicros` to `100_000` ($0.10), forwards an optional
+`Idempotency-Key`, and returns the response together with a faithful receipt:
+
+```ts
+import { run402 } from "@run402/sdk/node";
+
+const r = run402();
+const result = await r.pay.fetch(
+  "https://seller.example/translate",
+  { method: "POST", body: JSON.stringify({ text: "hello" }) },
+  { maxUsdMicros: 50_000, idempotencyKey: "translation:1" },
+);
+
+console.log(result.outcome, result.payment, await result.response.json());
+```
+
+`payment` is `null` when no payment was required or when an already-used proof
+confirms that a prior ambiguous request settled but the target cannot return a
+transaction reference. Otherwise it is
+`{ amount_usd_micros, pay_to, network, tx_ref, url }`. Branch on
+`PaymentBuyerError.code`: `PAYMENT_EXCEEDS_MAX`, `PAYMENT_WALLET_UNFUNDED`,
+`PAYMENT_NETWORK_UNSUPPORTED`, or `PAYMENT_SETTLEMENT_FAILED`. The error also
+reports `fundsMoved` (`false` or `"unknown"`) and canonical `nextActions`.
+
+For an ambiguous transport failure, retry the identical request on the same SDK
+instance with the same idempotency key. This buyer keeps the signed proof only
+in memory and re-presents that exact proof; it never mints a second authorization.
+An upstream used-proof response becomes `outcome: "already_settled"` and
+`replay: true`. A new SDK process cannot safely reconstruct that proof, so
+reconcile the payment instead of creating a new authorization.
+
+Raw HTTP interoperability follows the same protocol:
+
+1. Send the intended request with a stable `Idempotency-Key`.
+2. On 402, base64url-decode `PAYMENT-REQUIRED`, verify its exact scheme,
+   network, asset, atomic amount, recipient, and your local spend ceiling.
+3. Sign one x402 payload and retry the same request with that base64url JSON in
+   `PAYMENT-SIGNATURE` (`X-PAYMENT` for v1). Do not follow redirects with a
+   payment proof.
+4. On success, base64url-decode `PAYMENT-RESPONSE` and require
+   `success: true`, a non-empty `transaction`, and the expected network before
+   reporting funds moved.
+5. If the signed request loses its response, retain and re-present the same
+   proof for the same intent. Never create a fresh proof until the first
+   settlement is reconciled. A used-proof 402 can establish
+   `already_settled`, but without a settlement header it is not a transaction
+   receipt.
+
 ### Automatic x402 attempt recovery (Node)
 
-The Node entry tracks each automatic x402 payment across the provider-dispatch boundary. If setup, challenge handling, or signing fails before a payment-bearing request is sent, it throws `PaymentAttemptError` with `mutationState: "not_started"` and `safeToRetry: true`. Check `retryable` separately: persistent local-journal corruption is safe from duplicate payment but requires repair instead of an automatic retry. If the signed request may have reached the target but no reliable result returns, it reports `mutationState: "ambiguous"`, `safeToRetry: false`, and `reconcile_payment` / `poll` next actions. Never blindly retry an ambiguous attempt.
+The Node entry tracks each automatic x402 payment across the provider-dispatch boundary. If setup, challenge handling, or signing fails before a payment-bearing request is sent, it throws `PaymentAttemptError` with `mutationState: "not_started"` and `safeToRetry: true`. Check `retryable` separately: persistent local-journal corruption is safe from duplicate payment but requires repair instead of an automatic retry. If the signed request may have reached the target but no reliable result returns, it reports `mutationState: "ambiguous"`, `safeToRetry: false`, and `reconcile_payment` / `poll` next actions. Generic automatic requests must not be blindly retried; `r.pay.fetch` is the deliberate exception because the same live SDK instance retains and re-presents the original proof.
 
 Every challenged payment gets a stable `paymentAttemptId`. A redacted intent is written atomically under the active profile's mode-0700 `payment-attempts/` directory before provider dispatch; individual records are mode 0600. Inspect them with `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })`. Records contain only method, origin, a SHA-256 pathname fingerprint (never the raw path or query), timestamps, phase/state, response status, and stable error code—never wallet keys, auth/payment headers, signed authorizations, request bodies, provider proofs, or raw error causes.
 
-The SDK sends `X-Run402-Payment-Attempt-Id` only on the payment-bearing request so a compatible target can correlate its logs. Redirects are disabled for that signed request, preventing both the correlation id and signed payment authorization from reaching a redirect target. A caller may supply a canonical `pat_` id only when it is new; the SDK reserves it atomically across processes, and an id already present in the journal fails closed with `X402_ATTEMPT_ID_ALREADY_EXISTS` before any network request. Reconcile the existing record and create a fresh attempt for an authorized retry—never replay an ambiguous payment. Malformed reserved-header values fail locally with `INVALID_PAYMENT_ATTEMPT_ID`; they are never replaced with an id that could authorize a new payment.
+The SDK sends `X-Run402-Payment-Attempt-Id` only on the payment-bearing request so a compatible target can correlate its logs. Redirects are disabled for that signed request, preventing both the correlation id and signed payment authorization from reaching a redirect target. A caller may supply a canonical `pat_` id only when it is new; the SDK reserves it atomically across processes, and an id already present in the journal fails closed with `X402_ATTEMPT_ID_ALREADY_EXISTS` before any network request. Generic automatic payment retries require reconciliation and a fresh authorized attempt; only `r.pay.fetch` may re-present its in-memory proof for an identical request. Malformed reserved-header values fail locally with `INVALID_PAYMENT_ATTEMPT_ID`; they are never replaced with an id that could authorize a new payment.
 
 Repo-level deploy through the same SDK action runner used by `run402 up`:
 
@@ -444,12 +496,13 @@ single-copy single-realm callers as a back-compat path.
 | `ApiError` | `"api_error"` | Other non-2xx responses | `status`, `body` |
 | `NetworkError` | `"network_error"` | Fetch rejected with no HTTP response | `cause` |
 | `PaymentAttemptError` | `"payment_attempt_error"` | Automatic x402 setup/signing/submission failed | `code`, `phase`, `paymentAttemptId`, `providerStarted`, `safeToRetry`, `mutationState`, `nextActions` |
+| `PaymentBuyerError` | `"payment_buyer_error"` | Bounded arbitrary-URL x402 buying failed | `code`, `fundsMoved`, `details`, `safeToRetry`, `nextActions` |
 | `LocalError` | `"local_error"` | Local-host issues (filesystem, signing) | `cause` |
 | `X402BalanceError` (Node entry) | `"local_error"` | x402 USDC balance preflight could not be confirmed, or confirmed funds are insufficient | `code`, `safeToRetry`, `mutationState="not_started"`, `details`, `nextActions` |
 | `Run402DeployError` | `"deploy_error"` | Structured envelope from the deploy state machine (v1.34+) | `code`, `phase`, `operationId`, `safeToRetry`, `mutationState`, `nextActions` |
 | `TransferFreezeError` | `"transfer_freeze"` | HTTP 409 with `code: "PROJECT_HAS_PENDING_TRANSFER"` from the v1.59 transfer-freeze middleware blocking owner-side mutations during a pending transfer | `transferId`, `projectId`, `cancelPath`, `previewPath` |
 
-The exported `Run402ErrorKind` union type (`"payment_required" | "project_not_found" | "unauthorized" | "not_authorized" | "api_error" | "network_error" | "payment_attempt_error" | "local_error" | "deploy_error" | "transfer_freeze" | "step_up_required" | "operator_approval_required"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
+The exported `Run402ErrorKind` union type (`"payment_required" | "payment_buyer_error" | "project_not_found" | "unauthorized" | "not_authorized" | "api_error" | "network_error" | "payment_attempt_error" | "local_error" | "deploy_error" | "transfer_freeze" | "step_up_required" | "operator_approval_required"`) supports exhaustive `switch` statements with TypeScript exhaustiveness checking.
 
 ```ts
 import {
@@ -958,12 +1011,22 @@ The helper makes raw `fetch()` calls to the project's own gateway endpoints usin
 
 ## Namespaces — full surface
 
-The `Run402` class exposes 28 namespaces. Click into the SDK source for full method signatures.
+The `Run402` class exposes focused namespaces. Click into the SDK source for full method signatures.
 
 > Reference tables below use plain fences, not `ts` fences. They document the
 > type surface in compact form — they are not runnable programs. Runnable example
 > snippets in this document still use ```` ```ts ```` and are type-checked by CI
 > against the published `@run402/sdk` and `@run402/sdk/node` types.
+
+### `r.pay`
+
+```
+r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey? }): Promise<PayFetchResult>
+```
+
+Node automatically supplies the configured allowance/signer. Isomorphic hosts
+may inject `payExecutor` in `Run402Options`; without one, unpriced URLs pass
+through and a 402 fails locally with `PAYMENT_WALLET_UNFUNDED`.
 
 ### `r.actions` / `r.up` (`@run402/sdk/node` only)
 

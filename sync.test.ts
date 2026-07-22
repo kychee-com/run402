@@ -91,6 +91,7 @@ function parseCliCommands(): string[] {
   for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
   for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
+  if (existsSync(join(__dirname, "cli/lib/pay.mjs"))) cmds.push("pay");
   if (existsSync(join(__dirname, "cli/lib/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
@@ -123,6 +124,7 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseNotificationsGroupActions("channelsAction")) cmds.push(`notifications:channels:${action}`);
   for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
+  if (existsSync(join(__dirname, "openclaw/scripts/pay.mjs"))) cmds.push("pay");
   if (existsSync(join(__dirname, "openclaw/scripts/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
@@ -249,6 +251,7 @@ const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
   { id: "up",                endpoint: "(compound local+gateway action)",       mcp: "app_up",                        cli: "up",                  openclaw: "up" },
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
+  { id: "pay_url",           endpoint: "(external x402 URL)",                  mcp: "pay_url",                       cli: "pay",                 openclaw: "pay" },
   { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
 
   // ── Named wallets / profiles (local-only management; selection via --wallet) ─
@@ -613,6 +616,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Local-only compound flows — MCP handlers compose SDK calls internally.
   up: "actions.up",
   init: null,
+  pay_url: "pay.fetch",
   status: null,
 
   // Named wallets — local profile management (no SDK gateway method).
@@ -1345,6 +1349,10 @@ describe("CLI/MCP SDK-boundary guard", () => {
       ["cli/lib/init.mjs", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
       ["cli/lib/ci.mjs", [/\bfetch\(`https:\/\/api\.github\.com\/repos\//]], // GitHub repository lookup
       ["src/tools/init.ts", [/\bfetch\(TEMPO_RPC\b/]], // Tempo faucet/RPC
+      // These are the intentional SDK buyer calls added by GH-607. The guard's
+      // lexical `fetch(` scan cannot distinguish `sdk.pay.fetch` from raw HTTP.
+      ["cli/lib/pay.mjs", [/\.pay\.fetch\(/]],
+      ["src/tools/pay-url.ts", [/\.pay\.fetch\(/]],
       // doctor-source-scan.mjs documents the canonical fix string for
       // browser-bearer scans — the string itself contains "auth.fetch()"
       // as the recommended replacement, not a real fetch call.

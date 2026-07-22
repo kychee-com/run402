@@ -18,6 +18,7 @@
 
 import { readAllowance } from "../../core-dist/allowance.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import type { AllowanceData, CredentialsProvider } from "../credentials.js";
 import {
   LocalError,
@@ -27,6 +28,17 @@ import {
 } from "../errors.js";
 import { PaidStackUnavailable, loadMppStack, loadX402Stack } from "./_paid-stack.js";
 import type { MppStack, X402Stack } from "./_paid-stack.js";
+import {
+  DEFAULT_PAYMENT_MAX_USD_MICROS,
+  PaymentBuyerError,
+  paymentExceedsMaxError,
+  responseSignalsReplay,
+  walletUnavailableError,
+  type PayExecutor,
+  type PayFetchOptions,
+  type PayFetchResult,
+  type PaymentReceipt,
+} from "../namespaces/pay.js";
 import {
   attemptIdFromRequest,
   createFilePaymentAttemptStore,
@@ -62,6 +74,36 @@ interface PaymentRequirementLike {
   network?: string;
   amount?: string;
   [key: string]: unknown;
+}
+
+export interface X402PaymentRequirements {
+  scheme: string;
+  network: string;
+  asset: string;
+  amount: string;
+  payTo: string;
+  maxTimeoutSeconds: number;
+  extra: Record<string, unknown>;
+}
+
+export interface X402PaymentRequired {
+  x402Version: number;
+  error?: string;
+  resource: { url: string; description?: string; mimeType?: string };
+  accepts: X402PaymentRequirements[];
+  extensions?: Record<string, unknown>;
+}
+
+export interface X402PaymentPayload {
+  x402Version: number;
+  resource?: X402PaymentRequired["resource"];
+  accepted: X402PaymentRequirements;
+  payload: Record<string, unknown>;
+  extensions?: Record<string, unknown>;
+}
+
+export interface X402BuyerClient {
+  createPaymentPayload(required: X402PaymentRequired): Promise<X402PaymentPayload>;
 }
 
 interface KnownBalance {
@@ -193,6 +235,7 @@ export interface PaymentPayerProvenance {
 
 export type ConfiguredPaidFetch = FetchFn & {
   readonly payer: PaymentPayerProvenance;
+  readonly pay?: PayExecutor;
   /** Refreshes mutable balance state without re-resolving the selected payer. */
   refreshBalances(): Promise<void>;
 };
@@ -200,6 +243,8 @@ export type ConfiguredPaidFetch = FetchFn & {
 export type LazyPaidFetch = FetchFn & {
   /** Initializes the selected source if needed and returns public payer provenance only. */
   getPayer(): Promise<PaymentPayerProvenance | null>;
+  /** Execute the receipt-bearing arbitrary-URL buyer flow. */
+  pay: PayExecutor;
 };
 
 export interface PaidFetchOptions {
@@ -275,6 +320,9 @@ interface TrackedPaidFetchOptions {
   createAttemptId?: () => string;
   now?: () => string;
   fetch?: FetchFn;
+  classifyPaymentResponse?: (
+    response: Response,
+  ) => Promise<"completed" | "failed" | "already_settled" | "ambiguous">;
 }
 
 class AttemptJournalWriteError extends Error {
@@ -583,6 +631,13 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
       },
       client,
     );
+    const supportedNetworks = [
+      ...(mainnetSigner ? ["eip155:8453"] : []),
+      ...(sepoliaSigner ? ["eip155:84532"] : []),
+    ];
+    const buyer = createX402BuyerFetch(client as X402BuyerClient, {
+      supportedNetworks,
+    });
     return withPayer(
       trackedFetch,
       {
@@ -594,6 +649,7 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
         ],
       },
       refreshBalances,
+      buyer,
     );
   } catch (err) {
     // Missing optional peers are a stable local capability state. Other setup
@@ -706,6 +762,32 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
     async getPayer(): Promise<PaymentPayerProvenance | null> {
       return (await initialize())?.payer ?? null;
     },
+    async pay(
+      url: string,
+      init: RequestInit | undefined,
+      payOptions: Parameters<PayExecutor>[2],
+    ): Promise<PayFetchResult> {
+      const configured = await initialize();
+      if (configured?.pay) return configured.pay(url, init, payOptions);
+
+      const response = await globalThis.fetch(url, init);
+      if (response.status !== 402) {
+        return {
+          response,
+          payment: null,
+          outcome: "not_required",
+          replay: await responseSignalsReplay(response, payOptions.idempotencyKey !== undefined),
+        };
+      }
+      if (configured?.payer.rail === "mpp") {
+        throw paymentNetworkUnsupportedError(
+          challengeNetworks(response),
+          configured.payer.payers.flatMap((payer) => payer.network ? [payer.network] : []),
+          { configured_rail: "mpp" },
+        );
+      }
+      throw walletUnavailableError({ challenge_networks: challengeNetworks(response) });
+    },
   });
 }
 
@@ -756,8 +838,9 @@ function withPayer(
   fetchFn: FetchFn,
   payer: PaymentPayerProvenance,
   refreshBalances: () => Promise<void> = async () => {},
+  pay?: PayExecutor,
 ): ConfiguredPaidFetch {
-  return Object.assign(fetchFn, { payer, refreshBalances });
+  return Object.assign(fetchFn, { payer, refreshBalances, ...(pay ? { pay } : {}) });
 }
 
 function localAllowanceSigners(
@@ -777,6 +860,549 @@ function localAllowanceSigners(
 export const __paidFetchInternals = {
   createLazyPaidFetchFrom,
 };
+
+interface X402BuyerFetchOptions extends TrackedPaidFetchOptions {
+  supportedNetworks: readonly string[];
+}
+
+interface CachedPaymentProof {
+  headers: Record<string, string>;
+  accepted: X402PaymentRequirements;
+}
+
+interface BuyerCallContext {
+  fingerprint: string;
+  maxUsdMicros: number;
+  proof?: CachedPaymentProof;
+  replayedProof: boolean;
+  alreadySettled: boolean;
+}
+
+/**
+ * Receipt-bearing buyer orchestration over an already-configured x402 client.
+ * Signed proofs live only in this SDK instance's memory. An ambiguous retry of
+ * the identical request re-presents that proof; it never mints a replacement.
+ */
+export function createX402BuyerFetch(
+  client: X402BuyerClient,
+  options: X402BuyerFetchOptions,
+): PayExecutor {
+  const calls = new AsyncLocalStorage<BuyerCallContext>();
+  const proofs = new Map<string, CachedPaymentProof>();
+  const creatingProofs = new Map<string, Promise<CachedPaymentProof>>();
+
+  const tracked = createTrackedX402Fetch(
+    (baseFetch) => async (input, init) => {
+      const call = calls.getStore();
+      if (!call) {
+        throw settlementError("The x402 buyer lost its request context before dispatch.", false);
+      }
+      const request = new Request(input, init);
+      const cached = proofs.get(call.fingerprint);
+      if (cached) {
+        call.proof = cached;
+        call.replayedProof = true;
+        return baseFetch(withProof(request, cached.headers));
+      }
+
+      const retryRequest = request.clone();
+      const firstResponse = await baseFetch(request);
+      if (firstResponse.status !== 402) return firstResponse;
+
+      const required = await decodePaymentRequired(firstResponse);
+      const guarded = guardPaymentRequired(
+        required,
+        options.supportedNetworks,
+        call.maxUsdMicros,
+        request.url,
+      );
+      let pending = creatingProofs.get(call.fingerprint);
+      if (!pending) {
+        pending = createProof(client, guarded)
+          .finally(() => creatingProofs.delete(call.fingerprint));
+        creatingProofs.set(call.fingerprint, pending);
+      }
+      const proof = await pending;
+      proofs.set(call.fingerprint, proof);
+      call.proof = proof;
+      return baseFetch(withProof(retryRequest, proof.headers));
+    },
+    client,
+    {
+      store: options.store,
+      createAttemptId: options.createAttemptId,
+      now: options.now,
+      fetch: options.fetch,
+      async classifyPaymentResponse(response) {
+        const call = calls.getStore();
+        const failure = await upstreamFailure(response);
+        if (call?.replayedProof && isAlreadyUsedFailure(failure)) {
+          call.alreadySettled = true;
+          return "already_settled";
+        }
+        return isProvenNoSettlementFailure(failure) ? "failed" : "ambiguous";
+      },
+    },
+  );
+
+  return async (url, init, payOptions): Promise<PayFetchResult> => {
+    const maxUsdMicros = payOptions.maxUsdMicros ?? DEFAULT_PAYMENT_MAX_USD_MICROS;
+    const fingerprint = await paymentRequestFingerprint(url, init, maxUsdMicros);
+    const call: BuyerCallContext = {
+      fingerprint,
+      maxUsdMicros,
+      replayedProof: false,
+      alreadySettled: false,
+    };
+
+    try {
+      const response = await calls.run(call, () => tracked(url, init));
+      if (!call.proof) {
+        return {
+          response,
+          payment: null,
+          outcome: "not_required",
+          replay: await responseSignalsReplay(response, payOptions.idempotencyKey !== undefined),
+        };
+      }
+      if (call.alreadySettled) {
+        proofs.delete(fingerprint);
+        return {
+          response,
+          payment: null,
+          outcome: "already_settled",
+          replay: true,
+        };
+      }
+      if (!response.ok) {
+        const failure = await upstreamFailure(response);
+        proofs.delete(fingerprint);
+        if (failure.code === "payment_insufficient_funds") {
+          throw walletUnavailableError({
+            upstream_code: failure.code,
+            ...(failure.details ?? {}),
+          });
+        }
+        throw settlementError(
+          "The x402 payment proof was rejected before settlement.",
+          false,
+          {
+            upstream_code: failure.code,
+            ...(failure.x402Error ? { x402_error: failure.x402Error } : {}),
+          },
+        );
+      }
+
+      const payment = receiptFromResponse(response, call.proof.accepted, url);
+      proofs.delete(fingerprint);
+      return {
+        response,
+        payment,
+        outcome: "settled",
+        replay: call.replayedProof,
+      };
+    } catch (cause) {
+      if (cause instanceof PaymentBuyerError) throw cause;
+      if (cause instanceof X402BalanceError) {
+        if (cause.code === "X402_INSUFFICIENT_FUNDS") {
+          throw walletUnavailableError(asRecord(cause.details));
+        }
+        throw settlementError(
+          "The buyer could not confirm wallet funds before signing; no funds moved.",
+          false,
+          { upstream_code: cause.code, ...(asRecord(cause.details)) },
+          cause,
+          true,
+        );
+      }
+      if (cause instanceof PaymentAttemptError) {
+        const fundsMoved = cause.mutationState === "ambiguous" ? "unknown" : false;
+        throw settlementError(
+          fundsMoved === "unknown"
+            ? "The payment-bearing request lost its response; settlement may have occurred. The same SDK instance retains the original proof for an identical retry."
+            : "The payment attempt failed before funds could move.",
+          fundsMoved,
+          {
+            payment_attempt_id: cause.paymentAttemptId,
+            phase: cause.phase,
+            provider_started: cause.providerStarted,
+            upstream_code: cause.code,
+          },
+          cause,
+          cause.safeToRetry,
+          cause.nextActions,
+        );
+      }
+      throw settlementError(
+        "The x402 payment authorization could not be created; no funds moved.",
+        false,
+        {},
+        cause,
+      );
+    }
+  };
+}
+
+async function createProof(
+  client: X402BuyerClient,
+  required: X402PaymentRequired,
+): Promise<CachedPaymentProof> {
+  try {
+    const payload = await client.createPaymentPayload(required);
+    return {
+      accepted: payload.accepted,
+      headers: {
+        [payload.x402Version === 1 ? "X-PAYMENT" : "PAYMENT-SIGNATURE"]: encodeBase64Json(payload),
+      },
+    };
+  } catch (cause) {
+    throw unwrapPolicyError(cause) ?? cause;
+  }
+}
+
+function guardPaymentRequired(
+  required: X402PaymentRequired,
+  supportedNetworks: readonly string[],
+  maxUsdMicros: number,
+  requestUrl: string,
+): X402PaymentRequired {
+  let challengeUrl: string;
+  try {
+    challengeUrl = new URL(required.resource.url).toString();
+  } catch (cause) {
+    throw settlementError(
+      "The x402 challenge resource URL is invalid.",
+      false,
+      { challenge_url: required.resource.url, request_url: requestUrl },
+      cause,
+    );
+  }
+  if (challengeUrl !== new URL(requestUrl).toString()) {
+    throw settlementError(
+      "The x402 challenge is bound to a different resource URL.",
+      false,
+      { challenge_url: challengeUrl, request_url: requestUrl },
+    );
+  }
+
+  const supportedByNetwork = required.accepts.filter(
+    (accept) => accept.scheme === "exact" && supportedNetworks.includes(accept.network),
+  );
+  if (supportedByNetwork.length === 0) {
+    throw paymentNetworkUnsupportedError(
+      [...new Set(required.accepts.map((accept) => accept.network))],
+      [...supportedNetworks],
+    );
+  }
+  const supported = supportedByNetwork.filter((accept) =>
+    accept.asset.toLowerCase() === supportedPaymentAsset(accept.network)?.toLowerCase()
+  );
+  if (supported.length === 0) {
+    throw paymentNetworkUnsupportedError(
+      [...new Set(required.accepts.map((accept) => accept.network))],
+      [...supportedNetworks],
+      {
+        challenge_assets: [...new Set(supportedByNetwork.map((accept) => accept.asset))],
+        wallet_assets: [...new Set(supportedNetworks.flatMap((network) => {
+          const asset = supportedPaymentAsset(network);
+          return asset ? [asset] : [];
+        }))],
+      },
+    );
+  }
+  const valid = supported.map((accept) => ({ accept, amount: atomicAmount(accept.amount) }));
+  if (valid.some(({ amount }) => amount === null)) {
+    throw settlementError(
+      "The x402 challenge contains an invalid atomic amount.",
+      false,
+      { challenge_amounts: supported.map((accept) => accept.amount) },
+    );
+  }
+  const withinLimit = valid.filter(
+    (entry): entry is { accept: X402PaymentRequirements; amount: number } =>
+      entry.amount !== null && entry.amount <= maxUsdMicros,
+  );
+  if (withinLimit.length === 0) {
+    const challenged = Math.min(...valid.map(({ amount }) => amount as number));
+    throw paymentExceedsMaxError(challenged, maxUsdMicros);
+  }
+  return { ...required, accepts: withinLimit.map(({ accept }) => accept) };
+}
+
+function supportedPaymentAsset(network: string): string | null {
+  if (network === "eip155:8453") return USDC_MAINNET;
+  if (network === "eip155:84532") return USDC_SEPOLIA;
+  return null;
+}
+
+function atomicAmount(value: string): number | null {
+  if (!/^\d+$/.test(value)) return null;
+  const amount = Number(value);
+  return Number.isSafeInteger(amount) ? amount : null;
+}
+
+function withProof(request: Request, proofHeaders: Record<string, string>): Request {
+  const headers = new Headers(request.headers);
+  for (const [name, value] of Object.entries(proofHeaders)) headers.set(name, value);
+  return new Request(request, { headers });
+}
+
+async function decodePaymentRequired(response: Response): Promise<X402PaymentRequired> {
+  const header = response.headers.get("PAYMENT-REQUIRED");
+  if (!header) {
+    throw settlementError(
+      "The 402 response did not include a PAYMENT-REQUIRED challenge header.",
+      false,
+    );
+  }
+  let decoded: unknown;
+  try {
+    decoded = decodeBase64Json(header);
+  } catch (cause) {
+    throw settlementError("The PAYMENT-REQUIRED challenge header is invalid.", false, {}, cause);
+  }
+  if (!isPaymentRequired(decoded)) {
+    throw settlementError("The PAYMENT-REQUIRED challenge has an invalid shape.", false);
+  }
+  return decoded;
+}
+
+function isPaymentRequired(value: unknown): value is X402PaymentRequired {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Partial<X402PaymentRequired>;
+  return Number.isInteger(candidate.x402Version) &&
+    Boolean(candidate.resource && typeof candidate.resource.url === "string") &&
+    Array.isArray(candidate.accepts) &&
+    candidate.accepts.every((accept) => Boolean(
+      accept &&
+      typeof accept.scheme === "string" &&
+      typeof accept.network === "string" &&
+      typeof accept.asset === "string" &&
+      typeof accept.amount === "string" &&
+      typeof accept.payTo === "string",
+    ));
+}
+
+function receiptFromResponse(
+  response: Response,
+  accepted: X402PaymentRequirements,
+  url: string,
+): PaymentReceipt {
+  const header = response.headers.get("PAYMENT-RESPONSE") ?? response.headers.get("X-PAYMENT-RESPONSE");
+  if (!header) {
+    throw settlementError(
+      "The paid response omitted the standard PAYMENT-RESPONSE settlement receipt, so settlement cannot be reported faithfully.",
+      "unknown",
+      { response_status: response.status },
+    );
+  }
+  let settlement: unknown;
+  try {
+    settlement = decodeBase64Json(header);
+  } catch (cause) {
+    throw settlementError(
+      "The PAYMENT-RESPONSE settlement receipt is invalid.",
+      "unknown",
+      { response_status: response.status },
+      cause,
+    );
+  }
+  const record = asRecord(settlement);
+  if (record.success !== true || typeof record.transaction !== "string" || record.transaction === "") {
+    throw settlementError(
+      "The payment response does not prove a successful on-chain settlement.",
+      record.success === false ? false : "unknown",
+      { response_status: response.status },
+    );
+  }
+  if (record.network !== accepted.network) {
+    throw settlementError(
+      "The payment response network does not match the accepted x402 challenge.",
+      "unknown",
+      {
+        accepted_network: accepted.network,
+        receipt_network: typeof record.network === "string" ? record.network : null,
+        response_status: response.status,
+      },
+    );
+  }
+  const amount = atomicAmount(accepted.amount);
+  if (amount === null) {
+    throw settlementError("The selected payment amount cannot be represented as usd_micros.", "unknown");
+  }
+  return {
+    amount_usd_micros: amount,
+    pay_to: accepted.payTo,
+    network: record.network,
+    tx_ref: record.transaction,
+    url,
+  };
+}
+
+interface UpstreamPaymentFailure {
+  code: string | null;
+  x402Error: string | null;
+  details: Record<string, unknown> | null;
+}
+
+async function upstreamFailure(response: Response): Promise<UpstreamPaymentFailure> {
+  const challengeError = paymentRequiredError(response);
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    return { code: null, x402Error: challengeError, details: null };
+  }
+  try {
+    const body = asRecord(await response.clone().json());
+    const details = asRecord(body.details);
+    return {
+      code: typeof body.code === "string" ? body.code : null,
+      x402Error: typeof details.x402_error === "string" ? details.x402_error : challengeError,
+      details: Object.keys(details).length > 0 ? details : null,
+    };
+  } catch {
+    return { code: null, x402Error: challengeError, details: null };
+  }
+}
+
+function paymentRequiredError(response: Response): string | null {
+  const header = response.headers.get("PAYMENT-REQUIRED");
+  if (!header) return null;
+  try {
+    const decoded = asRecord(decodeBase64Json(header));
+    return typeof decoded.error === "string" ? decoded.error : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAlreadyUsedFailure(failure: UpstreamPaymentFailure): boolean {
+  if (failure.code !== "TENANT_X402_PAYMENT_INVALID") return false;
+  return /already.{0,20}used|used.{0,20}(authorization|nonce)|nonce.{0,20}used/i.test(
+    failure.x402Error ?? "",
+  );
+}
+
+function isProvenNoSettlementFailure(failure: UpstreamPaymentFailure): boolean {
+  if (failure.code === "payment_insufficient_funds") return true;
+  if (failure.code === "TENANT_X402_SETTLEMENT_FAILED") return true;
+  return failure.code === "TENANT_X402_PAYMENT_INVALID" && !isAlreadyUsedFailure(failure);
+}
+
+export function paymentNetworkUnsupportedError(
+  challengeNetworkValues: string[],
+  walletNetworkValues: string[],
+  extra: Record<string, unknown> = {},
+): PaymentBuyerError {
+  return new PaymentBuyerError({
+    code: "PAYMENT_NETWORK_UNSUPPORTED",
+    message: "The x402 challenge does not offer an exact-scheme network and asset supported by this wallet.",
+    fundsMoved: false,
+    details: {
+      challenge_networks: challengeNetworkValues,
+      wallet_networks: walletNetworkValues,
+      ...extra,
+    },
+    nextActions: [
+      {
+        type: "edit_request",
+        why: "Use a priced endpoint on one of the wallet networks, or configure a signer for a challenge network.",
+      },
+    ],
+  });
+}
+
+function settlementError(
+  message: string,
+  fundsMoved: false | "unknown",
+  details: Record<string, unknown> = {},
+  cause?: unknown,
+  retryable = false,
+  nextActions?: import("../errors.js").NextAction[],
+): PaymentBuyerError {
+  return new PaymentBuyerError({
+    code: "PAYMENT_SETTLEMENT_FAILED",
+    message,
+    fundsMoved,
+    details,
+    retryable,
+    safeToRetry: fundsMoved === false,
+    cause,
+    nextActions: nextActions && nextActions.length > 0
+      ? nextActions
+      : fundsMoved === "unknown"
+        ? [
+            {
+              type: "reconcile_payment",
+              safe_to_auto_execute: false,
+              why: "Confirm the original settlement before authorizing a different payment proof.",
+            },
+          ]
+        : [
+            {
+              type: "retry",
+              why: "No funds moved; retry after correcting the reported pre-settlement failure.",
+            },
+          ],
+  });
+}
+
+function challengeNetworks(response: Response): string[] {
+  const header = response.headers.get("PAYMENT-REQUIRED");
+  if (!header) return [];
+  try {
+    const decoded = decodeBase64Json(header) as { accepts?: Array<{ network?: unknown }> };
+    return [...new Set((decoded.accepts ?? []).flatMap((accept) =>
+      typeof accept.network === "string" ? [accept.network] : [],
+    ))];
+  } catch {
+    return [];
+  }
+}
+
+async function paymentRequestFingerprint(
+  url: string,
+  init: RequestInit | undefined,
+  maxUsdMicros: number,
+): Promise<string> {
+  let request: Request;
+  try {
+    request = new Request(url, init);
+  } catch (cause) {
+    throw settlementError("The paid request could not be constructed.", false, {}, cause);
+  }
+  const headerEntries: Array<[string, string]> = [];
+  request.headers.forEach((value, name) => headerEntries.push([name, value]));
+  const headers = headerEntries
+    .filter(([name]) => ![
+      "payment-signature",
+      "x-payment",
+      "x-run402-payment-attempt-id",
+    ].includes(name.toLowerCase()))
+    .sort(([a], [b]) => a.localeCompare(b));
+  let bodyHash = "";
+  try {
+    const body = new Uint8Array(await request.clone().arrayBuffer());
+    bodyHash = createHash("sha256").update(body).digest("hex");
+  } catch (cause) {
+    throw settlementError("The paid request body cannot be replayed safely.", false, {}, cause);
+  }
+  return createHash("sha256")
+    .update(JSON.stringify({ method: request.method, url: request.url, headers, bodyHash, maxUsdMicros }))
+    .digest("hex");
+}
+
+function encodeBase64Json(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function decodeBase64Json(value: string): unknown {
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
 
 /**
  * Request-scoped payment tracker around `@x402/fetch`.
@@ -937,13 +1563,17 @@ export function createTrackedX402Fetch(
       try {
         const response = await paidFetch(input, init);
         if (context.providerStarted) {
-          const completed = response.ok;
+          const classification = response.ok
+            ? "completed"
+            : await opts.classifyPaymentResponse?.(response) ?? "ambiguous";
+          const completed = classification === "completed" || classification === "already_settled";
+          const failed = classification === "failed";
           writeRecordBestEffort(context, store, {
-            state: completed ? "completed" : "ambiguous",
-            mutation_state: completed ? "completed" : "ambiguous",
+            state: completed ? "completed" : failed ? "failed" : "ambiguous",
+            mutation_state: completed ? "completed" : failed ? "not_started" : "ambiguous",
             response_status: response.status,
           });
-          if (!completed) {
+          if (!completed && !failed) {
             throw new PaymentAttemptError({
               code: "X402_PAYMENT_OUTCOME_AMBIGUOUS",
               message: "The x402 payment target returned a non-success response after provider dispatch; reconcile the attempt before paying again.",

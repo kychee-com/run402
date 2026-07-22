@@ -22,6 +22,7 @@ Commands:
   up          Provision/link/deploy the current app with SDK orchestration
   init        Set up allowance, funding, and check tier status (x402 default)
   init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
+  pay         Call an arbitrary x402-priced URL with a bounded payment
   status      Show full account state (allowance, balance, tier, projects)
   wallets     Manage multiple named wallets (list, new, use, rename, bind, import)
   credentials Manage local credential material (project-keys)
@@ -77,6 +78,7 @@ Examples:
   run402 up --name my-app -y
   run402 allowance create
   run402 allowance fund
+  run402 pay https://seller.example/resource --max-usd 0.05
   run402 deploy apply --manifest app.json
   run402 apply --manifest app.json --rehearse --json
   run402 snapshots list --project prj_...
@@ -150,6 +152,11 @@ switch (cmd) {
   }
   case "init": {
     const { run } = await import("./lib/init.mjs");
+    await run([sub, ...rest].filter(Boolean));
+    break;
+  }
+  case "pay": {
+    const { run } = await import("./lib/pay.mjs");
     await run([sub, ...rest].filter(Boolean));
     break;
   }
