@@ -12,7 +12,7 @@ export const payUrlSchema = {
   idempotency_key: z
     .string()
     .optional()
-    .describe("Stable Idempotency-Key forwarded to the seller and reused for the same intent"),
+    .describe("Stable Idempotency-Key forwarded to the seller; on Run402 pending, retry the identical call with the same payer and key"),
   max_usd_micros: z
     .number()
     .int()
@@ -40,6 +40,12 @@ interface PayUrlSdk {
       payment: unknown;
       outcome: string;
       replay: boolean;
+      paymentId?: string | null;
+      deduplicated?: boolean | null;
+      fundsMoved?: boolean | "unknown" | null;
+      delivery?: "first" | "replay" | "none" | null;
+      settledAt?: string | null;
+      intentState?: string | null;
     }>;
   };
 }
@@ -62,6 +68,12 @@ export async function handlePayUrl(
       payment: result.payment,
       outcome: result.outcome,
       replay: result.replay,
+      payment_id: result.paymentId ?? null,
+      deduplicated: result.deduplicated ?? null,
+      funds_moved: result.fundsMoved ?? null,
+      delivery: result.delivery ?? null,
+      settled_at: result.settledAt ?? null,
+      intent_state: result.intentState ?? null,
     };
     return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
   } catch (error) {

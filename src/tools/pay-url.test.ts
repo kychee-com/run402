@@ -36,6 +36,12 @@ describe("pay_url", () => {
               payment: null,
               outcome: "not_required" as const,
               replay: false,
+              paymentId: "txp_result_1",
+              deduplicated: true,
+              fundsMoved: false,
+              delivery: "replay" as const,
+              settledAt: "2026-07-22T12:00:00.000Z",
+              intentState: "settled",
             };
           },
         },
@@ -51,6 +57,9 @@ describe("pay_url", () => {
     assert.match(text, /"http_status": 201/);
     assert.match(text, /"body": "created"/);
     assert.match(text, /"outcome": "not_required"/);
+    assert.match(text, /"payment_id": "txp_result_1"/);
+    assert.match(text, /"deduplicated": true/);
+    assert.match(text, /"delivery": "replay"/);
   });
 
   it("preserves structured buyer errors, funds-moved truth, and next actions", async () => {

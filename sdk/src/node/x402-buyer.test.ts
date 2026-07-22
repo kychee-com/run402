@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 import { PaymentBuyerError } from "../namespaces/pay.js";
 import {
@@ -428,7 +429,98 @@ describe("createX402BuyerFetch", () => {
       return true;
     });
   });
+
+  it("preserves trusted Run402 pending and journals only sanitized recovery identity", async () => {
+    const records = new Map<string, PaymentAttemptRecord>();
+    const attemptId = "pat_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const key = "ancestor:khufu:tribute:1";
+    const store: PaymentAttemptStore = {
+      claim(record) {
+        if (records.has(record.payment_attempt_id)) return false;
+        records.set(record.payment_attempt_id, structuredClone(record));
+        return true;
+      },
+      write(record) {
+        records.set(record.payment_attempt_id, structuredClone(record));
+      },
+      read(id) {
+        return records.get(id) ?? null;
+      },
+    };
+    const buyer = createX402BuyerFetch(fakeClient(), {
+      supportedNetworks: ["eip155:8453"],
+      store,
+      createAttemptId: () => attemptId,
+      now: () => "2026-07-22T12:00:00.000Z",
+      fetch: async (_input, init) => {
+        if (!new Headers(init?.headers).has("payment-signature")) return challenge();
+        return responseAt(PAID_URL, JSON.stringify({
+          code: "PAYMENT_INTENT_PENDING",
+          message: "Settlement is still being reconciled.",
+          payment_id: "txp_pending_1",
+          intent_state: "ambiguous",
+          funds_moved: false,
+          safe_to_retry: true,
+          retryable: true,
+          next_actions: [{
+            type: "retry",
+            method: "POST",
+            idempotency_key: key,
+            why: "Repeat the identical request with the same payer and key.",
+          }],
+        }), {
+          status: 409,
+          headers: {
+            "content-type": "application/json",
+            "retry-after": "3",
+            "x-run402-payment-id": "txp_pending_1",
+            "x-run402-payment-deduplicated": "false",
+            "x-run402-payment-funds-moved": "false",
+            "x-run402-payment-delivery": "none",
+            "x-run402-payment-intent-state": "pending",
+          },
+        });
+      },
+    });
+
+    await assert.rejects(
+      buyer(PAID_URL, { method: "POST", headers: { "Idempotency-Key": key } }, {
+        maxUsdMicros: 10_000,
+        idempotencyKey: key,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof PaymentBuyerError);
+        assert.equal(error.code, "PAYMENT_INTENT_PENDING");
+        assert.equal(error.status, 409);
+        assert.equal(error.fundsMoved, false, "preserves current-attempt movement independently of ambiguous intent state");
+        assert.equal(error.paymentId, "txp_pending_1");
+        assert.equal(error.intentState, "ambiguous");
+        assert.equal(error.delivery, "none");
+        assert.equal(error.deduplicated, false);
+        assert.equal(error.safeToRetry, true);
+        assert.deepEqual(error.nextActions?.map((action) => action.type), ["retry"]);
+        return true;
+      },
+    );
+
+    const record = records.get(attemptId)!;
+    assert.equal(record.state, "intent_pending");
+    assert.equal(record.mutation_state, "ambiguous");
+    assert.equal(record.payment_id, "txp_pending_1");
+    assert.equal(record.intent_state, "pending");
+    assert.equal(record.retry_after_seconds, 3);
+    assert.equal(record.caller_key_sha256, createHash("sha256").update(key).digest("hex"));
+    const serialized = JSON.stringify(record);
+    assert.doesNotMatch(serialized, new RegExp(key));
+    assert.doesNotMatch(serialized, /payment-signature|authorization|proof|\/tribute\/1c/i);
+  });
 });
+
+function responseAt(url: string, body: BodyInit | null, init: ResponseInit): Response {
+  const response = new Response(body, init);
+  Object.defineProperty(response, "url", { value: url });
+  return response;
+}
 
 function attemptOptions(): {
   store: PaymentAttemptStore;

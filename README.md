@@ -51,10 +51,12 @@ run402 pay https://seller.example/translate --method POST \
 
 The SDK equivalent is `r.pay.fetch(url, init, { maxUsdMicros, idempotencyKey })`;
 MCP callers use `pay_url`. All three return the HTTP response plus structured
-payment metadata and pass unpriced URLs through with `payment: null`. The SDK
-and MCP can re-present an ambiguous proof while their client process remains
-alive; if the one-shot CLI reports `funds_moved: "unknown"`, reconcile that
-settlement before running a command that could authorize a new proof.
+payment metadata and pass unpriced URLs through with `payment: null`. For a
+trusted Run402 `PAYMENT_INTENT_PENDING`, all three surfaces prescribe one
+recovery path: wait for `Retry-After`, then repeat the same request with the
+same payer and key. Never replace the key. The SDK and MCP can also re-present
+an ambiguous proof while their process remains alive; custom/arbitrary sellers
+remain ambiguous and require reconciliation.
 
 Prefer `run402 up` when a repo has `run402.deploy.json` or `app.json`. The CLI stays a thin shim over the Node SDK action runner (`r.actions.run(...)` / `r.up(...)`): it validates the manifest first, then recursively performs only the missing prerequisites. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--name` is project creation/link metadata only; it is not part of the deploy manifest and never renames an existing project. Use `--check` for local validation and `--plan` for gateway-reviewed intent before applying.
 

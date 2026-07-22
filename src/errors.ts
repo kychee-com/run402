@@ -224,6 +224,23 @@ function addCodeGuidance(
     case "INSUFFICIENT_FUNDS":
       lines.push(`\nNext step: Submit payment or fund the allowance, then retry the request.`);
       return true;
+    case "PAYMENT_INTENT_PENDING":
+      lines.push(`\nNext step: Repeat the identical request with the same payer and Idempotency-Key after Retry-After. Do not authorize a fresh key while settlement is unresolved.`);
+      return true;
+    case "PAYMENT_DESTINATION_DRAINING":
+      lines.push(`\nNext step: Wait for the destination mutation to finish, then repeat the identical request. Do not mint a replacement payment identity.`);
+      return true;
+    case "PAYMENT_INTENT_DESTINATION_CHANGED":
+    case "PAYMENT_INTENT_FENCE_EXPIRED":
+    case "IDEMPOTENCY_KEY_REUSED":
+      lines.push(`\nNext step: Follow the gateway-authored next_actions exactly; the old key remains fenced and must not fall through to a fresh charge.`);
+      return true;
+    case "PAYMENT_AUTHORIZATION_LIFETIME_EXCEEDED":
+      lines.push(`\nNext step: Request a standard Run402 challenge and sign an authorization whose maxTimeoutSeconds does not exceed 300.`);
+      return true;
+    case "PAYMENT_CALLER_IDENTITY_NOT_ACTIVE":
+      lines.push(`\nNext step: Caller-key payment identity is not enabled for new purchases on this deployment. Keep the same key and retry after rollout activation; do not remove the key to force a charge.`);
+      return true;
     case "PROJECT_FROZEN":
     case "PROJECT_DORMANT":
     case "PROJECT_PAST_DUE":

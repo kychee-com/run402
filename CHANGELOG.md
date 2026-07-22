@@ -4,6 +4,14 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased — arbitrary x402 buyer
 
+- **Caller-keyed recovery:** trusted Run402 managed/deployment-host pending
+  responses preserve payment ids, dedupe/movement/delivery facts, exact
+  pending/drain/fence/destination errors, and gateway `next_actions`. The
+  mode-0600 journal records only a caller-key digest, payment id, and retry
+  timing—never the raw key or signed proof. Custom domains fail closed.
+- **Safe rollout errors:** `PAYMENT_CALLER_IDENTITY_NOT_ACTIVE` is preserved as
+  an exact buyer error with keep-the-key guidance; clients never downgrade an
+  unseen keyed purchase to proof-only behavior.
 - **SDK:** added `r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey? })`, with a $0.10 default ceiling, unpriced pass-through, faithful settlement receipts, and structured `PaymentBuyerError` codes.
 - **Retry safety:** the Node buyer retains signed proofs only in memory and re-presents the byte-identical proof for an identical retry after an ambiguous transport failure. Used-proof responses report `already_settled` without inventing a transaction receipt; durable attempt journals remain proof-free.
 - **CLI/MCP/OpenClaw:** added `run402 pay <url>` and `pay_url` as thin SDK shims, including exact USD-to-micros CLI parsing and Idempotency-Key forwarding.

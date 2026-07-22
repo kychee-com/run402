@@ -138,15 +138,26 @@ confirms that a prior ambiguous request settled but the target cannot return a
 transaction reference. Otherwise it is
 `{ amount_usd_micros, pay_to, network, tx_ref, url }`. Branch on
 `PaymentBuyerError.code`: `PAYMENT_EXCEEDS_MAX`, `PAYMENT_WALLET_UNFUNDED`,
-`PAYMENT_NETWORK_UNSUPPORTED`, or `PAYMENT_SETTLEMENT_FAILED`. The error also
-reports `fundsMoved` (`false` or `"unknown"`) and canonical `nextActions`.
+`PAYMENT_NETWORK_UNSUPPORTED`, exact Run402 pending/drain/destination/fence/
+lifetime/key-reuse codes, or `PAYMENT_SETTLEMENT_FAILED`. The error preserves
+`fundsMoved`, `paymentId`, intent/delivery facts, and canonical `nextActions`.
+Successful results preserve `paymentId`, `deduplicated`, `fundsMoved`,
+`delivery`, `settledAt`, and `intentState` when supplied.
 
 For an ambiguous transport failure, retry the identical request on the same SDK
 instance with the same idempotency key. This buyer keeps the signed proof only
 in memory and re-presents that exact proof; it never mints a second authorization.
 An upstream used-proof response becomes `outcome: "already_settled"` and
-`replay: true`. A new SDK process cannot safely reconstruct that proof, so
-reconcile the payment instead of creating a new authorization.
+`replay: true`. Across a fresh process, a Run402 managed/deployment host can
+recover a caller-keyed intent by repeating the same request with the same payer
+and key. Trusted pending requires status 409, the exact code and reserved
+header, the same payment-bearing origin, redirects disabled, HTTPS, and an
+exact Run402 DNS-label match. Custom, arbitrary, lookalike, and redirected
+hosts remain ambiguous.
+
+`PAYMENT_CALLER_IDENTITY_NOT_ACTIVE` is a rollout fail-closed response. Keep
+the same key and retry after caller identity is activated; removing the key to
+force a proof-only attempt changes the contract and is never a recovery step.
 
 Raw HTTP interoperability follows the same protocol:
 
@@ -169,7 +180,7 @@ Raw HTTP interoperability follows the same protocol:
 
 The Node entry tracks each automatic x402 payment across the provider-dispatch boundary. If setup, challenge handling, or signing fails before a payment-bearing request is sent, it throws `PaymentAttemptError` with `mutationState: "not_started"` and `safeToRetry: true`. Check `retryable` separately: persistent local-journal corruption is safe from duplicate payment but requires repair instead of an automatic retry. If the signed request may have reached the target but no reliable result returns, it reports `mutationState: "ambiguous"`, `safeToRetry: false`, and `reconcile_payment` / `poll` next actions. Generic automatic requests must not be blindly retried; `r.pay.fetch` is the deliberate exception because the same live SDK instance retains and re-presents the original proof.
 
-Every challenged payment gets a stable `paymentAttemptId`. A redacted intent is written atomically under the active profile's mode-0700 `payment-attempts/` directory before provider dispatch; individual records are mode 0600. Inspect them with `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })`. Records contain only method, origin, a SHA-256 pathname fingerprint (never the raw path or query), timestamps, phase/state, response status, and stable error code—never wallet keys, auth/payment headers, signed authorizations, request bodies, provider proofs, or raw error causes.
+Every challenged payment gets a stable `paymentAttemptId`. A redacted intent is written atomically under the active profile's mode-0700 `payment-attempts/` directory before provider dispatch; individual records are mode 0600. Inspect them with `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })`. Trusted pending records use `state: "intent_pending"` and may include `payment_id`, retry timing, and a SHA-256 caller-key digest. Records never contain a raw caller key, URL path/query, request body, header, wallet key, signature, signed authorization, provider proof, or raw cause.
 
 The SDK sends `X-Run402-Payment-Attempt-Id` only on the payment-bearing request so a compatible target can correlate its logs. Redirects are disabled for that signed request, preventing both the correlation id and signed payment authorization from reaching a redirect target. A caller may supply a canonical `pat_` id only when it is new; the SDK reserves it atomically across processes, and an id already present in the journal fails closed with `X402_ATTEMPT_ID_ALREADY_EXISTS` before any network request. Generic automatic payment retries require reconciliation and a fresh authorized attempt; only `r.pay.fetch` may re-present its in-memory proof for an identical request. Malformed reserved-header values fail locally with `INVALID_PAYMENT_ATTEMPT_ID`; they are never replaced with an id that could authorize a new payment.
 

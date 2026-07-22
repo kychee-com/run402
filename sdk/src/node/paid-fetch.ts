@@ -31,7 +31,12 @@ import type { MppStack, X402Stack } from "./_paid-stack.js";
 import {
   DEFAULT_PAYMENT_MAX_USD_MICROS,
   PaymentBuyerError,
+  gatewayPaymentBuyerError,
+  isTrustedRun402PaymentUrl,
+  isTrustedRun402PendingResponse,
+  payResponseMetadata,
   paymentExceedsMaxError,
+  readPaymentErrorEnvelope,
   responseSignalsReplay,
   walletUnavailableError,
   type PayExecutor,
@@ -305,7 +310,12 @@ export function _setPaidStackLoadersForTest(loaders?: {
 
 interface TrackedPaymentContext {
   id: string;
-  request: { method: string; origin: string | null; path_sha256: string | null };
+  request: {
+    method: string;
+    origin: string | null;
+    path_sha256: string | null;
+    caller_key_sha256: string | null;
+  };
   createdAt: string;
   phase: PaymentAttemptPhase;
   providerStarted: boolean;
@@ -322,7 +332,7 @@ interface TrackedPaidFetchOptions {
   fetch?: FetchFn;
   classifyPaymentResponse?: (
     response: Response,
-  ) => Promise<"completed" | "failed" | "already_settled" | "ambiguous">;
+  ) => Promise<"completed" | "failed" | "already_settled" | "intent_pending" | "ambiguous">;
 }
 
 class AttemptJournalWriteError extends Error {
@@ -777,6 +787,7 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
           payment: null,
           outcome: "not_required",
           replay: await responseSignalsReplay(response, payOptions.idempotencyKey !== undefined),
+          ...payResponseMetadata(response),
         };
       }
       if (configured?.payer.rail === "mpp") {
@@ -872,6 +883,7 @@ interface CachedPaymentProof {
 
 interface BuyerCallContext {
   fingerprint: string;
+  requestUrl: string;
   maxUsdMicros: number;
   proof?: CachedPaymentProof;
   replayedProof: boolean;
@@ -935,6 +947,20 @@ export function createX402BuyerFetch(
       fetch: options.fetch,
       async classifyPaymentResponse(response) {
         const call = calls.getStore();
+        const envelope = await readPaymentErrorEnvelope(response);
+        if (call && isTrustedRun402PendingResponse({
+          requestUrl: call.requestUrl,
+          response,
+          envelope,
+          paymentBearing: true,
+          redirectsDisabled: true,
+        })) {
+          return "intent_pending";
+        }
+        if (call && envelope && trustedRun402ResponseOrigin(call.requestUrl, response) &&
+            gatewayPaymentBuyerError(response, envelope)) {
+          return "failed";
+        }
         const failure = await upstreamFailure(response);
         if (call?.replayedProof && isAlreadyUsedFailure(failure)) {
           call.alreadySettled = true;
@@ -950,6 +976,7 @@ export function createX402BuyerFetch(
     const fingerprint = await paymentRequestFingerprint(url, init, maxUsdMicros);
     const call: BuyerCallContext = {
       fingerprint,
+      requestUrl: url,
       maxUsdMicros,
       replayedProof: false,
       alreadySettled: false,
@@ -963,6 +990,7 @@ export function createX402BuyerFetch(
           payment: null,
           outcome: "not_required",
           replay: await responseSignalsReplay(response, payOptions.idempotencyKey !== undefined),
+          ...payResponseMetadata(response),
         };
       }
       if (call.alreadySettled) {
@@ -972,9 +1000,15 @@ export function createX402BuyerFetch(
           payment: null,
           outcome: "already_settled",
           replay: true,
+          ...payResponseMetadata(response),
         };
       }
       if (!response.ok) {
+        const envelope = await readPaymentErrorEnvelope(response);
+        if (envelope && trustedRun402ResponseOrigin(url, response)) {
+          const gatewayError = gatewayPaymentBuyerError(response, envelope);
+          if (gatewayError) throw gatewayError;
+        }
         const failure = await upstreamFailure(response);
         proofs.delete(fingerprint);
         if (failure.code === "payment_insufficient_funds") {
@@ -1000,6 +1034,7 @@ export function createX402BuyerFetch(
         payment,
         outcome: "settled",
         replay: call.replayedProof,
+        ...payResponseMetadata(response),
       };
     } catch (cause) {
       if (cause instanceof PaymentBuyerError) throw cause;
@@ -1568,11 +1603,22 @@ export function createTrackedX402Fetch(
             : await opts.classifyPaymentResponse?.(response) ?? "ambiguous";
           const completed = classification === "completed" || classification === "already_settled";
           const failed = classification === "failed";
+          const intentPending = classification === "intent_pending";
+          const retryAfter = retryAfterSeconds(response);
           writeRecordBestEffort(context, store, {
-            state: completed ? "completed" : failed ? "failed" : "ambiguous",
+            state: completed ? "completed" : failed ? "failed" : intentPending ? "intent_pending" : "ambiguous",
             mutation_state: completed ? "completed" : failed ? "not_started" : "ambiguous",
             response_status: response.status,
+            ...(intentPending ? {
+              last_error_code: "PAYMENT_INTENT_PENDING",
+              ...(nonEmptyHeader(response, "x-run402-payment-id")
+                ? { payment_id: nonEmptyHeader(response, "x-run402-payment-id")! }
+                : {}),
+              intent_state: "pending",
+              ...(retryAfter !== null ? { retry_after_seconds: retryAfter } : {}),
+            } : {}),
           });
+          if (intentPending) return response;
           if (!completed && !failed) {
             throw new PaymentAttemptError({
               code: "X402_PAYMENT_OUTCOME_AMBIGUOUS",
@@ -1693,6 +1739,9 @@ function claimIntent(
     method: context.request.method,
     origin: context.request.origin,
     path_sha256: context.request.path_sha256,
+    ...(context.request.caller_key_sha256
+      ? { caller_key_sha256: context.request.caller_key_sha256 }
+      : {}),
     created_at: context.createdAt,
     updated_at: updatedAt,
   };
@@ -1704,6 +1753,29 @@ function claimIntent(
     context.journalFailure = true;
     throw new AttemptJournalWriteError(cause);
   }
+}
+
+function trustedRun402ResponseOrigin(requestUrl: string, response: Response): boolean {
+  if (!response.url || response.redirected) return false;
+  try {
+    const request = new URL(requestUrl);
+    const returned = new URL(response.url);
+    return request.origin === returned.origin && isTrustedRun402PaymentUrl(request);
+  } catch {
+    return false;
+  }
+}
+
+function retryAfterSeconds(response: Response): number | null {
+  const raw = response.headers.get("retry-after");
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  const seconds = Number(raw);
+  return Number.isSafeInteger(seconds) ? seconds : null;
+}
+
+function nonEmptyHeader(response: Response, name: string): string | null {
+  const value = response.headers.get(name)?.trim();
+  return value ? value : null;
 }
 
 function writeRecord(

@@ -28,6 +28,18 @@ export interface PayFetchResult {
   outcome: PayFetchOutcome;
   /** True for a re-presented proof or a key-deduplicated upstream result. */
   replay: boolean;
+  /** Stable Run402 tenant-payment identity when the target supplied one. */
+  paymentId?: string | null;
+  /** Whether this HTTP request reused an existing Run402 payment identity. */
+  deduplicated?: boolean | null;
+  /** Funds movement initiated by this HTTP attempt, when declared by Run402. */
+  fundsMoved?: PaymentFundsMoved | null;
+  /** Tenant delivery state for this attempt. */
+  delivery?: "first" | "replay" | "none" | null;
+  /** Confirmed settlement time supplied by Run402. */
+  settledAt?: string | null;
+  /** Durable intent state when the request is a status-bearing replay. */
+  intentState?: string | null;
 }
 
 export type PaymentFundsMoved = boolean | "unknown";
@@ -36,13 +48,36 @@ export type PaymentBuyerErrorCode =
   | "PAYMENT_EXCEEDS_MAX"
   | "PAYMENT_WALLET_UNFUNDED"
   | "PAYMENT_NETWORK_UNSUPPORTED"
+  | "PAYMENT_INTENT_PENDING"
+  | "PAYMENT_DESTINATION_DRAINING"
+  | "PAYMENT_INTENT_DESTINATION_CHANGED"
+  | "PAYMENT_INTENT_FENCE_EXPIRED"
+  | "PAYMENT_AUTHORIZATION_LIFETIME_EXCEEDED"
+  | "PAYMENT_CALLER_IDENTITY_NOT_ACTIVE"
+  | "IDEMPOTENCY_KEY_REUSED"
+  | "INVALID_IDEMPOTENCY_KEY"
+  | "IDEMPOTENCY_KEY_PAYER_REQUIRED"
   | "PAYMENT_SETTLEMENT_FAILED";
+
+export interface PayResponseMetadata {
+  paymentId: string | null;
+  deduplicated: boolean | null;
+  fundsMoved: PaymentFundsMoved | null;
+  delivery: "first" | "replay" | "none" | null;
+  settledAt: string | null;
+  intentState: string | null;
+}
 
 /** Structured local failure from {@link Pay.fetch}. */
 export class PaymentBuyerError extends Run402Error {
   readonly kind = "payment_buyer_error" as const;
   readonly code: PaymentBuyerErrorCode;
   readonly fundsMoved: PaymentFundsMoved;
+  readonly paymentId: string | null;
+  readonly intentState: string | null;
+  readonly delivery: "first" | "replay" | "none" | null;
+  readonly deduplicated: boolean | null;
+  readonly settledAt: string | null;
   readonly cause?: unknown;
 
   constructor(init: {
@@ -54,34 +89,42 @@ export class PaymentBuyerError extends Run402Error {
     retryable?: boolean;
     safeToRetry?: boolean;
     cause?: unknown;
+    status?: number | null;
+    body?: Record<string, unknown>;
   }) {
     const mutationState = init.fundsMoved === false
       ? "not_started"
       : init.fundsMoved === true
         ? "completed"
         : "ambiguous";
+    const body = init.body ?? {
+      error: init.code,
+      code: init.code,
+      message: init.message,
+      category: "payment",
+      source: "sdk",
+      retryable: init.retryable ?? false,
+      safe_to_retry: init.safeToRetry ?? init.fundsMoved === false,
+      mutation_state: mutationState,
+      details: {
+        funds_moved: init.fundsMoved,
+        ...(init.details ?? {}),
+      },
+      next_actions: init.nextActions,
+    };
     super(
       init.message,
-      null,
-      {
-        error: init.code,
-        code: init.code,
-        message: init.message,
-        category: "payment",
-        source: "sdk",
-        retryable: init.retryable ?? false,
-        safe_to_retry: init.safeToRetry ?? init.fundsMoved === false,
-        mutation_state: mutationState,
-        details: {
-          funds_moved: init.fundsMoved,
-          ...(init.details ?? {}),
-        },
-        next_actions: init.nextActions,
-      },
+      init.status ?? null,
+      body,
       "paying an x402-priced URL",
     );
     this.code = init.code;
     this.fundsMoved = init.fundsMoved;
+    this.paymentId = stringOrNull(body.payment_id);
+    this.intentState = stringOrNull(body.intent_state);
+    this.delivery = paymentDelivery(body.delivery);
+    this.deduplicated = booleanOrNull(body.deduplicated);
+    this.settledAt = stringOrNull(body.settled_at);
     if (init.cause !== undefined) this.cause = init.cause;
   }
 
@@ -89,6 +132,11 @@ export class PaymentBuyerError extends Run402Error {
     return {
       ...super.toJSON(),
       fundsMoved: this.fundsMoved,
+      paymentId: this.paymentId,
+      intentState: this.intentState,
+      delivery: this.delivery,
+      deduplicated: this.deduplicated,
+      settledAt: this.settledAt,
     };
   }
 }
@@ -139,6 +187,7 @@ export class Pay {
       payment: null,
       outcome: "not_required",
       replay: await responseSignalsReplay(response, options.idempotencyKey !== undefined),
+      ...payResponseMetadata(response),
     };
   }
 }
@@ -195,6 +244,8 @@ export function walletUnavailableError(details: Record<string, unknown> = {}): P
 }
 
 export async function responseSignalsReplay(response: Response, inspect: boolean): Promise<boolean> {
+  const declared = booleanHeader(response.headers.get("x-run402-payment-deduplicated"));
+  if (declared !== null) return declared;
   if (!inspect || !response.headers.get("content-type")?.includes("application/json")) return false;
   const declaredLength = Number(response.headers.get("content-length") ?? 0);
   if (Number.isFinite(declaredLength) && declaredLength > 1_000_000) return false;
@@ -204,6 +255,174 @@ export async function responseSignalsReplay(response: Response, inspect: boolean
   } catch {
     return false;
   }
+}
+
+/** Parse platform-owned payment response headers without consuming the response body. */
+export function payResponseMetadata(response: Response): PayResponseMetadata {
+  const funds = response.headers.get("x-run402-payment-funds-moved");
+  const delivery = response.headers.get("x-run402-payment-delivery");
+  return {
+    paymentId: nonEmpty(response.headers.get("x-run402-payment-id")),
+    deduplicated: booleanHeader(response.headers.get("x-run402-payment-deduplicated")),
+    fundsMoved: funds === "true" ? true : funds === "false" ? false : funds === "unknown" ? "unknown" : null,
+    delivery: delivery === "first" || delivery === "replay" || delivery === "none" ? delivery : null,
+    settledAt: nonEmpty(response.headers.get("x-run402-payment-settled-at")),
+    intentState: nonEmpty(response.headers.get("x-run402-payment-intent-state")),
+  };
+}
+
+export const RUN402_PENDING_CLASSIFIER_VERSION = 1;
+
+const RESERVED_RUN402_LABELS = new Set([
+  "api", "admin", "assets", "cdn", "dashboard", "docs", "help", "mail",
+  "sites", "static", "status", "support", "www",
+]);
+
+/** Exact DNS-label classifier for Run402-owned tenant and deployment hosts. */
+export function isTrustedRun402PaymentUrl(
+  input: string | URL,
+  options: { allowTestLocalhost?: boolean } = {},
+): boolean {
+  let url: URL;
+  try {
+    url = input instanceof URL ? input : new URL(input);
+  } catch {
+    return false;
+  }
+  if (options.allowTestLocalhost && url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")) return true;
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
+  const labels = url.hostname.toLowerCase().split(".");
+  if (labels.length === 3 && labels[1] === "run402" &&
+      (labels[2] === "com" || labels[2] === "app")) {
+    return labels[0]!.length > 0 && !RESERVED_RUN402_LABELS.has(labels[0]!);
+  }
+  return labels.length === 4 && labels[1] === "sites" && labels[2] === "run402" &&
+    (labels[3] === "com" || labels[3] === "app") && labels[0]!.length > 0;
+}
+
+/**
+ * Trust a pending result only at the complete signed-response boundary. The
+ * caller supplies `paymentBearing` and `redirectsDisabled` from its executor;
+ * shape alone is intentionally insufficient for arbitrary/custom domains.
+ */
+export function isTrustedRun402PendingResponse(input: {
+  requestUrl: string;
+  response: Response;
+  envelope: Record<string, unknown> | null;
+  paymentBearing: boolean;
+  redirectsDisabled: boolean;
+  allowTestLocalhost?: boolean;
+}): boolean {
+  if (!input.paymentBearing || !input.redirectsDisabled || input.response.redirected) return false;
+  if (input.response.status !== 409 || input.envelope?.code !== "PAYMENT_INTENT_PENDING") return false;
+  if (input.response.headers.get("x-run402-payment-intent-state") !== "pending") return false;
+  if (!input.response.url) return false;
+  try {
+    const requestUrl = new URL(input.requestUrl);
+    const responseUrl = new URL(input.response.url);
+    return requestUrl.origin === responseUrl.origin &&
+      isTrustedRun402PaymentUrl(requestUrl, { allowTestLocalhost: input.allowTestLocalhost });
+  } catch {
+    return false;
+  }
+}
+
+export async function readPaymentErrorEnvelope(response: Response): Promise<Record<string, unknown> | null> {
+  if (!response.headers.get("content-type")?.includes("application/json")) return null;
+  const length = Number(response.headers.get("content-length") ?? 0);
+  if (Number.isFinite(length) && length > 1_000_000) return null;
+  try {
+    const value = await response.clone().json();
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function gatewayPaymentBuyerError(
+  response: Response,
+  envelope: Record<string, unknown>,
+): PaymentBuyerError | null {
+  const code = envelope.code;
+  if (!isPaymentBuyerErrorCode(code)) return null;
+  const metadata = payResponseMetadata(response);
+  const declaredFunds = envelope.funds_moved;
+  const fundsMoved: PaymentFundsMoved =
+    declaredFunds === true || declaredFunds === false || declaredFunds === "unknown"
+      ? declaredFunds
+      : metadata.fundsMoved ?? "unknown";
+  const body: Record<string, unknown> = {
+    ...envelope,
+    ...(envelope.payment_id === undefined && metadata.paymentId !== null
+      ? { payment_id: metadata.paymentId }
+      : {}),
+    ...(envelope.deduplicated === undefined && metadata.deduplicated !== null
+      ? { deduplicated: metadata.deduplicated }
+      : {}),
+    ...(envelope.delivery === undefined && metadata.delivery !== null
+      ? { delivery: metadata.delivery }
+      : {}),
+    ...(envelope.settled_at === undefined && metadata.settledAt !== null
+      ? { settled_at: metadata.settledAt }
+      : {}),
+    ...(envelope.intent_state === undefined && metadata.intentState !== null
+      ? { intent_state: metadata.intentState }
+      : {}),
+    ...(envelope.funds_moved === undefined && metadata.fundsMoved !== null
+      ? { funds_moved: metadata.fundsMoved }
+      : {}),
+  };
+  return new PaymentBuyerError({
+    code,
+    message: typeof envelope.message === "string" ? envelope.message : code,
+    fundsMoved,
+    details: isRecord(envelope.details) ? envelope.details : {},
+    nextActions: Array.isArray(envelope.next_actions) ? envelope.next_actions as NextAction[] : [],
+    retryable: typeof envelope.retryable === "boolean" ? envelope.retryable : false,
+    safeToRetry: typeof envelope.safe_to_retry === "boolean" ? envelope.safe_to_retry : false,
+    status: response.status,
+    body,
+  });
+}
+
+function isPaymentBuyerErrorCode(value: unknown): value is PaymentBuyerErrorCode {
+  return typeof value === "string" && new Set<string>([
+    "PAYMENT_EXCEEDS_MAX", "PAYMENT_WALLET_UNFUNDED", "PAYMENT_NETWORK_UNSUPPORTED",
+    "PAYMENT_INTENT_PENDING", "PAYMENT_DESTINATION_DRAINING",
+    "PAYMENT_INTENT_DESTINATION_CHANGED", "PAYMENT_INTENT_FENCE_EXPIRED",
+    "PAYMENT_AUTHORIZATION_LIFETIME_EXCEEDED", "PAYMENT_CALLER_IDENTITY_NOT_ACTIVE",
+    "IDEMPOTENCY_KEY_REUSED",
+    "INVALID_IDEMPOTENCY_KEY", "IDEMPOTENCY_KEY_PAYER_REQUIRED",
+    "PAYMENT_SETTLEMENT_FAILED",
+  ]).has(value);
+}
+
+function nonEmpty(value: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function booleanHeader(value: string | null): boolean | null {
+  return value === "true" ? true : value === "false" ? false : null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function booleanOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function paymentDelivery(value: unknown): "first" | "replay" | "none" | null {
+  return value === "first" || value === "replay" || value === "none" ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function normalizePayUrl(input: string | URL): string {

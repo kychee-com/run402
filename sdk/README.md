@@ -119,19 +119,31 @@ The default ceiling is 100,000 USD micros ($0.10). Unpriced URLs pass through
 with `payment: null`. A settled receipt contains
 `amount_usd_micros`, `pay_to`, `network`, `tx_ref`, and `url`.
 Failures throw `PaymentBuyerError` with `PAYMENT_EXCEEDS_MAX`,
-`PAYMENT_WALLET_UNFUNDED`, `PAYMENT_NETWORK_UNSUPPORTED`, or
-`PAYMENT_SETTLEMENT_FAILED`, plus `fundsMoved` and `nextActions`.
+`PAYMENT_WALLET_UNFUNDED`, `PAYMENT_NETWORK_UNSUPPORTED`, exact Run402
+pending/drain/destination/fence/lifetime/key-reuse codes, or
+`PAYMENT_SETTLEMENT_FAILED`, plus `fundsMoved`, `paymentId`, intent/delivery
+facts, and `nextActions`. Successful results preserve `paymentId`,
+`deduplicated`, `fundsMoved`, `delivery`, `settledAt`, and `intentState` when
+Run402 supplies them.
 
 After an ambiguous transport failure, retry the identical request on the same
 SDK instance with the same idempotency key. `pay.fetch` retains the original
 proof in memory and re-presents it; it never signs a replacement. A used-proof
 response becomes `outcome: "already_settled"` without fabricating a receipt.
+Across a fresh process, a Run402 managed/deployment host can recover a
+caller-keyed intent by repeating the same request with the same payer and
+`Idempotency-Key`. On trusted `PAYMENT_INTENT_PENDING`, wait for `Retry-After`
+and repeat exactly that call; never change payer, binding, or key. Custom and
+arbitrary sellers remain ambiguous and require reconciliation.
+`PAYMENT_CALLER_IDENTITY_NOT_ACTIVE` is a rollout fail-closed response: retain
+the same key and retry after activation; do not remove the key to force a
+proof-only charge.
 
 ### Automatic x402 attempt recovery
 
 Automatic paid requests persist a redacted mode-0600 intent before sending a signed payment. A `PaymentAttemptError` before provider dispatch has `mutationState: "not_started"` and `safeToRetry: true`; check `retryable` separately because persistent local-journal corruption is safe from duplicate payment but requires repair rather than an automatic retry. After dispatch, an unknown outcome is `mutationState: "ambiguous"`, `safeToRetry: false`, with `reconcile_payment` and `poll` actions. Reconcile `paymentAttemptId` before authorizing another payment. The only proof-replay exception is an identical `r.pay.fetch` retry on the same live SDK instance, which re-presents its retained proof rather than authorizing a new payment.
 
-Use `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })` from `@run402/sdk/node` to inspect the active profile's local journal. It never stores keys, signed headers/proofs, raw paths, request bodies, query strings, or raw causes; only a SHA-256 pathname fingerprint is retained. `X-Run402-Payment-Attempt-Id` is reserved atomically and sent only on the payment-bearing call, with redirects disabled so payment metadata cannot cross to another target. Existing ids fail with `X402_ATTEMPT_ID_ALREADY_EXISTS`; malformed ids fail with `INVALID_PAYMENT_ATTEMPT_ID`, both before network dispatch.
+Use `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })` from `@run402/sdk/node` to inspect the active profile's local journal. Trusted pending records use `state: "intent_pending"` and may contain `payment_id`, retry timing, and only a SHA-256 caller-key digest. The journal never stores raw caller keys, signed headers/proofs, raw paths, request bodies, query strings, wallet keys, signatures, or raw causes. `X-Run402-Payment-Attempt-Id` is reserved atomically and sent only on the payment-bearing call, with redirects disabled so payment metadata cannot cross to another target. Existing ids fail with `X402_ATTEMPT_ID_ALREADY_EXISTS`; malformed ids fail with `INVALID_PAYMENT_ATTEMPT_ID`, both before network dispatch.
 
 For repo-level app deploys, the Node entry also exposes the action runner used by `run402 up`:
 

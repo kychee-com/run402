@@ -33,6 +33,7 @@ export type PaymentAttemptJournalState =
   | "intent"
   | "submitting"
   | "response_received"
+  | "intent_pending"
   | "completed"
   | "failed"
   | "ambiguous";
@@ -47,11 +48,16 @@ export interface PaymentAttemptRecord {
   origin: string | null;
   /** SHA-256 of the URL pathname; raw path/query values are never persisted. */
   path_sha256: string | null;
+  /** SHA-256 of the caller key; the raw Idempotency-Key is never persisted. */
+  caller_key_sha256?: string;
   created_at: string;
   updated_at: string;
   provider_started_at?: string;
   response_status?: number;
   last_error_code?: string;
+  payment_id?: string;
+  intent_state?: string;
+  retry_after_seconds?: number;
 }
 
 export interface PaymentAttemptStore {
@@ -212,17 +218,23 @@ export function requestSummary(input: RequestInfo | URL, init?: RequestInit): {
   method: string;
   origin: string | null;
   path_sha256: string | null;
+  caller_key_sha256: string | null;
 } {
   const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+  const callerKey = mergedHeaders(input, init).get("idempotency-key");
+  const caller_key_sha256 = callerKey
+    ? createHash("sha256").update(callerKey).digest("hex")
+    : null;
   try {
     const url = new URL(input instanceof Request ? input.url : String(input));
     return {
       method,
       origin: url.origin,
       path_sha256: createHash("sha256").update(url.pathname).digest("hex"),
+      caller_key_sha256,
     };
   } catch {
-    return { method, origin: null, path_sha256: null };
+    return { method, origin: null, path_sha256: null, caller_key_sha256 };
   }
 }
 
@@ -281,12 +293,18 @@ function isPaymentAttemptRecord(value: unknown): value is PaymentAttemptRecord {
     typeof record.payment_attempt_id === "string" &&
     PAYMENT_ATTEMPT_ID_PATTERN.test(record.payment_attempt_id) &&
     record.rail === "x402" &&
-    typeof record.state === "string" &&
-    typeof record.mutation_state === "string" &&
+    ["intent", "submitting", "response_received", "intent_pending", "completed", "failed", "ambiguous"]
+      .includes(record.state ?? "") &&
+    ["not_started", "in_progress", "completed", "ambiguous"].includes(record.mutation_state ?? "") &&
     typeof record.method === "string" &&
     (record.origin === null || typeof record.origin === "string") &&
     (record.path_sha256 === null ||
       (typeof record.path_sha256 === "string" && /^[0-9a-f]{64}$/.test(record.path_sha256))) &&
+    (record.caller_key_sha256 === undefined || /^[0-9a-f]{64}$/.test(record.caller_key_sha256)) &&
+    (record.payment_id === undefined || typeof record.payment_id === "string") &&
+    (record.intent_state === undefined || typeof record.intent_state === "string") &&
+    (record.retry_after_seconds === undefined ||
+      (Number.isSafeInteger(record.retry_after_seconds) && record.retry_after_seconds >= 0)) &&
     typeof record.created_at === "string" &&
     typeof record.updated_at === "string"
   );

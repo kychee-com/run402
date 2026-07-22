@@ -1092,12 +1092,12 @@ run402 pay https://seller.example/translate --method POST \
   --idempotency-key translation:1
 ```
 
-The default ceiling is $0.10. Output is
-`{ http_status, body, payment, outcome, replay }`. An unpriced URL has
-`payment: null`. If the CLI reports `funds_moved: "unknown"`, reconcile the
-original settlement before running another command; the one-shot CLI process
-does not persist signed proofs. Use the long-lived MCP `pay_url` tool when
-identical-proof replay across calls is required.
+The default ceiling is $0.10. Output includes payment id, dedupe, movement,
+delivery, and intent facts. On trusted Run402 `PAYMENT_INTENT_PENDING`, wait
+for `Retry-After` and repeat the identical command with the same payer and
+`--idempotency-key`; never replace the key. Custom/arbitrary hosts and other
+`funds_moved: "unknown"` outcomes require reconciliation. No portable
+settlement receipt is implied.
 
 ## Image generation
 

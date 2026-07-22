@@ -2,7 +2,12 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import type { CredentialsProvider } from "../credentials.js";
-import { PaymentBuyerError, Run402 } from "../index.js";
+import {
+  PaymentBuyerError,
+  Run402,
+  isTrustedRun402PaymentUrl,
+  isTrustedRun402PendingResponse,
+} from "../index.js";
 
 const credentials: CredentialsProvider = {
   async getAuth() {
@@ -92,3 +97,59 @@ describe("Run402.pay.fetch", () => {
     });
   });
 });
+
+describe("Run402 trusted pending classifier", () => {
+  it("accepts exact managed/deployment labels and rejects suffix confusion", () => {
+    assert.equal(isTrustedRun402PaymentUrl("https://ancestor.run402.app/tribute"), true);
+    assert.equal(isTrustedRun402PaymentUrl("https://dpl-abc.sites.run402.com/tribute"), true);
+    assert.equal(isTrustedRun402PaymentUrl("https://api.run402.com/tribute"), false);
+    assert.equal(isTrustedRun402PaymentUrl("https://a.b.run402.app/tribute"), false);
+    assert.equal(isTrustedRun402PaymentUrl("https://ancestor.run402.app.evil.test/tribute"), false);
+    assert.equal(isTrustedRun402PaymentUrl("https://run402.app.evil.test/tribute"), false);
+    assert.equal(isTrustedRun402PaymentUrl("https://custom.example/tribute"), false);
+    assert.equal(isTrustedRun402PaymentUrl("http://ancestor.run402.app/tribute"), false);
+    assert.equal(isTrustedRun402PaymentUrl("http://localhost:7777/tribute", { allowTestLocalhost: true }), true);
+  });
+
+  it("requires the complete status/code/header/origin/payment/no-redirect predicate", () => {
+    const requestUrl = "https://ancestor.run402.app/tribute";
+    const response = responseAt(requestUrl, JSON.stringify({ code: "PAYMENT_INTENT_PENDING" }), {
+      status: 409,
+      headers: {
+        "content-type": "application/json",
+        "x-run402-payment-intent-state": "pending",
+      },
+    });
+    const envelope = { code: "PAYMENT_INTENT_PENDING" };
+    assert.equal(isTrustedRun402PendingResponse({
+      requestUrl,
+      response,
+      envelope,
+      paymentBearing: true,
+      redirectsDisabled: true,
+    }), true);
+    assert.equal(isTrustedRun402PendingResponse({
+      requestUrl,
+      response,
+      envelope,
+      paymentBearing: false,
+      redirectsDisabled: true,
+    }), false);
+    assert.equal(isTrustedRun402PendingResponse({
+      requestUrl: "https://custom.example/tribute",
+      response: responseAt("https://custom.example/tribute", "{}", {
+        status: 409,
+        headers: { "content-type": "application/json", "x-run402-payment-intent-state": "pending" },
+      }),
+      envelope,
+      paymentBearing: true,
+      redirectsDisabled: true,
+    }), false);
+  });
+});
+
+function responseAt(url: string, body: BodyInit | null, init: ResponseInit): Response {
+  const response = new Response(body, init);
+  Object.defineProperty(response, "url", { value: url });
+  return response;
+}

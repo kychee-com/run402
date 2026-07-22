@@ -531,7 +531,10 @@ export {
   Pay,
   PaymentBuyerError,
   DEFAULT_PAYMENT_MAX_USD_MICROS,
+  RUN402_PENDING_CLASSIFIER_VERSION,
   isPaymentBuyerError,
+  isTrustedRun402PaymentUrl,
+  isTrustedRun402PendingResponse,
 } from "./namespaces/pay.js";
 export type * from "./namespaces/pay.js";
 export { Archives } from "./namespaces/archives.js";

@@ -28,6 +28,8 @@ Examples:
 
 The command uses the same allowance wallet and bounded x402 buyer as the SDK.
 An unpriced URL is passed through with payment: null.
+On trusted Run402 PAYMENT_INTENT_PENDING, wait for Retry-After and repeat this
+identical command with the same payer and --idempotency-key. Never change the key.
 `;
 
 const VALUE_FLAGS = ["--method", "--body", "--max-usd", "--idempotency-key"];
@@ -79,6 +81,12 @@ export async function run(args = [], deps = {}) {
       payment: result.payment,
       outcome: result.outcome,
       replay: result.replay,
+      payment_id: result.paymentId ?? null,
+      deduplicated: result.deduplicated ?? null,
+      funds_moved: result.fundsMoved ?? null,
+      delivery: result.delivery ?? null,
+      settled_at: result.settledAt ?? null,
+      intent_state: result.intentState ?? null,
     }));
   } catch (error) {
     (deps.reportSdkError ?? reportSdkError)(error);

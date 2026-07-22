@@ -19,9 +19,12 @@ Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, 
 `pay_url` is the general x402 buyer tool for external HTTP(S) endpoints. Params:
 `url`, optional `method`, `body`, `idempotency_key`, and `max_usd_micros`
 (default `100000`, or $0.10). It delegates to SDK `pay.fetch` and returns
-`{ http_status, body, payment, outcome, replay }`. Reuse the same idempotency
-key and identical arguments after an ambiguous failure; the live SDK instance
-re-presents its original in-memory proof and never mints a second authorization.
+`{ http_status, body, payment, outcome, replay, payment_id, deduplicated,
+funds_moved, delivery, settled_at, intent_state }`. On trusted Run402
+`PAYMENT_INTENT_PENDING`, wait for `Retry-After` and call `pay_url` again with
+the same payer, identical arguments, and the same `idempotency_key`; never
+substitute a new key. Custom/arbitrary hosts remain ambiguous. The live SDK
+instance can also re-present its original in-memory proof.
 
 ## Quickstart
 

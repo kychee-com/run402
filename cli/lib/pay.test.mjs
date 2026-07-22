@@ -38,6 +38,12 @@ describe("run402 pay", () => {
               },
               outcome: "settled",
               replay: false,
+              paymentId: "txp_cli_1",
+              deduplicated: false,
+              fundsMoved: true,
+              delivery: "first",
+              settledAt: "2026-07-22T12:00:00.000Z",
+              intentState: "settled",
             };
           },
         },
@@ -65,6 +71,12 @@ describe("run402 pay", () => {
       },
       outcome: "settled",
       replay: false,
+      payment_id: "txp_cli_1",
+      deduplicated: false,
+      funds_moved: true,
+      delivery: "first",
+      settled_at: "2026-07-22T12:00:00.000Z",
+      intent_state: "settled",
     });
   });
 });

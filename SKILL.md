@@ -594,9 +594,11 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 - **`pay_url`** — call an arbitrary HTTP(S) URL and satisfy a supported exact
   x402 challenge. Params: `url`, optional `method`, `body`, `idempotency_key`,
   and `max_usd_micros` (default `100000`, or $0.10). Returns the target response
-  plus `payment`, `outcome`, and `replay`. Reuse identical arguments and the same
-  idempotency key after an ambiguous failure so the live SDK can re-present its
-  original proof instead of authorizing a second payment.
+  plus `payment`, `outcome`, `replay`, `payment_id`, dedupe/movement/delivery,
+  and intent facts. On trusted Run402 `PAYMENT_INTENT_PENDING`, wait for
+  `Retry-After` and repeat identical arguments with the same payer and
+  `idempotency_key`; never replace the key. Custom/arbitrary hosts remain
+  ambiguous. No portable settlement receipt is implied.
 
 ### Apps marketplace
 

@@ -878,7 +878,7 @@ run402 subdomains claim my-app
 
 ### pay
 
-`run402 pay <url> [--method <M>] [--body <json-or-text>] [--max-usd <amount>] [--idempotency-key <key>]` calls an arbitrary x402-priced HTTP endpoint through the SDK buyer. The default ceiling is `$0.10`; `--max-usd` accepts up to six decimal places and is converted exactly to USD micros. The JSON result is `{ http_status, body, payment, outcome, replay }`. Unpriced URLs return `payment: null`. If the CLI reports `funds_moved: "unknown"`, reconcile the original settlement before running another command; the one-shot CLI process does not persist signed proofs. Use a long-lived SDK or MCP process when identical-proof replay across calls is required.
+`run402 pay <url> [--method <M>] [--body <json-or-text>] [--max-usd <amount>] [--idempotency-key <key>]` calls an arbitrary x402-priced HTTP endpoint through the SDK buyer. The default ceiling is `$0.10`; `--max-usd` accepts up to six decimal places and is converted exactly to USD micros. The JSON result includes `{ http_status, body, payment, outcome, replay, payment_id, deduplicated, funds_moved, delivery, settled_at, intent_state }`. Unpriced URLs return `payment: null`. For `PAYMENT_INTENT_PENDING` on a trusted Run402 host, wait for `Retry-After` and repeat the identical command with the same payer, request, and key. Never substitute a fresh key. Custom/arbitrary hosts and other `funds_moved: "unknown"` outcomes remain ambiguous and require reconciliation.
 
 ```bash
 run402 pay https://seller.example/translate --method POST \
