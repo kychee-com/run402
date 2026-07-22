@@ -1,6 +1,6 @@
 {
   "name": "run402",
-  "version": "4.10.2",
+  "version": "4.11.0",
   "description": "CLI for Run402 — provision Postgres databases, deploy static sites, generate images, and manage wallets via x402 and MPP micropayments.",
   "type": "module",
   "bin": {
