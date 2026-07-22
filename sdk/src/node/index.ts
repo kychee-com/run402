@@ -27,7 +27,7 @@ import {
   getApiBaseSource,
   getApiTargetKind,
 } from "../../core-dist/config.js";
-import { Run402, type Run402Options } from "../index.js";
+import { Run402, type PayExecutor, type Run402Options } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 import { LocalError } from "../errors.js";
 import type { Client, Run402ClientMetadata } from "../kernel.js";
@@ -78,6 +78,8 @@ export interface NodeRun402Options {
   disablePaidFetch?: boolean;
   /** Fully custom fetch implementation. Takes precedence over `disablePaidFetch`. */
   fetch?: typeof globalThis.fetch;
+  /** Override the arbitrary-URL x402 buyer used by `pay.fetch`. */
+  payExecutor?: PayExecutor;
   /** Override or disable the bounded Run402-Client metadata header. */
   clientMetadata?: Run402ClientMetadata | false;
   /** Client package version to report; defaults to the SDK package version. */
@@ -145,6 +147,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
       (opts.disablePaidFetch
         ? globalThis.fetch.bind(globalThis)
         : lazyPaidFetch!),
+    payExecutor: opts.payExecutor ?? lazyPaidFetch?.pay,
     clientMetadata: nodeClientMetadata(opts),
   };
   const base = new Run402(runOpts);

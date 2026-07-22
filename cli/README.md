@@ -59,6 +59,20 @@ run402 allowance balance   # mainnet + testnet + billing balance
 run402 allowance export    # print {"address":"0x..."} for funding
 ```
 
+### Buy from an x402 URL
+
+```bash
+run402 pay https://seller.example/translate --method POST \
+  --body '{"text":"hello"}' --max-usd 0.05 \
+  --idempotency-key translation:1
+```
+
+The default maximum is $0.10. Output is
+`{ http_status, body, payment, outcome, replay }`; an unpriced URL has
+`payment: null`. If the CLI reports `funds_moved: "unknown"`, reconcile the
+original settlement before running another command; the one-shot CLI process
+does not persist signed proofs.
+
 ### Database
 
 ```bash

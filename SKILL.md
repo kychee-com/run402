@@ -589,6 +589,15 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 - **`ai_moderate`** — moderate text. Free.
 - **`ai_usage`** — translation quota.
 
+### External x402 buyer
+
+- **`pay_url`** — call an arbitrary HTTP(S) URL and satisfy a supported exact
+  x402 challenge. Params: `url`, optional `method`, `body`, `idempotency_key`,
+  and `max_usd_micros` (default `100000`, or $0.10). Returns the target response
+  plus `payment`, `outcome`, and `replay`. Reuse identical arguments and the same
+  idempotency key after an ambiguous failure so the live SDK can re-present its
+  original proof instead of authorizing a second payment.
+
 ### Apps marketplace
 
 - **`browse_apps`** — browse public forkable apps.
@@ -810,7 +819,7 @@ Two payment rails work with the same wallet key:
 - **x402** (default): USDC on Base. Prototype uses Base Sepolia testnet (free from faucet); hobby/team use Base mainnet.
 - **MPP**: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Same wallet key, different chain.
 
-The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as **informational text** (not an error) — guide the user through funding, then retry the same tool call. **`provision_postgres_project`**, **`set_tier`**, **`deploy`**, and **`generate_image`** are the paid surfaces; everything else is free with an active tier.
+The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as **informational text** (not an error) — guide the user through funding, then retry the same tool call. **`provision_postgres_project`**, **`set_tier`**, **`deploy`**, and **`generate_image`** are Run402's paid tools; **`pay_url`** is the bounded buyer for a URL priced by an external x402 seller. Everything else is free with an active tier.
 
 For real-money tiers, two paths to fund:
 

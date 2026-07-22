@@ -40,6 +40,7 @@ import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
 import { Events } from "./namespaces/events.js";
 import { Errors } from "./namespaces/errors.js";
+import { Pay, type PayExecutor } from "./namespaces/pay.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -55,6 +56,8 @@ export interface Run402Options {
    * session-bound fetch provided by their supervisor.
    */
   fetch?: typeof globalThis.fetch;
+  /** Optional arbitrary-URL payment executor. Node wires this automatically. */
+  payExecutor?: PayExecutor;
   /**
    * Optional bounded client-version metadata for Node/supervised runtimes.
    * The SDK does not set this automatically in the isomorphic entry point, so
@@ -124,6 +127,8 @@ export class Run402 {
    * Also available project-scoped as `r.project(id).events`.
    */
   readonly events: Events;
+  /** Pay arbitrary x402-priced URLs with a spend ceiling and structured receipt. */
+  readonly pay: Pay;
   /**
    * Release-error-rollup query surface — verdict-first, grouped error
    * fingerprints with a gateway-computed promote-vs-revert verdict, plus the
@@ -212,6 +217,7 @@ export class Run402 {
     this.orgs = new Orgs(client);
     this.grants = new Grants(client);
     this.events = new Events(client);
+    this.pay = new Pay(client, opts.payExecutor);
     this.errors = new Errors(client);
   }
 
@@ -521,6 +527,13 @@ export { Events } from "./namespaces/events.js";
 export type * from "./namespaces/events.types.js";
 export { Errors } from "./namespaces/errors.js";
 export type * from "./namespaces/errors.types.js";
+export {
+  Pay,
+  PaymentBuyerError,
+  DEFAULT_PAYMENT_MAX_USD_MICROS,
+  isPaymentBuyerError,
+} from "./namespaces/pay.js";
+export type * from "./namespaces/pay.js";
 export { Archives } from "./namespaces/archives.js";
 export type * from "./namespaces/archives.types.js";
 export { Snapshots } from "./namespaces/snapshots.js";

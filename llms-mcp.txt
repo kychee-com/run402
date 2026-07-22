@@ -16,6 +16,13 @@ If you're an MCP-host agent that already has the run402-mcp tools available, thi
 
 Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
+`pay_url` is the general x402 buyer tool for external HTTP(S) endpoints. Params:
+`url`, optional `method`, `body`, `idempotency_key`, and `max_usd_micros`
+(default `100000`, or $0.10). It delegates to SDK `pay.fetch` and returns
+`{ http_status, body, payment, outcome, replay }`. Reuse the same idempotency
+key and identical arguments after an ambiguous failure; the live SDK instance
+re-presents its original in-memory proof and never mints a second authorization.
+
 ## Quickstart
 
 Six tool calls take you from zero to a deployed static site backed by a real Postgres:

@@ -389,8 +389,10 @@ export function mapSdkError(err: unknown, context: string): ToolResult {
         isError: true,
       };
     }
+    const lines = [`Error ${context}: ${err.message}`];
+    lines.push(...formatCanonicalErrorContext(err, { includeDetails: true }));
     return {
-      content: [{ type: "text", text: `Error ${context}: ${err.message}` }],
+      content: [{ type: "text", text: lines.join("\n") }],
       isError: true,
     };
   }

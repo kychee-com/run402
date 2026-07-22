@@ -98,9 +98,38 @@ address(es), and network(s); it never returns a key, signed authorization, or
 replayable proof. It returns `null` when automatic paid fetch is disabled, a
 custom `fetch` owns payment, or the selected source is not currently available.
 
+### Buy arbitrary x402 URLs
+
+The Node entry exposes a bounded buyer for any HTTP(S) endpoint:
+
+```ts
+import { run402 } from "@run402/sdk/node";
+
+const r = run402();
+const result = await r.pay.fetch(
+  "https://seller.example/translate",
+  { method: "POST", body: JSON.stringify({ text: "hello" }) },
+  { maxUsdMicros: 50_000, idempotencyKey: "translation:1" },
+);
+
+console.log(result.outcome, result.payment, await result.response.json());
+```
+
+The default ceiling is 100,000 USD micros ($0.10). Unpriced URLs pass through
+with `payment: null`. A settled receipt contains
+`amount_usd_micros`, `pay_to`, `network`, `tx_ref`, and `url`.
+Failures throw `PaymentBuyerError` with `PAYMENT_EXCEEDS_MAX`,
+`PAYMENT_WALLET_UNFUNDED`, `PAYMENT_NETWORK_UNSUPPORTED`, or
+`PAYMENT_SETTLEMENT_FAILED`, plus `fundsMoved` and `nextActions`.
+
+After an ambiguous transport failure, retry the identical request on the same
+SDK instance with the same idempotency key. `pay.fetch` retains the original
+proof in memory and re-presents it; it never signs a replacement. A used-proof
+response becomes `outcome: "already_settled"` without fabricating a receipt.
+
 ### Automatic x402 attempt recovery
 
-Automatic paid requests persist a redacted mode-0600 intent before sending a signed payment. A `PaymentAttemptError` before provider dispatch has `mutationState: "not_started"` and `safeToRetry: true`; check `retryable` separately because persistent local-journal corruption is safe from duplicate payment but requires repair rather than an automatic retry. After dispatch, an unknown outcome is `mutationState: "ambiguous"`, `safeToRetry: false`, with `reconcile_payment` and `poll` actions. Reconcile `paymentAttemptId` before authorizing another payment.
+Automatic paid requests persist a redacted mode-0600 intent before sending a signed payment. A `PaymentAttemptError` before provider dispatch has `mutationState: "not_started"` and `safeToRetry: true`; check `retryable` separately because persistent local-journal corruption is safe from duplicate payment but requires repair rather than an automatic retry. After dispatch, an unknown outcome is `mutationState: "ambiguous"`, `safeToRetry: false`, with `reconcile_payment` and `poll` actions. Reconcile `paymentAttemptId` before authorizing another payment. The only proof-replay exception is an identical `r.pay.fetch` retry on the same live SDK instance, which re-presents its retained proof rather than authorizing a new payment.
 
 Use `readPaymentAttempt(id)` or `listPaymentAttempts({ limit })` from `@run402/sdk/node` to inspect the active profile's local journal. It never stores keys, signed headers/proofs, raw paths, request bodies, query strings, or raw causes; only a SHA-256 pathname fingerprint is retained. `X-Run402-Payment-Attempt-Id` is reserved atomically and sent only on the payment-bearing call, with redirects disabled so payment metadata cannot cross to another target. Existing ids fail with `X402_ATTEMPT_ID_ALREADY_EXISTS`; malformed ids fail with `INVALID_PAYMENT_ATTEMPT_ID`, both before network dispatch.
 
@@ -215,6 +244,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | Namespace | Highlights |
 |---|---|
 | `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
+| `pay` | `fetch(url, init?, { maxUsdMicros?, idempotencyKey? })` — bounded arbitrary-URL x402 buyer; Node uses the selected allowance/signer and returns response + receipt metadata. |
 | `projects` | `provision`, `delete`, `list`, `get`, `use`, `active`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `pin`, `getQuote`. `list`/`get`/`use` are server-authoritative; local key reads are moving to `credentials.projectKeys`. |
 | `snapshots` | Internal project restore points: `create`, `list`, `get`, `restorePlan`, `restore`, `delete`. Restore is a two-step plan/confirm handshake. |
 | `branches` | Contained project data branches: `create`, `list`, `renew`, `delete`. Branches default to expiring, noindex, sandboxed-email copies. |

@@ -66,6 +66,7 @@ export interface X402Stack {
   x402Client: new () => {
     register: (network: string, scheme: unknown) => void;
     registerPolicy: (fn: (version: number, reqs: unknown[]) => unknown[]) => void;
+    createPaymentPayload: (required: unknown) => Promise<unknown>;
   };
   wrapFetchWithPayment: (fetch: FetchFn, client: unknown) => FetchFn;
   ExactEvmScheme: new (signer: unknown) => unknown;

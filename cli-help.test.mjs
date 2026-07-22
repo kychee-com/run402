@@ -49,6 +49,7 @@ const CLI_PATH = join(__dirname, "cli", "cli.mjs");
 const MATRIX = {
   up: { shared: [], specific: [] },
   init: { shared: ["mpp"], specific: [] },
+  pay: { shared: [], specific: [] },
   status: { shared: [], specific: [] },
   allowance: {
     shared: ["status", "create", "fund", "balance", "export"],

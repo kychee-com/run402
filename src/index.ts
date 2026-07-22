@@ -53,6 +53,7 @@ import { getUsageSchema, handleGetUsage } from "./tools/get-usage.js";
 import { browseAppsSchema, handleBrowseApps } from "./tools/browse-apps.js";
 import { forkAppSchema, handleForkApp } from "./tools/fork-app.js";
 import { getQuoteSchema, handleGetQuote } from "./tools/get-quote.js";
+import { handlePayUrl, payUrlSchema } from "./tools/pay-url.js";
 import { publishAppSchema, handlePublishApp } from "./tools/publish-app.js";
 import { listVersionsSchema, handleListVersions } from "./tools/list-versions.js";
 
@@ -908,6 +909,19 @@ server.tool(
   "Get tier pricing for Run402 projects. Free, no auth required. Shows prices, lease durations, storage limits, and API call limits.",
   getQuoteSchema,
   async (args) => handleGetQuote(args),
+);
+
+server.tool(
+  "pay_url",
+  "Call an arbitrary HTTP(S) URL and automatically satisfy a supported x402 exact-payment challenge. Defaults to a $0.10 ceiling, uses the configured allowance wallet, forwards Idempotency-Key, and returns the HTTP response plus a structured payment receipt.",
+  payUrlSchema,
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  async (args) => handlePayUrl(args),
 );
 
 server.tool(

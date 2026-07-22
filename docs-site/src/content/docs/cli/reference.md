@@ -876,6 +876,16 @@ run402 subdomains claim my-app
 - `run402 init --api-base <url>` — configure the active profile to target a Run402 Core/API base. For Core, this does not create an allowance, request faucet funds, or require a Cloud tier.
 - `run402 init mpp` — set up with MPP (Tempo Moderato testnet). Same steps, different payment rail.
 
+### pay
+
+`run402 pay <url> [--method <M>] [--body <json-or-text>] [--max-usd <amount>] [--idempotency-key <key>]` calls an arbitrary x402-priced HTTP endpoint through the SDK buyer. The default ceiling is `$0.10`; `--max-usd` accepts up to six decimal places and is converted exactly to USD micros. The JSON result is `{ http_status, body, payment, outcome, replay }`. Unpriced URLs return `payment: null`. If the CLI reports `funds_moved: "unknown"`, reconcile the original settlement before running another command; the one-shot CLI process does not persist signed proofs. Use a long-lived SDK or MCP process when identical-proof replay across calls is required.
+
+```bash
+run402 pay https://seller.example/translate --method POST \
+  --body '{"text":"hello"}' --max-usd 0.05 \
+  --idempotency-key translation:1
+```
+
 ### status
 `run402 status` — show full organization state in one shot (wallet, rail, balances, tier, projects, active project). Read-only, JSON output. Includes a `wallet: { local_label, server_label, address }` object naming the active named wallet (`local_label` is the local selector, `server_label` the server-synced display name or null), a top-level `rail`, and a `balances: { on_chain_usd_micros, on_chain_token, prepaid_credit_usd_micros, held_usd_micros }` object. The on-chain token tracks the rail (USDC on x402, pathUSD on mpp); prepaid credit is rail-independent.
 

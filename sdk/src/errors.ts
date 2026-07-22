@@ -24,6 +24,7 @@ export type Run402ErrorKind =
   | "api_error"
   | "network_error"
   | "payment_attempt_error"
+  | "payment_buyer_error"
   | "local_error"
   | "deploy_error"
   | "transfer_freeze"
