@@ -31,10 +31,12 @@ import type { MppStack, X402Stack } from "./_paid-stack.js";
 import {
   DEFAULT_PAYMENT_MAX_USD_MICROS,
   PaymentBuyerError,
+  PaymentPolicyError,
   gatewayPaymentBuyerError,
   isTrustedRun402PaymentUrl,
   isTrustedRun402PendingResponse,
   payResponseMetadata,
+  merchantReceiptRequiredError,
   paymentExceedsMaxError,
   readPaymentErrorEnvelope,
   responseSignalsReplay,
@@ -43,6 +45,8 @@ import {
   type PayFetchOptions,
   type PayFetchResult,
   type PaymentReceipt,
+  type PaymentEvidenceStatus,
+  type PaymentNextAction,
 } from "../namespaces/pay.js";
 import {
   attemptIdFromRequest,
@@ -647,6 +651,11 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     ];
     const buyer = createX402BuyerFetch(client as X402BuyerClient, {
       supportedNetworks,
+      payerAddresses: [
+        ...(mainnetSigner ? [mainnetSigner.address] : []),
+        ...(sepoliaSigner ? [sepoliaSigner.address] : []),
+      ],
+      offerReceipt: stack.offerReceipt,
     });
     return withPayer(
       trackedFetch,
@@ -874,11 +883,46 @@ export const __paidFetchInternals = {
 
 interface X402BuyerFetchOptions extends TrackedPaidFetchOptions {
   supportedNetworks: readonly string[];
+  payerAddresses?: readonly string[];
+  offerReceipt?: X402OfferReceiptRuntime;
+  verifyAtSeconds?: () => number;
+}
+
+interface X402OfferReceiptRuntime {
+  extractOffersFromPaymentRequired: (required: unknown) => unknown[];
+  decodeSignedOffers: (offers: unknown[]) => unknown[];
+  findAcceptsObjectFromSignedOffer: (
+    offer: unknown,
+    accepts: unknown[],
+  ) => unknown | undefined;
+  isEIP712SignedOffer: (offer: unknown) => boolean;
+  isEIP712SignedReceipt: (receipt: unknown) => boolean;
+  verifyOfferSignatureEIP712: (
+    offer: unknown,
+  ) => Promise<{ signer: `0x${string}`; payload: Record<string, unknown> }>;
+  verifyReceiptSignatureEIP712: (
+    receipt: unknown,
+  ) => Promise<{ signer: `0x${string}`; payload: Record<string, unknown> }>;
+  extractReceiptFromResponse: (response: Response) => unknown | undefined;
+}
+
+interface VerifiedOffer {
+  signed: unknown;
+  decoded: Record<string, unknown>;
+  requirement: X402PaymentRequirements;
+  signer: string;
+  relationship: "direct";
+}
+
+interface GuardedPaymentRequired {
+  required: X402PaymentRequired;
+  verifiedOffers: VerifiedOffer[];
 }
 
 interface CachedPaymentProof {
   headers: Record<string, string>;
   accepted: X402PaymentRequirements;
+  offer: VerifiedOffer | null;
 }
 
 interface BuyerCallContext {
@@ -888,6 +932,7 @@ interface BuyerCallContext {
   proof?: CachedPaymentProof;
   replayedProof: boolean;
   alreadySettled: boolean;
+  requireReceipt: boolean;
 }
 
 /**
@@ -922,11 +967,14 @@ export function createX402BuyerFetch(
       if (firstResponse.status !== 402) return firstResponse;
 
       const required = await decodePaymentRequired(firstResponse);
-      const guarded = guardPaymentRequired(
+      const guarded = await guardPaymentRequired(
         required,
         options.supportedNetworks,
         call.maxUsdMicros,
         request.url,
+        call.requireReceipt,
+        options.offerReceipt,
+        options.verifyAtSeconds?.() ?? Math.floor(Date.now() / 1000),
       );
       let pending = creatingProofs.get(call.fingerprint);
       if (!pending) {
@@ -973,13 +1021,20 @@ export function createX402BuyerFetch(
 
   return async (url, init, payOptions): Promise<PayFetchResult> => {
     const maxUsdMicros = payOptions.maxUsdMicros ?? DEFAULT_PAYMENT_MAX_USD_MICROS;
-    const fingerprint = await paymentRequestFingerprint(url, init, maxUsdMicros);
+    const requireReceipt = payOptions.requireReceipt === true;
+    const fingerprint = await paymentRequestFingerprint(
+      url,
+      init,
+      maxUsdMicros,
+      requireReceipt,
+    );
     const call: BuyerCallContext = {
       fingerprint,
       requestUrl: url,
       maxUsdMicros,
       replayedProof: false,
       alreadySettled: false,
+      requireReceipt,
     };
 
     try {
@@ -1027,15 +1082,45 @@ export function createX402BuyerFetch(
         );
       }
 
-      const payment = receiptFromResponse(response, call.proof.accepted, url);
+      const payment = await receiptFromResponse(
+        response,
+        call.proof,
+        url,
+        requireReceipt,
+        options.offerReceipt,
+        options.payerAddresses ?? [],
+      );
       proofs.delete(fingerprint);
-      return {
+      const result: PayFetchResult = {
         response,
         payment,
         outcome: "settled",
         replay: call.replayedProof,
+        nextActions: [],
         ...payResponseMetadata(response),
       };
+      if (
+        requireReceipt &&
+        payment.merchantReceipt.status !== "verified"
+      ) {
+        const recovery = receiptRecovery(
+          url,
+          response,
+          payOptions.idempotencyKey,
+        );
+        throw new PaymentPolicyError({
+          response,
+          result,
+          message:
+            "The payment settled, but the promised merchant receipt could not be verified.",
+          fundsMoved: payment.fundsMoved,
+          mutationState:
+            payment.delivery.status === "fulfilled" ? "committed" : "unknown",
+          safeToRetry: recovery.safeToRetry,
+          nextActions: recovery.nextActions,
+        });
+      }
+      return result;
     } catch (cause) {
       if (cause instanceof PaymentBuyerError) throw cause;
       if (cause instanceof X402BalanceError) {
@@ -1080,12 +1165,16 @@ export function createX402BuyerFetch(
 
 async function createProof(
   client: X402BuyerClient,
-  required: X402PaymentRequired,
+  guarded: GuardedPaymentRequired,
 ): Promise<CachedPaymentProof> {
   try {
-    const payload = await client.createPaymentPayload(required);
+    const payload = await client.createPaymentPayload(guarded.required);
     return {
       accepted: payload.accepted,
+      offer:
+        guarded.verifiedOffers.find((offer) =>
+          sameRequirement(offer.requirement, payload.accepted)
+        ) ?? null,
       headers: {
         [payload.x402Version === 1 ? "X-PAYMENT" : "PAYMENT-SIGNATURE"]: encodeBase64Json(payload),
       },
@@ -1095,12 +1184,15 @@ async function createProof(
   }
 }
 
-function guardPaymentRequired(
+async function guardPaymentRequired(
   required: X402PaymentRequired,
   supportedNetworks: readonly string[],
   maxUsdMicros: number,
   requestUrl: string,
-): X402PaymentRequired {
+  requireReceipt: boolean,
+  offerReceipt: X402OfferReceiptRuntime | undefined,
+  verifyAtSeconds: number,
+): Promise<GuardedPaymentRequired> {
   let challengeUrl: string;
   try {
     challengeUrl = new URL(required.resource.url).toString();
@@ -1161,13 +1253,132 @@ function guardPaymentRequired(
     const challenged = Math.min(...valid.map(({ amount }) => amount as number));
     throw paymentExceedsMaxError(challenged, maxUsdMicros);
   }
-  return { ...required, accepts: withinLimit.map(({ accept }) => accept) };
+  const accepted = withinLimit.map(({ accept }) => accept);
+  const verifiedOffers = offerReceipt
+    ? await verifyDirectOffers(
+        required,
+        accepted,
+        requestUrl,
+        verifyAtSeconds,
+        offerReceipt,
+      )
+    : [];
+  if (requireReceipt && verifiedOffers.length === 0) {
+    throw merchantReceiptRequiredError({
+      offered_requirements: accepted.length,
+      valid_wallet_rooted_offers: 0,
+    });
+  }
+  const eligible = requireReceipt
+    ? accepted.filter((requirement) =>
+        verifiedOffers.some((offer) =>
+          sameRequirement(offer.requirement, requirement)
+        )
+      )
+    : accepted;
+  return {
+    required: { ...required, accepts: eligible },
+    verifiedOffers,
+  };
 }
 
 function supportedPaymentAsset(network: string): string | null {
   if (network === "eip155:8453") return USDC_MAINNET;
   if (network === "eip155:84532") return USDC_SEPOLIA;
   return null;
+}
+
+async function verifyDirectOffers(
+  required: X402PaymentRequired,
+  eligibleRequirements: X402PaymentRequirements[],
+  requestUrl: string,
+  verifyAtSeconds: number,
+  runtime: X402OfferReceiptRuntime,
+): Promise<VerifiedOffer[]> {
+  let decoded: unknown[];
+  try {
+    decoded = runtime.decodeSignedOffers(
+      runtime.extractOffersFromPaymentRequired(required),
+    );
+  } catch {
+    return [];
+  }
+  const verified: VerifiedOffer[] = [];
+  for (const value of decoded) {
+    const offer = asRecord(value);
+    const signed = offer.signedOffer;
+    if (!runtime.isEIP712SignedOffer(signed)) continue;
+    const requirement = runtime.findAcceptsObjectFromSignedOffer(
+      offer,
+      eligibleRequirements,
+    ) as X402PaymentRequirements | undefined;
+    if (!requirement) continue;
+    try {
+      const checked = await runtime.verifyOfferSignatureEIP712(signed);
+      const payload = checked.payload;
+      const validUntil = safeInteger(payload.validUntil);
+      if (
+        payload.version !== 1 ||
+        normalizedUrl(payload.resourceUrl) !== normalizedUrl(requestUrl) ||
+        payload.scheme !== requirement.scheme ||
+        payload.network !== requirement.network ||
+        !sameAddressOrText(payload.asset, requirement.asset) ||
+        payload.amount !== requirement.amount ||
+        !sameAddressOrText(payload.payTo, requirement.payTo) ||
+        validUntil === null ||
+        validUntil <= verifyAtSeconds ||
+        !sameAddressOrText(checked.signer, requirement.payTo)
+      ) {
+        continue;
+      }
+      verified.push({
+        signed,
+        decoded: offer,
+        requirement,
+        signer: checked.signer,
+        relationship: "direct",
+      });
+    } catch {
+      // A malformed, invalid, delegated, or untrusted offer is ineligible.
+    }
+  }
+  return verified;
+}
+
+function sameRequirement(
+  left: X402PaymentRequirements,
+  right: X402PaymentRequirements,
+): boolean {
+  return (
+    left.scheme === right.scheme &&
+    left.network === right.network &&
+    sameAddressOrText(left.asset, right.asset) &&
+    left.amount === right.amount &&
+    sameAddressOrText(left.payTo, right.payTo)
+  );
+}
+
+function sameAddressOrText(left: unknown, right: unknown): boolean {
+  if (typeof left !== "string" || typeof right !== "string") return false;
+  return /^0x[0-9a-fA-F]{40}$/.test(left) &&
+      /^0x[0-9a-fA-F]{40}$/.test(right)
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+}
+
+function normalizedUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    return new URL(value).toString();
+  } catch {
+    return null;
+  }
+}
+
+function safeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value)
+    ? value
+    : null;
 }
 
 function atomicAmount(value: string): number | null {
@@ -1218,11 +1429,15 @@ function isPaymentRequired(value: unknown): value is X402PaymentRequired {
     ));
 }
 
-function receiptFromResponse(
+async function receiptFromResponse(
   response: Response,
-  accepted: X402PaymentRequirements,
+  proof: CachedPaymentProof,
   url: string,
-): PaymentReceipt {
+  requireReceipt: boolean,
+  runtime: X402OfferReceiptRuntime | undefined,
+  payerAddresses: readonly string[],
+): Promise<PaymentReceipt> {
+  const accepted = proof.accepted;
   const header = response.headers.get("PAYMENT-RESPONSE") ?? response.headers.get("X-PAYMENT-RESPONSE");
   if (!header) {
     throw settlementError(
@@ -1265,12 +1480,162 @@ function receiptFromResponse(
   if (amount === null) {
     throw settlementError("The selected payment amount cannot be represented as usd_micros.", "unknown");
   }
+  const metadata = payResponseMetadata(response);
+  const settlementPayer =
+    typeof record.payer === "string" && record.payer.length > 0
+      ? record.payer
+      : null;
+  let receiptStatus: PaymentEvidenceStatus = proof.offer
+    ? "unavailable"
+    : "absent";
+  let signedReceipt: unknown | null = null;
+  let receiptIssuedAt: string | null = null;
+  let receiptSigner: string | null = null;
+  if (runtime) {
+    try {
+      signedReceipt = runtime.extractReceiptFromResponse(response) ?? null;
+      if (signedReceipt && !proof.offer) {
+        receiptStatus = "untrusted";
+      } else if (signedReceipt && !runtime.isEIP712SignedReceipt(signedReceipt)) {
+        receiptStatus = "untrusted";
+      } else if (signedReceipt && proof.offer) {
+        const checked = await runtime.verifyReceiptSignatureEIP712(signedReceipt);
+        const payload = checked.payload;
+        const issuedAt = safeInteger(payload.issuedAt);
+        const payerMatches =
+          typeof payload.payer === "string" &&
+          [
+            ...(settlementPayer ? [settlementPayer] : []),
+            ...payerAddresses,
+          ].some((payer) => sameAddressOrText(payload.payer, payer));
+        const transactionMatches =
+          typeof payload.transaction === "string" &&
+          payload.transaction === record.transaction;
+        if (
+          payload.version === 1 &&
+          normalizedUrl(payload.resourceUrl) === normalizedUrl(url) &&
+          payload.network === accepted.network &&
+          payerMatches &&
+          transactionMatches &&
+          issuedAt !== null &&
+          sameAddressOrText(checked.signer, proof.offer.signer) &&
+          sameAddressOrText(checked.signer, accepted.payTo)
+        ) {
+          receiptStatus = "verified";
+          receiptSigner = checked.signer;
+          receiptIssuedAt = new Date(issuedAt * 1000).toISOString();
+        } else {
+          receiptStatus = "invalid";
+        }
+      }
+    } catch {
+      receiptStatus = signedReceipt ? "invalid" : receiptStatus;
+    }
+  }
+  const fundsMoved = metadata.fundsMoved ?? true;
+  const deliveryReplay =
+    metadata.delivery === "replay" || metadata.deduplicated === true;
+  const offerPayload = proof.offer?.decoded ?? null;
+  const offerValidUntil = safeInteger(offerPayload?.validUntil);
+  const noSignerAuthorizationExpiry: string | null = null;
   return {
     amount_usd_micros: amount,
     pay_to: accepted.payTo,
     network: record.network,
     tx_ref: record.transaction,
     url,
+    paymentId: metadata.paymentId,
+    amountUsdMicros: amount,
+    asset: accepted.asset,
+    payer: settlementPayer,
+    payTo: accepted.payTo,
+    transaction: record.transaction,
+    resourceUrl: url,
+    settlement: { status: "verified" },
+    fundsMoved,
+    deduplicated: metadata.deduplicated ?? false,
+    delivery: {
+      status: response.ok ? "fulfilled" : "failed",
+      replay: deliveryReplay,
+    },
+    offer: {
+      status: proof.offer ? "verified" : "absent",
+      resourceUrl:
+        typeof offerPayload?.resourceUrl === "string"
+          ? offerPayload.resourceUrl
+          : null,
+      validUntil:
+        offerValidUntil === null
+          ? null
+          : new Date(offerValidUntil * 1000).toISOString(),
+    },
+    merchantReceipt: {
+      status: receiptStatus,
+      claim: receiptStatus === "verified" ? "service_delivered" : null,
+      issuedAt: receiptIssuedAt,
+    },
+    signerRelationship: {
+      kind:
+        receiptStatus === "verified"
+          ? proof.offer?.relationship ?? null
+          : proof.offer
+            ? "unverified"
+            : null,
+      merchantRoot:
+        proof.offer?.relationship === "direct" ? accepted.payTo : null,
+      signer: receiptSigner ?? proof.offer?.signer ?? null,
+      authorizationExpiresAt: noSignerAuthorizationExpiry,
+    },
+    policy: {
+      requireReceipt,
+      status: requireReceipt
+        ? receiptStatus === "verified"
+          ? "satisfied"
+          : "unsatisfied"
+        : "not_required",
+    },
+    evidence: {
+      offer: proof.offer?.signed ?? null,
+      merchantReceipt: signedReceipt,
+      signerAuthorization: null,
+    },
+  };
+}
+
+function receiptRecovery(
+  url: string,
+  response: Response,
+  idempotencyKey: string | undefined,
+): { safeToRetry: boolean; nextActions: PaymentNextAction[] } {
+  const recoverable =
+    Boolean(idempotencyKey) &&
+    isTrustedRun402PaymentUrl(url, { allowTestLocalhost: true }) &&
+    response.headers.get("x-run402-merchant-evidence-state") ===
+      "unavailable";
+  if (recoverable) {
+    return {
+      safeToRetry: true,
+      nextActions: [
+        {
+          type: "retry",
+          request: "repeat_identical",
+          reusePayer: true,
+          reuseIdempotencyKey: true,
+          why:
+            "Repeat the identical request with the same payer and idempotency key to recover the original receipt without another settlement.",
+        },
+      ],
+    };
+  }
+  return {
+    safeToRetry: false,
+    nextActions: [
+      {
+        type: "reconcile_payment",
+        why:
+          "Reconcile the existing settlement with the merchant; do not authorize a second payment.",
+      },
+    ],
   };
 }
 
@@ -1397,6 +1762,7 @@ async function paymentRequestFingerprint(
   url: string,
   init: RequestInit | undefined,
   maxUsdMicros: number,
+  requireReceipt: boolean,
 ): Promise<string> {
   let request: Request;
   try {
@@ -1421,7 +1787,14 @@ async function paymentRequestFingerprint(
     throw settlementError("The paid request body cannot be replayed safely.", false, {}, cause);
   }
   return createHash("sha256")
-    .update(JSON.stringify({ method: request.method, url: request.url, headers, bodyHash, maxUsdMicros }))
+    .update(JSON.stringify({
+      method: request.method,
+      url: request.url,
+      headers,
+      bodyHash,
+      maxUsdMicros,
+      requireReceipt,
+    }))
     .digest("hex");
 }
 

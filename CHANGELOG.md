@@ -4,6 +4,13 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased — arbitrary x402 buyer
 
+- **Verified merchant evidence:** SDK `requireReceipt`, CLI
+  `--require-receipt`, and MCP `require_receipt` verify direct wallet-rooted
+  `offer-receipt` evidence and return one canonical
+  `x402-commerce-result.v1`. Pre-payment failures move no funds;
+  post-settlement `PaymentPolicyError` preserves the paid response and never
+  recommends another payment. Delegated authorization remains fail-closed
+  until the standards package carries an interoperable authorization.
 - **Caller-keyed recovery:** trusted Run402 managed/deployment-host pending
   responses preserve payment ids, dedupe/movement/delivery facts, exact
   pending/drain/fence/destination errors, and gateway `next_actions`. The

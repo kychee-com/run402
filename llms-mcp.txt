@@ -17,10 +17,15 @@ If you're an MCP-host agent that already has the run402-mcp tools available, thi
 Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
 `pay_url` is the general x402 buyer tool for external HTTP(S) endpoints. Params:
-`url`, optional `method`, `body`, `idempotency_key`, and `max_usd_micros`
-(default `100000`, or $0.10). It delegates to SDK `pay.fetch` and returns
-`{ http_status, body, payment, outcome, replay, payment_id, deduplicated,
-funds_moved, delivery, settled_at, intent_state }`. On trusted Run402
+`url`, optional `method`, `body`, `idempotency_key`, `max_usd_micros`
+(default `100000`, or $0.10), and `require_receipt`. It delegates to SDK
+`pay.fetch`. `require_receipt: true` requires a verified wallet-rooted offer
+before payment and a matching receipt afterward. Structured content is the
+complete `x402-commerce-result.v1` envelope; the text view curates amount and
+destination, settlement, movement/replay, merchant receipt, signer
+relationship, and policy. Portable evidence is preserved, but payment proofs,
+cookies, authorization headers, bodies, private keys, and tenant secrets are
+never cached. On trusted Run402
 `PAYMENT_INTENT_PENDING`, wait for `Retry-After` and call `pay_url` again with
 the same payer, identical arguments, and the same `idempotency_key`; never
 substitute a new key. Custom/arbitrary hosts remain ambiguous. The live SDK

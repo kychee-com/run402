@@ -19,6 +19,7 @@ describe("run402 pay", () => {
       "--body", '{"text":"hello"}',
       "--max-usd", "0.05",
       "--idempotency-key", "translation:1",
+      "--require-receipt",
     ], {
       getSdk: () => ({
         pay: {
@@ -35,6 +36,42 @@ describe("run402 pay", () => {
                 network: "eip155:8453",
                 tx_ref: "0xtx",
                 url,
+                paymentId: "txp_cli_1",
+                amountUsdMicros: 10_000,
+                asset: "USDC",
+                payer: "0xbuyer",
+                payTo: "0xseller",
+                transaction: "0xtx",
+                resourceUrl: url,
+                settlement: { status: "verified" },
+                fundsMoved: true,
+                deduplicated: false,
+                delivery: { status: "fulfilled", replay: false },
+                offer: {
+                  status: "verified",
+                  resourceUrl: url,
+                  validUntil: "2026-07-22T12:05:00.000Z",
+                },
+                merchantReceipt: {
+                  status: "verified",
+                  claim: "service_delivered",
+                  issuedAt: "2026-07-22T12:00:03.000Z",
+                },
+                signerRelationship: {
+                  kind: "direct",
+                  merchantRoot: "0xseller",
+                  signer: "0xseller",
+                  authorizationExpiresAt: null,
+                },
+                policy: {
+                  requireReceipt: true,
+                  status: "satisfied",
+                },
+                evidence: {
+                  offer: { signature: "0xoffer" },
+                  merchantReceipt: { signature: "0xreceipt" },
+                  signerAuthorization: null,
+                },
               },
               outcome: "settled",
               replay: false,
@@ -58,25 +95,51 @@ describe("run402 pay", () => {
     assert.deepEqual(captured.options, {
       maxUsdMicros: 50_000,
       idempotencyKey: "translation:1",
+      requireReceipt: true,
     });
     assert.deepEqual(JSON.parse(output[0]), {
+      schema_version: "x402-commerce-result.v1",
       http_status: 200,
       body: { translated: "hola" },
       payment: {
         amount_usd_micros: 10_000,
+        asset: "USDC",
+        deduplicated: false,
+        delivery: { replay: false, status: "fulfilled" },
+        evidence: {
+          merchant_receipt: { signature: "0xreceipt" },
+          offer: { signature: "0xoffer" },
+          signer_authorization: null,
+        },
+        funds_moved: true,
+        merchant_receipt: {
+          claim: "service_delivered",
+          issued_at: "2026-07-22T12:00:03.000Z",
+          status: "verified",
+        },
         pay_to: "0xseller",
+        payer: "0xbuyer",
+        payment_id: "txp_cli_1",
+        policy: { require_receipt: true, status: "satisfied" },
+        resource_url: "https://seller.example/translate",
+        settlement: { status: "verified" },
+        signer_relationship: {
+          authorization_expires_at: null,
+          kind: "direct",
+          merchant_root: "0xseller",
+          signer: "0xseller",
+        },
         network: "eip155:8453",
-        tx_ref: "0xtx",
-        url: "https://seller.example/translate",
+        transaction: "0xtx",
+        offer: {
+          resource_url: "https://seller.example/translate",
+          status: "verified",
+          valid_until: "2026-07-22T12:05:00.000Z",
+        },
       },
-      outcome: "settled",
+      outcome: "paid",
       replay: false,
-      payment_id: "txp_cli_1",
-      deduplicated: false,
-      funds_moved: true,
-      delivery: "first",
-      settled_at: "2026-07-22T12:00:00.000Z",
-      intent_state: "settled",
+      next_actions: [],
     });
   });
 });

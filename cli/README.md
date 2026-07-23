@@ -64,11 +64,14 @@ run402 allowance export    # print {"address":"0x..."} for funding
 ```bash
 run402 pay https://seller.example/translate --method POST \
   --body '{"text":"hello"}' --max-usd 0.05 \
-  --idempotency-key translation:1
+  --idempotency-key translation:1 --require-receipt
 ```
 
-The default maximum is $0.10. Output includes payment id, dedupe, movement,
-delivery, and intent facts; an unpriced URL has `payment: null`. On trusted
+The default maximum is $0.10. `--require-receipt` requires a verified
+wallet-rooted offer before payment and a matching merchant receipt afterward.
+JSON output is the complete `x402-commerce-result.v1` envelope, including
+settlement, movement/replay, delivery, signer relationship, policy, and
+portable non-secret evidence; an unpriced URL has `payment: null`. On trusted
 Run402 `PAYMENT_INTENT_PENDING`, wait for `Retry-After` and repeat the identical
 command with the same payer and `--idempotency-key`; never replace the key.
 Custom/arbitrary hosts and other `funds_moved: "unknown"` outcomes require

@@ -71,6 +71,23 @@ export interface X402Stack {
   wrapFetchWithPayment: (fetch: FetchFn, client: unknown) => FetchFn;
   ExactEvmScheme: new (signer: unknown) => unknown;
   toClientEvmSigner: (account: unknown, client: unknown) => unknown;
+  offerReceipt: {
+    extractOffersFromPaymentRequired: (required: unknown) => unknown[];
+    decodeSignedOffers: (offers: unknown[]) => unknown[];
+    findAcceptsObjectFromSignedOffer: (
+      offer: unknown,
+      accepts: unknown[],
+    ) => unknown | undefined;
+    isEIP712SignedOffer: (offer: unknown) => boolean;
+    isEIP712SignedReceipt: (receipt: unknown) => boolean;
+    verifyOfferSignatureEIP712: (
+      offer: unknown,
+    ) => Promise<{ signer: `0x${string}`; payload: Record<string, unknown> }>;
+    verifyReceiptSignatureEIP712: (
+      receipt: unknown,
+    ) => Promise<{ signer: `0x${string}`; payload: Record<string, unknown> }>;
+    extractReceiptFromResponse: (response: Response) => unknown | undefined;
+  };
 }
 
 export interface MppStack {
@@ -87,6 +104,9 @@ export async function loadX402Stack(): Promise<X402Stack> {
   const x402Fetch = await c.load("@x402/fetch", () => import("@x402/fetch"));
   const x402EvmClient = await c.load("@x402/evm", () => import("@x402/evm/exact/client"));
   const x402Evm = await c.load("@x402/evm", () => import("@x402/evm"));
+  const offerReceipt = await c.load("@x402/extensions", () =>
+    import("@x402/extensions/offer-receipt")
+  );
   c.throwIfFailed();
   return {
     privateKeyToAccount: accounts!.privateKeyToAccount as (pk: `0x${string}`) => unknown,
@@ -98,6 +118,21 @@ export async function loadX402Stack(): Promise<X402Stack> {
     wrapFetchWithPayment: x402Fetch!.wrapFetchWithPayment as never,
     ExactEvmScheme: x402EvmClient!.ExactEvmScheme as never,
     toClientEvmSigner: x402Evm!.toClientEvmSigner as never,
+    offerReceipt: {
+      extractOffersFromPaymentRequired:
+        offerReceipt!.extractOffersFromPaymentRequired as never,
+      decodeSignedOffers: offerReceipt!.decodeSignedOffers as never,
+      findAcceptsObjectFromSignedOffer:
+        offerReceipt!.findAcceptsObjectFromSignedOffer as never,
+      isEIP712SignedOffer: offerReceipt!.isEIP712SignedOffer as never,
+      isEIP712SignedReceipt: offerReceipt!.isEIP712SignedReceipt as never,
+      verifyOfferSignatureEIP712:
+        offerReceipt!.verifyOfferSignatureEIP712 as never,
+      verifyReceiptSignatureEIP712:
+        offerReceipt!.verifyReceiptSignatureEIP712 as never,
+      extractReceiptFromResponse:
+        offerReceipt!.extractReceiptFromResponse as never,
+    },
   };
 }
 

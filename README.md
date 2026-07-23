@@ -46,12 +46,19 @@ Buy from any x402 seller with the same allowance and a default $0.10 ceiling:
 ```bash
 run402 pay https://seller.example/translate --method POST \
   --body '{"text":"hello"}' --max-usd 0.05 \
-  --idempotency-key translation:1
+  --idempotency-key translation:1 --require-receipt
 ```
 
-The SDK equivalent is `r.pay.fetch(url, init, { maxUsdMicros, idempotencyKey })`;
-MCP callers use `pay_url`. All three return the HTTP response plus structured
-payment metadata and pass unpriced URLs through with `payment: null`. For a
+The SDK equivalent is
+`r.pay.fetch(url, init, { maxUsdMicros, idempotencyKey, requireReceipt })`;
+MCP callers use `pay_url` with `require_receipt: true`. All three return the
+same `x402-commerce-result.v1` settlement, movement/replay, delivery, offer,
+merchant-receipt, signer-relationship, policy, and raw-evidence fields and pass
+unpriced URLs through with `payment: null`. Requiring a receipt rejects before
+payment when no wallet-rooted offer is eligible. If a promised receipt cannot
+be verified after settlement, `PaymentPolicyError` retains the upstream
+response and paid result and tells the caller to reconcile—never to pay again.
+For a
 trusted Run402 `PAYMENT_INTENT_PENDING`, all three surfaces prescribe one
 recovery path: wait for `Retry-After`, then repeat the same request with the
 same payer and key. Never replace the key. The SDK and MCP can also re-present
@@ -218,11 +225,11 @@ Apply-v1 routes and static public paths are release resources: they activate ato
 
 Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear the route table. Route entries are an ordered `replace` list, not a path-keyed map. Function targets use `{ "type": "function", "name": "<materialized function name>" }`. Static route targets use exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and `{ "pattern": "/events", "methods": ["GET","HEAD"], "target": { "type": "static", "file": "events.html" } }` where `file` is a release static asset path, not a public path, URL, CAS hash, rewrite, or redirect. Use static route targets for method-aware aliases such as static `GET /login` plus function `POST /login`; in explicit public path mode the backing asset can stay private by filename. Direct `/functions/v1/:name` calls remain API-key protected; browser-routed paths are public same-origin ingress.
 
-Function routes can charge a fixed tenant x402 price before the handler runs by adding `pricing: { "mode": "always", "amount_usd_micros": 250000, "pay_to": "org_default_payout" }` to the route entry. `250000` is $0.25 per matching action. Omit `networks` for production mainnet only; include `"testnet"` explicitly for testnet acceptance. Static aliases cannot be priced, direct function invocation is not monetized, and service/admin keys do not bypass a priced browser route. The owning org must have a resolvable payout wallet: set it with `r.org(orgId).setPayoutWallet({ walletAddress })`, `run402 org payout-wallet <org_id> <wallet_address>`, or MCP `set_org_payout_wallet`. Conditional credit systems should expose one fixed-price route such as `POST /api/credits`, then keep the rest of the app behind unpriced routes and app-local authorization.
+Function routes can charge a fixed tenant x402 price before the handler runs by adding `pricing: { "mode": "always", "amount_usd_micros": 250000, "pay_to": "org_default_payout" }` to the route entry. `250000` is $0.25 per matching action. The portable ReleaseSpec contract also accepts `receipt: "on_fulfillment"` on a priced function route; a compatible host then requires the function to return `payment.fulfilled(response)` before it authors a receipt. Run402-hosted advertising remains gated off until the standard delegated-signer carrier is available—receipt intent never silently downgrades. Omit `networks` for production mainnet only; include `"testnet"` explicitly for testnet acceptance. Static aliases cannot be priced, direct function invocation is not monetized, and service/admin keys do not bypass a priced browser route. The owning org must have a resolvable payout wallet: set it with `r.org(orgId).setPayoutWallet({ walletAddress })`, `run402 org payout-wallet <org_id> <wallet_address>`, or MCP `set_org_payout_wallet`. Conditional credit systems should expose one fixed-price route such as `POST /api/credits`, then keep the rest of the app behind unpriced routes and app-local authorization.
 
 Matching is exact or final-prefix-wildcard only. `/admin` and `/admin/` are exact trailing-slash equivalents; `/admin/*` matches children but not `/admin`, `/admin/`, `/admin.css`, or `/administrator`, so deploy both `/admin` and `/admin/*` for a routed section root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact routes beat prefix routes; longest prefix wins; method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`, and matched dynamic route failures fail closed instead of falling back to static files.
 
-Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. On priced routes, import `getRoutedPaymentContext` from `@run402/functions`, read `const payment = getRoutedPaymentContext(req)`, and key app-side idempotency by `payment.paymentId`. The helper reads gateway-confirmed `x-run402-payment-*` headers and returns `null` for unpriced or direct calls. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
+Routed functions use the Node 22 Fetch Request -> Response contract: `export default async function handler(req) { ... }`. `req.method` is the browser method, and `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. Derive OAuth callbacks from it, for example `new URL("/admin/oauth/google/callback", new URL(req.url).origin)`. Append multiple cookies with `headers.append("Set-Cookie", value)`; redirects, cookies, and query strings are preserved. On priced routes, import `getRoutedPaymentContext` from `@run402/functions`, read `const paymentContext = getRoutedPaymentContext(req)`, and key app-side idempotency by `paymentContext.paymentId`. For a receipt-enabled route, return `payment.fulfilled(response)` only after the response represents completed delivery; the helper fails closed outside a settled, current, receipt-enabled routed invocation. The context helper reads gateway-confirmed `x-run402-payment-*` headers and returns `null` for unpriced or direct calls. The raw `run402.routed_http.v1` envelope is internal; do not write route handlers against it.
 
 **Recipe: static home page + SPA shell.** A SPA site ships `index.html` as the shell serving every unmatched route (match `spa_fallback`), so by default `GET /` serves the shell too. To serve a real static home page at `/` while keeping the shell for app routes, ship `home.html` at the site root alongside `index.html` and add an exact root static route alias: `"routes": { "replace": [ { "pattern": "/", "target": { "type": "static", "file": "home.html" } } ] }`. Route matching runs before all static resolution (including the implicit `/` -> `index.html` root mapping), and SPA-fallback derivation is independent of the route table, so `GET /` serves `home.html` (`route_static_alias`), unmatched app routes such as `/dashboard` still serve the shell (`spa_fallback`), and named static pages keep serving unchanged (`static_exact`). Expect two non-blocking plan lints: `STATIC_ALIAS_SHADOWS_STATIC_PATH` (warn: the alias overrides what `/` would otherwise serve; accurate and expected here) and `STATIC_ALIAS_DUPLICATE_CANONICAL_URL` (info: `/home.html` stays directly reachable in implicit public-path mode; add `<link rel="canonical">` to `home.html` if duplicate-content SEO matters). Omitting `routes` on later deploys carries the alias forward; `routes.replace` is total, so a pipeline that sends it must include the alias every time. Verify with `run402 deploy resolve --url https://<your-site>/ --method GET` or `deploy_diagnose_url` and confirm `match: "route_static_alias"` with `target_file: "home.html"`.
 
@@ -365,7 +372,7 @@ Every subcommand prints JSON to stdout, JSON errors to stderr, exits 0 on succes
 run402 up --name my-app -y                # recursive SDK action runner: init/tier/project/link/deploy
 run402 up verify                          # rerun app HTTP verification without a deploy
 run402 init                              # one-shot allowance + faucet + tier check
-run402 pay https://seller.example/resource --max-usd 0.05
+run402 pay https://seller.example/resource --max-usd 0.05 --require-receipt
 run402 status                            # organization snapshot (wallet, rail, balances, tier, projects)
 run402 projects provision --name my-app
 run402 projects sql <id> "CREATE TABLE …"
@@ -570,7 +577,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `pay_url` | Call an arbitrary HTTP(S) URL, satisfy a supported exact x402 challenge up to `max_usd_micros` (default 100000), and return the response plus payment receipt metadata. |
+| `pay_url` | Call an arbitrary HTTP(S) URL, satisfy a supported exact x402 challenge up to `max_usd_micros` (default 100000), optionally require verified merchant evidence with `require_receipt`, and return `x402-commerce-result.v1`. |
 
 ### Apps marketplace
 

@@ -68,13 +68,14 @@
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
+    "@x402/extensions": "^2.19.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@run402/functions": "^3.7.0",
     "@types/node": "^22.0.0",
-    "@x402/evm": "^2.6.0",
-    "@x402/fetch": "^2.6.0",
+    "@x402/evm": "^2.19.0",
+    "@x402/fetch": "^2.19.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "viem": "^2.47.4",

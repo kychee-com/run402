@@ -109,15 +109,24 @@ const r = run402();
 const result = await r.pay.fetch(
   "https://seller.example/translate",
   { method: "POST", body: JSON.stringify({ text: "hello" }) },
-  { maxUsdMicros: 50_000, idempotencyKey: "translation:1" },
+  {
+    maxUsdMicros: 50_000,
+    idempotencyKey: "translation:1",
+    requireReceipt: true,
+  },
 );
 
 console.log(result.outcome, result.payment, await result.response.json());
 ```
 
 The default ceiling is 100,000 USD micros ($0.10). Unpriced URLs pass through
-with `payment: null`. A settled receipt contains
-`amount_usd_micros`, `pay_to`, `network`, `tx_ref`, and `url`.
+with `payment: null`. Set `requireReceipt: true` to require a verified
+wallet-rooted offer before payment and a matching merchant receipt afterward.
+The buyer checks the exact URL, scheme, network, asset, amount, recipient,
+validity, settlement, payer, transaction, and signer relationship. The result
+separates settlement from the merchant's `service_delivered` claim and carries
+complete portable evidence; `payFetchResultToJson` renders the canonical
+snake_case `x402-commerce-result.v1` envelope.
 Failures throw `PaymentBuyerError` with `PAYMENT_EXCEEDS_MAX`,
 `PAYMENT_WALLET_UNFUNDED`, `PAYMENT_NETWORK_UNSUPPORTED`, exact Run402
 pending/drain/destination/fence/lifetime/key-reuse codes, or
@@ -125,6 +134,15 @@ pending/drain/destination/fence/lifetime/key-reuse codes, or
 facts, and `nextActions`. Successful results preserve `paymentId`,
 `deduplicated`, `fundsMoved`, `delivery`, `settledAt`, and `intentState` when
 Run402 supplies them.
+
+If no eligible offer exists, required policy fails before signing with
+`MERCHANT_RECEIPT_REQUIRED` and `fundsMoved: false`. If payment settles but the
+receipt is absent, invalid, untrusted, or unavailable, `PaymentPolicyError`
+uses `MERCHANT_RECEIPT_UNAVAILABLE`, preserves the upstream `Response` and
+commerce result, reports the true mutation state, and supplies exactly one
+`retry` or `reconcile_payment` action. It never recommends a second payment.
+The durable attempt journal and MCP result never store payment proofs, cookies,
+authorization headers, bodies, private keys, or tenant secrets.
 
 After an ambiguous transport failure, retry the identical request on the same
 SDK instance with the same idempotency key. `pay.fetch` retains the original
@@ -256,7 +274,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | Namespace | Highlights |
 |---|---|
 | `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
-| `pay` | `fetch(url, init?, { maxUsdMicros?, idempotencyKey? })` — bounded arbitrary-URL x402 buyer; Node uses the selected allowance/signer and returns response + receipt metadata. |
+| `pay` | `fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? })` — bounded arbitrary-URL x402 buyer; Node uses the selected allowance/signer and returns the response plus settlement and independently verified merchant evidence. |
 | `projects` | `provision`, `delete`, `list`, `get`, `use`, `active`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `pin`, `getQuote`. `list`/`get`/`use` are server-authoritative; local key reads are moving to `credentials.projectKeys`. |
 | `snapshots` | Internal project restore points: `create`, `list`, `get`, `restorePlan`, `restore`, `delete`. Restore is a two-step plan/confirm handshake. |
 | `branches` | Contained project data branches: `create`, `list`, `renew`, `delete`. Branches default to expiring, noindex, sandboxed-email copies. |
@@ -495,7 +513,7 @@ const resumed = await (await r.project(projectId)).apply.resume("op_...");
 
 - **All bytes ride through CAS.** The plan request body never carries inline bytes — only `ContentRef` objects. When the spec exceeds 5 MB JSON, the SDK uploads the manifest itself as a CAS object (`manifest_ref` escape hatch).
 - **Per-resource semantics on the spec.** `site.replace` = "this is the whole site" (files absent are removed). `site.patch.put` / `patch.delete` are surgical updates. `site.public_paths` controls browser-visible static paths separately from backing release asset paths: explicit mode uses a complete map such as `{ "/events": { asset: "events.html", cache_class: "html" } }`, so `/events` serves `events.html` while `/events.html` is not public unless separately declared. Implicit mode restores filename-derived reachability and can widen access. A public-path-only site spec is deployable. `functions.replace` / `functions.patch.set` / `functions.patch.delete` mirror that. Secrets are value-free: set values first with `r.secrets.set(project, key, { value })`, then deploy with `secrets.require` and/or `secrets.delete`. `subdomains.set` / `subdomains.add` / `subdomains.remove` use their own shape. Top-level absence = leave untouched.
-- **Same-origin web routes.** `routes` is `undefined | null | { replace: RouteSpec[] }`. Omit it or pass `null` to carry forward base routes, pass `{ replace: [] }` to clear routes, or pass route entries to replace the table. Function targets use `{ type: "function", name }`; exact static route targets use `{ type: "static", file }` with methods `["GET"]` or `["GET","HEAD"]`, no wildcard pattern, and a relative deployed asset path with no leading slash. `file` is not a public path, URL, CAS hash, rewrite, or redirect. Prefer `site.public_paths` for ordinary clean static URLs like `/events -> events.html`; use static route targets for method-aware aliases such as static `GET /login` plus function `POST /login`. Function routes may add fixed tenant x402 pricing: `pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout" }`; omitted `networks` means production mainnet only, and `"testnet"` must be opted in explicitly. Static aliases cannot be priced. Set the org payout wallet with `r.org(orgId).setPayoutWallet({ walletAddress })`; audit payments with `r.projects.listTenantPayments(projectId)` or scoped `r.project(id).projects.listTenantPayments()`. Routed browser ingress invokes Node 22 Fetch Request -> Response handlers; `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. On priced routes, handlers should import `getRoutedPaymentContext` from `@run402/functions` and use `payment.paymentId` for idempotency. Direct `/functions/v1/:name` invocation remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, `ROUTED_INVOKE_AUTH_FAILED`, `ROUTED_ROUTE_STALE`, `ROUTE_METHOD_NOT_ALLOWED`, `PAYOUT_WALLET_REQUIRED`, `PAYOUT_WALLET_AMBIGUOUS`, `PAYOUT_WALLET_UNRESOLVED`, `PAYMENT_PROOF_MISMATCH`, and `ROUTED_RESPONSE_TOO_LARGE`.
+- **Same-origin web routes.** `routes` is `undefined | null | { replace: RouteSpec[] }`. Omit it or pass `null` to carry forward base routes, pass `{ replace: [] }` to clear routes, or pass route entries to replace the table. Function targets use `{ type: "function", name }`; exact static route targets use `{ type: "static", file }` with methods `["GET"]` or `["GET","HEAD"]`, no wildcard pattern, and a relative deployed asset path with no leading slash. `file` is not a public path, URL, CAS hash, rewrite, or redirect. Prefer `site.public_paths` for ordinary clean static URLs like `/events -> events.html`; use static route targets for method-aware aliases such as static `GET /login` plus function `POST /login`. Function routes may add fixed tenant x402 pricing: `pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", receipt: "on_fulfillment" }`; omitted `networks` means production mainnet only, and `"testnet"` must be opted in explicitly. Receipt intent requires `payment.fulfilled(response)` from `@run402/functions` after completed delivery on compatible hosts; Run402-hosted advertising remains gated until the interoperable delegated-signer carrier exists and never silently downgrades. Static aliases cannot be priced. Set the org payout wallet with `r.org(orgId).setPayoutWallet({ walletAddress })`; audit payments with `r.projects.listTenantPayments(projectId)` or scoped `r.project(id).projects.listTenantPayments()`. Routed browser ingress invokes Node 22 Fetch Request -> Response handlers; `req.url` is the full public URL on managed subdomains, deployment hosts, and verified custom domains. On priced routes, handlers should import `getRoutedPaymentContext` from `@run402/functions` and use `payment.paymentId` for idempotency. Direct `/functions/v1/:name` invocation remains API-key protected. Runtime route failure codes include `ROUTE_MANIFEST_LOAD_FAILED`, `ROUTED_INVOKE_WORKER_SECRET_MISSING`, `ROUTED_INVOKE_AUTH_FAILED`, `ROUTED_ROUTE_STALE`, `ROUTE_METHOD_NOT_ALLOWED`, `PAYOUT_WALLET_REQUIRED`, `PAYOUT_WALLET_AMBIGUOUS`, `PAYOUT_WALLET_UNRESOLVED`, `PAYMENT_PROOF_MISMATCH`, and `ROUTED_RESPONSE_TOO_LARGE`.
 - **Strict spec validation happens before network calls.** Raw `ReleaseSpec` objects reject unknown fields (for example `project_id` or `subdomain`) instead of silently dropping them during normalization, and project/base-only or empty nested specs fail with `Run402DeployError.code === "MANIFEST_EMPTY"`. Use the Node manifest helpers when starting from CLI/MCP-style JSON.
 - **Tier preflight happens before apply side effects.** After normalization and before manifest CAS upload or `/apply/v1/plans`, apply checks literal function timeout, memory, schedule-trigger cron minimum interval, and scheduled-trigger count when known. Violations throw `Run402DeployError.code === "BAD_FIELD"` with `details.field`, `details.value`, `details.tier`, the relevant cap, and `details.limit_source`; gateway validation remains authoritative.
 - **Warnings are structured.** `DeployResult.warnings` contains `WarningEntry[]` (`code`, `severity`, `requires_confirmation`, `message`, optional `affected`/`details`/`confidence`); the type preserves legacy low/medium/high plan warnings and modern deploy-observability info/warn/high warnings. `apply()` emits `plan.warnings` and stops before upload/commit on confirmation-required warnings unless broad `allowWarnings` is set or every blocking code is listed in `allowWarningCodes`. For `MISSING_REQUIRED_SECRET`, set the affected keys with `r.secrets.set`, then retry.

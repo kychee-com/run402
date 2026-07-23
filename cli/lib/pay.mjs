@@ -1,5 +1,6 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { payFetchResultToJson } from "../sdk/dist/index.js";
 import {
   assertKnownFlags,
   flagValue,
@@ -18,6 +19,7 @@ Options:
   --body <json-or-text>     Request body (not valid with GET/HEAD)
   --max-usd <amount>        Maximum payment in USD (default: 0.10)
   --idempotency-key <key>   Forward a stable Idempotency-Key to the seller
+  --require-receipt         Require verified merchant evidence
   --json                    Print the response and payment receipt as JSON
   --help, -h                Show this help
 
@@ -41,7 +43,11 @@ export async function run(args = [], deps = {}) {
   }
 
   const parsed = normalizeArgv(args);
-  assertKnownFlags(parsed, [...VALUE_FLAGS, "--help", "-h"], VALUE_FLAGS);
+  assertKnownFlags(
+    parsed,
+    [...VALUE_FLAGS, "--require-receipt", "--help", "-h"],
+    VALUE_FLAGS,
+  );
   const positionals = positionalArgs(parsed, VALUE_FLAGS);
   if (positionals.length !== 1) {
     fail({
@@ -68,6 +74,9 @@ export async function run(args = [], deps = {}) {
   const options = {
     ...(maxUsd !== null ? { maxUsdMicros: parseUsdMicros(maxUsd) } : {}),
     ...(idempotencyKey !== null ? { idempotencyKey } : {}),
+    ...(parsed.includes("--require-receipt")
+      ? { requireReceipt: true }
+      : {}),
   };
   const sdk = (deps.getSdk ?? getSdk)();
   const write = deps.write ?? ((value) => console.log(value));
@@ -75,19 +84,7 @@ export async function run(args = [], deps = {}) {
   try {
     const result = await sdk.pay.fetch(url, init, options);
     const responseBody = await readResponseBody(result.response);
-    write(JSON.stringify({
-      http_status: result.response.status,
-      body: responseBody,
-      payment: result.payment,
-      outcome: result.outcome,
-      replay: result.replay,
-      payment_id: result.paymentId ?? null,
-      deduplicated: result.deduplicated ?? null,
-      funds_moved: result.fundsMoved ?? null,
-      delivery: result.delivery ?? null,
-      settled_at: result.settledAt ?? null,
-      intent_state: result.intentState ?? null,
-    }));
+    write(JSON.stringify(payFetchResultToJson(result, responseBody)));
   } catch (error) {
     (deps.reportSdkError ?? reportSdkError)(error);
   }

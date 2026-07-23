@@ -1,8 +1,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import {
+  createOfferEIP712,
+  createReceiptEIP712,
+} from "@x402/extensions/offer-receipt";
+import * as offerReceiptRuntime from "@x402/extensions/offer-receipt";
+import { privateKeyToAccount } from "viem/accounts";
 
-import { PaymentBuyerError } from "../namespaces/pay.js";
+import {
+  PaymentBuyerError,
+  PaymentPolicyError,
+} from "../namespaces/pay.js";
 import {
   createX402BuyerFetch,
   X402BalanceError,
@@ -14,6 +23,16 @@ import type {
 } from "./payment-attempts.js";
 
 const PAID_URL = "https://ancestor.run402.app/tribute/1c";
+const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const MERCHANT = privateKeyToAccount(
+  "0x1111111111111111111111111111111111111111111111111111111111111111",
+);
+const BUYER = privateKeyToAccount(
+  "0x2222222222222222222222222222222222222222222222222222222222222222",
+);
+const ROTATED_MERCHANT = privateKeyToAccount(
+  "0x3333333333333333333333333333333333333333333333333333333333333333",
+);
 
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -99,13 +118,22 @@ describe("createX402BuyerFetch", () => {
     assert.equal(calls, 2);
     assert.equal(seenProofs.length, 1);
     assert.equal(result.outcome, "settled");
-    assert.deepEqual(result.payment, {
+    assert.deepEqual({
+      amount_usd_micros: result.payment?.amount_usd_micros,
+      pay_to: result.payment?.pay_to,
+      network: result.payment?.network,
+      tx_ref: result.payment?.tx_ref,
+      url: result.payment?.url,
+    }, {
       amount_usd_micros: 10000,
       pay_to: "0xfeed000000000000000000000000000000000000",
       network: "eip155:8453",
       tx_ref: "0xtransaction",
       url: PAID_URL,
     });
+    assert.equal(result.payment?.settlement.status, "verified");
+    assert.equal(result.payment?.offer.status, "absent");
+    assert.equal(result.payment?.merchantReceipt.status, "absent");
     assert.deepEqual(await result.response.json(), { tribute: "accepted" });
   });
 
@@ -154,6 +182,307 @@ describe("createX402BuyerFetch", () => {
 
     assert.equal(creates, 1);
     assert.equal(result.payment?.amount_usd_micros, 5000000);
+  });
+
+  it("rejects receipt-required payment before signing when no offer is eligible", async () => {
+    let creates = 0;
+    const buyer = createX402BuyerFetch(fakeClient(() => { creates += 1; }), {
+      supportedNetworks: ["eip155:8453"],
+      offerReceipt: offerReceiptRuntime,
+      payerAddresses: [BUYER.address],
+      ...attemptOptions(),
+      fetch: async () => challenge(),
+    });
+
+    await assert.rejects(
+      buyer(PAID_URL, undefined, {
+        maxUsdMicros: 10_000,
+        requireReceipt: true,
+      }),
+      (error: unknown) =>
+        error instanceof PaymentBuyerError &&
+        error.code === "MERCHANT_RECEIPT_REQUIRED" &&
+        error.fundsMoved === false,
+    );
+    assert.equal(creates, 0);
+  });
+
+  it("selects an eligible later requirement and verifies its direct receipt", async () => {
+    const offer = await createOfferEIP712(
+      PAID_URL,
+      {
+        acceptIndex: 1,
+        scheme: "exact",
+        network: "eip155:8453",
+        asset: USDC,
+        payTo: MERCHANT.address,
+        amount: "10000",
+        offerValiditySeconds: 300,
+      },
+      (typedData) => MERCHANT.signTypedData(typedData as never),
+    );
+    const receipt = await createReceiptEIP712(
+      {
+        resourceUrl: PAID_URL,
+        payer: BUYER.address,
+        network: "eip155:8453",
+        transaction: "0xtransaction",
+      },
+      (typedData) => MERCHANT.signTypedData(typedData as never),
+    );
+    let acceptedPayTo: string | null = null;
+    const buyer = createX402BuyerFetch({
+      async createPaymentPayload(required) {
+        acceptedPayTo = required.accepts[0]!.payTo;
+        return {
+          x402Version: required.x402Version,
+          resource: required.resource,
+          accepted: required.accepts[0]!,
+          payload: { authorization: { nonce: "eligible-later" } },
+        };
+      },
+    }, {
+      supportedNetworks: ["eip155:8453"],
+      offerReceipt: offerReceiptRuntime,
+      payerAddresses: [BUYER.address],
+      ...attemptOptions(),
+      fetch: async (_input, init) => {
+        if (!new Headers(init?.headers).has("payment-signature")) {
+          return new Response(null, {
+            status: 402,
+            headers: {
+              "PAYMENT-REQUIRED": encode({
+                x402Version: 2,
+                resource: { url: PAID_URL },
+                accepts: [
+                  {
+                    scheme: "exact",
+                    network: "eip155:8453",
+                    asset: USDC,
+                    amount: "10000",
+                    payTo: "0x000000000000000000000000000000000000dead",
+                    maxTimeoutSeconds: 300,
+                    extra: {},
+                  },
+                  {
+                    scheme: "exact",
+                    network: "eip155:8453",
+                    asset: USDC,
+                    amount: "10000",
+                    payTo: MERCHANT.address,
+                    maxTimeoutSeconds: 300,
+                    extra: {},
+                  },
+                ],
+                extensions: {
+                  "offer-receipt": { info: { offers: [offer] } },
+                },
+              }),
+            },
+          });
+        }
+        return new Response('{"order_id":"ord_42"}', {
+          status: 201,
+          headers: {
+            "content-type": "application/json",
+            "PAYMENT-RESPONSE": encode({
+              success: true,
+              payer: BUYER.address,
+              transaction: "0xtransaction",
+              network: "eip155:8453",
+              extensions: {
+                "offer-receipt": { info: { receipt } },
+              },
+            }),
+          },
+        });
+      },
+    });
+
+    const result = await buyer(PAID_URL, { method: "POST" }, {
+      maxUsdMicros: 10_000,
+      requireReceipt: true,
+    });
+
+    assert.equal(acceptedPayTo, MERCHANT.address);
+    assert.equal(result.payment?.offer.status, "verified");
+    assert.equal(result.payment?.merchantReceipt.status, "verified");
+    assert.equal(result.payment?.signerRelationship.kind, "direct");
+    assert.equal(result.payment?.policy.status, "satisfied");
+  });
+
+  it("preserves a paid invalid-receipt result and never recommends another payment", async () => {
+    const offer = await createOfferEIP712(
+      PAID_URL,
+      {
+        acceptIndex: 0,
+        scheme: "exact",
+        network: "eip155:8453",
+        asset: USDC,
+        payTo: MERCHANT.address,
+        amount: "10000",
+      },
+      (typedData) => MERCHANT.signTypedData(typedData as never),
+    );
+    const invalidReceipt = await createReceiptEIP712(
+      {
+        resourceUrl: PAID_URL,
+        payer: BUYER.address,
+        network: "eip155:8453",
+        transaction: "0xtransaction",
+      },
+      (typedData) => BUYER.signTypedData(typedData as never),
+    );
+    const buyer = createX402BuyerFetch(fakeClient(), {
+      supportedNetworks: ["eip155:8453"],
+      offerReceipt: offerReceiptRuntime,
+      payerAddresses: [BUYER.address],
+      ...attemptOptions(),
+      fetch: async (_input, init) => {
+        if (!new Headers(init?.headers).has("payment-signature")) {
+          return new Response(null, {
+            status: 402,
+            headers: {
+              "PAYMENT-REQUIRED": encode({
+                x402Version: 2,
+                resource: { url: PAID_URL },
+                accepts: [{
+                  scheme: "exact",
+                  network: "eip155:8453",
+                  asset: USDC,
+                  amount: "10000",
+                  payTo: MERCHANT.address,
+                  maxTimeoutSeconds: 300,
+                  extra: {},
+                }],
+                extensions: {
+                  "offer-receipt": { info: { offers: [offer] } },
+                },
+              }),
+            },
+          });
+        }
+        return new Response("created", {
+          status: 201,
+          headers: {
+            "PAYMENT-RESPONSE": encode({
+              success: true,
+              payer: BUYER.address,
+              transaction: "0xtransaction",
+              network: "eip155:8453",
+              extensions: {
+                "offer-receipt": {
+                  info: { receipt: invalidReceipt },
+                },
+              },
+            }),
+          },
+        });
+      },
+    });
+
+    await assert.rejects(
+      buyer(PAID_URL, { method: "POST" }, {
+        maxUsdMicros: 10_000,
+        requireReceipt: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof PaymentPolicyError);
+        assert.equal(error.fundsMoved, true);
+        assert.equal(error.mutationState, "committed");
+        assert.equal(error.safeToRetry, false);
+        assert.equal(
+          error.result.payment?.merchantReceipt.status,
+          "invalid",
+        );
+        assert.deepEqual(
+          error.nextActions.map((action) => action.type),
+          ["reconcile_payment"],
+        );
+        assert.match(
+          error.nextActions[0]?.why ?? "",
+          /do not authorize a second payment/i,
+        );
+        return true;
+      },
+    );
+  });
+
+  it("uses one same-key retry action for trusted receipt recovery", async () => {
+    const offer = await createOfferEIP712(
+      PAID_URL,
+      {
+        acceptIndex: 0,
+        scheme: "exact",
+        network: "eip155:8453",
+        asset: USDC,
+        payTo: MERCHANT.address,
+        amount: "10000",
+      },
+      (typedData) => MERCHANT.signTypedData(typedData as never),
+    );
+    const buyer = createX402BuyerFetch(fakeClient(), {
+      supportedNetworks: ["eip155:8453"],
+      offerReceipt: offerReceiptRuntime,
+      payerAddresses: [BUYER.address],
+      ...attemptOptions(),
+      fetch: async (_input, init) => {
+        if (!new Headers(init?.headers).has("payment-signature")) {
+          return new Response(null, {
+            status: 402,
+            headers: {
+              "PAYMENT-REQUIRED": encode({
+                x402Version: 2,
+                resource: { url: PAID_URL },
+                accepts: [{
+                  scheme: "exact",
+                  network: "eip155:8453",
+                  asset: USDC,
+                  amount: "10000",
+                  payTo: MERCHANT.address,
+                  maxTimeoutSeconds: 300,
+                  extra: {},
+                }],
+                extensions: {
+                  "offer-receipt": { info: { offers: [offer] } },
+                },
+              }),
+            },
+          });
+        }
+        return new Response("created", {
+          status: 201,
+          headers: {
+            "x-run402-merchant-evidence-state": "unavailable",
+            "PAYMENT-RESPONSE": settlement(),
+          },
+        });
+      },
+    });
+
+    await assert.rejects(
+      buyer(PAID_URL, {
+        method: "POST",
+        headers: { "Idempotency-Key": "order:recover:1" },
+      }, {
+        maxUsdMicros: 10_000,
+        idempotencyKey: "order:recover:1",
+        requireReceipt: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof PaymentPolicyError);
+        assert.equal(error.safeToRetry, true);
+        assert.deepEqual(error.nextActions, [{
+          type: "retry",
+          request: "repeat_identical",
+          reusePayer: true,
+          reuseIdempotencyKey: true,
+          why:
+            "Repeat the identical request with the same payer and idempotency key to recover the original receipt without another settlement.",
+        }]);
+        return true;
+      },
+    );
   });
 
   it("rejects unsupported challenge networks before signing", async () => {
@@ -326,6 +655,127 @@ describe("createX402BuyerFetch", () => {
     assert.equal(replay.outcome, "already_settled");
     assert.equal(replay.payment, null, "no tx ref means no pretend settled receipt");
     assert.equal(replay.replay, true);
+  });
+
+  it("verifies replayed evidence against its carried signer after the live merchant rotates", async () => {
+    const originalOffer = await createOfferEIP712(
+      PAID_URL,
+      {
+        acceptIndex: 0,
+        scheme: "exact",
+        network: "eip155:8453",
+        asset: USDC,
+        payTo: MERCHANT.address,
+        amount: "10000",
+      },
+      (typedData) => MERCHANT.signTypedData(typedData as never),
+    );
+    const rotatedOffer = await createOfferEIP712(
+      PAID_URL,
+      {
+        acceptIndex: 0,
+        scheme: "exact",
+        network: "eip155:8453",
+        asset: USDC,
+        payTo: ROTATED_MERCHANT.address,
+        amount: "10000",
+      },
+      (typedData) => ROTATED_MERCHANT.signTypedData(typedData as never),
+    );
+    const originalReceipt = await createReceiptEIP712(
+      {
+        resourceUrl: PAID_URL,
+        payer: BUYER.address,
+        network: "eip155:8453",
+        transaction: "0xoriginal-transaction",
+      },
+      (typedData) => MERCHANT.signTypedData(typedData as never),
+    );
+    let liveGeneration: "original" | "rotated" = "original";
+    let proofCalls = 0;
+    let challengeCalls = 0;
+    const buyer = createX402BuyerFetch(fakeClient(), {
+      supportedNetworks: ["eip155:8453"],
+      offerReceipt: offerReceiptRuntime,
+      payerAddresses: [BUYER.address],
+      ...attemptOptions(),
+      fetch: async (_input, init) => {
+        if (!new Headers(init?.headers).has("payment-signature")) {
+          challengeCalls += 1;
+          const isOriginal = liveGeneration === "original";
+          return new Response(null, {
+            status: 402,
+            headers: {
+              "PAYMENT-REQUIRED": encode({
+                x402Version: 2,
+                resource: { url: PAID_URL },
+                accepts: [{
+                  scheme: "exact",
+                  network: "eip155:8453",
+                  asset: USDC,
+                  amount: "10000",
+                  payTo: isOriginal
+                    ? MERCHANT.address
+                    : ROTATED_MERCHANT.address,
+                  maxTimeoutSeconds: 300,
+                  extra: {},
+                }],
+                extensions: {
+                  "offer-receipt": {
+                    info: {
+                      offers: [isOriginal ? originalOffer : rotatedOffer],
+                    },
+                  },
+                },
+              }),
+            },
+          });
+        }
+        proofCalls += 1;
+        if (proofCalls === 1) {
+          throw new TypeError("connection reset after settlement");
+        }
+        return new Response('{"order_id":"ord_original"}', {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "PAYMENT-RESPONSE": encode({
+              success: true,
+              payer: BUYER.address,
+              transaction: "0xoriginal-transaction",
+              network: "eip155:8453",
+              extensions: {
+                "offer-receipt": { info: { receipt: originalReceipt } },
+              },
+            }),
+          },
+        });
+      },
+    });
+
+    await assert.rejects(
+      buyer(PAID_URL, { method: "POST" }, {
+        maxUsdMicros: 10_000,
+        requireReceipt: true,
+      }),
+      (error: unknown) =>
+        error instanceof PaymentBuyerError && error.fundsMoved === "unknown",
+    );
+    liveGeneration = "rotated";
+
+    const replay = await buyer(PAID_URL, { method: "POST" }, {
+      maxUsdMicros: 10_000,
+      requireReceipt: true,
+    });
+
+    assert.equal(challengeCalls, 1, "the retry must keep the original offer");
+    assert.equal(replay.replay, true);
+    assert.equal(replay.payment?.merchantReceipt.status, "verified");
+    assert.equal(replay.payment?.signerRelationship.signer, MERCHANT.address);
+    assert.notEqual(
+      replay.payment?.signerRelationship.signer,
+      ROTATED_MERCHANT.address,
+    );
   });
 
   it("does not reuse an ambiguous proof under a lower retry ceiling", async () => {

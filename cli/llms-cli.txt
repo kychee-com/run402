@@ -874,12 +874,12 @@ run402 subdomains claim my-app
 
 ### pay
 
-`run402 pay <url> [--method <M>] [--body <json-or-text>] [--max-usd <amount>] [--idempotency-key <key>]` calls an arbitrary x402-priced HTTP endpoint through the SDK buyer. The default ceiling is `$0.10`; `--max-usd` accepts up to six decimal places and is converted exactly to USD micros. The JSON result includes `{ http_status, body, payment, outcome, replay, payment_id, deduplicated, funds_moved, delivery, settled_at, intent_state }`. Unpriced URLs return `payment: null`. For `PAYMENT_INTENT_PENDING` on a trusted Run402 host, wait for `Retry-After` and repeat the identical command with the same payer, request, and key. Never substitute a fresh key. Custom/arbitrary hosts and other `funds_moved: "unknown"` outcomes remain ambiguous and require reconciliation.
+`run402 pay <url> [--method <M>] [--body <json-or-text>] [--max-usd <amount>] [--idempotency-key <key>] [--require-receipt]` calls an arbitrary x402-priced HTTP endpoint through the SDK buyer. The default ceiling is `$0.10`; `--max-usd` accepts up to six decimal places and is converted exactly to USD micros. `--require-receipt` requires a verified wallet-rooted offer before payment and a matching receipt afterward. JSON output is the complete `x402-commerce-result.v1` envelope with settlement, movement/replay, delivery, offer, merchant-receipt, signer-relationship, policy, and portable evidence. Unpriced URLs return `payment: null`. For `PAYMENT_INTENT_PENDING` on a trusted Run402 host, wait for `Retry-After` and repeat the identical command with the same payer, request, and key. Never substitute a fresh key. Custom/arbitrary hosts and other `funds_moved: "unknown"` outcomes remain ambiguous and require reconciliation.
 
 ```bash
 run402 pay https://seller.example/translate --method POST \
   --body '{"text":"hello"}' --max-usd 0.05 \
-  --idempotency-key translation:1
+  --idempotency-key translation:1 --require-receipt
 ```
 
 ### status

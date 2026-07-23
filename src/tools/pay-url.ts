@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import {
+  payFetchResultToJson,
+  type PayFetchResult,
+} from "../../sdk/dist/index.js";
 
 export const payUrlSchema = {
   url: z.string().url().describe("The HTTP(S) URL to call"),
@@ -19,6 +23,12 @@ export const payUrlSchema = {
     .nonnegative()
     .optional()
     .describe("Maximum payment in USD micros (default: 100000, or $0.10)"),
+  require_receipt: z
+    .boolean()
+    .optional()
+    .describe(
+      "Require a verified wallet-rooted merchant offer before payment and a matching receipt after settlement",
+    ),
 };
 
 interface PayUrlArgs {
@@ -27,6 +37,7 @@ interface PayUrlArgs {
   body?: string | Record<string, unknown>;
   idempotency_key?: string;
   max_usd_micros?: number;
+  require_receipt?: boolean;
 }
 
 interface PayUrlSdk {
@@ -34,51 +45,67 @@ interface PayUrlSdk {
     fetch: (
       url: string,
       init?: RequestInit,
-      options?: { idempotencyKey?: string; maxUsdMicros?: number },
-    ) => Promise<{
-      response: Response;
-      payment: unknown;
-      outcome: string;
-      replay: boolean;
-      paymentId?: string | null;
-      deduplicated?: boolean | null;
-      fundsMoved?: boolean | "unknown" | null;
-      delivery?: "first" | "replay" | "none" | null;
-      settledAt?: string | null;
-      intentState?: string | null;
-    }>;
+      options?: {
+        idempotencyKey?: string;
+        maxUsdMicros?: number;
+        requireReceipt?: boolean;
+      },
+    ) => Promise<PayFetchResult>;
   };
 }
 
 export async function handlePayUrl(
   args: PayUrlArgs,
   deps: { getSdk?: () => PayUrlSdk } = {},
-): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: "text"; text: string }>;
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+}> {
   try {
     const method = (args.method ?? "GET").toUpperCase();
     const init = requestInit(method, args.body);
     const result = await (deps.getSdk?.() ?? getSdk()).pay.fetch(args.url, init, {
       ...(args.idempotency_key !== undefined ? { idempotencyKey: args.idempotency_key } : {}),
       ...(args.max_usd_micros !== undefined ? { maxUsdMicros: args.max_usd_micros } : {}),
+      ...(args.require_receipt !== undefined
+        ? { requireReceipt: args.require_receipt }
+        : {}),
     });
     const body = await readResponseBody(result.response);
-    const output = {
-      http_status: result.response.status,
-      body,
-      payment: result.payment,
-      outcome: result.outcome,
-      replay: result.replay,
-      payment_id: result.paymentId ?? null,
-      deduplicated: result.deduplicated ?? null,
-      funds_moved: result.fundsMoved ?? null,
-      delivery: result.delivery ?? null,
-      settled_at: result.settledAt ?? null,
-      intent_state: result.intentState ?? null,
+    const output = payFetchResultToJson(result, body);
+    return {
+      content: [{ type: "text", text: renderCommerceSummary(output) }],
+      structuredContent: output,
     };
-    return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
   } catch (error) {
     return mapSdkError(error, "paying URL");
   }
+}
+
+function renderCommerceSummary(output: Record<string, unknown>): string {
+  const payment = output.payment as Record<string, unknown> | null;
+  if (!payment) {
+    return [
+      `HTTP ${output.http_status}`,
+      "Payment: not required",
+      `Outcome: ${output.outcome}`,
+    ].join("\n");
+  }
+  const settlement = payment.settlement as Record<string, unknown>;
+  const delivery = payment.delivery as Record<string, unknown>;
+  const receipt = payment.merchant_receipt as Record<string, unknown>;
+  const relationship = payment.signer_relationship as Record<string, unknown>;
+  const policy = payment.policy as Record<string, unknown>;
+  return [
+    `HTTP ${output.http_status}`,
+    `Payment: ${payment.amount_usd_micros} usd_micros → ${payment.pay_to}`,
+    `Settlement: ${settlement.status}`,
+    `Funds moved: ${payment.funds_moved}; replay: ${delivery.replay}`,
+    `Merchant receipt: ${receipt.status}`,
+    `Signer relationship: ${relationship.kind ?? "none"}`,
+    `Receipt policy: ${policy.status}`,
+  ].join("\n");
 }
 
 function requestInit(method: string, body: PayUrlArgs["body"]): RequestInit {

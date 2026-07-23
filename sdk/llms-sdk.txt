@@ -123,7 +123,11 @@ const r = run402();
 const result = await r.pay.fetch(
   "https://seller.example/translate",
   { method: "POST", body: JSON.stringify({ text: "hello" }) },
-  { maxUsdMicros: 50_000, idempotencyKey: "translation:1" },
+  {
+    maxUsdMicros: 50_000,
+    idempotencyKey: "translation:1",
+    requireReceipt: true,
+  },
 );
 
 console.log(result.outcome, result.payment, await result.response.json());
@@ -131,14 +135,26 @@ console.log(result.outcome, result.payment, await result.response.json());
 
 `payment` is `null` when no payment was required or when an already-used proof
 confirms that a prior ambiguous request settled but the target cannot return a
-transaction reference. Otherwise it is
-`{ amount_usd_micros, pay_to, network, tx_ref, url }`. Branch on
+transaction reference. Otherwise it includes settlement, movement/replay,
+delivery, offer, merchant-receipt, signer-relationship, policy, and
+raw-evidence fields. Set `requireReceipt: true` to require a verified
+wallet-rooted offer before payment and a matching receipt afterward. The buyer
+verifies the exact URL, scheme, network, asset, atomic amount, recipient,
+validity, settlement, payer, transaction, and signer relationship. Branch on
 `PaymentBuyerError.code`: `PAYMENT_EXCEEDS_MAX`, `PAYMENT_WALLET_UNFUNDED`,
 `PAYMENT_NETWORK_UNSUPPORTED`, exact Run402 pending/drain/destination/fence/
 lifetime/key-reuse codes, or `PAYMENT_SETTLEMENT_FAILED`. The error preserves
 `fundsMoved`, `paymentId`, intent/delivery facts, and canonical `nextActions`.
 Successful results preserve `paymentId`, `deduplicated`, `fundsMoved`,
 `delivery`, `settledAt`, and `intentState` when supplied.
+
+Required policy fails before signing with `MERCHANT_RECEIPT_REQUIRED` when no
+eligible offer remains. A post-settlement evidence failure throws
+`PaymentPolicyError` with `MERCHANT_RECEIPT_UNAVAILABLE`, the upstream
+`Response`, complete commerce result, true funds-moved/mutation state, and one
+canonical `retry` or `reconcile_payment` action. Never authorize a second
+payment to recover a receipt. `payFetchResultToJson` renders the complete
+snake_case `x402-commerce-result.v1` envelope.
 
 For an ambiguous transport failure, retry the identical request on the same SDK
 instance with the same idempotency key. This buyer keeps the signed proof only
@@ -1028,7 +1044,7 @@ The `Run402` class exposes focused namespaces. Click into the SDK source for ful
 ### `r.pay`
 
 ```
-r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey? }): Promise<PayFetchResult>
+r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? }): Promise<PayFetchResult>
 ```
 
 Node automatically supplies the configured allowance/signer. Isomorphic hosts

@@ -530,11 +530,20 @@ export type * from "./namespaces/errors.types.js";
 export {
   Pay,
   PaymentBuyerError,
+  PaymentPolicyError,
   DEFAULT_PAYMENT_MAX_USD_MICROS,
+  X402_COMMERCE_RESULT_SCHEMA_VERSION,
+  X402_EVIDENCE_STATUSES,
+  X402_GATEWAY_AVAILABILITY_ERROR_CODE,
+  X402_MUTATION_STATES,
+  X402_PAYMENT_POLICY_ERROR_CODES,
+  X402_RECOVERY_ACTIONS,
   RUN402_PENDING_CLASSIFIER_VERSION,
   isPaymentBuyerError,
+  isPaymentPolicyError,
   isTrustedRun402PaymentUrl,
   isTrustedRun402PendingResponse,
+  payFetchResultToJson,
 } from "./namespaces/pay.js";
 export type * from "./namespaces/pay.js";
 export { Archives } from "./namespaces/archives.js";

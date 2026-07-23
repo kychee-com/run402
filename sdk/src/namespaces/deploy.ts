@@ -2742,7 +2742,13 @@ const ROUTE_ENTRY_FIELDS = new Set(["pattern", "methods", "target", "pricing", "
 const FUNCTION_ROUTE_TARGET_FIELDS = new Set(["type", "name"]);
 const STATIC_ROUTE_TARGET_FIELDS = new Set(["type", "file"]);
 const ROUTE_METHOD_SET = new Set<string>(ROUTE_HTTP_METHODS);
-const ROUTE_PRICING_FIELDS = new Set(["mode", "amount_usd_micros", "pay_to", "networks"]);
+const ROUTE_PRICING_FIELDS = new Set([
+  "mode",
+  "amount_usd_micros",
+  "pay_to",
+  "networks",
+  "receipt",
+]);
 const ROUTE_PRICING_NETWORK_SET = new Set<string>(ROUTE_PRICING_NETWORKS);
 const I18N_SPEC_FIELDS = new Set(["defaultLocale", "locales", "detect", "unknownLocalePolicy"]);
 const I18N_LOCALE_TAG_REGEX = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -3270,6 +3276,15 @@ function validateRoutePricing(
     throw invalidRouteSpec(
       `ReleaseSpec.${resource}.pricing.pay_to must be "org_default_payout"`,
       `${resource}.pricing.pay_to`,
+    );
+  }
+  if (
+    obj.receipt !== undefined &&
+    obj.receipt !== "on_fulfillment"
+  ) {
+    throw invalidRouteSpec(
+      `ReleaseSpec.${resource}.pricing.receipt must be "on_fulfillment"`,
+      `${resource}.pricing.receipt`,
     );
   }
   if (obj.networks === undefined) return;

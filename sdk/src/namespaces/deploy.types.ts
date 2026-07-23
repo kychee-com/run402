@@ -562,6 +562,8 @@ export interface RoutePricingSpec {
   pay_to: "org_default_payout";
   /** Omit to accept production mainnet only. Add `"testnet"` explicitly for testnet acceptance. */
   networks?: readonly RoutePricingNetwork[];
+  /** Ask the function to declare committed fulfillment for a signed merchant receipt. */
+  receipt?: "on_fulfillment";
 }
 
 export interface FunctionRouteTarget {

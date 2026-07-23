@@ -226,7 +226,7 @@ Use the unified **`deploy`** tool for `site.public_paths` clean static browser U
 
 Omit `routes` or pass `routes: null` to carry forward base routes. Use `routes: { "replace": [] }` to clear the route table. Do not use path-keyed maps. Function targets use `{ "type": "function", "name": "<materialized function name>" }`. Prefer `site.public_paths` for ordinary clean static URLs such as `/events -> events.html`. Static route targets use exact patterns only, methods `["GET"]` or `["GET","HEAD"]`, and `{ "pattern": "/events", "methods": ["GET", "HEAD"], "target": { "type": "static", "file": "events.html" } }` for route-only aliases; `file` is a release static asset path, not a public path, URL, CAS hash, rewrite, or redirect. Direct `/functions/v1/:name` remains API-key protected; browser-routed paths are public same-origin ingress, so the function owns application auth, CSRF for cookie-authenticated unsafe methods, CORS/`OPTIONS`, cookies, redirects, and spoofed forwarding-header hygiene.
 
-Function routes may declare fixed tenant x402 pricing: `{ "pattern": "/api/credits", "methods": ["POST"], "target": { "type": "function", "name": "credits" }, "pricing": { "mode": "always", "amount_usd_micros": 250000, "pay_to": "org_default_payout" } }`. `250000` is $0.25 per matching action. Omit `networks` for production mainnet only; include `"testnet"` explicitly for testnet payments. Static aliases cannot be priced, direct function invocation is not monetized, and service/admin keys do not bypass a priced browser route. Before deploying priced routes, ensure the org has a payout wallet with **`set_org_payout_wallet`** or CLI `run402 org payout-wallet <org_id> <wallet_address>`. For conditional credits, use one fixed-price `/api/credits` route and keep the app envelope unpriced behind app-local auth. In the handler, import `getRoutedPaymentContext` from `@run402/functions`, call `getRoutedPaymentContext(req)`, and key idempotency by `payment.paymentId`; audit with **`list_tenant_payments`**.
+Function routes may declare fixed tenant x402 pricing: `{ "pattern": "/api/credits", "methods": ["POST"], "target": { "type": "function", "name": "credits" }, "pricing": { "mode": "always", "amount_usd_micros": 250000, "pay_to": "org_default_payout" } }`. `250000` is $0.25 per matching action. Portable ReleaseSpec also accepts `receipt: "on_fulfillment"` inside pricing; compatible hosts require `payment.fulfilled(response)` from `@run402/functions` after completed delivery. Run402-hosted evidence stays gated until the interoperable delegated-signer carrier exists and never silently downgrades receipt intent. Omit `networks` for production mainnet only; include `"testnet"` explicitly for testnet payments. Static aliases cannot be priced, direct function invocation is not monetized, and service/admin keys do not bypass a priced browser route. Before deploying priced routes, ensure the org has a payout wallet with **`set_org_payout_wallet`** or CLI `run402 org payout-wallet <org_id> <wallet_address>`. For conditional credits, use one fixed-price `/api/credits` route and keep the app envelope unpriced behind app-local auth. In the handler, import `getRoutedPaymentContext` from `@run402/functions`, call `getRoutedPaymentContext(req)`, and key idempotency by `payment.paymentId`; audit with **`list_tenant_payments`**.
 
 Matching is exact or final `/*` prefix only. `/admin/*` does not match `/admin`; use both `/admin` and `/admin/*` for a dynamic area root. Query strings are ignored for matching and preserved in the handler's full public `req.url`. Exact beats prefix, longest prefix wins, and method-compatible dynamic routes beat static assets. A `POST /login` route can coexist with static `GET /login` HTML. Unsafe method mismatch returns `405`; matched dynamic route failures fail closed.
 
@@ -610,12 +610,16 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 - **`pay_url`** — call an arbitrary HTTP(S) URL and satisfy a supported exact
   x402 challenge. Params: `url`, optional `method`, `body`, `idempotency_key`,
-  and `max_usd_micros` (default `100000`, or $0.10). Returns the target response
-  plus `payment`, `outcome`, `replay`, `payment_id`, dedupe/movement/delivery,
-  and intent facts. On trusted Run402 `PAYMENT_INTENT_PENDING`, wait for
+  `max_usd_micros` (default `100000`, or $0.10), and `require_receipt`. The
+  latter requires a verified wallet-rooted offer before payment and a matching
+  receipt afterward. Returns `x402-commerce-result.v1` with settlement,
+  movement/replay, delivery, offer, merchant-receipt, signer-relationship,
+  policy, and portable non-secret evidence. A post-settlement policy failure
+  means reconcile the existing payment; never authorize another one. On
+  trusted Run402 `PAYMENT_INTENT_PENDING`, wait for
   `Retry-After` and repeat identical arguments with the same payer and
   `idempotency_key`; never replace the key. Custom/arbitrary hosts remain
-  ambiguous. No portable settlement receipt is implied.
+  ambiguous unless verified evidence is present.
 
 ### Apps marketplace
 

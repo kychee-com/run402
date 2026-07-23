@@ -2141,6 +2141,11 @@ describe("Deploy.apply (validation)", () => {
         /org_default_payout/,
       ],
       [
+        { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", receipt: "later" } }] },
+        "routes.replace.0.pricing.receipt",
+        /on_fulfillment/,
+      ],
+      [
         { replace: [{ pattern: "/api/credits", methods: ["POST"], target: { type: "function", name: "api" }, pricing: { mode: "always", amount_usd_micros: 250000, pay_to: "org_default_payout", networks: ["eip155:84532"] } }] },
         "routes.replace.0.pricing.networks",
         /Unsupported route pricing network/,

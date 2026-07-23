@@ -2,20 +2,102 @@ import type { Client } from "../kernel.js";
 import { Run402Error, type NextAction } from "../errors.js";
 
 export const DEFAULT_PAYMENT_MAX_USD_MICROS = 100_000;
+export const X402_COMMERCE_RESULT_SCHEMA_VERSION =
+  "x402-commerce-result.v1" as const;
+export const X402_PAYMENT_POLICY_ERROR_CODES = [
+  "MERCHANT_RECEIPT_REQUIRED",
+  "MERCHANT_RECEIPT_UNAVAILABLE",
+] as const;
+export const X402_GATEWAY_AVAILABILITY_ERROR_CODE =
+  "MERCHANT_EVIDENCE_UNAVAILABLE" as const;
+export const X402_MUTATION_STATES = [
+  "not_started",
+  "committed",
+  "unknown",
+] as const;
+export const X402_RECOVERY_ACTIONS = [
+  "retry",
+  "reconcile_payment",
+] as const;
 
 export interface PayFetchOptions {
   /** Maximum atomic USD units this call may authorize. Defaults to 100,000 ($0.10). */
   maxUsdMicros?: number;
   /** Forwarded as `Idempotency-Key` for key-deduplicated paid HTTP surfaces. */
   idempotencyKey?: string;
+  /**
+   * Require a verified wallet-rooted merchant offer before authorizing
+   * payment and a matching verified receipt after settlement.
+   */
+  requireReceipt?: boolean;
+}
+
+export const X402_EVIDENCE_STATUSES = [
+  "verified",
+  "absent",
+  "invalid",
+  "untrusted",
+  "unavailable",
+] as const;
+export type PaymentEvidenceStatus =
+  (typeof X402_EVIDENCE_STATUSES)[number];
+
+export interface PaymentNextAction extends NextAction {
+  type: "retry" | "reconcile_payment";
+  why: string;
+  request?: "repeat_identical";
+  reusePayer?: true;
+  reuseIdempotencyKey?: true;
+}
+
+export interface PaymentRawEvidence {
+  offer: unknown | null;
+  merchantReceipt: unknown | null;
+  signerAuthorization: unknown | null;
 }
 
 export interface PaymentReceipt {
+  /** @deprecated Use amountUsdMicros. */
   amount_usd_micros: number;
+  /** @deprecated Use payTo. */
   pay_to: string;
   network: string;
+  /** @deprecated Use transaction. */
   tx_ref: string;
+  /** @deprecated Use resourceUrl. */
   url: string;
+  paymentId: string | null;
+  amountUsdMicros: number;
+  asset: string;
+  payer: string | null;
+  payTo: string;
+  transaction: string;
+  resourceUrl: string;
+  settlement: { status: PaymentEvidenceStatus };
+  fundsMoved: PaymentFundsMoved;
+  deduplicated: boolean;
+  delivery: { status: "fulfilled" | "failed" | "unknown"; replay: boolean };
+  offer: {
+    status: PaymentEvidenceStatus;
+    resourceUrl: string | null;
+    validUntil: string | null;
+  };
+  merchantReceipt: {
+    status: PaymentEvidenceStatus;
+    claim: "service_delivered" | null;
+    issuedAt: string | null;
+  };
+  signerRelationship: {
+    kind: "direct" | "delegated" | "unverified" | null;
+    merchantRoot: string | null;
+    signer: string | null;
+    authorizationExpiresAt: string | null;
+  };
+  policy: {
+    requireReceipt: boolean;
+    status: "satisfied" | "unsatisfied" | "not_required";
+  };
+  evidence: PaymentRawEvidence;
 }
 
 export type PayFetchOutcome = "not_required" | "settled" | "already_settled";
@@ -40,6 +122,73 @@ export interface PayFetchResult {
   settledAt?: string | null;
   /** Durable intent state when the request is a status-bearing replay. */
   intentState?: string | null;
+  /** Canonical recovery actions. Never recommends a second payment. */
+  nextActions?: PaymentNextAction[];
+}
+
+export function payFetchResultToJson(
+  result: PayFetchResult,
+  body: unknown,
+): Record<string, unknown> {
+  const payment = result.payment;
+  return {
+    schema_version: X402_COMMERCE_RESULT_SCHEMA_VERSION,
+    http_status: result.response.status,
+    body,
+    payment: payment
+      ? {
+          payment_id: payment.paymentId,
+          amount_usd_micros: payment.amountUsdMicros,
+          asset: payment.asset,
+          network: payment.network,
+          payer: payment.payer,
+          pay_to: payment.payTo,
+          transaction: payment.transaction,
+          resource_url: payment.resourceUrl,
+          settlement: payment.settlement,
+          funds_moved: payment.fundsMoved,
+          deduplicated: payment.deduplicated,
+          delivery: payment.delivery,
+          offer: {
+            status: payment.offer.status,
+            resource_url: payment.offer.resourceUrl,
+            valid_until: payment.offer.validUntil,
+          },
+          merchant_receipt: {
+            status: payment.merchantReceipt.status,
+            claim: payment.merchantReceipt.claim,
+            issued_at: payment.merchantReceipt.issuedAt,
+          },
+          signer_relationship: {
+            kind: payment.signerRelationship.kind,
+            merchant_root: payment.signerRelationship.merchantRoot,
+            signer: payment.signerRelationship.signer,
+            authorization_expires_at:
+              payment.signerRelationship.authorizationExpiresAt,
+          },
+          policy: {
+            require_receipt: payment.policy.requireReceipt,
+            status: payment.policy.status,
+          },
+          evidence: {
+            offer: payment.evidence.offer,
+            merchant_receipt: payment.evidence.merchantReceipt,
+            signer_authorization: payment.evidence.signerAuthorization,
+          },
+        }
+      : null,
+    outcome: payment ? "paid" : "not_paid",
+    replay: result.replay,
+    next_actions: (result.nextActions ?? []).map((action) => ({
+      type: action.type,
+      why: action.why,
+      ...(action.request ? { request: action.request } : {}),
+      ...(action.reusePayer ? { reuse_payer: true } : {}),
+      ...(action.reuseIdempotencyKey
+        ? { reuse_idempotency_key: true }
+        : {}),
+    })),
+  };
 }
 
 export type PaymentFundsMoved = boolean | "unknown";
@@ -57,7 +206,9 @@ export type PaymentBuyerErrorCode =
   | "IDEMPOTENCY_KEY_REUSED"
   | "INVALID_IDEMPOTENCY_KEY"
   | "IDEMPOTENCY_KEY_PAYER_REQUIRED"
-  | "PAYMENT_SETTLEMENT_FAILED";
+  | "PAYMENT_SETTLEMENT_FAILED"
+  | "MERCHANT_RECEIPT_REQUIRED"
+  | "MERCHANT_RECEIPT_UNAVAILABLE";
 
 export interface PayResponseMetadata {
   paymentId: string | null;
@@ -141,6 +292,69 @@ export class PaymentBuyerError extends Run402Error {
   }
 }
 
+/**
+ * A receipt policy failed after a paid response was received. The original
+ * response and commerce result remain available for reconciliation.
+ */
+export class PaymentPolicyError extends PaymentBuyerError {
+  readonly response: Response;
+  readonly result: PayFetchResult;
+  readonly mutationState: "not_started" | "committed" | "unknown";
+  readonly safeToRetry: boolean;
+  readonly nextActions: PaymentNextAction[];
+
+  constructor(init: {
+    response: Response;
+    result: PayFetchResult;
+    message: string;
+    fundsMoved: PaymentFundsMoved;
+    mutationState: "not_started" | "committed" | "unknown";
+    safeToRetry: boolean;
+    nextActions: PaymentNextAction[];
+  }) {
+    super({
+      code: "MERCHANT_RECEIPT_UNAVAILABLE",
+      message: init.message,
+      fundsMoved: init.fundsMoved,
+      safeToRetry: init.safeToRetry,
+      details: {
+        merchant_receipt_status:
+          init.result.payment?.merchantReceipt.status ?? "unavailable",
+      },
+      nextActions: init.nextActions.map((action) => ({
+        type: action.type,
+        why: action.why,
+        ...(action.request ? { request: action.request } : {}),
+        ...(action.reusePayer ? { reuse_payer: action.reusePayer } : {}),
+        ...(action.reuseIdempotencyKey
+          ? { reuse_idempotency_key: action.reuseIdempotencyKey }
+          : {}),
+      })),
+      body: {
+        error: "MERCHANT_RECEIPT_UNAVAILABLE",
+        code: "MERCHANT_RECEIPT_UNAVAILABLE",
+        message: init.message,
+        category: "payment_policy",
+        source: "sdk",
+        retryable: init.safeToRetry,
+        safe_to_retry: init.safeToRetry,
+        mutation_state: init.mutationState,
+        funds_moved: init.fundsMoved,
+        details: {
+          merchant_receipt_status:
+            init.result.payment?.merchantReceipt.status ?? "unavailable",
+        },
+        next_actions: init.nextActions,
+      },
+    });
+    this.response = init.response;
+    this.result = init.result;
+    this.mutationState = init.mutationState;
+    this.safeToRetry = init.safeToRetry;
+    this.nextActions = init.nextActions;
+  }
+}
+
 export function isPaymentBuyerError(error: unknown): error is PaymentBuyerError {
   return Boolean(
     error &&
@@ -150,10 +364,25 @@ export function isPaymentBuyerError(error: unknown): error is PaymentBuyerError 
   );
 }
 
+export function isPaymentPolicyError(
+  error: unknown,
+): error is PaymentPolicyError {
+  return Boolean(
+    isPaymentBuyerError(error) &&
+      (error as { code?: unknown }).code ===
+        "MERCHANT_RECEIPT_UNAVAILABLE" &&
+      (error as { response?: unknown }).response instanceof Response &&
+      typeof (error as { result?: unknown }).result === "object",
+  );
+}
+
 export type PayExecutor = (
   url: string,
   init: RequestInit | undefined,
-  options: Required<Pick<PayFetchOptions, "maxUsdMicros">> & Pick<PayFetchOptions, "idempotencyKey">,
+  options: Required<
+    Pick<PayFetchOptions, "maxUsdMicros" | "requireReceipt">
+  > &
+    Pick<PayFetchOptions, "idempotencyKey">,
 ) => Promise<PayFetchResult>;
 
 /** Arbitrary-URL buyer namespace. Node supplies the x402 executor; isomorphic callers may inject one. */
@@ -174,12 +403,16 @@ export class Pay {
     if (this.executor) {
       return this.executor(normalizedUrl, nextInit, {
         maxUsdMicros,
+        requireReceipt: options.requireReceipt === true,
         ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
       });
     }
 
     const response = await this.client.fetch(normalizedUrl, nextInit);
     if (response.status === 402) {
+      if (options.requireReceipt) {
+        throw merchantReceiptRequiredError();
+      }
       throw walletUnavailableError();
     }
     return {
@@ -190,6 +423,34 @@ export class Pay {
       ...payResponseMetadata(response),
     };
   }
+}
+
+export function merchantReceiptRequiredError(
+  details: Record<string, unknown> = {},
+): PaymentBuyerError {
+  return new PaymentBuyerError({
+    code: "MERCHANT_RECEIPT_REQUIRED",
+    message:
+      "No eligible payment requirement carried a valid wallet-rooted merchant offer.",
+    fundsMoved: false,
+    safeToRetry: true,
+    details,
+    nextActions: [],
+    body: {
+      error: "MERCHANT_RECEIPT_REQUIRED",
+      code: "MERCHANT_RECEIPT_REQUIRED",
+      message:
+        "No eligible payment requirement carried a valid wallet-rooted merchant offer.",
+      category: "payment_policy",
+      source: "sdk",
+      retryable: false,
+      safe_to_retry: true,
+      mutation_state: "not_started",
+      funds_moved: false,
+      details,
+      next_actions: [],
+    },
+  });
 }
 
 export function paymentExceedsMaxError(
@@ -397,6 +658,7 @@ function isPaymentBuyerErrorCode(value: unknown): value is PaymentBuyerErrorCode
     "IDEMPOTENCY_KEY_REUSED",
     "INVALID_IDEMPOTENCY_KEY", "IDEMPOTENCY_KEY_PAYER_REQUIRED",
     "PAYMENT_SETTLEMENT_FAILED",
+    "MERCHANT_RECEIPT_REQUIRED", "MERCHANT_RECEIPT_UNAVAILABLE",
   ]).has(value);
 }
 
