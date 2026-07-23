@@ -8,19 +8,23 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./config": {
       "types": "./dist/config.d.ts",
-      "import": "./dist/config.js"
+      "import": "./dist/config.js",
+      "default": "./dist/config.js"
     },
     "./node": {
       "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.js"
+      "import": "./dist/node/index.js",
+      "default": "./dist/node/index.js"
     },
     "./node/config": {
       "types": "./dist/node/config.d.ts",
-      "import": "./dist/node/config.js"
+      "import": "./dist/node/config.js",
+      "default": "./dist/node/config.js"
     }
   },
   "scripts": {
