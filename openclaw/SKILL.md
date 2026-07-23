@@ -322,6 +322,23 @@ export default async (req) => {
 
 Static-route hits do NOT receive locale negotiation; only routed HTTP function invocations do. Run402 does NOT inject `Vary` headers — apps that return public-cacheable responses varying by locale must set their own `Vary` until per-locale edge caching ships.
 
+#### Routed functions: visitor geo (`x-run402-country`)
+
+Routed function invocations carry the visitor's country as an edge-authoritative request header — identical on managed subdomains (`<sub>.run402.com`) and verified custom domains, with zero config (no release slice, always on when the edge knows the country):
+
+```ts
+export default async (req) => {
+  const country = req.headers.get('x-run402-country') ?? 'unknown'; // e.g. "DE"
+  return Response.json({ country });
+};
+```
+
+- Value is ISO 3166-1 alpha-2 verbatim from the edge, plus the specials `T1` (Tor exit) and `XX` (unknown) on Cloudflare-fronted custom domains.
+- When the edge supplies no geo the header is **absent** — never empty, never a guessed value — so `?? 'unknown'` (or your preferred fallback) at the read site.
+- Spoof-proof: client-supplied `x-run402-country`, `cf-ipcountry`, and `cloudfront-viewer-country` are scrubbed at both edges; the header your function sees is always minted by the platform from edge geo data.
+- Compat: on custom domains only, the legacy `cf-ipcountry` header is also present with the same value. Prefer `x-run402-country` — it works on every hostname.
+- Static-route hits do NOT receive geo; only routed HTTP function invocations do. Country-varying public-cacheable responses must set their own `Vary`, same as locale.
+
 #### Client-side gotcha: language switchers must write a cookie
 
 Apps that persist locale to `localStorage` only (a common pattern from Astro/Next i18n tutorials) won't be seen by Run402's server-side negotiation. Mirror the locale to a cookie so the next request hits the right translations, then declare a cookie source in `spec.i18n.detect`:
