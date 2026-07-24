@@ -422,8 +422,22 @@ export async function loadExecutableDeployConfig(
   try {
     mod = await importConfigModule(manifestPath, extension);
   } catch (err) {
+    let message = `Failed to load executable deploy config '${path}': ${(err as Error).message}`;
+    // GH-509: a .ts manifest in a project whose nearest package.json lacks
+    // `"type": "module"` is compiled as CommonJS by the tsx loader, so its
+    // imports resolve with require conditions. Against an @run402/sdk older
+    // than 4.11.1 (import-only exports map) that fails with the misleading
+    // "Package subpath ... is not defined by \"exports\"" even though the
+    // subpath exists — no condition matches. Name the real fix in the error.
+    if (/is not defined by "exports".*@run402[\\/]sdk/s.test((err as Error).message ?? "")) {
+      message +=
+        `\nLikely cause: this project's package.json has no "type": "module", so the ` +
+        `TypeScript manifest is loaded as CommonJS and the installed @run402/sdk predates ` +
+        `4.11.1 (its exports map had no require/default conditions). Fix either side: ` +
+        `upgrade @run402/sdk to >=4.11.1, or add "type": "module" to package.json.`;
+    }
     throw new LocalError(
-      `Failed to load executable deploy config '${path}': ${(err as Error).message}`,
+      message,
       "loading executable deploy config",
       {
         cause: err,
