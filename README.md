@@ -417,6 +417,10 @@ The active project is sticky: `run402 projects use <id>` server-validates `<id>`
 npx -y run402-mcp                        # standalone test
 ```
 
+### Remote endpoint (no install)
+
+A hosted streamable-HTTP MCP server runs at **`https://mcp.run402.com/mcp`** with free discovery tools only: `run402_quickstart`, `x402_price_check` (decode any URL's x402 challenge, unpaid), and `experiment_scoreboard`. It never handles funds — paid capabilities (image generation, deploys, payments) require the local server below, which holds *your* wallet. Registry entry `com.run402/mcp` lists both (`packages[]` npm + `remotes[]`). The remote itself runs as a run402 function — the platform hosting its own MCP server.
+
 Stdio MCP transports must keep stdout reserved for JSON-RPC. Use the package bin (`npx -y run402-mcp`) or `node dist/index.js` from a built checkout. If a host insists on `npm start`, set `npm_config_loglevel=silent`; npm's lifecycle banner is stdout and otherwise appears as non-JSON prelude. The repo `.npmrc` and Docker image set this for source/container hosts.
 
 ### Claude Desktop
