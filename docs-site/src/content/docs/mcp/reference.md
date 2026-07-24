@@ -6,6 +6,7 @@ order: 1
 
 > Package: `run402-mcp` (npm)
 > Connect via: Claude Desktop / Cursor / Cline / Claude Code
+> Remote (no install, free discovery tools only): streamable-http at https://mcp.run402.com/mcp — `run402_quickstart` · `x402_price_check` · `experiment_scoreboard`. The remote never handles funds; every paid tool below requires this local server (it holds YOUR wallet).
 > Wayfinder: https://run402.com/llms.txt
 > Sibling references: SDK at https://docs.run402.com/llms-sdk.txt · CLI at https://docs.run402.com/llms-cli.txt · HTTP at https://run402.com/llms-full.txt
 > Source: cli/llms-mcp.txt in https://github.com/kychee-com/run402
