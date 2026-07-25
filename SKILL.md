@@ -905,4 +905,5 @@ For the corresponding HTTP API reference, see <https://run402.com/llms.txt>. For
 - Status: <https://api.run402.com/status>
 - Health: <https://api.run402.com/health>
 - npm: [`run402-mcp`](https://www.npmjs.com/package/run402-mcp) · [`run402`](https://www.npmjs.com/package/run402) · [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) · [`@run402/functions`](https://www.npmjs.com/package/@run402/functions)
+- Remote MCP (no install, free discovery tools; never handles funds): `https://mcp.run402.com/mcp`
 - Homepage: <https://run402.com>

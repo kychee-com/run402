@@ -1313,4 +1313,5 @@ Renewal: `run402 tier set <same-tier>` extends the lease in place and clears any
 - Status: <https://api.run402.com/status>
 - Health: <https://api.run402.com/health>
 - npm: [`run402`](https://www.npmjs.com/package/run402) · [`@run402/sdk`](https://www.npmjs.com/package/@run402/sdk) · [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) · [`run402-mcp`](https://www.npmjs.com/package/run402-mcp)
+- Remote MCP (no install, free discovery tools; never handles funds): `https://mcp.run402.com/mcp`
 - Homepage: <https://run402.com>
