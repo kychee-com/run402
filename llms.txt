@@ -53,6 +53,7 @@ Run402 ships four wrappers around the same HTTP API. Pick the one matching your 
 | `@run402/sdk` ⭐ recommended | You're authoring TypeScript / JavaScript code (server, edge, sandbox, code-mode agent). Typed every method. The kernel everything else wraps. | <https://docs.run402.com/llms-sdk.txt> |
 | `run402` CLI | You're a shell-based / scripted agent. JSON in, JSON out, exit code on failure. Also the GitHub Actions OIDC setup path (`run402 ci link github`). | <https://docs.run402.com/llms-cli.txt> |
 | `run402-mcp` | You're an MCP-host agent (Claude Desktop, Cursor, Cline, Claude Code) — the tools land in your context automatically. | <https://docs.run402.com/llms-mcp.txt> |
+| Remote MCP (no install) | You can attach a streamable-http MCP server and want free discovery tools first (quickstart, x402 price check, live experiment scoreboard). Never handles funds — paid tools need `run402-mcp` locally. | `https://mcp.run402.com/mcp` |
 | HTTP API (raw) | You're in a language without an SDK or doing low-level work. | <https://run402.com/llms-full.txt> |
 
 The CLI and MCP are thin shims over the SDK. Each subcommand and each MCP tool is an argv/schema-parsing wrapper around an SDK method. If you're already in TypeScript, prefer the SDK directly — fewer process boundaries, typed errors, identical behavior.
