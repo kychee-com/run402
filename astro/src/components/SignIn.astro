@@ -52,12 +52,14 @@
 
 import {
   type SignInMethod,
+  type EmailDelivery,
   isDefaultOnly,
   normalizeMethods,
   includesPassword,
   buildExtraMethodsHtml,
   EXTRA_METHOD_CSS,
   PASSKEY_SCRIPT,
+  EMAIL_CODE_SCRIPT,
   messageForAuthError,
   AUTH_ERROR_PARAM,
 } from "./sign-in-methods.js";
@@ -75,15 +77,40 @@ interface Props {
    *  `"passkey"` ships a small WebAuthn script. Omitting it (or passing
    *  exactly `["password"]`) keeps the byte-identical default render. */
   methods?: Array<SignInMethod>;
+  /** Email credential policy for the `magic_link` method. Explicit values are
+   * used as-is. When omitted, managed SSR discovers gateway capabilities and
+   * chooses `both` when advertised, otherwise link-only compatibility. */
+  emailDelivery?: EmailDelivery;
 }
 
-const { returnTo = "/", class: className = "", methods } = Astro.props;
+const { returnTo = "/", class: className = "", methods, emailDelivery: requestedEmailDelivery } = Astro.props;
 
 // §6.1/§6.3: the default case renders the verbatim original markup below.
 const defaultOnly = isDefaultOnly(methods);
 const resolved = normalizeMethods(methods);
 const hasPassword = includesPassword(resolved);
 const hasPasskey = resolved.includes("passkey");
+const hasEmailAuth = resolved.includes("magic_link");
+let emailDelivery: EmailDelivery = requestedEmailDelivery ?? "link";
+if (hasEmailAuth && requestedEmailDelivery === undefined) {
+  const apiBase = process.env.RUN402_API_BASE;
+  const anonKey = process.env.RUN402_ANON_KEY;
+  if (apiBase && anonKey) {
+    try {
+      const response = await fetch(`${apiBase.replace(/\/$/, "")}/auth/v1/providers`, {
+        headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
+      });
+      if (response.ok) {
+        const providers = await response.json();
+        const modes = providers?.magic_link?.delivery_modes;
+        if (Array.isArray(modes) && modes.includes("both")) emailDelivery = "both";
+      }
+    } catch {
+      // Capability discovery fails closed to the backward-compatible link flow.
+    }
+  }
+}
+const hasEmailCode = hasEmailAuth && emailDelivery !== "link";
 // hosted-auth-signin-error-ssr: a FAILED hosted OAuth sign-in returns the
 // visitor here with `?r402_auth_error=<code>` (a server-readable query param —
 // see the @run402/astro README). Render it server-side; no client JS. When the
@@ -99,7 +126,7 @@ const errorReturnTo = Astro.url.pathname;
 // Extra (non-password) method markup, divider-interleaved. A leading divider
 // is added when the password form was rendered just above (so "or" sits
 // between password and the next method).
-const extraMethodsHtml = buildExtraMethodsHtml(resolved, returnTo, hasPassword, errorReturnTo);
+const extraMethodsHtml = buildExtraMethodsHtml(resolved, returnTo, hasPassword, errorReturnTo, emailDelivery);
 
 // §6.1/§6.3 byte-identical default: when `methods` is omitted or exactly
 // ["password"], the `defaultOnly` branch below renders the verbatim
@@ -186,6 +213,7 @@ const extraMethodsHtml = buildExtraMethodsHtml(resolved, returnTo, hasPassword, 
     )}
     <Fragment set:html={extraMethodsHtml} />
     {hasPasskey && <script set:html={PASSKEY_SCRIPT} is:inline />}
+    {hasEmailCode && <script set:html={EMAIL_CODE_SCRIPT} is:inline />}
     <!-- Slot for consumer-supplied extras; empty by default. §6.1/§6.3. -->
     <slot />
   </div>

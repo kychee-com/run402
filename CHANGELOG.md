@@ -2,6 +2,25 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — email code authentication
+
+- **SDK:** `requestMagicLink` accepts `delivery: "link" | "code" | "both"`
+  with a conditional redirect requirement and now returns
+  `MagicLinkRequestResult` (`message`, warnings, optional `challengeId`). Added
+  `verifyEmailCode(projectId, { challengeId, code })`, the project-scoped
+  wrapper, typed provider `magic_link.deliveryModes`, and link-only fallback
+  for older discovery responses. Ordinary await-and-ignore callers keep
+  working; callers or mocks explicitly constrained to `Promise<void>` must
+  update their annotation/result.
+- **CLI/MCP/OpenClaw:** the existing request operation accepts delivery mode;
+  the existing verify operation accepts exactly a link token or challenge/code
+  pair. Output preserves accepted wording, warnings, and opaque handle. No
+  duplicate command or MCP tool was added, and code verification is never
+  automatically retried or persisted.
+- **Rate limits:** email-auth sends now use the gateway's durable shared
+  email/project/IP policy. An exact project test identity omits only the
+  per-email bucket; project and IP protection remain.
+
 ## Unreleased — arbitrary x402 buyer
 
 - **Verified merchant evidence:** SDK `requireReceipt`, CLI

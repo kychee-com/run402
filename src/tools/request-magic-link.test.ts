@@ -53,6 +53,75 @@ describe("request_magic_link tool", () => {
     assert.equal(capturedHeaders["Authorization"], "Bearer ak-anon");
   });
 
+  it("reports request acceptance without claiming delivery or account creation", async () => {
+    saveProject("proj-ml2", {
+      anon_key: "ak-anon",
+      service_key: "sk-svc",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      message: "Email authentication request accepted.",
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch;
+
+    const result = await handleRequestMagicLink({
+      project_id: "proj-ml2",
+      email: "unknown@example.com",
+      redirect_url: "https://app.example.com/cb",
+    });
+    const text = result.content[0]!.text;
+
+    assert.match(text, /accepted/i);
+    assert.doesNotMatch(text, /sent|delivered|will receive/i);
+    assert.doesNotMatch(text, /account.*created|created automatically/i);
+  });
+
+  it("supports code-only delivery without a redirect and returns only the opaque handle", async () => {
+    saveProject("proj-code", {
+      anon_key: "ak-anon",
+      service_key: "sk-svc",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+    const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+    let capturedBody: Record<string, unknown> = {};
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        message: "Email authentication request accepted.",
+        challenge_id: challengeId,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+
+    const result = await handleRequestMagicLink({
+      project_id: "proj-code",
+      email: "user@example.com",
+      delivery: "code",
+    });
+
+    assert.deepEqual(capturedBody, { email: "user@example.com", delivery: "code" });
+    assert.match(result.content[0]!.text, new RegExp(challengeId));
+    assert.doesNotMatch(result.content[0]!.text, /\b\d{6}\b/);
+  });
+
+  it("rejects both delivery without a redirect before requesting", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      return new Response("{}");
+    }) as typeof fetch;
+    const result = await handleRequestMagicLink({
+      project_id: "proj-code",
+      email: "user@example.com",
+      delivery: "both",
+    });
+    assert.equal(result.isError, true);
+    assert.equal(fetchCount, 0);
+  });
+
   it("returns isError when project not in keystore", async () => {
     const result = await handleRequestMagicLink({
       project_id: "no-proj",

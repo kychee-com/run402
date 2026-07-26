@@ -16,11 +16,34 @@ import {
   assertStringInSet,
 } from "../validation.js";
 
-export interface MagicLinkOptions {
+export type EmailAuthDelivery = "link" | "code" | "both";
+
+interface MagicLinkOptionsBase {
   email: string;
-  redirectUrl: string;
   intent?: "signin" | "invite" | "claim" | "recovery";
   clientState?: unknown;
+}
+
+export type MagicLinkOptions =
+  | (MagicLinkOptionsBase & { delivery?: "link"; redirectUrl: string })
+  | (MagicLinkOptionsBase & { delivery: "both"; redirectUrl: string })
+  | (MagicLinkOptionsBase & { delivery: "code"; redirectUrl?: string });
+
+export interface MagicLinkRequestWarning {
+  code: string;
+  message: string;
+  [key: string]: unknown;
+}
+
+export interface MagicLinkRequestResult {
+  message: string;
+  warnings?: MagicLinkRequestWarning[];
+  challengeId?: string;
+}
+
+export interface EmailCodeVerifyOptions {
+  challengeId: string;
+  code: string;
 }
 
 export interface MagicLinkUser {
@@ -39,7 +62,18 @@ export interface MagicLinkVerifyResult {
     client_state: string | null;
     state_source: "anonymous" | "service_key";
     state_trusted: boolean;
+    delivery?: EmailAuthDelivery;
+    verified_with?: "link" | "email_code";
   };
+}
+
+export interface AuthProvidersResult {
+  magic_link: {
+    enabled: boolean;
+    /** Capability-gated email modes. Absent means link-only compatibility. */
+    deliveryModes: EmailAuthDelivery[];
+  };
+  [key: string]: unknown;
 }
 
 export interface SetPasswordOptions {
@@ -208,7 +242,7 @@ export interface PasskeyDeleteOptions {
 }
 
 export class Auth {
-  readonly magicLink: (projectId: string, opts: MagicLinkOptions) => Promise<void>;
+  readonly magicLink: (projectId: string, opts: MagicLinkOptions) => Promise<MagicLinkRequestResult>;
   readonly verify: (projectId: string, token: string) => Promise<MagicLinkVerifyResult>;
   readonly setPassword: (projectId: string, opts: SetPasswordOptions) => Promise<void>;
   readonly promoteUser: (projectId: string, email: string) => Promise<void>;
@@ -222,8 +256,8 @@ export class Auth {
     this.demoteUser = this.demote.bind(this);
   }
 
-  /** Send a passwordless login email (magic link). 15-minute token. */
-  async requestMagicLink(projectId: string, opts: MagicLinkOptions): Promise<void> {
+  /** Request a passwordless email credential. Link remains the wire default. */
+  async requestMagicLink(projectId: string, opts: MagicLinkOptions): Promise<MagicLinkRequestResult> {
     if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
       throw new LocalError(
         "r.auth.requestMagicLink(projectId, opts) requires an opts object as the 2nd argument (e.g., { email, redirectUrl })",
@@ -231,7 +265,11 @@ export class Auth {
       );
     }
     assertEmailAddress(opts.email, "email", "requesting magic link");
-    assertHttpUrl(opts.redirectUrl, "redirectUrl", "requesting magic link");
+    const delivery = opts.delivery ?? "link";
+    assertStringInSet(delivery, ["link", "code", "both"] as const, "delivery", "requesting magic link");
+    if (delivery !== "code" || opts.redirectUrl !== undefined) {
+      assertHttpUrl(opts.redirectUrl, "redirectUrl", "requesting magic link");
+    }
     if (opts.intent !== undefined) {
       assertStringInSet(opts.intent, MAGIC_LINK_INTENTS, "intent", "requesting magic link");
     }
@@ -239,12 +277,17 @@ export class Auth {
 
     const body: Record<string, unknown> = {
       email: opts.email,
-      redirect_url: opts.redirectUrl,
     };
+    if (opts.redirectUrl !== undefined) body.redirect_url = opts.redirectUrl;
+    if (opts.delivery !== undefined) body.delivery = opts.delivery;
     if (opts.intent) body.intent = opts.intent;
     if (opts.clientState !== undefined) body.client_state = opts.clientState;
 
-    await this.client.request<unknown>("/auth/v1/magic-link", {
+    const result = await this.client.request<{
+      message: string;
+      warnings?: MagicLinkRequestWarning[];
+      challenge_id?: string;
+    }>("/auth/v1/magic-link", {
       method: "POST",
       headers: {
         apikey: project.anon_key,
@@ -253,6 +296,11 @@ export class Auth {
       body,
       context: "requesting magic link",
     });
+    return {
+      message: result.message,
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+      ...(result.challenge_id ? { challengeId: result.challenge_id } : {}),
+    };
   }
 
   /** Exchange a magic-link token for access + refresh tokens. */
@@ -272,6 +320,32 @@ export class Auth {
         context: "verifying magic link",
       },
     );
+  }
+
+  /** Exchange an opaque challenge handle plus a six-digit code. Never auto-retried. */
+  async verifyEmailCode(projectId: string, opts: EmailCodeVerifyOptions): Promise<MagicLinkVerifyResult> {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+      throw new LocalError(
+        "r.auth.verifyEmailCode(projectId, opts) requires { challengeId, code }",
+        "verifying email code",
+      );
+    }
+    if (typeof opts.challengeId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(opts.challengeId)) {
+      throw new LocalError("challengeId must be a UUID.", "verifying email code");
+    }
+    if (typeof opts.code !== "string" || !/^\d{6}$/.test(opts.code)) {
+      throw new LocalError("code must be exactly six digits.", "verifying email code");
+    }
+    const project = await requireProjectCredentials(this.client, projectId, "verifying email code");
+    return this.client.request<MagicLinkVerifyResult>("/auth/v1/token?grant_type=email_code", {
+      method: "POST",
+      headers: {
+        apikey: project.anon_key,
+        Authorization: `Bearer ${project.anon_key}`,
+      },
+      body: { challenge_id: opts.challengeId, code: opts.code },
+      context: "verifying email code",
+    });
   }
 
   /**
@@ -514,10 +588,12 @@ export class Auth {
   }
 
   /** List configured auth providers for a project. Uses the project's anon key. */
-  async providers(projectId: string): Promise<unknown> {
+  async providers(projectId: string): Promise<AuthProvidersResult> {
     const project = await requireProjectCredentials(this.client, projectId, "listing auth providers");
 
-    return this.client.request<unknown>("/auth/v1/providers", {
+    const result = await this.client.request<Omit<AuthProvidersResult, "magic_link"> & {
+      magic_link: { enabled: boolean; delivery_modes?: EmailAuthDelivery[] };
+    }>("/auth/v1/providers", {
       headers: {
         apikey: project.anon_key,
         Authorization: `Bearer ${project.anon_key}`,
@@ -525,6 +601,13 @@ export class Auth {
       context: "listing auth providers",
       withAuth: false,
     });
+    return {
+      ...result,
+      magic_link: {
+        enabled: result.magic_link.enabled,
+        deliveryModes: result.magic_link.delivery_modes ?? ["link"],
+      },
+    };
   }
 
   /** Promote a user (by email) to `project_admin`. Requires service key. */

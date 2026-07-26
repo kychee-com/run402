@@ -911,11 +911,13 @@ run402 domains test-receive example.com --to info # create inbound receive token
 
 ## User auth
 
-Auth supports passwords, magic links, Google OAuth, and WebAuthn passkeys. Google is on for all projects with zero config; passkeys require an exact allowed `app_origin` (claimed subdomain, project public-id host, active custom domain, or localhost when allowed).
+Auth supports passwords, passwordless email links/codes, Google OAuth, and WebAuthn passkeys. Google is on for all projects with zero config; passkeys require an exact allowed `app_origin` (claimed subdomain, project public-id host, active custom domain, or localhost when allowed).
 
 ```bash
 run402 auth magic-link --email user@example.com --redirect https://my-app.run402.com/cb
 run402 auth verify --token <token>                       # → access_token + refresh_token
+run402 auth magic-link --email user@example.com --delivery both --redirect https://my-app.run402.com/cb
+run402 auth verify --challenge-id <opaque-id> --code <six-digits>
 run402 auth invite-user --email admin@example.com --redirect https://my-app.run402.com/cb --admin true
 run402 auth set-password --token <bearer> --new <pwd>    # change | reset | set
 run402 auth passkey-login-options --app-origin https://my-app.run402.com
@@ -923,7 +925,7 @@ run402 auth passkey-login-verify --challenge <id> --response '<json>'
 run402 auth providers
 ```
 
-Magic-link tokens are single-use, expire in 15 min, and are rate-limited. The `access_token` works as `apikey` for user-scoped REST calls subject to RLS. Use `run402 auth settings --preferred passkey --require-admin-passkey true` to require eligible passkey auth for `project_admin` sessions.
+Email credentials are single-use, expire in 15 min, and are rate-limited. `challenge_id` is a public handle; the code is the secret and must not enter logs, URLs, or files. A request response means accepted, not delivered or account-created. The `access_token` works as `apikey` for user-scoped REST calls subject to RLS. Use `run402 auth settings --preferred passkey --require-admin-passkey true` to require eligible passkey auth for `project_admin` sessions; `email_code` is AAL1 and never satisfies passkey freshness.
 
 For browser-side flows (PKCE, Google OAuth, refresh-token rotation), see <https://docs.run402.com/llms-cli.txt>.
 

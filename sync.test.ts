@@ -557,7 +557,7 @@ const SURFACE: Capability[] = [
 
   // ── Auth (project user) ────────────────────────────────────────────────
   { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           mcp: "request_magic_link", cli: "auth:magic-link",    openclaw: "auth:magic-link" },
-  { id: "verify_magic_link",  endpoint: "POST /auth/v1/token?grant_type=magic_link", mcp: "verify_magic_link", cli: "auth:verify", openclaw: "auth:verify" },
+  { id: "verify_magic_link",  endpoint: "POST /auth/v1/token?grant_type=magic_link|email_code", mcp: "verify_magic_link", cli: "auth:verify", openclaw: "auth:verify" },
   { id: "create_auth_user",   endpoint: "POST /auth/v1/admin/users",          mcp: "create_auth_user",   cli: "auth:create-user",  openclaw: "auth:create-user" },
   { id: "invite_auth_user",   endpoint: "POST /auth/v1/admin/users",          mcp: "invite_auth_user",   cli: "auth:invite-user",  openclaw: "auth:invite-user" },
   { id: "set_user_password",  endpoint: "PUT /auth/v1/user/password",         mcp: "set_user_password",  cli: "auth:set-password",  openclaw: "auth:set-password" },
@@ -1313,6 +1313,10 @@ describe("SDK surface alignment", () => {
       "operator.session.issueRecoveryCodes",
       "operator.session.listAuthenticators",
       "operator.session.revokeAuthenticator",
+      // Email-code verification is the second credential shape accepted by
+      // the existing auth:verify CLI/OpenClaw command and verify_magic_link
+      // MCP tool, whose canonical SURFACE mapping remains verifyMagicLink.
+      "auth.verifyEmailCode",
       // SDK action runner exposes the generic dispatcher alongside the typed
       // `actions.up` convenience mapped to the CLI `up` capability.
       "actions.run",

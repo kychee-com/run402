@@ -291,7 +291,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `domains` | `add`, `list`, `status`, `remove` |
 | `email` | `createMailbox`, `listMailboxes`, `setMailboxDefaults`, `updateMailbox`, `getMailbox`, `deleteMailbox`, `send`, `list`, `get`, `getRaw`, `webhooks.*` |
 | `senderDomain` | `register`, `status`, `remove`, `enableInbound`, `disableInbound` |
-| `auth` | `requestMagicLink`, `verifyMagicLink`, `createUser`, `inviteUser`, `setUserPassword`, `settings`, passkey registration/login/list/delete helpers, `providers`, `promote`, `demote` |
+| `auth` | `requestMagicLink` (link/code/both), `verifyMagicLink`, `verifyEmailCode`, `createUser`, `inviteUser`, `setUserPassword`, `settings`, passkey registration/login/list/delete helpers, typed `providers`, `promote`, `demote` |
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion` |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
 | `billing` | `createEmailOrganization`, `linkWallet`, `createCheckout`, `setAutoRecharge`, `checkBalance`, `getOrganization`, `lookupOrganization`, `getHistory`, `balance`, `history` |

@@ -582,7 +582,13 @@ Function authoring limits per tier: prototype 10s / 128 MB / 1 scheduled trigger
 
 ### Auth & email
 
-- **`request_magic_link`** / **`verify_magic_link`** — passwordless login and trusted invite links. Tokens single-use, 15-min TTL, rate limited.
+- **`request_magic_link`** / **`verify_magic_link`** — passwordless email auth
+  for sign-in and trusted invites. For machines, request `delivery: "both"`,
+  retain the returned public `challenge_id`, then verify either `token` or the
+  `challenge_id` + secret six-digit `code`. Link remains the wire default.
+  Credentials are single-use, 15-min TTL, and rate limited. An accepted send
+  does not prove delivery or disclose account existence; never log the code or
+  put it in a URL.
 - **`create_auth_user`** / **`invite_auth_user`** — service-key user create/update and trusted invite bootstrap.
 - **`set_user_password`** — change, reset, or set a user's password.
 - **`auth_settings`** — configure password set, preferred sign-in method, public signup policy, and project-admin passkey enforcement.

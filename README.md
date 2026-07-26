@@ -553,8 +553,8 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `request_magic_link` | Send a passwordless login email. |
-| `verify_magic_link` | Exchange the magic link token for `access_token` + `refresh_token`. |
+| `request_magic_link` | Request link, code, or both passwordless email credentials; code modes return an opaque challenge handle. |
+| `verify_magic_link` | Exchange either a link token or challenge handle + six-digit code for `access_token` + `refresh_token`. |
 | `create_auth_user` / `invite_auth_user` | Create/update auth users and send trusted service-key invites. |
 | `set_user_password` | Change, reset, or set a user's password. |
 | `auth_settings` | Configure password set, preferred sign-in method, public signup policy, and project-admin passkey enforcement. |

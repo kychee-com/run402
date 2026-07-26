@@ -4,8 +4,9 @@ import { mapSdkError } from "../errors.js";
 
 export const requestMagicLinkSchema = {
   project_id: z.string().describe("The project ID"),
-  email: z.string().describe("Email address to send the magic link to"),
-  redirect_url: z.string().describe("URL to redirect to after clicking the magic link. Must be an allowed origin for this project (localhost, claimed subdomain, or custom domain)."),
+  email: z.string().describe("Email address to authenticate"),
+  delivery: z.enum(["link", "code", "both"]).optional().describe("Email credential mode. Defaults to link."),
+  redirect_url: z.string().optional().describe("Allowed redirect URL. Required for link/both; optional for code."),
   intent: z.enum(["signin", "invite", "claim", "recovery"]).optional().describe("Magic-link intent. invite requires the service key and creates trusted invite state."),
   client_state: z.any().optional().describe("Optional opaque app state preserved through token verification"),
 };
@@ -13,22 +14,50 @@ export const requestMagicLinkSchema = {
 export async function handleRequestMagicLink(args: {
   project_id: string;
   email: string;
-  redirect_url: string;
+  delivery?: "link" | "code" | "both";
+  redirect_url?: string;
   intent?: "signin" | "invite" | "claim" | "recovery";
   client_state?: unknown;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   try {
-    await getSdk().auth.requestMagicLink(args.project_id, {
+    const delivery = args.delivery ?? "link";
+    if (delivery !== "code" && !args.redirect_url) {
+      throw new Error("redirect_url is required for link or both delivery");
+    }
+    const common = {
       email: args.email,
-      redirectUrl: args.redirect_url,
       intent: args.intent,
       clientState: args.client_state,
-    });
+    };
+    const result = delivery === "code"
+      ? await getSdk().auth.requestMagicLink(args.project_id, {
+        ...common,
+        delivery,
+        redirectUrl: args.redirect_url,
+      })
+      : await getSdk().auth.requestMagicLink(args.project_id, {
+        ...common,
+        delivery,
+        redirectUrl: args.redirect_url!,
+      });
     return {
       content: [
         {
           type: "text",
-          text: `## Magic Link Sent\n\n- **Email:** ${args.email}\n- **Redirect:** ${args.redirect_url}\n\nThe user will receive an email with a login link. The link expires in 15 minutes. If they don't have an account, one will be created automatically when they verify the link.`,
+          text: [
+            "## Email Authentication Request Accepted",
+            "",
+            `- **Email:** ${args.email}`,
+            `- **Delivery:** ${delivery}`,
+            ...(args.redirect_url ? [`- **Redirect:** ${args.redirect_url}`] : []),
+            ...(result.challengeId ? [`- **Challenge ID:** \`${result.challengeId}\``] : []),
+            "",
+            result.message || "Run402 accepted the request.",
+            "Acceptance does not prove delivery or disclose whether an account exists.",
+            ...(result.warnings?.length
+              ? ["", "### Warnings", ...result.warnings.map((warning) => `- **${warning.code}:** ${warning.message}`)]
+              : []),
+          ].join("\n"),
         },
       ],
     };

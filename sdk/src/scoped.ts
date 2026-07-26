@@ -63,7 +63,9 @@ import type {
   AuthUserAdminResult,
   CreateAuthUserOptions,
   MagicLinkOptions,
+  MagicLinkRequestResult,
   MagicLinkVerifyResult,
+  EmailCodeVerifyOptions,
   PasskeyDeleteOptions,
   PasskeyListOptions,
   PasskeyLoginOptions,
@@ -464,11 +466,14 @@ class ScopedBranches {
 class ScopedAuth {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  requestMagicLink(opts: MagicLinkOptions): Promise<void> {
+  requestMagicLink(opts: MagicLinkOptions): Promise<MagicLinkRequestResult> {
     return this.parent.auth.requestMagicLink(this.projectId, opts);
   }
   verifyMagicLink(token: string): Promise<MagicLinkVerifyResult> {
     return this.parent.auth.verifyMagicLink(this.projectId, token);
+  }
+  verifyEmailCode(opts: EmailCodeVerifyOptions): Promise<MagicLinkVerifyResult> {
+    return this.parent.auth.verifyEmailCode(this.projectId, opts);
   }
   createUser(opts: CreateAuthUserOptions): Promise<AuthUserAdminResult> {
     return this.parent.auth.createUser(this.projectId, opts);

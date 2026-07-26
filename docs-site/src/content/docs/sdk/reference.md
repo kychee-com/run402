@@ -1785,8 +1785,13 @@ inboundDisable(projectId, domain): Promise<void>
 ### `r.auth`
 
 ```
-requestMagicLink(projectId, opts: { email, redirectUrl, intent?, clientState? }): Promise<void>
+requestMagicLink(projectId, opts:
+  | { email, delivery?: "link", redirectUrl, intent?, clientState? }
+  | { email, delivery: "both", redirectUrl, intent?, clientState? }
+  | { email, delivery: "code", redirectUrl?, intent?, clientState? }
+): Promise<MagicLinkRequestResult> // { message, warnings?, challengeId? }
 verifyMagicLink(projectId, token): Promise<MagicLinkVerifyResult> // { access_token, refresh_token, ... }
+verifyEmailCode(projectId, { challengeId, code }): Promise<MagicLinkVerifyResult>
 createUser(projectId, opts: { email, isAdmin?, sendInvite?, redirectUrl?, clientState? }): Promise<AuthUserAdminResult>
 inviteUser(projectId, opts: { email, isAdmin?, redirectUrl, clientState? }): Promise<AuthUserAdminResult>
 setUserPassword(projectId, opts: { accessToken, newPassword, currentPassword? }): Promise<void>
@@ -1802,12 +1807,12 @@ createPasskeyLoginOptions(projectId, opts: { appOrigin, email? }): Promise<Passk
 verifyPasskeyLogin(projectId, opts: { challengeId, response }): Promise<AuthSessionResult>
 listPasskeys(projectId, opts: { accessToken }): Promise<{ passkeys: PasskeyRecord[] }>
 deletePasskey(projectId, opts: { accessToken, passkeyId }): Promise<void>
-providers(projectId): Promise<unknown>
+providers(projectId): Promise<AuthProvidersResult> // magic_link.deliveryModes; absent wire field → ["link"]
 promote(projectId, email): Promise<void>
 demote(projectId, email): Promise<void>
 
 // CLI-style aliases:
-magicLink(projectId, opts): Promise<void>
+magicLink(projectId, opts): Promise<MagicLinkRequestResult>
 verify(projectId, token): Promise<MagicLinkVerifyResult>
 setPassword(projectId, opts): Promise<void>
 promoteUser(projectId, email): Promise<void>

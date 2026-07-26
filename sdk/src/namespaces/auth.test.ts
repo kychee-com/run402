@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Run402 } from "../index.js";
-import { LocalError, ProjectCredentialNotFound } from "../errors.js";
+import { ApiError, LocalError, ProjectCredentialNotFound } from "../errors.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type {
   CreateAuthUserOptions,
@@ -215,7 +215,10 @@ describe("auth.settings", () => {
 describe("auth.providers", () => {
   it("lists configured auth providers with the project anon key (GH-181)", async () => {
     const { fetch, calls } = mockFetch(() =>
-      jsonResponse({ providers: ["email", "google"] }),
+      jsonResponse({
+        magic_link: { enabled: true, delivery_modes: ["link", "code", "both"] },
+        oauth_google: { enabled: true },
+      }),
     );
     const sdk = makeSdk(makeCreds(), fetch);
     const result = await sdk.auth.providers("prj_known");
@@ -225,7 +228,17 @@ describe("auth.providers", () => {
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer anon_xxx");
-    assert.deepEqual(result, { providers: ["email", "google"] });
+    assert.deepEqual(result, {
+      magic_link: { enabled: true, deliveryModes: ["link", "code", "both"] },
+      oauth_google: { enabled: true },
+    });
+  });
+
+  it("treats an older provider response without delivery modes as link-only", async () => {
+    const { fetch } = mockFetch(() => jsonResponse({ magic_link: { enabled: true } }));
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.auth.providers("prj_known");
+    assert.deepEqual(result.magic_link.deliveryModes, ["link"]);
   });
 
   it("throws ProjectCredentialNotFound for missing local credentials before hitting the network", async () => {
@@ -237,14 +250,21 @@ describe("auth.providers", () => {
 });
 
 describe("auth.requestMagicLink", () => {
-  it("POSTs /auth/v1/magic-link with anon-key apikey + bearer", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({ ok: true }));
+  it("POSTs link delivery and returns the accepted-request result", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({
+      message: "Email authentication request accepted.",
+      warnings: [{ code: "EMAIL_DELIVERY_DELAYED", message: "Delivery may be delayed." }],
+    }));
     const sdk = makeSdk(makeCreds(), fetch);
-    await sdk.auth.requestMagicLink("prj_known", {
+    const result = await sdk.auth.requestMagicLink("prj_known", {
       email: "user@example.com",
       redirectUrl: "https://app.example.com/callback",
     });
 
+    assert.deepEqual(result, {
+      message: "Email authentication request accepted.",
+      warnings: [{ code: "EMAIL_DELIVERY_DELAYED", message: "Delivery may be delayed." }],
+    });
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.url, "https://api.example.test/auth/v1/magic-link");
     assert.equal(calls[0]!.method, "POST");
@@ -254,6 +274,70 @@ describe("auth.requestMagicLink", () => {
       email: "user@example.com",
       redirect_url: "https://app.example.com/callback",
     });
+  });
+
+  it("requests code delivery without a redirect and maps the opaque challenge handle", async () => {
+    const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+    const { fetch, calls } = mockFetch(() => jsonResponse({
+      message: "Email authentication request accepted.",
+      challenge_id: challengeId,
+    }));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    const result = await sdk.auth.requestMagicLink("prj_known", {
+      email: "user@example.com",
+      delivery: "code",
+    });
+
+    assert.deepEqual(result, {
+      message: "Email authentication request accepted.",
+      challengeId,
+    });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      email: "user@example.com",
+      delivery: "code",
+    });
+  });
+
+  it("preserves the canonical RATE_LIMITED recovery envelope", async () => {
+    const envelope = {
+      status: "error",
+      error: "rate_limited",
+      message: "Too many email authentication requests.",
+      code: "RATE_LIMITED",
+      category: "rate_limit",
+      retryable: true,
+      safe_to_retry: true,
+      mutation_state: "not_started",
+      details: { retry_after_seconds: 42, limited_subject: "email" },
+      next_actions: [{
+        type: "retry",
+        method: "POST",
+        path: "/auth/v1/magic-link",
+        why: "Retry this request after the Retry-After interval.",
+      }],
+    };
+    const { fetch } = mockFetch(() => jsonResponse(envelope, 429));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.auth.requestMagicLink("prj_known", {
+        email: "user@example.com",
+        redirectUrl: "https://app.example.com/callback",
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.status, 429);
+        assert.equal(err.code, "RATE_LIMITED");
+        assert.equal(err.retryable, true);
+        assert.equal(err.safeToRetry, true);
+        assert.equal(err.mutationState, "not_started");
+        assert.deepEqual(err.details, envelope.details);
+        assert.deepEqual(err.nextActions, envelope.next_actions);
+        assert.deepEqual(err.body, envelope);
+        return true;
+      },
+    );
   });
 
   it("throws LocalError when opts is undefined (cast through any)", async () => {
@@ -302,6 +386,115 @@ describe("auth.requestMagicLink", () => {
           err instanceof LocalError &&
           err.context === "requesting magic link",
       );
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("rejects link/both without redirect and unknown delivery before requesting", async () => {
+    const invalid = [
+      { email: "user@example.com", delivery: "link" },
+      { email: "user@example.com", delivery: "both" },
+      { email: "user@example.com", delivery: "sms" },
+    ];
+
+    for (const opts of invalid) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error("unexpected fetch for invalid delivery options");
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      await assert.rejects(
+        sdk.auth.requestMagicLink("prj_known", opts as any),
+        (err: unknown) => err instanceof LocalError && err.context === "requesting magic link",
+      );
+      assert.equal(calls.length, 0);
+    }
+  });
+});
+
+describe("auth.verifyEmailCode", () => {
+  it("exchanges a challenge handle and six-digit code without retrying", async () => {
+    const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+    const response = {
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+      token_type: "bearer",
+      expires_in: 3600,
+      user: { id: "u1", email: "user@example.com" },
+      magic_link: {
+        intent: "signin",
+        client_state: null,
+        state_source: "anonymous",
+        state_trusted: false,
+        delivery: "code",
+        verified_with: "email_code",
+      },
+    };
+    const { fetch, calls } = mockFetch(() => jsonResponse(response));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    const result = await sdk.auth.verifyEmailCode("prj_known", {
+      challengeId,
+      code: "042731",
+    });
+
+    assert.deepEqual(result, response);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/auth/v1/token?grant_type=email_code");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
+      challenge_id: challengeId,
+      code: "042731",
+    });
+  });
+
+  it("preserves terminal exhaustion recovery and performs exactly one request", async () => {
+    const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+    const envelope = {
+      status: "error",
+      error: "email_code_exhausted",
+      message: "This email code can no longer be used.",
+      code: "R402_AUTH_EMAIL_CODE_EXHAUSTED",
+      category: "auth",
+      retryable: false,
+      safe_to_retry: false,
+      mutation_state: "committed",
+      next_actions: [{
+        type: "request_fresh_credential",
+        method: "POST",
+        path: "/auth/v1/magic-link",
+        why: "Request a fresh email authentication challenge.",
+      }],
+    };
+    const { fetch, calls } = mockFetch(() => jsonResponse(envelope, 410));
+    const sdk = makeSdk(makeCreds(), fetch);
+
+    await assert.rejects(
+      sdk.auth.verifyEmailCode("prj_known", { challengeId, code: "042731" }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.status, 410);
+        assert.equal(err.code, "R402_AUTH_EMAIL_CODE_EXHAUSTED");
+        assert.equal(err.retryable, false);
+        assert.equal(err.safeToRetry, false);
+        assert.equal(err.mutationState, "committed");
+        assert.deepEqual(err.nextActions, envelope.next_actions);
+        return true;
+      },
+    );
+    assert.equal(calls.length, 1);
+  });
+
+  it("rejects malformed handles and codes before requesting", async () => {
+    const invalid = [
+      { challengeId: "not-a-uuid", code: "123456" },
+      { challengeId: "123e4567-e89b-42d3-a456-426614174000", code: "12345" },
+      { challengeId: "123e4567-e89b-42d3-a456-426614174000", code: "12x456" },
+    ];
+    for (const opts of invalid) {
+      const { fetch, calls } = mockFetch(() => {
+        throw new Error("unexpected fetch for invalid email code");
+      });
+      const sdk = makeSdk(makeCreds(), fetch);
+      await assert.rejects(sdk.auth.verifyEmailCode("prj_known", opts), LocalError);
       assert.equal(calls.length, 0);
     }
   });

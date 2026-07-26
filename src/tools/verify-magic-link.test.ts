@@ -57,6 +57,62 @@ describe("verify_magic_link tool", () => {
     assert.equal(capturedHeaders["Authorization"], "Bearer ak-anon");
   });
 
+  it("exchanges a challenge handle and six-digit email code", async () => {
+    saveProject("proj-code", {
+      anon_key: "ak-anon",
+      service_key: "sk-svc",
+      tier: "prototype",
+      lease_expires_at: "2026-03-06T00:00:00Z",
+    }, storePath);
+    const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+    let capturedUrl = "";
+    let capturedBody: Record<string, unknown> = {};
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      capturedUrl = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        access_token: "access-token-abcdefghijklmnopqrstuv",
+        refresh_token: "refresh-abcdefgh",
+        token_type: "bearer",
+        expires_in: 3600,
+        user: { id: "u1", email: "u@example.com" },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+
+    const result = await handleVerifyMagicLink({
+      project_id: "proj-code",
+      challenge_id: challengeId,
+      code: "042731",
+    });
+
+    assert.match(capturedUrl, /grant_type=email_code$/);
+    assert.deepEqual(capturedBody, { challenge_id: challengeId, code: "042731" });
+    assert.match(result.content[0]!.text, /Email Code Verified/);
+  });
+
+  it("rejects mixed and partial credential shapes before requesting", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      return new Response("{}");
+    }) as typeof fetch;
+
+    const mixed = await handleVerifyMagicLink({
+      project_id: "proj-v1",
+      token: "token",
+      challenge_id: "123e4567-e89b-42d3-a456-426614174000",
+      code: "042731",
+    });
+    const partial = await handleVerifyMagicLink({
+      project_id: "proj-v1",
+      challenge_id: "123e4567-e89b-42d3-a456-426614174000",
+    });
+
+    assert.equal(mixed.isError, true);
+    assert.equal(partial.isError, true);
+    assert.equal(fetchCount, 0);
+  });
+
   it("returns isError when project not in keystore", async () => {
     const result = await handleVerifyMagicLink({
       project_id: "no-proj",

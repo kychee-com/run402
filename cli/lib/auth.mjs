@@ -9,11 +9,11 @@ Usage:
   run402 auth <subcommand> [args...]
 
 Subcommands:
-  magic-link --email <addr> --redirect <url> [--project <id>]
-    Send a passwordless login link. Use --intent invite with a service key-backed project.
+  magic-link --email <addr> [--delivery link|code|both] [--redirect <url>] [--project <id>]
+    Request passwordless email authentication. Link remains the default.
 
-  verify --token <token> [--project <id>]
-    Exchange a magic link token for access_token + refresh_token.
+  verify (--token <token> | --challenge-id <id> --code <6 digits>) [--project <id>]
+    Exchange one email credential for access_token + refresh_token.
 
   create-user --email <addr> [--admin <true|false>] [--invite] [--redirect <url>] [--project <id>]
     Create or update a project auth user with the service key.
@@ -53,7 +53,7 @@ Subcommands:
 
 Examples:
   run402 auth magic-link --email user@example.com --redirect https://myapp.run402.com/cb
-  run402 auth verify --token abc123def456
+  run402 auth verify --challenge-id 123e4567-e89b-42d3-a456-426614174000 --code 042731
   run402 auth invite-user --email admin@example.com --redirect https://myapp.run402.com/cb --admin true
   run402 auth set-password --token eyJ... --new "new-pass" --current "old-pass"
   run402 auth settings --preferred passkey --require-admin-passkey true
@@ -62,20 +62,23 @@ Examples:
 `;
 
 const SUB_HELP = {
-  "magic-link": `run402 auth magic-link — Send a passwordless login link
+  "magic-link": `run402 auth magic-link — Request passwordless email authentication
 
 Usage:
-  run402 auth magic-link --email <addr> --redirect <url> [options]
+  run402 auth magic-link --email <addr> [options]
 
 Options:
   --email <addr>      Required: recipient email address
-  --redirect <url>    Required: URL to redirect to after the user clicks
+  --delivery <mode>   link (default), code, or both
+  --redirect <url>    Required for link/both; optional for code
   --intent <intent>   signin (default), invite, claim, or recovery
   --state <value>     Optional client_state preserved through verification
   --project <id>      Project ID (defaults to active project)
 
 Notes:
-  Auto-creates the user on first use. Uses the project's anon_key.
+  Acceptance does not prove delivery or disclose whether an account exists.
+  Code/both returns an opaque challenge_id; the six-digit code is sent by email.
+  Uses the project's anon_key (invite intent uses the service key).
 
 Examples:
   run402 auth magic-link --email user@example.com \\
@@ -111,13 +114,16 @@ Options:
   --state <value>     Optional client_state for the invite
   --project <id>      Project ID (defaults to active project)
 `,
-  verify: `run402 auth verify — Exchange a magic-link token for session tokens
+  verify: `run402 auth verify — Exchange an email credential for session tokens
 
 Usage:
   run402 auth verify --token <token> [options]
+  run402 auth verify --challenge-id <id> --code <6 digits> [options]
 
 Options:
   --token <token>     Required: the one-time magic-link token
+  --challenge-id <id> Required with --code: opaque handle from magic-link request
+  --code <digits>     Required with --challenge-id: six-digit email code
   --project <id>      Project ID (defaults to active project)
 
 Notes:
@@ -125,6 +131,7 @@ Notes:
 
 Examples:
   run402 auth verify --token abc123def456
+  run402 auth verify --challenge-id 123e4567-e89b-42d3-a456-426614174000 --code 042731
 `,
   "set-password": `run402 auth set-password — Change, reset, or set a user's password
 
@@ -267,8 +274,8 @@ Notes:
 
 const AUTH_FLAGS = {
   "magic-link": {
-    known: ["--email", "--redirect", "--intent", "--state", "--project", "--help", "-h"],
-    values: ["--email", "--redirect", "--intent", "--state", "--project"],
+    known: ["--email", "--delivery", "--redirect", "--intent", "--state", "--project", "--help", "-h"],
+    values: ["--email", "--delivery", "--redirect", "--intent", "--state", "--project"],
   },
   "create-user": {
     known: ["--email", "--admin", "--invite", "--redirect", "--state", "--project", "--help", "-h"],
@@ -279,8 +286,8 @@ const AUTH_FLAGS = {
     values: ["--email", "--redirect", "--admin", "--state", "--project"],
   },
   verify: {
-    known: ["--token", "--project", "--help", "-h"],
-    values: ["--token", "--project"],
+    known: ["--token", "--challenge-id", "--code", "--project", "--help", "-h"],
+    values: ["--token", "--challenge-id", "--code", "--project"],
   },
   "set-password": {
     known: ["--token", "--new", "--current", "--project", "--help", "-h"],
@@ -368,13 +375,17 @@ function parseJsonFlag(args, flag) {
 async function magicLink(args) {
   const email = parseFlag(args, "--email");
   const redirect = parseFlag(args, "--redirect");
+  const delivery = parseFlag(args, "--delivery") || "link";
   const projectId = resolveProjectId(parseFlag(args, "--project"));
 
   if (!email) {
     fail({ code: "BAD_USAGE", message: "Missing --email" });
   }
-  if (!redirect) {
-    fail({ code: "BAD_USAGE", message: "Missing --redirect <url>" });
+  if (!["link", "code", "both"].includes(delivery)) {
+    fail({ code: "BAD_FLAG", message: "--delivery must be link, code, or both" });
+  }
+  if (delivery !== "code" && !redirect) {
+    fail({ code: "BAD_USAGE", message: "Missing --redirect <url> for link/both delivery" });
   }
 
   try {
@@ -383,13 +394,23 @@ async function magicLink(args) {
       fail({ code: "BAD_FLAG", message: "--intent must be signin, invite, claim, or recovery" });
     }
     const state = parseFlag(args, "--state");
-    await getSdk().auth.requestMagicLink(projectId, {
+    const result = await getSdk().auth.requestMagicLink(projectId, {
       email,
-      redirectUrl: redirect,
+      delivery,
+      redirectUrl: redirect ?? undefined,
       intent: intent ?? undefined,
       clientState: state ?? undefined,
     });
-    console.log(JSON.stringify({ email, redirect_url: redirect, intent: intent || "signin", sent: true }));
+    console.log(JSON.stringify({
+      email,
+      delivery,
+      ...(redirect ? { redirect_url: redirect } : {}),
+      intent: intent || "signin",
+      accepted: true,
+      message: result.message,
+      ...(result.warnings ? { warnings: result.warnings } : {}),
+      ...(result.challengeId ? { challenge_id: result.challengeId } : {}),
+    }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -453,14 +474,26 @@ async function inviteUser(args) {
 
 async function verify(args) {
   const token = parseFlag(args, "--token");
+  const challengeId = parseFlag(args, "--challenge-id");
+  const code = parseFlag(args, "--code");
   const projectId = resolveProjectId(parseFlag(args, "--project"));
 
-  if (!token) {
-    fail({ code: "BAD_USAGE", message: "Missing --token" });
+  const hasLink = token !== null;
+  const hasCodePart = challengeId !== null || code !== null;
+  if (hasLink === hasCodePart) {
+    fail({
+      code: "BAD_USAGE",
+      message: "Provide either --token, or --challenge-id with --code (not both)",
+    });
+  }
+  if (hasCodePart && (!challengeId || !code)) {
+    fail({ code: "BAD_USAGE", message: "--challenge-id and --code must be provided together" });
   }
 
   try {
-    const data = await getSdk().auth.verifyMagicLink(projectId, token);
+    const data = hasLink
+      ? await getSdk().auth.verifyMagicLink(projectId, token)
+      : await getSdk().auth.verifyEmailCode(projectId, { challengeId, code });
     console.log(JSON.stringify(data));
   } catch (err) {
     reportSdkError(err);

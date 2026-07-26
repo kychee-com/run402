@@ -3866,6 +3866,129 @@ describe("CLI e2e happy path", () => {
   // Auth subcommands parse security-sensitive inputs manually. Typos must fail
   // before any SDK call instead of being silently ignored.
 
+  it("auth magic-link reports acceptance without claiming delivery", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/auth.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/auth/v1/magic-link")) {
+        return json({ message: "Email authentication request accepted." });
+      }
+      return prevFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("magic-link", [
+        "--email", "unknown@example.com",
+        "--redirect", "https://app.example.com/callback",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    const result = JSON.parse(capturedStdout());
+    assert.equal(result.accepted, true);
+    assert.equal("sent" in result, false);
+    assert.equal("delivered" in result, false);
+  });
+
+  it("auth magic-link supports code-only delivery and emits the challenge handle", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/auth.mjs");
+    const prevFetch = globalThis.fetch;
+    const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+    let capturedBody = null;
+    globalThis.fetch = async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      capturedBody = await request.clone().json();
+      return json({
+        message: "Email authentication request accepted.",
+        challenge_id: challengeId,
+      });
+    };
+    captureStart();
+    try {
+      await run("magic-link", [
+        "--email", "unknown@example.com",
+        "--delivery", "code",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.deepEqual(capturedBody, {
+      email: "unknown@example.com",
+      delivery: "code",
+    });
+    const result = JSON.parse(capturedStdout());
+    assert.equal(result.accepted, true);
+    assert.equal(result.delivery, "code");
+    assert.equal(result.challenge_id, challengeId);
+    assert.equal("redirect_url" in result, false);
+  });
+
+  it("auth verify exchanges an email code through the existing command", async () => {
+    await seedTestProject();
+    const { run } = await import("./cli/lib/auth.mjs");
+    const prevFetch = globalThis.fetch;
+    const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+    let capturedUrl = "";
+    let capturedBody = null;
+    globalThis.fetch = async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      capturedUrl = request.url;
+      capturedBody = await request.clone().json();
+      return json({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        token_type: "bearer",
+        expires_in: 3600,
+        user: { id: "u1", email: "u@example.com" },
+      });
+    };
+    captureStart();
+    try {
+      await run("verify", ["--challenge-id", challengeId, "--code", "042731"]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    assert.match(capturedUrl, /grant_type=email_code$/);
+    assert.deepEqual(capturedBody, { challenge_id: challengeId, code: "042731" });
+    assert.equal(JSON.parse(capturedStdout()).user.id, "u1");
+  });
+
+  it("auth verify rejects mixed credential shapes before SDK", async () => {
+    const { run } = await import("./cli/lib/auth.mjs");
+    let fetchCount = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      fetchCount++;
+      return prevFetch(...args);
+    };
+    let threw = null;
+    captureStart();
+    try {
+      await run("verify", [
+        "--token", "token",
+        "--challenge-id", "123e4567-e89b-42d3-a456-426614174000",
+        "--code", "042731",
+      ]);
+    } catch (error) {
+      threw = error;
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(threw?.message, "process.exit(1)");
+    assert.equal(fetchCount, 0);
+    assert.equal(JSON.parse(capturedStderr()).code, "BAD_USAGE");
+  });
+
   it("auth magic-link rejects unknown flags with closest hint (GH-276)", async () => {
     const { run } = await import("./cli/lib/auth.mjs");
     let fetchCount = 0;

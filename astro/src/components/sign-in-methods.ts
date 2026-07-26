@@ -16,7 +16,7 @@
  *
  * Route shapes are byte-verified against the deployed gateway
  * (`packages/gateway/src/routes/auth-hosted.ts`):
- *   - `magic_link` → `POST /auth/magic-link/send`     (form-urlencoded {email, returnTo})
+ *   - `magic_link` → `POST /auth/magic-link/send`     (form-urlencoded {email, return_to})
  *   - `google`     → `GET  /auth/sign-in/oauth/google/start?returnTo=…`
  *   - `passkey`    → `POST /auth/passkeys/login/options` then `/verify`
  *                    ({options, challenge_id} → {ok, redirectTo})
@@ -29,6 +29,7 @@
  */
 
 export type SignInMethod = "password" | "magic_link" | "google" | "passkey";
+export type EmailDelivery = "link" | "code" | "both";
 
 /** The default when `methods` is omitted. Kept as a named export so the
  *  component and tests agree on the byte-identical-default sentinel. */
@@ -86,18 +87,41 @@ export function dividerHtml(): string {
   return `<div class="r402-divider" role="separator" aria-label="or"><span>or</span></div>`;
 }
 
-/** `magic_link` — a SEPARATE no-JS form posting to the hosted send route. */
-export function magicLinkFormHtml(returnTo: string): string {
+/** Email authentication. Link-only stays a no-JS form. Code-capable modes add
+ * an initially hidden progressive-enhancement form; the hosted route remains
+ * the JavaScript-free fallback and renders its own confirmation page. */
+export function magicLinkFormHtml(returnTo: string, delivery: EmailDelivery = "link"): string {
   const rt = escapeAttr(returnTo);
-  return (
-    `<form method="POST" action="/auth/magic-link/send" class="r402-magic-link">` +
-    `<input type="hidden" name="returnTo" value="${rt}" />` +
+  const deliveryInput = delivery === "link"
+    ? ""
+    : `<input type="hidden" name="delivery" value="${delivery}" />`;
+  const send = (
+    `<form method="POST" action="/auth/magic-link/send" class="r402-magic-link"${delivery === "link" ? "" : " data-r402-email-auth"}>` +
+    `<input type="hidden" name="return_to" value="${rt}" />` +
+    deliveryInput +
     `<label class="r402-field">` +
     `<span class="r402-label">Email</span>` +
     `<input type="email" name="email" required autocomplete="email" class="r402-input" />` +
     `</label>` +
-    `<button type="submit" class="r402-method-button">Email me a sign-in link</button>` +
+    `<button type="submit" class="r402-method-button">${delivery === "link" ? "Email me a sign-in link" : "Email me a sign-in code"}</button>` +
     `</form>`
+  );
+  if (delivery === "link") return send;
+  return (
+    `<div class="r402-email-auth" data-r402-email-auth-root>` +
+    send +
+    `<div class="r402-email-auth-status" role="status" aria-live="polite" data-r402-email-auth-status></div>` +
+    `<form method="POST" action="/auth/email-code/confirm" class="r402-email-code" data-r402-email-code hidden>` +
+    `<input type="hidden" name="challenge_id" value="" data-r402-challenge-id />` +
+    `<label class="r402-field" for="r402-email-code">` +
+    `<span class="r402-label">Six-digit code</span>` +
+    `<input id="r402-email-code" type="text" name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" aria-describedby="r402-email-code-hint r402-email-code-error" class="r402-input" />` +
+    `</label>` +
+    `<p id="r402-email-code-hint" class="r402-hint">Enter the six-digit code from your email.</p>` +
+    `<div id="r402-email-code-error" class="r402-auth-error" role="alert" aria-live="assertive" data-r402-email-code-error></div>` +
+    `<button type="submit" class="r402-method-button">Verify code</button>` +
+    `</form>` +
+    `</div>`
   );
 }
 
@@ -133,12 +157,17 @@ export function passkeyButtonHtml(returnTo: string): string {
  * between every adjacent pair across the full ordered method list (including
  * the password form, which the component owns).
  */
-export function buildMethodBlocks(methods: SignInMethod[], returnTo: string, errorReturnTo?: string): string[] {
+export function buildMethodBlocks(
+  methods: SignInMethod[],
+  returnTo: string,
+  errorReturnTo?: string,
+  emailDelivery: EmailDelivery = "link",
+): string[] {
   const out: string[] = [];
   for (const m of methods) {
     switch (m) {
       case "magic_link":
-        out.push(magicLinkFormHtml(returnTo));
+        out.push(magicLinkFormHtml(returnTo, emailDelivery));
         break;
       case "google":
         out.push(googleOauthHtml(returnTo, errorReturnTo));
@@ -168,8 +197,9 @@ export function buildExtraMethodsHtml(
   returnTo: string,
   passwordIsFirst: boolean,
   errorReturnTo?: string,
+  emailDelivery: EmailDelivery = "link",
 ): string {
-  const blocks = buildMethodBlocks(methods, returnTo, errorReturnTo);
+  const blocks = buildMethodBlocks(methods, returnTo, errorReturnTo, emailDelivery);
   if (blocks.length === 0) return "";
   const divider = dividerHtml();
   const joined = blocks.join(divider);
@@ -180,6 +210,42 @@ export function buildExtraMethodsHtml(
 export function includesPassword(methods: SignInMethod[]): boolean {
   return methods.includes("password");
 }
+
+/** Progressive enhancement for code/both email delivery. The no-JS baseline
+ * posts the send form normally and the gateway renders the confirmation form.
+ * With JS, the originating document stays alive and the opaque handle remains
+ * only in page/form memory. Resend replaces it only after a successful send. */
+export const EMAIL_CODE_SCRIPT = `
+(() => {
+  document.querySelectorAll('[data-r402-email-auth-root]').forEach((root) => {
+    const send = root.querySelector('[data-r402-email-auth]');
+    const confirm = root.querySelector('[data-r402-email-code]');
+    const handle = root.querySelector('[data-r402-challenge-id]');
+    const status = root.querySelector('[data-r402-email-auth-status]');
+    const error = root.querySelector('[data-r402-email-code-error]');
+    if (!send || !confirm || !handle) return;
+    send.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (status) status.textContent = 'Requesting a new email…';
+      try {
+        const response = await fetch(send.action, {
+          method: 'POST',
+          headers: { accept: 'application/json' },
+          body: new URLSearchParams(new FormData(send)),
+        });
+        const body = await response.json();
+        if (!response.ok || !body.challenge_id) throw new Error('request_failed');
+        handle.value = body.challenge_id;
+        confirm.hidden = false;
+        if (error) error.textContent = '';
+        if (status) status.textContent = 'Request accepted. Enter the six-digit code from your email. You can submit the email form again to resend.';
+        confirm.querySelector('input[name="code"]')?.focus();
+      } catch {
+        if (status) status.textContent = 'The request could not be completed. Try again.';
+      }
+    });
+  });
+})();`;
 
 /**
  * The browser glue that drives the hosted WebAuthn ceremony for the `passkey`

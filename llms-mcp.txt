@@ -467,8 +467,8 @@ Platform-managed jobs. These tools do not run arbitrary Docker images; they subm
 
 ### Auth & email
 
-- `request_magic_link` — passwordless login, trusted invite, claim, or recovery link. Params: `project_id`, `email`, `redirect_url`, `intent?`, `client_state?`. `intent=invite` requires service key state.
-- `verify_magic_link` — exchange token for `access_token` + `refresh_token`. Params: `project_id`, `token`. Magic-link metadata is included when present.
+- `request_magic_link` — passwordless email login, trusted invite, claim, or recovery. Params: `project_id`, `email`, `delivery?` (`link|code|both`, default link), `redirect_url?` (required for link/both), `intent?`, `client_state?`. Accepted output preserves gateway message/warnings and the opaque challenge handle for code/both; it never claims delivery or account creation.
+- `verify_magic_link` — exchange exactly one credential shape for `access_token` + `refresh_token`: `project_id` + `token`, or `project_id` + `challenge_id` + six-digit `code`. Mixed/partial shapes fail locally. `challenge_id` is public; the code/token/session values are secrets and must not enter URLs, logs, or storage.
 - `create_auth_user` / `invite_auth_user` — service-key create/update auth users and optionally send trusted invite links. Params include `project_id`, `email`, `is_admin?`, `redirect_url?`, `client_state?`.
 - `set_user_password` — change / reset / set. Params: `project_id`, `access_token`, `new_password`, `current_password?`.
 - `auth_settings` — update auth controls. Params: `project_id`, `allow_password_set?`, `preferred_sign_in_method?`, `public_signup?`, `require_passkey_for_project_admin?`.

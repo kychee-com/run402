@@ -33,6 +33,19 @@ All notable changes to `@run402/astro`.
 
 ## Unreleased
 
+### Added
+
+- `<SignIn methods={["magic_link"]} />` now supports
+  `emailDelivery="link" | "code" | "both"`. When the prop is omitted, managed
+  SSR checks provider discovery and chooses both only when advertised,
+  otherwise falling back to link. Both mode keeps the opaque challenge handle
+  in the originating page, presents one labelled six-digit input
+  (`inputmode="numeric"`, `autocomplete="one-time-code"`), and retains the
+  emailed link as fallback. Normal form submission remains the no-JS baseline;
+  enhancement avoids navigating away and replaces a resend handle only after
+  an accepted response. Password-only output remains byte-identical. This is
+  an additive minor component release.
+
 ### Changed
 
 - **Astro 7 compatibility.** `peerDependencies.astro` now accepts `>=6 <8`, and the workspace dev dependency moved to `astro ^7.0.0` so the `@run402/astro` package tests and build exercise the latest supported Astro major. Astro 6 remains supported; Astro 5 remains outside the supported peer range because the SSR adapter requires `astro/app/entrypoint`. This compatibility update does **not** adopt Astro 7-only route caching, advanced routing through `src/fetch.ts`, or any new Run402 cache/route semantics.

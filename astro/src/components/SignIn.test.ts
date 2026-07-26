@@ -186,7 +186,7 @@ describe("SignIn.astro — methods rendering", () => {
     const html = await render(SIGNIN_URL, { returnTo: "/portal", methods: ["magic_link"] });
     const dom = markup(html);
     assert.match(dom, /<form method="POST" action="\/auth\/magic-link\/send" class="r402-magic-link">/);
-    assert.match(dom, /<input type="hidden" name="returnTo" value="\/portal" \/>/);
+    assert.match(dom, /<input type="hidden" name="return_to" value="\/portal" \/>/);
     assert.match(dom, /name="email" required autocomplete="email"/);
     assert.match(dom, /Email me a sign-in link/);
     // No password form, no other methods (markup, not the stylesheet).
@@ -197,6 +197,92 @@ describe("SignIn.astro — methods rendering", () => {
     assert.doesNotMatch(dom, /<div class="r402-divider"/);
     // No WebAuthn script for a no-JS method.
     assert.doesNotMatch(dom, /<script/);
+  });
+
+  it("emailDelivery='both' renders one accessible six-digit control and progressive enhancement", async () => {
+    const html = await render(SIGNIN_URL, {
+      returnTo: "/portal",
+      methods: ["magic_link"],
+      emailDelivery: "both",
+    });
+    const dom = markup(html);
+    assert.match(dom, /name="delivery" value="both"/);
+    assert.match(dom, /action="\/auth\/email-code\/confirm"/);
+    assert.equal((dom.match(/<input[^>]+name="code"/g) ?? []).length, 1);
+    assert.match(dom, /inputmode="numeric"/);
+    assert.match(dom, /autocomplete="one-time-code"/);
+    assert.match(dom, /pattern="\[0-9\]\{6\}"/);
+    assert.match(dom, /role="alert" aria-live="assertive"/);
+    assert.match(html, /body: new URLSearchParams\(new FormData\(send\)\)/);
+    assert.doesNotMatch(html, /localStorage|sessionStorage/);
+  });
+
+  it("emailDelivery='link' preserves link-only presentation", async () => {
+    const html = await render(SIGNIN_URL, {
+      returnTo: "/portal",
+      methods: ["magic_link"],
+      emailDelivery: "link",
+    });
+    const dom = markup(html);
+    assert.match(dom, /Email me a sign-in link/);
+    assert.doesNotMatch(dom, /email-code\/confirm|name="code"|name="delivery"/);
+    assert.doesNotMatch(dom, /data-r402-email-auth/);
+  });
+
+  it("discovers both-mode support only when the gateway advertises it", async () => {
+    const priorBase = process.env.RUN402_API_BASE;
+    const priorAnon = process.env.RUN402_ANON_KEY;
+    const priorFetch = globalThis.fetch;
+    let request: Request | null = null;
+    process.env.RUN402_API_BASE = "https://api.example.test/";
+    process.env.RUN402_ANON_KEY = "anon_test";
+    globalThis.fetch = async (input, init) => {
+      request = input instanceof Request ? input : new Request(input, init);
+      return new Response(JSON.stringify({
+        magic_link: { enabled: true, delivery_modes: ["link", "code", "both"] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    try {
+      const html = await render(SIGNIN_URL, {
+        returnTo: "/portal",
+        methods: ["magic_link"],
+      });
+      const dom = markup(html);
+      assert.match(dom, /name="delivery" value="both"/);
+      assert.match(dom, /name="code"/);
+      assert.equal(request?.url, "https://api.example.test/auth/v1/providers");
+      assert.equal(request?.headers.get("apikey"), "anon_test");
+    } finally {
+      globalThis.fetch = priorFetch;
+      if (priorBase === undefined) delete process.env.RUN402_API_BASE;
+      else process.env.RUN402_API_BASE = priorBase;
+      if (priorAnon === undefined) delete process.env.RUN402_ANON_KEY;
+      else process.env.RUN402_ANON_KEY = priorAnon;
+    }
+  });
+
+  it("falls back to link-only when discovery fails", async () => {
+    const priorBase = process.env.RUN402_API_BASE;
+    const priorAnon = process.env.RUN402_ANON_KEY;
+    const priorFetch = globalThis.fetch;
+    process.env.RUN402_API_BASE = "https://api.example.test";
+    process.env.RUN402_ANON_KEY = "anon_test";
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    try {
+      const html = await render(SIGNIN_URL, {
+        returnTo: "/portal",
+        methods: ["magic_link"],
+      });
+      const dom = markup(html);
+      assert.match(dom, /Email me a sign-in link/);
+      assert.doesNotMatch(dom, /email-code\/confirm|name="code"|name="delivery"/);
+    } finally {
+      globalThis.fetch = priorFetch;
+      if (priorBase === undefined) delete process.env.RUN402_API_BASE;
+      else process.env.RUN402_API_BASE = priorBase;
+      if (priorAnon === undefined) delete process.env.RUN402_ANON_KEY;
+      else process.env.RUN402_ANON_KEY = priorAnon;
+    }
   });
 
   it("(c) methods=['google'] renders an anchor href containing /auth/sign-in/oauth/google/start (+ errorReturnTo)", async () => {
@@ -280,7 +366,7 @@ describe("SignIn.astro — methods rendering", () => {
       "https://app.example/login",
     );
     // magic-link hidden input value escaped
-    assert.match(html, /name="returnTo" value="\/a&amp;b&quot;c"/);
+    assert.match(html, /name="return_to" value="\/a&amp;b&quot;c"/);
     // google href: encodeURIComponent then attribute-escape (& → &amp;), plus the
     // errorReturnTo (this page) appended as a second query param.
     assert.match(html, /href="\/auth\/sign-in\/oauth\/google\/start\?returnTo=%2Fa%26b%22c&amp;errorReturnTo=%2Flogin"/);
@@ -378,11 +464,19 @@ describe("sign-in-methods — isDefaultOnly / normalizeMethods", () => {
 });
 
 describe("sign-in-methods — markup builders", () => {
-  it("magicLinkFormHtml posts to /auth/magic-link/send with escaped returnTo", () => {
+  it("magicLinkFormHtml posts to /auth/magic-link/send with escaped return_to", () => {
     const html = magicLinkFormHtml("/a&b");
     assert.match(html, /^<form method="POST" action="\/auth\/magic-link\/send" class="r402-magic-link">/);
-    assert.match(html, /name="returnTo" value="\/a&amp;b"/);
+    assert.match(html, /name="return_to" value="\/a&amp;b"/);
     assert.match(html, /<button type="submit" class="r402-method-button">Email me a sign-in link<\/button>/);
+  });
+
+  it("magicLinkFormHtml both mode keeps the handle empty until acceptance", () => {
+    const html = magicLinkFormHtml("/portal", "both");
+    assert.match(html, /name="delivery" value="both"/);
+    assert.match(html, /name="challenge_id" value=""/);
+    assert.equal((html.match(/name="code"/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /\b\d{6}\b/);
   });
 
   it("googleOauthHtml builds the encoded + escaped start href", () => {

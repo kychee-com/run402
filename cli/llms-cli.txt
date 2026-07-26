@@ -1569,10 +1569,11 @@ await email.send({ to: "user@example.com", subject: "Welcome!", html: "<h1>Hi</h
 Throws on rate limit, suppression, missing/invalid default, no mailbox.
 
 ### auth
-Manage project user authentication: magic links, trusted invites, passwords, passkeys, and auth settings.
+Manage project user authentication: passwordless email links/codes, trusted invites, passwords, passkeys, and auth settings.
 
-- `run402 auth magic-link --email <addr> --redirect <url> [--intent signin|invite|claim|recovery] [--state <value>] [--project <id>]` — send a magic link email
-- `run402 auth verify --token <token> [--project <id>]` — exchange a magic link token for access_token + refresh_token
+- `run402 auth magic-link --email <addr> [--delivery link|code|both] [--redirect <url>] [--intent signin|invite|claim|recovery] [--state <value>] [--project <id>]` — request passwordless email auth. Link is the wire default; redirect is required for link/both. JSON says `accepted:true`, preserves `message`/`warnings`, and returns opaque `challenge_id` for code/both without claiming delivery.
+- `run402 auth verify --token <token> [--project <id>]` — exchange a magic-link token
+- `run402 auth verify --challenge-id <opaque-id> --code <six-digits> [--project <id>]` — exchange an email code. Token and challenge/code modes are mutually exclusive; the code is secret and is never retried or persisted by the CLI.
 - `run402 auth create-user --email <addr> [--admin <true|false>] [--invite] [--redirect <url>] [--project <id>]` — service-key create/update auth user
 - `run402 auth invite-user --email <addr> --redirect <url> [--admin <true|false>] [--project <id>]` — create/update user and send trusted invite
 - `run402 auth set-password --token <bearer> --new <password> [--current <password>]` — change, reset, or set password
@@ -1586,7 +1587,7 @@ Manage project user authentication: magic links, trusted invites, passwords, pas
 - `run402 auth providers [--project <id>]` — list available auth providers
 - `run402 auth scaffold-roles [--table <name>] [--user-col <col>] [--role-col <col>] [--roles <csv>] [--cache-ttl <secs>]` — offline generator: emits a role-table migration + `requireRole` gate snippet + first-operator bootstrap (JSON out; no project/network). Pipe through `jq` (e.g. `| jq -r .migration`).
 
-Magic link flow: request → user clicks email link → frontend extracts token → verify → authenticated. Token expires in 15 minutes, single-use. Rate limited: 5 per email/hour, plus per-project limits by tier.
+Machine email-code flow: request `--delivery both` → retain `challenge_id` → read the code from email → verify the handle/code pair. The link in the same email remains a one-tap fallback. Credentials expire in 15 minutes and are single-use. `challenge_id` is public; never put the code, link token, cookie, or returned session tokens in logs/files. A request is accepted, not proven delivered.
 
 ### sender-domain
 Removed. Use ProjectDomain commands instead:
