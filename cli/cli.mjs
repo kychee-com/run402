@@ -41,6 +41,7 @@ Commands:
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
   org         Org membership, invites & audit (whoami, list, member, invite, audit)
   grants      Per-project capability grants for agent/CI principals (create, revoke)
+  delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
   events      What happened to your project since you last looked (cursored feed)
   errors      Grouped error fingerprints + a promote/revert verdict (release-baselined)
   jobs        Submit and inspect platform-managed jobs
@@ -247,6 +248,11 @@ switch (cmd) {
   }
   case "grants": {
     const { run } = await import("./lib/grants.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "delegates": {
+    const { run } = await import("./lib/delegates.mjs");
     await run(sub, rest);
     break;
   }

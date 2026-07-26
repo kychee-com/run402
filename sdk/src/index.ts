@@ -38,6 +38,7 @@ import { Branches } from "./namespaces/branches.js";
 import { Operator } from "./namespaces/operator.js";
 import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
+import { Delegates } from "./namespaces/delegates.js";
 import { Events } from "./namespaces/events.js";
 import { Errors } from "./namespaces/errors.js";
 import { Pay, type PayExecutor } from "./namespaces/pay.js";
@@ -122,6 +123,13 @@ export class Run402 {
    * project-scoped as `r.project(id).grants`.
    */
   readonly grants: Grants;
+  /**
+   * Scoped, revocable deploy credentials an owner mints for an agent. The
+   * supported way back in when a project's API keys are lost (they are issued
+   * once at create and never re-issued). Also project-scoped as
+   * `r.project(id).delegates`.
+   */
+  readonly delegates: Delegates;
   /**
    * Cursored project events feed — "what happened since I last looked".
    * Also available project-scoped as `r.project(id).events`.
@@ -216,6 +224,7 @@ export class Run402 {
     this.operator = new Operator(client);
     this.orgs = new Orgs(client);
     this.grants = new Grants(client);
+    this.delegates = new Delegates(client);
     this.events = new Events(client);
     this.pay = new Pay(client, opts.payExecutor);
     this.errors = new Errors(client);
@@ -523,6 +532,8 @@ export { Orgs, ScopedOrg, OrgMembers, OrgInvites } from "./namespaces/org.js";
 export type * from "./namespaces/org.types.js";
 export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";
+export { Delegates } from "./namespaces/delegates.js";
+export type * from "./namespaces/delegates.types.js";
 export { Events } from "./namespaces/events.js";
 export type * from "./namespaces/events.types.js";
 export { Errors } from "./namespaces/errors.js";

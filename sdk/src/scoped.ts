@@ -165,6 +165,12 @@ import type {
   GrantRevokeResult,
 } from "./namespaces/grants.types.js";
 import type {
+  CreateDelegateInput,
+  DelegateCreateResult,
+  DelegateListResult,
+  DelegateRevokeResult,
+} from "./namespaces/delegates.types.js";
+import type {
   ListEventsOptions,
   ProjectEventFeedPage,
 } from "./namespaces/events.types.js";
@@ -374,6 +380,23 @@ class ScopedGrants {
   }
   revoke(grantId: string): Promise<GrantRevokeResult> {
     return this.parent.grants.revoke(this.projectId, grantId);
+  }
+}
+
+class ScopedDelegates {
+  constructor(private readonly parent: Run402, private readonly projectId: string) {}
+
+  create(input: CreateDelegateInput): Promise<DelegateCreateResult> {
+    return this.parent.delegates.create(this.projectId, input);
+  }
+  list(): Promise<DelegateListResult> {
+    return this.parent.delegates.list(this.projectId);
+  }
+  revoke(delegateId: string): Promise<DelegateRevokeResult> {
+    return this.parent.delegates.revoke(this.projectId, delegateId);
+  }
+  rotate(delegateId: string): Promise<DelegateCreateResult> {
+    return this.parent.delegates.rotate(this.projectId, delegateId);
   }
 }
 
@@ -1076,6 +1099,8 @@ export class ScopedRun402 {
   readonly subdomains: ScopedSubdomains;
   /** Per-project capability grants (agent/CI principals), project-id pre-bound. */
   readonly grants: ScopedGrants;
+  /** Scoped deploy credentials for agents (mint / list / revoke / rotate), project-id pre-bound. */
+  readonly delegates: ScopedDelegates;
   /** Cursored project events feed, project-id pre-bound. */
   readonly events: ScopedEvents;
   /** Release-error-rollup query surface (list / get / watch), project-id pre-bound. */
@@ -1101,6 +1126,7 @@ export class ScopedRun402 {
     this.senderDomain = new ScopedSenderDomain(parent, projectId);
     this.subdomains = new ScopedSubdomains(parent, projectId);
     this.grants = new ScopedGrants(parent, projectId);
+    this.delegates = new ScopedDelegates(parent, projectId);
     this.events = new ScopedEvents(parent, projectId);
     this.errors = new ScopedErrors(parent, projectId);
     this.archives = new ScopedArchives(parent, projectId);
