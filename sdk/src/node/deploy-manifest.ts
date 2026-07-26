@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { copyFile, readFile, rm } from "node:fs/promises";
 import {
   dirname,
   extname,
@@ -1030,9 +1030,59 @@ async function importConfigModule(
         },
       );
     }
-    return await tsx.tsImport(url, { parentURL: import.meta.url }) as Record<string, unknown>;
+    try {
+      return await tsx.tsImport(url, { parentURL: import.meta.url }) as Record<string, unknown>;
+    } catch (err) {
+      // GH-509 option (b): tsx picks the module format from the manifest's
+      // NEAREST package.json. In a project without `"type": "module"` (the
+      // `npm init` default) a .ts manifest compiles to CommonJS, so its
+      // imports resolve with require conditions — and an import-only exports
+      // map (any @run402/sdk before 4.11.1, and plenty of other packages)
+      // fails with "Package subpath ... is not defined by exports" even
+      // though the subpath exists. Retry once through a sibling .mts file:
+      // the .mts extension forces ESM regardless of package.json, and living
+      // in the SAME directory keeps relative imports and node_modules
+      // resolution identical. Only this exact failure is retried.
+      if (!isExportsConditionFailure(err)) throw err;
+      const retried = await importAsEsmSibling(manifestPath);
+      if (retried) return retried;
+      throw err;
+    }
   }
   return await import(`${url}?run402_config=${Date.now()}`) as Record<string, unknown>;
+}
+
+/** Node's signature for "no exports condition matched" (ERR_PACKAGE_PATH_NOT_EXPORTED). */
+function isExportsConditionFailure(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code === "ERR_PACKAGE_PATH_NOT_EXPORTED") return true;
+  const message = (err as Error | null)?.message ?? "";
+  return /is not defined by "exports"/.test(message);
+}
+
+/**
+ * Copy the manifest to a sibling `.mts` file and import that, so the module
+ * format is ESM no matter what the project's package.json says. Returns null
+ * (rather than throwing) when the sibling cannot be written — e.g. a
+ * read-only checkout — so the caller can surface the ORIGINAL error, which
+ * names the real fix.
+ */
+async function importAsEsmSibling(manifestPath: string): Promise<Record<string, unknown> | null> {
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const sibling = `${manifestPath}.run402-esm-${suffix}.mts`;
+  try {
+    await copyFile(manifestPath, sibling);
+  } catch {
+    return null;
+  }
+  try {
+    const tsx = (await import("tsx/esm/api")) as typeof import("tsx/esm/api");
+    return await tsx.tsImport(pathToFileURL(sibling).href, {
+      parentURL: import.meta.url,
+    }) as Record<string, unknown>;
+  } finally {
+    await rm(sibling, { force: true }).catch(() => {});
+  }
 }
 
 async function withConfigTimeout<T>(promise: Promise<T>, path: string, timeoutMs: number): Promise<T> {

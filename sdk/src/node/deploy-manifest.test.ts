@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -149,14 +149,14 @@ describe("Node deploy manifest helpers", () => {
     }
   });
 
-  it("names the GH-509 fix when a CJS-context .ts manifest hits an import-only exports map", async () => {
-    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-gh509-"));
+  it("loads a CJS-context .ts manifest against an import-only exports map via the ESM sibling retry (GH-509b)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run402-exec-config-gh509b-"));
     try {
-      // A project with an npm-init-default package.json (no "type": "module")
-      // and a stale fake @run402/sdk whose exports declare only `import`
-      // conditions — the exact 4.11.0 shape that produced the misleading
-      // "subpath not defined" failure.
-      writeFileSync(join(root, "package.json"), JSON.stringify({ name: "gh509-app", version: "1.0.0" }));
+      // npm-init-default package.json (no "type": "module") + a stale fake
+      // @run402/sdk whose exports declare only `import` conditions — the 4.11.0
+      // shape. Before the ESM-sibling retry this combination threw
+      // EXECUTABLE_CONFIG_LOAD_FAILED; now it must load.
+      writeFileSync(join(root, "package.json"), JSON.stringify({ name: "gh509b-app", version: "1.0.0" }));
       const fakeSdk = join(root, "node_modules", "@run402", "sdk");
       mkdirSync(join(fakeSdk, "dist"), { recursive: true });
       writeFileSync(join(fakeSdk, "package.json"), JSON.stringify({
@@ -167,16 +167,17 @@ describe("Node deploy manifest helpers", () => {
       }));
       writeFileSync(join(fakeSdk, "dist", "config.js"), "export const defineConfig = (c) => c;\n");
       const manifestPath = join(root, "run402.deploy.ts");
-      writeFileSync(manifestPath, 'import { defineConfig } from "@run402/sdk/config";\nexport default defineConfig({});\n');
-      await assert.rejects(
-        () => loadExecutableDeployConfig(manifestPath),
-        (err: unknown) => {
-          assert.ok(err instanceof LocalError);
-          assert.equal(err.code, "EXECUTABLE_CONFIG_LOAD_FAILED");
-          assert.match(err.message, /upgrade @run402\/sdk to >=4\.11\.1, or add "type": "module"/);
-          return true;
-        },
+      writeFileSync(
+        manifestPath,
+        'import { defineConfig } from "@run402/sdk/config";\nexport default defineConfig({ subdomains: { set: ["gh509b"] } });\n',
       );
+
+      const config = await loadExecutableDeployConfig(manifestPath);
+      assert.deepEqual((config as { subdomains?: { set?: string[] } }).subdomains?.set, ["gh509b"]);
+
+      // The retry must not leave temp siblings behind in the user's project.
+      const leftovers = readdirSync(root).filter((f) => f.includes("run402-esm-"));
+      assert.deepEqual(leftovers, []);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
