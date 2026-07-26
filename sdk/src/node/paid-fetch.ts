@@ -40,6 +40,7 @@ import {
   paymentExceedsMaxError,
   readPaymentErrorEnvelope,
   responseSignalsReplay,
+  paidStackUnavailableError,
   walletUnavailableError,
   type PayExecutor,
   type PayFetchOptions,
@@ -293,6 +294,7 @@ const DEFAULT_ATTEMPTS_PER_PROVIDER = 2;
 const DEFAULT_BASE_DELAY_MS = 100;
 const MAX_PENDING_POLICY_ERRORS = 32;
 let warnedMissingDeps = false;
+let missingPaidStackPackages: readonly string[] | null = null;
 let policyErrorSequence = 0;
 const policyErrors = new Map<string, X402BalanceError>();
 
@@ -675,6 +677,9 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     // failures are thrown so lazy initialization can try again on a later call
     // instead of permanently caching an unwrapped/degraded fetch.
     if (err instanceof PaidStackUnavailable) {
+      // Remember WHY the buyer is absent. Without this the eventual 402 is
+      // reported as an unfunded wallet, which is the wrong remedy entirely.
+      missingPaidStackPackages = err.missingPackages;
       if (!warnedMissingDeps) {
         warnedMissingDeps = true;
         console.warn(`[run402] ${err.message}`);
@@ -805,6 +810,11 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
           configured.payer.payers.flatMap((payer) => payer.network ? [payer.network] : []),
           { configured_rail: "mpp" },
         );
+      }
+      if (missingPaidStackPackages !== null) {
+        throw paidStackUnavailableError(missingPaidStackPackages, {
+          challenge_networks: challengeNetworks(response),
+        });
       }
       throw walletUnavailableError({ challenge_networks: challengeNetworks(response) });
     },

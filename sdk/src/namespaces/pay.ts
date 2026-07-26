@@ -196,6 +196,7 @@ export type PaymentFundsMoved = boolean | "unknown";
 export type PaymentBuyerErrorCode =
   | "PAYMENT_EXCEEDS_MAX"
   | "PAYMENT_WALLET_UNFUNDED"
+  | "PAYMENT_DEPENDENCY_MISSING"
   | "PAYMENT_NETWORK_UNSUPPORTED"
   | "PAYMENT_INTENT_PENDING"
   | "PAYMENT_DESTINATION_DRAINING"
@@ -499,6 +500,35 @@ export function walletUnavailableError(details: Record<string, unknown> = {}): P
         type: "run_command",
         command: "run402 init",
         why: "Create an allowance and use the testnet faucet when no wallet is configured.",
+      },
+    ],
+  });
+}
+
+/**
+ * The paid stack is an OPTIONAL peer set, so a consumer can legitimately be
+ * unable to pay while holding a perfectly funded wallet. Reporting that as
+ * PAYMENT_WALLET_UNFUNDED sends the caller to fund an already-funded wallet —
+ * an unattended agent then loops between `init` (reports funded) and the
+ * payment (reports unfunded). The remedy is an install, so say so.
+ */
+export function paidStackUnavailableError(
+  missingPackages: readonly string[],
+  details: Record<string, unknown> = {},
+): PaymentBuyerError {
+  const packages = [...missingPackages].sort();
+  return new PaymentBuyerError({
+    code: "PAYMENT_DEPENDENCY_MISSING",
+    message:
+      `This payment needs optional peer dependencies that are not installed: ${packages.join(", ")}. ` +
+      `The wallet is not the problem — install them and retry.`,
+    fundsMoved: false,
+    details: { missing_packages: packages, ...details },
+    nextActions: [
+      {
+        type: "run_command",
+        command: `npm install ${packages.join(" ")}`,
+        why: "Install the paid-request dependencies this environment is missing, then retry.",
       },
     ],
   });
