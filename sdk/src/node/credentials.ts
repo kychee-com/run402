@@ -32,11 +32,12 @@ import { readMeta } from "../../core-dist/profiles.js";
 import { loadLiveControlPlaneSession } from "../../core-dist/control-plane-session.js";
 import { loadLiveApproval, hashControlPlaneSession } from "../../core-dist/write-auth-session.js";
 import type { AllowanceData, AuthRequestMeta, CredentialsProvider, ProjectKeys, WalletIdentity } from "../credentials.js";
+import { DELEGATE_CREDENTIALS, delegateTokenFromEnv } from "../delegate-credentials.js";
 
 /** Where credential resolution runs — selects the default `authMode`. */
 export type CredentialSurface = "cli" | "mcp" | "sdk";
 /** How a request's credentials are chosen. `auto` = wallet, else operator (control-plane) session. */
-export type AuthMode = "auto" | "wallet" | "operator" | "none";
+export type AuthMode = "auto" | "wallet" | "operator" | "delegate" | "none";
 
 export interface NodeCredentialsOptions {
   allowancePath?: string;
@@ -48,10 +49,33 @@ export interface NodeCredentialsOptions {
   surface?: CredentialSurface;
   /** Explicit override; otherwise derived from `surface`. */
   authMode?: AuthMode;
+  /**
+   * A delegate bearer (gateway `run402_agent_key`). When present — here or in
+   * `RUN402_DELEGATE_TOKEN` — it is the credential class for every request and
+   * nothing else is consulted. See `../delegate-credentials.ts`.
+   */
+  delegateToken?: string;
 }
 
 export class NodeCredentialsProvider implements CredentialsProvider {
   constructor(private readonly options: NodeCredentialsOptions = {}) {}
+
+  /**
+   * Marks this provider as delegate-backed so apikey-attaching helpers stand
+   * down (identical treatment to a CI session — the bearer already authorizes
+   * the apikey-gated CAS routes, and mixing the two families on one request is
+   * exactly what the kernel's credential-atomicity rule forbids).
+   */
+  get [DELEGATE_CREDENTIALS](): boolean {
+    return this.resolveDelegateToken() !== undefined;
+  }
+
+  /** Explicit option wins over the environment; blank env values are ignored. */
+  private resolveDelegateToken(): string | undefined {
+    const explicit = this.options.delegateToken?.trim();
+    if (explicit) return explicit;
+    return delegateTokenFromEnv();
+  }
 
   /** Effective credential mode. Explicit `authMode` wins; else `cli → auto`, everything else → `wallet`. */
   private resolveAuthMode(): AuthMode {
@@ -74,6 +98,16 @@ export class NodeCredentialsProvider implements CredentialsProvider {
   async getAuth(path: string, metadata?: AuthRequestMeta): Promise<Record<string, string> | null> {
     const mode = this.resolveAuthMode();
     if (mode === "none") return null;
+
+    // A delegate is an EXPLICIT credential class: presenting one is a
+    // deliberate act (an env var or an option), so it wins outright and never
+    // falls back to a wallet or control-plane session. If it is revoked or
+    // expired the request fails closed, which is the intended behaviour — a
+    // silent downgrade to ambient authority would defeat the point of handing
+    // an agent a scoped credential in the first place.
+    const delegate = this.resolveDelegateToken();
+    if (delegate) return { Authorization: `Bearer ${delegate}` };
+    if (mode === "delegate") return null;
 
     const wallet = getAllowanceAuthHeaders(path, this.options.allowancePath);
     if (mode === "wallet") return wallet ? { ...wallet } : null;

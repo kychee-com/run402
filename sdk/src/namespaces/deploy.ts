@@ -21,6 +21,7 @@
 
 import type { Client } from "../kernel.js";
 import { isCiSessionCredentials } from "../ci-credentials.js";
+import { isDelegateCredentials } from "../delegate-credentials.js";
 import { assertCiDeployableSpec } from "./ci.js";
 import {
   ROUTE_PRICING_NETWORKS,
@@ -4859,7 +4860,11 @@ async function apikeyHeaders(
   client: Client,
   projectId: string,
 ): Promise<Record<string, string>> {
-  if (isCiClient(client)) return {};
+  // A CI session and a delegate both already authorize these routes via
+  // `Authorization: Bearer`, supplied by the kernel's getAuth. Attaching an
+  // apikey beside a bearer mixes credential families on one request, which the
+  // kernel explicitly forbids — so stand down and let the bearer carry it.
+  if (isCiClient(client) || isDelegateClient(client)) return {};
   const project = await client.getProject(projectId);
   if (!project) return {};
   return { apikey: project.anon_key };
@@ -4867,6 +4872,10 @@ async function apikeyHeaders(
 
 function isCiClient(client: Client): boolean {
   return isCiSessionCredentials(client.credentials);
+}
+
+function isDelegateClient(client: Client): boolean {
+  return isDelegateCredentials(client.credentials);
 }
 
 function makeEmitter(

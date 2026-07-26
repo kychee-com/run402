@@ -34,6 +34,7 @@ import {
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { API, allowanceAuthHeaders, getActiveProjectId, resolveProjectId, isCoreApiTarget } from "./config.mjs";
+import { delegateTokenFromEnv } from "#sdk/node";
 import { flagValue, normalizeArgv } from "./argparse.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { withAutoApprove } from "./operator.mjs";
@@ -1146,11 +1147,20 @@ async function applyCmd(args) {
   }
 
   let sdkOpts;
+  const delegateToken = delegateTokenFromEnv();
   if (useGithubActionsOidc) {
     sdkOpts = {
       credentials: githubActionsCredentials({ projectId: releaseSpec.project, apiBase: API }),
       disablePaidFetch: true,
     };
+  } else if (delegateToken) {
+    // A delegate is a complete, self-contained deploy credential: the owner
+    // minted it with their wallet and handed it over, so this process needs no
+    // allowance of its own. Skipping the guard is the point — an agent that
+    // lost its local state (or never had a wallet) can still deploy. Paid fetch
+    // is disabled for the same reason it is under CI: a delegate authorizes
+    // deploys, not spending.
+    sdkOpts = { delegateToken, disablePaidFetch: true };
   } else if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) {
     // Aggressive early exit when no allowance is configured — unless a
     // wallet-less human is deploying via their operator (control-plane) session

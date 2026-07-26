@@ -467,6 +467,13 @@ export {
   isCiSessionCredentials,
 } from "./ci-credentials.js";
 export type * from "./ci-credentials.js";
+export {
+  DELEGATE_CREDENTIALS,
+  DELEGATE_TOKEN_ENV,
+  delegateTokenFromEnv,
+  isDelegateCredentials,
+} from "./delegate-credentials.js";
+export type * from "./delegate-credentials.js";
 export * from "./app-up.js";
 export {
   CONTROL_PLANE_SESSION_CREDENTIALS,
