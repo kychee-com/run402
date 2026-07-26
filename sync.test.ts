@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -105,7 +105,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -554,6 +554,10 @@ const SURFACE: Capability[] = [
   { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     mcp: null,                    cli: "org:invite:rm",     openclaw: "org:invite:rm" },
   { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
   { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
+  { id: "create_project_delegate", endpoint: "POST /projects/v1/:id/delegates",                        mcp: null, cli: "delegates:create", openclaw: "delegates:create" },
+  { id: "list_project_delegates",  endpoint: "GET /projects/v1/:id/delegates",                         mcp: null, cli: "delegates:list",   openclaw: "delegates:list" },
+  { id: "revoke_project_delegate", endpoint: "DELETE /projects/v1/:id/delegates/:delegate_id",         mcp: null, cli: "delegates:revoke", openclaw: "delegates:revoke" },
+  { id: "rotate_project_delegate", endpoint: "POST /projects/v1/:id/delegates/:delegate_id/rotate",    mcp: null, cli: "delegates:rotate", openclaw: "delegates:rotate" },
 
   // ── Auth (project user) ────────────────────────────────────────────────
   { id: "request_magic_link", endpoint: "POST /auth/v1/magic-link",           mcp: "request_magic_link", cli: "auth:magic-link",    openclaw: "auth:magic-link" },
@@ -885,6 +889,10 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   org_invite_rm: "org.invites.revoke",
   create_project_grant: "grants.create",
   revoke_project_grant: "grants.revoke",
+  create_project_delegate: "delegates.create",
+  list_project_delegates: "delegates.list",
+  revoke_project_delegate: "delegates.revoke",
+  rotate_project_delegate: "delegates.rotate",
 
   // Auth
   request_magic_link: "auth.requestMagicLink",
