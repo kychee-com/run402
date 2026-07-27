@@ -1825,8 +1825,28 @@ async function paymentRequestFingerprint(
     .digest("hex");
 }
 
+/**
+ * Encode an x402 wire payload — STANDARD base64, never base64url.
+ *
+ * The x402 `PAYMENT-SIGNATURE` / `X-PAYMENT` header is standard base64. This
+ * encoded base64url, which substitutes `-` for `+` and `_` for `/` and drops
+ * the `=` padding, so any payload whose bytes produced a `+` or `/` reached the
+ * seller as a string its decoder could not read. The seller then saw NO payment
+ * at all and re-issued its original 402 challenge — indistinguishable, from the
+ * outside, from "the payment was rejected", which is why this survived so long:
+ * there is no verification error anywhere to find, on either side.
+ *
+ * A real proof is ~2.4 KB, so it essentially always contains a `+` or `/`.
+ * Verified against our own seller: the SAME signed authorization, re-encoded as
+ * standard base64 and presented once, settles 200 with the paid response.
+ * (kychee-com/run402-private#623.)
+ *
+ * `decodeBase64Json` deliberately stays on `base64url`: Node's base64url decoder
+ * accepts BOTH alphabets, so it reads standard-base64 seller headers correctly
+ * and is the more forgiving choice for input we do not control.
+ */
 function encodeBase64Json(value: unknown): string {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
+  return Buffer.from(JSON.stringify(value)).toString("base64");
 }
 
 function decodeBase64Json(value: string): unknown {

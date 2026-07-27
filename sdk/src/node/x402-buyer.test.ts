@@ -77,7 +77,7 @@ function settlement(network = "eip155:8453"): string {
   });
 }
 
-function fakeClient(onCreate?: () => void): X402BuyerClient {
+function fakeClient(onCreate?: () => void, nonce = "same-signed-authorization"): X402BuyerClient {
   return {
     async createPaymentPayload(required) {
       onCreate?.();
@@ -85,7 +85,7 @@ function fakeClient(onCreate?: () => void): X402BuyerClient {
         x402Version: required.x402Version,
         resource: required.resource,
         accepted: required.accepts[0]!,
-        payload: { authorization: { nonce: "same-signed-authorization" } },
+        payload: { authorization: { nonce } },
       };
     },
   };
@@ -606,6 +606,43 @@ describe("createX402BuyerFetch", () => {
       });
       return true;
     });
+  });
+
+  it("encodes the payment proof as STANDARD base64, not base64url", async () => {
+    // Regression for kychee-com/run402-private#623 — the defect that stopped the
+    // SDK from paying ANY x402 seller. The proof header was encoded base64url,
+    // which substitutes `-` for `+` and `_` for `/` and drops `=` padding, so a
+    // seller decoding standard base64 saw no payment at all and re-issued its
+    // original 402. There is no verification error on either side, which is why
+    // it read as "the seller rejected us" for days.
+    //
+    // The nonce is chosen so the payload's base64 provably contains a `+` or `/`
+    // — otherwise the two alphabets coincide and this test would pass vacuously.
+    let seen: string | null = null;
+    const buyer = createX402BuyerFetch(fakeClient(undefined, "0xff3f>?~"), {
+      supportedNetworks: ["eip155:8453"],
+      ...attemptOptions(),
+      fetch: async (_input, init) => {
+        const proof = new Headers(init?.headers).get("payment-signature");
+        if (!proof) return challenge();
+        seen = proof;
+        return new Response(JSON.stringify({ tribute: "accepted" }), {
+          status: 200,
+          headers: { "content-type": "application/json", "PAYMENT-RESPONSE": settlement() },
+        });
+      },
+    });
+    await buyer(PAID_URL, { method: "POST" }, { maxUsdMicros: 10000 });
+
+    const proof = seen as unknown as string;
+    assert.ok(proof, "a proof header was sent");
+    assert.match(proof, /[+/]/, "test is only meaningful if the alphabets differ here");
+    assert.doesNotMatch(proof, /[-_]/, "base64url alphabet must never reach the wire");
+    // A STRICT standard-base64 decode must recover the payload verbatim.
+    assert.equal(
+      JSON.parse(Buffer.from(proof, "base64").toString("utf8")).payload.authorization.nonce,
+      "0xff3f>?~",
+    );
   });
 
   it("reports a bare PAYMENT_REQUIRED re-challenge as a proven non-settlement", async () => {
