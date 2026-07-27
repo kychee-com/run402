@@ -579,7 +579,9 @@ async function promoteCmd(args) {
 
   // Preserve the aggressive early-exit when no allowance is configured
   // — same as apply.
-  allowanceAuthHeaders("/apply/v1/releases");
+  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
+  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/releases");
 
   try {
     // Call the engine directly (matches the pattern used by apply / resume
@@ -1599,7 +1601,9 @@ async function resumeCmd(args) {
   emitDeployUpdateNotice("resume", args, { quiet: opts.quiet });
   const project = resolveProjectId(opts.project);
 
-  allowanceAuthHeaders("/apply/v1/operations");
+  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
+  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk({ disablePaidFetch: true })._applyEngine.resume(opts.operationId, {
@@ -1628,6 +1632,27 @@ async function listCmd(args) {
   };
 
   const project = resolveProjectId(opts.project);
+  // NOT ungated for delegates, deliberately: /apply/v1/operations (list) is
+  // `apikeyAuth` only — unlike get/events/resume/promote, which accept a
+  // delegate bearer. Listing every operation on a project is broader than
+  // the per-operation reads a deploy credential is scoped to. If this is
+  // ever widened, widen the ROUTE first, then this guard.
+  //
+  // The refusal is correct; the REMEDY must still be honest. Falling through
+  // to NO_ALLOWANCE would tell a delegate holder to run `run402 init`, which
+  // is wrong for a credential that is wallet-less by design — the same
+  // misleading-remedy shape removed from the payment path in 4.11.2.
+  if (delegateTokenFromEnv()) {
+    fail({
+      code: "DELEGATE_SCOPE_INSUFFICIENT",
+      message: "Listing deploy operations is not available to a delegate.",
+      hint: "Use `run402 deploy events <operation_id>` or `deploy verify <operation_id>` for a specific operation, which a delegate CAN read. A full listing needs the project apikey or the owner wallet.",
+      details: { command: "deploy list", credential: "delegate", route: "GET /apply/v1/operations" },
+      next_actions: [
+        { type: "run_command", command: "run402 deploy events <operation_id>", why: "Per-operation reads are within a delegate's deploy scope." },
+      ],
+    });
+  }
   allowanceAuthHeaders("/apply/v1/operations");
 
   try {
@@ -1655,7 +1680,9 @@ async function eventsCmd(args) {
   const opts = { operationId, project: parsed.flags["--project"] ?? null };
 
   const project = resolveProjectId(opts.project);
-  allowanceAuthHeaders("/apply/v1/operations");
+  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
+  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/operations");
 
   try {
     const result = await getSdk()._applyEngine.events(opts.operationId, { project });
@@ -1699,7 +1726,9 @@ async function verifyCmd(args) {
     ? 60
     : parsePositiveInt(parsed.flags["--timeout"], "--timeout");
 
-  allowanceAuthHeaders("/apply/v1/operations");
+  // A delegate holds `deploy` and the gateway accepts it on this route; refusing
+  // locally would tell a wallet-less holder to run `run402 init` (see 4.11.2).
+  if (!delegateTokenFromEnv()) allowanceAuthHeaders("/apply/v1/operations");
 
   try {
     let result;
