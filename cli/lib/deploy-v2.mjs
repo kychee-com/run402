@@ -382,7 +382,16 @@ async function rehearseCmd(rawArgs) {
     fail({ code: "BAD_USAGE", message: "--teardown must be one of: on_pass, keep, always", details: { flag: "--teardown", value: teardown } });
   }
   const project = flagValue(args, "--project") ?? undefined;
-  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) {
+  // A delegate is a complete deploy credential and the gateway explicitly
+  // supports rehearsing with one — walletAuthOrCiSession routes a delegate
+  // bearer through delegateDeployAuth("project.deploy"), and the route rejects
+  // only CI sessions (REHEARSAL_CI_UNSUPPORTED), whose own next_action reads
+  // "Rehearse with a wallet, control-plane session, or scoped agent delegate."
+  // Without this branch the CLI refuses locally with NO_ALLOWANCE and tells the
+  // caller to run `run402 init` — a wrong remedy for a holder who has no wallet
+  // by design, and the same misleading-error shape we removed from the payment
+  // path in 4.11.2. Rehearsal is the SAFE path; never make it the harder one.
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession() && !delegateTokenFromEnv()) {
     allowanceAuthHeaders(`/apply/v1/plans/${planId}/rehearse`);
   }
   try {
