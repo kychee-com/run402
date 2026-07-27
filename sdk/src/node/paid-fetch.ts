@@ -1157,6 +1157,11 @@ export function createX402BuyerFetch(
             phase: cause.phase,
             provider_started: cause.providerStarted,
             upstream_code: cause.code,
+            // The status the buyer actually saw. Omitting it forced a live
+            // repro with a patched SDK just to learn the response was a 402.
+            ...(cause.responseStatus !== undefined && cause.responseStatus !== null
+              ? { response_status: cause.responseStatus }
+              : {}),
           },
           cause,
           cause.safeToRetry,
@@ -1694,6 +1699,18 @@ function isAlreadyUsedFailure(failure: UpstreamPaymentFailure): boolean {
 function isProvenNoSettlementFailure(failure: UpstreamPaymentFailure): boolean {
   if (failure.code === "payment_insufficient_funds") return true;
   if (failure.code === "TENANT_X402_SETTLEMENT_FAILED") return true;
+  // A bare `PAYMENT_REQUIRED` on the PAID retry is the seller re-issuing its
+  // 402 challenge: it did not accept the payment, so it did not settle.
+  // Without this the outcome fell through to `ambiguous`, telling callers their
+  // funds might have moved when they provably had not — and because correct
+  // policy on ambiguity is stop-and-reconcile with safe_to_retry false, an
+  // unattended agent stranded permanently on a payment that never happened.
+  // (kychee-com/run402-private#623, reproduced live against our own seller.)
+  //
+  // Distinct from the replay case: a consumed authorization reports
+  // TENANT_X402_PAYMENT_INVALID with "nonce already used", which stays
+  // ambiguous via isAlreadyUsedFailure below — there the proof WAS spent.
+  if (failure.code === "PAYMENT_REQUIRED") return true;
   return failure.code === "TENANT_X402_PAYMENT_INVALID" && !isAlreadyUsedFailure(failure);
 }
 
@@ -1981,6 +1998,15 @@ export function createTrackedX402Fetch(
       try {
         const response = await paidFetch(input, init);
         if (context.providerStarted) {
+          // A 402 on the PAID retry is a clean rejection, not an ambiguity: the
+          // seller is re-issuing its payment challenge, which means it did not
+          // accept the payment and therefore did not settle. Reporting that as
+          // `ambiguous` tells an agent its funds may have moved when they
+          // provably have not, and correct agent policy on ambiguity is to stop
+          // and reconcile — so the caller halts on a payment that never
+          // happened. Verified against a live seller: the paid request is
+          // re-challenged 402 with the original `PAYMENT_REQUIRED` body and the
+          // payer's on-chain balance is unchanged.
           const classification = response.ok
             ? "completed"
             : await opts.classifyPaymentResponse?.(response) ?? "ambiguous";

@@ -608,6 +608,44 @@ describe("createX402BuyerFetch", () => {
     });
   });
 
+  it("reports a bare PAYMENT_REQUIRED re-challenge as a proven non-settlement", async () => {
+    // Regression for kychee-com/run402-private#623, reproduced live against our
+    // own seller. When the paid retry comes back as a plain 402 re-challenge,
+    // the seller has NOT accepted the payment and has NOT settled — the payer's
+    // on-chain balance is unchanged (verified).
+    //
+    // Before the fix this fell through to `ambiguous` / fundsMoved "unknown"
+    // with safeToRetry false. Correct agent policy on an ambiguous payment is
+    // stop-and-reconcile, so an unattended caller stranded permanently on a
+    // payment that never happened.
+    //
+    // Deliberately distinct from the test below: a CONSUMED authorization
+    // reports TENANT_X402_PAYMENT_INVALID / "nonce already used" and must stay
+    // ambiguous, because there the proof really was spent.
+    const buyer = createX402BuyerFetch(fakeClient(), {
+      supportedNetworks: ["eip155:8453"],
+      ...attemptOptions(),
+      fetch: async (_input, init) => {
+        const proof = new Headers(init?.headers).get("payment-signature");
+        if (!proof) return challenge();
+        return new Response(JSON.stringify({
+          code: "PAYMENT_REQUIRED",
+          error: "Payment required",
+          message: "To generate an image, include an x402 payment of $0.03 USDC.",
+        }), { status: 402, headers: { "content-type": "application/json" } });
+      },
+    });
+
+    await assert.rejects(buyer(PAID_URL, { method: "POST" }, {}), (error: unknown) => {
+      assert.ok(error instanceof PaymentBuyerError);
+      assert.equal(error.code, "PAYMENT_SETTLEMENT_FAILED");
+      // The load-bearing assertions.
+      assert.equal(error.fundsMoved, false, "a re-challenge means nothing settled");
+      assert.notEqual(error.mutationState, "ambiguous");
+      return true;
+    });
+  });
+
   it("re-presents the same proof after an ambiguous timeout and reports already_settled", async () => {
     const proofs: string[] = [];
     let calls = 0;
