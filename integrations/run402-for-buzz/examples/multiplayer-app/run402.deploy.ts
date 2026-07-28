@@ -3,7 +3,6 @@ import { defineConfig, dir, nodeFunction, sqlFile } from "@run402/sdk/config";
 export default defineConfig({
   database: {
     migrations: [sqlFile("db/001_feedback.sql", { id: "001_feedback" })],
-    expose: ["feedback_items", "feedback_comments", "feedback_votes"],
   },
   functions: {
     replace: {
