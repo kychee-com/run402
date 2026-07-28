@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const files = [
+  "package.json",
   "run402.deploy.ts",
   "db/001_feedback.sql",
   "functions/feedback.js",
@@ -25,4 +26,9 @@ test("browser code renders API data with textContent, never innerHTML", () => {
   const source = readFileSync(new URL("site/app.js", import.meta.url), "utf8");
   assert.match(source, /textContent/);
   assert.doesNotMatch(source, /innerHTML/);
+});
+
+test("the deploy config declares its SDK loader dependency", () => {
+  const manifest = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
+  assert.match(manifest.dependencies?.["@run402/sdk"], /^\^4\.13\./);
 });

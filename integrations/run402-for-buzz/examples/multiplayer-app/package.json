@@ -1,0 +1,11 @@
+{
+  "name": "run402-buzz-multiplayer-feedback-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test smoke.test.mjs"
+  },
+  "dependencies": {
+    "@run402/sdk": "^4.13.0"
+  }
+}

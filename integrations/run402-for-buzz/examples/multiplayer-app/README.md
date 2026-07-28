@@ -9,6 +9,8 @@ The attachment field is a scoped substitute for an in-app uploader: upload throu
 From this directory, while using the repository-local run402 skill:
 
 ```sh
+npm install
+npm test
 run402 identity link list --json
 run402 projects provision --tier prototype --name buzz-feedback
 run402 up --manifest run402.deploy.ts --plan --json
