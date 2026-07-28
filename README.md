@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/pulsemcp%2Frun402.svg)](https://mcptoplist.com/server/pulsemcp%2Frun402)
+
 <p align="center">
   <img src=".github/logo.svg" width="120" alt="run402 logo">
 </p>
