@@ -361,6 +361,67 @@ const server = new McpServer({
   version: currentPackageVersion(),
 });
 
+/**
+ * Optional tool profiles — opt-in, default unchanged.
+ *
+ * Measured 2026-07-28 against the published server: the full surface is 198
+ * tools / ~169 KiB, which costs an agent roughly 43,000 tokens of context
+ * before it makes a single request. An agent that found us searching "x402" and
+ * wants ONE tool — buy an image for three cents — pays that for 197 tools it
+ * will never call. A harness with a modest context budget may simply decline to
+ * load us, and that happens before any request reaches our gateway, so it is
+ * invisible in every metric we have. (kychee-com/run402-private#629.)
+ *
+ * `RUN402_MCP_PROFILE=buyer` registers only what a buy-only agent needs:
+ * ~6-700 tokens, a 98.5% reduction, and the same order as our remote discovery
+ * server — with the difference that this one can actually pay, because paying
+ * requires a local wallet.
+ *
+ * Unset (the default) registers everything, so existing users see no change.
+ */
+const TOOL_PROFILES: Record<string, readonly string[]> = {
+  buyer: [
+    "generate_image",
+    "init",
+    "allowance_status",
+    "allowance_export",
+    "check_balance",
+    "request_faucet",
+  ],
+};
+// NOTE: `x402_price_check` is deliberately absent — it lives on the remote
+// discovery server, not here. Listing it would be a phantom entry that silently
+// registers nothing, which is exactly how a typo in this list would hide.
+
+const requestedProfile = process.env.RUN402_MCP_PROFILE?.trim();
+if (requestedProfile && !TOOL_PROFILES[requestedProfile]) {
+  // Fail loudly. Silently falling back to the full surface would make a typo
+  // look like the profile is not working; silently registering NOTHING would be
+  // worse — an empty server that connects fine and can do nothing is the exact
+  // shape of failure that hides for days.
+  const known = Object.keys(TOOL_PROFILES).join(", ");
+  console.error(
+    `run402-mcp: unknown RUN402_MCP_PROFILE "${requestedProfile}". Known profiles: ${known}. ` +
+      `Unset the variable for the full tool surface.`,
+  );
+  process.exit(1);
+}
+const activeProfile = requestedProfile ? TOOL_PROFILES[requestedProfile] : null;
+const registeredFromProfile = new Set<string>();
+
+// Filter at registration rather than editing 198 call sites. A tool outside the
+// active profile is never registered, so it costs nothing in tools/list.
+if (activeProfile) {
+  const register = server.tool.bind(server) as (...a: unknown[]) => unknown;
+  const allowed = new Set(activeProfile);
+  (server as unknown as { tool: (...a: unknown[]) => unknown }).tool = (...args: unknown[]) => {
+    const name = args[0];
+    if (typeof name === "string" && !allowed.has(name)) return undefined;
+    if (typeof name === "string") registeredFromProfile.add(name);
+    return register(...args);
+  };
+}
+
 // ─── Core database tools ────────────────────────────────────────────────────
 
 server.tool(
@@ -1829,6 +1890,20 @@ server.tool(
   revokeProjectGrantSchema,
   async (args) => handleRevokeProjectGrant(args),
 );
+
+// Every name in an active profile must have matched a real tool. A profile that
+// silently shrinks because someone renamed a tool is the same class of failure
+// as a probe that returns empty on a malformed query: it looks like it worked.
+if (activeProfile) {
+  const missing = activeProfile.filter((name) => !registeredFromProfile.has(name));
+  if (missing.length > 0) {
+    console.error(
+      `run402-mcp: profile "${requestedProfile}" names tools that do not exist: ${missing.join(", ")}. ` +
+        `They were renamed or removed — fix TOOL_PROFILES.`,
+    );
+    process.exit(1);
+  }
+}
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
