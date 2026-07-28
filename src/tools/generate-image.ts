@@ -60,10 +60,32 @@ export async function handleGenerateImage(args: {
         lines.push("```");
       }
       lines.push(``);
+      // This is the moment of intent: the agent wants the image and now knows
+      // it costs three cents. The previous text — "the user's agent allowance or
+      // payment agent must send the required amount" — named no mechanism, so a
+      // cold agent had nothing it could execute. Verified 2026-07-28 by running
+      // the published server from a clean config: it is a dead end at exactly
+      // the step that converts.
+      //
+      // The remedy ships in this same server, so name the tools. `init` funds on
+      // Base SEPOLIA (testnet) — say so plainly rather than letting an agent
+      // discover after the fact that its payment was play money.
+      lines.push(`**Next steps — tools on this same server:**`);
+      lines.push(``);
       lines.push(
-        `The user's agent allowance or payment agent must send the required amount. ` +
-          `Once payment is confirmed, retry this tool call.`,
+        `1. \`allowance_status\` — check whether this agent already has a wallet and funds.`,
       );
+      lines.push(
+        `2. \`init\` — one-call bootstrap: creates a local allowance wallet and requests ` +
+          `faucet USDC. **This funds Base Sepolia (testnet)**, so the payment settles in ` +
+          `test money — good for trying the endpoint, but it is not a real purchase.`,
+      );
+      lines.push(
+        `3. To pay for real, fund the address from \`allowance_export\` with USDC on ` +
+          `**Base mainnet**, then retry.`,
+      );
+      lines.push(``);
+      lines.push(`Once the wallet has funds, retry this tool call unchanged — the payment is automatic.`);
       return { content: [{ type: "text", text: lines.join("\n") }] };
     }
     return mapSdkError(err, "generating image");
