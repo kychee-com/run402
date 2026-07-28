@@ -17,7 +17,7 @@ const files = [
 
 test("reference app contains each required surface and no embedded secret", () => {
   const source = files.map((file) => readFileSync(new URL(file, import.meta.url), "utf8")).join("\n");
-  for (const required of ["auth.requireUser", "auth.requireRole", "feedback_items", "feedback_votes", "feedback_comments", "attachment_url", "public_paths", "--require-plan", "transfer preview"]) {
+  for (const required of ["auth.user", "auth_required", "auth.requireRole", "feedback_items", "feedback_votes", "feedback_comments", "attachment_url", "public_paths", "--require-plan", "transfer preview"]) {
     assert.match(source, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.doesNotMatch(source, /(?:0x)?[0-9a-f]{64}/i);

@@ -50,7 +50,8 @@ export default async function feedback(request) {
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   try {
-    const user = await auth.requireUser();
+    const user = await auth.user();
+    if (!user) return json({ error: "auth_required" }, 401);
     const body = await request.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "invalid_json" }, 400);
 
