@@ -31,6 +31,13 @@ describe("Node deploy manifest helpers", () => {
           site: { replace: dir("./dist"), public_paths: { mode: "implicit" } },
           database: { migrations: [sqlFile("./db/001_init.sql")] },
           functions: { replace: { api: nodeFunction("./functions/api.mjs", {
+            requireRole: {
+              table: "members",
+              idColumn: "user_id",
+              roleColumn: "role",
+              allowed: ["admin"],
+              cacheTtl: 0,
+            },
             triggers: [
               scheduleTrigger("maintenance_every_15m", "*/15 * * * *", {
                 run: { event_type: "maintenance", payload: { sweep: true } },
@@ -72,6 +79,13 @@ describe("Node deploy manifest helpers", () => {
           run: { event_type: "email.event" },
         },
       ]);
+      assert.deepEqual(normalized.spec.functions?.replace?.api.requireRole, {
+        table: "members",
+        idColumn: "user_id",
+        roleColumn: "role",
+        allowed: ["admin"],
+        cacheTtl: 0,
+      });
       assert.equal(
         (normalized.spec.assets?.put?.[0] as { source?: { path?: string } }).source?.path,
         join(root, "dist", "index.html"),

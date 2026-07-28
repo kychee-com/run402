@@ -110,11 +110,16 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
 const MANIFEST_FUNCTION_CONFIG_FIELDS = new Set(["timeout_seconds", "memory_mb", "timeoutSeconds", "memoryMb"]);
 const MANIFEST_REQUIRE_ROLE_FIELDS = new Set([
   "table",
+  "idColumn",
   "id_column",
+  "roleColumn",
   "role_column",
   "allowed",
+  "cacheTtl",
   "cache_ttl",
+  "onDeny",
   "on_deny",
+  "signInPath",
   "sign_in_path",
 ]);
 const MANIFEST_SITE_FIELDS = new Set(["replace", "patch", "public_paths"]);
@@ -966,12 +971,18 @@ function mapRequireRole(value: unknown): NonNullable<FunctionSpec["requireRole"]
   assertKnownFields(value, "Deploy manifest function require_role", MANIFEST_REQUIRE_ROLE_FIELDS);
   return {
     table: value.table as string,
-    idColumn: value.id_column as string,
-    roleColumn: value.role_column as string,
+    idColumn: (value.idColumn ?? value.id_column) as string,
+    roleColumn: (value.roleColumn ?? value.role_column) as string,
     allowed: value.allowed as string[],
-    ...(value.cache_ttl !== undefined ? { cacheTtl: value.cache_ttl as number } : {}),
-    ...(value.on_deny !== undefined ? { onDeny: value.on_deny as "envelope" | "redirect" } : {}),
-    ...(value.sign_in_path !== undefined ? { signInPath: value.sign_in_path as string } : {}),
+    ...(value.cacheTtl !== undefined || value.cache_ttl !== undefined
+      ? { cacheTtl: (value.cacheTtl ?? value.cache_ttl) as number }
+      : {}),
+    ...(value.onDeny !== undefined || value.on_deny !== undefined
+      ? { onDeny: (value.onDeny ?? value.on_deny) as "envelope" | "redirect" }
+      : {}),
+    ...(value.signInPath !== undefined || value.sign_in_path !== undefined
+      ? { signInPath: (value.signInPath ?? value.sign_in_path) as string }
+      : {}),
   };
 }
 

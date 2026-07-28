@@ -6,7 +6,9 @@ const files = [
   "package.json",
   "run402.deploy.ts",
   "db/001_feedback.sql",
+  "db/002_feedback_roles.sql",
   "functions/feedback.js",
+  "functions/feedback-admin.js",
   "site/index.html",
   "site/app.js",
   "site/styles.css",
@@ -31,4 +33,12 @@ test("browser code renders API data with textContent, never innerHTML", () => {
 test("the deploy config declares its SDK loader dependency", () => {
   const manifest = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
   assert.match(manifest.dependencies?.["@run402/sdk"], /^\^4\.13\./);
+});
+
+test("the admin action has an explicit, uncached gateway role gate", () => {
+  const source = readFileSync(new URL("run402.deploy.ts", import.meta.url), "utf8");
+  assert.match(source, /"feedback-admin"/);
+  assert.match(source, /table:\s*"feedback_roles"/);
+  assert.match(source, /allowed:\s*\["admin"\]/);
+  assert.match(source, /cacheTtl:\s*0/);
 });

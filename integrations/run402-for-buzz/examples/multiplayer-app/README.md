@@ -19,4 +19,14 @@ run402 up --manifest run402.deploy.ts --require-plan <plan_id> --plan-fingerprin
 
 Verify `GET /`, `GET /api/feedback`, authenticated create/vote/comment, and the admin status action independently. Commit a visible UI change, plan and apply again to the same linked project, then post the second receipt. Before production adoption, use the transfer preview and move root ownership to the company organization; retain only a scoped grant or delegate for the agent.
 
+The admin action is a separate gateway-gated function. After creating the first hosted-auth operator, grant the application role once with the project service credential (never a Buzz or wallet key):
+
+```sql
+INSERT INTO feedback_roles (user_id, role)
+VALUES ('<FIRST_OPERATOR_USER_ID>', 'admin')
+ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
+```
+
+The gate reads `feedback_roles` on every admin request (`cacheTtl: 0`), so removing the row revokes the action immediately. A Run402 project-admin flag alone does not silently become an application role.
+
 Never place a Buzz/Nostr private key, wallet private key, session, service key, or signed event in this directory.

@@ -86,14 +86,6 @@ export default async function feedback(request) {
       return json({ created: true, id: result.rows[0]?.id }, 201);
     }
 
-    if (body.action === "set_status") {
-      await auth.requireRole("admin");
-      const feedbackId = id(body.feedback_id, "feedback_id");
-      if (!["open", "planned", "shipped", "closed"].includes(body.status)) return json({ error: "invalid status" }, 400);
-      await adminDb().sql("UPDATE feedback_items SET status = $2 WHERE id = $1", [feedbackId, body.status]);
-      return json({ updated: true });
-    }
-
     return json({ error: "unknown_action" }, 400);
   } catch (error) {
     if (error instanceof Response) return error;

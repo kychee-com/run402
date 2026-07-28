@@ -2,8 +2,8 @@ const board = document.querySelector("#board");
 const template = document.querySelector("#card-template");
 const status = document.querySelector("#form-status");
 
-async function api(body) {
-  const response = await fetch("/api/feedback", body ? {
+async function api(body, path = "/api/feedback") {
+  const response = await fetch(path, body ? {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(body),
@@ -34,6 +34,7 @@ function card(item) {
   node.querySelector(".status").textContent = item.status;
   node.querySelector("time").textContent = new Date(item.created_at).toLocaleDateString();
   node.querySelector(".vote span").textContent = String(item.votes);
+  node.querySelector(".admin-form select").value = item.status;
   const attachment = node.querySelector(".attachment");
   if (item.attachment_url) attachment.href = item.attachment_url;
   else attachment.remove();
@@ -50,6 +51,12 @@ function card(item) {
   node.querySelector(".comment-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     await api({ action: "comment", feedback_id: item.id, body: new FormData(event.currentTarget).get("body") });
+    await load();
+  });
+  node.querySelector(".admin-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const selected = new FormData(event.currentTarget).get("status");
+    await api({ action: "set_status", feedback_id: item.id, status: selected }, "/api/feedback/admin");
     await load();
   });
   return node;

@@ -9,13 +9,15 @@ h2, h3, p { margin-top: 0; }
 .composer, .card { padding: 24px; border: 1px solid #d4cec0; border-radius: 18px; background: #fffdf7; box-shadow: 0 8px 24px rgba(50, 38, 18, .06); }
 .composer { margin-bottom: 44px; }
 label { display: grid; gap: 7px; margin: 14px 0; font-weight: 650; }
-input, textarea, button { font: inherit; }
-input, textarea { width: 100%; padding: 11px 12px; border: 1px solid #bdb5a6; border-radius: 9px; background: white; }
+input, textarea, select, button { font: inherit; }
+input, textarea, select { width: 100%; padding: 11px 12px; border: 1px solid #bdb5a6; border-radius: 9px; background: white; }
 textarea { min-height: 110px; resize: vertical; }
 button { padding: 10px 15px; border: 0; border-radius: 999px; color: white; background: #285d3b; font-weight: 700; cursor: pointer; }
 button:hover { background: #194a2d; }
 .quiet { color: #285d3b; background: transparent; border: 1px solid #9db1a4; }
 .row, .actions { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.admin-form { display: flex; align-items: center; gap: 8px; }
+.admin-form select { width: auto; }
 #board { display: grid; gap: 16px; }
 .card h3 { margin: 16px 0 8px; font-size: 1.35rem; }
 .body { color: #4d554e; white-space: pre-wrap; }
@@ -23,4 +25,4 @@ button:hover { background: #194a2d; }
 .comments { margin: 16px 0; padding-left: 14px; border-left: 2px solid #ddd6c9; color: #4d554e; }
 .comment-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 time, output { color: #6b706c; font-size: .85rem; }
-@media (max-width: 520px) { main { margin-top: 32px; } .comment-form { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { main { margin-top: 32px; } .comment-form { grid-template-columns: 1fr; } .actions { align-items: stretch; flex-direction: column; } }
