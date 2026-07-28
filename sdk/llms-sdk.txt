@@ -38,6 +38,33 @@ await (await r.project(project.project_id)).assets.put("hello.txt", { content: "
 
 That's it — credentials are read, x402 payments are signed, results are typed.
 
+## Public Buzz/Nostr identity links (`r.identityLinks`)
+
+`identityLinks` proves public attribution between the active Run402 EOA and a separately-held Buzz/Nostr public key. It never accepts a Nostr secret and never affects authentication, authorization, organization ownership, grants, delegates, payment, or transfers.
+
+```ts
+import { readFile } from "node:fs/promises";
+
+const challenge = await r.identityLinks.nostr.begin({
+  nostrPubkey: "npub1...",       // canonical npub or 64-char lowercase hex
+  visibility: "public",          // deliberately explicit
+  idempotencyKey: crypto.randomUUID(),
+});
+
+// Give challenge.proof_content to Buzz as one standalone kind-1 message.
+// Buzz owns Nostr signing; the SDK never sees its private key.
+const rawEvent = await readFile("buzz-event.json", "utf8");
+const proof = await r.identityLinks.nostr.complete({ rawEvent });
+
+const links = await r.identityLinks.list();
+const publicProof = await r.identityLinks.getProof(proof.identity_link_id);
+await r.identityLinks.revoke(proof.identity_link_id);
+```
+
+`begin` requires a credential provider with `signPersonalMessage(message)` and checks that the returned EOA matches the exact wallet embedded by the gateway. The Node provider implements this using the selected local Run402 wallet. `complete` accepts a JSON string or exact `NostrEventV1`, rejects duplicate/unknown/secret-shaped fields, enforces the seven-field kind-1 envelope and safe tag policy, verifies the NIP-01 id and BIP-340 signature locally, and derives the challenge id from the signed payload. Public proof reads use no auth; revocation requires the linked principal's current EOA.
+
+Current `whoami`, project, deploy-operation/release, and transfer response types include linked-identity and immutable action-time actor snapshots. Render unknown future principal/authenticator/authority kinds as data. A snapshot is historical attribution, not a live authorization decision.
+
 Before creating an x402 payment payload, the Node entry confirms USDC with
 bounded retry/backoff and independent RPC failover on Base and Base Sepolia.
 RPC exhaustion is never treated as a zero balance. Branch on the exported

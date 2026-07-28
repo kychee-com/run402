@@ -27,6 +27,26 @@ await (await r.project(project.project_id)).assets.put("hello.txt", { content: "
 
 That's it — credentials are read, x402 payments are signed, results are typed.
 
+## Public Buzz/Nostr identity links
+
+`r.identityLinks` creates public, proof-backed attribution between the active Run402 EOA and a separately-held Buzz/Nostr public key. It never receives the Nostr private key and never changes authority or ownership.
+
+```ts
+import { readFile } from "node:fs/promises";
+
+const begin = await r.identityLinks.nostr.begin({
+  nostrPubkey: "npub1...",
+  visibility: "public",
+});
+// Publish begin.proof_content as a standalone kind-1 event through Buzz.
+const rawEvent = await readFile("buzz-event.json", "utf8");
+const proof = await r.identityLinks.nostr.complete({ rawEvent });
+await r.identityLinks.getProof(proof.identity_link_id); // public, no auth
+await r.identityLinks.revoke(proof.identity_link_id);   // current EOA required
+```
+
+The SDK locally rejects secret-shaped inputs and verifies the exact seven-field NIP-01 event, event id, and BIP-340 signature before completion. Use `buzz social publish --content` plus `buzz social event --event`; the desktop `buzz://nostr-bind` path signs as a different principal. See [`../integrations/run402-for-buzz/`](../integrations/run402-for-buzz/README.md).
+
 Before creating an x402 payment payload, the Node entry confirms USDC with
 bounded retry/backoff and independent RPC failover on Base and Base Sepolia.
 RPC exhaustion is never treated as a zero balance. Branch on the exported
@@ -301,6 +321,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `service` | `status`, `health` (no auth, no setup — works on a fresh install) |
 | `admin` | Operator/admin endpoints: messages/contact, per-project finance (`getProjectFinance`) |
 | `operator` | **The human / email principal** — distinct from the agent's per-wallet SIWX identity (and from platform-`admin`). Read session: `deviceStart`, `devicePoll`, `overview({ token })`, `revoke({ token })` — browser-delegated device-authorization (RFC 8628, the `aws sso login` model); `overview` returns the email-union across every wallet that verified the email. Write session (v1.78): `buildCliAuthorizeUrl`/`exchangeCliToken` (loopback-PKCE CLI login) + the hosted `operator.session.*` surface (email magic-link / passkey / OAuth login, `whoami`/`refresh`/`revoke`, step-up, authenticators, recovery) — carry a minted session SDK-wide with `controlPlaneSessionCredentials({ token })`. Drives `run402 operator login[/--loopback]/overview/whoami/logout`. No MCP tool by design — MCP authenticates as the agent, not the human. |
+| `identityLinks` | Public dual-signature external identity attribution. `nostr.begin({ nostrPubkey, visibility: "public" })` creates and EIP-191-signs a server challenge; `nostr.complete({ rawEvent })` verifies and submits the exact Buzz/NIP-01 envelope; `list`, `getProof`, and `revoke` manage public lifecycle. Never accepts a Nostr secret and never grants authority. |
 | `wallet(address)` | `getLabel()`, `setLabel(label)` — the signed server-side wallet label (gateway `/wallets/v1/:address/label`) surfaced in the operator console; pushed on `wallets use` unless `RUN402_WALLET_LABEL_SYNC=0`. Use the `r.wallet(address)` handle (the two-string `r.wallets.setLabel(address, label)` is deprecated) |
 | `orgs` | **Org-owned control plane** (v1.77+; first-class orgs v1.82). `create`, `list`, `whoami` (the gateway-resolved control-plane identity) on the collection; the scoped `r.org(id)` sub-client (org analog of `r.project(id)`) adds `get`, `rename`, `setPayoutWallet`, `members.*` (`list`/`add`/`setRole`/`revoke`), `invites.*` (`list`/`create`/`revoke`), `audit`. Org create/read/rename summaries include `tier`, `lease_started_at`, and `lease_expires_at`. |
 | `grants` | `create`, `revoke` — per-project capability grants (e.g. `"deploy"`, `"functions:write"`) for agent/CI principals; owner-gated, also reachable project-scoped as `r.project(id).grants` |

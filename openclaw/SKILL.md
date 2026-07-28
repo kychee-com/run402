@@ -85,6 +85,10 @@ run402 --wallet kychon projects list # one-off override for a single command
 
 Selection precedence for every command: `--wallet <name>` flag > `RUN402_WALLET` env > nearest `./.run402.json` directory binding > `wallets use` default > `default`. A `RUN402_WALLET` that disagrees with a `.run402.json` binding is a hard error - pass `--wallet`, `unset RUN402_WALLET`, or `run402 wallets unbind`. Non-default selections echo the wallet name on stderr so you always know which wallet you are on.
 
+## Public Buzz/Nostr attribution
+
+`run402 identity link nostr begin|complete` proves that a separately-held Buzz/Nostr public key and the active Run402 EOA represent one agent principal. It is public attribution only—never authentication, organization ownership, grants, payment, deployment authority, or a transfer target. Never request or pass an `nsec`, Nostr private key, mnemonic, seed, or derivation path. Buzz must sign through its own `buzz social publish --content` boundary; fetch the exact seven-field event with `buzz social event --event`, then complete from a file or stdin. Existing project/deploy/transfer reads render immutable provenance after linking. There is intentionally no MCP identity-link mutation tool in v1.
+
 ## Project credentials
 
 After `provision`, two keys are cached in the selected profile's `credentials/project-keys.v1.json`:

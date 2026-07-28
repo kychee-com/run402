@@ -1,0 +1,65 @@
+{
+  "vector_version": 1,
+  "protocol": "run402.identity-link.nostr.v1",
+  "public_payload": "{\"action\":\"link_external_identity\",\"audience\":\"https://api.run402.com/identity-links/v1\",\"challenge_expires_at\":\"2026-07-28T17:15:00.000Z\",\"challenge_id\":\"ilc_01K1BW4R2MZ7B4M5SH9XJ2C3DT\",\"issued_at\":\"2026-07-28T17:10:00.000Z\",\"nonce\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\",\"nostr_event_kind\":1,\"nostr_pubkey\":\"4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa\",\"principal_id\":\"prin_01K1BW2D2Y7QAZB6JQ3Z8Y5M6N\",\"protocol\":\"run402.identity-link.nostr.v1\",\"visibility\":\"public\",\"wallet_account\":\"eip155:8453:0xC13d227BBa7C71CEea4b41cB8968C431B3d6999D\",\"wallet_signature_scheme\":\"eip191_personal_sign\"}",
+  "public_payload_utf8_sha256": "e6b3b6f39a4477dd07f7181ba61cba44a681afd442d24a3dce7603f6d51cf2d7",
+  "eip191": {
+    "message_byte_length": 620,
+    "prefix_utf8_hex": "0x19457468657265756d205369676e6564204d6573736167653a0a363230",
+    "digest": "0x21018c8126db9e6cfc4c7f24a65617c8c4f2ba36aeef51699bd9f3abb1eea972",
+    "signature": "0xdd501a43c8fdca3c585e733d7fa08b67685f77e30ed142d9931ccf0ecb5d94c32c6cdf3f01a4c1e3960b446e4a8faa787961985d27b445dc6c391a7900a8a4671c",
+    "r": "0xdd501a43c8fdca3c585e733d7fa08b67685f77e30ed142d9931ccf0ecb5d94c3",
+    "s": "0x2c6cdf3f01a4c1e3960b446e4a8faa787961985d27b445dc6c391a7900a8a467",
+    "recovery_byte": "0x1c",
+    "recovered_address": "0xC13d227BBa7C71CEea4b41cB8968C431B3d6999D"
+  },
+  "event_content": "{\"public_payload\":\"{\\\"action\\\":\\\"link_external_identity\\\",\\\"audience\\\":\\\"https://api.run402.com/identity-links/v1\\\",\\\"challenge_expires_at\\\":\\\"2026-07-28T17:15:00.000Z\\\",\\\"challenge_id\\\":\\\"ilc_01K1BW4R2MZ7B4M5SH9XJ2C3DT\\\",\\\"issued_at\\\":\\\"2026-07-28T17:10:00.000Z\\\",\\\"nonce\\\":\\\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\\\",\\\"nostr_event_kind\\\":1,\\\"nostr_pubkey\\\":\\\"4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa\\\",\\\"principal_id\\\":\\\"prin_01K1BW2D2Y7QAZB6JQ3Z8Y5M6N\\\",\\\"protocol\\\":\\\"run402.identity-link.nostr.v1\\\",\\\"visibility\\\":\\\"public\\\",\\\"wallet_account\\\":\\\"eip155:8453:0xC13d227BBa7C71CEea4b41cB8968C431B3d6999D\\\",\\\"wallet_signature_scheme\\\":\\\"eip191_personal_sign\\\"}\",\"wallet_signature\":\"0xdd501a43c8fdca3c585e733d7fa08b67685f77e30ed142d9931ccf0ecb5d94c32c6cdf3f01a4c1e3960b446e4a8faa787961985d27b445dc6c391a7900a8a4671c\"}",
+  "nip_oa": {
+    "preimage": "nostr:agent-auth:4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa:",
+    "digest": "0x9354f9e4c569bf8a3cfc2909dab313e4c54055a3f08148c4edeeec3ec3a6befe",
+    "owner_pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+    "conditions": "",
+    "signature": "f80eeb5f1ee41657b39961b901e6b358aa394c7bd16149eaad337f9556543373e42175532ffce6c791e93450a3e7c18976fb26d62cd9374e7ac7ad51836f59eb"
+  },
+  "nip01": {
+    "serialization_array": [
+      0,
+      "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+      1785258600,
+      1,
+      [["auth", "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27", "", "f80eeb5f1ee41657b39961b901e6b358aa394c7bd16149eaad337f9556543373e42175532ffce6c791e93450a3e7c18976fb26d62cd9374e7ac7ad51836f59eb"]],
+      "{\"public_payload\":\"{\\\"action\\\":\\\"link_external_identity\\\",\\\"audience\\\":\\\"https://api.run402.com/identity-links/v1\\\",\\\"challenge_expires_at\\\":\\\"2026-07-28T17:15:00.000Z\\\",\\\"challenge_id\\\":\\\"ilc_01K1BW4R2MZ7B4M5SH9XJ2C3DT\\\",\\\"issued_at\\\":\\\"2026-07-28T17:10:00.000Z\\\",\\\"nonce\\\":\\\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\\\",\\\"nostr_event_kind\\\":1,\\\"nostr_pubkey\\\":\\\"4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa\\\",\\\"principal_id\\\":\\\"prin_01K1BW2D2Y7QAZB6JQ3Z8Y5M6N\\\",\\\"protocol\\\":\\\"run402.identity-link.nostr.v1\\\",\\\"visibility\\\":\\\"public\\\",\\\"wallet_account\\\":\\\"eip155:8453:0xC13d227BBa7C71CEea4b41cB8968C431B3d6999D\\\",\\\"wallet_signature_scheme\\\":\\\"eip191_personal_sign\\\"}\",\"wallet_signature\":\"0xdd501a43c8fdca3c585e733d7fa08b67685f77e30ed142d9931ccf0ecb5d94c32c6cdf3f01a4c1e3960b446e4a8faa787961985d27b445dc6c391a7900a8a4671c\"}"
+    ],
+    "preimage_utf8_sha256": "2338c8379a871430fe0c93112fa674265e0cb190f2d929923800d4f844c71b81",
+    "event_id": "2338c8379a871430fe0c93112fa674265e0cb190f2d929923800d4f844c71b81",
+    "event_signature": "35566ceef4dbb8d882f5d162514d4169908cb55f2393f9f86ccebbe53b8875eec8a72030eca1fc3063e9b4ecd215515d99d0050ab5c166a4602e17d7b71d0e06",
+    "event": {
+      "id": "2338c8379a871430fe0c93112fa674265e0cb190f2d929923800d4f844c71b81",
+      "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+      "created_at": 1785258600,
+      "kind": 1,
+      "tags": [["auth", "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27", "", "f80eeb5f1ee41657b39961b901e6b358aa394c7bd16149eaad337f9556543373e42175532ffce6c791e93450a3e7c18976fb26d62cd9374e7ac7ad51836f59eb"]],
+      "content": "{\"public_payload\":\"{\\\"action\\\":\\\"link_external_identity\\\",\\\"audience\\\":\\\"https://api.run402.com/identity-links/v1\\\",\\\"challenge_expires_at\\\":\\\"2026-07-28T17:15:00.000Z\\\",\\\"challenge_id\\\":\\\"ilc_01K1BW4R2MZ7B4M5SH9XJ2C3DT\\\",\\\"issued_at\\\":\\\"2026-07-28T17:10:00.000Z\\\",\\\"nonce\\\":\\\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\\\",\\\"nostr_event_kind\\\":1,\\\"nostr_pubkey\\\":\\\"4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa\\\",\\\"principal_id\\\":\\\"prin_01K1BW2D2Y7QAZB6JQ3Z8Y5M6N\\\",\\\"protocol\\\":\\\"run402.identity-link.nostr.v1\\\",\\\"visibility\\\":\\\"public\\\",\\\"wallet_account\\\":\\\"eip155:8453:0xC13d227BBa7C71CEea4b41cB8968C431B3d6999D\\\",\\\"wallet_signature_scheme\\\":\\\"eip191_personal_sign\\\"}\",\"wallet_signature\":\"0xdd501a43c8fdca3c585e733d7fa08b67685f77e30ed142d9931ccf0ecb5d94c32c6cdf3f01a4c1e3960b446e4a8faa787961985d27b445dc6c391a7900a8a4671c\"}",
+      "sig": "35566ceef4dbb8d882f5d162514d4169908cb55f2393f9f86ccebbe53b8875eec8a72030eca1fc3063e9b4ecd215515d99d0050ab5c166a4602e17d7b71d0e06"
+    }
+  },
+  "expected_public_proof_response": {
+    "identity_link_id": "idlnk_01K1BW9H2RZ71H90FNNK01F2MT",
+    "proof_protocol": "run402.identity-link.nostr.v1",
+    "status": "active",
+    "effective_status": "active",
+    "verified_at": "2026-07-28T17:10:12.345Z",
+    "revoked_at": null,
+    "public_payload": "{\"action\":\"link_external_identity\",\"audience\":\"https://api.run402.com/identity-links/v1\",\"challenge_expires_at\":\"2026-07-28T17:15:00.000Z\",\"challenge_id\":\"ilc_01K1BW4R2MZ7B4M5SH9XJ2C3DT\",\"issued_at\":\"2026-07-28T17:10:00.000Z\",\"nonce\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\",\"nostr_event_kind\":1,\"nostr_pubkey\":\"4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa\",\"principal_id\":\"prin_01K1BW2D2Y7QAZB6JQ3Z8Y5M6N\",\"protocol\":\"run402.identity-link.nostr.v1\",\"visibility\":\"public\",\"wallet_account\":\"eip155:8453:0xC13d227BBa7C71CEea4b41cB8968C431B3d6999D\",\"wallet_signature_scheme\":\"eip191_personal_sign\"}",
+    "wallet_signature": "0xdd501a43c8fdca3c585e733d7fa08b67685f77e30ed142d9931ccf0ecb5d94c32c6cdf3f01a4c1e3960b446e4a8faa787961985d27b445dc6c391a7900a8a4671c",
+    "nostr_event": {
+      "id": "2338c8379a871430fe0c93112fa674265e0cb190f2d929923800d4f844c71b81",
+      "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+      "created_at": 1785258600,
+      "kind": 1,
+      "tags": [["auth", "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27", "", "f80eeb5f1ee41657b39961b901e6b358aa394c7bd16149eaad337f9556543373e42175532ffce6c791e93450a3e7c18976fb26d62cd9374e7ac7ad51836f59eb"]],
+      "content": "{\"public_payload\":\"{\\\"action\\\":\\\"link_external_identity\\\",\\\"audience\\\":\\\"https://api.run402.com/identity-links/v1\\\",\\\"challenge_expires_at\\\":\\\"2026-07-28T17:15:00.000Z\\\",\\\"challenge_id\\\":\\\"ilc_01K1BW4R2MZ7B4M5SH9XJ2C3DT\\\",\\\"issued_at\\\":\\\"2026-07-28T17:10:00.000Z\\\",\\\"nonce\\\":\\\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\\\",\\\"nostr_event_kind\\\":1,\\\"nostr_pubkey\\\":\\\"4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa\\\",\\\"principal_id\\\":\\\"prin_01K1BW2D2Y7QAZB6JQ3Z8Y5M6N\\\",\\\"protocol\\\":\\\"run402.identity-link.nostr.v1\\\",\\\"visibility\\\":\\\"public\\\",\\\"wallet_account\\\":\\\"eip155:8453:0xC13d227BBa7C71CEea4b41cB8968C431B3d6999D\\\",\\\"wallet_signature_scheme\\\":\\\"eip191_personal_sign\\\"}\",\"wallet_signature\":\"0xdd501a43c8fdca3c585e733d7fa08b67685f77e30ed142d9931ccf0ecb5d94c32c6cdf3f01a4c1e3960b446e4a8faa787961985d27b445dc6c391a7900a8a4671c\"}",
+      "sig": "35566ceef4dbb8d882f5d162514d4169908cb55f2393f9f86ccebbe53b8875eec8a72030eca1fc3063e9b4ecd215515d99d0050ab5c166a4602e17d7b71d0e06"
+    }
+  }
+}

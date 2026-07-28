@@ -1,0 +1,47 @@
+{
+  "fixture_version": 1,
+  "purpose": "released_buzz_managed_agent_compatibility",
+  "expected_result": "PASS",
+  "buzz": {
+    "version": "0.4.26",
+    "release_tag_commit": "0096d710ed2e6abab19aaf7cdc14e3ee603d7ec8",
+    "binary_sha256": "c2a541e0fa8456d26fcf029844c52e76a4e18bc24ec0b4dbdcef5688af63d4c5",
+    "signing_surface": "buzz social publish",
+    "read_surface": "buzz social event --event",
+    "signing_principal": "managed_agent"
+  },
+  "expected_content": "run402-buzz-fixture-v1: \"quotes\" \\ backslash\nline2: café 🐝",
+  "expected_agent_pubkey": "6b6951a5738dfe576d0c44bf7a5f8afe655005a156f9d3e648d81437c3f5ebbf",
+  "event": {
+    "content": "run402-buzz-fixture-v1: \"quotes\" \\ backslash\nline2: café 🐝",
+    "created_at": 1785258200,
+    "id": "e8bf36f5f0eeea3357d773f294c0a6fc9813e74f65f3df5f7e942268596c3344",
+    "kind": 1,
+    "pubkey": "6b6951a5738dfe576d0c44bf7a5f8afe655005a156f9d3e648d81437c3f5ebbf",
+    "sig": "4f614adcbffaaa110f0efb0af31498774e835c72279ba040019187ca4af58325b4baf705283617381b3d6e1d924f9f08a84f93302254ce2a670ac0171e73e31e",
+    "tags": [
+      [
+        "auth",
+        "fc67f608e171fc3de6fc4296afe10f5b94e4c8d796aec31474eabd102a68a380",
+        "",
+        "107a7734a9f384c1f692d84c16904c91f9b0e63c03c44fe8e05880c44935cb83c91d23ece750001f432bc9608041c8fe315aa42620cae70939e912300035f35f"
+      ]
+    ]
+  },
+  "independent_verification": {
+    "field_count": 7,
+    "content_matches": true,
+    "kind_matches": true,
+    "author_matches_expected_agent": true,
+    "recomputed_event_id": "e8bf36f5f0eeea3357d773f294c0a6fc9813e74f65f3df5f7e942268596c3344",
+    "event_id_matches": true,
+    "event_bip340_signature_valid": true,
+    "nip_oa": {
+      "owner_pubkey": "fc67f608e171fc3de6fc4296afe10f5b94e4c8d796aec31474eabd102a68a380",
+      "conditions": "",
+      "preimage": "nostr:agent-auth:6b6951a5738dfe576d0c44bf7a5f8afe655005a156f9d3e648d81437c3f5ebbf:",
+      "digest_sha256": "c0393d17b90512721742998a9328ef913d5fbffa6d0c707a988b87e48f31fe46",
+      "owner_bip340_signature_valid": true
+    }
+  }
+}

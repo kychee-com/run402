@@ -57,6 +57,29 @@ App build scripts should read the same target/profile store through `resolveRun4
 - Env overrides: `RUN402_API_BASE` (overrides stored target; default `https://api.run402.com`), `RUN402_CONFIG_DIR` (base credential dir, default `~/.config/run402`), `RUN402_WALLET` (active named wallet/profile, default `default`; alias `RUN402_PROFILE`), `RUN402_ALLOWANCE_PATH` (custom allowance file path, default `{config_dir}/allowance.json`). `run402 init --api-base=<url>` persists the active target in `{config_dir}/target.json` or `{config_dir}/profiles/<name>/target.json`.
 - Wallets: `run402 wallets` manages named profiles. Select via `--wallet <name>` (`--profile`), `RUN402_WALLET`, or nearest `.run402.json` binding (commit-safe name only). Precedence: flag > env > `.run402.json`/`.run402.local.json` > `wallets use` default > `default`. Env/binding conflict hard-fails unless flag passed. `default` stays at config root; named wallets live under `{base}/profiles/<name>/`. Non-default active wallet is echoed on stderr and shown in `status` / `wallets current`.
 
+## Public Buzz/Nostr identity link
+
+Use this ceremony to prove that a separately-held Buzz/Nostr public key and the active Run402 EOA represent one agent principal. The link is public attribution only. It never changes authentication, organization ownership, grants, delegates, spending, deployment authority, or transfer targeting.
+
+```bash
+run402 identity link nostr begin \
+  --pubkey <canonical-npub-or-64-lowercase-hex> \
+  --visibility public > challenge.json
+
+# Publish challenge.json's proof_content as a standalone Buzz kind-1 message.
+# Fetch the raw event, preserving exactly id,pubkey,created_at,kind,tags,content,sig.
+run402 identity link nostr complete --event-file raw-event.json
+# Or: buzz social event --event <event-id> | run402 identity link nostr complete --event-stdin
+
+run402 identity link list
+run402 identity link show idlnk_...
+run402 identity link revoke idlnk_...
+```
+
+`begin` uses the active Run402 wallet to EIP-191-sign the exact server payload and prints `proof_content`; it never handles a Nostr secret. Sign and publish that content through Buzz with `buzz social publish --content`, then recover the raw seven-field envelope with `buzz social event --event`. Do not use the desktop `buzz://nostr-bind` flow: it signs as the desktop owner's Nostr principal, not the managed agent.
+
+The CLI rejects `--nostr-key`, `--nsec`, private-key, mnemonic, seed, derivation, display-name, label, and signed-label inputs locally before network access. It accepts raw events only through `--event-file` or `--event-stdin`, verifies the event id and BIP-340 signature locally, and sends no workspace/channel context. The event must be standalone kind 1 with either no tags or exactly one valid NIP-OA `auth` tag. Public proof bytes remain available after revocation.
+
 ## Output Contract
 
 Uniform contract:

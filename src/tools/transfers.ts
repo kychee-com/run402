@@ -11,6 +11,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { formatActor, formatPrincipal } from "../identity-format.js";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
@@ -173,6 +174,10 @@ export async function handlePreviewProjectTransfer(args: {
       lines.push(`- from: ${p.from_wallet_display} → to: ${p.to_wallet_display}`);
     }
     lines.push(`- billing_policy: ${p.billing_policy}`);
+    lines.push(`- source_owner: organization \`${p.source_organization?.org_id ?? "unresolved"}\``);
+    lines.push(`- destination_owner: ${p.destination_organization ? `organization \`${p.destination_organization.org_id}\`` : "unresolved until acceptance/claim"}`);
+    lines.push(`- initiated_by: ${formatActor(p.initiated_by)}`);
+    lines.push(`- recipient_principal: ${formatPrincipal(p.recipient_principal)}`);
     lines.push(`- initiated_at: ${p.initiated_at}`);
     lines.push(`- expires_at: ${p.expires_at}`);
     lines.push(`- terms_sha256: ${p.terms_sha256}`);

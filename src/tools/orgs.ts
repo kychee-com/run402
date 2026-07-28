@@ -14,6 +14,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { formatLinkedIdentity } from "../identity-format.js";
 import type { OrgRole } from "../../sdk/dist/index.js";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
@@ -176,6 +177,8 @@ export async function handleWhoami(): Promise<ToolResult> {
     const lines = [
       `Principal \`${me.principal.id}\` (${me.principal.type}${me.principal.display_name ? `, ${me.principal.display_name}` : ""}).`,
       `- authenticator_id: \`${me.authenticator_id}\``,
+      `- active_authenticator: ${me.active_authenticator ? `${me.active_authenticator.kind} \`${me.active_authenticator.public_subject}\`` : "none"}`,
+      `- linked_identities: ${(me.linked_identities ?? []).length > 0 ? me.linked_identities.map(formatLinkedIdentity).join(", ") : "none"}`,
       `- memberships (${me.memberships.length}):`,
       ...me.memberships.map(
         (m) => `  - org ${orgLabel(m.org_id, m.display_name)} — role ${m.role} (${m.status})`,

@@ -8,6 +8,8 @@
  * refs via the CAS content service before issuing the plan request.
  */
 
+import type { OperationActorSnapshot } from "./identity-links.types.js";
+
 // ─── Byte sources ────────────────────────────────────────────────────────────
 
 /**
@@ -1575,6 +1577,7 @@ export interface PlanResponse {
    *  preserves backward compatibility and still normalizes both shapes. */
   kind?: "plan_response";
   schema_version?: "agent-deploy-observability.v1";
+  actor?: OperationActorSnapshot | null;
   /** Null only for local/legacy dry-run and reviewed-plan preview responses. */
   plan_id: string | null;
   /** Null only for local/legacy dry-run and reviewed-plan preview responses. */
@@ -1878,6 +1881,7 @@ export interface ReleaseInventoryBase<
   manifest_digest: string | null;
   created_at: string | null;
   created_by: string | null;
+  actor: OperationActorSnapshot | null;
   activated_at: string | null;
   superseded_at: string | null;
   operation_id: string | null;
@@ -2254,6 +2258,7 @@ export interface CommitResponse {
   subdomain_bindings?: SubdomainBindingFreshness[];
   restore_point?: CommitRestorePoint;
   snapshot_skipped_reason?: string;
+  actor?: OperationActorSnapshot | null;
 }
 
 export interface CommitRestorePoint {
@@ -2279,6 +2284,7 @@ export interface OperationSnapshot {
   created_at: string;
   updated_at: string;
   rehearsal_report?: ApplyRehearsalReport;
+  actor?: OperationActorSnapshot | null;
 }
 
 export type RehearsalTeardownPolicy = "keep" | "on_pass" | "always";

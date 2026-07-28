@@ -126,7 +126,13 @@ async function mockFetch(input, init) {
     return Promise.resolve(json({ status: "ok", principal_id: "prn_2", role: body?.role }));
   }
   if (url.endsWith("/whoami")) {
-    return Promise.resolve(json({ principal: { id: "prn_1", type: "human", display_name: null }, memberships: [], authenticator_id: "auth_1" }));
+    return Promise.resolve(json({
+      principal: { id: "prn_1", type: "human", display_name: null },
+      active_authenticator: { authenticator_id: "auth_1", kind: "siwx_eoa", public_subject: TEST_ADDRESS },
+      linked_identities: [],
+      memberships: [],
+      authenticator_id: "auth_1",
+    }));
   }
   if (url.endsWith("/orgs/v1")) return Promise.resolve(json({ orgs: [] }));
   if (url.endsWith("/members")) return Promise.resolve(json({ members: [] }));
@@ -170,7 +176,10 @@ describe("run402 org", () => {
     uncapture();
     assert.equal(lastCall().url, `${API}/agent/v1/whoami`);
     assert.equal(lastCall().method, "GET");
-    assert.match(stdout.join("\n"), /"principal"/);
+    const output = JSON.parse(stdout.join("\n"));
+    assert.equal(output.principal.id, "prn_1");
+    assert.equal(output.authenticator_id, output.active_authenticator.authenticator_id);
+    assert.deepEqual(output.linked_identities, [], "an unlinked principal must render an empty list, not synthesized identity data");
   });
 
   it("list GETs /orgs/v1", async () => {

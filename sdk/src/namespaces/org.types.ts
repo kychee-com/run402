@@ -9,6 +9,8 @@
  * substrate never appears on the wire.
  */
 
+import type { ActiveAuthenticatorRepresentation, LinkedIdentityRepresentation } from "./identity-links.types.js";
+
 /** Org role lattice: `owner > admin > developer > billing > viewer`. */
 export type OrgRole = "owner" | "admin" | "developer" | "billing" | "viewer";
 
@@ -66,6 +68,8 @@ export interface WhoAmIResult {
   principal: Principal;
   memberships: OrgMembership[];
   authenticator_id: string | null;
+  active_authenticator: ActiveAuthenticatorRepresentation | null;
+  linked_identities: LinkedIdentityRepresentation[];
   [key: string]: unknown;
 }
 

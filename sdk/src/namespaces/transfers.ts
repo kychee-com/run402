@@ -26,6 +26,8 @@
  * `nextActions` pointing at the sibling completion on the SAME `transfer_id`.
  */
 
+import type { OperationActorSnapshot, PrincipalRepresentation } from "./identity-links.types.js";
+
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { deprecatePositional } from "../deprecate.js";
@@ -234,6 +236,9 @@ export interface TransferSummary {
   to_org_id?: string;
   /** Org rows only (canonical gateway field when present). */
   to_organization_id?: string;
+  initiated_by?: OperationActorSnapshot | null;
+  source_organization?: { org_id: string } | null;
+  destination_organization?: { org_id: string } | null;
 }
 
 export interface ListTransfersOptions {
@@ -352,6 +357,10 @@ export interface ProjectTransferPreview {
   billing_implications: BillingImplications;
   /** v1.91 sender-retained-membership offer (email rows), or `null` when none was requested. */
   retain_collaborator?: RetainCollaboratorPreview | null;
+  initiated_by?: OperationActorSnapshot | null;
+  source_organization?: { org_id: string } | null;
+  destination_organization?: { org_id: string } | null;
+  recipient_principal?: PrincipalRepresentation | null;
 }
 
 // ─── Email completion (claim) ──────────────────────────────────────────────

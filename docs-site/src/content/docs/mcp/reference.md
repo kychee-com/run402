@@ -19,6 +19,8 @@ If you're an MCP-host agent that already has the run402-mcp tools available, thi
 
 `run402-mcp` is a thin shim over [`@run402/sdk`](https://docs.run402.com/llms-sdk.txt). Each MCP tool is an argv-parsing wrapper around an SDK method. The configured API target, active project state, allowance, and local project-key cache are shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to credential-required operations without treating cached keys as project inventory.
 
+Public Buzz/Nostr identity links are deliberately **not** an MCP mutation tool in this release. Use the CLI or SDK ceremony, which keeps Buzz signing inside Buzz and refuses every Nostr-secret input. Existing MCP reads render the result: `whoami` shows the active authenticator and current linked identities; project reads distinguish owning organization from immutable creator; deploy operation/release reads show immutable actor; transfer reads distinguish source/destination organizations, initiator, and recipient principal. These fields are attribution only and never authorize an MCP call. Unknown future principal/authenticator/authority kinds must be preserved as data.
+
 Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
 `pay_url` is the general x402 buyer tool for external HTTP(S) endpoints. Params:

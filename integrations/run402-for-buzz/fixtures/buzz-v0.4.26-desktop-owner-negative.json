@@ -1,0 +1,66 @@
+{
+  "fixture_version": 1,
+  "purpose": "negative_cross_identity_control",
+  "expected_result": "WRONG_NOSTR_PRINCIPAL",
+  "buzz": {
+    "version": "0.4.26",
+    "release_tag_commit": "0096d710ed2e6abab19aaf7cdc14e3ee603d7ec8",
+    "binary_sha256": "c2a541e0fa8456d26fcf029844c52e76a4e18bc24ec0b4dbdcef5688af63d4c5",
+    "signing_surface": "buzz://nostr-bind",
+    "signing_principal": "desktop_owner"
+  },
+  "expected_agent_pubkey": "6b6951a5738dfe576d0c44bf7a5f8afe655005a156f9d3e648d81437c3f5ebbf",
+  "event": {
+    "id": "43a9b65b9916819e73251938052fd7391160c74fb8f0555dc5c25d367f0ccd14",
+    "pubkey": "fc67f608e171fc3de6fc4296afe10f5b94e4c8d796aec31474eabd102a68a380",
+    "created_at": 1785257532,
+    "kind": 24243,
+    "tags": [
+      [
+        "challenge_id",
+        "f17bf515-16f6-4d18-81a9-a1467725f4f1"
+      ],
+      [
+        "nonce",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi01234567"
+      ],
+      [
+        "verification_code",
+        "402402"
+      ],
+      [
+        "audience",
+        "buzz:nostr-identity"
+      ],
+      [
+        "action",
+        "bind_nostr_identity"
+      ],
+      [
+        "protocol",
+        "buzz-nostr-identity"
+      ],
+      [
+        "version",
+        "1"
+      ],
+      [
+        "origin",
+        "https://api.run402.com"
+      ],
+      [
+        "expires_at",
+        "2026-07-28T17:01:00.000Z"
+      ]
+    ],
+    "content": "",
+    "sig": "34e788b47ac457b9f682dd1327c2096306149aa4c5f0b14355f30c30f15fcfc48e99210cb3d22ffe4fe718c5875ca01c9eb64b2719eff9d7321aacd6eefc6b29"
+  },
+  "independent_verification": {
+    "field_count": 7,
+    "recomputed_event_id": "43a9b65b9916819e73251938052fd7391160c74fb8f0555dc5c25d367f0ccd14",
+    "event_id_matches": true,
+    "bip340_signature_valid": true,
+    "author_matches_expected_agent": false
+  }
+}

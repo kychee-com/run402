@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { formatActor } from "../identity-format.js";
+import type { OperationActorSnapshot } from "../../sdk/dist/index.js";
 
 /**
  * MCP release observability tools. These wrap read-only apikey-gated SDK
@@ -139,6 +141,7 @@ function formatInventory(title: string, release: {
   release_generation?: number | null;
   static_manifest_sha256?: string | null;
   static_manifest_metadata?: { file_count?: number; total_bytes?: number } | null;
+  actor?: OperationActorSnapshot | null;
 }): string {
   const siteTotal = release.site.totals?.paths ?? release.site.paths.length;
   const routeCount = Array.isArray(release.routes?.entries) ? release.routes.entries.length : 0;
@@ -155,6 +158,7 @@ function formatInventory(title: string, release: {
     `| status | ${release.status ?? "none"} |`,
     `| state_kind | ${release.state_kind} |`,
     `| effective | ${release.effective ? "true" : "false"} |`,
+    `| actor | ${formatActor(release.actor)} |`,
     `| release_generation | ${release.release_generation ?? "none"} |`,
     `| static_manifest_sha256 | ${release.static_manifest_sha256 ? `\`${release.static_manifest_sha256}\`` : "none"} |`,
     `| static_manifest_files_bytes | ${release.static_manifest_metadata ? `${release.static_manifest_metadata.file_count ?? 0}/${release.static_manifest_metadata.total_bytes ?? 0}` : "metadata unavailable"} |`,

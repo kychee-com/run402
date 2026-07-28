@@ -33,6 +33,7 @@ import { loadLiveControlPlaneSession } from "../../core-dist/control-plane-sessi
 import { loadLiveApproval, hashControlPlaneSession } from "../../core-dist/write-auth-session.js";
 import type { AllowanceData, AuthRequestMeta, CredentialsProvider, ProjectKeys, WalletIdentity } from "../credentials.js";
 import { DELEGATE_CREDENTIALS, delegateTokenFromEnv } from "../delegate-credentials.js";
+import { LocalError } from "../errors.js";
 
 /** Where credential resolution runs — selects the default `authMode`. */
 export type CredentialSurface = "cli" | "mcp" | "sdk";
@@ -177,6 +178,21 @@ export class NodeCredentialsProvider implements CredentialsProvider {
 
   async readAllowance(): Promise<AllowanceData | null> {
     return coreReadAllowance(this.options.allowancePath) ?? null;
+  }
+
+  async signPersonalMessage(message: string): Promise<{ address: string; signature: string }> {
+    const allowance = coreReadAllowance(this.options.allowancePath);
+    if (!allowance) {
+      throw new LocalError(
+        "No active wallet is available for EIP-191 signing",
+        "signing EIP-191 identity-link proof",
+        { code: "IDENTITY_LINK_EOA_SIGNER_REQUIRED" },
+      );
+    }
+    const { privateKeyToAccount } = await import("viem/accounts");
+    const account = privateKeyToAccount(allowance.privateKey as `0x${string}`);
+    const signature = await account.signMessage({ message });
+    return { address: account.address, signature };
   }
 
   async saveAllowance(data: AllowanceData): Promise<void> {

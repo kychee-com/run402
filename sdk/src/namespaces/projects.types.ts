@@ -8,6 +8,7 @@
 
 import type { ProjectKeys } from "../credentials.js";
 import type { ExposeManifest } from "./deploy.types.js";
+import type { OperationActorSnapshot } from "./identity-links.types.js";
 
 // ─── provision ──────────────────────────────────────────────────────────
 
@@ -130,6 +131,8 @@ export interface ProjectSummary {
    * Optional for the same reason as {@link ProjectSummary.org_id}.
    */
   created_by?: string | null;
+  /** Immutable creation-time public provenance; null on legacy projects. */
+  creator?: OperationActorSnapshot | null;
   created_at: string;
   deleted_at?: string | null;
   archived_at?: string | null;
@@ -307,6 +310,10 @@ export interface ProjectDetail {
   /** Usage counters paired with the owning account's tier limits. */
   usage: ProjectUsageWithLimits;
   created_at: string;
+  /** Legacy creating-principal field retained for compatibility. */
+  created_by: string | null;
+  /** Immutable creation-time public provenance; null on legacy projects. */
+  creator: OperationActorSnapshot | null;
   /** Forward-compat: unknown future fields a newer gateway may add. */
   [key: string]: unknown;
 }

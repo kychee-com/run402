@@ -10,6 +10,20 @@ const ABSOLUTE_TIME_FIELD =
 
 const NUMERIC_TIME_UNITS = /(?:_ms|Ms|_seconds|Seconds|_in|In)$/;
 
+function isSignedProtocolTimestampException(
+  relativePath: string,
+  name: string,
+  type: string,
+  line: string,
+): boolean {
+  return (
+    relativePath === "src/namespaces/identity-links.types.ts" &&
+    name === "created_at" &&
+    type.startsWith("number") &&
+    line.includes("Signed NIP-01 Unix seconds; converting it changes the event id and signature.")
+  );
+}
+
 function sourceFiles(dir: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -41,6 +55,7 @@ describe("SDK timestamp conventions", () => {
           const [, name, rawType] = match;
           const type = rawType.trim();
           if (NUMERIC_TIME_UNITS.test(name)) continue;
+          if (isSignedProtocolTimestampException(rel, name, type, line)) continue;
           if (type.includes("??") || /new\s+Date|\.\w+\(/.test(type)) continue;
           if (!/\b(?:string|number|Date|null|undefined)\b/.test(type)) continue;
           if (/\bDate\b|\bnumber\b/.test(type) || !/\bstring\b/.test(type)) {

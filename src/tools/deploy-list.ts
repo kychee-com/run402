@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { requireAllowanceAuth } from "../allowance-auth.js";
+import { formatActor } from "../identity-format.js";
 
 /**
  * MCP `deploy_list` tool — list recent deploy operations for a project.
@@ -60,12 +61,12 @@ export async function handleDeployList(args: {
       lines.push("No operations found.");
     } else {
       lines.push(
-        `| Operation | Status | Release | Updated |`,
-        `|-----------|--------|---------|---------|`,
+        `| Operation | Status | Release | Actor | Updated |`,
+        `|-----------|--------|---------|-------|---------|`,
       );
       for (const op of result.operations) {
         lines.push(
-          `| \`${op.operation_id}\` | ${op.status} | ${op.release_id ?? "—"} | ${op.updated_at} |`,
+          `| \`${op.operation_id}\` | ${op.status} | ${op.release_id ?? "—"} | ${formatActor(op.actor)} | ${op.updated_at} |`,
         );
       }
     }

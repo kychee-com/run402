@@ -41,6 +41,13 @@
 const p = (name, { required = true, variadic = false } = {}) => ({ name, required, variadic });
 
 export const COMMAND_MANIFEST = [
+  // ── external agent identity links ────────────────────────────────────────
+  { path: ["identity", "link", "nostr", "begin"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--pubkey", "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa", "--visibility", "public"], skipBehavioral: "requires a live wallet and gateway challenge" },
+  { path: ["identity", "link", "nostr", "complete"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--event-file", "__FIXTURE_FILE__"], skipBehavioral: "requires a valid live signed Nostr challenge event" },
+  { path: ["identity", "link", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], skipBehavioral: "requires live wallet authentication" },
+  { path: ["identity", "link", "show"], positionals: [p("identity_link_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["idlnk_11111111111111111111111111111111"], skipBehavioral: "requires a live public proof" },
+  { path: ["identity", "link", "revoke"], positionals: [p("identity_link_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["idlnk_11111111111111111111111111111111"], skipBehavioral: "requires a live linked identity" },
+
   // ── up / init / status (flat runners) ────────────────────────────────────
   { path: ["up"], positionals: [p("source", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--check", "-y"], runStyle: "flat", skipBehavioral: "orchestrates a full provision/build/deploy against the real cwd" },
   { path: ["up", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat", skipBehavioral: "polls live edge coherence" },

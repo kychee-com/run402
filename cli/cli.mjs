@@ -40,6 +40,7 @@ Commands:
   ci          Link GitHub Actions OIDC deploy bindings
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
   org         Org membership, invites & audit (whoami, list, member, invite, audit)
+  identity    Public proof-backed external agent identity links
   grants      Per-project capability grants for agent/CI principals (create, revoke)
   delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
   events      What happened to your project since you last looked (cursored feed)
@@ -243,6 +244,11 @@ switch (cmd) {
   }
   case "org": {
     const { run } = await import("./lib/org.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "identity": {
+    const { run } = await import("./lib/identity.mjs");
     await run(sub, rest);
     break;
   }

@@ -42,6 +42,7 @@ import { Delegates } from "./namespaces/delegates.js";
 import { Events } from "./namespaces/events.js";
 import { Errors } from "./namespaces/errors.js";
 import { Pay, type PayExecutor } from "./namespaces/pay.js";
+import { IdentityLinks } from "./namespaces/identity-links.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -144,6 +145,8 @@ export class Run402 {
    * `r.project(id).errors`.
    */
   readonly errors: Errors;
+  /** Public dual-proof associations between the active agent principal and external identities. */
+  readonly identityLinks: IdentityLinks;
   readonly idempotency = {
     fromParts,
   };
@@ -228,6 +231,7 @@ export class Run402 {
     this.events = new Events(client);
     this.pay = new Pay(client, opts.payExecutor);
     this.errors = new Errors(client);
+    this.identityLinks = new IdentityLinks(client);
   }
 
   /**
@@ -571,6 +575,9 @@ export type * from "./namespaces/snapshots.types.js";
 export { Branches } from "./namespaces/branches.js";
 export type * from "./namespaces/branches.types.js";
 export type * from "./namespaces/projects.types.js";
+export { IdentityLinks, NostrIdentityLinks } from "./namespaces/identity-links.js";
+export type * from "./namespaces/identity-links.js";
+export type * from "./namespaces/identity-links.types.js";
 export type * from "./namespaces/secrets.js";
 export type * from "./namespaces/sender-domain.js";
 export type * from "./namespaces/service.js";

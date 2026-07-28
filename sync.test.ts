@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -105,7 +105,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -253,6 +253,9 @@ const SURFACE: Capability[] = [
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
   { id: "pay_url",           endpoint: "(external x402 URL)",                  mcp: "pay_url",                       cli: "pay",                 openclaw: "pay" },
   { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
+  // Identity-link mutations stay out of MCP v1: the CLI/OpenClaw group hands
+  // public content to Buzz's signer boundary and never accepts a Nostr secret.
+  { id: "identity_links",    endpoint: "/identity-links/v1 + /identity-link-proofs/v1/:id", mcp: null, cli: "identity:link", openclaw: "identity:link" },
 
   // ── Named wallets / profiles (local-only management; selection via --wallet) ─
   { id: "wallets_list",      endpoint: "(local)",                              mcp: null, cli: "wallets:list",     openclaw: "wallets:list" },
@@ -622,6 +625,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   init: null,
   pay_url: "pay.fetch",
   status: null,
+  identity_links: "identityLinks.nostr.begin",
 
   // Named wallets — local profile management (no SDK gateway method).
   wallets_list: null,
@@ -1277,6 +1281,12 @@ describe("SDK surface alignment", () => {
       "functions.runs.wait",
       // Local idempotency-key helper used by agents/CLI; no gateway endpoint.
       "idempotency.fromParts",
+      // One `identity link` CLI/OpenClaw group owns the rest of the public
+      // dual-proof ceremony and lifecycle reads; begin is its SURFACE mapping.
+      "identityLinks.nostr.complete",
+      "identityLinks.list",
+      "identityLinks.getProof",
+      "identityLinks.revoke",
       // Portable archive export uses `archives.export` as the happy path.
       // create/wait are low-level operation primitives used by the CLI/MCP
       // wrappers to surface progress and idempotent resume behavior.

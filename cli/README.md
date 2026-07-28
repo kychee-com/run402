@@ -59,6 +59,17 @@ run402 allowance balance   # mainnet + testnet + billing balance
 run402 allowance export    # print {"address":"0x..."} for funding
 ```
 
+### Public Buzz/Nostr identity attribution
+
+```bash
+run402 identity link nostr begin --pubkey <npub-or-hex> --visibility public
+# Publish the returned proof_content as a standalone Buzz kind-1 event.
+run402 identity link nostr complete --event-file raw-event.json
+run402 identity link list
+```
+
+This links two separately held public identities through fresh signatures; it never accepts a Nostr private key and never grants authentication, authorization, ownership, deployment, transfer, or payment authority. See the [Buzz integration guide](../integrations/run402-for-buzz/README.md) for the managed-agent signing and raw-event steps.
+
 ### Buy from an x402 URL
 
 ```bash

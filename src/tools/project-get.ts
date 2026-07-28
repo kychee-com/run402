@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { formatActor } from "../identity-format.js";
 
 export const projectGetSchema = {
   project_id: z.string().describe("Project ID to read (authoritative server view; no keys)"),
@@ -29,6 +30,9 @@ export async function handleProjectGet(args: {
       `|-------|-------|`,
       `| public_id | \`${p.public_id}\` |`,
       `| org_id | \`${p.org_id}\` |`,
+      `| owner | organization \`${p.org_id}\` |`,
+      `| created_by | ${p.created_by ? `\`${p.created_by}\`` : "(legacy / unavailable)"} |`,
+      `| creator | ${formatActor(p.creator)} |`,
       `| tier | ${p.tier} |`,
       `| status | ${p.effective_status} (org: ${p.organization_lifecycle_state}) |`,
       `| site_url | ${p.site_url ? `\`${p.site_url}\`` : "(none)"} |`,

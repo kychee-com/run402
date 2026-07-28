@@ -87,6 +87,8 @@ export interface AuthRequestMeta {
 }
 
 export interface CredentialsProvider {
+  /** Sign exact UTF-8 bytes as an EIP-191 personal message without exposing key material. */
+  signPersonalMessage?(message: string): Promise<{ address: string; signature: string }>;
   /**
    * Return per-request auth headers for the given API path, or null if none
    * are available. Typical headers: `SIGN-IN-WITH-X` (SIWE), `Authorization:
