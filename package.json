@@ -1,6 +1,6 @@
 {
   "name": "run402-mcp",
-  "version": "4.12.4",
+  "version": "4.12.5",
   "mcpName": "com.run402/mcp",
   "description": "MCP server for Run402 — pay-per-call infrastructure for AI agents over x402 USDC micropayments. Generate an image for $0.03 with no signup, or provision Postgres databases with REST API, auth, storage and row-level security.",
   "type": "module",
