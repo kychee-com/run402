@@ -47,6 +47,8 @@ That's it — credentials are read, x402 payments are signed, results are typed.
 `identityLinks` proves public attribution between the active Run402 EOA and a separately-held Buzz/Nostr public key. It never accepts a Nostr secret and never affects authentication, authorization, organization ownership, grants, delegates, payment, or transfers.
 
 ```ts
+import { readFile } from "node:fs/promises";
+
 const challenge = await r.identityLinks.nostr.begin({
   nostrPubkey: "npub1...",       // canonical npub or 64-char lowercase hex
   visibility: "public",          // deliberately explicit
@@ -55,6 +57,7 @@ const challenge = await r.identityLinks.nostr.begin({
 
 // Give challenge.proof_content to Buzz as one standalone kind-1 message.
 // Buzz owns Nostr signing; the SDK never sees its private key.
+const rawEvent = await readFile("buzz-event.json", "utf8");
 const proof = await r.identityLinks.nostr.complete({ rawEvent });
 
 const links = await r.identityLinks.list();
