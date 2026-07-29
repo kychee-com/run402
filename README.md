@@ -434,6 +434,23 @@ The active project is sticky: `run402 projects use <id>` server-validates `<id>`
 npx -y run402-mcp                        # standalone test
 ```
 
+### Buying only? Load 6 tools instead of 198
+
+The full server registers **198 tools (~43,000 tokens)** before you do anything. If your agent only wants to *buy* — generate an image for $0.03 and nothing else — that is a fifth to a third of a context window spent on 192 tools it will never call.
+
+```bash
+RUN402_MCP_PROFILE=buyer npx -y run402-mcp
+```
+
+| profile | tools | approx. tokens |
+|---|---:|---:|
+| *(unset — default)* | 198 | ~43,200 |
+| `buyer` | **6** | **~660** |
+
+The six: `generate_image` · `init` · `check_balance` · `allowance_status` · `allowance_export` · `request_faucet` — enough to bootstrap a wallet, fund it, check it, and buy. **Local, so it can actually pay:** an x402 payment needs a signing key, so a wallet-less remote server cannot make one.
+
+Default is unchanged when the variable is unset. An unknown profile name **exits 1** with the known-profile list rather than silently serving the full surface or nothing.
+
 ### Remote endpoint (no install)
 
 A hosted streamable-HTTP MCP server runs at **`https://mcp.run402.com/mcp`** with free discovery tools only: `run402_quickstart`, `x402_price_check` (decode any URL's x402 challenge, unpaid), and `experiment_scoreboard`. It never handles funds — paid capabilities (image generation, deploys, payments) require the local server below, which holds *your* wallet. Registry entry `com.run402/mcp` lists both (`packages[]` npm + `remotes[]`). The remote itself runs as a run402 function — the platform hosting its own MCP server.
@@ -677,6 +694,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `RUN402_CONFIG_DIR`      | `~/.config/run402`               | Local credential storage base directory (named wallets live under `profiles/<name>/`) |
 | `RUN402_WALLET`          | `default`                        | Active named wallet (profile). Overridden by `--wallet <name>` and per-directory `.run402.json`; `RUN402_PROFILE` is an alias. See `run402 wallets`. |
 | `RUN402_ALLOWANCE_PATH`  | `{config_dir}/allowance.json`    | Custom allowance file path |
+| `RUN402_MCP_PROFILE`     | *(unset — all 198 tools)*        | `run402-mcp` only. `buyer` registers just the 6 tools a buy-only agent needs (~660 tokens instead of ~43,200). Unknown name exits 1. |
 
 Local state lives at:
 
