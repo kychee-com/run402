@@ -20,6 +20,7 @@ import {
   StepUpRequiredError,
   TransferFreezeError,
   Unauthorized,
+  isRun402Error,
 } from "./errors.js";
 
 /** Gateway 403 codes that mean "a passkey operator approval is needed for this (capability, target)". */
@@ -152,6 +153,22 @@ export async function requestWithResponse<T>(
       body: fetchBody as BodyInit | undefined,
     });
   } catch (err) {
+    // The kernel's `fetch` is injectable, and the paid clients inject an x402
+    // payment fetch. That fetch throws DOMAIN errors, not just transport ones —
+    // a confirmed balance miss (`X402_INSUFFICIENT_FUNDS`) surfaces here exactly
+    // like a dead socket would. Those errors arrive fully classified
+    // (`category: "payment_required"`, `retryable: false`, a `fund_wallet`
+    // next_action, the actual balances and requirements in `details`).
+    //
+    // Blanket-wrapping them as NetworkError destroyed all of it: a buyer whose
+    // wallet ran dry was told `NETWORK_ERROR` / `retryable: true` and given no
+    // remedy, so a retrying agent would loop forever on a condition that only
+    // funding can clear. Verified 2026-07-29 against a zero-balance wallet.
+    //
+    // Anything already carrying the Run402 brand is a classified SDK error and
+    // is strictly more informative than the wrapper — pass it through untouched.
+    // Genuine transport faults are unbranded and still become NetworkError.
+    if (isRun402Error(err)) throw err;
     throw new NetworkError(
       `Network error while ${context}: ${(err as Error).message}`,
       err,

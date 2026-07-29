@@ -408,6 +408,50 @@ describe("kernel request", () => {
     exitSpy.restore();
   });
 
+  // Regression: the kernel's `fetch` is injectable and the paid clients inject
+  // an x402 payment fetch, which throws DOMAIN errors (notably a confirmed
+  // `X402_INSUFFICIENT_FUNDS` balance miss) through the same seam as a dead
+  // socket. Blanket-wrapping those as NetworkError told a buyer with a drained
+  // wallet `NETWORK_ERROR` / `retryable: true` and offered no remedy, so a
+  // retrying agent looped forever on a condition only funding can clear.
+  it("passes a structured Run402Error through instead of wrapping it as NetworkError", async () => {
+    const payment = new PaymentRequired("insufficient funds", 402, { code: "X402_INSUFFICIENT_FUNDS" }, "paying");
+    const kernel = makeKernel(async () => {
+      throw payment;
+    });
+    await assert.rejects(
+      request(kernel, "/x", { context: "doing x" }),
+      (err: unknown) => {
+        assert.equal(err, payment, "the original error object must survive unwrapped");
+        assert.ok(!(err instanceof NetworkError));
+        return true;
+      },
+    );
+    exitSpy.restore();
+  });
+
+  // The guard is brand-based, not instanceof-based, so an error thrown by a
+  // DUPLICATE SDK copy (different class identity, same brand) survives too.
+  it("passes a cross-realm branded Run402Error through by brand, not class identity", async () => {
+    const foreign = Object.assign(new Error("insufficient funds"), {
+      isRun402Error: true as const,
+      kind: "local_error",
+      code: "X402_INSUFFICIENT_FUNDS",
+    });
+    const kernel = makeKernel(async () => {
+      throw foreign;
+    });
+    await assert.rejects(
+      request(kernel, "/x", { context: "doing x" }),
+      (err: unknown) => {
+        assert.equal(err, foreign);
+        assert.ok(!(err instanceof NetworkError));
+        return true;
+      },
+    );
+    exitSpy.restore();
+  });
+
   it("injects auth headers from credentials.getAuth", async () => {
     let capturedHeaders: Record<string, string> = {};
     const fetchImpl: typeof globalThis.fetch = async (_url, init) => {

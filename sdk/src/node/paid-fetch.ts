@@ -457,6 +457,13 @@ function bigintAmount(value: unknown): bigint | null {
 export function filterAffordableRequirements(
   requirements: PaymentRequirementLike[],
   balances: BalanceStates,
+  /**
+   * Payer address per network. Surfaced in the insufficient-funds error so the
+   * `fund_wallet` next_action names WHERE to send money — "fund the wallet" is
+   * not executable without an address. Optional: omitting it only omits the
+   * `payers` detail.
+   */
+  payers: Readonly<Record<string, string>> = {},
 ): PaymentRequirementLike[] {
   const recognized = requirements.filter(
     (requirement) => typeof requirement.network === "string" && requirement.network in balances,
@@ -486,6 +493,11 @@ export function filterAffordableRequirements(
         .filter((entry): entry is [string, KnownBalance] => entry[1].status === "known")
         .map(([network, state]) => [network, state.balance.toString()]),
     );
+    const payerDetails = Object.fromEntries(
+      Object.keys(balanceDetails)
+        .filter((network) => payers[network])
+        .map((network) => [network, payers[network]]),
+    );
     throw new X402BalanceError(
       "X402_INSUFFICIENT_FUNDS",
       "The configured allowance wallet has insufficient confirmed USDC for the accepted x402 payment requirements.",
@@ -495,6 +507,7 @@ export function filterAffordableRequirements(
           network: requirement.network,
           amount: requirement.amount,
         })),
+        ...(Object.keys(payerDetails).length > 0 ? { payers: payerDetails } : {}),
       },
     );
   }
@@ -624,7 +637,10 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     }
     client.registerPolicy((_version, requirements) => {
       try {
-        return filterAffordableRequirements(requirements as PaymentRequirementLike[], balances);
+        return filterAffordableRequirements(requirements as PaymentRequirementLike[], balances, {
+          ...(mainnetSigner ? { "eip155:8453": mainnetSigner.address } : {}),
+          ...(sepoliaSigner ? { "eip155:84532": sepoliaSigner.address } : {}),
+        });
       } catch (err) {
         // @x402/fetch currently wraps payment-creation errors in a plain Error.
         // A per-call token lets the outer wrapper restore the original typed
