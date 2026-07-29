@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test, { mock } from "node:test";
@@ -644,6 +644,56 @@ test("up accepts repository URL sources and records commit metadata", async () =
     assert.match(result.result?.app_result?.source?.commit ?? "", /^[0-9a-f]{40}$/);
     assert.match(result.result?.manifest_path ?? "", /run402\.json$/);
     assert.deepEqual(calls, []);
+  } finally {
+    rmSync(repo, { force: true, recursive: true });
+  }
+});
+
+// A repo source is cloned into an OS temp dir. `cleanupDir` was returned for
+// exactly that purpose and nothing read it, so every `run402 up <git-url>` left
+// its full checkout behind — on success AND on failure. An agent looping
+// deploys grows /tmp without bound and, on a fixed-allowance container, starts
+// failing writes with no hint at the cause. These pin the cleanup on both paths.
+function tempCheckouts(): string[] {
+  return readdirSync(tmpdir()).filter((n) => n.startsWith("run402-app-source-"));
+}
+
+test("up removes the cloned checkout after a successful repo-source run", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "run402-app-up-source-repo-"));
+  writeFileSync(join(repo, "run402.json"), JSON.stringify(appManifest()));
+  execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "agent@example.com"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "Run402 Agent"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["add", "run402.json"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "init"], { cwd: repo, stdio: "ignore" });
+  const before = tempCheckouts();
+  try {
+    const actions = new NodeActions(fakeSdk({ calls: [], allowanceConfigured: false, tierActive: false, activeProject: null }), { targetKind: "cloud" });
+    await actions.up({ source: pathToFileURL(repo).href, name: "cleanup-ok" }, { mode: "check" });
+    assert.deepEqual(tempCheckouts().filter((d) => !before.includes(d)), [], "checkout must not survive a successful run");
+  } finally {
+    rmSync(repo, { force: true, recursive: true });
+  }
+});
+
+test("up removes the cloned checkout even when the run fails after cloning", async () => {
+  // No manifest committed → the run fails at discovery, AFTER the clone
+  // succeeded. This is the path that leaked in the wild.
+  const repo = mkdtempSync(join(tmpdir(), "run402-app-up-source-repo-"));
+  writeFileSync(join(repo, "README.md"), "no manifest here\n");
+  execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "agent@example.com"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "Run402 Agent"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["add", "README.md"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "init"], { cwd: repo, stdio: "ignore" });
+  const before = tempCheckouts();
+  try {
+    const actions = new NodeActions(fakeSdk({ calls: [], allowanceConfigured: false, tierActive: false, activeProject: null }), { targetKind: "cloud" });
+    await assert.rejects(
+      () => actions.up({ source: pathToFileURL(repo).href, name: "cleanup-fail" }, { mode: "check" }),
+      (err: any) => err?.code === "UP_MANIFEST_REQUIRED",
+    );
+    assert.deepEqual(tempCheckouts().filter((d) => !before.includes(d)), [], "checkout must not survive a failed run");
   } finally {
     rmSync(repo, { force: true, recursive: true });
   }

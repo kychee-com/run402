@@ -384,6 +384,28 @@ export class NodeActions implements Run402Actions {
     }
     const startedAt = new Date().toISOString();
     const source = await this.#resolveUpSource(input, run);
+    // A repo source is cloned into a temp dir. `cleanupDir` was returned for
+    // exactly this purpose and NOTHING read it, so every `run402 up <git-url>`
+    // left its full checkout in the OS temp dir — silently, on success and on
+    // failure alike. An agent looping deploys (CI, retries) grows /tmp without
+    // bound, and on a fixed-allowance container that eventually fails writes
+    // with no hint at the cause. Measured 2026-07-29: 22 stale checkouts, 17 MB.
+    // Local-directory sources set no cleanupDir and are never touched here.
+    try {
+      return await this.#runUpFromWorkspace(input, run, source, startedAt);
+    } finally {
+      if (source.cleanupDir) {
+        await rm(source.cleanupDir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+  }
+
+  async #runUpFromWorkspace(
+    input: Run402UpActionInput,
+    run: ActionRun,
+    source: ResolvedUpSource,
+    startedAt: string,
+  ): Promise<Run402ActionResult<Run402UpResult>> {
     const workspaceDir = source.workspaceDir;
     const manifest = await this.#discoverAndValidateManifest(input, workspaceDir, source.metadata, run);
 
