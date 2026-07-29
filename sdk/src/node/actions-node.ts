@@ -661,10 +661,44 @@ export class NodeActions implements Run402Actions {
           },
         );
       }
+      // Cold-start chain (change: keep-agent-in-loop-on-cold-start): an agent
+      // that knows only `run402 up` must be walked, failure by failure, to a
+      // deployed result via typed next_actions. This is the FIRST chokepoint a
+      // cold builder hits — an empty directory running the documented one-liner
+      // — and it was the one hop with no next_actions, while its sibling
+      // EXECUTABLE_CONFIG_REQUIRES_EXPLICIT_MANIFEST (above) had them. Naming
+      // the missing filenames is not an executable step; the agent has no
+      // scaffold verb to reach for, so hand it bytes it can write. Found
+      // 2026-07-29 walking the builder path from a clean machine.
+      const starterManifest = {
+        site: {
+          replace: {
+            "index.html": { data: "<!doctype html><h1>Hello from Run402</h1>" },
+          },
+        },
+      };
       throw run.error(
         "No deploy manifest found. Add run402.deploy.json or app.json, or pass --manifest for executable configs.",
         "UP_MANIFEST_REQUIRED",
-        { dir: workspaceDir, candidates: MANIFEST_CANDIDATES, executable_candidates: EXECUTABLE_MANIFEST_CANDIDATES },
+        {
+          dir: workspaceDir,
+          candidates: MANIFEST_CANDIDATES,
+          executable_candidates: EXECUTABLE_MANIFEST_CANDIDATES,
+          next_actions: [
+            {
+              type: "create_manifest",
+              why: "Write a deploy manifest, then re-run. This minimal site manifest deploys as-is; add database/functions/routes slices later.",
+              path: "app.json",
+              content: JSON.stringify(starterManifest, null, 2),
+            },
+            {
+              type: "retry",
+              command: "run402 up -y",
+              argv: ["run402", "up", "-y"],
+              why: "Re-run once the manifest exists.",
+            },
+          ],
+        },
       );
     }
 

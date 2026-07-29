@@ -123,4 +123,34 @@ describe("cold-start bootstrap next_actions (chain hops)", () => {
     assert.equal(env.next_actions[0].type, "initialize_wallet");
     assert.equal(env.next_actions[0].command, "run402 init");
   });
+
+  // The manifest hop. A cold builder in an empty directory running the
+  // documented one-liner (`run402 up --name my-app -y`) hits this FIRST, and
+  // it was the one chokepoint with no next_actions — the chain broke exactly
+  // where nothing pinned it. Naming the missing filenames is not executable:
+  // there is no scaffold verb, so the action must carry writable bytes.
+  it("up in a manifest-less directory hands over a writable starter manifest", async () => {
+    const { NodeActions } = await import("./sdk/dist/node/actions-node.js");
+    const emptyDir = mkdtempSync(join(tmpdir(), "run402-no-manifest-"));
+    let env = null;
+    try {
+      await new NodeActions({}).up({ dir: emptyDir, yes: true });
+    } catch (err) {
+      env = err?.details ? { code: err.code, details: err.details } : null;
+    } finally {
+      rmSync(emptyDir, { recursive: true, force: true });
+    }
+    assert.ok(env, "up must fail with a structured envelope");
+    assert.equal(env.code, "UP_MANIFEST_REQUIRED");
+    const actions = env.details.next_actions;
+    assert.ok(Array.isArray(actions) && actions.length > 0, "non-empty next_actions");
+    const create = actions.find((a) => a.type === "create_manifest");
+    assert.ok(create, "must offer create_manifest");
+    assert.equal(create.path, "app.json");
+    // The handed-over bytes must be a manifest the platform actually accepts —
+    // an example that does not deploy is worse than no example.
+    const parsed = JSON.parse(create.content);
+    assert.ok(parsed.site?.replace?.["index.html"]?.data, "starter manifest must ship a servable index.html");
+    assert.ok(actions.some((a) => a.type === "retry"), "must offer retry");
+  });
 });
