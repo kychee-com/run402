@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(ROOT, "..");
 const SKILL = readFileSync(join(ROOT, "SKILL.md"), "utf8");
+const README = readFileSync(join(ROOT, "README.md"), "utf8");
 
 function files(directory = ROOT) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -24,6 +25,14 @@ describe("run402-buzz distributable package", () => {
     assert.match(frontmatter[1], /^name: run402-buzz$/m);
     assert.match(frontmatter[1], /install, initialize, set up, or connect Run402/);
     assert.match(frontmatter[1], /later asks.*build, deploy, update, verify, or operate/);
+  });
+
+  it("documents the direct, noninteractive Codex install without redundant selectors", () => {
+    assert.match(
+      README,
+      /npx skills add https:\/\/github\.com\/kychee-com\/run402\/tree\/main\/buzz -a codex -y/,
+    );
+    assert.doesNotMatch(README, /skills@latest|--skill run402-buzz|--copy|--agent codex|--yes/);
   });
 
   it("contains only bounded regular Markdown, JSON, and JavaScript files", () => {

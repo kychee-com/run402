@@ -10,8 +10,7 @@ const source = dirname(fileURLToPath(import.meta.url));
 const workspace = mkdtempSync(join(tmpdir(), "run402-buzz-installer-"));
 try {
   const result = spawnSync("npx", [
-    "-y", "skills@latest", "add", source,
-    "--skill", "run402-buzz", "--agent", "codex", "--yes", "--copy",
+    "-y", "skills", "add", source, "-a", "codex", "-y",
   ], { cwd: workspace, encoding: "utf8", shell: false, maxBuffer: 1024 * 1024 });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const installed = join(workspace, ".agents", "skills", "run402-buzz");

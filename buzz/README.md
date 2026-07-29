@@ -10,9 +10,10 @@ Buzz managed-agent workspaces default to `~/.buzz`. Install this direct package 
 
 ```sh
 cd ~/.buzz
-npx -y skills@latest add https://github.com/kychee-com/run402/tree/main/buzz \
-  --skill run402-buzz --agent codex --yes --copy
+npx skills add https://github.com/kychee-com/run402/tree/main/buzz -a codex -y
 ```
+
+The URL points directly at this one-skill package, so no skill selector or install-mode flag is needed. `-a codex` makes the Buzz managed-agent target explicit and `-y` accepts the installer prompt. You can inspect the exact [skills.sh listing](https://skills.sh/kychee-com/run402/run402-buzz) or review every installed file in this directory before setup.
 
 Installation only copies files; it executes nothing. Before continuing, understand the one public side effect: setup publishes a durable public kind-1 Nostr event associating the agent's public Buzz identity with its public Run402 wallet and creates a durable public Run402 proof. Revocation changes current status but does not erase either historical record. If Buzz adds its NIP-OA owner attestation, the owner's public key and signature are also public but gain no Run402 authority.
 

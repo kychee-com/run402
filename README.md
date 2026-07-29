@@ -367,13 +367,12 @@ Install the self-contained Buzz skill directly into the managed-agent workspace 
 
 ```sh
 cd ~/.buzz
-npx -y skills@latest add https://github.com/kychee-com/run402/tree/main/buzz \
-  --skill run402-buzz --agent codex --yes --copy
+npx skills add https://github.com/kychee-com/run402/tree/main/buzz -a codex -y
 ```
 
 Installation is inert. Setup later publishes a durable public kind-1 Nostr event and durable Run402 proof connecting the two public identities; revocation does not erase their history, and a Buzz-managed event may also expose its owner's public NIP-OA attestation. After reading that disclosure, tell the intended managed agent `@Builder, set up Run402.` The agent uses the user's global npm installation, initializes only if needed, creates or reuses the link, independently verifies it, and reports `Run402 is ready` with `Deployment: none`. It then offers one context-relevant quick test or demo and waits for explicit approval before building, provisioning, spending, or deploying.
 
-See the [`buzz/` guide](./buzz/README.md) for prerequisites, the no-secret signer model, released-client fixtures, migration guidance, and the full workflow. The low-level CLI commands remain available for debugging, but they are not a competing onboarding path.
+See the [`buzz/` guide](./buzz/README.md) for prerequisites, the no-secret signer model, released-client fixtures, migration guidance, and the full workflow, or inspect the exact [`run402-buzz` listing on skills.sh](https://skills.sh/kychee-com/run402/run402-buzz). The low-level CLI commands remain available for debugging, but they are not a competing onboarding path.
 
 **Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+: `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `auth.*` helpers / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 
