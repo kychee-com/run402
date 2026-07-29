@@ -24,6 +24,7 @@ This monorepo ships every surface an agent can pick up:
 | [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells: JSON in, JSON out, exit code on failure |
 | [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code: core run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
+| [Run402 for Buzz](./buzz/) | Buzz managed agents: install/init a global CLI profile, link separate public identities, then offer an approval-gated contextual deployment |
 | [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) | Imported _inside_ deployed functions (`db(req?)`, `adminDb()`, `auth.user()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor. Source lives in the public [`run402-core`](https://github.com/kychee-com/run402-core) repo under `packages/functions`; run402 Cloud consumes the published npm package when it bundles function zips. |
 | [`@run402/astro`](./astro/) | Astro integration for SSR, ISR cache, hosted auth components, and image variants |
 
@@ -362,17 +363,17 @@ The SDK is organised into focused namespaces: `actions` (Node recursive action r
 
 An agent can publicly prove that its separately-held Buzz/Nostr key and Run402 EOA belong to the same principal. This is attribution only: projects remain organization-owned, and Nostr identities never authenticate, authorize, pay, deploy, or receive transfers. Run402 never accepts or derives from an `nsec`, Nostr private key, mnemonic, seed, or derivation path.
 
-```bash
-run402 identity link nostr begin --pubkey <npub-or-hex> --visibility public > challenge.json
-# Publish challenge.json's proof_content as one standalone Buzz kind-1 message,
-# then fetch the raw seven-field signed event envelope.
-run402 identity link nostr complete --event-file raw-event.json
-run402 identity link list
-run402 identity link show idlnk_...
-run402 identity link revoke idlnk_...
+Install the self-contained Buzz skill directly into the managed-agent workspace (normally `~/.buzz`):
+
+```sh
+cd ~/.buzz
+npx -y skills@latest add https://github.com/kychee-com/run402/tree/main/buzz \
+  --skill run402-buzz --agent codex --yes --copy
 ```
 
-For Buzz, use `buzz social publish --content <proof_content>` and then `buzz social event --event <event-id>`. Do not use `buzz://nostr-bind`: that route signs as the desktop owner, not the managed agent. The integration guide, exact real-event fixture, independently verified golden vector, repository-local skill, and reference feedback application live in [`integrations/run402-for-buzz/`](./integrations/run402-for-buzz/README.md).
+Installation is inert. Setup later publishes a durable public kind-1 Nostr event and durable Run402 proof connecting the two public identities; revocation does not erase their history, and a Buzz-managed event may also expose its owner's public NIP-OA attestation. After reading that disclosure, tell the intended managed agent `@Builder, set up Run402.` The agent uses the user's global npm installation, initializes only if needed, creates or reuses the link, independently verifies it, and reports `Run402 is ready` with `Deployment: none`. It then offers one context-relevant quick test or demo and waits for explicit approval before building, provisioning, spending, or deploying.
+
+See the [`buzz/` guide](./buzz/README.md) for prerequisites, the no-secret signer model, released-client fixtures, migration guidance, and the full workflow. The low-level CLI commands remain available for debugging, but they are not a competing onboarding path.
 
 **Astro SSR + ISR cache (v1.52+).** For Astro apps, use `@run402/astro` 1.0+: `export default run402();` in `astro.config.mjs` returns an `AstroUserConfig` composing the SSR adapter (Lambda + SnapStart + ISR cache + AsyncLocalStorage request-context), image integration, and build-time detectors. Functions opt into the SSR class via `FunctionSpec.class: "ssr"` in `ReleaseSpec`; the gateway provisions SnapStart and caches HTML responses keyed by `(host, path, search, method, locale, release_id)`. Cache is bypass-by-default (no-store unless `Cache-Control` explicitly allows it AND no `Set-Cookie` AND no auth-taint flag from `auth.*` helpers / payment primitives). Invalidate from in-function code or out-of-band: `r.cache.invalidate(url)` / `r.cache.invalidatePrefix({ host, prefix })` / `r.cache.invalidateAll({ host })` (SDK), `run402 cache invalidate <url>` (CLI). Inspect cached state with `r.cache.inspect(url)` / `run402 cache inspect <url>`. Agent DX helpers also in the CLI: `run402 doctor` (5 health checks), `run402 dev` (Astro dev with `.env.local`), `run402 logs --request-id req_...` (correlate across functions). Full reference at [`astro/README.md`](./astro/README.md) and [`cli/llms-cli.txt`](./cli/llms-cli.txt) (R402_* SSR Runtime Error Codes section).
 

@@ -68,7 +68,7 @@ run402 identity link nostr complete --event-file raw-event.json
 run402 identity link list
 ```
 
-This links two separately held public identities through fresh signatures; it never accepts a Nostr private key and never grants authentication, authorization, ownership, deployment, transfer, or payment authority. See the [Buzz integration guide](../integrations/run402-for-buzz/README.md) for the managed-agent signing and raw-event steps.
+This links two separately held public identities through fresh signatures; it never accepts a Nostr private key and never grants authentication, authorization, ownership, deployment, transfer, or payment authority. Buzz users should follow the self-contained [`run402-buzz` getting started guide](../buzz/README.md); these low-level commands remain the debugging boundary, not a competing onboarding flow.
 
 ### Buy from an x402 URL
 

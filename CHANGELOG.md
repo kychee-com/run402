@@ -7,7 +7,7 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **SDK:** added `r.identityLinks` with staged Nostr challenge/complete, list, public-proof read, and revoke operations. The Node credential provider signs only the server-authored EIP-191 bytes with the active Run402 EOA; it rejects secret-shaped Nostr input locally.
 - **CLI/OpenClaw:** added `run402 identity link nostr begin|complete` and `identity link list|show|revoke`, with exact JSON stdout, structured recovery errors, and raw seven-field Buzz event ingestion.
 - **Existing reads:** whoami, project, deployment, and transfer renderers preserve additive immutable identity/actor provenance without treating linked identities as authentication, authorization, ownership, payment, or transfer authority.
-- **Buzz integration:** added a repository-local skill, released-client kind-1 fixture and no-shell proof helper, independent golden-vector verification, security documentation, and a feedback-board example that exercises first deploy, verified redeploy, receipt, and adoption preview.
+- **Buzz integration:** moved the single self-contained `run402-buzz` skill to top-level `buzz/`, added idempotent user-global CLI/profile/link setup and verified `Deployment: none` readiness, then an approval-gated contextual test offer. Released-client fixtures, the no-shell helper, golden vector, and security guidance move with the installed package; the fixed feedback-board demo is removed.
 
 ## Unreleased — email code authentication
 

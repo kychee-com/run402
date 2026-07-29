@@ -6,7 +6,7 @@ import { Run402 } from "../index.js";
 import { verifyRawNostrEvent } from "./identity-links.protocol.js";
 
 const vector = JSON.parse(readFileSync(
-  new URL("../../../integrations/run402-for-buzz/fixtures/identity-link-v1-golden.json", import.meta.url),
+  new URL("../../../buzz/fixtures/identity-link-v1-golden.json", import.meta.url),
   "utf8",
 ));
 

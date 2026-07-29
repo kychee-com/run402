@@ -6,7 +6,7 @@ import { after, before, beforeEach, describe, it, mock } from "node:test";
 
 const tempDir = mkdtempSync(join(tmpdir(), "run402-identity-cli-"));
 const vector = JSON.parse(readFileSync(
-  new URL("./integrations/run402-for-buzz/fixtures/identity-link-v1-golden.json", import.meta.url),
+  new URL("./buzz/fixtures/identity-link-v1-golden.json", import.meta.url),
   "utf8",
 ));
 const eventFile = join(tempDir, "event.json");

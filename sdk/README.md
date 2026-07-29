@@ -45,7 +45,7 @@ await r.identityLinks.getProof(proof.identity_link_id); // public, no auth
 await r.identityLinks.revoke(proof.identity_link_id);   // current EOA required
 ```
 
-The SDK locally rejects secret-shaped inputs and verifies the exact seven-field NIP-01 event, event id, and BIP-340 signature before completion. Use `buzz social publish --content` plus `buzz social event --event`; the desktop `buzz://nostr-bind` path signs as a different principal. See [`../integrations/run402-for-buzz/`](../integrations/run402-for-buzz/README.md).
+The SDK locally rejects secret-shaped inputs and verifies the exact seven-field NIP-01 event, event id, and BIP-340 signature before completion. Use `buzz social publish --content` plus `buzz social event --event`; the desktop `buzz://nostr-bind` path signs as a different principal. Buzz operators should use the self-contained [`run402-buzz` package](../buzz/README.md); the SDK ceremony is a lower-level API, not a separate getting-started path.
 
 Before creating an x402 payment payload, the Node entry confirms USDC with
 bounded retry/backoff and independent RPC failover on Base and Base Sepolia.

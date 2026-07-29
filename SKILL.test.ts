@@ -16,6 +16,7 @@ function loadSkill(relPath: string) {
 
 const root = loadSkill("SKILL.md");
 const openclaw = loadSkill("openclaw/SKILL.md");
+const buzz = loadSkill("buzz/SKILL.md");
 
 // ── Root SKILL.md (MCP-based, ships with run402-mcp) ────────────
 
@@ -257,6 +258,41 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
   });
 });
 
+// ── buzz/SKILL.md (Buzz-managed agent onboarding) ──────────────
+
+describe("buzz/SKILL.md (run402-buzz)", () => {
+  it("uses the distinct external skill name", () => {
+    assert.equal(buzz.frontmatter.name, "run402-buzz");
+    assert.match(buzz.frontmatter.name, /^[a-z0-9][a-z0-9-]*$/);
+  });
+
+  it("triggers setup explicitly and keeps installation inert", () => {
+    assert.match(buzz.frontmatter.description, /install, initialize, set up, or connect Run402/);
+    assert.match(buzz.body, /Installing, copying, updating, or discovering this skill performs no setup/);
+    assert.match(buzz.body, /npm install -g run402@latest/);
+    assert.match(buzz.body, /run402 init/);
+    assert.match(buzz.body, /identity link nostr/);
+  });
+
+  it("stops ready without deployment and waits for approval", () => {
+    assert.match(buzz.body, /Deployment: none/);
+    assert.match(buzz.body, /Run402 is ready/);
+    assert.match(buzz.body, /Would you like me to try it\?/);
+    assert.match(buzz.body, /Do not build anything until the user affirmatively agrees/);
+  });
+
+  it("keeps both private keys outside the workflow", () => {
+    assert.match(buzz.body, /Never access the OS keyring directly/);
+    assert.match(buzz.body, /Never request, read, locate, export, transform, derive, print, log, or post/);
+    assert.match(buzz.body, /Buzz signs only through its managed-agent/);
+  });
+
+  it("has valid Markdown", () => {
+    assert.equal((buzz.body.match(/^```/gm) || []).length % 2, 0);
+    assert.ok(buzz.body.trimStart().split("\n")[0].startsWith("#"));
+  });
+});
+
 // ── Slug validation ────────────────────────────────────────────
 
 describe("skill slug", () => {
@@ -266,6 +302,9 @@ describe("skill slug", () => {
   it("openclaw: matches ^[a-z0-9][a-z0-9-]*$", () => {
     assert.match(openclaw.frontmatter.name, /^[a-z0-9][a-z0-9-]*$/);
   });
+  it("buzz: matches ^[a-z0-9][a-z0-9-]*$", () => {
+    assert.match(buzz.frontmatter.name, /^[a-z0-9][a-z0-9-]*$/);
+  });
 });
 
 describe("public docs — secrets isolation drift", () => {
@@ -274,6 +313,7 @@ describe("public docs — secrets isolation drift", () => {
     "cli/README.md",
     "SKILL.md",
     "openclaw/SKILL.md",
+    "buzz/SKILL.md",
     "AGENTS.md",
     "sdk/README.md",
     "sdk/llms-sdk.txt",
@@ -302,6 +342,7 @@ describe("public docs — next_actions discriminator", () => {
   const docs = [
     "SKILL.md",
     "openclaw/SKILL.md",
+    "buzz/SKILL.md",
   ];
   const invalidNextAction = /"next_actions"\s*:\s*\[[^\]]*"action"\s*:/;
 
