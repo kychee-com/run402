@@ -2,6 +2,17 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — binary-safe content sources
+
+- **SDK:** string sources paired with known binary paths or MIME types now fail
+  locally with `BINARY_CONTENT_REQUIRES_BYTES` before hashing or network
+  traffic. Raw bytes, browser `Blob`/`File`, streams, and filesystem helpers
+  remain byte-exact; textual formats including SVG continue to accept strings.
+- **Docs/tests:** upload guidance now states that CAS validates the submitted
+  bytes, not any bytes discarded by a prior text decode, with canonical Node,
+  browser, raw `/content/v1`, and directory-helper paths. Regression tests pin
+  byte-exact filesystem hashing and the pre-network guard.
+
 ## Unreleased — public Buzz/Nostr agent attribution
 
 - **SDK:** added `r.identityLinks` with staged Nostr challenge/complete, list, public-proof read, and revoke operations. The Node credential provider signs only the server-authored EIP-191 bytes with the active Run402 EOA; it rejects secret-shaped Nostr input locally.

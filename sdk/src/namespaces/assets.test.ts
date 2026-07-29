@@ -326,6 +326,36 @@ describe("assets.put (v2.1.0 — routes through apply hero)", () => {
     assert.equal(result.key, "raw.bin");
   });
 
+  it("rejects a string source for an inferred binary MIME before any HTTP call (GH-520)", async () => {
+    const { fetch, calls } = mockFetch(() => {
+      throw new Error("unexpected fetch");
+    });
+    const sdk = makeSdk(fetch);
+
+    await assert.rejects(
+      sdk.assets.put("prj_known", "logo.png", "\ufffdPNG\r\n\u001a\n"),
+      (err: unknown) =>
+        err instanceof LocalError &&
+        err.code === "BINARY_CONTENT_REQUIRES_BYTES" &&
+        /read the file without an encoding/i.test(err.message),
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("allows string sources for textual image formats", async () => {
+    let outerCalls: FetchCall[] = [];
+    const shas = new Map<string, string>();
+    const entries: ApplyAssetEntry[] = [
+      { key: "logo.svg", size_bytes: 11, content_type: "image/svg+xml", visibility: "public", immutable: true, missing: false },
+    ];
+    const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
+    outerCalls = calls;
+    const sdk = makeSdk(fetch);
+
+    const result = await sdk.assets.put("prj_known", "logo.svg", "<svg></svg>");
+    assert.equal(result.key, "logo.svg");
+  });
+
   it("throws when both content and bytes are provided", async () => {
     const { fetch } = mockFetch(() => json({}));
     const sdk = makeSdk(fetch);
@@ -598,7 +628,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
     const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
     outerCalls = calls;
     const sdk = makeSdk(fetch);
-    const asset = await sdk.assets.put("prj_known", 'a&b"c<d>.png', { content: "abc" }, { immutable: true });
+    const asset = await sdk.assets.put("prj_known", 'a&b"c<d>.png', { bytes: new TextEncoder().encode("abc") }, { immutable: true });
     const img = asset.imgTag('Bad <alt> "quoted"');
     assert.match(img, /alt="Bad &lt;alt&gt; &quot;quoted&quot;"/);
     assert.match(img, /a&amp;b&quot;c&lt;d&gt;\.png/);
@@ -614,7 +644,7 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
     const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
     outerCalls = calls;
     const sdk = makeSdk(fetch);
-    const asset = await sdk.assets.put("prj_known", "x.png", { content: "abc" }, { immutable: false });
+    const asset = await sdk.assets.put("prj_known", "x.png", { bytes: new TextEncoder().encode("abc") }, { immutable: false });
     assert.throws(() => asset.scriptTag(), /immutable: true/);
     assert.throws(() => asset.linkTag(), /immutable: true/);
     assert.throws(() => asset.imgTag(), /immutable: true/);
@@ -1631,7 +1661,7 @@ describe("AssetRef alias consistency (never-regress gate)", () => {
     const { fetch, calls } = mockFetch((call) => installApplyHandler({ calls: outerCalls }, entries, shas)(call));
     outerCalls = calls;
     const sdk = makeSdk(fetch);
-    const ref = await sdk.assets.put("prj_known", "report.pdf", { content: "abc" }, { immutable: true });
+    const ref = await sdk.assets.put("prj_known", "report.pdf", { bytes: new TextEncoder().encode("abc") }, { immutable: true });
 
     assert.equal(ref.size, ref.size_bytes);
     assert.equal(ref.contentSha256, ref.sha256);

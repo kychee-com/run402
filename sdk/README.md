@@ -391,6 +391,28 @@ const logo = await (await r.project(projectId)).assets.put("logo.png", { bytes }
 
 `immutable: true` is the default since v1.45. The SDK always computes and sends the object SHA-256; pass `false` only when you specifically need mutable URL/cache semantics.
 
+**Binary files are bytes, never strings.** In Node, call `readFile(path)`
+without an encoding; in a browser, read `File.arrayBuffer()`. Do not use
+`readFile(path, "utf8")`, `Blob.text()`, or another text decoder for PNG,
+WASM, fonts, audio, video, archives, or other binary formats and then hash or
+re-encode that string. CAS verifies the submitted bytes against their hash; it
+cannot reconstruct bytes discarded by an earlier UTF-8 decode. String sources
+for known binary keys/MIME types fail locally before network traffic with
+`BINARY_CONTENT_REQUIRES_BYTES`.
+
+```ts
+import { readFile } from "node:fs/promises";
+
+const logoBytes = await readFile("./logo.png"); // Buffer is a Uint8Array
+await (await r.project(projectId)).assets.put("logo.png", { bytes: logoBytes });
+```
+
+Raw `/content/v1` clients have the same obligation: compute `sha256` and
+`size` from the original byte buffer, then PUT that exact buffer. The declared
+`content_type` is metadata, not proof that the pre-hash bytes were decoded
+correctly. Prefer `assets.put`, `fileSetFromDir`, `dir`, or `assets.uploadDir`
+so the byte-safe path is automatic.
+
 ### Image variants (v1.49)
 
 Image uploads (jpeg/png/webp/heic/heif) trigger automatic generation of three WebP variants — `thumb` 320w, `medium` 800w, `large` 1920w — plus dimensions, a blurhash placeholder, and (for HEIC/HEIF sources) a JPEG display variant. Everything ships on the returned `AssetRef`:
@@ -439,7 +461,7 @@ AVIF was deferred from v1 — `<picture>` browsers select sources by `type` prec
 
 ### Mixed apply — site + assets in one atomic activation
 
-Drop a per-key asset put into the same release as your site files. Both promote inside the same activation transaction that flips `live_release_id`, so the asset URLs are live the moment the new release is. Source shorthand: bare strings, `Uint8Array`, or any other `ContentSource` (Blob, FsFileSource from `fileSetFromDir`, `{ data, contentType? }` wrapper). The SDK normalizer hashes once and dedups across slices — same SHA in `site` and `assets` uploads as a single byte stream.
+Drop a per-key asset put into the same release as your site files. Both promote inside the same activation transaction that flips `live_release_id`, so the asset URLs are live the moment the new release is. Source shorthand: bare strings for text, `Uint8Array` for bytes, or any other `ContentSource` (Blob, FsFileSource from `fileSetFromDir`, `{ data, contentType? }` wrapper). The SDK normalizer hashes once and dedups across slices — same SHA in `site` and `assets` uploads as a single byte stream.
 
 ```ts
 import { run402, fileSetFromDir } from "@run402/sdk/node";

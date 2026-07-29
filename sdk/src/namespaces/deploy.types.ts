@@ -27,10 +27,11 @@ export interface FsFileSource {
 }
 
 /**
- * Anything the SDK can normalize into a `ContentRef`. Pass UTF-8 strings,
- * raw bytes, `Blob`/`File` (web), web `ReadableStream`, an `FsFileSource`
+ * Anything the SDK can normalize into a `ContentRef`. Pass UTF-8 strings for
+ * text, or raw bytes, `Blob`/`File` (web), web `ReadableStream`, an `FsFileSource`
  * from `fileSetFromDir`, or a wrapper `{ data, contentType? }` for explicit
- * MIME-type control.
+ * MIME-type control. String sources paired with known binary paths/MIMEs are
+ * rejected locally with `BINARY_CONTENT_REQUIRES_BYTES` before any request.
  */
 export type ContentSource =
   | string

@@ -10,7 +10,7 @@
 import type { Client } from "../kernel.js";
 import { ApiError, LocalError } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
-import { assertPositiveSafeInteger } from "../validation.js";
+import { assertPositiveSafeInteger, isKnownBinaryContent } from "../validation.js";
 import type {
   BlobCacheKind,
   BlobCdnEnvelope,
@@ -566,6 +566,19 @@ export class Assets {
       );
     }
 
+    const contentType = opts.contentType ?? guessContentType(key);
+    if (normalized.content !== undefined && isKnownBinaryContent(key, contentType)) {
+      throw new LocalError(
+        `Asset ${key} uses a JavaScript string for binary content (${contentType}). ` +
+          "Read the file without an encoding and pass Uint8Array or { bytes } so the original bytes are hashed.",
+        "uploading blob",
+        {
+          code: "BINARY_CONTENT_REQUIRES_BYTES",
+          details: { key, content_type: contentType },
+        },
+      );
+    }
+
     const bytes: Uint8Array = normalized.bytes
       ? normalized.bytes
       : new TextEncoder().encode(normalized.content!);
@@ -578,7 +591,6 @@ export class Assets {
       );
     }
 
-    const contentType = opts.contentType ?? guessContentType(key);
     // v1.45 default: `immutable: true`. The agent-DX surface (cdnUrl, sri,
     // scriptTag/linkTag/imgTag) only works for content-addressed uploads.
     const immutable = opts.immutable ?? true;

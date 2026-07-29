@@ -22,6 +22,7 @@
 import type { Client } from "../kernel.js";
 import { isCiSessionCredentials } from "../ci-credentials.js";
 import { isDelegateCredentials } from "../delegate-credentials.js";
+import { isKnownBinaryContent, isUtf8StringSource } from "../validation.js";
 import { assertCiDeployableSpec } from "./ci.js";
 import {
   ROUTE_PRICING_NETWORKS,
@@ -4270,6 +4271,9 @@ async function normalizeFileSet(
     if (!resolved.ref.contentType) {
       resolved.ref.contentType = guessContentType(path);
     }
+    if (isUtf8StringSource(source) && isKnownBinaryContent(path, resolved.ref.contentType)) {
+      throw binaryContentRequiresBytes(path, resolved.ref.contentType);
+    }
     out[path] = remember(resolved);
   }
   return out;
@@ -4495,8 +4499,16 @@ async function normalizeAssetSlice(
       if (inputShape) {
         const label = `assets.put[${idx}] (${inputShape.key})`;
         const resolved = await resolveContent(inputShape.source, label);
+        const contentType =
+          inputShape.content_type ?? resolved.ref.contentType ?? guessContentType(inputShape.key);
+        if (
+          isUtf8StringSource(inputShape.source) &&
+          isKnownBinaryContent(inputShape.key, contentType)
+        ) {
+          throw binaryContentRequiresBytes(inputShape.key, contentType, `assets.put[${idx}]`);
+        }
         if (!resolved.ref.contentType) {
-          resolved.ref.contentType = inputShape.content_type ?? guessContentType(inputShape.key);
+          resolved.ref.contentType = contentType;
         }
         const ref = remember(resolved);
         put.push({
@@ -4566,6 +4578,26 @@ async function normalizeAssetSlice(
   }
 
   return out;
+}
+
+function binaryContentRequiresBytes(
+  path: string,
+  contentType: string,
+  resource = path,
+): Run402DeployError {
+  return new Run402DeployError(
+    `${resource} uses a JavaScript string for binary content (${contentType}). ` +
+      "Read the file without an encoding and pass Uint8Array, ArrayBuffer, Blob, or a filesystem byte-source helper so the original bytes are hashed.",
+    {
+      code: "BINARY_CONTENT_REQUIRES_BYTES",
+      phase: "validate",
+      resource,
+      retryable: false,
+      fix: { action: "use_bytes", path: resource },
+      body: { details: { path, content_type: contentType } },
+      context: "normalizing byte sources",
+    },
+  );
 }
 
 type MigrationSpecInput = NonNullable<

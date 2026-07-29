@@ -120,6 +120,15 @@ const html = `
 `;
 ```
 
+Binary files must enter the SDK as bytes. In Node, use `readFile(path)` without
+an encoding; in browsers, use `File.arrayBuffer()`. Never read PNG, WASM,
+fonts, audio, video, archives, or other binary formats as UTF-8 and then hash
+or re-encode the resulting string: CAS can verify only the bytes it receives.
+The SDK rejects string sources for known binary keys/MIME types with
+`BINARY_CONTENT_REQUIRES_BYTES` before making a request. Directory helpers
+such as `fileSetFromDir`, `dir`, and `assets.uploadDir` are byte-safe by
+construction.
+
 `immutable: true` is the default: the SDK computes the SHA-256 client-side, the gateway returns a content-hashed URL, and the browser refuses execution on byte mismatch. No cache-invalidation choreography, no waiting, no integrity-attribute construction.
 
 ### Dark-by-default tables + the expose manifest

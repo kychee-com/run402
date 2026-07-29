@@ -3536,13 +3536,13 @@ describe("Deploy.apply (byte source normalization)", () => {
     assert(JSON.stringify(plannedSpec).includes(expected));
   });
 
-  it("hashes FsFileSource sources from disk", async () => {
+  it("hashes FsFileSource binary bytes from disk without a UTF-8 round-trip (GH-520)", async () => {
     const w = makeWiring();
     const root = mkdtempSync(join(tmpdir(), "run402-deploy-fs-"));
     try {
-      const html = "<title>fs</title>";
-      writeFileSync(join(root, "index.html"), html);
-      const expected = shaHex(html);
+      const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00]);
+      writeFileSync(join(root, "logo.png"), pngBytes);
+      const expected = createHash("sha256").update(pngBytes).digest("hex");
 
       let plannedSpec: unknown;
       w.setHandler((req) => {
@@ -3578,6 +3578,26 @@ describe("Deploy.apply (byte source normalization)", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("rejects string sources for binary site paths before gateway requests (GH-520)", async () => {
+    const w = makeWiring();
+    const deploy = new Deploy(w.client);
+
+    await assert.rejects(
+      deploy.apply({
+        project: "prj_test",
+        site: { replace: { "game.wasm": "\u0000asm\ufffd" } },
+      }),
+      (err: unknown) => {
+        assert(err instanceof Run402DeployError);
+        assert.equal(err.code, "BINARY_CONTENT_REQUIRES_BYTES");
+        assert.equal(err.resource, "game.wasm");
+        assert.match(err.message, /read the file without an encoding/i);
+        return true;
+      },
+    );
+    assert.equal(w.requests.length, 0);
   });
 
   it("walks a LocalDirRef passed as site.replace (regression: kychee-com/run402-private#409)", async () => {

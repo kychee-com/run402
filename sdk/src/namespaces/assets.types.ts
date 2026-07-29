@@ -49,6 +49,10 @@ export type AssetImageFormat =
  *   - `{ content: <string> }` — explicit UTF-8 form (≤ 1 MB)
  *   - `{ bytes: <u8> }` — explicit binary form (no size cap on this end)
  *
+ * Strings are text-only. A string paired with a known binary key/MIME is
+ * rejected locally with `BINARY_CONTENT_REQUIRES_BYTES`; read binary files
+ * without a text encoding and pass their original bytes instead.
+ *
  * The shorthand forms exist because every other `ContentSource`-shaped
  * surface in the SDK accepts bare strings/Uint8Arrays — `{ content: ... }`
  * was an outlier that surprised callers (GH-126).

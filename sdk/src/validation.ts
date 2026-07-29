@@ -1,5 +1,99 @@
 import { LocalError } from "./errors.js";
 
+const KNOWN_BINARY_EXTENSIONS = new Set([
+  "7z",
+  "avif",
+  "bin",
+  "bmp",
+  "br",
+  "dds",
+  "eot",
+  "flac",
+  "gif",
+  "gz",
+  "heic",
+  "heif",
+  "ico",
+  "jpeg",
+  "jpg",
+  "ktx",
+  "ktx2",
+  "m4a",
+  "m4v",
+  "mov",
+  "mp3",
+  "mp4",
+  "ogg",
+  "ogv",
+  "opus",
+  "otf",
+  "pak",
+  "pdf",
+  "png",
+  "rar",
+  "tar",
+  "tif",
+  "tiff",
+  "ttf",
+  "wasm",
+  "wav",
+  "webm",
+  "webp",
+  "woff",
+  "woff2",
+  "zip",
+]);
+
+const KNOWN_BINARY_APPLICATION_TYPES = new Set([
+  "application/gzip",
+  "application/octet-stream",
+  "application/pdf",
+  "application/vnd.ms-fontobject",
+  "application/wasm",
+  "application/x-7z-compressed",
+  "application/x-rar-compressed",
+  "application/zip",
+  "model/gltf-binary",
+]);
+
+/**
+ * True when a path/content-type pair describes bytes that must not originate
+ * from a JavaScript string. This is deliberately conservative: textual image
+ * formats such as SVG stay valid string sources, while opaque octet streams
+ * are rejected only for extensions that are known to be binary.
+ */
+export function isKnownBinaryContent(path: string, contentType: string): boolean {
+  const mediaType = contentType.split(";", 1)[0]!.trim().toLowerCase();
+  const basename = path.split(/[\\/]/).pop() ?? path;
+  const dot = basename.lastIndexOf(".");
+  const extension = dot >= 0 ? basename.slice(dot + 1).toLowerCase() : "";
+
+  if (mediaType.startsWith("audio/") || mediaType.startsWith("video/") || mediaType.startsWith("font/")) {
+    return true;
+  }
+  if (mediaType.startsWith("image/") && mediaType !== "image/svg+xml") {
+    return true;
+  }
+  if (mediaType === "application/octet-stream") {
+    return KNOWN_BINARY_EXTENSIONS.has(extension);
+  }
+  return KNOWN_BINARY_APPLICATION_TYPES.has(mediaType) || KNOWN_BINARY_EXTENSIONS.has(extension);
+}
+
+/** True for a direct string or a `{ data: ... }` wrapper around one. */
+export function isUtf8StringSource(source: unknown): boolean {
+  if (typeof source === "string") return true;
+  if (
+    source !== null &&
+    typeof source === "object" &&
+    !Array.isArray(source) &&
+    "data" in source
+  ) {
+    return isUtf8StringSource((source as { data: unknown }).data);
+  }
+  return false;
+}
+
 export function assertPositiveSafeInteger(
   value: number,
   name: string,

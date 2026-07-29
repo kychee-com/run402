@@ -637,6 +637,28 @@ The URL is content-addressed and served through CloudFront. No cache-invalidatio
 
 `immutable: true` is the default. The SDK always computes and sends the object SHA-256 because upload sessions require it; pass `false` only when you specifically need mutable URL/cache semantics (the returned `cdnUrl` and `sri` are then `null`).
 
+**Binary files are bytes, never strings.** In Node, call `readFile(path)`
+without an encoding; in a browser, read `File.arrayBuffer()`. Do not use
+`readFile(path, "utf8")`, `Blob.text()`, or another text decoder for PNG,
+WASM, fonts, audio, video, archives, or other binary formats and then hash or
+re-encode that string. CAS verifies the submitted bytes against their hash; it
+cannot reconstruct bytes discarded by an earlier UTF-8 decode. String sources
+for known binary keys/MIME types fail locally before network traffic with
+`BINARY_CONTENT_REQUIRES_BYTES`.
+
+```ts
+import { readFile } from "node:fs/promises";
+
+const logoBytes = await readFile("./logo.png"); // Buffer is a Uint8Array
+await (await r.project(projectId)).assets.put("logo.png", { bytes: logoBytes });
+```
+
+Raw `/content/v1` clients have the same obligation: compute `sha256` and
+`size` from the original byte buffer, then PUT that exact buffer. The declared
+`content_type` is metadata, not proof that the pre-hash bytes were decoded
+correctly. Prefer `assets.put`, `fileSetFromDir`, `dir`, or `assets.uploadDir`
+so the byte-safe path is automatic.
+
 If you suspect cache staleness on a *mutable* URL, the SDK has helpers:
 
 ```ts
@@ -1459,8 +1481,10 @@ putMany(items: PutManyItem[], opts: { project, onEvent? }): Promise<AssetManifes
 dir(path, opts?: { prefix?, ignore?, includeSensitive? }): LocalDirRef
 ```
 
-`source` is one of: a bare `string` (UTF-8 ≤ 1 MB), a bare `Uint8Array`,
-`{ content: string }`, or `{ bytes: Uint8Array }`.
+`source` is one of: a bare `string` (text encoded as UTF-8, ≤ 1 MB), a bare
+`Uint8Array`, `{ content: string }`, or `{ bytes: Uint8Array }`. Known binary
+keys/MIME types reject string sources with `BINARY_CONTENT_REQUIRES_BYTES`;
+pass their original bytes.
 
 `AssetRef` (return type of single-asset `put`; legacy alias `BlobPutResult`
 still exported) extends snake_case fields (`key`, `size_bytes`, `sha256`,
