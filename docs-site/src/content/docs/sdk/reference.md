@@ -69,6 +69,12 @@ await r.identityLinks.revoke(proof.identity_link_id);
 
 Current `whoami`, project, deploy-operation/release, and transfer response types include linked-identity and immutable action-time actor snapshots. Render unknown future principal/authenticator/authority kinds as data. A snapshot is historical attribution, not a live authorization decision.
 
+## Buzz community control plane (`r.buzz`)
+
+`await r.buzz.status()` capability-detects `run402.buzz-control-plane.v1` and returns the four independent skill/adoption/community/enrollment states without manufacturing state on an older gateway. Goal aliases are `r.buzz.adopt`, `r.buzz.install`, and `r.buzz.enroll`; typed lifecycle operations live under `humanAdoptions`, `communityInstallations`, and `enrollments`.
+
+The SDK generates mutation idempotency keys when omitted and rejects nested secret-shaped fields before network access. It never signs a Buzz event. Human adoption requires a directly authenticated human completion; community activation accepts an ordinary Buzz kind-1 owner/admin approval and lets Run402 verify released NIP-11/NIP-43 relay evidence. Run402 owns descriptor discovery, policy/default revisions, and revocation, so Buzz itself remains unchanged. Agent enrollment can create only finite grants on named existing projects. It never creates agent org membership, future-project, owner, delegate, or payment authority. Installation revocation leaves existing grants unchanged; enrollment revocation affects only its linked grants; drift is advisory. Buzz failures preserve the gateway's stable code, exact repair `field`, complete `nextActions`, and `safeToRetry`; there is no client-synthesized generic edit fallback, and an unchanged call is retried only when the gateway marks it safe.
+
 Before creating an x402 payment payload, the Node entry confirms USDC with
 bounded retry/backoff and independent RPC failover on Base and Base Sepolia.
 RPC exhaustion is never treated as a zero balance. Branch on the exported
