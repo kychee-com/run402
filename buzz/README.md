@@ -1,6 +1,6 @@
 # Run402 for Buzz
 
-`run402-buzz` is a self-contained skill for a managed [Buzz](https://github.com/block/buzz) coding agent. It installs or updates the user's global Run402 CLI when needed, deliberately creates or selects one named agent wallet profile, links the agent's separate public Buzz/Nostr and Run402 identities, verifies the result, and stops before creating or deploying an application.
+`run402-buzz` is a self-contained skill for a managed [Buzz](https://github.com/block/buzz) coding agent. It installs or updates the user's global Run402 CLI when needed, deliberately creates or selects one named agent wallet profile, links the agent's separate public Buzz/Nostr and Run402 identities, reports the independent human/community/enrollment states, and stops before creating authority or deploying an application.
 
 The keys remain separate. Buzz signs inside its managed-agent/OS boundary, while Run402 signs through its ordinary EOA profile. The skill never asks for, reads, derives, exports, or shares either private key.
 
@@ -27,15 +27,17 @@ That explicit request authorizes the disclosed public link when it is absent. Th
 
 The setup helper then requires both `--wallet <profile>` and the public Buzz key. It refuses unknown labels, pins every Run402 invocation it makes to that explicit wallet, initializes the existing profile when needed, confirms a dedicated agent EOA, rejects a different active Nostr link, creates or reuses the intended public link, and verifies it. Before a link mutation and again at readiness it reports the profile label, public wallet address, and `selection_source: explicit_argument`. Ambient environment variables, directory bindings, and global defaults cannot redirect the ceremony.
 
-The agent then reports `Run402 is ready` with `Deployment: none`, proposes one small contextual test or demo, and waits for your approval before writing an app, selecting a tier, creating a project, provisioning, spending, or deploying.
+The agent then reports `Run402 is ready` with `Deployment: none`. It derives the normalized community from Buzz's existing relay context and asks Run402 for active public descriptors. If exactly one installation is the default, it offers bounded enrollment before provisioning; otherwise it preserves the ordinary org-of-one path. Either path waits for your approval before creating grants, writing an app, selecting a tier, creating a project, provisioning, spending, or deploying.
+
+The vocabulary is deliberate: skill installation is inert shared capability; community installation associates a Buzz community with a Run402 organization; human adoption makes the Buzz owner a distinct Run402 human co-owner; agent enrollment gives each Buzz agent its own principal and bounded existing-project grants. See the [Fizz/Honey workflow and state reports](references/community-control-plane.md).
 
 ## Compatibility and contents
 
-The tested fixture is Buzz v0.4.26. A later release is compatible when its managed-agent harness exposes `buzz social publish --content` and `buzz social event --event` and returns the same standalone seven-field kind-1 event shape. No Buzz fork, custom event kind, or upstream PR is required.
+Buzz itself remains unchanged. The supported boundary is Buzz Desktop v0.5.2's already-shipped behavior: ordinary kind-1 publishing, NIP-11 `self`, relay-signed NIP-43 kind-13534 membership snapshots, the managed `BUZZ_RELAY_URL` context, and the existing `buzz://nostr-bind` human-proof path. Run402 owns descriptor discovery, policy/default revisions, and revocation. Capability detection fails closed when the released relay evidence or Run402 gateway surface is unavailable; the identity link and org-of-one fallback remain usable.
 
 - [`SKILL.md`](SKILL.md) — onboarding, readiness, contextual-offer, and approved deployment contract.
 - [`scripts/`](scripts/) — dependency-free setup state machine and no-shell public proof handoff.
-- [`references/`](references/) — identity/security model and structured receipts.
+- [`references/`](references/) — identity/security model, Fizz/Honey community control-plane workflow, and structured receipts.
 - [`fixtures/`](fixtures/) — released-Buzz positive, desktop-owner negative, and cryptographic golden vectors.
 
 Buzz is provided by Block under the [Apache-2.0 license](https://github.com/block/buzz/blob/main/LICENSE). This integration is independently maintained in Run402's MIT-licensed repository and does not modify or redistribute the Buzz application.

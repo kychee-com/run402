@@ -24,6 +24,7 @@ try {
     "references/receipts.md",
     "fixtures/buzz-v0.4.26-managed-agent-kind1.json",
     "fixtures/buzz-v0.4.26-desktop-owner-negative.json",
+    "fixtures/buzz-v0.5.2-community-authority.json",
   ]) assert.ok(existsSync(join(installed, dependency)), `installer omitted ${dependency}`);
   const help = spawnSync(process.execPath, [join(installed, "scripts", "setup.mjs"), "--help"], {
     cwd: workspace,

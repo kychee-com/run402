@@ -185,6 +185,24 @@ export async function handleWhoami(): Promise<ToolResult> {
       ),
     ];
     if (me.memberships.length === 0) lines[lines.length - 1] = `- memberships: none`;
+    if (me.buzz) {
+      lines.push(`- buzz_control_plane: supported`);
+      lines.push(`  - human_adoptions: ${me.buzz.human_adoptions.length}`);
+      lines.push(`  - community_installations: ${me.buzz.community_installations.length}`);
+      lines.push(`  - agent_enrollments: ${me.buzz.agent_enrollments.length}`);
+      lines.push(`  - drift: ${me.buzz.drift.length}`);
+      if (me.buzz.eligibility.can_select_community_installation && !me.buzz.eligibility.has_nonterminal_enrollment) {
+        lines.push("  - handoff: `run402 buzz install discover --community <subject>` lists Run402-verified descriptors; explicitly select one before using `run402 buzz enroll --help`");
+      }
+      if (me.buzz.next_actions.length > 0) {
+        lines.push(`  - next_action: ${JSON.stringify(me.buzz.next_actions[0])}`);
+      }
+      if (me.buzz.eligibility.cold_start_fallback_available) {
+        lines.push("  - fallback: org-of-one provisioning remains available if enrollment is absent, declined, denied, stale, expired, or revoked");
+      }
+    } else {
+      lines.push("- buzz_control_plane: gateway not supported; use `run402 buzz status` for capability detection");
+    }
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {
     return mapSdkError(err, "resolving principal identity");

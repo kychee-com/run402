@@ -46,6 +46,12 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   browser, raw `/content/v1`, and directory-helper paths. Regression tests pin
   byte-exact filesystem hashing and the pre-network guard.
 
+## Unreleased — Buzz community control plane
+
+- **SDK/CLI:** added capability-detecting `buzz` status, human-adoption, community-installation, and per-agent enrollment namespaces plus goal-shaped `run402 buzz ...` workflows. All mutation commands use idempotency keys, JSON stdout, zero-spend receipts, and reject secret-shaped input locally.
+- **MCP/OpenClaw:** `whoami` and project reads render independent Buzz lifecycle/provenance state and exact CLI handoffs. Signing and authority mutations remain intentionally absent from MCP.
+- **Buzz skill:** setup now derives the normalized community from Buzz's released relay context, discovers Run402-verified active defaults, and offers bounded enrollment before org-of-one provisioning without selecting ambiguously or reusing another agent's profile. Buzz itself remains unchanged. Fizz/Honey examples document pending, denial, drift, revoke, and fallback outcomes.
+
 ## Unreleased — public Buzz/Nostr agent attribution
 
 - **SDK:** added `r.identityLinks` with staged Nostr challenge/complete, list, public-proof read, and revoke operations. The Node credential provider signs only the server-authored EIP-191 bytes with the active Run402 EOA; it rejects secret-shaped Nostr input locally.

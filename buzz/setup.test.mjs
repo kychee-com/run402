@@ -70,6 +70,11 @@ function makeRunner(overrides = {}) {
     helperFailure: null,
     completeFailure: null,
     finalMismatch: false,
+    gatewaySupported: true,
+    communityInstallations: [],
+    humanAdoptions: [],
+    agentEnrollments: [],
+    hasMembership: true,
     ...overrides,
   };
   const calls = [];
@@ -139,6 +144,30 @@ function makeRunner(overrides = {}) {
       if (!state.initialized) return fail("NO_ALLOWANCE", "Initialize", [{ type: "initialize_wallet" }]);
       whoamiCalls += 1;
       return ok(whoami(state, whoamiCalls > 1));
+    }
+    if (commandArgs.join(" ") === "buzz status") {
+      return ok(state.gatewaySupported ? {
+        supported: true,
+        protocol: "run402.buzz-control-plane.v1",
+        buzz: {
+          human_adoptions: state.humanAdoptions,
+          community_installations: [],
+          agent_enrollments: state.agentEnrollments,
+          eligibility: {
+            can_select_community_installation: state.agentEnrollments.every((entry) => entry?.status !== "pending" && entry?.status !== "active"),
+            has_nonterminal_enrollment: state.agentEnrollments.some((entry) => entry?.status === "pending" || entry?.status === "active"),
+            cold_start_fallback_available: !state.hasMembership,
+          },
+        },
+      } : {
+        supported: false,
+        protocol: "run402.buzz-control-plane.v1",
+        reason: "gateway_not_supported",
+        buzz: null,
+      });
+    }
+    if (commandArgs.slice(0, 3).join(" ") === "buzz install discover") {
+      return ok(state.communityInstallations);
     }
     if (commandArgs.join(" ") === "identity link list") {
       return ok({ identity_links: activeLinks(state) });
@@ -221,6 +250,8 @@ describe("Run402 for Buzz setup state machine", () => {
     assert.equal(result.run402_wallet, WALLET);
     assert.equal(result.principal_type, "agent");
     assert.deepEqual(result.next_action, { type: "offer_contextual_test", requires_approval: true });
+    assert.equal(result.control_plane.supported, true);
+    assert.equal(result.control_plane.skill_installation.authoritative, false);
     assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 1);
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} wallets current`), 1);
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} init`), 1);
@@ -247,6 +278,89 @@ describe("Run402 for Buzz setup state machine", () => {
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} init`), 0);
     assert.equal(count(fake.calls, "nostr begin --pubkey"), 0);
     assert.equal(count(fake.calls, "nostr complete --event-file"), 0);
+  });
+
+  it("offers one Run402-verified default installation before the org-of-one fallback", async () => {
+    const descriptor = {
+      api_origin: "https://api.run402.com",
+      buzz_community_installation_id: `buzzci_${"1".repeat(32)}`,
+      buzz_community_subject: "buzz:community:relay.example",
+      content_hash: "2".repeat(64),
+      default_for_enrollment: true,
+      descriptor_revision: 3,
+      issued_at: "2026-07-30T12:00:00.000Z",
+      org_id: `org_${"3".repeat(32)}`,
+      provider: "run402",
+      safe_policy_summary: {
+        mode: "manual",
+        requires_current_community_membership: true,
+        allowed_capabilities: null,
+        max_grant_ttl_seconds: null,
+      },
+      status: "active",
+      approval_event: { kind: 1 },
+      authority_membership: { role: "owner" },
+      relay_self: "4".repeat(64),
+    };
+    const fake = makeRunner({
+      linked: true,
+      hasMembership: false,
+      communityInstallations: [descriptor],
+    });
+    const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, relayUrl: "wss://relay.example", reporter: () => {} });
+    assert.deepEqual(result.next_action, {
+      type: "offer_community_enrollment",
+      buzz_community_installation_id: descriptor.buzz_community_installation_id,
+      org_id: descriptor.org_id,
+      requires_approval: true,
+      fallback: "org_of_one",
+    });
+    assert.equal(result.control_plane.community_installation.status, "run402_verified");
+    assert.equal(result.control_plane.community_installation.resources.length, 1);
+    assert.equal(count(fake.calls, "buzz enroll"), 0);
+    assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} init`), 0);
+  });
+
+  it("does not offer a second enrollment while one is pending", async () => {
+    const descriptor = {
+      api_origin: "https://api.run402.com",
+      buzz_community_installation_id: `buzzci_${"1".repeat(32)}`,
+      buzz_community_subject: "buzz:community:relay.example",
+      content_hash: "2".repeat(64),
+      default_for_enrollment: true,
+      descriptor_revision: 3,
+      issued_at: "2026-07-30T12:00:00.000Z",
+      org_id: `org_${"3".repeat(32)}`,
+      provider: "run402",
+      safe_policy_summary: {
+        mode: "manual",
+        requires_current_community_membership: true,
+        allowed_capabilities: null,
+        max_grant_ttl_seconds: null,
+      },
+      status: "active",
+      approval_event: { kind: 1 },
+      authority_membership: { role: "owner" },
+      relay_self: "4".repeat(64),
+    };
+    const fake = makeRunner({
+      linked: true,
+      hasMembership: false,
+      communityInstallations: [descriptor],
+      agentEnrollments: [{ buzz_agent_enrollment_id: `buzzae_${"4".repeat(32)}`, status: "pending" }],
+    });
+    const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, relayUrl: "wss://relay.example", reporter: () => {} });
+    assert.deepEqual(result.next_action, { type: "offer_contextual_test", requires_approval: true });
+    assert.equal(result.control_plane.agent_enrollment.status, "pending");
+  });
+
+  it("preserves the org-of-one path when the gateway or descriptor discovery is unavailable", async () => {
+    const fake = makeRunner({ linked: true, gatewaySupported: false, hasMembership: false });
+    const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
+    assert.equal(result.control_plane.supported, false);
+    assert.equal(result.control_plane.community_installation.status, "gateway_not_supported");
+    assert.deepEqual(result.next_action, { type: "offer_contextual_test", requires_approval: true });
+    assert.equal(count(fake.calls, "buzz integrations list"), 0);
   });
 
   it("requires an explicit named wallet before invoking npm or Run402", async () => {

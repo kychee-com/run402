@@ -10,6 +10,7 @@
  */
 
 import type { ActiveAuthenticatorRepresentation, LinkedIdentityRepresentation } from "./identity-links.types.js";
+import type { BuzzPrincipalControlPlaneStatus } from "./buzz.types.js";
 
 /** Org role lattice: `owner > admin > developer > billing > viewer`. */
 export type OrgRole = "owner" | "admin" | "developer" | "billing" | "viewer";
@@ -70,6 +71,8 @@ export interface WhoAmIResult {
   authenticator_id: string | null;
   active_authenticator: ActiveAuthenticatorRepresentation | null;
   linked_identities: LinkedIdentityRepresentation[];
+  /** Present on gateways supporting run402.buzz-control-plane.v1. */
+  buzz?: BuzzPrincipalControlPlaneStatus;
   [key: string]: unknown;
 }
 

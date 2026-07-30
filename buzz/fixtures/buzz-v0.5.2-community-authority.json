@@ -1,0 +1,74 @@
+{
+  "fixture_version": 1,
+  "purpose": "released_buzz_unchanged_community_authority_compatibility",
+  "expected_result": "PASS",
+  "buzz": {
+    "version": "0.5.2",
+    "release_tag": "v0.5.2",
+    "release_tag_commit": "3e48f1b2365d326ee1c9582448d86a99b44ecd5d",
+    "approval_surface": "buzz social publish --content",
+    "approval_kind": 1,
+    "human_proof_kind": 24243,
+    "managed_relay_context": "BUZZ_RELAY_URL",
+    "custom_run402_capability_required": false
+  },
+  "relay": {
+    "relay_url": "wss://acme.communities.buzz.xyz",
+    "normalized_community_subject": "buzz:community:acme.communities.buzz.xyz",
+    "nip11": {
+      "self": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "supported_nips": [1, 11, 42, 43]
+    }
+  },
+  "authority": {
+    "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "required_role": "owner"
+  },
+  "descriptor": {
+    "api_origin": "https://api.run402.com",
+    "buzz_community_installation_id": "buzzci_11111111111111111111111111111111",
+    "buzz_community_subject": "buzz:community:acme.communities.buzz.xyz",
+    "content_hash": "c106f66fdac9c501faa8ae51a9276e9afc26c39f8bc53419a8932db5f89092f4",
+    "default_for_enrollment": false,
+    "descriptor_revision": 1,
+    "issued_at": "2026-07-30T12:00:00.000Z",
+    "org_id": "org_22222222222222222222222222222222",
+    "provider": "run402",
+    "safe_policy_summary": {
+      "mode": "manual",
+      "requires_current_community_membership": true,
+      "allowed_capabilities": null,
+      "max_grant_ttl_seconds": null
+    },
+    "status": "active"
+  },
+  "approval_content": "{\"action\":\"approve_run402_community_installation\",\"challenge_id\":\"buzzcic_33333333333333333333333333333333\",\"descriptor\":{\"api_origin\":\"https://api.run402.com\",\"buzz_community_installation_id\":\"buzzci_11111111111111111111111111111111\",\"buzz_community_subject\":\"buzz:community:acme.communities.buzz.xyz\",\"content_hash\":\"c106f66fdac9c501faa8ae51a9276e9afc26c39f8bc53419a8932db5f89092f4\",\"default_for_enrollment\":false,\"descriptor_revision\":1,\"issued_at\":\"2026-07-30T12:00:00.000Z\",\"org_id\":\"org_22222222222222222222222222222222\",\"provider\":\"run402\",\"safe_policy_summary\":{\"mode\":\"manual\",\"requires_current_community_membership\":true,\"allowed_capabilities\":null,\"max_grant_ttl_seconds\":null},\"status\":\"active\"},\"expires_at\":\"2026-07-30T12:10:00.000Z\",\"nonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"origin\":\"https://api.run402.com\",\"protocol\":\"run402-buzz-community-installation\",\"relay_url\":\"wss://acme.communities.buzz.xyz\",\"verification_code\":\"402402\",\"version\":\"1\"}",
+  "approval_event": {
+    "id": "03c018f664dadd75fc280cff9f51cb9f68710c6a517bd96f9f0e6852a83cbfc2",
+    "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "created_at": 1785412800,
+    "kind": 1,
+    "tags": [],
+    "content": "{\"action\":\"approve_run402_community_installation\",\"challenge_id\":\"buzzcic_33333333333333333333333333333333\",\"descriptor\":{\"api_origin\":\"https://api.run402.com\",\"buzz_community_installation_id\":\"buzzci_11111111111111111111111111111111\",\"buzz_community_subject\":\"buzz:community:acme.communities.buzz.xyz\",\"content_hash\":\"c106f66fdac9c501faa8ae51a9276e9afc26c39f8bc53419a8932db5f89092f4\",\"default_for_enrollment\":false,\"descriptor_revision\":1,\"issued_at\":\"2026-07-30T12:00:00.000Z\",\"org_id\":\"org_22222222222222222222222222222222\",\"provider\":\"run402\",\"safe_policy_summary\":{\"mode\":\"manual\",\"requires_current_community_membership\":true,\"allowed_capabilities\":null,\"max_grant_ttl_seconds\":null},\"status\":\"active\"},\"expires_at\":\"2026-07-30T12:10:00.000Z\",\"nonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"origin\":\"https://api.run402.com\",\"protocol\":\"run402-buzz-community-installation\",\"relay_url\":\"wss://acme.communities.buzz.xyz\",\"verification_code\":\"402402\",\"version\":\"1\"}",
+    "sig": "9498eecf5db854cd8e025b16f2188f1f944e9c3296b3afb36e579ea2ac818c7b2f7a3b014dfc669c5f29dc0cede29f455b93f11073b3e3b3d3057a8e7937086b"
+  },
+  "membership_event": {
+    "id": "0dbcf101225f37d9369def5630a18436e0e796a7300b2034e994451cec9c478b",
+    "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "created_at": 1785412790,
+    "kind": 13534,
+    "tags": [
+      ["-"],
+      ["member", "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "owner"]
+    ],
+    "content": "",
+    "sig": "7937cb8a8889062e4fc7e78a031504f0e6dc08c47098f5c7544ffe887f797d14f2eb0c9f16f2c9505d7910d728b1455ad665ecae2b5f84b245492b8a447aede0"
+  },
+  "forbidden_custom_dependencies": {
+    "event_kinds": [],
+    "nip11_extensions": [],
+    "deep_links": [],
+    "desktop_surfaces": [],
+    "buzz_release_required": false
+  }
+}

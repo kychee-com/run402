@@ -15,6 +15,8 @@ const REQUIRED_CAPABILITIES = [
   ["identity", "link", "nostr", "complete", "--help"],
   ["identity", "link", "list", "--help"],
   ["identity", "link", "show", "--help"],
+  ["buzz", "status", "--help"],
+  ["buzz", "install", "discover", "--help"],
 ];
 
 export class BuzzSetupError extends Error {
@@ -291,12 +293,72 @@ function verifyObservedLink(link, proof, pubkey, principalId) {
   }
 }
 
+function buzzCommunitySubjectFromRelay(relayUrl) {
+  if (typeof relayUrl !== "string" || relayUrl.trim() === "") return null;
+  try {
+    const parsed = new URL(relayUrl);
+    if (!["ws:", "wss:"].includes(parsed.protocol)
+      || parsed.username || parsed.password || parsed.pathname !== "/"
+      || parsed.search || parsed.hash) return null;
+    return `buzz:community:${parsed.host.toLowerCase()}`;
+  } catch {
+    return null;
+  }
+}
+
+function discoverCommunityInstallations({ runner, run402Bin, wallet, relayUrl }) {
+  const communitySubject = buzzCommunitySubjectFromRelay(relayUrl);
+  if (!communitySubject) {
+    return { status: "unavailable", installations: [], default_installations: [] };
+  }
+  const discovered = runner(
+    run402Bin,
+    walletArgs(wallet, ["buzz", "install", "discover", "--community", communitySubject]),
+    { encoding: "utf8", shell: false },
+  );
+  if (discovered?.error || discovered?.status !== 0) {
+    return { status: "unavailable", installations: [], default_installations: [] };
+  }
+  let parsed;
+  try { parsed = parseStrictJson(String(discovered.stdout ?? ""), "Run402 community descriptor discovery output"); }
+  catch {
+    return { status: "invalid", installations: [], default_installations: [] };
+  }
+  const candidates = Array.isArray(parsed) ? parsed : [];
+  const verified = candidates.flatMap((descriptor) => descriptor?.status === "active"
+    && descriptor?.provider === "run402"
+    && descriptor?.buzz_community_subject === communitySubject
+    && typeof descriptor?.buzz_community_installation_id === "string"
+    && typeof descriptor?.org_id === "string"
+    && Number.isSafeInteger(descriptor?.descriptor_revision)
+    && typeof descriptor?.content_hash === "string"
+    && descriptor?.approval_event?.kind === 1
+    && ["owner", "admin"].includes(descriptor?.authority_membership?.role)
+    && typeof descriptor?.relay_self === "string"
+    ? [{
+        buzz_community_installation_id: descriptor.buzz_community_installation_id,
+        buzz_community_subject: descriptor.buzz_community_subject,
+        org_id: descriptor.org_id,
+        descriptor_revision: descriptor.descriptor_revision,
+        default_for_enrollment: descriptor.default_for_enrollment === true,
+        safe_policy_summary: descriptor.safe_policy_summary,
+        verified: true,
+      }]
+    : []);
+  return {
+    status: "run402_verified",
+    installations: verified,
+    default_installations: verified.filter((entry) => entry.default_for_enrollment),
+  };
+}
+
 export async function runSetup({
   pubkey,
   wallet,
   runner = defaultRunner,
   run402Bin,
   npmBin = "npm",
+  relayUrl = process.env.BUZZ_RELAY_URL,
   helperPath = join(HERE, "buzz-publish-proof.mjs"),
   temporaryRoot = tmpdir(),
   reporter = defaultReporter,
@@ -464,7 +526,7 @@ export async function runSetup({
         process.execPath,
         [helperPath, "--begin", beginPath, "--event", eventPath],
         "BUZZ_PUBLIC_PROOF_FAILED",
-        "Update Buzz or restore its public social publish/raw-event capability, then rerun setup with a fresh challenge.",
+        "Restore the released Buzz public social publish/raw-event capability, then rerun setup with a fresh challenge; no Buzz change is required.",
       );
       const completed = runJson(
         runner,
@@ -526,6 +588,47 @@ export async function runSetup({
     });
   }
 
+
+  const controlPlaneStatus = runJson(
+    runner,
+    "buzz_control_plane_status",
+    globalRun402Bin,
+    walletArgs(wallet, ["buzz", "status"]),
+    "RUN402_BUZZ_STATUS_FAILED",
+    "Update the Run402 CLI and retry the read-only Buzz control-plane status check.",
+  );
+  const remoteBuzz = controlPlaneStatus?.supported === true
+    && controlPlaneStatus?.buzz && typeof controlPlaneStatus.buzz === "object"
+    ? controlPlaneStatus.buzz
+    : null;
+  const communityDiscovery = remoteBuzz
+    ? discoverCommunityInstallations({ runner, run402Bin: globalRun402Bin, wallet, relayUrl })
+    : { status: "gateway_not_supported", installations: [], default_installations: [] };
+  const defaultInstallations = communityDiscovery.default_installations;
+  const coldStartFallbackAvailable = remoteBuzz?.eligibility?.cold_start_fallback_available === true;
+  const enrollmentResources = Array.isArray(remoteBuzz?.agent_enrollments) ? remoteBuzz.agent_enrollments : [];
+  const activeEnrollments = enrollmentResources.filter((entry) => entry?.status === "active");
+  const nonterminalEnrollments = enrollmentResources.filter((entry) => entry?.status === "pending" || entry?.status === "active");
+  const canSelectCommunityInstallation = remoteBuzz?.eligibility?.can_select_community_installation === true
+    || (remoteBuzz?.eligibility?.can_request_enrollment === true && nonterminalEnrollments.length === 0);
+  const canRequestEnrollment = canSelectCommunityInstallation && nonterminalEnrollments.length === 0;
+  const nextAction = canRequestEnrollment && activeEnrollments.length === 0 && defaultInstallations.length === 1
+    ? {
+        type: "offer_community_enrollment",
+        buzz_community_installation_id: defaultInstallations[0].buzz_community_installation_id,
+        org_id: defaultInstallations[0].org_id,
+        requires_approval: true,
+        fallback: coldStartFallbackAvailable ? "org_of_one" : null,
+      }
+    : canRequestEnrollment && activeEnrollments.length === 0 && defaultInstallations.length > 1
+      ? {
+          type: "resolve_ambiguous_community_installation",
+          candidate_ids: defaultInstallations.map((entry) => entry.buzz_community_installation_id),
+          requires_approval: true,
+          fallback: coldStartFallbackAvailable ? "org_of_one" : null,
+        }
+      : { type: "offer_contextual_test", requires_approval: true };
+
   return {
     status: "ready",
     cli: { version: capability.version, state: cliState, installation: "user_global_npm" },
@@ -547,11 +650,27 @@ export async function runSetup({
       status: finalLink.effective_status,
       state: linkState,
     },
-    deployment: "none",
-    next_action: {
-      type: "offer_contextual_test",
-      requires_approval: true,
+    control_plane: {
+      protocol: "run402.buzz-control-plane.v1",
+      supported: controlPlaneStatus?.supported === true,
+      skill_installation: { status: "installed", authoritative: false },
+      human_adoption: {
+        status: Array.isArray(remoteBuzz?.human_adoptions) && remoteBuzz.human_adoptions.length > 0 ? "observed" : "none",
+        resources: Array.isArray(remoteBuzz?.human_adoptions) ? remoteBuzz.human_adoptions : [],
+      },
+      community_installation: {
+        status: communityDiscovery.status,
+        resources: communityDiscovery.installations,
+      },
+      agent_enrollment: {
+        status: activeEnrollments.length > 0 ? "active"
+          : nonterminalEnrollments.some((entry) => entry?.status === "pending") ? "pending" : "none",
+        resources: Array.isArray(remoteBuzz?.agent_enrollments) ? remoteBuzz.agent_enrollments : [],
+      },
+      cold_start_fallback_available: coldStartFallbackAvailable,
     },
+    deployment: "none",
+    next_action: nextAction,
   };
 }
 

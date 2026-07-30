@@ -70,6 +70,10 @@ run402 identity link list
 
 This links two separately held public identities through fresh signatures; it never accepts a Nostr private key and never grants authentication, authorization, ownership, deployment, transfer, or payment authority. Buzz users should follow the self-contained [`run402-buzz` getting started guide](../buzz/README.md); these low-level commands remain the debugging boundary, not a competing onboarding flow.
 
+### Buzz community control plane
+
+`run402 buzz status` reports skill installation, human adoption, community installation, and this agent's enrollment independently, and safely reports `supported: false` against an older gateway. Goal-shaped workflows are `buzz adopt`, `buzz install`, and `buzz enroll`; explicit decisions are `buzz adopt complete|cancel`, `buzz install activate|update|revoke`, and `buzz approve|deny|revoke`. `buzz install discover --community <buzz:community:host>` lists Run402-owned active descriptors without authentication. Activation alone accepts the ordinary Buzz kind-1 approval proof; updates and revocation are Run402-owner decisions and require no new Buzz signature. All print JSON to stdout, advice to stderr, have zero spend impact, and never accept Nostr/wallet secrets, session material, service keys, delegates, or payment credentials. Failure JSON preserves the gateway's code-specific `next_actions`, exact repair `field`, and retry safety; never replace it with a generic edit-and-retry. See the [Fizz/Honey examples](../buzz/references/community-control-plane.md).
+
 ### Buy from an x402 URL
 
 ```bash

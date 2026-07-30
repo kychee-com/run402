@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -105,7 +105,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -256,6 +256,15 @@ const SURFACE: Capability[] = [
   // Identity-link mutations stay out of MCP v1: the CLI/OpenClaw group hands
   // public content to Buzz's signer boundary and never accepts a Nostr secret.
   { id: "identity_links",    endpoint: "/identity-links/v1 + /identity-link-proofs/v1/:id", mcp: null, cli: "identity:link", openclaw: "identity:link" },
+  // Buzz signing remains outside MCP: status and every mutation preserve an
+  // exact CLI/SDK handoff without collecting Nostr private keys.
+  { id: "buzz_status",       endpoint: "GET /agent/v1/whoami",                               mcp: null, cli: "buzz:status",  openclaw: "buzz:status" },
+  { id: "buzz_adopt",        endpoint: "/buzz-human-adoptions/v1",                            mcp: null, cli: "buzz:adopt",   openclaw: "buzz:adopt" },
+  { id: "buzz_install",      endpoint: "/buzz-community-installations/v1",                    mcp: null, cli: "buzz:install", openclaw: "buzz:install" },
+  { id: "buzz_enroll",       endpoint: "/buzz-agent-enrollments/v1",                          mcp: null, cli: "buzz:enroll",  openclaw: "buzz:enroll" },
+  { id: "buzz_approve",      endpoint: "POST /buzz-agent-enrollments/v1/:id/approve",          mcp: null, cli: "buzz:approve", openclaw: "buzz:approve" },
+  { id: "buzz_deny",         endpoint: "POST /buzz-agent-enrollments/v1/:id/deny",             mcp: null, cli: "buzz:deny",    openclaw: "buzz:deny" },
+  { id: "buzz_revoke",       endpoint: "DELETE /buzz-agent-enrollments/v1/:id",                mcp: null, cli: "buzz:revoke",  openclaw: "buzz:revoke" },
 
   // ── Named wallets / profiles (local-only management; selection via --wallet) ─
   { id: "wallets_list",      endpoint: "(local)",                              mcp: null, cli: "wallets:list",     openclaw: "wallets:list" },
@@ -626,6 +635,13 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   pay_url: "pay.fetch",
   status: null,
   identity_links: "identityLinks.nostr.begin",
+  buzz_status: "buzz.status",
+  buzz_adopt: "buzz.adopt",
+  buzz_install: "buzz.install",
+  buzz_enroll: "buzz.enrollments.request",
+  buzz_approve: "buzz.enrollments.approve",
+  buzz_deny: "buzz.enrollments.deny",
+  buzz_revoke: "buzz.enrollments.revoke",
 
   // Named wallets — local profile management (no SDK gateway method).
   wallets_list: null,
@@ -1287,6 +1303,24 @@ describe("SDK surface alignment", () => {
       "identityLinks.list",
       "identityLinks.getProof",
       "identityLinks.revoke",
+      // One goal-shaped CLI group owns the staged Buzz lifecycle. MCP is
+      // intentionally omitted because it has no safe Nostr signing boundary.
+      "buzz.enroll",
+      "buzz.humanAdoptions.create",
+      "buzz.humanAdoptions.list",
+      "buzz.humanAdoptions.get",
+      "buzz.humanAdoptions.complete",
+      "buzz.humanAdoptions.cancel",
+      "buzz.communityInstallations.create",
+      "buzz.communityInstallations.list",
+      "buzz.communityInstallations.get",
+      "buzz.communityInstallations.activate",
+      "buzz.communityInstallations.update",
+      "buzz.communityInstallations.revoke",
+      "buzz.communityInstallations.discoverPublicDescriptors",
+      "buzz.communityInstallations.getPublicDescriptor",
+      "buzz.enrollments.list",
+      "buzz.enrollments.get",
       // Portable archive export uses `archives.export` as the happy path.
       // create/wait are low-level operation primitives used by the CLI/MCP
       // wrappers to surface progress and idempotent resume behavior.

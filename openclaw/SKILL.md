@@ -89,6 +89,8 @@ Selection precedence for every command: `--wallet <name>` flag > `RUN402_WALLET`
 
 `run402 identity link nostr begin|complete` proves that a separately-held Buzz/Nostr public key and the active Run402 EOA represent one agent principal. It is public attribution only—never authentication, organization ownership, grants, payment, deployment authority, or a transfer target. Never request or pass an `nsec`, Nostr private key, mnemonic, seed, or derivation path. Buzz must sign through its own `buzz social publish --content` boundary; fetch the exact seven-field event with `buzz social event --event`, then complete from a file or stdin. Existing project/deploy/transfer reads render immutable provenance after linking. There is intentionally no MCP identity-link mutation tool in v1.
 
+`run402 buzz status` reports the independent skill, adoption, community-installation, and enrollment states. Use CLI/SDK goal workflows for adoption, installation, and bounded per-agent enrollment; do not infer org membership or grants from a shared skill or public Buzz proof. MCP remains read-only for this signing-sensitive workflow and returns exact CLI handoffs. Community enrollment creates no agent org membership or payment authority and preserves the org-of-one fallback when absent, ambiguous, declined, denied, stale, expired, or revoked.
+
 ## Project credentials
 
 After `provision`, two keys are cached in the selected profile's `credentials/project-keys.v1.json`:

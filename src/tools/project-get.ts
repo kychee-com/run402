@@ -42,6 +42,8 @@ export async function handleProjectGet(args: {
       `| api_calls | ${n(u.api_calls)} / ${n(u.api_calls_limit)} |`,
       `| storage_bytes | ${n(u.storage_bytes)} / ${n(u.storage_bytes_limit)} |`,
       `| created_at | ${p.created_at} |`,
+      ``,
+      `Buzz note: community installation and agent enrollment never change this project's organization owner. Use \`run402 buzz status\` and \`run402 buzz enroll show <buzzae_id>\` to inspect enrollment-scoped grant provenance; Buzz signing remains outside MCP.`,
     ];
 
     return { content: [{ type: "text", text: lines.join("\n") }] };

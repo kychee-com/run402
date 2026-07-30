@@ -3,6 +3,8 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
+import { createHash } from "node:crypto";
+import { schnorr } from "@noble/curves/secp256k1.js";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(ROOT, "..");
@@ -60,6 +62,7 @@ describe("run402-buzz distributable package", () => {
       "scripts/buzz-publish-proof.mjs",
       "scripts/strict-json.mjs",
       "references/identity-and-security.md",
+      "references/community-control-plane.md",
       "references/receipts.md",
     ]) assert.ok(existsSync(join(ROOT, dependency)), dependency);
   });
@@ -104,5 +107,35 @@ describe("run402-buzz distributable package", () => {
 
   it("has balanced Markdown fences", () => {
     assert.equal((SKILL.match(/^```/gm) ?? []).length % 2, 0);
+  });
+
+  it("freezes the unchanged Buzz v0.5.2 community-authority boundary", () => {
+    const fixture = JSON.parse(readFileSync(join(ROOT, "fixtures/buzz-v0.5.2-community-authority.json"), "utf8"));
+    const eventId = (event) => createHash("sha256")
+      .update(JSON.stringify([0, event.pubkey, event.created_at, event.kind, event.tags, event.content]))
+      .digest("hex");
+    const verifies = (event) => event.id === eventId(event)
+      && schnorr.verify(Buffer.from(event.sig, "hex"), Buffer.from(event.id, "hex"), Buffer.from(event.pubkey, "hex"));
+    assert.equal(fixture.buzz.version, "0.5.2");
+    assert.equal(fixture.buzz.release_tag_commit, "3e48f1b2365d326ee1c9582448d86a99b44ecd5d");
+    assert.equal(fixture.buzz.custom_run402_capability_required, false);
+    assert.equal(fixture.relay.normalized_community_subject, "buzz:community:acme.communities.buzz.xyz");
+    assert.ok(fixture.relay.nip11.supported_nips.includes(43));
+    assert.equal(fixture.relay.nip11.self, fixture.membership_event.pubkey);
+    assert.equal(fixture.approval_event.kind, 1);
+    assert.equal(fixture.approval_event.content, fixture.approval_content);
+    assert.equal(fixture.approval_event.pubkey, fixture.authority.pubkey);
+    assert.equal(fixture.membership_event.kind, 13534);
+    assert.deepEqual(fixture.membership_event.tags[0], ["-"]);
+    assert.deepEqual(fixture.membership_event.tags[1], ["member", fixture.authority.pubkey, "owner"]);
+    assert.equal(verifies(fixture.approval_event), true);
+    assert.equal(verifies(fixture.membership_event), true);
+    assert.deepEqual(fixture.forbidden_custom_dependencies, {
+      event_kinds: [],
+      nip11_extensions: [],
+      deep_links: [],
+      desktop_surfaces: [],
+      buzz_release_required: false,
+    });
   });
 });

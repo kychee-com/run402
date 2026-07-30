@@ -17,7 +17,7 @@ function isSignedProtocolTimestampException(
   line: string,
 ): boolean {
   return (
-    relativePath === "src/namespaces/identity-links.types.ts" &&
+    ["src/namespaces/identity-links.types.ts", "src/namespaces/buzz.types.ts"].includes(relativePath) &&
     name === "created_at" &&
     type.startsWith("number") &&
     line.includes("Signed NIP-01 Unix seconds; converting it changes the event id and signature.")

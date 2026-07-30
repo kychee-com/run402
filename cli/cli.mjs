@@ -41,6 +41,7 @@ Commands:
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
   org         Org membership, invites & audit (whoami, list, member, invite, audit)
   identity    Public proof-backed external agent identity links
+  buzz        Buzz human/community/agent control-plane workflows
   grants      Per-project capability grants for agent/CI principals (create, revoke)
   delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
   events      What happened to your project since you last looked (cursored feed)
@@ -249,6 +250,11 @@ switch (cmd) {
   }
   case "identity": {
     const { run } = await import("./lib/identity.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "buzz": {
+    const { run } = await import("./lib/buzz.mjs");
     await run(sub, rest);
     break;
   }
