@@ -2,6 +2,17 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — the mainnet on-ramp is visible from the tool surface
+
+- **MCP (fix):** `allowance_export`'s description and `init`'s buyer next-step
+  now state that `request_faucet` funds Base **Sepolia** only, and that paying
+  with real USDC on Base **mainnet** means sending USDC to the exported address.
+  The path already existed and was documented in `llms-mcp.txt`, but nothing in
+  the tool surface mentioned it — so an agent running
+  `RUN402_MCP_PROFILE=buyer`, which exists precisely so it can work from the
+  tool surface alone, would follow the faucet, settle on testnet, and never
+  discover that a real payment was possible.
+
 ## Unreleased — buyer-profile guidance stops naming tools it withholds
 
 - **MCP (fix):** under `RUN402_MCP_PROFILE=buyer`, guidance no longer recommends

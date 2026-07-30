@@ -1133,7 +1133,7 @@ server.tool(
 
 server.tool(
   "allowance_export",
-  "Export the local agent allowance address. Safe to share publicly.",
+  "Export the local agent allowance address. Safe to share publicly. This is also the MAINNET on-ramp: to pay with real USDC on Base mainnet, send USDC to this address — `request_faucet` only funds Base Sepolia testnet, which cannot settle a real payment.",
   allowanceExportSchema,
   async (args) => handleAllowanceExport(args),
 );

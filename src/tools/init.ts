@@ -162,7 +162,14 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
     lines.push(
       isToolAvailable("set_tier")
         ? `**Next:** Use \`set_tier\` to subscribe to a tier (e.g. prototype).`
-        : `**Ready to buy.** Use \`generate_image\` ($0.03 per image) — no tier needed.`,
+        // The faucet funds Base Sepolia ONLY, so following this path settles on
+        // testnet and never produces a real payment. The mainnet on-ramp exists
+        // (send USDC to the exported address) but was documented ONLY in
+        // llms-mcp.txt — invisible to an agent that reads the tool surface and
+        // nothing else, which is exactly what the buyer profile is for.
+        : `**Ready to buy.** Use \`generate_image\` ($0.03 per image) — no tier needed.\n` +
+          `Note: the faucet funds Base Sepolia (testnet). To pay on Base MAINNET with real USDC, ` +
+          `send USDC to your address from \`allowance_export\` first.`,
     );
   } else {
     lines.push(
