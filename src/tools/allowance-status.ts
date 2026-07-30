@@ -1,5 +1,6 @@
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { noAllowanceHint } from "../tool-profiles.js";
 
 export const allowanceStatusSchema = {};
 
@@ -14,7 +15,7 @@ export async function handleAllowanceStatus(
         content: [
           {
             type: "text",
-            text: "No agent allowance found. Use `allowance_create` to create one.",
+            text: noAllowanceHint(),
           },
         ],
       };

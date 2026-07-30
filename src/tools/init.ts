@@ -4,6 +4,7 @@ import { getConfigDir } from "../config.js";
 import { readAllowance, saveAllowance } from "../allowance.js";
 import { loadKeyStore } from "../keystore.js";
 import { getSdk } from "../sdk.js";
+import { isToolAvailable } from "../tool-profiles.js";
 
 const TEMPO_RPC = "https://rpc.moderato.tempo.xyz/";
 
@@ -149,12 +150,26 @@ export async function handleInit(args: { rail?: "x402" | "mpp" }): Promise<McpRe
     `| projects | ${projectCount} active |`,
   );
 
-  // Next step
+  // Next step.
+  //
+  // Under a buy-only profile BOTH branches were wrong, not just the no-tier one.
+  // A tier buys PROJECT HOSTING; `set_tier`, `provision_postgres_project` and
+  // `deploy` are none of them registered for a buyer, so whichever branch fired
+  // sent them to tools they do not have — and told them to do something they did
+  // not come to do. A buyer's next step is the purchase, tier or no tier.
   lines.push(``);
   if (tierDisplay === "(none)") {
-    lines.push(`**Next:** Use \`set_tier\` to subscribe to a tier (e.g. prototype).`);
+    lines.push(
+      isToolAvailable("set_tier")
+        ? `**Next:** Use \`set_tier\` to subscribe to a tier (e.g. prototype).`
+        : `**Ready to buy.** Use \`generate_image\` ($0.03 per image) — no tier needed.`,
+    );
   } else {
-    lines.push(`**Ready to deploy.** Use \`provision_postgres_project\` to create a project, then \`deploy\` to ship a release.`);
+    lines.push(
+      isToolAvailable("provision_postgres_project")
+        ? `**Ready to deploy.** Use \`provision_postgres_project\` to create a project, then \`deploy\` to ship a release.`
+        : `**Ready to buy.** Use \`generate_image\` ($0.03 per image).`,
+    );
   }
 
   return { content: [{ type: "text", text: lines.join("\n") }] };

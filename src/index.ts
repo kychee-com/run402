@@ -349,6 +349,7 @@ import { deleteSignerSchema, handleDeleteSigner } from "./tools/delete-signer.js
 // New tools — service status (public, unauthenticated)
 import { serviceStatusSchema, handleServiceStatus } from "./tools/service-status.js";
 import { serviceHealthSchema, handleServiceHealth } from "./tools/service-health.js";
+import { TOOL_PROFILES, activeProfile, requestedProfileName } from "./tool-profiles.js";
 
 function currentPackageVersion(): string {
   const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8");
@@ -378,22 +379,13 @@ const server = new McpServer({
  * requires a local wallet.
  *
  * Unset (the default) registers everything, so existing users see no change.
+ *
+ * The list itself lives in `./tool-profiles.js` so TOOL MODULES can consult it
+ * when choosing what to recommend. Filtering registration without filtering the
+ * advice we print sends a buyer to tools they do not have — see that file's
+ * header for the two places that happened.
  */
-const TOOL_PROFILES: Record<string, readonly string[]> = {
-  buyer: [
-    "generate_image",
-    "init",
-    "allowance_status",
-    "allowance_export",
-    "check_balance",
-    "request_faucet",
-  ],
-};
-// NOTE: `x402_price_check` is deliberately absent — it lives on the remote
-// discovery server, not here. Listing it would be a phantom entry that silently
-// registers nothing, which is exactly how a typo in this list would hide.
-
-const requestedProfile = process.env.RUN402_MCP_PROFILE?.trim();
+const requestedProfile = requestedProfileName;
 if (requestedProfile && !TOOL_PROFILES[requestedProfile]) {
   // Fail loudly. Silently falling back to the full surface would make a typo
   // look like the profile is not working; silently registering NOTHING would be
@@ -406,7 +398,6 @@ if (requestedProfile && !TOOL_PROFILES[requestedProfile]) {
   );
   process.exit(1);
 }
-const activeProfile = requestedProfile ? TOOL_PROFILES[requestedProfile] : null;
 const registeredFromProfile = new Set<string>();
 
 // Filter at registration rather than editing 198 call sites. A tool outside the

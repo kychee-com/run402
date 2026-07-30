@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
+import { isToolAvailable } from "../tool-profiles.js";
 
 export const requestFaucetSchema = {
   address: z
@@ -43,7 +44,9 @@ export async function handleRequestFaucet(args: {
           {
             type: "text",
             text: "Error: No address provided and no local agent allowance found. " +
-              "Use `allowance_create` to create an allowance first, or pass an `address` parameter.",
+              (isToolAvailable("allowance_create")
+                ? "Use `allowance_create` to create an allowance first, or pass an `address` parameter."
+                : "Use `init` to create and fund an allowance, or pass an `address` parameter."),
           },
         ],
         isError: true,

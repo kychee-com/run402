@@ -1,4 +1,5 @@
 import { getSdk } from "../sdk.js";
+import { noAllowanceHint } from "../tool-profiles.js";
 
 export const allowanceExportSchema = {};
 
@@ -13,7 +14,7 @@ export async function handleAllowanceExport(
       content: [
         {
           type: "text",
-          text: "No agent allowance found. Use `allowance_create` to create one.",
+          text: noAllowanceHint(),
         },
       ],
       isError: true,

@@ -2,6 +2,22 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — buyer-profile guidance stops naming tools it withholds
+
+- **MCP (fix):** under `RUN402_MCP_PROFILE=buyer`, guidance no longer recommends
+  tools the profile does not register. `allowance_status` / `allowance_export` /
+  `request_faucet` pointed at `allowance_create`, and `init` closed with
+  *"Next: use `set_tier`"* — none of which a buyer has, and a tier is not what
+  someone buying a $0.03 image came for. They now point at `init` and
+  `generate_image` respectively. The full (default) surface is unchanged.
+- **MCP (internal):** `TOOL_PROFILES` moves to `src/tool-profiles.ts` so tool
+  modules can ask `isToolAvailable()` before naming a tool, with a shared
+  `noAllowanceHint()` for the sentence five call sites needed.
+- **Tests:** new `profile-guidance.test.mjs` fails the build if guidance
+  reachable under a profile names a tool that profile withholds. It is
+  reachability-aware (a tool outside the profile cannot show its own guidance)
+  and scans whole statements rather than lines.
+
 ## Unreleased — `npx run402-mcp` can pay
 
 - **MCP (fix):** `run402-mcp` now declares `@x402/evm`, `@x402/fetch`, `viem`
