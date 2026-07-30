@@ -31,6 +31,7 @@ try {
     shell: false,
   });
   assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /--wallet/);
   assert.match(help.stdout, /--pubkey/);
   const installedTests = spawnSync(process.execPath, [
     "--test",
@@ -39,6 +40,7 @@ try {
   ], { cwd: workspace, encoding: "utf8", shell: false, maxBuffer: 1024 * 1024 });
   assert.equal(installedTests.status, 0, installedTests.stderr || installedTests.stdout);
   const receipts = readFileSync(join(installed, "references", "receipts.md"), "utf8");
+  assert.match(receipts, /Profile selection: `explicit_argument`/);
   assert.match(receipts, /Deployment: `none`/);
   assert.match(receipts, /Would you like me to try it\?/);
   console.log(JSON.stringify({ status: "pass", source, installed, skill: "run402-buzz" }));

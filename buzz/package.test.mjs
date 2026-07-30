@@ -54,6 +54,7 @@ describe("run402-buzz distributable package", () => {
     }
     assert.doesNotMatch(SKILL, /integrations\/run402-for-buzz|\.\.\//);
     assert.match(SKILL, /node <skill-directory>\/scripts\/setup\.mjs/);
+    assert.match(SKILL, /--wallet <profile>/);
     for (const dependency of [
       "scripts/setup.mjs",
       "scripts/buzz-publish-proof.mjs",
@@ -86,6 +87,9 @@ describe("run402-buzz distributable package", () => {
     assert.match(SKILL, /Do not build anything until the user affirmatively agrees/);
     assert.match(SKILL, /plan\/rehearsal path before apply/);
     assert.match(SKILL, /Independently request the live endpoint/);
+    assert.match(SKILL, /run402 wallets new <profile>/);
+    assert.match(SKILL, /selection_source: explicit_argument/);
+    assert.match(SKILL, /do not rely on ambient selection/);
   });
 
   it("contains no embedded secret values or secret-export instructions", () => {

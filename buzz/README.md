@@ -1,6 +1,6 @@
 # Run402 for Buzz
 
-`run402-buzz` is a self-contained skill for a managed [Buzz](https://github.com/block/buzz) coding agent. It installs or updates the user's global Run402 CLI when needed, initializes a dedicated agent profile when absent, links the agent's separate public Buzz/Nostr and Run402 wallet identities, verifies the result, and stops before creating or deploying an application.
+`run402-buzz` is a self-contained skill for a managed [Buzz](https://github.com/block/buzz) coding agent. It installs or updates the user's global Run402 CLI when needed, deliberately creates or selects one named agent wallet profile, links the agent's separate public Buzz/Nostr and Run402 identities, verifies the result, and stops before creating or deploying an application.
 
 The keys remain separate. Buzz signs inside its managed-agent/OS boundary, while Run402 signs through its ordinary EOA profile. The skill never asks for, reads, derives, exports, or shares either private key.
 
@@ -23,7 +23,11 @@ Then tell the intended managed agent in Buzz:
 @Builder, set up Run402.
 ```
 
-That explicit request authorizes the disclosed public link when it is absent. The skill reuses compatible existing state, otherwise installs `run402@latest` in the user's global npm installation, runs `run402 init`, confirms a dedicated agent EOA, creates or reuses the public identity link, and verifies it. It then reports `Run402 is ready` with `Deployment: none`, proposes one small contextual test or demo, and waits for your approval before writing an app, selecting a tier, creating a project, provisioning, spending, or deploying.
+That explicit request authorizes the disclosed public link when it is absent. The agent inspects `run402 wallets list`, chooses a stable dedicated label such as `buzz-fizz`, and creates that exact profile separately with `run402 wallets new <name>` only when it is genuinely absent. It does not change the global active wallet or bind the shared Buzz workspace.
+
+The setup helper then requires both `--wallet <profile>` and the public Buzz key. It refuses unknown labels, pins every Run402 invocation it makes to that explicit wallet, initializes the existing profile when needed, confirms a dedicated agent EOA, rejects a different active Nostr link, creates or reuses the intended public link, and verifies it. Before a link mutation and again at readiness it reports the profile label, public wallet address, and `selection_source: explicit_argument`. Ambient environment variables, directory bindings, and global defaults cannot redirect the ceremony.
+
+The agent then reports `Run402 is ready` with `Deployment: none`, proposes one small contextual test or demo, and waits for your approval before writing an app, selecting a tier, creating a project, provisioning, spending, or deploying.
 
 ## Compatibility and contents
 

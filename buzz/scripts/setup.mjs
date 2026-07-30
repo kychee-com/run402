@@ -9,6 +9,7 @@ import { parseStrictJson } from "./strict-json.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REQUIRED_CAPABILITIES = [
   ["init", "--help"],
+  ["wallets", "current", "--help"],
   ["org", "whoami", "--help"],
   ["identity", "link", "nostr", "begin", "--help"],
   ["identity", "link", "nostr", "complete", "--help"],
@@ -68,15 +69,23 @@ function globalRun402Executable(runner, npmBin) {
   return process.platform === "win32" ? join(prefix, "run402.cmd") : join(prefix, "bin", "run402");
 }
 
-function requiredFlag(argv, name) {
+function requiredFlag(argv, name, nextAction) {
   const index = argv.indexOf(name);
   const value = index >= 0 ? argv[index + 1] : null;
   if (!value || value.startsWith("--")) {
     throw new BuzzSetupError("input", "BAD_USAGE", `${name} is required`, {
-      nextAction: `Run this setup again with ${name} set to the public Buzz agent npub or hex pubkey.`,
+      nextAction,
     });
   }
   return value;
+}
+
+function walletArgs(wallet, args) {
+  return ["--wallet", wallet, ...args];
+}
+
+function defaultReporter(event) {
+  process.stderr.write(`${JSON.stringify(event)}\n`);
 }
 
 function parseEnvelope(stderr) {
@@ -138,16 +147,26 @@ function runJson(runner, stage, command, args, fallbackCode, fallbackAction, opt
   }
 }
 
-function isCompatible(runner, run402Bin) {
-  const version = runner(run402Bin, ["--version"], { encoding: "utf8", shell: false });
-  if (version?.error || version?.status !== 0) return { compatible: false, version: null };
+function installedVersion(runner, npmBin) {
+  const result = runner(npmBin, ["list", "-g", "run402", "--depth=0", "--json"], { encoding: "utf8", shell: false });
+  if (result?.error || result?.status !== 0) return null;
+  try {
+    const metadata = parseStrictJson(String(result.stdout ?? ""), "global npm package metadata");
+    const version = metadata?.dependencies?.run402?.version;
+    return typeof version === "string" && version.trim() ? version.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function isCompatible(runner, run402Bin, wallet, version) {
   for (const args of REQUIRED_CAPABILITIES) {
-    const result = runner(run402Bin, args, { encoding: "utf8", shell: false });
+    const result = runner(run402Bin, walletArgs(wallet, args), { encoding: "utf8", shell: false });
     if (result?.error || result?.status !== 0) {
-      return { compatible: false, version: String(version.stdout ?? "").trim() || null };
+      return { compatible: false, version };
     }
   }
-  return { compatible: true, version: String(version.stdout ?? "").trim() || null };
+  return { compatible: true, version };
 }
 
 function needsInitialization(result) {
@@ -161,6 +180,39 @@ function walletAddress(subject) {
   if (typeof subject !== "string") return null;
   const match = subject.match(/(0x[0-9a-fA-F]{40})$/);
   return match?.[1] ?? null;
+}
+
+function assertExistingWalletProfile(profile, expectedLabel) {
+  const address = typeof profile?.address === "string" && /^0x[0-9a-fA-F]{40}$/.test(profile.address)
+    ? profile.address
+    : null;
+  if (profile?.local_label !== expectedLabel || !address) {
+    throw new BuzzSetupError(
+      "profile_selection",
+      "RUN402_WALLET_NOT_FOUND",
+      `No existing Run402 wallet profile named '${expectedLabel}' was found.`,
+      {
+        nextAction: `Confirm the intended label, then create it separately with: run402 wallets new ${expectedLabel}`,
+        details: { profile_label: expectedLabel },
+      },
+    );
+  }
+  if (profile?.source !== "flag" || profile?.source_detail !== "--wallet") {
+    throw new BuzzSetupError(
+      "profile_selection",
+      "RUN402_WALLET_SELECTION_MISMATCH",
+      "Run402 did not confirm that the requested profile came from the explicit --wallet argument.",
+      {
+        nextAction: `Stop and inspect run402 --wallet ${expectedLabel} wallets current before retrying setup.`,
+        details: {
+          profile_label: expectedLabel,
+          observed_source: profile?.source ?? null,
+          observed_source_detail: profile?.source_detail ?? null,
+        },
+      },
+    );
+  }
+  return address;
 }
 
 function assertAgentWhoami(whoami) {
@@ -189,12 +241,42 @@ function assertAgentWhoami(whoami) {
   return { principal, authenticator, address };
 }
 
-function activeMatchingLink(links, pubkey) {
+function activeNostrLinks(links) {
   const list = Array.isArray(links?.identity_links) ? links.identity_links : [];
-  return list.find((link) =>
+  return list.filter((link) =>
+    link?.kind === "nostr_nip01"
+    && link?.effective_status === "active",
+  );
+}
+
+function linkMatchesPubkey(link, pubkey) {
+  return link?.public_subject === pubkey || link?.display_subject === pubkey;
+}
+
+function activeMatchingLink(links, pubkey) {
+  return activeNostrLinks(links).find((link) =>
     link?.effective_status === "active"
-    && (link.public_subject === pubkey || link.display_subject === pubkey),
+    && linkMatchesPubkey(link, pubkey),
   ) ?? null;
+}
+
+function assertNoConflictingNostrLink(links, pubkey, profileLabel) {
+  const conflict = activeNostrLinks(links).find((link) => !linkMatchesPubkey(link, pubkey));
+  if (!conflict) return;
+  throw new BuzzSetupError(
+    "link_inspection",
+    "RUN402_NOSTR_IDENTITY_CONFLICT",
+    `Run402 wallet profile '${profileLabel}' is already linked to another active Nostr identity.`,
+    {
+      nextAction: `Stop and inspect the existing public link with: run402 --wallet ${profileLabel} identity link show ${conflict.identity_link_id}`,
+      details: {
+        profile_label: profileLabel,
+        identity_link_id: conflict.identity_link_id ?? null,
+        public_subject: conflict.public_subject ?? null,
+        display_subject: conflict.display_subject ?? null,
+      },
+    },
+  );
 }
 
 function verifyObservedLink(link, proof, pubkey, principalId) {
@@ -211,12 +293,19 @@ function verifyObservedLink(link, proof, pubkey, principalId) {
 
 export async function runSetup({
   pubkey,
+  wallet,
   runner = defaultRunner,
   run402Bin,
   npmBin = "npm",
   helperPath = join(HERE, "buzz-publish-proof.mjs"),
   temporaryRoot = tmpdir(),
+  reporter = defaultReporter,
 } = {}) {
+  if (typeof wallet !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(wallet) || wallet === "default") {
+    throw new BuzzSetupError("input", "BAD_USAGE", "A named Run402 wallet profile is required.", {
+      nextAction: "Choose the intended dedicated profile from `run402 wallets list`, then retry with --wallet <profile>.",
+    });
+  }
   if (typeof pubkey !== "string" || pubkey.length === 0) {
     throw new BuzzSetupError("input", "BAD_USAGE", "A public Buzz agent npub or hex pubkey is required.", {
       nextAction: "Read the current Buzz agent pubkey from the managed-agent context and retry setup.",
@@ -226,8 +315,8 @@ export async function runSetup({
   const globalRun402Bin = run402Bin ?? globalRun402Executable(runner, npmBin);
 
   let cliState = "reused";
-  let capability = isCompatible(runner, globalRun402Bin);
-  if (!capability.compatible) {
+  let version = installedVersion(runner, npmBin);
+  const installOrUpdateCli = () => {
     run(
       runner,
       "cli_install",
@@ -237,7 +326,49 @@ export async function runSetup({
       "Fix the user's global npm installation, then rerun setup.",
     );
     cliState = "installed_or_updated";
-    capability = isCompatible(runner, globalRun402Bin);
+    version = installedVersion(runner, npmBin);
+    if (!version) {
+      throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI is unavailable after installation.", {
+        nextAction: "Verify the global npm bin is on PATH, then rerun setup.",
+      });
+    }
+  };
+  if (!version) installOrUpdateCli();
+
+  let walletInspectionCapability = runner(
+    globalRun402Bin,
+    walletArgs(wallet, ["wallets", "current", "--help"]),
+    { encoding: "utf8", shell: false },
+  );
+  if (walletInspectionCapability?.error || walletInspectionCapability?.status !== 0) {
+    if (cliState === "reused") installOrUpdateCli();
+    walletInspectionCapability = runner(
+      globalRun402Bin,
+      walletArgs(wallet, ["wallets", "current", "--help"]),
+      { encoding: "utf8", shell: false },
+    );
+    if (walletInspectionCapability?.error || walletInspectionCapability?.status !== 0) {
+      throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI cannot inspect an explicitly selected wallet profile.", {
+        nextAction: "Verify the global npm bin is on PATH and update run402, then rerun setup.",
+        details: { version },
+      });
+    }
+  }
+
+  const selectedProfile = runJson(
+    runner,
+    "profile_selection",
+    globalRun402Bin,
+    walletArgs(wallet, ["wallets", "current"]),
+    "RUN402_PROFILE_INSPECTION_FAILED",
+    `Inspect the intended profile with run402 --wallet ${wallet} wallets current, then rerun setup.`,
+  );
+  const selectedWalletAddress = assertExistingWalletProfile(selectedProfile, wallet);
+
+  let capability = isCompatible(runner, globalRun402Bin, wallet, version);
+  if (!capability.compatible) {
+    if (cliState === "reused") installOrUpdateCli();
+    capability = isCompatible(runner, globalRun402Bin, wallet, version);
     if (!capability.compatible) {
       throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI still lacks required setup or identity-link commands.", {
         nextAction: "Verify the global npm bin is on PATH and update run402, then rerun setup.",
@@ -247,7 +378,7 @@ export async function runSetup({
   }
 
   let profileState = "reused";
-  let whoamiResult = runner(globalRun402Bin, ["org", "whoami"], { encoding: "utf8", shell: false });
+  let whoamiResult = runner(globalRun402Bin, walletArgs(wallet, ["org", "whoami"]), { encoding: "utf8", shell: false });
   if (whoamiResult?.error || whoamiResult?.status !== 0) {
     if (!needsInitialization(whoamiResult)) {
       boundedFailure(
@@ -261,12 +392,12 @@ export async function runSetup({
       runner,
       "profile_initialization",
       globalRun402Bin,
-      ["init"],
+      walletArgs(wallet, ["init"]),
       "RUN402_INIT_FAILED",
       "Resolve the reported Run402 initialization problem, then rerun setup.",
     );
     profileState = "initialized";
-    whoamiResult = runner(globalRun402Bin, ["org", "whoami"], { encoding: "utf8", shell: false });
+    whoamiResult = runner(globalRun402Bin, walletArgs(wallet, ["org", "whoami"]), { encoding: "utf8", shell: false });
     if (whoamiResult?.error || whoamiResult?.status !== 0) {
       boundedFailure(
         "principal_confirmation",
@@ -285,16 +416,32 @@ export async function runSetup({
     });
   }
   const identity = assertAgentWhoami(whoami);
+  if (identity.address.toLowerCase() !== selectedWalletAddress.toLowerCase()) {
+    throw new BuzzSetupError("principal_confirmation", "RUN402_WALLET_ADDRESS_MISMATCH", "The selected profile address changed between local inspection and authenticated principal confirmation.", {
+      nextAction: `Stop and inspect run402 --wallet ${wallet} wallets current plus org whoami before retrying.`,
+      details: { profile_label: wallet, wallet_address: selectedWalletAddress },
+    });
+  }
   let links = runJson(
     runner,
     "link_inspection",
     globalRun402Bin,
-    ["identity", "link", "list"],
+    walletArgs(wallet, ["identity", "link", "list"]),
     "IDENTITY_LINK_LIST_FAILED",
     "Inspect the active Run402 profile's identity links, then rerun setup.",
   );
+  assertNoConflictingNostrLink(links, pubkey, wallet);
   let link = activeMatchingLink(links, pubkey);
   let linkState = "reused";
+
+  reporter({
+    status: "progress",
+    stage: "profile_selection",
+    mutation_state: "none",
+    profile_label: wallet,
+    wallet_address: identity.address,
+    selection_source: "explicit_argument",
+  });
 
   if (!link) {
     const privateTempDir = mkdtempSync(join(temporaryRoot, "run402-buzz-"));
@@ -306,7 +453,7 @@ export async function runSetup({
         runner,
         "link_begin",
         globalRun402Bin,
-        ["identity", "link", "nostr", "begin", "--pubkey", pubkey, "--visibility", "public"],
+        walletArgs(wallet, ["identity", "link", "nostr", "begin", "--pubkey", pubkey, "--visibility", "public"]),
         "IDENTITY_LINK_BEGIN_FAILED",
         "Resolve the challenge error and rerun setup; an expired challenge requires a fresh event.",
       );
@@ -323,7 +470,7 @@ export async function runSetup({
         runner,
         "link_complete",
         globalRun402Bin,
-        ["identity", "link", "nostr", "complete", "--event-file", eventPath],
+        walletArgs(wallet, ["identity", "link", "nostr", "complete", "--event-file", eventPath]),
         "IDENTITY_LINK_COMPLETE_FAILED",
         "Use the reported stable code to correct the public event or create a fresh challenge, then rerun setup.",
       );
@@ -332,7 +479,7 @@ export async function runSetup({
         runner,
         "link_reinspection",
         globalRun402Bin,
-        ["identity", "link", "list"],
+        walletArgs(wallet, ["identity", "link", "list"]),
         "IDENTITY_LINK_LIST_FAILED",
         "Inspect the completed identity link before retrying setup.",
       );
@@ -354,7 +501,7 @@ export async function runSetup({
     runner,
     "link_verification",
     globalRun402Bin,
-    ["identity", "link", "show", link.identity_link_id],
+    walletArgs(wallet, ["identity", "link", "show", link.identity_link_id]),
     "IDENTITY_LINK_SHOW_FAILED",
     "Inspect the public proof by identity-link id, then rerun setup.",
   );
@@ -364,7 +511,7 @@ export async function runSetup({
     runner,
     "final_identity_verification",
     globalRun402Bin,
-    ["org", "whoami"],
+    walletArgs(wallet, ["org", "whoami"]),
     "RUN402_WHOAMI_FAILED",
     "Verify the dedicated agent profile and intended public identity link, then rerun setup.",
   );
@@ -382,7 +529,12 @@ export async function runSetup({
   return {
     status: "ready",
     cli: { version: capability.version, state: cliState, installation: "user_global_npm" },
-    profile: { state: profileState },
+    profile: {
+      state: profileState,
+      profile_label: wallet,
+      wallet_address: finalIdentity.address,
+      selection_source: "explicit_argument",
+    },
     buzz_identity: {
       public_subject: finalLink.public_subject,
       display_subject: finalLink.display_subject,
@@ -405,11 +557,15 @@ export async function runSetup({
 
 async function main() {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
-    console.log("Usage: node setup.mjs --pubkey <Buzz agent npub|hex>");
+    console.log("Usage: node setup.mjs --wallet <existing-profile> --pubkey <Buzz agent npub|hex>");
     return;
   }
   try {
-    const result = await runSetup({ pubkey: requiredFlag(process.argv.slice(2), "--pubkey") });
+    const argv = process.argv.slice(2);
+    const result = await runSetup({
+      wallet: requiredFlag(argv, "--wallet", "Choose the intended dedicated profile from `run402 wallets list`, then retry with --wallet <profile>."),
+      pubkey: requiredFlag(argv, "--pubkey", "Run this setup again with --pubkey set to the public Buzz agent npub or hex pubkey."),
+    });
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     const body = error instanceof BuzzSetupError

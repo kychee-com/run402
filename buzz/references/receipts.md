@@ -7,10 +7,12 @@ Report public identifiers and observed state only. Never include private keys, m
 ```markdown
 ### Run402 is ready
 - Buzz agent: `npub1…`
+- Profile label: `buzz-fizz`
+- Profile selection: `explicit_argument`
 - Run402 wallet: `0x…`
 - Principal: `prin_…` (`agent`)
 - CLI: `<version>` (`reused|installed_or_updated`, user-global npm)
-- Profile: `reused|initialized`
+- Profile state: `reused|initialized`
 - Identity link: `idlnk_…` (`active`, `reused|created`)
 - Deployment: `none`
 
@@ -24,6 +26,7 @@ Do not claim an active tier, project, allowance balance, or deployed application
 ```markdown
 ### Deployment complete
 - Buzz agent: `npub1…`
+- Profile label: `buzz-fizz` (`explicit_argument`)
 - Run402 wallet: `0x…`
 - Principal: `prin_…`
 - Identity link: `idlnk_…` (public dual proof; separate keys)

@@ -17,6 +17,14 @@ Buzz's Nostr key is protected by the OS credential store and managed-agent harne
 
 The integration therefore never accepts or derives from the Nostr private key. Both systems sign the same public, server-authored challenge using their existing signer boundaries.
 
+## Why wallet selection is explicit
+
+Run402 supports convenient ambient wallet selection through an environment variable, a repository binding, `wallets use`, or the default profile. A shared Buzz workspace can contain several valid agent profiles, so merely confirming `agent` plus `siwx_eoa` does not prove that the active profile belongs to the current Buzz agent.
+
+The skill therefore chooses one stable named profile, creates it separately with `run402 wallets new <name>` only when deliberately intended, and passes `--wallet <name>` to every profile-sensitive command. The setup helper refuses a missing label before `init` so a typo cannot create a new wallet. It also refuses a profile already linked to another active Nostr identity. This does not cryptographically derive one key from the other; the label is local selection metadata and the public dual proof remains the identity link.
+
+Do not run `wallets use` or add a directory binding just to satisfy the skill. Explicit per-command selection avoids changing behavior for a human or another agent that shares the machine or workspace.
+
 ## Public proof
 
 The server authors an RFC 8785 canonical payload binding the action, audience, challenge, expiry, nonce, external principal id, Base CAIP-10 EOA, Nostr pubkey, kind 1, explicit public visibility, and EIP-191 scheme. The EOA signs those exact UTF-8 bytes. Buzz signs a kind-1 event whose content is the canonical two-field object `{public_payload,wallet_signature}`.
