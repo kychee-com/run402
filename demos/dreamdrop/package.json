@@ -1,0 +1,26 @@
+{
+  "name": "dreamdrop",
+  "type": "module",
+  "workspaces": [".wasp/out/*", ".wasp/out/sdk/wasp"],
+  "scripts": {
+    "build": "npx --yes --package npm@11.11.0 --package @wasp.sh/wasp-cli@0.25.0 wasp build",
+    "build:hosted": "npm run build && vite build"
+  },
+  "dependencies": {
+    "@run402/sdk": "4.10.2",
+    "lucide-react": "0.468.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-router": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "prisma": "5.19.1",
+    "typescript": "6.0.3",
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9",
+    "@wasp.sh/spec": "file:.wasp/spec/"
+  }
+}
