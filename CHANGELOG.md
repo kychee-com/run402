@@ -2,6 +2,23 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — `npx run402-mcp` can pay
+
+- **MCP (fix):** `run402-mcp` now declares `@x402/evm`, `@x402/fetch`, `viem`
+  and `mppx` as real `dependencies`. Three were in `devDependencies` and `mppx`
+  was absent entirely, so `npx run402-mcp` — the install line in the MCP
+  registry entry, the README, `llms-mcp.txt` and our docs — could not make a
+  paid request: `generate_image` returned the raw `402` challenge and never
+  paid. A dev-only declaration is present exactly where tests run and absent
+  exactly where users install, so the paid path passed CI while being unusable
+  by every consumer.
+- **Tests:** `cli-paid-stack-deps.test.mjs` becomes `paid-stack-deps.test.mjs`
+  and now gates **every published application** (CLI *and* MCP server), not
+  just the CLI, adding an assertion that no paid-stack peer hides in
+  `devDependencies`. The previous gate's own docstring described this failure
+  happening once before in the CLI; it was pointed at only one of the two
+  packages it needed to cover.
+
 ## Unreleased — binary-safe content sources
 
 - **SDK:** string sources paired with known binary paths or MIME types now fail
