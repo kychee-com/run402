@@ -67,7 +67,7 @@ Commands:
   operator    Operator (human/email) session — login, then overview across your wallets
   service     Run402 service health and availability (status, health)
   cache       Inspect and invalidate the SSR origin cache (inspect, invalidate)
-  doctor      Health and config diagnostics (machine-readable with --json)
+  doctor      Health and config diagnostics (JSON by default; includes --buzz preflight)
   dev         Run Astro dev with Run402 env + credentials in scope
   logs        Fetch function logs by request id (--request-id req_...)
 

@@ -15,6 +15,21 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **Tests:** deterministic rebuild, archive safety, retained-version behavior,
   every documented target, transport fallback, and pre-mutation integrity
   failure are covered by package and installer smoke tests.
+- **Buzz doctor:** `run402 doctor --buzz --buzz-agent <subject>` now checks the
+  exact managed agent, executable/runtime compatibility, first-party origins,
+  released Buzz capabilities, and pinned public relay connectivity before any
+  setup mutation. Failures carry destination-specific, copyable repairs; the
+  optional diagnostic funnel stores aggregate enum counters only and supports
+  `RUN402_TELEMETRY=0`.
+- **Demo-first adoption:** the SDK and `run402 buzz adopt offer` expose durable,
+  inert HTTPS ownership handoffs after a verified deployment. The short Buzz
+  signing attempt is created only after direct human login and fresh passkey;
+  the existing direct-adoption flow remains an explicitly advanced fallback.
+- **MCP and skill:** `whoami` renders pending offer handoffs without adding a
+  signing mutation, and the `run402-buzz` skill now demonstrates a contextual
+  deployment before offering human co-ownership. Testnet faucet/tier plumbing
+  stays in structured receipts instead of conversational price language, and
+  the founder agent remains an owner after adoption.
 
 ## Unreleased — a paid call says what it paid
 

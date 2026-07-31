@@ -17,6 +17,8 @@ Installing, copying, updating, or discovering this skill performs no setup and a
 
 Read [references/installation.md](references/installation.md) when installing, updating, repairing, or reporting this skill. Use first-party discovery at `https://run402.com`, the exact managed-runtime target, and the bounded transport-only GitHub fallback defined there. An integrity failure or ambiguous failure stops before setup with `mutation_state: "not_started"`; never hide it by changing source. Installation itself remains inert. If the human's original Buzz request also explicitly asked to set up, initialize, install, or connect Run402, continue with the setup workflow below only after the installed package and target path are verified.
 
+The outer bootstrap may run `npm install -g run402@latest` when the Run402 CLI is absent or incompatible. That happens before setup starts; the setup helper itself never installs or upgrades software.
+
 ## Public-link disclosure
 
 The canonical install instructions tell the user that setup publishes a durable public kind-1 Nostr proof associating the agent's public Buzz identity with its public Run402 wallet. Revocation changes current status but does not erase the Nostr event or historical Run402 proof. A Buzz-managed event may also expose the owner's public NIP-OA attestation. None of these public identities gains authentication, authorization, organization ownership, spending, or transfer authority from the link.
@@ -34,24 +36,20 @@ Treat the user's explicit setup request after that disclosure as authorization t
 - Accept only a standalone seven-field kind-1 event with `tags: []` or the fixture-frozen empty-condition NIP-OA `auth` tag. Never rewrite a signed event.
 
 Read [references/identity-and-security.md](references/identity-and-security.md) when reasoning about custody, proof permanence, compromise, revocation, or production adoption. Read [references/community-control-plane.md](references/community-control-plane.md) whenever human adoption, community installation, another Buzz agent, enrollment, drift, or fallback is present. Read [references/receipts.md](references/receipts.md) before reporting readiness, deployment, or failure.
+Read [references/conversations.md](references/conversations.md) when rendering the initial demo-first conversation or an explicit early-adoption request; preserve its sequence and authority disclosures while replacing the example application with a contextual one.
 
 ## Set up Run402
 
-1. Read the current managed agent's public Nostr `npub` or 64-character hex pubkey from Buzz's supplied context. Never obtain it by accessing private key material.
+1. Read [references/preflight.md](references/preflight.md) and run its zero-mutation outer bootstrap plus the exact `run402 --wallet <profile> doctor --buzz --buzz-agent <subject>` diagnostic before any setup helper or mutation. Resolve the current managed agent's public subject only from Buzz-supplied public context. Return every independent block and its exact action in one response. A passing doctor means environment readiness only.
 2. Resolve this installed skill's directory from the loaded supporting-file paths. Do not assume the repository root or current working directory contains the helper.
-3. Choose one stable, dedicated wallet label for this managed agent, such as `buzz-fizz`. The label is ordinary local metadata; do not derive it from either private key. Inspect local profiles first:
+3. Reuse the unique dedicated profile label proven by preflight. When the doctor reports `BUZZ_PREFLIGHT_WALLET_PROFILE_NOT_FOUND`, auto-execute its exact safe `run402 wallets new <profile>` action and rerun the complete preflight. Never call `wallets use`, rely on ambient selection, or create a profile before the read-only doctor has reported that exact deliberate action.
+
+   To inspect existing local labels without changing selection:
 
    ```sh
    run402 wallets list
    ```
 
-   Reuse the exact intended label when it exists. If it is genuinely absent, create it deliberately as a separate step:
-
-   ```sh
-   run402 wallets new <profile>
-   ```
-
-   Never call `run402 wallets use` or bind the shared Buzz workspace merely for setup. Creating the wallet separately is intentional: the setup helper refuses unknown labels so a typo cannot silently create and link a new principal.
 4. Run the self-contained setup state machine with that exact profile:
 
    ```sh
@@ -60,9 +58,9 @@ Read [references/identity-and-security.md](references/identity-and-security.md) 
      --pubkey <public-agent-npub-or-hex>
    ```
 
-   The helper invokes commands with argument arrays and `shell: false`. It:
+   The helper reruns or validates a fresh target/profile/runtime/relay-bound passing doctor report before its first mutation. It invokes ordinary commands with argument arrays and `shell: false`. It:
 
-   - reuses a compatible user-global `run402` CLI or runs `npm install -g run402@latest` when missing/incompatible;
+   - requires the outer bootstrap to have prepared a compatible user-global `run402` CLI and refuses to install or update it after setup has started;
    - requires the named profile to exist before it can run initialization;
    - passes `--wallet <profile>` to every Run402 invocation it makes, overriding ambient environment, directory, and global defaults without changing them;
    - uses the existing `run402 init` workflow only as `run402 --wallet <profile> init`, and only when that existing profile is not initialized;
@@ -116,10 +114,37 @@ After affirmative approval:
 2. Avoid another planning interview unless missing information materially changes scope, cost, external effects, or safety.
 3. Reconfirm `run402 --wallet <profile> org whoami` and the intended active identity link before mutation, using the `profile_label` from the ready receipt.
 4. Inspect the repository and current Run402 capabilities. Prefer an existing linked project when appropriate and distinguish the acting principal from the organization that owns the project.
-5. Use the prototype or lowest-risk viable tier. Request funding only for a capability or persistence level the approved application actually needs.
+5. For the canonical pre-launch demo, use the Base Sepolia faucet and prototype tier automatically. Do not mention a price, cost, purchase, spend, or funding decision in ordinary Buzz conversation. Preserve `network: base_sepolia`, `funding_source: faucet`, and the observed tier in the expanded receipt. For a real-value rail, use the ordinary spend-disclosure boundary.
 6. Validate locally and use the applicable plan/rehearsal path before apply.
 7. Deploy through the existing global Run402 CLI with `--wallet <profile>` on every profile-sensitive command; do not rely on ambient selection.
 8. Treat deploy success as intermediate. Independently request the live endpoint and exercise the application's critical flow.
 9. Post the structured deployment or failure receipt from [references/receipts.md](references/receipts.md). Report only behavior actually verified.
 
+10. After successful live verification, create or reuse one durable adoption offer when the founder-agent organization is eligible:
+
+    ```sh
+    run402 --wallet <profile> buzz adopt offer \
+      --org <owning-org-id> \
+      --identity-link <active-identity-link-id> \
+      --deployment-context-file <verified-deployment-context.json>
+    ```
+
+    The deployment context contains the verified project, release, live URL, source revision, and verification timestamp from the receipt. Offer creation is inert: it creates no challenge, human principal, membership, transfer, shared credential, or authority change.
+
+11. Lead with the verified result and the normal HTTPS handoff, using this shape:
+
+    ```text
+    Done — <application> is live at <verified URL>. Would you like to become a co-owner of the Run402 organization that owns this deployment? Become an owner: <handoff_url>
+    ```
+
+    Do not expose a `buzz://` URL, verification code, raw resource id, event JSON, terminal command, or testnet price in chat. The hosted handoff owns login, passkey enrollment/step-up, the short Buzz signing attempt, and completion.
+
+12. Poll authoritative state with `run402 --wallet <profile> buzz adopt offer show <offer-id>`. Opening the link never implies success. Report completion only when the offer is `completed` and the linked adoption is active; say that the human is now a co-owner and that the founder agent remains an owner. For `available`, `cancelled`, or `ineligible`, preserve the exact state and gateway-authored recovery action.
+
 Do not require a second deployment or ownership transfer for a quick test. If the user later adopts the application for production, preview the ordinary organization transfer and retain only explicitly scoped agent authority.
+
+## Honor explicit early adoption
+
+Demo-first is the canonical bootstrap conversation, not a barrier to direct human intent. If the verified Buzz owner explicitly asks to become an owner before a demo, create or reuse the same durable offer without `deployment_context`, post its normal HTTPS handoff, and poll it exactly as above. Do not deploy an application as an unrequested prerequisite.
+
+Keep `run402 buzz adopt direct ...`, raw event completion, and clipboard/manual handling as advanced compatibility or recovery paths only. Never present them when the offer-capable status reports `capabilities.human_adoption_offers: true`.

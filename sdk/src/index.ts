@@ -582,7 +582,7 @@ export type * from "./namespaces/projects.types.js";
 export { IdentityLinks, NostrIdentityLinks } from "./namespaces/identity-links.js";
 export type * from "./namespaces/identity-links.js";
 export type * from "./namespaces/identity-links.types.js";
-export { Buzz, BuzzHumanAdoptions, BuzzCommunityInstallations, BuzzAgentEnrollments } from "./namespaces/buzz.js";
+export { Buzz, BuzzHumanAdoptions, BuzzHumanAdoptionOffers, BuzzCommunityInstallations, BuzzAgentEnrollments } from "./namespaces/buzz.js";
 export type * from "./namespaces/buzz.types.js";
 export type * from "./namespaces/secrets.js";
 export type * from "./namespaces/sender-domain.js";

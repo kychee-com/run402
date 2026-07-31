@@ -26,6 +26,13 @@ describe("MCP Buzz control-plane formatting", () => {
           memberships: [],
           buzz: {
             skill_installation: { status: "client_managed" },
+            capabilities: { human_adoption_offers: true, browser_fragment_v1: true },
+            human_adoption_offers: [{
+              buzz_human_adoption_offer_id: `buzzhao_${"4".repeat(32)}`,
+              org_id: `org_${"2".repeat(32)}`,
+              status: "available",
+              handoff_url: `https://console.run402.com/buzz/adoptions/buzzhao_${"4".repeat(32)}`,
+            }],
             human_adoptions: [],
             community_installations: [{
               buzz_community_installation_id: `buzzci_${"1".repeat(32)}`,
@@ -60,6 +67,8 @@ describe("MCP Buzz control-plane formatting", () => {
     const text = result.content.map((entry) => entry.text).join("\n");
     assert.match(text, /buzz_control_plane: supported/);
     assert.match(text, /community_installations: 1/);
+    assert.match(text, /https:\/\/console\.run402\.com\/buzz\/adoptions\/buzzhao_/);
+    assert.match(text, /run402 buzz adopt offer show buzzhao_/);
     assert.match(text, /run402 buzz enroll --help/);
     assert.match(text, /select_buzz_community_installation/);
     assert.match(text, /buzz_community_installation_id/);

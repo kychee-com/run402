@@ -259,7 +259,9 @@ const SURFACE: Capability[] = [
   // Buzz signing remains outside MCP: status and every mutation preserve an
   // exact CLI/SDK handoff without collecting Nostr private keys.
   { id: "buzz_status",       endpoint: "GET /agent/v1/whoami",                               mcp: null, cli: "buzz:status",  openclaw: "buzz:status" },
-  { id: "buzz_adopt",        endpoint: "/buzz-human-adoptions/v1",                            mcp: null, cli: "buzz:adopt",   openclaw: "buzz:adopt" },
+  // The one goal-shaped `buzz adopt` command owns the canonical offer flow and
+  // its explicitly advanced direct-adoption compatibility path.
+  { id: "buzz_adopt",        endpoint: "/buzz-human-adoption-offers/v1 + /buzz-human-adoptions/v1", mcp: null, cli: "buzz:adopt", openclaw: "buzz:adopt" },
   { id: "buzz_install",      endpoint: "/buzz-community-installations/v1",                    mcp: null, cli: "buzz:install", openclaw: "buzz:install" },
   { id: "buzz_enroll",       endpoint: "/buzz-agent-enrollments/v1",                          mcp: null, cli: "buzz:enroll",  openclaw: "buzz:enroll" },
   { id: "buzz_approve",      endpoint: "POST /buzz-agent-enrollments/v1/:id/approve",          mcp: null, cli: "buzz:approve", openclaw: "buzz:approve" },
@@ -636,7 +638,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   status: null,
   identity_links: "identityLinks.nostr.begin",
   buzz_status: "buzz.status",
-  buzz_adopt: "buzz.adopt",
+  buzz_adopt: "buzz.offerAdoption",
   buzz_install: "buzz.install",
   buzz_enroll: "buzz.enrollments.request",
   buzz_approve: "buzz.enrollments.approve",
@@ -1305,7 +1307,12 @@ describe("SDK surface alignment", () => {
       "identityLinks.revoke",
       // One goal-shaped CLI group owns the staged Buzz lifecycle. MCP is
       // intentionally omitted because it has no safe Nostr signing boundary.
+      "buzz.adopt",
       "buzz.enroll",
+      "buzz.humanAdoptionOffers.create",
+      "buzz.humanAdoptionOffers.get",
+      "buzz.humanAdoptionOffers.cancel",
+      "buzz.humanAdoptionOffers.createAttempt",
       "buzz.humanAdoptions.create",
       "buzz.humanAdoptions.list",
       "buzz.humanAdoptions.get",
@@ -1409,6 +1416,9 @@ describe("CLI/MCP SDK-boundary guard", () => {
       // lexical `fetch(` scan cannot distinguish `sdk.pay.fetch` from raw HTTP.
       ["cli/lib/pay.mjs", [/\.pay\.fetch\(/]],
       ["src/tools/pay-url.ts", [/\.pay\.fetch\(/]],
+      // Doctor deliberately measures anonymous origin reachability itself so
+      // DNS/TLS/redirect failures remain distinguishable from SDK/API errors.
+      ["cli/lib/buzz-doctor.mjs", [/\bfetch\(url,/]],
       // doctor-source-scan.mjs documents the canonical fix string for
       // browser-bearer scans — the string itself contains "auth.fetch()"
       // as the recommended replacement, not a real fetch call.

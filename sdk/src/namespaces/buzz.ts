@@ -11,7 +11,10 @@ import type {
   BuzzCommunityInstallationCreateInput,
   BuzzCommunityInstallationUpdateInput,
   BuzzHumanAdoption,
+  BuzzHumanAdoptionAttemptCreateInput,
   BuzzHumanAdoptionCreateInput,
+  BuzzHumanAdoptionOffer,
+  BuzzHumanAdoptionOfferCreateInput,
   BuzzPublicCommunityDescriptor,
   BuzzPrincipalControlPlaneStatus,
 } from "./buzz.types.js";
@@ -89,6 +92,51 @@ export class BuzzHumanAdoptions {
       method: "DELETE",
       headers: headers(idempotencyKey),
       context: "cancelling Buzz human adoption",
+    });
+  }
+}
+
+/** Durable agent-created HTTPS handoffs. Creating an offer is inert; the human
+ * receives authority only after a separately authenticated, passkey-stepped-up
+ * browser attempt completes with the exact Buzz proof. */
+export class BuzzHumanAdoptionOffers {
+  constructor(private readonly client: Client) {}
+
+  async create(input: BuzzHumanAdoptionOfferCreateInput): Promise<BuzzHumanAdoptionOffer> {
+    rejectSecrets(input);
+    return this.client.request<BuzzHumanAdoptionOffer>("/buzz-human-adoption-offers/v1", {
+      method: "POST",
+      headers: headers(input.idempotencyKey),
+      body: {
+        org_id: required(input.organizationId, "organizationId", "creating Buzz human-adoption offer"),
+        identity_link_id: required(input.identityLinkId, "identityLinkId", "creating Buzz human-adoption offer"),
+        ...(input.deploymentContext ? { deployment_context: input.deploymentContext } : {}),
+      },
+      context: "creating Buzz human-adoption offer",
+    });
+  }
+
+  async get(id: string): Promise<BuzzHumanAdoptionOffer> {
+    return this.client.request<BuzzHumanAdoptionOffer>(`/buzz-human-adoption-offers/v1/${encodeURIComponent(required(id, "buzzHumanAdoptionOfferId", "reading Buzz human-adoption offer"))}`, {
+      context: "reading Buzz human-adoption offer",
+    });
+  }
+
+  async cancel(id: string, idempotencyKey?: string): Promise<BuzzHumanAdoptionOffer> {
+    return this.client.request<BuzzHumanAdoptionOffer>(`/buzz-human-adoption-offers/v1/${encodeURIComponent(required(id, "buzzHumanAdoptionOfferId", "cancelling Buzz human-adoption offer"))}`, {
+      method: "DELETE",
+      headers: headers(idempotencyKey),
+      context: "cancelling Buzz human-adoption offer",
+    });
+  }
+
+  async createAttempt(id: string, input: BuzzHumanAdoptionAttemptCreateInput): Promise<BuzzHumanAdoption> {
+    rejectSecrets(input);
+    return this.client.request<BuzzHumanAdoption>(`/buzz-human-adoption-offers/v1/${encodeURIComponent(required(id, "buzzHumanAdoptionOfferId", "creating Buzz human-adoption attempt"))}/attempts`, {
+      method: "POST",
+      headers: headers(input.idempotencyKey),
+      body: { callback_url: required(input.callbackUrl, "callbackUrl", "creating Buzz human-adoption attempt") },
+      context: "creating Buzz human-adoption attempt",
     });
   }
 }
@@ -236,11 +284,13 @@ export class BuzzAgentEnrollments {
 
 export class Buzz {
   readonly humanAdoptions: BuzzHumanAdoptions;
+  readonly humanAdoptionOffers: BuzzHumanAdoptionOffers;
   readonly communityInstallations: BuzzCommunityInstallations;
   readonly enrollments: BuzzAgentEnrollments;
 
   constructor(private readonly client: Client) {
     this.humanAdoptions = new BuzzHumanAdoptions(client);
+    this.humanAdoptionOffers = new BuzzHumanAdoptionOffers(client);
     this.communityInstallations = new BuzzCommunityInstallations(client);
     this.enrollments = new BuzzAgentEnrollments(client);
   }
@@ -258,6 +308,11 @@ export class Buzz {
   /** Goal-shaped alias for the canonical adoption initiation. */
   adopt(input: BuzzHumanAdoptionCreateInput): Promise<BuzzHumanAdoption> {
     return this.humanAdoptions.create(input);
+  }
+
+  /** Create the canonical conversational HTTPS handoff without starting consent. */
+  offerAdoption(input: BuzzHumanAdoptionOfferCreateInput): Promise<BuzzHumanAdoptionOffer> {
+    return this.humanAdoptionOffers.create(input);
   }
 
   /** Goal-shaped alias for the canonical community installation initiation. */

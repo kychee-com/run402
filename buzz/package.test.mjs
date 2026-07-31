@@ -66,9 +66,15 @@ describe("run402-buzz distributable package", () => {
     for (const dependency of [
       "scripts/setup.mjs",
       "scripts/buzz-publish-proof.mjs",
+      "scripts/doctor-report.mjs",
       "scripts/strict-json.mjs",
+      "fixtures/buzz-v0.5.2-cli-capabilities.json",
+      "fixtures/buzz-v0.5.2-browser-fragment-v1.json",
+      "fixtures/run402-buzz-doctor-v1-contract.json",
       "references/identity-and-security.md",
+      "references/preflight.md",
       "references/community-control-plane.md",
+      "references/conversations.md",
       "references/receipts.md",
       "references/installation.md",
     ]) assert.ok(existsSync(join(ROOT, dependency)), dependency);
@@ -100,6 +106,39 @@ describe("run402-buzz distributable package", () => {
     assert.match(SKILL, /run402 wallets new <profile>/);
     assert.match(SKILL, /selection_source: explicit_argument/);
     assert.match(SKILL, /do not rely on ambient selection/);
+    assert.match(SKILL, /doctor --buzz --buzz-agent/);
+    assert.match(SKILL, /environment readiness only/);
+  });
+
+  it("freezes the demo-first and explicit early-adoption conversations", () => {
+    const conversations = readFileSync(join(ROOT, "references", "conversations.md"), "utf8");
+    const demoFirst = conversations.slice(
+      conversations.indexOf("## Canonical demo-first conversation"),
+      conversations.indexOf("## Explicit early-adoption conversation"),
+    );
+    assert.ok(demoFirst.indexOf("Would you like me to try it?") < demoFirst.indexOf("church bulletin board is live"));
+    assert.ok(demoFirst.indexOf("church bulletin board is live") < demoFirst.indexOf("Become an owner: https://console.run402.com"));
+    assert.match(demoFirst, /I remain an owner/);
+    assert.doesNotMatch(demoFirst, /\$0\.10|price|cost|purchase|terminal|buzz:\/\//i);
+
+    const early = conversations.slice(conversations.indexOf("## Explicit early-adoption conversation"));
+    assert.ok(early.indexOf("Before the demo") < early.indexOf("Become an owner: https://console.run402.com"));
+    assert.match(early, /I remain an owner/);
+    assert.doesNotMatch(early, /\$0\.10|price|cost|purchase|terminal|buzz:\/\//i);
+  });
+
+  it("bootstraps shell, Node 22+, npm, and Run402 before setup mutation", () => {
+    const preflight = readFileSync(join(ROOT, "references", "preflight.md"), "utf8");
+    assert.match(preflight, /first executable setup stage/);
+    assert.match(preflight, /Node must be 22 or newer/);
+    assert.match(preflight, /npm install -g run402@latest/);
+    assert.match(preflight, /BUZZ_PREFLIGHT_SHELL_UNAVAILABLE/);
+    assert.match(preflight, /BUZZ_PREFLIGHT_NODE_UNAVAILABLE/);
+    assert.match(preflight, /BUZZ_PREFLIGHT_NODE_INCOMPATIBLE/);
+    assert.match(preflight, /BUZZ_PREFLIGHT_RUN402_UNAVAILABLE/);
+    assert.match(preflight, /mutation_state: "not_started"/);
+    assert.match(preflight, /human is not asked to paste it/);
+    assert.doesNotMatch(preflight, /brew install|cargo install|curl .*buzz/i);
   });
 
   it("contains no embedded secret values or secret-export instructions", () => {
@@ -143,6 +182,41 @@ describe("run402-buzz distributable package", () => {
       deep_links: [],
       desktop_surfaces: [],
       buzz_release_required: false,
+    });
+  });
+
+  it("freezes the unchanged Buzz v0.5.2 browser-fragment owner-consent boundary", () => {
+    const fixture = JSON.parse(readFileSync(join(ROOT, "fixtures/buzz-v0.5.2-browser-fragment-v1.json"), "utf8"));
+    const signed = JSON.parse(readFileSync(join(ROOT, "fixtures/buzz-v0.4.26-desktop-owner-negative.json"), "utf8")).event;
+    assert.equal(fixture.buzz_release.version, "0.5.2");
+    assert.equal(fixture.buzz_release.release_tag_commit, "3e48f1b2365d326ee1c9582448d86a99b44ecd5d");
+    assert.equal(fixture.buzz_release.run402_change_required, false);
+    assert.equal(fixture.deep_link.return_mode, "browser_fragment_v1");
+    assert.equal(fixture.deep_link.verification_code_pattern, "^[0-9]{6}$");
+    assert.equal(fixture.deep_link.callback_requirements.same_scheme_host_effective_port_as_origin, true);
+    assert.equal(fixture.signed_event.signing_principal, "desktop_owner");
+    assert.equal(fixture.signed_event.expected_kind, 24243);
+    assert.equal(fixture.expiry.expired_link_reaches_consent_surface, true);
+    assert.equal(fixture.expiry.expired_request_signing_rejected, true);
+    assert.equal(fixture.browser_callback.fragment_key, "buzz_bind");
+    assert.equal(fixture.browser_callback.payload_version, "v1");
+    const example = fixture.browser_callback.encoding_example;
+    const callback = new URL(example.callback_url);
+    callback.hash = `buzz_bind=v1.${Buffer.from(JSON.stringify(signed), "utf8").toString("base64url")}`;
+    assert.equal(callback.origin, example.expected_origin);
+    assert.equal(callback.pathname, example.expected_path);
+    assert.equal(callback.search, example.expected_query);
+    assert.equal(callback.hash, example.expected_fragment);
+    const encoded = callback.hash.slice("#buzz_bind=v1.".length);
+    assert.deepEqual(JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")), signed);
+    assert.equal(fixture.browser_callback.manual_fallback.available_after_browser_open_failure, true);
+    assert.deepEqual(fixture.forbidden_run402_dependencies, {
+      buzz_code_change: false,
+      custom_event_kind: false,
+      custom_desktop_route: false,
+      relay_handler: false,
+      runtime_flag: false,
+      new_buzz_release: false,
     });
   });
 });

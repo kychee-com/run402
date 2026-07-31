@@ -1,4 +1,13 @@
 export type BuzzHumanAdoptionStatus = "pending" | "active" | "expired" | "cancelled";
+export type BuzzHumanAdoptionOfferStatus = "available" | "completed" | "cancelled" | "ineligible";
+export type BuzzHumanAdoptionOfferIneligibleReason =
+  | "agent_inactive"
+  | "agent_not_sole_owner"
+  | "human_owner_exists"
+  | "identity_link_inactive"
+  | "owner_attestation_missing"
+  | "active_adoption_exists"
+  | "direct_adoption_pending";
 export type BuzzCommunityInstallationStatus = "pending" | "active" | "expired" | "revoked";
 export type BuzzAgentEnrollmentStatus = "pending" | "active" | "denied" | "expired" | "cancelled" | "revoked";
 export type BuzzEnrollmentMode = "manual" | "automatic";
@@ -72,14 +81,29 @@ export interface BuzzCommunityDescriptor {
 
 export interface BuzzHumanAdoption {
   buzz_human_adoption_id: string;
+  buzz_human_adoption_offer_id?: string | null;
   org_id: string;
   initiating_agent_principal_id?: string;
   identity_link_id?: string;
   expected_buzz_owner_subject?: string;
   status: BuzzHumanAdoptionStatus;
-  owner_proof_content: Record<string, unknown> | null;
+  owner_proof_content: {
+    deep_link: string;
+    challenge_id: string;
+    nonce: string;
+    verification_code: string;
+    audience: "buzz:nostr-identity";
+    action: "bind_nostr_identity";
+    protocol: "buzz-nostr-identity";
+    version: "1";
+    origin: string;
+    expires_at: string;
+    return: "clipboard" | "browser_fragment_v1";
+    callback_url: string | null;
+  } | null;
   owner_proof_event_id: string | null;
   adopting_human_principal_id: string | null;
+  target_human_principal_id?: string | null;
   membership_id: string | null;
   authority_effects: {
     human_membership_role: "owner";
@@ -195,6 +219,54 @@ export interface BuzzHumanAdoptionCreateInput {
   idempotencyKey?: string;
 }
 
+export interface BuzzHumanAdoptionDeploymentContext {
+  project_id: string;
+  release_id: string;
+  live_url: string;
+  source_revision: string;
+  verified_at: string;
+}
+
+export interface BuzzHumanAdoptionOffer {
+  buzz_human_adoption_offer_id: string;
+  org_id: string;
+  initiating_agent_principal_id: string;
+  identity_link_id: string;
+  expected_buzz_owner: {
+    nostr_subject: string;
+    evidence: "nip_oa_owner_attestation";
+    authoritative_for_run402: false;
+  };
+  status: BuzzHumanAdoptionOfferStatus;
+  handoff_url: string | null;
+  deployment_context: BuzzHumanAdoptionDeploymentContext | null;
+  current_buzz_human_adoption_id: string | null;
+  completed_buzz_human_adoption: {
+    buzz_human_adoption_id: string;
+    status: "active";
+    authority_effects: NonNullable<BuzzHumanAdoption["authority_effects"]>;
+  } | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  ineligible_at: string | null;
+  ineligible_reason: BuzzHumanAdoptionOfferIneligibleReason | null;
+  next_actions: BuzzNextAction[];
+}
+
+export interface BuzzHumanAdoptionOfferCreateInput {
+  organizationId: string;
+  identityLinkId: string;
+  deploymentContext?: BuzzHumanAdoptionDeploymentContext;
+  idempotencyKey?: string;
+}
+
+export interface BuzzHumanAdoptionAttemptCreateInput {
+  callbackUrl: string;
+  idempotencyKey?: string;
+}
+
 export interface BuzzCommunityInstallationCreateInput {
   organizationId: string;
   buzzCommunitySubject: string;
@@ -235,6 +307,16 @@ export interface BuzzCapabilityStatus {
 
 export interface BuzzPrincipalControlPlaneStatus {
   skill_installation: { status: "client_managed" };
+  capabilities?: {
+    human_adoption_offers?: boolean;
+    browser_fragment_v1?: boolean;
+  };
+  human_adoption_offers?: Array<{
+    buzz_human_adoption_offer_id: string;
+    org_id: string;
+    status: BuzzHumanAdoptionOfferStatus;
+    handoff_url: string | null;
+  }>;
   human_adoptions: Array<{
     buzz_human_adoption_id: string;
     org_id: string;

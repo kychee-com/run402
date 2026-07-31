@@ -21,11 +21,13 @@ The four independent states are:
 
 Canonical workflows:
   run402 buzz status
-  run402 buzz adopt --org <org_id> --identity-link <idlnk_id>
+  run402 buzz adopt offer --org <org_id> --identity-link <idlnk_id> [--deployment-context-file <json>]
   run402 buzz install --org <org_id> --community <buzz:community:host> --authority <hex-pubkey>
   run402 buzz enroll --installation <buzzci_id> --identity-link <idlnk_id> --grants-file <json> --expires-at <ISO-8601>
 
 Explicit consent/decision commands:
+  run402 buzz adopt offer show <buzzhao_id>
+  run402 buzz adopt offer cancel <buzzhao_id>
   run402 buzz adopt complete <buzzha_id> --event-file <owner-event.json>
   run402 buzz adopt cancel <buzzha_id>
   run402 buzz install activate <buzzci_id> --proof-file <authority-proof.json>
@@ -36,6 +38,7 @@ Explicit consent/decision commands:
   run402 buzz revoke <buzzae_id>
 
 Advanced recovery reads:
+  run402 buzz adopt direct --org <org_id> --identity-link <idlnk_id>
   run402 buzz adopt list --org <org_id>
   run402 buzz adopt show <buzzha_id>
   run402 buzz install list --org <org_id>
@@ -93,6 +96,7 @@ async function status(args) {
 
 async function adopt(args) {
   const [operation, ...rest] = args;
+  if (operation === "offer") return adoptionOffer(rest);
   if (operation === "complete") {
     const values = ["--event-file", "--idempotency-key"];
     const a = normalizeArgv(rest);
@@ -121,15 +125,56 @@ async function adopt(args) {
     return invoke(() => getSdk().buzz.humanAdoptions.get(id));
   }
 
-  const a = normalizeArgv(args);
+  const directArgs = operation === "direct" ? rest : args;
+  const a = normalizeArgv(directArgs);
   const values = ["--org", "--identity-link", "--idempotency-key"];
   assertKnownFlags(a, values, values);
-  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt --org <org_id> --identity-link <idlnk_id>" });
+  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt direct --org <org_id> --identity-link <idlnk_id>" });
   return invoke(() => getSdk({ authMode: "wallet" }).buzz.adopt({
     organizationId: requiredFlag(a, "--org"),
     identityLinkId: requiredFlag(a, "--identity-link"),
     idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
   }));
+}
+
+async function adoptionOffer(args) {
+  const [operation, ...rest] = args;
+  if (operation === "show") {
+    const a = normalizeArgv(rest);
+    assertKnownFlags(a);
+    const [id] = requirePositionalCount(a, [], { min: 1, max: 1, command: "run402 buzz adopt offer show <buzzhao_id>" });
+    return invoke(() => getSdk({ authMode: "wallet" }).buzz.humanAdoptionOffers.get(id));
+  }
+  if (operation === "cancel") {
+    const a = normalizeArgv(rest);
+    const values = ["--idempotency-key"];
+    assertKnownFlags(a, values, values);
+    const [id] = requirePositionalCount(a, values, { min: 1, max: 1, command: "run402 buzz adopt offer cancel <buzzhao_id>" });
+    return invoke(() => getSdk({ authMode: "wallet" }).buzz.humanAdoptionOffers.cancel(id, flagValue(a, "--idempotency-key") ?? undefined));
+  }
+  const a = normalizeArgv(args);
+  const values = ["--org", "--identity-link", "--deployment-context-file", "--idempotency-key"];
+  assertKnownFlags(a, values, values);
+  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt offer --org <org_id> --identity-link <idlnk_id>" });
+  const deploymentPath = flagValue(a, "--deployment-context-file");
+  return invoke(async () => {
+    const client = getSdk({ authMode: "wallet" });
+    const status = await client.buzz.status();
+    if (!status.buzz?.capabilities?.human_adoption_offers) {
+      fail({
+        code: "BUZZ_ADOPTION_OFFERS_UNSUPPORTED",
+        message: "The selected Run402 gateway does not support conversational human-adoption offers; no mutation was attempted.",
+        hint: "Upgrade the run402 client/gateway. The advanced compatibility flow remains available as `run402 buzz adopt direct --org <org_id> --identity-link <idlnk_id>`.",
+        safe_to_retry: true,
+      });
+    }
+    return client.buzz.offerAdoption({
+      organizationId: requiredFlag(a, "--org"),
+      identityLinkId: requiredFlag(a, "--identity-link"),
+      deploymentContext: deploymentPath ? readJsonFile(deploymentPath, "--deployment-context-file") : undefined,
+      idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
+    });
+  });
 }
 
 async function install(args) {

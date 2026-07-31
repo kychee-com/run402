@@ -20,20 +20,33 @@ import {
   SCAN_SEVERITY,
 } from "./doctor-source-scan.mjs";
 import { doctorUpdateCheck } from "./update-check.mjs";
+import { buildBuzzDoctorReport, parseBuzzDoctorArgs } from "./buzz-doctor.mjs";
+import { queueBuzzDoctorTelemetry } from "./diagnostic-telemetry.mjs";
+import { fail } from "./sdk-errors.mjs";
 
 const HELP = `run402 doctor — Health and config diagnostics
 
 Usage:
   run402 doctor [--verbose] [--refresh] [--no-scan] [--scan-dir <D>]
+  run402 --wallet <profile> doctor --buzz --buzz-agent <npub-or-hex>
 
 Output:
   Stdout is a JSON report { ok, checks: [{ name, status, value?, hint?, message? }] }.
+  Buzz mode adds { mode: "buzz", contract_id, generated_at, mutation_state,
+  binding, telemetry } and uses check status ok|warning|blocked.
 
 Options:
   --verbose      Include extra detail (timing, error messages)
   --refresh      Wait for a bounded live npm version check for the run402 CLI
   --no-scan      Skip the source-tree scan (config / health checks only)
   --scan-dir D   Scan a custom directory instead of \`<cwd>/src\`
+  --buzz         Run only the zero-mutation Buzz setup preflight
+  --buzz-agent P Bind Buzz mode to the intended public agent npub or hex key
+
+Telemetry:
+  Buzz preflight sends only anonymous allowlisted start/pass/block counters.
+  No identity, wallet, relay, domain, path, command output, or installation id
+  is sent. Set RUN402_TELEMETRY=0 to disable sending and local queueing.
 
 Checks performed:
   - Config directory exists and is writable
@@ -50,6 +63,12 @@ Checks performed:
     auth.* calls in prerendered pages (R402_AUTH_PRERENDERED),
     direct mutation of internal.sessions.authz_version
     (R402_AUTH_AUTHZ_VERSION_PROHIBITED).
+
+Buzz mode checks (in order):
+  session_shell, node_runtime, run402_cli, buzz_cli, buzz_agent_target,
+  run402_api, run402_console, buzz_relay, wallet_profile.
+  Buzz mode is read-only and skips the ordinary allowance, tier, project,
+  operator, runtime-staleness, and source-tree checks.
 
 Exit codes:
   0  — all checks pass
@@ -95,6 +114,17 @@ export async function run(sub, args = []) {
   const skipScan = all.includes("--no-scan");
   const scanDirArgIdx = all.indexOf("--scan-dir");
   const scanDirOverride = scanDirArgIdx >= 0 ? all[scanDirArgIdx + 1] : null;
+
+  const buzzArgs = parseBuzzDoctorArgs(all);
+  if (buzzArgs.error) fail(buzzArgs.error);
+  if (buzzArgs.buzz) {
+    const startedAt = Date.now();
+    const report = await buildBuzzDoctorReport({ expectedSubjectHex: buzzArgs.expectedSubjectHex });
+    report.telemetry = queueBuzzDoctorTelemetry(report, { startedAt, finishedAt: Date.now() });
+    console.log(JSON.stringify(report, null, 2));
+    process.exitCode = report.ok ? 0 : 1;
+    return;
+  }
 
   const checks = [];
   const CONFIG_DIR = configDir();

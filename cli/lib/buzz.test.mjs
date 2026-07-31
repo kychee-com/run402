@@ -57,6 +57,69 @@ describe("run402 buzz CLI", () => {
     assert.match(stderr.join("\n"), /predates/);
   });
 
+  it("creates the canonical conversational adoption offer after capability detection", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "run402-buzz-offer-cli-"));
+    const contextPath = join(directory, "deployment.json");
+    const deploymentContext = {
+      project_id: "prj_church",
+      release_id: "rel_demo",
+      live_url: "https://church.run402.com/",
+      source_revision: "abc123",
+      verified_at: "2026-07-31T10:00:00.000Z",
+    };
+    writeFileSync(contextPath, JSON.stringify(deploymentContext));
+    let observed;
+    sdk = {
+      buzz: {
+        status: async () => ({
+          supported: true,
+          buzz: { capabilities: { human_adoption_offers: true, browser_fragment_v1: true } },
+        }),
+        offerAdoption: async (input) => {
+          observed = input;
+          return {
+            buzz_human_adoption_offer_id: `buzzhao_${"1".repeat(32)}`,
+            status: "available",
+            handoff_url: `https://console.run402.com/buzz/adoptions/buzzhao_${"1".repeat(32)}`,
+          };
+        },
+      },
+    };
+    try {
+      await run("adopt", [
+        "offer",
+        "--org", `org_${"2".repeat(32)}`,
+        "--identity-link", `idlnk_${"3".repeat(32)}`,
+        "--deployment-context-file", contextPath,
+        "--idempotency-key", "offer-after-demo-1",
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+    assert.deepEqual(observed.deploymentContext, deploymentContext);
+    assert.equal(observed.idempotencyKey, "offer-after-demo-1");
+    assert.deepEqual(authModes, ["wallet"]);
+    assert.equal(JSON.parse(stdout[0]).status, "available");
+    assert.doesNotMatch(stdout[0], /private|session|credential/i);
+  });
+
+  it("polls and cancels offers with the initiating agent wallet", async () => {
+    const calls = [];
+    sdk = {
+      buzz: {
+        humanAdoptionOffers: {
+          get: async (id) => { calls.push(["get", id]); return { status: "available" }; },
+          cancel: async (id, key) => { calls.push(["cancel", id, key]); return { status: "cancelled" }; },
+        },
+      },
+    };
+    const id = `buzzhao_${"1".repeat(32)}`;
+    await run("adopt", ["offer", "show", id]);
+    await run("adopt", ["offer", "cancel", id, "--idempotency-key", "cancel-1"]);
+    assert.deepEqual(calls, [["get", id], ["cancel", id, "cancel-1"]]);
+    assert.deepEqual(authModes, ["wallet", "wallet"]);
+  });
+
   it("maps a Honey enrollment file to the goal-shaped SDK call and prints only JSON", async () => {
     const directory = mkdtempSync(join(tmpdir(), "run402-buzz-cli-"));
     const grantsPath = join(directory, "grants.json");

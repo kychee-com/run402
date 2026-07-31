@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseStrictJson } from "./strict-json.mjs";
+import { rerunDoctorAction, setupRejectionCode, validatePassingDoctorReport } from "./doctor-report.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REQUIRED_CAPABILITIES = [
@@ -84,6 +85,11 @@ function requiredFlag(argv, name, nextAction) {
 
 function walletArgs(wallet, args) {
   return ["--wallet", wallet, ...args];
+}
+
+function safeRealpath(path) {
+  try { return realpathSync(path); }
+  catch { return path; }
 }
 
 function defaultReporter(event) {
@@ -376,26 +382,57 @@ export async function runSetup({
 
   const globalRun402Bin = run402Bin ?? globalRun402Executable(runner, npmBin);
 
-  let cliState = "reused";
-  let version = installedVersion(runner, npmBin);
-  const installOrUpdateCli = () => {
-    run(
-      runner,
-      "cli_install",
-      npmBin,
-      ["install", "-g", "run402@latest"],
-      "RUN402_GLOBAL_INSTALL_FAILED",
-      "Fix the user's global npm installation, then rerun setup.",
+  const cliState = "reused";
+  const version = installedVersion(runner, npmBin);
+  if (!version) {
+    throw new BuzzSetupError("buzz_preflight", "BUZZ_PREFLIGHT_RUN402_UNAVAILABLE", "The Run402 CLI is unavailable; the outer bootstrap must repair it before setup starts.", {
+      mutationState: "not_started",
+      nextAction: {
+        type: "install_run402_cli",
+        surface: "shell",
+        command: "npm install -g run402@latest",
+        argv: ["npm", "install", "-g", "run402@latest"],
+        why: "Install Run402 in the user-global npm context used by the Buzz setup helper.",
+        safe_to_auto_execute: true,
+        requires_approval: false,
+        destructive: false,
+        idempotent: true,
+        spend_impact: { currency: "USD", max_amount: "0" },
+      },
+    });
+  }
+
+  const doctorResult = runner(
+    globalRun402Bin,
+    walletArgs(wallet, ["doctor", "--buzz", "--buzz-agent", pubkey]),
+    { encoding: "utf8", shell: false },
+  );
+  let doctorReport = null;
+  try { doctorReport = parseStrictJson(String(doctorResult?.stdout ?? ""), "Buzz doctor output"); }
+  catch { /* mapped to the frozen invalid-report repair below */ }
+  const validation = validatePassingDoctorReport(doctorReport, {
+    wallet,
+    nodeExecutable: safeRealpath(process.execPath),
+    run402Executable: safeRealpath(globalRun402Bin),
+    relayUrl,
+  });
+  if (!validation.valid) {
+    const blockedCheck = validation.blockedCheck;
+    throw new BuzzSetupError(
+      "buzz_preflight",
+      blockedCheck?.code ?? setupRejectionCode(validation.reason),
+      blockedCheck?.message ?? "Buzz setup requires a fresh, unedited, passing doctor report for this exact agent and profile.",
+      {
+        mutationState: "not_started",
+        nextAction: blockedCheck?.next_actions?.[0] ?? rerunDoctorAction(wallet, pubkey),
+        details: {
+          preflight_reason: validation.reason,
+          doctor_exit_code: Number.isInteger(doctorResult?.status) ? doctorResult.status : null,
+          preflight: doctorReport,
+        },
+      },
     );
-    cliState = "installed_or_updated";
-    version = installedVersion(runner, npmBin);
-    if (!version) {
-      throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI is unavailable after installation.", {
-        nextAction: "Verify the global npm bin is on PATH, then rerun setup.",
-      });
-    }
-  };
-  if (!version) installOrUpdateCli();
+  }
 
   let walletInspectionCapability = runner(
     globalRun402Bin,
@@ -403,18 +440,10 @@ export async function runSetup({
     { encoding: "utf8", shell: false },
   );
   if (walletInspectionCapability?.error || walletInspectionCapability?.status !== 0) {
-    if (cliState === "reused") installOrUpdateCli();
-    walletInspectionCapability = runner(
-      globalRun402Bin,
-      walletArgs(wallet, ["wallets", "current", "--help"]),
-      { encoding: "utf8", shell: false },
-    );
-    if (walletInspectionCapability?.error || walletInspectionCapability?.status !== 0) {
-      throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI cannot inspect an explicitly selected wallet profile.", {
-        nextAction: "Verify the global npm bin is on PATH and update run402, then rerun setup.",
-        details: { version },
-      });
-    }
+    throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI cannot inspect an explicitly selected wallet profile.", {
+      nextAction: rerunDoctorAction(wallet, pubkey),
+      details: { version },
+    });
   }
 
   const selectedProfile = runJson(
@@ -429,14 +458,10 @@ export async function runSetup({
 
   let capability = isCompatible(runner, globalRun402Bin, wallet, version);
   if (!capability.compatible) {
-    if (cliState === "reused") installOrUpdateCli();
-    capability = isCompatible(runner, globalRun402Bin, wallet, version);
-    if (!capability.compatible) {
-      throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI still lacks required setup or identity-link commands.", {
-        nextAction: "Verify the global npm bin is on PATH and update run402, then rerun setup.",
-        details: { version: capability.version },
-      });
-    }
+    throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI lacks required setup or identity-link commands after a passing doctor.", {
+      nextAction: rerunDoctorAction(wallet, pubkey),
+      details: { version: capability.version },
+    });
   }
 
   let profileState = "reused";

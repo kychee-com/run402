@@ -54,6 +54,60 @@ function whoami(state, final = false, address = WALLET, principalType = state.pr
   };
 }
 
+function passingDoctorReport(run402Bin, state) {
+  const checks = [
+    "session_shell",
+    "node_runtime",
+    "run402_cli",
+    "buzz_cli",
+    "buzz_agent_target",
+    "run402_api",
+    "run402_console",
+    "buzz_relay",
+    "wallet_profile",
+  ].map((name) => ({
+    name,
+    status: "ok",
+    ...(name === "buzz_agent_target" ? { value: { expected_subject_hex: PUBKEY, observed_subject_hex: PUBKEY } } : {}),
+  }));
+  if (state.doctorBlocked) {
+    checks[3] = {
+      name: "buzz_cli",
+      status: "blocked",
+      code: "BUZZ_PREFLIGHT_BUZZ_CLI_UNAVAILABLE",
+      message: "The managed Buzz CLI sidecar is unavailable.",
+      next_actions: [{
+        type: "repair_buzz_cli_sidecar",
+        surface: "buzz_settings",
+        command: "Open Buzz Desktop > Settings > Updates, install the available Buzz update, restart this agent, then rerun setup.",
+        why: "The Buzz CLI is bundled with Buzz Desktop.",
+        safe_to_auto_execute: false,
+        requires_approval: true,
+        destructive: false,
+        idempotent: true,
+        spend_impact: { currency: "USD", max_amount: "0" },
+      }],
+    };
+  }
+  return {
+    ok: !state.doctorBlocked,
+    mode: "buzz",
+    contract_id: "run402.buzz-doctor.v1",
+    generated_at: new Date().toISOString(),
+    mutation_state: "not_started",
+    binding: {
+      contract_id: "run402.buzz-doctor.v1",
+      expected_subject_hex: PUBKEY,
+      wallet_profile: PROFILE,
+      node_executable: process.execPath,
+      run402_executable: run402Bin,
+      relay_origin: state.doctorRelayOrigin ?? null,
+    },
+    checks,
+    telemetry: { status: "disabled", queued: false },
+  };
+}
+
 function makeRunner(overrides = {}) {
   const state = {
     cliAvailable: true,
@@ -75,6 +129,7 @@ function makeRunner(overrides = {}) {
     humanAdoptions: [],
     agentEnrollments: [],
     hasMembership: true,
+    doctorBlocked: false,
     ...overrides,
   };
   const calls = [];
@@ -114,6 +169,16 @@ function makeRunner(overrides = {}) {
     const hasExplicitWallet = args[0] === "--wallet";
     const selectedWallet = hasExplicitWallet ? args[1] : state.ambientProfile;
     const commandArgs = hasExplicitWallet ? args.slice(2) : args;
+
+    if (commandArgs.slice(0, 3).join(" ") === `doctor --buzz --buzz-agent`) {
+      const originalReport = passingDoctorReport(command, state);
+      const report = typeof state.doctorReportTransform === "function"
+        ? state.doctorReportTransform(originalReport)
+        : originalReport;
+      return state.doctorBlocked
+        ? { status: 1, stdout: JSON.stringify(report), stderr: "" }
+        : ok(report);
+    }
 
     if (commandArgs.join(" ") === "wallets current") {
       if (selectedWallet === state.targetProfile) {
@@ -223,8 +288,8 @@ async function expectBlocked(overrides, code) {
       assert.ok(error instanceof BuzzSetupError);
       assert.equal(error.code, code);
       assert.equal(error.mutationState, "none");
-      assert.equal(typeof error.nextAction, "string");
-      assert.ok(error.nextAction.length > 0);
+      assert.ok(typeof error.nextAction === "string" || (error.nextAction && typeof error.nextAction === "object"));
+      if (typeof error.nextAction === "string") assert.ok(error.nextAction.length > 0);
       assert.equal(Object.keys(error.toJSON()).filter((key) => key === "next_action").length, 1);
       return true;
     },
@@ -233,11 +298,11 @@ async function expectBlocked(overrides, code) {
 }
 
 describe("Run402 for Buzz setup state machine", () => {
-  it("installs a missing global CLI, initializes the existing named profile, links, verifies, and stops ready", async () => {
-    const fake = makeRunner({ cliAvailable: false, initialized: false });
+  it("reuses the bootstrap-prepared CLI, initializes the existing named profile, links, verifies, and stops ready", async () => {
+    const fake = makeRunner({ initialized: false });
     const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
     assert.equal(result.status, "ready");
-    assert.equal(result.cli.state, "installed_or_updated");
+    assert.equal(result.cli.state, "reused");
     assert.equal(result.cli.installation, "user_global_npm");
     assert.deepEqual(result.profile, {
       state: "initialized",
@@ -252,19 +317,82 @@ describe("Run402 for Buzz setup state machine", () => {
     assert.deepEqual(result.next_action, { type: "offer_contextual_test", requires_approval: true });
     assert.equal(result.control_plane.supported, true);
     assert.equal(result.control_plane.skill_installation.authoritative, false);
-    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 1);
+    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 0);
+    assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} doctor --buzz --buzz-agent ${PUBKEY}`), 1);
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} wallets current`), 1);
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} init`), 1);
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} identity link nostr begin --pubkey ${PUBKEY} --visibility public`), 1);
     assert.equal(count(fake.calls, `--wallet ${PROFILE} identity link nostr complete --event-file`), 1);
   });
 
-  it("updates a capability-incompatible CLI but reuses the initialized profile", async () => {
+  it("blocks a missing CLI before setup mutation and leaves installation to the outer bootstrap", async () => {
+    const fake = makeRunner({ cliAvailable: false, initialized: false });
+    await assert.rejects(
+      runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} }),
+      (error) => {
+        assert.equal(error.code, "BUZZ_PREFLIGHT_RUN402_UNAVAILABLE");
+        assert.equal(error.mutationState, "not_started");
+        assert.deepEqual(error.nextAction.argv, ["npm", "install", "-g", "run402@latest"]);
+        return true;
+      },
+    );
+    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 0);
+    assert.equal(countMutation(fake.calls, " init"), 0);
+    assert.equal(countMutation(fake.calls, "identity link nostr"), 0);
+  });
+
+  it("stops on a blocked doctor report before setup mutation and preserves its exact repair", async () => {
+    const fake = makeRunner({ doctorBlocked: true });
+    await assert.rejects(
+      runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} }),
+      (error) => {
+        assert.equal(error.code, "BUZZ_PREFLIGHT_BUZZ_CLI_UNAVAILABLE");
+        assert.equal(error.mutationState, "not_started");
+        assert.equal(error.nextAction.surface, "buzz_settings");
+        return true;
+      },
+    );
+    assert.equal(countMutation(fake.calls, " init"), 0);
+    assert.equal(countMutation(fake.calls, "identity link nostr"), 0);
+  });
+
+  it("rejects stale, edited, mismatched, and incomplete doctor reports before every mutation", async () => {
+    const cases = [
+      {
+        expected: "BUZZ_PREFLIGHT_REPORT_STALE",
+        transform: (report) => ({ ...report, generated_at: "2026-01-01T00:00:00.000Z" }),
+      },
+      {
+        expected: "BUZZ_PREFLIGHT_REPORT_INVALID",
+        transform: (report) => ({ ...report, ok: false }),
+      },
+      {
+        expected: "BUZZ_PREFLIGHT_REPORT_MISMATCH",
+        transform: (report) => ({ ...report, binding: { ...report.binding, wallet_profile: "buzz-honey" } }),
+      },
+      {
+        expected: "BUZZ_PREFLIGHT_REPORT_INVALID",
+        transform: (report) => ({ ...report, checks: report.checks.slice(0, -1) }),
+      },
+    ];
+    for (const fixture of cases) {
+      const fake = makeRunner({ doctorReportTransform: fixture.transform });
+      await assert.rejects(
+        runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} }),
+        (error) => error.code === fixture.expected && error.mutationState === "not_started" && error.nextAction?.type === "rerun_buzz_doctor",
+      );
+      assert.equal(countMutation(fake.calls, " init"), 0, fixture.expected);
+      assert.equal(countMutation(fake.calls, "identity link nostr"), 0, fixture.expected);
+    }
+  });
+
+  it("blocks a capability-incompatible CLI without updating it after setup starts", async () => {
     const fake = makeRunner({ compatible: false });
-    const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
-    assert.equal(result.cli.state, "installed_or_updated");
-    assert.equal(result.profile.state, "reused");
-    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 1);
+    await assert.rejects(
+      runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} }),
+      (error) => error.code === "RUN402_REQUIRED_CAPABILITY_MISSING" && error.nextAction?.type === "rerun_buzz_doctor",
+    );
+    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 0);
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} init`), 0);
   });
 
@@ -306,6 +434,7 @@ describe("Run402 for Buzz setup state machine", () => {
       linked: true,
       hasMembership: false,
       communityInstallations: [descriptor],
+      doctorRelayOrigin: "wss://relay.example",
     });
     const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, relayUrl: "wss://relay.example", reporter: () => {} });
     assert.deepEqual(result.next_action, {
@@ -348,6 +477,7 @@ describe("Run402 for Buzz setup state machine", () => {
       hasMembership: false,
       communityInstallations: [descriptor],
       agentEnrollments: [{ buzz_agent_enrollment_id: `buzzae_${"4".repeat(32)}`, status: "pending" }],
+      doctorRelayOrigin: "wss://relay.example",
     });
     const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, relayUrl: "wss://relay.example", reporter: () => {} });
     assert.deepEqual(result.next_action, { type: "offer_contextual_test", requires_approval: true });
@@ -457,7 +587,7 @@ describe("Run402 for Buzz setup state machine", () => {
   });
 
   it("never runs setup-forbidden tier, project, provision, source, deploy, transfer, or delete commands", async () => {
-    const fake = makeRunner({ cliAvailable: false, initialized: false });
+    const fake = makeRunner({ initialized: false });
     await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
     const transcript = fake.calls.map((call) => call.join(" ")).join("\n");
     for (const forbidden of ["tier set", "projects ", "provision", "deploy", "transfer", "delete", "generate"]) {

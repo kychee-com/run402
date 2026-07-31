@@ -1,0 +1,97 @@
+{
+  "fixture_version": 1,
+  "fixture_id": "buzz-desktop-v0.5.2-nostr-bind-browser-fragment-v1",
+  "purpose": "released_buzz_desktop_owner_consent_and_same_origin_browser_callback",
+  "buzz_release": {
+    "version": "0.5.2",
+    "release_tag": "v0.5.2",
+    "release_tag_commit": "3e48f1b2365d326ee1c9582448d86a99b44ecd5d",
+    "run402_change_required": false
+  },
+  "source_evidence": {
+    "desktop/src-tauri/src/deep_link.rs": "sha256:2f23145231fdbd40085292832346bcf1d068def86bf6dd01dfac8d81d13de7a9",
+    "desktop/src-tauri/src/nostr_bind.rs": "sha256:259fb3da206ab8959a917544cf8346532b72a3f458db3ff42d66624140938355",
+    "desktop/src-tauri/src/commands/identity.rs": "sha256:0f492b7356031abea851c6c0381c68638246b44034eebddf7688a04d326b0267",
+    "desktop/src/features/profile/lib/nostrBindCallback.ts": "sha256:39a13981c3344d8d5bc00436b97871410cb68af1af19b8f60e16f0f4c084581c",
+    "desktop/src/features/profile/ui/NostrBindConsentDialog.tsx": "sha256:4cb8c9dbd020c1b2c76b9555626e1ec26691b6fe6100ffa3a2084572e327b598",
+    "desktop/tests/e2e/nostr-bind.spec.ts": "sha256:5c5a0902b8fe7b2184d88b10bc480bcf115a1f33eb44e848e930f27a36f88b3a"
+  },
+  "deep_link": {
+    "scheme_host": "buzz://nostr-bind",
+    "return_mode": "browser_fragment_v1",
+    "required_callback_url": true,
+    "verification_code_pattern": "^[0-9]{6}$",
+    "origin_requirements": {
+      "scheme": "https",
+      "credentials_forbidden": true,
+      "path_query_fragment_forbidden": true
+    },
+    "callback_requirements": {
+      "scheme": "https",
+      "credentials_forbidden": true,
+      "same_scheme_host_effective_port_as_origin": true,
+      "path_query_allowed": true
+    }
+  },
+  "signed_event": {
+    "signing_principal": "desktop_owner",
+    "expected_kind": 24243,
+    "expected_content": "",
+    "required_tag_order": [
+      "challenge_id",
+      "nonce",
+      "verification_code",
+      "audience",
+      "action",
+      "protocol",
+      "version",
+      "origin",
+      "expires_at"
+    ],
+    "expected_audience": "buzz:nostr-identity",
+    "expected_action": "bind_nostr_identity",
+    "expected_protocol": "buzz-nostr-identity",
+    "expected_version": "1",
+    "must_match_challenge_expected_owner_subject": true
+  },
+  "expiry": {
+    "expired_link_reaches_consent_surface": true,
+    "expired_request_signing_rejected": true,
+    "expiry_format": "rfc3339"
+  },
+  "browser_callback": {
+    "fragment_key": "buzz_bind",
+    "payload_version": "v1",
+    "event_encoding_steps": [
+      "exact_signed_event_json_string",
+      "utf8",
+      "base64url_without_padding",
+      "prefix_v1_dot"
+    ],
+    "fragment_value_format": "v1.<base64url_utf8_signed_event_json>",
+    "maximum_callback_url_bytes": 4096,
+    "preserves_callback_path_and_query": true,
+    "replaces_existing_fragment": true,
+    "manual_fallback": {
+      "available_after_browser_open_failure": true,
+      "reveals_public_signed_event_only_after_expansion": true,
+      "copy_action_available": true
+    },
+    "encoding_example": {
+      "callback_url": "https://api.run402.com/buzz/adoptions/example?source=buzz#stale",
+      "signed_event_fixture": "buzz-v0.4.26-desktop-owner-negative.json#event",
+      "expected_origin": "https://api.run402.com",
+      "expected_path": "/buzz/adoptions/example",
+      "expected_query": "?source=buzz",
+      "expected_fragment": "#buzz_bind=v1.eyJpZCI6IjQzYTliNjViOTkxNjgxOWU3MzI1MTkzODA1MmZkNzM5MTE2MGM3NGZiOGYwNTU1ZGM1YzI1ZDM2N2YwY2NkMTQiLCJwdWJrZXkiOiJmYzY3ZjYwOGUxNzFmYzNkZTZmYzQyOTZhZmUxMGY1Yjk0ZTRjOGQ3OTZhZWMzMTQ3NGVhYmQxMDJhNjhhMzgwIiwiY3JlYXRlZF9hdCI6MTc4NTI1NzUzMiwia2luZCI6MjQyNDMsInRhZ3MiOltbImNoYWxsZW5nZV9pZCIsImYxN2JmNTE1LTE2ZjYtNGQxOC04MWE5LWExNDY3NzI1ZjRmMSJdLFsibm9uY2UiLCJBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWmFiY2RlZmdoaTAxMjM0NTY3Il0sWyJ2ZXJpZmljYXRpb25fY29kZSIsIjQwMjQwMiJdLFsiYXVkaWVuY2UiLCJidXp6Om5vc3RyLWlkZW50aXR5Il0sWyJhY3Rpb24iLCJiaW5kX25vc3RyX2lkZW50aXR5Il0sWyJwcm90b2NvbCIsImJ1enotbm9zdHItaWRlbnRpdHkiXSxbInZlcnNpb24iLCIxIl0sWyJvcmlnaW4iLCJodHRwczovL2FwaS5ydW40MDIuY29tIl0sWyJleHBpcmVzX2F0IiwiMjAyNi0wNy0yOFQxNzowMTowMC4wMDBaIl1dLCJjb250ZW50IjoiIiwic2lnIjoiMzRlNzg4YjQ3YWM0NTdiOWY2ODJkZDEzMjdjMjA5NjMwNjE0OWFhNGM1ZjBiMTQzNTVmMzBjMzBmMTVmY2ZjNDhlOTkyMTBjYjNkMjJmZmU0ZmU3MThjNTg3NWNhMDFjOWViNjRiMjcxOWVmZjlkNzMyMWFhY2Q2ZWVmYzZiMjkifQ"
+    }
+  },
+  "forbidden_run402_dependencies": {
+    "buzz_code_change": false,
+    "custom_event_kind": false,
+    "custom_desktop_route": false,
+    "relay_handler": false,
+    "runtime_flag": false,
+    "new_buzz_release": false
+  }
+}

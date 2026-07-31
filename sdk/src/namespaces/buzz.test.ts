@@ -34,6 +34,61 @@ describe("Buzz SDK namespace", () => {
     assert.equal(status.buzz, null);
   });
 
+  it("reports the conversational adoption-offer capability without inferring it from protocol v1", async () => {
+    const { run402 } = sdk(() => response({
+      buzz: {
+        skill_installation: { status: "client_managed" },
+        capabilities: { human_adoption_offers: true, browser_fragment_v1: true },
+      },
+    }));
+    const status = await run402.buzz.status();
+    assert.equal(status.supported, true);
+    assert.equal(status.buzz?.capabilities?.human_adoption_offers, true);
+  });
+
+  it("creates an inert human-adoption offer with optional verified deployment context", async () => {
+    const offer = { buzz_human_adoption_offer_id: "buzzhao_11111111111111111111111111111111", status: "available" };
+    const { run402, calls } = sdk(() => response(offer, 201));
+    const deploymentContext = {
+      project_id: "prj_church",
+      release_id: "rel_demo",
+      live_url: "https://church.run402.com/",
+      source_revision: "abc123",
+      verified_at: "2026-07-31T10:00:00.000Z",
+    };
+    await run402.buzz.offerAdoption({
+      organizationId: "org_11111111111111111111111111111111",
+      identityLinkId: "idlnk_22222222222222222222222222222222",
+      deploymentContext,
+      idempotencyKey: "offer-after-demo-1",
+    });
+    assert.equal(calls[0]?.url, "https://api.run402.com/buzz-human-adoption-offers/v1");
+    assert.equal(calls[0]?.init.method, "POST");
+    assert.equal((calls[0]?.init.headers as Record<string, string>)["Idempotency-Key"], "offer-after-demo-1");
+    assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), {
+      org_id: "org_11111111111111111111111111111111",
+      identity_link_id: "idlnk_22222222222222222222222222222222",
+      deployment_context: deploymentContext,
+    });
+  });
+
+  it("keeps offer polling/cancellation on agent auth and binds browser attempts to explicit callbacks", async () => {
+    const { run402, calls } = sdk((_url, init) => response(init.method === "POST"
+      ? { buzz_human_adoption_id: "buzzha_11111111111111111111111111111111", status: "pending" }
+      : { buzz_human_adoption_offer_id: "buzzhao_11111111111111111111111111111111", status: "available" }));
+    const id = "buzzhao_11111111111111111111111111111111";
+    await run402.buzz.humanAdoptionOffers.get(id);
+    await run402.buzz.humanAdoptionOffers.cancel(id, "cancel-offer-1");
+    await run402.buzz.humanAdoptionOffers.createAttempt(id, {
+      callbackUrl: `https://console.run402.com/buzz/adoptions/${id}`,
+      idempotencyKey: "attempt-1",
+    });
+    assert.deepEqual(calls.map((call) => call.init.method ?? "GET"), ["GET", "DELETE", "POST"]);
+    assert.deepEqual(JSON.parse(String(calls[2]?.init.body)), {
+      callback_url: `https://console.run402.com/buzz/adoptions/${id}`,
+    });
+  });
+
   it("maps the goal-shaped enrollment request to the frozen wire contract", async () => {
     const enrollment = { buzz_agent_enrollment_id: "buzzae_11111111111111111111111111111111", status: "pending" };
     const { run402, calls } = sdk(() => response(enrollment, 201));

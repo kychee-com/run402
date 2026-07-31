@@ -187,10 +187,18 @@ export async function handleWhoami(): Promise<ToolResult> {
     if (me.memberships.length === 0) lines[lines.length - 1] = `- memberships: none`;
     if (me.buzz) {
       lines.push(`- buzz_control_plane: supported`);
+      lines.push(`  - human_adoption_offers: ${me.buzz.human_adoption_offers?.length ?? 0}`);
       lines.push(`  - human_adoptions: ${me.buzz.human_adoptions.length}`);
       lines.push(`  - community_installations: ${me.buzz.community_installations.length}`);
       lines.push(`  - agent_enrollments: ${me.buzz.agent_enrollments.length}`);
       lines.push(`  - drift: ${me.buzz.drift.length}`);
+      const availableOffer = me.buzz.human_adoption_offers?.find((offer) => offer.status === "available" && offer.handoff_url);
+      if (availableOffer) {
+        lines.push(`  - adoption_handoff: ${availableOffer.handoff_url}`);
+        lines.push(`  - adoption_poll: \`run402 buzz adopt offer show ${availableOffer.buzz_human_adoption_offer_id}\``);
+      } else if (me.buzz.capabilities?.human_adoption_offers) {
+        lines.push("  - adoption_offer: `run402 buzz adopt offer --help` (agent-executed; MCP does not create or sign adoption offers)");
+      }
       if (me.buzz.eligibility.can_select_community_installation && !me.buzz.eligibility.has_nonterminal_enrollment) {
         lines.push("  - handoff: `run402 buzz install discover --community <subject>` lists Run402-verified descriptors; explicitly select one before using `run402 buzz enroll --help`");
       }

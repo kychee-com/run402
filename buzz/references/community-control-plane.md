@@ -13,15 +13,17 @@ The names are lifecycle terms, not synonyms. A shared skill installed by Fizz me
 
 ## Fizz bootstrap, adoption, and installation
 
-Fizz first completes the ordinary public identity link with its dedicated `buzz-fizz` wallet profile. If Fizz owns an org-of-one and the link contains the current Buzz NIP-OA owner attestation, Fizz may begin human adoption:
+Fizz first completes the ordinary public identity link with its dedicated `buzz-fizz` wallet profile. If the verified Buzz owner explicitly asks for adoption before a demo, or after Fizz has deployed and verified a contextual demo, Fizz creates or reuses an inert durable offer:
 
 ```sh
-run402 --wallet buzz-fizz buzz adopt \
+run402 --wallet buzz-fizz buzz adopt offer \
   --org org_0123456789abcdef0123456789abcdef \
   --identity-link idlnk_0123456789abcdef0123456789abcdef
 ```
 
-A pending response is not adoption. The Buzz owner reviews and signs the exact displayed consent in Buzz, then completes the ceremony through a directly authenticated human session with fresh passkey step-up. The result is one human co-owner; Fizz remains a separate founder-agent owner. That ownership is a legitimate endpoint of the autonomous org-of-one path, not temporary excess authority. The active response states that adoption changed neither Fizz's membership nor organization/project ownership and shared no credential.
+The offer's normal `https://console.run402.com/buzz/adoptions/buzzhao_…` URL is safe to place in chat and creates no challenge or authority. The Buzz owner opens it, signs in directly, completes a fresh passkey step-up, and only then receives a five-minute six-digit Buzz consent attempt. Buzz returns the public signed event to the same-origin browser fragment; Run402 binds completion to that exact human and browser-session lineage. Fizz polls `run402 --wallet buzz-fizz buzz adopt offer show <buzzhao_id>` and never infers completion from a click.
+
+The result is one human co-owner; Fizz remains a separate founder-agent owner. That ownership is a legitimate endpoint of the autonomous org-of-one path, not temporary excess authority. The active response states that adoption changed neither Fizz's membership nor organization/project ownership and shared no credential. `run402 buzz adopt direct ...` remains an advanced compatibility path, not the canonical conversation.
 
 The human owner can then initiate community installation:
 

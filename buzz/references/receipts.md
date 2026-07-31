@@ -38,7 +38,24 @@ Do not claim an active tier, project, allowance balance, or deployed application
 - Tier: `<observed-tier>`
 - Lease expires: `<ISO-8601-or-none>`
 - Verification: `<exact HTTP and critical-flow checks>`
-- Spend: `<observed-spend>`
+- Network: `base_sepolia|<observed-network>`
+- Funding source: `faucet|<observed-real-value-rail>`
+```
+
+For Base Sepolia faucet-backed demos, keep network/faucet provenance in the expanded receipt but omit price, cost, purchase, and spend language from ordinary Buzz conversation. Real-value rails retain the normal spend disclosure.
+
+## Adoption offer
+
+```markdown
+Done — <application> is live at <verified URL>. Would you like to become a co-owner of the Run402 organization that owns this deployment? [Become an owner](https://console.run402.com/buzz/adoptions/buzzhao_…)
+```
+
+Expanded non-secret state may include the offer id, organization, identity link, safe deployment context, status, and one `next_action`. Never include a session, credential, raw callback event, or short-lived `buzz://` challenge in chat.
+
+## Adoption complete
+
+```markdown
+You are now a co-owner of the Run402 organization behind <application>. Fizz remains an owner, and no credentials, projects, or ownership were transferred.
 ```
 
 ## Blocked

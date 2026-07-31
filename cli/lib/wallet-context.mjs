@@ -33,7 +33,7 @@ const GLOBAL_FLAGS = new Set(["--wallet", "--profile"]);
 // its own positional targets. `init` creates wallets, so it must not fail
 // closed on a not-yet-existing name.
 const CONFLICT_EXEMPT = new Set(["wallets"]);
-const EXISTENCE_EXEMPT = new Set(["wallets", "init"]);
+const EXISTENCE_EXEMPT = new Set(["wallets", "init", "doctor"]);
 
 /**
  * Split the global --wallet/--profile flag (and its value) out of argv so the
