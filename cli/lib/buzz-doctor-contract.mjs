@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-const CONTRACT_URL = new URL("../../buzz/fixtures/run402-buzz-doctor-v1-contract.json", import.meta.url);
+const CONTRACT_URL = new URL("../fixtures/run402-buzz-doctor-v1-contract.json", import.meta.url);
 
 export const BUZZ_DOCTOR_CONTRACT = deepFreeze(JSON.parse(readFileSync(CONTRACT_URL, "utf8")));
 export const BUZZ_DOCTOR_CONTRACT_ID = BUZZ_DOCTOR_CONTRACT.contract_id;

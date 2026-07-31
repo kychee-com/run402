@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "contract_id": "run402.buzz-doctor.v1",
+  "mode": "buzz",
+  "canonical_invocation": [
+    "run402",
+    "--wallet",
+    "<profile>",
+    "doctor",
+    "--buzz",
+    "--buzz-agent",
+    "<npub-or-hex>"
+  ],
+  "flags": {
+    "mode": "--buzz",
+    "agent": "--buzz-agent",
+    "profile": "--wallet"
+  },
+  "check_order": [
+    "session_shell",
+    "node_runtime",
+    "run402_cli",
+    "buzz_cli",
+    "buzz_agent_target",
+    "run402_api",
+    "run402_console",
+    "buzz_relay",
+    "wallet_profile"
+  ],
+  "statuses": [
+    "ok",
+    "warning",
+    "blocked"
+  ],
+  "codes_by_check": {
+    "session_shell": [
+      "BUZZ_PREFLIGHT_SHELL_UNAVAILABLE"
+    ],
+    "node_runtime": [
+      "BUZZ_PREFLIGHT_NODE_UNAVAILABLE",
+      "BUZZ_PREFLIGHT_NODE_INCOMPATIBLE"
+    ],
+    "run402_cli": [
+      "BUZZ_PREFLIGHT_RUN402_UNAVAILABLE",
+      "BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE",
+      "BUZZ_PREFLIGHT_RUN402_UPDATE_AVAILABLE"
+    ],
+    "buzz_cli": [
+      "BUZZ_PREFLIGHT_BUZZ_CLI_UNAVAILABLE",
+      "BUZZ_PREFLIGHT_BUZZ_CLI_INCOMPATIBLE"
+    ],
+    "buzz_agent_target": [
+      "BUZZ_AGENT_TARGET_REQUIRED",
+      "BUZZ_AGENT_TARGET_UNVERIFIED",
+      "BUZZ_AGENT_TARGET_MISMATCH"
+    ],
+    "run402_api": [
+      "BUZZ_PREFLIGHT_API_UNREACHABLE"
+    ],
+    "run402_console": [
+      "BUZZ_PREFLIGHT_CONSOLE_UNREACHABLE"
+    ],
+    "buzz_relay": [
+      "BUZZ_PREFLIGHT_RELAY_UNSAFE",
+      "BUZZ_PREFLIGHT_RELAY_UNREACHABLE"
+    ],
+    "wallet_profile": [
+      "BUZZ_PREFLIGHT_WALLET_PROFILE_REQUIRED",
+      "BUZZ_PREFLIGHT_WALLET_PROFILE_NOT_FOUND",
+      "BUZZ_PREFLIGHT_WALLET_PROFILE_MISMATCH"
+    ]
+  },
+  "next_action": {
+    "required_fields": [
+      "type",
+      "surface",
+      "command",
+      "why",
+      "safe_to_auto_execute",
+      "requires_approval",
+      "destructive",
+      "idempotent",
+      "spend_impact"
+    ],
+    "surfaces": [
+      "shell",
+      "buzz_chat",
+      "buzz_settings"
+    ],
+    "shell_required_fields": [
+      "argv"
+    ],
+    "non_shell_forbidden_fields": [
+      "argv",
+      "cwd"
+    ],
+    "cardinality_per_actionable_check": 1
+  },
+  "exit_behavior": {
+    "passed_or_warning_only": 0,
+    "completed_with_blocked_checks": 1,
+    "usage_error": 1,
+    "completed_report_stream": "stdout",
+    "usage_error_stream": "stderr"
+  },
+  "freshness": {
+    "max_age_seconds": 60,
+    "binding_fields": [
+      "contract_id",
+      "expected_subject_hex",
+      "wallet_profile",
+      "node_executable",
+      "run402_executable",
+      "relay_origin"
+    ]
+  },
+  "setup_rejection_codes": [
+    "BUZZ_PREFLIGHT_REPORT_INVALID",
+    "BUZZ_PREFLIGHT_REPORT_STALE",
+    "BUZZ_PREFLIGHT_REPORT_MISMATCH"
+  ],
+  "zero_mutation": {
+    "mutation_state": "not_started",
+    "forbidden": [
+      "buzz_event_publish",
+      "buzz_arbitrary_sign",
+      "run402_profile_create_or_select",
+      "run402_wallet_create",
+      "run402_identity_link_mutation",
+      "run402_faucet",
+      "run402_tier_mutation",
+      "run402_project_mutation",
+      "run402_deploy"
+    ],
+    "allowed_lossy_local_writes": [
+      "cli_update_cache",
+      "redacted_diagnostic_queue"
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "fixture_version": 1,
+  "fixture_id": "buzz-cli-v0.5.2-capabilities",
+  "purpose": "released_buzz_cli_capability_first_compatibility",
+  "buzz_release": {
+    "version": "0.5.2",
+    "release_tag": "v0.5.2",
+    "release_tag_commit": "3e48f1b2365d326ee1c9582448d86a99b44ecd5d",
+    "run402_change_required": false
+  },
+  "help_probes": [
+    {
+      "argv": ["buzz", "--help"],
+      "exit_code": 0,
+      "stdout_contains": [
+        "Buzz CLI — interact with a Buzz relay",
+        "users",
+        "social",
+        "Errors are JSON on stderr"
+      ]
+    },
+    {
+      "argv": ["buzz", "users", "get", "--help"],
+      "exit_code": 0,
+      "stdout_contains": [
+        "Usage: buzz users get",
+        "--pubkey",
+        "Omit for your own profile"
+      ]
+    },
+    {
+      "argv": ["buzz", "social", "publish", "--help"],
+      "exit_code": 0,
+      "stdout_contains": [
+        "Usage: buzz social publish",
+        "--content"
+      ]
+    },
+    {
+      "argv": ["buzz", "social", "event", "--help"],
+      "exit_code": 0,
+      "stdout_contains": [
+        "Usage: buzz social event",
+        "--event"
+      ]
+    }
+  ],
+  "version_probe": {
+    "argv": ["buzz", "--version"],
+    "supported": false,
+    "exit_code": 1,
+    "stderr_json": {
+      "error": "user_error",
+      "retryable": false
+    },
+    "message_contains": "unexpected argument '--version'"
+  },
+  "json_contract": {
+    "default_output_format": "json",
+    "users_get_success_stdout": {
+      "type": "array",
+      "empty_array_means": "public_self_profile_unverified",
+      "profile_pubkey_field": "pubkey"
+    },
+    "social_event_success_stdout": {
+      "type": "array",
+      "event_pubkey_field": "pubkey"
+    },
+    "error_stderr": {
+      "type": "object",
+      "required_fields": ["error", "message", "retryable"],
+      "stdout_is_empty": true
+    }
+  },
+  "managed_sidecar": {
+    "distribution": "bundled_with_buzz_desktop",
+    "session_discovery": "managed_agent_path",
+    "public_package_manager_install": false,
+    "repair_surface": "buzz_settings",
+    "repair_destination": "Buzz Desktop > Settings > Updates",
+    "repair_instruction": "Open Buzz Desktop > Settings > Updates, install the available Buzz update or reinstall Buzz Desktop if no update is offered, then restart this agent and rerun setup."
+  },
+  "public_self_observation": {
+    "argv": ["buzz", "users", "get"],
+    "requires_private_key_value_inspection": false,
+    "empty_or_malformed_result": "BUZZ_AGENT_TARGET_UNVERIFIED"
+  },
+  "write_surface_policy": {
+    "capability_probes_use_help_only": true,
+    "publish_is_never_invoked_by_doctor": true,
+    "event_read_requires_explicit_event_id_and_is_not_used_for_self_discovery": true
+  }
+}

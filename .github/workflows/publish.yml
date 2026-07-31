@@ -183,6 +183,7 @@ jobs:
           node "$SMOKE/cli/package/cli.mjs" cloud --help | grep -q 'cloud archives create'
           node "$SMOKE/cli/package/cli.mjs" archives --help | grep -q 'archives verify'
           node "$SMOKE/cli/package/cli.mjs" core --help | grep -q 'core projects import'
+          node "$SMOKE/cli/package/cli.mjs" doctor --help | grep -q -- '--buzz-agent'
           echo "CLI archive smoke OK"
 
           # MCP: extract, install, verify getSdk resolves (don't boot the

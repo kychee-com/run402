@@ -15,6 +15,7 @@
   "files": [
     "cli.mjs",
     "lib/",
+    "fixtures/",
     "core-dist/",
     "sdk/"
   ],
@@ -26,6 +27,7 @@
     "@x402/evm": "^2.19.0",
     "@x402/extensions": "^2.19.0",
     "@x402/fetch": "^2.19.0",
+    "ipaddr.js": "1.9.1",
     "json-canonicalize": "2.0.0",
     "mppx": "^0.4.7",
     "tsx": "^4.21.0",

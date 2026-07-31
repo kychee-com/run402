@@ -9,7 +9,9 @@ import {
   validateBuzzDoctorReport,
 } from "./buzz-doctor-contract.mjs";
 
-const FIXTURE = JSON.parse(readFileSync(new URL("../../buzz/fixtures/buzz-v0.5.2-cli-capabilities.json", import.meta.url), "utf8"));
+const FIXTURE = JSON.parse(readFileSync(new URL("../fixtures/buzz-v0.5.2-cli-capabilities.json", import.meta.url), "utf8"));
+const RELEASED_FIXTURE = JSON.parse(readFileSync(new URL("../../buzz/fixtures/buzz-v0.5.2-cli-capabilities.json", import.meta.url), "utf8"));
+const RELEASED_CONTRACT = JSON.parse(readFileSync(new URL("../../buzz/fixtures/run402-buzz-doctor-v1-contract.json", import.meta.url), "utf8"));
 
 function shellAction() {
   return {
@@ -47,6 +49,11 @@ function passingReport(now) {
 }
 
 describe("Buzz doctor v1 frozen contract", () => {
+  it("packages byte-semantic copies of the released Buzz fixture and frozen doctor contract", () => {
+    assert.deepEqual(FIXTURE, RELEASED_FIXTURE);
+    assert.deepEqual(BUZZ_DOCTOR_CONTRACT, RELEASED_CONTRACT);
+  });
+
   it("freezes the ordered checks, flags, statuses, exit streams, freshness binding, and zero-mutation verdict", () => {
     assert.equal(BUZZ_DOCTOR_CONTRACT_ID, "run402.buzz-doctor.v1");
     assert.deepEqual(BUZZ_DOCTOR_CHECK_ORDER, [

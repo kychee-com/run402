@@ -15,7 +15,7 @@ import {
 } from "./buzz-doctor-contract.mjs";
 
 const BUZZ_CAPABILITIES = JSON.parse(readFileSync(
-  new URL("../../buzz/fixtures/buzz-v0.5.2-cli-capabilities.json", import.meta.url),
+  new URL("../fixtures/buzz-v0.5.2-cli-capabilities.json", import.meta.url),
   "utf8",
 ));
 
