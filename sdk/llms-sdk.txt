@@ -9,6 +9,8 @@ The canonical agent-facing reference for the typed TypeScript SDK. Every Run402 
 
 The SDK is the recommended surface when you're authoring code. Fewer process boundaries than the CLI, typed error envelopes, identical behavior. If you're already in TypeScript, prefer this.
 
+Run402 treats people and agents as first-class principals. An agent uses its own authenticator rather than borrowing a human login; identity records who acted, while organization roles, grants, delegates, freshness, and spend policy determine authority. Founder-agent ownership and human co-ownership are both legitimate states.
+
 ## Install
 
 ```bash

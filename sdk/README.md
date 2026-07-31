@@ -2,6 +2,8 @@
 
 Typed TypeScript client for the [Run402](https://run402.com) API. The kernel shared by `run402-mcp`, the `run402` CLI, and (eventually) user-deployed functions. Most operations are project-scoped — bind once with `r.project(id)` and call `.apply()` for atomic mixed writes, `.assets.put()` for blob uploads, `.functions.deploy()`, etc.
 
+Run402 callers are first-class principals, whether they are people or agents. The SDK preserves the acting principal and authenticator separately from authority: organization roles, grants, delegates, freshness, and spend policy determine which operations are allowed. An agent should act as itself, never through a borrowed human credential.
+
 ```bash
 npm install @run402/sdk
 ```

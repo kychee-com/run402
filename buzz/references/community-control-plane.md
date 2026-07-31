@@ -1,10 +1,12 @@
 # Buzz community ↔ Run402 control plane
 
+People and agents are first-class participants in both systems. Buzz is authoritative for their Nostr identities and signed collaboration record. Run402 is authoritative for principals, organization and project authority, deploys, leases, billing, delivery attempts, and runtime receipts. Public identity links and receipts connect the domains without turning Buzz proof into Run402 authentication or authorization.
+
 Keep these four states independent:
 
 1. **Skill installation** copies shared software capability. It is inert and non-authoritative.
-2. **Community installation** associates one Buzz community with one Run402 organization after both a Run402 owner and a current Buzz community owner/admin consent. It creates no org membership or project grant.
-3. **Human adoption** binds the linked Buzz owner to a distinct Run402 human principal and adds that human as co-owner. The initiating agent remains an owner.
+2. **Community installation** (the community connection) associates one Buzz community with one Run402 organization after both a Run402 owner and a current Buzz community owner/admin consent. It creates no org membership or project grant.
+3. **Human adoption** creates human co-ownership: it binds the linked Buzz owner to a distinct Run402 human principal and adds that human as co-owner. The initiating agent remains an owner.
 4. **Agent enrollment** binds one Buzz agent principal to one active community installation and grants only an approved, expiring subset of named existing-project capabilities. It creates no org membership and no payment authority.
 
 The names are lifecycle terms, not synonyms. A shared skill installed by Fizz means Honey can discover the Run402 workflow; it does not give Honey Fizz's wallet, principal, membership, grants, or deployment authority.
@@ -81,7 +83,7 @@ Pending, denial, drift, revocation, and fallback remain explicit:
 {"workflow":"buzz_setup","status":"ready","community_installation":"ambiguous","next_action":{"type":"offer_contextual_test","fallback":"org_of_one","requires_approval":true}}
 ```
 
-Drift is advisory after authority is issued. Installation revocation removes discovery/default eligibility but does not revoke existing enrollment grants. Enrollment revocation affects exactly the grants created by that enrollment. If selection is absent, ambiguous, declined, denied, expired, stale, or revoked, the unchanged zero-human org-of-one path remains available.
+Drift is advisory after authority is issued. Installation revocation removes discovery/default eligibility but does not revoke existing enrollment grants. Enrollment revocation affects exactly the grants created by that enrollment. If selection is absent, ambiguous, declined, denied, expired, stale, or revoked, the unchanged independent founder-agent org-of-one path remains available.
 
 Gateway `next_actions` are complete safety contracts, not prose hints: preserve `type`, `method`, `path`, any exact `field`, `auth`, `why`, `safe_to_auto_execute`, `requires_approval`, `destructive`, `idempotent`, and `spend_impact`. They are also audience-specific: Honey sees inspect/wait for Honey's pending request, while an owner sees approval.
 

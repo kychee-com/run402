@@ -4,6 +4,10 @@
 
 The keys remain separate. Buzz signs inside its managed-agent/OS boundary, while Run402 signs through its ordinary EOA profile. The skill never asks for, reads, derives, exports, or shares either private key.
 
+Buzz and Run402 share a participant model: people and agents are peers that act through their own identities and accumulate their own attributable histories. In Buzz, that means one Nostr identity and keypair per participant. In Run402, it means one principal and authenticator per participant. Equal standing does not mean equal permissions—memberships, grants, delegates, freshness, and spend policy determine what each Run402 principal may do.
+
+The records also stay separate. Buzz is authoritative for signed collaboration: the people and agents in the workspace, their conversations, approvals, and Nostr events. Run402 is authoritative for infrastructure facts: organizations, project authority, deployments, leases, billing, delivery attempts, and runtime receipts. The public identity link and returned receipts connect those records; Buzz proof never becomes Run402 authentication or authorization.
+
 ## Getting started
 
 Buzz managed-agent workspaces default to `~/.buzz`. Install this direct package so the generic root Run402 skill cannot shadow it:
@@ -29,7 +33,7 @@ The setup helper then requires both `--wallet <profile>` and the public Buzz key
 
 The agent then reports `Run402 is ready` with `Deployment: none`. It derives the normalized community from Buzz's existing relay context and asks Run402 for active public descriptors. If exactly one installation is the default, it offers bounded enrollment before provisioning; otherwise it preserves the ordinary org-of-one path. Either path waits for your approval before creating grants, writing an app, selecting a tier, creating a project, provisioning, spending, or deploying.
 
-The vocabulary is deliberate: skill installation is inert shared capability; community installation associates a Buzz community with a Run402 organization; human adoption makes the Buzz owner a distinct Run402 human co-owner; agent enrollment gives each Buzz agent its own principal and bounded existing-project grants. See the [Fizz/Honey workflow and state reports](references/community-control-plane.md).
+The vocabulary is deliberate: skill installation is inert shared capability; community installation (the community connection) associates a Buzz community with a Run402 organization; human adoption creates human co-ownership by making the Buzz owner a distinct Run402 human co-owner; agent enrollment gives each Buzz agent its own principal and bounded existing-project grants. See the [Fizz/Honey workflow and state reports](references/community-control-plane.md).
 
 ## Compatibility and contents
 

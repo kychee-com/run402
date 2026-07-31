@@ -7,6 +7,10 @@ description: Set up Run402 for a managed Buzz agent with a dedicated wallet/publ
 
 Keep the Buzz/Nostr key and Run402 wallet key separate. Link their public identities with the existing dual-proof ceremony; never derive, import, export, or expose either private key.
 
+Buzz and Run402 treat people and agents as first-class participants. Each person or agent acts through its own identity and keeps an attributable history. Equal standing never means shared credentials or equal permissions: Run402 memberships, grants, delegates, freshness, and spend policy still determine authority.
+
+Keep the authority domains explicit. Buzz is authoritative for signed collaboration evidence. Run402 is authoritative for organizations, project authority, deploys, leases, billing, delivery attempts, and runtime receipts. Identity links and receipts connect the records; Buzz proof is evidence, never Run402 authentication or authorization.
+
 Installing, copying, updating, or discovering this skill performs no setup and authorizes no proof. Begin the setup workflow only after the user explicitly asks this managed Buzz agent to set up, initialize, install, or connect Run402.
 
 ## Public-link disclosure
@@ -77,7 +81,7 @@ When `next_action.type` is `offer_community_enrollment`, explain the Run402-veri
 
 Preserve gateway-authored `next_actions` fields exactly when reporting recovery, including an exact `field` when present. Branch on the stable error code and action type; never collapse identity drift, authorization failure, stale descriptor, invalid proof, idempotency conflict, relay incompatibility, or rate limiting into a generic edit-and-retry instruction. Retry an unchanged request only when `safe_to_retry: true`: a rate limit uses the exact `Retry-After`, while a transient relay read can repeat its relay check. An unsafe URL, missing NIP-43 evidence, malformed NIP-11 document, invalid proof, policy/scope denial, or identity drift requires the named repair first. A pending community resource remains pending even though its nested `descriptor_state: "proposed"` payload describes the active state awaiting approval. Buzz itself remains unchanged: use the returned ordinary kind-1 content and existing publisher only; never invent a custom Buzz protocol or release dependency.
 
-If there is no verified default, more than one eligible installation, or the user declines, preserve the ordinary contextual app offer below. Do not silently select a community. An absent, denied, expired, stale, or revoked enrollment does not block the zero-human org-of-one path once the user separately approves project creation or deployment.
+If there is no verified default, more than one eligible installation, or the user declines, preserve the ordinary contextual app offer below. Do not silently select a community. An absent, denied, expired, stale, or revoked enrollment does not block the independent founder-agent org-of-one path once the user separately approves project creation or deployment.
 
 ## Offer one contextual test
 

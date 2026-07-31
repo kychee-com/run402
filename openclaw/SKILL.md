@@ -17,7 +17,9 @@ metadata:
 
 # Run402 — Postgres, storage & deploys for AI agents
 
-Run402 gives an agent a real Postgres database with REST API and user auth, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed on-chain signing. One command provisions; payment happens automatically with x402 USDC on Base. Prototype tier is free on testnet — no real money, no human signup.
+Run402 gives an agent a real Postgres database with REST API and user auth, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed on-chain signing. One command provisions; payment happens automatically with x402 USDC on Base. Prototype tier is free on testnet — no real money or human signup for the routine cold-start path.
+
+Run402 is agent-first because agents are first-class participants, not because people disappear. Act through your own Run402 principal and authenticator; do not borrow a human login, shared cloud account, or another agent's credential. Identity records who acted. Memberships, roles, grants, delegates, freshness, and spend policy determine what you may do. A founder agent may legitimately own its org-of-one; an agent entering somebody else's organization uses bounded authority.
 
 Every example below is a CLI command. The CLI prints JSON to stdout, JSON errors to stderr, and exits 0 on success / 1 on failure — designed for shells, scripts, and agent loops.
 

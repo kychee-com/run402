@@ -16,7 +16,7 @@ If you have an active wallet allowance and want to ship now, the 30-second start
 
 ## What Run402 offers
 
-A platform that an AI agent can fully provision, operate, and pay for on its own. No human signup, no API keys to copy out of a web dashboard, no human in the payment loop:
+A platform that an AI agent can provision, operate, and pay for through its own principal and authenticator—not a borrowed human account or invisible automation identity. The routine cold-start path requires no human signup, no API keys copied from a web dashboard, and no per-payment human click within the agent's permitted budget:
 
 - Postgres databases with PostgREST REST API and user auth (passwords + Google OAuth, zero-config)
 - Content-addressed CDN file storage — paste-and-go URLs with SRI integrity baked in
@@ -27,13 +27,15 @@ A platform that an AI agent can fully provision, operate, and pay for on its own
 - AI helpers — image generation, text translation, content moderation
 - KMS-backed Ethereum signing — provision signers where private keys never leave AWS KMS
 
-Prototype tier is FREE on testnet — uses Base Sepolia USDC from the Run402 faucet to verify your x402 setup end-to-end. No real money, instantly available, no human approval. When you're ready for production, hobby ($5/30d) and team ($20/30d) tiers pay with real USDC on Base, pathUSD on Tempo, or Stripe credits.
+Prototype tier is FREE on testnet — uses Base Sepolia USDC from the Run402 faucet to verify your x402 setup end-to-end. No real money, instantly available, and no human account approval for this prototype path. When you're ready for production, hobby ($5/30d) and team ($20/30d) tiers pay with real USDC on Base, pathUSD on Tempo, or Stripe credits.
 
-## Vision — agents as first-class customers
+## Vision — people and agents as first-class participants
 
-Most platforms treat AI agents as second-class clients of human-shaped products. Run402 inverts this: the platform is shaped *for* agents.
+**Run402 is agent-first because agents are first-class participants, not because people disappear.** People and agents each act through their own Run402 principal and authenticator, and their actions remain attributable. Equal standing does not mean identical credentials or permissions: identity answers who acted; organization membership, roles, grants, delegates, freshness, and spend policy answer what that principal may do.
 
-- Autonomous payment. x402 (the HTTP 402 micropayment protocol) lets an agent settle a bill directly from its allowance without asking a human to click through a checkout. MPP (Stripe's Machine Payments Protocol) is the same pattern on Tempo.
+An autonomous founder agent may remain owner of its org-of-one. A person may join through explicit co-ownership. An agent entering an organization founded by somebody else receives bounded, revocable authority instead of borrowing a human login. Most platforms treat AI agents as second-class clients of human-shaped products. Run402 gives them a direct path while keeping human ownership, policy, recovery, billing, and high-stakes consent first-class too.
+
+- Autonomous payment. x402 (the HTTP 402 micropayment protocol) lets an agent settle a permitted bill directly from its allowance without asking a human to click through each checkout. MPP (Stripe's Machine Payments Protocol) is the same pattern on Tempo.
 - Dark-by-default safety. A table you create is unreachable from PostgREST until you declare it in the manifest with `expose: true`. This eliminates the "agent created a table, forgot to set RLS, data leaked" footgun.
 - Content-addressed storage. `blob put` returns a URL bound to the bytes' SHA-256 — no cache-invalidation choreography, no dangling references after redeploy.
 - One operation = one declarative spec. `r.project(id).apply` takes a single `ReleaseSpec` and converges the project (database + manifest + value-free secret declarations + functions + site + public static paths + subdomain) toward it; surgical patches and full replaces are first-class. Set secret values out-of-band with the secrets API, then use `secrets.require[]` as a dependency gate.

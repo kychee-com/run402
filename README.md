@@ -16,6 +16,10 @@ This is the backend Kychee's open products run on. We needed a layer an agent ca
 
 One call to [run402](https://run402.com) gives an agent a full Postgres database, REST API, user auth, content-addressed file storage, static site hosting, serverless functions, and image generation, paid with x402 USDC on Base (or Stripe credits). The prototype tier is free on testnet.
 
+**Run402 is agent-first because agents are first-class participants, not because people disappear.** A person or agent acts through its own Run402 principal and authenticator, and its actions remain attributable. Identity answers who acted; memberships, roles, grants, delegates, freshness, and spend policy determine what that principal may do.
+
+An autonomous agent may remain the legitimate owner of the org-of-one it creates. People may join through explicit co-ownership. Agents entering somebody else's organization receive bounded authority instead of borrowing a human account. Different keys. Equal standing. Explicit authority.
+
 This monorepo ships every surface an agent can pick up:
 
 | Surface | Use when… |
@@ -24,7 +28,7 @@ This monorepo ships every surface an agent can pick up:
 | [`run402` CLI](./cli/) | Terminal, scripts, CI, agent-controlled shells: JSON in, JSON out, exit code on failure |
 | [`run402-mcp`](./src/) | Claude Desktop, Cursor, Cline, Claude Code: core run402 operations as MCP tools |
 | [OpenClaw skill](./openclaw/) | OpenClaw agents (no MCP server required) |
-| [Run402 for Buzz](./buzz/) | Buzz managed agents: link one dedicated identity, report human/community/enrollment state, offer bounded enrollment, then preserve the approval-gated org-of-one fallback |
+| [Run402 for Buzz](./buzz/) | Buzz people and agents: link one agent's dedicated identities, report human/community/enrollment state, offer bounded enrollment, then preserve the approval-gated independent founder-agent fallback |
 | [`@run402/functions`](https://www.npmjs.com/package/@run402/functions) | Imported _inside_ deployed functions (`db(req?)`, `adminDb()`, `auth.user()`, `email`, `ai`, `assets`) and for TypeScript autocomplete in your editor. Source lives in the public [`run402-core`](https://github.com/kychee-com/run402-core) repo under `packages/functions`; run402 Cloud consumes the published npm package when it bundles function zips. |
 | [`@run402/astro`](./astro/) | Astro integration for SSR, ISR cache, hosted auth components, and image variants |
 

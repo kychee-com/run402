@@ -17,7 +17,9 @@ metadata:
 
 # Run402 — Postgres, storage & deploys for AI agents
 
-Run402 gives an agent a real Postgres database with REST API and user auth, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed on-chain signing. **Prototype tier is free on testnet** — no real money, no human signup. Payment happens automatically via x402 USDC on Base, MPP pathUSD on Tempo, or Stripe credits.
+Run402 gives an agent a real Postgres database with REST API and user auth, content-addressed CDN storage, static site hosting, Node 22 serverless functions, email, image generation, and KMS-backed on-chain signing. **Prototype tier is free on testnet** — no real money or human signup for the routine cold-start path. Payment happens automatically via x402 USDC on Base, MPP pathUSD on Tempo, or Stripe credits.
+
+Run402 is agent-first because agents are first-class participants, not because people disappear. Act through your own Run402 principal and authenticator; do not borrow a human login, shared cloud account, or another agent's credential. Your identity records who acted. Memberships, roles, grants, delegates, freshness, and spend policy determine what you may do. A founder agent may legitimately own its org-of-one; an agent entering somebody else's organization uses bounded authority.
 
 This skill assumes you're calling `run402-mcp` tools directly (Claude Desktop, Cursor, Cline, Claude Code). The body teaches you which tool to reach for and what the modern patterns are; full parameter schemas live in the MCP tool descriptions.
 

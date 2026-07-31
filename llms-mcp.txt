@@ -11,6 +11,8 @@ This file is canonical reference for the `run402-mcp` MCP server's tool surface.
 
 If you're an MCP-host agent that already has the run402-mcp tools available, this is your reference. If you don't have the tools loaded, install the server first (instructions at the bottom).
 
+Run402 treats you as a first-class participant acting through your own principal and authenticator, not as an invisible process borrowing a human account. Identity records who acted; organization roles, grants, delegates, freshness, and spend policy determine what you may do. Founder-agent ownership is legitimate, while an agent entering somebody else's organization uses bounded authority.
+
 ## Mental model
 
 `run402-mcp` is a thin shim over [`@run402/sdk`](https://docs.run402.com/llms-sdk.txt). Each MCP tool is an argv-parsing wrapper around an SDK method. The configured API target, active project state, allowance, and local project-key cache are shared with the CLI; provisioning a project from any surface makes its `anon_key` and `service_key` available to credential-required operations without treating cached keys as project inventory.
