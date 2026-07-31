@@ -27,6 +27,15 @@ Buzz human adoption, community installation, and agent enrollment are also inten
 
 Tools that require payment (`provision_postgres_project`, `set_tier`, `deploy`, `generate_image`) return 402 payment details as informational text (not an error) — the LLM should reason about cost, guide the user through funding if needed, and retry the same tool call.
 
+After a successful purchase, `generate_image` reports what actually settled —
+amount, network and transaction — and, when the settlement network is a testnet,
+states plainly that it was **not a real payment** and cannot appear on the wall.
+This matters because `init` faucet-funds Base Sepolia: without it an agent can
+watch a payment succeed and never learn it moved test money. The testnet verdict
+is read from the settlement receipt, not from local wallet config, so an agent
+holding mainnet USDC is never told its real payment was fake. `pay_url` reports
+the same facts for arbitrary sellers.
+
 `pay_url` is the general x402 buyer tool for external HTTP(S) endpoints. Params:
 `url`, optional `method`, `body`, `idempotency_key`, `max_usd_micros`
 (default `100000`, or $0.10), and `require_receipt`. It delegates to SDK
