@@ -29,12 +29,18 @@ describe("run402-buzz distributable package", () => {
     assert.match(frontmatter[1], /later asks.*build, deploy, update, verify, or operate/);
   });
 
-  it("documents the direct, noninteractive Codex install without redundant selectors", () => {
-    assert.match(
-      README,
-      /npx skills add https:\/\/github\.com\/kychee-com\/run402\/tree\/main\/buzz -a codex -y/,
-    );
-    assert.doesNotMatch(README, /skills@latest|--skill run402-buzz|--copy|--agent codex|--yes/);
+  it("documents first-party, runtime-specific installation and bounded fallback", () => {
+    const installation = readFileSync(join(ROOT, "references", "installation.md"), "utf8");
+    const docs = `${README}\n${installation}`;
+    assert.match(docs, /DO_NOT_TRACK=1 npx --yes skills@latest add https:\/\/run402\.com -s run402-buzz -a codex -y/);
+    assert.match(docs, /-a claude-code codex/);
+    assert.match(docs, /Claude Code \| `claude-code` \| `\.claude\/skills\/run402-buzz`/);
+    assert.match(docs, /Goose \| `goose` \| `\.goose\/skills\/run402-buzz`/);
+    assert.match(docs, /`universal`.*`\.agents\/skills`/s);
+    assert.match(docs, /GitHub.*only after a classified availability failure/s);
+    assert.match(docs, /Never fall back after an integrity failure/);
+    assert.match(docs, /mutation_state: \"not_started\"/);
+    assert.doesNotMatch(docs, /^DO_NOT_TRACK=.*-a claude(?:\s|$)/m);
   });
 
   it("contains only bounded regular Markdown, JSON, and JavaScript files", () => {
@@ -64,6 +70,7 @@ describe("run402-buzz distributable package", () => {
       "references/identity-and-security.md",
       "references/community-control-plane.md",
       "references/receipts.md",
+      "references/installation.md",
     ]) assert.ok(existsSync(join(ROOT, dependency)), dependency);
   });
 

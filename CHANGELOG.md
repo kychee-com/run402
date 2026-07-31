@@ -2,6 +2,20 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — first-party skill distribution
+
+- **Agent skills:** Run402 now builds a deterministic, content-addressed skill
+  index for `run402` and `run402-buzz`, with immutable artifacts designed for
+  hosting on `run402.com`. Buzz installs can use the first-party domain as the
+  canonical source, avoiding GitHub, raw-content, and registry availability on
+  the happy path.
+- **Install guidance:** documented per-agent targets use the actual installer
+  names (`claude-code`, `codex`, `goose`, or `universal`) and retain GitHub only
+  as a transport fallback. Digest mismatches fail closed and never fall back.
+- **Tests:** deterministic rebuild, archive safety, retained-version behavior,
+  every documented target, transport fallback, and pre-mutation integrity
+  failure are covered by package and installer smoke tests.
+
 ## Unreleased — a paid call says what it paid
 
 - **SDK:** `ResponseEnvelope` gains an optional `settlement` (`network`,
@@ -19,7 +33,6 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 - **Observed, never inferred:** the testnet warning keys on the settlement
   receipt's network, not on local wallet config — a buyer holding mainnet funds
   would make a config-derived guess wrong.
-
 ## Unreleased — the mainnet on-ramp is visible from the tool surface
 
 - **MCP (fix):** `allowance_export`'s description and `init`'s buyer next-step

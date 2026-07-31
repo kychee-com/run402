@@ -13,6 +13,10 @@ Keep the authority domains explicit. Buzz is authoritative for signed collaborat
 
 Installing, copying, updating, or discovering this skill performs no setup and authorizes no proof. Begin the setup workflow only after the user explicitly asks this managed Buzz agent to set up, initialize, install, or connect Run402.
 
+## Install or update this skill
+
+Read [references/installation.md](references/installation.md) when installing, updating, repairing, or reporting this skill. Use first-party discovery at `https://run402.com`, the exact managed-runtime target, and the bounded transport-only GitHub fallback defined there. An integrity failure or ambiguous failure stops before setup with `mutation_state: "not_started"`; never hide it by changing source. Installation itself remains inert. If the human's original Buzz request also explicitly asked to set up, initialize, install, or connect Run402, continue with the setup workflow below only after the installed package and target path are verified.
+
 ## Public-link disclosure
 
 The canonical install instructions tell the user that setup publishes a durable public kind-1 Nostr proof associating the agent's public Buzz identity with its public Run402 wallet. Revocation changes current status but does not erase the Nostr event or historical Run402 proof. A Buzz-managed event may also expose the owner's public NIP-OA attestation. None of these public identities gains authentication, authorization, organization ownership, spending, or transfer authority from the link.

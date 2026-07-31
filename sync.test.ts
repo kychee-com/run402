@@ -2054,28 +2054,29 @@ describe("coverage summary", () => {
 });
 
 describe("agent-skills discovery index", () => {
-  // The public repo is authoritative for the skill digest. The committed
-  // .well-known/agent-skills/index.json must match the current SKILL.md bytes
-  // (regenerate with `node scripts/build-agent-skills-index.mjs`) and advertise
-  // the canonical docs.run402.com SKILL.md URL (Option C — agent-docs-self-host).
-  it("index.json digest matches SKILL.md and points at the docs host", () => {
+  // The public repo is authoritative for both first-party artifact bytes and
+  // the committed discovery metadata (regenerate with the builder).
+  it("advertises the generic and Buzz skills as content-addressed apex artifacts", () => {
     const skill = readFileSync(join(__dirname, "SKILL.md"), "utf-8");
     const expected = "sha256:" + createHash("sha256").update(skill, "utf8").digest("hex");
     const index = JSON.parse(
       readFileSync(join(__dirname, ".well-known/agent-skills/index.json"), "utf-8"),
     );
-    const entry = index.skills?.[0];
-    assert.ok(entry, "discovery index must list the run402 skill");
+    assert.deepEqual(index.skills.map(({ name, type }: { name: string; type: string }) => ({ name, type })), [
+      { name: "run402", type: "skill-md" },
+      { name: "run402-buzz", type: "archive" },
+    ]);
+    const entry = index.skills.find(({ name }: { name: string }) => name === "run402");
     assert.equal(
       entry.digest,
       expected,
       "index digest must equal sha256(SKILL.md) — run `node scripts/build-agent-skills-index.mjs`",
     );
-    assert.equal(
-      entry.url,
-      "https://docs.run402.com/SKILL.md",
-      "index url must be the canonical docs.run402.com SKILL.md",
-    );
+    for (const advertised of index.skills) {
+      assert.match(advertised.url, new RegExp(`^https://run402\\.com/skills/${advertised.name}/[a-f0-9]{64}/`));
+      assert.match(advertised.digest, /^sha256:[a-f0-9]{64}$/);
+      assert.ok(advertised.url.includes(advertised.digest.slice("sha256:".length)));
+    }
   });
 });
 

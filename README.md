@@ -376,14 +376,22 @@ The SDK is organised into focused namespaces: `actions` (Node recursive action r
 
 An agent can publicly prove that its separately-held Buzz/Nostr key and Run402 EOA belong to the same principal. This is attribution only: projects remain organization-owned, and Nostr identities never authenticate, authorize, pay, deploy, or receive transfers. Run402 never accepts or derives from an `nsec`, Nostr private key, mnemonic, seed, or derivation path.
 
-Install the self-contained Buzz skill directly into the managed-agent workspace (normally `~/.buzz`):
+The human-facing install is a Buzz message—no terminal required:
+
+```text
+@Fizz install the Run402 Buzz skill and set up Run402.
+```
+
+The managed agent installs the self-contained skill into its workspace (normally `~/.buzz`). For a Codex runtime, the exact agent-executed command is:
 
 ```sh
 cd ~/.buzz
-npx skills add https://github.com/kychee-com/run402/tree/main/buzz -a codex -y
+DO_NOT_TRACK=1 npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y
 ```
 
-Installation is inert. Setup later publishes a durable public kind-1 Nostr event and durable Run402 proof connecting the two public identities; revocation does not erase their history, and a Buzz-managed event may also expose its owner's public NIP-OA attestation. After reading that disclosure, tell the intended managed agent `@Builder, set up Run402.` The agent uses the user's global npm installation, initializes only if needed, creates or reuses the link, independently verifies it, and reports `Run402 is ready` with `Deployment: none`. It then offers one context-relevant quick test or demo and waits for explicit approval before building, provisioning, spending, or deploying.
+Claude Code uses `-a claude-code`, Goose uses `-a goose`, a confirmed `.agents/skills` consumer may use `-a universal`, and Claude Code plus Codex uses `-a claude-code codex`. `universal` is the shared path, not all runtimes; do not use the invalid explicit target `-a claude`. The skill bytes come from immutable digest-verified artifacts at `run402.com`; first-run `npx` can still require npm. GitHub is the one availability-only fallback, while any integrity failure stops before setup.
+
+Installation is inert. Setup later publishes a durable public kind-1 Nostr event and durable Run402 proof connecting the two public identities; revocation does not erase their history, and a Buzz-managed event may also expose its owner's public NIP-OA attestation. The agent uses the user's global npm installation, initializes only if needed, creates or reuses the link, independently verifies it, and reports `Run402 is ready` with `Deployment: none`. It then offers one context-relevant quick test or demo and waits for explicit approval before building, provisioning, spending, or deploying.
 
 See the [`buzz/` guide](./buzz/README.md) for prerequisites, the no-secret signer model, released-client fixtures, migration guidance, and the full workflow, or inspect the exact [`run402-buzz` listing on skills.sh](https://skills.sh/kychee-com/run402/run402-buzz). The low-level CLI commands remain available for debugging, but they are not a competing onboarding path.
 

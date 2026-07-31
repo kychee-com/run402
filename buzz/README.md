@@ -10,18 +10,35 @@ The records also stay separate. Buzz is authoritative for signed collaboration: 
 
 ## Getting started
 
-Buzz managed-agent workspaces default to `~/.buzz`. Install this direct package so the generic root Run402 skill cannot shadow it:
+Tell the intended managed agent in Buzz:
+
+```text
+@Fizz install the Run402 Buzz skill and set up Run402.
+```
+
+The human does not need a terminal. Buzz managed-agent workspaces normally live at `~/.buzz`; the agent installs the distinct `run402-buzz` package there so the generic root Run402 skill cannot shadow it.
+
+For agents and operators auditing the exact command, select only the runtime(s) actually present:
+
+| Runtime | Installer target | Installed workspace path |
+| --- | --- | --- |
+| Claude Code | `claude-code` | `.claude/skills/run402-buzz` |
+| Codex | `codex` | `.agents/skills/run402-buzz` |
+| Goose | `goose` | `.goose/skills/run402-buzz` |
+| Built-in Buzz Agent / confirmed `.agents/skills` consumer | `universal` | `.agents/skills/run402-buzz` |
 
 ```sh
 cd ~/.buzz
-npx skills add https://github.com/kychee-com/run402/tree/main/buzz -a codex -y
+DO_NOT_TRACK=1 npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y
 ```
 
-The URL points directly at this one-skill package, so no skill selector or install-mode flag is needed. `-a codex` makes the Buzz managed-agent target explicit and `-y` accepts the installer prompt. You can inspect the exact [skills.sh listing](https://skills.sh/kychee-com/run402/run402-buzz) or review every installed file in this directory before setup.
+For a workspace used by both Claude Code and Codex, use `-a claude-code codex`. Do not use `-a claude`. `universal` means the shared `.agents/skills` path, not every agent; `-a '*'` is the advanced all-agent selector and intentionally is not the default.
+
+The apex index advertises an immutable, digest-verified archive whose bytes are served entirely by `run402.com`. `DO_NOT_TRACK=1` disables the installer's optional telemetry; the first `npx` invocation can still require the npm registry. GitHub is used only as a reported fallback after a DNS, TLS, timeout, connection-refusal, or unavailable-HTTP failure. Digest, archive, path/link, package-identity, or index disagreement is an integrity failure and must stop before setup—never fall back. See the exact [installation and reporting policy](references/installation.md). The public repository remains the reviewable source, and the [skills.sh listing](https://skills.sh/kychee-com/run402/run402-buzz) remains optional discovery rather than a runtime dependency.
 
 Installation only copies files; it executes nothing. Before continuing, understand the one public side effect: setup publishes a durable public kind-1 Nostr event associating the agent's public Buzz identity with its public Run402 wallet and creates a durable public Run402 proof. Revocation changes current status but does not erase either historical record. If Buzz adds its NIP-OA owner attestation, the owner's public key and signature are also public but gain no Run402 authority.
 
-Then tell the intended managed agent in Buzz:
+If the original request asked only to copy the skill, stop after the inert installation receipt. To begin setup later, tell the intended managed agent:
 
 ```text
 @Builder, set up Run402.
