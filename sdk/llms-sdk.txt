@@ -1993,6 +1993,27 @@ usage(projectId): Promise<AiUsageResult>
 generateImage(opts: { prompt, aspect? }): Promise<GenerateImageResult> // $0.03 via x402, no projectId
 ```
 
+`GenerateImageResult` is `{ image, content_type, aspect, payment }`. `payment` is
+the settlement **observed** for that call, decoded from the response's
+`PAYMENT-RESPONSE` receipt:
+
+```
+payment: { success, network, transaction, payer } | null
+```
+
+`null` means the response carried no receipt — no payment was made on this
+request, NOT that one failed. **Surface `network` to whoever is watching.**
+`run402 init` faucet-funds Base Sepolia (`eip155:84532`), so the documented
+quickstart pays in test money; without the network a caller can watch a payment
+succeed with no way to know it was not real, and the claims wall will then
+refuse the very transaction they just made. Derive any "this was testnet"
+message from `payment.network`, never from local wallet configuration — a buyer
+holding mainnet funds makes a config-derived guess wrong.
+
+The same value rides `ResponseEnvelope.settlement` for any request that settles,
+so `requestWithResponse` callers get it too. The key is omitted entirely when
+nothing settled, so existing envelope shapes are unchanged.
+
 `r.image` is an alias of `r.ai`, so CLI readers can translate
 `run402 image generate ...` to `r.image.generateImage(...)`.
 
