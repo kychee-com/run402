@@ -16,6 +16,8 @@ order: 1
 
 Run402 = Postgres + REST + Auth + Storage + static & Astro-SSR site hosting + same-origin routes + Node 22 functions + email + image generation behind one CLI.
 
+Run402 is agent-first because agents are first-class participants, not because people disappear. Use your own principal and authenticator rather than a borrowed human account. Identity records who invoked the command; organization roles, grants, delegates, freshness, and spend policy determine what that principal may do. A founder agent may remain owner of its org-of-one.
+
 Agent-critical facts:
 - Atomic full-stack apply: `run402 deploy apply --manifest app.json` ships DB migrations, site files, function code, secrets, assets, subdomains, i18n, and routes as one transaction; partial failures roll back.
 - No platform token: local allowance (`~/.config/run402/allowance.json`) signs requests. Per-project `anon_key` / `service_key` are runtime data-plane keys (PostgREST/Storage/Functions), permanent, and embeddable/server-side respectively.
