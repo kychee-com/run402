@@ -58,9 +58,63 @@ export interface RequestOptions {
   context: string;
 }
 
+/**
+ * What the seller's `PAYMENT-RESPONSE` receipt says actually settled.
+ *
+ * OBSERVED, never inferred. `network` is the chain the payment landed on
+ * according to the settlement receipt — not a guess from local wallet config.
+ * That distinction is the point: a caller must be able to tell a real payment
+ * from a testnet one, and a buyer holding mainnet funds makes any config-derived
+ * guess wrong.
+ */
+export interface PaymentSettlement {
+  success: boolean;
+  network: string;
+  transaction: string;
+  payer: string | null;
+}
+
 export interface ResponseEnvelope<T = unknown> {
   status: number;
   body: T;
+  /**
+   * Present only when the response carried an x402 settlement receipt, i.e.
+   * this request actually moved money. Absent/`null` means no payment was made
+   * on this request — NOT that a payment failed.
+   */
+  settlement?: PaymentSettlement | null;
+}
+
+/**
+ * Decode the `PAYMENT-RESPONSE` receipt if the response carries one.
+ *
+ * Deliberately total: a malformed or unexpected receipt yields `null` rather
+ * than throwing. A caller asking "what did I just pay?" must never have its
+ * SUCCESSFUL response turned into an error by a reporting concern.
+ *
+ * Strict receipt VALIDATION — matching the receipt against the challenge the
+ * buyer accepted — belongs to the paid-fetch buyer path, which does it. This is
+ * disclosure of what the seller reported, and is labelled as such.
+ */
+export function decodeSettlementReceipt(res: {
+  headers: { get(name: string): string | null };
+}): PaymentSettlement | null {
+  const header = res.headers.get("PAYMENT-RESPONSE") ?? res.headers.get("X-PAYMENT-RESPONSE");
+  if (!header) return null;
+  try {
+    const json =
+      typeof atob === "function" ? atob(header) : Buffer.from(header, "base64").toString("utf8");
+    const raw = JSON.parse(json) as Record<string, unknown>;
+    if (typeof raw.network !== "string" || typeof raw.transaction !== "string") return null;
+    return {
+      success: raw.success === true,
+      network: raw.network,
+      transaction: raw.transaction,
+      payer: typeof raw.payer === "string" ? raw.payer : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Internal client surface passed to each namespace. */
@@ -184,7 +238,17 @@ export async function requestWithResponse<T>(
     resBody = await res.text();
   }
 
-  if (res.ok) return { status: res.status, body: resBody as T };
+  if (res.ok) {
+    // OMIT the key entirely when no payment settled, rather than setting null.
+    // `restResponse` hands this envelope straight to CLI/MCP shims, and callers
+    // compare it by exact shape — always adding the key silently widened a
+    // public surface for every consumer to serve a field only paid responses
+    // use. Caught by an existing deepEqual test, which was right to fail.
+    const settlement = decodeSettlementReceipt(res);
+    return settlement
+      ? { status: res.status, body: resBody as T, settlement }
+      : { status: res.status, body: resBody as T };
+  }
 
   if (res.status === 402) {
     throw new PaymentRequired(

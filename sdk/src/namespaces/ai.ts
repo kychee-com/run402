@@ -3,7 +3,7 @@
  * wallet-scoped image generation.
  */
 
-import type { Client } from "../kernel.js";
+import type { Client, PaymentSettlement } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 
@@ -49,6 +49,16 @@ export interface GenerateImageResult {
   image: string;
   content_type: string;
   aspect: string;
+  /**
+   * What actually settled for THIS call, from the seller's settlement receipt.
+   *
+   * `null` when the response carried no receipt — meaning no payment was made
+   * on this request (e.g. a prepaid allowance), NOT that one failed. Callers
+   * that report a purchase to a human or an agent should surface `network`:
+   * the documented quickstart faucet-funds Base Sepolia, so a caller can
+   * otherwise watch a payment succeed with no way to know it was test money.
+   */
+  payment: PaymentSettlement | null;
 }
 
 export class Ai {
@@ -104,10 +114,14 @@ export class Ai {
         "generating image",
       );
     }
-    return this.client.request<GenerateImageResult>("/generate-image/v1", {
-      method: "POST",
-      body: { prompt: opts.prompt, aspect },
-      context: "generating image",
-    });
+    // requestWithResponse, not request: the settlement receipt rides the
+    // RESPONSE, and `request` discards everything but the body — which is
+    // exactly how a caller could buy an image with no way to learn which
+    // network the money moved on.
+    const res = await this.client.requestWithResponse<Omit<GenerateImageResult, "payment">>(
+      "/generate-image/v1",
+      { method: "POST", body: { prompt: opts.prompt, aspect }, context: "generating image" },
+    );
+    return { ...res.body, payment: res.settlement ?? null };
   }
 }

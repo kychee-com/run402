@@ -13,6 +13,41 @@ export const generateImageSchema = {
     .describe("Aspect ratio: square (1:1), landscape (16:9), portrait (9:16)"),
 };
 
+/**
+ * Chains whose money is not real. Keyed by CAIP-2 id, matched on the OBSERVED
+ * settlement network — never on local wallet config, because a buyer holding
+ * mainnet funds would make a config guess wrong.
+ */
+const TESTNET_LABELS: Record<string, string> = {
+  "eip155:84532": "Base Sepolia (testnet)",
+  "eip155:11155111": "Ethereum Sepolia (testnet)",
+};
+
+const MAINNET_LABELS: Record<string, string> = {
+  "eip155:8453": "Base",
+  "eip155:1": "Ethereum",
+};
+
+/**
+ * Tell the buyer what they just paid, and whether it was real.
+ *
+ * The documented quickstart faucet-funds Base Sepolia, so without this an agent
+ * watches a payment succeed with no way to know it moved test money — and our
+ * own wall then refuses the transaction it just made. `pay_url` in this same
+ * server has always reported settlement; this closes that gap on the one tool
+ * the whole Dime Demo is built on.
+ */
+function renderSettlement(payment: { network: string; transaction: string } | null): string {
+  if (!payment) return "";
+  const testnet = TESTNET_LABELS[payment.network];
+  const where = testnet ?? MAINNET_LABELS[payment.network] ?? payment.network;
+  const tx = `tx ${payment.transaction}`;
+  return testnet
+    ? `\nPaid $0.03 USDC on ${where} — ${tx}.\nThis is TEST money: it is not a real payment and cannot appear on the wall. ` +
+        `To pay on mainnet, fund the address from \`allowance_export\` with USDC on Base.`
+    : `\nPaid $0.03 USDC on ${where} — ${tx}.`;
+}
+
 export async function handleGenerateImage(args: {
   prompt: string;
   aspect?: string;
@@ -30,7 +65,7 @@ export async function handleGenerateImage(args: {
       content: [
         {
           type: "text",
-          text: `Generated ${body.aspect} image (${body.content_type})`,
+          text: `Generated ${body.aspect} image (${body.content_type})${renderSettlement(body.payment)}`,
         },
         {
           type: "image",

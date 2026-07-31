@@ -2,6 +2,24 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — a paid call says what it paid
+
+- **SDK:** `ResponseEnvelope` gains an optional `settlement` (`network`,
+  `transaction`, `payer`, `success`), decoded from the response's
+  `PAYMENT-RESPONSE` receipt. The key is **omitted entirely** when no payment
+  settled, so envelope shapes are unchanged for every existing consumer.
+  `GenerateImageResult` gains `payment: PaymentSettlement | null`.
+- **MCP (fix):** `generate_image` reported only `Generated square image
+  (image/png)` after moving money — no amount, payer, transaction or network.
+  Because the documented quickstart faucet-funds Base Sepolia, a buyer could
+  watch a payment succeed with no way to learn it was test money, and the
+  claims wall would then refuse the transaction they had just made. It now
+  reports what settled and, on a testnet, says plainly that it is not a real
+  payment. `pay_url` in the same server already did this.
+- **Observed, never inferred:** the testnet warning keys on the settlement
+  receipt's network, not on local wallet config — a buyer holding mainnet funds
+  would make a config-derived guess wrong.
+
 ## Unreleased — the mainnet on-ramp is visible from the tool surface
 
 - **MCP (fix):** `allowance_export`'s description and `init`'s buyer next-step
