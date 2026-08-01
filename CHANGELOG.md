@@ -33,6 +33,12 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   `Please install the run402.com skill`. Apex guidance and discovery metadata
   route the managed Buzz context to `run402-buzz`; bootstrap URLs, runtime
   targets, and installer commands remain agent-only implementation details.
+- **One-request Buzz onboarding:** that canonical sentence now continues in the
+  same turn after the inert file copy. The managed agent loads the verified
+  installed skill directly, runs preflight, initializes and links its public
+  identity, then asks about one contextual demo. It never stops at “available
+  next turn” or asks the human to repeat the setup request; an explicit
+  files-only instruction remains the opt-out.
 - **Demo-first adoption:** the SDK and `run402 buzz adopt offer` expose durable,
   inert HTTPS ownership handoffs after a verified deployment. The short Buzz
   signing attempt is created only after direct human login and fresh passkey;

@@ -266,18 +266,23 @@ describe("buzz/SKILL.md (run402-buzz)", () => {
     assert.match(buzz.frontmatter.name, /^[a-z0-9][a-z0-9-]*$/);
   });
 
-  it("triggers setup explicitly and keeps installation inert", () => {
+  it("treats the canonical Buzz request as onboarding while keeping file installation inert", () => {
     assert.match(buzz.frontmatter.description, /install, initialize, set up, or connect Run402/);
-    assert.match(buzz.body, /Installing, copying, updating, or discovering this skill performs no setup/);
+    assert.match(buzz.body, /Copying, updating, or discovering the skill files performs no setup/);
+    assert.match(buzz.body, /goal-shaped request to install \*\*and connect\*\* Run402/);
+    assert.match(buzz.body, /continue with the setup workflow below in the current turn/);
+    assert.match(buzz.body, /explicitly requested files only/);
     assert.match(buzz.body, /npm install -g run402@latest/);
     assert.match(buzz.body, /run402 init/);
     assert.match(buzz.body, /identity link nostr/);
   });
 
-  it("stops ready without deployment and waits for approval", () => {
+  it("continues through connection and waits at the contextual demo approval", () => {
     assert.match(buzz.body, /Deployment: none/);
-    assert.match(buzz.body, /Run402 is ready/);
-    assert.match(buzz.body, /Would you like me to try it\?/);
+    assert.match(buzz.body, /Done—Run402 is connected to my Buzz identity/);
+    assert.match(buzz.body, /Would you like me to build and deploy/);
+    assert.match(buzz.body, /Do not exit onboarding at the receipt/);
+    assert.doesNotMatch(buzz.body, /Would you like me to set up Run402\?/);
     assert.match(buzz.body, /Do not build anything until the user affirmatively agrees/);
   });
 

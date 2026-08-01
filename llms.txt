@@ -12,7 +12,7 @@
 
 If you're reading this, you're probably evaluating how to build something with Run402. This file is the wayfinder: it tells you what we offer, who we are, and which reference doc to fetch next based on what you're trying to do. Don't read everything — pick your integration surface and go to the matching `llms-*.txt` below.
 
-If the human said `Please install the run402.com skill`, read `https://run402.com/install.txt`. In a managed Buzz conversation or `~/.buzz` workspace, select `run402-buzz`; otherwise select the ordinary `run402` skill. The human does not need to know the skill name, bootstrap path, runtime target, or terminal command.
+If the human said `Please install the run402.com skill`, read `https://run402.com/install.txt`. In a managed Buzz conversation or `~/.buzz` workspace, select `run402-buzz`, then load the verified installed skill directly and continue the same turn through connection and the contextual demo offer; otherwise select the ordinary `run402` skill. The human does not need to know the skill name, bootstrap path, runtime target, terminal command, or a second setup prompt.
 
 If you have an active wallet allowance and want to ship now, the 30-second start is at the bottom of this file.
 

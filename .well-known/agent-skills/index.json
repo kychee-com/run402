@@ -5,15 +5,15 @@
       "name": "run402",
       "type": "skill-md",
       "description": "Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.",
-      "url": "https://run402.com/skills/run402/12a9c0660c1851db9b8e775fef0fdbf7fbbea61de17ff0afed1242b5504bfb1c/SKILL.md",
-      "digest": "sha256:12a9c0660c1851db9b8e775fef0fdbf7fbbea61de17ff0afed1242b5504bfb1c"
+      "url": "https://run402.com/skills/run402/bce7e2e83be3c8b1f68663d80432607a01b82ca2dd68f4cf6f51a5fbdf811fc7/SKILL.md",
+      "digest": "sha256:bce7e2e83be3c8b1f68663d80432607a01b82ca2dd68f4cf6f51a5fbdf811fc7"
     },
     {
       "name": "run402-buzz",
       "type": "archive",
-      "description": "Set up Run402 for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop at a verified approval boundary. Use when a managed Buzz user says \"install the run402.com skill\" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.",
-      "url": "https://run402.com/skills/run402-buzz/173c16f8c7d7da2b4c87a34447fdbed9d3509af94293965f60b4e2e08cc062dc/run402-buzz.tgz",
-      "digest": "sha256:173c16f8c7d7da2b4c87a34447fdbed9d3509af94293965f60b4e2e08cc062dc"
+      "description": "Complete Run402 onboarding for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop only at a real approval or repair boundary. Use when a managed Buzz user says \"install the run402.com skill\" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.",
+      "url": "https://run402.com/skills/run402-buzz/8c4b62a42db7e16587dbcf53dde598dd569a082abf518e775e70ad1154a4fe7f/run402-buzz.tgz",
+      "digest": "sha256:8c4b62a42db7e16587dbcf53dde598dd569a082abf518e775e70ad1154a4fe7f"
     }
   ]
 }

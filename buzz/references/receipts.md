@@ -17,7 +17,7 @@ Report public identifiers and observed state only. Never include private keys, m
 - Deployment: `none`
 - Community connection: `available|relay_unavailable|not_selected` (preserve the exact relay repair when unavailable)
 
-Run402 is ready. I can build and deploy <one contextual idea> using <relevant current capabilities>. Would you like me to try it?
+Done—Run402 is connected to my Buzz identity. Would you like me to build and deploy <one contextual idea> as a quick demo?
 ```
 
 Do not claim an active tier, project, allowance balance, or deployed application unless separately observed after the user approves that work.
@@ -48,7 +48,9 @@ For Base Sepolia faucet-backed demos, keep network/faucet provenance in the expa
 ## Adoption offer
 
 ```markdown
-Done — <application> is live at <verified URL>. Would you like to become a co-owner of the Run402 organization that owns this deployment? [Become an owner](https://console.run402.com/buzz/adoptions/buzzhao_…)
+Done—I built it, deployed it, and verified it at <verified URL>.
+Would you also like to become a co-owner of the Run402 organization that owns this deployment?
+[Become an owner](https://console.run402.com/buzz/adoptions/buzzhao_…)
 ```
 
 Expanded non-secret state may include the offer id, organization, identity link, safe deployment context, status, and one `next_action`. Never include a session, credential, raw callback event, or short-lived `buzz://` challenge in chat.
@@ -56,7 +58,7 @@ Expanded non-secret state may include the offer id, organization, identity link,
 ## Adoption complete
 
 ```markdown
-You are now a co-owner of the Run402 organization behind <application>. Fizz remains an owner, and no credentials, projects, or ownership were transferred.
+Done—you’re now a co-owner. I remain the founder-agent owner. Whenever you want me to deploy something to Run402, just say “deploy.”
 ```
 
 ## Blocked

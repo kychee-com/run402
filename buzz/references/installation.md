@@ -6,7 +6,9 @@ The human-facing path is a Buzz message, not a terminal session:
 Please install the run402.com skill.
 ```
 
-The human does not need to know a bootstrap path or runtime target. In a managed Buzz context, the apex install router and discovery metadata map this generic request to `run402-buzz`. The managed agent runs the installer from the Buzz workspace (normally `~/.buzz`). Skill installation is inert: it copies reviewed files and grants no Run402 or Buzz authority. Because this sentence asks only to install, stop after the installation receipt; setup begins only after a later explicit setup/connect/deploy request.
+The human does not need to know a bootstrap path or runtime target. In a managed Buzz context, the apex install router and discovery metadata map this generic request to `run402-buzz`. The managed agent runs the installer from the Buzz workspace (normally `~/.buzz`). Skill installation itself is inert: it copies reviewed files and grants no Run402 or Buzz authority. The canonical sentence is a goal-shaped onboarding request, however, so do not stop after the installation receipt. After verification, immediately load the installed `SKILL.md` from the verified workspace path and continue in the same turn through preflight, setup, and public identity-link verification. Do not say the skill will be available on the next turn and do not ask a second “set up Run402?” question.
+
+Only an explicit files-only constraint such as `Install the skill files only; do not set up or connect Run402` changes that behavior. In that case, stop after the inert receipt with `mutation_state: "not_started"`.
 
 ## First-party source
 
@@ -51,7 +53,7 @@ Never fall back after an integrity failure: a missing or mismatched digest, inva
 
 ## Installation result
 
-Read the first-party discovery entry before reporting success, verify the expected workspace path after installation, and report these non-secret fields before setup. Do not infer the source from a repository label or claim a digest/path that was not observed:
+Read the first-party discovery entry before reporting success, verify the expected workspace path after installation, and retain these non-secret fields as the installation stage of the continuing onboarding receipt. Do not infer the source from a repository label or claim a digest/path that was not observed:
 
 ```json
 {

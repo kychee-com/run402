@@ -98,13 +98,17 @@ describe("run402-buzz distributable package", () => {
     assert.deepEqual(buzzSkills.map((file) => normalize(file)), [normalize(join(ROOT, "SKILL.md"))]);
   });
 
-  it("keeps setup inert until requested and app work behind affirmative approval", () => {
+  it("keeps file installation inert while canonical Buzz onboarding continues to the real approval boundary", () => {
     const disclosure = SKILL.indexOf("## Public-link disclosure");
     const setup = SKILL.indexOf("## Set up Run402");
     const ready = SKILL.indexOf("## Offer one contextual test");
     const approved = SKILL.indexOf("## Build and deploy only after approval");
     assert.ok(disclosure < setup && setup < ready && ready < approved);
-    assert.match(SKILL, /Installing, copying, updating, or discovering this skill performs no setup/);
+    assert.match(SKILL, /Copying, updating, or discovering the skill files performs no setup/);
+    assert.match(SKILL, /canonical request `Please install the run402\.com skill` is nevertheless a goal-shaped request/);
+    assert.match(SKILL, /continue with the setup workflow below in the current turn/);
+    assert.match(SKILL, /Do not say that the skill will be available on the next turn/);
+    assert.match(SKILL, /do not ask a separate setup question/);
     assert.match(SKILL, /Do not build anything until the user affirmatively agrees/);
     assert.match(SKILL, /plan\/rehearsal path before apply/);
     assert.match(SKILL, /Independently request the live endpoint/);
@@ -121,9 +125,10 @@ describe("run402-buzz distributable package", () => {
       conversations.indexOf("## Canonical demo-first conversation"),
       conversations.indexOf("## Explicit early-adoption conversation"),
     );
-    assert.ok(demoFirst.indexOf("Would you like me to try it?") < demoFirst.indexOf("church bulletin board is live"));
-    assert.ok(demoFirst.indexOf("church bulletin board is live") < demoFirst.indexOf("Become an owner: https://console.run402.com"));
-    assert.match(demoFirst, /I remain an owner/);
+    assert.ok(demoFirst.indexOf("Would you like me to build and deploy") < demoFirst.indexOf("verified it at https://church.run402.com"));
+    assert.ok(demoFirst.indexOf("verified it at https://church.run402.com") < demoFirst.indexOf("\[Become an owner\]\(https://console.run402.com"));
+    assert.match(demoFirst, /I remain the founder-agent owner/);
+    assert.doesNotMatch(demoFirst, /Would you like me to set up Run402|available on (the )?next turn|Installed from run402\.com/i);
     assert.doesNotMatch(demoFirst, /\$0\.10|price|cost|purchase|terminal|buzz:\/\//i);
 
     const early = conversations.slice(conversations.indexOf("## Explicit early-adoption conversation"));

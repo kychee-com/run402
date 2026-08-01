@@ -1,6 +1,6 @@
 # Run402 for Buzz
 
-`run402-buzz` is a self-contained skill for a managed [Buzz](https://github.com/block/buzz) coding agent. It installs or updates the user's global Run402 CLI when needed, deliberately creates or selects one named agent wallet profile, links the agent's separate public Buzz/Nostr and Run402 identities, reports the independent human/community/enrollment states, and stops before creating authority or deploying an application.
+`run402-buzz` is a self-contained skill for a managed [Buzz](https://github.com/block/buzz) coding agent. It installs or updates the user's global Run402 CLI when needed, deliberately creates or selects one named agent wallet profile, links the agent's separate public Buzz/Nostr and Run402 identities, reports the independent human/community/enrollment states, and continues until it reaches a real human approval or repair boundary.
 
 The keys remain separate. Buzz signs inside its managed-agent/OS boundary, while Run402 signs through its ordinary EOA profile. The skill never asks for, reads, derives, exports, or shares either private key.
 
@@ -16,7 +16,7 @@ Tell the intended managed agent in Buzz:
 Please install the run402.com skill.
 ```
 
-The human does not need a terminal or a special bootstrap URL. In a managed Buzz conversation, `run402.com` discovery routes that request to the distinct `run402-buzz` package. Buzz managed-agent workspaces normally live at `~/.buzz`; the agent installs it there so the generic root Run402 skill cannot shadow it.
+The human does not need a terminal or a special bootstrap URL. In a managed Buzz conversation, `run402.com` discovery routes that request to the distinct `run402-buzz` package. Buzz managed-agent workspaces normally live at `~/.buzz`; the agent installs it there so the generic root Run402 skill cannot shadow it. This canonical sentence means “install and connect Run402”: after verifying the inert files, the agent reads the installed skill directly and continues onboarding in the same turn instead of waiting for runtime rediscovery or asking a second setup question.
 
 For agents and operators auditing the exact command, select only the runtime(s) actually present:
 
@@ -38,17 +38,11 @@ The apex install router at `https://run402.com/install.txt` and Buzz bootstrap a
 
 Installation only copies files; it executes nothing. Before continuing, understand the one public side effect: setup publishes a durable public kind-1 Nostr event associating the agent's public Buzz identity with its public Run402 wallet and creates a durable public Run402 proof. Revocation changes current status but does not erase either historical record. If Buzz adds its NIP-OA owner attestation, the owner's public key and signature are also public but gain no Run402 authority.
 
-If the original request asked only to copy the skill, stop after the inert installation receipt. To begin setup later, tell the intended managed agent:
-
-```text
-@Builder, set up Run402.
-```
-
-That explicit request authorizes the disclosed public link when it is absent. The agent inspects `run402 wallets list`, chooses a stable dedicated label such as `buzz-fizz`, and creates that exact profile separately with `run402 wallets new <name>` only when it is genuinely absent. It does not change the global active wallet or bind the shared Buzz workspace.
+The canonical request authorizes the disclosed public link when it is absent. Only an explicit instruction to install/copy the files **without** setup or connection stops after the inert receipt. Otherwise the agent inspects `run402 wallets list`, chooses a stable dedicated label such as `buzz-fizz`, and creates that exact profile separately with `run402 wallets new <name>` only when it is genuinely absent. It does not change the global active wallet or bind the shared Buzz workspace.
 
 The setup helper then requires both `--wallet <profile>` and the public Buzz key. It refuses unknown labels, pins every Run402 invocation it makes to that explicit wallet, initializes the existing profile when needed, confirms a dedicated agent EOA, rejects a different active Nostr link, creates or reuses the intended public link, and verifies it. Before a link mutation and again at readiness it reports the profile label, public wallet address, and `selection_source: explicit_argument`. Ambient environment variables, directory bindings, and global defaults cannot redirect the ceremony.
 
-The agent then reports `Run402 is ready` with `Deployment: none`. It derives the normalized community from Buzz's existing relay context and asks Run402 for active public descriptors only after the relay completes its safe live read. An unsafe relay blocks setup; a safe relay transport/TLS failure warns, preserves the ordinary founder/org-of-one path, and suppresses community discovery/enrollment until repaired. If exactly one installation is the default, it offers bounded enrollment before provisioning; otherwise it preserves the ordinary org-of-one path. Either path waits for your approval before writing or deploying an app.
+The agent then says Run402 is connected and immediately offers one contextual demo. The expanded receipt still records `Deployment: none`. It derives the normalized community from Buzz's existing relay context and asks Run402 for active public descriptors only after the relay completes its safe live read. An unsafe relay blocks setup; a safe relay transport/TLS failure warns, preserves the ordinary founder/org-of-one path, and suppresses community discovery/enrollment until repaired. If exactly one installation is the default, it offers bounded enrollment before provisioning; otherwise it preserves the ordinary org-of-one path. Either path waits for your approval before writing or deploying an app.
 
 On the founder-agent path, the canonical conversation demonstrates value first: the agent proposes one relevant small application, waits for approval, automatically uses the Base Sepolia faucet/prototype path, builds it, deploys it, and independently verifies it. Only then does it create an inert durable adoption offer and post a normal `https://console.run402.com/buzz/adoptions/buzzhao_…` “Become an owner” link. The browser handles human login/passkey, the six-digit Buzz consent, callback, and completion; the human types no terminal command. An explicit request for ownership before the demo is also honored through the same HTTPS handoff.
 

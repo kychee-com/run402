@@ -1,6 +1,6 @@
 ---
 name: run402-buzz
-description: Set up Run402 for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop at a verified approval boundary. Use when a managed Buzz user says "install the run402.com skill" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.
+description: Complete Run402 onboarding for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop only at a real approval or repair boundary. Use when a managed Buzz user says "install the run402.com skill" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.
 ---
 
 # Run402 for Buzz
@@ -11,11 +11,11 @@ Buzz and Run402 treat people and agents as first-class participants. Each person
 
 Keep the authority domains explicit. Buzz is authoritative for signed collaboration evidence. Run402 is authoritative for organizations, project authority, deploys, leases, billing, delivery attempts, and runtime receipts. Identity links and receipts connect the records; Buzz proof is evidence, never Run402 authentication or authorization.
 
-Installing, copying, updating, or discovering this skill performs no setup and authorizes no proof. Begin the setup workflow only after the user explicitly asks this managed Buzz agent to set up, initialize, install, or connect Run402.
+Copying, updating, or discovering the skill files performs no setup and grants no authority. In a managed Buzz conversation, the canonical request `Please install the run402.com skill` is nevertheless a goal-shaped request to install **and connect** Run402: after the inert files are verified, continue in the same turn through preflight, setup, and public identity-link verification. Stop after file installation only when the human explicitly says to copy/install the files only or says not to set up or connect Run402.
 
 ## Install or update this skill
 
-Read [references/installation.md](references/installation.md) when installing, updating, repairing, or reporting this skill. Use first-party discovery at `https://run402.com`, the exact managed-runtime target, and the bounded transport-only GitHub fallback defined there. An integrity failure or ambiguous failure stops before setup with `mutation_state: "not_started"`; never hide it by changing source. Installation itself remains inert. If the human's original Buzz request also explicitly asked to set up, initialize, install, or connect Run402, continue with the setup workflow below only after the installed package and target path are verified.
+Read [references/installation.md](references/installation.md) when installing, updating, repairing, or reporting this skill. Use first-party discovery at `https://run402.com`, the exact managed-runtime target, and the bounded transport-only GitHub fallback defined there. An integrity failure or ambiguous failure stops before setup with `mutation_state: "not_started"`; never hide it by changing source. Installation itself remains inert. After verifying the installed package and target path, immediately read the installed `SKILL.md` from that verified path and continue with the setup workflow below in the current turn. Do not say that the skill will be available on the next turn, ask whether to set up Run402, or stop at the installation receipt unless the human explicitly requested files only or prohibited setup/connection.
 
 The outer bootstrap may run `npm install -g run402@latest` when the Run402 CLI is absent or incompatible. That happens before setup starts; the setup helper itself never installs or upgrades software.
 
@@ -71,7 +71,7 @@ Read [references/conversations.md](references/conversations.md) when rendering t
    - emits one structured ready or blocked result.
 
 5. Branch on `status`, not prose. On `blocked`, report the exact `stage`, stable `code`, `mutation_state`, and the single `next_action`. `RUN402_WALLET_NOT_FOUND` means confirm the label, create it with the separately reported `wallets new` command, and rerun setup. Do not invent a secret-export workaround or claim readiness.
-6. On `ready`, post the readiness receipt from [references/receipts.md](references/receipts.md). Include the explicit profile-selection evidence, state `Deployment: none`, and stop. Do not follow any CLI `next_actions` that create, fund, subscribe, provision, or deploy.
+6. On `ready`, retain the complete readiness receipt from [references/receipts.md](references/receipts.md), including the explicit profile-selection evidence and `Deployment: none`, then continue immediately to the contextual demo offer below. Do not exit onboarding at the receipt and do not ask a separate setup question. Do not follow any CLI `next_actions` that create, fund, subscribe, provision, or deploy before the human approves the demo.
 
 Running setup again must be a no-op when the compatible CLI, dedicated profile, and intended verified link already exist.
 
@@ -98,10 +98,10 @@ Choose the idea from, in order:
 
 Inspect current help/documentation rather than trusting a frozen feature list. A **quick test** is the smallest meaningful vertical slice, usually one runtime surface plus one persistent or interactive behavior. A **demo** may combine a few capabilities when they genuinely fit the context. Astro SSR, multiplayer data, translations, authentication, storage, functions, email, and other features are examples, not requirements.
 
-Use this shape:
+Use this concise human-facing shape; keep the expanded readiness receipt available without dumping it into chat:
 
 ```text
-Run402 is ready. I can build and deploy <one concrete, contextual idea> using <the relevant capabilities>. Would you like me to try it?
+Done—Run402 is connected to my Buzz identity. Would you like me to build and deploy <one concrete, contextual idea> as a quick demo?
 ```
 
 If context is sparse, offer a small generic end-to-end test without collecting more personal information merely for personalization.
@@ -134,12 +134,14 @@ After affirmative approval:
 11. Lead with the verified result and the normal HTTPS handoff, using this shape:
 
     ```text
-    Done — <application> is live at <verified URL>. Would you like to become a co-owner of the Run402 organization that owns this deployment? Become an owner: <handoff_url>
+    Done—I built it, deployed it, and verified it at <verified URL>.
+    Would you also like to become a co-owner of the Run402 organization that owns this deployment?
+    Become an owner: <handoff_url>
     ```
 
     Do not expose a `buzz://` URL, verification code, raw resource id, event JSON, terminal command, or testnet price in chat. The hosted handoff owns login, passkey enrollment/step-up, the short Buzz signing attempt, and completion.
 
-12. Poll authoritative state with `run402 --wallet <profile> buzz adopt offer show <offer-id>`. Opening the link never implies success. Report completion only when the offer is `completed` and the linked adoption is active; say that the human is now a co-owner and that the founder agent remains an owner. For `available`, `cancelled`, or `ineligible`, preserve the exact state and gateway-authored recovery action.
+12. Poll authoritative state with `run402 --wallet <profile> buzz adopt offer show <offer-id>`. Opening the link never implies success. Report completion only when the offer is `completed` and the linked adoption is active, using: `Done—you’re now a co-owner. I remain the founder-agent owner. Whenever you want me to deploy something to Run402, just say “deploy.”` For `available`, `cancelled`, or `ineligible`, preserve the exact state and gateway-authored recovery action.
 
 Do not require a second deployment or ownership transfer for a quick test. If the user later adopts the application for production, preview the ordinary organization transfer and retain only explicitly scoped agent authority.
 
