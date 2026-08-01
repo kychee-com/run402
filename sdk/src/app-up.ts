@@ -328,6 +328,7 @@ export async function compileRun402AppInstallGraph(
   spec: Run402AppSpec,
   opts: CompileRun402AppInstallGraphOptions = {},
 ): Promise<Run402AppInstallGraph> {
+  assertRun402AppSpec(spec);
   const specDigest = await sha256Canonical(spec);
   const bindings = compileBindings(spec);
   validateReleaseEmailTriggerMailboxRefs(spec.release, appInstallBindingNames(bindings));
@@ -854,6 +855,39 @@ function appSpecInvalid(message: string, details?: Record<string, unknown>): Loc
     code: "APP_SPEC_INVALID",
     details,
   });
+}
+
+function assertRun402AppSpec(value: unknown): asserts value is Run402AppSpec {
+  if (!isPlainRecord(value)) {
+    throw appSpecInvalid("Run402 app manifest must be a JSON object", {
+      field_path: "$",
+      expected: "object",
+    });
+  }
+  if (value.spec_version !== RUN402_APP_SPEC_VERSION) {
+    throw appSpecInvalid(`spec_version must be ${RUN402_APP_SPEC_VERSION}`, {
+      field_path: "spec_version",
+      expected: RUN402_APP_SPEC_VERSION,
+      observed: value.spec_version ?? null,
+    });
+  }
+  if (!isPlainRecord(value.app) || typeof value.app.id !== "string" || value.app.id.trim() === "") {
+    throw appSpecInvalid("app.id must be a non-empty string", {
+      field_path: "app.id",
+    });
+  }
+  if (!isPlainRecord(value.project)) {
+    throw appSpecInvalid("project must be an object", {
+      field_path: "project",
+      expected: "object",
+    });
+  }
+  if (!isPlainRecord(value.release)) {
+    throw appSpecInvalid("release must be an object", {
+      field_path: "release",
+      expected: "object",
+    });
+  }
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

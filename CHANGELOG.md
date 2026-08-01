@@ -4,6 +4,15 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased — first-party skill distribution
 
+- **`run402 up` manifest parity:** a release-shaped `run402.json` now follows
+  the same ReleaseSpec normalization as `deploy apply`; app-shaped files keep
+  the app-install graph, and malformed app manifests fail with a field-specific
+  `APP_SPEC_INVALID` result instead of an internal `undefined.functions` crash.
+- **Windows-safe function bodies:** `functions invoke --body` now validates JSON
+  before network access, including empty and shell-corrupted values.
+  `--body-file <path>` is the shell-independent canonical path for managed
+  agents and Windows `cmd.exe`; inline/file source conflicts fail locally.
+
 - **Agent skills:** Run402 now builds a deterministic, content-addressed skill
   index for `run402` and `run402-buzz`, with immutable artifacts designed for
   hosting on `run402.com`. Buzz installs can use the first-party domain as the

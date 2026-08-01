@@ -133,4 +133,17 @@ describe("app-up install graph", () => {
         /release\.functions\.replace\.api\.triggers\.0\.mailbox.*RUN402_MAILBOX_UNKNOWN_ID/.test(err.message),
     );
   });
+
+  it("rejects malformed app manifests with a field-specific error instead of property access", async () => {
+    const { release: _release, ...missingRelease } = appSpec();
+
+    await assert.rejects(
+      () => compileRun402AppInstallGraph(missingRelease as Run402AppSpec),
+      (err: unknown) =>
+        isLocalError(err) &&
+        err.code === "APP_SPEC_INVALID" &&
+        err.details?.field_path === "release" &&
+        /release must be an object/.test(err.message),
+    );
+  });
 });

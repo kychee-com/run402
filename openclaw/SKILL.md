@@ -26,7 +26,7 @@ Every example below is a CLI command. The CLI prints JSON to stdout, JSON errors
 ## 30-second start
 
 ```bash
-run402 up --name my-app -y                 # bootstrap/link/deploy run402.deploy.json or app.json
+run402 up --name my-app -y                 # bootstrap/link/deploy run402.json, run402.deploy.json, or app.json
 run402 up verify                           # rerun app HTTP verification without deploying
 run402 up --verify                         # deploy, then wait for gateway/edge release coherence
 run402 subdomains claim my-app             # → https://my-app.run402.com
@@ -34,7 +34,7 @@ run402 subdomains claim my-app             # → https://my-app.run402.com
 
 That's a real Postgres database + a deployed static site, paid for autonomously with testnet USDC.
 
-`run402 up` is the CLI path for local repos with a deploy manifest. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--dry-run` prints planned `steps[]` without mutating. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
+`run402 up` is the CLI path for local repos with a deploy manifest. It classifies app-shaped `run402.json` through the app-install graph and release-shaped `run402.json` through the same ReleaseSpec normalizer as `deploy apply`; malformed app manifests return `APP_SPEC_INVALID` instead of an internal JavaScript exception. It validates the manifest first, then recursively performs only missing prerequisites through the SDK action runner. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--dry-run` prints planned `steps[]` without mutating. If an app manifest defines `verify.http[]`, `up` reports fresh edge sentinel misses as `propagation_pending` while the host binding converges; tune with `--propagation-budget-s`, use `--no-propagation-wait` to return immediately, and run `run402 up verify` to rerun checks without upload, deploy, project creation, or resource mutation. Add `--verify` to a real deploy when you need `edge_coherence` evidence in the final JSON; a valid non-coherent report exits 2.
 
 ## Self-hosted Core target
 
@@ -590,8 +590,8 @@ run402 functions deploy <id> my-fn --file fn.ts \
   --schedule "*/15 * * * *" \
   --deps "stripe,zod@^3,date-fns@3.6.0"
 
-run402 functions invoke <id> my-fn --body '{"hello":"world"}'
-run402 functions invoke <id> paid-fn --body '{"text":"hi"}' --idempotency-key paid:call:123 --wait
+run402 functions invoke my-fn --project <id> --body-file request.json
+run402 functions invoke paid-fn --project <id> --body-file request.json --idempotency-key paid:call:123 --wait
 run402 functions logs   <id> my-fn --tail 100 --request-id req_abc123 --follow
 run402 functions runs create <id> my-fn --event-type reminder.send --idempotency-key reminder:123 --delay 10m
 run402 functions update <id> my-fn --schedule "0 */6 * * *"
@@ -600,6 +600,8 @@ run402 functions rebuild <id> --all      # refresh every function in the project
 run402 functions list   <id>
 run402 functions delete <id> my-fn
 ```
+
+`functions invoke --body <json>` validates JSON locally and never sends malformed or empty input. Prefer `--body-file <path>` for agents and Windows `cmd.exe`; it removes shell quoting from the request-body path.
 
 `run402 functions list` returns the recorded `runtime_version`, gateway `runtime_current_version`, guaranteed `runtime_minimum_version`, and `runtime_stale` for each function. The current `3.7.0` floor includes `getRoutedPaymentContext()` for priced routes. `run402 functions rebuild` is opt-in and never changes your source: it re-bundles the stored source against the platform's current runtime/entry-wrapper (deps pinned to the versions recorded at deploy), so the source `code_hash` is unchanged and no new release is created. This is how a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function — a plain redeploy with unchanged source does not. Functions deployed before dependency locking return `CANNOT_REBUILD_UNLOCKED_DEPS`; redeploy those from source instead.
 

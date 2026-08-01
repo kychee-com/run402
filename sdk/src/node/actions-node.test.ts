@@ -811,6 +811,80 @@ test("up check validates locally without gateway calls", async () => {
   }
 });
 
+test("up check accepts a release-shaped run402.json without treating it as an app manifest", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-release-shaped-json-"));
+  mkdirSync(join(dir, "site"), { recursive: true });
+  writeFileSync(join(dir, "schema.sql"), "create table votes (id bigint primary key);\n");
+  writeFileSync(join(dir, "site", "index.html"), "<h1>Voting booth</h1>\n");
+  writeFileSync(join(dir, "probe.mjs"), "export default async () => new Response('ok');\n");
+  writeFileSync(join(dir, "run402.json"), JSON.stringify({
+    database: { migrations: [{ id: "001_init", sql_path: "schema.sql" }] },
+    site: { replace: { "index.html": { path: "site/index.html" } } },
+    functions: {
+      replace: {
+        probe: { runtime: "node22", source: { path: "probe.mjs" } },
+      },
+    },
+    subdomains: { set: ["fizz-voting-booth"] },
+  }));
+  const calls: string[] = [];
+  const sdk = fakeSdk({
+    calls,
+    allowanceConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    const result = await actions.up({}, { mode: "check" });
+
+    assert.equal(result.mode, "check");
+    assert.equal(result.dry_run, true);
+    assert.equal(result.result?.manifest_path, join(dir, "run402.json"));
+    assert.deepEqual(calls, []);
+    assert.ok(result.steps.some((step) =>
+      step.action === "deploy.discover" && step.details?.manifest_kind === "release"
+    ));
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("up check reports a malformed app-shaped run402.json with path and repair", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "run402-up-invalid-app-json-"));
+  const manifestPath = join(dir, "run402.json");
+  const { release: _release, ...invalidApp } = appManifest();
+  writeFileSync(manifestPath, JSON.stringify(invalidApp));
+  const sdk = fakeSdk({
+    calls: [],
+    allowanceConfigured: false,
+    tierActive: false,
+    activeProject: null,
+  });
+
+  try {
+    const actions = new NodeActions(sdk, { targetKind: "cloud", cwd: dir });
+    await assert.rejects(
+      () => actions.up({}, { mode: "check" }),
+      (err: unknown) => {
+        const e = err as {
+          code?: string;
+          details?: { manifest_path?: string; field_path?: string };
+          nextActions?: Array<{ argv?: string[] }>;
+        };
+        assert.equal(e.code, "APP_SPEC_INVALID");
+        assert.equal(e.details?.manifest_path, manifestPath);
+        assert.equal(e.details?.field_path, "release");
+        assert.deepEqual(e.nextActions?.[0]?.argv, ["run402", "up", "--manifest", manifestPath, "--check"]);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
 test("up requires explicit manifest for executable configs", async () => {
   const dir = mkdtempSync(join(tmpdir(), "run402-up-exec-trust-"));
   writeFileSync(join(dir, "run402.deploy.ts"), "export default { site: { replace: {} } };\n");

@@ -30,6 +30,7 @@ import type {
 } from "../actions.js";
 import { Run402Action } from "../actions.js";
 import {
+  RUN402_APP_SCHEMA_ID,
   RUN402_APP_MANIFEST_FILENAME,
   compileRun402AppInstallGraph,
   createRun402AppUpResult,
@@ -725,37 +726,63 @@ export class NodeActions implements Run402Actions {
     }
 
     if (basename(manifestPath) === RUN402_APP_MANIFEST_FILENAME) {
-      const loadedAppSpec = await loadRun402AppManifest(manifestPath);
-      const appSpec = input.buildMode
-        ? {
-            ...loadedAppSpec,
-            build: {
-              ...(loadedAppSpec.build ?? {}),
-              mode: input.buildMode,
-            },
+      const candidate = await loadRun402JsonManifest(manifestPath);
+      if (looksLikeRun402AppManifest(candidate)) {
+        const loadedAppSpec = candidate as Run402AppSpec;
+        const appSpec = input.buildMode
+          ? {
+              ...loadedAppSpec,
+              build: {
+                ...(loadedAppSpec.build ?? {}),
+                mode: input.buildMode,
+              },
+            }
+          : loadedAppSpec;
+        let appGraph: Run402AppInstallGraph;
+        try {
+          appGraph = await compileRun402AppInstallGraph(appSpec, {
+            source,
+            ...(input.name ? { name: input.name } : {}),
+            ...(input.idempotencyKey ?? run.rootIdempotencyKey
+              ? { root_idempotency_key: input.idempotencyKey ?? run.rootIdempotencyKey }
+              : {}),
+          });
+        } catch (err) {
+          if (err instanceof LocalError && err.code === "APP_SPEC_INVALID") {
+            const errorDetails = err.details && typeof err.details === "object" && !Array.isArray(err.details)
+              ? err.details as Record<string, unknown>
+              : {};
+            throw new LocalError(err.message, "validating Run402 app manifest", {
+              cause: err,
+              code: "APP_SPEC_INVALID",
+              details: { manifest_path: manifestPath, ...errorDetails },
+              next_actions: [{
+                type: "edit_manifest",
+                path: manifestPath,
+                ...(typeof errorDetails.field_path === "string" ? { field_path: errorDetails.field_path } : {}),
+                command: `run402 up --manifest ${shellArg(shortPath(manifestPath))} --check`,
+                argv: ["run402", "up", "--manifest", manifestPath, "--check"],
+                why: "Fix the named app-manifest field, then rerun local validation.",
+              }],
+            });
           }
-        : loadedAppSpec;
-      const appGraph = await compileRun402AppInstallGraph(appSpec, {
-        source,
-        ...(input.name ? { name: input.name } : {}),
-        ...(input.idempotencyKey ?? run.rootIdempotencyKey
-          ? { root_idempotency_key: input.idempotencyKey ?? run.rootIdempotencyKey }
-          : {}),
-      });
-      run.setState(step, "succeeded", {
-        manifest_kind: "app",
-        manifest_path: manifestPath,
-        app_id: appSpec.app.id,
-        graph_digest: appGraph.graph_digest,
-      });
-      return {
-        manifestKind: "app",
-        manifestPath,
-        releaseSpec: null,
-        appGraph,
-        appSpec,
-        source,
-      };
+          throw err;
+        }
+        run.setState(step, "succeeded", {
+          manifest_kind: "app",
+          manifest_path: manifestPath,
+          app_id: appSpec.app.id,
+          graph_digest: appGraph.graph_digest,
+        });
+        return {
+          manifestKind: "app",
+          manifestPath,
+          releaseSpec: null,
+          appGraph,
+          appSpec,
+          source,
+        };
+      }
     }
     const loaded = await loadDeployManifest(manifestPath, {
       ...(input.projectId
@@ -770,6 +797,7 @@ export class NodeActions implements Run402Actions {
       );
     }
     run.setState(step, "succeeded", {
+      manifest_kind: "release",
       manifest_path: manifestPath,
       project_id: loaded.spec.project,
       idempotency_key: loaded.idempotencyKey ?? null,
@@ -2899,30 +2927,42 @@ async function findExecutableManifest(workspaceDir: string): Promise<string | nu
   return null;
 }
 
-async function loadRun402AppManifest(path: string): Promise<Run402AppSpec> {
+async function loadRun402JsonManifest(path: string): Promise<unknown> {
   let raw: string;
   try {
     raw = await readFile(path, "utf-8");
   } catch (err) {
     throw new LocalError(
-      `Failed to read Run402 app manifest '${path}': ${(err as Error).message}`,
-      "loading Run402 app manifest",
+      `Failed to read Run402 manifest '${path}': ${(err as Error).message}`,
+      "loading Run402 manifest",
       err,
     );
   }
 
   try {
-    return JSON.parse(raw) as Run402AppSpec;
+    return JSON.parse(raw) as unknown;
   } catch (err) {
     throw new LocalError(
-      `Run402 app manifest is not valid JSON: ${(err as Error).message}`,
-      "parsing Run402 app manifest",
+      `Run402 manifest is not valid JSON: ${(err as Error).message}`,
+      "parsing Run402 manifest",
       {
         code: "APP_SPEC_INVALID",
         details: { path },
       },
     );
   }
+}
+
+function looksLikeRun402AppManifest(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return candidate.$schema === RUN402_APP_SCHEMA_ID ||
+    "spec_version" in candidate ||
+    "app" in candidate ||
+    "release" in candidate ||
+    "resources" in candidate ||
+    "build" in candidate ||
+    "lifecycle" in candidate;
 }
 
 function reviewedPlanRequirement(

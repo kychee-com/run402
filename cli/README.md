@@ -46,7 +46,7 @@ run402 up --manifest run402.deploy.json --project prj_...
 run402 up verify --project prj_...
 ```
 
-`up` is a thin CLI shim over the Node SDK action runner. It discovers `run402.deploy.json` then `app.json`, validates the deploy input before any mutation, resolves the project as `--project` → `.run402/project.json` → manifest `project_id` → approved creation from `--name` → approved active-project fallback, then applies the manifest. `--name` is creation/link metadata only; it is not a manifest field and never renames an existing project. When everything is already configured, plain `run402 up` deploys. Non-interactive recursive prerequisites/local writes require `-y/--yes`.
+`up` is a thin CLI shim over the Node SDK action runner. It discovers `run402.json`, `run402.deploy.json`, then `app.json`. A `run402.json` carrying the app schema/app markers uses the app-install graph; a release-shaped `run402.json` is normalized through the same ReleaseSpec path as `deploy apply` for compatibility. It validates the deploy input before any mutation, resolves the project as `--project` → `.run402/project.json` → manifest `project_id` → approved creation from `--name` → approved active-project fallback, then applies the manifest. `--name` is creation/link metadata only; it is not a manifest field and never renames an existing project. When everything is already configured, plain `run402 up` deploys. Non-interactive recursive prerequisites/local writes require `-y/--yes`.
 
 For app manifests with `verify.http[]`, `up` runs HTTP checks after deploy. Fresh Run402 edge sentinel misses (`x-run402-edge` or sentinel JSON bodies) become `propagation_pending` with diagnostics instead of hard failure while the host binding is still converging. Use `--propagation-budget-s <seconds>` to tune the default 120 second wait, `--no-propagation-wait` to return immediately, and `run402 up verify` to rerun the same checks without upload, deploy, project creation, or resource mutation.
 
@@ -181,11 +181,13 @@ run402 functions deploy <id> my-fn --file fn.ts \
   --schedule "*/15 * * * *" \
   --deps "stripe,zod@^3"
 run402 functions logs <id> my-fn --tail 100 --request-id req_abc123 --follow
-run402 functions invoke <id> my-fn --body '{"hello":"world"}'
-run402 functions invoke <id> paid-fn --body '{"text":"hi"}' --idempotency-key paid:call:123 --wait
+run402 functions invoke my-fn --project <id> --body-file request.json
+run402 functions invoke paid-fn --project <id> --body-file request.json --idempotency-key paid:call:123 --wait
 run402 functions rebuild <id> my-fn      # refresh ONE function onto the current runtime
 run402 functions rebuild <id> --all      # refresh every function in the project
 ```
+
+Inline `--body <json>` is validated before any request. Prefer `--body-file <path>` for agents and Windows `cmd.exe`; the file path avoids shell quoting entirely. Invalid or empty JSON fails locally instead of invoking the function with corrupted input.
 
 `functions rebuild` is opt-in and never changes your source: it re-bundles the stored source against the platform's current runtime/entry-wrapper (deps pinned to the exact versions recorded at deploy), so a gateway-side wrapper fix (e.g. an SSR `auth.*` fix) reaches an already-deployed function — a plain redeploy with unchanged source does not. The source `code_hash` is unchanged and no new release is created. Functions deployed before dependency locking return `CANNOT_REBUILD_UNLOCKED_DEPS`; redeploy those from source instead. `run402 doctor` flags functions on a stale runtime.
 

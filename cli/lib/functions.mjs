@@ -17,7 +17,7 @@ Usage:
 Subcommands:
   deploy <name> --file <file> [--project <id>] [--timeout <s>] [--memory <mb>] [--deps <pkg,...>] [--schedule <cron>]
                                        Deploy a function to a project
-  invoke <name> [--project <id>] [--method <M>] [--body <json>] [--idempotency-key <key>] [--wait] [--timeout-ms <ms>] [--poll-interval-ms <ms>] [--raw]
+  invoke <name> [--project <id>] [--method <M>] [--body <json> | --body-file <path>] [--idempotency-key <key>] [--wait] [--timeout-ms <ms>] [--poll-interval-ms <ms>] [--raw]
                                        Invoke a deployed function. Default
                                        wraps the SDK result as JSON on stdout.
                                        --raw prints the response body verbatim
@@ -44,7 +44,7 @@ Examples:
   run402 functions deploy stripe-webhook --file handler.ts --project prj_abc123
   run402 functions deploy send-reminders --file remind.ts --schedule '*/15 * * * *'
   run402 functions deploy send-reminders --file remind.ts --schedule ''   # remove schedule
-  run402 functions invoke stripe-webhook --body '{"event":"test"}' --project prj_abc123
+  run402 functions invoke stripe-webhook --project prj_abc123 --body-file request.json
   run402 functions logs stripe-webhook --tail 100
   run402 functions logs stripe-webhook --since 2026-03-29T14:00:00Z
   run402 functions logs stripe-webhook --request-id req_abc123
@@ -128,7 +128,11 @@ Arguments:
 Options:
   --project <id>      Target project ID (defaults to the active project)
   --method <M>        HTTP method (default POST)
-  --body <json>       Request body (ignored for GET/HEAD)
+  --body <json>       Inline JSON request body (ignored for GET/HEAD). The CLI
+                      validates it before sending; shell-corrupted JSON fails.
+  --body-file <path>  Read and validate the JSON request body from a file.
+                      Recommended for agents and Windows cmd.exe because it
+                      avoids shell-quoting changes.
   --idempotency-key <key>
                       Stable idempotency key required by paid function
                       invocations. Reuse it when retrying the same paid
@@ -154,10 +158,10 @@ Output (default — without --raw):
   next_actions[]. Poll the run id rather than minting a new key.
 
 Examples:
-  run402 functions invoke prj_abc123 stripe-webhook --body '{"event":"test"}'
-  run402 functions invoke prj_abc123 paid-translate --body '{"text":"hi"}' --idempotency-key paid:translate:123
-  run402 functions invoke prj_abc123 ping --method GET
-  run402 functions invoke prj_abc123 csv --raw > export.csv
+  run402 functions invoke stripe-webhook --project prj_abc123 --body-file request.json
+  run402 functions invoke paid-translate --project prj_abc123 --body-file request.json --idempotency-key paid:translate:123
+  run402 functions invoke ping --project prj_abc123 --method GET
+  run402 functions invoke csv --project prj_abc123 --raw > export.csv
 `,
   logs: `run402 functions logs — Fetch or tail function logs
 
@@ -362,26 +366,45 @@ async function deploy(projectId, name, args) {
 }
 
 async function invoke(projectId, name, args) {
-  assertRequiredProjectAndName(projectId, name, "run402 functions invoke <project_id> <name> [--method <M>] [--body <json>] [--idempotency-key <key>] [--wait] [--raw]");
+  assertRequiredProjectAndName(projectId, name, "run402 functions invoke <name> --project <project_id> [--method <M>] [--body <json> | --body-file <path>] [--idempotency-key <key>] [--wait] [--raw]");
   assertKnownFlags(
     args,
-    ["--method", "--body", "--idempotency-key", "--wait", "--timeout-ms", "--poll-interval-ms", "--raw", "--help", "-h"],
-    ["--method", "--body", "--idempotency-key", "--timeout-ms", "--poll-interval-ms"],
+    ["--method", "--body", "--body-file", "--idempotency-key", "--wait", "--timeout-ms", "--poll-interval-ms", "--raw", "--help", "-h"],
+    ["--method", "--body", "--body-file", "--idempotency-key", "--timeout-ms", "--poll-interval-ms"],
   );
-  const opts = { method: "POST", body: undefined, idempotencyKey: undefined, raw: false, wait: false };
+  const opts = { method: "POST", body: undefined, bodyFile: undefined, idempotencyKey: undefined, raw: false, wait: false };
   const waitOpts = {};
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--method" && args[i + 1]) opts.method = args[++i];
-    if (args[i] === "--body" && args[i + 1]) opts.body = args[++i];
+    if (args[i] === "--body" && args[i + 1] !== undefined) opts.body = args[++i];
+    if (args[i] === "--body-file" && args[i + 1] !== undefined) opts.bodyFile = args[++i];
     if (args[i] === "--idempotency-key" && args[i + 1]) opts.idempotencyKey = args[++i];
     if (args[i] === "--wait") opts.wait = true;
     if (args[i] === "--timeout-ms") waitOpts.timeoutMs = parseIntegerFlag("--timeout-ms", args[++i], { min: 1 });
     if (args[i] === "--poll-interval-ms") waitOpts.intervalMs = parseIntegerFlag("--poll-interval-ms", args[++i], { min: 0 });
     if (args[i] === "--raw") opts.raw = true;
   }
+  if (opts.body !== undefined && opts.bodyFile !== undefined) {
+    fail({
+      code: "FUNCTION_BODY_SOURCE_CONFLICT",
+      message: "Choose exactly one function request body source.",
+      hint: "Use either --body <json> or --body-file <path>.",
+      details: { flags: ["--body", "--body-file"] },
+    });
+  }
+  let requestBody = opts.body;
+  let bodySource = "--body";
+  if (opts.bodyFile !== undefined) {
+    validateRegularFile(opts.bodyFile, "--body-file");
+    requestBody = readFileSync(opts.bodyFile, "utf-8");
+    bodySource = "--body-file";
+  }
+  if (requestBody !== undefined) {
+    validateInvokeJsonBody(requestBody, bodySource, projectId, name);
+  }
   const invokeOpts = { method: opts.method };
-  if (opts.body !== undefined && opts.method !== "GET" && opts.method !== "HEAD") {
-    invokeOpts.body = opts.body;
+  if (requestBody !== undefined && opts.method !== "GET" && opts.method !== "HEAD") {
+    invokeOpts.body = requestBody;
   }
   if (opts.idempotencyKey !== undefined) invokeOpts.idempotencyKey = opts.idempotencyKey;
   if (opts.wait) invokeOpts.wait = waitOpts;
@@ -400,6 +423,30 @@ async function invoke(projectId, name, args) {
     console.log(JSON.stringify({ http_status: status, ...rest }, null, 2));
   } catch (err) {
     reportSdkError(err);
+  }
+}
+
+function validateInvokeJsonBody(value, source, projectId, name) {
+  try {
+    JSON.parse(value);
+  } catch (err) {
+    fail({
+      code: "FUNCTION_BODY_INVALID_JSON",
+      message: `${source} must contain valid JSON; the function was not invoked.`,
+      hint: source === "--body"
+        ? "Shell quoting may have changed the value. Put the JSON in a file and use --body-file <path>."
+        : "Fix the JSON file and retry the same --body-file command.",
+      details: {
+        flag: source,
+        value_preview: String(value).slice(0, 48),
+        parse_error: err instanceof Error ? err.message : String(err),
+      },
+      next_actions: [cliCommandAction(
+        "edit_request",
+        `run402 functions invoke ${name} --project ${projectId} --body-file <body.json>`,
+        "Use a JSON file so the shell cannot rewrite the request body.",
+      )],
+    });
   }
 }
 

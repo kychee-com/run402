@@ -405,6 +405,17 @@ describe("CLI --help contract", () => {
     assert.match(result.stdout, /scheduled-function usage/);
   });
 
+  it("functions invoke help uses the shell-independent body-file path", async () => {
+    const result = await runCli(["functions", "invoke", "--help"]);
+    assertHelp(result, "run402 functions invoke --help", {
+      expectHeadingStartsWith: "run402 functions invoke",
+    });
+    assert.match(result.stdout, /invoke <name>/);
+    assert.match(result.stdout, /--project <id>/);
+    assert.match(result.stdout, /--body-file <path>/);
+    assert.match(result.stdout, /Windows cmd\.exe/);
+  });
+
   for (const [cmd, { shared, specific }] of Object.entries(MATRIX)) {
     describe(`run402 ${cmd}`, () => {
       it(`${cmd} --help prints usage without side effects`, async () => {

@@ -1625,6 +1625,67 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.deepEqual(parsed.body, { result: "done" });
   });
 
+  it("functions invoke rejects shell-corrupted and empty --body JSON before network access", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+
+    for (const value of ["'{event:test}'", ""]) {
+      calls = [];
+      const err = await expectExit1(() => run("invoke", [
+        "prj_test123",
+        "hello",
+        "--body",
+        value,
+      ]));
+      assert.equal(err.code, "FUNCTION_BODY_INVALID_JSON");
+      assert.equal(err.details?.flag, "--body");
+      assert.match(err.hint ?? "", /--body-file/);
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it("functions invoke --body-file sends validated JSON without shell quoting", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const bodyPath = join(tempDir, "function-body.json");
+    const body = '{"event":"test"}\n';
+    writeFileSync(bodyPath, body);
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const info = requestInfo(input, init);
+      calls.push(info);
+      if (info.path === "/functions/v1/hello" && info.method === "POST") {
+        return Promise.resolve(json({ ok: true }));
+      }
+      return mockFetch(input, init);
+    };
+    captureStart();
+    try {
+      await run("invoke", ["hello", "--project", "prj_test123", "--body-file", bodyPath]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+
+    const invokeCall = calls.find((call) => call.path === "/functions/v1/hello" && call.method === "POST");
+    assert.equal(invokeCall?.init.body, body);
+  });
+
+  it("functions invoke rejects competing inline and file body sources", async () => {
+    const { run } = await import("./cli/lib/functions.mjs");
+    const bodyPath = join(tempDir, "function-body-conflict.json");
+    writeFileSync(bodyPath, '{"event":"file"}');
+    const err = await expectExit1(() => run("invoke", [
+      "hello",
+      "--project",
+      "prj_test123",
+      "--body",
+      '{"event":"inline"}',
+      "--body-file",
+      bodyPath,
+    ]));
+    assert.equal(err.code, "FUNCTION_BODY_SOURCE_CONFLICT");
+    assert.equal(calls.length, 0);
+  });
+
   it("functions invoke --raw emits the body verbatim (object → JSON, string → text+newline)", async () => {
     const { run } = await import("./cli/lib/functions.mjs");
     const prevFetch = globalThis.fetch;
