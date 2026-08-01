@@ -49,6 +49,8 @@ import {
   type PaymentEvidenceStatus,
   type PaymentNextAction,
 } from "../namespaces/pay.js";
+import { createDynamicPaymentBuyer } from "./dynamic-payment-buyer.js";
+import type { LightningWalletAdapter } from "./lightning-wallet-adapter.js";
 import {
   attemptIdFromRequest,
   createFilePaymentAttemptStore,
@@ -264,6 +266,8 @@ export interface PaidFetchOptions {
   credentials?: Pick<CredentialsProvider, "readAllowance">;
   /** Explicit opaque x402 signer. Mutually exclusive with allowancePath. */
   paymentSigner?: EvmPaymentSignerProvider;
+  /** Approved, opaque Lightning instruments addressable by their `nwc:<label>` alias. */
+  lightningWallets?: readonly LightningWalletAdapter[];
 }
 
 const USDC_ABI = [
@@ -578,15 +582,16 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
     if (allowance?.rail === "mpp") {
       const stack = await stackLoaders.mpp();
       const account = stack.privateKeyToAccount(allowance.privateKey as `0x${string}`);
+      const methods = [stack.tempo({ account })];
       const mppx = stack.Mppx.create({
         polyfill: false,
-        methods: [stack.tempo({ account })],
+        methods,
       });
       return withPayer(mppx.fetch, {
         source: resolvedAllowance!.source,
         rail: "mpp",
         payers: [{ address: allowance.address }],
-      });
+      }, undefined, createTempoBuyer(stack, methods));
     }
 
     // Default: x402 on Base + Base Sepolia. Each chain has its own independent
@@ -808,6 +813,13 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
       payOptions: Parameters<PayExecutor>[2],
     ): Promise<PayFetchResult> {
       const configured = await initialize();
+      if (payOptions.paymentPreferences?.length) {
+        return createDynamicPaymentBuyer({
+          x402: configured?.payer.rail === "x402" ? configured.pay ?? null : null,
+          tempo: configured?.payer.rail === "mpp" ? configured.pay ?? null : null,
+          lightningWallets: options.lightningWallets,
+        })(url, init, payOptions);
+      }
       if (configured?.pay) return configured.pay(url, init, payOptions);
 
       const response = await globalThis.fetch(url, init);
@@ -835,6 +847,90 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
       throw walletUnavailableError({ challenge_networks: challengeNetworks(response) });
     },
   });
+}
+
+function createTempoBuyer(stack: MppStack, methods: unknown[]): PayExecutor {
+  return async (url, init, options) => {
+    const mppx = stack.Mppx.create({
+      polyfill: false,
+      methods,
+      onChallenge: async (
+        challenge: unknown,
+        helpers: { createCredential: () => Promise<string> },
+      ) => {
+        const record = challenge && typeof challenge === "object"
+          ? challenge as Record<string, unknown> : null;
+        const request = record?.request && typeof record.request === "object"
+          ? record.request as Record<string, unknown> : null;
+        if (record?.method !== "tempo" || record.intent !== "charge" || !request) {
+          throw new PaymentBuyerError({
+            code: "PAYMENT_CAPABILITY_UNAVAILABLE",
+            message: "The returned MPP offer does not match the selected Tempo charge capability.",
+            fundsMoved: false,
+            nextActions: [],
+          });
+        }
+        const amount = typeof request.amount === "string" && /^\d+$/.test(request.amount)
+          ? Number(request.amount) : Number.NaN;
+        if (!Number.isSafeInteger(amount) || amount <= 0) {
+          throw new PaymentBuyerError({
+            code: "PAYMENT_CAPABILITY_UNAVAILABLE",
+            message: "The Tempo charge amount is invalid.",
+            fundsMoved: false,
+            nextActions: [],
+          });
+        }
+        if (amount > options.maxUsdMicros) {
+          throw paymentExceedsMaxError(amount, options.maxUsdMicros);
+        }
+        return helpers.createCredential();
+      },
+    });
+    const response = await mppx.fetch(url, { ...init, redirect: "error" });
+    if (response.status === 402) {
+      throw new PaymentBuyerError({
+        code: "PAYMENT_CAPABILITY_UNAVAILABLE",
+        message: "The selected Tempo charge could not satisfy the returned offer.",
+        fundsMoved: false,
+        nextActions: [],
+      });
+    }
+    const replay = await responseSignalsReplay(response, options.idempotencyKey !== undefined);
+    const metadata = payResponseMetadata(response);
+    return {
+      response,
+      payment: null,
+      outcome: "settled",
+      replay,
+      ...metadata,
+      paymentResult: {
+        protocol: "mpp",
+        method: "tempo",
+        intent: "charge",
+        profile: options.profile ?? null,
+        intentId: metadata.paymentId,
+        attemptId: null,
+        canonicalAmountUsdMicros: null,
+        invoiceAmountMsat: null,
+        receivedAmountMsat: null,
+        excessAmountMsat: null,
+        paymentHash: null,
+        fundsMoved: metadata.fundsMoved ?? "unknown",
+        rawNodeState: null,
+        terminality: null,
+        settlementRole: null,
+        operationState: response.ok ? "succeeded" : "unknown",
+        recoveryState: null,
+        replay,
+        paymentReceipt: response.headers.get("payment-receipt"),
+        settlementAttestation: null,
+        outcomeAttestations: [],
+        merchantFulfillment: null,
+        currentStatus: null,
+        credits: [],
+      },
+    };
+  };
 }
 
 function validatePaymentSource(options: PaidFetchOptions): void {

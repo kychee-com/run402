@@ -14,7 +14,7 @@
  */
 
 import { writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { failUnknownSubcommand } from "./argparse.mjs";
+import { assertKnownFlags, failUnknownSubcommand, positionalArgs } from "./argparse.mjs";
 import { join } from "node:path";
 import { fail } from "./sdk-errors.mjs";
 import { isValidProfileName, getActiveProfile } from "../core-dist/config.js";
@@ -32,6 +32,10 @@ import {
 } from "../core-dist/profiles.js";
 import { readAllowance, saveAllowance } from "../core-dist/allowance.js";
 import { getSdk } from "./sdk.mjs";
+import {
+  addConfiguredLightningInstrument,
+  listConfiguredLightningInstruments,
+} from "../sdk/dist/node/index.js";
 
 const DEFAULT = "default";
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -47,6 +51,8 @@ Usage:
   run402 wallets bind [<name>]        Write ./.run402.json binding this directory to a wallet
   run402 wallets unbind               Remove ./.run402.json
   run402 wallets import <name> --key <path|->   Adopt an existing private key as a named wallet
+  run402 wallets lightning-add <label> --network <mainnet|regtest> --payee-node <pubkey>   Read an NWC URI from stdin
+  run402 wallets lightning-list       List configured Lightning instrument metadata
   run402 wallets rm <name> --yes      Delete a wallet and its keys (requires --yes)
 
 Selection precedence for normal commands:
@@ -56,6 +62,11 @@ Options:
   --mpp           (new) create the wallet on the MPP rail instead of x402
   --key <path|->  (import) read the private key from a file, or '-' for stdin
   --yes           (rm) confirm deletion
+
+Lightning setup:
+  printf '%s' "$NWC_URI" | run402 wallets lightning-add deploy-bot --payee-node 02...
+  The URI is read only from stdin and stored by the OS credential manager. It
+  is never accepted in argv or written to the profile metadata file.
 
 Notes:
   • The reserved 'default' wallet lives at the config-dir root; renaming it moves it under profiles/.
@@ -267,6 +278,72 @@ async function cmdImport(args) {
   out({ local_label: name, address, imported: true });
 }
 
+async function cmdLightningAdd(args) {
+  assertKnownFlags(args, ["--network", "--payee-node"], ["--network", "--payee-node"]);
+  const positionals = positionalArgs(args, ["--network", "--payee-node"]);
+  if (positionals.length !== 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: positionals.length === 0
+        ? "Missing Lightning instrument label."
+        : `Unexpected argument: ${positionals[1]}`,
+      hint: "Pipe the NWC URI to stdin; do not pass it in argv.",
+    });
+  }
+  const label = requireName(positionals[0], "Lightning instrument label");
+  const network = flagVal(args, "--network");
+  if (network !== "mainnet" && network !== "regtest") {
+    fail({
+      code: "BAD_USAGE",
+      message: "--network must be mainnet or regtest.",
+      hint: "Use mainnet for the production Run402 seller and regtest only for local verification.",
+    });
+  }
+  const payeeValue = flagVal(args, "--payee-node");
+  if (!payeeValue) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--payee-node <compressed-pubkey> is required.",
+      hint: "Use the approved seller node pubkey for this exact Bitcoin network.",
+    });
+  }
+  const payeeNodePubkeys = payeeValue.split(",").map((value) => value.trim()).filter(Boolean);
+  if (process.stdin.isTTY) {
+    fail({
+      code: "STDIN_REQUIRED",
+      message: "The NWC URI must be supplied on stdin.",
+      hint: `printf '%s' "$NWC_URI" | run402 wallets lightning-add ${label} --payee-node ${payeeValue}`,
+    });
+  }
+  const connectionUri = readFileSync(0, "utf8").trim();
+  if (!connectionUri) {
+    fail({ code: "STDIN_REQUIRED", message: "stdin did not contain an NWC URI." });
+  }
+  try {
+    const metadata = await addConfiguredLightningInstrument({
+      alias: `nwc:${label}`,
+      connectionUri,
+      network,
+      payeeNodePubkeys,
+    });
+    out({ configured: true, ...metadata });
+  } catch (error) {
+    fail({
+      code: error?.message ?? "LIGHTNING_INSTRUMENT_SETUP_FAILED",
+      message: "The Lightning instrument could not be configured.",
+      details: { alias: `nwc:${label}` },
+    });
+  }
+}
+
+function cmdLightningList(args) {
+  assertKnownFlags(args, []);
+  if (positionalArgs(args).length > 0) {
+    fail({ code: "BAD_USAGE", message: "lightning-list does not accept positional arguments." });
+  }
+  out(listConfiguredLightningInstruments());
+}
+
 function cmdRm(args) {
   const name = requireName(args.find((a) => a && !a.startsWith("-")));
   if (name === DEFAULT) {
@@ -339,6 +416,8 @@ export async function run(sub, args = []) {
     case "bind": return cmdBind(rest);
     case "unbind": return cmdUnbind();
     case "import": return cmdImport(rest);
+    case "lightning-add": return cmdLightningAdd(rest);
+    case "lightning-list": return cmdLightningList(rest);
     case "rm": return cmdRm(rest);
     default:
       failUnknownSubcommand("wallets", sub);

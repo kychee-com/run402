@@ -2,6 +2,7 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, normalizeArgv, positionalArgs, flagValue, failUnknownSubcommand } from "./argparse.mjs";
 import { setTierAction } from "./next-actions.mjs";
+import { PAYMENT_VALUE_FLAGS, paymentOptionsFromFlags } from "./payment-options.mjs";
 
 const HELP = `run402 tier — Manage your Run402 tier subscription
 
@@ -10,7 +11,7 @@ Usage:
 
 Subcommands:
   status                Show current tier, expiry, pool usage, and function caps when returned
-  set <tier>            Subscribe, renew, or upgrade (pays via x402)
+  set <tier>            Subscribe, renew, or upgrade (ordered payment capabilities supported)
 
 Tiers: prototype ($0.10/7d, free with testnet faucet), hobby ($5/30d), team ($20/30d)
 
@@ -51,7 +52,7 @@ Examples:
   set: `run402 tier set — Subscribe, renew, or upgrade your tier
 
 Usage:
-  run402 tier set <tier> [--idempotency-key <key>]
+  run402 tier set <tier> [payment options]
 
 Arguments:
   <tier>              One of: prototype, hobby, team
@@ -60,6 +61,12 @@ Options:
   --idempotency-key <key>  Retry-safe key: re-running the same subscribe/renew
                            intent with this key does not double-charge. Use a
                            fresh key for a deliberate second renewal.
+  --payment-preferences <json>  Ordered MPP Lightning, MPP Tempo, or x402 capabilities
+  --payment-profile <id>    Exact Run402 payment profile opt-in
+  --max-usd <amount>        Maximum payment in USD
+  --max-native-msat <n>     Maximum all-in Lightning debit in millisatoshis
+  --max-routing-fee-msat <n>  Maximum routing fee applied by the wallet
+  --evidence-policy <name>  none|protocol_settlement|run402_settlement|merchant_fulfillment
 
 Tiers:
   prototype           $0.10/7d (free with testnet faucet)
@@ -75,7 +82,8 @@ Notes:
     - Same tier, active  -> renew (extends from expiry)
     - Higher tier        -> upgrade (prorated refund to allowance)
     - Lower tier, active -> rejected (wait for expiry)
-  Pays via x402 micropayments.
+  With no payment preferences, existing x402/Tempo behavior is unchanged.
+  Lightning charge is explicit and uses the exact Run402 profile on Bitcoin mainnet.
 
   After the call, the CLI refetches /tiers/v1/status and includes the
   refreshed organization-pooled usage as 'status_after' in the JSON output.
@@ -107,8 +115,9 @@ async function status(args = []) {
 
 async function set(args = []) {
   const parsedArgs = normalizeArgv(args);
-  assertKnownFlags(parsedArgs, ["--help", "-h"], ["--idempotency-key"]);
-  const positionals = positionalArgs(parsedArgs, ["--idempotency-key"]);
+  const valueFlags = ["--idempotency-key", "--max-usd", ...PAYMENT_VALUE_FLAGS];
+  assertKnownFlags(parsedArgs, ["--help", "-h", ...valueFlags], valueFlags);
+  const positionals = positionalArgs(parsedArgs, valueFlags);
   if (positionals.length > 1) {
     fail({
       code: "BAD_USAGE",
@@ -129,9 +138,16 @@ async function set(args = []) {
   // double-charge. Not auto-derived: the SDK cannot tell a retry from a new
   // renewal intent (that boundary is the caller's).
   const idempotencyKey = flagValue(parsedArgs, "--idempotency-key") ?? undefined;
+  const maxUsd = flagValue(parsedArgs, "--max-usd");
   try {
     const sdk = getSdk();
-    const data = await sdk.tier.set(tierName, idempotencyKey ? { idempotencyKey } : {});
+    const { parseUsdMicros } = await import("./pay.mjs");
+    const options = {
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      ...(maxUsd !== null ? { maxUsdMicros: parseUsdMicros(maxUsd) } : {}),
+      ...paymentOptionsFromFlags(parsedArgs),
+    };
+    const data = await sdk.tier.set(tierName, options);
     let statusAfter = null;
     try {
       statusAfter = await sdk.tier.status();

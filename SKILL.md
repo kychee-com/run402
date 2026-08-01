@@ -614,20 +614,36 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 - **`ai_moderate`** — moderate text. Free.
 - **`ai_usage`** — translation quota.
 
-### External x402 buyer
+### External HTTP payment buyer
 
-- **`pay_url`** — call an arbitrary HTTP(S) URL and satisfy a supported exact
-  x402 challenge. Params: `url`, optional `method`, `body`, `idempotency_key`,
-  `max_usd_micros` (default `100000`, or $0.10), and `require_receipt`. The
-  latter requires a verified wallet-rooted offer before payment and a matching
-  receipt afterward. Returns `x402-commerce-result.v1` with settlement,
-  movement/replay, delivery, offer, merchant-receipt, signer-relationship,
-  policy, and portable non-secret evidence. A post-settlement policy failure
-  means reconcile the existing payment; never authorize another one. On
+- **`pay_url`** — call an arbitrary HTTP(S) URL through the shared ordered
+  payment engine. Existing exact x402 behavior is compatible. Params: `url`,
+  optional `method`, `body`, `idempotency_key`, `max_usd_micros` (default
+  `100000`, or $0.10), `require_receipt`, `payment_preferences`, `profile`,
+  `max_native_amount_msat`, `max_routing_fee_msat`, `evidence_policy`, and
+  `organization_id`. Explicit Lightning uses the exact
+  `run402-mpp-lightning-charge-draft00-safety-v1` profile. Production uses the
+  Gate-6.7-approved mainnet seller/payee; regtest remains available only for
+  local verification. The seller refuses invoice creation whenever permanent
+  readiness does not pass.
+  Lightning requires a caller-supplied stable key, one `nwc:<label>` local
+  instrument, and both USD and all-in millisatoshi ceilings. Returns the
+  existing `x402-commerce-result.v1` fields when applicable plus rail-neutral
+  `payment_result`, whose protocol receipt, immutable settlement attestation,
+  chained outcome attestations, merchant fulfillment, live status, and credits
+  remain separate. Legacy `require_receipt` means merchant fulfillment only.
+  A post-settlement policy failure means reconcile the existing payment; never
+  authorize another one. On
   trusted Run402 `PAYMENT_INTENT_PENDING`, wait for
   `Retry-After` and repeat identical arguments with the same payer and
   `idempotency_key`; never replace the key. Custom/arbitrary hosts remain
-  ambiguous unless verified evidence is present.
+  ambiguous unless verified evidence is present. After process restart, the
+  caller must resupply the byte-identical authenticated request, principal,
+  organization, key, profile, ordered preferences, and caps; the local journal
+  cannot reconstruct the body. `OPEN`, `ACCEPTED`, and `UNKNOWN` remain pinned
+  even after expiry. Generic NWC, MPP session intent, L402, zaps, tenant
+  Lightning, and on-chain per-request Bitcoin are unsupported; Buzz/Nostr
+  identity and the NWC instrument are independent.
 
 ### Apps marketplace
 
@@ -641,7 +657,10 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 Tier is per **organization**, not per project. One subscribe / renew / upgrade applies immediately to every project in the organization, and `api_calls` / `storage_bytes` quotas are enforced against the pooled sum across every non-terminal project in the organization. Multi-wallet organizations (via `link_wallet_to_organization`) share that same pool. Quota-denial errors carry `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback when a project's organization row has been purged but cascade has not yet run.
 
-- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action. x402 payment. Effect is organization-wide.
+- **`set_tier`** — subscribe / renew / upgrade. Auto-detects action and has an
+  organization-wide effect. Existing x402/Tempo behavior remains compatible.
+  MPP Lightning charge takes the same preference/profile/cap fields as
+  `pay_url` and requires a non-empty `idempotency_key` before wallet dispatch.
 - **`tier_status`** — current organization tier, lease, **pool_usage across every project in the organization**, and function caps when returned.
 - **`get_quote`** — pricing (free, no auth).
 - **`create_email_organization`** / **`link_wallet_to_organization`** — email-based organizations; hybrid Stripe + x402. `link_wallet_to_organization` returns a `pool_implications` block (organization tier, current pooled api_calls/storage, tier_limits, `over_limit`) so agents can warn before merging a wallet into a pool that would exceed the cap.
@@ -854,7 +873,7 @@ Two payment rails work with the same wallet key:
 - **x402** (default): USDC on Base. Prototype uses Base Sepolia testnet (free from faucet); hobby/team use Base mainnet.
 - **MPP**: pathUSD on Tempo Moderato (testnet) / Tempo (mainnet). Same wallet key, different chain.
 
-The MCP server handles all signing automatically. When a paid tool returns 402, the response includes payment details as **informational text** (not an error) — guide the user through funding, then retry the same tool call. **`provision_postgres_project`**, **`set_tier`**, **`deploy`**, and **`generate_image`** are Run402's paid tools; **`pay_url`** is the bounded buyer for a URL priced by an external x402 seller. Everything else is free with an active tier.
+The MCP server handles payment preparation automatically. When a paid tool returns 402, the response includes payment details as **informational text** (not an error) — guide the user through funding, then retry the same tool call. **`provision_postgres_project`**, **`set_tier`**, **`deploy`**, and **`generate_image`** are Run402's paid tools; **`pay_url`** is the bounded buyer for an externally priced HTTP URL. Everything else is free with an active tier.
 
 For real-money tiers, two paths to fund:
 

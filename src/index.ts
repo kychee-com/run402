@@ -965,7 +965,7 @@ server.tool(
 
 server.tool(
   "pay_url",
-  "Call an arbitrary HTTP(S) URL and automatically satisfy a supported x402 exact-payment challenge. Defaults to a $0.10 ceiling, uses the configured allowance wallet, forwards Idempotency-Key, and returns the HTTP response plus a structured payment receipt.",
+  "Call an arbitrary HTTP(S) priced URL through the shared payment engine. Supports ordered x402, MPP Tempo, and explicit regtest MPP Lightning charge capabilities, bounded by caller-supplied USD/native limits, and returns a rail-neutral payment result.",
   payUrlSchema,
   {
     readOnlyHint: false,
@@ -985,7 +985,7 @@ server.tool(
 
 server.tool(
   "set_tier",
-  "Subscribe, renew, or upgrade tier. Auto-detects action based on allowance state. Returns success or payment details if x402 payment is needed.",
+  "Subscribe, renew, or upgrade tier through the existing x402/Tempo path or explicit ordered regtest MPP Lightning charge preferences. Lightning requires the exact profile, a stable caller key, and explicit USD/native bounds.",
   setTierSchema,
   async (args) => handleSetTier(args),
 );

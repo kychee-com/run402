@@ -70,6 +70,34 @@ same payer and key. Never replace the key. The SDK and MCP can also re-present
 an ambiguous proof while their process remains alive; custom/arbitrary sellers
 remain ambiguous and require reconciliation.
 
+MPP Lightning charge is integrated into those same `pay.fetch`,
+`run402 pay`, `pay_url`, `tier.set`, `run402 tier set`, and `set_tier`
+surfaces. Gate 6.7 approved the production mainnet seller and exact payee
+`03cddb085a621af75f1f9b5c2b9c58a80aaf0d6de8ef25cb12a7028c5bac6018f5`.
+Local end-to-end verification remains available on regtest with a separately
+configured regtest instrument; production instruments must declare mainnet.
+The seller refuses invoice creation whenever its permanent readiness checks do
+not pass. Callers opt in with the exact
+`run402-mpp-lightning-charge-draft00-safety-v1` profile, an ordered
+`payment_preferences` list, a caller-supplied stable idempotency key, and
+explicit USD, all-in millisatoshi, and routing-fee ceilings. The seller returns
+one actionable offer. A retained local journal stores only non-secret ids,
+digests, the selected challenge, the instrument alias, and dispatch state; it
+does not store the request body, principal credential, raw key, NWC URI, or
+preimage. After restart, repeat the byte-identical authenticated call with the
+same principal, organization, key, profile, preference order, and caps. An
+`OPEN`, `ACCEPTED`, or `UNKNOWN` invoice remains pinned even after expiry and
+never causes an automatic rail switch.
+
+Lightning results use rail-neutral `payment_result` fields. They keep the
+successful-only protocol receipt, immutable Run402 settlement attestation,
+chained outcome attestations, merchant fulfillment, live `current_status`, and
+recovery/excess credits distinct. Legacy `requireReceipt` still means merchant
+fulfillment only. V1 permits only the pinned Alby Hub/LND fixed-fee adapter;
+generic NWC, MPP session intent, L402, zaps, tenant Lightning, and on-chain
+per-request Bitcoin are unsupported. Buzz/Nostr identity and the local NWC
+instrument remain independent.
+
 Prefer `run402 up` when a repo has `run402.deploy.json` or `app.json`. The CLI stays a thin shim over the Node SDK action runner (`r.actions.run(...)` / `r.up(...)`): it validates the manifest first, then recursively performs only the missing prerequisites. Project resolution is `--project`, `.run402/project.json`, manifest `project_id`, approved creation from `--name`, then approved active-project fallback. `--name` is project creation/link metadata only; it is not part of the deploy manifest and never renames an existing project. Use `--check` for local validation and `--plan` for gateway-reviewed intent before applying.
 
 If an app manifest defines `verify.http[]`, `run402 up` verifies those URLs after deploy. Fresh run402 edge sentinel misses are reported as `propagation_pending` rather than permanent failures while the binding is still converging; tune that wait with `--propagation-budget-s` (default 120) or return immediately with `--no-propagation-wait`. `run402 up verify` reruns the same HTTP checks without uploading, deploying, creating projects, or mutating resources.
@@ -633,11 +661,11 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `ai_moderate` | Moderate text (free). |
 | `ai_usage` | Translation quota (used / included / remaining). |
 
-### External x402 buyer
+### External HTTP payment buyer
 
 | Tool | Description |
 |------|-------------|
-| `pay_url` | Call an arbitrary HTTP(S) URL, satisfy a supported exact x402 challenge up to `max_usd_micros` (default 100000), optionally require verified merchant evidence with `require_receipt`, and return `x402-commerce-result.v1`. |
+| `pay_url` | Call an arbitrary HTTP(S) URL through the shared ordered payment engine. Existing exact x402 behavior remains compatible; explicit MPP Lightning charge additionally requires `payment_preferences`, the exact profile, `idempotency_key`, `max_usd_micros`, `max_native_amount_msat`, and `max_routing_fee_msat`, and returns rail-neutral `payment_result`. |
 
 ### Apps marketplace
 
@@ -653,7 +681,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 
 | Tool | Description |
 |------|-------------|
-| `set_tier` | Subscribe / renew / upgrade a tier (auto-detects action). x402 payment. |
+| `set_tier` | Subscribe / renew / upgrade a tier (auto-detects action). Existing x402/Tempo behavior remains compatible; explicit MPP Lightning charge delegates to the same buyer and requires the stable key, profile, preferences, and dual caps. |
 | `tier_status` | Current tier, lease expiry, usage, and function authoring caps when returned. |
 | `get_quote` | Tier pricing (free, no auth). |
 | `create_email_organization` / `link_wallet_to_organization` | Email-based organizations; hybrid Stripe + x402. |

@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { Run402 } from "../index.js";
+import { PaymentBuyerError, RUN402_MPP_LIGHTNING_PROFILE, Run402 } from "../index.js";
 import type { CredentialsProvider } from "../credentials.js";
 import type { TierStatusResult } from "./tier.js";
 
@@ -173,5 +173,72 @@ describe("tier.set idempotency", () => {
     const sdk = makeSdk(makeCreds(), fetch);
     await sdk.tier.set("prototype");
     assert.equal(calls[0]!.headers["Idempotency-Key"], undefined);
+  });
+
+  it("uses the shared payment executor with identical auth, body, key, and policy", async () => {
+    let paidCall: { url: string; init?: RequestInit; options?: unknown } | null = null;
+    const sdk = new Run402({
+      apiBase: "https://api.example.test",
+      credentials: makeCreds(),
+      fetch: async () => { throw new Error("legacy fetch must not run"); },
+      payExecutor: async (url, init, options) => {
+        paidCall = { url, init, options };
+        return {
+          response: jsonResponse(setBody, 201),
+          payment: null,
+          outcome: "settled",
+          replay: false,
+          paymentResult: {
+            protocol: "mpp", method: "lightning", intent: "charge",
+            profile: RUN402_MPP_LIGHTNING_PROFILE, intentId: "pint_1", attemptId: "patt_1",
+            canonicalAmountUsdMicros: 100_000, invoiceAmountMsat: 80_000,
+            receivedAmountMsat: 80_000, excessAmountMsat: 0, paymentHash: "11".repeat(32),
+            fundsMoved: true, rawNodeState: "SETTLED", terminality: "terminal_paid",
+            settlementRole: "primary", operationState: "succeeded", recoveryState: "none",
+            replay: false, paymentReceipt: "receipt", settlementAttestation: null,
+            outcomeAttestations: [], merchantFulfillment: setBody, currentStatus: null, credits: [],
+          },
+        };
+      },
+    });
+    const result = await sdk.tier.set("prototype", {
+      idempotencyKey: "tier:lightning:1",
+      profile: RUN402_MPP_LIGHTNING_PROFILE,
+      maxUsdMicros: 100_000,
+      maxNativeAmountMsat: 100_000,
+      maxRoutingFeeMsat: 10_000,
+      principalTransport: "siwx",
+      paymentPreferences: [
+        { protocol: "mpp", method: "lightning", intent: "charge", wallet: "nwc:deploy-bot" },
+      ],
+    });
+    assert.equal(paidCall?.url, "https://api.example.test/tiers/v1/prototype");
+    const headers = new Headers(paidCall?.init?.headers);
+    assert.equal(headers.get("sign-in-with-x"), "test-siwx");
+    assert.equal(headers.get("idempotency-key"), "tier:lightning:1");
+    assert.equal(paidCall?.init?.body, "{}");
+    assert.equal(result.payment_result?.method, "lightning");
+  });
+
+  it("refuses a Lightning-capable tier call without a stable caller key before dispatch", async () => {
+    let dispatched = false;
+    const sdk = new Run402({
+      apiBase: "https://api.example.test",
+      credentials: makeCreds(),
+      payExecutor: async () => {
+        dispatched = true;
+        throw new Error("must not run");
+      },
+    });
+    await assert.rejects(sdk.tier.set("prototype", {
+      profile: RUN402_MPP_LIGHTNING_PROFILE,
+      maxUsdMicros: 100_000,
+      maxNativeAmountMsat: 100_000,
+      maxRoutingFeeMsat: 10_000,
+      paymentPreferences: [
+        { protocol: "mpp", method: "lightning", intent: "charge", wallet: "nwc:deploy-bot" },
+      ],
+    }), (error: unknown) => error instanceof PaymentBuyerError && error.fundsMoved === false);
+    assert.equal(dispatched, false);
   });
 });

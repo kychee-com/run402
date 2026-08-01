@@ -5,6 +5,7 @@
  */
 
 import type { Client } from "../kernel.js";
+import type { PayFetchOptions, PaymentFlowResult } from "./pay.js";
 
 export type TierName = "prototype" | "hobby" | "team";
 
@@ -149,9 +150,11 @@ export interface TierSetResult {
   lease_started_at: string;
   lease_expires_at: string;
   allowance_remaining_usd_micros: number;
+  /** Present when `tier.set` used the shared ordered-capability payment engine. */
+  payment_result?: PaymentFlowResult;
 }
 
-export interface TierSetOptions {
+export interface TierSetOptions extends PayFetchOptions {
   /**
    * Idempotency key for safe retries (durable-side-effects doctrine). When set,
    * the SDK sends it as the `Idempotency-Key` header so retrying the same
@@ -180,13 +183,23 @@ export class Tier {
    * wrapper cannot fund the call.
    */
   async set(tier: TierName, opts: TierSetOptions = {}): Promise<TierSetResult> {
-    return this.client.request<TierSetResult>(`/tiers/v1/${tier}`, {
+    const request = {
       method: "POST",
       body: {},
       // Retry-safety: a caller-supplied key collapses a retried subscribe/renew
       // onto one charge. Omitted by default — tier renewal is not auto-keyed.
       ...(opts.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}),
       context: "setting tier",
+    } as const;
+    if (!opts.paymentPreferences) {
+      return this.client.request<TierSetResult>(`/tiers/v1/${tier}`, request);
+    }
+    const result = await this.client.requestWithResponse<TierSetResult>(`/tiers/v1/${tier}`, {
+      ...request,
+      payment: opts,
     });
+    return result.paymentResult
+      ? { ...result.body, payment_result: result.paymentResult }
+      : result.body;
   }
 }

@@ -122,7 +122,7 @@ address(es), and network(s); it never returns a key, signed authorization, or
 replayable proof. It returns `null` when automatic paid fetch is disabled, a
 custom `fetch` owns payment, or the selected source is not currently available.
 
-### Buy arbitrary x402 URLs
+### Buy HTTP-priced URLs
 
 The Node entry exposes a bounded buyer for any HTTP(S) endpoint:
 
@@ -181,7 +181,24 @@ arbitrary sellers remain ambiguous and require reconciliation.
 the same key and retry after activation; do not remove the key to force a
 proof-only charge.
 
-### Automatic x402 attempt recovery
+Ordered MPP Lightning charge uses this same `pay.fetch` entry point and the
+same buyer as `tier.set`. Production uses the Gate-6.7-approved mainnet
+seller/payee; regtest remains available for local verification. Callers provide the exact
+`run402-mpp-lightning-charge-draft00-safety-v1` profile,
+`paymentPreferences`, `idempotencyKey`, `maxUsdMicros`,
+`maxNativeAmountMsat`, and `maxRoutingFeeMsat`. The seller returns one
+actionable offer; the buyer validates the fixed BOLT11 invoice, independent
+BTC/USD valuation, and invoice-plus-fee caps before dispatching the pinned Alby
+Hub/LND adapter. The rail-neutral `paymentResult` keeps protocol receipt,
+immutable settlement attestation, chained outcome attestations, merchant
+fulfillment, live status, and credits separate. After restart, the caller must
+resupply the byte-identical authenticated request with the same principal,
+organization, stable key, profile, preference order, and caps. `OPEN`,
+`ACCEPTED`, and `UNKNOWN` stay pinned after expiry. Generic NWC, MPP session
+intent, L402, zaps, tenant Lightning, and on-chain per-request Bitcoin are
+unsupported.
+
+### Automatic payment attempt recovery
 
 Automatic paid requests persist a redacted mode-0600 intent before sending a signed payment. A `PaymentAttemptError` before provider dispatch has `mutationState: "not_started"` and `safeToRetry: true`; check `retryable` separately because persistent local-journal corruption is safe from duplicate payment but requires repair rather than an automatic retry. After dispatch, an unknown outcome is `mutationState: "ambiguous"`, `safeToRetry: false`, with `reconcile_payment` and `poll` actions. Reconcile `paymentAttemptId` before authorizing another payment. The only proof-replay exception is an identical `r.pay.fetch` retry on the same live SDK instance, which re-presents its retained proof rather than authorizing a new payment.
 
@@ -298,7 +315,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | Namespace | Highlights |
 |---|---|
 | `actions` | Node entry only (`@run402/sdk/node`). Generic recursive action runner: `actions.run({ type: Run402Action.Up | ProjectsProvision | TierSet, ... })`; `r.up(input, opts)` is the convenience for repo-level manifest deploys. Recursive mutations are approval-gated; `mode: "check" | "printSpec" | "plan" | { kind: "applyReviewed" }` distinguishes local validation, gateway review, and exact reviewed apply. Child gateway mutations derive idempotency keys from the root action. |
-| `pay` | `fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? })` — bounded arbitrary-URL x402 buyer; Node uses the selected allowance/signer and returns the response plus settlement and independently verified merchant evidence. |
+| `pay` | `fetch(url, init?, PayFetchOptions)` — shared ordered HTTP payment buyer. Existing x402 stays compatible; explicit MPP Lightning charge adds exact profile, stable key, native/USD/fee caps, a local instrument alias, rail-neutral result, and caller-resupplied recovery. |
 | `projects` | `provision`, `delete`, `list`, `get`, `use`, `active`, `sql`, `rest`, `validateExpose`, `applyExpose`, `getExpose`, `getUsage`, `getSchema`, `info`, `keys`, `pin`, `getQuote`. `list`/`get`/`use` are server-authoritative; local key reads are moving to `credentials.projectKeys`. |
 | `snapshots` | Internal project restore points: `create`, `list`, `get`, `restorePlan`, `restore`, `delete`. Restore is a two-step plan/confirm handshake. |
 | `branches` | Contained project data branches: `create`, `list`, `renew`, `delete`. Branches default to expiring, noindex, sandboxed-email copies. |

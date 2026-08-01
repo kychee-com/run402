@@ -74,6 +74,8 @@ export const COMMAND_MANIFEST = [
   { path: ["wallets", "bind"], positionals: [p("name", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["wallets", "unbind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["wallets", "import"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate-import-wallet", "--key", "__FIXTURE_FILE__"] },
+  { path: ["wallets", "lightning-add"], positionals: [p("label")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate-lightning", "--network", "regtest", "--payee-node", `02${"1".repeat(64)}`] },
+  { path: ["wallets", "lightning-list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["wallets", "rm"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["no-such-wallet", "--yes"] },
 
   // ── credentials (project-keys group) ─────────────────────────────────────

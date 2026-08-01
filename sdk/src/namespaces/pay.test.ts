@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import type { CredentialsProvider } from "../credentials.js";
 import {
   PaymentBuyerError,
+  RUN402_MPP_LIGHTNING_PROFILE,
   Run402,
   isTrustedRun402PaymentUrl,
   isTrustedRun402PendingResponse,
@@ -95,6 +96,69 @@ describe("Run402.pay.fetch", () => {
       assert.ok(error.nextActions?.some((action) => action.type === "fund_wallet"));
       return true;
     });
+  });
+
+  it("serializes ordered capabilities and exact Lightning profile for one shared executor", async () => {
+    let captured: { init?: RequestInit; options?: Record<string, unknown> } = {};
+    const response = new Response('{"ok":true}', {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    const r = new Run402({
+      apiBase: "https://api.run402.test",
+      credentials,
+      payExecutor: async (_url, init, options) => {
+        captured = { init, options };
+        return { response, payment: null, outcome: "settled", replay: false };
+      },
+    });
+    await r.pay.fetch("https://api.run402.test/tiers/v1/prototype", { method: "POST", body: "{}" }, {
+      idempotencyKey: "tier:lightning:1",
+      maxUsdMicros: 100_000,
+      maxNativeAmountMsat: 120_000,
+      maxRoutingFeeMsat: 10_000,
+      profile: RUN402_MPP_LIGHTNING_PROFILE,
+      evidencePolicy: "run402_settlement",
+      paymentPreferences: [
+        { protocol: "mpp", method: "lightning", intent: "charge", wallet: "nwc:deploy-bot" },
+        { protocol: "mpp", method: "tempo", intent: "charge" },
+        { protocol: "x402", network: "eip155:8453" },
+      ],
+    });
+
+    const headers = new Headers(captured.init?.headers);
+    assert.equal(headers.get("idempotency-key"), "tier:lightning:1");
+    assert.equal(headers.get("run402-payment-profile"), RUN402_MPP_LIGHTNING_PROFILE);
+    assert.equal(headers.get("accept-payment"),
+      "lightning/charge;q=1.000, tempo/charge;q=0.999, x402/charge;q=0.998");
+    assert.equal(captured.options?.evidencePolicy, "run402_settlement");
+  });
+
+  it("rejects incomplete Lightning opt-in before the executor is called", async () => {
+    let calls = 0;
+    const r = new Run402({
+      apiBase: "https://api.run402.test",
+      credentials,
+      payExecutor: async () => {
+        calls += 1;
+        throw new Error("must not run");
+      },
+    });
+    await assert.rejects(r.pay.fetch("https://api.run402.test/tiers/v1/prototype", undefined, {
+      profile: RUN402_MPP_LIGHTNING_PROFILE,
+      maxUsdMicros: 100_000,
+      maxNativeAmountMsat: 120_000,
+      maxRoutingFeeMsat: 10_000,
+      paymentPreferences: [
+        { protocol: "mpp", method: "lightning", intent: "charge", wallet: "nwc:deploy-bot" },
+      ],
+    }), (error: unknown) => {
+      assert.ok(error instanceof PaymentBuyerError);
+      assert.match(error.message, /idempotencyKey/);
+      assert.equal(error.fundsMoved, false);
+      return true;
+    });
+    assert.equal(calls, 0);
   });
 });
 

@@ -53,7 +53,7 @@ For Core, `init --api-base` stores the target in the active profile and does not
 | You want to… | Reach for… |
 |---|---|
 | Set up a wallet from scratch | `run402 init` |
-| Buy from an x402-priced URL | `run402 pay <url> --max-usd <amount>` |
+| Buy from an HTTP-priced URL | `run402 pay <url> --max-usd <amount>` |
 | Bootstrap/link/deploy a manifest repo | `run402 up --name <name> -y` |
 | Bootstrap/link/deploy and wait for edge coherence | `run402 up --name <name> -y --verify` |
 | Rerun app HTTP verification | `run402 up verify --project <project_id>` |
@@ -84,6 +84,21 @@ run402 wallets bind kychon           # write ./.run402.json - this repo uses kyc
 run402 wallets current               # which wallet is active + how it was selected
 run402 --wallet kychon projects list # one-off override for a single command
 ```
+
+MPP Lightning instruments are separate from these identity/payment profiles.
+Add the approved Alby Hub/LND fixed-fee instrument by sending its NWC
+URI on stdin; the OS credential manager stores the URI and local metadata holds
+only its alias, provider, network, payee node, and pinned provider commit:
+
+```bash
+printf '%s' "$NWC_URI" | run402 wallets lightning-add deploy-bot --network mainnet \
+  --payee-node 03cddb085a621af75f1f9b5c2b9c58a80aaf0d6de8ef25cb12a7028c5bac6018f5
+run402 wallets lightning-list
+```
+
+Never put an NWC URI in argv. Buzz/Nostr identity and the NWC connection remain
+independent and rotate independently. Generic NWC is not supported for
+automatic Lightning dispatch.
 
 Selection precedence for every command: `--wallet <name>` flag > `RUN402_WALLET` env > nearest `./.run402.json` directory binding > `wallets use` default > `default`. A `RUN402_WALLET` that disagrees with a `.run402.json` binding is a hard error - pass `--wallet`, `unset RUN402_WALLET`, or `run402 wallets unbind`. Non-default selections echo the wallet name on stderr so you always know which wallet you are on.
 
@@ -999,6 +1014,12 @@ run402 billing history <org_id | wallet | email>
 
 `run402 tier set` refetches `/tiers/v1/status` after the call and includes the refreshed organization-pool snapshot as `status_after` in the JSON output, so the new pooled `api_calls` / `storage_bytes` totals come back in one step.
 
+When MPP Lightning charge is explicitly selected, `run402 tier set` uses
+the same ordered buyer as `run402 pay`. Supply `--idempotency-key`,
+`--payment-profile`, `--payment-preferences`, `--max-usd`,
+`--max-native-msat`, and `--max-routing-fee-msat`; omitting the stable key is
+rejected before wallet dispatch. Re-run the exact command for recovery.
+
 After subscribing you can create unlimited projects, deploy unlimited sites, fork apps — all free with your active tier, subject to the organization-pooled api_calls and storage_bytes caps. Only image generation ($0.03/image) is per-call.
 
 The server auto-detects the action: no tier or expired → subscribe; same tier active → renew; higher tier → upgrade (prorated refund); lower tier → downgrade (prorated refund if usage fits).
@@ -1111,7 +1132,7 @@ With `--fail-on-new` (requires `--new-in`) the run is a gate. Exit codes: **0** 
 
 **My bug or yours?** If an error envelope carries `correlated_platform_incident` (`{ id, subsystem, status }`), the platform was degraded when your call failed — poll the events feed (`run402 events`, the stamp's own `poll` next_action) and check `platform_status` before debugging your own code. It's a correlation, not an exoneration, but a strong signal to look at the platform first; when the incident resolves, the matching `platform_incident` feed event carries your project's real count of platform-caused failed invocations.
 
-## External x402 buyer
+## External HTTP payment buyer
 
 ```bash
 run402 pay https://seller.example/translate --method POST \
@@ -1128,6 +1149,34 @@ for `Retry-After` and repeat the identical command with the same payer and
 `--idempotency-key`; never replace the key. Custom/arbitrary hosts and other
 `funds_moved: "unknown"` outcomes require reconciliation. A post-settlement
 receipt-policy failure also requires reconciliation, never a second payment.
+
+The same command also accepts ordered payment capabilities. Production MPP
+Lightning uses the Gate-6.7-approved mainnet seller/payee and refuses invoice
+creation whenever permanent readiness does not pass. An explicit Lightning
+charge call requires all of the following:
+
+Local end-to-end verification remains on regtest with a separately configured
+regtest instrument; a production instrument must declare mainnet.
+
+```bash
+run402 pay https://api.run402.test/tiers/v1/prototype --method POST \
+  --body '{}' --idempotency-key tier:prototype:lightning:1 \
+  --payment-profile run402-mpp-lightning-charge-draft00-safety-v1 \
+  --payment-preferences '[{"protocol":"mpp","method":"lightning","intent":"charge","wallet":"nwc:deploy-bot"},{"protocol":"mpp","method":"tempo"},{"protocol":"x402","network":"eip155:8453"}]' \
+  --max-usd 0.10 --max-native-msat 1010000 --max-routing-fee-msat 10000 \
+  --evidence-policy run402_settlement
+```
+
+The seller returns one actionable offer. The result keeps the protocol receipt,
+immutable settlement attestation, chained outcome attestations, merchant
+fulfillment, live `current_status`, and recovery/excess credits distinct. A
+local journal retains only ids, digests, the selected challenge, instrument
+alias, and dispatch state. After restart, resupply the byte-identical
+authenticated request with the same principal, organization, stable key,
+profile, preference order, and caps; the journal cannot reconstruct its body.
+An `OPEN`, `ACCEPTED`, or `UNKNOWN` invoice remains pinned after expiry and
+never triggers another rail. MPP session intent, L402, zaps, tenant Lightning,
+on-chain per-request Bitcoin, and generic NWC are unsupported.
 
 ## Image generation
 

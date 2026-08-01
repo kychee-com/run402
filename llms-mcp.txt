@@ -32,20 +32,35 @@ is read from the settlement receipt, not from local wallet config, so an agent
 holding mainnet USDC is never told its real payment was fake. `pay_url` reports
 the same facts for arbitrary sellers.
 
-`pay_url` is the general x402 buyer tool for external HTTP(S) endpoints. Params:
+`pay_url` is the general HTTP payment buyer tool. It delegates all negotiation,
+dispatch, and recovery to SDK `pay.fetch`; MCP does not implement another
+payment workflow. Existing exact x402 behavior remains compatible. Params:
 `url`, optional `method`, `body`, `idempotency_key`, `max_usd_micros`
-(default `100000`, or $0.10), and `require_receipt`. It delegates to SDK
-`pay.fetch`. `require_receipt: true` requires a verified wallet-rooted offer
-before payment and a matching receipt afterward. Structured content is the
-complete `x402-commerce-result.v1` envelope; the text view curates amount and
-destination, settlement, movement/replay, merchant receipt, signer
-relationship, and policy. Portable evidence is preserved, but payment proofs,
-cookies, authorization headers, bodies, private keys, and tenant secrets are
-never cached. On trusted Run402
+(default `100000`, or $0.10), `require_receipt`, `payment_preferences`,
+`profile`, `max_native_amount_msat`, `max_routing_fee_msat`,
+`evidence_policy`, and `organization_id`.
+
+Explicit MPP Lightning charge uses the exact
+`run402-mpp-lightning-charge-draft00-safety-v1` profile. Production uses
+Bitcoin mainnet and the approved Run402 seller payee; regtest remains available
+for local verification. It requires a caller-supplied stable key, an ordered
+preference containing an `nwc:<label>` local instrument, and explicit USD,
+all-in millisatoshi, and routing-fee ceilings. The seller returns one actionable
+offer. Structured content adds a rail-neutral `payment_result`; protocol receipt,
+immutable settlement attestation, chained outcome attestations, merchant
+fulfillment, live `current_status`, and recovery/excess credits remain distinct.
+Legacy `require_receipt: true` means merchant fulfillment only. Portable evidence
+is preserved, while the local journal stores no request body, principal credential,
+raw key, NWC URI, preimage, or private header. On trusted Run402
 `PAYMENT_INTENT_PENDING`, wait for `Retry-After` and call `pay_url` again with
 the same payer, identical arguments, and the same `idempotency_key`; never
 substitute a new key. Custom/arbitrary hosts remain ambiguous. The live SDK
-instance can also re-present its original in-memory proof.
+instance can also re-present its original in-memory proof. After restart, the
+caller must resupply the byte-identical authenticated request, principal,
+organization, key, profile, preference order, and caps. `OPEN`, `ACCEPTED`, and
+`UNKNOWN` stay pinned after expiry and never select another rail. Generic NWC,
+MPP session intent, L402, zaps, tenant Lightning, and on-chain per-request Bitcoin
+are unsupported; Buzz/Nostr identity and the NWC instrument are independent.
 
 ## Quickstart
 
@@ -521,7 +536,13 @@ Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipient
 
 Tier is per organization, not per project. `set_tier` applies immediately to every project in the organization. `api_calls` / `storage_bytes` / `emailsPerDay` / `maxFunctions` / `maxScheduledFunctions` / `maxSecrets` are pooled across every non-terminal project in the organization; per-function caps (`functionTimeoutSec`, `functionMemoryMb`, `minScheduleIntervalMinutes`) stay per-instance. Multi-wallet organizations (via `link_wallet_to_organization`) share the same pool. Quota-denial error envelopes include `details.scope: "organization" | "project"` — `"organization"` for the pooled path, `"project"` for the orphan fallback (project whose organization row was purged but cascade has not yet run).
 
-- `set_tier` — subscribe / renew / upgrade. Auto-detects action. x402 payment. Params: `tier` (`prototype` / `hobby` / `team`). Organization-wide effect.
+- `set_tier` — subscribe / renew / upgrade. Auto-detects action and has an
+  organization-wide effect. Existing x402/Tempo behavior remains compatible.
+  MPP Lightning charge accepts the same `payment_preferences`, exact `profile`,
+  `max_usd_micros`, `max_native_amount_msat`, `max_routing_fee_msat`,
+  `evidence_policy`, and `organization_id` fields as `pay_url`, and requires a
+  non-empty `idempotency_key` before wallet dispatch. Repeat the identical call
+  for recovery.
 - `tier_status` — current organization tier, lease, and `pool_usage` pooled across every project in the organization; function authoring caps when returned.
 - `get_quote` — pricing (free, no auth).
 - `create_email_organization` — Stripe-only organization by email (no wallet). Params: `email`. Idempotent.

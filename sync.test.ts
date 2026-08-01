@@ -251,7 +251,7 @@ const SURFACE: Capability[] = [
   // ── Init / status (local-only) ──────────────────────────────────────────
   { id: "up",                endpoint: "(compound local+gateway action)",       mcp: "app_up",                        cli: "up",                  openclaw: "up" },
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
-  { id: "pay_url",           endpoint: "(external x402 URL)",                  mcp: "pay_url",                       cli: "pay",                 openclaw: "pay" },
+  { id: "pay_url",           endpoint: "(external HTTP payment URL)",          mcp: "pay_url",                       cli: "pay",                 openclaw: "pay" },
   { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
   // Identity-link mutations stay out of MCP v1: the CLI/OpenClaw group hands
   // public content to Buzz's signer boundary and never accepts a Nostr secret.
@@ -277,6 +277,8 @@ const SURFACE: Capability[] = [
   { id: "wallets_bind",      endpoint: "(local)",                              mcp: null, cli: "wallets:bind",     openclaw: "wallets:bind" },
   { id: "wallets_unbind",    endpoint: "(local)",                              mcp: null, cli: "wallets:unbind",   openclaw: "wallets:unbind" },
   { id: "wallets_import",    endpoint: "(local)",                              mcp: null, cli: "wallets:import",   openclaw: "wallets:import" },
+  { id: "wallets_lightning_add", endpoint: "(local OS credential manager)",    mcp: null, cli: "wallets:lightning-add", openclaw: "wallets:lightning-add" },
+  { id: "wallets_lightning_list", endpoint: "(local)",                         mcp: null, cli: "wallets:lightning-list", openclaw: "wallets:lightning-list" },
   { id: "wallets_rm",        endpoint: "(local)",                              mcp: null, cli: "wallets:rm",       openclaw: "wallets:rm" },
 
   // ── SSR Runtime DX (v1.52, local-only / CLI-only) ──────────────────────
@@ -654,6 +656,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   wallets_bind: null,
   wallets_unbind: null,
   wallets_import: null,
+  wallets_lightning_add: null,
+  wallets_lightning_list: null,
   wallets_rm: null,
 
   // SSR Runtime DX (v1.52) — local/CLI-only; no MCP, no SDK
@@ -1547,6 +1551,59 @@ describe("SURFACE consistency", () => {
       [],
       `Capabilities with no implementation in any interface: ${uncovered.map(c => c.id).join(", ")}`,
     );
+  });
+});
+
+describe("MPP Lightning payment surface parity", () => {
+  const profile = "run402-mpp-lightning-charge-draft00-safety-v1";
+  const docs = [
+    "README.md",
+    "SKILL.md",
+    "openclaw/SKILL.md",
+    "cli/llms-cli.txt",
+    "llms-mcp.txt",
+    "sdk/llms-sdk.txt",
+  ];
+
+  it("keeps the exact profile, mainnet policy, recovery, and unsupported methods aligned", () => {
+    for (const file of docs) {
+      const source = readFileSync(join(__dirname, file), "utf8");
+      assert.match(source, new RegExp(profile), `${file} must name the exact profile`);
+      assert.match(source, /mainnet/i, `${file} must name the production Bitcoin network`);
+      assert.match(source, /regtest/i, `${file} must retain local regtest verification`);
+      assert.match(source, /ACCEPTED/, `${file} must explain retained ACCEPTED state`);
+      assert.match(source, /generic\s+NWC/i, `${file} must reject generic NWC automation`);
+      assert.match(source, /MPP\s+session intent/i, `${file} must keep MPP session intent unsupported`);
+      assert.match(source, /L402/, `${file} must keep L402 separate`);
+      assert.match(source, /zaps/i, `${file} must keep zaps unsupported`);
+    }
+  });
+
+  it("keeps SDK, CLI, MCP, and OpenClaw inputs aligned", () => {
+    const sdk = readFileSync(join(__dirname, "sdk/llms-sdk.txt"), "utf8");
+    for (const field of [
+      "paymentPreferences", "maxUsdMicros", "maxNativeAmountMsat",
+      "maxRoutingFeeMsat", "idempotencyKey", "evidencePolicy",
+    ]) assert.match(sdk, new RegExp(field), `SDK docs missing ${field}`);
+
+    const mcp = readFileSync(join(__dirname, "llms-mcp.txt"), "utf8");
+    for (const field of [
+      "payment_preferences", "max_usd_micros", "max_native_amount_msat",
+      "max_routing_fee_msat", "idempotency_key", "evidence_policy",
+    ]) assert.match(mcp, new RegExp(field), `MCP docs missing ${field}`);
+
+    for (const file of ["cli/llms-cli.txt", "openclaw/SKILL.md"]) {
+      const source = readFileSync(join(__dirname, file), "utf8");
+      for (const flag of [
+        "--payment-preferences", "--payment-profile", "--max-usd",
+        "--max-native-msat", "--max-routing-fee-msat", "--idempotency-key",
+      ]) assert.match(source, new RegExp(flag), `${file} missing ${flag}`);
+    }
+  });
+
+  it("tracks local Lightning instrument commands in CLI and OpenClaw inventory", () => {
+    assert.ok(SURFACE.some((item) => item.id === "wallets_lightning_add"));
+    assert.ok(SURFACE.some((item) => item.id === "wallets_lightning_list"));
   });
 });
 

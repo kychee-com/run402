@@ -713,7 +713,7 @@ describe("createTrackedX402Fetch", () => {
       mutation_state: "not_started",
       method: "GET",
       origin: "https://paid.example",
-      path_sha256: "d7d8df1a2d96e1690a93ddb8cef7f64798bbfcbe030210adc1096e8d6d12527c",
+      path_sha256: "4ee55bda3c55f5073d7702cd616499b85c9b229472207b268e339fd4e06d9ed4",
       created_at: records.get(attemptId)!.created_at,
       updated_at: records.get(attemptId)!.updated_at,
       last_error_code: "X402_PAYMENT_SIGNING_FAILED",
