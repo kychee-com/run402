@@ -141,7 +141,10 @@ describe("run402-buzz distributable package", () => {
     const preflight = readFileSync(join(ROOT, "references", "preflight.md"), "utf8");
     assert.match(preflight, /first executable setup stage/);
     assert.match(preflight, /Node must be 22 or newer/);
+    assert.match(preflight, /Run402 \*\*4\.17\.2 or newer\*\*/);
     assert.match(preflight, /npm install -g run402@latest/);
+    assert.match(preflight, /Do not run an older doctor's relay repair or present it to the human/);
+    assert.match(preflight, /rerun the entire bootstrap and doctor in the same turn/);
     assert.match(preflight, /BUZZ_PREFLIGHT_SHELL_UNAVAILABLE/);
     assert.match(preflight, /BUZZ_PREFLIGHT_NODE_UNAVAILABLE/);
     assert.match(preflight, /BUZZ_PREFLIGHT_NODE_INCOMPATIBLE/);

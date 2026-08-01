@@ -17,7 +17,7 @@ Copying, updating, or discovering the skill files performs no setup and grants n
 
 Read [references/installation.md](references/installation.md) when installing, updating, repairing, or reporting this skill. Use first-party discovery at `https://run402.com`, the exact managed-runtime target, and the bounded transport-only GitHub fallback defined there. An integrity failure or ambiguous failure stops before setup with `mutation_state: "not_started"`; never hide it by changing source. Installation itself remains inert. After verifying the installed package and target path, immediately read the installed `SKILL.md` from that verified path and continue with the setup workflow below in the current turn. Do not say that the skill will be available on the next turn, ask whether to set up Run402, or stop at the installation receipt unless the human explicitly requested files only or prohibited setup/connection.
 
-The outer bootstrap may run `npm install -g run402@latest` when the Run402 CLI is absent or incompatible. That happens before setup starts; the setup helper itself never installs or upgrades software.
+Buzz setup requires Run402 4.17.2 or newer. The outer bootstrap or setup helper SHALL run `npm install -g run402@latest` once when the user-global CLI is absent or older, verify the executing version, and restart the complete preflight in the same turn. This agent-side prerequisite needs no human approval and happens before any remote setup or authority mutation. Never present a stale CLI's relay verdict to the human.
 
 ## Public-link disclosure
 
@@ -60,7 +60,7 @@ Read [references/conversations.md](references/conversations.md) when rendering t
 
    The helper reruns or validates a fresh target/profile/runtime/relay-bound passing doctor report before its first mutation. It invokes ordinary commands with argument arrays and `shell: false`. It:
 
-   - requires the outer bootstrap to have prepared a compatible user-global `run402` CLI and refuses to install or update it after setup has started;
+   - converges an absent or pre-4.17.2 user-global `run402` CLI once before any remote setup mutation, verifies the executing version, and reruns the complete doctor;
    - requires the named profile to exist before it can run initialization;
    - passes `--wallet <profile>` to every Run402 invocation it makes, overriding ambient environment, directory, and global defaults without changing them;
    - uses the existing `run402 init` workflow only as `run402 --wallet <profile> init`, and only when that existing profile is not initialized;

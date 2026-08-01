@@ -111,6 +111,9 @@ function passingDoctorReport(run402Bin, state) {
 function makeRunner(overrides = {}) {
   const state = {
     cliAvailable: true,
+    cliVersion: "9.9.9",
+    postInstallVersion: "9.9.9",
+    installFailure: false,
     compatible: true,
     profileExists: true,
     initialized: true,
@@ -142,9 +145,11 @@ function makeRunner(overrides = {}) {
     if (command === "npm") {
       if (args.join(" ") === "prefix -g") return ok("/test-npm-global\n");
       if (args.join(" ") === "list -g run402 --depth=0 --json") {
-        return state.cliAvailable ? ok({ dependencies: { run402: { version: "9.9.9" } } }) : fail("NPM_PACKAGE_NOT_FOUND");
+        return state.cliAvailable ? ok({ dependencies: { run402: { version: state.cliVersion } } }) : fail("NPM_PACKAGE_NOT_FOUND");
       }
+      if (state.installFailure) return fail("NPM_INSTALL_FAILED");
       state.cliAvailable = true;
+      state.cliVersion = state.postInstallVersion;
       state.compatible = true;
       return ok("installed");
     }
@@ -163,7 +168,7 @@ function makeRunner(overrides = {}) {
       return ok({ event_id: "e".repeat(64) });
     }
     if (!command.endsWith("/bin/run402") || !state.cliAvailable) return { status: 127, stdout: "", stderr: "not found" };
-    if (args[0] === "--version") return ok("run402 9.9.9\n");
+    if (args[0] === "--version") return ok(`run402 ${state.cliVersion}\n`);
     if (args.at(-1) === "--help") return state.compatible ? ok("help\n") : fail("BAD_COMMAND");
 
     const hasExplicitWallet = args[0] === "--wallet";
@@ -325,18 +330,43 @@ describe("Run402 for Buzz setup state machine", () => {
     assert.equal(count(fake.calls, `--wallet ${PROFILE} identity link nostr complete --event-file`), 1);
   });
 
-  it("blocks a missing CLI before setup mutation and leaves installation to the outer bootstrap", async () => {
+  it("installs a missing CLI agent-side and continues through setup in the same invocation", async () => {
     const fake = makeRunner({ cliAvailable: false, initialized: false });
+    const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
+    assert.equal(result.status, "ready");
+    assert.equal(result.cli.state, "installed");
+    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 1);
+    assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} doctor --buzz --buzz-agent ${PUBKEY}`), 1);
+    assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} init`), 1);
+    assert.equal(count(fake.calls, "identity link nostr complete --event-file"), 1);
+  });
+
+  it("upgrades a pre-4.17.2 CLI before trusting its doctor and continues setup", async () => {
+    const fake = makeRunner({ cliVersion: "4.17.1", linked: true });
+    const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
+    assert.equal(result.status, "ready");
+    assert.equal(result.cli.state, "updated");
+    assert.equal(result.cli.version, "9.9.9");
+    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 1);
+    const updateIndex = fake.calls.findIndex((call) => call[0] === "npm" && call.slice(1).join(" ") === "install -g run402@latest");
+    const doctorIndex = fake.calls.findIndex((call) => call[0].endsWith("/bin/run402") && call.slice(1).join(" ").includes("doctor --buzz"));
+    assert.ok(updateIndex >= 0 && updateIndex < doctorIndex);
+  });
+
+  it("stops before remote mutation only when the one safe CLI convergence attempt fails", async () => {
+    const fake = makeRunner({ cliVersion: "4.17.1", installFailure: true });
     await assert.rejects(
       runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} }),
       (error) => {
-        assert.equal(error.code, "BUZZ_PREFLIGHT_RUN402_UNAVAILABLE");
+        assert.equal(error.code, "BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE");
         assert.equal(error.mutationState, "not_started");
+        assert.equal(error.nextAction.type, "upgrade_run402_cli");
         assert.deepEqual(error.nextAction.argv, ["npm", "install", "-g", "run402@latest"]);
+        assert.equal(error.details.minimum_version, "4.17.2");
         return true;
       },
     );
-    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 0);
+    assert.equal(countExact(fake.calls, "npm", "install -g run402@latest"), 1);
     assert.equal(countMutation(fake.calls, " init"), 0);
     assert.equal(countMutation(fake.calls, "identity link nostr"), 0);
   });
@@ -570,7 +600,7 @@ describe("Run402 for Buzz setup state machine", () => {
     const fake = makeRunner({ linked: true, ambientProfile: AMBIENT_PROFILE });
     const result = await runSetup({ pubkey: PUBKEY, wallet: PROFILE, runner: fake.runner, reporter: () => {} });
     const profileSensitiveCalls = fake.calls.filter((call) =>
-      call[0].endsWith("/bin/run402"),
+      call[0].endsWith("/bin/run402") && call[1] !== "--version",
     );
     assert.ok(profileSensitiveCalls.length > 0);
     assert.ok(profileSensitiveCalls.every((call) => call[1] === "--wallet" && call[2] === PROFILE));

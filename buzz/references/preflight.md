@@ -10,7 +10,7 @@ Before invoking any Run402 or Buzz mutation:
 2. Choose the one unique dedicated Run402 profile label that will be passed explicitly as `--wallet <profile>`.
 3. Verify that the managed session exposes a configured shell and can execute a bounded no-op. If the agent has no command-execution boundary, return the static `BUZZ_PREFLIGHT_SHELL_UNAVAILABLE` block below.
 4. Invoke the session's actual Node executable as an argument array with `--version`. Node must be 22 or newer. Do not use an ambient shell alias as evidence when the exact executable cannot be spawned.
-5. If Node passes, invoke `npm --version` and `run402 --version` as argument arrays. If Run402 is absent but npm works, the user's setup request authorizes the safe user-global action `npm install -g run402@latest`; execute it once and restart the complete preflight. If npm or the helper runtime is unavailable, return the matching static block and stop.
+5. If Node passes, invoke `npm --version` and `run402 --version` as argument arrays. Buzz setup requires Run402 **4.17.2 or newer**; that is the first release whose safe relay-availability failure is warning-only for founder setup. If Run402 is absent or older, the user's setup request authorizes the safe agent-side user-global action `npm install -g run402@latest`; execute it once, verify the executable now reports 4.17.2 or newer, and restart the complete preflight. Do not run an older doctor's relay repair or present it to the human. If npm or the helper runtime is unavailable, or the verified version still does not converge, return the matching static block and stop.
 6. Invoke the canonical read-only diagnostic:
 
    ```sh
@@ -70,7 +70,7 @@ Missing Node uses the same shape with check `node_runtime`, code `BUZZ_PREFLIGHT
 
 Use `BUZZ_PREFLIGHT_NODE_INCOMPATIBLE` instead when the exact executable reports a major below 22.
 
-Missing Run402 after Node/npm pass uses check `run402_cli`, code `BUZZ_PREFLIGHT_RUN402_UNAVAILABLE`, and the shell action below. The agent may auto-execute it because the setup request already authorized the one necessary user-global CLI install; the human is not asked to paste it.
+Missing Run402 after Node/npm pass uses check `run402_cli`, code `BUZZ_PREFLIGHT_RUN402_UNAVAILABLE`, and the shell action below. An installed version below 4.17.2 uses `BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE` with the same command and action type `upgrade_run402_cli`. The agent or setup helper auto-executes it once because the setup request already authorized the necessary user-global CLI convergence; the human is not asked to paste it.
 
 ```json
 {
@@ -91,7 +91,7 @@ If npm itself is unavailable, use `BUZZ_PREFLIGHT_RUN402_UNAVAILABLE` with `surf
 
 ## Doctor result handling
 
-The doctor always returns this ordered set: `session_shell`, `node_runtime`, `run402_cli`, `buzz_cli`, `buzz_agent_target`, `run402_api`, `run402_console`, `buzz_relay`, `wallet_profile`. Report every independent block in the same Buzz response. Each actionable check already carries exactly one complete `shell`, `buzz_chat`, or `buzz_settings` repair. Auto-execute only when `safe_to_auto_execute: true`, then rerun the entire bootstrap and doctor.
+The doctor always returns this ordered set: `session_shell`, `node_runtime`, `run402_cli`, `buzz_cli`, `buzz_agent_target`, `run402_api`, `run402_console`, `buzz_relay`, `wallet_profile`. Report every independent block in the same Buzz response. Each actionable check already carries exactly one complete `shell`, `buzz_chat`, or `buzz_settings` repair. Auto-execute any CLI install/upgrade action marked `safe_to_auto_execute: true`, verify the executing version, and rerun the entire bootstrap and doctor in the same turn. Do not stop to ask the human for permission to update this agent-side prerequisite.
 
 Relay safety and relay availability are separate. `BUZZ_PREFLIGHT_RELAY_UNSAFE` is blocking and setup must not connect to the destination. `BUZZ_PREFLIGHT_RELAY_UNREACHABLE` is a warning after the relay URL has been safely contained: founder-agent setup and the org-of-one path may continue, but community-installation discovery and agent enrollment remain unavailable until a later live relay read succeeds. Preserve the warning and its exact action in the receipt. For `failure: "tls_handshake_failed"`, tell the Buzz community operator to repair the named public hostname/certificate route; do not tell the human to reconnect the same broken URL.
 

@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { bech32 } from "@scure/base";
 import {
   buildBuzzDoctorReport,
+  BUZZ_DOCTOR_MIN_RUN402_VERSION,
   BUZZ_DOCTOR_REPAIR_MATRIX,
   isPublicAddress,
   normalizeNostrSubject,
@@ -85,6 +86,10 @@ function healthyDependencies(overrides = {}) {
 }
 
 describe("Buzz doctor argument and identity contract", () => {
+  it("pins the first client with warning-only safe relay semantics", () => {
+    assert.equal(BUZZ_DOCTOR_MIN_RUN402_VERSION, "4.17.2");
+  });
+
   it("accepts an explicit hex or npub target and rejects malformed/repeated combinations before probing", () => {
     const npub = bech32.encode("npub", bech32.toWords(Buffer.from(SUBJECT, "hex")));
     assert.deepEqual(parseBuzzDoctorArgs(["--buzz", "--buzz-agent", SUBJECT]), { buzz: true, expectedSubjectHex: SUBJECT });

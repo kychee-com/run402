@@ -39,6 +39,10 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   identity, then asks about one contextual demo. It never stops at “available
   next turn” or asks the human to repeat the setup request; an explicit
   files-only instruction remains the opt-out.
+- **Buzz CLI convergence:** onboarding now treats Run402 v4.17.2 as the minimum
+  semantic client because that release made safe relay availability warning-only
+  for founder setup. A missing or older user-global CLI is upgraded and verified
+  agent-side before doctor runs; the human is no longer sent a stale relay repair.
 - **Demo-first adoption:** the SDK and `run402 buzz adopt offer` expose durable,
   inert HTTPS ownership handoffs after a verified deployment. The short Buzz
   signing attempt is created only after direct human login and fresh passkey;

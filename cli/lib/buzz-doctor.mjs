@@ -22,7 +22,10 @@ const BUZZ_CAPABILITIES = JSON.parse(readFileSync(
 export const BUZZ_DOCTOR_TIMEOUT_MS = 3_000;
 export const BUZZ_DOCTOR_MAX_RESPONSE_BYTES = 64 * 1024;
 export const BUZZ_DOCTOR_MIN_NODE_MAJOR = 22;
-export const BUZZ_DOCTOR_MIN_RUN402_VERSION = "4.16.1";
+// v4.17.2 is the first client whose Buzz doctor keeps a safely contained relay
+// availability failure warning-only for founder-agent setup. Older clients can
+// expose the same command surface while enforcing the wrong setup semantics.
+export const BUZZ_DOCTOR_MIN_RUN402_VERSION = "4.17.2";
 
 const SPEND_NONE = Object.freeze({ currency: "USD", max_amount: "0" });
 const SAFE_TOKEN = /^[A-Za-z0-9_./:=@+,-]+$/;

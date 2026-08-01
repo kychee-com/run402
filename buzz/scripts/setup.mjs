@@ -19,6 +19,7 @@ const REQUIRED_CAPABILITIES = [
   ["buzz", "status", "--help"],
   ["buzz", "install", "discover", "--help"],
 ];
+export const BUZZ_SETUP_MIN_RUN402_VERSION = "4.17.2";
 
 export class BuzzSetupError extends Error {
   constructor(stage, code, message, options = {}) {
@@ -165,6 +166,51 @@ function installedVersion(runner, npmBin) {
   } catch {
     return null;
   }
+}
+
+function normalizedVersion(value) {
+  const match = String(value ?? "").trim().match(/(?:^|\s)v?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?(?:\s|$)/);
+  return match ? `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}` : null;
+}
+
+function compareVersions(left, right) {
+  const a = normalizedVersion(left)?.split(".").map(Number);
+  const b = normalizedVersion(right)?.split(".").map(Number);
+  if (!a || !b) return null;
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index]) return a[index] < b[index] ? -1 : 1;
+  }
+  return 0;
+}
+
+function executableVersion(runner, run402Bin) {
+  const result = runner(run402Bin, ["--version"], { encoding: "utf8", shell: false });
+  if (result?.error || result?.status !== 0) return null;
+  return normalizedVersion(result.stdout);
+}
+
+function run402CliRepair({ upgrade }) {
+  return {
+    type: upgrade ? "upgrade_run402_cli" : "install_run402_cli",
+    surface: "shell",
+    command: "npm install -g run402@latest",
+    argv: ["npm", "install", "-g", "run402@latest"],
+    why: upgrade
+      ? `Upgrade the user-global Run402 CLI to ${BUZZ_SETUP_MIN_RUN402_VERSION} or newer before Buzz setup.`
+      : `Install Run402 ${BUZZ_SETUP_MIN_RUN402_VERSION} or newer in the user-global npm context used by the Buzz setup helper.`,
+    safe_to_auto_execute: true,
+    requires_approval: false,
+    destructive: false,
+    idempotent: true,
+    spend_impact: { currency: "USD", max_amount: "0" },
+  };
+}
+
+function cliMeetsBuzzSemanticFloor(packageVersion, runningVersion) {
+  const packageComparison = compareVersions(packageVersion, BUZZ_SETUP_MIN_RUN402_VERSION);
+  const runningComparison = compareVersions(runningVersion, BUZZ_SETUP_MIN_RUN402_VERSION);
+  return packageComparison !== null && packageComparison >= 0
+    && runningComparison !== null && runningComparison >= 0;
 }
 
 function isCompatible(runner, run402Bin, wallet, version) {
@@ -382,24 +428,45 @@ export async function runSetup({
 
   const globalRun402Bin = run402Bin ?? globalRun402Executable(runner, npmBin);
 
-  const cliState = "reused";
-  const version = installedVersion(runner, npmBin);
-  if (!version) {
-    throw new BuzzSetupError("buzz_preflight", "BUZZ_PREFLIGHT_RUN402_UNAVAILABLE", "The Run402 CLI is unavailable; the outer bootstrap must repair it before setup starts.", {
-      mutationState: "not_started",
-      nextAction: {
-        type: "install_run402_cli",
-        surface: "shell",
-        command: "npm install -g run402@latest",
-        argv: ["npm", "install", "-g", "run402@latest"],
-        why: "Install Run402 in the user-global npm context used by the Buzz setup helper.",
-        safe_to_auto_execute: true,
-        requires_approval: false,
-        destructive: false,
-        idempotent: true,
-        spend_impact: { currency: "USD", max_amount: "0" },
-      },
-    });
+  let cliState = "reused";
+  let packageVersion = installedVersion(runner, npmBin);
+  let version = executableVersion(runner, globalRun402Bin);
+  if (!cliMeetsBuzzSemanticFloor(packageVersion, version)) {
+    const upgrade = Boolean(packageVersion || version);
+    const repair = run402CliRepair({ upgrade });
+    const installResult = runner(npmBin, repair.argv.slice(1), { encoding: "utf8", shell: false });
+    if (installResult?.error || installResult?.status !== 0) {
+      throw new BuzzSetupError(
+        "buzz_preflight",
+        upgrade ? "BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE" : "BUZZ_PREFLIGHT_RUN402_UNAVAILABLE",
+        "The agent could not converge the user-global Run402 CLI before setup.",
+        {
+          mutationState: "not_started",
+          nextAction: repair,
+          details: {
+            installed_version: packageVersion,
+            executing_version: version,
+            minimum_version: BUZZ_SETUP_MIN_RUN402_VERSION,
+            cli_update_state: "failed_or_unknown",
+          },
+        },
+      );
+    }
+    packageVersion = installedVersion(runner, npmBin);
+    version = executableVersion(runner, globalRun402Bin);
+    if (!cliMeetsBuzzSemanticFloor(packageVersion, version)) {
+      throw new BuzzSetupError("buzz_preflight", "BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE", "The Run402 CLI remained below the Buzz semantic compatibility floor after its one safe update attempt.", {
+        mutationState: "not_started",
+        nextAction: repair,
+        details: {
+          installed_version: packageVersion,
+          executing_version: version,
+          minimum_version: BUZZ_SETUP_MIN_RUN402_VERSION,
+          cli_update_state: "version_not_converged",
+        },
+      });
+    }
+    cliState = upgrade ? "updated" : "installed";
   }
 
   const doctorResult = runner(
