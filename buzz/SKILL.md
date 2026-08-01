@@ -1,6 +1,6 @@
 ---
 name: run402-buzz
-description: Set up Run402 for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop at a verified approval boundary. Use when a Buzz user asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.
+description: Set up Run402 for a managed Buzz agent with a dedicated wallet/public identity link, report independent human-adoption and community-installation state, offer bounded per-agent enrollment before provisioning, and stop at a verified approval boundary. Use when a managed Buzz user says "install the run402.com skill" or otherwise asks to install, initialize, set up, or connect Run402; asks to adopt a human, install a community, or enroll another agent; or later asks the linked agent to build, deploy, update, verify, or operate through Run402.
 ---
 
 # Run402 for Buzz

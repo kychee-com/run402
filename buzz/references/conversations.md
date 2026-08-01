@@ -5,7 +5,11 @@ Use these as sequence and disclosure fixtures, not as fixed product ideas. Repla
 ## Canonical demo-first conversation
 
 ```text
-Tal: @Fizz install the Run402 Buzz skill and set up Run402.
+Tal: Please install the run402.com skill.
+
+Fizz: Installed from run402.com into my Buzz workspace. The skill is inert; I have not set up an identity, organization, project, or deployment. Would you like me to set up Run402?
+
+Tal: Yes.
 
 Fizz: Run402 is connected to my Buzz identity. I haven't deployed anything yet. I can build and deploy a small church bulletin board with posts and event RSVPs. Would you like me to try it?
 
@@ -21,7 +25,11 @@ Fizz: You are now a co-owner of the Run402 organization behind the church bullet
 ## Explicit early-adoption conversation
 
 ```text
-Tal: @Fizz install the Run402 Buzz skill and set up Run402.
+Tal: Please install the run402.com skill.
+
+Fizz: Installed from run402.com into my Buzz workspace. The skill is inert; I have not set up an identity, organization, project, or deployment. Would you like me to set up Run402?
+
+Tal: Yes.
 
 Fizz: Run402 is connected to my Buzz identity. I haven't deployed anything yet. I can build and deploy a small church bulletin board with posts and event RSVPs. Would you like me to try it?
 

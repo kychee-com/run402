@@ -25,6 +25,7 @@ describe("run402-buzz distributable package", () => {
     const frontmatter = SKILL.match(/^---\n([\s\S]*?)\n---\n/);
     assert.ok(frontmatter);
     assert.match(frontmatter[1], /^name: run402-buzz$/m);
+    assert.match(frontmatter[1], /install the run402\.com skill/);
     assert.match(frontmatter[1], /install, initialize, set up, or connect Run402/);
     assert.match(frontmatter[1], /later asks.*build, deploy, update, verify, or operate/);
   });
@@ -39,7 +40,8 @@ describe("run402-buzz distributable package", () => {
     assert.match(docs, /`universal`.*`\.agents\/skills`/s);
     assert.match(docs, /GitHub.*only after a classified availability failure/s);
     assert.match(docs, /Never fall back after an integrity failure/);
-    assert.match(docs, /https:\/\/run402\.com\/buzz\/install\.txt/);
+    assert.match(docs, /Please install the run402\.com skill/);
+    assert.match(docs, /https:\/\/run402\.com\/install\.txt/);
     assert.match(docs, /Never describe `kychee-com\/run402\/buzz` as the first-party artifact origin/);
     assert.match(docs, /Never report a user-global runtime directory/);
     assert.match(docs, /mutation_state: \"not_started\"/);

@@ -379,10 +379,10 @@ An agent can publicly prove that its separately-held Buzz/Nostr key and Run402 E
 The human-facing install is a Buzz message—no terminal required:
 
 ```text
-@Fizz install and set up Run402 using https://run402.com/buzz/install.txt.
+Please install the run402.com skill.
 ```
 
-The managed agent reads the first-party bootstrap, then installs the self-contained skill into its workspace (normally `~/.buzz`). For a Codex runtime, the exact agent-executed command is:
+That is the entire human instruction. In a managed Buzz context, first-party discovery routes it to `run402-buzz`; the agent reads the apex install router and installs the self-contained skill into its workspace (normally `~/.buzz`). For a Codex runtime, the exact agent-executed command is:
 
 ```sh
 cd ~/.buzz

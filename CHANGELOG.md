@@ -29,6 +29,10 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   the user to reconnect the same broken URL. The apex Buzz page now points
   pre-install agents to `https://run402.com/buzz/install.txt`, whose receipt
   requires the observed first-party digest, runtime target, and workspace path.
+- **Natural-language install routing:** a Buzz user can now say only
+  `Please install the run402.com skill`. Apex guidance and discovery metadata
+  route the managed Buzz context to `run402-buzz`; bootstrap URLs, runtime
+  targets, and installer commands remain agent-only implementation details.
 - **Demo-first adoption:** the SDK and `run402 buzz adopt offer` expose durable,
   inert HTTPS ownership handoffs after a verified deployment. The short Buzz
   signing attempt is created only after direct human login and fresh passkey;

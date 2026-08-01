@@ -3,10 +3,10 @@
 The human-facing path is a Buzz message, not a terminal session:
 
 ```text
-@Fizz install and set up Run402 using https://run402.com/buzz/install.txt.
+Please install the run402.com skill.
 ```
 
-The managed agent runs the installer from the Buzz workspace (normally `~/.buzz`). Skill installation is inert: it copies reviewed files and grants no Run402 or Buzz authority. A setup request may continue into the separate setup workflow only after installation succeeds and this skill is loaded.
+The human does not need to know a bootstrap path or runtime target. In a managed Buzz context, the apex install router and discovery metadata map this generic request to `run402-buzz`. The managed agent runs the installer from the Buzz workspace (normally `~/.buzz`). Skill installation is inert: it copies reviewed files and grants no Run402 or Buzz authority. Because this sentence asks only to install, stop after the installation receipt; setup begins only after a later explicit setup/connect/deploy request.
 
 ## First-party source
 
