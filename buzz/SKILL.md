@@ -40,7 +40,7 @@ Read [references/conversations.md](references/conversations.md) when rendering t
 
 ## Set up Run402
 
-1. Read [references/preflight.md](references/preflight.md) and run its zero-mutation outer bootstrap plus the exact `run402 --wallet <profile> doctor --buzz --buzz-agent <subject>` diagnostic before any setup helper or mutation. Resolve the current managed agent's public subject only from Buzz-supplied public context. Return every independent block and its exact action in one response. A passing doctor means environment readiness only.
+1. Read [references/preflight.md](references/preflight.md) and run its zero-mutation outer bootstrap plus the exact `run402 --wallet <profile> doctor --buzz --buzz-agent <subject>` diagnostic before any setup helper or mutation. Resolve the current managed agent's public subject only from Buzz-supplied public context. Return every independent block and its exact action in one response. `BUZZ_PREFLIGHT_RELAY_UNSAFE` blocks; a safe `BUZZ_PREFLIGHT_RELAY_UNREACHABLE` warning permits only the independent founder/org-of-one setup path and suppresses community discovery/enrollment. A passing doctor means environment readiness only.
 2. Resolve this installed skill's directory from the loaded supporting-file paths. Do not assume the repository root or current working directory contains the helper.
 3. Reuse the unique dedicated profile label proven by preflight. When the doctor reports `BUZZ_PREFLIGHT_WALLET_PROFILE_NOT_FOUND`, auto-execute its exact safe `run402 wallets new <profile>` action and rerun the complete preflight. Never call `wallets use`, rely on ambient selection, or create a profile before the read-only doctor has reported that exact deliberate action.
 
@@ -77,7 +77,7 @@ Running setup again must be a no-op when the compatible CLI, dedicated profile, 
 
 ## Continue from the independent control-plane states
 
-The setup receipt reports skill installation, human adoption, community installation, and this agent's enrollment separately. Never infer one from another.
+The setup receipt reports skill installation, human adoption, community installation, and this agent's enrollment separately. Never infer one from another. When `control_plane.community_installation.status` is `relay_unavailable`, preserve its exact `next_action`, continue with the contextual org-of-one offer, and do not run discovery or offer enrollment.
 
 When `next_action.type` is `offer_community_enrollment`, explain the Run402-verified and explicitly selected installation, its complete effective capability allowlist and TTL cap, requested named-project scope, finite expiry, manual/automatic policy, zero spend impact, and org-of-one fallback. Wait for affirmative approval before running `run402 --wallet <profile> buzz enroll ...`. A pending request grants nothing, and a pending or active request suppresses any second enrollment offer. Never approve an enrollment as the requesting agent or reuse another agent's profile.
 

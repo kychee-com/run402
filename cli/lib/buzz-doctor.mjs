@@ -42,7 +42,10 @@ export const BUZZ_DOCTOR_REPAIR_MATRIX = Object.freeze({
   BUZZ_PREFLIGHT_API_UNREACHABLE: { type: "restore_run402_api_access", surface: "buzz_settings" },
   BUZZ_PREFLIGHT_CONSOLE_UNREACHABLE: { type: "restore_run402_console_access", surface: "buzz_settings" },
   BUZZ_PREFLIGHT_RELAY_UNSAFE: { type: "repair_buzz_relay_url", surface: "buzz_settings" },
-  BUZZ_PREFLIGHT_RELAY_UNREACHABLE: { type: "restore_buzz_relay_access", surface: "buzz_settings" },
+  BUZZ_PREFLIGHT_RELAY_UNREACHABLE: {
+    type: ["repair_buzz_relay_tls", "repair_buzz_relay_dns", "repair_buzz_relay_service", "restore_buzz_relay_access"],
+    surface: "buzz_settings",
+  },
   BUZZ_PREFLIGHT_WALLET_PROFILE_REQUIRED: { type: "rerun_buzz_setup_with_explicit_identity", surface: "buzz_chat" },
   BUZZ_PREFLIGHT_WALLET_PROFILE_NOT_FOUND: { type: "create_buzz_wallet_profile", surface: "shell" },
   BUZZ_PREFLIGHT_WALLET_PROFILE_MISMATCH: { type: "rerun_buzz_doctor", surface: "shell" },
@@ -343,9 +346,11 @@ async function checkBuzzRelay({ relay, lookup, pinnedRelayRead }) {
         failure: error.message,
       });
     }
-    return blocked("buzz_relay", "BUZZ_PREFLIGHT_RELAY_UNREACHABLE", "The configured safe Buzz relay did not complete its bounded public read.", relayReachabilityRepair(relay.origin), {
+    const failure = safeFailure(error);
+    return warning("buzz_relay", "BUZZ_PREFLIGHT_RELAY_UNREACHABLE", "The configured Buzz relay is safe to probe but unavailable; founder-agent setup may continue without community installation or enrollment.", relayAvailabilityRepair(relay.origin, failure), {
       origin: relay.origin,
-      failure: safeFailure(error),
+      failure,
+      community_operations: "unavailable",
     });
   }
 }
@@ -686,12 +691,36 @@ function relayUnsafeRepair() {
   });
 }
 
-function relayReachabilityRepair(origin) {
+function relayAvailabilityRepair(origin, failure) {
+  if (failure === "tls_handshake_failed") {
+    return nonShellAction({
+      type: "repair_buzz_relay_tls",
+      surface: "buzz_settings",
+      command: `Ask the Buzz community operator to provision a valid TLS certificate and public hostname route for ${origin}; after the endpoint completes verified TLS, restart this agent and rerun Run402 setup.`,
+      why: "Reconnect cannot repair a relay hostname whose public TLS handshake fails; community installation and enrollment stay unavailable until the endpoint is fixed.",
+    });
+  }
+  if (failure === "dns") {
+    return nonShellAction({
+      type: "repair_buzz_relay_dns",
+      surface: "buzz_settings",
+      command: `Ask the Buzz community operator to publish working public DNS for ${origin}; after the hostname resolves publicly, restart this agent and rerun Run402 setup.`,
+      why: "Community installation and enrollment require a publicly resolvable relay, while founder-agent setup remains independent.",
+    });
+  }
+  if (failure.startsWith("http_") || failure === "nip11_invalid" || failure === "redirect_rejected" || failure === "response_too_large") {
+    return nonShellAction({
+      type: "repair_buzz_relay_service",
+      surface: "buzz_settings",
+      command: `Ask the Buzz community operator to restore the public NIP-11 endpoint at ${origin}; after it returns a bounded non-redirecting JSON response, restart this agent and rerun Run402 setup.`,
+      why: "Community installation and enrollment require the relay's public NIP-11 service, while founder-agent setup remains independent.",
+    });
+  }
   return nonShellAction({
     type: "restore_buzz_relay_access",
     surface: "buzz_settings",
-    command: `Open Buzz Desktop > Settings > Communities, reconnect the current community relay ${origin}, restart this agent, then rerun Run402 setup.`,
-    why: "The current safe relay must complete a bounded public NIP-11 read before setup can proceed.",
+    command: `Ask the Buzz community operator to restore public relay access at ${origin}; after the endpoint is reachable, restart this agent and rerun Run402 setup.`,
+    why: "Community installation and enrollment require a live public relay, while founder-agent setup remains independent.",
   });
 }
 
@@ -777,11 +806,13 @@ function safeOrigin(value) {
 
 function safeFailure(error) {
   if (error?.name === "AbortError") return "timeout";
-  const message = error instanceof Error ? error.message : String(error);
-  if (/certificate|tls|ssl/i.test(message)) return "tls";
-  if (/dns|getaddrinfo|enotfound/i.test(message)) return "dns";
+  const message = error instanceof Error ? `${error.message} ${error.code ?? ""} ${error.cause?.message ?? ""} ${error.cause?.code ?? ""}` : String(error);
+  if (/certificate|tls|ssl|eproto|secure tls connection|handshake/i.test(message)) return "tls_handshake_failed";
+  if (/dns|dns_empty|getaddrinfo|enotfound|eai_again/i.test(message)) return "dns";
   if (/timeout|timed out|abort/i.test(message)) return "timeout";
   if (/redirect/i.test(message)) return "redirect_rejected";
+  if (/response_too_large/i.test(message)) return "response_too_large";
+  if (/nip11_invalid/i.test(message)) return "nip11_invalid";
   if (/http_\d+/.test(message)) return message.match(/http_\d+/)[0];
   return "network";
 }

@@ -13,7 +13,7 @@ The records also stay separate. Buzz is authoritative for signed collaboration: 
 Tell the intended managed agent in Buzz:
 
 ```text
-@Fizz install the Run402 Buzz skill and set up Run402.
+@Fizz install and set up Run402 using https://run402.com/buzz/install.txt.
 ```
 
 The human does not need a terminal. Buzz managed-agent workspaces normally live at `~/.buzz`; the agent installs the distinct `run402-buzz` package there so the generic root Run402 skill cannot shadow it.
@@ -34,7 +34,7 @@ DO_NOT_TRACK=1 npx --yes skills@latest add https://run402.com -s run402-buzz -a 
 
 For a workspace used by both Claude Code and Codex, use `-a claude-code codex`. Do not use `-a claude`. `universal` means the shared `.agents/skills` path, not every agent; `-a '*'` is the advanced all-agent selector and intentionally is not the default.
 
-The apex index advertises an immutable, digest-verified archive whose bytes are served entirely by `run402.com`. `DO_NOT_TRACK=1` disables the installer's optional telemetry; the first `npx` invocation can still require the npm registry. GitHub is used only as a reported fallback after a DNS, TLS, timeout, connection-refusal, or unavailable-HTTP failure. Digest, archive, path/link, package-identity, or index disagreement is an integrity failure and must stop before setup—never fall back. See the exact [installation and reporting policy](references/installation.md). The public repository remains the reviewable source, and the [skills.sh listing](https://skills.sh/kychee-com/run402/run402-buzz) remains optional discovery rather than a runtime dependency.
+The agent-readable bootstrap at `https://run402.com/buzz/install.txt` points to the apex index and its immutable, digest-verified archive, whose bytes are served entirely by `run402.com`. `DO_NOT_TRACK=1` disables the installer's optional telemetry; the first `npx` invocation can still require the npm registry. GitHub is used only as a reported fallback after a DNS, TLS, timeout, connection-refusal, or unavailable-HTTP failure. Digest, archive, path/link, package-identity, or index disagreement is an integrity failure and must stop before setup—never fall back. The receipt must report the observed first-party digest, actual runtime target, and verified workspace path; it must never call a GitHub source or global runtime directory the first-party Buzz install. See the exact [installation and reporting policy](references/installation.md). The public repository remains the reviewable source, and the [skills.sh listing](https://skills.sh/kychee-com/run402/run402-buzz) remains optional discovery rather than a runtime dependency.
 
 Installation only copies files; it executes nothing. Before continuing, understand the one public side effect: setup publishes a durable public kind-1 Nostr event associating the agent's public Buzz identity with its public Run402 wallet and creates a durable public Run402 proof. Revocation changes current status but does not erase either historical record. If Buzz adds its NIP-OA owner attestation, the owner's public key and signature are also public but gain no Run402 authority.
 
@@ -48,7 +48,7 @@ That explicit request authorizes the disclosed public link when it is absent. Th
 
 The setup helper then requires both `--wallet <profile>` and the public Buzz key. It refuses unknown labels, pins every Run402 invocation it makes to that explicit wallet, initializes the existing profile when needed, confirms a dedicated agent EOA, rejects a different active Nostr link, creates or reuses the intended public link, and verifies it. Before a link mutation and again at readiness it reports the profile label, public wallet address, and `selection_source: explicit_argument`. Ambient environment variables, directory bindings, and global defaults cannot redirect the ceremony.
 
-The agent then reports `Run402 is ready` with `Deployment: none`. It derives the normalized community from Buzz's existing relay context and asks Run402 for active public descriptors. If exactly one installation is the default, it offers bounded enrollment before provisioning; otherwise it preserves the ordinary org-of-one path. Either path waits for your approval before writing or deploying an app.
+The agent then reports `Run402 is ready` with `Deployment: none`. It derives the normalized community from Buzz's existing relay context and asks Run402 for active public descriptors only after the relay completes its safe live read. An unsafe relay blocks setup; a safe relay transport/TLS failure warns, preserves the ordinary founder/org-of-one path, and suppresses community discovery/enrollment until repaired. If exactly one installation is the default, it offers bounded enrollment before provisioning; otherwise it preserves the ordinary org-of-one path. Either path waits for your approval before writing or deploying an app.
 
 On the founder-agent path, the canonical conversation demonstrates value first: the agent proposes one relevant small application, waits for approval, automatically uses the Base Sepolia faucet/prototype path, builds it, deploys it, and independently verifies it. Only then does it create an inert durable adoption offer and post a normal `https://console.run402.com/buzz/adoptions/buzzhao_…` “Become an owner” link. The browser handles human login/passkey, the six-digit Buzz consent, callback, and completion; the human types no terminal command. An explicit request for ownership before the demo is also honored through the same HTTPS handoff.
 
@@ -56,7 +56,7 @@ The vocabulary is deliberate: skill installation is inert shared capability; com
 
 ## Compatibility and contents
 
-Buzz itself remains unchanged. The supported boundary is Buzz Desktop v0.5.2's already-shipped behavior: ordinary kind-1 publishing, NIP-11 `self`, relay-signed NIP-43 kind-13534 membership snapshots, the managed `BUZZ_RELAY_URL` context, and the existing `buzz://nostr-bind` human-proof path. Run402 owns descriptor discovery, policy/default revisions, and revocation. Capability detection fails closed when the released relay evidence or Run402 gateway surface is unavailable; the identity link and org-of-one fallback remain usable.
+Buzz itself remains unchanged. The supported boundary is Buzz Desktop v0.5.2's already-shipped behavior: ordinary kind-1 publishing, NIP-11 `self`, relay-signed NIP-43 kind-13534 membership snapshots, the managed `BUZZ_RELAY_URL` context, and the existing `buzz://nostr-bind` human-proof path. Run402 owns descriptor discovery, policy/default revisions, and revocation. Missing relay evidence fails closed for community operations without blocking the independent identity link and org-of-one fallback; unsafe destinations still block the setup doctor itself.
 
 - [`SKILL.md`](SKILL.md) — onboarding, readiness, contextual-offer, and approved deployment contract.
 - [`scripts/`](scripts/) — dependency-free setup state machine and no-shell public proof handoff.

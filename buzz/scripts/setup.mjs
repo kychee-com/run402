@@ -433,6 +433,11 @@ export async function runSetup({
       },
     );
   }
+  const relayWarning = doctorReport.checks.find((check) =>
+    check?.name === "buzz_relay"
+    && check?.status === "warning"
+    && check?.code === "BUZZ_PREFLIGHT_RELAY_UNREACHABLE",
+  ) ?? null;
 
   let walletInspectionCapability = runner(
     globalRun402Bin,
@@ -626,9 +631,16 @@ export async function runSetup({
     && controlPlaneStatus?.buzz && typeof controlPlaneStatus.buzz === "object"
     ? controlPlaneStatus.buzz
     : null;
-  const communityDiscovery = remoteBuzz
+  const communityDiscovery = remoteBuzz && !relayWarning
     ? discoverCommunityInstallations({ runner, run402Bin: globalRun402Bin, wallet, relayUrl })
-    : { status: "gateway_not_supported", installations: [], default_installations: [] };
+    : relayWarning
+      ? {
+          status: "relay_unavailable",
+          installations: [],
+          default_installations: [],
+          next_action: relayWarning.next_actions?.[0] ?? null,
+        }
+      : { status: "gateway_not_supported", installations: [], default_installations: [] };
   const defaultInstallations = communityDiscovery.default_installations;
   const coldStartFallbackAvailable = remoteBuzz?.eligibility?.cold_start_fallback_available === true;
   const enrollmentResources = Array.isArray(remoteBuzz?.agent_enrollments) ? remoteBuzz.agent_enrollments : [];
@@ -636,7 +648,7 @@ export async function runSetup({
   const nonterminalEnrollments = enrollmentResources.filter((entry) => entry?.status === "pending" || entry?.status === "active");
   const canSelectCommunityInstallation = remoteBuzz?.eligibility?.can_select_community_installation === true
     || (remoteBuzz?.eligibility?.can_request_enrollment === true && nonterminalEnrollments.length === 0);
-  const canRequestEnrollment = canSelectCommunityInstallation && nonterminalEnrollments.length === 0;
+  const canRequestEnrollment = !relayWarning && canSelectCommunityInstallation && nonterminalEnrollments.length === 0;
   const nextAction = canRequestEnrollment && activeEnrollments.length === 0 && defaultInstallations.length === 1
     ? {
         type: "offer_community_enrollment",
@@ -686,6 +698,7 @@ export async function runSetup({
       community_installation: {
         status: communityDiscovery.status,
         resources: communityDiscovery.installations,
+        ...(communityDiscovery.next_action ? { next_action: communityDiscovery.next_action } : {}),
       },
       agent_enrollment: {
         status: activeEnrollments.length > 0 ? "active"

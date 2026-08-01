@@ -379,17 +379,17 @@ An agent can publicly prove that its separately-held Buzz/Nostr key and Run402 E
 The human-facing install is a Buzz message—no terminal required:
 
 ```text
-@Fizz install the Run402 Buzz skill and set up Run402.
+@Fizz install and set up Run402 using https://run402.com/buzz/install.txt.
 ```
 
-The managed agent installs the self-contained skill into its workspace (normally `~/.buzz`). For a Codex runtime, the exact agent-executed command is:
+The managed agent reads the first-party bootstrap, then installs the self-contained skill into its workspace (normally `~/.buzz`). For a Codex runtime, the exact agent-executed command is:
 
 ```sh
 cd ~/.buzz
 DO_NOT_TRACK=1 npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y
 ```
 
-Claude Code uses `-a claude-code`, Goose uses `-a goose`, a confirmed `.agents/skills` consumer may use `-a universal`, and Claude Code plus Codex uses `-a claude-code codex`. `universal` is the shared path, not all runtimes; do not use the invalid explicit target `-a claude`. The skill bytes come from immutable digest-verified artifacts at `run402.com`; first-run `npx` can still require npm. GitHub is the one availability-only fallback, while any integrity failure stops before setup.
+Claude Code uses `-a claude-code`, Goose uses `-a goose`, a confirmed `.agents/skills` consumer may use `-a universal`, and Claude Code plus Codex uses `-a claude-code codex`. `universal` is the shared path, not all runtimes; do not use the invalid explicit target `-a claude`. The skill bytes come from immutable digest-verified artifacts at `run402.com`; first-run `npx` can still require npm. GitHub is the one availability-only fallback, while any integrity failure stops before setup. Success reports the observed first-party digest and exact managed-workspace path; a GitHub source or global runtime path is never mislabeled first-party.
 
 Installation is inert. Setup later publishes a durable public kind-1 Nostr event and durable Run402 proof connecting the two public identities; revocation does not erase their history, and a Buzz-managed event may also expose its owner's public NIP-OA attestation. The agent initializes only if needed, creates or reuses the link, independently verifies it, and reports `Run402 is ready` with `Deployment: none`. It then offers one context-relevant quick test or demo and waits for explicit approval. After independently verifying the live app, it creates an inert durable offer and posts a normal HTTPS “Become an owner” handoff. The browser owns human login/passkey and the existing Buzz six-digit consent callback; no human terminal command or Buzz change is required.
 

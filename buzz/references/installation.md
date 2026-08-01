@@ -3,7 +3,7 @@
 The human-facing path is a Buzz message, not a terminal session:
 
 ```text
-@Fizz install the Run402 Buzz skill and set up Run402.
+@Fizz install and set up Run402 using https://run402.com/buzz/install.txt.
 ```
 
 The managed agent runs the installer from the Buzz workspace (normally `~/.buzz`). Skill installation is inert: it copies reviewed files and grants no Run402 or Buzz authority. A setup request may continue into the separate setup workflow only after installation succeeds and this skill is loaded.
@@ -51,7 +51,7 @@ Never fall back after an integrity failure: a missing or mismatched digest, inva
 
 ## Installation result
 
-Report these non-secret fields before setup:
+Read the first-party discovery entry before reporting success, verify the expected workspace path after installation, and report these non-secret fields before setup. Do not infer the source from a repository label or claim a digest/path that was not observed:
 
 ```json
 {
@@ -65,3 +65,5 @@ Report these non-secret fields before setup:
 ```
 
 Use `source_class: "github_source_fallback"` when the bounded fallback was required. On an integrity failure, report the exact reason with `installation_state: "blocked"` and `mutation_state: "not_started"`. Installing or updating the skill never initializes a wallet, publishes a Nostr event, links an identity, creates infrastructure, requests faucet funds, selects a tier, deploys, or changes ownership.
+
+Never describe `kychee-com/run402/buzz` as the first-party artifact origin. Never report a user-global runtime directory such as `~/.codex/skills/run402-buzz` as the expected managed Buzz workspace install. The first-party source is the content-addressed archive advertised by `https://run402.com/.well-known/agent-skills/index.json`; the expected install path is determined by the explicit runtime target from the matrix above.

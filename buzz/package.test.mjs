@@ -39,6 +39,9 @@ describe("run402-buzz distributable package", () => {
     assert.match(docs, /`universal`.*`\.agents\/skills`/s);
     assert.match(docs, /GitHub.*only after a classified availability failure/s);
     assert.match(docs, /Never fall back after an integrity failure/);
+    assert.match(docs, /https:\/\/run402\.com\/buzz\/install\.txt/);
+    assert.match(docs, /Never describe `kychee-com\/run402\/buzz` as the first-party artifact origin/);
+    assert.match(docs, /Never report a user-global runtime directory/);
     assert.match(docs, /mutation_state: \"not_started\"/);
     assert.doesNotMatch(docs, /^DO_NOT_TRACK=.*-a claude(?:\s|$)/m);
   });
@@ -138,6 +141,10 @@ describe("run402-buzz distributable package", () => {
     assert.match(preflight, /BUZZ_PREFLIGHT_RUN402_UNAVAILABLE/);
     assert.match(preflight, /mutation_state: "not_started"/);
     assert.match(preflight, /human is not asked to paste it/);
+    assert.match(preflight, /BUZZ_PREFLIGHT_RELAY_UNSAFE.*blocking/s);
+    assert.match(preflight, /BUZZ_PREFLIGHT_RELAY_UNREACHABLE.*warning/s);
+    assert.match(preflight, /tls_handshake_failed/);
+    assert.match(preflight, /do not tell the human to reconnect/);
     assert.doesNotMatch(preflight, /brew install|cargo install|curl .*buzz/i);
   });
 

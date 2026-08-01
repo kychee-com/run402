@@ -15,6 +15,7 @@ Report public identifiers and observed state only. Never include private keys, m
 - Profile state: `reused|initialized`
 - Identity link: `idlnk_…` (`active`, `reused|created`)
 - Deployment: `none`
+- Community connection: `available|relay_unavailable|not_selected` (preserve the exact relay repair when unavailable)
 
 Run402 is ready. I can build and deploy <one contextual idea> using <relevant current capabilities>. Would you like me to try it?
 ```

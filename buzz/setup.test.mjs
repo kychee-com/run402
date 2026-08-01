@@ -356,6 +356,54 @@ describe("Run402 for Buzz setup state machine", () => {
     assert.equal(countMutation(fake.calls, "identity link nostr"), 0);
   });
 
+  it("continues founder setup after a safe relay TLS warning and suppresses community discovery and enrollment", async () => {
+    const action = {
+      type: "repair_buzz_relay_tls",
+      surface: "buzz_settings",
+      command: "Ask the Buzz community operator to provision valid TLS for wss://kychee.com.communities.buzz.xyz, then rerun Run402 setup.",
+      why: "Community installation and enrollment require the public relay TLS endpoint.",
+      safe_to_auto_execute: false,
+      requires_approval: true,
+      destructive: false,
+      idempotent: true,
+      spend_impact: { currency: "USD", max_amount: "0" },
+    };
+    const fake = makeRunner({
+      linked: true,
+      gatewaySupported: true,
+      hasMembership: false,
+      doctorRelayOrigin: "wss://kychee.com.communities.buzz.xyz",
+      doctorReportTransform: (report) => ({
+        ...report,
+        checks: report.checks.map((check) => check.name === "buzz_relay" ? {
+          name: "buzz_relay",
+          status: "warning",
+          code: "BUZZ_PREFLIGHT_RELAY_UNREACHABLE",
+          value: {
+            origin: "wss://kychee.com.communities.buzz.xyz",
+            failure: "tls_handshake_failed",
+            community_operations: "unavailable",
+          },
+          message: "Founder-agent setup may continue without community installation or enrollment.",
+          next_actions: [action],
+        } : check),
+      }),
+    });
+    const result = await runSetup({
+      pubkey: PUBKEY,
+      wallet: PROFILE,
+      relayUrl: "wss://kychee.com.communities.buzz.xyz",
+      runner: fake.runner,
+      reporter: () => {},
+    });
+    assert.equal(result.status, "ready");
+    assert.equal(result.control_plane.community_installation.status, "relay_unavailable");
+    assert.equal(result.control_plane.community_installation.next_action.type, "repair_buzz_relay_tls");
+    assert.deepEqual(result.next_action, { type: "offer_contextual_test", requires_approval: true });
+    assert.equal(countMutation(fake.calls, "buzz install discover"), 0);
+    assert.equal(countMutation(fake.calls, "buzz enroll"), 0);
+  });
+
   it("rejects stale, edited, mismatched, and incomplete doctor reports before every mutation", async () => {
     const cases = [
       {

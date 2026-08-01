@@ -21,6 +21,14 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   setup mutation. Failures carry destination-specific, copyable repairs; the
   optional diagnostic funnel stores aggregate enum counters only and supports
   `RUN402_TELEMETRY=0`.
+- **Buzz acceptance correction:** a safely contained relay transport or TLS
+  failure is now an actionable warning for founder-agent setup instead of a
+  global blocker. Unsafe destinations still block before a dial, and community
+  discovery/enrollment remain unavailable until live relay proof succeeds.
+  TLS failures name the public hostname/certificate repair instead of telling
+  the user to reconnect the same broken URL. The apex Buzz page now points
+  pre-install agents to `https://run402.com/buzz/install.txt`, whose receipt
+  requires the observed first-party digest, runtime target, and workspace path.
 - **Demo-first adoption:** the SDK and `run402 buzz adopt offer` expose durable,
   inert HTTPS ownership handoffs after a verified deployment. The short Buzz
   signing attempt is created only after direct human login and fresh passkey;

@@ -194,6 +194,46 @@ describe("Buzz doctor bounded zero-mutation runner", () => {
     assert.equal(report.ok, true);
   });
 
+  it("keeps founder setup usable when a public relay hostname fails TLS and returns an operator repair", async () => {
+    const tlsError = Object.assign(new Error("write EPROTO ssl3 alert handshake failure"), { code: "EPROTO" });
+    const dependencies = healthyDependencies({
+      env: {
+        ...healthyDependencies().env,
+        BUZZ_RELAY_URL: "wss://kychee.com.communities.buzz.xyz",
+      },
+      pinnedRelayRead: async () => { throw tlsError; },
+    });
+    const report = await buildBuzzDoctorReport(dependencies);
+    const relay = report.checks.find((check) => check.name === "buzz_relay");
+    assert.equal(report.ok, true);
+    assert.equal(relay.status, "warning");
+    assert.equal(relay.code, "BUZZ_PREFLIGHT_RELAY_UNREACHABLE");
+    assert.equal(relay.value.failure, "tls_handshake_failed");
+    assert.equal(relay.value.community_operations, "unavailable");
+    assert.equal(relay.next_actions[0].type, "repair_buzz_relay_tls");
+    assert.match(relay.next_actions[0].command, /kychee\.com\.communities\.buzz\.xyz/);
+    assert.doesNotMatch(relay.next_actions[0].command, /reconnect/i);
+    assert.equal(relay.next_actions[0].surface, "buzz_settings");
+    assert.equal("argv" in relay.next_actions[0], false);
+  });
+
+  it("continues to block an unsafe relay destination before making the pinned read", async () => {
+    let reads = 0;
+    const dependencies = healthyDependencies({
+      lookup: async () => [
+        { address: "93.184.216.34", family: 4 },
+        { address: "127.0.0.1", family: 4 },
+      ],
+      pinnedRelayRead: async () => { reads += 1; return { ok: true }; },
+    });
+    const report = await buildBuzzDoctorReport(dependencies);
+    const relay = report.checks.find((check) => check.name === "buzz_relay");
+    assert.equal(report.ok, false);
+    assert.equal(relay.status, "blocked");
+    assert.equal(relay.code, "BUZZ_PREFLIGHT_RELAY_UNSAFE");
+    assert.equal(reads, 0);
+  });
+
   it("rejects private, loopback, link-local, mapped, and documentation addresses", () => {
     for (const address of ["127.0.0.1", "10.0.0.1", "169.254.169.254", "192.0.2.1", "::1", "fc00::1", "fe80::1", "::ffff:127.0.0.1", "2001:db8::1"]) {
       assert.equal(isPublicAddress(address), false, address);
