@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, win32 as win32Path } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseStrictJson } from "./strict-json.mjs";
 import { rerunDoctorAction, setupRejectionCode, validatePassingDoctorReport } from "./doctor-report.mjs";
@@ -48,15 +48,71 @@ export class BuzzSetupError extends Error {
 function defaultRunner(command, args, options = {}) {
   return spawnSync(command, args, {
     encoding: "utf8",
-    shell: false,
     maxBuffer: 1024 * 1024,
     ...options,
+    shell: false,
   });
 }
 
-function globalRun402Executable(runner, npmBin) {
+function pathApi(platform) {
+  return platform === "win32" ? win32Path : { dirname, join };
+}
+
+function isJavaScriptEntrypoint(command) {
+  return typeof command === "string" && /\.(?:cjs|mjs|js)$/i.test(command);
+}
+
+function safeProcessRunner(runner, { nodeExecutable }) {
+  return (command, args, options = {}) => isJavaScriptEntrypoint(command)
+    ? runner(nodeExecutable, [command, ...args], { ...options, shell: false })
+    : runner(command, args, { ...options, shell: false });
+}
+
+function defaultNpmExecutable({ npmBin, platform, nodeExecutable, env, existsImpl }) {
+  if (platform !== "win32") return npmBin ?? "npm";
+  if (npmBin && !["npm", "npm.cmd", "npm.exe"].includes(npmBin.toLowerCase())) return npmBin;
+  const paths = pathApi(platform);
+  const candidates = [
+    typeof env.npm_execpath === "string" && isJavaScriptEntrypoint(env.npm_execpath) ? env.npm_execpath : null,
+    paths.join(paths.dirname(nodeExecutable), "node_modules", "npm", "bin", "npm-cli.js"),
+  ];
+  return candidates.find((candidate) => candidate && existsImpl(candidate)) ?? npmBin ?? "npm";
+}
+
+function commandSpawnRefused(result) {
+  return result?.status == null && ["EINVAL", "ENOEXEC"].includes(result?.error?.code);
+}
+
+function runtimeSpawnRefused(commandClass, result) {
+  return new BuzzSetupError(
+    "cli_preflight",
+    "BUZZ_PREFLIGHT_RUNTIME_SPAWN_REFUSED",
+    `The managed Windows runtime refused to execute the ${commandClass} command safely.`,
+    {
+      mutationState: "not_started",
+      nextAction: {
+        type: "repair_buzz_agent_runtime",
+        surface: "buzz_settings",
+        command: "Open Buzz Desktop > Settings > Updates, install the available Buzz update or reinstall Buzz Desktop if no update is offered, then restart this agent and rerun Run402 setup.",
+        why: "The managed agent process boundary could not execute the JavaScript entrypoint directly; reinstalling npm or enabling shell execution does not repair this boundary.",
+        safe_to_auto_execute: false,
+        requires_approval: true,
+        destructive: false,
+        idempotent: true,
+        spend_impact: { currency: "USD", max_amount: "0" },
+      },
+      details: {
+        command_class: commandClass,
+        spawn_error_code: result?.error?.code ?? null,
+      },
+    },
+  );
+}
+
+function globalRun402Executable(runner, npmBin, { platform, existsImpl }) {
   const result = runner(npmBin, ["prefix", "-g"], { encoding: "utf8", shell: false });
   if (result?.error || result?.status !== 0) {
+    if (commandSpawnRefused(result)) throw runtimeSpawnRefused("npm", result);
     boundedFailure(
       "cli_preflight",
       result,
@@ -70,7 +126,10 @@ function globalRun402Executable(runner, npmBin) {
       nextAction: "Repair the user's global npm configuration, then rerun setup.",
     });
   }
-  return process.platform === "win32" ? join(prefix, "run402.cmd") : join(prefix, "bin", "run402");
+  const paths = pathApi(platform);
+  if (platform !== "win32") return paths.join(prefix, "bin", "run402");
+  const javascriptEntrypoint = paths.join(prefix, "node_modules", "run402", "cli.mjs");
+  return existsImpl(javascriptEntrypoint) ? javascriptEntrypoint : paths.join(prefix, "run402.cmd");
 }
 
 function requiredFlag(argv, name, nextAction) {
@@ -185,6 +244,7 @@ function compareVersions(left, right) {
 
 function executableVersion(runner, run402Bin) {
   const result = runner(run402Bin, ["--version"], { encoding: "utf8", shell: false });
+  if (commandSpawnRefused(result)) throw runtimeSpawnRefused("Run402 CLI", result);
   if (result?.error || result?.status !== 0) return null;
   return normalizedVersion(result.stdout);
 }
@@ -409,8 +469,12 @@ export async function runSetup({
   wallet,
   runner = defaultRunner,
   run402Bin,
-  npmBin = "npm",
-  relayUrl = process.env.BUZZ_RELAY_URL,
+  npmBin,
+  platform = process.platform,
+  nodeExecutable = process.execPath,
+  env = process.env,
+  existsImpl = existsSync,
+  relayUrl = env.BUZZ_RELAY_URL,
   helperPath = join(HERE, "buzz-publish-proof.mjs"),
   temporaryRoot = tmpdir(),
   reporter = defaultReporter,
@@ -426,16 +490,21 @@ export async function runSetup({
     });
   }
 
-  const globalRun402Bin = run402Bin ?? globalRun402Executable(runner, npmBin);
+  const execute = safeProcessRunner(runner, { nodeExecutable });
+  const npmExecutable = defaultNpmExecutable({ npmBin, platform, nodeExecutable, env, existsImpl });
+  let globalRun402Bin = run402Bin ?? globalRun402Executable(execute, npmExecutable, { platform, existsImpl });
 
   let cliState = "reused";
-  let packageVersion = installedVersion(runner, npmBin);
-  let version = executableVersion(runner, globalRun402Bin);
+  let packageVersion = installedVersion(execute, npmExecutable);
+  let version = platform === "win32" && !packageVersion && !run402Bin
+    ? null
+    : executableVersion(execute, globalRun402Bin);
   if (!cliMeetsBuzzSemanticFloor(packageVersion, version)) {
     const upgrade = Boolean(packageVersion || version);
     const repair = run402CliRepair({ upgrade });
-    const installResult = runner(npmBin, repair.argv.slice(1), { encoding: "utf8", shell: false });
+    const installResult = execute(npmExecutable, repair.argv.slice(1), { encoding: "utf8", shell: false });
     if (installResult?.error || installResult?.status !== 0) {
+      if (commandSpawnRefused(installResult)) throw runtimeSpawnRefused("npm", installResult);
       throw new BuzzSetupError(
         "buzz_preflight",
         upgrade ? "BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE" : "BUZZ_PREFLIGHT_RUN402_UNAVAILABLE",
@@ -452,8 +521,11 @@ export async function runSetup({
         },
       );
     }
-    packageVersion = installedVersion(runner, npmBin);
-    version = executableVersion(runner, globalRun402Bin);
+    packageVersion = installedVersion(execute, npmExecutable);
+    if (!run402Bin) {
+      globalRun402Bin = globalRun402Executable(execute, npmExecutable, { platform, existsImpl });
+    }
+    version = executableVersion(execute, globalRun402Bin);
     if (!cliMeetsBuzzSemanticFloor(packageVersion, version)) {
       throw new BuzzSetupError("buzz_preflight", "BUZZ_PREFLIGHT_RUN402_INCOMPATIBLE", "The Run402 CLI remained below the Buzz semantic compatibility floor after its one safe update attempt.", {
         mutationState: "not_started",
@@ -469,7 +541,7 @@ export async function runSetup({
     cliState = upgrade ? "updated" : "installed";
   }
 
-  const doctorResult = runner(
+  const doctorResult = execute(
     globalRun402Bin,
     walletArgs(wallet, ["doctor", "--buzz", "--buzz-agent", pubkey]),
     { encoding: "utf8", shell: false },
@@ -479,7 +551,7 @@ export async function runSetup({
   catch { /* mapped to the frozen invalid-report repair below */ }
   const validation = validatePassingDoctorReport(doctorReport, {
     wallet,
-    nodeExecutable: safeRealpath(process.execPath),
+    nodeExecutable: safeRealpath(nodeExecutable),
     run402Executable: safeRealpath(globalRun402Bin),
     relayUrl,
   });
@@ -506,7 +578,7 @@ export async function runSetup({
     && check?.code === "BUZZ_PREFLIGHT_RELAY_UNREACHABLE",
   ) ?? null;
 
-  let walletInspectionCapability = runner(
+  let walletInspectionCapability = execute(
     globalRun402Bin,
     walletArgs(wallet, ["wallets", "current", "--help"]),
     { encoding: "utf8", shell: false },
@@ -519,7 +591,7 @@ export async function runSetup({
   }
 
   const selectedProfile = runJson(
-    runner,
+    execute,
     "profile_selection",
     globalRun402Bin,
     walletArgs(wallet, ["wallets", "current"]),
@@ -528,7 +600,7 @@ export async function runSetup({
   );
   const selectedWalletAddress = assertExistingWalletProfile(selectedProfile, wallet);
 
-  let capability = isCompatible(runner, globalRun402Bin, wallet, version);
+  let capability = isCompatible(execute, globalRun402Bin, wallet, version);
   if (!capability.compatible) {
     throw new BuzzSetupError("cli_capability", "RUN402_REQUIRED_CAPABILITY_MISSING", "The global Run402 CLI lacks required setup or identity-link commands after a passing doctor.", {
       nextAction: rerunDoctorAction(wallet, pubkey),
@@ -537,7 +609,7 @@ export async function runSetup({
   }
 
   let profileState = "reused";
-  let whoamiResult = runner(globalRun402Bin, walletArgs(wallet, ["org", "whoami"]), { encoding: "utf8", shell: false });
+  let whoamiResult = execute(globalRun402Bin, walletArgs(wallet, ["org", "whoami"]), { encoding: "utf8", shell: false });
   if (whoamiResult?.error || whoamiResult?.status !== 0) {
     if (!needsInitialization(whoamiResult)) {
       boundedFailure(
@@ -548,7 +620,7 @@ export async function runSetup({
       );
     }
     runJson(
-      runner,
+      execute,
       "profile_initialization",
       globalRun402Bin,
       walletArgs(wallet, ["init"]),
@@ -556,7 +628,7 @@ export async function runSetup({
       "Resolve the reported Run402 initialization problem, then rerun setup.",
     );
     profileState = "initialized";
-    whoamiResult = runner(globalRun402Bin, walletArgs(wallet, ["org", "whoami"]), { encoding: "utf8", shell: false });
+    whoamiResult = execute(globalRun402Bin, walletArgs(wallet, ["org", "whoami"]), { encoding: "utf8", shell: false });
     if (whoamiResult?.error || whoamiResult?.status !== 0) {
       boundedFailure(
         "principal_confirmation",
@@ -582,7 +654,7 @@ export async function runSetup({
     });
   }
   let links = runJson(
-    runner,
+    execute,
     "link_inspection",
     globalRun402Bin,
     walletArgs(wallet, ["identity", "link", "list"]),
@@ -609,7 +681,7 @@ export async function runSetup({
     const eventPath = join(privateTempDir, "event.json");
     try {
       const begin = runJson(
-        runner,
+        execute,
         "link_begin",
         globalRun402Bin,
         walletArgs(wallet, ["identity", "link", "nostr", "begin", "--pubkey", pubkey, "--visibility", "public"]),
@@ -618,15 +690,15 @@ export async function runSetup({
       );
       writeFileSync(beginPath, `${JSON.stringify(begin)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
       runJson(
-        runner,
+        execute,
         "buzz_publish",
-        process.execPath,
+        nodeExecutable,
         [helperPath, "--begin", beginPath, "--event", eventPath],
         "BUZZ_PUBLIC_PROOF_FAILED",
         "Restore the released Buzz public social publish/raw-event capability, then rerun setup with a fresh challenge; no Buzz change is required.",
       );
       const completed = runJson(
-        runner,
+        execute,
         "link_complete",
         globalRun402Bin,
         walletArgs(wallet, ["identity", "link", "nostr", "complete", "--event-file", eventPath]),
@@ -635,7 +707,7 @@ export async function runSetup({
       );
       linkState = "created";
       links = runJson(
-        runner,
+        execute,
         "link_reinspection",
         globalRun402Bin,
         walletArgs(wallet, ["identity", "link", "list"]),
@@ -657,7 +729,7 @@ export async function runSetup({
     });
   }
   const proof = runJson(
-    runner,
+    execute,
     "link_verification",
     globalRun402Bin,
     walletArgs(wallet, ["identity", "link", "show", link.identity_link_id]),
@@ -667,7 +739,7 @@ export async function runSetup({
   verifyObservedLink(link, proof, pubkey, identity.principal.id);
 
   const finalWhoami = runJson(
-    runner,
+    execute,
     "final_identity_verification",
     globalRun402Bin,
     walletArgs(wallet, ["org", "whoami"]),
@@ -687,7 +759,7 @@ export async function runSetup({
 
 
   const controlPlaneStatus = runJson(
-    runner,
+    execute,
     "buzz_control_plane_status",
     globalRun402Bin,
     walletArgs(wallet, ["buzz", "status"]),
@@ -699,7 +771,7 @@ export async function runSetup({
     ? controlPlaneStatus.buzz
     : null;
   const communityDiscovery = remoteBuzz && !relayWarning
-    ? discoverCommunityInstallations({ runner, run402Bin: globalRun402Bin, wallet, relayUrl })
+    ? discoverCommunityInstallations({ runner: execute, run402Bin: globalRun402Bin, wallet, relayUrl })
     : relayWarning
       ? {
           status: "relay_unavailable",

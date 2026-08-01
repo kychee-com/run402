@@ -58,7 +58,7 @@ Read [references/conversations.md](references/conversations.md) when rendering t
      --pubkey <public-agent-npub-or-hex>
    ```
 
-   The helper reruns or validates a fresh target/profile/runtime/relay-bound passing doctor report before its first mutation. It invokes ordinary commands with argument arrays and `shell: false`. It:
+   The helper reruns or validates a fresh target/profile/runtime/relay-bound passing doctor report before its first mutation. It invokes ordinary commands with argument arrays and `shell: false`; on Windows it runs npm's and Run402's JavaScript entrypoints through the exact managed Node executable instead of spawning `.cmd` shims. It:
 
    - converges an absent or pre-4.17.2 user-global `run402` CLI once before any remote setup mutation, verifies the executing version, and reruns the complete doctor;
    - requires the named profile to exist before it can run initialization;

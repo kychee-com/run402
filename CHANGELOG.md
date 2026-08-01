@@ -47,6 +47,11 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   installer working directory, `DO_NOT_TRACK` child environment, and command as
   separate values, with explicit POSIX, PowerShell, and `cmd.exe` renderings.
   Windows agents are no longer given Bash-only `NAME=value command` syntax.
+- **Windows Buzz runtime:** released-Buzz capability probes now match command
+  semantics instead of the platform-rendered `buzz`/`buzz.exe` program name.
+  The setup helper invokes npm's `npm-cli.js` and Run402's `cli.mjs` through the
+  exact managed Node executable with `shell: false`, including install/upgrade,
+  and classifies a refused process boundary separately from an npm repair.
 - **Demo-first adoption:** the SDK and `run402 buzz adopt offer` expose durable,
   inert HTTPS ownership handoffs after a verified deployment. The short Buzz
   signing attempt is created only after direct human login and fresh passkey;

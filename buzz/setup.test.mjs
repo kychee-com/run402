@@ -13,6 +13,10 @@ const WALLET = "0x5450829a6d949aD9e641e5D9F84b3E093ef7fdB1";
 const AMBIENT_WALLET = "0x1111111111111111111111111111111111111111";
 const LINK_ID = "idlnk_test";
 const PROOF = "{\"public_payload\":\"test\",\"wallet_signature\":\"0xproof\"}";
+const WINDOWS_NODE = "C:\\Program Files\\nodejs\\node.exe";
+const WINDOWS_NPM_ENTRYPOINT = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
+const WINDOWS_NPM_PREFIX = "C:\\Users\\Fizz\\AppData\\Roaming\\npm";
+const WINDOWS_RUN402_ENTRYPOINT = `${WINDOWS_NPM_PREFIX}\\node_modules\\run402\\cli.mjs`;
 
 function ok(value = {}) {
   return { status: 0, stdout: typeof value === "string" ? value : JSON.stringify(value), stderr: "" };
@@ -263,6 +267,38 @@ function makeRunner(overrides = {}) {
   return { state, calls, timeline, runner };
 }
 
+function makeWindowsRunner(overrides = {}) {
+  const fake = makeRunner({ linked: true, ...overrides });
+  const calls = [];
+  const options = [];
+  const runner = (command, args, commandOptions = {}) => {
+    calls.push([command, ...args]);
+    options.push(commandOptions);
+    if (command !== WINDOWS_NODE) {
+      throw new Error(`Windows setup invoked a command shim directly: ${command} ${args.join(" ")}`);
+    }
+    const [entrypoint, ...entrypointArgs] = args;
+    if (entrypoint === WINDOWS_NPM_ENTRYPOINT) {
+      if (entrypointArgs.join(" ") === "prefix -g") return ok(`${WINDOWS_NPM_PREFIX}\n`);
+      return fake.runner("npm", entrypointArgs, commandOptions);
+    }
+    if (entrypoint === WINDOWS_RUN402_ENTRYPOINT) {
+      const result = fake.runner("/test-npm-global/bin/run402", entrypointArgs, commandOptions);
+      if (entrypointArgs.join(" ").includes("doctor --buzz") && result.status === 0) {
+        const report = JSON.parse(result.stdout);
+        report.binding.node_executable = WINDOWS_NODE;
+        report.binding.run402_executable = WINDOWS_RUN402_ENTRYPOINT;
+        return ok(report);
+      }
+      return result;
+    }
+    throw new Error(`Unexpected Windows JavaScript entrypoint: ${entrypoint}`);
+  };
+  const existsImpl = (path) => path === WINDOWS_NPM_ENTRYPOINT
+    || (path === WINDOWS_RUN402_ENTRYPOINT && fake.state.cliAvailable);
+  return { ...fake, calls, options, runner, existsImpl };
+}
+
 function count(calls, fragment) {
   return calls.filter((call) => call.join(" ").includes(fragment)).length;
 }
@@ -339,6 +375,70 @@ describe("Run402 for Buzz setup state machine", () => {
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} doctor --buzz --buzz-agent ${PUBKEY}`), 1);
     assert.equal(countRun402(fake.calls, `--wallet ${PROFILE} init`), 1);
     assert.equal(count(fake.calls, "identity link nostr complete --event-file"), 1);
+  });
+
+  it("executes npm and Run402 JavaScript entrypoints through the exact Windows Node runtime without a shell", async () => {
+    const fake = makeWindowsRunner();
+    const result = await runSetup({
+      pubkey: PUBKEY,
+      wallet: PROFILE,
+      runner: fake.runner,
+      platform: "win32",
+      nodeExecutable: WINDOWS_NODE,
+      env: {},
+      existsImpl: fake.existsImpl,
+      reporter: () => {},
+    });
+    assert.equal(result.status, "ready");
+    assert.equal(result.cli.state, "reused");
+    assert.ok(fake.calls.some((call) => call[1] === WINDOWS_NPM_ENTRYPOINT && call.slice(2).join(" ") === "prefix -g"));
+    assert.ok(fake.calls.some((call) => call[1] === WINDOWS_RUN402_ENTRYPOINT && call.slice(2).join(" ").includes("doctor --buzz")));
+    assert.ok(fake.calls.every((call) => call[0] === WINDOWS_NODE));
+    assert.ok(fake.calls.every((call) => !call.some((value) => value.endsWith?.(".cmd"))));
+    assert.ok(fake.options.every((value) => value.shell === false));
+  });
+
+  it("installs a missing Run402 package on Windows and re-resolves its JavaScript entrypoint before setup", async () => {
+    const fake = makeWindowsRunner({ cliAvailable: false });
+    const result = await runSetup({
+      pubkey: PUBKEY,
+      wallet: PROFILE,
+      runner: fake.runner,
+      platform: "win32",
+      nodeExecutable: WINDOWS_NODE,
+      env: {},
+      existsImpl: fake.existsImpl,
+      reporter: () => {},
+    });
+    assert.equal(result.status, "ready");
+    assert.equal(result.cli.state, "installed");
+    assert.equal(countExact(fake.calls, WINDOWS_NODE, `${WINDOWS_NPM_ENTRYPOINT} install -g run402@latest`), 1);
+    assert.ok(fake.calls.some((call) => call[1] === WINDOWS_RUN402_ENTRYPOINT && call.slice(2).join(" ").includes("doctor --buzz")));
+    assert.ok(fake.calls.every((call) => !call.some((value) => value.endsWith?.(".cmd"))));
+  });
+
+  it("classifies a Windows process-boundary refusal separately from an npm installation failure", async () => {
+    const refusal = { status: null, stdout: "", stderr: "", error: Object.assign(new Error("spawn EINVAL"), { code: "EINVAL" }) };
+    await assert.rejects(
+      runSetup({
+        pubkey: PUBKEY,
+        wallet: PROFILE,
+        runner: () => refusal,
+        platform: "win32",
+        nodeExecutable: WINDOWS_NODE,
+        env: {},
+        existsImpl: () => false,
+        reporter: () => {},
+      }),
+      (error) => {
+        assert.equal(error.code, "BUZZ_PREFLIGHT_RUNTIME_SPAWN_REFUSED");
+        assert.equal(error.mutationState, "not_started");
+        assert.equal(error.nextAction.type, "repair_buzz_agent_runtime");
+        assert.doesNotMatch(error.nextAction.why, /reinstalling npm repairs/i);
+        assert.match(error.nextAction.why, /reinstalling npm.*does not repair/i);
+        return true;
+      },
+    );
   });
 
   it("upgrades a pre-4.17.2 CLI before trusting its doctor and continues setup", async () => {

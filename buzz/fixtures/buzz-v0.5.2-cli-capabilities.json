@@ -23,7 +23,7 @@
       "argv": ["buzz", "users", "get", "--help"],
       "exit_code": 0,
       "stdout_contains": [
-        "Usage: buzz users get",
+        "users get [OPTIONS]",
         "--pubkey",
         "Omit for your own profile"
       ]
@@ -32,7 +32,7 @@
       "argv": ["buzz", "social", "publish", "--help"],
       "exit_code": 0,
       "stdout_contains": [
-        "Usage: buzz social publish",
+        "social publish [OPTIONS]",
         "--content"
       ]
     },
@@ -40,8 +40,7 @@
       "argv": ["buzz", "social", "event", "--help"],
       "exit_code": 0,
       "stdout_contains": [
-        "Usage: buzz social event",
-        "--event"
+        "social event --event"
       ]
     }
   ],

@@ -10,7 +10,7 @@ Before invoking any Run402 or Buzz mutation:
 2. Choose the one unique dedicated Run402 profile label that will be passed explicitly as `--wallet <profile>`.
 3. Verify that the managed session exposes a configured shell and can execute a bounded no-op. If the agent has no command-execution boundary, return the static `BUZZ_PREFLIGHT_SHELL_UNAVAILABLE` block below.
 4. Invoke the session's actual Node executable as an argument array with `--version`. Node must be 22 or newer. Do not use an ambient shell alias as evidence when the exact executable cannot be spawned.
-5. If Node passes, invoke `npm --version` and `run402 --version` as argument arrays. Buzz setup requires Run402 **4.17.2 or newer**; that is the first release whose safe relay-availability failure is warning-only for founder setup. If Run402 is absent or older, the user's setup request authorizes the safe agent-side user-global action `npm install -g run402@latest`; execute it once, verify the executable now reports 4.17.2 or newer, and restart the complete preflight. Do not run an older doctor's relay repair or present it to the human. If npm or the helper runtime is unavailable, or the verified version still does not converge, return the matching static block and stop.
+5. If Node passes, invoke `npm --version` and `run402 --version` as argument arrays. On Windows, the setup helper resolves npm's `npm-cli.js` and the user-global Run402 package's `cli.mjs`, then invokes both through that exact Node executable; it does not spawn `.cmd` shims or enable a shell. Buzz setup requires Run402 **4.17.2 or newer**; that is the first release whose safe relay-availability failure is warning-only for founder setup. If Run402 is absent or older, the user's setup request authorizes the safe agent-side user-global action `npm install -g run402@latest`; execute it once through the same direct entrypoint boundary, re-resolve the installed Run402 entrypoint, verify it reports 4.17.2 or newer, and restart the complete preflight. Do not run an older doctor's relay repair or present it to the human. If npm or the helper runtime is unavailable, or the verified version still does not converge, return the matching static block and stop.
 6. Invoke the canonical read-only diagnostic:
 
    ```sh
@@ -88,6 +88,8 @@ Missing Run402 after Node/npm pass uses check `run402_cli`, code `BUZZ_PREFLIGHT
 ```
 
 If npm itself is unavailable, use `BUZZ_PREFLIGHT_RUN402_UNAVAILABLE` with `surface: "buzz_settings"` and this complete repair command: `Open Buzz Desktop > Settings > Updates, install the available Buzz update, restart this agent, then rerun Run402 setup.` Do not invent a Homebrew, Cargo, curl, or public Buzz-sidecar installer.
+
+If the managed Windows process boundary returns `EINVAL` or `ENOEXEC` even after direct JavaScript-entrypoint resolution, use `BUZZ_PREFLIGHT_RUNTIME_SPAWN_REFUSED` with `surface: "buzz_settings"`. Tell the human to update/restart the managed Buzz agent runtime. Do not describe that process-boundary refusal as a broken npm installation, recommend reinstalling npm, or enable shell execution.
 
 ## Doctor result handling
 

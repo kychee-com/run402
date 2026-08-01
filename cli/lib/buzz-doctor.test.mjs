@@ -34,12 +34,12 @@ function commandError(code = "ENOENT") {
   return { status: null, stdout: "", stderr: "", error: Object.assign(new Error(code), { code }) };
 }
 
-function helpFor(args) {
+function helpFor(args, program = "buzz") {
   const key = args.join(" ");
   if (key === "--help") return "Buzz CLI — interact with a Buzz relay\nusers\nsocial\nErrors are JSON on stderr";
-  if (key === "users get --help") return "Usage: buzz users get\n--pubkey\nOmit for your own profile";
-  if (key === "social publish --help") return "Usage: buzz social publish\n--content";
-  if (key === "social event --help") return "Usage: buzz social event\n--event";
+  if (key === "users get --help") return `Usage: ${program} users get [OPTIONS]\n--pubkey\nOmit for your own profile`;
+  if (key === "social publish --help") return `Usage: ${program} social publish [OPTIONS]\n--content`;
+  if (key === "social event --help") return `Usage: ${program} social event --event <EVENT>`;
   return null;
 }
 
@@ -125,6 +125,21 @@ describe("Buzz doctor bounded zero-mutation runner", () => {
       now: dependencies.now,
     });
     assert.deepEqual(validation, { valid: true, reason: null });
+  });
+
+  it("accepts the released capabilities when clap renders the Windows buzz.exe program name", async () => {
+    const dependencies = healthyDependencies();
+    const originalRunner = dependencies.runCommand;
+    dependencies.runCommand = (command, args, options) => {
+      if (command.endsWith("/buzz") && args.at(-1) === "--help") {
+        return commandOk(helpFor(args, "buzz.exe"));
+      }
+      return originalRunner(command, args, options);
+    };
+    const report = await buildBuzzDoctorReport(dependencies);
+    assert.equal(report.checks.find((check) => check.name === "buzz_cli").status, "ok");
+    assert.equal(report.checks.find((check) => check.name === "buzz_agent_target").status, "ok");
+    assert.equal(report.ok, true);
   });
 
   it("continues through independent shell, Node, client, origin, relay, target, and profile failures", async () => {
