@@ -382,11 +382,27 @@ The human-facing install is a Buzz message—no terminal required:
 Please install the run402.com skill.
 ```
 
-That is the entire human instruction. In a managed Buzz context, first-party discovery routes it to `run402-buzz`; the agent reads the apex install router and installs the self-contained skill into its workspace (normally `~/.buzz`). The request means install and connect: after verifying the inert files, the agent loads the installed skill directly and continues through preflight, setup, and identity linking in the same turn. It does not stop at “available next turn” or ask a second setup question. For a Codex runtime, the exact agent-executed command is:
+That is the entire human instruction. In a managed Buzz context, first-party discovery routes it to `run402-buzz`; the agent reads the apex install router and installs the self-contained skill into its workspace (normally the user-home `.buzz` directory). The request means install and connect: after verifying the inert files, the agent loads the installed skill directly and continues through preflight, setup, and identity linking in the same turn. It does not stop at “available next turn” or ask a second setup question. For a Codex runtime, prefer supplying the working directory and environment separately to the agent's command runner:
+
+```text
+working_directory: <user-home>/.buzz
+environment: { "DO_NOT_TRACK": "1" }
+command: npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y
+```
+
+Shell-only POSIX environments use:
 
 ```sh
-cd ~/.buzz
+cd "$HOME/.buzz"
 DO_NOT_TRACK=1 npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y
+```
+
+Windows PowerShell uses:
+
+```powershell
+Set-Location (Join-Path $HOME '.buzz')
+$env:DO_NOT_TRACK = '1'
+npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y
 ```
 
 Claude Code uses `-a claude-code`, Goose uses `-a goose`, a confirmed `.agents/skills` consumer may use `-a universal`, and Claude Code plus Codex uses `-a claude-code codex`. `universal` is the shared path, not all runtimes; do not use the invalid explicit target `-a claude`. The skill bytes come from immutable digest-verified artifacts at `run402.com`; first-run `npx` can still require npm. GitHub is the one availability-only fallback, while any integrity failure stops before setup. Success reports the observed first-party digest and exact managed-workspace path; a GitHub source or global runtime path is never mislabeled first-party.

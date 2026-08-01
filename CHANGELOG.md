@@ -43,6 +43,10 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   semantic client because that release made safe relay availability warning-only
   for founder setup. A missing or older user-global CLI is upgraded and verified
   agent-side before doctor runs; the human is no longer sent a stale relay repair.
+- **Cross-platform Buzz installation:** the agent bootstrap now treats the
+  installer working directory, `DO_NOT_TRACK` child environment, and command as
+  separate values, with explicit POSIX, PowerShell, and `cmd.exe` renderings.
+  Windows agents are no longer given Bash-only `NAME=value command` syntax.
 - **Demo-first adoption:** the SDK and `run402 buzz adopt offer` expose durable,
   inert HTTPS ownership handoffs after a verified deployment. The short Buzz
   signing attempt is created only after direct human login and fresh passkey;

@@ -33,7 +33,16 @@ describe("run402-buzz distributable package", () => {
   it("documents first-party, runtime-specific installation and bounded fallback", () => {
     const installation = readFileSync(join(ROOT, "references", "installation.md"), "utf8");
     const docs = `${README}\n${installation}`;
-    assert.match(docs, /DO_NOT_TRACK=1 npx --yes skills@latest add https:\/\/run402\.com -s run402-buzz -a codex -y/);
+    assert.match(docs, /working_directory: <user-home>\/\.buzz/);
+    assert.match(docs, /environment: \{ "DO_NOT_TRACK": "1" \}/);
+    assert.match(docs, /command: npx --yes skills@latest add https:\/\/run402\.com -s run402-buzz -a <target\.\.\.> -y/);
+    assert.match(docs, /POSIX `sh`\/Bash\/zsh/);
+    assert.match(docs, /DO_NOT_TRACK=1 npx --yes skills@latest add https:\/\/run402\.com -s run402-buzz -a <target> -y/);
+    assert.match(docs, /Windows PowerShell/);
+    assert.match(docs, /\$env:DO_NOT_TRACK = '1'/);
+    assert.match(docs, /Windows `cmd\.exe`/);
+    assert.match(docs, /set "DO_NOT_TRACK=1"/);
+    assert.match(docs, /Do not paste a POSIX `NAME=value command` prefix into an unknown shell/);
     assert.match(docs, /-a claude-code codex/);
     assert.match(docs, /Claude Code \| `claude-code` \| `\.claude\/skills\/run402-buzz`/);
     assert.match(docs, /Goose \| `goose` \| `\.goose\/skills\/run402-buzz`/);

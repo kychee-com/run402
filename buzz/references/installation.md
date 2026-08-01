@@ -12,11 +12,37 @@ Only an explicit files-only constraint such as `Install the skill files only; do
 
 ## First-party source
 
-Select only the runtimes actually present. The canonical first-party command is:
+Select only the runtimes actually present. Treat the working directory, child-process environment, and command as separate values whenever the managed command runner supports that:
+
+```text
+working_directory: <user-home>/.buzz
+environment: { "DO_NOT_TRACK": "1" }
+command: npx --yes skills@latest add https://run402.com -s run402-buzz -a <target...> -y
+```
+
+Do not paste a POSIX `NAME=value command` prefix into an unknown shell. If the runner accepts only a native shell command, detect the current shell and use its syntax.
+
+POSIX `sh`/Bash/zsh:
 
 ```sh
-cd ~/.buzz
+cd "$HOME/.buzz"
 DO_NOT_TRACK=1 npx --yes skills@latest add https://run402.com -s run402-buzz -a <target> -y
+```
+
+Windows PowerShell:
+
+```powershell
+Set-Location (Join-Path $HOME '.buzz')
+$env:DO_NOT_TRACK = '1'
+npx --yes skills@latest add https://run402.com -s run402-buzz -a <target> -y
+```
+
+Windows `cmd.exe`:
+
+```bat
+cd /d "%USERPROFILE%\.buzz"
+set "DO_NOT_TRACK=1"
+npx --yes skills@latest add https://run402.com -s run402-buzz -a <target> -y
 ```
 
 Use these exact target ids and discovery paths:
@@ -29,24 +55,18 @@ Use these exact target ids and discovery paths:
 | Built-in Buzz Agent or another confirmed `.agents/skills` consumer | `universal` | `.agents/skills/run402-buzz` |
 | Claude Code and Codex | `claude-code codex` | `.agents/skills/run402-buzz` plus Claude Code's link/copy |
 
-For example, Claude Code and Codex together use:
-
-```sh
-cd ~/.buzz
-DO_NOT_TRACK=1 npx --yes skills@latest add https://run402.com -s run402-buzz -a claude-code codex -y
-```
+For Claude Code and Codex together, use the same platform-native execution form with `-a claude-code codex`.
 
 Do not use `-a claude`: `claude` is a detection alias, not a valid explicit target. `-a universal` means the `.agents/skills` convention; it does not install for every runtime and does not populate `.claude/skills` or `.goose/skills`. The advanced all-agent selector is `-a '*'`, but it is deliberately not the default because it over-installs.
 
-`DO_NOT_TRACK=1` disables the generic installer's optional third-party telemetry for this invocation. The first `npx` invocation can still need `registry.npmjs.org` to obtain `skills@latest`. The skill bytes themselves come from the content-addressed artifacts advertised at `https://run402.com/.well-known/agent-skills/index.json`; GitHub, raw GitHub content, `docs.run402.com`, and skills.sh are not required. skills.sh remains an optional discovery catalog.
+The `DO_NOT_TRACK` child-process environment value disables the generic installer's optional third-party telemetry for this invocation. It is an environment value, not an installer argument. The first `npx` invocation can still need `registry.npmjs.org` to obtain `skills@latest`. The skill bytes themselves come from the content-addressed artifacts advertised at `https://run402.com/.well-known/agent-skills/index.json`; GitHub, raw GitHub content, `docs.run402.com`, and skills.sh are not required. skills.sh remains an optional discovery catalog.
 
 ## One bounded fallback
 
-Use the public GitHub `buzz/` source only after a classified availability failure from the first-party index or artifact: DNS failure, TLS failure, timeout, connection refusal, or unavailable HTTP response. Preserve the same explicit runtime target(s):
+Use the public GitHub `buzz/` source only after a classified availability failure from the first-party index or artifact: DNS failure, TLS failure, timeout, connection refusal, or unavailable HTTP response. Preserve the same working directory, child-process environment, native shell syntax, and explicit runtime target(s), replacing only the installer source and omitting the first-party `-s` selector:
 
-```sh
-cd ~/.buzz
-DO_NOT_TRACK=1 npx --yes skills@latest add https://github.com/kychee-com/run402/tree/main/buzz -a <target> -y
+```text
+command: npx --yes skills@latest add https://github.com/kychee-com/run402/tree/main/buzz -a <target...> -y
 ```
 
 Never fall back after an integrity failure: a missing or mismatched digest, invalid archive, unsafe path or link, package-identity mismatch, or disagreement between the index and artifact. An ambiguous failure is not proven availability failure, so stop safely instead of changing source.
@@ -68,4 +88,4 @@ Read the first-party discovery entry before reporting success, verify the expect
 
 Use `source_class: "github_source_fallback"` when the bounded fallback was required. On an integrity failure, report the exact reason with `installation_state: "blocked"` and `mutation_state: "not_started"`. Installing or updating the skill never initializes a wallet, publishes a Nostr event, links an identity, creates infrastructure, requests faucet funds, selects a tier, deploys, or changes ownership.
 
-Never describe `kychee-com/run402/buzz` as the first-party artifact origin. Never report a user-global runtime directory such as `~/.codex/skills/run402-buzz` as the expected managed Buzz workspace install. The first-party source is the content-addressed archive advertised by `https://run402.com/.well-known/agent-skills/index.json`; the expected install path is determined by the explicit runtime target from the matrix above.
+Never describe `kychee-com/run402/buzz` as the first-party artifact origin. Never report a user-global runtime directory such as `~/.codex/skills/run402-buzz` or `%USERPROFILE%\.codex\skills\run402-buzz` as the expected managed Buzz workspace install. The first-party source is the content-addressed archive advertised by `https://run402.com/.well-known/agent-skills/index.json`; the expected install path is determined by the explicit runtime target from the matrix above, using native path separators when reporting an absolute Windows path.

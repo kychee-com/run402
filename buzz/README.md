@@ -27,14 +27,22 @@ For agents and operators auditing the exact command, select only the runtime(s) 
 | Goose | `goose` | `.goose/skills/run402-buzz` |
 | Built-in Buzz Agent / confirmed `.agents/skills` consumer | `universal` | `.agents/skills/run402-buzz` |
 
+Prefer a command runner that supplies `working_directory: <user-home>/.buzz` and `environment: { "DO_NOT_TRACK": "1" }` separately, then runs `npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y`. If only a shell is available, use the current shell's native syntax. For example:
+
 ```sh
-cd ~/.buzz
+cd "$HOME/.buzz"
 DO_NOT_TRACK=1 npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y
+```
+
+```powershell
+Set-Location (Join-Path $HOME '.buzz')
+$env:DO_NOT_TRACK = '1'
+npx --yes skills@latest add https://run402.com -s run402-buzz -a codex -y
 ```
 
 For a workspace used by both Claude Code and Codex, use `-a claude-code codex`. Do not use `-a claude`. `universal` means the shared `.agents/skills` path, not every agent; `-a '*'` is the advanced all-agent selector and intentionally is not the default.
 
-The apex install router at `https://run402.com/install.txt` and Buzz bootstrap at `https://run402.com/buzz/install.txt` point to the apex index and its immutable, digest-verified archive, whose bytes are served entirely by `run402.com`. They are agent-facing implementation details, not text the human must know. `DO_NOT_TRACK=1` disables the installer's optional telemetry; the first `npx` invocation can still require the npm registry. GitHub is used only as a reported fallback after a DNS, TLS, timeout, connection-refusal, or unavailable-HTTP failure. Digest, archive, path/link, package-identity, or index disagreement is an integrity failure and must stop before setup—never fall back. The receipt must report the observed first-party digest, actual runtime target, and verified workspace path; it must never call a GitHub source or global runtime directory the first-party Buzz install. See the exact [installation and reporting policy](references/installation.md). The public repository remains the reviewable source, and the [skills.sh listing](https://skills.sh/kychee-com/run402/run402-buzz) remains optional discovery rather than a runtime dependency.
+The apex install router at `https://run402.com/install.txt` and Buzz bootstrap at `https://run402.com/buzz/install.txt` point to the apex index and its immutable, digest-verified archive, whose bytes are served entirely by `run402.com`. They are agent-facing implementation details, not text the human must know. The `DO_NOT_TRACK=1` child-process environment disables the installer's optional telemetry; it is rendered with POSIX, PowerShell, or `cmd.exe` syntax only when a shell string is required. The first `npx` invocation can still require the npm registry. GitHub is used only as a reported fallback after a DNS, TLS, timeout, connection-refusal, or unavailable-HTTP failure. Digest, archive, path/link, package-identity, or index disagreement is an integrity failure and must stop before setup—never fall back. The receipt must report the observed first-party digest, actual runtime target, and verified workspace path; it must never call a GitHub source or global runtime directory the first-party Buzz install. See the exact [installation and reporting policy](references/installation.md). The public repository remains the reviewable source, and the [skills.sh listing](https://skills.sh/kychee-com/run402/run402-buzz) remains optional discovery rather than a runtime dependency.
 
 Installation only copies files; it executes nothing. Before continuing, understand the one public side effect: setup publishes a durable public kind-1 Nostr event associating the agent's public Buzz identity with its public Run402 wallet and creates a durable public Run402 proof. Revocation changes current status but does not erase either historical record. If Buzz adds its NIP-OA owner attestation, the owner's public key and signature are also public but gain no Run402 authority.
 
