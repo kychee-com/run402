@@ -1,0 +1,50 @@
+{
+  "$schema": "https://run402.com/schemas/release-spec.v1.json",
+  "site": {
+    "replace": {
+      "index.html": {
+        "path": "site/index.html",
+        "content_type": "text/html; charset=utf-8"
+      }
+    },
+    "public_paths": {
+      "mode": "explicit",
+      "replace": {
+        "/": {
+          "asset": "index.html",
+          "cache_class": "html"
+        }
+      }
+    }
+  },
+  "functions": {
+    "replace": {
+      "identity-inspect": {
+        "runtime": "node22",
+        "source": {
+          "path": "functions/inspect.mjs",
+          "content_type": "application/javascript"
+        },
+        "config": {
+          "timeout_seconds": 10,
+          "memory_mb": 128
+        }
+      }
+    }
+  },
+  "routes": {
+    "replace": [
+      {
+        "pattern": "/api/inspect",
+        "methods": ["GET"],
+        "target": {
+          "type": "function",
+          "name": "identity-inspect"
+        }
+      }
+    ]
+  },
+  "subdomains": {
+    "set": ["identity-lens"]
+  }
+}
