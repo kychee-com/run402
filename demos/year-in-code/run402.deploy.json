@@ -1,0 +1,46 @@
+{
+  "$schema": "https://run402.com/schemas/release-spec.v1.json",
+  "base": {
+    "release": "current"
+  },
+  "database": {
+    "migrations": [
+      {
+        "id": "20260730_git_tower_monthly_snapshots",
+        "sql": "CREATE TABLE IF NOT EXISTS git_tower_snapshots (repo_key text NOT NULL, period_key text NOT NULL, schema_version integer NOT NULL, snapshot jsonb NOT NULL, generated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (repo_key, period_key, schema_version)); CREATE INDEX IF NOT EXISTS git_tower_snapshots_generated_at_idx ON git_tower_snapshots (generated_at);"
+      }
+    ]
+  },
+  "functions": {
+    "replace": {
+      "repo-snapshot": {
+        "runtime": "node22",
+        "source": {
+          "path": "./functions/repo-snapshot.js"
+        },
+        "config": {
+          "timeout_seconds": 30,
+          "memory_mb": 256
+        }
+      }
+    }
+  },
+  "routes": {
+    "replace": [
+      {
+        "pattern": "/api/repo-snapshot",
+        "methods": ["GET"],
+        "target": {
+          "type": "function",
+          "name": "repo-snapshot"
+        }
+      }
+    ]
+  },
+  "site": {
+    "replace": {
+      "__source": "local-dir",
+      "path": "./dist"
+    }
+  }
+}

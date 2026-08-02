@@ -1,0 +1,19 @@
+{
+  "name": "@run402/year-in-code-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "test": "node --test functions/repo-snapshot.test.js src/crew-leaderboard.test.js src/repository-input.test.js src/skyline-city.test.js src/synth-score.test.js src/timeline.test.js",
+    "build": "vite build",
+    "deploy": "npm test && npm run build && npx -y run402@latest up --manifest run402.deploy.json --name \"One Year in Code\" --yes --verify --allow-warning DESTRUCTIVE_SITE_BULK_REMOVAL",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "vite": "8.2.0"
+  }
+}

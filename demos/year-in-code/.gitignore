@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.run402/
+.env
+.DS_Store
