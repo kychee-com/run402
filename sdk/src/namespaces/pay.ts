@@ -2,6 +2,43 @@ import type { Client } from "../kernel.js";
 import { Run402Error, type NextAction } from "../errors.js";
 
 export const DEFAULT_PAYMENT_MAX_USD_MICROS = 100_000;
+export const RUN402_MPP_LIGHTNING_PROFILE =
+  "run402-mpp-lightning-charge-draft00-safety-v1" as const;
+export const RUN402_PAYMENT_EVIDENCE_POLICIES = [
+  "none",
+  "protocol_settlement",
+  "run402_settlement",
+  "merchant_fulfillment",
+] as const;
+export type PaymentEvidencePolicy =
+  (typeof RUN402_PAYMENT_EVIDENCE_POLICIES)[number];
+
+export interface MppLightningPaymentPreference {
+  protocol: "mpp";
+  method: "lightning";
+  intent: "charge";
+  /** Opaque local instrument alias. V1 accepts `nwc:<label>` only. */
+  wallet: `nwc:${string}`;
+}
+
+export interface MppTempoPaymentPreference {
+  protocol: "mpp";
+  method: "tempo";
+  intent?: "charge";
+  wallet?: string;
+}
+
+export interface X402PaymentPreference {
+  protocol: "x402";
+  network: string;
+  wallet?: string;
+}
+
+export type PaymentPreference =
+  | MppLightningPaymentPreference
+  | MppTempoPaymentPreference
+  | X402PaymentPreference;
+
 export const X402_COMMERCE_RESULT_SCHEMA_VERSION =
   "x402-commerce-result.v1" as const;
 export const X402_PAYMENT_POLICY_ERROR_CODES = [
@@ -30,6 +67,56 @@ export interface PayFetchOptions {
    * payment and a matching verified receipt after settlement.
    */
   requireReceipt?: boolean;
+  /** Ordered payment capabilities. Omit to preserve configured one-rail behavior. */
+  paymentPreferences?: readonly PaymentPreference[];
+  /** Required exact opt-in when a Lightning preference is present. */
+  profile?: typeof RUN402_MPP_LIGHTNING_PROFILE;
+  /** Maximum Lightning invoice plus authorized routing fee, in millisatoshis. */
+  maxNativeAmountMsat?: number;
+  /** Maximum routing fee the selected wallet may apply atomically. */
+  maxRoutingFeeMsat?: number;
+  /** Typed evidence requirement. `requireReceipt` maps only to merchant fulfillment. */
+  evidencePolicy?: PaymentEvidencePolicy;
+  /** Exact principal transport retained across discovery and paid retry. */
+  principalTransport?: "siwx" | "control_plane_cookie";
+  /** Organization selected by the authenticated caller, when the endpoint supports it. */
+  organizationId?: string;
+}
+
+export interface VerifiedPaymentAttestation {
+  kind: "settlement" | "outcome";
+  compactJws: string;
+  claims: Record<string, unknown>;
+  keyId: string;
+  claimsDigest: string;
+  verified: true;
+}
+
+export interface PaymentFlowResult {
+  protocol: "x402" | "mpp";
+  method: "lightning" | "tempo" | "exact" | string;
+  intent: "charge" | string;
+  profile: string | null;
+  intentId: string | null;
+  attemptId: string | null;
+  canonicalAmountUsdMicros: number | null;
+  invoiceAmountMsat: number | null;
+  receivedAmountMsat: number | null;
+  excessAmountMsat: number | null;
+  paymentHash: string | null;
+  fundsMoved: PaymentFundsMoved;
+  rawNodeState: "OPEN" | "ACCEPTED" | "SETTLED" | "CANCELED" | "UNKNOWN" | null;
+  terminality: "nonterminal" | "terminal_paid" | "terminal_unpaid" | "unknown" | null;
+  settlementRole: "none" | "primary" | "non_primary" | null;
+  operationState: string | null;
+  recoveryState: string | null;
+  replay: boolean;
+  paymentReceipt: string | null;
+  settlementAttestation: VerifiedPaymentAttestation | null;
+  outcomeAttestations: VerifiedPaymentAttestation[];
+  merchantFulfillment: unknown | null;
+  currentStatus: unknown | null;
+  credits: unknown[];
 }
 
 export const X402_EVIDENCE_STATUSES = [
@@ -124,6 +211,8 @@ export interface PayFetchResult {
   intentState?: string | null;
   /** Canonical recovery actions. Never recommends a second payment. */
   nextActions?: PaymentNextAction[];
+  /** Rail-neutral payment facts. Existing x402 `payment` remains compatible. */
+  paymentResult?: PaymentFlowResult | null;
 }
 
 export function payFetchResultToJson(
@@ -177,7 +266,12 @@ export function payFetchResultToJson(
           },
         }
       : null,
-    outcome: payment ? "paid" : "not_paid",
+    ...(result.paymentResult
+      ? { payment_result: paymentFlowResultToJson(result.paymentResult) }
+      : payment
+        ? { payment_result: paymentFlowResultToJson(paymentFlowResultFromX402(payment, result.replay)) }
+        : {}),
+    outcome: result.outcome === "not_required" ? "not_paid" : "paid",
     replay: result.replay,
     next_actions: (result.nextActions ?? []).map((action) => ({
       type: action.type,
@@ -208,6 +302,24 @@ export type PaymentBuyerErrorCode =
   | "INVALID_IDEMPOTENCY_KEY"
   | "IDEMPOTENCY_KEY_PAYER_REQUIRED"
   | "PAYMENT_SETTLEMENT_FAILED"
+  | "PAYMENT_CAPABILITY_UNAVAILABLE"
+  | "PAYMENT_PROFILE_INVALID"
+  | "PAYMENT_BODY_NOT_REPLAYABLE"
+  | "PAYMENT_BODY_TOO_LARGE"
+  | "PAYMENT_INVOICE_INVALID"
+  | "PAYMENT_INVOICE_AMOUNT_MISMATCH"
+  | "PAYMENT_QUOTE_EXPIRED"
+  | "PAYMENT_QUOTE_SOURCE_UNAVAILABLE"
+  | "PAYMENT_QUOTE_DIVERGED"
+  | "PAYMENT_NATIVE_AMOUNT_EXCEEDS_MAX"
+  | "PAYMENT_USD_AMOUNT_EXCEEDS_MAX"
+  | "PAYMENT_WALLET_FEE_CAP_UNSUPPORTED"
+  | "PAYMENT_STATE_UNAVAILABLE"
+  | "PAYMENT_RECOVERY_PENDING"
+  | "PAYMENT_CREDITED"
+  | "PAYMENT_MANUAL_REVIEW"
+  | "PAYMENT_EVIDENCE_UNAVAILABLE"
+  | "PAYMENT_EVIDENCE_INVALID"
   | "MERCHANT_RECEIPT_REQUIRED"
   | "MERCHANT_RECEIPT_UNAVAILABLE";
 
@@ -268,7 +380,7 @@ export class PaymentBuyerError extends Run402Error {
       init.message,
       init.status ?? null,
       body,
-      "paying an x402-priced URL",
+      "paying an HTTP-priced URL",
     );
     this.code = init.code;
     this.fundsMoved = init.fundsMoved;
@@ -383,8 +495,57 @@ export type PayExecutor = (
   options: Required<
     Pick<PayFetchOptions, "maxUsdMicros" | "requireReceipt">
   > &
-    Pick<PayFetchOptions, "idempotencyKey">,
+    Pick<
+      PayFetchOptions,
+      | "idempotencyKey"
+      | "paymentPreferences"
+      | "profile"
+      | "maxNativeAmountMsat"
+      | "maxRoutingFeeMsat"
+      | "evidencePolicy"
+      | "principalTransport"
+      | "organizationId"
+    >,
 ) => Promise<PayFetchResult>;
+
+export interface PreparedPayCall {
+  init: RequestInit | undefined;
+  options: Parameters<PayExecutor>[2];
+}
+
+/** Shared normalization used by arbitrary-URL and first-party tier payment entry points. */
+export function preparePayCall(
+  init: RequestInit | undefined,
+  options: PayFetchOptions,
+): PreparedPayCall {
+  const maxUsdMicros = normalizeMax(options.maxUsdMicros);
+  const paymentPreferences = normalizePaymentPreferences(options.paymentPreferences);
+  const evidencePolicy = normalizeEvidencePolicy(options.evidencePolicy, options.requireReceipt);
+  validateLightningOptions(options, paymentPreferences);
+  return {
+    init: withPaymentNegotiation(
+      withIdempotencyKey(init, options.idempotencyKey),
+      paymentPreferences,
+      options.profile,
+    ),
+    options: {
+      maxUsdMicros,
+      requireReceipt: options.requireReceipt === true,
+      evidencePolicy,
+      ...(paymentPreferences ? { paymentPreferences } : {}),
+      ...(options.profile ? { profile: options.profile } : {}),
+      ...(options.maxNativeAmountMsat !== undefined
+        ? { maxNativeAmountMsat: normalizeNativeAmount(options.maxNativeAmountMsat, "maxNativeAmountMsat") }
+        : {}),
+      ...(options.maxRoutingFeeMsat !== undefined
+        ? { maxRoutingFeeMsat: normalizeNativeAmount(options.maxRoutingFeeMsat, "maxRoutingFeeMsat") }
+        : {}),
+      ...(options.principalTransport ? { principalTransport: options.principalTransport } : {}),
+      ...(options.organizationId ? { organizationId: options.organizationId } : {}),
+      ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    },
+  };
+}
 
 /** Arbitrary-URL buyer namespace. Node supplies the x402 executor; isomorphic callers may inject one. */
 export class Pay {
@@ -399,17 +560,12 @@ export class Pay {
     options: PayFetchOptions = {},
   ): Promise<PayFetchResult> {
     const normalizedUrl = normalizePayUrl(url);
-    const maxUsdMicros = normalizeMax(options.maxUsdMicros);
-    const nextInit = withIdempotencyKey(init, options.idempotencyKey);
+    const prepared = preparePayCall(init, options);
     if (this.executor) {
-      return this.executor(normalizedUrl, nextInit, {
-        maxUsdMicros,
-        requireReceipt: options.requireReceipt === true,
-        ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
-      });
+      return this.executor(normalizedUrl, prepared.init, prepared.options);
     }
 
-    const response = await this.client.fetch(normalizedUrl, nextInit);
+    const response = await this.client.fetch(normalizedUrl, prepared.init);
     if (response.status === 402) {
       if (options.requireReceipt) {
         throw merchantReceiptRequiredError();
@@ -688,6 +844,15 @@ function isPaymentBuyerErrorCode(value: unknown): value is PaymentBuyerErrorCode
     "IDEMPOTENCY_KEY_REUSED",
     "INVALID_IDEMPOTENCY_KEY", "IDEMPOTENCY_KEY_PAYER_REQUIRED",
     "PAYMENT_SETTLEMENT_FAILED",
+    "PAYMENT_CAPABILITY_UNAVAILABLE", "PAYMENT_PROFILE_INVALID",
+    "PAYMENT_BODY_NOT_REPLAYABLE", "PAYMENT_BODY_TOO_LARGE",
+    "PAYMENT_INVOICE_INVALID", "PAYMENT_INVOICE_AMOUNT_MISMATCH",
+    "PAYMENT_QUOTE_EXPIRED", "PAYMENT_QUOTE_SOURCE_UNAVAILABLE",
+    "PAYMENT_QUOTE_DIVERGED", "PAYMENT_NATIVE_AMOUNT_EXCEEDS_MAX",
+    "PAYMENT_USD_AMOUNT_EXCEEDS_MAX", "PAYMENT_WALLET_FEE_CAP_UNSUPPORTED",
+    "PAYMENT_STATE_UNAVAILABLE", "PAYMENT_RECOVERY_PENDING",
+    "PAYMENT_CREDITED", "PAYMENT_MANUAL_REVIEW",
+    "PAYMENT_EVIDENCE_UNAVAILABLE", "PAYMENT_EVIDENCE_INVALID",
     "MERCHANT_RECEIPT_REQUIRED", "MERCHANT_RECEIPT_UNAVAILABLE",
   ]).has(value);
 }
@@ -771,4 +936,212 @@ function withIdempotencyKey(init: RequestInit | undefined, key: string | undefin
   const headers = new Headers(init?.headers);
   headers.set("Idempotency-Key", key);
   return { ...init, headers };
+}
+
+export function serializeAcceptPayment(preferences: readonly PaymentPreference[]): string {
+  return preferences.map((preference, index) => {
+    const quality = Math.max(1, 1_000 - index) / 1_000;
+    const method = preference.protocol === "x402" ? "x402" : preference.method;
+    const intent = preference.protocol === "x402" ? "charge" : preference.intent ?? "charge";
+    return `${method}/${intent};q=${quality.toFixed(3)}`;
+  }).join(", ");
+}
+
+function normalizePaymentPreferences(
+  preferences: readonly PaymentPreference[] | undefined,
+): readonly PaymentPreference[] | undefined {
+  if (preferences === undefined) return undefined;
+  if (!Array.isArray(preferences) || preferences.length === 0 || preferences.length > 16) {
+    throw paymentInputError("paymentPreferences must contain 1 to 16 ordered entries.", {
+      field: "paymentPreferences",
+    });
+  }
+  const normalized = preferences.map((preference): PaymentPreference => {
+    if (!preference || typeof preference !== "object") {
+      throw paymentInputError("Each payment preference must be an object.", {
+        field: "paymentPreferences",
+      });
+    }
+    if (preference.protocol === "mpp" && preference.method === "lightning" &&
+        preference.intent === "charge" && /^nwc:[a-z0-9][a-z0-9_-]{0,63}$/.test(preference.wallet)) {
+      return { ...preference };
+    }
+    if (preference.protocol === "mpp" && preference.method === "tempo" &&
+        (preference.intent === undefined || preference.intent === "charge")) {
+      return { ...preference, intent: "charge" };
+    }
+    if (preference.protocol === "x402" && typeof preference.network === "string" &&
+        preference.network.trim().length > 0) {
+      return { ...preference, network: preference.network.trim() };
+    }
+    throw paymentInputError("A payment preference has an unsupported shape.", {
+      field: "paymentPreferences",
+    });
+  });
+  const keys = normalized.map((preference) => preference.protocol === "x402"
+    ? `x402:${preference.network}`
+    : `mpp:${preference.method}:${preference.intent ?? "charge"}`);
+  if (new Set(keys).size !== keys.length) {
+    throw paymentInputError("paymentPreferences must not contain duplicate capabilities.", {
+      field: "paymentPreferences",
+    });
+  }
+  return normalized;
+}
+
+function normalizeEvidencePolicy(
+  policy: PaymentEvidencePolicy | undefined,
+  requireReceipt: boolean | undefined,
+): PaymentEvidencePolicy {
+  if (requireReceipt === true) {
+    if (policy && policy !== "merchant_fulfillment") {
+      throw paymentInputError(
+        "requireReceipt maps only to evidencePolicy=merchant_fulfillment.",
+        { field: "evidencePolicy" },
+      );
+    }
+    return "merchant_fulfillment";
+  }
+  if (policy === undefined) return "none";
+  if (!RUN402_PAYMENT_EVIDENCE_POLICIES.includes(policy)) {
+    throw paymentInputError("evidencePolicy is unsupported.", { field: "evidencePolicy" });
+  }
+  return policy;
+}
+
+function validateLightningOptions(
+  options: PayFetchOptions,
+  preferences: readonly PaymentPreference[] | undefined,
+): void {
+  const lightning = preferences?.some((preference) =>
+    preference.protocol === "mpp" && preference.method === "lightning");
+  if (!lightning) return;
+  if (options.profile !== RUN402_MPP_LIGHTNING_PROFILE) {
+    throw paymentInputError("Lightning requires the exact Run402 payment profile.", {
+      field: "profile",
+      expected: RUN402_MPP_LIGHTNING_PROFILE,
+    }, "PAYMENT_PROFILE_INVALID");
+  }
+  if (!options.idempotencyKey?.trim()) {
+    throw paymentInputError("Lightning requires a caller-supplied stable idempotencyKey.", {
+      field: "idempotencyKey",
+    });
+  }
+  if (options.maxUsdMicros === undefined) {
+    throw paymentInputError("Lightning requires an explicit maxUsdMicros.", {
+      field: "maxUsdMicros",
+    });
+  }
+  normalizeNativeAmount(options.maxNativeAmountMsat, "maxNativeAmountMsat");
+  normalizeNativeAmount(options.maxRoutingFeeMsat, "maxRoutingFeeMsat");
+}
+
+function normalizeNativeAmount(value: number | undefined, field: string): number {
+  if (!Number.isSafeInteger(value) || (value ?? -1) < 0) {
+    throw paymentInputError(`${field} must be a non-negative safe integer.`, { field, value });
+  }
+  return value!;
+}
+
+function withPaymentNegotiation(
+  init: RequestInit | undefined,
+  preferences: readonly PaymentPreference[] | undefined,
+  profile: PayFetchOptions["profile"],
+): RequestInit | undefined {
+  if (!preferences) return init;
+  const headers = new Headers(init?.headers);
+  const acceptPayment = serializeAcceptPayment(preferences);
+  const existingAccept = headers.get("accept-payment");
+  if (existingAccept !== null && existingAccept !== acceptPayment) {
+    throw paymentInputError("Accept-Payment conflicts with paymentPreferences.", {
+      field: "Accept-Payment",
+    });
+  }
+  headers.set("Accept-Payment", acceptPayment);
+  if (profile) {
+    const existingProfile = headers.get("run402-payment-profile");
+    if (existingProfile !== null && existingProfile !== profile) {
+      throw paymentInputError("Run402-Payment-Profile conflicts with profile.", {
+        field: "Run402-Payment-Profile",
+      }, "PAYMENT_PROFILE_INVALID");
+    }
+    headers.set("Run402-Payment-Profile", profile);
+  }
+  return { ...init, headers };
+}
+
+function paymentInputError(
+  message: string,
+  details: Record<string, unknown>,
+  code: PaymentBuyerErrorCode = "PAYMENT_SETTLEMENT_FAILED",
+): PaymentBuyerError {
+  return new PaymentBuyerError({
+    code,
+    message,
+    fundsMoved: false,
+    details,
+    nextActions: [{ type: "edit_request", why: "Correct the payment policy and retry." }],
+  });
+}
+
+function paymentFlowResultFromX402(
+  payment: PaymentReceipt,
+  replay: boolean,
+): PaymentFlowResult {
+  return {
+    protocol: "x402",
+    method: "exact",
+    intent: "charge",
+    profile: null,
+    intentId: payment.paymentId,
+    attemptId: null,
+    canonicalAmountUsdMicros: payment.amountUsdMicros,
+    invoiceAmountMsat: null,
+    receivedAmountMsat: null,
+    excessAmountMsat: null,
+    paymentHash: null,
+    fundsMoved: payment.fundsMoved,
+    rawNodeState: null,
+    terminality: payment.settlement.status === "verified" ? "terminal_paid" : "unknown",
+    settlementRole: null,
+    operationState: payment.delivery.status,
+    recoveryState: null,
+    replay,
+    paymentReceipt: null,
+    settlementAttestation: null,
+    outcomeAttestations: [],
+    merchantFulfillment: payment.merchantReceipt.status === "verified"
+      ? payment.merchantReceipt : null,
+    currentStatus: null,
+    credits: [],
+  };
+}
+
+function paymentFlowResultToJson(result: PaymentFlowResult): Record<string, unknown> {
+  return {
+    protocol: result.protocol,
+    method: result.method,
+    intent: result.intent,
+    profile: result.profile,
+    intent_id: result.intentId,
+    attempt_id: result.attemptId,
+    amount_usd_micros: result.canonicalAmountUsdMicros,
+    invoice_amount_msat: result.invoiceAmountMsat,
+    received_amount_msat: result.receivedAmountMsat,
+    excess_amount_msat: result.excessAmountMsat,
+    payment_hash: result.paymentHash,
+    funds_moved: result.fundsMoved,
+    raw_node_state: result.rawNodeState,
+    terminality: result.terminality,
+    settlement_role: result.settlementRole,
+    operation_state: result.operationState,
+    recovery_state: result.recoveryState,
+    replay: result.replay,
+    payment_receipt: result.paymentReceipt,
+    settlement_attestation: result.settlementAttestation,
+    outcome_attestations: result.outcomeAttestations,
+    merchant_fulfillment: result.merchantFulfillment,
+    current_status: result.currentStatus,
+    credits: result.credits,
+  };
 }

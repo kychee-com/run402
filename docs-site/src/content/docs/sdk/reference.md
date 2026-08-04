@@ -148,10 +148,11 @@ address(es), and network(s); it never returns a key, signed authorization, or
 replayable proof. It returns `null` when automatic paid fetch is disabled, a
 custom `fetch` owns payment, or the selected source is not currently available.
 
-### Buy arbitrary x402 URLs (Node)
+### Buy HTTP-priced URLs (Node)
 
 `r.pay.fetch(url, init?, options?)` is the canonical buyer surface for an
-arbitrary x402-priced HTTP endpoint. It passes unpriced endpoints through,
+arbitrary HTTP-priced endpoint. Existing exact x402 behavior remains
+compatible. It passes unpriced endpoints through,
 defaults `maxUsdMicros` to `100_000` ($0.10), forwards an optional
 `Idempotency-Key`, and returns the response together with a faithful receipt:
 
@@ -227,7 +228,66 @@ Raw HTTP interoperability follows the same protocol:
    `already_settled`, but without a settlement header it is not a transaction
    receipt.
 
-### Automatic x402 attempt recovery (Node)
+#### Ordered MPP Lightning charge
+
+Lightning uses this same `pay.fetch` entry point and the same engine used by
+`tier.set`; there is no separate orchestration API. Production uses the
+Gate-6.7-approved mainnet seller/payee; regtest remains available for local
+verification. A caller must provide the exact profile, ordered preferences,
+stable key, USD ceiling, all-in millisatoshi ceiling, and routing-fee ceiling:
+
+```ts
+const url = "https://seller.example/paid-operation";
+const siwx = "<base64-caip-122-payload>";
+const organizationId = "org_example";
+
+const result = await r.pay.fetch(url, {
+  method: "POST",
+  headers: { "content-type": "application/json", "sign-in-with-x": siwx },
+  body: JSON.stringify({}),
+}, {
+  idempotencyKey: "tier:prototype:lightning:1",
+  profile: "run402-mpp-lightning-charge-draft00-safety-v1",
+  paymentPreferences: [
+    { protocol: "mpp", method: "lightning", intent: "charge", wallet: "nwc:deploy-bot" },
+    { protocol: "mpp", method: "tempo" },
+    { protocol: "x402", network: "eip155:8453" },
+  ],
+  maxUsdMicros: 100_000,
+  maxNativeAmountMsat: 1_010_000,
+  maxRoutingFeeMsat: 10_000,
+  evidencePolicy: "run402_settlement",
+  principalTransport: "siwx",
+  organizationId,
+});
+```
+
+The buyer serializes standard `Accept-Payment` ordering, accepts the seller's
+one actionable offer, strictly verifies the fixed BOLT11 invoice against the
+selected instrument's exact Bitcoin network and approved payee, checks
+independent BTC/USD pricing, and authorizes invoice plus maximum fee against
+both caps. V1 resolves only the approved, pinned Alby Hub/LND fixed-fee adapter.
+A local `nwc:<label>` alias refers to a URI held by the OS credential manager;
+the URI is never an SDK option or journal field. Generic NWC is unsupported.
+
+`paymentResult` is rail-neutral. It separates the successful-only protocol
+receipt, immutable verified settlement attestation, verified chained outcome
+attestations, merchant fulfillment, live `currentStatus`, and recovery/excess
+credits. `evidencePolicy` is `none`, `protocol_settlement`,
+`run402_settlement`, or `merchant_fulfillment`; legacy `requireReceipt: true`
+maps only to merchant fulfillment.
+
+The journal retains non-secret ids, digests, selected challenge, local
+instrument alias, caps, and dispatch state, but not the body, query, principal
+credential, raw idempotency key, NWC URI, or preimage. After restart, the caller
+must resupply the byte-identical authenticated request with the same principal,
+organization, key, profile, preference order, and caps. An `OPEN`, `ACCEPTED`,
+or `UNKNOWN` invoice remains pinned even after expiry; the buyer never changes
+rails after dispatch may have begun. MPP session intent, L402, zaps, tenant
+Lightning, and on-chain per-request Bitcoin are unsupported. Buzz/Nostr
+identity and the NWC instrument remain independent.
+
+### Automatic payment attempt recovery (Node)
 
 The Node entry tracks each automatic x402 payment across the provider-dispatch boundary. If setup, challenge handling, or signing fails before a payment-bearing request is sent, it throws `PaymentAttemptError` with `mutationState: "not_started"` and `safeToRetry: true`. Check `retryable` separately: persistent local-journal corruption is safe from duplicate payment but requires repair instead of an automatic retry. If the signed request may have reached the target but no reliable result returns, it reports `mutationState: "ambiguous"`, `safeToRetry: false`, and `reconcile_payment` / `poll` next actions. Generic automatic requests must not be blindly retried; `r.pay.fetch` is the deliberate exception because the same live SDK instance retains and re-presents the original proof.
 
@@ -1105,12 +1165,28 @@ The `Run402` class exposes focused namespaces. Click into the SDK source for ful
 ### `r.pay`
 
 ```
-r.pay.fetch(url, init?, { maxUsdMicros?, idempotencyKey?, requireReceipt? }): Promise<PayFetchResult>
+r.pay.fetch(url, init?, {
+  maxUsdMicros?, idempotencyKey?, requireReceipt?, paymentPreferences?,
+  profile?, maxNativeAmountMsat?, maxRoutingFeeMsat?, evidencePolicy?,
+  principalTransport?, organizationId?
+}): Promise<PayFetchResult>
 ```
 
 Node automatically supplies the configured allowance/signer. Isomorphic hosts
 may inject `payExecutor` in `Run402Options`; without one, unpriced URLs pass
 through and a 402 fails locally with `PAYMENT_WALLET_UNFUNDED`.
+
+### `r.tier`
+
+```
+r.tier.set(tier, PayFetchOptions): Promise<TierSetResult>
+```
+
+When ordered preferences select MPP Lightning charge, `tier.set` delegates to
+the shared buyer and requires the caller-supplied `idempotencyKey`, exact
+profile, `maxUsdMicros`, `maxNativeAmountMsat`, and `maxRoutingFeeMsat` before
+wallet dispatch. The identical call is the restart-recovery input. Without
+ordered preferences, existing x402/Tempo behavior is unchanged.
 
 ### `r.actions` / `r.up` (`@run402/sdk/node` only)
 

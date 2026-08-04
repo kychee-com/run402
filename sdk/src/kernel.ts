@@ -22,6 +22,12 @@ import {
   Unauthorized,
   isRun402Error,
 } from "./errors.js";
+import {
+  preparePayCall,
+  type PayExecutor,
+  type PayFetchOptions,
+  type PaymentFlowResult,
+} from "./namespaces/pay.js";
 
 /** Gateway 403 codes that mean "a passkey operator approval is needed for this (capability, target)". */
 const WRITE_AUTH_CODES = new Set([
@@ -35,6 +41,7 @@ export interface KernelConfig {
   apiBase: string;
   fetch: typeof globalThis.fetch;
   credentials: CredentialsProvider;
+  payExecutor?: PayExecutor;
   clientMetadata?: Run402ClientMetadata | false;
 }
 
@@ -56,6 +63,8 @@ export interface RequestOptions {
   authMeta?: AuthRequestMeta;
   /** Short verb phrase attached to thrown errors (e.g. "provisioning project"). */
   context: string;
+  /** Route this request through the shared payment engine after auth/body preparation. */
+  payment?: PayFetchOptions;
 }
 
 /**
@@ -83,6 +92,8 @@ export interface ResponseEnvelope<T = unknown> {
    * on this request — NOT that a payment failed.
    */
   settlement?: PaymentSettlement | null;
+  /** Rail-neutral result when this request used the shared payment engine. */
+  paymentResult?: PaymentFlowResult | null;
 }
 
 /**
@@ -200,12 +211,25 @@ export async function requestWithResponse<T>(
   }
 
   let res: Response;
+  let paymentResult: PaymentFlowResult | null = null;
   try {
-    res = await fetch(url, {
+    const requestInit: RequestInit = {
       method,
       headers: fetchHeaders,
       body: fetchBody as BodyInit | undefined,
-    });
+    };
+    if (opts.payment) {
+      const prepared = preparePayCall(requestInit, opts.payment);
+      if (kernel.payExecutor) {
+        const paid = await kernel.payExecutor(url, prepared.init, prepared.options);
+        res = paid.response;
+        paymentResult = paid.paymentResult ?? null;
+      } else {
+        res = await fetch(url, prepared.init);
+      }
+    } else {
+      res = await fetch(url, requestInit);
+    }
   } catch (err) {
     // The kernel's `fetch` is injectable, and the paid clients inject an x402
     // payment fetch. That fetch throws DOMAIN errors, not just transport ones —
@@ -245,9 +269,12 @@ export async function requestWithResponse<T>(
     // public surface for every consumer to serve a field only paid responses
     // use. Caught by an existing deepEqual test, which was right to fail.
     const settlement = decodeSettlementReceipt(res);
-    return settlement
-      ? { status: res.status, body: resBody as T, settlement }
-      : { status: res.status, body: resBody as T };
+    return {
+      status: res.status,
+      body: resBody as T,
+      ...(settlement ? { settlement } : {}),
+      ...(paymentResult ? { paymentResult } : {}),
+    };
   }
 
   if (res.status === 402) {

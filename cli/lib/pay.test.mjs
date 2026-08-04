@@ -137,9 +137,79 @@ describe("run402 pay", () => {
           valid_until: "2026-07-22T12:05:00.000Z",
         },
       },
+      payment_result: {
+        protocol: "x402",
+        method: "exact",
+        intent: "charge",
+        profile: null,
+        intent_id: "txp_cli_1",
+        attempt_id: null,
+        amount_usd_micros: 10_000,
+        invoice_amount_msat: null,
+        received_amount_msat: null,
+        excess_amount_msat: null,
+        payment_hash: null,
+        funds_moved: true,
+        raw_node_state: null,
+        terminality: "terminal_paid",
+        settlement_role: null,
+        operation_state: "fulfilled",
+        recovery_state: null,
+        replay: false,
+        payment_receipt: null,
+        settlement_attestation: null,
+        outcome_attestations: [],
+        merchant_fulfillment: {
+          status: "verified",
+          claim: "service_delivered",
+          issuedAt: "2026-07-22T12:00:03.000Z",
+        },
+        current_status: null,
+        credits: [],
+      },
       outcome: "paid",
       replay: false,
       next_actions: [],
+    });
+  });
+
+  it("passes ordered Lightning preferences, exact profile, and native bounds", async () => {
+    let captured;
+    await run([
+      "https://api.run402.test/tiers/v1/prototype",
+      "--method", "POST",
+      "--body", "{}",
+      "--max-usd", "0.20",
+      "--idempotency-key", "tier:lightning:1",
+      "--payment-preferences", '[{"protocol":"mpp","method":"lightning","intent":"charge","wallet":"nwc:deploy-bot"}]',
+      "--payment-profile", "run402-mpp-lightning-charge-draft00-safety-v1",
+      "--max-native-msat", "1100000",
+      "--max-routing-fee-msat", "10000",
+      "--evidence-policy", "run402_settlement",
+    ], {
+      getSdk: () => ({
+        pay: {
+          async fetch(_url, _init, options) {
+            captured = options;
+            return {
+              response: new Response("ok", { status: 200 }),
+              payment: null, outcome: "not_required", replay: false,
+            };
+          },
+        },
+      }),
+      write: () => {},
+    });
+    assert.deepEqual(captured, {
+      maxUsdMicros: 200_000,
+      idempotencyKey: "tier:lightning:1",
+      paymentPreferences: [{
+        protocol: "mpp", method: "lightning", intent: "charge", wallet: "nwc:deploy-bot",
+      }],
+      profile: "run402-mpp-lightning-charge-draft00-safety-v1",
+      maxNativeAmountMsat: 1_100_000,
+      maxRoutingFeeMsat: 10_000,
+      evidencePolicy: "run402_settlement",
     });
   });
 });

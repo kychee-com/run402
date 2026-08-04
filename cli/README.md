@@ -76,7 +76,7 @@ This links two separately held public identities through fresh signatures; it ne
 
 `run402 buzz status` reports skill installation, human-adoption offers/adoptions, community installation, and this agent's enrollment independently, and safely reports `supported: false` against an older gateway. The canonical ownership workflow is `buzz adopt offer --org … --identity-link …`: it capability-checks before mutation and returns a normal durable HTTPS handoff. Poll with `buzz adopt offer show <buzzhao_id>` and cancel with `buzz adopt offer cancel <buzzhao_id>`. The raw challenge command is explicitly advanced as `buzz adopt direct …`; direct completion/cancellation remain `buzz adopt complete|cancel`. Other goal workflows are `buzz install` and `buzz enroll`; decisions are `buzz install activate|update|revoke` and `buzz approve|deny|revoke`. `buzz install discover --community <buzz:community:host>` lists Run402-owned active descriptors without authentication. MCP intentionally has no signing/passkey mutation and only renders exact HTTPS/CLI handoffs. All commands print JSON to stdout, advice to stderr, have zero spend impact, and never accept Nostr/wallet secrets, session material, service keys, delegates, or payment credentials. Failure JSON preserves the gateway's code-specific `next_actions`, exact repair `field`, and retry safety; never replace it with a generic edit-and-retry. See the [Fizz/Honey examples](../buzz/references/community-control-plane.md).
 
-### Buy from an x402 URL
+### Buy from an HTTP-priced URL
 
 ```bash
 run402 pay https://seller.example/translate --method POST \
@@ -93,6 +93,19 @@ Run402 `PAYMENT_INTENT_PENDING`, wait for `Retry-After` and repeat the identical
 command with the same payer and `--idempotency-key`; never replace the key.
 Custom/arbitrary hosts and other `funds_moved: "unknown"` outcomes require
 reconciliation.
+
+The same command accepts ordered MPP Lightning, MPP Tempo, and x402
+preferences. Production uses the Gate-6.7-approved mainnet seller and requires the exact
+`run402-mpp-lightning-charge-draft00-safety-v1` profile, a caller-supplied
+stable key, a local `nwc:<label>` instrument, and explicit USD,
+millisatoshi, and routing-fee ceilings. Before production activation, add the approved Alby Hub/LND
+instrument with `run402 wallets lightning-add <label> --network mainnet --payee-node <pubkey>`;
+the NWC URI is read from stdin and kept by the OS credential manager. After
+restart, repeat the byte-identical authenticated command with the same
+principal, organization, key, profile, preference order, and caps. An
+`ACCEPTED` invoice remains pinned after expiry; do not select another rail.
+Generic NWC, MPP session intent, L402, zaps, tenant Lightning, and on-chain
+per-request Bitcoin are unsupported.
 
 ### Database
 

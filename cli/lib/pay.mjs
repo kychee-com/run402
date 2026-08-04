@@ -8,8 +8,9 @@ import {
   normalizeArgv,
   positionalArgs,
 } from "./argparse.mjs";
+import { PAYMENT_VALUE_FLAGS, paymentOptionsFromFlags } from "./payment-options.mjs";
 
-const HELP = `run402 pay — Call an x402-priced URL
+const HELP = `run402 pay — Call an HTTP-priced URL
 
 Usage:
   run402 pay <url> [options]
@@ -20,6 +21,11 @@ Options:
   --max-usd <amount>        Maximum payment in USD (default: 0.10)
   --idempotency-key <key>   Forward a stable Idempotency-Key to the seller
   --require-receipt         Require verified merchant evidence
+  --payment-preferences <json>  Ordered capability array (MPP Lightning, MPP Tempo, x402)
+  --payment-profile <id>    Exact Run402 profile opt-in
+  --max-native-msat <n>     Maximum all-in Lightning debit in millisatoshis
+  --max-routing-fee-msat <n>  Maximum routing fee applied by the wallet
+  --evidence-policy <name>  none|protocol_settlement|run402_settlement|merchant_fulfillment
   --json                    Print the response and payment receipt as JSON
   --help, -h                Show this help
 
@@ -29,12 +35,17 @@ Examples:
     --body '{"text":"hello"}' --max-usd 0.05 --idempotency-key translation:1
 
 The command uses the same allowance wallet and bounded x402 buyer as the SDK.
+Lightning charge uses an explicitly configured nwc:<label> instrument, the exact
+run402-mpp-lightning-charge-draft00-safety-v1 profile, a stable idempotency key,
+and explicit USD/native/routing-fee bounds. Regtest verification is complete;
+production uses the Gate-6.7-approved mainnet seller/payee and refuses invoice
+creation whenever permanent readiness does not pass.
 An unpriced URL is passed through with payment: null.
 On trusted Run402 PAYMENT_INTENT_PENDING, wait for Retry-After and repeat this
 identical command with the same payer and --idempotency-key. Never change the key.
 `;
 
-const VALUE_FLAGS = ["--method", "--body", "--max-usd", "--idempotency-key"];
+const VALUE_FLAGS = ["--method", "--body", "--max-usd", "--idempotency-key", ...PAYMENT_VALUE_FLAGS];
 
 export async function run(args = [], deps = {}) {
   if (hasHelp(args)) {
@@ -77,6 +88,7 @@ export async function run(args = [], deps = {}) {
     ...(parsed.includes("--require-receipt")
       ? { requireReceipt: true }
       : {}),
+    ...paymentOptionsFromFlags(parsed),
   };
   const sdk = (deps.getSdk ?? getSdk)();
   const write = deps.write ?? ((value) => console.log(value));

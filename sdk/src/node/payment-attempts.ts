@@ -41,12 +41,12 @@ export type PaymentAttemptJournalState =
 export interface PaymentAttemptRecord {
   version: 1;
   payment_attempt_id: string;
-  rail: "x402";
+  rail: "x402" | "mpp_lightning" | "mpp_tempo";
   state: PaymentAttemptJournalState;
   mutation_state: "not_started" | "in_progress" | "completed" | "ambiguous";
   method: string;
   origin: string | null;
-  /** SHA-256 of the URL pathname; raw path/query values are never persisted. */
+  /** SHA-256 of pathname plus query; raw path/query values are never persisted. */
   path_sha256: string | null;
   /** SHA-256 of the caller key; the raw Idempotency-Key is never persisted. */
   caller_key_sha256?: string;
@@ -58,6 +58,39 @@ export interface PaymentAttemptRecord {
   payment_id?: string;
   intent_state?: string;
   retry_after_seconds?: number;
+  /** Exact protocol profile; contains no wallet or principal credential. */
+  profile_id?: string;
+  /** SHA-256 of the ordered preference policy. */
+  preference_sha256?: string;
+  /** SHA-256 of the exact caller-supplied request bytes. */
+  body_sha256?: string;
+  /** SHA-256 of the normalized selected semantic headers. */
+  semantic_headers_sha256?: string;
+  /** Hash of the sole SIWX credential when one is present; never the credential itself. */
+  principal_credential_sha256?: string;
+  principal_transport?: "siwx" | "control_plane_cookie";
+  organization_id_sha256?: string;
+  max_usd_micros?: number;
+  max_native_amount_msat?: number;
+  max_routing_fee_msat?: number;
+  /** Canonical product price retained from the selected seller offer. */
+  canonical_amount_usd_micros?: number;
+  /** Exact fixed invoice amount retained from the selected seller offer. */
+  invoice_amount_msat?: number;
+  /** Exact selected Payment challenge needed for same-intent reconciliation. */
+  selected_challenge?: string;
+  challenge_id?: string;
+  intent_id?: string;
+  provider_attempt_id?: string;
+  operation_digest?: string;
+  request_contract_digest?: string;
+  payment_hash?: string;
+  invoice_sha256?: string;
+  invoice_expires_at?: string;
+  wallet_alias?: string;
+  wallet_provider?: string;
+  wallet_request_id?: string;
+  provider_state?: "prepared" | "dispatched" | "settled" | "pending" | "failed" | "unknown";
 }
 
 export interface PaymentAttemptStore {
@@ -230,7 +263,7 @@ export function requestSummary(input: RequestInfo | URL, init?: RequestInit): {
     return {
       method,
       origin: url.origin,
-      path_sha256: createHash("sha256").update(url.pathname).digest("hex"),
+      path_sha256: createHash("sha256").update(`${url.pathname}${url.search}`).digest("hex"),
       caller_key_sha256,
     };
   } catch {
@@ -292,7 +325,7 @@ function isPaymentAttemptRecord(value: unknown): value is PaymentAttemptRecord {
     record.version === 1 &&
     typeof record.payment_attempt_id === "string" &&
     PAYMENT_ATTEMPT_ID_PATTERN.test(record.payment_attempt_id) &&
-    record.rail === "x402" &&
+    ["x402", "mpp_lightning", "mpp_tempo"].includes(record.rail ?? "") &&
     ["intent", "submitting", "response_received", "intent_pending", "completed", "failed", "ambiguous"]
       .includes(record.state ?? "") &&
     ["not_started", "in_progress", "completed", "ambiguous"].includes(record.mutation_state ?? "") &&
@@ -305,6 +338,40 @@ function isPaymentAttemptRecord(value: unknown): value is PaymentAttemptRecord {
     (record.intent_state === undefined || typeof record.intent_state === "string") &&
     (record.retry_after_seconds === undefined ||
       (Number.isSafeInteger(record.retry_after_seconds) && record.retry_after_seconds >= 0)) &&
+    (record.profile_id === undefined || typeof record.profile_id === "string") &&
+    (record.preference_sha256 === undefined || /^[0-9a-f]{64}$/.test(record.preference_sha256)) &&
+    (record.body_sha256 === undefined || /^[0-9a-f]{64}$/.test(record.body_sha256)) &&
+    (record.semantic_headers_sha256 === undefined || /^[0-9a-f]{64}$/.test(record.semantic_headers_sha256)) &&
+    (record.principal_credential_sha256 === undefined || /^[0-9a-f]{64}$/.test(record.principal_credential_sha256)) &&
+    (record.principal_transport === undefined ||
+      ["siwx", "control_plane_cookie"].includes(record.principal_transport)) &&
+    (record.organization_id_sha256 === undefined || /^[0-9a-f]{64}$/.test(record.organization_id_sha256)) &&
+    (record.max_usd_micros === undefined ||
+      (Number.isSafeInteger(record.max_usd_micros) && record.max_usd_micros >= 0)) &&
+    (record.max_native_amount_msat === undefined ||
+      (Number.isSafeInteger(record.max_native_amount_msat) && record.max_native_amount_msat >= 0)) &&
+    (record.max_routing_fee_msat === undefined ||
+      (Number.isSafeInteger(record.max_routing_fee_msat) && record.max_routing_fee_msat >= 0)) &&
+    (record.canonical_amount_usd_micros === undefined ||
+      (Number.isSafeInteger(record.canonical_amount_usd_micros) &&
+        record.canonical_amount_usd_micros > 0)) &&
+    (record.invoice_amount_msat === undefined ||
+      (Number.isSafeInteger(record.invoice_amount_msat) && record.invoice_amount_msat > 0)) &&
+    (record.selected_challenge === undefined ||
+      (typeof record.selected_challenge === "string" && record.selected_challenge.length <= 16_384)) &&
+    (record.challenge_id === undefined || typeof record.challenge_id === "string") &&
+    (record.intent_id === undefined || typeof record.intent_id === "string") &&
+    (record.provider_attempt_id === undefined || typeof record.provider_attempt_id === "string") &&
+    (record.operation_digest === undefined || /^[0-9a-f]{64}$/.test(record.operation_digest)) &&
+    (record.request_contract_digest === undefined || /^[0-9a-f]{64}$/.test(record.request_contract_digest)) &&
+    (record.payment_hash === undefined || /^[0-9a-f]{64}$/.test(record.payment_hash)) &&
+    (record.invoice_sha256 === undefined || /^[0-9a-f]{64}$/.test(record.invoice_sha256)) &&
+    (record.invoice_expires_at === undefined || typeof record.invoice_expires_at === "string") &&
+    (record.wallet_alias === undefined || /^nwc:[a-z0-9][a-z0-9_-]{0,63}$/.test(record.wallet_alias)) &&
+    (record.wallet_provider === undefined || typeof record.wallet_provider === "string") &&
+    (record.wallet_request_id === undefined || typeof record.wallet_request_id === "string") &&
+    (record.provider_state === undefined ||
+      ["prepared", "dispatched", "settled", "pending", "failed", "unknown"].includes(record.provider_state)) &&
     typeof record.created_at === "string" &&
     typeof record.updated_at === "string"
   );

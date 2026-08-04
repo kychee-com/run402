@@ -191,6 +191,7 @@ export class Run402 {
       apiBase: opts.apiBase,
       fetch: opts.fetch ?? globalThis.fetch.bind(globalThis),
       credentials: opts.credentials,
+      payExecutor: opts.payExecutor,
       clientMetadata: opts.clientMetadata,
     };
     this.apiBase = opts.apiBase;
@@ -558,6 +559,8 @@ export {
   PaymentBuyerError,
   PaymentPolicyError,
   DEFAULT_PAYMENT_MAX_USD_MICROS,
+  RUN402_MPP_LIGHTNING_PROFILE,
+  RUN402_PAYMENT_EVIDENCE_POLICIES,
   X402_COMMERCE_RESULT_SCHEMA_VERSION,
   X402_EVIDENCE_STATUSES,
   X402_GATEWAY_AVAILABILITY_ERROR_CODE,
@@ -570,6 +573,8 @@ export {
   isTrustedRun402PaymentUrl,
   isTrustedRun402PendingResponse,
   payFetchResultToJson,
+  preparePayCall,
+  serializeAcceptPayment,
 } from "./namespaces/pay.js";
 export type * from "./namespaces/pay.js";
 export { Archives } from "./namespaces/archives.js";

@@ -916,7 +916,28 @@ run402 subdomains claim my-app
 
 ### pay
 
-`run402 pay <url> [--method <M>] [--body <json-or-text>] [--max-usd <amount>] [--idempotency-key <key>] [--require-receipt]` calls an arbitrary x402-priced HTTP endpoint through the SDK buyer. The default ceiling is `$0.10`; `--max-usd` accepts up to six decimal places and is converted exactly to USD micros. `--require-receipt` requires a verified wallet-rooted offer before payment and a matching receipt afterward. JSON output is the complete `x402-commerce-result.v1` envelope with settlement, movement/replay, delivery, offer, merchant-receipt, signer-relationship, policy, and portable evidence. Unpriced URLs return `payment: null`. For `PAYMENT_INTENT_PENDING` on a trusted Run402 host, wait for `Retry-After` and repeat the identical command with the same payer, request, and key. Never substitute a fresh key. Custom/arbitrary hosts and other `funds_moved: "unknown"` outcomes remain ambiguous and require reconciliation.
+`run402 pay <url> [--method <M>] [--body <json-or-text>] [--max-usd <amount>] [--idempotency-key <key>] [--require-receipt] [--payment-preferences <json>] [--payment-profile <id>] [--max-native-msat <n>] [--max-routing-fee-msat <n>] [--evidence-policy <name>]` calls an arbitrary HTTP-priced endpoint through the shared SDK buyer. Existing exact x402 behavior remains compatible. The default ceiling is `$0.10`; `--max-usd` accepts up to six decimal places and is converted exactly to USD micros. `--require-receipt` requires merchant fulfillment; it is not satisfied by settlement evidence alone. Unpriced URLs return `payment: null`.
+
+Production MPP Lightning charge uses the Gate-6.7-approved mainnet seller/payee;
+regtest remains available for local verification. The capability requires the exact
+`run402-mpp-lightning-charge-draft00-safety-v1` profile, an ordered preference
+containing a local `nwc:<label>` instrument, a caller-supplied stable key, and
+explicit USD, all-in millisatoshi, and routing-fee ceilings. The seller returns
+one actionable offer. JSON adds rail-neutral `payment_result`, keeping the
+protocol receipt, immutable settlement attestation, chained outcome
+attestations, merchant fulfillment, live `current_status`, and
+recovery/excess credits separate. `evidence-policy` is `none`,
+`protocol_settlement`, `run402_settlement`, or `merchant_fulfillment`.
+
+For `PAYMENT_INTENT_PENDING` on a trusted Run402 host, wait for `Retry-After`
+and repeat the identical command with the same principal, organization, body,
+profile, preference order, caps, and key. After process restart the caller must
+resupply that exact command; the local journal cannot reconstruct the request
+body. Never substitute a fresh key or rail. `OPEN`, `ACCEPTED`, and `UNKNOWN`
+stay pinned even after expiry. Generic NWC, MPP session intent, L402, zaps,
+tenant Lightning, and on-chain per-request Bitcoin are unsupported. Buzz/Nostr
+identity and the NWC instrument remain independent. Custom/arbitrary hosts and
+other `funds_moved: "unknown"` outcomes require reconciliation.
 
 ```bash
 run402 pay https://seller.example/translate --method POST \
@@ -937,6 +958,8 @@ Manage multiple named wallets (profiles) on one machine. Keys never leave the ma
 - `run402 wallets bind [<name>]` — write `./.run402.json` binding this directory to a wallet (defaults to the active one). Safe to commit (holds only a name). `{ wallet, file, bound: true, safe_to_commit: true }`.
 - `run402 wallets unbind` — remove `./.run402.json`. `{ file, unbound }`.
 - `run402 wallets import <name> --key <path|->` — adopt an existing 0x-prefixed 64-hex private key (file path or `-` for stdin) as a named wallet. `{ name, address, imported: true }`.
+- `run402 wallets lightning-add <label> --network <mainnet|regtest> --payee-node <compressed-pubkey>` — add the approved Alby Hub/LND fixed-fee instrument for one exact Bitcoin network. The NWC URI is accepted only on stdin and stored by the OS credential manager; local metadata holds its alias, provider, network, payee node, and pinned provider commit, never the URI. Production example: `printf '%s' "$NWC_URI" | run402 wallets lightning-add deploy-bot --network mainnet --payee-node 03cddb085a621af75f1f9b5c2b9c58a80aaf0d6de8ef25cb12a7028c5bac6018f5`.
+- `run402 wallets lightning-list` — list non-secret configured Lightning instrument metadata. Generic NWC adapters are not accepted.
 - `run402 wallets rm <name> --yes` — delete a wallet and its keys. Requires `--yes` (agent-first: no interactive prompt). Refuses to remove `default`. `{ name, removed: true }`.
 - Server-side display label: `new`/`rename`/`import` push the wallet's name to a server-side label (signed by the wallet — proof of control) so the same name shows cross-machine and in the operator console (WEB). Best-effort and on by default; `RUN402_WALLET_LABEL_SYNC=0` opts out (fully offline wallet ops). The local folder name is the source of truth; the label is a mirror, and `wallets current` flags any drift.
 - Selection for ANY command: `--wallet <name>` (alias `--profile`) > `RUN402_WALLET` > nearest `./.run402.json`/`.run402.local.json` > `wallets use` default > `default`. A conflicting env + binding errors with `WALLET_SELECTION_CONFLICT` (resolve via `--wallet`, `unset RUN402_WALLET`, or `wallets unbind`). Selecting a non-existent wallet errors with `WALLET_NOT_FOUND`.
@@ -950,7 +973,11 @@ Manage multiple named wallets (profiles) on one machine. Keys never leave the ma
 Tier and quotas are per organization (not per project) — `set` is organization-wide, `status.pool_usage` is the pooled total across every project in the organization. `set` refetches status after the call and includes it as `status_after`.
 
 - `run402 tier status`
-- `run402 tier set <prototype|hobby|team>`
+- `run402 tier set <prototype|hobby|team> [--idempotency-key <key>] [--max-usd <amount>] [--payment-preferences <json>] [--payment-profile <id>] [--max-native-msat <n>] [--max-routing-fee-msat <n>] [--evidence-policy <name>]`
+
+With explicit MPP Lightning charge, `tier set` delegates to the same buyer
+as `run402 pay` and rejects a missing stable key before wallet dispatch.
+Existing x402/Tempo tier behavior is unchanged.
 
 ### credentials
 - `run402 credentials project-keys list` — LOCAL CACHE read. Lists cached project-key entries with `source: "local_cache"`, `cache_path`, `wallet`/`profile`, key presence, prefixes, fingerprints, and timestamps. Never prints full keys.

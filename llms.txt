@@ -121,6 +121,16 @@ For testnet, `run402 allowance fund` requests 0.25 USDC from the Base Sepolia fa
 
 The same wallet key works on both chains; switching rails just changes which chain pays. Initialize MPP with `run402 init mpp` instead of `run402 init`.
 
+MPP Lightning charge is not a third blockchain network. Gate 6.7 approved the
+production mainnet seller and exact payee
+`03cddb085a621af75f1f9b5c2b9c58a80aaf0d6de8ef25cb12a7028c5bac6018f5`.
+It uses the existing `pay` and `tier set` workflows with an
+independent local `nwc:<label>` instrument, ordered payment preferences, the
+exact Run402 profile, a stable caller key, and explicit USD/millisatoshi/fee
+ceilings. The seller refuses invoice creation whenever permanent readiness
+does not pass. See the SDK, CLI, or MCP reference for the recovery and evidence
+contract.
+
 ## Talk to us
 
 ```bash

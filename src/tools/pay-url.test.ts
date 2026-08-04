@@ -1,16 +1,22 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { PaymentBuyerError } from "../../sdk/dist/index.js";
+import { PaymentBuyerError, RUN402_MPP_LIGHTNING_PROFILE } from "../../sdk/dist/index.js";
 import { handlePayUrl, payUrlSchema } from "./pay-url.js";
 
 describe("pay_url", () => {
   it("exposes the bounded buyer inputs", () => {
     assert.deepEqual(Object.keys(payUrlSchema).sort(), [
       "body",
+      "evidence_policy",
       "idempotency_key",
+      "max_native_amount_msat",
+      "max_routing_fee_msat",
       "max_usd_micros",
       "method",
+      "organization_id",
+      "payment_preferences",
+      "profile",
       "require_receipt",
       "url",
     ]);
@@ -91,6 +97,52 @@ describe("pay_url", () => {
     assert.match(text, /"funds_moved": false/);
     assert.match(text, /Next actions:/);
     assert.match(text, /fund_wallet/);
+  });
+
+  it("forwards the complete Lightning policy and sole MCP principal transport", async () => {
+    let captured: unknown;
+    await handlePayUrl({
+      url: "https://api.run402.test/tiers/v1/prototype",
+      method: "POST",
+      body: {},
+      idempotency_key: "tier:lightning:1",
+      max_usd_micros: 100_000,
+      max_native_amount_msat: 1_100_000,
+      max_routing_fee_msat: 10_000,
+      profile: RUN402_MPP_LIGHTNING_PROFILE,
+      evidence_policy: "run402_settlement",
+      organization_id: "org_1",
+      payment_preferences: [{
+        protocol: "mpp", method: "lightning", intent: "charge", wallet: "nwc:deploy-bot",
+      }],
+    }, {
+      getSdk: () => ({
+        pay: {
+          async fetch(url, init, options) {
+            captured = { url, init, options };
+            return {
+              response: new Response('{"ok":true}', {
+                status: 200, headers: { "content-type": "application/json" },
+              }),
+              payment: null, outcome: "not_required", replay: false,
+            };
+          },
+        },
+      }),
+    });
+    assert.deepEqual((captured as { options: unknown }).options, {
+      idempotencyKey: "tier:lightning:1",
+      maxUsdMicros: 100_000,
+      paymentPreferences: [{
+        protocol: "mpp", method: "lightning", intent: "charge", wallet: "nwc:deploy-bot",
+      }],
+      profile: RUN402_MPP_LIGHTNING_PROFILE,
+      maxNativeAmountMsat: 1_100_000,
+      maxRoutingFeeMsat: 10_000,
+      evidencePolicy: "run402_settlement",
+      organizationId: "org_1",
+      principalTransport: "siwx",
+    });
   });
 
   it("keeps portable evidence but never exposes payment proofs or secret headers", async () => {

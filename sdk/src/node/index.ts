@@ -43,6 +43,8 @@ import { NodeSites } from "./sites-node.js";
 import { NodeAssets } from "./assets-node.js";
 import { NodeArchives } from "./archives-node.js";
 import { NodeActions, type NodeActionTargetKind } from "./actions-node.js";
+import type { LightningWalletAdapter } from "./lightning-wallet-adapter.js";
+import { loadConfiguredLightningWallets } from "./lightning-instruments.js";
 
 export interface NodeRun402Options {
   /** Override the API base URL. Defaults to `getApiBase()` (env var or production URL). */
@@ -87,6 +89,8 @@ export interface NodeRun402Options {
   fetch?: typeof globalThis.fetch;
   /** Override the arbitrary-URL x402 buyer used by `pay.fetch`. */
   payExecutor?: PayExecutor;
+  /** Approved opaque Lightning instruments, indexed by `nwc:<label>` aliases. */
+  lightningWallets?: readonly LightningWalletAdapter[];
   /** Override or disable the bounded Run402-Client metadata header. */
   clientMetadata?: Run402ClientMetadata | false;
   /** Client package version to report; defaults to the SDK package version. */
@@ -145,6 +149,7 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
       allowancePath: opts.allowancePath,
       credentials: opts.credentials ? credentials : undefined,
       paymentSigner: opts.paymentSigner,
+      lightningWallets: opts.lightningWallets ?? configuredLightningWallets(),
     });
   }
   const runOpts: Run402Options = {
@@ -311,6 +316,39 @@ export { NodeCredentialsProvider } from "./credentials.js";
 export { NodeActions } from "./actions-node.js";
 export type { NodeActionTargetKind, NodeActionsOptions } from "./actions-node.js";
 export { setupPaidFetch, createLazyPaidFetch, X402BalanceError } from "./paid-fetch.js";
+export {
+  APPROVED_LIGHTNING_WALLET_PROVIDER,
+  APPROVED_ALBY_HUB_COMMIT,
+  assertApprovedLightningWalletAdapter,
+  albyHubProviderFeeCeilingMsat,
+  type LightningWalletAdapter,
+  type LightningWalletPaymentResult,
+} from "./lightning-wallet-adapter.js";
+export {
+  AlbyHubLndNwcAdapter,
+  type AlbyHubLndNwcAdapterOptions,
+  type NwcRpcTransport,
+} from "./alby-hub-nwc-adapter.js";
+export {
+  addConfiguredLightningInstrument,
+  listConfiguredLightningInstruments,
+  loadConfiguredLightningWallets,
+  lightningInstrumentMetadataPath,
+  removeConfiguredLightningInstrument,
+  OsLightningInstrumentSecretStore,
+  type LightningInstrumentMetadata,
+  type LightningInstrumentSecretStore,
+} from "./lightning-instruments.js";
+
+function configuredLightningWallets(): LightningWalletAdapter[] {
+  try {
+    return loadConfiguredLightningWallets();
+  } catch {
+    // Other SDK operations remain available; an explicitly selected alias will
+    // report that the local instrument cannot be resolved.
+    return [];
+  }
+}
 export type {
   EvmPaymentSigner,
   EvmPaymentSignerProvider,
