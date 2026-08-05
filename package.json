@@ -1,6 +1,7 @@
 {
   "name": "run402-mcp",
   "version": "4.17.8",
+  "packageManager": "npm@11.19.0",
   "mcpName": "com.run402/mcp",
   "description": "MCP server for Run402 — pay-per-call infrastructure for AI agents over x402 USDC micropayments. Generate an image for $0.03 with no signup, or provision Postgres databases with REST API, auth, storage and row-level security.",
   "type": "module",
@@ -67,17 +68,17 @@
   },
   "dependencies": {
     "@humanwhocodes/momoa": "3.3.10",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "@scure/base": "1.2.6",
-    "@x402/evm": "^2.19.0",
-    "@x402/extensions": "^2.19.0",
-    "@x402/fetch": "^2.19.0",
+    "@x402/evm": "^2.21.0",
+    "@x402/extensions": "^2.21.0",
+    "@x402/fetch": "^2.21.0",
     "ipaddr.js": "1.9.1",
     "json-canonicalize": "2.0.0",
-    "mppx": "^0.4.7",
-    "viem": "^2.47.4",
+    "mppx": "^0.4.12",
+    "viem": "^2.55.11",
     "zod": "^3.24.0"
   },
   "devDependencies": {

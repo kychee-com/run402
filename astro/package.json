@@ -93,7 +93,7 @@
     }
   },
   "dependencies": {
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.28.1"
   },
   "devDependencies": {
     "@astrojs/compiler": "^4.0.0",

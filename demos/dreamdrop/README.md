@@ -20,13 +20,13 @@ DreamDrop starts in an interactive in-memory demo mode, so no Run402 credentials
 The commands below use the Wasp 0.25 CLI declared by this app. A global Wasp install is optional.
 
 ```bash
-npx --yes --package npm@11.11.0 --package @wasp.sh/wasp-cli@0.25.0 wasp start db
+npx --yes --package @wasp.sh/wasp-cli@0.25.0 wasp start db
 ```
 
 In a second terminal:
 
 ```bash
-npx --yes --package npm@11.11.0 --package @wasp.sh/wasp-cli@0.25.0 wasp start
+npx --yes --package @wasp.sh/wasp-cli@0.25.0 wasp start
 ```
 
 Open `http://localhost:3000`. Create, remix, and email-preview flows all work in demo mode.
