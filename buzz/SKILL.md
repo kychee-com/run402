@@ -141,7 +141,7 @@ After affirmative approval:
 
     Do not expose a `buzz://` URL, verification code, raw resource id, event JSON, terminal command, or testnet price in chat. The hosted handoff owns login, passkey enrollment/step-up, the short Buzz signing attempt, and completion.
 
-12. Poll authoritative state with `run402 --wallet <profile> buzz adopt offer show <offer-id>`. Opening the link never implies success. Report completion only when the offer is `completed` and the linked adoption is active, using: `Done—you’re now a co-owner. I remain the founder-agent owner. Whenever you want me to deploy something to Run402, just say “deploy.”` For `available`, `cancelled`, or `ineligible`, preserve the exact state and gateway-authored recovery action.
+12. Poll authoritative state with `run402 --wallet <profile> buzz adopt offer show <offer-id>`. Opening the link never implies success. Report completion only when the offer and linked adoption are `completed` and the response contains the terminal consent receipt, public human identity link, and ordinary owner membership. Say that the membership is the only organization-authority source, the founder agent remains an owner, and link/membership revocation are independent. For `available`, `cancelled`, or `ineligible`, preserve the exact state and gateway-authored recovery action.
 
 Do not require a second deployment or ownership transfer for a quick test. If the user later adopts the application for production, preview the ordinary organization transfer and retain only explicitly scoped agent authority.
 

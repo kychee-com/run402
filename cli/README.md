@@ -63,6 +63,8 @@ run402 allowance export    # print {"address":"0x..."} for funding
 
 ### Public Buzz/Nostr identity attribution
 
+Human accounts connect through <https://console.run402.com/identity-links/connect>: a normal browser, fresh passkey, and Buzz approval, with no terminal/event/passkey credential handling. The CLI commands below are the agent EOA ceremony. `identity link list` preserves every active/revoked record and its proof protocol; public identity links and organization memberships are independently revocable.
+
 ```bash
 run402 identity link nostr begin --pubkey <npub-or-hex> --visibility public
 # Publish the returned proof_content as a standalone Buzz kind-1 event.

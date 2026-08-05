@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import type { CredentialsProvider } from "../credentials.js";
+import type { IdentityLinkProof } from "./identity-links.types.js";
 import { Run402 } from "../index.js";
 import { verifyRawNostrEvent } from "./identity-links.protocol.js";
 
@@ -52,6 +53,46 @@ describe("identityLinks protocol", () => {
 });
 
 describe("identityLinks SDK namespace", () => {
+  it("models agent and human public proofs as one protocol-discriminated resource", () => {
+    const humanProof = {
+      identity_link_id: `idlnk_${"1".repeat(32)}`,
+      proof_protocol: "run402.identity-link.nostr.human.v1",
+      status: "active",
+      effective_status: "active",
+      verified_at: "2026-08-05T12:00:00.000Z",
+      revoked_at: null,
+      public_subject: "2".repeat(64),
+      display_subject: "npub1human",
+      proved_principal: { principal_id: "prin_human", principal_type: "human" },
+      effective_principal: { principal_id: "prin_human", principal_type: "human" },
+      public_payload: null,
+      wallet_signature: null,
+      nostr_event: {
+        id: "3".repeat(64),
+        pubkey: "2".repeat(64),
+        created_at: 1_785_843_556,
+        kind: 24_243,
+        tags: [],
+        content: "",
+        sig: "4".repeat(128),
+      },
+      verification_statement: {
+        schema_version: 1,
+        acceptance_context: "standalone_human_link",
+        adopting_principal: "run402_verified",
+        target_session: "run402_verified",
+        fresh_passkey: "run402_verified",
+        verified_at: "2026-08-05T12:00:00.000Z",
+      },
+    } satisfies IdentityLinkProof;
+
+    if (humanProof.proof_protocol === "run402.identity-link.nostr.human.v1") {
+      assert.equal(humanProof.wallet_signature, null);
+      assert.equal(humanProof.verification_statement.fresh_passkey, "run402_verified");
+      assert.equal(humanProof.nostr_event.kind, 24_243);
+    }
+  });
+
   it("begins with explicit public disclosure and signs the exact payload bytes", async () => {
     const challenge = {
       identity_link_challenge_id: "ilc_01K1BW4R2MZ7B4M5SH9XJ2C3DT",
@@ -100,6 +141,36 @@ describe("identityLinks SDK namespace", () => {
     await run402.identityLinks.getProof("idlnk_01K1BW9H2RZ71H90FNNK01F2MT");
     assert.equal(authCalls, 0);
     assert.equal(calls[0]?.url, "https://api.run402.com/identity-link-proofs/v1/idlnk_01K1BW9H2RZ71H90FNNK01F2MT");
+  });
+
+  it("preserves every active and revoked link plus its proof protocol in list order", async () => {
+    const page = {
+      identity_links: [{
+        identity_link_id: `idlnk_${"1".repeat(32)}`,
+        proof_protocol: "run402.identity-link.nostr.human.v1",
+        kind: "nostr_nip01",
+        public_subject: "2".repeat(64),
+        display_subject: "npub1humanone",
+        verified_at: "2026-08-05T12:00:00.000Z",
+        status: "active",
+        effective_status: "active",
+        revoked_at: null,
+      }, {
+        identity_link_id: `idlnk_${"3".repeat(32)}`,
+        proof_protocol: "run402.identity-link.nostr.human.v1",
+        kind: "nostr_nip01",
+        public_subject: "4".repeat(64),
+        display_subject: "npub1humantwo",
+        verified_at: "2026-08-04T12:00:00.000Z",
+        status: "revoked",
+        effective_status: "revoked",
+        revoked_at: "2026-08-05T11:00:00.000Z",
+      }],
+      next_cursor: null,
+    };
+    const { run402 } = sdk(() => response(page));
+    const result = await run402.identityLinks.list();
+    assert.deepEqual(result, page);
   });
 
   it("forbids Nostr secret aliases before network access", async () => {

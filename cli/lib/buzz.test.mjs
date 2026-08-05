@@ -120,6 +120,39 @@ describe("run402 buzz CLI", () => {
     assert.deepEqual(authModes, ["wallet", "wallet"]);
   });
 
+  it("explains completed receipt, public identity attribution, and membership as independent effects", async () => {
+    sdk = {
+      buzz: {
+        humanAdoptionOffers: {
+          get: async () => ({
+            status: "completed",
+            completed_buzz_human_adoption: {
+              status: "completed",
+              consent_receipt: { status: "completed" },
+              public_identity_attribution: {
+                human_identity_link_id: `idlnk_${"1".repeat(32)}`,
+                authority_for_organization: false,
+                revoke_independently: true,
+              },
+              organization_authority: {
+                membership_id: `org_${"2".repeat(32)}:prin_human`,
+                role: "owner",
+                source: "org_membership",
+                revoke_independently: true,
+              },
+            },
+          }),
+        },
+      },
+    };
+    await run("adopt", ["offer", "show", `buzzhao_${"3".repeat(32)}`]);
+    assert.equal(JSON.parse(stdout[0]).status, "completed");
+    assert.match(stderr.join("\n"), /terminal consent receipt/i);
+    assert.match(stderr.join("\n"), /public identity attribution.*does not grant organization authority/i);
+    assert.match(stderr.join("\n"), /ordinary owner membership.*only source of organization authority/i);
+    assert.match(stderr.join("\n"), /revoke.*independently/i);
+  });
+
   it("maps a Honey enrollment file to the goal-shaped SDK call and prints only JSON", async () => {
     const directory = mkdtempSync(join(tmpdir(), "run402-buzz-cli-"));
     const grantsPath = join(directory, "grants.json");

@@ -23,7 +23,7 @@ run402 --wallet buzz-fizz buzz adopt offer \
 
 The offer's normal `https://console.run402.com/buzz/adoptions/buzzhao_…` URL is safe to place in chat and creates no challenge or authority. The Buzz owner opens it, signs in directly, completes a fresh passkey step-up, and only then receives a five-minute six-digit Buzz consent attempt. Buzz returns the public signed event to the same-origin browser fragment; Run402 binds completion to that exact human and browser-session lineage. Fizz polls `run402 --wallet buzz-fizz buzz adopt offer show <buzzhao_id>` and never infers completion from a click.
 
-The result is one human co-owner; Fizz remains a separate founder-agent owner. That ownership is a legitimate endpoint of the autonomous org-of-one path, not temporary excess authority. The active response states that adoption changed neither Fizz's membership nor organization/project ownership and shared no credential. `run402 buzz adopt direct ...` remains an advanced compatibility path, not the canonical conversation.
+The result has three visible effects: a terminal completed consent receipt, a public human `idlnk_…`, and an ordinary active owner membership. Only the membership grants organization authority. Fizz remains a separate founder-agent owner; nothing transfers and no credential is shared. Later link revocation leaves membership and receipt unchanged; membership removal leaves the link and receipt unchanged. `run402 buzz adopt direct ...` remains an advanced compatibility path, not the canonical conversation.
 
 The human owner can then initiate community installation:
 

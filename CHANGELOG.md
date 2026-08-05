@@ -151,6 +151,20 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased — public Buzz/Nostr agent attribution
 
+- **Human and agent attribution:** public identity links now use one
+  protocol-discriminated `idlnk_…` representation for human and agent
+  principals. A principal may hold multiple distinct Nostr subjects; each
+  active subject remains globally unique. Human creation/revocation is the
+  browser/passkey/Buzz flow, while the existing EOA-plus-kind-1 CLI/SDK flow
+  remains the agent ceremony.
+- **Adoption lifecycle:** completed human adoption is a terminal consent
+  receipt with two separately revocable effects: a public human identity link
+  and an ordinary owner membership. Only membership grants organization
+  authority; revoking either effect does not rewrite the receipt or revoke the
+  other.
+- **Public reads and guidance:** SDK types, CLI output, MCP renderers, skills,
+  and documentation preserve link id, subject, proof protocol, and lifecycle,
+  and explicitly distinguish public attribution from organization authority.
 - **SDK:** added `r.identityLinks` with staged Nostr challenge/complete, list, public-proof read, and revoke operations. The Node credential provider signs only the server-authored EIP-191 bytes with the active Run402 EOA; it rejects secret-shaped Nostr input locally.
 - **CLI/OpenClaw:** added `run402 identity link nostr begin|complete` and `identity link list|show|revoke`, with exact JSON stdout, structured recovery errors, and raw seven-field Buzz event ingestion.
 - **Existing reads:** whoami, project, deployment, and transfer renderers preserve additive immutable identity/actor provenance without treating linked identities as authentication, authorization, ownership, payment, or transfer authority.

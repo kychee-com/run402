@@ -76,6 +76,9 @@ function print(result) {
   if (result?.status === "pending") {
     console.error("Buzz control-plane state is pending; follow the single next_actions entry in the JSON response.");
   }
+  if (result?.status === "completed" && result?.completed_buzz_human_adoption) {
+    console.error("Completed: Run402 recorded a terminal consent receipt. The public identity attribution does not grant organization authority; the ordinary owner membership is the only source of organization authority. The identity link and membership can be revoked independently, while the receipt remains completed.");
+  }
 }
 
 async function invoke(operation) {

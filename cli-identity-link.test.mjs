@@ -55,5 +55,8 @@ describe("identity link CLI secret boundary", () => {
     assert.match(stdout.join("\n"), /keys? and run402 wallet stay separate/i);
     assert.match(stdout.join("\n"), /durable\s+public run402 proof/i);
     assert.match(stdout.join("\n"), /never accepts/i);
+    assert.match(stdout.join("\n"), /https:\/\/console\.run402\.com\/identity-links\/connect/);
+    assert.match(stdout.join("\n"), /human.*browser.*passkey.*Buzz/i);
+    assert.match(stdout.join("\n"), /identity link.*organization membership.*independent/i);
   });
 });

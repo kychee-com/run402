@@ -116,7 +116,7 @@ describe("identity link CLI output contract", () => {
     stdout = [];
     await run("link", ["revoke", proof.identity_link_id]);
     assert.equal(stdoutJson().effective_status, "revoked");
-    assert.deepEqual(sdkModes.map((entry) => entry.authMode), ["wallet", "wallet", "none", "wallet"]);
+    assert.deepEqual(sdkModes.map((entry) => entry?.authMode ?? "auto"), ["wallet", "auto", "none", "wallet"]);
   });
 
   it("renders revoked and principal-inactive retained proofs without implying authority", async () => {

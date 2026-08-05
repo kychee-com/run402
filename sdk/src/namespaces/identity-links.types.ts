@@ -1,5 +1,9 @@
 export interface LinkedIdentityRepresentation {
   identity_link_id: string;
+  proof_protocol:
+    | "run402.identity-link.nostr.v1"
+    | "run402.identity-link.nostr.human.v1"
+    | (string & {});
   kind: "nostr_nip01" | (string & {});
   public_subject: string;
   display_subject: string;
@@ -65,7 +69,7 @@ export interface NostrEventV1 {
   id: string;
   pubkey: string;
   created_at: number; // Signed NIP-01 Unix seconds; converting it changes the event id and signature.
-  kind: 1;
+  kind: number;
   tags: string[][];
   content: string;
   sig: string;
@@ -94,17 +98,50 @@ export interface PreparedIdentityLinkChallenge extends IdentityLinkChallenge {
   proof_content: string;
 }
 
-export interface IdentityLinkProof {
+export interface IdentityLinkProofCommon {
   identity_link_id: string;
-  proof_protocol: "run402.identity-link.nostr.v1";
   status: "active" | "revoked";
   effective_status: "active" | "revoked" | "principal_inactive";
   verified_at: string;
   revoked_at: string | null;
-  public_payload: string;
-  wallet_signature: string;
+  public_subject: string;
+  display_subject: string;
+  proved_principal: {
+    principal_id: string;
+    principal_type: "human" | "agent" | "ci" | "system" | (string & {});
+  };
+  effective_principal: {
+    principal_id: string;
+    principal_type: "human" | "agent" | "ci" | "system" | (string & {});
+  };
   nostr_event: NostrEventV1;
 }
+
+export interface AgentIdentityLinkProof extends IdentityLinkProofCommon {
+  proof_protocol: "run402.identity-link.nostr.v1";
+  public_payload: string;
+  wallet_signature: string;
+  verification_statement: null;
+}
+
+export interface HumanIdentityLinkVerificationStatement {
+  schema_version: 1;
+  acceptance_context: "standalone_human_link" | "buzz_human_adoption";
+  adopting_principal: "run402_verified";
+  target_session: "run402_verified" | "legacy_run402_verified";
+  fresh_passkey: "run402_verified";
+  verified_at: string;
+}
+
+export interface HumanIdentityLinkProof extends IdentityLinkProofCommon {
+  proof_protocol: "run402.identity-link.nostr.human.v1";
+  public_payload: null;
+  wallet_signature: null;
+  verification_statement: HumanIdentityLinkVerificationStatement;
+}
+
+/** Public attribution only. Neither variant is an authenticator or authority edge. */
+export type IdentityLinkProof = AgentIdentityLinkProof | HumanIdentityLinkProof;
 
 export interface IdentityLinkListResult {
   identity_links: LinkedIdentityRepresentation[];

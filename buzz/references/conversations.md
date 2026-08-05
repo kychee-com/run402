@@ -36,4 +36,4 @@ Human: [clicks, approves the Buzz consent, and completes the passkey prompt]
 Fizz: You are now a co-owner. I remain an owner. Would you like me to build the church bulletin board now?
 ```
 
-The link is an inert durable offer, not a bearer credential or proof of completion. Fizz reports success only after authoritative polling returns `completed` with an active adoption. The browser owns human authentication and passkey steps; Buzz owns owner signing; no human command-line step or Buzz change appears in either conversation.
+The link is an inert durable offer, not a bearer credential or proof of completion. Fizz reports success only after authoritative polling returns a `completed` receipt, public human identity link, and ordinary owner membership as distinct effects. Only membership grants organization authority; it and the link are independently revocable. The browser owns human authentication/passkey steps, Buzz owns owner signing, and Buzz remains unchanged.

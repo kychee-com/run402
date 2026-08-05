@@ -3,7 +3,7 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { normalizeArgv, assertKnownFlags, flagValue, requirePositionalCount, failUnknownSubcommand } from "./argparse.mjs";
 
-const HELP = `run402 identity link — public proof-backed external agent identities
+const HELP = `run402 identity link — public proof-backed external identities
 
 Usage:
   run402 identity link nostr begin --pubkey <npub|hex> --visibility public [--idempotency-key <key>]
@@ -14,8 +14,15 @@ Usage:
   run402 identity link revoke <identity_link_id>
 
 Security and disclosure:
+  - Human linking is a browser/passkey/Buzz ceremony. Open
+    https://console.run402.com/identity-links/connect; do not paste a signed
+    event, passkey, session, private key, or resource id into the CLI.
+  - A human identity link and an organization membership are independent:
+    either can be revoked without implicitly revoking the other.
+  - list uses the active CLI identity: an agent wallet when present, otherwise
+    the signed-in human control-plane session.
   - begin publishes a standalone public kind-1 Nostr event and creates a durable
-    public run402 proof. Revocation does not erase either historical proof.
+    public run402 proof for the agent. Revocation does not erase either historical proof.
   - the Nostr key and run402 wallet stay separate. This command never accepts,
     derives, reads, or prints an nsec, Nostr private key, mnemonic, or seed.
   - the wallet, agent pubkey, and optional Buzz NIP-OA owner attestation become
@@ -84,7 +91,7 @@ async function list(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, ["--help", "-h"]);
   requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 identity link list" });
-  try { console.log(JSON.stringify(await getSdk({ authMode: "wallet" }).identityLinks.list(), null, 2)); }
+  try { console.log(JSON.stringify(await getSdk().identityLinks.list(), null, 2)); }
   catch (error) { reportSdkError(error); }
 }
 

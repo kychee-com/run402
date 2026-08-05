@@ -58,8 +58,19 @@ Expanded non-secret state may include the offer id, organization, identity link,
 ## Adoption complete
 
 ```markdown
-Done—you’re now a co-owner. I remain the founder-agent owner. Whenever you want me to deploy something to Run402, just say “deploy.”
+### Ownership handoff complete
+- Consent receipt: `buzzha_…` (`completed`)
+- Public Buzz identity link: `idlnk_…` (`active`; attribution only)
+- Organization membership: `<membership-id>` (`owner`; grants organization authority)
+- Founder agent: remains an owner
+
+The identity link and organization membership are independently revocable; neither action rewrites the completed consent receipt.
 ```
+
+Report success only from the authoritative completed offer/adoption response.
+Opening the handoff link, returning a callback, or observing a Buzz signature is
+not completion. Never describe the public identity link as authentication or
+organization authority.
 
 ## Blocked
 

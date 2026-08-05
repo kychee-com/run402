@@ -1,4 +1,4 @@
-export type BuzzHumanAdoptionStatus = "pending" | "active" | "expired" | "cancelled";
+export type BuzzHumanAdoptionStatus = "pending" | "completed" | "expired" | "cancelled";
 export type BuzzHumanAdoptionOfferStatus = "available" | "completed" | "cancelled" | "ineligible";
 export type BuzzHumanAdoptionOfferIneligibleReason =
   | "agent_inactive"
@@ -85,6 +85,8 @@ export interface BuzzHumanAdoption {
   org_id: string;
   initiating_agent_principal_id?: string;
   identity_link_id?: string;
+  initiating_agent_identity_link_id?: string;
+  human_identity_link_id?: string | null;
   expected_buzz_owner_subject?: string;
   status: BuzzHumanAdoptionStatus;
   owner_proof_content: {
@@ -116,6 +118,7 @@ export interface BuzzHumanAdoption {
   expires_at: string;
   consumed_at: string | null;
   activated_at: string | null;
+  completed_at: string | null;
   expired_at: string | null;
   cancelled_at: string | null;
   created_at: string;
@@ -243,8 +246,41 @@ export interface BuzzHumanAdoptionOffer {
   current_buzz_human_adoption_id: string | null;
   completed_buzz_human_adoption: {
     buzz_human_adoption_id: string;
-    status: "active";
+    status: "completed";
+    consent_receipt: {
+      status: "completed";
+      completed_at: string | null;
+    };
+    public_identity_attribution: {
+      human_identity_link_id: string | null;
+      authority_for_organization: false;
+      revoke_independently: true;
+    };
+    organization_authority: {
+      membership_id: string | null;
+      role: "owner";
+      source: "org_membership";
+      revoke_independently: true;
+    };
     authority_effects: NonNullable<BuzzHumanAdoption["authority_effects"]>;
+  } | null;
+  latest_attempt_receipt?: {
+    attempt_reference: string;
+    status: BuzzHumanAdoptionStatus;
+    issued_at: string | null;
+    expires_at: string | null;
+    expired_at: string | null;
+    cancelled_at: string | null;
+    activated_at: string | null;
+    diagnosis_code: string;
+    last_observed_stage: string | null;
+    last_trace_id: string | null;
+    milestones: Array<{
+      stage: string;
+      observed_at: string;
+      trace_id?: string;
+      result_code?: string;
+    }>;
   } | null;
   created_at: string;
   updated_at: string;

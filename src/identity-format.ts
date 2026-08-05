@@ -12,7 +12,7 @@ export function formatLinkedIdentity(identity: LinkedIdentityRepresentation): st
   const lifecycle = identity.effective_status === "active"
     ? "active"
     : identity.effective_status;
-  return `${identity.kind} ${inline(identity.display_subject || identity.public_subject)} (${lifecycle})`;
+  return `${inline(identity.identity_link_id)} ${identity.kind} ${inline(identity.display_subject || identity.public_subject)} — ${identity.proof_protocol} (${lifecycle}) — public attribution only, not organization authority`;
 }
 
 export function formatPrincipal(principal: PrincipalRepresentation | null | undefined): string {

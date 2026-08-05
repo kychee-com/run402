@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { CredentialsProvider } from "../credentials.js";
 import { Run402 } from "../index.js";
+import type { BuzzHumanAdoptionOffer } from "./buzz.types.js";
 
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -26,6 +27,57 @@ function sdk(handler: (url: string, init: RequestInit) => Response | Promise<Res
 }
 
 describe("Buzz SDK namespace", () => {
+  it("models completion as a terminal receipt, public attribution, and ordinary membership", () => {
+    const completed = {
+      buzz_human_adoption_offer_id: `buzzhao_${"1".repeat(32)}`,
+      org_id: `org_${"2".repeat(32)}`,
+      initiating_agent_principal_id: "prin_agent",
+      identity_link_id: `idlnk_${"3".repeat(32)}`,
+      expected_buzz_owner: {
+        nostr_subject: "4".repeat(64),
+        evidence: "nip_oa_owner_attestation",
+        authoritative_for_run402: false,
+      },
+      status: "completed",
+      handoff_url: null,
+      deployment_context: null,
+      current_buzz_human_adoption_id: null,
+      completed_buzz_human_adoption: {
+        buzz_human_adoption_id: `buzzha_${"5".repeat(32)}`,
+        status: "completed",
+        consent_receipt: { status: "completed", completed_at: "2026-08-05T12:00:00.000Z" },
+        public_identity_attribution: {
+          human_identity_link_id: `idlnk_${"6".repeat(32)}`,
+          authority_for_organization: false,
+          revoke_independently: true,
+        },
+        organization_authority: {
+          membership_id: `org_${"2".repeat(32)}:prin_human`,
+          role: "owner",
+          source: "org_membership",
+          revoke_independently: true,
+        },
+        authority_effects: {
+          human_membership_role: "owner",
+          initiating_agent_membership_changed: false,
+          organization_ownership_transferred: false,
+          projects_transferred: false,
+          credentials_shared: false,
+        },
+      },
+      created_at: "2026-08-05T11:00:00.000Z",
+      updated_at: "2026-08-05T12:00:00.000Z",
+      completed_at: "2026-08-05T12:00:00.000Z",
+      cancelled_at: null,
+      ineligible_at: null,
+      ineligible_reason: null,
+      next_actions: [],
+    } satisfies BuzzHumanAdoptionOffer;
+
+    assert.equal(completed.completed_buzz_human_adoption.public_identity_attribution.authority_for_organization, false);
+    assert.equal(completed.completed_buzz_human_adoption.organization_authority.source, "org_membership");
+  });
+
   it("detects an older gateway without manufacturing remote Buzz state", async () => {
     const { run402 } = sdk(() => response({ principal: { id: "prin_1" }, memberships: [] }));
     const status = await run402.buzz.status();

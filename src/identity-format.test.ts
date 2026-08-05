@@ -8,6 +8,7 @@ describe("identity and provenance formatting", () => {
   it("renders current linked and revoked identities without treating them as owners", () => {
     assert.match(formatLinkedIdentity({
       identity_link_id: "idlnk_1",
+      proof_protocol: "run402.identity-link.nostr.human.v1",
       kind: "nostr_nip01",
       public_subject: "6b69",
       display_subject: "npub1agent",
@@ -15,10 +16,11 @@ describe("identity and provenance formatting", () => {
       status: "active",
       effective_status: "active",
       revoked_at: null,
-    }), /nostr_nip01 `npub1agent` \(active\)/);
+    }), /idlnk_1.*npub1agent.*run402\.identity-link\.nostr\.human\.v1.*active.*public attribution only/i);
 
     assert.match(formatLinkedIdentity({
       identity_link_id: "idlnk_2",
+      proof_protocol: "run402.identity-link.nostr.v1",
       kind: "nostr_nip01",
       public_subject: "dead",
       display_subject: "npub1old",
@@ -75,6 +77,7 @@ describe("identity and provenance formatting", () => {
       display_name: null,
       linked_identities: [{
         identity_link_id: "idlnk_future",
+        proof_protocol: "did-key-proof-v2",
         kind: "did:key",
         public_subject: "did:key:z6Mk",
         display_subject: "did:key:z6Mk",
