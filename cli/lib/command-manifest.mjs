@@ -200,6 +200,14 @@ export const COMMAND_MANIFEST = [
 
   // ── events / errors (flat, merged runners) ───────────────────────────────
   { path: ["events"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
+  { path: ["rooms", "who"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["rooms", "send"], positionals: [p("body")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["hello"], runStyle: "sub" },
+  { path: ["rooms", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["rooms", "get"], positionals: [p("message_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["msg_1"], runStyle: "sub" },
+  { path: ["rooms", "ack"], positionals: [p("message_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["msg_1"], runStyle: "sub" },
+  { path: ["claims", "create"], positionals: [p("resource")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["deploy"], runStyle: "sub" },
+  { path: ["claims", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["claims", "release"], positionals: [p("claim_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["clm_1"], runStyle: "sub" },
   { path: ["errors"], positionals: [p("fingerprint_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
 
   // ── jobs ─────────────────────────────────────────────────────────────────

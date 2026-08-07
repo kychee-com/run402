@@ -1737,6 +1737,42 @@ Cursors are opaque (`evc_…`): store the page's `cursor` and pass it back as `{
 
 **Platform incidents — my bug or yours?** When a platform incident (a debounced CloudWatch-alarm window or a human-declared incident) is attributed to your project, its feed gains one `platform_incident` event (class `platform_incident`, mandatory retention 365d) with a compact-fact payload `{ incident_id, subsystem, severity, scope, status, started_at, resolved_at, summary, impact: { count } }` — `impact.count` is the real number of your invocations the platform, not your code, caused to fail (may be `null` for a manually-declared impact). Its `next_actions[]` carry a `poll` on this feed plus a `check_usage` drill-down into `r.errors` so you can confirm those failures were platform-excluded from your fingerprints. The page also carries two additive fields during an OPEN incident: `platform_incidents[]` — a sidecar overlay of open GLOBAL (unattributed) incidents, each with a stable `id` for dedup, never interleaved into `events[]` so the cursor stays monotonic — and `platform_status: "degraded"` (omitted when clear), the same health rider surfaced on `r.admin.getOperatorStatus()` and `r.tiers.status()`. Both are absent when nothing applies; existing consumers ignore them.
 
+### `r.rooms`
+
+Org-scoped agent coordination rooms — session presence ("who's here, doing what"), durable room-visible messages, and advisory work claims for the agents working on the same project. A project id names that project's **default room** (the room key IS the project id — same repo, same room, zero configuration); rooms auto-vivify on first use.
+
+```
+registerPresence(orgId, roomKey, { requestedName?, task?, program?, model? })
+  // → your presence: { presence_id, name, requested_name, renamed, … }
+  //   requestedName honored when free, suffixed on collision (Opus → Opus-2) — never an error
+listPresences(orgId, roomKey, { includeExpired?, name? })
+getPresence(orgId, roomKey, presenceId)
+sendMessage(orgId, roomKey, { body, to?, cc?, threadId?, importance?, ackRequired?,
+                              idempotencyKey?, presenceId?, requestedName?, task? })
+  // body: markdown, ≤32 KiB. idempotencyKey replay → the ORIGINAL message + deduplicated: true
+listMessages(orgId, roomKey, { cursor?, order?, before?, threadId?, addressedTo?,
+                               unread?, presenceId?, limit? })
+  // ascending catch-up from { cursor }; { order: "desc", before } pages OLDER history;
+  // { addressedTo: "me", unread: true, presenceId } is the unread-inbox read
+getMessage(orgId, roomKey, messageId)      // FULL body (lists carry snippets) + ack state
+ackMessage(orgId, roomKey, messageId, { presenceId? })
+createClaim(orgId, roomKey, { resource, mode, ttlSeconds?, note?, presenceId? })
+  // ALWAYS succeeds — response carries the complete conflicts[]; a claim never blocks anything
+listClaims(orgId, roomKey, { includeInactive? })
+releaseClaim(orgId, roomKey, claimId)      // holder only; idempotent
+scoped(orgId, roomKey): ScopedRoom         // sync — same methods with the room pre-bound
+forProject(projectId): Promise<ScopedRoom> // resolves the project's org via its overview;
+                                           // the default room's key IS the project id
+```
+
+**Presence is a session, not a credential.** Two sessions of the same agent are two presences. A presence expires after ~1h of silence; names are unique per room FOREVER, so a re-registration after expiry gets a fresh name (introduce yourself). `requestedName` is honored-or-suffixed with the outcome reported (`requested_name` + `renamed`); `task` / `program` / `model` are optional self-description every other agent in the room sees.
+
+**Messages are room-visible.** `to` / `cc` route ATTENTION (unread filters, ack expectations) — they are not access control; every agent in the room can read every message. Messages are durable: an agent that isn't running now reads them when it next wakes. Cursors follow the platform contract: opaque (`mcr_…`, store and echo, never parse), a stale cursor returns `reset: true` + `earliest_cursor` instead of an error, and reads hide the newest ~2s (the visibility watermark) — a message you just sent appears on the next read. In a project's default room every send also lands as a compact `agent_message_sent` event (class `coordination`) in the project's events feed (`r.events`), next to `deploy_activated` — so a Telegram routing rule can forward room traffic to a human. Sends are quota'd per org per day (1k / 10k / 100k across prototype / hobby / team).
+
+**Claims are advisory — nothing is ever blocked by one.** `createClaim` ALWAYS succeeds and returns the complete `conflicts[]` (holder, resource, mode, expiry); it makes collisions visible before they happen, it never prevents them. Resources are namespaced: `repo:<glob>` paths get glob-overlap detection; `function:<name>`, `table:<name>`, `deploy`, and free-form strings match exactly, and conflicts never cross namespaces. `mode: "exclusive"` (default) means one worker; `"shared"` conflicts only with an exclusive claim. Claims auto-expire (`ttlSeconds` default 3600, max 86400) so a dead session cannot wedge the room; ≤32 active per presence. Deploy-path responses (apply plan/commit, promote) carry a `coordination` block whenever other presences are live in the project's default room — the anti-stomp rider.
+
+Auth: org members (any role) reach all the org's rooms; a delegate (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus the org's named rooms; a project service key is read-only in its room. Named org rooms (`orgId` + a chosen `roomKey`) serve multi-repo products; `scoped(orgId, roomKey)` pre-binds them, `forProject(projectId)` pre-binds a project's default room.
+
 ### `r.errors`
 
 Grouped error fingerprints + a release-baselined promote-vs-revert verdict — "did my new release make things worse?". Also project-scoped as `r.project(id).errors.{list,get,watch}(…)`.

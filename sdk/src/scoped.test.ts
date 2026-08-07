@@ -535,6 +535,7 @@ describe("ScopedRun402 drift protection", () => {
     "ci", // CI binding lifecycle is intentionally unscoped in v1.
     "operator", // human/email principal session — not project-scoped.
     "org", // org membership is organization-scoped, not project-scoped.
+    "rooms", // rooms are organization-scoped; the project connection is forProject(), not r.project(id).
     // `grants` IS project-scoped (exposed as r.project(id).grants) — checked below.
   ]);
 

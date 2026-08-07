@@ -156,6 +156,8 @@ const MATRIX = {
   org: { shared: [], specific: ["create", "get", "rename", "whoami", "list", "audit", "member", "invite"] },
   grants: { shared: [], specific: ["create", "revoke"] },
   events: { shared: [], specific: [] },
+  rooms: { shared: [], specific: [] },
+  claims: { shared: [], specific: [] },
   errors: { shared: [], specific: [] },
   // doctor and logs are flag-based commands (no subcommands): --help must
   // short-circuit at the top of run() before any check runs or getSdk() call.

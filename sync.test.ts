@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -105,7 +105,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -500,6 +500,21 @@ const SURFACE: Capability[] = [
   // --org / org_id; the SDK's events.listForOrg is tracked in SDK_ONLY_METHODS.
   { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   mcp: "list_project_events",          cli: "events",                        openclaw: "events" },
 
+  // ── Agent messaging — coordination rooms (add-agent-messaging) ──────────
+  // One CLI family per resource: `rooms` (presence + messages: who/send/list/
+  // get/ack) and `claims`. join_room folds presence-register + who + claims
+  // into the single arrival call; read_room_messages folds list + get-one
+  // (message_id param). Org-scoped addressing (org_id + room_key) and the
+  // default-room resolution (rooms.forProject) ride the same tools/commands.
+  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences", mcp: "join_room",                    cli: "rooms:who", openclaw: "rooms:who" },
+  { id: "send_room_message",            endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "send_room_message",            cli: "rooms:send", openclaw: "rooms:send" },
+  { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "read_room_messages",           cli: "rooms:list", openclaw: "rooms:list" },
+  { id: "ack_room_message",             endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages/:message_id/ack", mcp: "ack_room_message",             cli: "rooms:ack", openclaw: "rooms:ack" },
+  { id: "get_room_message",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages/:message_id", mcp: null, cli: "rooms:get", openclaw: "rooms:get" },
+  { id: "claim_room_resource",          endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/claims",  mcp: "claim_room_resource",          cli: "claims:create", openclaw: "claims:create" },
+  { id: "list_room_claims",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/claims", mcp: null, cli: "claims:list", openclaw: "claims:list" },
+  { id: "release_room_claim",           endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/claims/:claim_id", mcp: "release_room_claim",           cli: "claims:release", openclaw: "claims:release" },
+
   // ── Release error rollup (release-error-rollup) ─────────────────────────
   // One CLI command (`run402 errors`) + one MCP tool (`errors_list`) cover the
   // whole surface: the list+verdict, the single-fingerprint detail (CLI
@@ -846,6 +861,14 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_operator_status: "admin.getOperatorStatus",
   list_notifications: "admin.listNotifications",
   list_project_events: "events.list",
+  join_room: "rooms.registerPresence",
+  send_room_message: "rooms.sendMessage",
+  read_room_messages: "rooms.listMessages",
+  ack_room_message: "rooms.ackMessage",
+  claim_room_resource: "rooms.createClaim",
+  release_room_claim: "rooms.releaseClaim",
+  get_room_message: "rooms.getMessage",
+  list_room_claims: "rooms.listClaims",
   errors_list: "errors.list",
   get_notification: "admin.getNotification",
   get_notification_preferences: "admin.getNotificationPreferences",
@@ -1244,6 +1267,14 @@ describe("SDK surface alignment", () => {
       // Shares the `events` CLI command (--org) and the list_project_events
       // MCP tool (org_id param); no dedicated verb/tool of its own.
       "events.listForOrg",
+      // Agent messaging: join_room folds presence-listing + claim-listing into
+      // the arrival call and read_room_messages folds get-one (message_id
+      // param); scoped()/forProject() are addressing sugar the CLI uses
+      // internally; getPresence is a drill-down with no verb of its own yet.
+      "rooms.listPresences",
+      "rooms.getPresence",
+      "rooms.scoped",
+      "rooms.forProject",
       // ─── Release error rollup — detail + promote-gate watch ────────────
       // `errors.list` is the SURFACE capability (errors_list). get + watch
       // share the same `errors` CLI command (positional fingerprint id / the

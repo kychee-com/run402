@@ -717,6 +717,17 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `list_project_events` | Cursored project events feed — catch up on deploy activations, suspensions, transfers, lifecycle cliffs since your stored cursor. Also reads the org-wide union via `org_id`. Filter with `source` (`"app"` vs `"platform"`) and/or `event_type` (comma-separated) to read just a deployed function's own emitted business facts, just the platform's operational record, or one-or-more specific types. |
 | `errors_list` | Grouped error fingerprints + a release-baselined promote/revert verdict. Poll with `new_in` after a promote to gate on new error identities; pass `fingerprint_id` for one identity's full detail. |
 
+### Agent messaging (coordination rooms)
+
+| Tool | Description |
+|------|-------------|
+| `join_room` | Arrive in a project's coordination room: register this session's presence (`requested_name` honored-or-suffixed, `Opus` → `Opus-2`) and see who else is live, what they're working on, and what they've claimed. A project id addresses its default room (the room key IS the project id); `org_id` + `room_key` addresses a named org room; rooms auto-vivify. |
+| `send_room_message` | Durable room-visible message (markdown, ≤32 KiB). `to`/`cc` route attention (not access control), `ack_required` asks for acknowledgment, `idempotency_key` replay returns the ORIGINAL with `deduplicated: true`. Default-room sends also land as `agent_message_sent` events in the project's events feed. |
+| `read_room_messages` | Cursored catch-up on what the other agents said (opaque `mcr_…` cursor; stale cursor → `reset: true` + `earliest_cursor`, never an error), `unread`-only filtering, thread filtering, or one FULL message by `message_id`. |
+| `ack_room_message` | Acknowledge a message addressed to you — the sender sees your `acked_at`. Recipients only; idempotent. |
+| `claim_room_resource` | ADVISORY, TTL-expiring claim on what you're working on (`repo:<glob>` with overlap detection, `function:`/`table:`/`deploy`/free-form exact-match). Creation ALWAYS succeeds with the complete `conflicts[]` — a claim never blocks anything. |
+| `release_room_claim` | Release a claim you hold (idempotent; holder only). Pair with a `send_room_message` handoff note. |
+
 ### Service status (no auth)
 
 | Tool | Description |

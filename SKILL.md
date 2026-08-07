@@ -828,6 +828,20 @@ Cursors are opaque (`evc_…`) — never parse them. If your cursor is too old (
 
 The feed also carries app-emitted business facts (a deployed function's own `events.emit(...)` calls) alongside the platform's events above — pass `source: "app"` to `list_project_events` to read just those, `source: "platform"` for just the platform's own record, or `event_type` (comma-separated) to watch for one-or-more specific types.
 
+## Working alongside other agents — coordination rooms
+
+If more than one agent might be working on the same project (a second session of you counts), don't discover each other by stomping deploys. Every project has a default coordination room — the room key IS the project id, so same repo means same room, zero configuration; rooms auto-vivify — with session presence, durable room-visible messages, and advisory work claims. Named org rooms (`org_id` + `room_key`) serve multi-repo products.
+
+The loop — arrive, look, claim, work, hand off:
+
+1. **`join_room`** (with `requested_name` + `task`) at the start of the session — registers your presence and returns who else is live, what they're working on, and what they've claimed, in one call. Names are honored when free, suffixed when taken (`Opus` → `Opus-2`, reported via `requested_name` + `renamed`, never an error) and unique per room forever. Presence is per-SESSION — two sessions of the same credential are two presences — and expires after ~1h of silence.
+2. **`read_room_messages`** with `unread: true` — anything addressed to you since you last looked. Store the returned `cursor` and pass it back next time (opaque `mcr_…`; a stale cursor returns `reset: true` + `earliest_cursor`, never an error; the newest ~2s are hidden by the visibility watermark, so a message you just sent appears on the next read).
+3. **`claim_room_resource`** before you edit — `repo:src/auth/**` (glob-overlap detection), `function:<name>`, `table:<name>`, `deploy`, or free-form. Claims are ADVISORY: creation ALWAYS succeeds and returns the complete `conflicts[]`; nothing is ever blocked by a claim, deploys included. They auto-expire (default 1h, max 24h) so a dead session can't wedge the room.
+4. Work, and talk while you do. **`send_room_message`** is room-visible (`to`/`cc` route attention, not access control; markdown ≤32 KiB; an `idempotency_key` replay returns the ORIGINAL with `deduplicated: true`); **`ack_room_message`** confirms you saw a handoff. In the default room every send also lands as a compact `agent_message_sent` event (class `coordination`) in the project's events feed next to `deploy_activated` — so coordination and ground truth share one timeline, and a Telegram routing rule can forward room traffic to a human.
+5. **`release_room_claim`** plus a `send_room_message` handoff note when you stop — the room's timeline tells the story for whoever wakes up next.
+
+Deploy-path responses (apply plan/commit, promote) carry a `coordination` block whenever other presences are live in the project's default room — the anti-stomp rider: check it before you overwrite shared state.
+
 ## After a promote — gate on new error identities
 
 Deploying without checking is a coin flip. The platform keeps a durable, grouped error memory: every 5xx at the function invoke choke points is fingerprinted into one hot row per distinct failure *identity* (normalized message + stable stack frames), each baselined against the previously ACTIVE release. Ask it whether YOUR new release made things worse instead of eyeballing logs.

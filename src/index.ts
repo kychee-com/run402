@@ -313,6 +313,12 @@ import { getNotificationPreferencesSchema, handleGetNotificationPreferences } fr
 import { setNotificationPreferencesSchema, handleSetNotificationPreferences } from "./tools/set-notification-preferences.js";
 import { listNotificationsSchema, handleListNotifications } from "./tools/list-notifications.js";
 import { listProjectEventsSchema, handleListProjectEvents } from "./tools/list-project-events.js";
+import { joinRoomSchema, handleJoinRoom } from "./tools/join-room.js";
+import { sendRoomMessageSchema, handleSendRoomMessage } from "./tools/send-room-message.js";
+import { readRoomMessagesSchema, handleReadRoomMessages } from "./tools/read-room-messages.js";
+import { ackRoomMessageSchema, handleAckRoomMessage } from "./tools/ack-room-message.js";
+import { claimRoomResourceSchema, handleClaimRoomResource } from "./tools/claim-room-resource.js";
+import { releaseRoomClaimSchema, handleReleaseRoomClaim } from "./tools/release-room-claim.js";
 import { errorsListSchema, handleErrorsList } from "./tools/errors-list.js";
 import { testNotificationSchema, handleTestNotification } from "./tools/test-notification.js";
 import { rotateWebhookSecretSchema, handleRotateWebhookSecret } from "./tools/rotate-webhook-secret.js";
@@ -1370,6 +1376,50 @@ server.tool(
   "Catch up on what happened to a project since you last looked: the durable, cursored feed of deploy activations, mailbox suspensions, transfers, lifecycle cliffs, and verification outcomes, each with platform-suggested next_actions. The feed also carries app-emitted business facts (a deployed function's own events.emit calls) alongside the platform's own events — pass source:\"app\" to read just the app's facts, source:\"platform\" for just the platform's operational record, or event_type (comma-separated) to filter to one-or-more specific types; key on (source, event_type) together since app-chosen type names are free-form. Reach for this after any deploy (the apply/promote response hands you a positioned cursor) and at the start of a session on an existing project. Store the returned cursor and pass it back next time; an expired cursor returns reset:true + earliest_cursor instead of an error. Read-only; works even on frozen projects.",
   listProjectEventsSchema,
   async (args) => handleListProjectEvents(args),
+);
+
+// ─── Agent messaging — coordination rooms (presence, messages, claims) ─────
+
+server.tool(
+  "join_room",
+  "Arrive in a project's coordination room: register (or reuse) this session's presence and see who else is live, what they're working on, and what they've claimed — the one-call 'arrive and look' before starting work. Every project has a default room (project_id addresses it; the room key IS the project id) and orgs can have named rooms (org_id + room_key) for multi-repo products; rooms auto-vivify. Pass requested_name to choose your own name — honored when free, deterministically suffixed on collision (Opus -> Opus-2) with the outcome reported, never an error — and task so other agents know what you're doing. Presences are per-SESSION (two sessions of the same agent are two presences) and expire after ~1h of silence; names are unique per room forever. Reach for this at the start of any session on a project other agents might also be working on.",
+  joinRoomSchema,
+  async (args) => handleJoinRoom(args),
+);
+
+server.tool(
+  "send_room_message",
+  "Send a message to the other agents in a coordination room. Messages are room-visible (to/cc route ATTENTION — unread filters and ack expectations — they are not access control), support threads and importance, and are durable: an agent that isn't running now reads it when it next wakes. In a project's default room every send also lands as a compact agent_message_sent event in the project's events feed, next to deploy_activated — so coordination and ground truth share one timeline, and a Telegram routing rule can forward it to a human. Idempotency_key makes retries safe (replay returns the ORIGINAL, deduplicated: true). First send auto-registers your presence if you haven't joined. Sends are quota'd per org per day.",
+  sendRoomMessageSchema,
+  async (args) => handleSendRoomMessage(args),
+);
+
+server.tool(
+  "read_room_messages",
+  "Read a coordination room's messages: cursored catch-up ('what did the other agents say since I last looked'), unread-only filtering for messages addressed to you, thread filtering, or one full message by message_id (lists carry snippets; the get-one read carries the FULL body). Store the returned cursor and pass it back next time — a stale cursor returns reset:true + earliest_cursor instead of an error, and the newest ~2s are hidden by the visibility watermark (a message you just sent appears on the next read). Read-only; works even while an org is in billing grace.",
+  readRoomMessagesSchema,
+  async (args) => handleReadRoomMessages(args),
+);
+
+server.tool(
+  "ack_room_message",
+  "Acknowledge a room message addressed to this session's presence. The sender sees your acked_at on the message — acks are how an agent confirms it saw a handoff or agreed to a split. Recipients only (422 otherwise); idempotent (a replay reports the original ack time).",
+  ackRoomMessageSchema,
+  async (args) => handleAckRoomMessage(args),
+);
+
+server.tool(
+  "claim_room_resource",
+  "Declare what you're working on before you collide with another agent: an ADVISORY, TTL-expiring claim on a resource — repo:<glob> paths (glob-overlap conflict detection, e.g. repo:src/auth/**), function:<name>, table:<name>, deploy, or free-form strings. Creation ALWAYS succeeds and returns the complete conflicts[] (holder, resource, mode, expiry) — a claim never blocks anything, anywhere; it makes collisions visible early, and other agents see your claims in join_room and in their deploy responses' coordination block. Claims auto-expire (default 1h) so a dead session can't wedge the room. Claim before you edit; release_room_claim when you hand off.",
+  claimRoomResourceSchema,
+  async (args) => handleClaimRoomResource(args),
+);
+
+server.tool(
+  "release_room_claim",
+  "Release a claim you hold in a coordination room (holder's credential only; idempotent — already-released claims report already_released: true with the original time). Pair it with a send_room_message handoff note so the room's timeline tells the story.",
+  releaseRoomClaimSchema,
+  async (args) => handleReleaseRoomClaim(args),
 );
 
 server.tool(

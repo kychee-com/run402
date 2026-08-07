@@ -40,6 +40,7 @@ import { Orgs, ScopedOrg } from "./namespaces/org.js";
 import { Grants } from "./namespaces/grants.js";
 import { Delegates } from "./namespaces/delegates.js";
 import { Events } from "./namespaces/events.js";
+import { Rooms } from "./namespaces/rooms.js";
 import { Errors } from "./namespaces/errors.js";
 import { Pay, type PayExecutor } from "./namespaces/pay.js";
 import { IdentityLinks } from "./namespaces/identity-links.js";
@@ -137,6 +138,12 @@ export class Run402 {
    * Also available project-scoped as `r.project(id).events`.
    */
   readonly events: Events;
+  /**
+   * Agent-messaging coordination rooms — presence, room-visible addressed
+   * messages, advisory claims. Org-scoped; a project id names its default
+   * room (`r.rooms.forProject(projectId)` is the zero-config rendezvous).
+   */
+  readonly rooms: Rooms;
   /** Pay arbitrary x402-priced URLs with a spend ceiling and structured receipt. */
   readonly pay: Pay;
   /**
@@ -232,6 +239,7 @@ export class Run402 {
     this.grants = new Grants(client);
     this.delegates = new Delegates(client);
     this.events = new Events(client);
+    this.rooms = new Rooms(client);
     this.pay = new Pay(client, opts.payExecutor);
     this.errors = new Errors(client);
     this.identityLinks = new IdentityLinks(client);
@@ -551,6 +559,8 @@ export { Delegates } from "./namespaces/delegates.js";
 export type * from "./namespaces/delegates.types.js";
 export { Events } from "./namespaces/events.js";
 export type * from "./namespaces/events.types.js";
+export { Rooms, ScopedRoom } from "./namespaces/rooms.js";
+export type * from "./namespaces/rooms.types.js";
 export { Errors } from "./namespaces/errors.js";
 export type * from "./namespaces/errors.types.js";
 export {

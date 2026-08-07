@@ -45,6 +45,8 @@ Commands:
   grants      Per-project capability grants for agent/CI principals (create, revoke)
   delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
   events      What happened to your project since you last looked (cursored feed)
+  rooms       Coordinate with the other agents on your project (who/send/ack)
+  claims      Say what you're working on before you collide (advisory)
   errors      Grouped error fingerprints + a promote/revert verdict (release-baselined)
   jobs        Submit and inspect platform-managed jobs
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
@@ -270,6 +272,16 @@ switch (cmd) {
   }
   case "events": {
     const { run } = await import("./lib/events.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "rooms": {
+    const { run } = await import("./lib/rooms.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "claims": {
+    const { run } = await import("./lib/claims.mjs");
     await run(sub, rest);
     break;
   }
