@@ -22,7 +22,7 @@ The four independent states are:
 Canonical workflows:
   run402 buzz status
   run402 buzz adopt offer --org <org_id> --identity-link <idlnk_id> [--deployment-context-file <json>]
-      --org                       the Run402 organization id as `run402 org whoami` returns it (a UUID)
+      --org                       the Run402 organization id as "run402 org whoami" returns it (a UUID)
       --deployment-context-file   JSON with exactly these five non-empty strings, and no others:
                                   project_id, release_id, live_url, source_revision, verified_at
   run402 buzz install --org <org_id> --community <buzz:community:host> --authority <hex-pubkey>
