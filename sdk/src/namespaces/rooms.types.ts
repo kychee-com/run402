@@ -162,7 +162,7 @@ export interface SendRoomMessageInput {
    * ORIGINAL stored message with `deduplicated: true` instead of a new row.
    */
   idempotencyKey?: string;
-  /** Send as this existing presence (`prs_…`). Omit to resolve-or-create your live presence implicitly. */
+  /** Send as this existing presence (`prs_…`). Omitting it REGISTERS a fresh session presence — it never adopts one. */
   presenceId?: string;
   /** Name for the implicit presence-creation case — same honored-or-suffixed semantics as registration. */
   requestedName?: string;
@@ -288,7 +288,7 @@ export interface CreateRoomClaimInput {
   ttlSeconds?: number;
   /** Display-only context for the other agents. */
   note?: string;
-  /** Claim as this presence (`prs_…`). Omit to resolve-or-create your live presence implicitly. */
+  /** Claim as this presence (`prs_…`). Omitting it REGISTERS a fresh session presence — it never adopts one. */
   presenceId?: string;
 }
 

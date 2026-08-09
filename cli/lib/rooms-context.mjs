@@ -11,10 +11,12 @@
  *
  * Session state lives at ./.run402/messaging.json (per-checkout — the house
  * discipline of one worktree per agent session makes per-checkout equal
- * per-session). It caches, per room: the session's presence_id + name and the
- * read cursor. Add `.run402/` to .gitignore. Two sessions sharing one checkout
- * share a presence (coherent, just undifferentiated); RUN402_PRESENCE_ID
- * overrides for harnesses that multiplex.
+ * per-session). It caches, per room: the session's presence_id, the granted
+ * name, the name originally asked for, and the read cursor. Add `.run402/` to
+ * .gitignore. Two sessions sharing one checkout share a presence (coherent,
+ * just undifferentiated); RUN402_PRESENCE_ID overrides for harnesses that
+ * multiplex. Carrying the presence_id is what makes a call "the same session":
+ * the server never infers a session from the credential.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -102,12 +104,37 @@ export function cachedPresenceId(orgId, roomKey) {
   return typeof cached === "string" && cached ? cached : null;
 }
 
+/** The name this session originally asked for (so a replacement asks again). */
+function cachedRequestedName(orgId, roomKey) {
+  const cached = getRoomState(orgId, roomKey).requested_name;
+  return typeof cached === "string" && cached ? cached : null;
+}
+
 /**
- * Run a room call that carries the cached presence. On PRESENCE_EXPIRED (410 —
- * this session's presence aged out), drop the cache and retry ONCE without a
- * presence_id so the gateway's resolve-or-create issues a fresh one.
+ * Register a NEW session presence and make it this checkout's presence.
+ * `name` is the name to ask for — honored when free, honestly suffixed when
+ * taken (names are never recycled, so a replacement for `Fable` becomes
+ * `Fable-2`, and the caller is told).
  */
-export async function withPresenceRetry(orgId, roomKey, call) {
+export async function registerFreshPresence(orgId, roomKey, { name, task } = {}) {
+  const requestedName = name ?? cachedRequestedName(orgId, roomKey);
+  const registration = await getSdk().rooms.registerPresence(orgId, roomKey, {
+    ...(requestedName ? { requestedName } : {}),
+    ...(task ? { task } : {}),
+  });
+  rememberPresence(orgId, roomKey, registration, requestedName);
+  return registration;
+}
+
+/**
+ * Run a room call carrying this session's presence. On PRESENCE_EXPIRED (410 —
+ * this session's presence aged out) drop the cache, REGISTER a replacement,
+ * and retry ONCE with it. The registration is explicit on purpose: a bare call
+ * cannot mean "me", because the server cannot tell one credential's concurrent
+ * sessions apart — it would either guess (adopting a sibling session's
+ * presence, run402-private#663) or refuse. Asking is unambiguous.
+ */
+export async function withPresenceRetry(orgId, roomKey, call, { name, task } = {}) {
   const presenceId = cachedPresenceId(orgId, roomKey);
   try {
     return await call(presenceId);
@@ -115,18 +142,30 @@ export async function withPresenceRetry(orgId, roomKey, call) {
     const code = err?.body?.code ?? err?.code;
     if (code === "PRESENCE_EXPIRED" && presenceId) {
       updateRoomState(orgId, roomKey, { presence_id: null, name: null });
-      return call(null);
+      const replacement = await registerFreshPresence(orgId, roomKey, { name, task });
+      if (replacement?.renamed) {
+        console.error(`Your presence expired; you are now ${replacement.name}.`);
+      }
+      return call(replacement?.presence_id ?? null);
     }
     throw err;
   }
 }
 
 /** Cache the presence a response attributed this session to. */
-export function rememberPresence(orgId, roomKey, presence) {
+export function rememberPresence(orgId, roomKey, presence, requestedName) {
   if (!presence || typeof presence !== "object") return;
   const id = presence.presence_id;
   const name = presence.name;
+  // The name ASKED FOR is remembered separately from the name granted: a
+  // replacement presence should ask for `Fable` again (→ Fable-3), not for the
+  // granted `Fable-2` (→ Fable-2-2).
+  const asked = requestedName ?? presence.requested_name;
   if (typeof id === "string" && id) {
-    updateRoomState(orgId, roomKey, { presence_id: id, ...(typeof name === "string" ? { name } : {}) });
+    updateRoomState(orgId, roomKey, {
+      presence_id: id,
+      ...(typeof name === "string" ? { name } : {}),
+      ...(typeof asked === "string" && asked ? { requested_name: asked } : {}),
+    });
   }
 }

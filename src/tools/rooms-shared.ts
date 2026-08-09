@@ -4,10 +4,11 @@
  * Every rooms tool addresses a room the same way: project_id (that project's
  * DEFAULT room — the zero-config path) OR org_id + room_key (named org rooms).
  * The MCP server is a long-lived process, so the session's presence per room
- * lives in an in-memory map — tool calls after the first reuse it, and the
- * gateway's resolve-or-create converges to the same presence even after a
- * restart (same principal), so the cache is an optimization, not a correctness
- * requirement.
+ * lives in an in-memory map — tool calls after the first reuse it. The cache is
+ * what makes those calls ONE session: the gateway never infers a session from
+ * the credential (a bare call registers a fresh presence rather than adopting a
+ * sibling session's — run402-private#663), so a lost cache means a new presence
+ * with a new, honestly-suffixed name, not silent reuse of an old one.
  */
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
@@ -55,6 +56,8 @@ export async function resolveRoomArgs(args: RoomAddressArgs): Promise<RoomAddres
 }
 
 const presenceByRoom = new Map<string, string>();
+/** The name this session asked for, so a replacement presence asks again. */
+const requestedNameByRoom = new Map<string, string>();
 
 const roomKeyOf = (room: ResolvedRoom): string => `${room.orgId}/${room.roomKey}`;
 
@@ -64,17 +67,22 @@ export function cachedPresenceId(room: ResolvedRoom): string | undefined {
   return presenceByRoom.get(roomKeyOf(room));
 }
 
-export function rememberPresence(room: ResolvedRoom, presence: unknown): void {
+export function rememberPresence(room: ResolvedRoom, presence: unknown, requestedName?: string): void {
   const id = (presence as { presence_id?: unknown } | null | undefined)?.presence_id;
   if (typeof id === "string" && id) presenceByRoom.set(roomKeyOf(room), id);
+  // Remember the name ASKED FOR, not the one granted: a replacement should ask
+  // for `Opus` again (-> Opus-3), never for the granted `Opus-2` (-> Opus-2-2).
+  const asked = requestedName ?? (presence as { requested_name?: unknown } | null | undefined)?.requested_name;
+  if (typeof asked === "string" && asked) requestedNameByRoom.set(roomKeyOf(room), asked);
 }
 
 export function forgetPresence(room: ResolvedRoom): void {
   presenceByRoom.delete(roomKeyOf(room));
 }
 
-/** Retry-once on PRESENCE_EXPIRED: drop the cached session presence and let
- *  the gateway's resolve-or-create mint a fresh one. */
+/** Retry-once on PRESENCE_EXPIRED: drop the cached session presence, REGISTER
+ *  a replacement (asking for the same name — it suffixes honestly), and retry
+ *  with it. Registration is explicit because a bare call cannot mean "me". */
 export async function withPresenceRetry<T>(
   room: ResolvedRoom,
   call: (presenceId: string | undefined) => Promise<T>,
@@ -87,7 +95,12 @@ export async function withPresenceRetry<T>(
       ?? (err as { code?: string })?.code;
     if (code === "PRESENCE_EXPIRED" && presenceId) {
       forgetPresence(room);
-      return call(undefined);
+      const requestedName = requestedNameByRoom.get(roomKeyOf(room));
+      const replacement = await getSdk().rooms.registerPresence(room.orgId, room.roomKey, {
+        ...(requestedName ? { requestedName } : {}),
+      });
+      rememberPresence(room, replacement, requestedName);
+      return call(replacement?.presence_id);
     }
     throw err;
   }

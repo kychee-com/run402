@@ -34,7 +34,7 @@ export async function handleJoinRoom(args: {
         ...(args.requested_name !== undefined ? { requestedName: args.requested_name } : {}),
         ...(args.task !== undefined ? { task: args.task } : {}),
       });
-      rememberPresence(room, registration);
+      rememberPresence(room, registration, args.requested_name);
       you = registration;
     }
     const [presences, claims] = await Promise.all([

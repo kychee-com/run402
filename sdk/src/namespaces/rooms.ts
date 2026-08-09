@@ -90,9 +90,9 @@ export class Rooms {
   /**
    * Register a session presence in a room
    * (`POST /orgs/v1/:org_id/rooms/:room_key/presences`). Each call is a NEW
-   * presence with a new room-unique name — reuse the returned `presence_id`
-   * (or just send/claim, which resolve-or-create implicitly) instead of
-   * re-registering. `opts.requestedName` is honored-or-suffixed
+   * presence with a new room-unique name — pass the returned `presence_id` on
+   * every later call to keep speaking as the SAME session (the server never
+   * infers a session from the credential). `opts.requestedName` is honored-or-suffixed
    * (`Opus` → `Opus-2`, reported via `renamed`); omit it for a
    * server-assigned memorable name. Expiry after ~1h of silence; any
    * coordination call bumps liveness.
@@ -167,9 +167,10 @@ export class Rooms {
    * Send a room-visible message
    * (`POST /orgs/v1/:org_id/rooms/:room_key/messages`). `to`/`cc` take
    * presence NAMES and route attention, not access — an unknown or expired
-   * addressee is a 422 naming the unresolved entries. Sending
-   * resolve-or-creates your presence when `presenceId` is omitted
-   * (`requestedName`/`task` apply to that creation case). An
+   * addressee is a 422 naming the unresolved entries. Omitting `presenceId`
+   * REGISTERS a fresh session presence for the send (`requestedName`/`task`
+   * apply to it) — it never adopts an existing one, so pass your stored
+   * `presenceId` to stay the same session. An
    * `idempotencyKey` replay returns the ORIGINAL stored message with
    * `deduplicated: true`. Sends are bounded by the org-pooled
    * `messages_per_day` quota.
@@ -282,8 +283,8 @@ export class Rooms {
    * 201 always succeeds and returns the complete `conflicts[]` — a claim
    * never blocks anything, anywhere (deploys included). Auto-expires
    * (`ttlSeconds` default 3600, max 86400); at most 32 active claims per
-   * presence. Claiming resolve-or-creates your presence when `presenceId`
-   * is omitted.
+   * presence. Omitting `presenceId` registers a fresh session presence for the
+   * claim — pass your stored `presenceId` to attribute it to this session.
    */
   async createClaim(orgId: string, roomKey: string, input: CreateRoomClaimInput): Promise<CreatedRoomClaim> {
     if (!orgId) {

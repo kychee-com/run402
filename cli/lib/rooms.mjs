@@ -24,6 +24,7 @@ import {
   resolveRoom,
   cachedPresenceId,
   withPresenceRetry,
+  registerFreshPresence,
   rememberPresence,
   getRoomState,
   updateRoomState,
@@ -113,14 +114,28 @@ Examples:
 
 async function ensurePresence(room, { name, task } = {}) {
   const existing = cachedPresenceId(room.orgId, room.roomKey);
-  if (existing) return { presence_id: existing, registered: false };
-  const sdk = getSdk();
-  const registration = await sdk.rooms.registerPresence(room.orgId, room.roomKey, {
-    ...(name ? { requestedName: name } : {}),
-    ...(task ? { task } : {}),
-  });
-  rememberPresence(room.orgId, room.roomKey, registration);
+  if (existing) {
+    // Trust, but verify: a cached id whose presence aged out (or was swept)
+    // would otherwise ride along until the first send failed. Arrival is the
+    // right moment to notice — it costs one GET, once per session.
+    const live = await stillLive(room, existing);
+    if (live) return { ...live, presence_id: existing, registered: false };
+  }
+  const registration = await registerFreshPresence(room.orgId, room.roomKey, { name, task });
   return { ...registration, registered: true };
+}
+
+/** The cached presence if it is still live in the room, else null. */
+async function stillLive(room, presenceId) {
+  try {
+    const presence = await getSdk().rooms.getPresence(room.orgId, room.roomKey, presenceId);
+    const expiresAt = Date.parse(presence?.expires_at ?? "");
+    return Number.isFinite(expiresAt) && expiresAt > Date.now() ? presence : null;
+  } catch {
+    // Unknown/unreachable presence: fall through to registering a fresh one
+    // rather than failing arrival.
+    return null;
+  }
 }
 
 async function who(args) {
@@ -182,8 +197,9 @@ async function send(args) {
         presenceId: presenceId ?? undefined,
         requestedName: flagValue(a, "--name") ?? undefined,
         task: flagValue(a, "--task") ?? undefined,
-      }));
-    rememberPresence(room.orgId, room.roomKey, result.sender_presence);
+      }),
+      { name: flagValue(a, "--name"), task: flagValue(a, "--task") });
+    rememberPresence(room.orgId, room.roomKey, result.sender_presence, flagValue(a, "--name"));
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     reportSdkError(err);
@@ -214,6 +230,8 @@ async function list(args) {
         presenceId: presenceId ?? undefined,
         limit: limit != null ? parseIntegerFlag("--limit", limit, { min: 1, max: 200 }) : undefined,
       }));
+    // NOTE: an unread/addressed_to=me read needs a resolvable "me"; the retry
+    // above registers a replacement when this session's presence has expired.
     // Ascending reads advance the stored cursor; display-mode (--before) never does.
     if (!before && typeof page.cursor === "string") {
       updateRoomState(room.orgId, room.roomKey, { cursor: page.cursor });
