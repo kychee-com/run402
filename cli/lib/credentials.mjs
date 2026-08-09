@@ -36,6 +36,7 @@ Subcommands:
   status --project <id>               Show one cached entry, redacted
   import --project <id> --service-key-stdin
   import --project <id> --service-key-env <env>
+  import --project <id> --anon-key-env <env>   Rotate only the anon key
   export --project <id> --reveal       Print cached keys, including secrets
   remove --project <id>                Remove one cached key entry
 
@@ -44,6 +45,9 @@ Notes:
   - list/status never reveal full keys.
   - export requires --reveal.
   - import accepts service keys through stdin or an environment variable, not argv.
+  - import writes the whole entry, so the FIRST import must supply a service key.
+    Afterwards --anon-key-env alone rotates the anon key and keeps the cached
+    service key, so an anon rotation never puts a service key through a shell.
 `;
 
 function parseProjectKeyFlags(args, extraKnown = [], valueFlagsExtra = []) {
@@ -143,7 +147,7 @@ async function status(args) {
   console.log(JSON.stringify(redactedEntry(id, getProject(id)), null, 2));
 }
 
-function readSecretInput(parsed) {
+function readSecretInput(parsed, { projectId, anonEnv, existing } = {}) {
   const fromEnv = flagValue(parsed, "--service-key-env");
   const fromStdin = parsed.includes("--service-key-stdin");
   if (fromEnv && fromStdin) {
@@ -161,6 +165,23 @@ function readSecretInput(parsed) {
     return value.trim();
   }
   if (fromStdin) return readFileSync(0, "utf-8").trim();
+
+  // Anon-only rotation: the caller passed --anon-key-env and the entry already
+  // caches a service key. Reuse it rather than making them round-trip a service
+  // key through --reveal and a shell just to change the anon key.
+  if (anonEnv && existing?.service_key) return existing.service_key;
+
+  // Still no service key. Report the flags the caller actually passed — an error
+  // that names only the service-key flags reads as "--anon-key-env is not a flag".
+  if (anonEnv) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Importing an anon key also requires a service key, because import writes the whole cache entry and no service key is cached for ${projectId} yet.`,
+      hint: "Add --service-key-stdin or --service-key-env <env> to this first import. Once an entry exists, --anon-key-env alone rotates the anon key and keeps the cached service key.",
+      details: { project_id: projectId, anon_key_env: anonEnv },
+    });
+  }
+
   fail({
     code: "BAD_USAGE",
     message: "Import requires --service-key-stdin or --service-key-env <env>.",
@@ -178,16 +199,19 @@ async function importKey(args) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for project-keys import: ${rest[0]}` });
   }
   const id = requireProjectFlag(projectId, "run402 credentials project-keys import --project <id> --service-key-stdin");
-  const serviceKey = readSecretInput(parsed);
-  if (!serviceKey) {
-    fail({ code: "BAD_USAGE", message: "Service key input was empty." });
-  }
+  // Resolve --anon-key-env before requiring a service key, so a missing service
+  // key can report against the flags actually passed and an anon-only rotation
+  // can reuse the cached service key.
   const anonEnv = flagValue(parsed, "--anon-key-env");
   const anonKey = anonEnv ? process.env[anonEnv] : undefined;
   if (anonEnv && !anonKey) {
     fail({ code: "BAD_ENV", message: `Environment variable ${anonEnv} is empty or unset.`, details: { env: anonEnv } });
   }
   const existing = getProject(id);
+  const serviceKey = readSecretInput(parsed, { projectId: id, anonEnv, existing });
+  if (!serviceKey) {
+    fail({ code: "BAD_USAGE", message: "Service key input was empty." });
+  }
   saveProject(id, {
     anon_key: anonKey ?? existing?.anon_key ?? "",
     service_key: serviceKey,

@@ -1,13 +1,35 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseUsdMicros, run } from "./pay.mjs";
+import { parseUsdMicros, run, strayArgumentHint } from "./pay.mjs";
 
 describe("run402 pay", () => {
   it("converts decimal USD to micros without floating-point rounding", () => {
     assert.equal(parseUsdMicros("0.05"), 50_000);
     assert.equal(parseUsdMicros("1.000001"), 1_000_001);
     assert.equal(parseUsdMicros("0"), 0);
+  });
+
+  // `--json` selects output format, `--body` sends the payload. An agent
+  // reaching for `--json '<payload>'` gets a stray positional; the hint has to
+  // name --body or the usage error reads as "the payload was accepted".
+  it("points --json '<payload>' at --body", () => {
+    const payload = '{"kind":"anon"}';
+    const hint = strayArgumentHint(["https://s.example/x", "--json", payload], payload);
+    assert.match(hint, /--json only selects JSON output and takes no value/);
+    assert.match(hint, /--body '\{"kind":"anon"\}'/);
+  });
+
+  it("points a bare JSON positional at --body even without --json", () => {
+    const payload = '{"kind":"anon"}';
+    const hint = strayArgumentHint(["https://s.example/x", payload], payload);
+    assert.match(hint, /pass it as a body: --method POST --body/);
+  });
+
+  it("falls back to plain usage for a stray non-JSON argument", () => {
+    const hint = strayArgumentHint(["https://s.example/x", "stray"], "stray");
+    assert.equal(hint, "run402 pay <url> [--method POST] [--body <value>] [--max-usd 0.10]");
+    assert.equal(strayArgumentHint(["https://s.example/x"], undefined), hint);
   });
 
   it("delegates to SDK pay.fetch and prints the receipt", async () => {

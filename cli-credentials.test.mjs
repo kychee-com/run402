@@ -119,6 +119,47 @@ describe("credentials project-keys", () => {
     assert.equal(exported.revealed, true);
   });
 
+  // A missing service key used to be reported before --anon-key-env was read, so
+  // passing --anon-key-env alone produced an error naming only the service-key
+  // flags — which reads as "--anon-key-env is not a flag in this version".
+  it("names --anon-key-env when it is passed without a service key", () => {
+    const result = run([
+      "credentials", "project-keys", "import",
+      "--project", PROJECT_ID,
+      "--anon-key-env", "TEST_RUN402_ANON_KEY",
+    ], { env: { TEST_RUN402_ANON_KEY: ANON_KEY } });
+
+    assert.notEqual(result.status, 0);
+    const err = errEnvelope(result);
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /anon key also requires a service key/);
+    assert.equal(err.details.anon_key_env, "TEST_RUN402_ANON_KEY");
+    assert.equal(err.details.project_id, PROJECT_ID);
+
+    // The generic error must survive for the case it actually describes.
+    const bare = run(["credentials", "project-keys", "import", "--project", PROJECT_ID]);
+    assert.notEqual(bare.status, 0);
+    assert.match(errEnvelope(bare).message, /^Import requires --service-key-stdin/);
+  });
+
+  // Rotating only the anon key must not force the caller to export their service
+  // key with --reveal and hand it back through a shell.
+  it("rotates the anon key alone and keeps the cached service key", () => {
+    importDefaultKey();
+    const rotated = "anon_rotated_secret_value";
+
+    const result = run([
+      "credentials", "project-keys", "import",
+      "--project", PROJECT_ID,
+      "--anon-key-env", "TEST_RUN402_ANON_KEY",
+    ], { env: { TEST_RUN402_ANON_KEY: rotated } });
+    assert.equal(result.status, 0, result.stderr);
+
+    const exported = jsonOut(run(["credentials", "project-keys", "export", "--project", PROJECT_ID, "--reveal"]));
+    assert.equal(exported.anon_key, rotated);
+    assert.equal(exported.service_key, SERVICE_KEY, "service key must survive an anon-only import");
+  });
+
   it("keeps project-key cache scoped by wallet/profile and reports cache misses distinctly", () => {
     importDefaultKey();
     assert.equal(run(["wallets", "new", "kychon"]).status, 0);

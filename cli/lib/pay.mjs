@@ -16,11 +16,13 @@ Usage:
 
 Options:
   --method <M>              HTTP method (default: GET)
-  --body <json-or-text>     Request body (not valid with GET/HEAD)
+  --body <json-or-text>     Request body — the ONLY way to send a payload
+                            (not valid with GET/HEAD)
   --max-usd <amount>        Maximum payment in USD (default: 0.10)
   --idempotency-key <key>   Forward a stable Idempotency-Key to the seller
   --require-receipt         Require verified merchant evidence
-  --json                    Print the response and payment receipt as JSON
+  --json                    No-op; pay always prints JSON. Takes no value —
+                            to send a payload use --body
   --help, -h                Show this help
 
 Examples:
@@ -50,10 +52,11 @@ export async function run(args = [], deps = {}) {
   );
   const positionals = positionalArgs(parsed, VALUE_FLAGS);
   if (positionals.length !== 1) {
+    const stray = positionals[1];
     fail({
       code: "BAD_USAGE",
-      message: positionals.length === 0 ? "URL required." : `Unexpected argument: ${positionals[1]}`,
-      hint: "run402 pay <url> [--method POST] [--body <value>] [--max-usd 0.10]",
+      message: positionals.length === 0 ? "URL required." : `Unexpected argument: ${stray}`,
+      hint: strayArgumentHint(parsed, stray),
     });
   }
 
@@ -111,6 +114,34 @@ export function parseUsdMicros(value) {
     });
   }
   return micros;
+}
+
+const USAGE_HINT = "run402 pay <url> [--method POST] [--body <value>] [--max-usd 0.10]";
+
+// `--json` selects output format and takes no value; `--body` sends the payload.
+// Reaching for `--json '<payload>'` is the predictable confusion, and it lands
+// here as a stray positional. Name the flag the caller actually wanted.
+export function strayArgumentHint(parsed, stray) {
+  if (typeof stray !== "string") return USAGE_HINT;
+  const jsonIndex = parsed.indexOf("--json");
+  if (jsonIndex !== -1 && parsed[jsonIndex + 1] === stray) {
+    return `--json only selects JSON output and takes no value; the request body flag is --body. Retry with: --method POST --body '${stray}'`;
+  }
+  if (looksLikeJson(stray)) {
+    return `To send this payload, pass it as a body: --method POST --body '${stray}'`;
+  }
+  return USAGE_HINT;
+}
+
+function looksLikeJson(value) {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
+  try {
+    JSON.parse(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function validateUrl(value) {
