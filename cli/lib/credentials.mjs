@@ -8,22 +8,55 @@ import {
   removeProject,
   saveProject,
 } from "./config.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
-import { fail } from "./sdk-errors.mjs";
+import {
+  assertKnownFlags,
+  flagValue,
+  normalizeArgv,
+  positionalArgs,
+  failUnknownSubcommand,
+  requirePositionalCount,
+  resolveProjectSelector,
+} from "./argparse.mjs";
+import { fail, reportSdkError } from "./sdk-errors.mjs";
+import { getSdk } from "./sdk.mjs";
 
-const HELP = `run402 credentials — Manage local credential material
+const HELP = `run402 credentials — Project credentials, and the local key cache
 
 Usage:
   run402 credentials <subcommand> [args...]
 
-Subcommands:
-  project-keys  Manage the local project-key cache
+Project credentials (on the gateway — named, revocable, rotatable):
+  issue --kind <anon|service> --name <name> [--project <id>] [--expires <iso8601>]
+                                Mint one. The secret is printed ONCE.
+  list [--project <id>] [--include-revoked]
+                                List credentials (metadata only, never secrets)
+  status [--project <id>]       Are you still on the retiring legacy key?
+  rotate <credential_id> [--project <id>]
+                                Replace in one step; new secret printed ONCE
+  revoke <credential_id> [--project <id>] [--reason <text>]
+                                Revoke immediately, freeing the name
+  token [--project <id>] [--kind <anon|service>]
+                                Mint a SHORT-LIVED token. Works with only a
+                                delegate — the unattended recovery path.
+
+Local cache (on this machine):
+  project-keys                  Manage the local project-key cache
+
+Notes:
+  - 'issue', 'rotate' and 'revoke' need owner membership on the project's org
+    plus a fresh step-up, so a scoped agent credential can never escalate
+    itself into a permanent root. Authenticate with a wallet (SIWX) or a
+    control-plane session ('run402 operator login --step-up').
+  - 'token' is the exception: a delegate can mint one with no human present.
+  - Secrets are returned EXACTLY ONCE and are never recoverable. Full JSON goes
+    to stdout so you can pipe it; the warnings go to stderr.
 
 Examples:
+  run402 credentials status --project prj_abc123
+  run402 credentials issue --kind service --name ci-deploy --project prj_abc123
+  run402 credentials issue --kind service --name ci-deploy | jq -r .secret
+  run402 credentials rotate pcr_123 --project prj_abc123
   run402 credentials project-keys list
-  run402 credentials project-keys status --project prj_abc123
-  run402 credentials project-keys import --project prj_abc123 --service-key-stdin
-  run402 credentials project-keys export --project prj_abc123 --reveal
 `;
 
 const PROJECT_KEYS_HELP = `run402 credentials project-keys — Manage local project-key cache entries
@@ -49,6 +82,79 @@ Notes:
     Afterwards --anon-key-env alone rotates the anon key and keeps the cached
     service key, so an anon rotation never puts a service key through a shell.
 `;
+
+const SUB_HELP = {
+  issue: `run402 credentials issue — mint a named project credential
+
+Usage:
+  run402 credentials issue --kind <anon|service> --name <name> [--project <id>]
+                           [--expires <iso8601>]
+
+--kind    "anon" is the tenant-facing key; "service" is the privileged one.
+--name    Unique among this project's LIVE credentials. Re-using a live name
+          returns 409 CREDENTIAL_NAME_TAKEN — that collision is the idempotency
+          story, so a retried create never mints a second credential by accident.
+--expires Optional; must be in the future and within one year.
+
+The secret is printed ONCE, on stdout, inside the JSON. Pipe it:
+  run402 credentials issue --kind service --name ci | jq -r .secret
+
+Requires owner membership on the project's org plus a fresh step-up. A delegate
+can NEVER do this; use 'run402 credentials token' instead.
+`,
+  list: `run402 credentials list — list a project's credentials
+
+Usage:
+  run402 credentials list [--project <id>] [--include-revoked]
+
+Metadata only — never a secret or a secret hash. Only project.read is needed.
+`,
+  status: `run402 credentials status — are you still on the retiring legacy key?
+
+Usage:
+  run402 credentials status [--project <id>]
+
+Returns state "legacy" while the project still depends on the derived
+anon/service keys, or "rotatable" once it holds credentials it can revoke
+individually.
+
+There is deliberately NO deadline: retirement is gated on conditions (every
+tenant migrated, 30 consecutive days of zero legacy-key use, explicit operator
+approval), not a date. Read retirement.gated_on rather than planning against a
+date the platform has not committed to.
+`,
+  rotate: `run402 credentials rotate — replace a credential in one step
+
+Usage:
+  run402 credentials rotate <credential_id> [--project <id>]
+
+Mints a replacement and revokes the old one in a single transaction, keeping
+the name. The NEW secret is printed once.
+
+For a rotation with no downtime window, prefer issuing a SECOND credential,
+deploying it, then revoking the first — several may be live per kind at once,
+and that overlap is the point. Use 'rotate' when the old secret is already
+compromised.
+`,
+  revoke: `run402 credentials revoke — revoke a credential immediately
+
+Usage:
+  run402 credentials revoke <credential_id> [--project <id>] [--reason <text>]
+
+Takes effect for every subsequent request and frees the name for reuse.
+Requires owner membership plus step-up.
+`,
+  token: `run402 credentials token — mint a short-lived project token
+
+Usage:
+  run402 credentials token [--project <id>] [--kind <anon|service>]
+
+The cold-restart recovery path, and the ONE credential call an agent can make
+with no human present: a delegate is accepted here. There is no step-up because
+there is nobody to prompt, and what you get back expires, so it cannot become a
+durable root. Defaults to --kind service.
+`,
+};
 
 function parseProjectKeyFlags(args, extraKnown = [], valueFlagsExtra = []) {
   const parsed = normalizeArgv(args);
@@ -273,6 +379,166 @@ async function runProjectKeys(sub, args) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Project credentials — the gateway rows, not the local cache.
+//
+// These five routes shipped with no client at all, so the documented way off
+// the legacy derived anon/service keys was to hand-roll a SIWX-signed request.
+// `run402 pay` is NOT that escape hatch (it is the x402 buyer path and 401s
+// here), which is how an agent could read the docs, find the route, and still
+// have no way to call it.
+// ---------------------------------------------------------------------------
+
+/** Full JSON on stdout (pipeable); the one-shot warning on stderr. */
+function emitIssued(res) {
+  console.log(JSON.stringify(res, null, 2));
+  if (res?.secret) {
+    console.error("");
+    console.error("The secret above is shown ONCE and cannot be read back.");
+    console.error("Store it now — 'rotate' is the only way to get a new one.");
+  }
+}
+
+const ISSUE_VALUE_FLAGS = ["--project", "--kind", "--name", "--expires"];
+
+async function issue(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...ISSUE_VALUE_FLAGS, "--help", "-h"], ISSUE_VALUE_FLAGS);
+  const kind = flagValue(a, "--kind");
+  const name = flagValue(a, "--name");
+  const expiresAt = flagValue(a, "--expires");
+  const { projectId, rest } = resolveProjectSelector(a, { valueFlags: ISSUE_VALUE_FLAGS });
+  requirePositionalCount(rest, ISSUE_VALUE_FLAGS, {
+    min: 0,
+    max: 0,
+    command: "run402 credentials issue --kind <anon|service> --name <name> [--project <id>]",
+    missing: "",
+  });
+  if (kind !== "anon" && kind !== "service") {
+    fail({
+      message: 'Missing or invalid --kind. Use "anon" (tenant-facing) or "service" (privileged).',
+      code: "BAD_USAGE",
+      hint: "run402 credentials issue --kind service --name ci-deploy",
+    });
+  }
+  if (!name) {
+    fail({
+      message: "Missing --name.",
+      code: "BAD_USAGE",
+      hint: "The name identifies this credential in 'list' and is how you rotate it later, e.g. --name ci-deploy",
+    });
+  }
+  try {
+    emitIssued(await getSdk().credentials.issue(projectId, { kind, name, expiresAt: expiresAt || undefined }));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function listCredentials(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--project", "--include-revoked", "--help", "-h"], ["--project"]);
+  const { projectId, rest } = resolveProjectSelector(a, { valueFlags: ["--project"] });
+  requirePositionalCount(rest, ["--project"], {
+    min: 0,
+    max: 0,
+    command: "run402 credentials list [--project <id>]",
+    missing: "",
+  });
+  try {
+    const includeRevoked = a.includes("--include-revoked");
+    console.log(JSON.stringify(await getSdk().credentials.list(projectId, { includeRevoked }), null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function credentialStatus(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--project", "--help", "-h"], ["--project"]);
+  const { projectId, rest } = resolveProjectSelector(a, { valueFlags: ["--project"] });
+  requirePositionalCount(rest, ["--project"], {
+    min: 0,
+    max: 0,
+    command: "run402 credentials status [--project <id>]",
+    missing: "",
+  });
+  try {
+    const res = await getSdk().credentials.status(projectId);
+    console.log(JSON.stringify(res, null, 2));
+    if (res?.state === "legacy") {
+      console.error("");
+      console.error("This project still depends on the derived anon/service keys, whose signing");
+      console.error("key is being retired. Issue a credential to stop depending on them:");
+      console.error(`  run402 credentials issue --kind service --name primary --project ${projectId}`);
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function rotate(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--project", "--help", "-h"], ["--project"]);
+  const { projectId, rest } = resolveProjectSelector(a, { valueFlags: ["--project"] });
+  const [credentialId] = requirePositionalCount(rest, ["--project"], {
+    min: 1,
+    max: 1,
+    command: "run402 credentials rotate <credential_id> [--project <id>]",
+    missing: "Missing <credential_id>. Find it with: run402 credentials list",
+  });
+  try {
+    emitIssued(await getSdk().credentials.rotate(projectId, credentialId));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function revoke(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--project", "--reason", "--help", "-h"], ["--project", "--reason"]);
+  const reason = flagValue(a, "--reason");
+  const { projectId, rest } = resolveProjectSelector(a, { valueFlags: ["--project", "--reason"] });
+  const [credentialId] = requirePositionalCount(rest, ["--project", "--reason"], {
+    min: 1,
+    max: 1,
+    command: "run402 credentials revoke <credential_id> [--project <id>]",
+    missing: "Missing <credential_id>. Find it with: run402 credentials list",
+  });
+  try {
+    const res = await getSdk().credentials.revoke(projectId, credentialId, reason ? { reason } : {});
+    console.log(JSON.stringify(res, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function token(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--project", "--kind", "--help", "-h"], ["--project", "--kind"]);
+  const kind = flagValue(a, "--kind");
+  const { projectId, rest } = resolveProjectSelector(a, { valueFlags: ["--project", "--kind"] });
+  requirePositionalCount(rest, ["--project", "--kind"], {
+    min: 0,
+    max: 0,
+    command: "run402 credentials token [--project <id>]",
+    missing: "",
+  });
+  if (kind && kind !== "anon" && kind !== "service") {
+    fail({ message: '--kind must be "anon" or "service".', code: "BAD_USAGE" });
+  }
+  try {
+    const res = await getSdk().credentials.mintToken(projectId, kind ? { kind } : {});
+    console.log(JSON.stringify(res, null, 2));
+    if (res?.secret) {
+      console.error("");
+      console.error(`The token above is shown ONCE and expires in ${res.expires_in ?? "?"}s.`);
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 export async function run(sub, args = []) {
   if (!sub || sub === "--help" || sub === "-h") {
     console.log(HELP);
@@ -283,5 +549,18 @@ export async function run(sub, args = []) {
     await runProjectKeys(projectKeySub, rest);
     return;
   }
-  failUnknownSubcommand("credentials", sub);
+  if (Array.isArray(args) && (args.includes("--help") || args.includes("-h"))) {
+    console.log(SUB_HELP[sub] || HELP);
+    process.exit(0);
+  }
+  switch (sub) {
+    case "issue": await issue(args); break;
+    case "list": await listCredentials(args); break;
+    case "status": await credentialStatus(args); break;
+    case "rotate": await rotate(args); break;
+    case "revoke": await revoke(args); break;
+    case "token": await token(args); break;
+    default:
+      failUnknownSubcommand("credentials", sub);
+  }
 }

@@ -76,6 +76,14 @@ export const COMMAND_MANIFEST = [
   { path: ["wallets", "import"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate-import-wallet", "--key", "__FIXTURE_FILE__"] },
   { path: ["wallets", "rm"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["no-such-wallet", "--yes"] },
 
+  // ── credentials (gateway project credentials) ────────────────────────────
+  { path: ["credentials", "issue"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--kind", "service", "--name", "gate-cred"] },
+  { path: ["credentials", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["credentials", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
+  { path: ["credentials", "rotate"], positionals: [p("credential_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["pcr_gate1"] },
+  { path: ["credentials", "revoke"], positionals: [p("credential_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["pcr_gate1"] },
+  { path: ["credentials", "token"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },
+
   // ── credentials (project-keys group) ─────────────────────────────────────
   { path: ["credentials", "project-keys", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["credentials", "project-keys", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [] },

@@ -540,6 +540,7 @@ export type * from "./namespaces/assets.types.js";
 export type * from "./namespaces/ci.types.js";
 export type * from "./namespaces/contracts.js";
 export type * from "./namespaces/credentials.js";
+export type * from "./namespaces/credentials.types.js";
 export type * from "./namespaces/deploy.types.js";
 export { Deploy } from "./namespaces/deploy.js";
 export type { ByteReader } from "./namespaces/deploy.js";

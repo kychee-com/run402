@@ -953,6 +953,20 @@ Tier and quotas are per organization (not per project) — `set` is organization
 - `run402 tier set <prototype|hobby|team>`
 
 ### credentials
+
+Two surfaces under one command. `credentials <verb>` acts on PROJECT CREDENTIALS (rows on the gateway); `credentials project-keys <verb>` acts on the LOCAL key cache on this machine. A project credential (`r402_…`) is named, listable, expiring and individually revocable, and several may be live per kind at once — that overlap is how you rotate with no downtime. It replaces the legacy `anon_key`/`service_key`, which are derived from the platform signing key, never expire, cannot be revoked one at a time, and whose signing key is being retired.
+
+Secrets are returned EXACTLY ONCE, from `issue`, `rotate` and `token`. Full JSON goes to stdout so it can be piped (`| jq -r .secret`); warnings go to stderr. Never write one of these responses to a result cache or tmp file.
+
+- `run402 credentials status [--project <id>]` — am I still on the retiring key? Returns `state: "legacy"|"rotatable"`, `rotatable_credentials`, `credentials[]`, and `retirement.gated_on[]`. `retirement.deadline` is ALWAYS null and that is deliberate: retirement is gated on conditions (every tenant migrated, 30 consecutive days of zero legacy-key use, explicit operator approval), never a date — do not plan against one. Needs only `project.read`, so automation can check its own posture.
+- `run402 credentials issue --kind <anon|service> --name <name> [--project <id>] [--expires <iso8601>]` — mint one; secret printed ONCE. `--name` must be unique among LIVE credentials; re-using a live name returns `409 CREDENTIAL_NAME_TAKEN`, and that collision IS the idempotency story (a retried create never silently mints a second credential). `--expires` must be in the future and within one year.
+- `run402 credentials list [--project <id>] [--include-revoked]` — metadata only; never a secret or a secret hash.
+- `run402 credentials rotate <credential_id> [--project <id>]` — mint a replacement and revoke the old one in one transaction, keeping the name and recording `replacement_of`. New secret printed ONCE. For a rotation with NO downtime window, prefer issuing a second credential, deploying it, then revoking the first; use `rotate` when the old secret is already compromised.
+- `run402 credentials revoke <credential_id> [--project <id>] [--reason <text>]` — immediate, and frees the name for reuse.
+- `run402 credentials token [--project <id>] [--kind <anon|service>]` — mint a SHORT-LIVED token (defaults to `service`). This is the cold-restart recovery path and the ONE credential call an agent can make with no human present: a delegate is accepted. No step-up, because there is nobody to prompt; what it returns expires, so it cannot become a durable root.
+
+Authority split: `issue`/`rotate`/`revoke` require owner membership on the project's owning org PLUS a fresh step-up, and a delegate can NEVER satisfy them — otherwise a scoped agent credential could escalate itself into a permanent root. Authenticate with a wallet (SIWX) or a control-plane session (`run402 operator login --step-up`). `token` is the deliberate exception.
+
 - `run402 credentials project-keys list` — LOCAL CACHE read. Lists cached project-key entries with `source: "local_cache"`, `cache_path`, `wallet`/`profile`, key presence, prefixes, fingerprints, and timestamps. Never prints full keys.
 - `run402 credentials project-keys status --project <id>` — LOCAL CACHE read for one project id. `configured: false` means this selected wallet/profile lacks cached keys; it does not mean the server project is missing.
 - `run402 credentials project-keys import --project <id> --service-key-stdin` — import a service key from stdin. Optional anon key comes from `--anon-key-env <env>`.

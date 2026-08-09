@@ -77,6 +77,7 @@ function parseCliCommands(): string[] {
       cmds.push(`${mod}:${sub}`);
     }
   }
+  for (const action of parseCredentialsRootActions("cli/lib/credentials.mjs")) cmds.push(`credentials:${action}`);
   for (const action of parseCredentialsProjectKeyActions("cli/lib/credentials.mjs")) cmds.push(`credentials:project-keys:${action}`);
   for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
   for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
@@ -110,6 +111,7 @@ function parseOpenClawCommands(): string[] {
       cmds.push(`${mod}:${sub}`);
     }
   }
+  for (const action of parseCredentialsRootActions("openclaw/scripts/credentials.mjs")) cmds.push(`credentials:${action}`);
   for (const action of parseCredentialsProjectKeyActions("openclaw/scripts/credentials.mjs")) cmds.push(`credentials:project-keys:${action}`);
   for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
   for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
@@ -161,14 +163,38 @@ function parseJobsArtifactsActions(): string[] {
   return [...new Set(actions)].sort();
 }
 
-function parseCredentialsProjectKeyActions(relativePath: string): string[] {
-  const src = readCommandSource(join(__dirname, relativePath));
-  if (!src) return [];
+/**
+ * `credentials` has TWO switches — the top-level verbs that act on the
+ * gateway's project credentials, and the nested `project-keys` group that acts
+ * on the local cache — and they share the names `list` and `status`. So both
+ * parsers below are scoped to their own function body; a file-wide scan would
+ * report the local cache's `import`/`export`/`remove` as top-level commands.
+ * That ambiguity is why this module is special-cased instead of being listed
+ * with the generic one-switch modules above.
+ */
+function credentialsSections(relativePath: string): { projectKeys: string; root: string } {
+  const src = readCommandSource(join(__dirname, relativePath)) ?? "";
+  const groupAt = src.indexOf("async function runProjectKeys(");
+  const rootAt = src.indexOf("export async function run(");
+  if (groupAt < 0 || rootAt < 0) return { projectKeys: src, root: "" };
+  return { projectKeys: src.slice(groupAt, rootAt), root: src.slice(rootAt) };
+}
+
+function caseLabels(section: string): string[] {
   const actions: string[] = [];
-  const re = /case\s+"(list|status|import|export|remove)":/g;
+  const re = /case\s+"([\w-]+)":/g;
   let m;
-  while ((m = re.exec(src))) actions.push(m[1]);
+  while ((m = re.exec(section))) actions.push(m[1]);
   return [...new Set(actions)].sort();
+}
+
+function parseCredentialsProjectKeyActions(relativePath: string): string[] {
+  return caseLabels(credentialsSections(relativePath).projectKeys);
+}
+
+/** The gateway-facing verbs: issue / list / status / rotate / revoke / token. */
+function parseCredentialsRootActions(relativePath: string): string[] {
+  return caseLabels(credentialsSections(relativePath).root);
 }
 
 function parseCloudArchiveActions(relativePath: string): string[] {
@@ -583,6 +609,19 @@ const SURFACE: Capability[] = [
   { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     mcp: null,                    cli: "org:invite:rm",     openclaw: "org:invite:rm" },
   { id: "create_project_grant", endpoint: "POST /projects/v1/:id/grants",                 mcp: "create_project_grant",  cli: "grants:create",     openclaw: "grants:create" },
   { id: "revoke_project_grant", endpoint: "DELETE /projects/v1/:id/grants/:grant_id",     mcp: "revoke_project_grant",  cli: "grants:revoke",     openclaw: "grants:revoke" },
+  // Project credentials. `mcp: null` follows the delegates precedent below:
+  // issue/rotate/token return a one-time secret, and MCP renders tool output
+  // into an agent transcript — exactly where agent-response-design.md says
+  // credential-create / credential-rotate / token-mint must never be persisted.
+  // The read-only pair could take an MCP tool later; they are held with the
+  // group so the surface stays one coherent thing rather than half a feature.
+  { id: "issue_project_credential",  endpoint: "POST /projects/v1/:id/credentials",                     mcp: null, cli: "credentials:issue",  openclaw: "credentials:issue" },
+  { id: "list_project_credentials",  endpoint: "GET /projects/v1/:id/credentials",                      mcp: null, cli: "credentials:list",   openclaw: "credentials:list" },
+  { id: "project_credential_status", endpoint: "GET /projects/v1/:id/credential-status",                mcp: null, cli: "credentials:status", openclaw: "credentials:status" },
+  { id: "rotate_project_credential", endpoint: "POST /projects/v1/:id/credentials/:credential_id/rotate", mcp: null, cli: "credentials:rotate", openclaw: "credentials:rotate" },
+  { id: "revoke_project_credential", endpoint: "DELETE /projects/v1/:id/credentials/:credential_id",    mcp: null, cli: "credentials:revoke", openclaw: "credentials:revoke" },
+  { id: "mint_project_token",        endpoint: "POST /projects/v1/:id/tokens",                          mcp: null, cli: "credentials:token",  openclaw: "credentials:token" },
+
   { id: "create_project_delegate", endpoint: "POST /projects/v1/:id/delegates",                        mcp: null, cli: "delegates:create", openclaw: "delegates:create" },
   { id: "list_project_delegates",  endpoint: "GET /projects/v1/:id/delegates",                         mcp: null, cli: "delegates:list",   openclaw: "delegates:list" },
   { id: "revoke_project_delegate", endpoint: "DELETE /projects/v1/:id/delegates/:delegate_id",         mcp: null, cli: "delegates:revoke", openclaw: "delegates:revoke" },
@@ -934,6 +973,12 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   org_invite_rm: "org.invites.revoke",
   create_project_grant: "grants.create",
   revoke_project_grant: "grants.revoke",
+  issue_project_credential: "credentials.issue",
+  list_project_credentials: "credentials.list",
+  project_credential_status: "credentials.status",
+  rotate_project_credential: "credentials.rotate",
+  revoke_project_credential: "credentials.revoke",
+  mint_project_token: "credentials.mintToken",
   create_project_delegate: "delegates.create",
   list_project_delegates: "delegates.list",
   revoke_project_delegate: "delegates.revoke",
