@@ -11,3 +11,4 @@ tmp/
 
 # Generated at deploy time from docs-site/dist by scripts/build-docs-deploy-manifest.mjs
 run402.docs.deploy.json
+.run402/

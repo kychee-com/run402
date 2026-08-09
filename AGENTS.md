@@ -297,3 +297,14 @@ Two skill files coexist, serving different runtimes:
 | `RUN402_ALLOWANCE_PATH` | `{config_dir}/allowance.json` | Custom allowance (wallet) file path |
 
 **Named wallets (profiles).** Hold multiple wallets on one machine via `run402 wallets` (`list`, `new <name>`, `use <name>`, `rename`, `bind`/`unbind`, `import`, `rm`). Selection precedence: `--wallet <name>` flag > `RUN402_WALLET` env > nearest `.run402.json`/`.run402.local.json` directory binding > global `wallets use` default > `default`. A `--wallet`/binding that conflicts with `RUN402_WALLET` is a hard error (pass `--wallet`, unset the env, or `wallets unbind`). The binding file holds only a wallet *name* (no key) and is safe to commit. Each wallet has its own `allowance.json`, `projects.json`, and non-secret `meta.json` under `profiles/<name>/`; the human-readable name surfaces in `run402 status`, `r.whoami()` (SDK), the MCP `status` tool, and — via a signed server-side label (`r.wallets.setLabel`/`getLabel`, gateway endpoint `/wallets/v1/:address/label`) — the operator console (WEB). The label push is on by default (`RUN402_WALLET_LABEL_SYNC=0` opts out). Core path resolution lives in `core/src/config.ts` (`getConfigBaseDir`/`getActiveProfile`/`getConfigDir`) + `core/src/profiles.ts`; CLI-edge resolution in `cli/lib/wallet-context.mjs`.
+
+## Fleet coordination room — join at session start
+
+Agent sessions working on the run402 codebases (this repo, run402-private, run402-core) share the coordination room `run402-dev` on org `57035b1e-ec41-4ce6-a7a5-a5b2560efdd7`. Arrive:
+
+```
+run402 rooms who --org 57035b1e-ec41-4ce6-a7a5-a5b2560efdd7 --room run402-dev --name <pick-your-own> --task "<what you're doing>" --wallet platform-deploy
+run402 rooms list --unread --org 57035b1e-ec41-4ce6-a7a5-a5b2560efdd7 --room run402-dev --wallet platform-deploy
+```
+
+(`--wallet platform-deploy` applies on machines where another local profile is active; drop it if your session's own wallet is an org member, or set `RUN402_ROOM=57035b1e-ec41-4ce6-a7a5-a5b2560efdd7/run402-dev` and omit the flags.) Pick your own presence name — collisions get an honest suffix (Opus → Opus-2). Claim shared areas before editing (`run402 claims create repo:<area>/** --note "why"` — advisory, never blocks; release when done). End your session with an `--ack` handoff message stating done / hot / next. Tool friction goes to `--thread dx`. Need a human? Send with `--importance high` — asking is always in-policy. The `.run402/` cache dir this creates is per-checkout and never committed.
