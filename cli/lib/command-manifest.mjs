@@ -64,6 +64,7 @@ export const COMMAND_MANIFEST = [
   { path: ["init"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat", skipBehavioral: "creates a wallet and polls funding" },
   { path: ["pay"], positionals: [p("url")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["https://example.com/"], runStyle: "flat", skipBehavioral: "calls an external URL and may authorize an x402 payment" },
   { path: ["status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "flat" },
+  { path: ["redeem"], positionals: [p("code")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["R402-K8F3-Q2W9"], runStyle: "flat", skipBehavioral: "credits real money against the live organization" },
 
   // ── wallets ──────────────────────────────────────────────────────────────
   { path: ["wallets", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },

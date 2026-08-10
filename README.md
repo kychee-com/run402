@@ -483,9 +483,9 @@ RUN402_MCP_PROFILE=buyer npx -y run402-mcp
 | profile | tools | approx. tokens |
 |---|---:|---:|
 | *(unset — default)* | 198 | ~43,200 |
-| `buyer` | **6** | **~660** |
+| `buyer` | **7** | **~740** |
 
-The six: `generate_image` · `init` · `check_balance` · `allowance_status` · `allowance_export` · `request_faucet` — enough to bootstrap a wallet, fund it, check it, and buy. **Local, so it can actually pay:** an x402 payment needs a signing key, so a wallet-less remote server cannot make one.
+The seven: `generate_image` · `init` · `check_balance` · `allowance_status` · `allowance_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (from the faucet or a promo code), check it, and buy. **Local, so it can actually pay:** an x402 payment needs a signing key, so a wallet-less remote server cannot make one.
 
 Default is unchanged when the variable is unset. An unknown profile name **exits 1** with the known-profile list rather than silently serving the full surface or nothing.
 
@@ -698,6 +698,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `status` | Full organization snapshot (allowance, balance, tier, projects). |
 | `allowance_status` / `allowance_create` / `allowance_export` | Local allowance management. |
 | `request_faucet` | Request testnet USDC. |
+| `redeem_voucher` | Redeem a promo code for run402 prepaid credit. |
 | `check_balance` | USDC balance for an allowance address. |
 | `list_projects` | Named, domain-aware project inventory (name, site_url, custom_domains, org). Membership-scoped; supports `org_id` filter, `all` cross-wallet read, and pagination. |
 | `list_tenant_payments` | Redacted tenant x402 payment history for priced function routes on a project. |

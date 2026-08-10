@@ -2106,6 +2106,33 @@ faucet(address?: string): Promise<FaucetResult>
 The Node entry's credentials provider also writes a `lastFaucet` marker after
 success — surfaced via `status().faucet_used`.
 
+### `r.vouchers`
+
+```
+redeem(code: string): Promise<RedeemVoucherResult>
+```
+
+Redeems a promo code (e.g. `R402-K8F3-Q2W9`) into the authenticated wallet's
+organization as prepaid credit. That credit settles tier purchases and priced
+calls through the allowance rail — no on-chain payment.
+
+- **Order-independent.** Works as the very first authenticated call a new wallet
+  makes (the organization is provisioned on demand) or long after `init`.
+- **Idempotent for the redeemer.** A repeat by the same organization returns the
+  ORIGINAL result with `already_redeemed: true` and never credits twice, so a
+  timed-out call is safe to re-issue. A different organization gets
+  `VOUCHER_ALREADY_REDEEMED` (409).
+- **Send the code verbatim.** The gateway owns the grammar and is forgiving
+  (case-insensitive, hyphens optional, Crockford confusables mapped); a
+  client-side format check would only reject codes the server accepts.
+- Other failures: `VOUCHER_NOT_FOUND` (404 — unknown *or* malformed, the same
+  answer on purpose), `VOUCHER_EXPIRED` (410), `PROMO_LIMIT_REACHED` (403).
+
+`RedeemVoucherResult` carries `amount_usd_micros`, the post-credit
+`balance_usd_micros`, `organization_id`, `redeemed_at`, `already_redeemed`,
+`promo_lifetime_ceiling_usd_micros`, and `next_actions[]` (usually the tier the
+new balance now covers, with a ready-to-run `cli` string).
+
 ### `r.service`
 
 ```

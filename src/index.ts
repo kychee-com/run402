@@ -217,6 +217,7 @@ import { allowanceStatusSchema, handleAllowanceStatus } from "./tools/allowance-
 import { allowanceCreateSchema, handleAllowanceCreate } from "./tools/allowance-create.js";
 import { allowanceExportSchema, handleAllowanceExport } from "./tools/allowance-export.js";
 import { requestFaucetSchema, handleRequestFaucet } from "./tools/request-faucet.js";
+import { redeemVoucherSchema, handleRedeemVoucher } from "./tools/redeem-voucher.js";
 import { generateImageSchema, handleGenerateImage } from "./tools/generate-image.js";
 
 // New tools — email
@@ -1149,6 +1150,13 @@ server.tool(
   "Request free testnet USDC from the Run402 faucet (Base Sepolia). Rate limit: 1 per IP per 24h. Returns 0.25 USDC — enough for 2 prototype databases.",
   requestFaucetSchema,
   async (args) => handleRequestFaucet(args),
+);
+
+server.tool(
+  "redeem_voucher",
+  "Redeem a promo code (voucher) for Run402 prepaid credit. Use this whenever the user hands you a code like R402-K8F3-Q2W9. The credit spends like any other prepaid balance — a tier purchase settles from it with no on-chain payment. Works before or after setup, and retrying the same code is safe (a repeat returns the original result and never credits twice).",
+  redeemVoucherSchema,
+  async (args) => handleRedeemVoucher(args),
 );
 
 // ─── Image generation tools ──────────────────────────────────────────────

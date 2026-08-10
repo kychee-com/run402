@@ -93,6 +93,7 @@ function parseCliCommands(): string[] {
   for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   if (existsSync(join(__dirname, "cli/lib/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "cli/lib/pay.mjs"))) cmds.push("pay");
+  if (existsSync(join(__dirname, "cli/lib/redeem.mjs"))) cmds.push("redeem");
   if (existsSync(join(__dirname, "cli/lib/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "cli/lib/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "cli/lib/doctor.mjs"))) cmds.push("doctor");
@@ -127,6 +128,7 @@ function parseOpenClawCommands(): string[] {
   for (const action of parseNotificationsGroupActions("rulesAction")) cmds.push(`notifications:rules:${action}`);
   if (existsSync(join(__dirname, "openclaw/scripts/init.mjs"))) cmds.push("init");
   if (existsSync(join(__dirname, "openclaw/scripts/pay.mjs"))) cmds.push("pay");
+  if (existsSync(join(__dirname, "openclaw/scripts/redeem.mjs"))) cmds.push("redeem");
   if (existsSync(join(__dirname, "openclaw/scripts/up.mjs"))) cmds.push("up");
   if (existsSync(join(__dirname, "openclaw/scripts/status.mjs"))) cmds.push("status");
   if (existsSync(join(__dirname, "openclaw/scripts/doctor.mjs"))) cmds.push("doctor");
@@ -278,6 +280,10 @@ const SURFACE: Capability[] = [
   { id: "up",                endpoint: "(compound local+gateway action)",       mcp: "app_up",                        cli: "up",                  openclaw: "up" },
   { id: "init",              endpoint: "(local)",                              mcp: "init",                          cli: "init",                openclaw: "init" },
   { id: "pay_url",           endpoint: "(external x402 URL)",                  mcp: "pay_url",                       cli: "pay",                 openclaw: "pay" },
+  // Redeeming is on every surface on purpose: a promo code can arrive in a
+  // pasted prompt to a shell agent, an MCP client with no shell, or a human's
+  // OpenClaw session, and the code is worthless to whichever one cannot use it.
+  { id: "redeem_voucher",    endpoint: "POST /vouchers/v1/redemptions",        mcp: "redeem_voucher",                cli: "redeem",              openclaw: "redeem" },
   { id: "status",            endpoint: "(local)",                              mcp: "status",                        cli: "status",              openclaw: "status" },
   // Identity-link mutations stay out of MCP v1: the CLI/OpenClaw group hands
   // public content to Buzz's signer boundary and never accepts a Nostr secret.
@@ -999,6 +1005,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   delete_passkey: "auth.deletePasskey",
   auth_providers: "auth.providers",
   auth_scaffold_roles: null, // offline CLI/MCP generator — no SDK method
+
+  // Vouchers
+  redeem_voucher: "vouchers.redeem",
 
   // Tier
   tier_status: "tier.status",

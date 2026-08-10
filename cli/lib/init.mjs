@@ -26,6 +26,11 @@ Usage:
                              silently flipping billing networks.
 
 Options:
+  --voucher <code> Redeem a promo code after setup and credit this
+                  organization. Never blocks setup: if the code is invalid,
+                  expired, already used, or the call fails, init warns and
+                  finishes normally with 'voucher_error' in the summary.
+                  Equivalent to running 'run402 redeem <code>' afterwards.
   --api-base <url> Configure the active profile to use this API base. Use this
                   for a self-hosted Run402 Core Gateway, e.g.
                   http://my-core:4020.
@@ -81,6 +86,43 @@ function parseApiBaseFlag(args) {
   return { value: null, args };
 }
 
+/**
+ * Pull `--voucher <code>` / `--voucher=<code>` out of argv, mirroring
+ * `parseApiBaseFlag`. A MISSING VALUE still fails fast — that is a usage error
+ * the caller can fix, unlike a redemption failure, which must never take init
+ * down with it (see the redemption step at the end of `run`).
+ */
+function parseVoucherFlag(args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--voucher") {
+      const value = args[i + 1];
+      if (value === undefined || String(value).startsWith("--")) {
+        fail({
+          code: "BAD_USAGE",
+          message: "--voucher requires a value.",
+          hint: "run402 init --voucher R402-K8F3-Q2W9",
+          details: { flag: "--voucher" },
+        });
+      }
+      return { value, args: [...args.slice(0, i), ...args.slice(i + 2)] };
+    }
+    if (typeof arg === "string" && arg.startsWith("--voucher=")) {
+      const value = arg.slice("--voucher=".length);
+      if (!value) {
+        fail({
+          code: "BAD_USAGE",
+          message: "--voucher requires a non-empty value.",
+          hint: "run402 init --voucher R402-K8F3-Q2W9",
+          details: { flag: "--voucher" },
+        });
+      }
+      return { value, args: [...args.slice(0, i), ...args.slice(i + 1)] };
+    }
+  }
+  return { value: null, args };
+}
+
 function sameOrigin(a, b) {
   try {
     return new URL(a).origin === new URL(b).origin;
@@ -128,6 +170,13 @@ export async function run(args = []) {
 
   if (args.includes("--help") || args.includes("-h")) { console.log(HELP); process.exit(0); }
 
+  // Strip --voucher before anything else parses argv, so the rail/positional
+  // logic below never sees it (an unrecognized token there would be read as a
+  // rail name).
+  const parsedVoucher = parseVoucherFlag(args);
+  args = parsedVoucher.args;
+  const voucherCode = parsedVoucher.value;
+
   const parsedApiBase = parseApiBaseFlag(args);
   if (parsedApiBase.value) {
     if (parsedApiBase.args.some((arg) => typeof arg === "string" && !arg.startsWith("--"))) {
@@ -135,6 +184,17 @@ export async function run(args = []) {
         code: "BAD_USAGE",
         message: "run402 init --api-base cannot be combined with a payment rail.",
         hint: "Run `run402 init --api-base=http://my-core:4020` for Core, or `run402 init` for Run402 Cloud.",
+      });
+    }
+    // This branch configures a Core/API target and returns without setting up
+    // an allowance — there is no organization here to credit, and promo
+    // vouchers are a Run402 Cloud concept. Say so instead of accepting the
+    // flag and silently dropping it.
+    if (voucherCode) {
+      fail({
+        code: "BAD_USAGE",
+        message: "run402 init --api-base cannot be combined with --voucher.",
+        hint: "Configure the target first (`run402 init --api-base=…`), then redeem against Run402 Cloud with `run402 redeem <code>`.",
       });
     }
     const CONFIG_DIR = configDir();
@@ -199,6 +259,10 @@ export async function run(args = []) {
     rail: null,
     network: null,
     balances: null,
+    // Present (null or an object) only when --voucher was passed, so its
+    // absence means "no code was offered" rather than "a code silently
+    // vanished". `voucher_error` appears alongside a null `voucher`.
+    ...(voucherCode ? { voucher: null } : {}),
     tier: null,
     projects_saved: 0,
     next_actions: [],
@@ -332,6 +396,46 @@ export async function run(args = []) {
       }
     } else {
       line("Balance", `${(balance / 1e6).toFixed(2)} USDC`);
+    }
+  }
+
+  // 3b. Promo code, when one was handed to us.
+  //
+  // This runs BEFORE the balance read below so the credited amount shows up in
+  // `prepaid_credit_usd_micros` without a second round-trip, and AFTER the
+  // wallet exists so the redemption authenticates as this agent.
+  //
+  // NOTHING here may fail init. An advertised gift that dead-ends a build is
+  // worse than no gift at all: the agent was told to run one command, and that
+  // command must still leave it set up and able to work. Every failure — bad
+  // code, expired, already used by someone else, org at its ceiling, network
+  // down, gateway too old to know the route — warns on stderr, records
+  // `voucher_error` in the JSON summary, and lets setup finish.
+  if (voucherCode) {
+    try {
+      const redemption = await getSdk().vouchers.redeem(voucherCode);
+      const credited = (redemption.amount_usd_micros / 1_000_000).toFixed(2);
+      line(
+        "Voucher",
+        redemption.already_redeemed
+          ? `$${credited} already credited (no second credit)`
+          : `$${credited} credited`,
+      );
+      summary.voucher = {
+        voucher_id: redemption.voucher_id,
+        amount_usd_micros: redemption.amount_usd_micros,
+        already_redeemed: redemption.already_redeemed,
+      };
+    } catch (err) {
+      // Faithful: name what failed and keep going. `voucher_error` is a
+      // first-class summary field, not an omission the caller has to infer.
+      const reason = errorMessage(err);
+      line("Voucher", `not applied: ${reason}`);
+      summary.voucher = null;
+      summary.voucher_error = {
+        code: err?.body?.code ?? err?.code ?? "VOUCHER_REDEEM_FAILED",
+        message: reason,
+      };
     }
   }
 

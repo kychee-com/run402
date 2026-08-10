@@ -30,6 +30,11 @@ export const TOOL_PROFILES: Record<string, readonly string[]> = {
     "allowance_export",
     "check_balance",
     "request_faucet",
+    // Redeeming a promo code is funding, the same shape as the faucet: it is
+    // how a buyer-profile agent gets a spendable balance without a wallet
+    // top-up. Leaving it out would strand exactly the agent most likely to be
+    // handed a code.
+    "redeem_voucher",
   ],
 };
 // NOTE: `x402_price_check` is deliberately absent — it lives on the remote

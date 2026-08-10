@@ -25,6 +25,7 @@ Install + deploy:
 npm install -g run402@latest
 run402 up --name "my-app" -y                 # validates manifest, bootstraps prerequisites, deploys
 run402 apply --manifest app.json --rehearse --json
+run402 redeem <code>                         # only if you were given a promo code — see Promo codes below
 ```
 
 `up` is the agent-first path when the repo has `run402.deploy.json` or `app.json`. It is a thin CLI shim over the SDK action runner; the SDK owns manifest validation, project resolution, recursive prerequisites, idempotency-key derivation, and deploy apply. Provision before writing frontend code when you need the real `anon_key` embedded. `prototype` is free with the testnet faucet; use `hobby` / `team` for mainnet.
@@ -217,6 +218,32 @@ run402 init --api-base=http://my-core:4020
 ```
 
 After that, the same `run402 projects provision` and `run402 deploy apply` commands target Core.
+
+### Promo codes (vouchers)
+
+If you were given a **promo code** — a string like `R402-K8F3-Q2W9`, sometimes
+called a voucher or a gift/starter code — redeem it. It credits your
+organization with run402 prepaid credit, and that credit pays for the next step
+(a tier) with no on-chain payment.
+
+```bash
+run402 redeem R402-K8F3-Q2W9        # any time: before or after `run402 init`
+run402 init --voucher R402-K8F3-Q2W9  # same redemption, folded into setup
+```
+
+- **Order does not matter.** Redeeming works as your very first authenticated
+  call (the organization is created on demand) or long after `run402 init`.
+- **Codes are forgiving.** Case-insensitive, hyphens optional — `R402-K8F3-Q2W9`
+  and `r402k8f3q2w9` are the same code. Send it verbatim; the server normalizes.
+- **Retrying is safe.** A repeat by the same organization returns the original
+  result with `already_redeemed: true` and never credits twice.
+- **A bad code never blocks setup.** `init --voucher` warns, records
+  `voucher_error` in its JSON summary, and finishes normally.
+- Failures: `404 VOUCHER_NOT_FOUND` (unknown or malformed), `410
+  VOUCHER_EXPIRED`, `409 VOUCHER_ALREADY_REDEEMED` (a different organization
+  used it), `403 PROMO_LIMIT_REACHED` (this org is at its lifetime ceiling).
+
+Minting codes is not an agent operation — it needs an issuer key no tenant holds.
 
 ## Step 3: Subscribe to a Tier
 

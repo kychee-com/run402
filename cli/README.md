@@ -61,6 +61,19 @@ run402 allowance balance   # mainnet + testnet + billing balance
 run402 allowance export    # print {"address":"0x..."} for funding
 ```
 
+### Promo codes
+
+```bash
+run402 redeem R402-K8F3-Q2W9          # any time, before or after `run402 init`
+run402 init --voucher R402-K8F3-Q2W9  # same redemption, folded into setup
+```
+
+A promo code credits the organization with prepaid credit that settles tiers and
+priced calls with no on-chain payment. Case-insensitive, hyphens optional.
+Retrying is safe — a repeat returns the original result and never credits twice.
+A bad code never blocks `init`; it warns and records `voucher_error` in the JSON
+summary.
+
 ### Public Buzz/Nostr identity attribution
 
 Human accounts connect through <https://console.run402.com/identity-links/connect>: a normal browser, fresh passkey, and Buzz approval, with no terminal/event/passkey credential handling. The CLI commands below are the agent EOA ceremony. `identity link list` preserves every active/revoked record and its proof protocol; public identity links and organization memberships are independently revocable.

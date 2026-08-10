@@ -551,6 +551,7 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0
 - `status` — full organization snapshot.
 - `allowance_status` / `allowance_create` / `allowance_export` — local allowance management.
 - `request_faucet` — Base Sepolia testnet USDC.
+- `redeem_voucher` — redeem a promo code (e.g. `R402-K8F3-Q2W9`) for run402 prepaid credit. Use it whenever the user hands you a code. Funding, like the faucet, but off-chain: it credits the organization's prepaid balance, which then settles a tier with no on-chain payment. Works before or after setup; a repeat of the same code returns the original result instead of crediting twice.
 - `check_balance` — USDC for an allowance address.
 - `list_projects` — the named, domain-aware project inventory (project-findability, `GET /projects/v1`). Each row carries `name`, `site_url`, `custom_domains`, the owning org `organization_id`, `created_by`, and v1.57 lifecycle fields (`status`/`effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`). Membership-scoped by default (org-owned control plane, v1.77+): a wallet *authenticates* but does not *own* — lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Args: `org_id` filters to one org (authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `all: true` reads the cross-wallet inventory across every wallet controlling your operator email, and `limit`/`cursor` paginate.
 - `rename_project` — rename a project (project-findability, `PATCH /projects/v1/:id`) to fix an auto-generated name. Org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id → 403, never a not-found oracle). Uses the wallet's SIWX auth, not a service key, so it works even if the project isn't in the local key store.
@@ -713,7 +714,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 
 | You see | Likely cause / fix |
 |---|---|
-| `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
+| `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. If the user gave you a promo code, `redeem_voucher` credits the balance instead. |
 | `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
 | `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
@@ -733,15 +734,15 @@ Stdio MCP transports must keep stdout reserved for JSON-RPC. Use the package bin
 
 ### `RUN402_MCP_PROFILE=buyer` — 6 tools instead of 198
 
-The full surface is **198 tools (~43,200 tokens)** loaded into your context before the first call. If you only intend to BUY — generate an image for $0.03 — that is a fifth to a third of a context window spent on 192 tools you will never call.
+The full surface is **198 tools (~43,200 tokens)** loaded into your context before the first call. If you only intend to BUY — generate an image for $0.03 — that is a fifth to a third of a context window spent on 191 tools you will never call.
 
 ```
-RUN402_MCP_PROFILE=buyer npx -y run402-mcp     # 6 tools, ~660 tokens
+RUN402_MCP_PROFILE=buyer npx -y run402-mcp     # 7 tools, ~740 tokens
 ```
 
-Registers `generate_image` · `init` · `check_balance` · `allowance_status` · `allowance_export` · `request_faucet` — enough to bootstrap a wallet, fund it (Base Sepolia faucet or a mainnet address from `allowance_export`), confirm the money landed, and buy.
+Registers `generate_image` · `init` · `check_balance` · `allowance_status` · `allowance_export` · `request_faucet` · `redeem_voucher` — enough to bootstrap a wallet, fund it (Base Sepolia faucet, a promo code, or a mainnet address from `allowance_export`), confirm the money landed, and buy.
 
-Use the profile when the task is a purchase. Leave it unset when you may provision, deploy, or manage a project — the other 192 tools are how you do that.
+Use the profile when the task is a purchase. Leave it unset when you may provision, deploy, or manage a project — the other 191 tools are how you do that.
 
 Default is unchanged when unset. An unknown profile name exits 1 listing the known profiles, rather than silently serving the full surface or nothing.
 

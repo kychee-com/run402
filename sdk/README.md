@@ -319,6 +319,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion` |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |
 | `billing` | `createEmailOrganization`, `linkWallet`, `createCheckout`, `setAutoRecharge`, `checkBalance`, `getOrganization`, `lookupOrganization`, `getHistory`, `balance`, `history` |
+| `vouchers` | `redeem` (promo code → prepaid credit; safe to retry) |
 | `contracts` | `provisionSigner`, `getSigner`, `listSigners`, `setRecovery`, `setLowBalanceAlert`, `call`, `read`, `callStatus`, `drain`, `deleteSigner` |
 | `ai` | `translate`, `moderate`, `usage`, `generateImage` |
 | `allowance` | `status`, `create`, `export`, `faucet` |

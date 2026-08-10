@@ -675,6 +675,7 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 **Buzz community control plane.** `run402 buzz status` keeps skill installation, human-adoption offer/adoption, community installation, and per-agent enrollment independent. Use `run402 buzz adopt offer` for the inert durable HTTPS handoff and poll `offer show`; the browser owns human login/passkey and the Buzz callback. Report success only when polling returns `completed` with three distinct effects: terminal consent receipt, public human identity link, and ordinary owner membership. Only the membership grants org authority; it and the link can be revoked independently without rewriting the receipt. The founder agent remains an owner and no projects or credentials transfer. `buzz adopt direct` is advanced compatibility. Buzz itself remains unchanged; MCP renders state and exact HTTPS/CLI handoffs only.
 - **`allowance_status`** / **`allowance_create`** / **`allowance_export`** — local allowance management.
 - **`request_faucet`** — testnet USDC.
+- **`redeem_voucher`** — redeem a promo code (e.g. `R402-K8F3-Q2W9`) for run402 prepaid credit. Use it whenever the user hands you a code; the credit pays for a tier with no on-chain payment. Works before or after setup, and a repeat of the same code returns the original result instead of crediting twice.
 - **`check_balance`** — USDC for an allowance address.
 - **`list_projects`** — the named, domain-aware project inventory (project-findability). Each row carries `name`, `site_url`, `custom_domains`, and the v1.57 lifecycle fields (`status`/`effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`); the owning org is `org_id` and the provisioning principal is `created_by`. Membership-scoped by default (org-owned control plane, v1.77+): a wallet *authenticates* but does not *own* — lists projects owned by orgs the wallet's resolved principal is an active member of, plus any with an active per-project grant. Pass `org_id` to filter to one org (authorize-before-reveal), `all: true` to read the cross-wallet inventory across every wallet controlling your operator email, or `limit`/`cursor` to paginate.
 - **`list_tenant_payments`** — redacted tenant x402 payment history for priced function routes on a project. Pass `project_id`, optional `status`, `limit`, and `after`. Requires `project.tenant_payments.read`; raw `X-PAYMENT` headers, authorization hashes, and internal metadata are never returned.
@@ -895,6 +896,7 @@ The MCP server manages a local agent allowance — a wallet key dedicated to pay
 - **`init`** — composes `allowance_create` + `request_faucet` + `tier_status` + `list_projects`. Use this on a fresh install.
 - **`allowance_create`** / **`allowance_status`** / **`allowance_export`** — granular allowance ops.
 - **`request_faucet`** — Base Sepolia testnet USDC.
+- **`redeem_voucher`** — a promo code the user was given. Funding, like the faucet, but off-chain: it credits the organization's prepaid balance.
 - **`check_balance`** — run402 organization balance (available + held) for the agent's wallet; resolves the wallet to its organization over SIWX.
 
 Other allowance options:
@@ -905,7 +907,7 @@ Other allowance options:
 
 | You see | Likely cause / fix |
 |---|---|
-| `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. |
+| `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. If the user gave you a promo code, `redeem_voucher` credits the balance instead. |
 | `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
 | `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist, so also re-check the project id. |

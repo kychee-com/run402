@@ -23,6 +23,7 @@ Commands:
   init        Set up allowance, funding, and check tier status (x402 default)
   init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
   pay         Call an arbitrary x402-priced URL with a bounded payment
+  redeem      Redeem a promo code for run402 credit
   status      Show full account state (allowance, balance, tier, projects)
   wallets     Manage multiple named wallets (list, new, use, rename, bind, import)
   credentials Manage local credential material (project-keys)
@@ -162,6 +163,11 @@ switch (cmd) {
   }
   case "pay": {
     const { run } = await import("./lib/pay.mjs");
+    await run([sub, ...rest].filter(Boolean));
+    break;
+  }
+  case "redeem": {
+    const { run } = await import("./lib/redeem.mjs");
     await run([sub, ...rest].filter(Boolean));
     break;
   }

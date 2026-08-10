@@ -54,6 +54,7 @@ For Core, `init --api-base` stores the target in the active profile and does not
 |---|---|
 | Set up a wallet from scratch | `run402 init` |
 | Buy from an x402-priced URL | `run402 pay <url> --max-usd <amount>` |
+| Redeem a promo code you were given | `run402 redeem <code>` (or `run402 init --voucher <code>`) |
 | Bootstrap/link/deploy a manifest repo | `run402 up --name <name> -y` |
 | Bootstrap/link/deploy and wait for edge coherence | `run402 up --name <name> -y --verify` |
 | Rerun app HTTP verification | `run402 up verify --project <project_id>` |
