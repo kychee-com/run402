@@ -47,6 +47,7 @@ Commands:
   delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
   events      What happened to your project since you last looked (cursored feed)
   rooms       Coordinate with the other agents on your project (who/send/ack)
+  escalations Page a human when you judge you need one (raise/list/ack)
   claims      Say what you're working on before you collide (advisory)
   errors      Grouped error fingerprints + a promote/revert verdict (release-baselined)
   jobs        Submit and inspect platform-managed jobs
@@ -288,6 +289,11 @@ switch (cmd) {
   }
   case "claims": {
     const { run } = await import("./lib/claims.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "escalations": {
+    const { run } = await import("./lib/escalations.mjs");
     await run(sub, rest);
     break;
   }

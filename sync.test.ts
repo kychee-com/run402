@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -107,7 +107,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -543,6 +543,18 @@ const SURFACE: Capability[] = [
   { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "read_room_messages",           cli: "rooms:list", openclaw: "rooms:list" },
   { id: "ack_room_message",             endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages/:message_id/ack", mcp: "ack_room_message",             cli: "rooms:ack", openclaw: "rooms:ack" },
   { id: "get_room_message",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages/:message_id", mcp: null, cli: "rooms:get", openclaw: "rooms:get" },
+  { id: "raise_escalation",             endpoint: "POST /orgs/v1/:org_id/escalations", mcp: "raise_escalation",           cli: "escalations:raise", openclaw: "escalations:raise" },
+  { id: "get_escalation",               endpoint: "GET /orgs/v1/:org_id/escalations/:escalation_id", mcp: "get_escalation",  cli: "escalations:get", openclaw: "escalations:get" },
+  // One MCP tool covers both reads: get_escalation with escalation_id omitted
+  // lists. The agent's loop is "poll MY escalation", and a second tool for the
+  // list would be two names for one question.
+  { id: "list_escalations",             endpoint: "GET /orgs/v1/:org_id/escalations", mcp: null,                          cli: "escalations:list", openclaw: "escalations:list" },
+  { id: "ack_escalation",               endpoint: "POST /orgs/v1/:org_id/escalations/:escalation_id/ack", mcp: null,       cli: "escalations:ack", openclaw: "escalations:ack" },
+  { id: "resolve_escalation",           endpoint: "POST /orgs/v1/:org_id/escalations/:escalation_id/resolve", mcp: null,   cli: "escalations:resolve", openclaw: "escalations:resolve" },
+  // Owner-only contact management (who gets paged). No MCP tool by design: an
+  // agent raises, it does not decide which humans exist to be paged — that is
+  // an owner action gated behind a passkey step-up.
+  { id: "manage_escalation_contacts",   endpoint: "GET /orgs/v1/:org_id/escalation-contacts", mcp: null,                  cli: "escalations:contacts", openclaw: "escalations:contacts" },
   { id: "claim_room_resource",          endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/claims",  mcp: "claim_room_resource",          cli: "claims:create", openclaw: "claims:create" },
   { id: "list_room_claims",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/claims", mcp: null, cli: "claims:list", openclaw: "claims:list" },
   { id: "release_room_claim",           endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/claims/:claim_id", mcp: "release_room_claim",           cli: "claims:release", openclaw: "claims:release" },
@@ -914,6 +926,12 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   release_room_claim: "rooms.releaseClaim",
   get_room_message: "rooms.getMessage",
   list_room_claims: "rooms.listClaims",
+  raise_escalation: "escalations.raise",
+  get_escalation: "escalations.get",
+  list_escalations: "escalations.list",
+  ack_escalation: "escalations.ack",
+  resolve_escalation: "escalations.resolve",
+  manage_escalation_contacts: "escalations.listContacts",
   errors_list: "errors.list",
   get_notification: "admin.getNotification",
   get_notification_preferences: "admin.getNotificationPreferences",
@@ -1288,6 +1306,18 @@ describe("SDK surface alignment", () => {
       // `claim_wallet_org` capability maps to the submit step, and the Node
       // convenience `claimWalletOrg` composes challenge + sign + submit.
       "operator.claimWalletOrg.challenge",
+      // escalations: the capability rows above cover raise/get/list/ack/
+      // resolve/contacts-list. These are the rest of the namespace.
+      // addContact/removeContact ride the one `manage_escalation_contacts`
+      // capability (one CLI group, owner-gated, no MCP tool by design).
+      "escalations.addContact",
+      "escalations.removeContact",
+      // ackWithToken is the hosted one-tap page's call, not an agent verb —
+      // the token comes from an email/Telegram link a human taps.
+      "escalations.ackWithToken",
+      // raiseAndWait composes raise + poll for the common "I genuinely cannot
+      // proceed" case; the CLI spells it `escalations raise --wait`.
+      "escalations.raiseAndWait",
       "email.resolveMailbox",  // private helper
       "email.listMailboxEnvelope", // private helper
       "email.pickMailbox",     // private helper

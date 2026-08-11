@@ -42,6 +42,7 @@ import { Grants } from "./namespaces/grants.js";
 import { Delegates } from "./namespaces/delegates.js";
 import { Events } from "./namespaces/events.js";
 import { Rooms } from "./namespaces/rooms.js";
+import { Escalations } from "./namespaces/escalations.js";
 import { Errors } from "./namespaces/errors.js";
 import { Pay, type PayExecutor } from "./namespaces/pay.js";
 import { IdentityLinks } from "./namespaces/identity-links.js";
@@ -146,6 +147,14 @@ export class Run402 {
    * room (`r.rooms.forProject(projectId)` is the zero-config rendezvous).
    */
   readonly rooms: Rooms;
+
+  /**
+   * The agent→human hotline: raise an escalation when YOU judge a person is
+   * needed, then poll it until a named human takes ownership. Mandatory
+   * delivery, confidential (never mirrored into a feed or a room), and it
+   * climbs to the next contact level if nobody answers.
+   */
+  readonly escalations: Escalations;
   /** Pay arbitrary x402-priced URLs with a spend ceiling and structured receipt. */
   readonly pay: Pay;
   /**
@@ -243,6 +252,7 @@ export class Run402 {
     this.delegates = new Delegates(client);
     this.events = new Events(client);
     this.rooms = new Rooms(client);
+    this.escalations = new Escalations(client);
     this.pay = new Pay(client, opts.payExecutor);
     this.errors = new Errors(client);
     this.identityLinks = new IdentityLinks(client);
@@ -564,7 +574,9 @@ export type * from "./namespaces/delegates.types.js";
 export { Events } from "./namespaces/events.js";
 export type * from "./namespaces/events.types.js";
 export { Rooms, ScopedRoom } from "./namespaces/rooms.js";
+export { Escalations } from "./namespaces/escalations.js";
 export type * from "./namespaces/rooms.types.js";
+export type * from "./namespaces/escalations.types.js";
 export { Errors } from "./namespaces/errors.js";
 export type * from "./namespaces/errors.types.js";
 export { Vouchers } from "./namespaces/vouchers.js";
