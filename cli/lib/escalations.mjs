@@ -107,7 +107,7 @@ async function raise(args) {
     missing: "<reason>",
   });
   const severity = flagValue(a, "--severity");
-  if (severity) assertAllowedValue("--severity", severity, SEVERITY);
+  if (severity) assertAllowedValue(severity, SEVERITY, "--severity");
 
   try {
     const orgId = await resolveOrgId(a);
@@ -128,8 +128,10 @@ async function raise(args) {
       return;
     }
 
-    const pollMs = (parseIntegerFlag(a, "--poll-seconds", { min: 5, max: 600 }) ?? 30) * 1000;
-    const timeoutMs = (parseIntegerFlag(a, "--timeout-seconds", { min: 60, max: 86_400 }) ?? 3600) * 1000;
+    const pollSeconds = flagValue(a, "--poll-seconds");
+    const timeoutSeconds = flagValue(a, "--timeout-seconds");
+    const pollMs = (pollSeconds != null ? parseIntegerFlag("--poll-seconds", pollSeconds, { min: 5, max: 600 }) : 30) * 1000;
+    const timeoutMs = (timeoutSeconds != null ? parseIntegerFlag("--timeout-seconds", timeoutSeconds, { min: 60, max: 86_400 }) : 3600) * 1000;
     const raised = await sdk.escalations.raise(orgId, input);
     warnIfUnreachable(raised);
     // Progress goes to stderr so the stdout pipe contract stays one JSON doc.
@@ -169,13 +171,13 @@ async function list(args) {
     min: 0, max: 0, command: "run402 escalations list", missing: "",
   });
   const status = flagValue(a, "--status");
-  if (status) assertAllowedValue("--status", status, STATUS);
+  if (status) assertAllowedValue(status, STATUS, "--status");
   try {
     const orgId = await resolveOrgId(a);
     out(await getSdk().escalations.list(orgId, {
       ...(status ? { status } : {}),
-      ...(parseIntegerFlag(a, "--limit", { min: 1, max: 200 }) !== undefined
-        ? { limit: parseIntegerFlag(a, "--limit", { min: 1, max: 200 }) }
+      ...(flagValue(a, "--limit") != null
+        ? { limit: parseIntegerFlag("--limit", flagValue(a, "--limit"), { min: 1, max: 200 }) }
         : {}),
       ...(flagValue(a, "--cursor") ? { cursor: flagValue(a, "--cursor") } : {}),
     }));
@@ -256,7 +258,8 @@ async function contacts(args) {
       requirePositionalCount(positionals, valueFlags, {
         min: 1, max: 1, command: "run402 escalations contacts add", missing: "<email>",
       });
-      const level = parseIntegerFlag(a, "--level", { min: 1, max: 10 });
+      const levelRaw = flagValue(a, "--level");
+      const level = levelRaw != null ? parseIntegerFlag("--level", levelRaw, { min: 1, max: 10 }) : undefined;
       const created = await sdk.escalations.addContact(await resolveOrgId(a), {
         email: positionals[0],
         ...(level !== undefined ? { level } : {}),
@@ -284,31 +287,36 @@ async function contacts(args) {
 }
 
 export async function run(sub, args) {
-  if (!sub || hasHelp(args ?? [])) {
+  const argv = Array.isArray(args) ? args : [];
+  if (!sub || hasHelp([sub, ...argv])) {
     console.log(HELP);
     process.exit(0);
   }
   switch (sub) {
     case "raise":
-      await raise(args);
+      await raise(argv);
       break;
     case "list":
-      await list(args);
+      await list(argv);
       break;
     case "get":
-      await get(args);
+      await get(argv);
       break;
     case "ack":
-      await ack(args);
+      await ack(argv);
       break;
     case "resolve":
-      await resolveCmd(args);
+      await resolveCmd(argv);
       break;
     case "contacts":
-      await contacts(args);
+      await contacts(argv);
       break;
     default:
       failUnknownSubcommand("escalations", sub, {
+        // `contacts` is a nested group, so it has no manifest row of its own —
+        // without this it would be missing from the suggestion list a lost
+        // agent reads.
+        extraSubcommands: ["contacts"],
         hint: "Run `run402 escalations --help` for usage.",
       });
   }
