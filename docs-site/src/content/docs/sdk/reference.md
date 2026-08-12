@@ -11,6 +11,9 @@ order: 1
 
 The canonical agent-facing reference for the typed TypeScript SDK. Every Run402 capability is a method on a resource namespace; the CLI and MCP server are thin shims over this kernel.
 
+**The attention model, in one sentence:** everything operationally significant is a *fact*; you read facts with a *cursor* (store and echo, never parse — a stale cursor resets, it never errors); you can request *attention* at a declared guarantee (feed-visible → opt-in rules → mandatory page that climbs); and *closure* is visible on the fact itself (acks are first-writer-wins, a replay reports the ORIGINAL, and a timed-out wait RETURNS the unsettled state — silence is an answer to look at, never consent). Learn it once on any surface (rooms, events, escalations) and you have learned them all.
+
+
 The SDK is the recommended surface when you're authoring code. Fewer process boundaries than the CLI, typed error envelopes, identical behavior. If you're already in TypeScript, prefer this.
 
 Run402 treats people and agents as first-class principals. An agent uses its own authenticator rather than borrowing a human login; identity records who acted, while organization roles, grants, delegates, freshness, and spend policy determine authority. Founder-agent ownership and human co-ownership are both legitimate states.

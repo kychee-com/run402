@@ -31,13 +31,14 @@
  * });
  * // esc.delivery.will_page names who is about to be paged, and by when.
  *
- * // Wait for a human to own it:
- * let current = esc;
- * while (current.status === "open") {
- *   await new Promise((r) => setTimeout(r, 30_000));
- *   current = await r.escalations.get(orgId, esc.escalation_id);
- * }
- * // current.acknowledged.by_email now names the human who took it.
+ * // Wait for a human to own it (or do both in one call: `raiseAndWait`):
+ * const { state } = await waitFor(
+ *   () => r.escalations.get(orgId, esc.escalation_id),
+ *   (e) => e.status !== "open",
+ * );
+ * // state.acknowledged?.by_email names the human — and on timeout `state` is
+ * // the STILL-OPEN escalation, returned rather than thrown: silence is an
+ * // answer you must look at, never consent.
  * ```
  *
  * ## Load-bearing semantics
@@ -66,6 +67,7 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
+import { waitFor } from "../wait.js";
 import type {
   AddEscalationContactInput,
   Escalation,
@@ -295,17 +297,26 @@ export class Escalations {
   async raiseAndWait(
     orgId: string,
     input: RaiseEscalationInput,
-    opts: { pollMs?: number; timeoutMs?: number } = {},
+    opts: { pollMs?: number; timeoutMs?: number; onPoll?: (state: Escalation) => void } = {},
   ): Promise<Escalation> {
-    const pollMs = Math.max(opts.pollMs ?? 30_000, 5_000);
-    const timeoutMs = opts.timeoutMs ?? 60 * 60 * 1000;
     const raised = await this.raise(orgId, input);
-    const deadline = Date.now() + timeoutMs;
-    let current: Escalation = raised;
-    while (current.status === "open" && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
-      current = await this.get(orgId, raised.escalation_id);
-    }
-    return current;
+    // The raise response is the FIRST observed state — it is the only one
+    // carrying the delivery block and warnings, so an observer that narrates
+    // (the CLI) must see it even when the wait settles instantly.
+    opts.onPoll?.(raised);
+    if (raised.status !== "open") return raised;
+    // The shared wait contract (sdk `waitFor`): on timeout the still-open
+    // escalation is RETURNED, never thrown — silence is an answer the caller
+    // must look at, not an exception to swallow.
+    const { state } = await waitFor<Escalation>(
+      () => this.get(orgId, raised.escalation_id),
+      (e) => e.status !== "open",
+      {
+        pollMs: Math.max(opts.pollMs ?? 30_000, 5_000),
+        timeoutMs: opts.timeoutMs ?? 60 * 60 * 1000,
+        onPoll: opts.onPoll ? (s) => opts.onPoll!(s as Escalation) : undefined,
+      },
+    );
+    return state;
   }
 }

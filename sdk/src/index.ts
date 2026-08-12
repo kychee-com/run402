@@ -575,6 +575,7 @@ export { Events } from "./namespaces/events.js";
 export type * from "./namespaces/events.types.js";
 export { Rooms, ScopedRoom } from "./namespaces/rooms.js";
 export { Escalations } from "./namespaces/escalations.js";
+export { waitFor, type WaitForOptions, type WaitForResult } from "./wait.js";
 export type * from "./namespaces/rooms.types.js";
 export type * from "./namespaces/escalations.types.js";
 export { Errors } from "./namespaces/errors.js";

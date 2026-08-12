@@ -19,7 +19,7 @@ import {
   requirePositionalCount,
   failUnknownSubcommand,
 } from "./argparse.mjs";
-import { resolveProjectId } from "./config.mjs";
+import { resolveOrgId } from "./org-context.mjs";
 
 export const SEVERITY = ["normal", "high"];
 export const STATUS = ["open", "acknowledged", "resolved"];
@@ -79,18 +79,6 @@ Examples:
   run402 escalations contacts add tal@example.com --level 1
 `;
 
-/** Resolve the addressed organization (one SDK lookup at most). */
-async function resolveOrgId(a) {
-  const explicit = flagValue(a, "--org");
-  if (explicit) return explicit;
-  const envOrg = (process.env.RUN402_ORG ?? "").trim();
-  if (envOrg) return envOrg;
-  // Same zero-config path rooms uses: the active project knows its org.
-  const projectId = resolveProjectId(flagValue(a, "--project"));
-  const scoped = await getSdk().rooms.forProject(projectId);
-  return scoped.orgId;
-}
-
 function out(value) {
   console.log(JSON.stringify(value, null, 2));
 }
@@ -132,18 +120,23 @@ async function raise(args) {
     const timeoutSeconds = flagValue(a, "--timeout-seconds");
     const pollMs = (pollSeconds != null ? parseIntegerFlag("--poll-seconds", pollSeconds, { min: 5, max: 600 }) : 30) * 1000;
     const timeoutMs = (timeoutSeconds != null ? parseIntegerFlag("--timeout-seconds", timeoutSeconds, { min: 60, max: 86_400 }) : 3600) * 1000;
-    const raised = await sdk.escalations.raise(orgId, input);
-    warnIfUnreachable(raised);
-    // Progress goes to stderr so the stdout pipe contract stays one JSON doc.
-    console.error(
-      `Raised ${raised.escalation_id}. Paging ${raised.delivery?.will_page?.length ?? 0} contact(s) at level ${raised.delivery?.level}; waiting for a human…`,
-    );
-    const deadline = Date.now() + timeoutMs;
-    let current = raised;
-    while (current.status === "open" && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
-      current = await sdk.escalations.get(orgId, raised.escalation_id);
-    }
+    // The SDK owns the wait (shared waitFor contract: timeout RETURNS the
+    // still-open escalation, never throws). The CLI only narrates on stderr —
+    // stdout stays one JSON doc (the pipe contract).
+    let announced = false;
+    const current = await sdk.escalations.raiseAndWait(orgId, input, {
+      pollMs,
+      timeoutMs,
+      onPoll: (state) => {
+        if (!announced) {
+          announced = true;
+          warnIfUnreachable(state);
+          console.error(
+            `Raised ${state.escalation_id}. Paging ${state.delivery?.will_page?.length ?? 0} contact(s) at level ${state.level}; waiting for a human…`,
+          );
+        }
+      },
+    });
     out(current);
     if (current.status === "open") {
       console.error(

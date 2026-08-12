@@ -23,6 +23,8 @@ Run402 is agent-first because agents are first-class participants, not because p
 
 This skill assumes you're calling `run402-mcp` tools directly (Claude Desktop, Cursor, Cline, Claude Code). The body teaches you which tool to reach for and what the modern patterns are; full parameter schemas live in the MCP tool descriptions.
 
+**The attention model, in one sentence:** everything operationally significant is a *fact*; you read facts with a *cursor* (store and echo, never parse — a stale cursor resets, it never errors); you can request *attention* at a declared guarantee (feed-visible → opt-in rules → mandatory page that climbs); and *closure* is visible on the fact itself (acks are first-writer-wins, a replay reports the ORIGINAL, and a timed-out wait RETURNS the unsettled state — silence is an answer to look at, never consent). Learn it once on any surface (rooms, events, escalations) and you have learned them all.
+
 ## Quickstart
 
 Six tool calls, zero-to-deployed:
