@@ -1,0 +1,60 @@
+{
+  "buzz_relay_version": "0.2.1",
+  "relay_self": "b95c249d84f417e3e395a127425428b540671cc15881eb828c17b722a53fc599",
+  "captured_at": "2026-08-12T13:42:23.711Z",
+  "protocol": "run402-buzz-project-event-notification",
+  "protocol_version": "1",
+  "note": "Captured against a local released Buzz relay with BUZZ_REQUIRE_RELAY_MEMBERSHIP=true; keys are documented throwaway test keys.",
+  "owner_pubkey": "0612c5e8c98a9677a2ddd13770e26f5f1e771a088c88ce519a1e1b65872423f9",
+  "notification_pubkey": "25f0f6f900ae144b17d30a5c3a08e648382c21359d659226cbed204c142d5a53",
+  "add_member_event": {
+    "id": "3ee12436ffed5d9f29c1eb6ca1b39caf13984c2f012214f538fa7a48aa98c2f0",
+    "pubkey": "0612c5e8c98a9677a2ddd13770e26f5f1e771a088c88ce519a1e1b65872423f9",
+    "created_at": 1786542143,
+    "kind": 9030,
+    "tags": [
+      [
+        "p",
+        "25f0f6f900ae144b17d30a5c3a08e648382c21359d659226cbed204c142d5a53"
+      ],
+      [
+        "role",
+        "member"
+      ]
+    ],
+    "content": "",
+    "sig": "0590ba83658e2f157c5eced6484f4825ed3ab2f72309679c760c0112fd0b3bc118465a7f6bd880e0f458618edf509557115ea4575c315590f43eb7bebeb18efc"
+  },
+  "add_member_ok": {
+    "accepted": true,
+    "message": ""
+  },
+  "membership_snapshot": {
+    "content": "",
+    "created_at": 1786541987,
+    "id": "f3e673dee15b5cf7157c9cd521bf7cc8ad5892805a78d94a176dae0e1b79836a",
+    "kind": 13534,
+    "pubkey": "b95c249d84f417e3e395a127425428b540671cc15881eb828c17b722a53fc599",
+    "sig": "ce41277ad62e9a9ff650429cc7c59dd639ec0f470eec372f8a1fbd8c0684714cdd1cfdc802f0f2a567441b93ea419ba78f23f1ea1abb15f97dd79a9df9425edf",
+    "tags": [
+      [
+        "-"
+      ],
+      [
+        "member",
+        "0612c5e8c98a9677a2ddd13770e26f5f1e771a088c88ce519a1e1b65872423f9",
+        "owner"
+      ],
+      [
+        "member",
+        "25f0f6f900ae144b17d30a5c3a08e648382c21359d659226cbed204c142d5a53",
+        "member"
+      ]
+    ]
+  },
+  "snapshot_member_tag": [
+    "member",
+    "25f0f6f900ae144b17d30a5c3a08e648382c21359d659226cbed204c142d5a53",
+    "member"
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "buzz_relay_version": "0.2.1",
+  "relay_self": "b95c249d84f417e3e395a127425428b540671cc15881eb828c17b722a53fc599",
+  "captured_at": "2026-08-12T13:42:23.711Z",
+  "protocol": "run402-buzz-project-event-notification",
+  "protocol_version": "1",
+  "note": "Captured against a local released Buzz relay with BUZZ_REQUIRE_RELAY_MEMBERSHIP=true; keys are documented throwaway test keys.",
+  "channel_id": "e0bf5b2b-fbaf-422c-90e8-9052b4e10bae",
+  "group_create_event": {
+    "id": "8fc3a08f1cd9c3861e89f04b57fd85979af3ba69896a1833c469bf6b337d18f0",
+    "pubkey": "0612c5e8c98a9677a2ddd13770e26f5f1e771a088c88ce519a1e1b65872423f9",
+    "created_at": 1786542143,
+    "kind": 9007,
+    "tags": [
+      [
+        "name",
+        "run402-capture"
+      ],
+      [
+        "visibility",
+        "open"
+      ]
+    ],
+    "content": "",
+    "sig": "efa12a78bda89966df88a38dd279060d3591ed613fd66395c97071e500b79bcf19c4e6472b05fdf1203cf24222e16af132c2eaacbe749d736f73446551be4c48"
+  },
+  "projection_content": "run402 · capture-demo · deploy activated\nRelease rel_0123456789abcdef is now live.\n→ run402 events --project prj_capture_demo  ·  evc_fixture1",
+  "projection_hash": "0341a2075318738f4ef2b8ce1209dd34c2afe382c358b0d4b5a47e62f2b38964",
+  "notification_event": {
+    "id": "a9e85592fdd094175946078d5d219e30346f888e90915e476afe12b399620ebf",
+    "pubkey": "25f0f6f900ae144b17d30a5c3a08e648382c21359d659226cbed204c142d5a53",
+    "created_at": 1786542143,
+    "kind": 9,
+    "tags": [
+      [
+        "h",
+        "e0bf5b2b-fbaf-422c-90e8-9052b4e10bae"
+      ],
+      [
+        "protocol",
+        "run402-buzz-project-event-notification"
+      ],
+      [
+        "version",
+        "1"
+      ],
+      [
+        "run402_installation",
+        "buzzci_ffffffffffffffffffffffffffffffff"
+      ],
+      [
+        "run402_route",
+        "buzzper_ffffffffffffffffffffffffffffffff"
+      ],
+      [
+        "run402_event",
+        "evc_fixture1"
+      ],
+      [
+        "projection_hash",
+        "0341a2075318738f4ef2b8ce1209dd34c2afe382c358b0d4b5a47e62f2b38964"
+      ],
+      [
+        "signing_generation",
+        "1"
+      ]
+    ],
+    "content": "run402 · capture-demo · deploy activated\nRelease rel_0123456789abcdef is now live.\n→ run402 events --project prj_capture_demo  ·  evc_fixture1",
+    "sig": "fc25731bfbc9ac797dfec1284e5fdf926e45254449466114f5fae5b4917bdd448f85fbdd886a3df293e78bc9fb5fdb1ef8ae8805ddc939b80eccec662570b54d"
+  },
+  "publish_ok": {
+    "accepted": true,
+    "message": ""
+  },
+  "duplicate_republish_ok": {
+    "accepted": true,
+    "message": ""
+  },
+  "read_back_event": {
+    "content": "run402 · capture-demo · deploy activated\nRelease rel_0123456789abcdef is now live.\n→ run402 events --project prj_capture_demo  ·  evc_fixture1",
+    "created_at": 1786542143,
+    "id": "a9e85592fdd094175946078d5d219e30346f888e90915e476afe12b399620ebf",
+    "kind": 9,
+    "pubkey": "25f0f6f900ae144b17d30a5c3a08e648382c21359d659226cbed204c142d5a53",
+    "sig": "fc25731bfbc9ac797dfec1284e5fdf926e45254449466114f5fae5b4917bdd448f85fbdd886a3df293e78bc9fb5fdb1ef8ae8805ddc939b80eccec662570b54d",
+    "tags": [
+      [
+        "h",
+        "e0bf5b2b-fbaf-422c-90e8-9052b4e10bae"
+      ],
+      [
+        "protocol",
+        "run402-buzz-project-event-notification"
+      ],
+      [
+        "version",
+        "1"
+      ],
+      [
+        "run402_installation",
+        "buzzci_ffffffffffffffffffffffffffffffff"
+      ],
+      [
+        "run402_route",
+        "buzzper_ffffffffffffffffffffffffffffffff"
+      ],
+      [
+        "run402_event",
+        "evc_fixture1"
+      ],
+      [
+        "projection_hash",
+        "0341a2075318738f4ef2b8ce1209dd34c2afe382c358b0d4b5a47e62f2b38964"
+      ],
+      [
+        "signing_generation",
+        "1"
+      ]
+    ]
+  }
+}

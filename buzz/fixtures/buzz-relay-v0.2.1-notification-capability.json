@@ -1,0 +1,42 @@
+{
+  "buzz_relay_version": "0.2.1",
+  "relay_self": "b95c249d84f417e3e395a127425428b540671cc15881eb828c17b722a53fc599",
+  "captured_at": "2026-08-12T13:42:23.711Z",
+  "protocol": "run402-buzz-project-event-notification",
+  "protocol_version": "1",
+  "note": "Captured against a local released Buzz relay with BUZZ_REQUIRE_RELAY_MEMBERSHIP=true; keys are documented throwaway test keys.",
+  "nip11": {
+    "supported_nips": [
+      1,
+      2,
+      10,
+      11,
+      16,
+      17,
+      23,
+      25,
+      29,
+      33,
+      38,
+      42,
+      50,
+      56,
+      43
+    ],
+    "self": "b95c249d84f417e3e395a127425428b540671cc15881eb828c17b722a53fc599",
+    "version": "0.2.1",
+    "software": "https://github.com/block/buzz",
+    "limitation": {
+      "auth_required": true,
+      "restricted_writes": true
+    }
+  },
+  "frozen_check": {
+    "required_nips": [
+      29,
+      42,
+      43
+    ],
+    "result": "ok"
+  }
+}

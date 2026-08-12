@@ -1,0 +1,31 @@
+{
+  "buzz_relay_version": "0.2.1",
+  "relay_self": "b95c249d84f417e3e395a127425428b540671cc15881eb828c17b722a53fc599",
+  "captured_at": "2026-08-12T13:42:23.711Z",
+  "protocol": "run402-buzz-project-event-notification",
+  "protocol_version": "1",
+  "note": "Captured against a local released Buzz relay with BUZZ_REQUIRE_RELAY_MEMBERSHIP=true; keys are documented throwaway test keys.",
+  "tombstone_event": {
+    "id": "406ac3b0b7f80cf4f9ee481cc10590005af185060cad8658409c0b90eb5f701a",
+    "pubkey": "25f0f6f900ae144b17d30a5c3a08e648382c21359d659226cbed204c142d5a53",
+    "created_at": 1786542143,
+    "kind": 5,
+    "tags": [
+      [
+        "e",
+        "a9e85592fdd094175946078d5d219e30346f888e90915e476afe12b399620ebf"
+      ],
+      [
+        "h",
+        "e0bf5b2b-fbaf-422c-90e8-9052b4e10bae"
+      ]
+    ],
+    "content": "run402 fixture capture cleanup",
+    "sig": "c88443b0bfbec4b1628be51b9ba609ded9e545155a8e4af245205f704224d2acf215cd21d38b0d7b4361225f87ae7d5c56846c9f0de720423fbb8cc6f07b4e07"
+  },
+  "delete_ok": {
+    "accepted": true,
+    "message": ""
+  },
+  "read_back_after_delete_count": 0
+}
