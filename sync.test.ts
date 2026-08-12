@@ -79,6 +79,9 @@ function parseCliCommands(): string[] {
   }
   for (const action of parseCredentialsRootActions("cli/lib/credentials.mjs")) cmds.push(`credentials:${action}`);
   for (const action of parseCredentialsProjectKeyActions("cli/lib/credentials.mjs")) cmds.push(`credentials:project-keys:${action}`);
+  // `buzz notifications` dispatches out of buzz.mjs via `if (sub === "notifications")`
+  // into its own module, so its leaves surface here (the cloud:archives pattern).
+  for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
   for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
   for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
   for (const action of parseDeployReleaseActions()) {
@@ -114,6 +117,9 @@ function parseOpenClawCommands(): string[] {
   }
   for (const action of parseCredentialsRootActions("openclaw/scripts/credentials.mjs")) cmds.push(`credentials:${action}`);
   for (const action of parseCredentialsProjectKeyActions("openclaw/scripts/credentials.mjs")) cmds.push(`credentials:project-keys:${action}`);
+  // openclaw/scripts/buzz.mjs re-exports cli/lib/buzz.mjs, so the notifications
+  // group is the same module on both surfaces.
+  for (const action of parseSubcommands(join(__dirname, "cli/lib/buzz-notifications.mjs"))) cmds.push(`buzz:notifications:${action}`);
   for (const action of parseCloudArchiveActions("cli/lib/cloud.mjs")) cmds.push(`cloud:archives:${action}`);
   for (const action of parseCoreProjectActions("cli/lib/core.mjs")) cmds.push(`core:projects:${action}`);
   for (const action of parseDeployReleaseActions()) {
@@ -299,6 +305,25 @@ const SURFACE: Capability[] = [
   { id: "buzz_approve",      endpoint: "POST /buzz-agent-enrollments/v1/:id/approve",          mcp: null, cli: "buzz:approve", openclaw: "buzz:approve" },
   { id: "buzz_deny",         endpoint: "POST /buzz-agent-enrollments/v1/:id/deny",             mcp: null, cli: "buzz:deny",    openclaw: "buzz:deny" },
   { id: "buzz_revoke",       endpoint: "DELETE /buzz-agent-enrollments/v1/:id",                mcp: null, cli: "buzz:revoke",  openclaw: "buzz:revoke" },
+  // Project-event routing into a Buzz channel (add-buzz-project-event-routing).
+  // Mutations stay off MCP (owner step-up + the authorization handoff live on
+  // the CLI/SDK boundary); the two reads are MCP tools because "is the route
+  // healthy / did the delivery land" is exactly the mid-session question an
+  // agent asks, and neither response carries credential material.
+  { id: "buzz_notify_configure",  endpoint: "POST /buzz-project-event-routes/v1",                       mcp: null, cli: "buzz:notifications:configure",  openclaw: "buzz:notifications:configure" },
+  // One surface member covers both reads on each side: the CLI's `status`
+  // takes either --org (list) or a route id (get), and get_buzz_route with the
+  // route id omitted lists (the get_escalation precedent — the agent's loop is
+  // "check MY route"). The list row carries the CLI command, the get row the
+  // MCP tool, so neither inventory double-counts.
+  { id: "buzz_notify_list",       endpoint: "GET /buzz-project-event-routes/v1?org_id=...",             mcp: null, cli: "buzz:notifications:status",     openclaw: "buzz:notifications:status" },
+  { id: "buzz_notify_get",        endpoint: "GET /buzz-project-event-routes/v1/:id",                    mcp: "get_buzz_route", cli: null, openclaw: null },
+  { id: "buzz_notify_test",       endpoint: "POST /buzz-project-event-routes/v1/:id/test",              mcp: null, cli: "buzz:notifications:test",       openclaw: "buzz:notifications:test" },
+  { id: "buzz_notify_deliveries", endpoint: "GET /buzz-project-event-routes/v1/:id/deliveries",         mcp: "list_buzz_route_deliveries", cli: "buzz:notifications:deliveries", openclaw: "buzz:notifications:deliveries" },
+  { id: "buzz_notify_pause",      endpoint: "POST /buzz-project-event-routes/v1/:id/pause",             mcp: null, cli: "buzz:notifications:pause",      openclaw: "buzz:notifications:pause" },
+  { id: "buzz_notify_resume",     endpoint: "POST /buzz-project-event-routes/v1/:id/resume",            mcp: null, cli: "buzz:notifications:resume",     openclaw: "buzz:notifications:resume" },
+  { id: "buzz_notify_rotate",     endpoint: "POST /buzz-project-event-routes/v1/:id/rotate",            mcp: null, cli: "buzz:notifications:rotate",     openclaw: "buzz:notifications:rotate" },
+  { id: "buzz_notify_revoke",     endpoint: "DELETE /buzz-project-event-routes/v1/:id",                 mcp: null, cli: "buzz:notifications:revoke",     openclaw: "buzz:notifications:revoke" },
 
   // ── Named wallets / profiles (local-only management; selection via --wallet) ─
   { id: "wallets_list",      endpoint: "(local)",                              mcp: null, cli: "wallets:list",     openclaw: "wallets:list" },
@@ -716,6 +741,15 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   buzz_approve: "buzz.enrollments.approve",
   buzz_deny: "buzz.enrollments.deny",
   buzz_revoke: "buzz.enrollments.revoke",
+  buzz_notify_configure: "buzz.notifications.createRoute",
+  buzz_notify_list: "buzz.notifications.list",
+  buzz_notify_get: "buzz.notifications.get",
+  buzz_notify_test: "buzz.notifications.test",
+  buzz_notify_deliveries: "buzz.notifications.deliveries",
+  buzz_notify_pause: "buzz.notifications.pause",
+  buzz_notify_resume: "buzz.notifications.resume",
+  buzz_notify_rotate: "buzz.notifications.rotate",
+  buzz_notify_revoke: "buzz.notifications.revoke",
 
   // Named wallets — local profile management (no SDK gateway method).
   wallets_list: null,
@@ -1443,6 +1477,13 @@ describe("SDK surface alignment", () => {
       "buzz.communityInstallations.getPublicDescriptor",
       "buzz.enrollments.list",
       "buzz.enrollments.get",
+      // update has no CLI verb yet — the routes surface ships read/lifecycle
+      // commands first, and the SDK's expectedRevision-guarded PATCH is the
+      // programmatic path (mirrors communityInstallations.update above).
+      "buzz.notifications.update",
+      // testAndWait composes test + poll; the CLI spells it
+      // `buzz notifications test --wait` (the escalations.raiseAndWait precedent).
+      "buzz.notifications.testAndWait",
       // Portable archive export uses `archives.export` as the happy path.
       // create/wait are low-level operation primitives used by the CLI/MCP
       // wrappers to surface progress and idempotent resume behavior.

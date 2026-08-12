@@ -738,6 +738,15 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 
 Contact management (who gets paged) is CLI/SDK only by design — an agent raises; it does not decide which humans exist to be paged. That is an owner action behind a passkey step-up: `run402 escalations contacts add <email> --level <n>`.
 
+### Buzz project-event routing (read-only)
+
+| Tool | Description |
+|------|-------------|
+| `get_buzz_route` | One route's honest `health` (derived from route + credential state, never queue emptiness) with per-status delivery counts and the `revision` an update must echo — or the org's route list when the route id is omitted. A `pending_authorization` route prints the non-secret handoff (a Buzz community owner adds the `notification_pubkey` as a relay member) and the exact verify command. |
+| `list_buzz_route_deliveries` | Did it actually land? Keyset newest-first delivery history — dead letters included, the signed envelope never. `queued`/`retryable` are in flight (the publisher tick runs ~every 60s; retries back off to 8 attempts / 48h, then `dead_letter`); `nostr_event_id` appears on delivered rows. |
+
+Route mutations (configure / test / pause / resume / rotate / revoke) are CLI/SDK only by design — they need owner step-up, and configure/rotate hand off a Buzz-side authorization a human completes: `run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <id>`. No surface anywhere accepts or prints a signing secret. Buzz is never a deadman channel: mandatory operator notifications keep their human paths regardless of route state.
+
 ### Service status (no auth)
 
 | Tool | Description |

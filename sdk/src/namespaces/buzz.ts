@@ -1,5 +1,21 @@
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
+import { waitFor } from "../wait.js";
+import type {
+  BuzzEventRoute,
+  BuzzEventRouteDetail,
+  BuzzRouteDelivery,
+  BuzzRouteDeliveryList,
+  BuzzRouteDeliveryStatus,
+  BuzzRouteRotation,
+  BuzzRouteTestDelivery,
+  CreateBuzzEventRouteInput,
+  CreatedBuzzEventRoute,
+  ListBuzzRouteDeliveriesOptions,
+  RevokedBuzzEventRoute,
+  TestAndWaitBuzzRouteOptions,
+  UpdateBuzzEventRoutePatch,
+} from "./buzz-notifications.types.js";
 import type {
   BuzzAgentEnrollment,
   BuzzAgentEnrollmentApprovalInput,
@@ -282,17 +298,287 @@ export class BuzzAgentEnrollments {
   }
 }
 
+/** A delivery that will never change again. Everything else is still in flight. */
+const TERMINAL_DELIVERY_STATUSES: ReadonlySet<BuzzRouteDeliveryStatus> = new Set([
+  "delivered",
+  "dead_letter",
+  "cancelled",
+  "suppressed",
+]);
+
+function routePath(routeId: string, context: string): string {
+  return `/buzz-project-event-routes/v1/${encodeURIComponent(required(routeId, "routeId", context))}`;
+}
+
+/**
+ * `buzz.notifications` — project-event routing into a Buzz community channel
+ * (gateway `add-buzz-project-event-routing`).
+ *
+ * A route is an owner-declared destination: one active community
+ * installation, an explicit 1–50 project scope, reviewed event filters, one
+ * NIP-29 channel. Run402's project-event feed stays authoritative — Buzz
+ * relay state never creates, acknowledges, or advances a Run402 event, and
+ * Buzz is NEVER a deadman channel: mandatory notification classes keep their
+ * human paths regardless of route state.
+ *
+ * The workflow is **configure → authorize → test → live**:
+ *
+ * ```ts
+ * const created = await r.buzz.notifications.createRoute(orgId, {
+ *   installationId: "buzzci_…",
+ *   routeName: "deploys",
+ *   buzzChannelId: "<nip-29 channel id>",
+ *   projectIds: ["prj_…"],
+ * });
+ * if (created.authorization.status === "pending_buzz_authorization") {
+ *   // The ONE non-secret handoff: a Buzz community owner adds
+ *   // created.authorization.notification_pubkey as a relay member
+ *   // (created.authorization.instructions says exactly how), then:
+ *   const delivery = await r.buzz.notifications.testAndWait(
+ *     created.buzz_project_event_route_id,
+ *   );
+ *   // delivered ⇒ live. Still queued ⇒ the tick publishes ~every 60s —
+ *   // silence here is cadence, not failure; keep polling deliveries.
+ * }
+ * ```
+ *
+ * Load-bearing semantics:
+ * - Only three reviewed event types are routable (`deploy_activated`,
+ *   `error_fingerprints_observed`, `platform_incident`); the classes
+ *   `security` / `billing_critical` / `destructive_lifecycle` /
+ *   `verification` / `recovery` may never be routed.
+ * - Filters: omitted/`null` = everything registered; an explicit `[]` is a
+ *   422, never a wildcard and never a silent match-nothing.
+ * - Every mutation carries an `Idempotency-Key` (auto-generated when not
+ *   given) and requires fresh `buzz.event_route` step-up server-side (a SIWX
+ *   wallet is inherently fresh).
+ * - No response ever contains the signing secret — `notification_pubkey` +
+ *   `signing_generation` are the only credential material on the wire.
+ * - Routes deliver NEW events only (`start_after_event_id` floor); delivery
+ *   is at-least-once with byte-identical republish, backing off to
+ *   `dead_letter` after 8 attempts / 48h — visible in `deliveries()`.
+ */
+export class BuzzNotifications {
+  constructor(private readonly client: Client) {}
+
+  /**
+   * Create a route (`POST /buzz-project-event-routes/v1`, 201). The response
+   * carries an `authorization` block: the installation's first route is
+   * `pending_buzz_authorization` with the exact non-secret connect handoff a
+   * Buzz community owner completes; later routes on an already-authorized
+   * installation come back `authorized` and active.
+   */
+  async createRoute(organizationId: string, input: CreateBuzzEventRouteInput): Promise<CreatedBuzzEventRoute> {
+    const context = "creating Buzz event route";
+    rejectSecrets(input);
+    if (!Array.isArray(input?.projectIds) || input.projectIds.length === 0) {
+      throw new LocalError("projectIds must name at least one project — a route's scope is always explicit", context, {
+        details: { field: "projectIds" },
+      });
+    }
+    return this.client.request<CreatedBuzzEventRoute>("/buzz-project-event-routes/v1", {
+      method: "POST",
+      headers: headers(input.idempotencyKey),
+      body: {
+        org_id: required(organizationId, "organizationId", context),
+        buzz_community_installation_id: required(input.installationId, "installationId", context),
+        route_name: required(input.routeName, "routeName", context),
+        buzz_channel_id: required(input.buzzChannelId, "buzzChannelId", context),
+        project_ids: input.projectIds,
+        ...(input.eventTypes !== undefined ? { event_types: input.eventTypes } : {}),
+        ...(input.eventClasses !== undefined ? { event_classes: input.eventClasses } : {}),
+      },
+      context,
+    });
+  }
+
+  /** List the organization's routes, including retained revoked ones. */
+  async list(organizationId: string): Promise<BuzzEventRoute[]> {
+    const response = await this.client.request<{ buzz_project_event_routes: BuzzEventRoute[] }>(
+      `/buzz-project-event-routes/v1?org_id=${encodeURIComponent(required(organizationId, "organizationId", "listing Buzz event routes"))}`,
+      { context: "listing Buzz event routes" },
+    );
+    return response.buzz_project_event_routes ?? [];
+  }
+
+  /**
+   * Route detail: the route plus honest `health` (derived from route +
+   * credential state, never queue emptiness), `delivery_counts`, the oldest
+   * pending time, and the shared `consumer_cursor`.
+   */
+  async get(routeId: string): Promise<BuzzEventRouteDetail> {
+    const context = "reading Buzz event route";
+    return this.client.request<BuzzEventRouteDetail>(routePath(routeId, context), { context });
+  }
+
+  /**
+   * Update name / channel / project scope / filters
+   * (`PATCH /:id` with `expected_revision`). A stale revision fails
+   * `409 BUZZ_ROUTE_REVISION_STALE` without mutating — re-read, re-decide,
+   * re-send with the current `revision`.
+   */
+  async update(routeId: string, patch: UpdateBuzzEventRoutePatch, expectedRevision: number): Promise<BuzzEventRoute> {
+    const context = "updating Buzz event route";
+    rejectSecrets(patch);
+    if (!Number.isInteger(expectedRevision)) {
+      throw new LocalError("expectedRevision must be the route's current integer revision", context, {
+        details: { field: "expectedRevision" },
+      });
+    }
+    return this.client.request<BuzzEventRoute>(routePath(routeId, context), {
+      method: "PATCH",
+      headers: headers(patch.idempotencyKey),
+      body: {
+        expected_revision: expectedRevision,
+        ...(patch.routeName !== undefined ? { route_name: patch.routeName } : {}),
+        ...(patch.buzzChannelId !== undefined ? { buzz_channel_id: patch.buzzChannelId } : {}),
+        ...(patch.projectIds !== undefined ? { project_ids: patch.projectIds } : {}),
+        ...(patch.eventTypes !== undefined ? { event_types: patch.eventTypes } : {}),
+        ...(patch.eventClasses !== undefined ? { event_classes: patch.eventClasses } : {}),
+      },
+      context,
+    });
+  }
+
+  /**
+   * Stop matching new events (`POST /:id/pause`). Non-terminal deliveries
+   * freeze; events occurring while paused are never retroactively delivered.
+   */
+  async pause(routeId: string, idempotencyKey?: string): Promise<BuzzEventRoute> {
+    const context = "pausing Buzz event route";
+    return this.client.request<BuzzEventRoute>(`${routePath(routeId, context)}/pause`, {
+      method: "POST",
+      headers: headers(idempotencyKey),
+      body: {},
+      context,
+    });
+  }
+
+  /**
+   * Re-arm delivery and reset the hard-failure counter (`POST /:id/resume`).
+   * Requires a live signing credential NOW — resuming into
+   * signing-unavailable fails `503 BUZZ_NOTIFICATION_SIGNING_UNAVAILABLE`
+   * rather than fabricating an "active" route whose every attempt fails.
+   */
+  async resume(routeId: string, idempotencyKey?: string): Promise<BuzzEventRoute> {
+    const context = "resuming Buzz event route";
+    return this.client.request<BuzzEventRoute>(`${routePath(routeId, context)}/resume`, {
+      method: "POST",
+      headers: headers(idempotencyKey),
+      body: {},
+      context,
+    });
+  }
+
+  /**
+   * Revoke (`DELETE /:id`): queued deliveries are cancelled, sanitized history
+   * stays readable, and `notification_credential_destroyed` reports whether
+   * this was the installation's last live route (only then does its
+   * notification credential die — never out from under a sibling).
+   */
+  async revoke(routeId: string, idempotencyKey?: string): Promise<RevokedBuzzEventRoute> {
+    const context = "revoking Buzz event route";
+    return this.client.request<RevokedBuzzEventRoute>(routePath(routeId, context), {
+      method: "DELETE",
+      headers: headers(idempotencyKey),
+      context,
+    });
+  }
+
+  /**
+   * Stage the NEXT signing generation (`POST /:id/rotate`, 202). The current
+   * key keeps signing; the swap activates only after the next pubkey's own
+   * Buzz-side NIP-43 membership verifies — the `rotation` block carries the
+   * next pubkey, the authorize hint, and the `verify_path` to poke.
+   */
+  async rotate(routeId: string, idempotencyKey?: string): Promise<BuzzRouteRotation> {
+    const context = "rotating Buzz notification credential";
+    return this.client.request<BuzzRouteRotation>(`${routePath(routeId, context)}/rotate`, {
+      method: "POST",
+      headers: headers(idempotencyKey),
+      body: {},
+      context,
+    });
+  }
+
+  /**
+   * Queue one signed test delivery (`POST /:id/test`, 202 + Retry-After).
+   * On a `pending_authorization` route this FIRST re-checks the Buzz-side
+   * NIP-43 membership and activates the route when it landed — the test
+   * endpoint doubles as the authorization poll. The 202 is queued-not-
+   * delivered (Faithful): poll `poll.path` (or use {@link testAndWait}).
+   */
+  async test(routeId: string, idempotencyKey?: string): Promise<BuzzRouteTestDelivery> {
+    const context = "creating Buzz route test delivery";
+    return this.client.request<BuzzRouteTestDelivery>(`${routePath(routeId, context)}/test`, {
+      method: "POST",
+      headers: headers(idempotencyKey),
+      body: {},
+      context,
+    });
+  }
+
+  /** Keyset newest-first delivery history — dead letters included, the signed envelope never. */
+  async deliveries(routeId: string, opts: ListBuzzRouteDeliveriesOptions = {}): Promise<BuzzRouteDeliveryList> {
+    const context = "listing Buzz route deliveries";
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    if (opts.cursor) params.set("cursor", opts.cursor);
+    if (opts.deliveryId) params.set("delivery_id", opts.deliveryId);
+    const query = params.size ? `?${params.toString()}` : "";
+    return this.client.request<BuzzRouteDeliveryList>(`${routePath(routeId, context)}/deliveries${query}`, {
+      context,
+    });
+  }
+
+  /**
+   * Queue a test delivery, then poll it until it settles — the whole
+   * verify-the-route flow in one call.
+   *
+   * Returns as soon as the delivery reaches a terminal status
+   * (`delivered` | `dead_letter` | `cancelled` | `suppressed`). On timeout
+   * the still-queued delivery is RETURNED, never thrown (the shared `waitFor`
+   * contract) — and unlike an unanswered escalation, a not-yet-delivered test
+   * here is usually just cadence: the single-consumer tick publishes ~every
+   * 60s, so keep polling `deliveries()` before concluding anything is wrong.
+   */
+  async testAndWait(routeId: string, opts: TestAndWaitBuzzRouteOptions = {}): Promise<BuzzRouteTestDelivery | BuzzRouteDelivery> {
+    const queued = await this.test(routeId);
+    // The 202 is the FIRST observed state — it is the only one carrying the
+    // poll block, so an observer that narrates (the CLI) must see it even
+    // when the wait settles instantly.
+    opts.onPoll?.(queued);
+    if (TERMINAL_DELIVERY_STATUSES.has(queued.status)) return queued;
+    const deliveryId = queued.buzz_project_event_delivery_id;
+    const { state } = await waitFor<BuzzRouteDelivery>(
+      async () => {
+        const page = await this.deliveries(routeId, { deliveryId, limit: 1 });
+        return page.buzz_project_event_deliveries?.[0] ?? queued;
+      },
+      (d) => TERMINAL_DELIVERY_STATUSES.has(d.status),
+      {
+        pollMs: Math.max(opts.pollMs ?? 5_000, 2_000),
+        timeoutMs: opts.timeoutMs ?? 3 * 60 * 1000,
+        onPoll: opts.onPoll ? (s) => opts.onPoll!(s as BuzzRouteDelivery) : undefined,
+      },
+    );
+    return state;
+  }
+}
+
 export class Buzz {
   readonly humanAdoptions: BuzzHumanAdoptions;
   readonly humanAdoptionOffers: BuzzHumanAdoptionOffers;
   readonly communityInstallations: BuzzCommunityInstallations;
   readonly enrollments: BuzzAgentEnrollments;
+  readonly notifications: BuzzNotifications;
 
   constructor(private readonly client: Client) {
     this.humanAdoptions = new BuzzHumanAdoptions(client);
     this.humanAdoptionOffers = new BuzzHumanAdoptionOffers(client);
     this.communityInstallations = new BuzzCommunityInstallations(client);
     this.enrollments = new BuzzAgentEnrollments(client);
+    this.notifications = new BuzzNotifications(client);
   }
 
   /** Capability-detecting status. Older gateways return a safe supported:false result. */

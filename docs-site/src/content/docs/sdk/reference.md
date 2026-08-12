@@ -1844,6 +1844,42 @@ removeContact(orgId, contactId)                    // OWNER + passkey step-up
 
 Contacts are attention policy, never authorization — a contact row grants nothing. `level` is an ordering: level 1 is paged first, level 2 only if level 1 lets the deadline lapse, and unstaffed levels are skipped. An address with no verified operator email is accepted with a `warnings[]` reachability note rather than rejected, because the human you most want at the top of a chain may hold no platform credential at all.
 
+### `r.buzz.notifications`
+
+Project-event routing into a Buzz community channel. A route is an owner-declared destination: one ACTIVE community installation, an explicit 1–50 project scope, reviewed event filters, one NIP-29 channel. The workflow is **configure → authorize → test → live**: create the route, a Buzz community owner or admin adds the returned `notification_pubkey` as a relay member (the one non-secret handoff), then a test delivery proves the membership landed and activates the route. Buzz is NEVER a deadman channel — mandatory notification classes keep their human paths regardless of route state, and a Buzz delivery acknowledges nothing.
+
+```
+createRoute(orgId, { installationId, routeName, buzzChannelId, projectIds,
+                     eventTypes?, eventClasses?, idempotencyKey? })
+  // → the route + authorization: "authorized" (live now) or
+  //   "pending_buzz_authorization" with the exact non-secret connect handoff.
+list(orgId)                                       // BuzzEventRoute[], retained revoked ones included
+get(routeId)                                      // + honest health (route + credential state,
+                                                  //   never queue emptiness), delivery_counts,
+                                                  //   consumer_cursor
+update(routeId, patch, expectedRevision)          // stale revision → 409 BUZZ_ROUTE_REVISION_STALE
+                                                  //   without mutating; re-read, re-send
+pause(routeId, idempotencyKey?)                   // stop matching NEW events; nothing retroactive
+resume(routeId, idempotencyKey?)                  // re-arm + reset the hard-failure counter;
+                                                  //   needs a live signing credential NOW
+rotate(routeId, idempotencyKey?)                  // STAGES the next signing generation; the swap
+                                                  //   activates only after the next pubkey's own
+                                                  //   Buzz-side membership verifies
+revoke(routeId, idempotencyKey?)                  // cancel queued deliveries; sanitized history
+                                                  //   stays readable; notification_credential_destroyed
+                                                  //   only on the installation's LAST live route
+test(routeId, idempotencyKey?)                    // 202 queued-not-delivered; doubles as the
+                                                  //   authorization poll on a pending route
+deliveries(routeId, { limit?, cursor?, deliveryId? })
+  // keyset newest-first, dead letters included, the signed envelope never
+testAndWait(routeId, { pollMs?, timeoutMs?, onPoll? })
+  // test + poll until terminal. On timeout returns the still-queued delivery
+  // rather than throwing — the tick publishes ~every 60s, so silence is
+  // cadence, not failure (the shared waitFor contract).
+```
+
+Only three reviewed event types are routable (`deploy_activated`, `error_fingerprints_observed`, `platform_incident`); the classes `security` / `billing_critical` / `destructive_lifecycle` / `verification` / `recovery` may never be routed. Filters: omitted/`null` = everything registered; an explicit `[]` is a 422, never a wildcard. Routes deliver NEW events only (`start_after_event_id` floor); delivery is at-least-once with byte-identical republish, backing off 1m/5m/30m/2h/12h to 8 attempts or 48h, then `dead_letter` — visible in `deliveries()`. Ten consecutive hard failures auto-pause the route (`pause_reason: "delivery_failures"`) and fire the mandatory `buzz_route_auto_paused` operator notification. No response ever contains the signing secret — `notification_pubkey` + `signing_generation` are the only credential material on the wire. Every mutation carries an `Idempotency-Key` (auto-generated when omitted) and requires fresh `buzz.event_route` step-up server-side (a SIWX wallet is inherently fresh).
+
 ### `r.errors`
 
 Grouped error fingerprints + a release-baselined promote-vs-revert verdict — "did my new release make things worse?". Also project-scoped as `r.project(id).errors.{list,get,watch}(…)`.

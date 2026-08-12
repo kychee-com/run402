@@ -40,6 +40,14 @@ Explicit consent/decision commands:
   run402 buzz deny <buzzae_id> [--reason <text>]
   run402 buzz revoke <buzzae_id>
 
+Project-event routing into a Buzz channel (configure → authorize → test → live):
+  run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <uuid> --project <id> [--event-type <t> ...] [--event-class <c> ...]
+  run402 buzz notifications status [--org <uuid> | <buzzper_id>]
+  run402 buzz notifications test <buzzper_id> [--wait]
+  run402 buzz notifications deliveries <buzzper_id> [--limit <n>] [--cursor <c>] [--delivery <buzzped_id>]
+  run402 buzz notifications pause|resume|rotate|revoke <buzzper_id>
+  (run \`run402 buzz notifications --help\` for the full workflow)
+
 Advanced recovery reads:
   run402 buzz adopt direct --org <org_id> --identity-link <idlnk_id>
   run402 buzz adopt list --org <org_id>
@@ -308,6 +316,12 @@ async function revoke(args) {
 }
 
 export async function run(sub, args = []) {
+  if (sub === "notifications") {
+    // The group owns its own help (`run402 buzz notifications --help` must
+    // teach the routing workflow, not this module's lifecycle states).
+    const { run: runNotifications } = await import("./buzz-notifications.mjs");
+    return runNotifications(args[0], args.slice(1));
+  }
   if (!sub || sub === "help" || sub === "--help" || sub === "-h" || args.includes("--help") || args.includes("-h")) {
     console.log(HELP);
     return;

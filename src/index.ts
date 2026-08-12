@@ -318,6 +318,8 @@ import { joinRoomSchema, handleJoinRoom } from "./tools/join-room.js";
 import { sendRoomMessageSchema, handleSendRoomMessage } from "./tools/send-room-message.js";
 import { raiseEscalationSchema, handleRaiseEscalation } from "./tools/raise-escalation.js";
 import { getEscalationSchema, handleGetEscalation } from "./tools/get-escalation.js";
+import { getBuzzRouteSchema, handleGetBuzzRoute } from "./tools/get-buzz-route.js";
+import { listBuzzRouteDeliveriesSchema, handleListBuzzRouteDeliveries } from "./tools/buzz-route-deliveries.js";
 import { readRoomMessagesSchema, handleReadRoomMessages } from "./tools/read-room-messages.js";
 import { ackRoomMessageSchema, handleAckRoomMessage } from "./tools/ack-room-message.js";
 import { claimRoomResourceSchema, handleClaimRoomResource } from "./tools/claim-room-resource.js";
@@ -1416,6 +1418,20 @@ server.tool(
   "Poll an escalation you raised until a human takes it — the wait-for-human loop — or list your escalations when escalation_id is omitted. status 'acknowledged' names the human who owns it; 'open' means nobody has answered yet and it is still climbing the contact chain. include_delivery adds what ACTUALLY reached each contact per channel (from the delivery audit log) rather than what was intended — use it when you need to know whether a page landed, not on every poll.",
   getEscalationSchema,
   async (args) => handleGetEscalation(args),
+);
+
+server.tool(
+  "get_buzz_route",
+  "Check whether project events are flowing into a Buzz community channel: one route's honest health (derived from route + credential state, never from queue emptiness) with delivery counts, or the organization's route list when buzz_project_event_route_id is omitted. Reach for it after configuring a route (is it still pending_authorization?), when a channel goes quiet (paused? signing_unavailable? auto-paused after hard failures?), or before touching filters (it reports the revision an update must echo). Read-only — no response carries a signing secret (notification_pubkey is public by design), and every mutation is handed back as its exact CLI command (run402 buzz notifications configure|pause|resume|rotate|revoke …), because route mutations need owner step-up the MCP surface never holds.",
+  getBuzzRouteSchema,
+  async (args) => handleGetBuzzRoute(args),
+);
+
+server.tool(
+  "list_buzz_route_deliveries",
+  "Did a Buzz route delivery actually land? Keyset newest-first history for one route — dead letters included, the signed envelope never. Use it to poll a queued test delivery (pass delivery_id from the CLI's test response), to see WHY a route auto-paused (last_error per attempt), or to confirm real events are reaching the channel (nostr_event_id appears on delivered rows). queued/retryable are in flight — the publisher tick runs ~every 60s and retries back off 1m/5m/30m/2h/12h to 8 attempts or 48h before dead_letter, so silence is cadence, not failure. Read-only; queueing a fresh probe is the CLI's job (run402 buzz notifications test <buzzper_id> --wait).",
+  listBuzzRouteDeliveriesSchema,
+  async (args) => handleListBuzzRouteDeliveries(args),
 );
 
 server.tool(

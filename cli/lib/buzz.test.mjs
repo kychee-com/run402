@@ -17,6 +17,10 @@ mock.module("./sdk.mjs", {
 });
 
 const { run } = await import("./buzz.mjs");
+// Link the notifications group NOW, while the sdk.mjs module mock is active —
+// buzz.mjs imports it lazily, and a first import that happens mid-suite (after
+// an afterEach mock.restoreAll) would bind the REAL getSdk.
+await import("./buzz-notifications.mjs");
 
 let stdout;
 let stderr;
@@ -229,5 +233,212 @@ describe("run402 buzz CLI", () => {
     }
     assert.equal(calls[0][2].authorityProof, undefined);
     assert.equal(calls[1][2], "revoke-installation-1");
+  });
+});
+
+describe("run402 buzz notifications CLI", () => {
+  const ORG = "11111111-1111-4111-8111-111111111111";
+  const ROUTE_ID = `buzzper_${"1".repeat(32)}`;
+  const DELIVERY_ID = `buzzped_${"2".repeat(32)}`;
+
+  beforeEach(() => {
+    process.exitCode = undefined;
+  });
+
+  it("teaches the configure → authorize → test → live workflow in group help", async () => {
+    sdk = {};
+    await run("notifications", ["--help"]);
+    const help = stdout.join("\n");
+    assert.match(help, /Usage:/);
+    assert.match(help, /configure -> authorize -> test -> live/);
+    assert.match(help, /deploy_activated, error_fingerprints_observed/);
+    assert.match(help, /may NEVER be routed/);
+    assert.match(help, /Buzz Desktop -> Settings -> Profile -> Identity/);
+    assert.match(help, /never a deadman channel/);
+  });
+
+  it("configure maps repeatable flags onto the SDK input and shouts the pending authorization handoff on stderr", async () => {
+    let observedOrg;
+    let observedInput;
+    const pubkey = "ab".repeat(32);
+    sdk = {
+      buzz: {
+        notifications: {
+          createRoute: async (orgId, input) => {
+            observedOrg = orgId;
+            observedInput = input;
+            return {
+              buzz_project_event_route_id: ROUTE_ID,
+              org_id: orgId,
+              status: "pending_authorization",
+              authorization: {
+                status: "pending_buzz_authorization",
+                notification_pubkey: pubkey,
+                connect_command: `buzz-admin add-member --pubkey ${pubkey}`,
+                instructions: `Ask a community owner or admin to add this pubkey as a relay member (e.g. ./run.sh add-member ${pubkey}), then POST the test route to verify.`,
+                verify_path: `/buzz-project-event-routes/v1/${ROUTE_ID}/test`,
+              },
+            };
+          },
+        },
+      },
+    };
+    await run("notifications", [
+      "configure",
+      "--org", ORG,
+      "--installation", `buzzci_${"3".repeat(32)}`,
+      "--name", "deploys",
+      "--channel", "chan-1",
+      "--project", "prj_a",
+      "--project", "prj_b",
+      "--event-type", "deploy_activated",
+      "--idempotency-key", "route-1",
+    ]);
+    assert.equal(observedOrg, ORG, "org_id is the bare dashed UUID, passed through verbatim");
+    assert.deepEqual(observedInput.projectIds, ["prj_a", "prj_b"]);
+    assert.deepEqual(observedInput.eventTypes, ["deploy_activated"]);
+    assert.equal(observedInput.eventClasses, undefined, "an unset filter is omitted, never fabricated");
+    assert.equal(observedInput.idempotencyKey, "route-1");
+    assert.equal(JSON.parse(stdout[0]).authorization.status, "pending_buzz_authorization");
+    const err = stderr.join("\n");
+    assert.match(err, /PENDING BUZZ AUTHORIZATION/);
+    assert.ok(err.includes(pubkey), "the notification pubkey is the one exact handoff and must be on stderr");
+    assert.match(err, /add-member/);
+    assert.doesNotMatch(err, /private|nsec|secret/i);
+  });
+
+  it("status lists for an org and reads one route by positional id", async () => {
+    const calls = [];
+    sdk = {
+      buzz: {
+        notifications: {
+          list: async (orgId) => { calls.push(["list", orgId]); return [{ buzz_project_event_route_id: ROUTE_ID }]; },
+          get: async (routeId) => { calls.push(["get", routeId]); return { buzz_project_event_route_id: routeId, health: "active" }; },
+        },
+      },
+    };
+    await run("notifications", ["status", "--org", ORG]);
+    await run("notifications", ["status", ROUTE_ID]);
+    assert.deepEqual(calls, [["list", ORG], ["get", ROUTE_ID]]);
+    assert.deepEqual(JSON.parse(stdout[0]).buzz_project_event_routes, [{ buzz_project_event_route_id: ROUTE_ID }]);
+    assert.equal(JSON.parse(stdout[1]).health, "active");
+  });
+
+  it("test --wait narrates once on stderr and reports a delivered route as live", async () => {
+    sdk = {
+      buzz: {
+        notifications: {
+          testAndWait: async (routeId, opts) => {
+            opts.onPoll({ buzz_project_event_delivery_id: DELIVERY_ID, status: "queued", poll: { path: "p" } });
+            const delivered = {
+              buzz_project_event_delivery_id: DELIVERY_ID,
+              status: "delivered",
+              nostr_event_id: "ev1",
+            };
+            opts.onPoll(delivered);
+            return delivered;
+          },
+        },
+      },
+    };
+    await run("notifications", ["test", ROUTE_ID, "--wait"]);
+    assert.equal(JSON.parse(stdout[0]).status, "delivered");
+    const announcements = stderr.filter((line) => line.includes(DELIVERY_ID) && line.includes("waiting"));
+    assert.equal(announcements.length, 1, "the queued announcement happens exactly once");
+    assert.match(stderr.join("\n"), /route is live/i);
+    assert.equal(process.exitCode, undefined);
+  });
+
+  it("test --wait exits 2 on a still-queued timeout — the tick cadence is not failure", async () => {
+    sdk = {
+      buzz: {
+        notifications: {
+          testAndWait: async (routeId, opts) => {
+            const queued = { buzz_project_event_delivery_id: DELIVERY_ID, status: "queued", poll: { path: "p" } };
+            opts.onPoll(queued);
+            return queued;
+          },
+        },
+      },
+    };
+    await run("notifications", ["test", ROUTE_ID, "--wait", "--poll-seconds", "2", "--timeout-seconds", "10"]);
+    const exitCode = process.exitCode;
+    // Reset before asserting so a signalled exit code never leaks into the
+    // test child process's own exit status.
+    process.exitCode = undefined;
+    assert.equal(JSON.parse(stdout[0]).status, "queued", "stdout stays one JSON doc — the still-queued delivery");
+    assert.match(stderr.join("\n"), /still queued — the tick publishes within ~60s; silence is not failure, poll deliveries/);
+    assert.equal(exitCode, 2);
+  });
+
+  it("test without --wait prints the queued 202 and the poll handoff", async () => {
+    sdk = {
+      buzz: {
+        notifications: {
+          test: async (routeId, key) => ({
+            buzz_project_event_delivery_id: DELIVERY_ID,
+            status: "queued",
+            poll: { path: `/buzz-project-event-routes/v1/${routeId}/deliveries?delivery_id=${DELIVERY_ID}` },
+            _key: key,
+          }),
+        },
+      },
+    };
+    await run("notifications", ["test", ROUTE_ID]);
+    assert.equal(JSON.parse(stdout[0]).status, "queued");
+    assert.match(stderr.join("\n"), /publishes within ~60s/);
+    assert.match(stderr.join("\n"), new RegExp(`deliveries ${ROUTE_ID} --delivery ${DELIVERY_ID}`));
+    assert.equal(process.exitCode, undefined);
+  });
+
+  it("deliveries maps limit/cursor/delivery flags onto SDK options", async () => {
+    let observed;
+    sdk = {
+      buzz: {
+        notifications: {
+          deliveries: async (routeId, opts) => {
+            observed = [routeId, opts];
+            return { buzz_project_event_deliveries: [], has_more: false };
+          },
+        },
+      },
+    };
+    await run("notifications", ["deliveries", ROUTE_ID, "--limit", "20", "--cursor", "cur_1", "--delivery", DELIVERY_ID]);
+    assert.deepEqual(observed, [ROUTE_ID, { limit: 20, cursor: "cur_1", deliveryId: DELIVERY_ID }]);
+    assert.equal(JSON.parse(stdout[0]).has_more, false);
+  });
+
+  it("revoke reports credential destruction and rotate shouts the staged next-key handoff", async () => {
+    const nextPubkey = "cd".repeat(32);
+    sdk = {
+      buzz: {
+        notifications: {
+          revoke: async (routeId, key) => ({
+            buzz_project_event_route_id: routeId,
+            status: "revoked",
+            notification_credential_destroyed: true,
+            _key: key,
+          }),
+          rotate: async (routeId) => ({
+            buzz_project_event_route_id: routeId,
+            rotation: {
+              status: "pending_buzz_authorization",
+              next_signing_generation: 2,
+              next_notification_pubkey: nextPubkey,
+              authorize_hint: "Ask a community owner or admin to add the NEXT pubkey as a relay member; the swap activates only after that membership verifies.",
+              verify_path: `/buzz-project-event-routes/v1/${routeId}/test`,
+            },
+          }),
+        },
+      },
+    };
+    await run("notifications", ["revoke", ROUTE_ID, "--idempotency-key", "rm-1"]);
+    assert.equal(JSON.parse(stdout[0]).notification_credential_destroyed, true);
+    assert.match(stderr.join("\n"), /last live route/);
+    await run("notifications", ["rotate", ROUTE_ID]);
+    assert.equal(JSON.parse(stdout[1]).rotation.next_signing_generation, 2);
+    const err = stderr.join("\n");
+    assert.match(err, /STAGED, not active/);
+    assert.ok(err.includes(nextPubkey), "the NEXT pubkey is the rotation handoff and must be on stderr");
   });
 });

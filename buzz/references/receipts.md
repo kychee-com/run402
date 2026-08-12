@@ -16,6 +16,7 @@ Report public identifiers and observed state only. Never include private keys, m
 - Identity link: `idlnk_…` (`active`, `reused|created`)
 - Deployment: `none`
 - Community connection: `available|relay_unavailable|not_selected` (preserve the exact relay repair when unavailable)
+- Notification routing: `none|<buzzper_… status/health>` (optional delivery state beneath the community connection — never identity or authority; omit-or-`none` is the normal fresh-setup value)
 
 Done—Run402 is connected to my Buzz identity. Would you like me to build and deploy <one contextual idea> as a quick demo?
 ```
