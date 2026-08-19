@@ -1599,7 +1599,7 @@ All options default to the active project. `claim` also defaults to the project'
 Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### domains
-- `run402 domains connect <domain> --project <id> [--web] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
+- `run402 domains connect <domain> --project <id> [--web] [--authority manual-dns|hosted-zone] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
 - `run402 domains list [--project <id>]`
 - `run402 domains status <domain> [--project <id>]`
 - `run402 domains dns <domain> [--project <id>] [--format json|bind]`
@@ -1613,6 +1613,13 @@ Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every su
 ProjectDomain is the project-scoped lifecycle surface for web custom domains, custom email sending, inbound receive routing, mailbox address activation, and drift checks.
 
 Auth is control-plane auth: current wallet, operator session, or delegate. Domain commands do not require a local project-key cache entry.
+
+**`--authority` on connect (web domains):** `hosted-zone` puts the domain's DNS zone on Run402 — the domain owner makes ONE nameserver change at their registrar and Run402 applies every record, verifies ownership, and issues TLS automatically. This is the only workable path for a ROOT domain (`example.com`) at most registrars, since a root CNAME is illegal without flattening/ALIAS support. `manual-dns` (the default) returns the records to add yourself. Pre-existing MX/TXT are imported into a hosted zone before the nameserver change is recommended, so mail keeps working. The connect response carries `hosted_zone.ns_assigned` (the pair to hand the owner) and the CLI prints that instruction to stderr; stdout stays pure JSON.
+
+**Root-domain flow (hosted zone):**
+1. `run402 domains connect example.com --project prj_123 --web --authority hosted-zone`
+2. Give the domain owner the two nameservers from the output; they set them at their registrar
+3. `run402 domains wait example.com --project prj_123 --until active`
 
 **Setup flow:**
 1. `run402 domains connect example.com --project prj_123 --web --email-send --email-receive --mailbox-addresses primary --addresses info`

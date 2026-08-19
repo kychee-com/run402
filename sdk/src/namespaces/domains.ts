@@ -21,7 +21,16 @@ export interface ProjectDomainMailboxAddressBinding {
   create_mailbox?: boolean;
 }
 
+/**
+ * Declarable connect-time authority. `hosted_dns_zone` opts the domain into a
+ * Run402-hosted DNS zone: the owner makes ONE nameserver change and Run402
+ * applies every in-zone record (the only workable path for a root domain at
+ * most registrars). Absent means manual DNS.
+ */
+export type ProjectDomainAuthorityIntent = "manual_dns" | "hosted_dns_zone";
+
 export interface ProjectDomainDesired {
+  authority?: ProjectDomainAuthorityIntent;
   web?: {
     enabled: boolean;
     target?: string;
@@ -99,6 +108,15 @@ export interface ProjectDomainReceiveTest {
   passed_at?: string | null;
 }
 
+export interface ProjectDomainHostedZone {
+  dns_hosting: "run402_hosted";
+  status: "provisioning" | "awaiting_delegation" | "delegated" | "releasing";
+  /** The nameserver pair to set at the registrar — the one customer-side step. */
+  ns_assigned: string[];
+  /** Pre-existing MX/TXT copied into the zone before the change was recommended. */
+  imported_records: Array<{ type: string; name: string; value: string; priority?: number }>;
+}
+
 export interface ProjectDomain {
   project_id: string;
   domain: string;
@@ -112,8 +130,14 @@ export interface ProjectDomain {
   };
   dns_records: ProjectDomainDnsRecord[];
   checks: ProjectDomainCheck[];
+  /** Ordered follow-ups; `next_actions[0]` is the recommended action. */
+  next_actions: ProjectDomainNextAction[];
+  /** @deprecated alias of `next_actions[0] ?? null`; use `next_actions`. */
   next_action: ProjectDomainNextAction | null;
+  /** @deprecated alias of `next_actions.slice(1)`; use `next_actions`. */
   alternate_actions: ProjectDomainNextAction[];
+  /** Present only for a domain on a Run402-hosted DNS zone. */
+  hosted_zone?: ProjectDomainHostedZone | null;
   provenance: {
     project: "server_control_plane";
     desired: "server_control_plane";
@@ -189,7 +213,7 @@ export class Domains {
 
   async ensure(projectId: string, domain: string, opts: ProjectDomainEnsureOptions): Promise<ProjectDomain> {
     return this.client.request<ProjectDomain>(domainPath(projectId, domain), {
-      method: "PUT",
+      method: "POST",
       body: { desired: opts.desired },
       authMeta: authMeta("domains.ensure", projectId),
       context: "ensuring project domain",

@@ -141,7 +141,7 @@ describe("subdomains", () => {
 describe("domains (ProjectDomain)", () => {
   it("ensure PUTs desired state to the project-scoped domain path", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({ project_id: "prj_k", domain: "ex.com", status: "waiting", desired: {}, observed: {}, effective: {}, authority: { recommended_mode: "manual_dns", options: [] }, dns_records: [], checks: [], next_action: null, alternate_actions: [], provenance: {} }),
+      json({ project_id: "prj_k", domain: "ex.com", status: "waiting", desired: {}, observed: {}, effective: {}, authority: { recommended_mode: "manual_dns", options: [] }, dns_records: [], checks: [], next_actions: [], next_action: null, alternate_actions: [], provenance: {} }),
     );
     await sdk(fetch).domains.ensure("prj_k", "ex.com", {
       desired: {
@@ -150,7 +150,7 @@ describe("domains (ProjectDomain)", () => {
       },
     });
     assert.equal(calls[0]!.url, "https://api.test/projects/v1/prj_k/domains/ex.com");
-    assert.equal(calls[0]!.method, "PUT");
+    assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "t");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {
       desired: {
@@ -162,7 +162,7 @@ describe("domains (ProjectDomain)", () => {
 
   it("check POSTs the action path", async () => {
     const { fetch, calls } = mockFetch(() =>
-      json({ project_id: "prj_k", domain: "ex.com", status: "active", desired: {}, observed: {}, effective: {}, authority: { recommended_mode: "manual_dns", options: [] }, dns_records: [], checks: [], next_action: null, alternate_actions: [], provenance: {} }),
+      json({ project_id: "prj_k", domain: "ex.com", status: "active", desired: {}, observed: {}, effective: {}, authority: { recommended_mode: "manual_dns", options: [] }, dns_records: [], checks: [], next_actions: [], next_action: null, alternate_actions: [], provenance: {} }),
     );
     const res = await sdk(fetch).domains.check("prj_k", "ex.com");
     assert.equal(calls[0]!.url, "https://api.test/projects/v1/prj_k/domains/ex.com/actions/check");

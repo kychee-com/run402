@@ -30,6 +30,7 @@ function projectDomain(overrides: Record<string, unknown> = {}) {
     authority: { recommended_mode: "manual_dns", options: [] },
     dns_records: [],
     checks: [],
+    next_actions: [],
     next_action: null,
     alternate_actions: [],
     provenance: {
@@ -91,7 +92,7 @@ describe("ProjectDomain SDK", () => {
     };
     const { fetch, calls } = mockFetch((call) => {
       assert.equal(call.url, "https://api.example.test/projects/v1/prj_visible/domains/kysigned.com");
-      assert.equal(call.method, "PUT");
+      assert.equal(call.method, "POST");
       assert.equal(call.headers["SIGN-IN-WITH-X"], "test-siwx");
       assert.equal(call.headers.Authorization, undefined);
       assert.deepEqual(JSON.parse(call.body as string), { desired });

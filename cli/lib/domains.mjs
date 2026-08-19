@@ -9,7 +9,7 @@ Usage:
   run402 domains <subcommand> [args...]
 
 Subcommands:
-  connect      <domain> [--project <id>] [--web] [--email-send] [--email-receive] [...]
+  connect      <domain> [--project <id>] [--web] [--authority hosted-zone] [--email-send] [...]
   list         [--project <id>] [--include-managed]
   status       <domain> [--project <id>]
   dns          <domain> [--project <id>] [--format json|bind]
@@ -34,6 +34,13 @@ Usage:
 Examples:
   run402 domains connect kysigned.com --project prj_123 --email-send --email-receive --mailbox-addresses primary --addresses info
   run402 domains connect example.com --project prj_123 --web --web-target production
+  run402 domains connect example.com --project prj_123 --web --authority hosted-zone
+
+--authority on connect:
+  hosted-zone   Run402 hosts the domain's DNS zone; the owner makes ONE nameserver
+                change and Run402 applies every record (required for root domains
+                at most registrars).
+  manual-dns    (default) you add the DNS records the response lists.
 `,
   list: `run402 domains list — list project domains
 
@@ -104,6 +111,30 @@ function print(data) {
   console.log(JSON.stringify(data, null, 2));
 }
 
+/**
+ * The one instruction a hosted-zone domain owner needs, on STDERR so the
+ * stdout JSON stays pipeable (`| jq`) — same split as every other breadcrumb.
+ */
+function printHandoff(data) {
+  const zone = data?.hosted_zone;
+  if (!zone || !Array.isArray(zone.ns_assigned) || zone.ns_assigned.length === 0) return;
+  if (zone.status === "delegated") return;
+  const lines = [
+    "",
+    "Give the domain owner exactly this one step:",
+    "",
+    `  At the registrar for ${data.domain}, set the nameservers to:`,
+    ...zone.ns_assigned.map((ns) => `    ${ns}`),
+    "",
+    "  Everything else — DNS records, ownership verification, TLS — is automatic.",
+  ];
+  if (Array.isArray(zone.imported_records) && zone.imported_records.length > 0) {
+    lines.push(`  (${zone.imported_records.length} existing DNS record(s) imported; mail keeps working.)`);
+  }
+  lines.push("", `Then: run402 domains wait ${data.domain} --until active`, "");
+  console.error(lines.join("\n"));
+}
+
 function removed(command, replacement) {
   fail({
     code: "COMMAND_REMOVED",
@@ -169,8 +200,31 @@ function parseAddresses(value) {
   return value.split(",").map((part) => part.trim()).filter(Boolean);
 }
 
+/**
+ * `--authority` values the ProjectDomain *desired state* accepts. The wider
+ * apply-time list (auto/provider-connect/delegated-subdomain) selects HOW an
+ * apply runs; only these two are declarable intent at connect.
+ */
+const CONNECT_AUTHORITY_WIRE = {
+  "manual-dns": "manual_dns",
+  "hosted-zone": "hosted_dns_zone",
+};
+
 function desiredFromConnectFlags(domain, parsed) {
   const desired = {};
+  const authority = flagValue(parsed, "--authority");
+  if (authority) {
+    const wire = CONNECT_AUTHORITY_WIRE[authority];
+    if (!wire) {
+      fail({
+        code: "BAD_FLAG",
+        message: "--authority on connect must be manual-dns or hosted-zone.",
+        hint: "auto, provider-connect, and delegated-subdomain select how an apply runs; use them on `run402 domains apply`.",
+        details: { flag: "--authority", value: authority },
+      });
+    }
+    desired.authority = wire;
+  }
   const web = parsed.includes("--web") || flagValue(parsed, "--web-target") || parsed.includes("--primary-web") || parsed.includes("--web-alias");
   if (web) {
     desired.web = {
@@ -263,13 +317,11 @@ async function connect(args) {
   if (parsed.includes("--create-mailboxes") && parsed.includes("--no-create-mailboxes")) {
     fail({ code: "BAD_FLAG", message: "Choose only one of --create-mailboxes or --no-create-mailboxes." });
   }
-  const authority = flagValue(parsed, "--authority");
-  if (authority && !["auto", "manual-dns", "provider-connect", "delegated-subdomain", "hosted-zone"].includes(authority)) {
-    fail({ code: "BAD_FLAG", message: "--authority must be one of: auto, manual-dns, provider-connect, delegated-subdomain, hosted-zone.", details: { flag: "--authority", value: authority } });
-  }
   const projectId = resolveProjectId(flagValue(parsed, "--project"));
   try {
-    print(await getSdk().domains.ensure(projectId, domain, { desired: desiredFromConnectFlags(domain, parsed) }));
+    const result = await getSdk().domains.ensure(projectId, domain, { desired: desiredFromConnectFlags(domain, parsed) });
+    print(result);
+    printHandoff(result);
   } catch (err) {
     reportSdkError(err);
   }
@@ -312,7 +364,7 @@ async function dns(args) {
     if (format === "bind") {
       console.log(data.dns_records.map((record) => record.bind).filter(Boolean).join("\n"));
     } else {
-      print({ domain: data.domain, dns_records: data.dns_records, checks: data.checks, next_action: data.next_action });
+      print({ domain: data.domain, dns_records: data.dns_records, checks: data.checks, next_actions: data.next_actions ?? (data.next_action ? [data.next_action] : []) });
     }
   } catch (err) {
     reportSdkError(err);

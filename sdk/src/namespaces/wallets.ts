@@ -44,7 +44,7 @@ async function putLabel(client: Client, address: string, label: string): Promise
   try {
     await client.request(
       `/wallets/v1/${encodeURIComponent(address)}/label`,
-      { method: "PUT", context: "setting wallet label", withAuth: true, body: { label } },
+      { method: "POST", context: "setting wallet label", withAuth: true, body: { label } },
     );
     return { ok: true };
   } catch {

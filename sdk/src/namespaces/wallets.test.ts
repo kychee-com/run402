@@ -41,7 +41,7 @@ describe("wallets.setLabel", () => {
     });
     const res = await r.wallets.setLabel("0xabc", "kychon");
     assert.deepEqual(res, { ok: true });
-    assert.equal(seen.method, "PUT");
+    assert.equal(seen.method, "POST");
     assert.match(seen.url, /\/wallets\/v1\/0xabc\/label$/);
     assert.match(String(seen.body), /kychon/);
   });

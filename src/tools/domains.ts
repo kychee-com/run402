@@ -7,7 +7,13 @@ type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: bo
 
 const desiredSchema = z
   .record(z.unknown())
-  .describe("Desired ProjectDomain state: web, email.send, email.receive, mailbox_addresses, and activation.");
+  .describe(
+    "Desired ProjectDomain state: authority, web, email.send, email.receive, mailbox_addresses, and activation. " +
+      'Set authority:"hosted_dns_zone" to have Run402 host the domain\'s DNS zone — the owner then makes ONE nameserver ' +
+      "change (the returned hosted_zone.ns_assigned pair) and Run402 applies every record, verifies ownership, and issues " +
+      "TLS automatically. Required in practice for a ROOT domain (example.com) since a root CNAME is illegal at most DNS " +
+      'hosts; omit it (or use "manual_dns") to add the returned dns_records yourself.',
+  );
 
 export const domainsEnsureSchema = {
   project_id: z.string().describe("The project ID"),
