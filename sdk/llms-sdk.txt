@@ -1769,7 +1769,8 @@ disconnect(projectId, domain): Promise<{ status, domain }>
 const d = await r.domains.ensure(projectId, "example.com", {
   desired: { authority: "hosted_dns_zone", web: { enabled: true } },
 });
-d.hosted_zone.ns_assigned;   // the two nameservers to hand the domain owner
+// hosted_zone is present only for a hosted-zone domain, hence the ?.
+const nameservers = d.hosted_zone?.ns_assigned ?? [];   // hand these two to the domain owner
 await r.domains.wait(projectId, "example.com", { until: "active" });
 
 // Subdomain / you keep your DNS host — add the records the response lists.
