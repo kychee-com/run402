@@ -639,7 +639,7 @@ describe("auth.passkeys", () => {
 });
 
 describe("auth.setUserPassword", () => {
-  it("PUTs /auth/v1/user/password with newPassword and accessToken bearer", async () => {
+  it("POSTs /auth/v1/user/password with newPassword and accessToken bearer", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ ok: true }));
     const sdk = makeSdk(makeCreds(), fetch);
     await sdk.auth.setUserPassword("prj_known", {
@@ -649,7 +649,7 @@ describe("auth.setUserPassword", () => {
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.url, "https://api.example.test/auth/v1/user/password");
-    assert.equal(calls[0]!.method, "PUT");
+    assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["apikey"], "anon_xxx");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer user_jwt");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), {

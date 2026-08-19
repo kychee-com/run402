@@ -3751,7 +3751,7 @@ describe("CLI e2e happy path", () => {
     globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : input.url;
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.endsWith("/auth/v1/user/password") && method === "PUT") {
+      if (url.endsWith("/auth/v1/user/password") && method === "POST") {
         capturedUrl = url;
         capturedMethod = method;
         // Headers and body may be on init (direct fetch) or on the Request
@@ -3790,7 +3790,7 @@ describe("CLI e2e happy path", () => {
       globalThis.fetch = prevFetch;
     }
     assert.ok(capturedUrl, "PUT /auth/v1/user/password should have been called");
-    assert.equal(capturedMethod, "PUT", "must be a PUT request");
+    assert.equal(capturedMethod, "POST", "must be a POST request");
     // apikey identifies the project to apikeyAuth middleware
     assert.equal(
       capturedHeaders.apikey ?? capturedHeaders.Apikey,

@@ -371,7 +371,7 @@ export class Auth {
     if (opts.currentPassword !== undefined) body.current_password = opts.currentPassword;
 
     await this.client.request<unknown>("/auth/v1/user/password", {
-      method: "PUT",
+      method: "POST",
       headers: {
         apikey: project.anon_key,
         Authorization: `Bearer ${opts.accessToken}`,
