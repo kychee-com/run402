@@ -164,19 +164,4 @@ describe("ProjectDomain SDK", () => {
     assert.equal(calls.length, 2);
   });
 
-  it("old domains.add fails with COMMAND_REMOVED and a replacement command", async () => {
-    const { fetch, calls } = mockFetch(() => jsonResponse({}));
-    const sdk = makeSdk(principalCreds(), fetch);
-
-    await assert.rejects(
-      () => sdk.domains.add("prj_visible", { domain: "kysigned.com", subdomainName: "app" }),
-      (err) => {
-        assert.ok(err instanceof LocalError);
-        assert.equal(err.code, "COMMAND_REMOVED");
-        assert.equal((err.details as { replacement?: string }).replacement, "run402 domains connect kysigned.com --project prj_visible --web");
-        return true;
-      },
-    );
-    assert.equal(calls.length, 0);
-  });
 });

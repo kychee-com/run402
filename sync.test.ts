@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -110,7 +110,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -1233,13 +1233,6 @@ const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:release", "cloud:archiv
 const CLI_ALIAS_COMMANDS = [
   "email:status", // alias of email:info
   // Removed compatibility commands that intentionally fail with COMMAND_REMOVED.
-  "domains:add",
-  "domains:delete",
-  "sender-domain:register",
-  "sender-domain:status",
-  "sender-domain:remove",
-  "sender-domain:inbound-enable",
-  "sender-domain:inbound-disable",
   "projects:export", // alias of cloud:archives:create
   "core:projects:apply", // alias of core:projects:import
 ];
@@ -1469,11 +1462,6 @@ describe("SDK surface alignment", () => {
       "domains.add",
       "domains.status",
       "domains.remove",
-      "senderDomain.register",
-      "senderDomain.status",
-      "senderDomain.remove",
-      "senderDomain.enableInbound",
-      "senderDomain.disableInbound",
       // ─── gitvault (r402s/v0) ──────────────────────────────────────────
       // `get`/`forProject` are addressing sugar the verbs use internally
       // (`forProject` is the cold-restart lookup); `allHeads` is the paging

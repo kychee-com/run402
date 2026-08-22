@@ -59,7 +59,6 @@ const GROUPED_COMMANDS = [
   "org",
   "projects",
   "secrets",
-  "sender-domain",
   "service",
   "sites",
   "subdomains",
@@ -411,13 +410,8 @@ describe("CLI output contract drift protection", () => {
         assert.equal(result.stdout, "", `${command} wrote stdout prose: ${JSON.stringify(result.stdout)}`);
         const parsed = JSON.parse(result.stderr);
         assert.equal(parsed.status, "error", `${command} stderr must be an error envelope`);
-        if (command === "sender-domain") {
-          assert.equal(parsed.code, "COMMAND_REMOVED", `${command} should report the removed workflow`);
-          assert.match(parsed.details?.replacement ?? "", /domains connect|domains status/, `${command} should provide a replacement`);
-        } else {
-          assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND", `${command} should use UNKNOWN_SUBCOMMAND`);
-          assert.equal(parsed.details.subcommand, "does-not-exist", `${command} should echo the bad subcommand`);
-        }
+        assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND", `${command} should use UNKNOWN_SUBCOMMAND`);
+        assert.equal(parsed.details.subcommand, "does-not-exist", `${command} should echo the bad subcommand`);
       }
     } finally {
       rmSync(tempDir, { recursive: true, force: true });

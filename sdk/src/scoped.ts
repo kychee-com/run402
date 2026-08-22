@@ -100,7 +100,6 @@ import type {
   ProvisionSignerOptions,
 } from "./namespaces/contracts.js";
 import type {
-  DomainAddOptions,
   ProjectDomain,
   ProjectDomainEnsureOptions,
   ProjectDomainListResult,
@@ -204,12 +203,6 @@ import type {
   ProjectBranchesListResult,
   ProjectBranchRenewOptions,
 } from "./namespaces/branches.types.js";
-import type {
-  DisableInboundResult,
-  InboundEnableResult,
-  SenderDomainRegisterResult,
-  SenderDomainStatusResult,
-} from "./namespaces/sender-domain.js";
 import type {
   SubdomainClaimInput,
   SubdomainClaimOptions,
@@ -563,19 +556,6 @@ class ScopedAssets {
   sign(key: string, opts?: BlobSignOptions): Promise<BlobSignResult> {
     return this.parent.assets.sign(this.projectId, key, opts);
   }
-  initUploadSession(opts: BlobUploadInitOptions): Promise<BlobUploadInitResult> {
-    return this.parent.assets.initUploadSession(this.projectId, opts);
-  }
-  getUploadSession(uploadId: string): Promise<BlobUploadStatusResult> {
-    return this.parent.assets.getUploadSession(this.projectId, uploadId);
-  }
-  completeUploadSession(
-    uploadId: string,
-    opts?: BlobUploadCompleteOptions,
-    extra?: { contentType?: string },
-  ): Promise<BlobUploadCompleteResult> {
-    return this.parent.assets.completeUploadSession(this.projectId, uploadId, opts, extra);
-  }
 }
 
 class ScopedContracts {
@@ -820,29 +800,6 @@ class ScopedDomains {
   wait(domain: string, opts?: ProjectDomainWaitOptions): Promise<ProjectDomain> {
     return this.parent.domains.wait(this.projectId, domain, opts);
   }
-
-  /** @deprecated Removed. Use `ensure(domain, { desired })`. */
-  add(opts: DomainAddOptions): ReturnType<Run402["domains"]["add"]>;
-  /** @deprecated Removed. Use `ensure(domain, { desired })`. */
-  add(domain: string, subdomainName: string): ReturnType<Run402["domains"]["add"]>;
-  add(domainOrOpts: string | DomainAddOptions, subdomainName?: string): ReturnType<Run402["domains"]["add"]> {
-    if (typeof domainOrOpts === "object" && domainOrOpts !== null) {
-      return this.parent.domains.add(this.projectId, domainOrOpts);
-    }
-    deprecatePositional("domains.add", "use ensure(domain, { desired })");
-    return this.parent.domains.add(this.projectId, {
-      domain: domainOrOpts,
-      subdomainName: subdomainName as string,
-    });
-  }
-  /** @deprecated Removed. Use `get(domain)` or `check(domain)`. */
-  status(domain: string): ReturnType<Run402["domains"]["status"]> {
-    return this.parent.domains.status(this.projectId, domain);
-  }
-  /** @deprecated Removed. Use `disconnect(domain)`. */
-  remove(domain: string, opts: { projectId?: string } = {}): ReturnType<Run402["domains"]["remove"]> {
-    return this.parent.domains.remove(domain, { projectId: opts.projectId ?? this.projectId });
-  }
 }
 
 class ScopedEmailWebhooks {
@@ -1013,26 +970,6 @@ class ScopedJobs {
   }
 }
 
-class ScopedSenderDomain {
-  constructor(private readonly parent: Run402, private readonly projectId: string) {}
-
-  register(domain: string): Promise<SenderDomainRegisterResult> {
-    return this.parent.senderDomain.register(this.projectId, domain);
-  }
-  status(): Promise<SenderDomainStatusResult> {
-    return this.parent.senderDomain.status(this.projectId);
-  }
-  remove(): Promise<void> {
-    return this.parent.senderDomain.remove(this.projectId);
-  }
-  enableInbound(domain: string): Promise<InboundEnableResult> {
-    return this.parent.senderDomain.enableInbound(this.projectId, domain);
-  }
-  disableInbound(domain: string): Promise<DisableInboundResult> {
-    return this.parent.senderDomain.disableInbound(this.projectId, domain);
-  }
-}
-
 class ScopedSubdomains {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
@@ -1095,7 +1032,6 @@ export class ScopedRun402 {
   readonly functions: ScopedFunctions;
   readonly jobs: ScopedJobs;
   readonly secrets: ScopedSecrets;
-  readonly senderDomain: ScopedSenderDomain;
   readonly subdomains: ScopedSubdomains;
   /** Per-project capability grants (agent/CI principals), project-id pre-bound. */
   readonly grants: ScopedGrants;
@@ -1123,7 +1059,6 @@ export class ScopedRun402 {
     this.functions = new ScopedFunctions(parent, projectId);
     this.jobs = new ScopedJobs(parent, projectId);
     this.secrets = new ScopedSecrets(parent, projectId);
-    this.senderDomain = new ScopedSenderDomain(parent, projectId);
     this.subdomains = new ScopedSubdomains(parent, projectId);
     this.grants = new ScopedGrants(parent, projectId);
     this.delegates = new ScopedDelegates(parent, projectId);

@@ -414,6 +414,5 @@ export const COMMAND_MANIFEST = [
 // completeness check against cli.mjs's dispatch switch.
 export const SKIPPED_FAMILIES = {
   "apply": "pure alias for `deploy apply` (covered by the deploy family)",
-  "sender-domain": "removed command — every subcommand errors with COMMAND_REMOVED",
   "dev": "interactive wrapper that spawns `astro dev`",
 };

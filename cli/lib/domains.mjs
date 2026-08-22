@@ -20,9 +20,6 @@ Subcommands:
   wait         <domain> [--project <id>] [--until active|safe|receive-active] [--timeout-ms <n>] [--interval-ms <n>]
   activate     <domain> [--project <id>]
   disconnect   <domain> --confirm [--project <id>]
-
-Removed:
-  add, delete. Use connect/disconnect.
 `;
 
 const SUB_HELP = {
@@ -133,15 +130,6 @@ function printHandoff(data) {
   }
   lines.push("", `Then: run402 domains wait ${data.domain} --until active`, "");
   console.error(lines.join("\n"));
-}
-
-function removed(command, replacement) {
-  fail({
-    code: "COMMAND_REMOVED",
-    message: `${command} has been removed. Use ${replacement}.`,
-    details: { command, replacement },
-    next_actions: [{ type: "use_replacement_command", command: replacement }],
-  });
 }
 
 function parseCommon(args, extraKnown = [], valueFlags = COMMON_VALUE_FLAGS) {
@@ -447,8 +435,6 @@ export async function run(sub, args) {
     case "wait": await action("wait", args); break;
     case "activate": await action("activate", args); break;
     case "disconnect": await disconnect(args); break;
-    case "add": removed("run402 domains add", "run402 domains connect <domain> --project <id> --web"); break;
-    case "delete": removed("run402 domains delete", "run402 domains disconnect <domain> --project <id> --confirm"); break;
     default:
       failUnknownSubcommand("domains", sub);
   }

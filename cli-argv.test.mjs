@@ -662,13 +662,6 @@ describe("2026-05 CLI bug backlog argv validation", () => {
       code: "BAD_USAGE",
     },
     {
-      issue: "GH-292",
-      name: "domains delete is removed before argv/network work",
-      module: "./cli/lib/domains.mjs",
-      call: (run) => run("delete", ["example.com", "extra.com", "--confirm"]),
-      code: "COMMAND_REMOVED",
-    },
-    {
       issue: "GH-291",
       name: "subdomains delete rejects extra positional names",
       module: "./cli/lib/subdomains.mjs",
@@ -681,20 +674,6 @@ describe("2026-05 CLI bug backlog argv validation", () => {
       module: "./cli/lib/subdomains.mjs",
       call: (run) => run("claim", ["site-a", "--deployment"]),
       code: "BAD_FLAG",
-    },
-    {
-      issue: "GH-289",
-      name: "sender-domain register is removed before argv/network work",
-      module: "./cli/lib/sender-domain.mjs",
-      call: (run) => run("register", ["example.com", "typo.com", "--project", "prj_test123"]),
-      code: "COMMAND_REMOVED",
-    },
-    {
-      issue: "GH-288",
-      name: "sender-domain status is removed before argv/network work",
-      module: "./cli/lib/sender-domain.mjs",
-      call: (run) => run("status", ["--project"]),
-      code: "COMMAND_REMOVED",
     },
     {
       issue: "GH-287",

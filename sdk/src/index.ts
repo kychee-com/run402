@@ -21,7 +21,6 @@ import { Tier } from "./namespaces/tier.js";
 import { Allowance } from "./namespaces/allowance.js";
 import { Ai } from "./namespaces/ai.js";
 import { Auth } from "./namespaces/auth.js";
-import { SenderDomain } from "./namespaces/sender-domain.js";
 import { Billing } from "./namespaces/billing.js";
 import { Vouchers } from "./namespaces/vouchers.js";
 import { Wallets, ScopedWallet } from "./namespaces/wallets.js";
@@ -90,7 +89,6 @@ export class Run402 {
   readonly ai: Ai;
   readonly image!: Ai;
   readonly auth: Auth;
-  readonly senderDomain: SenderDomain;
   readonly billing: Billing;
   readonly vouchers: Vouchers;
   readonly wallets: Wallets;
@@ -246,7 +244,6 @@ export class Run402 {
       enumerable: false,
     });
     this.auth = new Auth(client);
-    this.senderDomain = new SenderDomain(client);
     this.billing = new Billing(client);
     this.vouchers = new Vouchers(client);
     this.wallets = new Wallets(client);
@@ -631,7 +628,6 @@ export { Buzz, BuzzHumanAdoptions, BuzzHumanAdoptionOffers, BuzzCommunityInstall
 export type * from "./namespaces/buzz.types.js";
 export type * from "./namespaces/buzz-notifications.types.js";
 export type * from "./namespaces/secrets.js";
-export type * from "./namespaces/sender-domain.js";
 export type * from "./namespaces/service.js";
 export type * from "./namespaces/sites.js";
 export type * from "./namespaces/subdomains.js";

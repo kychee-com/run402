@@ -1751,7 +1751,7 @@ Subdomain auto-reassignment: claim once. Every subsequent deploy to the same pro
 
 ### `r.domains`
 
-The ProjectDomain lifecycle — the ONE surface for custom domains (web + email). `add`/`status`/`remove` were removed and now throw locally; use the methods below.
+The ProjectDomain lifecycle — the ONE surface for custom domains (web + email).
 
 ```
 ensure(projectId, domain, { desired }): Promise<ProjectDomain>   // connect / update desired state
@@ -2059,17 +2059,6 @@ delete(projectId, mailboxId?): Promise<void>
 `MailboxRecord` includes default/readiness/footer-policy metadata when the gateway provides it: `is_default_outbound`, `is_auth_sender`, `can_send`, `send_blocked_reason`, `domain_kind`, `footer_policy`, `effective_footer_policy`, and `footer_policy_locked_reason`. `updateMailbox` PATCHes `/mailboxes/v1/:mailbox_id` for `footer_policy`; `none` requires hobby/team, while prototype projects are locked to `run402_transparency` and return the typed gateway error `FOOTER_POLICY_TIER_REQUIRED`. `MailboxListResult` and create/settings responses may include `mailbox_settings` and `next_actions`; the happy path is create → list → set missing defaults → optionally update footer policy → send.
 
 Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `html` for raw mode. Raw mode also accepts `attachments` (max 5, ≤ 7 MB total) — a multipart/mixed MIME is sent. Tier rate limits: prototype 10/day, hobby 50/day, team 500/day.
-
-### `r.senderDomain`
-
-Removed. Every method — `register`, `status`, `remove`, `enableInbound`, `disableInbound`, and the `inboundEnable` / `inboundDisable` aliases — throws locally with `COMMAND_REMOVED` and a replacement command. Sending and receiving are dimensions of the ProjectDomain lifecycle above; declare them in `desired.email`:
-
-```ts
-await r.domains.ensure(projectId, "example.com", {
-  desired: { email: { send: { enabled: true }, receive: { enabled: true } } },
-});
-await r.domains.wait(projectId, "example.com", { until: "receive-active" });
-```
 
 ### `r.auth`
 
