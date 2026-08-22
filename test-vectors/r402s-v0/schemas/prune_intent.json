@@ -1,0 +1,54 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "prune_intent.json",
+ "title": "r402s/v0 prune_intent two typed verifier refs (distinct ids, distinct hashes, one per required implementation), claimed IN the intent's INTENT_PUT_ISSUED pre-I/O fence transaction (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "core",
+  "intent_core_sha256",
+  "verifier_receipts"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "prune_intent"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/pi"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "core": {
+   "$ref": "prune_intent_core.json"
+  },
+  "intent_core_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "verifier_receipts": {
+   "type": "array",
+   "minItems": 2,
+   "maxItems": 2,
+   "uniqueItems": true,
+   "items": {
+    "$ref": "common.json#/$defs/verifier_receipt_ref"
+   }
+  }
+ },
+ "x-r402s-revision": "40"
+}

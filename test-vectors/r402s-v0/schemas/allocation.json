@@ -1,0 +1,83 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "allocation.json",
+ "title": "r402s/v0 allocation (DRAFT rev 40) — API message; no object_id; issued_at is the service-key authority-time instant of THIS representation (a superseded republication carries a fresh issued_at under the then-current key); created_at is immutable creation metadata",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "signature",
+  "service_key_id",
+  "org_id",
+  "project_id",
+  "principal_id",
+  "creator_signing_fingerprint",
+  "creator_encryption_fingerprint",
+  "client_creation_id",
+  "allocation_nonce",
+  "allocation_generation",
+  "status",
+  "issued_at",
+  "created_at"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "allocation"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "service_key_id": {
+   "$ref": "common.json#/$defs/service_key_id"
+  },
+  "org_id": {
+   "type": "string"
+  },
+  "project_id": {
+   "type": "string"
+  },
+  "principal_id": {
+   "type": "string"
+  },
+  "creator_signing_fingerprint": {
+   "$ref": "common.json#/$defs/vk"
+  },
+  "creator_encryption_fingerprint": {
+   "$ref": "common.json#/$defs/ek"
+  },
+  "client_creation_id": {
+   "$ref": "common.json#/$defs/hex32"
+  },
+  "allocation_nonce": {
+   "$ref": "common.json#/$defs/hex32"
+  },
+  "allocation_generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "status": {
+   "enum": [
+    "active",
+    "superseded"
+   ]
+  },
+  "created_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "issued_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  }
+ },
+ "x-r402s-revision": "40"
+}

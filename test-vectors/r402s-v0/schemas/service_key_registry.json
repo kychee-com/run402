@@ -1,0 +1,70 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "service_key_registry.json",
+ "title": "r402s/v0 service_key_registry version-addressed, monotonic, rollback-refused; root-signed (domain r402s/v0/service_key_registry over JCS minus registry_root_signature); entries sorted by service_key_id, ids unique, history preserved (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "version",
+  "created_at",
+  "entries",
+  "registry_root_signature"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "service_key_registry"
+  },
+  "version": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "created_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "entries": {
+   "type": "array",
+   "minItems": 1,
+   "uniqueItems": true,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "service_key_id",
+     "public_key",
+     "not_before",
+     "not_after",
+     "status"
+    ],
+    "properties": {
+     "service_key_id": {
+      "$ref": "common.json#/$defs/service_key_id"
+     },
+     "public_key": {
+      "$ref": "common.json#/$defs/ed25519_pubkey"
+     },
+     "not_before": {
+      "$ref": "common.json#/$defs/timestamp"
+     },
+     "not_after": {
+      "$ref": "common.json#/$defs/timestamp"
+     },
+     "status": {
+      "enum": [
+       "active",
+       "retired",
+       "revoked_compromised"
+      ]
+     }
+    }
+   }
+  },
+  "registry_root_signature": {
+   "$ref": "common.json#/$defs/ed25519_signature"
+  }
+ },
+ "x-r402s-revision": "40"
+}

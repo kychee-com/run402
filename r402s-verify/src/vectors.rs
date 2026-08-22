@@ -241,6 +241,10 @@ pub fn locate_vectors() -> Option<PathBuf> {
     }
     let here = Path::new(env!("CARGO_MANIFEST_DIR"));
     let candidates = [
+        // the vendored, integrity-pinned set that ships WITH this repo (the
+        // replay is a CI gate, not an opportunistic extra — a verifier whose
+        // agreement with the frozen vectors is never executed proves nothing)
+        here.join("../test-vectors/r402s-v0/vectors.json"),
         here.join("../../run402-private/docs/strategy/products/gitvault/vectors/vectors.json"),
         here.join("../../../run402-private/docs/strategy/products/gitvault/vectors/vectors.json"),
     ];
@@ -253,9 +257,18 @@ pub fn run(vectors_path: &Path) -> Result<Report, String> {
     let vec_doc = parse_lenient_layout(&raw)
         .map_err(|e| format!("vectors.json is not strict I-JSON: {e}"))?;
     let dir = vectors_path.parent().ok_or("vectors path has no parent")?;
+    // vendored layout () first,
+    // then the private-repo layout ( + )
     let schemas_dir = std::env::var("R402S_SCHEMAS")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| dir.join("../schemas"));
+        .unwrap_or_else(|_| {
+            let vendored = dir.join("schemas");
+            if vendored.is_dir() {
+                vendored
+            } else {
+                dir.join("../schemas")
+            }
+        });
     let schemas = SchemaSet::load_dir(&schemas_dir).ok();
     let machines: Option<S> = std::fs::read(schemas_dir.join("state-machines.json"))
         .ok()

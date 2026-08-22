@@ -1,0 +1,203 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "head.json",
+ "title": "r402s/v0 head path-addressed at head/<generation>; no object_id; V0 epoch pinned (rotate_epoch is post-V0) (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "signature",
+  "generation",
+  "prev_sha256",
+  "epoch",
+  "wal_entries",
+  "ref_state",
+  "retention_roots",
+  "checkpoint",
+  "checkpoint_purpose",
+  "capture_binding",
+  "repair",
+  "transition",
+  "writer_key_id",
+  "created_at"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "head"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "prev_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "epoch": {
+   "const": "0000000000000001"
+  },
+  "wal_entries": {
+   "type": "array",
+   "maxItems": 64,
+   "items": {
+    "$ref": "common.json#/$defs/receipt_wal_pack"
+   }
+  },
+  "ref_state": {
+   "$ref": "common.json#/$defs/receipt_ref_state"
+  },
+  "retention_roots": {
+   "$ref": "common.json#/$defs/receipt_retention_roots"
+  },
+  "checkpoint": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/checkpoint_block"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "checkpoint_purpose": {
+   "oneOf": [
+    {
+     "enum": [
+      "ordinary_push",
+      "maintenance_cycle",
+      "repair"
+     ]
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "capture_binding": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/capture_binding"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "repair": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/repair_descriptor"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "transition": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/transition_envelope"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "writer_key_id": {
+   "$ref": "common.json#/$defs/vk"
+  },
+  "created_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  }
+ },
+ "allOf": [
+  {
+   "if": {
+    "properties": {
+     "checkpoint": {
+      "type": "null"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "checkpoint_purpose": {
+      "const": null
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "checkpoint": {
+      "type": "object"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "checkpoint_purpose": {
+      "enum": [
+       "ordinary_push",
+       "maintenance_cycle",
+       "repair"
+      ]
+     },
+     "wal_entries": {
+      "maxItems": 0
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "repair": {
+      "type": "object"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "checkpoint": {
+      "type": "object"
+     },
+     "checkpoint_purpose": {
+      "const": "repair"
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "checkpoint_purpose": {
+      "const": "repair"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "repair": {
+      "type": "object"
+     }
+    }
+   }
+  }
+ ],
+ "x-r402s-revision": "40"
+}

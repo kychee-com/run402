@@ -1,0 +1,52 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "recovery_receipt.json",
+ "title": "r402s/v0 recovery_receipt local/API message; no object_id (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "signature",
+  "org_id",
+  "project_id",
+  "genesis_sha256",
+  "creator_signing_fingerprint",
+  "creator_encryption_fingerprint"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "recovery_receipt"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "org_id": {
+   "type": "string"
+  },
+  "project_id": {
+   "type": "string"
+  },
+  "genesis_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "creator_signing_fingerprint": {
+   "$ref": "common.json#/$defs/vk"
+  },
+  "creator_encryption_fingerprint": {
+   "$ref": "common.json#/$defs/ek"
+  }
+ },
+ "x-r402s-revision": "40"
+}

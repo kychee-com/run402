@@ -1,0 +1,84 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "verifier_receipt.json",
+ "title": "r402s/v0 verifier_receipt implementation_id is the CLOSED V0 identity set; restored_object_set_hmac must equal the checkpoint manifest's object_set_hmac (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "intent_core_sha256",
+  "checkpoint_head_sha256",
+  "cutoff_ticket_sha256",
+  "restored_object_set_hmac",
+  "retention_evolution_ok",
+  "candidates_outside_roots_ok",
+  "implementation_id",
+  "implementation_version",
+  "result"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "verifier_receipt"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/vr"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "intent_core_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "checkpoint_head_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "cutoff_ticket_sha256": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "restored_object_set_hmac": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "retention_evolution_ok": {
+   "type": "boolean"
+  },
+  "candidates_outside_roots_ok": {
+   "type": "boolean"
+  },
+  "implementation_id": {
+   "$ref": "common.json#/$defs/implementation_id"
+  },
+  "implementation_version": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 64
+  },
+  "result": {
+   "enum": [
+    "restored_and_verified",
+    "failed"
+   ]
+  }
+ },
+ "x-r402s-revision": "40"
+}

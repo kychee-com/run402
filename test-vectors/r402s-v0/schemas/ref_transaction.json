@@ -1,0 +1,56 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "ref_transaction.json",
+ "title": "r402s/v0 client ref transaction updates MUST name pairwise-distinct refs (duplicates refused before evaluation, never last-wins) (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "updates"
+ ],
+ "properties": {
+  "updates": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 1000,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "ref",
+     "expected_old_oid",
+     "new_oid",
+     "force"
+    ],
+    "properties": {
+     "ref": {
+      "$ref": "common.json#/$defs/canonical_refname"
+     },
+     "expected_old_oid": {
+      "oneOf": [
+       {
+        "$ref": "common.json#/$defs/oid40"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "new_oid": {
+      "oneOf": [
+       {
+        "$ref": "common.json#/$defs/oid40"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "force": {
+      "type": "boolean"
+     }
+    }
+   }
+  }
+ },
+ "x-r402s-revision": "40"
+}

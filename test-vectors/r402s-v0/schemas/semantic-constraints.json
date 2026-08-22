@@ -1,0 +1,816 @@
+{
+ "$id": "semantic-constraints.json",
+ "title": "r402s/v0 semantic constraints (DRAFT rev 40) — normative cross-field/cross-object rules the JSON Schemas cannot express; validator_coverage ∈ covered (fully exercised) | partial (subset exercised — remainder is task-1.x) | deferred (task-1.x vector harness)",
+ "constraints": [
+  {
+   "id": "covers-through-triple",
+   "objects": [
+    "checkpoint_claim_set",
+    "checkpoint_manifest",
+    "head"
+   ],
+   "rule": "head.checkpoint.covers_through_generation == claim_set.covers_through_generation == decrypted manifest.covers_through_generation == the checkpoint head's own generation",
+   "validator_coverage": "covered"
+  },
+  {
+   "id": "claim-manifest-stored-equality",
+   "objects": [
+    "checkpoint_claim_set",
+    "checkpoint_manifest"
+   ],
+   "rule": "claim_set.ordered_pack_receipts[i].{object_id, ciphertext_sha256, size_bytes} == manifest.packs[i].{object_id, ciphertext_sha256, size_bytes}, same order, same length",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "claim-set-total-formula",
+   "objects": [
+    "checkpoint_claim_set"
+   ],
+   "rule": "total_stored_size_bytes == manifest_receipt.size_bytes + sum(ordered_pack_receipts[i].size_bytes); the claim-set object itself is EXCLUDED; MAX_CHECKPOINT_TOTAL_STORED_BYTES applies to this exact value",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "checkpoint-head-empty-wal",
+   "objects": [
+    "head"
+   ],
+   "rule": "checkpoint non-null implies wal_entries == [] (also schema-enforced)",
+   "validator_coverage": "covered"
+  },
+  {
+   "id": "purpose-resource-matrix",
+   "objects": [
+    "admission_record",
+    "head"
+   ],
+   "rule": "checkpoint:null+repair:null => resource_binding.kind ordinary_push; purpose ordinary_push => ordinary_push (writer authority); purpose maintenance_cycle => maintenance_cycle (compact authority; checkpoint_role names C1|C2); purpose repair => repair_attempt + non-null repair descriptor; any mismatch refused at admission validation",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "cycle-id-in-prune",
+   "objects": [
+    "prune_completion",
+    "prune_intent_core"
+   ],
+   "rule": "maintenance_cycle_id REQUIRED non-null for cycle-advancing prunes and REQUIRED null for ordinary prunes; completion.maintenance_cycle_id == intent core's, exactly",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "completion-vector-exactness",
+   "objects": [
+    "prune_completion",
+    "prune_intent_core"
+   ],
+   "rule": "exactly one per_object entry per delete_set candidate, in the intent's canonical order, no duplicates; outcome superseded_no_delete legal only when EVERY result is present_not_attempted; >=1 deleted or present_after_attempt with a stale epoch => superseded_partial_delete; all deleted + final epoch check passed => completed",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "verifier-ref-distinctness",
+   "objects": [
+    "prune_intent",
+    "verifier_receipt"
+   ],
+   "rule": "the two verifier_receipts have distinct object_id, distinct stored_bytes_sha256, and one entry per required implementation identity; each referenced receipt has result restored_and_verified and both booleans true (claim TIMING belongs exclusively to intent-fence-evidence-claim)",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "restored-objectset-equality",
+   "objects": [
+    "checkpoint_manifest",
+    "verifier_receipt"
+   ],
+   "rule": "restored_object_set_hmac == the checkpoint manifest's object_set_hmac, bytewise (same label \"objectset\", same content shape)",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "gcrootset-preimage",
+   "objects": [
+    "prune_intent_core"
+   ],
+   "rule": "gc_root_set_hmac = HMAC(K_digest(\"gcrootset\"), JCS({receipts:[complete pruneable receipts of the GC root set, sorted by object_id]}))",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "head-target-coverage",
+   "objects": [
+    "checkpoint_manifest",
+    "ref_state"
+   ],
+   "rule": "a detached head_target's oid is part of required checkpoint coverage and of the refmap commitment preimage; a symref head_target may name an unborn branch",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "identity-taxonomy",
+   "objects": [
+    "allocation",
+    "capture_receipt",
+    "head",
+    "key_envelope",
+    "maintenance_completion_cut",
+    "maintenance_cycle_issuance",
+    "maintenance_open_request",
+    "recovery_receipt",
+    "service_key_registry",
+    "vault_genesis"
+   ],
+   "rule": "head+genesis are path-addressed by (repo_id, generation) with NO object_id (genesis at head/0000000000000000); key envelopes by (repo_id, epoch, recipient_fingerprint) with NO object_id; the registry is version-addressed; maintenance_cycle_issuance is path-addressed at BOTH its idempotency-CAS and tombstone keys and maintenance_completion_cut at its per-ADMISSION-ATTEMPT key (cuts/<admission_object_id>) — neither carries an object_id; allocation/capture_receipt/recovery_receipt/maintenance_open_request are API-or-local messages with NO object_id; every other stored kind is id-addressed",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "registry-discipline",
+   "objects": [
+    "service_key_registry"
+   ],
+   "rule": "version is strictly monotonic; clients pin highest-seen and refuse lower versions (REGISTRY_ROLLBACK); every historical entry is preserved; service_key_ids unique; entries sorted by service_key_id; not_after == the revocation instant for revoked_compromised; root rotation is out of scope for V0 (new signed CLI release)",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "admission-attestation",
+   "objects": [
+    "admission_record"
+   ],
+   "rule": "the service signature attests that the frozen validation of the admission's IRREVERSIBLE fence succeeded — the COMPOSITE fence for P-credit admissions, the RECORD_PUT_ISSUED transaction for P-less (no separate validation-result field); base64url-decoded admitted_stored_bytes hashes to admitted_sha256; effective_admitted_at = max(prepared_at, the record's storage creation time)",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "repair-fence-equality",
+   "objects": [
+    "admission_record",
+    "head"
+   ],
+   "rule": "repair_fence non-null iff the admitted head carries repair; its proposed interval equals the head's [supersedes_from, supersedes_through]; finalized/cleared is derived state, never stored in the record",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "source-bytes-charge",
+   "objects": [
+    "admission_record"
+   ],
+   "rule": "admission_source_bytes_charge = sum of size_bytes over objects FIRST claimed by this admission (each object charged exactly once, at its first claiming admission); cycle_debit.debited_size_bytes uses this same function; reserved_total_size_bytes recomputes from r1_size_bytes/r2_cap_size_bytes via the stage-wise formula",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "chain-linkage",
+   "objects": [
+    "head",
+    "vault_genesis"
+   ],
+   "rule": "prev_sha256 == stored-bytes hash of the prior head (or of vault_genesis for generation 1); generation strictly increments",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "intent-core-hash",
+   "objects": [
+    "prune_intent",
+    "prune_intent_core"
+   ],
+   "rule": "intent_core_sha256 == stored-bytes hash of the embedded complete signed core; wrapper and core agree on object_id and repo_id (double signature: core signed, wrapper signed)",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "stored-bytes-preimage",
+   "objects": [
+    "*"
+   ],
+   "rule": "for every plaintext-structured stored object, the S3 object bytes ARE the canonical JCS bytes including signature — no whitespace, BOM, newline, or reserialization; size_bytes and stored_bytes_sha256 cover that exact byte string; noncanonical JSON is rejected before storage",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "receipt-size-truth",
+   "objects": [
+    "*"
+   ],
+   "rule": "every receipt's size_bytes == the S3 STORED size, server-verified at finalization",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "envelope-receipt-binding",
+   "objects": [
+    "key_envelope",
+    "vault_genesis"
+   ],
+   "rule": "the genesis envelope receipt's (epoch, recipient_fingerprint) equals the stored envelope's path identity and its stored_bytes_sha256 matches the stored envelope bytes",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "token-epoch-bytewise",
+   "objects": [
+    "activation_token"
+   ],
+   "rule": "authorization_epoch compares bytewise with the current epoch at mint and at consumption; consumption is atomic in the activation transaction under the vault-row lock; a second consume for the SAME operation_id is a read-only replay of the terminal state",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "capture-receipt-reissue",
+   "objects": [
+    "capture_receipt"
+   ],
+   "rule": "authorization_epoch is the epoch at issuance (for token exchange); a stale receipt is reissued only after revalidating the canonical admission",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "refname-full-validation",
+   "objects": [
+    "ref_state",
+    "ref_transaction",
+    "retention_roots"
+   ],
+   "rule": "beyond the schema pattern, refnames pass the frozen git check-ref-format subset: no segment ends with .lock or ., no trailing /, no @{, no .., valid UTF-8; the frozen validator + vectors are normative",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "timestamp-calendar",
+   "objects": [
+    "*"
+   ],
+   "rule": "beyond the schema pattern, timestamps must be real RFC 3339 calendar instants: implementations MUST semantically parse every timestamp and reject impossible calendar values such as 2026-02-31 or a Feb 29 outside a leap year (the schema pattern and the ABNF bound fields, never month lengths — D187); the form stays the pinned lexical one (UTC, millisecond precision, literal Z)",
+   "validator_coverage": "covered"
+  },
+  {
+   "id": "constants-are-source",
+   "objects": [
+    "*"
+   ],
+   "rule": "constants.json is the single source for every cardinality/size bound; schema literals (maxItems, maxProperties) and prose tables derive from it and must match",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "epoch-continuity-v0",
+   "objects": [
+    "head",
+    "vault_genesis"
+   ],
+   "rule": "every V0 head's epoch equals its predecessor's — pinned to 0000000000000001 (genesis epoch); epoch may change only across an admitted, ACTIVATED rotate_epoch transition, which is post-V0 (V0 rejects every non-null transition)",
+   "validator_coverage": "covered"
+  },
+  {
+   "id": "plaintext-total-formula",
+   "objects": [
+    "checkpoint_manifest"
+   ],
+   "rule": "total_plaintext_size_bytes == sum(packs[i].plaintext_size_bytes); the manifest object itself is excluded; distinct from the stored-byte total and from the checkpoint maximum, which binds stored bytes",
+   "validator_coverage": "covered"
+  },
+  {
+   "id": "cycle-batch-fields",
+   "objects": [
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "prune_completion",
+    "prune_intent_core"
+   ],
+   "rule": "cycle fields (maintenance_cycle_id/maintenance_prune_role/stage_claim_set_sha256/batch_index/batch_count/cycle_event_seq on completions) are non-null together iff cycle-advancing; completion mirrors the intent exactly; CANONICAL PACKING: batch_count == page_count == ceil(candidate_count/10000), every page except the final exactly 10,000; batch_index <= batch_count <= MAX_STAGE_PAGES",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "cycle-stage-advancement",
+   "objects": [
+    "admission_record",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "prune_completion",
+    "prune_intent_core"
+   ],
+   "rule": "the C1/C2 admission binds (by unkeyed hash) and transitively CLAIMS the stored stage ROOT + its pages; page i IS batch i (<=10,000 candidates, globally sorted by object_id across the page sequence); candidate_count == sum of page lengths, batch_count == page count, stage_candidate_stored_size_bytes == sum of candidate size_bytes and stage_metadata_stored_size_bytes == root + page stored bytes; a stage advances only when every batch 1..batch_count has an accepted completed completion; the gateway verifies each batch's delete set equals its page verbatim, including after DR; a superseded_* cycle batch coincides with preemption — no present-subset retry inside an open cycle",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "cycle-restart-evidence",
+   "objects": [
+    "admission_record",
+    "maintenance_cycle_terminal"
+   ],
+   "rule": "RESTART_REQUIRED_AFTER_C1 derives only through the cycle_replacement fence: the successor C1 admission (restart_of = the CURRENT open cycle + carried_claim_set_sha256 + carried_reservation_size_bytes, C1-only — schema-enforced) arms PENDING in its IRREVERSIBLE-FENCE tx (the COMPOSITE fence when the successor C1 credits P, RECORD_PUT_ISSUED otherwise) under the org-slot lock; the predecessor stays the sole open cycle while pending; the successor record's WIN only PROVES the restart source — the predecessor RESTART terminal then publishes, and terminalization, reservation transfer, and installation all occur in ONE idempotent transaction at that terminal's TERMINAL_APPLIED (never at the win); a different winner clears the fence; a REFUSED ordinary admission terminalizes nothing; repair preemption evidence is preempted_maintenance_cycle_id",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "cycle-exclusivity",
+   "objects": [
+    "admission_record",
+    "maintenance_cycle_terminal",
+    "prune_completion",
+    "prune_intent"
+   ],
+   "rule": "ONE serialization rule: an org has at most one OPEN maintenance cycle; opening consumes the org slot AND the (vault, base head) lease; ALL cycle events — batch-completion acceptance, EVERY maintenance-kind admission fence (CYCLE_ADMISSION_PENDING defers expiry/abort/repair-arm/replacement-arm/terminal publication), replacement arm/finalize/clear, the repair-fence ARM, repair preemption, EXPIRED_STALLED terminalization, and terminal publication — serialize in ONE cycle-event lane under the org-slot lock; expiry requires now >= last_cycle_progress_at + 7 days AND no pending replacement AND no accepted-but-unterminated cycle-tagged intent AND no unresolved completion PUT; last_cycle_progress_at = max(maintenance-kind admissions' effective_admitted_at, accepted completed batch completions' completed_at) — cycle_debit ordinary admissions are NOT progress; every terminal publishes exactly one maintenance_cycle_terminal; refusals of later cycle events begin at TERMINAL_PUT_ISSUED and side effects apply at TERMINAL_APPLIED (DR-authoritative)",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "prune-terminal-biconditionals",
+   "objects": [
+    "prune_completion"
+   ],
+   "rule": "completed IFF every result deleted AND final epoch check == intent epoch; superseded_no_delete IFF epoch stale AND every result present_not_attempted; superseded_partial_delete IFF epoch stale AND >=1 deleted or present_after_attempt; no completion is signed for a non-stale transient failure; every present result maps to PRUNE_AUTHORIZED_PRESENT; AT MOST ONE completion is accepted per intent (a second, byte-distinct completion for the same intent is refused); completion.gc_epoch_at_completion and the vector bind to the exact stored intent via prune_intent_sha256",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "service-key-authority-time",
+   "objects": [
+    "activation_token",
+    "admission_record",
+    "allocation",
+    "capture_receipt",
+    "maintenance_completion_cut",
+    "maintenance_cycle_issuance",
+    "maintenance_cycle_terminal",
+    "prune_completion",
+    "retention_cutoff",
+    "service_key_registry"
+   ],
+   "rule": "registry validity per kind evaluates over the half-open interval not_before <= authority_time < not_after, at: allocation.issued_at (per REPRESENTATION — a superseded republication is re-signed by the then-current key; created_at is creation metadata); admission_record.prepared_at; retention_cutoff.cutoff_at; capture_receipt.issued_at; activation_token.issued_at; prune_completion.completed_at. REISSUABLE API MESSAGES (capture receipts, tokens) additionally require the signing key ACTIVE in the CURRENT highest pinned registry at USE/exchange time — a compromised old key cannot mint usable receipts by backdating issued_at. For historical STORED evidence the frozen-time rule stands, and the residual is stated: a key compromised before its revocation was discovered could have forged records inside the compromise window; maintenance_cycle_terminal -> terminal_at; maintenance_cycle_issuance -> issued_at; maintenance_completion_cut -> cut_at",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "registry-succession",
+   "objects": [
+    "service_key_registry"
+   ],
+   "rule": "across versions: service_key_id, public_key, not_before are immutable per id; no id reuse; not_before < not_after; status transitions only forward (active->retired, active->revoked_compromised, retired->revoked_compromised); revoked_compromised is terminal and its revocation instant may never be extended; discovery = GET /gitvault/v1/service-key-registry (highest) + /:version (immutable), byte-identical to source/_registry/ objects; not_after is monotonic non-increasing per id and immutable once status is revoked_compromised",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "ref-transaction-rules",
+   "objects": [
+    "ref_state",
+    "ref_transaction",
+    "retention_roots"
+   ],
+   "rule": "updates name pairwise-distinct refs (duplicates refused before evaluation, never last-wins); non-force branch updates fast-forward AND match expected_old; force requires expected_old (creation uses null); tags immutable without force; deletes require expected_old; multi-ref atomic; dropped/displaced tips enter retention_roots in the same generation",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "retention-root-evolution",
+   "objects": [
+    "head",
+    "retention_cutoff",
+    "retention_roots"
+   ],
+   "rule": "roots(g+1) = roots(g) UNION dropped/displaced tips (RENEWING dropped_at_generation per (ref,oid) key) MINUS roots expired against the bound cutoff ticket when g+1 carries a checkpoint; expiry only at checkpoint-bearing generations, permissive; sorted by (dropped_at_generation, ref, oid); no duplicate (ref,oid) keys; cutoff binding: root carrier's cutoff_ticket_sha256+cutoff_at equal the head checkpoint block's ticket",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "repair-algebra",
+   "objects": [
+    "admission_record",
+    "head"
+   ],
+   "rule": "supersedes_from = base_generation+1; supersedes_through = repair generation - 1; base hash exact; every unreachable superseded tip enters the root MAP once per (ref,oid) with dropped_at_generation = repair generation; a repair never crosses an admitted transition; repair_fence proposal equals the head's interval",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "checkpoint-coverage-acceptance",
+   "objects": [
+    "checkpoint_manifest",
+    "ref_state",
+    "retention_roots"
+   ],
+   "rule": "coverage = reachable(canonical refs) UNION reachable(unexpired roots) UNION reachable(HEAD target — branch tip or detached oid); acceptance = restore from the set alone into empty scratch, every covered ref at its exact oid, fsck full connectivity, all three keyed commitments match",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "admitted-bytes-decode",
+   "objects": [
+    "admission_record"
+   ],
+   "rule": "base64url-decoded admitted_stored_bytes parses as the admitted_object_kind at the record's repo/generation, with the same writer_key_id, capture_binding, and (for repair heads) a repair descriptor equal to the repair_fence proposal; its hash is admitted_sha256",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "wal-base-generation",
+   "objects": [
+    "head"
+   ],
+   "rule": "every wal_entries[i].base_generation equals the head's generation minus one (the pack set's clean scratch base); ordered as the pack_set",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "capture-token-equality",
+   "objects": [
+    "activation_token",
+    "capture_receipt"
+   ],
+   "rule": "a token mints only when the operation row's capture_id, canonical plan digest, and snapshot commitment all match the receipt's; token and receipt fields for (repo, generation, head_sha256, capture_id, apply_plan_sha256, snapshot_oid_hmac) are equal; epoch compared bytewise at mint AND consumption",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "canonical-b64u",
+   "objects": [
+    "*"
+   ],
+   "rule": "every base64url value decodes and re-encodes byte-for-byte: no padding, length mod 4 != 1, no nonzero unused bits; a value failing canonical round-trip is a strict-parse reject even where the generic b64url pattern matches",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "cutoff-ordering",
+   "objects": [
+    "retention_cutoff"
+   ],
+   "rule": "cutoff_at < expires_at; a checkpoint admission validates the ticket's expiry once, in the admission's IRREVERSIBLE-FENCE transaction (the COMPOSITE fence for P-credit, RECORD_PUT_ISSUED for P-less), grandfathered after",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "retention-roots-order",
+   "objects": [
+    "retention_roots"
+   ],
+   "rule": "roots serialized sorted by (dropped_at_generation, ref, oid) with unique (ref, oid) keys — noncanonical order or duplicate keys are strict-parse rejects",
+   "validator_coverage": "covered"
+  },
+  {
+   "id": "prune-candidate-uniqueness",
+   "objects": [
+    "prune_intent_core"
+   ],
+   "rule": "delete_set candidates have pairwise-distinct object_ids, sorted by object_id — duplicates or noncanonical order are rejects",
+   "validator_coverage": "covered"
+  },
+  {
+   "id": "duplicate-receipt-uniqueness",
+   "objects": [
+    "checkpoint_claim_set",
+    "head"
+   ],
+   "rule": "wal_entries object_ids pairwise distinct; ordered_pack_receipts object_ids pairwise distinct and equal to the manifest's pack order",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "genesis-key-bindings",
+   "objects": [
+    "allocation",
+    "key_envelope",
+    "recovery_receipt",
+    "vault_genesis"
+   ],
+   "rule": "writer_key_id == vk_fingerprint(creator_signing_pubkey) == allocation.creator_signing_fingerprint; envelopes[0].recipient_fingerprint == ek_fingerprint(creator_encryption_pubkey) == allocation.creator_encryption_fingerprint; genesis repo_id/org_id/project_id/allocation_nonce equal the ACTIVE allocation's; the stored envelope's repo_id/epoch/recipient_fingerprint/created_by equal the genesis values; the recovery receipt's fingerprints equal the same pair (fingerprint = first 16 bytes of SHA-256(raw public key), hex)",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "completion-identity",
+   "objects": [
+    "prune_completion",
+    "prune_intent"
+   ],
+   "rule": "completion.prune_intent_sha256 == the stored intent's exact stored-bytes hash; completion repo/cycle/epoch/vector match that intent; the gateway accepts exactly ONE completion per intent — retries reproduce the canonical completion or are refused",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "carrier-coherence",
+   "objects": [
+    "checkpoint_claim_set",
+    "checkpoint_manifest",
+    "head",
+    "ref_state",
+    "retention_cutoff",
+    "retention_roots"
+   ],
+   "rule": "every carrier agrees: ref_state.generation == retention_roots.generation == the carrier head's generation; repo_id equal across head, decrypted ref state, roots, claim set, manifest, cutoff ticket; writer identity consistent; every receipt resolves to its exact stored object",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "coverage-preflight",
+   "objects": [
+    "head",
+    "ref_transaction",
+    "retention_roots"
+   ],
+   "rule": "the V0 checkpoint maximum (4096 packs / 800 GiB stored) is an invariant over REQUIRED coverage preflighted at EVERY coverage-enlarging admission (push, ref transaction, root renewal, repair-root addition) — CHECKPOINT_SET_LIMIT_EXCEEDED before admission, never only at checkpoint construction",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "cutoff-closure",
+   "objects": [
+    "head",
+    "retention_cutoff",
+    "retention_roots",
+    "verifier_receipt"
+   ],
+   "rule": "the ticket's repo_id/base_head_sha256/authorization_epoch bind the issuing context; expiry validated once at the admission fence (grandfathered); root removal requires effective_admitted_at + 90d < cutoff_at strictly; the no-removal checkpoint omits the ticket; ticket hash + cutoff_at equal across head checkpoint block, roots carrier, and both verifier receipts",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "head-coverage-unborn",
+   "objects": [
+    "checkpoint_manifest",
+    "ref_state"
+   ],
+   "rule": "an unborn symbolic HEAD (symref to an absent branch) contributes an explicitly EMPTY coverage component — an empty-repository checkpoint is accepted with zero packs, never rejected as an unresolved covered branch",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "ref-namespace-authority",
+   "objects": [
+    "ref_transaction"
+   ],
+   "rule": "user ref transactions may not update refs/run402/* — the force-move of refs/run402/deploys/latest is the single internally authorized operation, performed by the capture path, never accepted from a user transaction",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "raw-strict-parsing",
+   "objects": [
+    "*"
+   ],
+   "rule": "strict parsing operates at the RAW BYTE frontier: duplicate JSON members, non-JCS bytes, BOM/whitespace/newline variants, non-I-JSON, invalid Unicode, any JSON number, noncanonical ids, and noncanonical base64url are rejected before schema validation — vectors are raw bytes, not pre-parsed structures",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "expected-stage-completeness",
+   "objects": [
+    "admission_record",
+    "checkpoint_claim_set",
+    "checkpoint_manifest",
+    "checkpoint_pack",
+    "head",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "prune_intent",
+    "prune_intent_core",
+    "ref_state",
+    "retention_roots"
+   ],
+   "rule": "role-specific PROTECTED sets share the prune-root algebra: protected_after_C1 = RB(K1) + RB(K0) + later receipts, where RB(K) — the CHECKPOINT RECOVERY BUNDLE — is K's claim set + manifest + packs PLUS K's covers_through head's ref_state and retention_roots (protecting packs without carriers would keep bytes while destroying the ability to materialize and verify the rollback); expected_intermediate_stage = present unburned pruneable receipts (a deduplicated map keyed object_id, checkpoint claim-set children expanded transitively, over the canonical predecessor chain plus the exact proposed head bytes at the fence, excluding candidates owned by any intent past ITS pre-I/O fence) MINUS protected_after_C1; protected_after_C2 = RB(K2) + RB(K1) + later, so K0 is eligible in the FINAL stage; checkpoint_role C1 <=> maintenance_prune_role intermediate and C2 <=> final; byte-for-byte equality compares the ENTIRE typed receipt, not just object_id; subset/superset/wrong-role/false-empty refuse at the fence; stage hash null iff expected empty",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "stage-candidate-reservation",
+   "objects": [
+    "admission_record",
+    "maintenance_cycle_terminal",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "prune_intent",
+    "prune_intent_core"
+   ],
+   "rule": "ordinary-prune candidate OWNERSHIP linearizes at the intent's PRE-I/O fence (INTENT_PUT_ISSUED marks DELETING/intent-owned + burns ids); expected_stage excludes fence-owned candidates, so no in-flight-PUT window exists; the C1/C2 fence reserves every stage candidate (ordinary intents naming one refuse STAGE_CANDIDATE_RESERVED); releases: at their named NONTERMINAL transactions for a CONFLICTED admission (different-winner proof) and a replacement CLEAR; every TERMINAL-caused release (abort, replacement install, repair preemption, expiry, completion) occurs ONLY in that terminal's TERMINAL_STORED -> TERMINAL_APPLIED transaction; DR reconstructs reservations only from canonical winners or fenced pending operations with recoverable bytes",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "cycle-terminal-record",
+   "objects": [
+    "admission_record",
+    "maintenance_cycle_terminal",
+    "prune_completion"
+   ],
+   "rule": "the terminal CAS is the deterministic create-only per-cycle key maintenance/terminals/<maintenance_cycle_id>.terminal.json (object_id in the body — admission-record precedent); publication runs the four-state terminal machine (exact signed bytes + frontier persisted BEFORE I/O; all later cycle events refuse once TERMINAL_PUT_ISSUED); the terminal's last_accepted_cycle_event_seq is the accepted-event frontier — DR counts exactly the cycle-tagged completions whose signed cycle_event_seq <= it; terminal-kind matrix: COMPLETED/ABORTED/EXPIRED carry null successor+repair ids, RESTART carries the successor (distinct from the predecessor), PREEMPTED the repair id; ABORTED has null progress, EXPIRED non-null progress with terminal_at >= progress + 7d; authority time = terminal_at",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "allocation-representation-coherence",
+   "objects": [
+    "allocation"
+   ],
+   "rule": "the active and superseded representations of one allocation preserve every immutable field (repo/org/project/principal/fingerprints/client_creation_id/nonce/allocation_generation/created_at), changing only status, issued_at, service_key_id, signature",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "decision-supersession",
+   "objects": [
+    "*"
+   ],
+   "rule": "a superseded decision or vector clause never remains positive: when a later decision reverses an earlier one, the earlier decision-log entry gains an explicit 'superseded by' marker and the vector inventory converts the old positive into a reject — mechanically checked by the alignment gate; the artifact UNIVERSE, exemption inventory, and scanning policies are GATE_CONTRACT's (check-alignment.py) — this rule and D134 DEFER to the contract rather than restating it, and the gate exact-compares this rule's full text so the two cannot diverge silently; an untagged history line is scanned like live prose; span-level tagged scanning + the normalized executor are task 1.7, pending",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "stage-root-graph-coherence",
+   "objects": [
+    "admission_record",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page"
+   ],
+   "rule": "the admission's stage_claim_set_sha256 resolves to exactly ONE stored root; root and pages agree on repo/writer/cycle/role; every page receipt resolves to exact stored bytes; page_index values are exactly 1..batch_count; root and pages are claimed by that admission; stage_candidate_stored_size_bytes = sum of candidate size_bytes (D_stage — deletion/accounting EVIDENCE only, never re-charged: candidates were charged at their FIRST claim) and stage_metadata_stored_size_bytes = root + page stored bytes (A_stage — the NET-NEW admission charge, entering admission_source_bytes_charge AND the peak-reservation R terms)",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "stage-capacity-invariant",
+   "objects": [
+    "head",
+    "maintenance_stage_claim_set",
+    "ref_transaction"
+   ],
+   "rule": "every admission that could enlarge a future expected stage preflights BOTH the projected candidate_count <= MAX_STAGE_CANDIDATES (40,960,000) AND the projected stage_candidate_stored_size_bytes <= MAX_STAGE_CANDIDATE_STORED_BYTES (1e14, inside the 15-digit size_bytes grammar) and refuses MAINTENANCE_STAGE_LIMIT_EXCEEDED — prospective, like the checkpoint coverage preflight; the stage is therefore always representable in count AND bytes",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "stage-metadata-lifecycle",
+   "objects": [
+    "admission_record",
+    "maintenance_cycle_terminal",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page"
+   ],
+   "rule": "stage roots and pages join the pruneable union with a terminal-gated eligibility: prunable ONLY once their cycle's terminal reaches TERMINAL_APPLIED (the terminal + admission record retain everything DR needs); until then they are claimed, charged evidence",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "cycle-event-frontier",
+   "objects": [
+    "maintenance_cycle_terminal",
+    "prune_completion"
+   ],
+   "rule": "a per-cycle monotonic cycle_event_seq is assigned in the lane at acceptance and signed INTO each cycle-tagged completion; the terminal's last_accepted_cycle_event_seq closes the frontier — a stored completion with seq <= frontier was accepted before the terminal, one with no signed seq was never accepted; late-visible objects are always adjudicable",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "repair-replacement-precedence",
+   "objects": [
+    "admission_record"
+   ],
+   "rule": "the repair-fence ARM and the replacement ARM are mutually exclusive org-slot lane events: a pending replacement defers the repair arm until installed/cleared; a pending repair fence defers the replacement arm; the repair binding's preempted_maintenance_cycle_id is validated against the ACTUAL open cycle at arm — two fences can never both become canonical against different vaults",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "intent-fence-ownership",
+   "objects": [
+    "prune_intent",
+    "prune_intent_core"
+   ],
+   "rule": "candidate DELETING marking + id burn happen in the INTENT_PUT_ISSUED pre-I/O transaction (dedicated cross-machine rule, round-11/12): ownership is DB-linearized before any S3 I/O; the intent PUT (unique key) retries identically forever; a stored-but-unaccepted intent is impossible by construction",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "checkpoint-recovery-bundle",
+   "objects": [
+    "checkpoint_claim_set",
+    "checkpoint_manifest",
+    "checkpoint_pack",
+    "head",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "ref_state",
+    "retention_roots"
+   ],
+   "rule": "RB(K) = K's checkpoint claim set + manifest + all packs + K's covers_through head's ref_state + retention_roots; ONE definition used by BOTH §7.3's GC-root rule (latest + immediately-prior protection means their FULL recovery bundles) and the C1/C2 protected-set definitions — a checkpoint is protected as a USABLE rollback, never as bare bytes; vector: delete every legal intermediate candidate, corrupt K1, restore and verify K0",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "maintenance-admission-vs-terminal",
+   "objects": [
+    "admission_record",
+    "maintenance_completion_cut",
+    "maintenance_cycle_terminal"
+   ],
+   "rule": "every maintenance-kind admission fence is a cycle-lane event: CYCLE_ADMISSION_PENDING begins in the admission's IRREVERSIBLE-FENCE transaction (the COMPOSITE fence for P-credit, RECORD_PUT_ISSUED for P-less) and holds until the record CAS resolves; while pending, expiry, owner abort, repair arm, replacement arm (except the replacement's own successor fence), and terminal publication all DEFER; a winning ordinary C1/C2 record advances the phase; a winning successor-C1 record only proves the restart source (installation at the predecessor terminal's TERMINAL_APPLIED); a different winner releases that admission's stage reservations — an EXPIRED terminal can never coexist with a later-landing canonical C2 record",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "terminal-publication-composition",
+   "objects": [
+    "maintenance_cycle_terminal"
+   ],
+   "rule": "each maintenance terminal source edge maps through TERMINAL_PREPARED_NO_IO -> PUT_ISSUED -> STORED -> APPLIED; slot transitions, reservation release/transfer, and accounting occur ONLY at STORED -> APPLIED (one idempotent tx); the maintenance machine's terminal STATE means APPLIED; later cycle events refuse from PUT_ISSUED; cycle_replacement INSTALLED coincides with the predecessor terminal's APPLIED",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "maintenance-cycle-id-nonreuse",
+   "objects": [
+    "admission_record",
+    "maintenance_completion_cut",
+    "maintenance_cycle_issuance",
+    "maintenance_cycle_terminal",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page"
+   ],
+   "rule": "maintenance_cycle_ids are service-issued at cycle open, org-global, permanently tombstoned; reuse is refused before any lease, stage object, or admission crosses a fence — a terminal path and an event-seq namespace are never reused",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "pruneable-algebra-end-to-end",
+   "objects": [
+    "maintenance_cycle_terminal",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "prune_completion",
+    "prune_intent_core"
+   ],
+   "rule": "the receipt_pruneable kind set, the pruneable_object_id id set, the completion per_object id domain, and the object-lifecycle prune-owned domain are EQUAL — every kind that can enter an intent can be named by its completion and take the lifecycle edges (incl. msc_/msp_ once their cycle's terminal reaches TERMINAL_APPLIED)",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "stage-accounting-reservation-scalar",
+   "objects": [
+    "admission_record",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page"
+   ],
+   "rule": "D_stage (existing candidate bytes) is evidence only; A_stage (root+pages) is the net-new charge; the peak formula's R terms INCLUDE the role's A_stage; prospective preflights bound BOTH candidate_count <= MAX_STAGE_CANDIDATES AND stage_candidate_stored_size_bytes <= MAX_STAGE_CANDIDATE_STORED_BYTES (fits the 15-digit size_bytes grammar) — an admitted vault's stage is representable in count AND bytes",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "terminal-source-and-progress",
+   "objects": [
+    "admission_record",
+    "maintenance_cycle_terminal",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "prune_completion"
+   ],
+   "rule": "COMPLETED iff the C2 stage's complete accepted batch set lies within the frontier; RESTART iff the named successor's canonical C1 admission won naming this predecessor; PREEMPTED iff the named repair admission won binding this cycle; ABORTED iff no C1 admission crossed its fence; EXPIRED iff exact-max-progress + 7 days elapsed AND every deferral predicate false; last_cycle_progress_at equals the exact max over accepted events inside the frontier",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "path-identity-binding",
+   "objects": [
+    "admission_record",
+    "head",
+    "key_envelope",
+    "maintenance_completion_cut",
+    "maintenance_cycle_issuance",
+    "maintenance_cycle_terminal",
+    "vault_genesis"
+   ],
+   "rule": "storage identity is per kind: admission_record carries adm_ but is CAS-addressed at admissions/<generation>; maintenance_cycle_terminal carries mct_ but is CAS-addressed at maintenance/terminals/<cycle_id>; heads/genesis path-addressed by generation; envelopes by (epoch, fingerprint) — the id-vs-path taxonomy binds BOTH facts; maintenance_cycle_issuance at open-ids/<hash> AND issued/<cycle_id> (identical bytes); maintenance_completion_cut at cuts/<admission_object_id>",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "intent-fence-evidence-claim",
+   "objects": [
+    "prune_intent",
+    "verifier_receipt"
+   ],
+   "rule": "BOTH verifier-receipt objects move FINALIZED_UNCLAIMED -> CLAIMED_PENDING in the SAME INTENT_PUT_ISSUED transaction that persists the exact intent bytes and burns/owns every candidate — before any S3 I/O; the reaper can therefore never take fence-referenced evidence, and INTENT_PUT_ISSUED -> INTENT_STORED only observes the create-only PUT",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "maintenance-reservation-equation",
+   "objects": [
+    "admission_record",
+    "maintenance_completion_cut",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "prune_completion",
+    "prune_intent"
+   ],
+   "rule": "R1 := admission_source_bytes_charge(C1) — the exact sum over every object FIRST claimed by the C1 admission; R2_cap := the maximum permitted admission_source_bytes_charge(C2) under the defined growth envelope; reserved_total_size_bytes := the INITIAL peak reservation fixed at the C1 arm, max(0, R1 - P_before_C1, R1 + R2_cap - P_before_C2) + CYCLE_HEADROOM_BYTES. EVERY credited P is the p_before_size_bytes of a stored maintenance_completion_cut object — the EXACT sorted counted-completion list with per-completion credited bytes, create-only at maintenance/cuts/<admission_object_id>.json (attempt-keyed), bound into the admission record via p_cut_sha256 (null IFF no P credited, i.e. no cut object) — DR reads the list, recomputes membership and total linearly, and REFUSES on mismatch; a completion whose PUT was unresolved at the cut is absent from the list and therefore outside it BY CONSTRUCTION. Every counted completion is completion-confirmed under the recovery-bundle protected algebra.",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "maintenance-cycle-id-tombstone-dr",
+   "objects": [
+    "admission_record",
+    "maintenance_completion_cut",
+    "maintenance_cycle_issuance",
+    "maintenance_cycle_terminal",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page"
+   ],
+   "rule": "a create-only, service-signed maintenance_cycle_issuance object is stored at maintenance/issued/<maintenance_cycle_id>.json BEFORE the id is returned (cycle-ID ISSUANCE is idempotent on client_open_id — a retry returns the SAME id; OPEN is a separate reconstruction, see maintenance-cycle-open-reconstruction); PITR's double scan re-adopts every issuance object, so returned-but-unmaterialized ids survive; tombstones re-derive from issuance objects UNION materialized admissions/stages/terminals; an id in any old record whose issuance object is missing is refused and re-tombstoned; ids are org-global and never reused",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "intent-fence-evidence-lifecycle",
+   "objects": [
+    "prune_intent",
+    "verifier_receipt"
+   ],
+   "rule": "claim_owner is TYPED: {kind: admission, admission_object_id} | {kind: prune_intent, prune_intent_object_id}; the fence tx moves both verifier receipts to CLAIMED_PENDING(prune_intent owner); INTENT_PUT_ISSUED -> INTENT_STORED moves them to PUBLISHED; NO release edge exists for a prune-intent owner after the fence (the unique-key PUT always eventually wins); accounting treats fence-claimed evidence as claimed-by-intent, never abandoned upload debris; DR reconstructs the ownership from exact pending intent bytes and stored intents",
+   "validator_coverage": "deferred"
+  },
+  {
+   "id": "maintenance-cycle-issuance-publication",
+   "objects": [
+    "admission_record",
+    "maintenance_cycle_issuance",
+    "maintenance_open_request"
+   ],
+   "rule": "the idempotency scope is (org_id, repo_id, client_open_id); the CAS key is K = SHA-256('r402s/v0/open-id' || lp(org_id) || lp(repo_id) || lp(client_open_id)) — the EXACT preimage, no shorthand; open_binding_sha256 = SHA-256('r402s/v0/open-binding' || lp(client_open_id) || lp(base_head_sha256) || lp_opt(prior_checkpoint_claim_set_sha256) || lp(requested_r2_cap_size_bytes)) with the TAGGED null encoding lp_opt(null) = 0x00 and lp_opt(x) = 0x01 || lp(x); publication order: exact signed bytes persisted, the open-ids PUT, the identical-bytes issued/<cycle_id> mirror, then the RESPONSE = this byte-identical signed object (no separate response schema); a retry compares the digest byte-for-byte, refusing CLIENT_OPEN_ID_CONFLICT on mismatch; REQUEST-TO-INSTALLATION BINDING: at the C1 fence the gateway loads issued/<cycle_id>, recomputes the binding from the C1 resource binding's base_head_sha256 / prior_checkpoint_claim_set_sha256 / r2_cap_size_bytes (the admitted cap MUST equal the requested cap in V0 — no negotiation), and REFUSES on inequality with the signed issuance digest; ISSUANCE (not OPEN) is what this family governs — current OPEN belongs exclusively to maintenance-cycle-open-reconstruction; DR re-adopts both keys and re-tombstones every issued id",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "maintenance-completion-cut-publication-and-binding",
+   "objects": [
+    "admission_record",
+    "maintenance_completion_cut",
+    "prune_completion",
+    "prune_intent"
+   ],
+   "rule": "the cut is keyed by ADMISSION ATTEMPT (maintenance/cuts/<admission_object_id>.json, create-only), published through the COMPOSITE admission fence (see maintenance-admission-composite-fence): the fence transaction runs every fallible check, fixes exact cut + record bytes, claims the cut, reserves the stage, and enters the cycle lane — after it, only mechanical replay; a retry attempt writes a FRESH cut under its own admission id; cut.repo_id/maintenance_cycle_id/cut_role/admission_generation MUST equal the binding admission's; entries sorted and unique by pc_ object_id; credited_deleted_size_bytes derives exactly from the completion's deleted results and object receipts; p_before_size_bytes == the exact sum; no stored empty cut (P=0 iff p_cut_sha256 null iff no object); the list bound is MAX_CUT_COMPLETIONS in constants.json; UNBOUND-CUT EXITS are exactly CONFLICTED (released to the reaper on different-winner proof) and DR_ORPHANED_PRE_RECORD (journal-lost visible cut, post-quiescence: inert row, released, reaped; a binding canonical record adopts; a different winner reconstructs CONFLICTED)",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "maintenance-cycle-open-reconstruction",
+   "objects": [
+    "admission_record",
+    "maintenance_cycle_issuance",
+    "maintenance_cycle_terminal"
+   ],
+   "rule": "three distinct predicates, all DR-derivable: ISSUED(c) = the open-ids issuance object exists (mirror driven pre-response); INSTALLED(c) = an ordinary C1 canonical record (restart_of == null) exists OR a predecessor RESTART terminal reached TERMINAL_APPLIED naming c; OPEN(c) = INSTALLED(c) AND c's own terminal has not reached TERMINAL_APPLIED; the org slot and (vault, base head) lease bind to the OPEN cycle (the binding's maintenance_lease_id); a C1 record alone NEVER proves OPEN (historical records persist after terminals)",
+   "validator_coverage": "partial"
+  },
+  {
+   "id": "maintenance-admission-composite-fence",
+   "objects": [
+    "admission_record",
+    "head",
+    "maintenance_completion_cut",
+    "maintenance_cycle_issuance",
+    "maintenance_cycle_terminal",
+    "maintenance_open_request",
+    "maintenance_stage_claim_set",
+    "maintenance_stage_page",
+    "prune_intent",
+    "retention_cutoff"
+   ],
+   "rule": "the P-credit product-machine invariant: EVERY fallible admission validation (generation/head linkage, request-to-C1 equality, expected-stage equality + reservation, cycle/terminal/repair/replacement predicates, cutoff + authorization epoch, generation/rate reservation, lease + quota) happens BEFORE the first irreversible transition; the exact signed admission record attests that same composite transaction; the cycle lane begins no later than CUT_PUT_ISSUED; after CUT_PUT_ISSUED progression to the record PUT is no-fail mechanical replay; the forward guard (p_cut_sha256 != null => cut_subfence == DONE with the stored cut hashing to it) and the abort guard (ABORTED => cut_subfence == NONE) are explicit machine edges; authority time freezes at the admission's irreversible fence (composite for P-credit, RECORD_PUT_ISSUED for P-less); normal execution and every PITR boundary are total",
+   "validator_coverage": "covered"
+  }
+ ],
+ "x-r402s-revision": "40"
+}

@@ -1,0 +1,110 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "admission_record.json",
+ "title": "r402s/v0 admission_record the service signature attests the frozen validation; repair_fence non-null iff the admitted head carries repair (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "service_key_id",
+  "generation",
+  "admitted_object_kind",
+  "admitted_stored_bytes",
+  "admitted_sha256",
+  "prepared_at",
+  "capture_binding",
+  "resource_binding",
+  "repair_fence",
+  "writer_key_id"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "admission_record"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/adm"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "service_key_id": {
+   "$ref": "common.json#/$defs/service_key_id"
+  },
+  "generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "admitted_object_kind": {
+   "enum": [
+    "head",
+    "vault_genesis"
+   ]
+  },
+  "admitted_stored_bytes": {
+   "$ref": "common.json#/$defs/b64url"
+  },
+  "admitted_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "prepared_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "capture_binding": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/capture_binding"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "resource_binding": {
+   "$ref": "common.json#/$defs/resource_binding"
+  },
+  "repair_fence": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "proposed_supersedes_from",
+      "proposed_supersedes_through",
+      "pending_repair_version"
+     ],
+     "properties": {
+      "proposed_supersedes_from": {
+       "$ref": "common.json#/$defs/hex16"
+      },
+      "proposed_supersedes_through": {
+       "$ref": "common.json#/$defs/hex16"
+      },
+      "pending_repair_version": {
+       "$ref": "common.json#/$defs/hex16"
+      }
+     }
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "writer_key_id": {
+   "$ref": "common.json#/$defs/vk"
+  }
+ },
+ "x-r402s-revision": "40"
+}

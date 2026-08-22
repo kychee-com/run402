@@ -1,0 +1,182 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "prune_intent_core.json",
+ "title": "r402s/v0 prune_intent_core (DRAFT rev 40) — cycle-advancing prunes reference the stored maintenance_stage_claim_set by stage_claim_set_sha256 + batch_index (delete_set == the stage's contiguous 10,000-slice, verbatim); all cycle fields null for ordinary prunes; delete_set is the closed pruneable union only",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "gc_epoch",
+  "maintenance_cycle_id",
+  "maintenance_prune_role",
+  "stage_claim_set_sha256",
+  "batch_index",
+  "batch_count",
+  "authorizing_head_sha256",
+  "checkpoint_claim_set_sha256",
+  "gc_root_set_hmac",
+  "retention_state_hmac",
+  "delete_set",
+  "nonce"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "prune_intent_core"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/pi"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "gc_epoch": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "maintenance_cycle_id": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/mc"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "authorizing_head_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "checkpoint_claim_set_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "gc_root_set_hmac": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "retention_state_hmac": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "delete_set": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 10000,
+   "items": {
+    "$ref": "common.json#/$defs/receipt_pruneable"
+   }
+  },
+  "nonce": {
+   "$ref": "common.json#/$defs/hex32"
+  },
+  "maintenance_prune_role": {
+   "oneOf": [
+    {
+     "enum": [
+      "intermediate",
+      "final"
+     ]
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "stage_claim_set_sha256": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "batch_index": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/batch_ordinal"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "batch_count": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/batch_ordinal"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  }
+ },
+ "allOf": [
+  {
+   "if": {
+    "properties": {
+     "maintenance_cycle_id": {
+      "type": "null"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "maintenance_prune_role": {
+      "const": null
+     },
+     "stage_claim_set_sha256": {
+      "const": null
+     },
+     "batch_index": {
+      "const": null
+     },
+     "batch_count": {
+      "const": null
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "maintenance_cycle_id": {
+      "type": "string"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "maintenance_prune_role": {
+      "enum": [
+       "intermediate",
+       "final"
+      ]
+     },
+     "stage_claim_set_sha256": {
+      "$ref": "common.json#/$defs/sha256"
+     },
+     "batch_index": {
+      "$ref": "common.json#/$defs/batch_ordinal"
+     },
+     "batch_count": {
+      "$ref": "common.json#/$defs/batch_ordinal"
+     }
+    }
+   }
+  }
+ ],
+ "x-r402s-revision": "40"
+}

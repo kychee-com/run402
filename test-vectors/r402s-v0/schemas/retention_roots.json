@@ -1,0 +1,89 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "retention_roots.json",
+ "title": "r402s/v0 retention_roots plaintext encrypted at rest; roots sorted by (dropped_at_generation, ref, oid), map-keyed (ref, oid) (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "generation",
+  "cutoff",
+  "roots"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "retention_roots"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/rr"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "cutoff": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "cutoff_ticket_sha256",
+      "cutoff_at"
+     ],
+     "properties": {
+      "cutoff_ticket_sha256": {
+       "$ref": "common.json#/$defs/sha256"
+      },
+      "cutoff_at": {
+       "$ref": "common.json#/$defs/timestamp"
+      }
+     }
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "roots": {
+   "type": "array",
+   "maxItems": 50000,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "ref",
+     "oid",
+     "dropped_at_generation"
+    ],
+    "properties": {
+     "ref": {
+      "$ref": "common.json#/$defs/canonical_refname"
+     },
+     "oid": {
+      "$ref": "common.json#/$defs/oid40"
+     },
+     "dropped_at_generation": {
+      "$ref": "common.json#/$defs/hex16"
+     }
+    }
+   }
+  }
+ },
+ "x-r402s-revision": "40"
+}

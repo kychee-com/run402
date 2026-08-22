@@ -413,7 +413,7 @@ fn ser(v: &Value, out: &mut Vec<u8>) {
         Value::Obj(m) => {
             let mut items: Vec<&(String, Value)> = m.iter().collect();
             // RFC 8785 §3.2.3: sort by UTF-16 code units of the member name
-            items.sort_by(|a, b| utf16_key(&a.0).cmp(&utf16_key(&b.0)));
+            items.sort_by_key(|a| utf16_key(&a.0));
             out.push(b'{');
             for (i, (k, x)) in items.iter().enumerate() {
                 if i > 0 {

@@ -1,0 +1,935 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "common.json",
+ "title": "r402s/v0 shared definitions  (DRAFT rev 40)",
+ "$defs": {
+  "format": {
+   "const": "r402s/v0"
+  },
+  "suite": {
+   "const": "r402s-1"
+  },
+  "hex16": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{16}$"
+  },
+  "sha256": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{64}$"
+  },
+  "hex32": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{32}$"
+  },
+  "b64url": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9_-]+$"
+  },
+  "b64u_32bytes": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+  },
+  "b64u_64bytes": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9_-]{85}[AQgw]$"
+  },
+  "hpke_sealed_key32": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9_-]{64}$"
+  },
+  "ed25519_signature": {
+   "$ref": "#/$defs/b64u_64bytes"
+  },
+  "ed25519_pubkey": {
+   "$ref": "#/$defs/b64u_32bytes"
+  },
+  "x25519_pubkey": {
+   "$ref": "#/$defs/b64u_32bytes"
+  },
+  "timestamp": {
+   "type": "string",
+   "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$"
+  },
+  "size_bytes": {
+   "type": "string",
+   "pattern": "^(0|[1-9][0-9]{0,14})$"
+  },
+  "oid40": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{40}$"
+  },
+  "refname": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 1024,
+   "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*@\\{)refs/[^\\u0000-\\u0020\\u007f~^:?*\\[\\\\]+$"
+  },
+  "vk": {
+   "type": "string",
+   "pattern": "^vk_[0-9a-f]{32}$"
+  },
+  "ek": {
+   "type": "string",
+   "pattern": "^ek_[0-9a-f]{32}$"
+  },
+  "service_key_id": {
+   "type": "string",
+   "pattern": "^sk_[0-9a-z-]{4,64}$"
+  },
+  "signature": {
+   "$ref": "#/$defs/ed25519_signature"
+  },
+  "authorization_epoch": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{32}$"
+  },
+  "src": {
+   "type": "string",
+   "pattern": "^src_[0-9a-f]{32}$"
+  },
+  "wal": {
+   "type": "string",
+   "pattern": "^wal_[0-9a-f]{32}$"
+  },
+  "refs": {
+   "type": "string",
+   "pattern": "^refs_[0-9a-f]{32}$"
+  },
+  "rr": {
+   "type": "string",
+   "pattern": "^rr_[0-9a-f]{32}$"
+  },
+  "rc": {
+   "type": "string",
+   "pattern": "^rc_[0-9a-f]{32}$"
+  },
+  "chk": {
+   "type": "string",
+   "pattern": "^chk_[0-9a-f]{32}$"
+  },
+  "ckp": {
+   "type": "string",
+   "pattern": "^ckp_[0-9a-f]{32}$"
+  },
+  "ccs": {
+   "type": "string",
+   "pattern": "^ccs_[0-9a-f]{32}$"
+  },
+  "adm": {
+   "type": "string",
+   "pattern": "^adm_[0-9a-f]{32}$"
+  },
+  "pi": {
+   "type": "string",
+   "pattern": "^pi_[0-9a-f]{32}$"
+  },
+  "pc": {
+   "type": "string",
+   "pattern": "^pc_[0-9a-f]{32}$"
+  },
+  "vr": {
+   "type": "string",
+   "pattern": "^vr_[0-9a-f]{32}$"
+  },
+  "ct": {
+   "type": "string",
+   "pattern": "^ct_[0-9a-f]{32}$"
+  },
+  "mc": {
+   "type": "string",
+   "pattern": "^mc_[0-9a-f]{32}$"
+  },
+  "ra": {
+   "type": "string",
+   "pattern": "^ra_[0-9a-f]{32}$"
+  },
+  "receipt_wal_pack": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "ciphertext_sha256",
+    "size_bytes",
+    "base_generation"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/wal"
+    },
+    "object_kind": {
+     "const": "wal_pack"
+    },
+    "ciphertext_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    },
+    "base_generation": {
+     "$ref": "common.json#/$defs/hex16"
+    }
+   }
+  },
+  "receipt_ref_state": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "ciphertext_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/refs"
+    },
+    "object_kind": {
+     "const": "ref_state"
+    },
+    "ciphertext_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "receipt_retention_roots": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "ciphertext_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/rr"
+    },
+    "object_kind": {
+     "const": "retention_roots"
+    },
+    "ciphertext_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "receipt_checkpoint_manifest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "ciphertext_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/chk"
+    },
+    "object_kind": {
+     "const": "checkpoint_manifest"
+    },
+    "ciphertext_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "receipt_checkpoint_pack": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "ciphertext_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/ckp"
+    },
+    "object_kind": {
+     "const": "checkpoint_pack"
+    },
+    "ciphertext_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "receipt_checkpoint_claim_set": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "stored_bytes_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/ccs"
+    },
+    "object_kind": {
+     "const": "checkpoint_claim_set"
+    },
+    "stored_bytes_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "receipt_retention_cutoff": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "stored_bytes_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/rc"
+    },
+    "object_kind": {
+     "const": "retention_cutoff"
+    },
+    "stored_bytes_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "receipt_key_envelope": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_kind",
+    "epoch",
+    "recipient_fingerprint",
+    "stored_bytes_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_kind": {
+     "const": "key_envelope"
+    },
+    "epoch": {
+     "$ref": "common.json#/$defs/hex16"
+    },
+    "recipient_fingerprint": {
+     "$ref": "common.json#/$defs/ek"
+    },
+    "stored_bytes_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "receipt_pruneable": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/receipt_wal_pack"
+    },
+    {
+     "$ref": "#/$defs/receipt_ref_state"
+    },
+    {
+     "$ref": "#/$defs/receipt_retention_roots"
+    },
+    {
+     "$ref": "#/$defs/receipt_checkpoint_manifest"
+    },
+    {
+     "$ref": "#/$defs/receipt_checkpoint_pack"
+    },
+    {
+     "$ref": "#/$defs/receipt_checkpoint_claim_set"
+    },
+    {
+     "$ref": "#/$defs/receipt_maintenance_stage_claim_set"
+    },
+    {
+     "$ref": "#/$defs/receipt_maintenance_stage_page"
+    }
+   ]
+  },
+  "verifier_receipt_ref": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "stored_bytes_sha256",
+    "size_bytes",
+    "implementation_id"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/vr"
+    },
+    "object_kind": {
+     "const": "verifier_receipt"
+    },
+    "stored_bytes_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    },
+    "implementation_id": {
+     "$ref": "common.json#/$defs/implementation_id"
+    }
+   }
+  },
+  "head_target": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "ref"
+     ],
+     "properties": {
+      "kind": {
+       "const": "symref"
+      },
+      "ref": {
+       "$ref": "common.json#/$defs/branch_refname"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "oid"
+     ],
+     "properties": {
+      "kind": {
+       "const": "detached"
+      },
+      "oid": {
+       "$ref": "common.json#/$defs/oid40"
+      }
+     }
+    }
+   ]
+  },
+  "capture_binding": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "capture_id",
+    "apply_plan_sha256",
+    "snapshot_oid_hmac"
+   ],
+   "properties": {
+    "capture_id": {
+     "$ref": "common.json#/$defs/hex32"
+    },
+    "apply_plan_sha256": {
+     "oneOf": [
+      {
+       "$ref": "common.json#/$defs/sha256"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "snapshot_oid_hmac": {
+     "$ref": "common.json#/$defs/sha256"
+    }
+   }
+  },
+  "repair_descriptor": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "base_generation",
+    "base_head_sha256",
+    "supersedes_from",
+    "supersedes_through",
+    "reason"
+   ],
+   "properties": {
+    "base_generation": {
+     "$ref": "common.json#/$defs/hex16"
+    },
+    "base_head_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "supersedes_from": {
+     "$ref": "common.json#/$defs/hex16"
+    },
+    "supersedes_through": {
+     "$ref": "common.json#/$defs/hex16"
+    },
+    "reason": {
+     "enum": [
+      "missing_referenced_object",
+      "corrupt_referenced_object",
+      "unusable_ref_state"
+     ]
+    }
+   }
+  },
+  "transition_envelope": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind",
+    "payload_format",
+    "payload",
+    "payload_sha256"
+   ],
+   "properties": {
+    "kind": {
+     "enum": [
+      "add_envelope",
+      "rotate_epoch",
+      "add_writer_key",
+      "transfer_binding"
+     ]
+    },
+    "payload_format": {
+     "const": "base64url-jcs"
+    },
+    "payload": {
+     "$ref": "common.json#/$defs/b64url"
+    },
+    "payload_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    }
+   }
+  },
+  "checkpoint_block": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "claim_set",
+    "covers_through_generation",
+    "git_object_format",
+    "cutoff"
+   ],
+   "properties": {
+    "claim_set": {
+     "$ref": "#/$defs/receipt_checkpoint_claim_set"
+    },
+    "covers_through_generation": {
+     "$ref": "common.json#/$defs/hex16"
+    },
+    "git_object_format": {
+     "const": "sha1"
+    },
+    "cutoff": {
+     "oneOf": [
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "ticket",
+        "cutoff_at"
+       ],
+       "properties": {
+        "ticket": {
+         "$ref": "#/$defs/receipt_retention_cutoff"
+        },
+        "cutoff_at": {
+         "$ref": "common.json#/$defs/timestamp"
+        }
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   }
+  },
+  "resource_binding": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "cycle_debit"
+     ],
+     "properties": {
+      "kind": {
+       "const": "ordinary_push"
+      },
+      "cycle_debit": {
+       "oneOf": [
+        {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "maintenance_cycle_id",
+          "debited_size_bytes"
+         ],
+         "properties": {
+          "maintenance_cycle_id": {
+           "$ref": "common.json#/$defs/mc"
+          },
+          "debited_size_bytes": {
+           "$ref": "common.json#/$defs/size_bytes"
+          }
+         }
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "maintenance_cycle_id",
+      "checkpoint_role",
+      "maintenance_lease_id",
+      "base_head_sha256",
+      "prior_checkpoint_claim_set_sha256",
+      "stage_claim_set_sha256",
+      "r1_size_bytes",
+      "r2_cap_size_bytes",
+      "p_cut_sha256",
+      "reserved_total_size_bytes",
+      "restart_of_maintenance_cycle_id",
+      "carried_claim_set_sha256",
+      "carried_reservation_size_bytes"
+     ],
+     "properties": {
+      "kind": {
+       "const": "maintenance_cycle"
+      },
+      "maintenance_cycle_id": {
+       "$ref": "common.json#/$defs/mc"
+      },
+      "checkpoint_role": {
+       "enum": [
+        "C1",
+        "C2"
+       ]
+      },
+      "base_head_sha256": {
+       "$ref": "common.json#/$defs/sha256"
+      },
+      "prior_checkpoint_claim_set_sha256": {
+       "oneOf": [
+        {
+         "$ref": "common.json#/$defs/sha256"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "r1_size_bytes": {
+       "$ref": "common.json#/$defs/size_bytes"
+      },
+      "r2_cap_size_bytes": {
+       "$ref": "common.json#/$defs/size_bytes"
+      },
+      "reserved_total_size_bytes": {
+       "$ref": "common.json#/$defs/size_bytes"
+      },
+      "restart_of_maintenance_cycle_id": {
+       "oneOf": [
+        {
+         "$ref": "common.json#/$defs/mc"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "carried_claim_set_sha256": {
+       "oneOf": [
+        {
+         "$ref": "common.json#/$defs/sha256"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "carried_reservation_size_bytes": {
+       "oneOf": [
+        {
+         "$ref": "common.json#/$defs/size_bytes"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "stage_claim_set_sha256": {
+       "oneOf": [
+        {
+         "$ref": "common.json#/$defs/sha256"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "p_cut_sha256": {
+       "oneOf": [
+        {
+         "$ref": "common.json#/$defs/sha256"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "maintenance_lease_id": {
+       "$ref": "common.json#/$defs/ml"
+      }
+     },
+     "allOf": [
+      {
+       "if": {
+        "properties": {
+         "restart_of_maintenance_cycle_id": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "restart_of_maintenance_cycle_id"
+        ]
+       },
+       "then": {
+        "properties": {
+         "checkpoint_role": {
+          "const": "C1"
+         },
+         "carried_claim_set_sha256": {
+          "$ref": "common.json#/$defs/sha256"
+         },
+         "carried_reservation_size_bytes": {
+          "$ref": "common.json#/$defs/size_bytes"
+         }
+        }
+       }
+      },
+      {
+       "if": {
+        "properties": {
+         "restart_of_maintenance_cycle_id": {
+          "type": "null"
+         }
+        }
+       },
+       "then": {
+        "properties": {
+         "carried_claim_set_sha256": {
+          "const": null
+         },
+         "carried_reservation_size_bytes": {
+          "const": null
+         }
+        }
+       }
+      }
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "repair_attempt_id",
+      "reserved_sessions",
+      "reserved_objects",
+      "reserved_storage_size_bytes",
+      "preempted_maintenance_cycle_id"
+     ],
+     "properties": {
+      "kind": {
+       "const": "repair_attempt"
+      },
+      "repair_attempt_id": {
+       "$ref": "common.json#/$defs/ra"
+      },
+      "reserved_sessions": {
+       "type": "string",
+       "pattern": "^[0-9]{1,4}$"
+      },
+      "reserved_objects": {
+       "type": "string",
+       "pattern": "^[0-9]{1,6}$"
+      },
+      "reserved_storage_size_bytes": {
+       "$ref": "common.json#/$defs/size_bytes"
+      },
+      "preempted_maintenance_cycle_id": {
+       "oneOf": [
+        {
+         "$ref": "common.json#/$defs/mc"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  "deploy_outcome": {
+   "enum": [
+    "DEPLOYED_AND_VAULTED",
+    "DEPLOY_BLOCKED_PUSH_FAILED",
+    "DEPLOY_FAILED_VAULTED",
+    "DEPLOY_FAILED_UNVAULTED",
+    "DEPLOYED_UNVAULTED_OVERRIDE"
+   ]
+  },
+  "canonical_refname": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 1024,
+   "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*@\\{)refs/(heads|tags|run402)/[^\\u0000-\\u0020\\u007f~^:?*\\[\\\\]+$"
+  },
+  "branch_refname": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 1024,
+   "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*@\\{)refs/heads/[^\\u0000-\\u0020\\u007f~^:?*\\[\\\\]+$"
+  },
+  "implementation_id": {
+   "enum": [
+    "run402-cli",
+    "r402s-verify"
+   ]
+  },
+  "batch_ordinal": {
+   "type": "string",
+   "pattern": "^[1-9][0-9]{0,3}$"
+  },
+  "pruneable_object_id": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/wal"
+    },
+    {
+     "$ref": "common.json#/$defs/refs"
+    },
+    {
+     "$ref": "common.json#/$defs/rr"
+    },
+    {
+     "$ref": "common.json#/$defs/chk"
+    },
+    {
+     "$ref": "common.json#/$defs/ckp"
+    },
+    {
+     "$ref": "common.json#/$defs/ccs"
+    },
+    {
+     "$ref": "#/$defs/msc"
+    },
+    {
+     "$ref": "#/$defs/msp"
+    }
+   ]
+  },
+  "msc": {
+   "type": "string",
+   "pattern": "^msc_[0-9a-f]{32}$"
+  },
+  "msp": {
+   "type": "string",
+   "pattern": "^msp_[0-9a-f]{32}$"
+  },
+  "mct": {
+   "type": "string",
+   "pattern": "^mct_[0-9a-f]{32}$"
+  },
+  "receipt_maintenance_stage_page": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "stored_bytes_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/msp"
+    },
+    "object_kind": {
+     "const": "maintenance_stage_page"
+    },
+    "stored_bytes_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "receipt_maintenance_stage_claim_set": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "object_kind",
+    "stored_bytes_sha256",
+    "size_bytes"
+   ],
+   "properties": {
+    "object_id": {
+     "$ref": "common.json#/$defs/msc"
+    },
+    "object_kind": {
+     "const": "maintenance_stage_claim_set"
+    },
+    "stored_bytes_sha256": {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    "size_bytes": {
+     "$ref": "common.json#/$defs/size_bytes"
+    }
+   }
+  },
+  "cycle_event_seq": {
+   "type": "string",
+   "pattern": "^(0|[1-9][0-9]{0,9})$"
+  },
+  "ml": {
+   "type": "string",
+   "pattern": "^ml_[0-9a-f]{32}$"
+  }
+ },
+ "x-r402s-revision": "40"
+}

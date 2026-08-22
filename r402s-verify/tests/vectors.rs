@@ -8,10 +8,13 @@ use r402s_verify::vectors;
 
 #[test]
 fn replay_vector_set() {
-    let Some(path) = vectors::locate_vectors() else {
-        eprintln!("SKIP: vectors.json not found (set R402S_VECTORS or check out run402-private beside this repo)");
-        return;
-    };
+    // NOT a skip: the frozen set is vendored at , so an
+    // unreachable path is a broken checkout, not an absent optional input. A
+    // silently-skipped replay would let this lineage drift from the vectors it
+    // exists to disagree with.
+    let path = vectors::locate_vectors().expect(
+        "vectors.json not found — expected the vendored test-vectors/r402s-v0/vectors.json (override with R402S_VECTORS)",
+    );
     let r = vectors::run(&path).expect("vector set loads");
     for f in &r.failures {
         eprintln!("DISAGREEMENT {f}");
