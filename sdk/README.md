@@ -316,7 +316,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `subdomains` | `claim`, `list`, `delete` (most agents declare subdomains in `r.project(id).apply({ subdomains: { set: [...] } })` instead) |
 | `domains` | The ProjectDomain lifecycle — the one surface for custom domains (web + email): `ensure` (connect / update desired state), `get`, `list`, `check` (refresh observations), `apply` (records Run402 has authority over), `repair`, `wait`, `testReceive`, `activate`, `disconnect`. `desired` carries `web`, `email`, and an optional `authority` — `"hosted_dns_zone"` is the root-domain path (one nameserver change at the registrar; Run402 applies every in-zone record and issues TLS). Every response carries `next_actions[]`. `add` / `status` / `remove` were removed and now throw locally. |
 | `email` | `createMailbox`, `listMailboxes`, `setMailboxDefaults`, `updateMailbox`, `getMailbox`, `deleteMailbox`, `send`, `list`, `get`, `getRaw`, `webhooks.*` |
-| `senderDomain` | `register`, `status`, `remove`, `enableInbound`, `disableInbound` |
+| `senderDomain` | Removed — every method throws locally. Sending and receiving are dimensions of the ProjectDomain lifecycle: `r.domains.ensure(projectId, domain, { desired: { email: { send, receive } } })`. |
 | `auth` | `requestMagicLink` (link/code/both), `verifyMagicLink`, `verifyEmailCode`, `createUser`, `inviteUser`, `setUserPassword`, `settings`, passkey registration/login/list/delete helpers, typed `providers`, `promote`, `demote` |
 | `apps` | `browse`, `getApp`, `fork`, `publish`, `listVersions`, `updateVersion`, `deleteVersion` |
 | `tier` | `set`, `status` (tier pricing lives on `r.projects.getQuote()`) |

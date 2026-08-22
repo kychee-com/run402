@@ -2058,16 +2058,13 @@ Templates: `project_invite`, `magic_link`, `notification`. Or pass `subject` + `
 
 ### `r.senderDomain`
 
-```
-register(projectId, domain): Promise<SenderDomainSetup> // returns DKIM CNAMEs
-status(projectId): Promise<SenderDomainStatus>
-remove(projectId): Promise<void>
-enableInbound(projectId, domain): Promise<{ mx_record }>
-disableInbound(projectId, domain): Promise<void>
+Removed. Every method — `register`, `status`, `remove`, `enableInbound`, `disableInbound`, and the `inboundEnable` / `inboundDisable` aliases — throws locally with `COMMAND_REMOVED` and a replacement command. Sending and receiving are dimensions of the ProjectDomain lifecycle above; declare them in `desired.email`:
 
-// CLI-style aliases:
-inboundEnable(projectId, domain): Promise<{ mx_record }>
-inboundDisable(projectId, domain): Promise<void>
+```ts
+await r.domains.ensure(projectId, "example.com", {
+  desired: { email: { send: { enabled: true }, receive: { enabled: true } } },
+});
+await r.domains.wait(projectId, "example.com", { until: "receive-active" });
 ```
 
 ### `r.auth`
