@@ -622,3 +622,10 @@ export type * from "./namespaces/subdomains.js";
 export type * from "./namespaces/tier.js";
 export { ScopedWallet } from "./namespaces/wallets.js";
 export type * from "./namespaces/wallets.js";
+// gitvault (r402s/v0) — the crypto core is SDK code with a public API (task 5.0
+// layering: the CLI/MCP are thin shims over these). Isomorphic: WebCrypto +
+// noble + @hpke/core, no I/O. The keystore + creation journal live under
+// `@run402/sdk/node`.
+export * from "./namespaces/gitvault.crypto.js";
+export type * from "./namespaces/gitvault.crypto.js";
+export type * from "./namespaces/gitvault.types.js";

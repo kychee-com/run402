@@ -296,6 +296,50 @@ export type {
   Run402TargetProfileSources,
   Run402TargetRequirement,
 } from "./target-profile.js";
+// gitvault (r402s/v0) — Node-only: the principal keystore (§5.1) and the
+// six-stage creation journal (§5.2). The isomorphic crypto core is re-exported
+// at the bottom of this file so Node consumers need a single import.
+export {
+  GitvaultKeystore,
+  getGitvaultKeystoreRoot,
+  readFileNoFollow,
+  writeFileAtomic0600,
+} from "./gitvault-keystore.js";
+export type {
+  GitvaultAuditEntry,
+  GitvaultAuditEvent,
+  GitvaultHeadPin,
+  GitvaultIdentityFile,
+  GitvaultKeystoreOptions,
+  GitvaultKeystoreState,
+  GitvaultLockOptions,
+  GitvaultPermissionFinding,
+  GitvaultRepoFile,
+} from "./gitvault-keystore.js";
+export {
+  GITVAULT_CREATION_STAGES,
+  GitvaultCreation,
+  createGitvault,
+  gitvaultDoctorRecoveryText,
+  gitvaultJournalPath,
+  listIncompleteGitvaultJournals,
+  readGitvaultJournal,
+} from "./gitvault-creation-journal.js";
+export type {
+  GitvaultAdmitGenesisRequest,
+  GitvaultAdmitGenesisResult,
+  GitvaultAllocateRequest,
+  GitvaultCreationJournal,
+  GitvaultCreationOptions,
+  GitvaultCreationResult,
+  GitvaultCreationStage,
+  GitvaultCreationTransport,
+  GitvaultDoctorRecoveryText,
+  GitvaultJournaledObject,
+  GitvaultObjectReceipt,
+  GitvaultPutObjectRequest,
+} from "./gitvault-creation-journal.js";
+export * from "../namespaces/gitvault.crypto.js";
 export { signCiDelegation } from "./ci.js";
 export type { SignCiDelegationOptions } from "./ci.js";
 export { signWalletOrgClaim, claimWalletOrg } from "./operator-claim.js";
