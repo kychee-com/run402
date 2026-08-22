@@ -14,6 +14,7 @@
  */
 
 import { describe, it } from "node:test";
+import { loadGitvaultVectors, OPTOUT_SKIP_MESSAGE, type GitvaultVector } from "./gitvault-vectors.test-helper.js";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,14 +51,12 @@ import { commitFile, git, makeVault, type VaultFixture } from "./gitvault-memory
 
 // ─── Vector loading (same contract as the crypto suite) ──────────────────────
 
-const DEFAULT_VECTORS_DIR = "/Users/talweiss/Developer/run402-private/docs/strategy/products/gitvault/vectors";
-const VECTORS_PATH = join(process.env.GITVAULT_VECTORS_DIR ?? DEFAULT_VECTORS_DIR, "vectors.json");
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Vector = { id: string; class: string; description: string; inputs: any; expected: any; reject_reason?: string; reject_code?: string; expect_reject?: string };
-interface VectorFile { vectors: Vector[]; counts_by_class: Record<string, string>; "x-r402s-revision": string }
-const vectorFile: VectorFile | null = existsSync(VECTORS_PATH) ? (JSON.parse(readFileSync(VECTORS_PATH, "utf8")) as VectorFile) : null;
+// Task 5.6b: missing vectors FAIL; only GITVAULT_VECTORS_OPTOUT=1 skips.
+const vectorSet = loadGitvaultVectors();
+type Vector = GitvaultVector;
+const vectorFile = vectorSet?.file ?? null;
 const vectors = vectorFile ? describe : describe.skip;
-if (!vectorFile) describe("gitvault publication vectors", () => it.skip(`vectors not found at ${VECTORS_PATH} — set GITVAULT_VECTORS_DIR`, () => {}));
+if (!vectorFile) describe("gitvault publication vectors", () => it.skip(OPTOUT_SKIP_MESSAGE, () => {}));
 
 const replayed = new Map<string, Set<string>>();
 function byClass(cls: string): Vector[] {

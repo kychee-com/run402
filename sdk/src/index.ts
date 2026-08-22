@@ -47,6 +47,7 @@ import { Errors } from "./namespaces/errors.js";
 import { Pay, type PayExecutor } from "./namespaces/pay.js";
 import { IdentityLinks } from "./namespaces/identity-links.js";
 import { Buzz } from "./namespaces/buzz.js";
+import { Gitvault } from "./namespaces/gitvault.js";
 import type { ContentSource, FileSet } from "./namespaces/deploy.types.js";
 import { ScopedRun402 } from "./scoped.js";
 import { LocalError } from "./errors.js";
@@ -168,6 +169,20 @@ export class Run402 {
   readonly identityLinks: IdentityLinks;
   /** Buzz human adoption, community installation, and bounded agent enrollment workflows. */
   readonly buzz: Buzz;
+  /**
+   * gitvault — the host-blind encrypted Git remote (`r402s/v0`). Vault reads
+   * (record, heads listing, policy) run anywhere; the verbs that touch a git
+   * tree or the on-disk keystore (`init`, `push`, `compact`, `verify`,
+   * `deploy`, `restore`) are Node-only and load `@run402/sdk/node` lazily.
+   *
+   * This namespace is where ALL vault protocol logic lives: the CLI's
+   * `run402 gitvault …`, `git-remote-run402`, and the MCP tools are adapters
+   * over it and add no behaviour of their own.
+   *
+   * Durability is keystore-qualified: the vault protects source history from
+   * host-side loss while a principal keystore survives.
+   */
+  readonly gitvault: Gitvault;
   readonly idempotency = {
     fromParts,
   };
@@ -257,6 +272,7 @@ export class Run402 {
     this.errors = new Errors(client);
     this.identityLinks = new IdentityLinks(client);
     this.buzz = new Buzz(client);
+    this.gitvault = new Gitvault(client);
   }
 
   /**
@@ -629,3 +645,5 @@ export type * from "./namespaces/wallets.js";
 export * from "./namespaces/gitvault.crypto.js";
 export type * from "./namespaces/gitvault.crypto.js";
 export type * from "./namespaces/gitvault.types.js";
+export { Gitvault, gitvaultRemoteUrl, parseGitvaultRemoteUrl } from "./namespaces/gitvault.js";
+export type * from "./namespaces/gitvault.js";

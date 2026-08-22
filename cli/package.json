@@ -4,9 +4,11 @@
   "description": "CLI for Run402 — provision Postgres databases, deploy static sites, generate images, and manage wallets via x402 and MPP micropayments.",
   "type": "module",
   "bin": {
-    "run402": "cli.mjs"
+    "run402": "cli.mjs",
+    "git-remote-run402": "git-remote-run402.mjs"
   },
   "imports": {
+    "#sdk": "./sdk/dist/index.js",
     "#sdk/node": "./sdk/dist/node/index.js"
   },
   "scripts": {
@@ -14,6 +16,7 @@
   },
   "files": [
     "cli.mjs",
+    "git-remote-run402.mjs",
     "lib/",
     "fixtures/",
     "core-dist/",

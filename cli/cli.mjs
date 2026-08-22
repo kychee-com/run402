@@ -49,6 +49,7 @@ Commands:
   rooms       Coordinate with the other agents on your project (who/send/ack)
   escalations Page a human when you judge you need one (raise/list/ack)
   claims      Say what you're working on before you collide (advisory)
+  gitvault    Host-blind encrypted Git remote (status/push/compact/prune/verify)
   errors      Grouped error fingerprints + a promote/revert verdict (release-baselined)
   jobs        Submit and inspect platform-managed jobs
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
@@ -289,6 +290,11 @@ switch (cmd) {
   }
   case "claims": {
     const { run } = await import("./lib/claims.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "gitvault": {
+    const { run } = await import("./lib/gitvault.mjs");
     await run(sub, rest);
     break;
   }

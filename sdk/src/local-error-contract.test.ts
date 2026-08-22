@@ -122,7 +122,12 @@ function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return sourceFiles(path);
-    if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) {
+    // `*.test-helper.ts` is test-only support code: excluded from
+    // `sdk/tsconfig.json` and therefore never compiled into `dist`, so it is
+    // not part of the public SDK surface this contract governs. A plain
+    // `Error` there is the right thing — it is a test harness failing loudly,
+    // not an SDK method refusing a caller.
+    if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts") || entry.name.endsWith(".test-helper.ts")) {
       return [];
     }
     return [path];

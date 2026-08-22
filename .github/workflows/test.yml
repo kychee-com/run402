@@ -30,6 +30,20 @@ jobs:
       # we relied on `shopt -s globstar`, which silently dropped sdk/src
       # tests because they weren't listed and dropped depth-0 files on
       # systems where globstar isn't enabled.)
+      # The gitvault conformance vectors are VENDORED at test-vectors/r402s-v0
+      # and asserted against CONTINUITY.json on load, so this job replays them
+      # for real. Before task 5.6b the suites resolved a developer-machine
+      # absolute path, silently skipped ~130 vectors, and still reported green
+      # — so the replay is asserted explicitly here rather than left to be
+      # inferred from a passing run. `GITVAULT_VECTORS_OPTOUT` must never be set
+      # in CI; the check below fails the job if it is.
+      - name: gitvault vectors are replayed, not skipped
+        run: |
+          if [ -n "${GITVAULT_VECTORS_OPTOUT:-}" ]; then
+            echo "GITVAULT_VECTORS_OPTOUT is set in CI — the vector suites would skip. Refusing." >&2
+            exit 1
+          fi
+          node scripts/check-gitvault-vectors.mjs
       - run: node --experimental-test-module-mocks --test --import tsx 'src/**/*.test.ts' 'core/src/**/*.test.ts' 'sdk/src/**/*.test.ts'
       - run: npm run test:e2e
       - run: npm run test:integration

@@ -4,16 +4,17 @@
  * D182 HPKE interop golden file.
  *
  * The vectors are GENERATED in the private repo (`kychee-com/run402-private`,
- * `docs/strategy/products/gitvault/vectors/`) and are not copied here: this
- * test loads them by ABSOLUTE path —
+ * `docs/strategy/products/gitvault/vectors/`) and VENDORED here at
+ * `test-vectors/r402s-v0/`, so CI replays them without a private checkout.
+ * Resolution + integrity live in `gitvault-vectors.test-helper.ts`:
+ * `$GITVAULT_VECTORS_DIR` overrides the location, the vendored copy is the
+ * default, `CONTINUITY.json` is asserted either way, and a directory that
+ * cannot be resolved FAILS — only `GITVAULT_VECTORS_OPTOUT=1` skips (5.6b:
+ * the silent skip used to hide ~130 vectors behind a green CI run).
  *
- *   $GITVAULT_VECTORS_DIR                                             (override)
- *   /Users/talweiss/Developer/run402-private/docs/strategy/products/gitvault/vectors
- *
- * — and SKIPS with a clear message when neither exists, so a clone without the
- * private checkout still runs the rest of the suite. A vector that disagrees
- * with this implementation is a defect in the implementation (or a freeze
- * discussion) — never edit a vector to make a test pass.
+ * A vector that disagrees with this implementation is a defect in the
+ * implementation (or a freeze discussion) — never edit a vector to make a
+ * test pass.
  *
  * Classes replayed: zip215, hkdf, golden-preimage, stored-bytes-preimage,
  * strict-parse, aead-frame, hpke-rfc9180-a2, hpke-envelope,
@@ -22,6 +23,7 @@
  */
 
 import { describe, it } from "node:test";
+import { loadGitvaultVectors, OPTOUT_SKIP_MESSAGE, type GitvaultVector } from "../node/gitvault-vectors.test-helper.js";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -85,23 +87,16 @@ import { LocalError } from "../errors.js";
 
 // ─── Vector loading ──────────────────────────────────────────────────────────
 
-const DEFAULT_VECTORS_DIR = "/Users/talweiss/Developer/run402-private/docs/strategy/products/gitvault/vectors";
-const VECTORS_DIR = process.env.GITVAULT_VECTORS_DIR ?? DEFAULT_VECTORS_DIR;
-const VECTORS_PATH = join(VECTORS_DIR, "vectors.json");
-const GOLDEN_PATH = join(VECTORS_DIR, "hpke-interop", "golden.json");
-const SKIP_MESSAGE = `gitvault vectors not found at ${VECTORS_PATH} — set GITVAULT_VECTORS_DIR to the private repo's docs/strategy/products/gitvault/vectors`;
+// Task 5.6b: an unresolvable vector directory is a FAILURE, never a silent
+// skip; the loader also asserts the copy against CONTINUITY.json before a
+// single case runs. `GITVAULT_VECTORS_OPTOUT=1` is the only skip.
+const vectorSet = loadGitvaultVectors();
+const SKIP_MESSAGE = OPTOUT_SKIP_MESSAGE;
 
+type Vector = GitvaultVector;
+const vectorFile = vectorSet?.file ?? null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Vector = { id: string; class: string; description: string; inputs: any; expected: any; reject_reason?: string; reject_code?: string; schema?: string };
-interface VectorFile {
-  vectors: Vector[];
-  counts_by_class: Record<string, string>;
-  test_keys: Record<string, string>;
-  "x-r402s-revision": string;
-}
-
-const vectorFile: VectorFile | null = existsSync(VECTORS_PATH) ? (JSON.parse(readFileSync(VECTORS_PATH, "utf8")) as VectorFile) : null;
-const golden: { cases: Array<Record<string, any>> } | null = existsSync(GOLDEN_PATH) ? JSON.parse(readFileSync(GOLDEN_PATH, "utf8")) : null; // eslint-disable-line @typescript-eslint/no-explicit-any
+const golden: { cases: Array<Record<string, any>> } | null = (vectorSet?.golden as any) ?? null;
 
 const replayed = new Map<string, Set<string>>();
 function byClass(cls: string): Vector[] {
@@ -590,7 +585,7 @@ vectors("gitvault vectors — chain (the signature/linkage half)", () => {
 
 vectors("gitvault vectors — hpke-interop/golden.json (D182 acceptance 2)", () => {
   it("opens every reference envelope (signature first), reproduces the seal, and refuses every tamper", async () => {
-    assert.ok(golden, `missing ${GOLDEN_PATH}`);
+    assert.ok(golden, "missing hpke-interop/golden.json in the resolved vector set");
     for (const c of golden!.cases) {
       const recipient = generateEncryptionKeypair(hexToBytes(c.recipient.x25519_private_key_hex));
       assert.equal(bytesToHex(recipient.public_key), c.recipient.x25519_public_key_hex, c.label);

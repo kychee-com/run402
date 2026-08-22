@@ -455,15 +455,22 @@ export function assertNoTransition(head: GitvaultHead): void {
 
 /** One object to upload — identity fixed BEFORE the PUT; the receipt is compared against it. */
 export interface GitvaultUploadObject {
-  /** Storage path relative to the vault root (§3). */
+  /**
+   * Storage path relative to the vault root (§3). CLIENT-LOCAL addressing only:
+   * the control plane derives the bucket key from `object_kind` + the ledger
+   * identity and REFUSES a manifest entry carrying an unexpected member, so
+   * this never rides the wire (5.6c).
+   */
   path: string;
   object_kind: string;
-  /** `null` for path-addressed kinds (heads, envelopes). */
+  /** `null` for path-addressed kinds (envelopes) — those ride `epoch` + `recipient_fingerprint`. */
   object_id: string | null;
   bytes: Uint8Array;
   /** SHA-256 of `bytes` (ciphertext hash for frames, stored-bytes hash for plaintext kinds). */
   sha256: string;
   size_bytes: string;
+  /** `wal_pack` only — §4.1: the ONLY receipt kind carrying `base_generation`. */
+  base_generation?: string;
 }
 
 export interface GitvaultUploadReceipt {
@@ -471,6 +478,74 @@ export interface GitvaultUploadReceipt {
   object_id: string | null;
   sha256: string;
   size_bytes: string;
+}
+
+// ─── Wire addressing (5.6c) ──────────────────────────────────────────────────
+
+/**
+ * The control plane addresses stored objects by LEDGER IDENTITY, never by
+ * bucket path: heads and admission records have their own generation-addressed
+ * routes, and every uploadable kind is named by `object_kind` + `object_id`
+ * (or, for envelopes, `epoch` + `recipient_fingerprint`). This resolver maps
+ * the SDK's internal `gitvaultPaths` strings onto that identity so the rest of
+ * the vault can keep addressing objects the way §3 describes them.
+ */
+export type GitvaultWireRef =
+  | { kind: "head"; generation: string }
+  | { kind: "admission"; generation: string }
+  | { kind: "object"; read: GitvaultObjectReadRequest };
+
+/** One entry of a `POST …/object-reads` batch. */
+export interface GitvaultObjectReadRequest {
+  object_kind: string;
+  object_id?: string;
+  epoch?: string;
+  recipient_fingerprint?: string;
+}
+
+const HEX16 = "[0-9a-f]{16}";
+/** Ordered longest-suffix-first so `.ticket.json` is never eaten by `.enc`. */
+const PATH_PATTERNS: Array<[RegExp, (m: RegExpExecArray) => GitvaultWireRef]> = [
+  [new RegExp(`^head/(${HEX16})$`), (m) => ({ kind: "head", generation: m[1]! })],
+  [new RegExp(`^admissions/(${HEX16})$`), (m) => ({ kind: "admission", generation: m[1]! })],
+  [/^envelopes\/([0-9a-f]{16})\/(ek_[0-9a-f]{32})$/, (m) => ({ kind: "object", read: { object_kind: "key_envelope", epoch: m[1]!, recipient_fingerprint: m[2]! } })],
+  [/^wal\/(wal_[0-9a-f]{32})\.pack\.enc$/, (m) => ({ kind: "object", read: { object_kind: "wal_pack", object_id: m[1]! } })],
+  [/^refs\/(refs_[0-9a-f]{32})\.enc$/, (m) => ({ kind: "object", read: { object_kind: "ref_state", object_id: m[1]! } })],
+  [/^retention\/(rr_[0-9a-f]{32})\.enc$/, (m) => ({ kind: "object", read: { object_kind: "retention_roots", object_id: m[1]! } })],
+  [/^checkpoints\/(chk_[0-9a-f]{32})\.manifest\.enc$/, (m) => ({ kind: "object", read: { object_kind: "checkpoint_manifest", object_id: m[1]! } })],
+  [/^checkpoints\/(ckp_[0-9a-f]{32})\.pack\.enc$/, (m) => ({ kind: "object", read: { object_kind: "checkpoint_pack", object_id: m[1]! } })],
+  [/^checkpoints\/(ccs_[0-9a-f]{32})\.claims\.json$/, (m) => ({ kind: "object", read: { object_kind: "checkpoint_claim_set", object_id: m[1]! } })],
+  [/^maintenance\/(msc_[0-9a-f]{32})\.stage\.json$/, (m) => ({ kind: "object", read: { object_kind: "maintenance_stage_claim_set", object_id: m[1]! } })],
+  [/^maintenance\/(msp_[0-9a-f]{32})\.page\.json$/, (m) => ({ kind: "object", read: { object_kind: "maintenance_stage_page", object_id: m[1]! } })],
+  [/^verifier-receipts\/(vr_[0-9a-f]{32})\.json$/, (m) => ({ kind: "object", read: { object_kind: "verifier_receipt", object_id: m[1]! } })],
+];
+
+/** `null` for a path with no wire identity (e.g. a locally-held cutoff ticket). */
+export function gitvaultWireRefForPath(path: string): GitvaultWireRef | null {
+  for (const [re, build] of PATH_PATTERNS) {
+    const m = re.exec(path);
+    if (m) return build(m);
+  }
+  return null;
+}
+
+/** The manifest entry for one upload — closed-key, exactly what the control plane validates. */
+export function gitvaultManifestEntry(object: GitvaultUploadObject): GitvaultObjectReadRequest & { sha256: string; size_bytes: string; base_generation?: string } {
+  const ref = gitvaultWireRefForPath(object.path);
+  if (!ref || ref.kind !== "object") {
+    fail("GITVAULT_UPLOAD_SESSION_INVALID", `${object.path} is not an uploadable object path; the control plane addresses uploads by object_kind + ledger identity`, "building the gitvault upload manifest", { path: object.path });
+  }
+  const entry = { ...ref.read, sha256: object.sha256, size_bytes: object.size_bytes } as GitvaultObjectReadRequest & { sha256: string; size_bytes: string; base_generation?: string };
+  if (entry.object_kind === "wal_pack") {
+    if (object.base_generation === undefined) fail("GITVAULT_UPLOAD_SESSION_INVALID", "a wal_pack upload must declare base_generation (§4.1)", "building the gitvault upload manifest", { path: object.path });
+    entry.base_generation = object.base_generation;
+  }
+  return entry;
+}
+
+/** The stable key both sides agree on, used to pair receipts back to requests. */
+export function gitvaultLedgerId(read: GitvaultObjectReadRequest): string {
+  return read.object_kind === "key_envelope" ? `key_envelope:${read.epoch}:${read.recipient_fingerprint}` : String(read.object_id);
 }
 
 export interface GitvaultAdmitHeadRequest {
@@ -494,27 +569,94 @@ export interface GitvaultRetentionCutoffIssued {
  * creation transport so one implementation serves 5.3–5.6. All methods are
  * idempotent from the state machines' point of view.
  */
+/** The `resource_binding` an upload session is charged against (§7.2 / §9.3). */
+export type GitvaultResourceBinding =
+  | { kind: "ordinary_push" }
+  | { kind: "maintenance_cycle"; maintenance_lease_id: string }
+  | { kind: "repair_attempt"; repair_attempt_id: string };
+
+/** `POST …/maintenance-leases` — the owner's compact/prune reservation (§7.2). */
+export interface GitvaultMaintenanceLeaseRequest {
+  repo_id: string;
+  base_head_sha256: string;
+  current_checkpoint_hash?: string | null;
+  r1_size_bytes: string;
+  r2_cap_size_bytes: string;
+  p_before_c1_size_bytes?: string;
+  p_before_c2_size_bytes?: string;
+}
+
+export interface GitvaultMaintenanceLease {
+  maintenance_lease_id: string;
+  repo_id: string;
+  base_head_sha256: string;
+  current_checkpoint_hash: string | null;
+  reservation_size_bytes: string;
+  maintenance_headroom_bytes: string;
+  /** Returned ONCE — the liveness instrument (heartbeat / release). Never logged, never cached. */
+  holder_token: string;
+  expires_at: string | null;
+  hard_deadline_at: string | null;
+}
+
 export interface GitvaultTransport extends GitvaultCreationTransport {
   listHeads(request: GitvaultHeadsListingRequest & { repo_id: string }): Promise<GitvaultHeadsListingPage>;
   /** Session → create-only presigned PUTs (`If-None-Match: *`) → finalize; receipts in request order. */
-  uploadObjects(request: { repo_id: string; objects: GitvaultUploadObject[] }): Promise<GitvaultUploadReceipt[]>;
+  uploadObjects(request: { repo_id: string; objects: GitvaultUploadObject[]; resource_binding?: GitvaultResourceBinding }): Promise<GitvaultUploadReceipt[]>;
   admitHead(request: GitvaultAdmitHeadRequest): Promise<GitvaultAdmitHeadResult>;
   requestRetentionCutoff(request: { repo_id: string; base_head_sha256: string }): Promise<GitvaultRetentionCutoffIssued>;
   exchangeActivationToken(request: { repo_id: string; operation_id: string; capture_receipt: GitvaultCaptureReceipt }): Promise<GitvaultActivationToken>;
   submitOverrideCompletion(request: { repo_id: string; operation_id: string; capture_receipt: GitvaultCaptureReceipt }): Promise<{ cleared: boolean }>;
+  /** The vault record — policy, allocation generation, storage + maintenance state (§9.2). */
+  getVaultRecord(request: { repo_id: string }): Promise<GitvaultVaultRecord>;
+  /** Resolve a project's vault without local state (the cold-restart entry point). */
+  findVaultByProject(request: { project_id: string }): Promise<GitvaultVaultRecord>;
+  acquireMaintenanceLease(request: GitvaultMaintenanceLeaseRequest): Promise<GitvaultMaintenanceLease>;
+  heartbeatMaintenanceLease(request: { repo_id: string; maintenance_lease_id: string; holder_token: string }): Promise<{ maintenance_lease_id: string; expires_at: string | null }>;
+  releaseMaintenanceLease(request: { repo_id: string; maintenance_lease_id: string; holder_token: string }): Promise<{ maintenance_lease_id: string; status: string }>;
+}
+
+/** `GET /gitvault/v1/vaults/:vault_id` — the shape `reads.ts:getVaultRecord` returns. */
+export interface GitvaultVaultRecord {
+  repo_id: string;
+  project_id: string;
+  org_id: string;
+  gitvault_policy: "required" | "grandfathered" | null;
+  gitvault_policy_version: string;
+  gitvault_policy_changed_at: string | null;
+  allocation_generation: string;
+  allocation_sha256: string | null;
+  newest_generation: string | null;
+  genesis_admitted_at: string | null;
+  latest_effective_admitted_at: string | null;
+  admitted_generations: string;
+  gc_epoch: string;
+  repair_version: string;
+  repair_fence_state: string;
+  storage: { source_bytes: string; open_session_reserved_bytes: string; objects: Record<string, string> };
+  maintenance: {
+    lease: { maintenance_lease_id: string; base_head_sha256: string; reservation_size_bytes: string; expires_at: string | null; hard_deadline_at: string | null } | null;
+    open_cycle: { maintenance_cycle_id: string; state: string; last_cycle_progress_at: string | null } | null;
+    pending_repair_attempt_id: string | null;
+  };
+  warnings: { kind: string; message: string }[];
+  created_at: string | null;
 }
 
 export interface GitvaultHttpTransportOptions {
-  /** Wire shape: every vault-scoped route is `/gitvault/v1/vaults/:vault_id/...`; `vault_id` is the `repo_id` unless a mapping is supplied. */
+  /** Wire shape: every vault-scoped route is `/gitvault/v1/vaults/:vault_id/...`; `vault_id` is the `repo_id` unless a mapping is supplied (D185). */
   vaultIdFor?: (repoId: string) => string;
 }
 
 interface UploadSessionResponse {
-  session_id: string;
-  uploads: Array<{ path: string; url: string; headers?: Record<string, string> }>;
+  upload_session_id: string;
+  objects: Array<GitvaultObjectReadRequest & { put: { url: string; headers?: Record<string, string> } }>;
 }
 interface FinalizeResponse {
-  receipts: Array<{ path: string; object_id?: string | null; sha256?: string; stored_bytes_sha256?: string; ciphertext_sha256?: string; size_bytes: string }>;
+  receipts: Array<GitvaultObjectReadRequest & { stored_bytes_sha256?: string; ciphertext_sha256?: string; size_bytes: string }>;
+}
+interface ObjectReadsResponse {
+  reads: Array<GitvaultObjectReadRequest & { url: string; stored_bytes_sha256: string; size_bytes: string }>;
 }
 
 function b64(bytes: Uint8Array): string { return Buffer.from(bytes).toString("base64"); }
@@ -529,34 +671,86 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
   const vid = (repoId: string) => encodeURIComponent((options.vaultIdFor ?? ((r) => r))(repoId));
   const base = (repoId: string) => `/gitvault/v1/vaults/${vid(repoId)}`;
 
+  /**
+   * Read raw bytes from a generation-addressed route (heads, admission records).
+   *
+   * Deliberately NOT `client.request` — that parses JSON, and re-serializing a
+   * parsed head would verify the SDK's own canonicalizer instead of the bytes
+   * the host actually stored. §0's client obligation is to hash what was
+   * served, so this fetches the response body untouched (authenticated by the
+   * same credential provider the kernel uses).
+   */
+  async function getGenerationBytes(repoId: string, route: "heads" | "admissions", generation: string): Promise<Uint8Array | null> {
+    const path = `${base(repoId)}/${route}/${encodeURIComponent(generation)}`;
+    const auth = (await client.credentials.getAuth(path, { method: `gitvault.read_${route}` })) ?? {};
+    const r = await client.fetch(`${client.apiBase}${path}`, { method: "GET", headers: { ...auth, accept: "application/json" } });
+    if (r.status === 404) return null;
+    if (!r.ok) {
+      // Surface the registry code the control plane actually sent (e.g.
+      // `GITVAULT_ACCESS_DENIED`) rather than flattening every refusal into a
+      // generic read failure — the codes carry the caller's next action.
+      let code = "GITVAULT_OBJECT_READ_FAILED";
+      let message = `${route}/${generation} read failed (HTTP ${r.status})`;
+      try {
+        const envelope = (await r.json()) as { error?: { code?: string; message?: string } };
+        if (typeof envelope?.error?.code === "string") code = envelope.error.code;
+        if (typeof envelope?.error?.message === "string") message = envelope.error.message;
+      } catch {
+        // a non-JSON body — keep the generic code
+      }
+      fail(code, message, `reading gitvault ${route}`, { generation, status: r.status });
+    }
+    return new Uint8Array(await r.arrayBuffer());
+  }
+
+  /** Presign + fetch one object by its ledger identity (`POST …/object-reads`). */
   async function getObjectBytes(repoId: string, path: string): Promise<Uint8Array | null> {
-    let res;
+    const ref = gitvaultWireRefForPath(path);
+    if (!ref) fail("GITVAULT_OBJECT_READ_FAILED", `${path} has no control-plane wire identity; it is not a readable vault object`, "reading gitvault object", { path });
+    if (ref.kind === "head") return getGenerationBytes(repoId, "heads", ref.generation);
+    if (ref.kind === "admission") return getGenerationBytes(repoId, "admissions", ref.generation);
+    let presigned: ObjectReadsResponse;
     try {
-      res = await client.requestWithResponse<{ url: string }>(`${base(repoId)}/objects/${path.split("/").map(encodeURIComponent).join("/")}`, { context: "resolving gitvault object" });
+      presigned = await client.request<ObjectReadsResponse>(`${base(repoId)}/object-reads`, { method: "POST", body: { objects: [ref.read] }, context: "resolving gitvault object" });
     } catch (e) {
       if (isRun402Error(e) && (e as { status?: number }).status === 404) return null;
+      if (isRun402Error(e) && (e as { code?: string }).code === "RESOURCE_NOT_FOUND") return null;
       throw e;
     }
-    const r = await client.fetch(res.body.url, { method: "GET" });
+    const target = presigned.reads[0];
+    if (!target) return null;
+    const r = await client.fetch(target.url, { method: "GET" });
     if (r.status === 404) return null;
     if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${path}`, "reading gitvault object", { path, status: r.status });
     return new Uint8Array(await r.arrayBuffer());
   }
 
-  async function upload(repoId: string, objects: GitvaultUploadObject[]): Promise<GitvaultUploadReceipt[]> {
+  async function upload(repoId: string, objects: GitvaultUploadObject[], resourceBinding?: GitvaultResourceBinding): Promise<GitvaultUploadReceipt[]> {
     if (objects.length === 0) return [];
+    // The manifest is closed-key: `path` is client-local and MUST NOT ride the
+    // wire — the control plane derives the bucket key itself and refuses an
+    // entry carrying an unexpected member.
+    const entries = objects.map((o) => gitvaultManifestEntry(o));
     const session = await client.request<UploadSessionResponse>(`${base(repoId)}/upload-sessions`, {
       method: "POST",
-      body: { objects: objects.map((o) => ({ path: o.path, object_kind: o.object_kind, object_id: o.object_id, sha256: o.sha256, size_bytes: o.size_bytes })) },
+      body: { objects: entries, ...(resourceBinding ? { resource_binding: resourceBinding } : {}) },
       context: "opening gitvault upload session",
     });
-    const byPath = new Map(session.uploads.map((u) => [u.path, u]));
-    for (const o of objects) {
-      const target = byPath.get(o.path);
-      if (!target) fail("GITVAULT_UPLOAD_SESSION_INVALID", `the session issued no upload for ${o.path}`, "uploading gitvault objects", { path: o.path });
-      const r = await client.fetch(target.url, {
+    const issued = new Map(session.objects.map((u) => [gitvaultLedgerId(u), u]));
+    for (let i = 0; i < objects.length; i++) {
+      const o = objects[i]!;
+      const id = gitvaultLedgerId(entries[i]!);
+      const target = issued.get(id);
+      if (!target) fail("GITVAULT_UPLOAD_SESSION_INVALID", `the session issued no upload for ${id}`, "uploading gitvault objects", { object_id: id, path: o.path });
+      // `If-None-Match: *` (create-only) and the FULL_OBJECT `x-amz-checksum-sha256`
+      // are SIGNED INTO the presigned URL, so they must go out exactly as the
+      // server issued them — a dropped or altered header is a signature
+      // mismatch, not a silently unconditional or unchecked write. The locals
+      // below are only a fallback for a transport that omits them; the
+      // server's copy always wins.
+      const r = await client.fetch(target.put.url, {
         method: "PUT",
-        headers: { "If-None-Match": "*", "Content-Length": o.size_bytes, "x-amz-checksum-sha256": b64(hexToBytes(o.sha256)), ...(target.headers ?? {}) },
+        headers: { "If-None-Match": "*", "Content-Length": o.size_bytes, "x-amz-checksum-sha256": b64(hexToBytes(o.sha256)), ...(target.put.headers ?? {}) },
         body: o.bytes as unknown as BodyInit,
       });
       if (r.status === 412 || r.status === 409) {
@@ -567,12 +761,13 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       }
       if (!r.ok) fail("GITVAULT_UPLOAD_FAILED", `presigned PUT failed (HTTP ${r.status}) for ${o.path}`, "uploading gitvault objects", { path: o.path, status: r.status });
     }
-    const fin = await client.request<FinalizeResponse>(`${base(repoId)}/upload-sessions/${encodeURIComponent(session.session_id)}/finalize`, { method: "POST", body: {}, context: "finalizing gitvault upload session" });
-    const receipts = new Map(fin.receipts.map((r) => [r.path, r]));
-    return objects.map((o) => {
-      const r = receipts.get(o.path);
-      if (!r) fail("GITVAULT_RECEIPT_MISSING", `finalize returned no receipt for ${o.path}`, "finalizing gitvault upload session", { path: o.path });
-      return { path: o.path, object_id: r.object_id ?? o.object_id, sha256: r.sha256 ?? r.ciphertext_sha256 ?? r.stored_bytes_sha256 ?? "", size_bytes: r.size_bytes };
+    const fin = await client.request<FinalizeResponse>(`${base(repoId)}/upload-sessions/${encodeURIComponent(session.upload_session_id)}/finalize`, { method: "POST", body: {}, context: "finalizing gitvault upload session" });
+    const receipts = new Map(fin.receipts.map((r) => [gitvaultLedgerId(r), r]));
+    return objects.map((o, i) => {
+      const id = gitvaultLedgerId(entries[i]!);
+      const r = receipts.get(id);
+      if (!r) fail("GITVAULT_RECEIPT_MISSING", `finalize returned no receipt for ${id}`, "finalizing gitvault upload session", { object_id: id, path: o.path });
+      return { path: o.path, object_id: o.object_id, sha256: r.ciphertext_sha256 ?? r.stored_bytes_sha256 ?? "", size_bytes: r.size_bytes };
     });
   }
 
@@ -596,7 +791,11 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
   return {
     // ── creation (5.3) ──
     async allocate(request: GitvaultAllocateRequest): Promise<GitvaultAllocation> {
-      return client.request<GitvaultAllocation>("/gitvault/v1/vaults", { method: "POST", body: request, context: "allocating gitvault" });
+      // The route wraps the signed allocation object under `allocation` and
+      // adds routing sugar (`allocation_sha256`, `deduplicated`, next_actions).
+      // The vault verifies the SIGNED object, so unwrap it here.
+      const res = await client.request<{ allocation?: GitvaultAllocation } & GitvaultAllocation>("/gitvault/v1/vaults", { method: "POST", body: request, context: "allocating gitvault" });
+      return res.allocation ?? (res as GitvaultAllocation);
     },
     async putObject(request: GitvaultPutObjectRequest): Promise<GitvaultObjectReceipt> {
       const [r] = await upload(request.repo_id, [{ path: request.path, object_kind: "key_envelope", object_id: null, bytes: request.bytes, sha256: request.expected_sha256, size_bytes: request.expected_size_bytes }]);
@@ -621,11 +820,38 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       if (request.cursor !== undefined) qs.set("cursor", request.cursor);
       return client.request<GitvaultHeadsListingPage>(`${base(request.repo_id)}/heads?${qs.toString()}`, { context: "listing gitvault heads" });
     },
-    uploadObjects: ({ repo_id, objects }) => upload(repo_id, objects),
+    uploadObjects: ({ repo_id, objects, resource_binding }) => upload(repo_id, objects, resource_binding),
     admitHead: (r) => admit(r.repo_id, r.generation, r.stored_bytes, r.stored_bytes_sha256),
+    // NOTE (5.6c): `retention-cutoffs` and `activation-tokens` have no shipped
+    // route yet — the gateway mints activation tokens in-service but exposes no
+    // endpoint, and the cutoff ticket has no endpoint at all. Both are named
+    // here at their protocol paths so the gap surfaces as a 404 against the
+    // real control plane rather than as silently wrong behaviour.
     requestRetentionCutoff: ({ repo_id, base_head_sha256 }) => client.request<GitvaultRetentionCutoffIssued>(`${base(repo_id)}/retention-cutoffs`, { method: "POST", body: { base_head_sha256 }, context: "requesting retention cutoff ticket" }),
     exchangeActivationToken: ({ repo_id, operation_id, capture_receipt }) => client.request<GitvaultActivationToken>(`${base(repo_id)}/activation-tokens`, { method: "POST", body: { operation_id, capture_receipt }, context: "exchanging capture receipt for activation token" }),
-    submitOverrideCompletion: ({ repo_id, operation_id, capture_receipt }) => client.request<{ cleared: boolean }>(`${base(repo_id)}/override-completions`, { method: "POST", body: { operation_id, capture_receipt }, context: "submitting override completion" }),
+    async submitOverrideCompletion({ repo_id, operation_id, capture_receipt }) {
+      const r = await client.request<{ advisory_cleared?: boolean; cleared?: boolean }>(`${base(repo_id)}/override-completions`, { method: "POST", body: { operation_id, capture_receipt }, context: "submitting override completion" });
+      return { cleared: r.advisory_cleared ?? r.cleared ?? false };
+    },
+    getVaultRecord: ({ repo_id }) => client.request<GitvaultVaultRecord>(base(repo_id), { context: "reading the gitvault record" }),
+    findVaultByProject: ({ project_id }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?project_id=${encodeURIComponent(project_id)}`, { context: "resolving the project's gitvault" }),
+    acquireMaintenanceLease: ({ repo_id, base_head_sha256, current_checkpoint_hash, r1_size_bytes, r2_cap_size_bytes, p_before_c1_size_bytes, p_before_c2_size_bytes }) =>
+      client.request<GitvaultMaintenanceLease>(`${base(repo_id)}/maintenance-leases`, {
+        method: "POST",
+        body: {
+          base_head_sha256,
+          current_checkpoint_hash: current_checkpoint_hash ?? null,
+          r1_size_bytes,
+          r2_cap_size_bytes,
+          p_before_c1_size_bytes: p_before_c1_size_bytes ?? "0",
+          p_before_c2_size_bytes: p_before_c2_size_bytes ?? "0",
+        },
+        context: "acquiring the gitvault maintenance lease",
+      }),
+    heartbeatMaintenanceLease: ({ repo_id, maintenance_lease_id, holder_token }) =>
+      client.request<{ maintenance_lease_id: string; expires_at: string | null }>(`${base(repo_id)}/maintenance-leases/${encodeURIComponent(maintenance_lease_id)}/heartbeat`, { method: "POST", body: { holder_token }, context: "renewing the gitvault maintenance lease" }),
+    releaseMaintenanceLease: ({ repo_id, maintenance_lease_id, holder_token }) =>
+      client.request<{ maintenance_lease_id: string; status: string }>(`${base(repo_id)}/maintenance-leases/${encodeURIComponent(maintenance_lease_id)}`, { method: "DELETE", body: { holder_token }, context: "releasing the gitvault maintenance lease" }),
   };
 }
 
@@ -1088,7 +1314,7 @@ export class GitvaultVault {
       form = "wal";
       for (const pack of walPacks) {
         const id = newGitvaultId("wal");
-        const upload = this.seal("wal_pack", id, pack, gitvaultPaths.wal(id));
+        const upload = { ...this.seal("wal_pack", id, pack, gitvaultPaths.wal(id)), base_generation: base.generation };
         objects.push(upload);
         walEntries.push({ object_id: id, object_kind: "wal_pack", ciphertext_sha256: upload.sha256, size_bytes: upload.size_bytes, base_generation: base.generation });
       }

@@ -1,0 +1,168 @@
+{
+ "cases": [
+  {
+   "aad": {
+    "hex": "7b2265706f6368223a2230303030303030303030303030303031222c22726563697069656e745f66696e6765727072696e74223a22656b5f3836383730333633613963626135643535613964636433363330663032393935222c22726563697069656e745f6b696e64223a227072696e636970616c222c227265706f5f6964223a227372635f3863636166653664356237376265653831643165616464303836643731333165227d",
+    "jcs": "{\"epoch\":\"0000000000000001\",\"recipient_fingerprint\":\"ek_86870363a9cba5d55a9dcd3630f02995\",\"recipient_kind\":\"principal\",\"repo_id\":\"src_8ccafe6d5b77bee81d1eadd086d7131e\"}"
+   },
+   "ephemeral": {
+    "ikmE_hex": "fa60f8f66adf0e6ba8516bb249bf065fb4885470d83cc534ca9c741fee0d2d01",
+    "note": "DeriveKeyPair(ikmE) per RFC 9180 §7.1.3; a sealer that cannot inject an ephemeral key produces a DIFFERENT enc/ct that must still open",
+    "pkE_hex": "97d47855e00627c27a08f03c69c7a04e484e6ca66c3d06cc477e8d52ad3ed964",
+    "skE_hex": "5e051545bfef3a683747bfa0c9f3e47155bf5c286b2576a2ec6c8c4581c298a2"
+   },
+   "info": {
+    "hex": "0000001172343032732f76302f656e76656c6f70650000000772343032732d31000000403836383730333633613963626135643535613964636433363330663032393935366263303639356436623363366434336664623336376263353066363435333400000023766b5f3533306439313432663438373363373365633733353532653838653965363033",
+    "parts": [
+     "r402s/v0/envelope",
+     "r402s-1",
+     "86870363a9cba5d55a9dcd3630f029956bc0695d6b3c6d43fdb367bc50f64534",
+     "vk_530d9142f4873c73ec73552e88e9e603"
+    ]
+   },
+   "label": "recipient-a-creator",
+   "plaintext_K_repo_hex": "6aa22dbd1e63f523e006e117a4d6bb1c14b09da3c55fa179388a947c9931a6cd",
+   "recipient": {
+    "fingerprint": "ek_86870363a9cba5d55a9dcd3630f02995",
+    "public_key_b64u": "Si54cTomLzlIlaB3tyJVRfx0BTyIqpwd_4pKhXkWHUM",
+    "x25519_private_key_hex": "b2509a1ee6371b6d97310c6c8741864fabe4e0be5dcdc9de2111287206983be9",
+    "x25519_public_key_hex": "4a2e78713a262f394895a077b7225545fc74053c88aa9c1dff8a4a8579161d43"
+   },
+   "sealed_by_reference": {
+    "ct_hex": "891f6a3422a1c2376add8bfe819e333d31cbd0c612dd9fbda563d784dbfff0c1404a57dace50cb0cd3613ed1fa280a02",
+    "enc_hex": "97d47855e00627c27a08f03c69c7a04e484e6ca66c3d06cc477e8d52ad3ed964",
+    "key_envelope": {
+     "created_at": "2026-08-20T12:00:00.000Z",
+     "created_by": "vk_530d9142f4873c73ec73552e88e9e603",
+     "ct": "iR9qNCKhwjdq3Yv-gZ4zPTHL0MYS3Z-9pWPXhNv_8MFASlfazlDLDNNhPtH6KAoC",
+     "enc": "l9R4VeAGJ8J6CPA8acegTkhObKZsPQbMR36NUq0-2WQ",
+     "epoch": "0000000000000001",
+     "format": "r402s/v0",
+     "object_kind": "key_envelope",
+     "recipient_fingerprint": "ek_86870363a9cba5d55a9dcd3630f02995",
+     "recipient_kind": "principal",
+     "repo_id": "src_8ccafe6d5b77bee81d1eadd086d7131e",
+     "signature": "DO4t8CsAsLoKe447BaVUTiwCNDrlFnVZmDEsUOq5NUctOQEIwMZ-WDKMLZ9oxHnyS7HWYTG7KW5S4yxjhJc5Ag",
+     "suite": "r402s-1"
+    },
+    "stored_bytes_sha256": "e99638ab38b62af53d8b93adc6a00dba7e054aae3ab4303a645abb7860079113"
+   },
+   "sender": {
+    "ed25519_seed_hex": "9a928332f99cf9439b263c9f33816e46b08360480deaa32c4b1284c51add2bd7",
+    "signing_fingerprint": "vk_530d9142f4873c73ec73552e88e9e603",
+    "signing_pubkey": "14YDhng4B0d43NVfV48vVdFPGTI7wVieFV1rrhUSHFc"
+   },
+   "suite": {
+    "aead_id": "0x0003",
+    "kdf_id": "0x0001",
+    "kem_id": "0x0020",
+    "mode": "base"
+   },
+   "tamper_must_fail": [
+    {
+     "ct_hex": "881f6a3422a1c2376add8bfe819e333d31cbd0c612dd9fbda563d784dbfff0c1404a57dace50cb0cd3613ed1fa280a02",
+     "enc_hex": "97d47855e00627c27a08f03c69c7a04e484e6ca66c3d06cc477e8d52ad3ed964",
+     "what": "ct byte 0 flipped"
+    },
+    {
+     "ct_hex": "891f6a3422a1c2376add8bfe819e333d31cbd0c612dd9fbda563d784dbfff0c1404a57dace50cb0cd3613ed1fa280a02",
+     "enc_hex": "97d47855e00627c27a08f03c69c7a04e484e6ca66c3d06cc477e8d52ad3ed965",
+     "what": "enc byte 31 flipped"
+    },
+    {
+     "aad_jcs": "{\"epoch\":\"0000000000000002\",\"recipient_fingerprint\":\"ek_86870363a9cba5d55a9dcd3630f02995\",\"recipient_kind\":\"principal\",\"repo_id\":\"src_8ccafe6d5b77bee81d1eadd086d7131e\"}",
+     "ct_hex": "891f6a3422a1c2376add8bfe819e333d31cbd0c612dd9fbda563d784dbfff0c1404a57dace50cb0cd3613ed1fa280a02",
+     "enc_hex": "97d47855e00627c27a08f03c69c7a04e484e6ca66c3d06cc477e8d52ad3ed964",
+     "what": "aad epoch changed"
+    }
+   ]
+  },
+  {
+   "aad": {
+    "hex": "7b2265706f6368223a2230303030303030303030303030303031222c22726563697069656e745f66696e6765727072696e74223a22656b5f3865326463333730613234333064333534353063313963343931313430306531222c22726563697069656e745f6b696e64223a227072696e636970616c222c227265706f5f6964223a227372635f3863636166653664356237376265653831643165616464303836643731333165227d",
+    "jcs": "{\"epoch\":\"0000000000000001\",\"recipient_fingerprint\":\"ek_8e2dc370a2430d35450c19c4911400e1\",\"recipient_kind\":\"principal\",\"repo_id\":\"src_8ccafe6d5b77bee81d1eadd086d7131e\"}"
+   },
+   "ephemeral": {
+    "ikmE_hex": "3886cafb5d3ce869c55c9675f14809552c9fb44e65c34dfc7336c8bea0c1a6e8",
+    "note": "DeriveKeyPair(ikmE) per RFC 9180 §7.1.3; a sealer that cannot inject an ephemeral key produces a DIFFERENT enc/ct that must still open",
+    "pkE_hex": "06059e83da5badd626d1e4af2763239ec02e3caeed86dcf8ff01b4e714c6fb32",
+    "skE_hex": "8c2802edb19521736cd67e374287bcb4fba3ba175f80331f5b72200f843d67ab"
+   },
+   "info": {
+    "hex": "0000001172343032732f76302f656e76656c6f70650000000772343032732d31000000403865326463333730613234333064333534353063313963343931313430306531633338626531373435373439383838383031656130633263313336653161343800000023766b5f3533306439313432663438373363373365633733353532653838653965363033",
+    "parts": [
+     "r402s/v0/envelope",
+     "r402s-1",
+     "8e2dc370a2430d35450c19c4911400e1c38be1745749888801ea0c2c136e1a48",
+     "vk_530d9142f4873c73ec73552e88e9e603"
+    ]
+   },
+   "label": "recipient-b",
+   "plaintext_K_repo_hex": "6aa22dbd1e63f523e006e117a4d6bb1c14b09da3c55fa179388a947c9931a6cd",
+   "recipient": {
+    "fingerprint": "ek_8e2dc370a2430d35450c19c4911400e1",
+    "public_key_b64u": "60fKPJgfGSWdNL7PDAlAh0Zb26DO883nLLc-vXCA7lM",
+    "x25519_private_key_hex": "03da698cf937d7557cbd11f78146eb2aeb357660404b57bc6189ec304ace37b8",
+    "x25519_public_key_hex": "eb47ca3c981f19259d34becf0c094087465bdba0cef3cde72cb73ebd7080ee53"
+   },
+   "sealed_by_reference": {
+    "ct_hex": "0628e13b47c6d920be9838c54fcf49b6f3f286abafd1eba4c438a24ac9cae3f31b8426c1d9a0ea6e4d390f0f0e755c1f",
+    "enc_hex": "06059e83da5badd626d1e4af2763239ec02e3caeed86dcf8ff01b4e714c6fb32",
+    "key_envelope": {
+     "created_at": "2026-08-20T12:00:00.000Z",
+     "created_by": "vk_530d9142f4873c73ec73552e88e9e603",
+     "ct": "BijhO0fG2SC-mDjFT89JtvPyhquv0eukxDiiSsnK4_MbhCbB2aDqbk05Dw8OdVwf",
+     "enc": "BgWeg9pbrdYm0eSvJ2MjnsAuPK7thtz4_wG05xTG-zI",
+     "epoch": "0000000000000001",
+     "format": "r402s/v0",
+     "object_kind": "key_envelope",
+     "recipient_fingerprint": "ek_8e2dc370a2430d35450c19c4911400e1",
+     "recipient_kind": "principal",
+     "repo_id": "src_8ccafe6d5b77bee81d1eadd086d7131e",
+     "signature": "_yxnQjx9pC7OYPn6Gkoarzg7zCxc0msIjqziOEkAgtGZL3u4-IrvHVEV8Khff9OPFhYhZNXUlxiMEncsD--DDw",
+     "suite": "r402s-1"
+    },
+    "stored_bytes_sha256": "6f5b47bc14f87072746c04da22be2fe00a5ad98caa151f723000d6fe1c89b4ed"
+   },
+   "sender": {
+    "ed25519_seed_hex": "9a928332f99cf9439b263c9f33816e46b08360480deaa32c4b1284c51add2bd7",
+    "signing_fingerprint": "vk_530d9142f4873c73ec73552e88e9e603",
+    "signing_pubkey": "14YDhng4B0d43NVfV48vVdFPGTI7wVieFV1rrhUSHFc"
+   },
+   "suite": {
+    "aead_id": "0x0003",
+    "kdf_id": "0x0001",
+    "kem_id": "0x0020",
+    "mode": "base"
+   },
+   "tamper_must_fail": [
+    {
+     "ct_hex": "0728e13b47c6d920be9838c54fcf49b6f3f286abafd1eba4c438a24ac9cae3f31b8426c1d9a0ea6e4d390f0f0e755c1f",
+     "enc_hex": "06059e83da5badd626d1e4af2763239ec02e3caeed86dcf8ff01b4e714c6fb32",
+     "what": "ct byte 0 flipped"
+    },
+    {
+     "ct_hex": "0628e13b47c6d920be9838c54fcf49b6f3f286abafd1eba4c438a24ac9cae3f31b8426c1d9a0ea6e4d390f0f0e755c1f",
+     "enc_hex": "06059e83da5badd626d1e4af2763239ec02e3caeed86dcf8ff01b4e714c6fb33",
+     "what": "enc byte 31 flipped"
+    },
+    {
+     "aad_jcs": "{\"epoch\":\"0000000000000002\",\"recipient_fingerprint\":\"ek_8e2dc370a2430d35450c19c4911400e1\",\"recipient_kind\":\"principal\",\"repo_id\":\"src_8ccafe6d5b77bee81d1eadd086d7131e\"}",
+     "ct_hex": "0628e13b47c6d920be9838c54fcf49b6f3f286abafd1eba4c438a24ac9cae3f31b8426c1d9a0ea6e4d390f0f0e755c1f",
+     "enc_hex": "06059e83da5badd626d1e4af2763239ec02e3caeed86dcf8ff01b4e714c6fb32",
+     "what": "aad epoch changed"
+    }
+   ]
+  }
+ ],
+ "format": "r402s/v0/hpke-interop",
+ "generator": "gen_vectors.py (deterministic)",
+ "implementations_under_test": {
+  "differential_third": "hpke-rs (CI only)",
+  "sdk": "@hpke/core (task 5.1 CI)",
+  "verifier": "hpke crate (rozbb/rust-hpke 0.14.x, task 5.9 CI)"
+ },
+ "reference_implementation": "pyhpke 0.6.5 (proved against RFC 9180 A.2.1 at generation time)",
+ "status": "golden inputs + reference-sealed envelopes; the cross-language seal/open runs have NOT been executed here — they are task 5.1 / 5.9 CI gates",
+ "x-r402s-revision": "40"
+}

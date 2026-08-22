@@ -34,7 +34,7 @@ import type { GitvaultActivationToken, GitvaultAllocation, GitvaultCaptureReceip
 import type { GitvaultAdmitGenesisRequest, GitvaultAdmitGenesisResult, GitvaultAllocateRequest, GitvaultObjectReceipt, GitvaultPutObjectRequest } from "./gitvault-creation-journal.js";
 import { createGitvault } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
-import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt } from "./gitvault-publication.js";
+import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord } from "./gitvault-publication.js";
 import { GitvaultVault, generationToBigInt, bigIntToGeneration, gitvaultPaths } from "./gitvault-publication.js";
 import { hardenedGit } from "./gitvault-snapshot.js";
 
@@ -238,6 +238,61 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     if (!equal) return { cleared: false };
     op.override.cleared = true;
     return { cleared: true };
+  }
+
+  // ── control-plane reads + the maintenance lease (5.6c) ──
+  vaultRecord: Partial<GitvaultVaultRecord> = {};
+  leases = new Map<string, { holder_token: string; released: boolean }>();
+
+  async getVaultRecord({ repo_id }: { repo_id: string }): Promise<GitvaultVaultRecord> {
+    this.calls.push("vault-record");
+    const generations = [...this.objects.keys()].filter((k) => k.startsWith(`${repo_id}|head/`)).map((k) => k.slice(`${repo_id}|head/`.length)).sort();
+    return {
+      repo_id, project_id: "prj_memory", org_id: "org_memory",
+      gitvault_policy: "required", gitvault_policy_version: "1", gitvault_policy_changed_at: null,
+      allocation_generation: "1", allocation_sha256: null,
+      newest_generation: generations.at(-1) ?? null, genesis_admitted_at: null, latest_effective_admitted_at: null,
+      admitted_generations: String(generations.length), gc_epoch: "0", repair_version: "0", repair_fence_state: "none",
+      storage: { source_bytes: "0", open_session_reserved_bytes: "0", objects: {} },
+      maintenance: { lease: null, open_cycle: null, pending_repair_attempt_id: null },
+      warnings: [], created_at: null,
+      ...this.vaultRecord,
+    };
+  }
+
+  async findVaultByProject({ project_id }: { project_id: string }): Promise<GitvaultVaultRecord> {
+    this.calls.push("find-vault");
+    const repoId = this.vaultRecord.repo_id ?? [...this.objects.keys()][0]?.split("|")[0];
+    if (!repoId) throw err("RESOURCE_NOT_FOUND", `no gitvault for ${project_id}`);
+    return { ...(await this.getVaultRecord({ repo_id: repoId })), project_id };
+  }
+
+  async acquireMaintenanceLease(request: GitvaultMaintenanceLeaseRequest): Promise<GitvaultMaintenanceLease> {
+    this.calls.push("lease-acquire");
+    const id = `ml_${"1".repeat(32)}`;
+    const holder = "00000000-0000-4000-8000-000000000000";
+    this.leases.set(id, { holder_token: holder, released: false });
+    return {
+      maintenance_lease_id: id, repo_id: request.repo_id, base_head_sha256: request.base_head_sha256,
+      current_checkpoint_hash: request.current_checkpoint_hash ?? null,
+      reservation_size_bytes: request.r1_size_bytes, maintenance_headroom_bytes: request.r2_cap_size_bytes,
+      holder_token: holder, expires_at: null, hard_deadline_at: null,
+    };
+  }
+
+  async heartbeatMaintenanceLease({ maintenance_lease_id, holder_token }: { repo_id: string; maintenance_lease_id: string; holder_token: string }) {
+    this.calls.push("lease-heartbeat");
+    const l = this.leases.get(maintenance_lease_id);
+    if (!l || l.holder_token !== holder_token || l.released) throw err("MAINTENANCE_LEASE_HELD", "not the holder");
+    return { maintenance_lease_id, expires_at: null };
+  }
+
+  async releaseMaintenanceLease({ maintenance_lease_id, holder_token }: { repo_id: string; maintenance_lease_id: string; holder_token: string }) {
+    this.calls.push("lease-release");
+    const l = this.leases.get(maintenance_lease_id);
+    if (!l || l.holder_token !== holder_token) throw err("MAINTENANCE_LEASE_HELD", "not the holder");
+    l.released = true;
+    return { maintenance_lease_id, status: "released" };
   }
 }
 
