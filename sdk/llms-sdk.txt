@@ -2294,9 +2294,9 @@ The signed server-side wallet label (gateway `/wallets/v1/:address/label`) that
 surfaces the human-readable named-wallet name in the operator console. Use the
 `r.wallet(address)` scope handle so the address isn't a swappable positional. The
 label is pushed automatically on `run402 wallets use` unless
-`RUN402_WALLET_LABEL_SYNC=0`. (The two-string `r.wallets.setLabel(address, label)`
-form is deprecated; `r.wallets.getLabel(address)` remains valid. For org/grants
-control-plane identity, see "Org membership & project grants" below.)
+`RUN402_WALLET_LABEL_SYNC=0`. (`r.wallets.getLabel(address)` remains valid as a
+bare read. For org/grants control-plane identity, see "Org membership & project
+grants" below.)
 
 ### `r.cache` (gateway v1.52+, paired with `@run402/astro` v1.0+)
 
@@ -2394,9 +2394,6 @@ r.admin.org(orgId).pinLease() / .unpinLease(): Promise<SetLeasePerpetualResult>
 r.admin.project(projectId).archive(opts?: { reason?: string }): Promise<ArchiveProjectResult>
 r.admin.project(projectId).reactivate(): Promise<ReactivateProjectResult>
 r.admin.project(projectId).finance(opts?): Promise<AdminProjectFinanceResult>
-// deprecated flat/boolean forms (kept for back-compat, not for new code):
-//   admin.setLeasePerpetual(orgId, perpetual)  → admin.org(orgId).pinLease()/unpinLease()
-//   admin.archiveProject / reactivateProject / getProjectFinance → admin.project(id).*
 ```
 
 `AgentContactResult` includes `email_verification_status`, `passkey_binding_status`, `assurance_level`, proof timestamps, and cooldown fields. Assurance labels are `wallet_only`, `email_pending`, `email_verified`, `passkey_pending`, and `operator_passkey`; they describe mailbox/passkey continuity, not a humanhood or uniqueness claim. `startOperatorPasskeyEnrollment()` requires `email_verified` and emails the token to the verified contact email instead of returning it.
@@ -2408,9 +2405,9 @@ scripts, use an admin allowance wallet or pass
 
 **v1.57 — operator-only project + organization actions.** Gateway v1.57 moved the lifecycle state machine from `internal.projects` to `internal.organizations` and dropped the per-project `pin` / `unpin` endpoints. The replacements:
 
-- `r.admin.org(orgId).pinLease()` / `.unpinLease()` — toggle the organization-level escape hatch (canonical; replaces the deprecated boolean `admin.setLeasePerpetual(orgId, perpetual)`). When `lease_perpetual` is `true`, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Pinning a grace-state organization (`past_due` / `frozen` / `dormant`) reactivates inline — the response carries `reactivated: true`. This also replaces the v1.56 `projects.pin(id)` method (removed in v2.x SDK).
+- `r.admin.org(orgId).pinLease()` / `.unpinLease()` — toggle the organization-level escape hatch. When `lease_perpetual` is `true`, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Pinning a grace-state organization (`past_due` / `frozen` / `dormant`) reactivates inline — the response carries `reactivated: true`. This also replaces the v1.56 `projects.pin(id)` method (removed in v2.x SDK).
 - `archiveProject(projectId, { reason? })` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
-- `r.admin.project(projectId).reactivate()` — un-archive a project (flips `archived_at` back to NULL; replaces the deprecated flat `admin.reactivateProject(projectId)`). In v1.57 this was narrowed: it does NOT touch organization-level lifecycle. To reactivate a grace-state organization, either call `r.tier.set(tier)` (the tier flow runs the lifecycle advance inline) or `r.admin.org(org_id).pinLease()`.
+- `r.admin.project(projectId).reactivate()` — un-archive a project (flips `archived_at` back to NULL). In v1.57 this was narrowed: it does NOT touch organization-level lifecycle. To reactivate a grace-state organization, either call `r.tier.set(tier)` (the tier flow runs the lifecycle advance inline) or `r.admin.org(org_id).pinLease()`.
 
 All three require platform-admin auth. Result envelopes:
 

@@ -18,7 +18,6 @@
 import type { Client } from "./kernel.js";
 import type { Run402 } from "./index.js";
 import type { ProjectKeys } from "./credentials.js";
-import { deprecatePositional } from "./deprecate.js";
 import type {
   ExposeManifestValidationInput,
   ExposeManifestValidationResult,
@@ -255,14 +254,14 @@ class ScopedProjects {
   sql(sql: string, params?: unknown[]): Promise<unknown> {
     return this.parent.projects.sql(this.projectId, sql, params);
   }
-  rest<T = unknown>(table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T> {
-    return this.parent.projects.rest<T>(this.projectId, table, queryOrOptions);
+  rest<T = unknown>(table: string, options?: ProjectRestOptions): Promise<T> {
+    return this.parent.projects.rest<T>(this.projectId, table, options);
   }
   restResponse<T = unknown>(
     table: string,
-    queryOrOptions?: string | ProjectRestOptions,
+    options?: ProjectRestOptions,
   ): Promise<ProjectRestResponse<T>> {
-    return this.parent.projects.restResponse<T>(this.projectId, table, queryOrOptions);
+    return this.parent.projects.restResponse<T>(this.projectId, table, options);
   }
   applyExpose(manifest: ExposeManifest): Promise<unknown> {
     return this.parent.projects.applyExpose(this.projectId, manifest);
@@ -929,15 +928,8 @@ class ScopedFunctions {
 class ScopedSecrets {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  set(key: string, opts: SecretSetOptions): Promise<void>;
-  /** @deprecated Use `set(key, { value })`. */
-  set(key: string, value: string): Promise<void>;
-  set(key: string, valueOrOpts: string | SecretSetOptions): Promise<void> {
-    if (typeof valueOrOpts === "object" && valueOrOpts !== null) {
-      return this.parent.secrets.set(this.projectId, key, valueOrOpts);
-    }
-    deprecatePositional("secrets.set", "use set(key, { value })");
-    return this.parent.secrets.set(this.projectId, key, { value: valueOrOpts });
+  set(key: string, opts: SecretSetOptions): Promise<void> {
+    return this.parent.secrets.set(this.projectId, key, opts);
   }
   list(): Promise<SecretListResult> {
     return this.parent.secrets.list(this.projectId);
@@ -976,25 +968,10 @@ class ScopedSubdomains {
   list(): Promise<SubdomainSummary[]> {
     return this.parent.subdomains.list(this.projectId);
   }
-  claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult>;
-  /** @deprecated Use `claim({ name, deploymentId, ...opts })`. */
-  claim(name: string, deploymentId: string, opts?: SubdomainClaimOptions): Promise<SubdomainClaimResult>;
-  claim(
-    nameOrInput: string | SubdomainClaimInput,
-    deploymentId?: string,
-    opts: SubdomainClaimOptions = {},
-  ): Promise<SubdomainClaimResult> {
-    if (typeof nameOrInput === "object" && nameOrInput !== null) {
-      return this.parent.subdomains.claim({
-        ...nameOrInput,
-        projectId: nameOrInput.projectId ?? this.projectId,
-      });
-    }
-    deprecatePositional("subdomains.claim", "use claim({ name, deploymentId, ...opts })");
+  claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult> {
     return this.parent.subdomains.claim({
-      name: nameOrInput,
-      deploymentId: deploymentId as string,
-      projectId: opts.projectId ?? this.projectId,
+      ...input,
+      projectId: input.projectId ?? this.projectId,
     });
   }
   delete(name: string, opts: SubdomainClaimOptions = {}): Promise<SubdomainDeleteResult> {

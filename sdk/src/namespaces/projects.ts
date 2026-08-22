@@ -14,7 +14,6 @@
 import type { Client } from "../kernel.js";
 import type { ProjectKeys } from "../credentials.js";
 import { LocalError } from "../errors.js";
-import { deprecatePositional } from "../deprecate.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 import type { ExposeManifest } from "./deploy.types.js";
 import type {
@@ -317,26 +316,20 @@ export class Projects {
   async rest<T = unknown>(
     id: string,
     table: string,
-    queryOrOptions?: string | ProjectRestOptions,
+    options?: ProjectRestOptions,
   ): Promise<T> {
-    return (await this.restResponse<T>(id, table, queryOrOptions)).body;
+    return (await this.restResponse<T>(id, table, options)).body;
   }
 
   /** Query or mutate a project table through PostgREST and preserve HTTP status. */
   async restResponse<T = unknown>(
     id: string,
     table: string,
-    queryOrOptions?: string | ProjectRestOptions,
+    options?: ProjectRestOptions,
   ): Promise<ProjectRestResponse<T>> {
     const keys = await requireProjectCredentials(this.client, id, "querying REST");
 
-    let opts: ProjectRestOptions;
-    if (typeof queryOrOptions === "string") {
-      deprecatePositional("projects.rest", "use rest(table, { query })");
-      opts = { query: queryOrOptions };
-    } else {
-      opts = queryOrOptions ?? {};
-    }
+    const opts: ProjectRestOptions = options ?? {};
     const method = opts.method ?? "GET";
     const useService = opts.keyType === "service";
     const key = useService ? keys.service_key : keys.anon_key;

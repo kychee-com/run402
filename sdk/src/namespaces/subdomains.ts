@@ -7,7 +7,6 @@
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
-import { deprecatePositional } from "../deprecate.js";
 
 export interface SubdomainClaimOptions {
   /** Optional project ID. If omitted, falls back to the active project (set with `r.projects.use(id)`). The SDK sends the project's service key as bearer auth. */
@@ -66,27 +65,10 @@ export class Subdomains {
   }
 
   /** Claim a subdomain and point it at a deployment. */
-  async claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult>;
-  /** @deprecated Two same-type strings are swap-prone. Use `claim({ name, deploymentId, ...opts })`. */
-  async claim(name: string, deploymentId: string, opts?: SubdomainClaimOptions): Promise<SubdomainClaimResult>;
-  async claim(
-    nameOrInput: string | SubdomainClaimInput,
-    deploymentId?: string,
-    opts: SubdomainClaimOptions = {},
-  ): Promise<SubdomainClaimResult> {
-    let name: string;
-    let depId: string;
-    let options: SubdomainClaimOptions;
-    if (typeof nameOrInput === "object" && nameOrInput !== null) {
-      name = nameOrInput.name;
-      depId = nameOrInput.deploymentId;
-      options = { projectId: nameOrInput.projectId };
-    } else {
-      deprecatePositional("subdomains.claim", "use claim({ name, deploymentId, ...opts })");
-      name = nameOrInput;
-      depId = deploymentId as string;
-      options = opts;
-    }
+  async claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult> {
+    const name = input.name;
+    const depId = input.deploymentId;
+    const options: SubdomainClaimOptions = { projectId: input.projectId };
 
     const projectId = await this.#resolveProjectId(options, "claiming subdomain");
     const project = await requireProjectCredentials(this.client, projectId, "claiming subdomain");

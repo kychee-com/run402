@@ -1034,7 +1034,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   operator_status: null, // local-only cache read (core/write-auth-session.ts)
 
   // Admin (v1.57)
-  admin_set_lease_perpetual: "admin.setLeasePerpetual",
+  admin_set_lease_perpetual: "admin._setLeasePerpetual",
   admin_archive_project: "admin.archiveProject",
   admin_reactivate_project: "admin.reactivateProject",
   promote_user: "auth.promote",
@@ -1830,33 +1830,6 @@ function productionInterfaceFiles(): string[] {
     ...(existsSync(join(__dirname, "cli/git-remote-run402.mjs")) ? [join(__dirname, "cli/git-remote-run402.mjs")] : []),
   ].sort();
 }
-
-describe("first-party callers use only canonical SDK call shapes", () => {
-  // The deprecated positional overloads (sdk-call-shape-conventions) exist for
-  // external back-compat only. First-party code (CLI `cli/lib/*` + MCP
-  // `src/tools/*`) MUST use the canonical handle/options forms. This guards the
-  // FULLY-deprecated methods — ones with no same-name canonical overload, so a
-  // bare token match is unambiguous. The overloaded reshapes (domains.add /
-  // secrets.set / subdomains.claim / members.setRole / transfers.cancel /
-  // projects.rest) are covered by the SDK deprecation unit tests; their
-  // positional arm can't be regex-detected without false positives.
-  const BANNED = [
-    { token: "setLeasePerpetual(", fix: "use r.admin.org(orgId).pinLease()/unpinLease()" },
-    { token: "wallets.setLabel(", fix: "use r.wallet(address).setLabel(label)" },
-  ];
-  for (const file of productionInterfaceFiles()) {
-    const rel = file.replace(__dirname + "/", "");
-    it(`${rel} avoids fully-deprecated SDK methods`, () => {
-      const text = readFileSync(file, "utf-8");
-      for (const { token, fix } of BANNED) {
-        assert.ok(
-          !text.includes(token),
-          `${rel} uses deprecated \`${token}\` — ${fix}`,
-        );
-      }
-    });
-  }
-});
 
 describe("SURFACE consistency", () => {
   it("has no duplicate capability IDs", () => {

@@ -38,7 +38,7 @@ function json(b: unknown, s = 200): Response {
 describe("secrets", () => {
   it("set POSTs key/value to the collection route with service bearer", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
-    await sdk(fetch).secrets.set("prj_k", "STRIPE_KEY", "sk_xxx");
+    await sdk(fetch).secrets.set("prj_k", "STRIPE_KEY", { value: "sk_xxx" });
     assert.equal(calls[0]!.url, "https://api.test/projects/v1/admin/prj_k/secrets");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["Authorization"], "Bearer s");
@@ -64,11 +64,11 @@ describe("secrets", () => {
   it("set validates keys and the 4 KiB UTF-8 value cap before fetch", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
     await assert.rejects(
-      sdk(fetch).secrets.set("prj_k", "bad-key", "v"),
+      sdk(fetch).secrets.set("prj_k", "bad-key", { value: "v" }),
       LocalError,
     );
     await assert.rejects(
-      sdk(fetch).secrets.set("prj_k", "BIG", "x".repeat(4097)),
+      sdk(fetch).secrets.set("prj_k", "BIG", { value: "x".repeat(4097) }),
       LocalError,
     );
     assert.equal(calls.length, 0);
@@ -90,7 +90,7 @@ describe("secrets", () => {
 
   it("throws ProjectCredentialNotFound without any fetch for missing local credentials", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
-    await assert.rejects(sdk(fetch).secrets.set("prj_missing", "K", "V"), ProjectCredentialNotFound);
+    await assert.rejects(sdk(fetch).secrets.set("prj_missing", "K", { value: "V" }), ProjectCredentialNotFound);
     assert.equal(calls.length, 0);
   });
 });
@@ -99,7 +99,7 @@ describe("subdomains", () => {
   it("claim throws LocalError when no projectId and no active project", async () => {
     const { fetch } = mockFetch(() => json({}));
     await assert.rejects(
-      sdk(fetch).subdomains.claim("app", "dpl_1"),
+      sdk(fetch).subdomains.claim({ name: "app", deploymentId: "dpl_1" }),
       (err: Error) => /projectId|active project/.test(err.message),
     );
   });
@@ -108,7 +108,7 @@ describe("subdomains", () => {
     const { fetch, calls } = mockFetch(() =>
       json({ name: "app", deployment_id: "dpl_1", url: "u", deployment_url: "du", project_id: "prj_k", created_at: "t", updated_at: "t" }),
     );
-    await sdk(fetch).subdomains.claim("app", "dpl_1", { projectId: "prj_k" });
+    await sdk(fetch).subdomains.claim({ name: "app", deploymentId: "dpl_1", projectId: "prj_k" });
     assert.equal(calls[0]!.headers["Authorization"], "Bearer s");
   });
 

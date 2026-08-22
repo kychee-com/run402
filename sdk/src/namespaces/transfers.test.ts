@@ -591,7 +591,7 @@ describe("admin.transfers.cancel", () => {
       });
     });
     const r = makeSdk(fetch);
-    const res = await r.admin.transfers.cancel("ptx_1", "changed mind");
+    const res = await r.admin.transfers.cancel("ptx_1", { reason: "changed mind" });
     assert.equal(res.status, "cancelled");
     assert.equal(res.cancelled_by, "from_wallet");
   });
