@@ -2,7 +2,13 @@
   <img src=".github/logo.svg" width="120" alt="run402 logo">
 </p>
 
-<h1 align="center">run402: Postgres, storage & deploys for AI agents</h1>
+<h1 align="center">run402: full-stack backend infrastructure for AI agents</h1>
+
+<p align="center">
+  Postgres, auth, storage, serverless functions and atomic deploys &mdash;
+  provisioned, operated and paid for by an agent through a typed SDK, a CLI
+  or an MCP server. No cloud console, no signup. Open source.
+</p>
 
 [![Tests](https://github.com/kychee-com/run402/actions/workflows/test.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/test.yml)
 [![CodeQL](https://github.com/kychee-com/run402/actions/workflows/codeql.yml/badge.svg)](https://github.com/kychee-com/run402/actions/workflows/codeql.yml)
@@ -11,6 +17,8 @@
 [![npm: run402-mcp](https://img.shields.io/npm/v/run402-mcp?label=run402-mcp)](https://www.npmjs.com/package/run402-mcp)
 [![npm: @run402/functions](https://img.shields.io/npm/v/@run402/functions?label=%40run402%2Ffunctions)](https://www.npmjs.com/package/@run402/functions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
+**Run402 is open-source backend infrastructure for AI agents and coding agents** — a backend-as-a-service addressed to a machine rather than to a person. An autonomous agent provisions a Postgres database, user auth, file storage, serverless functions and site hosting, ships them in one atomic deploy, and pays for the usage itself. Comparable in surface to Supabase, Firebase or Vercel; different in that there is no dashboard to sign into and no human-issued API key to copy.
 
 This is the backend Kychee's open products run on. We needed a layer an agent can drive end to end, with room for whatever each app turns out to need, and nothing off the shelf had all of it, so we built it and opened it the same way we open the apps: this repo holds the agent surfaces (MIT), [`run402-core`](https://github.com/kychee-com/run402-core) holds the full backend (Apache-2.0), and [kysigned](https://github.com/kychee-com/kysigned) is the first product running on it.
 
