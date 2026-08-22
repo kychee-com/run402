@@ -839,13 +839,27 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     },
     uploadObjects: ({ repo_id, objects, resource_binding }) => upload(repo_id, objects, resource_binding),
     admitHead: (r) => admit(r.repo_id, r.generation, r.stored_bytes, r.stored_bytes_sha256),
-    // NOTE (5.6c): `retention-cutoffs` and `activation-tokens` have no shipped
-    // route yet — the gateway mints activation tokens in-service but exposes no
-    // endpoint, and the cutoff ticket has no endpoint at all. Both are named
-    // here at their protocol paths so the gap surfaces as a 404 against the
-    // real control plane rather than as silently wrong behaviour.
+    // Both routes SHIPPED (`routes/gitvault-admission.ts`). `retention-cutoffs`
+    // answers `{ticket, receipt, next_actions}`, which IS
+    // `GitvaultRetentionCutoffIssued` plus routing sugar — no unwrap needed.
     requestRetentionCutoff: ({ repo_id, base_head_sha256 }) => client.request<GitvaultRetentionCutoffIssued>(`${base(repo_id)}/retention-cutoffs`, { method: "POST", body: { base_head_sha256 }, context: "requesting retention cutoff ticket" }),
-    exchangeActivationToken: ({ repo_id, operation_id, capture_receipt }) => client.request<GitvaultActivationToken>(`${base(repo_id)}/activation-tokens`, { method: "POST", body: { operation_id, capture_receipt }, context: "exchanging capture receipt for activation token" }),
+    async exchangeActivationToken({ repo_id, operation_id, capture_receipt }): Promise<GitvaultActivationToken> {
+      // The route wraps the SIGNED token under `activation_token` and adds
+      // routing sugar (`object_id`, `reissued`, next_actions) — same envelope
+      // shape as `allocate` above, and unwrapped for the same reason: the
+      // caller verifies the SIGNED object, and `checkActivationTokenBinding`
+      // compares nine fields that all live INSIDE it. Passing the envelope on
+      // as the token mismatches every one of them
+      // (`GITVAULT_TOKEN_BINDING_MISMATCH`) and the deploy never commits — even
+      // though the envelope's sibling `object_id` makes the shape look close
+      // enough to be a plausible token at a glance. Pinned by
+      // `gitvault-wire-shapes.test.ts`.
+      const res = await client.request<{ activation_token?: GitvaultActivationToken } & GitvaultActivationToken>(
+        `${base(repo_id)}/activation-tokens`,
+        { method: "POST", body: { operation_id, capture_receipt }, context: "exchanging capture receipt for activation token" },
+      );
+      return res.activation_token ?? (res as GitvaultActivationToken);
+    },
     async submitOverrideCompletion({ repo_id, operation_id, capture_receipt }) {
       const r = await client.request<{ advisory_cleared?: boolean; cleared?: boolean }>(`${base(repo_id)}/override-completions`, { method: "POST", body: { operation_id, capture_receipt }, context: "submitting override completion" });
       return { cleared: r.advisory_cleared ?? r.cleared ?? false };

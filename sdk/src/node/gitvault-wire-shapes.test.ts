@@ -20,8 +20,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { gitvaultLedgerId, gitvaultManifestEntry, gitvaultPaths, gitvaultWireRefForPath } from "./gitvault-publication.js";
+import { createGitvaultHttpTransport, gitvaultLedgerId, gitvaultManifestEntry, gitvaultPaths, gitvaultWireRefForPath } from "./gitvault-publication.js";
 import type { GitvaultUploadObject } from "./gitvault-publication.js";
+import { checkActivationTokenBinding } from "./gitvault-deploy.js";
+import type { GitvaultActivationToken } from "../namespaces/gitvault.types.js";
 
 const WAL = `wal_${"1".repeat(32)}`;
 const REFS = `refs_${"2".repeat(32)}`;
@@ -131,5 +133,124 @@ describe("gitvaultLedgerId — the key both sides pair receipts on", () => {
       assert.ok(ref && ref.kind === "object", path);
       assert.equal(typeof gitvaultLedgerId(ref.read), "string");
     }
+  });
+});
+
+// ─── Envelope vs payload: what the route wraps, the transport must unwrap ────
+
+/**
+ * The third wire-shape assumption that was wrong in a way no type-checker could
+ * catch. `POST …/activation-tokens` does not answer the signed token — it
+ * answers an ENVELOPE that wraps it and adds routing sugar:
+ *
+ *   res.status(minted.reissued ? 200 : 201).json({
+ *     activation_token: minted.token,
+ *     object_id: minted.object_id,
+ *     reissued: minted.reissued,
+ *     next_actions: [...],
+ *   });
+ *
+ * (gateway `routes/gitvault-admission.ts`, `POST …/activation-tokens` — §6.5.)
+ *
+ * The envelope's SIBLING `object_id` is what makes this so quiet: the shape
+ * looks close enough to a token to pass a glance, and `GitvaultActivationToken`
+ * is a plain interface, so `client.request<GitvaultActivationToken>` asserts
+ * the wrong type without a single complaint. The failure surfaces nine layers
+ * later, as every one of `checkActivationTokenBinding`'s fields mismatching —
+ * which reads like a mint bug, not a `.activation_token` that was never
+ * dereferenced. Found by the production smoke, not by any local suite.
+ *
+ * `allocate` has the same envelope shape and is unwrapped the same way.
+ */
+describe("createGitvaultHttpTransport — the mint's envelope is unwrapped, never passed on as the token", () => {
+  const REPO = `r402s_${"a".repeat(32)}`;
+  const OP = "op_wire_shapes";
+
+  /** A minted token exactly as the mint signs it — every field the binding check reads. */
+  const token = (): GitvaultActivationToken => ({
+    format: "r402s/v0",
+    object_kind: "activation_token",
+    suite: "x25519-hkdf-sha256-chacha20poly1305-ed25519",
+    repo_id: REPO,
+    object_id: `ct_${"b".repeat(32)}`,
+    service_key_id: "svc_1",
+    operation_id: OP,
+    generation: "0000000000000003",
+    head_sha256: "c".repeat(64),
+    capture_id: "d".repeat(32),
+    apply_plan_sha256: "e".repeat(64),
+    snapshot_oid_hmac: "f".repeat(64),
+    issued_at: "2026-08-22T00:00:00.000Z",
+    authorization_epoch: "0".repeat(32),
+    signature: "sig",
+  });
+
+  /** The expectation the deploy lane checks the minted token against (§6.5). */
+  const expected = (t: GitvaultActivationToken) => ({
+    repo_id: t.repo_id,
+    operation_id: t.operation_id,
+    generation: t.generation,
+    head_sha256: t.head_sha256,
+    capture_id: t.capture_id,
+    apply_plan_sha256: t.apply_plan_sha256,
+    snapshot_oid_hmac: t.snapshot_oid_hmac,
+  });
+
+  interface Call { path: string; method?: string; body?: unknown }
+
+  function transportReturning(body: unknown): { transport: ReturnType<typeof createGitvaultHttpTransport>; calls: Call[] } {
+    const calls: Call[] = [];
+    const client = {
+      apiBase: "https://api.example.test",
+      async request<T>(path: string, opts: { method?: string; body?: unknown }): Promise<T> {
+        calls.push({ path, method: opts.method, body: opts.body });
+        return body as T;
+      },
+    } as unknown as Parameters<typeof createGitvaultHttpTransport>[0];
+    return { transport: createGitvaultHttpTransport(client), calls };
+  }
+
+  it("unwraps `activation_token` — the envelope the shipped route actually returns", async () => {
+    const t = token();
+    const { transport, calls } = transportReturning({
+      activation_token: t,
+      object_id: t.object_id,
+      reissued: false,
+      next_actions: [{ type: "resume_deploy", why: "commit this operation's apply plan carrying the activation_token" }],
+    });
+    const got = await transport.exchangeActivationToken({ repo_id: REPO, operation_id: OP, capture_receipt: {} as never });
+    assert.deepEqual(got, t, "the signed token, not the envelope that wrapped it");
+    assert.deepEqual(calls, [{
+      path: `/gitvault/v1/vaults/${REPO}/activation-tokens`,
+      method: "POST",
+      body: { operation_id: OP, capture_receipt: {} },
+    }]);
+  });
+
+  it("the unwrapped token satisfies the binding check — the envelope fails ALL NINE fields", () => {
+    const t = token();
+    assert.deepEqual(checkActivationTokenBinding(t, expected(t)), [], "a correctly unwrapped token binds the deploy");
+    // The precise production symptom: the envelope carries a plausible
+    // `object_id` and nothing else the check reads, so every field mismatches
+    // and the commit is never attempted (`GITVAULT_TOKEN_BINDING_MISMATCH`).
+    const envelope = { activation_token: t, object_id: t.object_id, reissued: false } as unknown as GitvaultActivationToken;
+    assert.deepEqual(
+      checkActivationTokenBinding(envelope, expected(t)),
+      ["object_id", "repo_id", "operation_id", "generation", "head_sha256", "capture_id", "apply_plan_sha256", "snapshot_oid_hmac", "authorization_epoch"],
+    );
+  });
+
+  it("tolerates a bare token body, so the unwrap can never become the new way to be wrong", async () => {
+    const t = token();
+    const { transport } = transportReturning(t);
+    assert.deepEqual(await transport.exchangeActivationToken({ repo_id: REPO, operation_id: OP, capture_receipt: {} as never }), t);
+  });
+
+  it("`retention-cutoffs` is NOT enveloped the same way — `{ticket, receipt}` IS the payload", async () => {
+    const issued = { ticket: { object_kind: "retention_cutoff" }, receipt: { object_id: `rc_${"9".repeat(32)}` } };
+    const { transport } = transportReturning({ ...issued, next_actions: [] });
+    const got = await transport.requestRetentionCutoff({ repo_id: REPO, base_head_sha256: "a".repeat(64) });
+    assert.equal((got as unknown as { ticket: unknown }).ticket, issued.ticket);
+    assert.equal((got as unknown as { receipt: unknown }).receipt, issued.receipt);
   });
 });

@@ -516,6 +516,26 @@ export class Gitvault {
    * its own. Never gated on a deploy: a vault-only project pushes for months
    * without one.
    *
+   * WHAT THIS PUBLISHES, and what it deliberately does not. This is the CAPTURE
+   * lane: it publishes the protocol-owned `refs/run402/deploys/latest` plus the
+   * `head_target` read off the local HEAD. The repository's OWN refs —
+   * `refs/heads/*` and `refs/tags/*` — reach the vault through
+   * `git push run402 …` via `git-remote-run402`, which is the lane the spec
+   * charges with reproducing them ("the helper SHALL reproduce the exact set of
+   * objects reachable from the declared canonical refs (`refs/heads/*`,
+   * `refs/tags/*`, protocol-owned `refs/run402/*`), plus the `HEAD` target" —
+   * gitvault-client-surface, "Faithful helper"; `run402 gitvault push` is
+   * separately defined as "capture and push outside a deploy" under "Source
+   * verbs"). The split is forced by §6.6: a dirty tree captures as a SYNTHETIC
+   * commit that sits on no branch, so moving `refs/heads/main` onto it would
+   * rewrite the user's branch on every dirty push — exactly the history
+   * clobbering §6.1's fast-forward + force-with-lease rules exist to prevent.
+   *
+   * Hence `protocol_refs: "allow"`: this lane BUILDS the protocol ref itself,
+   * so it opts in. The remote helper must keep the `"refuse"` default, because
+   * there the refnames are user-supplied and a user must not be able to squat
+   * the `refs/run402/*` namespace.
+   *
    * Before reporting a push as landed the vault compares finalization receipts
    * against its expected manifest and reads the admitted head back from
    * storage. A 200 alone is never enough (§0 client obligations).
@@ -544,6 +564,11 @@ export class Gitvault {
     const push: GitvaultPushOptions = {
       transaction: deployRefTransaction(materialized.refs, snapshot.oid),
       head_target: snapshot.head,
+      // The transaction above names `refs/run402/deploys/latest`, which
+      // `evaluateRefTransaction` refuses under its `?? "refuse"` default. Same
+      // opt-in the deploy lane makes for the identical move — see the doc
+      // comment for why the remote helper must NOT make it.
+      protocol_refs: "allow",
       ...(options.checkpoint ? { checkpoint: true } : {}),
     };
     const result = await handle.vault.push(push);

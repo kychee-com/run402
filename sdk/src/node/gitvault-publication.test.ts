@@ -16,9 +16,10 @@
 import { describe, it } from "node:test";
 import { loadGitvaultVectors, OPTOUT_SKIP_MESSAGE, type GitvaultVector } from "./gitvault-vectors.test-helper.js";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { LocalError } from "../errors.js";
 import { sha256Hex } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultHead, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultRetentionRoot } from "../namespaces/gitvault.types.js";
@@ -188,6 +189,60 @@ describe("§6.1 ref transactions", () => {
     assert.deepEqual(move.updates[0], { ref: GITVAULT_DEPLOY_REF, expected_old_oid: OID(1), new_oid: OID(2), force: true });
     const moved = await evaluateRefTransaction(allowed.refs, move, { isAncestor: () => false, protocol_refs: "allow" });
     assert.deepEqual(moved.dropped, [{ ref: GITVAULT_DEPLOY_REF, oid: OID(1), reason: "force_displaced" }]);
+  });
+
+  /**
+   * The rule above is only half the guarantee. `deployRefTransaction` is the
+   * ONLY builder in the SDK that emits a protocol-owned ref, so every lane that
+   * calls it MUST opt in with `protocol_refs: "allow"` — and a lane that forgets
+   * refuses its own transaction LOCALLY, with `REFNAME_UNSUPPORTED` and no
+   * trace_id, because the request never reaches the control plane.
+   *
+   * That is exactly what `gitvault.push()` did: it built the deploy-ref move and
+   * left the option off, making `run402 gitvault push` a dead command while the
+   * deploy lane — the identical move, one `protocol_refs` richer — worked. Unit
+   * suites were green throughout: the rule was tested, the call sites were not.
+   *
+   * The remote helper is the deliberate NON-caller. It builds its transaction
+   * from git's refspec, so its refnames are USER-supplied and it must keep the
+   * `"refuse"` default — otherwise a user could squat `refs/run402/*`.
+   */
+  it("every deployRefTransaction call site opts into protocol refs (the push() defect, pinned)", () => {
+    const sdkSrc = join(fileURLToPath(new URL(".", import.meta.url)), "..");
+    const files = (function walk(dir: string): string[] {
+      const out: string[] = [];
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) out.push(...walk(full));
+        else if (full.endsWith(".ts") && !full.endsWith(".test.ts") && !full.endsWith(".test-helper.ts")) out.push(full);
+      }
+      return out;
+    })(sdkSrc);
+
+    const callSites: Array<{ file: string; ok: boolean }> = [];
+    for (const file of files) {
+      // Comment-stripped, whitespace-collapsed: a gate a reformat can defeat is
+      // not a gate (and this repo has been bitten by exactly that before).
+      const src = readFileSync(file, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/(^|[^:])\/\/[^\n]*/g, "$1 ")
+        .replace(/\s+/g, " ");
+      const re = /deployRefTransaction\s*\(/g;
+      for (let m = re.exec(src); m !== null; m = re.exec(src)) {
+        // the declaration itself is not a call site
+        if (/function\s*$/.test(src.slice(0, m.index))) continue;
+        // the enclosing push-options object literal, generously bounded
+        const window = src.slice(m.index, m.index + 400);
+        callSites.push({ file: relative(sdkSrc, file), ok: /protocol_refs\s*:\s*"allow"/.test(window) });
+      }
+    }
+
+    assert.ok(callSites.length >= 2, `expected the capture lanes to be found, got ${callSites.length}`);
+    assert.deepEqual(
+      callSites.filter((c) => !c.ok).map((c) => c.file),
+      [],
+      "a deployRefTransaction call site with no `protocol_refs: \"allow\"` — that lane refuses its own transaction before it ever reaches the gateway",
+    );
   });
 
   it("unsupported refnames are refused by name", async () => {
