@@ -375,7 +375,7 @@ run402 gitvault status
 run402 gitvault verify --budget 500
 ```
 
-Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. Maintenance is `run402 gitvault compact` (checkpoint under a lease) and `run402 gitvault prune` (**dry run in V0**: nothing is submitted and no bytes are deleted).
+Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. Maintenance is `run402 gitvault compact` (checkpoint under a lease) and `run402 gitvault prune` (**two phases**: it plans locally, and submits only when handed both verifier receipts — one from this CLI, one from the independent `r402s-verify`; only the control-plane-signed completion says what was deleted).
 
 From the SDK, with identical semantics — vault reads run anywhere, and the verbs that touch a git working tree or the on-disk keystore are Node-only:
 
@@ -384,7 +384,7 @@ import { run402 } from "@run402/sdk/node";
 const r = run402();
 
 const vault = await r.gitvault.forProject(projectId);              // cold restart: no local state needed
-const pushed = await r.gitvault.push({ project_id: projectId, message: "wip" });
+const pushed = await r.gitvault.push({ project_id: projectId, snapshot: { message: "wip" } });
 const state = await r.gitvault.verify({ project_id: projectId });
 ```
 

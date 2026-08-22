@@ -1131,7 +1131,7 @@ git push run402 main                          # ...or push with git itself, via 
 run402 gitvault status                        # what this machine and the control plane each believe
 run402 gitvault verify --budget 500           # verify the head chain from your authenticated pin
 run402 gitvault compact                       # checkpoint under a maintenance lease (owner)
-run402 gitvault prune                         # DRY RUN in V0: nothing submitted, no bytes deleted
+run402 gitvault prune                         # plans; add --submit --intent-core/--verifier-receipt to submit
 ```
 
 `--project <id>` picks the vault's project; `--repo <repo_id>` addresses the vault directly and needs no project lookup — that is the cold-restart path for an agent with no local state. Stdout is JSON; every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 gitvault status | jq` stays clean.

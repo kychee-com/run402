@@ -32,12 +32,16 @@ import {
   GITVAULT_TERMINAL_LOSS_STATEMENT,
   checkGenesisKeyBindings,
   checkRecoveryReceipt,
+  ekFingerprint,
+  fromBase64url,
   generateSigningKeypair,
+  isCanonicalBase64url,
   parseGitvaultStrict,
   sha256Hex,
   signGitvaultObject,
   storedBytesSha256,
   verifyGitvaultObject,
+  vkFingerprint,
 } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultAllocation, GitvaultKeyEnvelope, GitvaultSignedObject, GitvaultVaultGenesis } from "../namespaces/gitvault.types.js";
 import { LocalError } from "../errors.js";
@@ -61,8 +65,21 @@ class MemoryTransport implements GitvaultCreationTransport {
   supersedeOnAdmit = false;
   repoCounter = 0;
 
+  /** Every allocate request this transport saw, verbatim — the wire-shape gate reads it. */
+  readonly allocateRequests: GitvaultAllocateRequest[] = [];
+
   async allocate(req: GitvaultAllocateRequest): Promise<GitvaultAllocation> {
     this.calls.push("allocate");
+    this.allocateRequests.push(req);
+    // The gateway's `validateCreatorKeys`: the request carries raw PUBLIC KEYS,
+    // canonical base64url decoding to exactly 32 bytes, and the record's
+    // fingerprints are DERIVED here. A fingerprint sent in a pubkey field must
+    // fail — that exact substitution reached production once.
+    for (const [field, value] of [["creator_signing_pubkey", req.creator_signing_pubkey], ["creator_encryption_pubkey", req.creator_encryption_pubkey]] as const) {
+      if (typeof value !== "string" || !isCanonicalBase64url(value) || fromBase64url(value, field).length !== 32) {
+        throw new LocalError(`${field} must be a canonical base64url 32-byte public key`, "memory control plane", { code: "VALIDATION_FAILED", details: { field } });
+      }
+    }
     let a = this.allocations.get(req.client_creation_id);
     if (!a) {
       this.repoCounter += 1;
@@ -75,8 +92,8 @@ class MemoryTransport implements GitvaultCreationTransport {
         org_id: req.org_id,
         project_id: req.project_id,
         principal_id: "principal_1",
-        creator_signing_fingerprint: req.creator_signing_fingerprint,
-        creator_encryption_fingerprint: req.creator_encryption_fingerprint,
+        creator_signing_fingerprint: vkFingerprint(fromBase64url(req.creator_signing_pubkey, "creator_signing_pubkey")),
+        creator_encryption_fingerprint: ekFingerprint(fromBase64url(req.creator_encryption_pubkey, "creator_encryption_pubkey")),
         client_creation_id: req.client_creation_id,
         allocation_nonce: "ab".repeat(16),
         allocation_generation: "0000000000000001",
@@ -115,6 +132,69 @@ class MemoryTransport implements GitvaultCreationTransport {
 }
 
 const CCID = "c".repeat(32);
+
+describe("the allocate REQUEST wire shape (the field pair that differs from the allocation RECORD)", () => {
+  // Production defect: the SDK sent `creator_signing_fingerprint` /
+  // `creator_encryption_fingerprint` — the names the signed `allocation`
+  // RECORD carries — and `POST /gitvault/v1/vaults` answered
+  // `400 VALIDATION_FAILED field=creator_signing_pubkey`, because the route
+  // reads only the PUBKEY fields and never looks at fingerprints at all. The
+  // record and the request differ on exactly these two names, so reading
+  // `schemas/allocation.json` to build the request produces the broken body.
+  // These tests make that class fail here instead of in production.
+
+  it("sends raw PUBLIC KEYS, and never the fingerprints", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, service_public_key: t.service.public_key });
+    const req = t.allocateRequests[0]!;
+    assert.deepEqual(Object.keys(req).sort(), ["client_creation_id", "creator_encryption_pubkey", "creator_signing_pubkey", "org_id", "project_id"]);
+    const identity = ks.readIdentity()!;
+    assert.equal(req.creator_signing_pubkey, identity.signing_pubkey);
+    assert.equal(req.creator_encryption_pubkey, identity.encryption_pubkey);
+  });
+
+  it("sends values that satisfy the gateway's OWN rule — canonical base64url decoding to exactly 32 bytes", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, service_public_key: t.service.public_key });
+    const req = t.allocateRequests[0]!;
+    for (const [field, value] of [["creator_signing_pubkey", req.creator_signing_pubkey], ["creator_encryption_pubkey", req.creator_encryption_pubkey]] as const) {
+      assert.equal(isCanonicalBase64url(value), true, field);
+      assert.equal(fromBase64url(value, field).length, 32, field);
+    }
+  });
+
+  it("a FINGERPRINT in a pubkey field is refused — the exact substitution that broke production", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, service_public_key: t.service.public_key });
+    const identity = ks.readIdentity()!;
+    // `vk_<32 hex>` is neither canonical base64url nor 32 bytes — assert against
+    // the gateway's real rule, not a loose regex that the broken value passes.
+    await assert.rejects(
+      t.allocate({ client_creation_id: "d".repeat(32), org_id: "o", project_id: "p", creator_signing_pubkey: identity.signing_fingerprint, creator_encryption_pubkey: identity.encryption_pubkey }),
+      (e: unknown) => e instanceof LocalError && e.code === "VALIDATION_FAILED" && (e.details as { field?: string }).field === "creator_signing_pubkey",
+    );
+    await assert.rejects(
+      t.allocate({ client_creation_id: "e".repeat(32), org_id: "o", project_id: "p", creator_signing_pubkey: identity.signing_pubkey, creator_encryption_pubkey: identity.encryption_fingerprint }),
+      (e: unknown) => e instanceof LocalError && e.code === "VALIDATION_FAILED" && (e.details as { field?: string }).field === "creator_encryption_pubkey",
+    );
+  });
+
+  it("the RECORD's fingerprints are DERIVED by the control plane, and the client checks them back", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    const result = await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, service_public_key: t.service.public_key });
+    const identity = ks.readIdentity()!;
+    const allocation = [...t.allocations.values()][0]!;
+    // The round trip is the proof: we sent keys, it returned fingerprints, and
+    // they recompute to ours — which is what `checkAllocation` enforces.
+    assert.equal(allocation.creator_signing_fingerprint, identity.signing_fingerprint);
+    assert.equal(allocation.creator_encryption_fingerprint, identity.encryption_fingerprint);
+    assert.ok(result.repo_id.startsWith("src_"));
+  });
+});
 
 describe("gitvault creation journal — happy path + ordering", () => {
   it("walks the six stages, emits the recovery receipt, and pins the repo file", async () => {

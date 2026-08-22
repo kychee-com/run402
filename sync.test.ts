@@ -735,9 +735,10 @@ const SURFACE: Capability[] = [
   { id: "gitvault_verify",   endpoint: "GET /gitvault/v1/vaults/:vault_id/heads[/:generation]",      mcp: "verify_gitvault",      cli: "gitvault:verify",   openclaw: "gitvault:verify" },
   { id: "gitvault_push",     endpoint: "POST /gitvault/v1/vaults/:vault_id/upload-sessions (+ admission)", mcp: null,             cli: "gitvault:push",     openclaw: "gitvault:push" },
   { id: "gitvault_compact",  endpoint: "POST /gitvault/v1/vaults/:vault_id/maintenance-leases",      mcp: null,                   cli: "gitvault:compact",  openclaw: "gitvault:compact" },
-  // Dry run in V0: the prune intent/completion wire has no shipped route, so
-  // the verb reports eligibility and deletes nothing. There is no purge verb.
-  { id: "gitvault_prune",    endpoint: "(local dry run — the prune intent/completion route is unshipped)", mcp: null,             cli: "gitvault:prune",    openclaw: "gitvault:prune" },
+  // Two-phase by protocol (§7.3): the verb PLANS locally (chain walk + GC root
+  // set) and only submits when handed both verifier receipts, one per closed
+  // implementation identity. There is still no purge verb.
+  { id: "gitvault_prune",    endpoint: "POST /gitvault/v1/vaults/:vault_id/prune-intents",           mcp: null,                   cli: "gitvault:prune",    openclaw: "gitvault:prune" },
 
   // ── the lossy-surface expander ──────────────────────────────────────────
   // MCP truncates; agent-response-design requires the full result to stay

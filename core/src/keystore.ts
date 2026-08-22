@@ -15,6 +15,18 @@ export interface StoredProject {
   site_url?: string;
   deployed_at?: string;
   last_deployment_id?: string;
+  /**
+   * The owning organization, cached so a returning machine can build addresses
+   * that need it — the `run402::<org_id>/<project_id>` gitvault remote is the
+   * first — WITHOUT a control-plane round trip.
+   *
+   * NOT a secret and NOT an authorization input: it is a routing identifier the
+   * control plane hands out with every project listing, and nothing is granted
+   * by holding it. Absent on entries written before this field existed, and on
+   * any project this machine learned about without a listing; callers treat
+   * absence as "ask the control plane", never as "no org".
+   */
+  org_id?: string;
   cached_at?: string;
   source?: string;
 }

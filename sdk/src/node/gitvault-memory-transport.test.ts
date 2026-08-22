@@ -23,18 +23,23 @@ import {
   GITVAULT_FORMAT,
   GITVAULT_GENESIS_GENERATION,
   GITVAULT_SUITE,
+  ekFingerprint,
   formatGitvaultTimestamp,
+  fromBase64url,
   generateSigningKeypair,
+  isCanonicalBase64url,
   newGitvaultId,
   parseGitvaultStrict,
   sha256Hex,
   signGitvaultObject,
+  vkFingerprint,
 } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultActivationToken, GitvaultAllocation, GitvaultCaptureReceipt, GitvaultHead, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultRetentionCutoff } from "../namespaces/gitvault.types.js";
 import type { GitvaultAdmitGenesisRequest, GitvaultAdmitGenesisResult, GitvaultAllocateRequest, GitvaultObjectReceipt, GitvaultPutObjectRequest } from "./gitvault-creation-journal.js";
 import { createGitvault } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord } from "./gitvault-publication.js";
+import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
 import { GitvaultVault, generationToBigInt, bigIntToGeneration, gitvaultPaths } from "./gitvault-publication.js";
 import { hardenedGit } from "./gitvault-snapshot.js";
 
@@ -77,13 +82,34 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   // ── creation (5.3) ──
   async allocate(req: GitvaultAllocateRequest): Promise<GitvaultAllocation> {
     this.calls.push("allocate");
+    // The gateway's `validateCreatorKeys`, modelled exactly: the REQUEST
+    // carries raw public keys, they must be canonical base64url decoding to
+    // exactly 32 bytes, and the FINGERPRINTS on the returned record are DERIVED
+    // here — never taken from the request. A fingerprint-shaped value
+    // (`vk_…`/`ek_…`) sent in a pubkey field must fail, because that is the
+    // production defect this fixture exists to catch locally.
+    const requirePubkey = (v: unknown, field: string): string => {
+      if (typeof v !== "string" || !isCanonicalBase64url(v)) throw err("VALIDATION_FAILED", `${field} must be a canonical base64url 32-byte public key`, { field });
+      let decoded: Uint8Array;
+      try {
+        decoded = fromBase64url(v, field);
+      } catch {
+        throw err("VALIDATION_FAILED", `${field} must be a canonical base64url 32-byte public key`, { field });
+      }
+      if (decoded.length !== 32) throw err("VALIDATION_FAILED", `${field} must be a canonical base64url 32-byte public key`, { field });
+      return v;
+    };
+    const signingPubkey = requirePubkey(req.creator_signing_pubkey, "creator_signing_pubkey");
+    const encryptionPubkey = requirePubkey(req.creator_encryption_pubkey, "creator_encryption_pubkey");
     let a = this.allocations.get(req.client_creation_id);
     if (!a) {
       this.repoCounter += 1;
       const unsigned = {
         format: GITVAULT_FORMAT, object_kind: "allocation" as const, suite: GITVAULT_SUITE,
         repo_id: `src_${String(this.repoCounter).padStart(32, "0")}`, service_key_id: "sk_test-1", org_id: req.org_id, project_id: req.project_id, principal_id: "principal_1",
-        creator_signing_fingerprint: req.creator_signing_fingerprint, creator_encryption_fingerprint: req.creator_encryption_fingerprint, client_creation_id: req.client_creation_id,
+        creator_signing_fingerprint: vkFingerprint(fromBase64url(signingPubkey, "creator_signing_pubkey")),
+        creator_encryption_fingerprint: ekFingerprint(fromBase64url(encryptionPubkey, "creator_encryption_pubkey")),
+        client_creation_id: req.client_creation_id,
         allocation_nonce: "ab".repeat(16), allocation_generation: "0000000000000001", status: "active" as const, issued_at: "2026-08-22T12:00:00.000Z", created_at: "2026-08-22T12:00:00.000Z",
       };
       a = signGitvaultObject(unsigned, this.service.seed) as GitvaultAllocation;
@@ -293,6 +319,100 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     if (!l || l.holder_token !== holder_token) throw err("MAINTENANCE_LEASE_HELD", "not the holder");
     l.released = true;
     return { maintenance_lease_id, status: "released" };
+  }
+
+  // ── prune (§7.3) ──
+  /**
+   * Submitted intents, keyed by `pi_` id, with the EXACT bytes the client sent.
+   * Keeping the bytes (not a parsed object) is the point: the real route
+   * strict-parses and signature-verifies them, so a client that re-serialized
+   * anywhere between signing and sending must be caught HERE, in a test, and
+   * not by a production refusal.
+   */
+  readonly pruneIntents = new Map<string, { bytes: Uint8Array; record: GitvaultPruneIntentRecord }>();
+  /** Per-candidate outcome the next completion should report. Absent ⇒ `deleted`. */
+  pruneOutcomes: Record<string, "deleted" | "present_not_attempted" | "present_after_attempt"> = {};
+  /** When false, a submitted intent stays uncompleted — the "worker has not run yet" state. */
+  pruneCompletesImmediately = true;
+  /** Refuse the next submission with this registry code. */
+  refusePruneOnce: string | null = null;
+
+  async submitPruneIntent({ repo_id, intent_bytes }: { repo_id: string; intent_bytes: Uint8Array }): Promise<GitvaultPruneIntentRecord & { stored: boolean }> {
+    this.calls.push("prune-submit");
+    if (this.refusePruneOnce) {
+      const code = this.refusePruneOnce;
+      this.refusePruneOnce = null;
+      throw err(code, `prune intent refused: ${code}`);
+    }
+    // Strict-parse the EXACT bytes, exactly as the route does. A body that is
+    // not byte-identical to its own JCS is a refusal, not a normalization.
+    const intent = parseGitvaultStrict(new TextDecoder().decode(intent_bytes)) as {
+      object_id: string;
+      repo_id: string;
+      core: { object_id: string; gc_epoch: string; delete_set: Array<{ object_id: string }> };
+      intent_core_sha256: string;
+      verifier_receipts: Array<{ object_id: string; implementation_id: string; stored_bytes_sha256: string }>;
+    };
+    if (intent.repo_id !== repo_id) throw err("GITVAULT_ACCESS_DENIED", "intent repo_id does not match the vault");
+    if (intent.object_id !== intent.core.object_id) throw err("UPGRADE_REQUIRED", "wrapper and core disagree on object_id");
+    for (const ref of intent.verifier_receipts) {
+      // The gateway requires each receipt to be a FINALIZED stored object; the
+      // fixture models exactly that precondition and nothing more.
+      const stored = this.objects.get(this.key(repo_id, gitvaultPaths.verifierReceipt(ref.object_id)));
+      if (!stored) throw err("UPGRADE_REQUIRED", `verifier receipt ${ref.object_id} bytes are not present`);
+      if (sha256Hex(stored) !== ref.stored_bytes_sha256) throw err("UPGRADE_REQUIRED", `verifier receipt ${ref.object_id} does not match its ref`);
+    }
+    const candidateIds = intent.core.delete_set.map((r) => r.object_id);
+    const perObject = candidateIds.map((object_id) => ({ object_id, result: this.pruneOutcomes[object_id] ?? ("deleted" as const) }));
+    const deleted = perObject.filter((o) => o.result === "deleted");
+    const record: GitvaultPruneIntentRecord = {
+      object_id: intent.object_id,
+      repo_id,
+      state: this.pruneCompletesImmediately ? "COMPLETED" : "INTENT_STORED",
+      gc_epoch: intent.core.gc_epoch,
+      intent_sha256: sha256Hex(intent_bytes),
+      intent_core_sha256: intent.intent_core_sha256,
+      candidate_count: candidateIds.length,
+      next_candidate_index: this.pruneCompletesImmediately ? candidateIds.length : 0,
+      maintenance_cycle_id: null,
+      maintenance_prune_role: null,
+      stage_claim_set_sha256: null,
+      batch_index: null,
+      batch_count: null,
+      completion: this.pruneCompletesImmediately
+        ? {
+            object_id: `pc_${"a".repeat(32)}`,
+            sha256: "b".repeat(64),
+            per_object: perObject,
+            deleted_count: deleted.length,
+            present_after_attempt_count: perObject.filter((o) => o.result === "present_after_attempt").length,
+            present_not_attempted_count: perObject.filter((o) => o.result === "present_not_attempted").length,
+            gc_epoch_at_completion: intent.core.gc_epoch,
+            cycle_event_seq: null,
+            completed_at: "2026-08-22T12:00:00.000Z",
+          }
+        : null,
+      prepared_at: "2026-08-22T12:00:00.000Z",
+      intent_put_issued_at: "2026-08-22T12:00:00.000Z",
+      intent_stored_at: "2026-08-22T12:00:00.000Z",
+      deleting_started_at: this.pruneCompletesImmediately ? "2026-08-22T12:00:00.000Z" : null,
+    };
+    this.pruneIntents.set(intent.object_id, { bytes: intent_bytes, record });
+    // Deletion is the gateway's, and it happens to the STORED objects: model it
+    // so a test can prove the pruned bytes are actually gone from the bucket.
+    if (this.pruneCompletesImmediately) {
+      for (const o of deleted) {
+        for (const k of [...this.objects.keys()]) {
+          if (k.startsWith(this.key(repo_id, "")) && k.includes(o.object_id)) this.objects.delete(k);
+        }
+      }
+    }
+    return { ...record, stored: true };
+  }
+
+  async getPruneIntent({ prune_intent_object_id }: { repo_id: string; prune_intent_object_id: string }): Promise<GitvaultPruneIntentRecord | null> {
+    this.calls.push("prune-read");
+    return this.pruneIntents.get(prune_intent_object_id)?.record ?? null;
   }
 }
 

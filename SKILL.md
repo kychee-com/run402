@@ -895,7 +895,7 @@ run402 gitvault status
 run402 gitvault verify --budget 500
 ```
 
-Allocation happens on the first push, not at `init`. Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `run402 gitvault compact` publishes a checkpoint under a lease; `run402 gitvault prune` is a **dry run in V0** (nothing is submitted, no bytes are deleted, `submitted` is always false).
+Allocation happens on the first push, not at `init`. Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `run402 gitvault compact` publishes a checkpoint under a lease; `run402 gitvault prune` is **two phases** — it plans (chain walk + GC root set, printing a signed `intent_core`), and submits only with `--submit --intent-core <core.json> --verifier-receipt <receipt.json>`, carrying one receipt per closed implementation identity. Only the control-plane-signed completion says what was deleted, and only its `deleted` result means the bytes are gone.
 
 From an MCP session you can *answer questions* about a vault — `get_gitvault_status`, `list_gitvault_heads`, `verify_gitvault` — but not mutate one; see the tools section for why.
 

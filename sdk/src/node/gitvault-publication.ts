@@ -73,6 +73,7 @@ import type {
   GitvaultCheckpointManifest,
   GitvaultCheckpointManifestPack,
   GitvaultCheckpointPackReceipt,
+  GitvaultDigestLabel,
   GitvaultHead,
   GitvaultHeadTarget,
   GitvaultHeadsListingPage,
@@ -85,6 +86,7 @@ import type {
   GitvaultRetentionCutoffReceipt,
   GitvaultRetentionRoot,
   GitvaultRetentionRoots,
+  GitvaultRetentionRootsReceipt,
   GitvaultSignedObject,
   GitvaultVaultGenesis,
   GitvaultWalPackReceipt,
@@ -98,6 +100,9 @@ import type {
   GitvaultPutObjectRequest,
 } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore, type GitvaultHeadPin, type GitvaultRepoFile } from "./gitvault-keystore.js";
+// Type-only: erased at build, so the prune module stays a LEAF (it imports the
+// crypto core and nothing from here) and no runtime import cycle exists.
+import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
 import { GITVAULT_DEPLOY_REF, hardenedGit, hasObject, isAncestor } from "./gitvault-snapshot.js";
 
 // ─── Constants (constants.json) ──────────────────────────────────────────────
@@ -614,6 +619,18 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
   acquireMaintenanceLease(request: GitvaultMaintenanceLeaseRequest): Promise<GitvaultMaintenanceLease>;
   heartbeatMaintenanceLease(request: { repo_id: string; maintenance_lease_id: string; holder_token: string }): Promise<{ maintenance_lease_id: string; expires_at: string | null }>;
   releaseMaintenanceLease(request: { repo_id: string; maintenance_lease_id: string; holder_token: string }): Promise<{ maintenance_lease_id: string; status: string }>;
+  /**
+   * `POST …/prune-intents` — the intent's EXACT BYTES (§7.3).
+   *
+   * The route is parsed with `express.raw` and the owner signature is verified
+   * over the bytes as sent, so the transport MUST NOT re-serialize: it puts
+   * `intent_bytes` on the wire verbatim under `Content-Type: application/json`.
+   * An implementation that accepts a parsed object here and stringifies it is
+   * signing one thing and sending another.
+   */
+  submitPruneIntent(request: { repo_id: string; intent_bytes: Uint8Array }): Promise<GitvaultPruneIntentRecord & { stored: boolean }>;
+  /** `GET …/prune-intents/:id` — the intent's state and, once signed, its completion. */
+  getPruneIntent(request: { repo_id: string; prune_intent_object_id: string }): Promise<GitvaultPruneIntentRecord | null>;
 }
 
 /** `GET /gitvault/v1/vaults/:vault_id` — the shape `reads.ts:getVaultRecord` returns. */
@@ -852,6 +869,49 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       client.request<{ maintenance_lease_id: string; expires_at: string | null }>(`${base(repo_id)}/maintenance-leases/${encodeURIComponent(maintenance_lease_id)}/heartbeat`, { method: "POST", body: { holder_token }, context: "renewing the gitvault maintenance lease" }),
     releaseMaintenanceLease: ({ repo_id, maintenance_lease_id, holder_token }) =>
       client.request<{ maintenance_lease_id: string; status: string }>(`${base(repo_id)}/maintenance-leases/${encodeURIComponent(maintenance_lease_id)}`, { method: "DELETE", body: { holder_token }, context: "releasing the gitvault maintenance lease" }),
+    // ── prune (§7.3) ──
+    async submitPruneIntent({ repo_id, intent_bytes }) {
+      // Deliberately NOT `client.request`: that serializes a body object, and
+      // the gateway strict-parses + signature-verifies THESE bytes (the route
+      // is registered through `express.raw`). Re-serializing an equal-valued
+      // object would change what was signed. Same raw-fetch shape the
+      // generation-addressed reads use, so it inherits the same credentials.
+      const path = `${base(repo_id)}/prune-intents`;
+      const auth = (await client.credentials.getAuth(path, { method: "gitvault.prune" })) ?? {};
+      const r = await client.fetch(`${client.apiBase}${path}`, {
+        method: "POST",
+        headers: { ...auth, "content-type": "application/json", accept: "application/json" },
+        body: intent_bytes as unknown as BodyInit,
+      });
+      const text = await r.text();
+      let parsed: unknown = null;
+      try {
+        parsed = text.length > 0 ? JSON.parse(text) : null;
+      } catch {
+        parsed = null;
+      }
+      if (!r.ok) {
+        const envelope = parsed as { error?: { code?: string; message?: string; details?: unknown } } | null;
+        fail(
+          envelope?.error?.code ?? "GITVAULT_PRUNE_SUBMIT_FAILED",
+          envelope?.error?.message ?? `prune intent submission failed (HTTP ${r.status})`,
+          "submitting the gitvault prune intent",
+          { status: r.status, details: envelope?.error?.details ?? null },
+        );
+      }
+      const body = (parsed ?? {}) as GitvaultPruneIntentRecord & { stored?: boolean };
+      return { ...body, stored: body.stored === true };
+    },
+    async getPruneIntent({ repo_id, prune_intent_object_id }) {
+      try {
+        return await client.request<GitvaultPruneIntentRecord>(`${base(repo_id)}/prune-intents/${encodeURIComponent(prune_intent_object_id)}`, { context: "reading the gitvault prune intent" });
+      } catch (e) {
+        // Authorize-before-reveal: a malformed, absent, or foreign id all
+        // return the SAME envelope, so `null` is the only honest reading.
+        if (isRun402Error(e) && ((e as { status?: number }).status === 404 || (e as { code?: string }).code === "RESOURCE_NOT_FOUND")) return null;
+        throw e;
+      }
+    },
   };
 }
 
@@ -867,6 +927,8 @@ export const gitvaultPaths = {
   checkpointPack: (id: string) => `checkpoints/${id}.pack.enc`,
   claimSet: (id: string) => `checkpoints/${id}.claims.json`,
   cutoffTicket: (id: string) => `retention/${id}.ticket.json`,
+  /** `verifier-receipts/<vr>.json` — plaintext-structured, uploaded before a prune intent may reference it (§7.3). */
+  verifierReceipt: (id: string) => `verifier-receipts/${id}.json`,
 } as const;
 
 // ─── The vault ───────────────────────────────────────────────────────────────
@@ -935,6 +997,29 @@ export interface GitvaultPublishResult {
   form: "wal" | "checkpoint";
   conflicts_retried: number;
   refs: GitvaultRefMap;
+}
+
+/**
+ * What {@link GitvaultVault.verifyStoredCheckpoint} observed. Every boolean is
+ * a FINDING, not a promise: a `false` here is what makes a truthful negative
+ * `verifier_receipt` possible.
+ */
+export interface GitvaultStoredCheckpointAttestation {
+  checkpoint_head_sha256: string;
+  checkpoint_generation: string;
+  claim_set_sha256: string;
+  /** `null` in the no-removal checkpoint form — a prune needs one, so that is a refusal upstream. */
+  cutoff_ticket_sha256: string | null;
+  cutoff_at: string | null;
+  covered_tips: string[];
+  /** Covered tips that did NOT resolve from the restored set. Non-empty ⇒ the checkpoint does not verify. */
+  missing_tips: string[];
+  restored_object_set_hmac: string;
+  object_set_matches: boolean;
+  ref_state_matches: boolean;
+  retention_roots_matches: boolean;
+  /** The `rootset` commitment over this generation's roots carrier — the intent core's `retention_state_hmac`. */
+  retention_state_hmac: string;
 }
 
 export interface GitvaultBuiltCheckpoint {
@@ -1107,7 +1192,16 @@ export class GitvaultVault {
     return { path, object_kind: kind, object_id: objectId, bytes: sealed.frame, sha256: sealed.ciphertext_sha256, size_bytes: sealed.size_bytes };
   }
 
-  private signer(): Uint8Array {
+  /**
+   * The owner signing seed, or `GITVAULT_READ_ONLY`.
+   *
+   * Public so the prune lane signs its intent core, wrapper, and verifier
+   * receipt through the SAME refusal path every other signed object uses — a
+   * second "get the seed" helper is a second place for a read-only principal to
+   * slip through. The vault is already open by the time this is reachable, so
+   * `ensureIdentity` never MINTS here (it would refuse at `repoFile()` first).
+   */
+  signer(): Uint8Array {
     const identity = this.keystore.ensureIdentity();
     const kp = this.keystore.signingKeypair(identity);
     if (!kp) fail("GITVAULT_READ_ONLY", "the signing key is missing from identity.json; this principal is read-only", "signing gitvault object", undefined, [{ action: "stay read-only at the materialized pin" }]);
@@ -1157,14 +1251,58 @@ export class GitvaultVault {
 
   /** Sorted unique object ids reachable from `tips` (the `"objectset"` content). */
   async objectSet(tips: string[]): Promise<string[]> {
+    return this.objectSetIn(this.git(), tips);
+  }
+
+  /**
+   * The same `"objectset"` content computed in an ARBITRARY repository.
+   *
+   * The prune lane's restore-and-verify pass runs against a scratch clone-back,
+   * not the working tree, and must recompute the digest there with the same
+   * canonicalization the manifest was built with — hence one implementation,
+   * parameterized by directory, rather than a second rev-list at the call site.
+   */
+  async objectSetIn(dir: string, tips: string[]): Promise<string[]> {
     const unique = [...new Set(tips)].filter((t) => GITVAULT_OID40_RE.test(t));
     if (unique.length === 0) return [];
-    const out = await hardenedGit(this.git(), ["rev-list", "--objects", "--no-object-names", ...unique]);
+    const out = await hardenedGit(dir, ["rev-list", "--objects", "--no-object-names", ...unique]);
     return objectsetContent(out.lines().map((l) => l.trim())).oids;
   }
 
-  private digest(label: "refmap" | "rootset" | "objectset", content: unknown): string {
+  /**
+   * Decrypt one generation's `retention_roots` carrier by its head receipt.
+   *
+   * `materialize()` opens only the NEWEST carrier; the prune lane must compare
+   * consecutive generations to see which roots LEFT the map, so it needs any
+   * generation's. Same `openCarrier` path, same `CHAIN_UNUSABLE` semantics — a
+   * carrier that cannot be opened is never silently treated as empty.
+   */
+  async openRetentionRootsAt(receipt: GitvaultRetentionRootsReceipt): Promise<GitvaultRetentionRoots> {
+    const { genesis } = await this.genesis();
+    return this.openCarrier<GitvaultRetentionRoots>("retention_roots", receipt, gitvaultPaths.retentionRoots(receipt.object_id), genesis.creator_signing_pubkey);
+  }
+
+  private digest(label: GitvaultDigestLabel, content: unknown): string {
     return keyedCommitment(deriveDigestKey(this.kRepo(), this.repoId, this.epoch(), label), content);
+  }
+
+  /**
+   * The §1 keyed commitment under one of the five `K_digest` labels.
+   *
+   * Public because the prune lane needs `gcrootset` (over the GC root set's
+   * sorted receipts) and `rootset` (over the retention-roots carrier) and must
+   * compute them with the SAME key derivation the checkpoint manifest uses —
+   * two derivations for one commitment is how a verifier and a publisher stop
+   * agreeing. Keyed by design (§7.3): a server-comparable plaintext digest
+   * would be a confirmation oracle.
+   */
+  keyedDigest(label: GitvaultDigestLabel, content: unknown): string {
+    return this.digest(label, content);
+  }
+
+  /** Strip the single top-level signature — the commitment preimage shape carriers use. */
+  digestPreimage<T extends { signature: string }>(o: T): Omit<T, "signature"> {
+    return this.withoutSignature(o);
   }
 
   private withoutSignature<T extends { signature: string }>(o: T): Omit<T, "signature"> {
@@ -1252,6 +1390,110 @@ export class GitvaultVault {
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }
+  }
+
+  /**
+   * The §4.7 acceptance run against a checkpoint ALREADY IN STORAGE — the
+   * restore-and-verify pass a `verifier_receipt` attests (§7.3).
+   *
+   * `acceptCheckpoint` above proves a checkpoint the client just BUILT; this
+   * proves one the client is about to make a claim about, from the stored bytes
+   * alone. It reports the observed facts rather than throwing on a mismatch,
+   * because "the checkpoint does not verify" is exactly the finding a receipt
+   * must be able to carry as `false` — turning it into an exception would make
+   * an honest negative attestation impossible to produce.
+   */
+  async verifyStoredCheckpoint(head: GitvaultHead, headSha256: string): Promise<GitvaultStoredCheckpointAttestation> {
+    const block = head.checkpoint;
+    if (!block) fail("CHECKPOINT_INCOMPLETE", `head ${head.generation} carries no checkpoint to verify`, "verifying a stored checkpoint", { generation: head.generation });
+    const { genesis } = await this.genesis();
+    const writerKey = genesis.creator_signing_pubkey;
+    const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(block.claim_set.object_id) });
+    if (!claimBytes || sha256Hex(claimBytes) !== block.claim_set.stored_bytes_sha256) {
+      fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${block.claim_set.object_id} is absent or does not match the head's receipt`, "verifying a stored checkpoint", { object_id: block.claim_set.object_id });
+    }
+    const claimSet = parseGitvaultStrict(new TextDecoder().decode(claimBytes)) as GitvaultCheckpointClaimSet;
+    if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) fail("CHECKPOINT_INCOMPLETE", "checkpoint claim set signature fails", "verifying a stored checkpoint", { object_id: claimSet.object_id });
+    const manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), writerKey);
+    checkClaimSetEquality(claimSet, manifest, block.covers_through_generation);
+    const refState = await this.openCarrier<GitvaultRefState>("ref_state", head.ref_state, gitvaultPaths.refState(head.ref_state.object_id), writerKey);
+    const roots = await this.openCarrier<GitvaultRetentionRoots>("retention_roots", head.retention_roots, gitvaultPaths.retentionRoots(head.retention_roots.object_id), writerKey);
+    const tips = GitvaultVault.coverageTips(refState.refs, roots.roots, refState.head_target);
+    const scratch = mkdtempSync(join(tmpdir(), "run402-gitvault-attest-"));
+    try {
+      await hardenedGit(scratch, ["init", "-q", "--bare", "--object-format=sha1", "."]);
+      for (const p of manifest.packs) {
+        const frame = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.checkpointPack(p.object_id) });
+        if (!frame) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} is absent from storage`, "verifying a stored checkpoint", { object_id: p.object_id });
+        const plain = openFrame({ k_obj: deriveObjectKey(this.kRepo(), this.repoId, this.epoch(), "checkpoint_pack", p.object_id), repo_id: this.repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: this.epoch(), frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
+        if (sha256Hex(plain) !== p.plaintext_sha256 || String(plain.length) !== p.plaintext_size_bytes) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} plaintext mismatch`, "verifying a stored checkpoint", { object_id: p.object_id });
+        await hardenedGit(scratch, ["index-pack", "--stdin", "--strict"], { input: plain });
+      }
+      const missing: string[] = [];
+      for (const t of tips) if (!(await hasObject(scratch, t))) missing.push(t);
+      const fsck = tips.length === 0 ? { status: 0 } : await hardenedGit(scratch, ["fsck", "--no-dangling", "--connectivity-only", ...tips], { okStatuses: [1, 2] });
+      const restored = tips.length === 0 || missing.length > 0 ? [] : await this.objectSetIn(scratch, tips);
+      const restoredHmac = this.digest("objectset", { oids: restored });
+      // Named locals, not inline ternaries: the no-removal checkpoint form has
+      // no ticket at all, and both halves of that absence travel together.
+      const cutoffTicketSha256: string | null = block.cutoff ? block.cutoff.ticket.stored_bytes_sha256 : null;
+      const cutoffAt: string | null = block.cutoff ? block.cutoff.cutoff_at : null;
+      return {
+        checkpoint_head_sha256: headSha256,
+        checkpoint_generation: head.generation,
+        claim_set_sha256: block.claim_set.stored_bytes_sha256,
+        cutoff_ticket_sha256: cutoffTicketSha256,
+        cutoff_at: cutoffAt,
+        covered_tips: tips,
+        missing_tips: missing,
+        restored_object_set_hmac: restoredHmac,
+        object_set_matches: missing.length === 0 && fsck.status === 0 && restoredHmac === manifest.object_set_hmac,
+        ref_state_matches: this.digest("refmap", this.withoutSignature(refState)) === manifest.ref_state_hmac,
+        retention_roots_matches: this.digest("rootset", this.withoutSignature(roots)) === manifest.retention_roots_hmac,
+        retention_state_hmac: this.digest("rootset", this.withoutSignature(roots)),
+      };
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * The whole verified chain, newest-first walk returned oldest-first, each
+   * head paired with its checkpoint claim set (`null` when it bears none).
+   *
+   * The prune lane needs EVERY generation, not just the newest: a candidate is
+   * an object some head once named and no surviving head still needs, and that
+   * is only computable over the whole chain. Reuses {@link chainFrom}, so the
+   * bytes are re-read and hash-checked against the verified chain rather than
+   * trusted from a listing.
+   */
+  async chainEntries(): Promise<Array<{ head: GitvaultHead; head_sha256: string; claim_set: GitvaultCheckpointClaimSet | null }>> {
+    const newest = await this.verifyToNewest();
+    if (!newest.head) return [];
+    const chain = await this.chainFrom("0000000000000001", newest);
+    const generations = [...chain.keys()].sort();
+    const out: Array<{ head: GitvaultHead; head_sha256: string; claim_set: GitvaultCheckpointClaimSet | null }> = [];
+    const { genesis } = await this.genesis();
+    for (const gen of generations) {
+      const entry = chain.get(gen)!;
+      let claimSet: GitvaultCheckpointClaimSet | null = null;
+      const block = entry.head.checkpoint;
+      if (block) {
+        // Plaintext-structured and stored-bytes-receipted: no decryption, but
+        // the hash and the owner signature are still checked before a single
+        // pack receipt inside it is believed.
+        const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(block.claim_set.object_id) });
+        if (!bytes || sha256Hex(bytes) !== block.claim_set.stored_bytes_sha256) {
+          fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${block.claim_set.object_id} (generation ${gen}) is absent or altered`, "walking the gitvault chain", { generation: gen, object_id: block.claim_set.object_id });
+        }
+        claimSet = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultCheckpointClaimSet;
+        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, genesis.creator_signing_pubkey)) {
+          fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${claimSet.object_id} signature fails`, "walking the gitvault chain", { generation: gen });
+        }
+      }
+      out.push({ head: entry.head, head_sha256: entry.sha256, claim_set: claimSet });
+    }
+    return out;
   }
 
   // ── upload with receipt-compare ──

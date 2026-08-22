@@ -324,6 +324,10 @@ async function importKey(args) {
     site_url: existing?.site_url,
     deployed_at: existing?.deployed_at,
     last_deployment_id: existing?.last_deployment_id,
+    // Carried, not re-derived: a key import says nothing about which org owns
+    // the project, and dropping the cache here would make `run402 init` reach
+    // for the control plane again on a machine that already knew.
+    org_id: existing?.org_id,
     source: "manual_import",
     cached_at: new Date().toISOString(),
   });

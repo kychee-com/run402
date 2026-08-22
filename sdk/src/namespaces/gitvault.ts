@@ -52,6 +52,7 @@ type DeployModule = typeof import("../node/gitvault-deploy.js");
 type KeystoreModule = typeof import("../node/gitvault-keystore.js");
 type CreationModule = typeof import("../node/gitvault-creation-journal.js");
 type SnapshotModule = typeof import("../node/gitvault-snapshot.js");
+type PruneModule = typeof import("../node/gitvault-prune.js");
 
 async function nodeOnly<T>(load: () => Promise<T>, verb: string): Promise<T> {
   try {
@@ -123,6 +124,7 @@ export interface GitvaultCompactResult {
   covered_roots: number;
 }
 
+/** One retention ROOT (a dropped ref tip) and whether its 90-day window has closed. */
 export interface GitvaultPruneCandidate {
   ref: string;
   oid: string;
@@ -131,13 +133,51 @@ export interface GitvaultPruneCandidate {
   reason: string;
 }
 
+/** One STORED OBJECT the plan proposes deleting — what a `prune_intent`'s `delete_set` actually names. */
+export interface GitvaultPruneObjectCandidate {
+  object_id: string;
+  object_kind: string;
+  size_bytes: string;
+}
+
 export interface GitvaultPruneResult {
-  /** Always a dry run in V0 — see `submitted`. */
+  /** Retention ROOTS and their windows — the retention view, unchanged. */
   candidates: GitvaultPruneCandidate[];
   eligible_count: number;
   retained_count: number;
-  /** `false` while the prune intent/completion route is unshipped; nothing was deleted. */
-  submitted: false;
+  /**
+   * The stored objects the plan proposes deleting, in the intent's canonical
+   * order. A PROPOSAL: the gateway re-checks every candidate against the bound
+   * `retention_cutoff` ticket and its own admission times, and refuses any that
+   * is not retention-eligible. A client cannot prove either fact.
+   */
+  object_candidates: GitvaultPruneObjectCandidate[];
+  /** Pruneable objects left out by the 10 000-per-intent cap; chunk into a later intent. */
+  deferred_object_count: number;
+  /** Why nothing may be pruned yet, or `null` when a submission is structurally possible. */
+  blocked_reason: string | null;
+  /**
+   * The SIGNED `prune_intent_core` this plan proposes, and its stored-bytes
+   * hash — what BOTH verifier receipts must sign. `null` when blocked.
+   *
+   * Round-trip this object verbatim into `submit`: it carries a random nonce
+   * and object id, so a rebuilt core is a DIFFERENT core and the receipt
+   * `r402s-verify` produced would no longer bind to it.
+   */
+  intent_core: import("../node/gitvault-prune.js").GitvaultPruneIntentCore | null;
+  intent_core_sha256: string | null;
+  /** What this SDK observed while restoring the latest checkpoint — the receipt's evidence. */
+  attestation: import("../node/gitvault-publication.js").GitvaultStoredCheckpointAttestation | null;
+  /** `true` only when an intent was accepted by the gateway. */
+  submitted: boolean;
+  /** The gateway's view of the submitted intent; `null` when nothing was submitted. */
+  intent: import("../node/gitvault-prune.js").GitvaultPruneIntentRecord | null;
+  /**
+   * What the control-plane-signed completion CONFIRMS. `deleted` is the only
+   * result that means the bytes are gone: `present_after_attempt` is a failed
+   * deletion, not a successful one.
+   */
+  confirmation: import("../node/gitvault-prune.js").GitvaultPruneConfirmation | null;
   note: string;
 }
 
@@ -480,7 +520,20 @@ export class Gitvault {
    * against its expected manifest and reads the admitted head back from
    * storage. A 200 alone is never enough (§0 client obligations).
    */
-  async push(options: GitvaultVaultHandleOptions & { snapshot?: Omit<import("../node/gitvault-snapshot.js").GitvaultSnapshotOptions, "dir">; message?: string; onCommitLine?: (line: string) => void; checkpoint?: boolean }): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string }> {
+  async push(
+    options: GitvaultVaultHandleOptions & {
+      /**
+       * Capture options, forwarded verbatim to `captureSnapshot`. The commit
+       * message for the synthetic commit a dirty tree produces lives HERE
+       * (`snapshot: { message }`) — there is deliberately no second top-level
+       * `message` field, because a `snapshot` passthrough plus a sibling
+       * shortcut is two ways to say one thing with no defined precedence.
+       */
+      snapshot?: Omit<import("../node/gitvault-snapshot.js").GitvaultSnapshotOptions, "dir">;
+      onCommitLine?: (line: string) => void;
+      checkpoint?: boolean;
+    },
+  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string }> {
     const [{ deployRefTransaction }, { captureSnapshot, gitvaultCommitLine }] = await Promise.all([this.#publication(), this.#snapshot()]);
     const handle = await this.open(options);
     const repoDir = options.repo_dir ?? process.cwd();
@@ -568,13 +621,25 @@ export class Gitvault {
   }
 
   /**
-   * Report which retention roots have passed their retention window.
+   * Plan a prune — and, with both verifier receipts in hand, submit it.
    *
-   * DRY RUN ONLY in V0. The prune intent/completion wire — the two verifier
-   * receipts and the server's eligibility confirmation — has no shipped route,
-   * and this SDK will not pretend to delete history it cannot prove the server
-   * agreed to delete. `submitted` is always `false` and nothing is removed.
-   * There is deliberately no purge verb in V0 at all.
+   * TWO PHASES, because the protocol is two-phase (§7.3) and no amount of API
+   * sugar can collapse it:
+   *
+   *   1. `prune()` walks the verified chain, computes the GC root set, subtracts
+   *      it from the pruneable universe, and returns a SIGNED
+   *      `prune_intent_core` plus its `intent_core_sha256`. Nothing is
+   *      submitted and nothing is deleted.
+   *   2. Run `r402s-verify` against that core, then call
+   *      `prune({ submit: { core, verifier_receipt } })` with the core
+   *      ROUND-TRIPPED VERBATIM. This SDK produces its own `run402-cli` receipt
+   *      by restoring the latest checkpoint and recomputing its commitments;
+   *      the second receipt is `r402s-verify`'s and is never synthesized here,
+   *      because two receipts from one lineage prove nothing.
+   *
+   * The `deleted` list in the result comes from the control-plane-signed
+   * completion and nothing else. `present_after_attempt` is a FAILED deletion
+   * and is never counted as one.
    */
   async prune(
     options: GitvaultVaultHandleOptions & {
@@ -587,13 +652,28 @@ export class Gitvault {
        * would SHORTEN the retention lane, which the protocol forbids.
        */
       effective_admitted_at?: (droppedAtGeneration: string) => string | null;
+      /**
+       * Submit the plan. `core` MUST be the exact object a prior `prune()`
+       * returned, and `verifier_receipt` MUST be `r402s-verify`'s receipt over
+       * that core's `intent_core_sha256`.
+       */
+      submit?: {
+        core: import("../node/gitvault-prune.js").GitvaultPruneIntentCore;
+        verifier_receipt: import("../node/gitvault-prune.js").GitvaultVerifierReceipt;
+        /** Poll budget for the signed completion. Absent ⇒ submit and report the intent without waiting. */
+        wait?: { attempts?: number; interval_ms?: number };
+      };
     } = {},
   ): Promise<GitvaultPruneResult> {
-    const { isRootEligibleForRemoval, GITVAULT_RETENTION_MIN_DAYS } = await this.#publication();
+    const pub = await this.#publication();
+    const prune = await this.#prune();
+    const { isRootEligibleForRemoval, GITVAULT_RETENTION_MIN_DAYS } = pub;
     const handle = await this.open(options);
     const base = await handle.vault.materialize();
     const cutoffAt = (options.now ?? (() => new Date()))().toISOString();
     const resolve = options.effective_admitted_at ?? (() => null);
+
+    // ── the retention-ROOT view (unchanged) ──
     const candidates: GitvaultPruneCandidate[] = base.roots.map((root) => {
       const admittedAt = resolve(root.dropped_at_generation);
       const eligible = admittedAt !== null && isRootEligibleForRemoval(admittedAt, cutoffAt);
@@ -610,13 +690,188 @@ export class Gitvault {
               : `still inside the ${GITVAULT_RETENTION_MIN_DAYS}-day retention window`,
       };
     });
-    return {
+    const rootView = {
       candidates,
       eligible_count: candidates.filter((c) => c.eligible).length,
       retained_count: candidates.filter((c) => !c.eligible).length,
-      submitted: false,
-      note: "dry run: the prune intent/completion route is not shipped, so nothing was submitted and no bytes were deleted. Retention is an operational promise of the platform, not a cryptographic guarantee against it.",
     };
+
+    // ── the OBJECT view: universe − GC root set ──
+    const entries = await handle.vault.chainEntries();
+    const plan = prune.planPruneCandidates(entries);
+    const objectCandidates: GitvaultPruneObjectCandidate[] = plan.candidates.map((r) => ({ object_id: r.object_id, object_kind: r.object_kind, size_bytes: r.size_bytes }));
+    const blocked =
+      plan.root_set.blocked_reason ??
+      (plan.candidates.length === 0 ? "every stored object is still inside the GC root set — nothing is superseded yet" : null);
+
+    if (blocked || !plan.root_set.latest_checkpoint) {
+      return {
+        ...rootView,
+        object_candidates: objectCandidates,
+        deferred_object_count: plan.deferred_count,
+        blocked_reason: blocked,
+        intent_core: null,
+        intent_core_sha256: null,
+        attestation: null,
+        submitted: false,
+        intent: null,
+        confirmation: null,
+        note: `no prune intent was built: ${blocked}. Retention is an operational promise of the platform, not a cryptographic guarantee against it.`,
+      };
+    }
+
+    // ── restore-and-verify the latest checkpoint: the receipt's evidence ──
+    const latest = plan.root_set.latest_checkpoint;
+    const attestation = await handle.vault.verifyStoredCheckpoint(latest.head, latest.head_sha256);
+    if (attestation.cutoff_ticket_sha256 === null) {
+      return {
+        ...rootView,
+        object_candidates: objectCandidates,
+        deferred_object_count: plan.deferred_count,
+        blocked_reason: "the latest checkpoint binds no retention_cutoff ticket, so no root's window can be evaluated and no prune is authorizable",
+        intent_core: null,
+        intent_core_sha256: null,
+        attestation,
+        submitted: false,
+        intent: null,
+        confirmation: null,
+        note: "run `run402 gitvault compact` to publish a checkpoint bound to a fresh retention_cutoff ticket, then plan the prune again.",
+      };
+    }
+
+    const record = await handle.vault.transport.getVaultRecord({ repo_id: handle.repo_id });
+    const gcRootSetHmac = handle.vault.keyedDigest("gcrootset", { receipts: plan.root_set.receipts });
+    const core =
+      options.submit?.core ??
+      prune.buildPruneIntentCore(
+        {
+          repo_id: handle.repo_id,
+          gc_epoch: record.gc_epoch,
+          authorizing_head_sha256: base.head_sha256,
+          checkpoint_claim_set_sha256: attestation.claim_set_sha256,
+          gc_root_set_hmac: gcRootSetHmac,
+          retention_state_hmac: attestation.retention_state_hmac,
+          delete_set: plan.candidates,
+        },
+        handle.vault.signer(),
+      );
+    const coreSha = prune.pruneIntentCoreSha256(core);
+    // A supplied core may have been planned against a chain that has since
+    // moved. The rule lives in the prune module (and is unit-tested there); the
+    // namespace only supplies the current facts.
+    if (options.submit) {
+      prune.assertPruneCoreStillCurrent(core, { repo_id: handle.repo_id, gc_epoch: record.gc_epoch, checkpoint_claim_set_sha256: attestation.claim_set_sha256 });
+    }
+    // Faithful: when a core was supplied, report ITS candidates — the ones
+    // actually submitted — not a freshly-planned set that may differ.
+    const reportedCandidates: GitvaultPruneObjectCandidate[] = options.submit
+      ? core.delete_set.map((r) => ({ object_id: r.object_id, object_kind: r.object_kind, size_bytes: r.size_bytes }))
+      : objectCandidates;
+    const planned: GitvaultPruneResult = {
+      ...rootView,
+      object_candidates: reportedCandidates,
+      deferred_object_count: plan.deferred_count,
+      blocked_reason: null,
+      intent_core: core,
+      intent_core_sha256: coreSha,
+      attestation,
+      submitted: false,
+      intent: null,
+      confirmation: null,
+      note:
+        "planned, not submitted. Run r402s-verify against this intent_core, then call prune({ submit: { core, verifier_receipt } }) " +
+        "with the core round-tripped verbatim — a rebuilt core carries a different nonce and the receipt would no longer bind to it.",
+    };
+    if (!options.submit) return planned;
+
+    // ── attest, upload both receipts, submit the exact bytes ──
+    const rootsEvolution = await this.#checkRootsEvolution(handle, entries, resolve, isRootEligibleForRemoval, attestation.cutoff_at);
+    const candidateIds = new Set(core.delete_set.map((r) => r.object_id));
+    const outsideRoots = plan.root_set.receipts.every((r) => !candidateIds.has(r.object_id));
+    const ours = prune.buildVerifierReceipt(
+      {
+        repo_id: handle.repo_id,
+        intent_core_sha256: coreSha,
+        checkpoint_head_sha256: attestation.checkpoint_head_sha256,
+        cutoff_ticket_sha256: attestation.cutoff_ticket_sha256,
+        restored_object_set_hmac: attestation.restored_object_set_hmac,
+        // Both booleans are OBSERVATIONS. A false one produces a `failed`
+        // receipt and `buildPruneIntent` then refuses — which is the point:
+        // the SDK never signs an attestation it did not earn.
+        retention_evolution_ok: rootsEvolution.ok && attestation.object_set_matches && attestation.ref_state_matches && attestation.retention_roots_matches,
+        candidates_outside_roots_ok: outsideRoots,
+        implementation_id: prune.GITVAULT_SDK_VERIFIER_IMPLEMENTATION,
+        implementation_version: prune.GITVAULT_SDK_VERIFIER_VERSION,
+      },
+      handle.vault.signer(),
+    );
+    const intent = prune.buildPruneIntent(core, [ours, options.submit.verifier_receipt], handle.vault.signer());
+    await this.#uploadVerifierReceipts(handle, pub, [ours, options.submit.verifier_receipt]);
+    let stored = await handle.vault.transport.submitPruneIntent({ repo_id: handle.repo_id, intent_bytes: prune.pruneIntentBytes(intent) });
+    let intentRecord: import("../node/gitvault-prune.js").GitvaultPruneIntentRecord | null = stored;
+    const wait = options.submit.wait;
+    if (wait) {
+      const attempts = wait.attempts ?? 20;
+      const intervalMs = wait.interval_ms ?? 3_000;
+      for (let i = 0; i < attempts && !(intentRecord?.completion ?? null); i++) {
+        await new Promise((r) => setTimeout(r, intervalMs));
+        intentRecord = await handle.vault.transport.getPruneIntent({ repo_id: handle.repo_id, prune_intent_object_id: intent.object_id });
+      }
+    }
+    const confirmation = prune.summarizePruneCompletion(core.delete_set.map((r) => r.object_id), intentRecord);
+    return {
+      ...planned,
+      submitted: true,
+      intent: intentRecord,
+      confirmation,
+      note:
+        confirmation.outcome === null
+          ? "the intent is accepted and the gateway's worker drives deletion; poll it until a signed completion appears. Nothing is deleted until the completion says so."
+          : `the signed completion confirms ${confirmation.deleted.length} object(s) deleted and ${confirmation.present.length} still present. Only \`deleted\` means the bytes are gone.`,
+    };
+  }
+
+  /** Upload both receipts so the gateway can claim them at the intent's fence. */
+  async #uploadVerifierReceipts(
+    handle: GitvaultHandle,
+    pub: PublicationModule,
+    receipts: readonly import("../node/gitvault-prune.js").GitvaultVerifierReceipt[],
+  ): Promise<void> {
+    const { storedBytes, sha256Hex } = await import("./gitvault.crypto.js");
+    const objects = receipts.map((r) => {
+      const bytes = storedBytes(r as unknown as import("./gitvault.types.js").GitvaultSignedObject);
+      return {
+        path: pub.gitvaultPaths.verifierReceipt(r.object_id),
+        object_kind: "verifier_receipt",
+        object_id: r.object_id,
+        bytes,
+        sha256: sha256Hex(bytes),
+        size_bytes: String(bytes.length),
+      };
+    });
+    await handle.vault.transport.uploadObjects({ repo_id: handle.repo_id, objects });
+  }
+
+  /** Did every retention root that LEFT the map leave legally? A `false` here is honest, not fatal. */
+  async #checkRootsEvolution(
+    handle: GitvaultHandle,
+    entries: Array<{ head: import("./gitvault.types.js").GitvaultHead; head_sha256: string; claim_set: unknown }>,
+    resolve: (droppedAtGeneration: string) => string | null,
+    isEligible: (effectiveAdmittedAtIso: string, cutoffAtIso: string) => boolean,
+    _cutoffAt: string | null,
+  ): Promise<{ ok: boolean; unproven: Array<{ generation: string; ref: string; oid: string; reason: string }> }> {
+    const { checkRetentionEvolution } = await this.#prune();
+    const rootsByGeneration = new Map<string, Array<{ ref: string; oid: string; dropped_at_generation: string }>>();
+    for (const e of entries) {
+      const carrier = await handle.vault.openRetentionRootsAt(e.head.retention_roots);
+      rootsByGeneration.set(e.head.generation, carrier.roots.map((r) => ({ ref: r.ref, oid: r.oid, dropped_at_generation: r.dropped_at_generation })));
+    }
+    return checkRetentionEvolution(
+      entries as never,
+      (entry) => rootsByGeneration.get(entry.head.generation) ?? [],
+      resolve,
+      isEligible,
+    );
   }
 
   /**
@@ -694,6 +949,9 @@ export class Gitvault {
   }
   #snapshot(): Promise<SnapshotModule> {
     return nodeOnly(() => import("../node/gitvault-snapshot.js"), "push");
+  }
+  #prune(): Promise<PruneModule> {
+    return nodeOnly(() => import("../node/gitvault-prune.js"), "prune");
   }
 }
 

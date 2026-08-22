@@ -118,12 +118,32 @@ export interface GitvaultCreationJournal {
 
 // ─── Transport (injected; 5.4 wires HTTP) ───────────────────────────────────
 
+/**
+ * `POST /gitvault/v1/vaults` — the allocate REQUEST.
+ *
+ * READ THIS BEFORE CHANGING THESE FIELD NAMES. The request carries the raw
+ * PUBLIC KEYS; the signed `allocation` RECORD the gateway returns carries the
+ * FINGERPRINTS derived from them. The two shapes differ on exactly these two
+ * fields, so building the request from `schemas/allocation.json` — the obvious
+ * thing to do — produces a body the gateway ignores, and it answers
+ * `400 VALIDATION_FAILED field=creator_signing_pubkey` as if the field were
+ * simply missing. That is the production failure this comment exists to stop
+ * from recurring.
+ *
+ * Pubkeys, not fingerprints, because a fingerprint is one-way: every later head
+ * signature is verified against the stored creator signing key, and a hash
+ * cannot verify a signature. The gateway derives the fingerprints itself, and
+ * `checkAllocation` compares the record's fingerprints back against this
+ * principal's — which is what proves the keys we sent are the keys it stored.
+ */
 export interface GitvaultAllocateRequest {
   client_creation_id: string;
   org_id: string;
   project_id: string;
-  creator_signing_fingerprint: string;
-  creator_encryption_fingerprint: string;
+  /** Raw Ed25519 public key, canonical base64url (43 chars, decodes to 32 bytes). */
+  creator_signing_pubkey: string;
+  /** Raw X25519 public key, canonical base64url (43 chars, decodes to 32 bytes). */
+  creator_encryption_pubkey: string;
 }
 
 export interface GitvaultPutObjectRequest {
@@ -344,8 +364,10 @@ export class GitvaultCreation {
         client_creation_id: this.journal.client_creation_id,
         org_id: this.journal.org_id,
         project_id: this.journal.project_id,
-        creator_signing_fingerprint: identity.signing_fingerprint,
-        creator_encryption_fingerprint: identity.encryption_fingerprint,
+        // PUBKEYS on the request; the returned record carries the fingerprints
+        // the gateway derives from them. See GitvaultAllocateRequest.
+        creator_signing_pubkey: identity.signing_pubkey,
+        creator_encryption_pubkey: identity.encryption_pubkey,
       });
       this.verifyAllocation(allocation);
       await this.advance("ALLOCATED", { allocation });

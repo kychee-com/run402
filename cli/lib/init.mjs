@@ -1,4 +1,4 @@
-import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase, getActiveProjectId } from "./config.mjs";
+import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase, getActiveProjectId, getProject, updateProject } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { setTierAction, deployAction } from "./next-actions.mjs";
@@ -174,20 +174,39 @@ function errorMessage(err) {
 }
 
 /**
- * The owning org of the locally-active project, read from the named inventory.
+ * The owning org of the locally-active project — from the KEYSTORE first, and
+ * only then from the named inventory.
  *
- * Best-effort by construction — the caller treats `null` as "do not scaffold".
- * The local keystore does not cache `org_id`, so this read is the only place to
- * learn it, and an EXACT id match is required: a near-miss must never make init
- * add a remote pointing at somebody else's project.
+ * Why the cache exists (task 5.12c): the gitvault scaffold is the one part of
+ * `run402 init` the client-surface spec says adds no network dependency to the
+ * cold-start path, and resolving the org through `projects.list()` quietly made
+ * that untrue. `org_id` is a non-secret routing identifier the control plane
+ * already hands back with every listing, so the honest fix is to remember it:
+ * the FIRST init on a machine still asks, every RETURNING init reads it locally
+ * and the scaffold really is network-free.
+ *
+ * Best-effort by construction — the caller treats `null` as "do not scaffold" —
+ * and an EXACT id match is required: a near-miss must never make init add a
+ * remote pointing at somebody else's project. `updateProject` is a no-op for a
+ * project this machine holds no credentials for, so such a project asks again
+ * next time rather than being silently mis-cached.
  */
 async function resolveOwningOrgId(projectId) {
+  const cached = getProject(projectId)?.org_id;
+  if (typeof cached === "string" && cached.length > 0) return cached;
   try {
     const listed = await getSdk().projects.list();
     const rows = Array.isArray(listed?.projects) ? listed.projects : [];
     const row = rows.find((p) => (p?.id ?? p?.project_id) === projectId);
     const orgId = row?.org_id;
-    return typeof orgId === "string" && orgId.length > 0 ? orgId : null;
+    if (typeof orgId !== "string" || orgId.length === 0) return null;
+    try {
+      updateProject(projectId, { org_id: orgId });
+    } catch {
+      // Caching is an optimization; a read-only or contended keystore costs a
+      // round trip next time and must never fail the scaffold.
+    }
+    return orgId;
   } catch {
     return null;
   }

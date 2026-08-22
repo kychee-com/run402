@@ -1931,10 +1931,10 @@ Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_d
 
 ```
 init({ repo_dir, project_id, ... }): Promise<GitvaultCreationResult>    // allocate + genesis; prints the one-shot recovery receipt
-push({ message?, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>
+push({ snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>
 status(opts?): Promise<GitvaultStatus>
 compact(opts?): Promise<GitvaultCompactResult>
-prune(opts?): Promise<GitvaultPruneResult>                              // DRY RUN in V0 — submitted is always false
+prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
 verify(opts?): Promise<GitvaultVerifiedState>
 deploy(opts): Promise<GitvaultDeployResult>                             // the push-gated deploy
 restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives
@@ -1952,7 +1952,7 @@ const vault = await r.gitvault.forProject("prj_123");   // cold restart: no loca
 const page  = await r.gitvault.heads(vault.repo_id, { after_generation: "0000000000000001", limit: "100" });
 
 // Write side — Node only (keystore + git working tree).
-const pushed = await r.gitvault.push({ project_id: "prj_123", message: "wip: refactor the parser" });
+const pushed = await r.gitvault.push({ project_id: "prj_123", snapshot: { message: "wip: refactor the parser" } });
 const state  = await r.gitvault.verify({ project_id: "prj_123" });
 ```
 

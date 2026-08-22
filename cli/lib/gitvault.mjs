@@ -16,9 +16,10 @@
  *
  * Run these from inside the git working tree: `repo_dir` is `process.cwd()`.
  */
+import { readFileSync } from "node:fs";
 import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
-import { reportSdkError } from "./sdk-errors.mjs";
+import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
   normalizeArgv,
   hasHelp,
@@ -39,6 +40,7 @@ Usage:
   run402 gitvault push    [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint]
   run402 gitvault compact [--project <id>] [--repo <repo_id>]
   run402 gitvault prune   [--project <id>] [--repo <repo_id>]
+                          [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
   run402 gitvault verify  [--project <id>] [--repo <repo_id>] [--budget <n>]
 
 Subcommands:
@@ -54,8 +56,8 @@ Subcommands:
   compact   Publish a checkpoint covering the canonical refs, every root
             unexpired at the cutoff, and the HEAD target, under a maintenance
             lease so a concurrent cycle cannot race it.
-  prune     Report which retention roots have passed their retention window.
-            DRY RUN in V0 — see below.
+  prune     Plan a prune, and — with both verifier receipts — submit it.
+            Two phases, because the protocol is two-phase; see below.
   verify    Verify the head chain from the authenticated pin up to the newest
             listed generation. Fails closed on a regression, a gap, or a
             transition descriptor this client cannot validate.
@@ -69,14 +71,34 @@ Options:
   --budget <n>      verify: heads to verify in this call. The verified prefix is
                     persisted, so a budget-exceeded run resumes where it stopped
                     instead of restarting.
+  --submit          prune: submit the planned intent. Requires --intent-core and
+                    --verifier-receipt.
+  --intent-core <path>
+                    prune: the plan's \`intent_core\`, saved verbatim from a prior
+                    planning run. A rebuilt core carries a different nonce, so
+                    the r402s-verify receipt would no longer bind to it.
+  --verifier-receipt <path>
+                    prune: r402s-verify's \`verifier_receipt\` over that core.
+  --wait            prune: poll the submitted intent until the control-plane-
+                    signed completion appears, instead of returning immediately.
   --json            No-op: stdout is already JSON.
 
-prune is a DRY RUN in V0:
-  The prune intent/completion wire — the two verifier receipts and the server's
-  eligibility confirmation — has no shipped route, so nothing is submitted and
-  no bytes are deleted. \`submitted\` is always false. There is deliberately no
-  purge verb in V0 at all. Retention is an operational promise of the platform,
-  not a cryptographic guarantee against it.
+prune is TWO PHASES, because the protocol is:
+  1. \`run402 gitvault prune\` plans. It walks the verified chain, computes the GC
+     root set, subtracts it, and prints a SIGNED \`intent_core\` plus its
+     \`intent_core_sha256\`. Nothing is submitted and nothing is deleted.
+  2. Run \`r402s-verify\` against that core, then re-run with
+     \`--submit --intent-core <core.json> --verifier-receipt <receipt.json>\`.
+     The intent carries TWO receipts over the same core, one per implementation:
+     this CLI produces the \`run402-cli\` half by restoring the latest checkpoint
+     and recomputing its commitments, and \`r402s-verify\` produces the other.
+     A second receipt from this lineage would prove nothing, so it is never
+     synthesized here.
+  Only the control-plane-signed completion says what was deleted, and only its
+  \`deleted\` result means the bytes are gone — \`present_after_attempt\` is a
+  FAILED deletion, never counted as a success. There is deliberately no purge
+  verb in V0 at all. Retention is an operational promise of the platform, not a
+  cryptographic guarantee against it.
 
 Expiry is permissive, by design:
   A retention root whose \`effective_admitted_at\` this client cannot resolve is
@@ -165,9 +187,9 @@ async function push(args) {
     // a human watching a slow push sees what is being pushed.
     onCommitLine: (line) => console.error(line),
   };
-  // The message rides on `snapshot`, which is what `captureSnapshot` actually
-  // reads. (`push({ message })` is declared on the SDK option type but is not
-  // forwarded to the capture — passing it there would silently do nothing.)
+  // The message rides on `snapshot`, which is what `captureSnapshot` reads —
+  // and, since 5.12b removed the dead top-level `push({ message })` field, is
+  // the ONE place it can ride.
   if (message != null) opts.snapshot = { message };
   if (a.includes("--checkpoint")) opts.checkpoint = true;
   try {
@@ -206,21 +228,88 @@ async function compact(args) {
   }
 }
 
+/** Read a protocol object a prior planning run (or r402s-verify) wrote to disk. */
+function readJsonFile(flag, path) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (err) {
+    fail({
+      code: "BAD_USAGE",
+      message: `${flag} ${path} could not be read: ${err?.message ?? String(err)}`,
+      hint: "Point it at the file a prior `run402 gitvault prune` (or r402s-verify) wrote.",
+    });
+  }
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    fail({
+      code: "BAD_USAGE",
+      message: `${flag} ${path} is not valid JSON: ${err?.message ?? String(err)}`,
+      hint: "Pass the file verbatim; do not reformat or re-serialize it.",
+    });
+  }
+}
+
 async function prune(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
-  requirePositionalCount(a, COMMON_VALUE_FLAGS, {
+  const valueFlags = [...COMMON_VALUE_FLAGS, "--intent-core", "--verifier-receipt"];
+  assertKnownFlags(a, [...valueFlags, "--submit", "--wait", "--help", "-h"], valueFlags);
+  requirePositionalCount(a, valueFlags, {
     min: 0, max: 0, command: "run402 gitvault prune", missing: "",
   });
+  const submitting = a.includes("--submit");
+  const corePath = flagValue(a, "--intent-core");
+  const receiptPath = flagValue(a, "--verifier-receipt");
+  // Refuse the half-specified submit here rather than planning and silently
+  // discarding the flags — an agent that typed --submit meant to submit.
+  if (submitting && (corePath == null || receiptPath == null)) {
+    fail({
+      code: "BAD_USAGE",
+      message: "run402 gitvault prune --submit needs both --intent-core and --verifier-receipt.",
+      hint: "Plan first (`run402 gitvault prune`), save its `intent_core`, run r402s-verify against it, then submit both.",
+    });
+  }
+  if (!submitting && (corePath != null || receiptPath != null)) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--intent-core / --verifier-receipt only apply with --submit.",
+      hint: "Add --submit, or drop the flags to plan.",
+    });
+  }
+  const opts = vaultTarget(a);
+  if (submitting) {
+    opts.submit = {
+      core: readJsonFile("--intent-core", corePath),
+      verifier_receipt: readJsonFile("--verifier-receipt", receiptPath),
+    };
+    if (a.includes("--wait")) opts.submit.wait = {};
+  }
   try {
-    const result = await getSdk().gitvault.prune(vaultTarget(a));
+    const result = await getSdk().gitvault.prune(opts);
     console.log(JSON.stringify(result, null, 2));
-    // Never imply a deletion. The header states the mode first; the SDK's own
-    // note is then reproduced verbatim rather than summarized.
-    console.error(
-      `DRY RUN — nothing was deleted. ${result.eligible_count} root(s) would be eligible, ` +
-      `${result.retained_count} retained.`,
-    );
+    // Never imply a deletion. State what actually happened, then reproduce the
+    // SDK's own note verbatim rather than summarizing it.
+    if (!result.submitted) {
+      console.error(
+        result.blocked_reason
+          ? `planned — nothing to submit: ${result.blocked_reason}`
+          : `planned — nothing submitted. ${result.object_candidates.length} object(s) proposed for deletion` +
+            `${result.deferred_object_count > 0 ? ` (${result.deferred_object_count} more deferred to a later intent)` : ""}` +
+            `; ${result.eligible_count} retention root(s) past their window, ${result.retained_count} retained.`,
+      );
+      if (result.intent_core_sha256) {
+        console.error(`intent_core_sha256: ${result.intent_core_sha256} — run r402s-verify against this core, then re-run with --submit.`);
+      }
+    } else if (result.confirmation?.outcome) {
+      console.error(
+        `submitted — the signed completion reports ${result.confirmation.deleted.length} deleted, ` +
+        `${result.confirmation.present.length} still present` +
+        `${result.confirmation.unadjudicated.length > 0 ? `, ${result.confirmation.unadjudicated.length} unadjudicated` : ""}.`,
+      );
+    } else {
+      console.error("submitted — no completion yet. Nothing is deleted until the control-plane-signed completion says so; re-run with --wait or poll the intent.");
+    }
     console.error(result.note);
   } catch (err) {
     reportSdkError(err);
