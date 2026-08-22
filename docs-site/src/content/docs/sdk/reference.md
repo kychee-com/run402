@@ -1751,12 +1751,39 @@ Subdomain auto-reassignment: claim once. Every subsequent deploy to the same pro
 
 ### `r.domains`
 
+The ProjectDomain lifecycle — the ONE surface for custom domains (web + email). `add`/`status`/`remove` were removed and now throw locally; use the methods below.
+
 ```
-add(projectId, domain, subdomainName): Promise<DomainAddResult> // returns DNS records
-list(projectId): Promise<DomainList>
-status(projectId, domain): Promise<DomainStatus> // poll until "active"
-remove(projectId, domain): Promise<void>
+ensure(projectId, domain, { desired }): Promise<ProjectDomain>   // connect / update desired state
+get(projectId, domain): Promise<ProjectDomain>
+list(projectId): Promise<{ domains: ProjectDomain[] }>
+check(projectId, domain): Promise<ProjectDomain>                 // refresh observations
+apply(projectId, domain): Promise<ProjectDomain>                 // apply records Run402 has authority over
+repair(projectId, domain): Promise<ProjectDomain>
+wait(projectId, domain, { until?, timeoutMs?, intervalMs? }): Promise<ProjectDomain>
+testReceive(projectId, domain, to): Promise<ProjectDomainTestReceiveResult>
+activate(projectId, domain): Promise<ProjectDomain>
+disconnect(projectId, domain): Promise<{ status, domain }>
 ```
+
+`desired` carries `web`, `email`, and an optional `authority`:
+
+```ts
+// Root domain — Run402 hosts the DNS zone; the owner makes ONE nameserver change.
+const d = await r.domains.ensure(projectId, "example.com", {
+  desired: { authority: "hosted_dns_zone", web: { enabled: true } },
+});
+// hosted_zone is present only for a hosted-zone domain, hence the ?.
+const nameservers = d.hosted_zone?.ns_assigned ?? [];   // hand these two to the domain owner
+await r.domains.wait(projectId, "example.com", { until: "active" });
+
+// Subdomain / you keep your DNS host — add the records the response lists.
+await r.domains.ensure(projectId, "app.example.com", { desired: { web: { enabled: true } } });
+```
+
+`authority: "hosted_dns_zone"` is the only workable path for a ROOT domain at most registrars (a root CNAME is illegal without flattening/ALIAS support) and collapses setup to one registrar step: Run402 applies every in-zone record, verifies ownership, and issues TLS once delegation is observed. Existing MX/TXT are imported into the hosted zone before the nameserver change is recommended, so mail keeps working. `hosted_zone` reports `{ dns_hosting, status, ns_assigned, imported_records }`; disconnecting tears the zone down (DNS stops resolving until nameservers are re-pointed).
+
+Every response carries `next_actions[]` (ordered; `[0]` is the recommended step). The singular `next_action` / `alternate_actions` are deprecated aliases.
 
 ### `r.events`
 
@@ -1879,6 +1906,69 @@ testAndWait(routeId, { pollMs?, timeoutMs?, onPoll? })
 ```
 
 Only three reviewed event types are routable (`deploy_activated`, `error_fingerprints_observed`, `platform_incident`); the classes `security` / `billing_critical` / `destructive_lifecycle` / `verification` / `recovery` may never be routed. Filters: omitted/`null` = everything registered; an explicit `[]` is a 422, never a wildcard. Routes deliver NEW events only (`start_after_event_id` floor); delivery is at-least-once with byte-identical republish, backing off 1m/5m/30m/2h/12h to 8 attempts or 48h, then `dead_letter` — visible in `deliveries()`. Ten consecutive hard failures auto-pause the route (`pause_reason: "delivery_failures"`) and fire the mandatory `buzz_route_auto_paused` operator notification. No response ever contains the signing secret — `notification_pubkey` + `signing_generation` are the only credential material on the wire. Every mutation carries an `Idempotency-Key` (auto-generated when omitted) and requires fresh `buzz.event_route` step-up server-side (a SIWX wallet is inherently fresh).
+
+### `r.gitvault`
+
+The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 gitvault …`, `git-remote-run402`, and the MCP tools are adapters over this namespace: argument parsing, TTY output, exit codes, and local file I/O only. Anything the CLI can do is reachable programmatically with identical semantics.
+
+**What Run402 claims about it.** These are the entire approved claims vocabulary:
+
+1. **Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.** Cryptographic, against Run402 itself: source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys.
+2. **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, not a cryptographic one.
+3. **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
+
+**Isomorphic / Node split.** Vault reads need nothing but the HTTP client and run anywhere. The verbs that touch a git working tree or the on-disk keystore are Node-only and are reached through DYNAMIC imports, so importing `@run402/sdk` in a browser or worker never pulls `node:fs` into the graph. Calling a Node-only verb outside Node throws a `LocalError` with code `GITVAULT_NODE_ONLY` rather than a module-resolution crash.
+
+Read side (isomorphic — `@run402/sdk` or `@run402/sdk/node`):
+
+```
+get(repoId): Promise<GitvaultVaultRecord>                          // the vault record: policy, allocation generation, storage + maintenance state
+forProject(projectId): Promise<GitvaultVaultRecord>                 // cold-restart lookup — resolve repo_id with no local state
+heads(repoId, { after_generation, limit, cursor? }): Promise<GitvaultHeadsListingPage>
+allHeads(repoId, { after_generation, limit? }): Promise<{ heads, pages, total }>
+setPolicy(repoId, { gitvault_policy, reason? }): Promise<{ gitvault_policy, gitvault_policy_version, changed, warnings }>
+completeOverride(repoId, { operation_id, capture_receipt }): Promise<{ operation_id, advisory_cleared, generation, head_sha256 }>
+acquireMaintenanceLease(request): Promise<GitvaultMaintenanceLease>
+```
+
+Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_dir?, repo_id?, project_id? }`):
+
+```
+init({ repo_dir, project_id, ... }): Promise<GitvaultCreationResult>    // allocate + genesis; prints the one-shot recovery receipt
+push({ message?, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>
+status(opts?): Promise<GitvaultStatus>
+compact(opts?): Promise<GitvaultCompactResult>
+prune(opts?): Promise<GitvaultPruneResult>                              // DRY RUN in V0 — submitted is always false
+verify(opts?): Promise<GitvaultVerifiedState>
+deploy(opts): Promise<GitvaultDeployResult>                             // the push-gated deploy
+restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives
+scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<{ name, url, created_repository, already_present, existing_url }>
+open(opts?): Promise<GitvaultHandle>                                    // the raw protocol object, for ref transactions or repair
+drainOverrides(opts?): Promise<GitvaultOverrideDrainReport>
+```
+
+```ts
+import { run402 } from "@run402/sdk/node";
+const r = run402();
+
+// Read side — runs anywhere, including a browser or a worker.
+const vault = await r.gitvault.forProject("prj_123");   // cold restart: no local state needed
+const page  = await r.gitvault.heads(vault.repo_id, { after_generation: "0000000000000001", limit: "100" });
+
+// Write side — Node only (keystore + git working tree).
+const pushed = await r.gitvault.push({ project_id: "prj_123", message: "wip: refactor the parser" });
+const state  = await r.gitvault.verify({ project_id: "prj_123" });
+```
+
+`heads` paging (D186): `after_generation` is the REQUIRED verification anchor — a semantic input, never a paging knob — and must stay CONSTANT across a page sequence. `limit` is required. `cursor` is omitted on the first request and is then the prior page's `next_cursor` echoed UNCHANGED. `allHeads` is the convenience wrapper that walks the sequence for you.
+
+**Nothing here is memoised.** Two of these responses are secret-bearing — the maintenance lease's `holder_token` (returned exactly once) and anything derived from the keystore — and a secret-bearing response is never cached, never persisted into an agent-surface result store, and never logged.
+
+`gitvaultRemoteUrl(orgId, projectId)` and `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote URL form that `git-remote-run402` serves.
+
+**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up `~/.run402/source`. The recovery receipt is an integrity anchor, not a decryption key.
+
+`r402s-verify` is the deliberate exception to "all protocol logic lives in the SDK": an independent second lineage that must NOT share implementation code with this namespace, because differential verification is its entire purpose.
 
 ### `r.errors`
 

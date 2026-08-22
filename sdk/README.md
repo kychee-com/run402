@@ -335,6 +335,7 @@ The `CredentialsProvider` interface has two required methods (`getAuth`, `getPro
 | `grants` | `create`, `revoke` — per-project capability grants (e.g. `"deploy"`, `"functions:write"`) for agent/CI principals; owner-gated, also reachable project-scoped as `r.project(id).grants` |
 | `events` | `list`, `listForOrg` — the cursored project events feed ("what happened since I last looked"): deploy activations, suspensions, transfers, lifecycle cliffs, each with platform-suggested `next_actions`, plus app-emitted business facts (`source: "app"`) alongside the platform's own (`source: "platform"`) — filter with `{ source?, eventType? }`. Opaque store-and-echo cursor; `reset: true` + `earliest_cursor` instead of errors on expiry. Also reachable project-scoped as `r.project(id).events` |
 | `rooms` | `registerPresence`, `listPresences`, `getPresence`, `sendMessage`, `listMessages`, `getMessage`, `ackMessage`, `createClaim`, `listClaims`, `releaseClaim`, plus `scoped(orgId, roomKey)` (sync) and `forProject(projectId)` (async — resolves the project's org; the default room's key IS the project id) returning a room-bound `ScopedRoom`. Org-scoped agent coordination rooms: per-session presence (~1h silence expiry; `requestedName` honored-or-suffixed, reported via `requested_name` + `renamed`), room-visible ≤32 KiB markdown messages (`to`/`cc` route attention, not access control; `idempotencyKey` replay returns the ORIGINAL + `deduplicated: true`) with opaque `mcr_…` cursors (`reset: true` + `earliest_cursor` on expiry, never an error), and ADVISORY claims — `createClaim` always succeeds with a complete `conflicts[]`; nothing is ever blocked by a claim |
+| `gitvault` | The host-blind encrypted Git remote (`r402s/v0`). **Isomorphic reads:** `get`, `forProject` (cold-restart lookup — resolves `repo_id` with no local state), `heads`, `allHeads`, `setPolicy`, `completeOverride`, `acquireMaintenanceLease`. **Node-only writes** (keystore + git working tree, reached through dynamic imports so a browser build never pulls `node:fs`): `init`, `push`, `status`, `compact`, `prune` (DRY RUN in V0), `verify`, `deploy`, `restore`, `scaffoldRemote`, `open`, `drainOverrides`. All protocol behaviour lives here once; `run402 gitvault …`, `git-remote-run402`, and the MCP tools are adapters. Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary. |
 | `errors` | `list`, `get`, `watch` — the release-error-rollup query surface. **Verdict-first**: each page leads with a gateway-computed promote-vs-revert verdict (`new_fingerprints` / `recurring_fingerprints` / `invocations_in_window`, baselined against the previous ACTIVE release), then grouped, deploy-stable error fingerprints with `fetch_logs` drill-downs. `watch({ newIn })` is the promote-gate poll loop — run it right after apply/promote; `clean === (verdict.new_fingerprints === 0)`, the gateway's count (no client-side identity math). Opaque keyset cursor. Also reachable project-scoped as `r.project(id).errors` |
 
 CLI-style aliases are available for agent ergonomics: `r.image` aliases `r.ai`,
@@ -760,6 +761,43 @@ await r.branches.delete(projectId, branch.branch_project_id);
 ```
 
 Scoped handles expose the same surface as `p.snapshots.*` and `p.branches.*`.
+
+### gitvault — the encrypted Git remote, and its isomorphic/Node split
+
+`r.gitvault` is the host-blind encrypted Git remote (`r402s/v0`). Every piece of protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, repair — lives here once; `run402 gitvault …`, `git-remote-run402`, and the MCP tools are adapters over this namespace with identical semantics.
+
+**Three claims, three different strengths.** These are the entire approved claims vocabulary:
+
+- **Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.** Cryptographic, against Run402 itself: source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys. The deploy lane is separate and disclosed — the platform custodially holds the plaintext artifacts of every deploy.
+- **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, not a cryptographic one.
+- **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
+
+**The split.** Vault reads need only the HTTP client and run anywhere — a browser, a worker, an isolate. The verbs that touch a git working tree or the on-disk keystore are **Node-only** and are reached through dynamic imports, so `import { run402 } from "@run402/sdk"` in a browser never pulls `node:fs` into the graph. Calling a Node-only verb outside Node throws a `LocalError` with code `GITVAULT_NODE_ONLY` rather than a module-resolution crash.
+
+```ts
+// Isomorphic — @run402/sdk or @run402/sdk/node.
+const vault = await r.gitvault.forProject(projectId);  // cold restart: resolves repo_id with no local state
+const page = await r.gitvault.heads(vault.repo_id, { after_generation: "0000000000000001", limit: "100" });
+await r.gitvault.setPolicy(vault.repo_id, { gitvault_policy: "required" });
+```
+
+```ts
+// Node only — @run402/sdk/node (keystore + git working tree).
+import { run402 } from "@run402/sdk/node";
+const r = run402();
+
+const pushed = await r.gitvault.push({ project_id: projectId, message: "wip: refactor the parser" });
+const state = await r.gitvault.verify({ project_id: projectId });
+const dry = await r.gitvault.prune({ project_id: projectId });  // DRY RUN in V0 — dry.submitted is always false
+```
+
+`heads` paging (D186): `after_generation` is the REQUIRED verification anchor — a semantic input, never a paging knob — and stays CONSTANT across a page sequence; `limit` is required; `cursor` is omitted on the first request and thereafter is the prior page's `next_cursor` echoed unchanged. `allHeads` walks that sequence for you.
+
+**Nothing here is memoised.** Two responses are secret-bearing — the maintenance lease's `holder_token` (returned exactly once) and anything derived from the keystore — so they are never cached, never persisted into an agent-surface result store, and never logged.
+
+`gitvaultRemoteUrl(orgId, projectId)` / `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote form that `git-remote-run402` serves; `r.gitvault.scaffoldRemote(...)` is what `run402 init` calls to add it.
+
+**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship** — `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up `~/.run402/source`. The recovery receipt `init` prints once is an integrity anchor, not a decryption key: it proves the vault you are served is the one you created, and it decrypts nothing.
 
 ### GitHub Actions OIDC — CI credentials drive deploy
 

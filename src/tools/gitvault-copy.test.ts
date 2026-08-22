@@ -10,8 +10,12 @@
  * one.
  *
  * This test pins both directions against the shipped surface: the tool
- * descriptions in src/index.ts (what an agent reads before it calls anything)
- * and the tool module itself.
+ * descriptions in src/index.ts (what an agent reads before it calls anything),
+ * the tool module itself, and EVERY public doc surface that mentions the vault
+ * (the CLI/SDK docs-site sources and their generated flat files, README.md,
+ * SKILL.md, sdk/README.md, cli/lib/gitvault.mjs). Docs are where this copy rots
+ * fastest — nobody re-reads a reference section when the protocol changes, and a
+ * broadened sentence reads like better writing.
  *
  * Run: node --test --import tsx src/tools/gitvault-copy.test.ts
  */
@@ -27,6 +31,25 @@ const INDEX_SRC = read("../index.ts");
 const GITVAULT_SRC = read("./gitvault.ts");
 const EXPAND_SRC = read("./expand-result.ts");
 const STORE_SRC = read("../result-store.ts");
+
+/**
+ * Every public doc surface that talks about the vault. The generated flat files
+ * are included alongside their docs-site sources on purpose: the generator is
+ * the only thing keeping them equal, and this gate should fail if that ever
+ * stops being true.
+ */
+const DOC_SURFACES = {
+  "README.md": read("../../README.md"),
+  "SKILL.md": read("../../SKILL.md"),
+  "sdk/README.md": read("../../sdk/README.md"),
+  "cli/llms-cli.txt": read("../../cli/llms-cli.txt"),
+  "sdk/llms-sdk.txt": read("../../sdk/llms-sdk.txt"),
+  "docs-site cli/reference.md": read("../../docs-site/src/content/docs/cli/reference.md"),
+  "docs-site sdk/reference.md": read("../../docs-site/src/content/docs/sdk/reference.md"),
+  "cli/lib/gitvault.mjs": read("../../cli/lib/gitvault.mjs"),
+  "openclaw/SKILL.md": read("../../openclaw/SKILL.md"),
+  "documentation.md": read("../../documentation.md"),
+} as const;
 
 const GITVAULT_TOOLS = ["get_gitvault_status", "list_gitvault_heads", "verify_gitvault"] as const;
 
@@ -92,6 +115,20 @@ const CORPUS = [GITVAULT_SRC, EXPAND_SRC, STORE_SRC, toolDescription("expand_res
   "\n",
 );
 
+/**
+ * Strip markdown emphasis + code markers and collapse whitespace, so markup can
+ * never split a rendered claim. `**Run402 cannot decrypt …**` and the plain
+ * sentence must be the same string to this gate — otherwise bolding half a
+ * sentence silently disables the check on it.
+ */
+function normalize(text: string): string {
+  return text.replace(/[*`]/g, "").replace(/\s+/g, " ");
+}
+
+const NORMALIZED_DOCS = Object.fromEntries(
+  Object.entries(DOC_SURFACES).map(([name, text]) => [name, normalize(text)]),
+) as Record<keyof typeof DOC_SURFACES, string>;
+
 describe("gitvault copy — banned phrases", () => {
   for (const phrase of BANNED_PHRASES) {
     it(`never says "${phrase}"`, () => {
@@ -101,7 +138,99 @@ describe("gitvault copy — banned phrases", () => {
         `"${phrase}" is on the protocol's banned-copy list because it overclaims. Use the approved sentence instead — do not paraphrase it.`,
       );
     });
+
+    for (const [name, text] of Object.entries(NORMALIZED_DOCS)) {
+      it(`${name} never says "${phrase}"`, () => {
+        assert.equal(
+          text.toLowerCase().includes(phrase.toLowerCase()),
+          false,
+          `${name} contains "${phrase}", which is on the protocol's banned-copy list because it overclaims. Use the approved sentence — do not paraphrase it.`,
+        );
+      });
+    }
   }
+});
+
+/**
+ * The banned CLASS, not just the banned list.
+ *
+ * The durability overclaim's natural English form — "so an agent that lost its
+ * laptop can recover the code that produced the running release" — contains no
+ * banned phrase, and it has already slipped past a literal scan more than once.
+ * So: any file that talks about the vault AND pitches surviving the loss of a
+ * machine must carry the keystore qualifier in the SAME file.
+ */
+describe("gitvault copy — machine-loss claims carry the keystore qualifier", () => {
+  const MACHINE_LOSS = /\b(lost|lose|losing|loss of)\b[^.]{0,80}\b(machine|laptop|keystore)\b|\b(machine|whole-machine|laptop)[- ]loss\b/i;
+
+  for (const [name, text] of Object.entries(NORMALIZED_DOCS)) {
+    it(`${name}: mentions machine loss only with the keystore-qualified sentence`, () => {
+      if (!text.toLowerCase().includes("gitvault")) return;
+      if (!MACHINE_LOSS.test(text)) return;
+      assert.ok(
+        text.includes(normalize(KEYSTORE_QUALIFIED_DURABILITY)),
+        `${name} pitches surviving the loss of a machine but does not carry the keystore-qualified durability sentence. ` +
+          `Whole-machine or whole-keystore loss is TERMINAL for vault history in V0-A; durability copy without the qualifier is banned.`,
+      );
+    });
+  }
+});
+
+/**
+ * Presence, per surface. A doc that names the vault but states none of its
+ * claims is the other failure mode: a reader who only hears "encrypted Git
+ * remote" has been told the marketing half and none of the scope.
+ */
+describe("gitvault copy — the doc surfaces state the claims", () => {
+  const REQUIRED: Array<keyof typeof DOC_SURFACES> = [
+    "README.md",
+    "SKILL.md",
+    "sdk/README.md",
+    "cli/llms-cli.txt",
+    "sdk/llms-sdk.txt",
+    "openclaw/SKILL.md",
+  ];
+
+  for (const name of REQUIRED) {
+    it(`${name} states the confidentiality claim verbatim`, () => {
+      assert.ok(
+        NORMALIZED_DOCS[name].includes(normalize(CLAIM_CONFIDENTIALITY)),
+        "the confidentiality claim must appear verbatim, including the deployment-artifact custody sentence that scopes it",
+      );
+    });
+
+    it(`${name} states the terminal-loss sentence verbatim`, () => {
+      assert.ok(
+        NORMALIZED_DOCS[name].includes(normalize(TERMINAL_LOSS)),
+        "the terminal-loss sentence is a reviewed product commitment and is stated verbatim, not summarised",
+      );
+    });
+
+    it(`${name} carries the scoped confidentiality sentence`, () => {
+      assert.ok(
+        NORMALIZED_DOCS[name].includes(normalize(SCOPED_CONFIDENTIALITY)),
+        "the scoped sentence is the ONLY permitted form of the ciphertext claim",
+      );
+    });
+  }
+
+  it("the CLI reference states the activation and retention claims", () => {
+    assert.ok(NORMALIZED_DOCS["cli/llms-cli.txt"].includes(normalize(CLAIM_ACTIVATION)));
+    assert.ok(NORMALIZED_DOCS["cli/llms-cli.txt"].includes(normalize(CLAIM_RETENTION)));
+  });
+
+  it("the SDK reference states the activation and retention claims", () => {
+    assert.ok(NORMALIZED_DOCS["sdk/llms-sdk.txt"].includes(normalize(CLAIM_ACTIVATION)));
+    assert.ok(NORMALIZED_DOCS["sdk/llms-sdk.txt"].includes(normalize(CLAIM_RETENTION)));
+  });
+
+  it("the generated flat files match their docs-site sources on the claims", () => {
+    // The generator is the only thing keeping these equal; if it stops running,
+    // the agent-facing flat file and the human-facing page can disagree about
+    // what the platform promises.
+    assert.ok(NORMALIZED_DOCS["docs-site cli/reference.md"].includes(normalize(CLAIM_CONFIDENTIALITY)));
+    assert.ok(NORMALIZED_DOCS["docs-site sdk/reference.md"].includes(normalize(CLAIM_CONFIDENTIALITY)));
+  });
 });
 
 describe("gitvault copy — the approved claims, byte-for-byte", () => {

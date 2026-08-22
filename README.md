@@ -350,6 +350,52 @@ curl -X POST https://api.run402.com/admin/v1/rest/audit \
   -d '{"event":"seed","ts":"2026-04-30"}'
 ```
 
+### gitvault: your repository history, encrypted before it leaves the machine
+
+`gitvault` is a Git remote whose contents are encrypted on your own machine and stored as a chain of signed, admitted heads. It exists so your repository history outlives the machine it was written on — without that outliving requiring you to hand Run402 the plaintext. The wire protocol is `r402s/v0`.
+
+Three claims, three different strengths. These are the entire approved claims vocabulary for this feature:
+
+1. **Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.** Cryptographic, against Run402 itself: in the vault lane, source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys. The deploy lane is separate and disclosed — the platform custodially holds the plaintext artifacts of every deploy. It can read what you deployed; it cannot read what you did not.
+2. **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, enforced and auditable — not cryptographic against the platform that enforces it.
+3. **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
+
+```bash
+# 1. Provision. Inside a repository that already exists, this adds a `run402`
+#    remote (run402::<org_id>/<project_id>). Not a repository yet?
+#    `run402 init --git-remote` creates one first.
+run402 init
+
+# 2. Push — capture the working tree, encrypt it, publish a signed head.
+run402 gitvault push --message "wip: refactor the parser"
+git push run402 main            # ...or push with git itself, via git-remote-run402
+
+# 3. Status, then verify the head chain from your authenticated pin.
+run402 gitvault status
+run402 gitvault verify --budget 500
+```
+
+Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. Maintenance is `run402 gitvault compact` (checkpoint under a lease) and `run402 gitvault prune` (**dry run in V0**: nothing is submitted and no bytes are deleted).
+
+From the SDK, with identical semantics — vault reads run anywhere, and the verbs that touch a git working tree or the on-disk keystore are Node-only:
+
+```ts
+import { run402 } from "@run402/sdk/node";
+const r = run402();
+
+const vault = await r.gitvault.forProject(projectId);              // cold restart: no local state needed
+const pushed = await r.gitvault.push({ project_id: projectId, message: "wip" });
+const state = await r.gitvault.verify({ project_id: projectId });
+```
+
+**A vault-only project is first-class.** `run402 init`, then `git push run402 …`, then compact / prune / verify, and never a deploy — a supported shape, not a degraded one. One consequence is worth stating plainly: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty and there is consequently no custodial restore path.
+
+**If you lose the keystore.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up `~/.run402/source`. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and it decrypts nothing. It is not a secret; the more copies the better.
+
+**Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — a separate language, separate authorship, and a separate primitive stack, deliberately sharing no implementation code with the SDK. That non-sharing is the point: a differential verifier that reuses the code it is checking verifies nothing. It lives on the `r402s-verify` branch of this repository with its own workflow, and builds with `cargo build --release`.
+
+**Cost.** There is no separate gitvault price — a vault's bytes count against the same organization-pooled storage budget your projects already share, charged once per unique object with a 64 KiB per-object accounting floor.
+
 ## SDK: `@run402/sdk`
 
 ```bash
@@ -746,6 +792,16 @@ Contact management (who gets paged) is CLI/SDK only by design — an agent raise
 | `list_buzz_route_deliveries` | Did it actually land? Keyset newest-first delivery history — dead letters included, the signed envelope never. `queued`/`retryable` are in flight (the publisher tick runs ~every 60s; retries back off to 8 attempts / 48h, then `dead_letter`); `nostr_event_id` appears on delivered rows. |
 
 Route mutations (configure / test / pause / resume / rotate / revoke) are CLI/SDK only by design — they need owner step-up, and configure/rotate hand off a Buzz-side authorization a human completes: `run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <id>`. No surface anywhere accepts or prints a signing secret. Buzz is never a deadman channel: mandatory operator notifications keep their human paths regardless of route state.
+
+### gitvault (read-only)
+
+| Tool | Description |
+|------|-------------|
+| `get_gitvault_status` | What this machine and the control plane each believe about a project's gitvault: the vault record, the activation policy, the local keystore (present? can it sign? does it hold the repo key?), the authenticated and materialized pins, pending unvaulted-override journals. Also the cold-restart entry point — pass `project_id` with no local state and it resolves the vault for you. Read-only: it signs nothing, publishes nothing, and moves no pin. |
+| `list_gitvault_heads` | One page of a vault's heads listing — the admitted generations above a fixed anchor, each with its stored-bytes hash. `after_generation` is the VERIFICATION ANCHOR, not a paging knob, and must stay identical across every page of one sequence; `cursor` is opaque (store and echo, never parse). Listing is not verifying. |
+| `verify_gitvault` | Verify the head chain from your authenticated pin up to the newest listed generation, then advance the pin to what was proved. Monotonic and non-destructive. Fails CLOSED, and the refusal is the answer: `GENERATION_REGRESSION` on a rollback, `CHAIN_BROKEN` on a gap, `UPGRADE_REQUIRED` on a transition this client cannot validate, `VERIFICATION_BUDGET_EXCEEDED` when the per-call budget runs out (a pause, not a failure — the verified prefix persists). |
+
+The vault's mutating verbs are deliberately CLI-only. `push` / `init` write an IMMUTABLE generation with no undo, and `init` mints the one-shot recovery receipt — an MCP transcript is the wrong place for the only copy of it to exist. `compact` holds a maintenance lease whose `holder_token` is returned exactly once, so a dropped session strands it. `prune` is destructive by contract and `deploy` can change what production serves. `setPolicy` needs owner membership plus step-up, which the MCP credential path does not carry. All of them are reachable as `run402 gitvault …`.
 
 ### Service status (no auth)
 
