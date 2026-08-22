@@ -231,10 +231,228 @@ export interface GitvaultTransitionEnvelope {
   payload_sha256: string;
 }
 
+/** `common.json#/$defs/receipt_checkpoint_manifest`. */
+export interface GitvaultCheckpointManifestReceipt {
+  object_id: string;
+  object_kind: "checkpoint_manifest";
+  ciphertext_sha256: string;
+  size_bytes: string;
+}
+
+/** `common.json#/$defs/receipt_checkpoint_pack`. */
+export interface GitvaultCheckpointPackReceipt {
+  object_id: string;
+  object_kind: "checkpoint_pack";
+  ciphertext_sha256: string;
+  size_bytes: string;
+}
+
+/** `common.json#/$defs/receipt_checkpoint_claim_set` — plaintext-structured kinds are receipted by `stored_bytes_sha256`. */
+export interface GitvaultCheckpointClaimSetReceipt {
+  object_id: string;
+  object_kind: "checkpoint_claim_set";
+  stored_bytes_sha256: string;
+  size_bytes: string;
+}
+
+/** `common.json#/$defs/receipt_retention_cutoff`. */
+export interface GitvaultRetentionCutoffReceipt {
+  object_id: string;
+  object_kind: "retention_cutoff";
+  stored_bytes_sha256: string;
+  size_bytes: string;
+}
+
+/** `common.json#/$defs/checkpoint_block` — the head's checkpoint slot (§4.7). */
+export interface GitvaultCheckpointBlock {
+  claim_set: GitvaultCheckpointClaimSetReceipt;
+  /** == the carrying head's generation. */
+  covers_through_generation: string;
+  git_object_format: "sha1";
+  /** The cutoff-ticket binding; `null` in the no-removal form. */
+  cutoff: { ticket: GitvaultRetentionCutoffReceipt; cutoff_at: string } | null;
+}
+
+/** `common.json#/$defs/head_target` — a discriminated union, never a null (§4.4). */
+export type GitvaultHeadTarget =
+  | { kind: "symref"; ref: string }
+  | { kind: "detached"; oid: string };
+
+/** `ref_state` plaintext (schema `ref_state.json`) — encrypted at rest. */
+export interface GitvaultRefState {
+  format: GitvaultFormat;
+  object_kind: "ref_state";
+  suite: GitvaultSuite;
+  repo_id: string;
+  /** `refs_` + 32 hex. */
+  object_id: string;
+  generation: string;
+  /** Canonical refname → 40-hex oid; ≤ 10 000 entries. */
+  refs: Record<string, string>;
+  head_target: GitvaultHeadTarget;
+  signature: string;
+}
+
+/** One retention root: a dropped/force-displaced tip (§4.5), map-keyed `(ref, oid)`. */
+export interface GitvaultRetentionRoot {
+  ref: string;
+  oid: string;
+  dropped_at_generation: string;
+}
+
+/** `retention_roots` plaintext (schema `retention_roots.json`) — encrypted at rest. */
+export interface GitvaultRetentionRoots {
+  format: GitvaultFormat;
+  object_kind: "retention_roots";
+  suite: GitvaultSuite;
+  repo_id: string;
+  /** `rr_` + 32 hex. */
+  object_id: string;
+  generation: string;
+  cutoff: { cutoff_ticket_sha256: string; cutoff_at: string } | null;
+  /** Sorted by (dropped_at_generation, ref, oid); ≤ 50 000. */
+  roots: GitvaultRetentionRoot[];
+  signature: string;
+}
+
+/** One `checkpoint_manifest.packs[]` entry — BOTH representations (§4.1). */
+export interface GitvaultCheckpointManifestPack {
+  object_id: string;
+  plaintext_sha256: string;
+  plaintext_size_bytes: string;
+  ciphertext_sha256: string;
+  size_bytes: string;
+}
+
+/** `checkpoint_manifest` plaintext (schema `checkpoint_manifest.json`) — encrypted at rest. */
+export interface GitvaultCheckpointManifest {
+  format: GitvaultFormat;
+  object_kind: "checkpoint_manifest";
+  suite: GitvaultSuite;
+  repo_id: string;
+  /** `chk_` + 32 hex. */
+  object_id: string;
+  covers_through_generation: string;
+  git_object_format: "sha1";
+  packs: GitvaultCheckpointManifestPack[];
+  /** Σ packs[i].plaintext_size_bytes (the manifest itself excluded). */
+  total_plaintext_size_bytes: string;
+  ref_state_hmac: string;
+  retention_roots_hmac: string;
+  object_set_hmac: string;
+  signature: string;
+}
+
+/** `checkpoint_claim_set` (schema `checkpoint_claim_set.json`) — plaintext-structured, owner-signed, stored at `checkpoints/<ccs_id>.claims.json`. */
+export interface GitvaultCheckpointClaimSet {
+  format: GitvaultFormat;
+  object_kind: "checkpoint_claim_set";
+  suite: GitvaultSuite;
+  repo_id: string;
+  /** `ccs_` + 32 hex. */
+  object_id: string;
+  manifest_receipt: GitvaultCheckpointManifestReceipt;
+  ordered_pack_receipts: GitvaultCheckpointPackReceipt[];
+  /** manifest_receipt.size_bytes + Σ pack size_bytes (the claim set itself excluded). */
+  total_stored_size_bytes: string;
+  covers_through_generation: string;
+  writer_key_id: string;
+  signature: string;
+}
+
+/** `retention_cutoff` (schema `retention_cutoff.json`) — control-plane-signed clock attestation, stored at `retention/<rc_id>.ticket.json`. */
+export interface GitvaultRetentionCutoff {
+  format: GitvaultFormat;
+  object_kind: "retention_cutoff";
+  suite: GitvaultSuite;
+  repo_id: string;
+  /** `rc_` + 32 hex. */
+  object_id: string;
+  service_key_id: string;
+  base_head_sha256: string;
+  /** SERVER-AUTHORITATIVE. */
+  cutoff_at: string;
+  expires_at: string;
+  authorization_epoch: string;
+  signature: string;
+}
+
+/** `activation_token` (schema `activation_token.json`) — minted by token exchange, consumed at apply activation (§4.10). */
+export interface GitvaultActivationToken {
+  format: GitvaultFormat;
+  object_kind: "activation_token";
+  suite: GitvaultSuite;
+  repo_id: string;
+  /** `ct_` + 32 hex. */
+  object_id: string;
+  service_key_id: string;
+  operation_id: string;
+  generation: string;
+  head_sha256: string;
+  capture_id: string;
+  /** Non-null by construction — no token is mintable from a null plan digest. */
+  apply_plan_sha256: string;
+  snapshot_oid_hmac: string;
+  issued_at: string;
+  authorization_epoch: string;
+  signature: string;
+}
+
+/** One `ref_transaction.updates[]` entry (schema `ref_transaction.json`, §6.1). */
+export interface GitvaultRefUpdate {
+  ref: string;
+  /** `null` ONLY for creation. */
+  expected_old_oid: string | null;
+  /** `null` = delete (requires a non-null `expected_old_oid`). */
+  new_oid: string | null;
+  /** Force-with-lease: skips ancestry but STILL requires `expected_old_oid`. */
+  force: boolean;
+}
+
+/** `ref_transaction` (schema `ref_transaction.json`). */
+export interface GitvaultRefTransaction {
+  /** 1..1000 updates naming pairwise-distinct refs. */
+  updates: GitvaultRefUpdate[];
+}
+
+/** The query of `GET /gitvault/v1/vaults/:vault_id/heads` (schema `heads_listing_request.json`, D186). */
+export interface GitvaultHeadsListingRequest {
+  /** The REQUIRED verification anchor — constant across one page sequence. */
+  after_generation: string;
+  /** The prior page's `next_cursor`, echoed UNCHANGED; omitted on the first request. */
+  cursor?: string;
+  /** REQUIRED; 1..1000, as a string. */
+  limit: string;
+}
+
+/** One `heads_listing_page.heads[]` entry. */
+export interface GitvaultHeadsListingEntry {
+  generation: string;
+  stored_bytes_sha256: string;
+}
+
+/** The ONE frozen response of the heads listing (schema `heads_listing_page.json`). */
+export interface GitvaultHeadsListingPage {
+  format: GitvaultFormat;
+  repo_id: string;
+  after_generation: string;
+  heads: GitvaultHeadsListingEntry[];
+  has_more: boolean;
+  /** `has_more == false ⇒ null`; `has_more == true ⇒ a non-null opaque token`. */
+  next_cursor: string | null;
+  /** Exact or null, never a nearby number. */
+  total: string | null;
+}
+
+/** `override_completion_request` (schema `override_completion_request.json`) — `POST …/override-completions`. */
+export interface GitvaultOverrideCompletionRequest {
+  operation_id: string;
+  capture_receipt: GitvaultCaptureReceipt;
+}
+
 /**
- * `head` (schema `head.json`) — generations ≥ 1. The `checkpoint` block is
- * carried as an opaque record here (its full shape lands with task 5.4's
- * checkpoint_set work); every other member is typed.
+ * `head` (schema `head.json`) — generations ≥ 1. Every member is typed; the
+ * checkpoint block is the §4.7 claim-set binding.
  */
 export interface GitvaultHead {
   format: GitvaultFormat;
@@ -248,7 +466,7 @@ export interface GitvaultHead {
   wal_entries: GitvaultWalPackReceipt[];
   ref_state: GitvaultRefStateReceipt;
   retention_roots: GitvaultRetentionRootsReceipt;
-  checkpoint: Record<string, unknown> | null;
+  checkpoint: GitvaultCheckpointBlock | null;
   checkpoint_purpose: "ordinary_push" | "maintenance_cycle" | "repair" | null;
   capture_binding: GitvaultCaptureBinding | null;
   repair: GitvaultRepairDescriptor | null;

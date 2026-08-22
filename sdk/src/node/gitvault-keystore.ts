@@ -99,8 +99,12 @@ export interface GitvaultRepoFile {
   epoch: string;
   /** Trust pin: the admitted genesis stored-bytes hash. */
   genesis_sha256: string;
-  /** Dual pins — `null` until the first head is authenticated (5.4). */
+  /** `highest_authenticated` (§6.4): chain-verified; a listing below it is `GENERATION_REGRESSION`. `null` until the first head is authenticated. */
   head_pin: GitvaultHeadPin | null;
+  /** `highest_materialized` (§6.4): decrypted + applied — the ONLY push base. Absent/`null` ⇒ never materialized. */
+  materialized_pin?: GitvaultHeadPin | null;
+  /** The verified-prefix watermark of a budget-interrupted verification (§9.3 — resumable). Absent/`null` when none is pending. */
+  verified_prefix?: GitvaultHeadPin | null;
   /** The last ref transaction this principal published (5.4 fills it). */
   last_ref_transaction: Record<string, unknown> | null;
   /** How this file came to exist — creation, or a §5.1 restore from the principal's own envelope. */
@@ -425,7 +429,7 @@ export class GitvaultKeystore {
   }
 
   /** Update the dual pins / last ref transaction without touching key material. */
-  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "last_ref_transaction" | "epoch">>): GitvaultRepoFile {
+  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch">>): GitvaultRepoFile {
     return this.withRepoLock(repoId, () => {
       const existing = this.readRepo(repoId);
       if (!existing) fail("GITVAULT_REPO_STATE_MISSING", `no repo file for ${repoId}`, "updating gitvault repo file", { repo_id: repoId });
