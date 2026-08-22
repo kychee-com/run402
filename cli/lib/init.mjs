@@ -1,4 +1,4 @@
-import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase } from "./config.mjs";
+import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { setTierAction, deployAction } from "./next-actions.mjs";
@@ -37,12 +37,20 @@ Options:
   --switch-rail   Confirm switching the persisted payment rail. Re-running
                   init with the SAME rail as the existing allowance is always
                   idempotent and does not need this flag.
+  --git-remote    Also 'git init' the current directory when it is not a
+                  repository yet, so the gitvault remote can be added there.
+                  Opt-in on purpose: init is often run outside a project
+                  directory and must never create a repository somewhere you
+                  did not ask it to. Inside an EXISTING repository the remote
+                  is added without this flag (see below).
 
 Output:
   Stdout is a JSON summary { config_dir, wallet, rail, network, balances,
   tier, projects_saved, next_step }. Progress lines (Config / Allowance /
   Balance / Tier / Next) go to stderr so a human re-running interactively
   sees what's happening while a script piping stdout to jq stays clean.
+  With --git-remote the summary also carries { gitvault } (the scaffolded
+  remote) or { gitvault: null, gitvault_error } when it could not be added.
 
 Steps (idempotent when re-run with the same rail; pass --switch-rail to change rails):
   1. Creates config directory (~/.config/run402)
@@ -123,6 +131,17 @@ function parseVoucherFlag(args) {
   return { value: null, args };
 }
 
+/**
+ * Pull the boolean `--git-remote` out of argv before the rail/positional logic
+ * runs, so `run402 init --git-remote mpp` still selects the mpp rail (the same
+ * reason `--voucher` is stripped first).
+ */
+function parseGitRemoteFlag(args) {
+  const idx = args.indexOf("--git-remote");
+  if (idx === -1) return { value: false, args };
+  return { value: true, args: [...args.slice(0, idx), ...args.slice(idx + 1)] };
+}
+
 function sameOrigin(a, b) {
   try {
     return new URL(a).origin === new URL(b).origin;
@@ -154,6 +173,26 @@ function errorMessage(err) {
   return err?.message || String(err);
 }
 
+/**
+ * The owning org of the locally-active project, read from the named inventory.
+ *
+ * Best-effort by construction — the caller treats `null` as "do not scaffold".
+ * The local keystore does not cache `org_id`, so this read is the only place to
+ * learn it, and an EXACT id match is required: a near-miss must never make init
+ * add a remote pointing at somebody else's project.
+ */
+async function resolveOwningOrgId(projectId) {
+  try {
+    const listed = await getSdk().projects.list();
+    const rows = Array.isArray(listed?.projects) ? listed.projects : [];
+    const row = rows.find((p) => (p?.id ?? p?.project_id) === projectId);
+    const orgId = row?.org_id;
+    return typeof orgId === "string" && orgId.length > 0 ? orgId : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function run(args = []) {
   // Capability `astro-ssr-runtime` (v1.52): scaffold an Astro project.
   // Sub-routes when first positional is 'astro'. Handle BEFORE the
@@ -177,6 +216,10 @@ export async function run(args = []) {
   args = parsedVoucher.args;
   const voucherCode = parsedVoucher.value;
 
+  const parsedGitRemote = parseGitRemoteFlag(args);
+  args = parsedGitRemote.args;
+  const scaffoldGitRemote = parsedGitRemote.value;
+
   const parsedApiBase = parseApiBaseFlag(args);
   if (parsedApiBase.value) {
     if (parsedApiBase.args.some((arg) => typeof arg === "string" && !arg.startsWith("--"))) {
@@ -195,6 +238,16 @@ export async function run(args = []) {
         code: "BAD_USAGE",
         message: "run402 init --api-base cannot be combined with --voucher.",
         hint: "Configure the target first (`run402 init --api-base=…`), then redeem against Run402 Cloud with `run402 redeem <code>`.",
+      });
+    }
+    // Same reasoning as --voucher: this branch configures a target and returns
+    // without an active project, so a git scaffold has nothing to point at.
+    // Say so rather than accepting the flag and silently dropping it.
+    if (scaffoldGitRemote) {
+      fail({
+        code: "BAD_USAGE",
+        message: "run402 init --api-base cannot be combined with --git-remote.",
+        hint: "Configure the target first (`run402 init --api-base=…`), provision a project, then run `run402 init --git-remote` from the project directory.",
       });
     }
     const CONFIG_DIR = configDir();
@@ -478,6 +531,76 @@ export async function run(args = []) {
   // the server considers them active.
   summary.projects_saved = Object.keys(store.projects).length;
   line("Projects", `${summary.projects_saved} saved`);
+
+  // 5b. gitvault git remote (gitvault-client-surface, task 5.7).
+  //
+  // Purely LOCAL git. No vault is allocated and no key material is written
+  // here — the spec is explicit that neither exists until first capture, so the
+  // cold-start path gains no prompt and no new failure mode. Allocation happens
+  // on the first `run402 gitvault push` (or deploy).
+  //
+  // Adding the remote is the DEFAULT inside a repository that already exists,
+  // because it is pure addition: `origin` is never modified or claimed, no file
+  // is created, nothing is rewritten. CREATING a repository is NOT the default
+  // — `run402 init` is routinely run outside a project directory, and
+  // `git init`-ing whatever directory the user happened to be in would be a
+  // genuinely bad surprise. `--git-remote` opts into that one step.
+  //
+  // NON-FATAL in every branch: a missing git, a directory that is not a
+  // repository, an unreachable gateway, or a `run402` remote already pointing
+  // somewhere else must warn and let setup finish.
+  const activeProjectId = getActiveProjectId();
+  if (activeProjectId) {
+    summary.gitvault = null;
+    try {
+      // Dynamic import: the scaffold is the only thing here that needs the
+      // Node SDK's hardened git runner, and a top-level import would drag it
+      // into every init invocation (and every test that mocks ./sdk.mjs).
+      const { hardenedGit } = await import("#sdk/node");
+      let insideRepo = true;
+      try {
+        await hardenedGit(process.cwd(), ["rev-parse", "--git-dir"]);
+      } catch {
+        insideRepo = false;
+      }
+      if (!insideRepo && !scaffoldGitRemote) {
+        summary.gitvault_skipped = "not a git repository — re-run with --git-remote to create one and add the remote";
+        line("Gitvault", "skipped — not a git repository (--git-remote creates one)");
+      } else {
+        const orgId = await resolveOwningOrgId(activeProjectId);
+        if (!orgId) {
+          summary.gitvault_skipped = `could not resolve the owning org for ${activeProjectId} — the run402 remote was not added`;
+          line("Gitvault", "skipped — owning org unresolved");
+        } else {
+          const remote = await getSdk().gitvault.scaffoldRemote({
+            repo_dir: process.cwd(),
+            org_id: orgId,
+            project_id: activeProjectId,
+          });
+          // `allocated: false` is stated, not left to be inferred: this was
+          // local git only, and no vault exists for the project yet.
+          summary.gitvault = { ...remote, allocated: false };
+          if (remote.already_present && remote.existing_url !== remote.url) {
+            // Left exactly as it was. Name the URL that is actually in place
+            // rather than implying the remote now points at this project.
+            line("Gitvault", `remote '${remote.name}' already points at ${remote.existing_url} — left unchanged`);
+          } else if (remote.already_present) {
+            line("Gitvault", `remote '${remote.name}' already set (${remote.url})`);
+          } else {
+            line("Gitvault", `${remote.created_repository ? "initialized a repository and added" : "added"} remote '${remote.name}' -> ${remote.url}`);
+          }
+        }
+      }
+    } catch (err) {
+      const reason = errorMessage(err);
+      summary.gitvault = null;
+      summary.gitvault_error = {
+        code: err?.body?.code ?? err?.code ?? "GITVAULT_SCAFFOLD_FAILED",
+        message: reason,
+      };
+      line("Gitvault", `remote not added: ${reason}`);
+    }
+  }
 
   // 6. Next step — canonical typed action(s); `next_step` is the back-compat
   // string mirror of the first action's command (one spelling, surface-wide).

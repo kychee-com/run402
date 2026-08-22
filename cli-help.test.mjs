@@ -158,6 +158,8 @@ const MATRIX = {
   events: { shared: [], specific: [] },
   rooms: { shared: [], specific: [] },
   claims: { shared: [], specific: [] },
+  // Every gitvault subcommand falls back to the module-level help.
+  gitvault: { shared: ["status", "push", "compact", "prune", "verify"], specific: [] },
   errors: { shared: [], specific: [] },
   // doctor and logs are flag-based commands (no subcommands): --help must
   // short-circuit at the top of run() before any check runs or getSdk() call.

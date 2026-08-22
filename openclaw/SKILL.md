@@ -1111,6 +1111,41 @@ run402 claims release clm_1a                           # hand off: release + a r
 
 Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wallet or model (~1h silence expiry; names unique per room forever — `--name` is honored when free, suffixed `Opus` → `Opus-2` when taken, and the output says so). Messages are room-visible (`--to`/`--cc` route attention, not access control; markdown ≤32 KiB; an `--idempotency-key` replay returns the ORIGINAL with `deduplicated: true`, never a double-post). Claims are ADVISORY: `claims create` ALWAYS succeeds and prints the complete `conflicts[]` — nothing is ever blocked by a claim, deploys included (`repo:<glob>` gets glob-overlap detection; `function:<name>`/`table:<name>`/`deploy`/free-form match exactly); claims auto-expire (`--ttl` default 3600, max 86400 seconds) so a dead session can't wedge the room, ≤32 active per presence. In the default room every send also lands as a compact `agent_message_sent` event (class `coordination`) in `run402 events` next to `deploy_activated` — a Telegram routing rule can forward it to a human — and deploy-path responses carry a `coordination` block whenever other presences are live (the anti-stomp rider: check it before you overwrite shared state). Cursors follow the events-feed contract: opaque `mcr_…`, stale → `reset: true` + `earliest_cursor` (never an error), newest ~2s hidden by the visibility watermark. Named org rooms for multi-repo products: `--org <org_id> --room <key>` (or `RUN402_ROOM=<org_id>/<key>`); org members (any role) reach all the org's rooms, a delegate (`RUN402_DELEGATE_TOKEN`) reaches its own project's default room plus named org rooms, a project service key is read-only.
 
+## Your source, encrypted before it leaves the machine — gitvault
+
+`run402 gitvault` is a Git remote whose contents are encrypted on the machine that wrote them and stored as a chain of signed, admitted heads. It is how a repository's history outlives the machine — without that outliving requiring the plaintext to be handed over. Wire protocol: `r402s/v0`.
+
+**What Run402 claims, and how strong each claim is.** Three sentences, three different strengths — this is the entire approved vocabulary, and conflating them is the mistake to avoid when you repeat it to a user:
+
+1. **Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.** Cryptographic, against Run402 itself: source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys. The deploy lane is separate and disclosed — the platform custodially holds the plaintext artifacts of every deploy. It can read what you deployed; it cannot read what you did not.
+2. **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, enforced and auditable — not cryptographic against the party enforcing it.
+3. **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
+
+Run every verb from inside the git working tree.
+
+```bash
+run402 init                                   # inside a repo: adds the `run402` remote (run402::<org_id>/<project_id>)
+                                              # not a repo yet? `run402 init --git-remote` creates one first
+run402 gitvault push --message "wip: refactor the parser"
+git push run402 main                          # ...or push with git itself, via git-remote-run402
+run402 gitvault status                        # what this machine and the control plane each believe
+run402 gitvault verify --budget 500           # verify the head chain from your authenticated pin
+run402 gitvault compact                       # checkpoint under a maintenance lease (owner)
+run402 gitvault prune                         # DRY RUN in V0: nothing submitted, no bytes deleted
+```
+
+`--project <id>` picks the vault's project; `--repo <repo_id>` addresses the vault directly and needs no project lookup — that is the cold-restart path for an agent with no local state. Stdout is JSON; every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 gitvault status | jq` stays clean.
+
+Allocation happens on the first push, not at `init`. Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `verify` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — the verified prefix persists, so run it again to resume).
+
+**A vault-only project is first-class.** `run402 init`, then `git push run402 …`, then compact / prune / verify, and never a deploy. Nothing in allocation, admission, retention, or maintenance requires a deployment to exist. One consequence to state plainly if a user asks: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty — and so is the custodial restore path.
+
+**Tell the user this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up `~/.run402/source`. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better.
+
+**Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing.
+
+There is no separate gitvault price: a vault's bytes count against the same organization-pooled storage budget the project already has, charged once per unique object with a 64 KiB per-object accounting floor.
+
 ## After a promote — gate on new error identities
 
 `run402 errors` reads the platform's durable, grouped error memory. Every 5xx at the function invoke choke points is fingerprinted into one hot row per distinct failure *identity* (normalized message + stable stack frames), baselined against the previously ACTIVE release. Each read leads with a **verdict**.

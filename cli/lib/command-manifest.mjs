@@ -232,6 +232,17 @@ export const COMMAND_MANIFEST = [
   { path: ["claims", "create"], positionals: [p("resource")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["deploy"], runStyle: "sub" },
   { path: ["claims", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["claims", "release"], positionals: [p("claim_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["clm_1"], runStyle: "sub" },
+
+  // ── gitvault (host-blind encrypted Git remote) ───────────────────────────
+  // Every verb needs a real principal keystore, an allocated vault, and (for
+  // all but `status`) a local git working tree, so the gate runs structural
+  // checks only — an in-process behavioral run would either no-op against the
+  // universal `{}` fetch mock or touch the gate's own checkout.
+  { path: ["gitvault", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the local principal keystore and the live vault record" },
+  { path: ["gitvault", "push"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
+  { path: ["gitvault", "compact"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "takes a maintenance lease and builds a checkpoint from the local repository" },
+  { path: ["gitvault", "prune"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "materializes the live vault head to enumerate retention roots" },
+  { path: ["gitvault", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain against the keystore's authenticated pin" },
   { path: ["errors"], positionals: [p("fingerprint_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
 
   // ── jobs ─────────────────────────────────────────────────────────────────

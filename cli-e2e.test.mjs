@@ -7,9 +7,10 @@
 
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 // ─── Test state ──────────────────────────────────────────────────────────────
 // Set env vars BEFORE any CLI modules are imported (they read at load time)
@@ -17,6 +18,15 @@ const tempDir = mkdtempSync(join(tmpdir(), "run402-e2e-"));
 const API = "https://test-api.run402.com";
 process.env.RUN402_CONFIG_DIR = tempDir;
 process.env.RUN402_API_BASE = API;
+
+// Some commands act on the CURRENT DIRECTORY (`run402 init` adds the gitvault
+// git remote when it is run inside a repository). Run the whole suite from a
+// scratch directory so the developer's own checkout is never mutated — the same
+// isolation cli-conventions-gate.test.mjs applies, for the same reason.
+const REPO_ROOT = dirname(fileURLToPath(import.meta.url));
+const scratchCwd = join(tempDir, "cwd");
+mkdirSync(scratchCwd, { recursive: true });
+const originalCwd = process.cwd();
 
 const originalFetch = globalThis.fetch;
 const originalLog = console.log;
@@ -949,6 +959,7 @@ const _originalGithubActionsEnv = {
 
 before(async () => {
   globalThis.fetch = mockFetch;
+  process.chdir(scratchCwd);
   // Override process.exit to throw
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
   // Isolate from any ambient GitHub-Actions OIDC env — see comment on
@@ -963,6 +974,7 @@ after(async () => {
   console.log = originalLog;
   console.error = originalError;
   process.exit = originalExit;
+  process.chdir(originalCwd);
   delete process.env.RUN402_CONFIG_DIR;
   delete process.env.RUN402_API_BASE;
   for (const [key, value] of Object.entries(_originalGithubActionsEnv)) {
@@ -2861,7 +2873,8 @@ describe("CLI e2e happy path", () => {
     let result;
     try {
       result = spawnSync(process.execPath, [
-        "cli/cli.mjs",
+        // Absolute: the suite runs from a scratch cwd (see REPO_ROOT above).
+        join(REPO_ROOT, "cli", "cli.mjs"),
         "deploy",
         "apply",
         "--spec",

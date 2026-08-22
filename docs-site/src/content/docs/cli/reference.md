@@ -1166,6 +1166,56 @@ Addressing: every subcommand defaults to the active project's organization (no f
 
 What an escalation is not: it is never mirrored into the events feed or echoed into a room. The hard case is an agent reporting on the very orchestrator that reads the room, so confidentiality here is structural rather than a redaction pass. An escalation about a project also outlives that project's deletion — the case that matters most is being paged about something that then gets deleted. If nobody ever answers, the escalation rests OPEN with its whole history (who was paged, when it climbed); it is never auto-resolved, because "every human was paged and none answered" is not the same thing as "handled".
 
+### gitvault — host-blind encrypted Git remote
+
+`run402 gitvault` is your source, encrypted before it leaves the machine. The vault is a Git remote whose contents are encrypted client-side and stored as a chain of signed, admitted heads; the wire protocol is `r402s/v0`.
+
+**What Run402 claims about it, and how strong each claim is.** These are the entire approved claims vocabulary — three separate promises with three separate strengths:
+
+1. **Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.** Cryptographic, against Run402 itself: source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys. The deploy lane is separate — the platform custodially holds the plaintext artifacts of every deploy, and says so.
+2. **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, not a cryptographic one — the platform is the party enforcing it.
+3. **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
+
+- `run402 gitvault status [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault push [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint]`
+- `run402 gitvault compact [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault prune [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault verify [--project <id>] [--repo <repo_id>] [--budget <n>]`
+
+Run these from inside the git working tree — the repository is `process.cwd()`.
+
+| Subcommand | What it does |
+|---|---|
+| `status` | What this machine and the control plane each believe about the vault: allocation, policy, whether this keystore can sign, the authenticated and materialized pins, and any pending unvaulted-override journals. Never reports key material. |
+| `push` | Capture the working tree and publish it. This is NOT gated on a deploy — a vault-only project pushes for months without one. Before reporting a push as landed the SDK compares finalization receipts against the expected manifest and reads the admitted head back from storage; a 200 alone is never enough. |
+| `compact` | Publish a checkpoint covering the canonical refs, every root unexpired at the cutoff, and the HEAD target, under a maintenance lease so a concurrent cycle cannot race it. |
+| `prune` | Report which retention roots have passed their retention window. **Dry run in V0** — see below. |
+| `verify` | Verify the head chain from the authenticated pin up to the newest listed generation. Fails closed on a regression, a gap, or a transition descriptor this client cannot validate. |
+
+**Options.** `--project <id>` picks the project whose vault to act on (defaults to the active project); `--repo <repo_id>` addresses the vault directly by id, skipping project lookup — the cold-restart path for an agent that knows its `repo_id` and has no local state. `--message <text>` is the commit message for the synthetic commit a dirty tree produces on `push` (a clean tree pushes HEAD itself and uses no message); `--checkpoint` forces the checkpoint-bearing form regardless of delta size. `--budget <n>` caps how many heads `verify` checks in one call — the verified prefix is persisted, so a budget-exceeded run resumes where it stopped instead of restarting. `--json` is a no-op: stdout is already JSON. Per the pipe contract, every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 gitvault status | jq` stays clean.
+
+**Getting the remote.** `run402 init` adds a `run402` remote (`run402::<org_id>/<project_id>`) by default when the current directory is already a git repository. When it is not, `run402 init --git-remote` runs `git init` first and then adds the remote. The remote is served by `git-remote-run402`, which ships in the same `run402` CLI package, so plain git works against the vault:
+
+```bash
+run402 init                                   # provision + add the run402 remote
+run402 gitvault push --message "wip: refactor the parser"
+git push run402 main                          # ...or push with git itself
+run402 gitvault status
+run402 gitvault verify --budget 500
+```
+
+Allocation happens on the first `run402 gitvault push` (or deploy) — `init` scaffolds the remote, it does not create the vault.
+
+**`prune` is a DRY RUN in V0.** The prune intent/completion wire — the two verifier receipts and the server's eligibility confirmation — has no shipped route, so nothing is submitted and no bytes are deleted. `submitted` is always false. There is deliberately no purge verb in V0 at all. Retention is an operational promise of the platform, not a cryptographic guarantee against it.
+
+**Expiry is permissive, by design.** A retention root whose `effective_admitted_at` this client cannot resolve is RETAINED, and a compact that cannot obtain a retention-cutoff ticket keeps every root. That costs storage, never history.
+
+**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `status` prints the full statement verbatim on stderr and carries it in its JSON — read it before you rely on this. The vault protects source history from host-side loss while a principal keystore survives. Back up `~/.run402/source`. The recovery receipt `push` prints once is an integrity anchor, not a decryption key: it proves the vault you are served is the one you created, and it can decrypt nothing. It is not a secret — the more copies the better.
+
+**Cost.** There is no separate gitvault price. A vault's bytes count against the same organization-pooled `storage_bytes` budget your projects already share, charged once per unique object, with a 64 KiB per-object accounting floor.
+
+**Verify it without trusting this client.** `r402s-verify` is an independent-lineage verifier for the same protocol — a separate language, separate authorship, and a separate primitive stack, deliberately sharing no implementation code with the SDK. That non-sharing is the point: a differential verifier that reuses the code it is checking verifies nothing.
+
 ### errors — grouped fingerprints + a promote/revert verdict
 
 `run402 errors` reads the platform's durable, grouped error memory. Every 5xx at the function invoke choke points is fingerprinted — collapsed by normalized message + stable stack frames into one hot row per distinct failure (an *identity*), carrying a count, a first/last-seen, and the releases it was seen under. You read identities, not a firehose of individual lines.
@@ -1603,7 +1653,7 @@ All options default to the active project. `claim` also defaults to the project'
 Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every subsequent `run402 sites deploy` or `run402 deploy` to the same project automatically updates the subdomain to point to the new deployment. The response includes `subdomain_urls` showing which subdomains were reassigned. No need to re-claim after each deploy.
 
 ### domains
-- `run402 domains connect <domain> --project <id> [--web] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
+- `run402 domains connect <domain> --project <id> [--web] [--authority manual-dns|hosted-zone] [--email-send] [--email-receive] [--mailbox-addresses primary|alias|managed|none] [--addresses <csv>]`
 - `run402 domains list [--project <id>]`
 - `run402 domains status <domain> [--project <id>]`
 - `run402 domains dns <domain> [--project <id>] [--format json|bind]`
@@ -1617,6 +1667,13 @@ Subdomain auto-reassignment: You only need to `claim` a subdomain once. Every su
 ProjectDomain is the project-scoped lifecycle surface for web custom domains, custom email sending, inbound receive routing, mailbox address activation, and drift checks.
 
 Auth is control-plane auth: current wallet, operator session, or delegate. Domain commands do not require a local project-key cache entry.
+
+**`--authority` on connect (web domains):** `hosted-zone` puts the domain's DNS zone on Run402 — the domain owner makes ONE nameserver change at their registrar and Run402 applies every record, verifies ownership, and issues TLS automatically. This is the only workable path for a ROOT domain (`example.com`) at most registrars, since a root CNAME is illegal without flattening/ALIAS support. `manual-dns` (the default) returns the records to add yourself. Pre-existing MX/TXT are imported into a hosted zone before the nameserver change is recommended, so mail keeps working. The connect response carries `hosted_zone.ns_assigned` (the pair to hand the owner) and the CLI prints that instruction to stderr; stdout stays pure JSON.
+
+**Root-domain flow (hosted zone):**
+1. `run402 domains connect example.com --project prj_123 --web --authority hosted-zone`
+2. Give the domain owner the two nameservers from the output; they set them at their registrar
+3. `run402 domains wait example.com --project prj_123 --until active`
 
 **Setup flow:**
 1. `run402 domains connect example.com --project prj_123 --web --email-send --email-receive --mailbox-addresses primary --addresses info`

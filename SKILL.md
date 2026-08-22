@@ -697,6 +697,14 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`rotate_webhook_secret`** — new HMAC signing secret for the operator webhook (returned once). Previous remains valid 24h. Requires `operator_passkey`.
 - **`list_notification_channels`** / **`list_notification_rules`** / **`create_notification_rule`** / **`delete_notification_rule`** — self-serve Telegram push: connect a chat via `run402 notifications channels connect telegram` (CLI/SDK-only — MCP reads channels but doesn't connect/revoke), then add rules (project/source/event_types/classes, all ANDed, omitted = wildcard) so only matching events page it. No rules = no Telegram traffic; the mandatory email floor is untouched.
 
+### gitvault (read-only; the mutating verbs are CLI-only)
+
+- **`get_gitvault_status`** — what this machine and the control plane each believe about a project's vault: the vault record, the activation policy, whether the local keystore is present and can sign, the authenticated and materialized pins, pending unvaulted-override journals. Also the **cold-restart entry point**: pass `project_id` with no local state and it resolves the vault for you.
+- **`list_gitvault_heads`** — one page of admitted generations above a fixed anchor, each with its stored-bytes hash. `after_generation` is the VERIFICATION ANCHOR, not a paging knob — keep it identical across every page of one sequence; `cursor` is opaque (store and echo, never parse or construct). Listing is not verifying.
+- **`verify_gitvault`** — verify the head chain from your authenticated pin to the newest listed generation, then advance the pin to what was proved. Monotonic; it can never lower the pin. Fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — the verified prefix persists, so call again to resume).
+
+`push` / `init` / `compact` / `prune` / `deploy` / `setPolicy` are deliberately **not** tools. `push` and `init` write an IMMUTABLE generation with no undo, and `init` mints a one-shot recovery receipt that a tool transcript is the wrong place to hold; `compact` takes a lease whose `holder_token` is returned exactly once, so a dropped session strands it; `prune` is destructive by contract; `deploy` can change what production serves; `setPolicy` needs owner membership plus step-up. Every one of them is `run402 gitvault …` at a terminal with a working tree in front of it.
+
 ### Service status (no auth, no setup)
 
 - **`service_status`** — public availability report (24h/7d/30d uptime per capability).
@@ -865,6 +873,39 @@ The loop is **judge → raise → wait → proceed-or-stand-down**:
 3. Then do what they say, or stand down. **Silence is never consent**: if nobody ever answers, the escalation stays OPEN and keeps its whole history. An unanswered page is an answer — it means proceed on your own judgement only if you were already entitled to, and otherwise stop and report.
 
 If the organization has no contacts configured, the raise still records the escalation and tells you plainly that nobody was paged (`warnings[]`) — so you know your message did not reach a person and can say so.
+
+## Your source, encrypted before it leaves the machine — gitvault
+
+`gitvault` is a Git remote whose contents are encrypted on the machine that wrote them and stored as a chain of signed, admitted heads. It is how a repository's history outlives the machine — without that outliving requiring the plaintext to be handed over. Wire protocol: `r402s/v0`.
+
+**What Run402 claims, and how strong each claim is.** Three sentences, three different strengths — this is the entire approved vocabulary, and conflating them is the mistake to avoid when you repeat it to a user:
+
+1. **Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.** Cryptographic, against Run402 itself: source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys. The deploy lane is separate and disclosed — the platform custodially holds the plaintext artifacts of every deploy. It can read what you deployed; it cannot read what you did not.
+2. **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, enforced and auditable — not cryptographic against the party enforcing it.
+3. **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
+
+The loop is **init → push → verify**, at a terminal, from inside the git working tree:
+
+```bash
+run402 init                                   # inside a repo: adds the `run402` remote (run402::<org_id>/<project_id>)
+                                              # not a repo yet? `run402 init --git-remote` creates one first
+run402 gitvault push --message "wip: refactor the parser"
+git push run402 main                          # ...or push with git itself, via git-remote-run402
+run402 gitvault status
+run402 gitvault verify --budget 500
+```
+
+Allocation happens on the first push, not at `init`. Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `run402 gitvault compact` publishes a checkpoint under a lease; `run402 gitvault prune` is a **dry run in V0** (nothing is submitted, no bytes are deleted, `submitted` is always false).
+
+From an MCP session you can *answer questions* about a vault — `get_gitvault_status`, `list_gitvault_heads`, `verify_gitvault` — but not mutate one; see the tools section for why.
+
+**A vault-only project is first-class.** `run402 init`, then `git push run402 …`, then compact / prune / verify, and never a deploy. Nothing in allocation, admission, retention, or maintenance requires a deployment to exist. One consequence to state plainly if a user asks: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty — and so is the custodial restore path.
+
+**Tell the user this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up `~/.run402/source`. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better.
+
+**Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing.
+
+There is no separate gitvault price: a vault's bytes count against the same organization-pooled storage budget the project already has, charged once per unique object with a 64 KiB per-object accounting floor.
 
 ## After a promote — gate on new error identities
 

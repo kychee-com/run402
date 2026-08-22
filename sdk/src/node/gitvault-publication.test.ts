@@ -1,0 +1,698 @@
+/**
+ * gitvault publication (task 5.4) — the §6.1 ref-transaction semantics and
+ * cardinality refusals, §4.5 retention-root evolution, the §6.3/D186 heads
+ * listing contract, §6.4 dual pins + the RESUMABLE verification budget, the
+ * §6.2 push (receipt-compare, head read-back, 409 re-apply-and-retry), §4.7
+ * checkpoint build + acceptance, §4.3 repair, and the client-side
+ * transition fail-closed rule.
+ *
+ * Vector classes replayed here (generated in the private repo, see the crypto
+ * suite's loader note): `heads_listing_pagination`, `retention-schedule`,
+ * `transition-fail-closed`, `request-to-c1-binding`, plus `chain-005` — the one
+ * `chain` vector the crypto suite deferred, because it is a PIN comparison, not
+ * a signature check.
+ */
+
+import { describe, it } from "node:test";
+import { loadGitvaultVectors, OPTOUT_SKIP_MESSAGE, type GitvaultVector } from "./gitvault-vectors.test-helper.js";
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { LocalError } from "../errors.js";
+import { sha256Hex } from "../namespaces/gitvault.crypto.js";
+import type { GitvaultHead, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultRetentionRoot } from "../namespaces/gitvault.types.js";
+import {
+  GITVAULT_MAX_CANONICAL_REFS,
+  GITVAULT_MAX_REF_UPDATES_PER_TRANSACTION,
+  GitvaultVault,
+  assertNoTransition,
+  assertRefMapCardinality,
+  checkClaimSetEquality,
+  checkGenerationRegression,
+  checkOpenBinding,
+  deployRefTransaction,
+  effectiveAdmittedAt,
+  evaluateRefTransaction,
+  evolveRetentionRoots,
+  generationToBigInt,
+  gitvaultPaths,
+  isRootEligibleForRemoval,
+  nextGeneration,
+  nextListingRequest,
+  openBindingDigest,
+  validateHeadsListingRequest,
+  verifyHeadsListingPage,
+  type GitvaultListingProgress,
+  type GitvaultRefMap,
+} from "./gitvault-publication.js";
+import { GITVAULT_DEPLOY_REF, hasObject } from "./gitvault-snapshot.js";
+import { commitFile, git, makeVault, type VaultFixture } from "./gitvault-memory-transport.test.js";
+
+// ─── Vector loading (same contract as the crypto suite) ──────────────────────
+
+// Task 5.6b: missing vectors FAIL; only GITVAULT_VECTORS_OPTOUT=1 skips.
+const vectorSet = loadGitvaultVectors();
+type Vector = GitvaultVector;
+const vectorFile = vectorSet?.file ?? null;
+const vectors = vectorFile ? describe : describe.skip;
+if (!vectorFile) describe("gitvault publication vectors", () => it.skip(OPTOUT_SKIP_MESSAGE, () => {}));
+
+const replayed = new Map<string, Set<string>>();
+function byClass(cls: string): Vector[] {
+  return (vectorFile?.vectors ?? []).filter((v) => v.class === cls);
+}
+function mark(v: Vector): void {
+  let s = replayed.get(v.class);
+  if (!s) replayed.set(v.class, (s = new Set()));
+  s.add(v.id);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function codeOf(e: unknown): string {
+  assert.ok(e instanceof LocalError, `expected LocalError, got ${String(e)}`);
+  return e.code ?? "no-code";
+}
+function throwsCode(fn: () => unknown, code: string, message?: string): void {
+  try {
+    fn();
+  } catch (e) {
+    assert.equal(codeOf(e), code, message ?? `expected ${code}`);
+    return;
+  }
+  assert.fail(message ?? `expected ${code}, nothing thrown`);
+}
+async function rejectsCode(p: Promise<unknown>, code: string, message?: string): Promise<void> {
+  try {
+    await p;
+  } catch (e) {
+    assert.equal(codeOf(e), code, message ?? `expected ${code}`);
+    return;
+  }
+  assert.fail(message ?? `expected ${code}, nothing thrown`);
+}
+const OID = (n: number): string => n.toString(16).padStart(40, "0");
+const never = () => {
+  throw new Error("the ancestry oracle must not be consulted on this path");
+};
+
+// ─── §6.1 ref transactions ───────────────────────────────────────────────────
+
+describe("§6.1 ref transactions", () => {
+  const ff = { isAncestor: () => true };
+  const notFf = { isAncestor: () => false };
+
+  it("creation needs a null expected-old; a non-null expected-old on an absent ref is a mismatch", async () => {
+    const created = await evaluateRefTransaction({}, { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: OID(1), force: false }] }, ff);
+    assert.deepEqual(created, { refs: { "refs/heads/main": OID(1) }, dropped: [] });
+    await rejectsCode(evaluateRefTransaction({}, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(9), new_oid: OID(1), force: false }] }, ff), "REF_EXPECTED_OLD_MISMATCH");
+  });
+
+  it("a non-force branch update must be BOTH fast-forward and expected-old-matching", async () => {
+    const cur: GitvaultRefMap = { "refs/heads/main": OID(1) };
+    const okFf = await evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(1), new_oid: OID(2), force: false }] }, ff);
+    assert.deepEqual(okFf.refs, { "refs/heads/main": OID(2) });
+    assert.deepEqual(okFf.dropped, [], "a fast-forward displaces nothing");
+    await rejectsCode(evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(1), new_oid: OID(2), force: false }] }, notFf), "REF_EXPECTED_OLD_MISMATCH");
+    await rejectsCode(evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(7), new_oid: OID(2), force: false }] }, ff), "REF_EXPECTED_OLD_MISMATCH");
+  });
+
+  it("force is force-WITH-LEASE: it skips ancestry but still needs expected-old, and the displaced tip is dropped", async () => {
+    const cur: GitvaultRefMap = { "refs/heads/main": OID(1) };
+    const forced = await evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(1), new_oid: OID(2), force: true }] }, notFf);
+    assert.deepEqual(forced.refs, { "refs/heads/main": OID(2) });
+    assert.deepEqual(forced.dropped, [{ ref: "refs/heads/main", oid: OID(1), reason: "force_displaced" }]);
+    await rejectsCode(evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(5), new_oid: OID(2), force: true }] }, notFf), "REF_EXPECTED_OLD_MISMATCH");
+  });
+
+  it("tags are immutable without force — and the ancestry oracle is never consulted for a tag", async () => {
+    const cur: GitvaultRefMap = { "refs/tags/v1": OID(1) };
+    await rejectsCode(evaluateRefTransaction(cur, { updates: [{ ref: "refs/tags/v1", expected_old_oid: OID(1), new_oid: OID(2), force: false }] }, { isAncestor: never }), "REF_EXPECTED_OLD_MISMATCH");
+    const forced = await evaluateRefTransaction(cur, { updates: [{ ref: "refs/tags/v1", expected_old_oid: OID(1), new_oid: OID(2), force: true }] }, { isAncestor: never });
+    assert.deepEqual(forced.dropped, [{ ref: "refs/tags/v1", oid: OID(1), reason: "force_displaced" }]);
+  });
+
+  it("a delete needs expected-old (grammar refusal), and drops the tip", async () => {
+    await rejectsCode(evaluateRefTransaction({}, { updates: [{ ref: "refs/heads/x", expected_old_oid: null, new_oid: null, force: false }] }, ff), "REF_TRANSACTION_INVALID");
+    const deleted = await evaluateRefTransaction({ "refs/heads/x": OID(3) }, { updates: [{ ref: "refs/heads/x", expected_old_oid: OID(3), new_oid: null, force: false }] }, ff);
+    assert.deepEqual(deleted.refs, {});
+    assert.deepEqual(deleted.dropped, [{ ref: "refs/heads/x", oid: OID(3), reason: "deleted" }]);
+  });
+
+  it("two updates naming the same ref are refused BEFORE evaluation, never last-wins", async () => {
+    await rejectsCode(
+      evaluateRefTransaction(
+        { "refs/heads/main": OID(1) },
+        { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(1), new_oid: OID(2), force: false }, { ref: "refs/heads/main", expected_old_oid: OID(2), new_oid: OID(3), force: false }] },
+        { isAncestor: never },
+      ),
+      "REF_TRANSACTION_DUPLICATE_REF",
+    );
+  });
+
+  it("every failing update rides ONE REF_EXPECTED_OLD_MISMATCH, never a silent revert", async () => {
+    try {
+      await evaluateRefTransaction(
+        { "refs/heads/a": OID(1), "refs/heads/b": OID(2), "refs/tags/t": OID(3) },
+        {
+          updates: [
+            { ref: "refs/heads/a", expected_old_oid: OID(9), new_oid: OID(4), force: false },
+            { ref: "refs/heads/b", expected_old_oid: OID(2), new_oid: OID(5), force: false },
+            { ref: "refs/tags/t", expected_old_oid: OID(3), new_oid: OID(6), force: false },
+          ],
+        },
+        notFf,
+      );
+      assert.fail("expected REF_EXPECTED_OLD_MISMATCH");
+    } catch (e) {
+      assert.equal(codeOf(e), "REF_EXPECTED_OLD_MISMATCH");
+      const failures = (e as LocalError & { details?: { failures?: Array<{ ref: string; reason: string }> } }).details!.failures!;
+      assert.deepEqual(failures.map((f) => [f.ref, f.reason]), [["refs/heads/a", "expected_old_mismatch"], ["refs/heads/b", "non_fast_forward"], ["refs/tags/t", "tag_immutable"]]);
+    }
+  });
+
+  it("a no-op update (new == current) is legal and drops nothing", async () => {
+    const r = await evaluateRefTransaction({ "refs/heads/main": OID(1) }, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(1), new_oid: OID(1), force: false }] }, { isAncestor: never });
+    assert.deepEqual(r, { refs: { "refs/heads/main": OID(1) }, dropped: [] });
+  });
+
+  it("refs/run402/* is protocol-owned: user pushes refuse, the protocol's own deploy move is allowed", async () => {
+    const tx = deployRefTransaction({}, OID(1));
+    assert.deepEqual(tx, { updates: [{ ref: GITVAULT_DEPLOY_REF, expected_old_oid: null, new_oid: OID(1), force: false }] });
+    await rejectsCode(evaluateRefTransaction({}, tx, ff), "REFNAME_UNSUPPORTED");
+    const allowed = await evaluateRefTransaction({}, tx, { ...ff, protocol_refs: "allow" });
+    assert.deepEqual(allowed.refs, { [GITVAULT_DEPLOY_REF]: OID(1) });
+    // the SECOND capture force-moves with a lease on the current tip; the displaced tip is dropped
+    const move = deployRefTransaction(allowed.refs, OID(2));
+    assert.deepEqual(move.updates[0], { ref: GITVAULT_DEPLOY_REF, expected_old_oid: OID(1), new_oid: OID(2), force: true });
+    const moved = await evaluateRefTransaction(allowed.refs, move, { isAncestor: () => false, protocol_refs: "allow" });
+    assert.deepEqual(moved.dropped, [{ ref: GITVAULT_DEPLOY_REF, oid: OID(1), reason: "force_displaced" }]);
+  });
+
+  it("unsupported refnames are refused by name", async () => {
+    for (const ref of ["refs/remotes/origin/main", "HEAD", "refs/heads/", "refs/heads/a..b", "refs/heads/a//b", "refs/heads/a@{0}", "refs/heads/a b", "refs/heads/a~1", "refs/heads/[x]"]) {
+      await rejectsCode(evaluateRefTransaction({}, { updates: [{ ref, expected_old_oid: null, new_oid: OID(1), force: false }] }, ff), "REFNAME_UNSUPPORTED", `expected ${ref} refused`);
+    }
+  });
+
+  it("cardinality bounds (§6.5 H10) refuse BEFORE acceptance: >1000 updates, >10 000 resulting refs", async () => {
+    const many = Array.from({ length: GITVAULT_MAX_REF_UPDATES_PER_TRANSACTION + 1 }, (_v, i) => ({ ref: `refs/heads/b${i}`, expected_old_oid: null, new_oid: OID(1), force: false }));
+    await rejectsCode(evaluateRefTransaction({}, { updates: many }, ff), "REF_STATE_LIMIT_EXCEEDED");
+    const full: GitvaultRefMap = {};
+    for (let i = 0; i < GITVAULT_MAX_CANONICAL_REFS; i++) full[`refs/heads/b${i}`] = OID(1);
+    assertRefMapCardinality(full);
+    await rejectsCode(evaluateRefTransaction(full, { updates: [{ ref: "refs/heads/one-too-many", expected_old_oid: null, new_oid: OID(1), force: false }] }, ff), "REF_STATE_LIMIT_EXCEEDED");
+  });
+});
+
+// ─── §4.5 retention roots ────────────────────────────────────────────────────
+
+vectors("§4.5 retention roots — vector class `retention-schedule`", () => {
+  it("the ≥90-day lane runs from effective_admitted_at = max(prepared_at, record storage creation); removal is STRICT", () => {
+    for (const v of byClass("retention-schedule")) {
+      if (!v.inputs.retention_cutoff_ticket_cutoff_at) continue;
+      mark(v);
+      const effective = effectiveAdmittedAt(v.inputs.admission_prepared_at, v.inputs.admission_record_storage_created_at);
+      assert.equal(effective, v.expected.effective_admitted_at, v.id);
+      assert.equal(String(isRootEligibleForRemoval(effective, v.inputs.retention_cutoff_ticket_cutoff_at, Number(v.inputs.retention_days))), v.expected.eligible_for_removal, `${v.id}: ${v.description}`);
+    }
+  });
+
+  it("evolution: roots(g+1) = roots(g) ∪ dropped (RENEWING an existing (ref,oid) key), sorted; expiry only at a checkpoint", () => {
+    for (const v of byClass("retention-schedule")) {
+      if (v.inputs.retention_cutoff_ticket_cutoff_at) continue;
+      mark(v);
+      const out = evolveRetentionRoots(v.inputs.roots_g as GitvaultRetentionRoot[], { generation: v.inputs.g_plus_1 ?? "0000000000000002", dropped: v.inputs.dropped_by_g_plus_1 ?? [] });
+      assert.deepEqual(out, v.expected.roots_g_plus_1, `${v.id}: ${v.description}`);
+    }
+  });
+
+  it("a non-checkpoint generation can never remove a root, however expired", () => {
+    const roots: GitvaultRetentionRoot[] = [{ ref: "refs/heads/old", oid: OID(1), dropped_at_generation: "0000000000000001" }];
+    assert.deepEqual(evolveRetentionRoots(roots, { generation: "0000000000000009", dropped: [] }), roots);
+  });
+
+  it("at a checkpoint expiry is PERMISSIVE: an unresolvable effective_admitted_at RETAINS the root", () => {
+    const roots: GitvaultRetentionRoot[] = [
+      { ref: "refs/heads/expired", oid: OID(1), dropped_at_generation: "0000000000000001" },
+      { ref: "refs/heads/unknown", oid: OID(2), dropped_at_generation: "0000000000000002" },
+    ];
+    const kept = evolveRetentionRoots(roots, {
+      generation: "0000000000000003",
+      dropped: [],
+      checkpoint_cutoff: { cutoff_at: "2026-06-01T00:00:00.000Z", effectiveAdmittedAt: (g) => (g === "0000000000000001" ? "2026-01-01T00:00:00.000Z" : null) },
+    });
+    assert.deepEqual(kept.map((r) => r.ref), ["refs/heads/unknown"]);
+  });
+
+  it("more than 50 000 roots is refused before acceptance", () => {
+    const roots: GitvaultRetentionRoot[] = Array.from({ length: 50_000 }, (_v, i) => ({ ref: `refs/heads/r${i}`, oid: OID(i + 1), dropped_at_generation: "0000000000000001" }));
+    assert.equal(evolveRetentionRoots(roots, { generation: "0000000000000002", dropped: [] }).length, 50_000);
+    throwsCode(() => evolveRetentionRoots(roots, { generation: "0000000000000002", dropped: [{ ref: "refs/heads/extra", oid: OID(999_999), }] }), "REF_STATE_LIMIT_EXCEEDED");
+  });
+});
+
+// ─── §6.3 / D186 heads listing ───────────────────────────────────────────────
+
+vectors("§6.3 heads listing — vector class `heads_listing_pagination`", () => {
+  const anchorOf = (v: Vector): string => v.inputs.request?.after_generation ?? v.inputs.response?.after_generation ?? "0000000000000002";
+
+  /** The platform's cursor rule, modelled from the vector's declared binding: a cursor is valid only when it was minted FOR THIS VAULT under THIS anchor. */
+  function serverCursorCheck(v: Vector): void {
+    const req = v.inputs.request as GitvaultHeadsListingRequest | null;
+    if (!req?.cursor) return;
+    const binding = v.inputs.cursor_binding as { after_generation: string; repo_id: string } | null;
+    if (!binding || binding.repo_id !== v.inputs.vault_repo_id || binding.after_generation !== req.after_generation) {
+      throw new LocalError("cursor was not minted for this vault under this after_generation", "listing heads", { code: "INVALID_CURSOR" });
+    }
+  }
+
+  function progressThroughPriorPages(v: Vector): GitvaultListingProgress {
+    const anchor = anchorOf(v);
+    let progress: GitvaultListingProgress = { after_generation: anchor, last_generation: anchor, delivered: 0 };
+    for (const page of (v.inputs.prior_pages ?? []) as GitvaultHeadsListingPage[]) {
+      progress = verifyHeadsListingPage(page, { after_generation: anchor, limit: "1000" }, progress, v.inputs.vault_repo_id);
+    }
+    return progress;
+  }
+
+  it("replays every pagination vector: request validation, cursor binding, coupling, gaplessness, truthful total", () => {
+    for (const v of byClass("heads_listing_pagination")) {
+      mark(v);
+      const anchor = anchorOf(v);
+      const req = v.inputs.request as GitvaultHeadsListingRequest | null;
+
+      if (v.expected.request_schema_valid === "false") {
+        assert.ok(req, `${v.id} has no request to refuse`);
+        throwsCode(() => validateHeadsListingRequest(req!), v.reject_code ?? "GITVAULT_LISTING_REQUEST_INVALID", `${v.id}: ${v.description}`);
+        continue;
+      }
+      if (req) validateHeadsListingRequest(req);
+      if (v.reject_code === "INVALID_CURSOR") {
+        throwsCode(() => serverCursorCheck(v), "INVALID_CURSOR", `${v.id}: ${v.description}`);
+        continue;
+      }
+      if (req) serverCursorCheck(v);
+
+      const progress = progressThroughPriorPages(v);
+      const page = v.inputs.response as GitvaultHeadsListingPage | null;
+      assert.ok(page, `${v.id} has no response page`);
+      const verify = () => verifyHeadsListingPage(page!, { after_generation: anchor, limit: req?.limit ?? "1000" }, progress, v.inputs.vault_repo_id);
+      if (v.expect_reject === "true") {
+        const expected = v.reject_code ?? (v.reject_reason === "generation-not-above-anchor" ? "GENERATION_REGRESSION" : v.reject_reason === "total-untruthful" ? "CHAIN_BROKEN" : "GITVAULT_LISTING_PAGE_INVALID");
+        throwsCode(verify, expected, `${v.id}: ${v.description}`);
+        continue;
+      }
+      const advanced = verify();
+      assert.deepEqual(page!.heads.map((h) => h.generation), v.expected.generations ?? page!.heads.map((h) => h.generation), `${v.id} generations`);
+      if (v.expected.delivered_count) assert.equal(String(advanced.delivered), v.expected.delivered_count, `${v.id} delivered`);
+      assert.equal(advanced.after_generation, anchor, `${v.id}: the anchor is CONSTANT across the sequence`);
+      if (v.expected.continues_from) assert.equal(progress.last_generation, v.expected.continues_from, `${v.id} continues_from`);
+    }
+  });
+
+  it("the continuation echoes the cursor UNCHANGED and never re-anchors (the 007/008 refusals are what editing earns)", () => {
+    const page1 = byClass("heads_listing_pagination").find((v) => v.id === "heads-page-001")!.inputs.response as GitvaultHeadsListingPage;
+    const drift = byClass("heads_listing_pagination").find((v) => v.id === "heads-page-007")!.inputs.request as GitvaultHeadsListingRequest;
+    const tampered = byClass("heads_listing_pagination").find((v) => v.id === "heads-page-008")!.inputs.request as GitvaultHeadsListingRequest;
+    const next = nextListingRequest({ after_generation: "0000000000000002", limit: "2" }, page1)!;
+    assert.deepEqual(next, { after_generation: "0000000000000002", cursor: page1.next_cursor, limit: "2" });
+    assert.notEqual(next.after_generation, drift.after_generation, "the SDK never re-anchors a continuation");
+    assert.notEqual(next.cursor, tampered.cursor, "the SDK never edits a cursor byte");
+    const final = byClass("heads_listing_pagination").find((v) => v.id === "heads-page-003")!.inputs.response as GitvaultHeadsListingPage;
+    assert.equal(nextListingRequest({ after_generation: "0000000000000002", limit: "2" }, final), null);
+  });
+});
+
+// ─── §6.4 pins + the transition rule ─────────────────────────────────────────
+
+vectors("§6.4 pins + transitions — vector classes `chain` (005) and `transition-fail-closed`", () => {
+  it("chain-005: a listing whose newest generation is BELOW the pin is GENERATION_REGRESSION", () => {
+    const v = byClass("chain").find((x) => x.id === "chain-005")!;
+    mark(v);
+    assert.equal(String(generationToBigInt(v.inputs.listed_newest_generation) < generationToBigInt(v.inputs.pinned_generation)), v.expected.below_pin);
+    throwsCode(() => checkGenerationRegression(v.inputs.listed_newest_generation, v.inputs.pinned_generation), "GENERATION_REGRESSION", v.description);
+    checkGenerationRegression(v.inputs.pinned_generation, v.inputs.pinned_generation); // equal is not a regression
+  });
+
+  it("an ADMITTED non-null transition fails a V0 client CLOSED with UPGRADE_REQUIRED; an unknown kind is a closed-enum reject", () => {
+    for (const v of byClass("transition-fail-closed")) {
+      mark(v);
+      if (v.id === "transition-007") {
+        // the vector is the rule itself, stated over a kind rather than an object
+        throwsCode(() => assertNoTransition({ generation: "0000000000000002", transition: { kind: v.inputs.admitted_head_transition_kind, payload_format: "base64url-jcs", payload: "e30", payload_sha256: "0".repeat(64) } } as unknown as GitvaultHead), "UPGRADE_REQUIRED", v.description);
+        continue;
+      }
+      const head = v.inputs.object as GitvaultHead;
+      if (head.transition === null) {
+        assertNoTransition(head); // transition:null is the only V0-admissible value
+        continue;
+      }
+      const expected = v.reject_reason === "schema" ? "CHAIN_BROKEN" : "UPGRADE_REQUIRED";
+      throwsCode(() => assertNoTransition(head), expected, `${v.id}: ${v.description}`);
+    }
+  });
+});
+
+// ─── §7.2 request→C1 binding ─────────────────────────────────────────────────
+
+vectors("§7.2 request→C1 binding — vector class `request-to-c1-binding`", () => {
+  it("the fence recomputes the binding from the record's OWN fields; a same-open-id retry with a different binding is CLIENT_OPEN_ID_CONFLICT", () => {
+    for (const v of byClass("request-to-c1-binding")) {
+      mark(v);
+      if (v.inputs.c1_record) {
+        const recomputed = openBindingDigest(v.inputs.client_open_id, v.inputs.c1_record);
+        assert.equal(recomputed, v.expected.recomputed_open_binding_sha256, `${v.id} recomputed digest`);
+        assert.equal(String(recomputed === v.inputs.issuance_open_binding_sha256), v.expected.equal, `${v.id} equality`);
+        if (v.expected.equal === "true") checkOpenBinding(v.inputs.client_open_id, v.inputs.c1_record, v.inputs.issuance_open_binding_sha256);
+        else throwsCode(() => checkOpenBinding(v.inputs.client_open_id, v.inputs.c1_record, v.inputs.issuance_open_binding_sha256), "GITVAULT_OPEN_BINDING_MISMATCH", `${v.id}: ${v.description}`);
+        continue;
+      }
+      // 005/006: the retry converges on the winner, or conflicts
+      assert.equal(String(v.inputs.retry_open_binding_sha256 === v.inputs.winner_open_binding_sha256), v.expected.equal, `${v.id}`);
+      if (v.reject_code === "CLIENT_OPEN_ID_CONFLICT") {
+        throwsCode(
+          () => checkOpenBinding("cccccccccccccccccccccccccccccccc", { base_head_sha256: "a".repeat(64), prior_checkpoint_claim_set_sha256: "b".repeat(64), r2_cap_size_bytes: "1000" }, v.inputs.winner_open_binding_sha256, { retry: true }),
+          "CLIENT_OPEN_ID_CONFLICT",
+          v.description,
+        );
+      }
+    }
+  });
+});
+
+// ─── The vault, end to end, against the in-memory control plane ──────────────
+
+describe("§6.2 push — the complete publication path", () => {
+  const fixtures: VaultFixture[] = [];
+  const open = async (): Promise<VaultFixture> => {
+    const f = await makeVault();
+    fixtures.push(f);
+    return f;
+  };
+  const cleanup = () => {
+    for (const f of fixtures.splice(0)) rmSync(f.root, { recursive: true, force: true });
+  };
+
+  it("first push: ref_state + retention_roots + a WAL pack_set, a read-back head, and BOTH pins advanced", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const r = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+    assert.equal(r.generation, "0000000000000001");
+    assert.equal(r.form, "wal");
+    assert.equal(r.conflicts_retried, 0);
+    assert.deepEqual(r.refs, { "refs/heads/main": main });
+    assert.equal(r.head.prev_sha256, f.keystore.readRepo(f.repoId)!.genesis_sha256, "generation 1 links to the genesis stored bytes");
+    assert.equal(r.head.epoch, "0000000000000001");
+    assert.equal(r.head.checkpoint, null);
+    assert.equal(r.head.checkpoint_purpose, null);
+    assert.equal(r.head.wal_entries.length, 1);
+    assert.equal(r.head.wal_entries[0]!.base_generation, "0000000000000000");
+    const repo = f.keystore.readRepo(f.repoId)!;
+    assert.deepEqual([repo.head_pin?.generation, repo.materialized_pin?.generation], ["0000000000000001", "0000000000000001"]);
+    assert.equal(repo.verified_prefix ?? null, null);
+    // materializing again round-trips the encrypted carriers
+    const state = await f.vault.materialize();
+    assert.deepEqual(state.refs, { "refs/heads/main": main });
+    assert.deepEqual(state.head_target, { kind: "symref", ref: "refs/heads/main" });
+    assert.deepEqual(state.roots, []);
+  });
+
+  it("a second push chains onto the first and carries the complete canonical map", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const first = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    const second = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    assert.equal(second.generation, nextGeneration(first.generation));
+    assert.equal(second.head.prev_sha256, first.head_sha256);
+    const state = await f.vault.materialize();
+    assert.deepEqual(state.refs, { "refs/heads/main": c2 });
+    assert.equal(state.ref_state!.generation, second.generation, "the ref_state carries the COMPLETE map at its generation");
+  });
+
+  it("a dropped tip enters retention_roots in the SAME generation", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await git(f.repoDir, ["checkout", "-q", "-b", "feature"]);
+    const c2 = await commitFile(f.repoDir, "f.txt", "f\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }, { ref: "refs/heads/feature", expected_old_oid: null, new_oid: c2, force: false }] } });
+    const dropped = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/feature", expected_old_oid: c2, new_oid: null, force: false }] } });
+    const state = await f.vault.materialize();
+    assert.deepEqual(state.refs, { "refs/heads/main": c1 });
+    assert.deepEqual(state.roots, [{ ref: "refs/heads/feature", oid: c2, dropped_at_generation: dropped.generation }]);
+    assert.equal(state.retention_roots!.cutoff, null, "a non-checkpoint generation binds no cutoff ticket");
+  });
+
+  it("a finalization receipt that does not match the local manifest refuses BEFORE the head is signed", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    f.transport.tamperReceiptAt = 1;
+    await rejectsCode(f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } }), "GITVAULT_RECEIPT_MISMATCH");
+    assert.ok(!f.transport.calls.includes("admit:0000000000000001"), "no head is admitted over receipts we did not verify");
+    assert.equal(f.keystore.readRepo(f.repoId)!.head_pin!.generation, "0000000000000000", "the pin stays at the genesis — nothing was published");
+  });
+
+  it("an admitted head that does not read back is NOT reported as landed and advances no pin", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    f.transport.tamperReadback = true;
+    await rejectsCode(f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } }), "GITVAULT_HEAD_READBACK_MISMATCH");
+    assert.equal(f.keystore.readRepo(f.repoId)!.head_pin!.generation, "0000000000000000", "no pin advances past the genesis");
+  });
+
+  it("a lost admission race re-verifies from storage, re-applies to the WINNER's map, and retries", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    // a second machine, same principal, lands `refs/heads/other` while our push is in flight
+    const other = new GitvaultVault({ keystore: f.keystore, transport: f.transport, repo_id: f.repoId, repo_dir: f.repoDir });
+    f.transport.competitor = async () => {
+      await other.push({ transaction: { updates: [{ ref: "refs/heads/other", expected_old_oid: null, new_oid: c1, force: false }] } });
+    };
+    const r = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    assert.equal(r.conflicts_retried, 1);
+    assert.equal(r.generation, "0000000000000003");
+    assert.deepEqual(r.refs, { "refs/heads/main": c2, "refs/heads/other": c1 }, "the winner's ref survives the retry — never a silent revert");
+  });
+
+  it("a transaction whose expected-old no longer matches the winner surfaces, it does not silently rebase", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    const c3 = await commitFile(f.repoDir, "c.txt", "c\n");
+    const other = new GitvaultVault({ keystore: f.keystore, transport: f.transport, repo_id: f.repoId, repo_dir: f.repoDir });
+    f.transport.competitor = async () => {
+      await other.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c3, force: false }] } });
+    };
+    await rejectsCode(f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } }), "REF_EXPECTED_OLD_MISMATCH");
+  });
+
+  it("the verification budget is RESUMABLE: the verified prefix persists and the next call continues", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    let tip = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: tip, force: false }] } });
+    for (let i = 0; i < 2; i++) {
+      const next = await commitFile(f.repoDir, `n${i}.txt`, `${i}\n`);
+      await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: tip, new_oid: next, force: false }] } });
+      tip = next;
+    }
+    // a fresh client with the same keystore but no pin (restored backup) verifies from the genesis
+    f.keystore.updateRepo(f.repoId, { head_pin: null, materialized_pin: null, verified_prefix: null });
+    const budgeted = new GitvaultVault({ keystore: f.keystore, transport: f.transport, repo_id: f.repoId, repo_dir: f.repoDir, verification_budget: 1 });
+    await rejectsCode(budgeted.verifyToNewest(), "VERIFICATION_BUDGET_EXCEEDED");
+    assert.equal(f.keystore.readRepo(f.repoId)!.verified_prefix?.generation, "0000000000000001");
+    await rejectsCode(budgeted.verifyToNewest(), "VERIFICATION_BUDGET_EXCEEDED");
+    assert.equal(f.keystore.readRepo(f.repoId)!.verified_prefix?.generation, "0000000000000002");
+    const done = await budgeted.verifyToNewest();
+    assert.equal(done.generation, "0000000000000003");
+    assert.equal(f.keystore.readRepo(f.repoId)!.verified_prefix ?? null, null, "a completed verification clears the resumption watermark");
+    assert.equal(f.keystore.readRepo(f.repoId)!.head_pin?.generation, "0000000000000003");
+  });
+
+  it("an authenticated-but-undecryptable carrier is CHAIN_UNUSABLE (read-only at the materialized pin)", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const r = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+    f.transport.objects.delete(`${f.repoId}/${gitvaultPaths.refState(r.head.ref_state.object_id)}`);
+    await rejectsCode(f.vault.materialize(), "CHAIN_UNUSABLE");
+  });
+
+  it("a vault that lost a generation this client authenticated is a GENERATION_REGRESSION, not a broken link", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+    f.transport.objects.delete(`${f.repoId}/${gitvaultPaths.head("0000000000000001")}`);
+    await rejectsCode(f.vault.verifyToNewest(), "GENERATION_REGRESSION");
+  });
+
+  it("a head whose stored bytes were substituted after admission is CHAIN_BROKEN", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+    const key = `${f.repoId}/${gitvaultPaths.head("0000000000000001")}`;
+    f.transport.objects.set(key, new TextEncoder().encode(new TextDecoder().decode(f.transport.objects.get(key)!) + " "));
+    await rejectsCode(f.vault.verifyToNewest(), "CHAIN_BROKEN");
+  });
+
+  it("detached HEAD is representable end to end and its commit is covered", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const r = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] }, head_target: { kind: "detached", oid: main } });
+    assert.deepEqual((await f.vault.materialize()).head_target, { kind: "detached", oid: main });
+    assert.deepEqual(GitvaultVault.coverageTips(r.refs, [], { kind: "detached", oid: main }), [main]);
+  });
+});
+
+describe("§4.7 checkpoint sets", () => {
+  it("a forced checkpoint head carries an EMPTY WAL set, an owner-signed claim set, and passes acceptance from the set ALONE", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const r = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] }, checkpoint: true });
+    assert.equal(r.form, "checkpoint");
+    assert.deepEqual(r.head.wal_entries, []);
+    assert.equal(r.head.checkpoint_purpose, "ordinary_push");
+    assert.equal(r.head.checkpoint!.covers_through_generation, r.generation);
+    assert.equal(r.head.checkpoint!.cutoff, null, "no removals ⇒ the no-removal form may omit the ticket");
+    assert.equal(r.head.checkpoint!.claim_set.object_kind, "checkpoint_claim_set");
+    // the claim set is stored as plaintext-structured JSON and receipted by its STORED bytes
+    const stored = f.transport.objects.get(`${f.repoId}/${gitvaultPaths.claimSet(r.head.checkpoint!.claim_set.object_id)}`)!;
+    assert.equal(sha256Hex(stored), r.head.checkpoint!.claim_set.stored_bytes_sha256);
+    const claimSet = JSON.parse(new TextDecoder().decode(stored));
+    assert.equal(claimSet.writer_key_id, f.keystore.readIdentity()!.signing_fingerprint);
+    assert.equal(BigInt(claimSet.total_stored_size_bytes), BigInt(claimSet.manifest_receipt.size_bytes) + claimSet.ordered_pack_receipts.reduce((a: bigint, p: { size_bytes: string }) => a + BigInt(p.size_bytes), 0n));
+  });
+
+  it("cross-field equality is normative: a claim set that disagrees with its manifest fails acceptance", () => {
+    const manifest = { object_id: "chk_" + "1".repeat(32), covers_through_generation: "0000000000000002", packs: [{ object_id: "ckp_" + "2".repeat(32), plaintext_sha256: "a".repeat(64), plaintext_size_bytes: "10", ciphertext_sha256: "b".repeat(64), size_bytes: "42" }] };
+    const claim = {
+      object_id: "ccs_" + "3".repeat(32), covers_through_generation: "0000000000000002",
+      manifest_receipt: { object_id: manifest.object_id, object_kind: "checkpoint_manifest", ciphertext_sha256: "c".repeat(64), size_bytes: "100" },
+      ordered_pack_receipts: [{ object_id: manifest.packs[0]!.object_id, object_kind: "checkpoint_pack", ciphertext_sha256: "b".repeat(64), size_bytes: "42" }],
+      total_stored_size_bytes: "142",
+    };
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    checkClaimSetEquality(claim as any, manifest as any, "0000000000000002");
+    throwsCode(() => checkClaimSetEquality(claim as any, manifest as any, "0000000000000003"), "CHECKPOINT_INCOMPLETE");
+    throwsCode(() => checkClaimSetEquality({ ...claim, total_stored_size_bytes: "143" } as any, manifest as any, "0000000000000002"), "CHECKPOINT_INCOMPLETE");
+    throwsCode(() => checkClaimSetEquality({ ...claim, ordered_pack_receipts: [{ ...claim.ordered_pack_receipts[0]!, size_bytes: "43" }] } as any, manifest as any, "0000000000000002"), "CHECKPOINT_INCOMPLETE");
+    throwsCode(() => checkClaimSetEquality({ ...claim, ordered_pack_receipts: [] } as any, manifest as any, "0000000000000002"), "CHECKPOINT_INCOMPLETE");
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  });
+
+  it("publishCheckpoint binds a fresh cutoff ticket and retains roots it cannot prove expired", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await git(f.repoDir, ["checkout", "-q", "-b", "feature"]);
+    const c2 = await commitFile(f.repoDir, "f.txt", "f\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }, { ref: "refs/heads/feature", expected_old_oid: null, new_oid: c2, force: false }] } });
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/feature", expected_old_oid: c2, new_oid: null, force: false }] } });
+
+    const kept = await f.vault.publishCheckpoint();
+    assert.equal(kept.form, "checkpoint");
+    assert.ok(kept.head.checkpoint!.cutoff, "the head binds the ticket it evaluated expiry against");
+    assert.equal(kept.head.checkpoint!.cutoff!.cutoff_at, (await f.vault.materialize()).retention_roots!.cutoff!.cutoff_at);
+    assert.deepEqual((await f.vault.materialize()).roots.map((r) => r.ref), ["refs/heads/feature"], "unresolvable effective_admitted_at RETAINS");
+    assert.deepEqual((await f.vault.materialize()).refs, { "refs/heads/main": c1 }, "a checkpoint-only generation changes no ref");
+
+    // with a resolver that puts the drop well past its lane, the same root leaves the map
+    const swept = await f.vault.publishCheckpoint({ cutoff: { effectiveAdmittedAt: () => "2000-01-01T00:00:00.000Z" } });
+    assert.equal(swept.form, "checkpoint");
+    assert.deepEqual((await f.vault.materialize()).roots, []);
+  });
+
+  it("a covered tip missing from the local repository refuses the checkpoint rather than shipping an unrestorable set", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const absent = `${"0".repeat(39)}1`; // well-formed, and no such object exists here
+    await rejectsCode(f.vault.push({ transaction: { updates: [{ ref: "refs/heads/ghost", expected_old_oid: null, new_oid: absent, force: false }] }, checkpoint: true }), "CHECKPOINT_INCOMPLETE");
+  });
+});
+
+describe("§4.3 repair + restore", () => {
+  it("a repair head supersedes an interval, preserves every unreachable superseded tip as a root, and carries a mandatory checkpoint", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const g1 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    await git(f.repoDir, ["checkout", "-q", "-b", "feature"]);
+    const c2 = await commitFile(f.repoDir, "f.txt", "f\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/feature", expected_old_oid: null, new_oid: c2, force: false }] } });
+
+    const repaired = await f.vault.repair({ base_generation: g1.generation, reason: "unusable_ref_state" });
+    assert.equal(repaired.generation, "0000000000000003");
+    assert.equal(repaired.form, "checkpoint");
+    assert.equal(repaired.head.checkpoint_purpose, "repair");
+    assert.ok(repaired.head.checkpoint, "a repair head MUST carry a freshly accepted self-contained checkpoint");
+    assert.deepEqual(repaired.head.repair, { base_generation: g1.generation, base_head_sha256: g1.head_sha256, supersedes_from: "0000000000000002", supersedes_through: "0000000000000002", reason: "unusable_ref_state" });
+    const state = await f.vault.materialize();
+    assert.deepEqual(state.refs, { "refs/heads/main": c1 }, "the repaired state is the base generation's map");
+    assert.deepEqual(state.roots, [{ ref: "refs/heads/feature", oid: c2, dropped_at_generation: repaired.generation }], "the superseded tip is preserved with a FRESH lane");
+  });
+
+  it("a repair cannot base on the genesis or on the newest generation", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const g1 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    await rejectsCode(f.vault.repair({ base_generation: g1.generation, reason: "corrupt_referenced_object" }), "REPAIR_TARGET_UNPRESERVABLE");
+    await rejectsCode(f.vault.repair({ base_generation: "0000000000000000", reason: "corrupt_referenced_object" }), "REPAIR_TARGET_UNPRESERVABLE");
+  });
+
+  it("restore pulls the newest checkpoint plus every later WAL pack and proves the whole coverage set resolves", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] }, checkpoint: true });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-restore-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    const restored = await f.vault.restoreObjectsInto(target);
+    assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
+    assert.equal(await hasObject(target, c1), true);
+    assert.equal(await hasObject(target, c2), true);
+  });
+});
+
+// ─── Coverage tally ──────────────────────────────────────────────────────────
+
+vectors("vector coverage tally", () => {
+  it("every vector of each fully-replayed class was exercised", () => {
+    const summary: Record<string, string> = {};
+    for (const cls of ["heads_listing_pagination", "retention-schedule", "transition-fail-closed", "request-to-c1-binding"]) {
+      const have = replayed.get(cls)?.size ?? 0;
+      const want = Number(vectorFile!.counts_by_class[cls]);
+      summary[cls] = `${have}/${want}`;
+      assert.equal(have, want, `class ${cls}: replayed ${have} of ${want}`);
+    }
+    // `chain` is split: the crypto suite owns the four signature/linkage vectors, this suite owns
+    // chain-005 (a PIN comparison). Assert the split explicitly so it cannot drift into a gap.
+    assert.deepEqual([...(replayed.get("chain") ?? [])], ["chain-005"]);
+    summary.chain = "1/5 (chain-001..004 are the crypto suite's)";
+    // eslint-disable-next-line no-console
+    console.log(`gitvault publication vectors rev ${vectorFile!["x-r402s-revision"]}: ${JSON.stringify(summary)}`);
+  });
+});

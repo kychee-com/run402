@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -110,7 +110,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -717,6 +717,32 @@ const SURFACE: Capability[] = [
   { id: "get_contract_call_status",  endpoint: "GET /contracts/v1/calls/:id",                      mcp: "get_contract_call_status",  cli: "contracts:status",           openclaw: "contracts:status" },
   { id: "drain_signer",              endpoint: "POST /contracts/v1/signers/:id/drain",             mcp: "drain_signer",              cli: "contracts:drain",            openclaw: "contracts:drain" },
   { id: "delete_signer",             endpoint: "DELETE /contracts/v1/signers/:id",                 mcp: "delete_signer",             cli: "contracts:delete",           openclaw: "contracts:delete" },
+
+  // ── gitvault (r402s/v0) — the host-blind encrypted Git remote ────────────
+  // The READS are on MCP because "is my vault healthy / did the host serve me
+  // a rollback / what landed" is exactly the mid-session question an agent
+  // asks, and none of those responses carries key material.
+  //
+  // Every WRITE is CLI-only, deliberately. `push` publishes an immutable
+  // generation from whatever is in the working tree at that instant; `init`
+  // mints key material and a one-shot recovery receipt; `compact` holds a
+  // maintenance lease whose holder_token is returned exactly once (a dropped
+  // MCP session strands it until its deadline); `prune` is destructive by
+  // contract; policy management needs owner + step-up, which the MCP path does
+  // not carry. Each wants a human at a terminal, not an agent transcript.
+  { id: "gitvault_status",   endpoint: "GET /gitvault/v1/vaults/:vault_id",                          mcp: "get_gitvault_status",  cli: "gitvault:status",   openclaw: "gitvault:status" },
+  { id: "gitvault_heads",    endpoint: "GET /gitvault/v1/vaults/:vault_id/heads",                    mcp: "list_gitvault_heads",  cli: null,                openclaw: null },
+  { id: "gitvault_verify",   endpoint: "GET /gitvault/v1/vaults/:vault_id/heads[/:generation]",      mcp: "verify_gitvault",      cli: "gitvault:verify",   openclaw: "gitvault:verify" },
+  { id: "gitvault_push",     endpoint: "POST /gitvault/v1/vaults/:vault_id/upload-sessions (+ admission)", mcp: null,             cli: "gitvault:push",     openclaw: "gitvault:push" },
+  { id: "gitvault_compact",  endpoint: "POST /gitvault/v1/vaults/:vault_id/maintenance-leases",      mcp: null,                   cli: "gitvault:compact",  openclaw: "gitvault:compact" },
+  // Dry run in V0: the prune intent/completion wire has no shipped route, so
+  // the verb reports eligibility and deletes nothing. There is no purge verb.
+  { id: "gitvault_prune",    endpoint: "(local dry run — the prune intent/completion route is unshipped)", mcp: null,             cli: "gitvault:prune",    openclaw: "gitvault:prune" },
+
+  // ── the lossy-surface expander ──────────────────────────────────────────
+  // MCP truncates; agent-response-design requires the full result to stay
+  // reachable under a `ref` with `shown`/`total`. This is that affordance.
+  { id: "expand_result",     endpoint: "(local)",                                                    mcp: "expand_result",        cli: null,                openclaw: null },
 ];
 
 // ─── SDK namespace mapping ──────────────────────────────────────────────────
@@ -750,6 +776,16 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   buzz_notify_resume: "buzz.notifications.resume",
   buzz_notify_rotate: "buzz.notifications.rotate",
   buzz_notify_revoke: "buzz.notifications.revoke",
+
+  // gitvault — all protocol logic is SDK-side; CLI/MCP are adapters (task 5.0).
+  gitvault_status: "gitvault.status",
+  gitvault_heads: "gitvault.heads",
+  gitvault_verify: "gitvault.verify",
+  gitvault_push: "gitvault.push",
+  gitvault_compact: "gitvault.compact",
+  gitvault_prune: "gitvault.prune",
+  // The result store is MCP-local plumbing, not a gateway capability.
+  expand_result: null,
 
   // Named wallets — local profile management (no SDK gateway method).
   wallets_list: null,
@@ -1438,6 +1474,33 @@ describe("SDK surface alignment", () => {
       "senderDomain.remove",
       "senderDomain.enableInbound",
       "senderDomain.disableInbound",
+      // ─── gitvault (r402s/v0) ──────────────────────────────────────────
+      // `get`/`forProject` are addressing sugar the verbs use internally
+      // (`forProject` is the cold-restart lookup); `allHeads` is the paging
+      // convenience behind `verify`; `open` returns the raw protocol object
+      // for consumers driving ref transactions or repair directly.
+      "gitvault.get",
+      "gitvault.forProject",
+      "gitvault.allHeads",
+      "gitvault.open",
+      // `init` + `scaffoldRemote` are reached through `run402 init` (the
+      // scaffold capability), not through a `gitvault` subcommand.
+      "gitvault.init",
+      "gitvault.scaffoldRemote",
+      // `deploy` is the push-gated deploy — it belongs to the deploy surface
+      // (`run402 deploy`), not to the vault verb group.
+      "gitvault.deploy",
+      // `drainOverrides` runs automatically on any later CLI invocation; it is
+      // not a verb a caller reaches for.
+      "gitvault.drainOverrides",
+      // `restore` is the clone-back path, driven by `git-remote-run402`'s
+      // fetch command rather than by a `run402 gitvault` subcommand.
+      "gitvault.restore",
+      // Owner + step-up writes with no MCP tool by design; the CLI reaches
+      // them through the vault group's flags rather than dedicated verbs.
+      "gitvault.setPolicy",
+      "gitvault.completeOverride",
+      "gitvault.acquireMaintenanceLease",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
       // shares the `run402 functions rebuild --all` CLI verb (and the
@@ -1556,6 +1619,69 @@ describe("SDK surface alignment", () => {
   });
 });
 
+// ─── CLI/MCP SDK-boundary guard (add-gitvault task 5.0) ──────────────────────
+//
+// "The SDK owns ALL the smarts; the CLI is a thin shim." The client-surface
+// spec makes that architectural law: every piece of vault protocol behaviour —
+// crypto core, keystore, creation journal, snapshot + capture, publication
+// state machines, ref transactions, verification budget, token exchange,
+// repair — is implemented ONCE in `@run402/sdk`, and `run402 gitvault …`,
+// `git-remote-run402`, and the MCP tools are adapters: argument parsing, TTY
+// output, exit codes, and local file I/O only.
+//
+// This gate is what keeps that honest. Without it the drift is silent and
+// one-directional: a shim that reaches for `node:crypto` or `fetch` once
+// becomes a second implementation of the protocol, and then the two lineages
+// disagree in production rather than in CI.
+//
+// CARVE-OUT, deliberate and permanent: `r402s-verify` (the Rust crate at
+// `r402s-verify/`) is the INDEPENDENT SECOND LINEAGE. It implements the
+// protocol from scratch — its own HPKE, its own strict parser, its own
+// Ed25519 — precisely so a differential disagreement with the SDK is
+// reportable evidence rather than a shared blind spot. It is not TypeScript,
+// it is not scanned here, and it must never be "aligned" with this rule.
+
+/** Files that must contain no protocol implementation of their own. */
+const SHIM_SOURCES = [
+  "cli/lib/gitvault.mjs",
+  "cli/git-remote-run402.mjs",
+  "openclaw/scripts/gitvault.mjs",
+  "src/tools/gitvault.ts",
+];
+
+/**
+ * Anything under these directories whose name mentions gitvault is a shim by
+ * construction and must be listed above. This is the half that survives a
+ * rename: an explicit list catches a deletion, discovery catches an addition.
+ */
+const SHIM_DISCOVERY_DIRS = ["cli/lib", "src/tools", "openclaw/scripts"];
+
+/**
+ * Imports a shim may NOT reach for. Each entry is a capability the SDK already
+ * owns; importing it in a shim means the shim is about to reimplement it.
+ */
+const FORBIDDEN_SHIM_IMPORTS: Array<{ pattern: RegExp; why: string }> = [
+  { pattern: /\bfrom\s+["']node:crypto["']/, why: "hashing/signing is the SDK's crypto core" },
+  { pattern: /\brequire\(["']node:crypto["']\)/, why: "hashing/signing is the SDK's crypto core" },
+  { pattern: /\bfrom\s+["']@noble\//, why: "Ed25519/X25519 belong to the SDK crypto core" },
+  { pattern: /\bfrom\s+["']@hpke\//, why: "HPKE belongs to the SDK crypto core" },
+  { pattern: /\bfrom\s+["']undici["']/, why: "all HTTP goes through the SDK kernel" },
+  { pattern: /\bfrom\s+["']node:https?["']/, why: "all HTTP goes through the SDK kernel" },
+  { pattern: /\bfrom\s+["']isomorphic-git["']/, why: "git plumbing belongs to the SDK's hardened-git layer" },
+  { pattern: /\bfrom\s+["']simple-git["']/, why: "git plumbing belongs to the SDK's hardened-git layer" },
+  // A shim that spawns git directly has re-implemented the hardened-git
+  // contract (cleared GIT_* env, no user config, empty hooks path, filters
+  // structurally disabled) — the one place a mistake silently runs a hostile
+  // filter on a captured path.
+  { pattern: /\b(spawn|spawnSync|exec|execSync|execFile|execFileSync)\s*\(\s*["'`]git\b/, why: "git must be invoked through the SDK's hardened-git layer, never spawned directly" },
+];
+
+/** Bare network calls: an adapter never talks to the gateway on its own. */
+const FORBIDDEN_SHIM_CALLS: Array<{ pattern: RegExp; why: string }> = [
+  { pattern: /(^|[^.\w])fetch\s*\(/m, why: "all HTTP goes through the SDK kernel (getSdk()), never a bare fetch" },
+  { pattern: /\bnew\s+XMLHttpRequest\b/, why: "all HTTP goes through the SDK kernel" },
+];
+
 describe("CLI/MCP SDK-boundary guard", () => {
   it("keeps production interface code from bypassing the SDK for gateway calls", () => {
     const allowlist = new Map<string, RegExp[]>([
@@ -1635,6 +1761,69 @@ describe("CLI/MCP SDK-boundary guard", () => {
         "They should resolve the project id and call the SDK domain namespace.",
     );
   });
+  it("every declared shim source exists — a renamed file must not silently drop out of the gate", () => {
+    const missing = SHIM_SOURCES.filter((f) => !existsSync(join(__dirname, f)));
+    assert.deepEqual(
+      missing,
+      [],
+      "SHIM_SOURCES names files that do not exist. If a shim was renamed, update this list — " +
+        `do not let it fall out of the boundary gate: ${missing.join(", ")}`,
+    );
+  });
+
+  it("no gitvault shim escapes the gate by being added under a new name", () => {
+    const found: string[] = [];
+    for (const dir of SHIM_DISCOVERY_DIRS) {
+      const abs = join(__dirname, dir);
+      if (!existsSync(abs)) continue;
+      for (const name of readdirSync(abs)) {
+        if (!/gitvault/i.test(name)) continue;
+        if (name.endsWith(".test.ts") || name.endsWith(".test.mjs")) continue;
+        found.push(`${dir}/${name}`);
+      }
+    }
+    const untracked = found.filter((f) => !SHIM_SOURCES.includes(f));
+    assert.deepEqual(
+      untracked,
+      [],
+      `New gitvault shim source(s) are not in SHIM_SOURCES, so the boundary gate is not scanning them. ` +
+        `Add them: ${untracked.join(", ")}`,
+    );
+  });
+
+  it("shims import only the SDK and stdlib — never crypto, HTTP, or git libraries directly", () => {
+    const violations: string[] = [];
+    for (const file of SHIM_SOURCES) {
+      const path = join(__dirname, file);
+      if (!existsSync(path)) continue;
+      const src = readFileSync(path, "utf-8");
+      for (const { pattern, why } of FORBIDDEN_SHIM_IMPORTS) {
+        if (pattern.test(src)) violations.push(`${file}: ${pattern} — ${why}`);
+      }
+      for (const { pattern, why } of FORBIDDEN_SHIM_CALLS) {
+        if (pattern.test(src)) violations.push(`${file}: ${pattern} — ${why}`);
+      }
+    }
+    assert.deepEqual(
+      violations,
+      [],
+      "A gitvault shim reached past the SDK. The SDK owns all protocol logic; the shim does argument " +
+        "parsing, TTY output, exit codes, and local file I/O only. Move the behaviour into " +
+        `sdk/src/namespaces/gitvault.ts (or sdk/src/node/gitvault-*.ts) and call it:\n  ${violations.join("\n  ")}`,
+    );
+  });
+
+  it("r402s-verify is NOT scanned — it is the independent second lineage, by design", () => {
+    // Stated as an executable assertion so a future edit that "tidies" the
+    // Rust crate into this list has to argue with a test that explains why
+    // that would destroy the differential-verification property.
+    assert.equal(
+      SHIM_SOURCES.some((f) => f.startsWith("r402s-verify/")),
+      false,
+      "r402s-verify implements the protocol independently on purpose — sharing implementation code with " +
+        "the SDK would let one defect hide in both lineages at once. Never add it to SHIM_SOURCES.",
+    );
+  });
 });
 
 function productionInterfaceFiles(): string[] {
@@ -1647,6 +1836,10 @@ function productionInterfaceFiles(): string[] {
     ...readdirSync(srcTools)
       .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
       .map((name) => join(srcTools, name)),
+    // `git-remote-run402` is a production interface too, and it lives at the
+    // CLI package root rather than under `cli/lib/`, so a directory scan alone
+    // would leave the one binary git itself executes unguarded.
+    ...(existsSync(join(__dirname, "cli/git-remote-run402.mjs")) ? [join(__dirname, "cli/git-remote-run402.mjs")] : []),
   ].sort();
 }
 

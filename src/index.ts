@@ -360,6 +360,19 @@ import { deleteSignerSchema, handleDeleteSigner } from "./tools/delete-signer.js
 // New tools — service status (public, unauthenticated)
 import { serviceStatusSchema, handleServiceStatus } from "./tools/service-status.js";
 import { serviceHealthSchema, handleServiceHealth } from "./tools/service-health.js";
+
+// New tools — gitvault (READ-ONLY; the mutating verbs stay CLI-only, see src/tools/gitvault.ts)
+import {
+  getGitvaultStatusSchema,
+  handleGetGitvaultStatus,
+  handleListGitvaultHeads,
+  handleVerifyGitvault,
+  listGitvaultHeadsSchema,
+  verifyGitvaultSchema,
+} from "./tools/gitvault.js";
+
+// The lossy surface's expand affordance — pairs with every tool that stores a ref.
+import { expandResultSchema, handleExpandResult } from "./tools/expand-result.js";
 import { TOOL_PROFILES, activeProfile, requestedProfileName } from "./tool-profiles.js";
 
 function currentPackageVersion(): string {
@@ -1970,6 +1983,40 @@ server.tool(
   "Revoke a per-project capability grant by id. Params: `project_id`, `grant_id`. Requires you to be an owner of the project's org.",
   revokeProjectGrantSchema,
   async (args) => handleRevokeProjectGrant(args),
+);
+
+// ─── gitvault — the host-blind encrypted Git remote (read-only surface) ──────
+//
+// Only the READ verbs are exposed here. push / init / compact / prune / deploy
+// / set-policy stay CLI-only — see the header of src/tools/gitvault.ts for why
+// each one is excluded.
+
+server.tool(
+  "get_gitvault_status",
+  "What this machine and the control plane each believe about a project's gitvault: the vault record, the activation policy, the local keystore (present? can it sign? does it hold the repo key?), the highest authenticated and materialized pins, pending unvaulted-override journals, and any warnings. This is also the cold-restart entry point — pass project_id with no local state and it resolves the vault for you. Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary. Activation requires vault admission by default; an explicit, audited override can bypass it. The output states verbatim, because it is a reviewed product commitment and not a summary you may paraphrase: whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship. Read-only: it signs nothing, publishes nothing, and moves no pin.",
+  getGitvaultStatusSchema,
+  async (args) => handleGetGitvaultStatus(args),
+);
+
+server.tool(
+  "list_gitvault_heads",
+  "One page of a vault's heads listing — the admitted generations above a fixed anchor, each with its stored-bytes hash. after_generation is the VERIFICATION ANCHOR, not a paging knob: it fixes the generation the listing is verified above and MUST stay identical across every page of one sequence; changing it starts a different listing. limit is required (1..1000). cursor is omitted on the first call and is thereafter the prior page's next_cursor echoed UNCHANGED — it is opaque, so store and echo it, never parse or construct one; a malformed or stale cursor is INVALID_CURSOR and you recover by restarting from after_generation with no cursor. The full page is kept behind a ref and only a window is printed, with shown and total both reported — call expand_result with that ref for the rest. Listing is not verifying: use verify_gitvault to check the chain links.",
+  listGitvaultHeadsSchema,
+  async (args) => handleListGitvaultHeads(args),
+);
+
+server.tool(
+  "verify_gitvault",
+  "Verify the vault's head chain from your local authenticated pin up to the newest listed generation, then advance that pin to what was proved. The pin only ever moves forward: verification is monotonic and non-destructive — it rewrites no history and can never lower the pin. It fails CLOSED, and the refusal is the answer: GENERATION_REGRESSION when the vault offers a generation at or below your pin (a rollback), CHAIN_BROKEN on a gap, a missing head, or a link that does not chain, UPGRADE_REQUIRED on a transition this client cannot validate (read-only past it, never skipped), and VERIFICATION_BUDGET_EXCEEDED when the per-call head budget runs out — that last one is a pause, not a failure, because the verified prefix persists and calling again resumes. What verification proves is the chain; what it cannot prove is how long bytes are kept: Retention is an operational promise of the platform, not a cryptographic guarantee against it (the host controls timestamps and bytes).",
+  verifyGitvaultSchema,
+  async (args) => handleVerifyGitvault(args),
+);
+
+server.tool(
+  "expand_result",
+  "Fetch more of a result a previous tool showed you only a window of. Tools on this surface truncate the VIEW, never the DATA: when one prints a ref together with shown and total, the full result is held behind that ref and this is how you read the rest of it. Pass the ref plus offset and limit to page through it. Refs live in this server process only — they expire after 30 minutes and only the most recent handful are kept, so re-run the producing tool rather than storing a ref across sessions. A result that carried a secret is never retained and never has a ref, so nothing here can hand one back.",
+  expandResultSchema,
+  async (args) => handleExpandResult(args),
 );
 
 // Every name in an active profile must have matched a real tool. A profile that
