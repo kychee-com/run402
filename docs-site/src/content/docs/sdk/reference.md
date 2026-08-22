@@ -1783,7 +1783,7 @@ await r.domains.ensure(projectId, "app.example.com", { desired: { web: { enabled
 
 `authority: "hosted_dns_zone"` is the only workable path for a ROOT domain at most registrars (a root CNAME is illegal without flattening/ALIAS support) and collapses setup to one registrar step: Run402 applies every in-zone record, verifies ownership, and issues TLS once delegation is observed. Existing MX/TXT are imported into the hosted zone before the nameserver change is recommended, so mail keeps working. `hosted_zone` reports `{ dns_hosting, status, ns_assigned, imported_records }`; disconnecting tears the zone down (DNS stops resolving until nameservers are re-pointed).
 
-Every response carries `next_actions[]` (ordered; `[0]` is the recommended step). The singular `next_action` / `alternate_actions` are deprecated aliases.
+Every response carries `next_actions[]` (ordered; `[0]` is the recommended step).
 
 ### `r.events`
 

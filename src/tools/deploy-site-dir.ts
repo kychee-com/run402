@@ -15,10 +15,6 @@ export const deploySiteDirSchema = {
     .describe(
       "Local directory to deploy. The SDK walks this directory, hashes each file, and uploads only bytes the gateway doesn't already have via the unified deploy primitive (CAS-backed). Files named .git, node_modules, or .DS_Store are skipped. Symlinks are rejected.",
     ),
-  target: z
-    .string()
-    .optional()
-    .describe("Deprecated/unsupported: unified deploy v2 does not support deployment target labels. Passing this field returns an error."),
 };
 
 /**
@@ -39,18 +35,7 @@ function renderEventsBlock(events: DeployEvent[]): string {
 export async function handleDeploySiteDir(args: {
   project: string;
   dir: string;
-  target?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  if (args.target !== undefined) {
-    return mapSdkError(
-      new LocalError(
-        "`target` is unsupported by unified deploy v2 and would otherwise be ignored.",
-        "deploying site directory",
-      ),
-      "deploying site directory",
-    );
-  }
-
   const auth = requireAllowanceAuth("/apply/v1/plans");
   if ("error" in auth) return auth.error;
 
@@ -60,7 +45,6 @@ export async function handleDeploySiteDir(args: {
     const body = await getSdk().sites.deployDir({
       project: args.project,
       dir: args.dir,
-      target: args.target,
       onEvent: (e) => events.push(e),
     });
 

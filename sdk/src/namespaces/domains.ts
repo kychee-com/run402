@@ -132,10 +132,6 @@ export interface ProjectDomain {
   checks: ProjectDomainCheck[];
   /** Ordered follow-ups; `next_actions[0]` is the recommended action. */
   next_actions: ProjectDomainNextAction[];
-  /** @deprecated alias of `next_actions[0] ?? null`; use `next_actions`. */
-  next_action: ProjectDomainNextAction | null;
-  /** @deprecated alias of `next_actions.slice(1)`; use `next_actions`. */
-  alternate_actions: ProjectDomainNextAction[];
   /** Present only for a domain on a Run402-hosted DNS zone. */
   hosted_zone?: ProjectDomainHostedZone | null;
   provenance: {
