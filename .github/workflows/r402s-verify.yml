@@ -1,0 +1,36 @@
+name: r402s-verify
+
+# The independent-lineage gitvault verifier (Rust). Lives outside the npm
+# workspaces and outside publish.yml; see r402s-verify/README.md for release.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "r402s-verify/**"
+      - ".github/workflows/r402s-verify.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "r402s-verify/**"
+      - ".github/workflows/r402s-verify.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: r402s-verify
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: r402s-verify
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      # The task-1.2 vector set is private; tests/vectors.rs skips loudly when it
+      # is absent. Set R402S_VECTORS in a private mirror to make the replay a gate.
+      - run: cargo test --locked
+      - run: bash scripts/never-assembled-gate.sh
