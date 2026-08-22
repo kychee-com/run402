@@ -5189,44 +5189,6 @@ describe("CLI destructive delete --confirm guard (GH-212)", () => {
     assert.ok(del, `must issue DELETE /subdomains/v1/my-app, calls: ${JSON.stringify(calls)}`);
   });
 
-  it("domains delete <domain> is removed and does not call gateway", async () => {
-    await seedActiveProject();
-    const { run } = await import("./cli/lib/domains.mjs");
-    const calls = [];
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = buildSpyFetch(calls);
-    let threw = null;
-    captureStart();
-    try {
-      await run("delete", ["example.com"]);
-    } catch (e) { threw = e; } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-    }
-    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
-    assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
-    assert.ok(/COMMAND_REMOVED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
-    assert.ok(/domains disconnect/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
-  });
-
-  it("domains delete <domain> --confirm is still removed before network work", async () => {
-    await seedActiveProject();
-    const { run } = await import("./cli/lib/domains.mjs");
-    const calls = [];
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = buildSpyFetch(calls);
-    let threw = null;
-    captureStart();
-    try {
-      await run("delete", ["example.com", "--confirm"]);
-    } catch (e) { threw = e; } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-    }
-    assert.equal(threw?.message, "process.exit(1)", "must exit non-zero");
-    assert.equal(calls.filter(c => c.method === "DELETE").length, 0, "must not issue any DELETE");
-    assert.ok(/COMMAND_REMOVED/.test(capturedStderr()), `stderr: ${capturedStderr()}`);
-  });
 });
 
 // ── init <rail> --switch-rail guard (GH-210) ────────────────────────────────
@@ -5424,22 +5386,6 @@ describe("CLI canonical error envelope (GH-215, GH-174)", () => {
       command: "run402 deploy apply",
       why: "Deploy a site first, then retry claiming the subdomain.",
     }], `next_actions should populate with typed deploy guidance, got: ${JSON.stringify(parsed.next_actions)}`);
-  });
-
-  it("domains add with no args emits COMMAND_REMOVED with replacement", async () => {
-    const { run } = await import("./cli/lib/domains.mjs");
-    let threw = null;
-    captureStart();
-    try {
-      await run("add", []);
-    } catch (e) { threw = e; } finally {
-      captureStop();
-    }
-    assert.equal(threw?.message, "process.exit(1)");
-    const parsed = parseStderrJson();
-    assert.equal(parsed.status, "error");
-    assert.equal(parsed.code, "COMMAND_REMOVED");
-    assert.ok(/run402 domains connect/.test(parsed.details?.replacement || ""), `replacement should mention connect, got: ${JSON.stringify(parsed)}`);
   });
 
   it("blob put with unknown local project emits PROJECT_CREDENTIAL_NOT_FOUND with details.source: local_cache", async () => {

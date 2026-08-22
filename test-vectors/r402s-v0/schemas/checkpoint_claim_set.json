@@ -1,0 +1,60 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "checkpoint_claim_set.json",
+ "title": "r402s/v0 checkpoint_claim_set total_stored_size_bytes = manifest_receipt.size_bytes + sum of pack size_bytes (claim-set object excluded) (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "manifest_receipt",
+  "ordered_pack_receipts",
+  "total_stored_size_bytes",
+  "covers_through_generation",
+  "writer_key_id"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "checkpoint_claim_set"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/ccs"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "manifest_receipt": {
+   "$ref": "common.json#/$defs/receipt_checkpoint_manifest"
+  },
+  "ordered_pack_receipts": {
+   "type": "array",
+   "maxItems": 4096,
+   "items": {
+    "$ref": "common.json#/$defs/receipt_checkpoint_pack"
+   }
+  },
+  "total_stored_size_bytes": {
+   "$ref": "common.json#/$defs/size_bytes"
+  },
+  "covers_through_generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "writer_key_id": {
+   "$ref": "common.json#/$defs/vk"
+  }
+ },
+ "x-r402s-revision": "40"
+}

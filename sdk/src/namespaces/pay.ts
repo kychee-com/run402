@@ -57,15 +57,7 @@ export interface PaymentRawEvidence {
 }
 
 export interface PaymentReceipt {
-  /** @deprecated Use amountUsdMicros. */
-  amount_usd_micros: number;
-  /** @deprecated Use payTo. */
-  pay_to: string;
   network: string;
-  /** @deprecated Use transaction. */
-  tx_ref: string;
-  /** @deprecated Use resourceUrl. */
-  url: string;
   paymentId: string | null;
   amountUsdMicros: number;
   asset: string;

@@ -697,56 +697,6 @@ export class Assets {
   }
 
   /**
-   * @deprecated REMOVED in v2.1.0. The /storage/v1/uploads* substrate was
-   * dropped in gateway v1.48; all bytes flow through /content/v1/plans now.
-   * Migrate to `r.project(id).apply({ assets: { put: [{ key, source, ... }] } })`
-   * for single-asset uploads or `r.assets.uploadDir/syncDir/prepareDir/putMany`
-   * for batches. For low-level resumable control, use `r.project(id).apply.plan`
-   * and the returned `byteReaders` map.
-   */
-  async initUploadSession(
-    _projectId: string,
-    _opts: BlobUploadInitOptions,
-  ): Promise<BlobUploadInitResult> {
-    throw new LocalError(
-      "Assets.initUploadSession was removed in v2.1.0 (gateway v1.48 dropped /storage/v1/uploads). " +
-        "Use `r.project(id).apply({ assets: { put: [{ key, source, ... }] } })` for single-asset uploads, " +
-        "or `r.assets.uploadDir/syncDir/prepareDir/putMany` for batches.",
-      "initializing upload",
-    );
-  }
-
-  /**
-   * @deprecated REMOVED in v2.1.0 — see {@link initUploadSession}.
-   */
-  async getUploadSession(
-    _projectId: string,
-    _uploadId: string,
-  ): Promise<BlobUploadStatusResult> {
-    throw new LocalError(
-      "Assets.getUploadSession was removed in v2.1.0 (gateway v1.48 dropped /storage/v1/uploads). " +
-        "Low-level resumable upload sessions are no longer a public surface; the apply engine handles retries.",
-      "fetching upload session",
-    );
-  }
-
-  /**
-   * @deprecated REMOVED in v2.1.0 — see {@link initUploadSession}.
-   */
-  async completeUploadSession(
-    _projectId: string,
-    _uploadId: string,
-    _opts: BlobUploadCompleteOptions = {},
-    _extra: { contentType?: string } = {},
-  ): Promise<BlobUploadCompleteResult> {
-    throw new LocalError(
-      "Assets.completeUploadSession was removed in v2.1.0 (gateway v1.48 dropped /storage/v1/uploads/:id/complete). " +
-        "Use `r.project(id).apply` — the apply hero's activation transaction promotes staged uploads to CAS automatically.",
-      "completing upload",
-    );
-  }
-
-  /**
    * Diagnose a public blob URL. Returns a JSON envelope describing the live
    * CDN state (expected vs observed SHA, cache headers, recent invalidation
    * status, vantage). The gateway probes the URL once from us-east-1 with

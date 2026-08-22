@@ -1,0 +1,73 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "activation_token.json",
+ "title": "r402s/v0 activation_token keyed unique on object_id; idempotent same-operation replay is a read of the terminal state (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "service_key_id",
+  "operation_id",
+  "generation",
+  "head_sha256",
+  "capture_id",
+  "apply_plan_sha256",
+  "snapshot_oid_hmac",
+  "issued_at",
+  "authorization_epoch"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "activation_token"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/ct"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "service_key_id": {
+   "$ref": "common.json#/$defs/service_key_id"
+  },
+  "operation_id": {
+   "type": "string",
+   "minLength": 1
+  },
+  "generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "head_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "capture_id": {
+   "$ref": "common.json#/$defs/hex32"
+  },
+  "apply_plan_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "snapshot_oid_hmac": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "issued_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "authorization_epoch": {
+   "$ref": "common.json#/$defs/authorization_epoch"
+  }
+ },
+ "x-r402s-revision": "40"
+}

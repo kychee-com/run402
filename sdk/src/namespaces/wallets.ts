@@ -19,7 +19,6 @@
  */
 
 import type { Client } from "../kernel.js";
-import { deprecatePositional } from "../deprecate.js";
 
 interface WalletLabelPayload {
   address?: string;
@@ -61,20 +60,6 @@ export class Wallets {
    */
   async getLabel(address: string): Promise<string | null> {
     return readLabel(this.client, address);
-  }
-
-  /**
-   * Set a wallet's server-side label. Signed by the wallet's allowance
-   * (withAuth). Returns `{ ok: true }` on success, `{ ok: false }` on any
-   * failure — never throws, so callers don't need try/catch around an offline
-   * best-effort sync.
-   *
-   * @deprecated The two-string positional form is swap-prone. Use
-   * `r.wallet(address).setLabel(label)` instead.
-   */
-  async setLabel(address: string, label: string): Promise<{ ok: boolean }> {
-    deprecatePositional("wallets.setLabel", "use r.wallet(address).setLabel(label)");
-    return putLabel(this.client, address, label);
   }
 }
 

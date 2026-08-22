@@ -1,0 +1,93 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "checkpoint_manifest.json",
+ "title": "r402s/v0 checkpoint_manifest plaintext encrypted at rest; total_plaintext_size_bytes = sum of packs[i].plaintext_size_bytes (the manifest object itself excluded) (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "covers_through_generation",
+  "git_object_format",
+  "packs",
+  "total_plaintext_size_bytes",
+  "ref_state_hmac",
+  "retention_roots_hmac",
+  "object_set_hmac"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "checkpoint_manifest"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/chk"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "covers_through_generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "git_object_format": {
+   "const": "sha1"
+  },
+  "packs": {
+   "type": "array",
+   "maxItems": 4096,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "object_id",
+     "plaintext_sha256",
+     "plaintext_size_bytes",
+     "ciphertext_sha256",
+     "size_bytes"
+    ],
+    "properties": {
+     "object_id": {
+      "$ref": "common.json#/$defs/ckp"
+     },
+     "plaintext_sha256": {
+      "$ref": "common.json#/$defs/sha256"
+     },
+     "plaintext_size_bytes": {
+      "$ref": "common.json#/$defs/size_bytes"
+     },
+     "ciphertext_sha256": {
+      "$ref": "common.json#/$defs/sha256"
+     },
+     "size_bytes": {
+      "$ref": "common.json#/$defs/size_bytes"
+     }
+    }
+   }
+  },
+  "total_plaintext_size_bytes": {
+   "$ref": "common.json#/$defs/size_bytes"
+  },
+  "ref_state_hmac": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "retention_roots_hmac": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "object_set_hmac": {
+   "$ref": "common.json#/$defs/sha256"
+  }
+ },
+ "x-r402s-revision": "40"
+}

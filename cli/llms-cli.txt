@@ -1678,8 +1678,6 @@ Auth is control-plane auth: current wallet, operator session, or delegate. Domai
 4. `run402 domains test-receive example.com --project prj_123 --to info` — create an inbound token and send the test mail
 5. `run402 domains activate example.com --project prj_123` — switch mailbox addresses after receive checks pass
 
-Removed compatibility commands: `run402 domains add` and `run402 domains delete` fail locally with `COMMAND_REMOVED`; use `connect` and `disconnect`.
-
 ### apps
 - `run402 apps browse [--tag <tag>]`
 - `run402 apps fork <version_id> <name> [--subdomain <name>] [--bootstrap '<json>']`
@@ -1767,16 +1765,6 @@ Manage project user authentication: passwordless email links/codes, trusted invi
 - `run402 auth scaffold-roles [--table <name>] [--user-col <col>] [--role-col <col>] [--roles <csv>] [--cache-ttl <secs>]` — offline generator: emits a role-table migration + `requireRole` gate snippet + first-operator bootstrap (JSON out; no project/network). Pipe through `jq` (e.g. `| jq -r .migration`).
 
 Machine email-code flow: request `--delivery both` → retain `challenge_id` → read the code from email → verify the handle/code pair. The link in the same email remains a one-tap fallback. Credentials expire in 15 minutes and are single-use. `challenge_id` is public; never put the code, link token, cookie, or returned session tokens in logs/files. A request is accepted, not proven delivered.
-
-### sender-domain
-Removed. Use ProjectDomain commands instead:
-
-- `run402 domains connect <domain> --project <id> --email-send`
-- `run402 domains connect <domain> --project <id> --email-receive`
-- `run402 domains check <domain> --project <id>`
-- `run402 domains repair <domain> --project <id>`
-
-Old `run402 sender-domain ...` subcommands fail locally with `COMMAND_REMOVED`.
 
 ### billing
 Email orgs + Stripe checkouts; pay by card or scale email beyond tier caps.

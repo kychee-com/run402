@@ -205,32 +205,4 @@ describe("NodeSites.deployDir metadata and option validation", () => {
     }
   });
 
-  it("rejects unsupported target before planning (GH-259)", async () => {
-    const root = mkdtempSync(join(tmpdir(), "run402-sites-node-test-"));
-    try {
-      writeFileSync(join(root, "index.html"), "<h1>hi</h1>");
-
-      const w = makeWiring();
-      const sites = new NodeSites(w.client);
-
-      await assert.rejects(
-        sites.deployDir({
-          project: "prj_xxx",
-          dir: root,
-          target: "production",
-        }),
-        (err: unknown) =>
-          err instanceof LocalError &&
-          /target/i.test(err.message) &&
-          /unsupported/i.test(err.message),
-      );
-      assert.equal(
-        w.requests.filter((req) => req.path === "/apply/v1/plans").length,
-        0,
-        "target validation should stop before a deploy plan request",
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
 });

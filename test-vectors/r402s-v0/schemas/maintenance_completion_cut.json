@@ -1,0 +1,93 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "maintenance_completion_cut.json",
+ "title": "r402s/v0 maintenance_completion_cut (DRAFT rev 40) — the reconstructible P-cut, keyed by ADMISSION ATTEMPT: create-only at maintenance/cuts/<admission_object_id>.json, published AFTER the admission's irreversible COMPOSITE fence (which runs every fallible check, fixes exact cut + record bytes, claims the cut, and enters the cycle lane) and BEFORE the main RECORD_PUT_ISSUED step; a cut whose attempt reaches CONFLICTED is INERT (released to the reaper; honored only via a canonical record's p_cut_sha256) and a journal-lost visible cut adjudicates DR_ORPHANED_PRE_RECORD — those are the ONLY unbound-cut exits; entries sorted and UNIQUE by prune_completion object_id; credited_deleted_size_bytes derives exactly from the completion's deleted results and their receipts; p_before_size_bytes equals the exact sum; a stored EMPTY cut is prohibited (no P credited iff p_cut_sha256 null iff no cut object)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "maintenance_cycle_id",
+  "cut_role",
+  "counted_completions",
+  "p_before_size_bytes",
+  "admission_object_id",
+  "admission_generation",
+  "cut_at",
+  "service_key_id",
+  "signature"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "maintenance_completion_cut"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "maintenance_cycle_id": {
+   "$ref": "common.json#/$defs/mc"
+  },
+  "cut_role": {
+   "enum": [
+    "C1",
+    "C2"
+   ]
+  },
+  "counted_completions": {
+   "type": "array",
+   "maxItems": 10000,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "object_id",
+     "stored_bytes_sha256",
+     "size_bytes",
+     "credited_deleted_size_bytes"
+    ],
+    "properties": {
+     "object_id": {
+      "$ref": "common.json#/$defs/pc"
+     },
+     "stored_bytes_sha256": {
+      "$ref": "common.json#/$defs/sha256"
+     },
+     "size_bytes": {
+      "$ref": "common.json#/$defs/size_bytes"
+     },
+     "credited_deleted_size_bytes": {
+      "$ref": "common.json#/$defs/size_bytes"
+     }
+    }
+   },
+   "minItems": 1
+  },
+  "p_before_size_bytes": {
+   "$ref": "common.json#/$defs/size_bytes"
+  },
+  "admission_generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "cut_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "service_key_id": {
+   "$ref": "common.json#/$defs/service_key_id"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "admission_object_id": {
+   "$ref": "common.json#/$defs/adm"
+  }
+ },
+ "x-r402s-revision": "40"
+}

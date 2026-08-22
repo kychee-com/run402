@@ -18,7 +18,6 @@
 import type { Client } from "./kernel.js";
 import type { Run402 } from "./index.js";
 import type { ProjectKeys } from "./credentials.js";
-import { deprecatePositional } from "./deprecate.js";
 import type {
   ExposeManifestValidationInput,
   ExposeManifestValidationResult,
@@ -100,7 +99,6 @@ import type {
   ProvisionSignerOptions,
 } from "./namespaces/contracts.js";
 import type {
-  DomainAddOptions,
   ProjectDomain,
   ProjectDomainEnsureOptions,
   ProjectDomainListResult,
@@ -205,12 +203,6 @@ import type {
   ProjectBranchRenewOptions,
 } from "./namespaces/branches.types.js";
 import type {
-  DisableInboundResult,
-  InboundEnableResult,
-  SenderDomainRegisterResult,
-  SenderDomainStatusResult,
-} from "./namespaces/sender-domain.js";
-import type {
   SubdomainClaimInput,
   SubdomainClaimOptions,
   SubdomainClaimResult,
@@ -262,14 +254,14 @@ class ScopedProjects {
   sql(sql: string, params?: unknown[]): Promise<unknown> {
     return this.parent.projects.sql(this.projectId, sql, params);
   }
-  rest<T = unknown>(table: string, queryOrOptions?: string | ProjectRestOptions): Promise<T> {
-    return this.parent.projects.rest<T>(this.projectId, table, queryOrOptions);
+  rest<T = unknown>(table: string, options?: ProjectRestOptions): Promise<T> {
+    return this.parent.projects.rest<T>(this.projectId, table, options);
   }
   restResponse<T = unknown>(
     table: string,
-    queryOrOptions?: string | ProjectRestOptions,
+    options?: ProjectRestOptions,
   ): Promise<ProjectRestResponse<T>> {
-    return this.parent.projects.restResponse<T>(this.projectId, table, queryOrOptions);
+    return this.parent.projects.restResponse<T>(this.projectId, table, options);
   }
   applyExpose(manifest: ExposeManifest): Promise<unknown> {
     return this.parent.projects.applyExpose(this.projectId, manifest);
@@ -563,19 +555,6 @@ class ScopedAssets {
   sign(key: string, opts?: BlobSignOptions): Promise<BlobSignResult> {
     return this.parent.assets.sign(this.projectId, key, opts);
   }
-  initUploadSession(opts: BlobUploadInitOptions): Promise<BlobUploadInitResult> {
-    return this.parent.assets.initUploadSession(this.projectId, opts);
-  }
-  getUploadSession(uploadId: string): Promise<BlobUploadStatusResult> {
-    return this.parent.assets.getUploadSession(this.projectId, uploadId);
-  }
-  completeUploadSession(
-    uploadId: string,
-    opts?: BlobUploadCompleteOptions,
-    extra?: { contentType?: string },
-  ): Promise<BlobUploadCompleteResult> {
-    return this.parent.assets.completeUploadSession(this.projectId, uploadId, opts, extra);
-  }
 }
 
 class ScopedContracts {
@@ -820,29 +799,6 @@ class ScopedDomains {
   wait(domain: string, opts?: ProjectDomainWaitOptions): Promise<ProjectDomain> {
     return this.parent.domains.wait(this.projectId, domain, opts);
   }
-
-  /** @deprecated Removed. Use `ensure(domain, { desired })`. */
-  add(opts: DomainAddOptions): ReturnType<Run402["domains"]["add"]>;
-  /** @deprecated Removed. Use `ensure(domain, { desired })`. */
-  add(domain: string, subdomainName: string): ReturnType<Run402["domains"]["add"]>;
-  add(domainOrOpts: string | DomainAddOptions, subdomainName?: string): ReturnType<Run402["domains"]["add"]> {
-    if (typeof domainOrOpts === "object" && domainOrOpts !== null) {
-      return this.parent.domains.add(this.projectId, domainOrOpts);
-    }
-    deprecatePositional("domains.add", "use ensure(domain, { desired })");
-    return this.parent.domains.add(this.projectId, {
-      domain: domainOrOpts,
-      subdomainName: subdomainName as string,
-    });
-  }
-  /** @deprecated Removed. Use `get(domain)` or `check(domain)`. */
-  status(domain: string): ReturnType<Run402["domains"]["status"]> {
-    return this.parent.domains.status(this.projectId, domain);
-  }
-  /** @deprecated Removed. Use `disconnect(domain)`. */
-  remove(domain: string, opts: { projectId?: string } = {}): ReturnType<Run402["domains"]["remove"]> {
-    return this.parent.domains.remove(domain, { projectId: opts.projectId ?? this.projectId });
-  }
 }
 
 class ScopedEmailWebhooks {
@@ -972,15 +928,8 @@ class ScopedFunctions {
 class ScopedSecrets {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
-  set(key: string, opts: SecretSetOptions): Promise<void>;
-  /** @deprecated Use `set(key, { value })`. */
-  set(key: string, value: string): Promise<void>;
-  set(key: string, valueOrOpts: string | SecretSetOptions): Promise<void> {
-    if (typeof valueOrOpts === "object" && valueOrOpts !== null) {
-      return this.parent.secrets.set(this.projectId, key, valueOrOpts);
-    }
-    deprecatePositional("secrets.set", "use set(key, { value })");
-    return this.parent.secrets.set(this.projectId, key, { value: valueOrOpts });
+  set(key: string, opts: SecretSetOptions): Promise<void> {
+    return this.parent.secrets.set(this.projectId, key, opts);
   }
   list(): Promise<SecretListResult> {
     return this.parent.secrets.list(this.projectId);
@@ -1013,51 +962,16 @@ class ScopedJobs {
   }
 }
 
-class ScopedSenderDomain {
-  constructor(private readonly parent: Run402, private readonly projectId: string) {}
-
-  register(domain: string): Promise<SenderDomainRegisterResult> {
-    return this.parent.senderDomain.register(this.projectId, domain);
-  }
-  status(): Promise<SenderDomainStatusResult> {
-    return this.parent.senderDomain.status(this.projectId);
-  }
-  remove(): Promise<void> {
-    return this.parent.senderDomain.remove(this.projectId);
-  }
-  enableInbound(domain: string): Promise<InboundEnableResult> {
-    return this.parent.senderDomain.enableInbound(this.projectId, domain);
-  }
-  disableInbound(domain: string): Promise<DisableInboundResult> {
-    return this.parent.senderDomain.disableInbound(this.projectId, domain);
-  }
-}
-
 class ScopedSubdomains {
   constructor(private readonly parent: Run402, private readonly projectId: string) {}
 
   list(): Promise<SubdomainSummary[]> {
     return this.parent.subdomains.list(this.projectId);
   }
-  claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult>;
-  /** @deprecated Use `claim({ name, deploymentId, ...opts })`. */
-  claim(name: string, deploymentId: string, opts?: SubdomainClaimOptions): Promise<SubdomainClaimResult>;
-  claim(
-    nameOrInput: string | SubdomainClaimInput,
-    deploymentId?: string,
-    opts: SubdomainClaimOptions = {},
-  ): Promise<SubdomainClaimResult> {
-    if (typeof nameOrInput === "object" && nameOrInput !== null) {
-      return this.parent.subdomains.claim({
-        ...nameOrInput,
-        projectId: nameOrInput.projectId ?? this.projectId,
-      });
-    }
-    deprecatePositional("subdomains.claim", "use claim({ name, deploymentId, ...opts })");
+  claim(input: SubdomainClaimInput): Promise<SubdomainClaimResult> {
     return this.parent.subdomains.claim({
-      name: nameOrInput,
-      deploymentId: deploymentId as string,
-      projectId: opts.projectId ?? this.projectId,
+      ...input,
+      projectId: input.projectId ?? this.projectId,
     });
   }
   delete(name: string, opts: SubdomainClaimOptions = {}): Promise<SubdomainDeleteResult> {
@@ -1095,7 +1009,6 @@ export class ScopedRun402 {
   readonly functions: ScopedFunctions;
   readonly jobs: ScopedJobs;
   readonly secrets: ScopedSecrets;
-  readonly senderDomain: ScopedSenderDomain;
   readonly subdomains: ScopedSubdomains;
   /** Per-project capability grants (agent/CI principals), project-id pre-bound. */
   readonly grants: ScopedGrants;
@@ -1123,7 +1036,6 @@ export class ScopedRun402 {
     this.functions = new ScopedFunctions(parent, projectId);
     this.jobs = new ScopedJobs(parent, projectId);
     this.secrets = new ScopedSecrets(parent, projectId);
-    this.senderDomain = new ScopedSenderDomain(parent, projectId);
     this.subdomains = new ScopedSubdomains(parent, projectId);
     this.grants = new ScopedGrants(parent, projectId);
     this.delegates = new ScopedDelegates(parent, projectId);

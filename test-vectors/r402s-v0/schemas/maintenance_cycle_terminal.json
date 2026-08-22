@@ -1,0 +1,201 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "maintenance_cycle_terminal.json",
+ "title": "r402s/v0 maintenance_cycle_terminal (DRAFT rev 40) — stored CREATE-ONLY at the deterministic per-cycle path maintenance/terminals/<maintenance_cycle_id>.terminal.json (the terminal CAS; object_id in the body, admission-record precedent); published through the four-state terminal machine (exact signed bytes persisted BEFORE I/O); carries the accepted-event frontier — DR counts exactly the cycle-tagged completions with cycle_event_seq <= last_accepted_cycle_event_seq",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "object_id",
+  "repo_id",
+  "maintenance_cycle_id",
+  "terminal",
+  "terminal_at",
+  "last_cycle_progress_at",
+  "successor_maintenance_cycle_id",
+  "preempting_repair_attempt_id",
+  "last_accepted_cycle_event_seq",
+  "service_key_id",
+  "signature"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "maintenance_cycle_terminal"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/mct"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "maintenance_cycle_id": {
+   "$ref": "common.json#/$defs/mc"
+  },
+  "terminal": {
+   "enum": [
+    "COMPLETED",
+    "ABORTED_BEFORE_C1",
+    "RESTART_REQUIRED_AFTER_C1",
+    "PREEMPTED_BY_REPAIR",
+    "EXPIRED_STALLED"
+   ]
+  },
+  "terminal_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "last_cycle_progress_at": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/timestamp"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "successor_maintenance_cycle_id": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/mc"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "preempting_repair_attempt_id": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/ra"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "service_key_id": {
+   "$ref": "common.json#/$defs/service_key_id"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "last_accepted_cycle_event_seq": {
+   "$ref": "common.json#/$defs/cycle_event_seq"
+  }
+ },
+ "allOf": [
+  {
+   "if": {
+    "properties": {
+     "terminal": {
+      "const": "RESTART_REQUIRED_AFTER_C1"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "successor_maintenance_cycle_id": {
+      "$ref": "common.json#/$defs/mc"
+     },
+     "preempting_repair_attempt_id": {
+      "const": null
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "terminal": {
+      "const": "PREEMPTED_BY_REPAIR"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "preempting_repair_attempt_id": {
+      "$ref": "common.json#/$defs/ra"
+     },
+     "successor_maintenance_cycle_id": {
+      "const": null
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "terminal": {
+      "const": "COMPLETED"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "successor_maintenance_cycle_id": {
+      "const": null
+     },
+     "preempting_repair_attempt_id": {
+      "const": null
+     },
+     "last_cycle_progress_at": {
+      "$ref": "common.json#/$defs/timestamp"
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "terminal": {
+      "const": "ABORTED_BEFORE_C1"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "successor_maintenance_cycle_id": {
+      "const": null
+     },
+     "preempting_repair_attempt_id": {
+      "const": null
+     },
+     "last_cycle_progress_at": {
+      "const": null
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "terminal": {
+      "const": "EXPIRED_STALLED"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "successor_maintenance_cycle_id": {
+      "const": null
+     },
+     "preempting_repair_attempt_id": {
+      "const": null
+     },
+     "last_cycle_progress_at": {
+      "$ref": "common.json#/$defs/timestamp"
+     }
+    }
+   }
+  }
+ ],
+ "x-r402s-revision": "40"
+}

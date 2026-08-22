@@ -39,8 +39,8 @@ describe("pay.fetch live paid route", { skip: !url }, () => {
     assert.equal(result.response.ok, true);
     assert.equal(result.outcome, "settled");
     assert.ok(result.payment);
-    assert.ok(result.payment.amount_usd_micros > 0);
-    assert.ok(result.payment.tx_ref.length > 0);
-    assert.equal(result.payment.url, new URL(url!).toString());
+    assert.ok(result.payment.amountUsdMicros > 0);
+    assert.ok(result.payment.transaction.length > 0);
+    assert.equal(result.payment.resourceUrl, new URL(url!).toString());
   });
 });

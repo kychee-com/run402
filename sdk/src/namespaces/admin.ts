@@ -9,7 +9,6 @@
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { Transfers } from "./transfers.js";
-import { deprecatePositional } from "../deprecate.js";
 
 export interface AgentContact {
   name: string;
@@ -803,21 +802,6 @@ export class Admin {
    * Platform-admin only. Calls
    * `POST /orgs/v1/admin/:org_id/lease-perpetual`.
    */
-  /**
-   * @deprecated Boolean positional argument is a swap trap. Use
-   * `r.admin.org(orgId).pinLease()` / `.unpinLease()` instead.
-   */
-  async setLeasePerpetual(
-    organizationId: string,
-    perpetual: boolean,
-  ): Promise<SetLeasePerpetualResult> {
-    deprecatePositional(
-      "admin.setLeasePerpetual",
-      "use r.admin.org(orgId).pinLease()/unpinLease()",
-    );
-    return this._setLeasePerpetual(organizationId, perpetual);
-  }
-
   /**
    * Shared, non-deprecated implementation behind {@link setLeasePerpetual} and
    * the `r.admin.org(id).pinLease()/unpinLease()` handle.

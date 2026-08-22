@@ -53,11 +53,7 @@ describe("run402 pay", () => {
                 headers: { "content-type": "application/json" },
               }),
               payment: {
-                amount_usd_micros: 10_000,
-                pay_to: "0xseller",
                 network: "eip155:8453",
-                tx_ref: "0xtx",
-                url,
                 paymentId: "txp_cli_1",
                 amountUsdMicros: 10_000,
                 asset: "USDC",

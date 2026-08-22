@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -110,7 +110,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "sender-domain", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -1035,7 +1035,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   operator_status: null, // local-only cache read (core/write-auth-session.ts)
 
   // Admin (v1.57)
-  admin_set_lease_perpetual: "admin.setLeasePerpetual",
+  admin_set_lease_perpetual: "admin._setLeasePerpetual",
   admin_archive_project: "admin.archiveProject",
   admin_reactivate_project: "admin.reactivateProject",
   promote_user: "auth.promote",
@@ -1234,13 +1234,6 @@ const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:release", "cloud:archiv
 const CLI_ALIAS_COMMANDS = [
   "email:status", // alias of email:info
   // Removed compatibility commands that intentionally fail with COMMAND_REMOVED.
-  "domains:add",
-  "domains:delete",
-  "sender-domain:register",
-  "sender-domain:status",
-  "sender-domain:remove",
-  "sender-domain:inbound-enable",
-  "sender-domain:inbound-disable",
   "projects:export", // alias of cloud:archives:create
   "core:projects:apply", // alias of core:projects:import
 ];
@@ -1470,11 +1463,6 @@ describe("SDK surface alignment", () => {
       "domains.add",
       "domains.status",
       "domains.remove",
-      "senderDomain.register",
-      "senderDomain.status",
-      "senderDomain.remove",
-      "senderDomain.enableInbound",
-      "senderDomain.disableInbound",
       // ─── gitvault (r402s/v0) ──────────────────────────────────────────
       // `get`/`forProject` are addressing sugar the verbs use internally
       // (`forProject` is the cold-restart lookup); `allHeads` is the paging
@@ -1843,33 +1831,6 @@ function productionInterfaceFiles(): string[] {
     ...(existsSync(join(__dirname, "cli/git-remote-run402.mjs")) ? [join(__dirname, "cli/git-remote-run402.mjs")] : []),
   ].sort();
 }
-
-describe("first-party callers use only canonical SDK call shapes", () => {
-  // The deprecated positional overloads (sdk-call-shape-conventions) exist for
-  // external back-compat only. First-party code (CLI `cli/lib/*` + MCP
-  // `src/tools/*`) MUST use the canonical handle/options forms. This guards the
-  // FULLY-deprecated methods — ones with no same-name canonical overload, so a
-  // bare token match is unambiguous. The overloaded reshapes (domains.add /
-  // secrets.set / subdomains.claim / members.setRole / transfers.cancel /
-  // projects.rest) are covered by the SDK deprecation unit tests; their
-  // positional arm can't be regex-detected without false positives.
-  const BANNED = [
-    { token: "setLeasePerpetual(", fix: "use r.admin.org(orgId).pinLease()/unpinLease()" },
-    { token: "wallets.setLabel(", fix: "use r.wallet(address).setLabel(label)" },
-  ];
-  for (const file of productionInterfaceFiles()) {
-    const rel = file.replace(__dirname + "/", "");
-    it(`${rel} avoids fully-deprecated SDK methods`, () => {
-      const text = readFileSync(file, "utf-8");
-      for (const { token, fix } of BANNED) {
-        assert.ok(
-          !text.includes(token),
-          `${rel} uses deprecated \`${token}\` — ${fix}`,
-        );
-      }
-    });
-  }
-});
 
 describe("SURFACE consistency", () => {
   it("has no duplicate capability IDs", () => {

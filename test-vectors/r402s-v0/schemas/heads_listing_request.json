@@ -1,0 +1,33 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "heads_listing_request.json",
+ "title": "r402s/v0 heads listing request API message (the query of GET /gitvault/v1/vaults/:vault_id/heads?after_generation=&cursor=&limit=): after_generation is the REQUIRED verification anchor (constant across one page sequence), cursor is the OPTIONAL opaque continuation (omitted on the first request, the prior page's next_cursor echoed unchanged afterwards), limit is REQUIRED (a missing or malformed limit is a request-validation refusal, D186) and at most MAX_HEADS_PER_LISTING_PAGE; every query value is a string (D186; DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "after_generation",
+  "limit"
+ ],
+ "properties": {
+  "after_generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "cursor": {
+   "$ref": "#/$defs/heads_cursor"
+  },
+  "limit": {
+   "type": "string",
+   "pattern": "^([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|1000)$"
+  }
+ },
+ "$defs": {
+  "heads_cursor": {
+   "description": "opaque continuation token — store and echo, never parse; bound by the platform to one vault and one after_generation",
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 256,
+   "pattern": "^[A-Za-z0-9_-]+$"
+  }
+ },
+ "x-r402s-revision": "40"
+}

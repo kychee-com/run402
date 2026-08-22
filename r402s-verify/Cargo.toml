@@ -1,0 +1,35 @@
+[package]
+name = "r402s-verify"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+description = "Independent-lineage verifier for the gitvault r402s/v0 protocol (task 5.9): strict I-JSON + JCS, Ed25519 strict (zip215:false), rust-hpke r402s-1 envelopes, XChaCha20-Poly1305 frames, chain/head/admission verification, differential git validation, verifier receipts."
+publish = false
+
+[lib]
+name = "r402s_verify"
+path = "src/lib.rs"
+
+[[bin]]
+name = "r402s-verify"
+path = "src/main.rs"
+
+[dependencies]
+# The task-1.0 second HPKE (D182): rozbb/rust-hpke, pinned, default features OFF,
+# only the r402s-1 suite enabled (X25519 KEM, HKDF-SHA256 KDF, ChaCha20-Poly1305 AEAD).
+hpke = { version = "=0.14.0", default-features = false, features = ["alloc", "x25519", "hkdfsha2", "chacha"] }
+# Ed25519 strict RFC 8032 (verify_strict: rejects non-canonical S, small-order R and A).
+ed25519-dalek = { version = "2.2", default-features = false, features = ["std"] }
+# XChaCha20-Poly1305 for the §2 frames (NOT part of HPKE; never composed into one).
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+hkdf = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
+sha1 = "0.10"
+# serde_json is used ONLY to load the JSON-Schema documents (they legitimately carry numbers);
+# every protocol object goes through the strict I-JSON front-end in src/json.rs.
+serde_json = { version = "1", features = ["preserve_order"] }
+fancy-regex = "0.14"
+clap = { version = "4", features = ["derive"] }
+getrandom = "0.3"

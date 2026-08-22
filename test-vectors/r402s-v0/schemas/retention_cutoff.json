@@ -1,0 +1,56 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "retention_cutoff.json",
+ "title": "r402s/v0 retention_cutoff  (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "service_key_id",
+  "base_head_sha256",
+  "cutoff_at",
+  "expires_at",
+  "authorization_epoch"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "retention_cutoff"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/rc"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "service_key_id": {
+   "$ref": "common.json#/$defs/service_key_id"
+  },
+  "base_head_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "cutoff_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "expires_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "authorization_epoch": {
+   "$ref": "common.json#/$defs/authorization_epoch"
+  }
+ },
+ "x-r402s-revision": "40"
+}

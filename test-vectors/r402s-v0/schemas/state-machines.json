@@ -1,0 +1,487 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "state-machines.json",
+ "title": "r402s/v0 state machines (DRAFT rev 40 — machine-readable)",
+ "machines": {
+  "admission": {
+   "states": [
+    "PREPARED_NO_IO",
+    "RECORD_PUT_ISSUED",
+    "RECORD_WON",
+    "COMMITTED",
+    "CONFLICTED",
+    "ABORTED"
+   ],
+   "terminals": [
+    "COMMITTED",
+    "CONFLICTED",
+    "ABORTED"
+   ],
+   "edges": [
+    [
+     "PREPARED_NO_IO",
+     "RECORD_PUT_ISSUED",
+     "TWO BRANCHES (round-20 A1, encoded rev 22). P-LESS (p_cut_sha256 == null): this tx IS the irreversible fence — authorizations validated once, exact record bytes+prepared_at+rate slot persisted, repair fence arms, and for maintenance kinds the expected stage is computed+reserved, any replacement arms, the lease is consumed, and the cycle lane is entered. P-CREDIT: NO validation, NO resource acquisition — all of that (plus the exact cut bytes + the cut claim) already happened in the COMPOSITE fence tx (cut_subfence NONE -> CUT_PUT_ISSUED); this edge verifies only the forward GUARD (cut_subfence == DONE with the stored cut hashing to p_cut_sha256) and progresses mechanically as no-fail replay of the already-persisted bytes"
+    ],
+    [
+     "PREPARED_NO_IO",
+     "ABORTED",
+     "timeout with no I/O issued AND cut_subfence == NONE (round-19 A1 — a P-credit admission past its cut sub-fence can never abort; the reconciler instead drives CUT_PUT_ISSUED -> CUT_STORED -> RECORD_PUT_ISSUED); claims release; the ONLY abort edge"
+    ],
+    [
+     "RECORD_PUT_ISSUED",
+     "RECORD_WON",
+     "create-only record PUT observed won"
+    ],
+    [
+     "RECORD_PUT_ISSUED",
+     "CONFLICTED",
+     "DIFFERENT canonical record observed at generation; claims release; CONFLICTED is reachable from RECORD_PUT_ISSUED ONLY, never from RECORD_WON"
+    ],
+    [
+     "RECORD_WON",
+     "COMMITTED",
+     "head PUT observed at exact expected bytes"
+    ]
+   ]
+  },
+  "object_lifecycle": {
+   "states": [
+    "FINALIZED_UNCLAIMED",
+    "CLAIMED_PENDING",
+    "PUBLISHED",
+    "DELETING",
+    "PRUNE_AUTHORIZED_PRESENT",
+    "DELETED"
+   ],
+   "terminals": [
+    "DELETED"
+   ],
+   "notes": "the implementation distinguishes reaper-owned DELETING (from FINALIZED_UNCLAIMED) from prune-owned DELETING (from PUBLISHED); only prune-owned DELETING may enter PRUNE_AUTHORIZED_PRESENT; DR reconstructs prune-intent-owned claims from exact pending intent bytes and stored prune intents (round-15 A4)",
+   "edges": [
+    [
+     "FINALIZED_UNCLAIMED",
+     "CLAIMED_PENDING",
+     "claimed with a TYPED claim_owner: {kind:admission, admission_object_id} by an admission's PREPARED_NO_IO tx, OR {kind:prune_intent, prune_intent_object_id} by an intent's INTENT_PUT_ISSUED fence tx (verifier evidence)"
+    ],
+    [
+     "CLAIMED_PENDING",
+     "PUBLISHED",
+     "admission owner: the owning admission COMMITTED; prune-intent owner: the owning intent reached INTENT_STORED"
+    ],
+    [
+     "CLAIMED_PENDING",
+     "FINALIZED_UNCLAIMED",
+     "ADMISSION owners only: the owning admission ABORTED or CONFLICTED (different-winner proof); a prune-intent owner has NO release edge — after the fence the intent PUT always eventually wins (unique key), so its evidence is never released"
+    ],
+    [
+     "FINALIZED_UNCLAIMED",
+     "DELETING",
+     "reaper: session lease expired; conditional transition"
+    ],
+    [
+     "PUBLISHED",
+     "DELETING",
+     "an intent naming this candidate crossed its INTENT_PUT_ISSUED pre-I/O fence (round-13: the fence, never storage acceptance); id burned there"
+    ],
+    [
+     "DELETING",
+     "DELETED",
+     "conditional S3 delete succeeded"
+    ],
+    [
+     "DELETING",
+     "PRUNE_AUTHORIZED_PRESENT",
+     "prune superseded while this object remains physically present — result present_not_attempted OR present_after_attempt (prune-owned DELETING only)"
+    ],
+    [
+     "PRUNE_AUTHORIZED_PRESENT",
+     "DELETING",
+     "fresh accepted intent at current gc_epoch only"
+    ]
+   ]
+  },
+  "prune": {
+   "states": [
+    "PREPARED",
+    "INTENT_PUT_ISSUED",
+    "INTENT_STORED",
+    "DELETING",
+    "COMPLETED",
+    "SUPERSEDED_NO_DELETE",
+    "SUPERSEDED_PARTIAL_DELETE"
+   ],
+   "terminals": [
+    "COMPLETED",
+    "SUPERSEDED_NO_DELETE",
+    "SUPERSEDED_PARTIAL_DELETE"
+   ],
+   "edges": [
+    [
+     "PREPARED",
+     "INTENT_PUT_ISSUED",
+     "core+typed verifier refs validated; PRE-I/O FENCE: exact intent bytes persisted, BOTH verifier-receipt objects CLAIMED (round-14 A4 — before any I/O, so the reaper can never take fence-referenced evidence), EVERY candidate atomically marked DELETING/intent-owned and its id burned — the single ownership linearization point; identical PUT retried forever (unique key, no competitor)"
+    ],
+    [
+     "INTENT_PUT_ISSUED",
+     "INTENT_STORED",
+     "create-only intent PUT observed durable (claims and ownership already held since the fence)"
+    ],
+    [
+     "INTENT_STORED",
+     "DELETING",
+     "epoch re-validated before the first delete (candidates owned since the fence)"
+    ],
+    [
+     "INTENT_STORED",
+     "SUPERSEDED_NO_DELETE",
+     "gc_epoch stale before any delete; completion vector all present_not_attempted; every candidate (owned since the fence) maps to PRUNE_AUTHORIZED_PRESENT"
+    ],
+    [
+     "DELETING",
+     "SUPERSEDED_NO_DELETE",
+     "gc_epoch stale with ZERO delete attempts (every result present_not_attempted)"
+    ],
+    [
+     "DELETING",
+     "SUPERSEDED_PARTIAL_DELETE",
+     "gc_epoch stale with >=1 deleted or present_after_attempt (incl. post-final-delete check)"
+    ],
+    [
+     "DELETING",
+     "COMPLETED",
+     "all deleted; final epoch check passed; outcomes persisted before completion signed"
+    ]
+   ],
+   "notes": "terminal predicates are BICONDITIONAL on the completion vector: completed iff every result deleted AND the final epoch check equals the intent epoch; superseded_no_delete iff epoch stale AND every result present_not_attempted; superseded_partial_delete iff epoch stale AND >=1 deleted or present_after_attempt. No completion is signed for a non-stale transient delete failure — deletion continues or retries. Every present result maps the object to PRUNE_AUTHORIZED_PRESENT. AT MOST ONE completion is accepted per intent. Candidates are marked DELETING/intent-owned at the INTENT_PUT_ISSUED pre-I/O fence (round-12 A3 — admission's proven pattern; expected_stage and stage reservation read this ownership, so no in-flight-PUT window exists); the direct stale terminal maps every candidate to PRUNE_AUTHORIZED_PRESENT. Cycle-tagged completions carry cycle_event_seq assigned in the cycle-event lane at acceptance, inside the signed object."
+  },
+  "maintenance_cycle": {
+   "states": [
+    "PREPARED",
+    "C1_ADMITTED",
+    "INTERMEDIATE_PRUNED",
+    "C2_ADMITTED",
+    "COMPLETED",
+    "ABORTED_BEFORE_C1",
+    "RESTART_REQUIRED_AFTER_C1",
+    "PREEMPTED_BY_REPAIR",
+    "EXPIRED_STALLED"
+   ],
+   "terminals": [
+    "COMPLETED",
+    "ABORTED_BEFORE_C1",
+    "RESTART_REQUIRED_AFTER_C1",
+    "PREEMPTED_BY_REPAIR",
+    "EXPIRED_STALLED"
+   ],
+   "notes": "phase is DERIVED from immutable records; the C1/C2 admission binds a stored maintenance_stage_claim_set ROOT + pages (one page per batch, transitively claimed); COMPLETENESS: root.candidates (page concatenation) MUST equal expected_stage(role, freeze point) BYTE-FOR-BYTE — a strict subset, superset, wrong-role, or false-empty stage is refused at the C1/C2 admission fence; stage null iff expected_stage is empty (advances immediately). RESERVATION: the admission's irreversible-fence tx (COMPOSITE for P-credit, RECORD_PUT_ISSUED for P-less — round-20 A1) reserves every stage candidate for (cycle, role) — an ordinary prune intent naming a reserved candidate is refused STAGE_CANDIDATE_RESERVED; reservations release EACH AT ITS LINEARIZATION POINT — a CONFLICTED admission (different-winner proof) and a replacement CLEAR release in their named NONTERMINAL transactions (a losing attempt never produces a cycle terminal), while ABORTED_BEFORE_C1, replacement install, repair preemption, expiry, and completion release in that terminal's TERMINAL_APPLIED transaction; a candidate burned by an intent accepted BEFORE the freeze point is excluded from expected_stage (present = not burned). CYCLE-EVENT LANE (single linearization, org-slot lock): batch-completion acceptance, replacement arm/finalize/clear, repair preemption, and EXPIRED_STALLED terminalization all serialize in ONE lane; EXPIRED_STALLED may terminalize ONLY when now >= last_cycle_progress_at + 7 days AND no replacement fence is pending AND no cycle-tagged intent for this cycle is accepted without an accepted completion AND no completion is past its pre-I/O fence unresolved (the gateway, sole prune-lane writer, can always drive an accepted intent to a terminal, so the wait is bounded). PROGRESS: last_cycle_progress_at = max(effective_admitted_at of admissions with resource_binding.kind maintenance_cycle for THIS cycle — ordinary cycle_debit admissions are NOT progress, completed_at of every ACCEPTED cycle-tagged completed batch completion); each accepted completed batch resets it. TERMINAL EVIDENCE: every terminal publishes exactly ONE service-signed maintenance_cycle_terminal through the terminal_publication machine at the deterministic per-cycle key maintenance/terminals/<maintenance_cycle_id>.terminal.json; refusals of later cycle events begin at TERMINAL_PUT_ISSUED, and EVERY side effect (release, handoff, slot transition, accounting) applies only at TERMINAL_APPLIED — this machine's terminal STATES mean TERMINAL_APPLIED; the record is DR-authoritative over late-visible objects. EXPECTED-STAGE / GC-ROOT RECONCILIATION — SINGLE SOURCE: the checkpoint-recovery-bundle rule (round-13 A1). protected_after_C1 = RB(K1) UNION RB(K0) UNION later_receipts; protected_after_C2 = RB(K2) UNION RB(K1) UNION later_receipts; expected_stage(role) = universe MINUS protected(role). Nothing else — RB(K) is defined ONLY by that rule (claim set + manifest + all packs + K's covers_through ref_state + retention_roots). checkpoint_role C1 <=> role intermediate, C2 <=> role final (biconditional). RESERVATION RELEASES — each classified by its linearization point: a CONFLICTED C1/C2 admission (different-winner proof) and a replacement CLEAR release in their named NONTERMINAL transactions; ABORTED_BEFORE_C1, replacement install, repair preemption, expiry, and completion release ONLY inside that terminal's TERMINAL_STORED -> TERMINAL_APPLIED transaction. STAGE CAPACITY: every admission that could enlarge the future stage preflights BOTH candidate_count <= MAX_STAGE_CANDIDATES AND projected stage_candidate_stored_size_bytes <= MAX_STAGE_CANDIDATE_STORED_BYTES (MAINTENANCE_STAGE_LIMIT_EXCEEDED) — the coverage-preflight precedent. REPAIR-ARM PRECEDENCE (round-12 A4): the repair fence ARM is itself an org-slot lane event validated against the expected open cycle (the binding's preempted_maintenance_cycle_id); a pending replacement DEFERS the repair arm until installed/cleared, and a pending repair fence defers the replacement arm — the two fences are mutually exclusive, so both records can never win against different vaults. MAINTENANCE-CYCLE-ID NON-REUSE (round-13 A2): maintenance_cycle_ids are SERVICE-ISSUED at cycle open, org-global, and permanently tombstoned — reuse is refused before any lease, stage object, or admission reaches a fence (the terminal path and event-seq namespace are never reused). ADMISSION FENCES IN THE LANE: see cycle_admission_fence. EVERY terminal-target edge above states its SOURCE predicate only: the named terminal state is reached, and ALL effects (release, handoff, accounting, installation, prune-eligibility) occur, solely when that cycle's terminal publication reaches TERMINAL_APPLIED. STATE PREDICATES (round-17 A2): ISSUED(c) = the authoritative open-ids issuance object exists (the issued/<cycle_id> mirror driven before response); INSTALLED(c) = an ordinary C1 canonical record with restart_of == null exists, OR a predecessor RESTART terminal reached TERMINAL_APPLIED naming c as successor; OPEN(c) = INSTALLED(c) AND c's own terminal has NOT reached TERMINAL_APPLIED — a C1 record alone never proves OPEN.",
+   "edges": [
+    [
+     "PREPARED",
+     "C1_ADMITTED",
+     "an ORDINARY C1 admission record won — restart_of_maintenance_cycle_id == null (SOURCE predicate; a SUCCESSOR C1 record instead records RESTART_SOURCE_PROVED and enters the installed open state only inside the predecessor terminal's TERMINAL_APPLIED transaction)"
+    ],
+    [
+     "PREPARED",
+     "ABORTED_BEFORE_C1",
+     "SOURCE: lease expiry / owner abort (all effects at the terminal's TERMINAL_APPLIED)"
+    ],
+    [
+     "C1_ADMITTED",
+     "INTERMEDIATE_PRUNED",
+     "every page/batch 1..batch_count of the C1-bound stage root has an accepted completed cycle-tagged completion (batch i's delete set == page i verbatim); empty stage advances immediately"
+    ],
+    [
+     "INTERMEDIATE_PRUNED",
+     "C2_ADMITTED",
+     "C2 admission record (checkpoint_role:C2) within remaining r2_cap"
+    ],
+    [
+     "C2_ADMITTED",
+     "COMPLETED",
+     "every page/batch of the C2-bound stage root (role final) has an accepted completed completion; empty stage advances immediately (terminal state reached at the cycle terminal's TERMINAL_APPLIED)"
+    ],
+    [
+     "C1_ADMITTED",
+     "RESTART_REQUIRED_AFTER_C1",
+     "SOURCE predicate: a successor C1 admission carrying restart_of_maintenance_cycle_id won (RESTART_SOURCE_PROVED); the TERMINAL STATE is reached only when the predecessor RESTART terminal's publication reaches TERMINAL_APPLIED (terminalize + transfer + install in that one tx)"
+    ],
+    [
+     "INTERMEDIATE_PRUNED",
+     "RESTART_REQUIRED_AFTER_C1",
+     "SOURCE predicate: a successor C1 admission carrying restart_of_maintenance_cycle_id won (RESTART_SOURCE_PROVED); the TERMINAL STATE is reached only when the predecessor RESTART terminal's publication reaches TERMINAL_APPLIED (terminalize + transfer + install in that one tx)"
+    ],
+    [
+     "PREPARED",
+     "PREEMPTED_BY_REPAIR",
+     "SOURCE: repair fence finalized for this cycle (release/conversion effects at the terminal's TERMINAL_APPLIED)"
+    ],
+    [
+     "C1_ADMITTED",
+     "PREEMPTED_BY_REPAIR",
+     "SOURCE: repair fence finalized for this cycle (release/conversion effects at the terminal's TERMINAL_APPLIED)"
+    ],
+    [
+     "INTERMEDIATE_PRUNED",
+     "PREEMPTED_BY_REPAIR",
+     "SOURCE: repair fence finalized for this cycle (release/conversion effects at the terminal's TERMINAL_APPLIED)"
+    ],
+    [
+     "C2_ADMITTED",
+     "PREEMPTED_BY_REPAIR",
+     "SOURCE: repair fence finalized for this cycle (release/conversion effects at the terminal's TERMINAL_APPLIED)"
+    ],
+    [
+     "C1_ADMITTED",
+     "EXPIRED_STALLED",
+     "SOURCE: the lane's expiry predicate held (clock + no pending work) (release/conversion at the terminal's TERMINAL_APPLIED)"
+    ],
+    [
+     "INTERMEDIATE_PRUNED",
+     "EXPIRED_STALLED",
+     "SOURCE: the lane's expiry predicate held (clock + no pending work) (release/conversion at the terminal's TERMINAL_APPLIED)"
+    ],
+    [
+     "C2_ADMITTED",
+     "EXPIRED_STALLED",
+     "SOURCE: the lane's expiry predicate held (clock + no pending work) (release/conversion at the terminal's TERMINAL_APPLIED)"
+    ]
+   ]
+  },
+  "creation_journal": {
+   "states": [
+    "LOCAL_KEYS_PREPARED",
+    "ALLOCATED",
+    "OBJECTS_PREPARED",
+    "OBJECTS_FINALIZED",
+    "GENESIS_PREPARED",
+    "ACTIVE"
+   ],
+   "terminals": [
+    "ACTIVE"
+   ],
+   "edges": [
+    [
+     "LOCAL_KEYS_PREPARED",
+     "ALLOCATED",
+     "allocation verified (ours; active)"
+    ],
+    [
+     "ALLOCATED",
+     "OBJECTS_PREPARED",
+     "ids/nonces/bytes/hashes fsynced BEFORE any PUT"
+    ],
+    [
+     "OBJECTS_PREPARED",
+     "OBJECTS_FINALIZED",
+     "server receipts match local manifest"
+    ],
+    [
+     "OBJECTS_FINALIZED",
+     "GENESIS_PREPARED",
+     "exact genesis stored bytes+hash persisted"
+    ],
+    [
+     "GENESIS_PREPARED",
+     "ACTIVE",
+     "generation-zero admission COMMITTED; pin+receipt recorded"
+    ]
+   ]
+  },
+  "allocation": {
+   "states": [
+    "active",
+    "superseded"
+   ],
+   "terminals": [
+    "superseded"
+   ],
+   "edges": [
+    [
+     "active",
+     "superseded",
+     "owner reclaim after 24h with no genesis; refused once gen-0 admission reaches RECORD_PUT_ISSUED"
+    ]
+   ]
+  },
+  "activation_token": {
+   "states": [
+    "ISSUED",
+    "CONSUMED",
+    "REVOKED_BY_REPAIR",
+    "EPOCH_INVALIDATED"
+   ],
+   "terminals": [
+    "CONSUMED",
+    "REVOKED_BY_REPAIR",
+    "EPOCH_INVALIDATED"
+   ],
+   "notes": "idempotent success for the SAME operation_id after CONSUMED is a read-only replay of the terminal state, not an edge",
+   "edges": [
+    [
+     "ISSUED",
+     "CONSUMED",
+     "atomic in activation tx under vault-row lock"
+    ],
+    [
+     "ISSUED",
+     "REVOKED_BY_REPAIR",
+     "repair fence finalized over the bound generation"
+    ],
+    [
+     "ISSUED",
+     "EPOCH_INVALIDATED",
+     "DR installed a fresh authorization_epoch"
+    ]
+   ]
+  },
+  "repair_fence": {
+   "states": [
+    "NONE",
+    "PENDING",
+    "FINALIZED",
+    "CLEARED"
+   ],
+   "terminals": [
+    "FINALIZED",
+    "CLEARED"
+   ],
+   "edges": [
+    [
+     "NONE",
+     "PENDING",
+     "repair admission RECORD_PUT_ISSUED tx under the ORG-SLOT LANE + the target vault row (round-13 A7): verify preempted_maintenance_cycle_id equals the ACTUAL open cycle (or null when none), verify no replacement fence and no maintenance-admission fence is pending, persist exact repair admission bytes — only then issue the record PUT; mint/consume/prune-start/cycle-progress -> REPAIR_FENCE_PENDING"
+    ],
+    [
+     "PENDING",
+     "FINALIZED",
+     "this repair record observed won: interval finalized; repair_version+gc_epoch bumped; tokens revoked — one tx"
+    ],
+    [
+     "PENDING",
+     "CLEARED",
+     "different canonical winner observed; no supersession side effects"
+    ]
+   ]
+  },
+  "cycle_replacement": {
+   "states": [
+    "NONE",
+    "PENDING",
+    "INSTALLED",
+    "CLEARED"
+   ],
+   "terminals": [
+    "INSTALLED",
+    "CLEARED"
+   ],
+   "notes": "the atomic restart handoff, mirroring repair_fence: one org-slot lock, predecessor remains the sole open cycle while PENDING; the replacement fence and EXPIRED_STALLED serialize in the same cycle-event lane — a pending fence DEFERS expiry (the clock rule alone is insufficient), and finalize = the predecessor RESTART terminal's publication; installation and the reservation transfer occur at ITS TERMINAL_APPLIED; the repair-fence ARM serializes in the same lane: pending replacement defers repair arm, pending repair fence defers replacement arm — never both",
+   "edges": [
+    [
+     "NONE",
+     "PENDING",
+     "successor C1 admission's IRREVERSIBLE-FENCE tx (org-slot lock; the COMPOSITE fence when the successor C1 credits P, RECORD_PUT_ISSUED otherwise — round-20 A1): restart_of names the CURRENT open cycle; carried fields validate; predecessor stays open; cycle progression on either cycle -> CYCLE_REPLACEMENT_PENDING"
+    ],
+    [
+     "PENDING",
+     "INSTALLED",
+     "successor record observed WON AND the predecessor's terminal has reached TERMINAL_STORED: INSTALLED coincides with the terminal machine's TERMINAL_STORED -> TERMINAL_APPLIED transition — ONE idempotent tx terminalizes the predecessor (RESTART record applied), transfers the carried reservation, installs the successor; never at the admission win alone"
+    ],
+    [
+     "PENDING",
+     "CLEARED",
+     "a DIFFERENT canonical winner observed at the successor's generation: fence clears; predecessor remains open; no side effects"
+    ]
+   ]
+  },
+  "terminal_publication": {
+   "states": [
+    "TERMINAL_PREPARED_NO_IO",
+    "TERMINAL_PUT_ISSUED",
+    "TERMINAL_STORED",
+    "TERMINAL_APPLIED"
+   ],
+   "terminals": [
+    "TERMINAL_APPLIED"
+   ],
+   "notes": "the admission-record pattern applied to cycle terminals: the terminal CAS is the deterministic create-only key maintenance/terminals/<maintenance_cycle_id>.terminal.json; ALL later cycle events refuse once TERMINAL_PUT_ISSUED exists (not merely once the object is visible); DR derives the unique winner from the per-cycle key and counts exactly the completions with cycle_event_seq <= the terminal's last_accepted_cycle_event_seq; CROSS-MACHINE COMPOSITION (round-13 A2): every maintenance/replacement side effect — slot transition, reservation release/transfer, accounting — happens ONLY at TERMINAL_STORED -> TERMINAL_APPLIED (one idempotent tx); the maintenance machine's terminal STATE means TERMINAL_APPLIED, while refusals of later cycle events begin at TERMINAL_PUT_ISSUED; cycle_replacement INSTALLED coincides with the predecessor terminal's APPLIED",
+   "edges": [
+    [
+     "TERMINAL_PREPARED_NO_IO",
+     "TERMINAL_PUT_ISSUED",
+     "lane tx: exact signed terminal bytes + frontier persisted; IRREVERSIBLE — later cycle events refuse from here"
+    ],
+    [
+     "TERMINAL_PUT_ISSUED",
+     "TERMINAL_STORED",
+     "create-only per-cycle PUT observed won (identical retry forever; the key is the cycle id — a second byte-distinct terminal cannot land)"
+    ],
+    [
+     "TERMINAL_STORED",
+     "TERMINAL_APPLIED",
+     "release/handoff/accounting applied idempotently"
+    ]
+   ]
+  },
+  "cycle_admission_fence": {
+   "states": [
+    "NONE",
+    "CYCLE_ADMISSION_PENDING",
+    "WON",
+    "CONFLICTED"
+   ],
+   "terminals": [
+    "WON",
+    "CONFLICTED"
+   ],
+   "notes": "EVERY maintenance-kind (C1/C2/successor-C1) admission fence is a cycle-lane event (round-13 A3, start moved round-20 A1): CYCLE_ADMISSION_PENDING begins at the admission's IRREVERSIBLE fence — the COMPOSITE cut fence for P-credit admissions, RECORD_PUT_ISSUED for P-less — and while pending expiry and owner abort DEFER, repair arm DEFERS, replacement arm defers unless this IS the replacement's own successor-C1 fence, and terminal publication DEFERS; a winning ordinary C1/C2 record advances the phase; a winning SUCCESSOR-C1 record only PROVES the restart source — installation waits for the predecessor terminal's TERMINAL_APPLIED; a different winner clears this admission's stage reservations (the CONFLICTED release rule)",
+   "edges": [
+    [
+     "NONE",
+     "CYCLE_ADMISSION_PENDING",
+     "entered IN the admission's IRREVERSIBLE-FENCE transaction (round-20 A1): P-credit — the SAME transaction as cut_subfence NONE -> CUT_PUT_ISSUED (the composite fence); P-less — the RECORD_PUT_ISSUED transaction (exact record bytes persisted). EXECUTABLE INVARIANTS (corrected round-22): UNRESOLVED-STATE — cut_subfence != NONE AND admission in {PREPARED_NO_IO, RECORD_PUT_ISSUED} => cycle_admission_fence == CYCLE_ADMISSION_PENDING; TERMINAL COUPLING (branch-qualified — a P-less maintenance admission rides the lane with NO cut) — cycle_admission_fence == WON => admission in {RECORD_WON, COMMITTED} and cut_subfence == (DONE iff p_cut_sha256 != null, NONE iff null); cycle_admission_fence == CONFLICTED => admission == CONFLICTED and the same cut coupling"
+    ],
+    [
+     "CYCLE_ADMISSION_PENDING",
+     "WON",
+     "the record observed won. ORDINARY C1/C2: apply the phase transition. SUCCESSOR C1: record RESTART_SOURCE_PROVED ONLY — do not transfer, install, release, or terminalize; those occur at the predecessor terminal's TERMINAL_APPLIED"
+    ],
+    [
+     "CYCLE_ADMISSION_PENDING",
+     "CONFLICTED",
+     "a different canonical record won; stage reservations release"
+    ]
+   ]
+  },
+  "maintenance_admission_cut_subfence": {
+   "states": [
+    "NONE",
+    "CUT_PUT_ISSUED",
+    "CUT_STORED",
+    "DONE"
+   ],
+   "terminals": [
+    "DONE"
+   ],
+   "notes": "P-credit admissions use ONE COMPOSITE ADMISSION FENCE (round-20 A1): under the org-slot/cycle lane, EVERY fallible admission check runs FIRST — generation + head linkage, request-to-C1 equality, expected-stage equality + stage reservation, current cycle/terminal/repair/replacement predicates, cutoff + authorization epoch, generation/rate reservation, maintenance lease + quota; THEN prepared_at, the service-key authority, the signature, the exact admission-record bytes, AND the exact cut bytes are fixed; ONE transaction atomically persists both journals, claims the cut, reserves the stage, and enters BOTH CUT_PUT_ISSUED and CYCLE_ADMISSION_PENDING. AFTER that transaction no semantic validation may refuse — the remaining path is mechanical no-fail replay: CUT_PUT_ISSUED -> CUT_STORED -> RECORD_PUT_ISSUED -> RECORD_WON | CONFLICTED -> COMMITTED. The record's service signature attests THIS composite validation for P-credit admissions (RECORD_PUT_ISSUED's for P-less); authority time freezes at the admission's irreversible fence — composite for P-credit, main for P-less. P-less admissions keep the ordinary main fence and skip this machine. UNBOUND-CUT EXITS are exactly two: CONFLICTED (different-winner proof releases the cut to the reaper) and DR_ORPHANED_PRE_RECORD. DR: a scan-visible cut with NO recovered composite journal and NO canonical record binding it, after the quiescence wait and second scan, is DR_ORPHANED_PRE_RECORD — reconstruct an inert lifecycle row, release claims/reservations, FINALIZED_UNCLAIMED, reap; a canonical record binding it -> adopt; a different generation winner -> reconstruct CONFLICTED and release. The cut object does not carry the record bytes, so a lost journal can never resume the record PUT — orphan adjudication is the total answer.",
+   "edges": [
+    [
+     "NONE",
+     "CUT_PUT_ISSUED",
+     "the COMPOSITE FENCE transaction: all fallible checks pass; exact cut + record bytes fixed and persisted; cut claimed; stage reserved; CYCLE_ADMISSION_PENDING entered; IRREVERSIBLE — nothing after this may refuse"
+    ],
+    [
+     "CUT_PUT_ISSUED",
+     "CUT_STORED",
+     "create-only cut PUT observed durable (identical retry; unique per-attempt key)"
+    ],
+    [
+     "CUT_STORED",
+     "DONE",
+     "proceed MECHANICALLY to RECORD_PUT_ISSUED (no further validation exists)"
+    ]
+   ]
+  }
+ },
+ "x-r402s-revision": "40"
+}

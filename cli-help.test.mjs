@@ -132,7 +132,6 @@ const MATRIX = {
       "scaffold-roles",
     ],
   },
-  "sender-domain": { shared: [], specific: [] },
   billing: {
     shared: [],
     specific: ["checkout", "auto-recharge", "history", "create-email", "link-wallet", "balance"],

@@ -157,8 +157,6 @@ describe("Run402 constructor validation", () => {
       "projects.schema",
       "projects.usage",
       "projects.quote",
-      "senderDomain.inboundEnable",
-      "senderDomain.inboundDisable",
     ]) {
       const value = path.split(".").reduce((obj, key) => obj?.[key], r);
       assert.equal(typeof value, "function", `${path} should be a function`);

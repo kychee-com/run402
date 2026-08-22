@@ -119,17 +119,17 @@ describe("createX402BuyerFetch", () => {
     assert.equal(seenProofs.length, 1);
     assert.equal(result.outcome, "settled");
     assert.deepEqual({
-      amount_usd_micros: result.payment?.amount_usd_micros,
-      pay_to: result.payment?.pay_to,
+      amountUsdMicros: result.payment?.amountUsdMicros,
+      payTo: result.payment?.payTo,
       network: result.payment?.network,
-      tx_ref: result.payment?.tx_ref,
-      url: result.payment?.url,
+      transaction: result.payment?.transaction,
+      resourceUrl: result.payment?.resourceUrl,
     }, {
-      amount_usd_micros: 10000,
-      pay_to: "0xfeed000000000000000000000000000000000000",
+      amountUsdMicros: 10000,
+      payTo: "0xfeed000000000000000000000000000000000000",
       network: "eip155:8453",
-      tx_ref: "0xtransaction",
-      url: PAID_URL,
+      transaction: "0xtransaction",
+      resourceUrl: PAID_URL,
     });
     assert.equal(result.payment?.settlement.status, "verified");
     assert.equal(result.payment?.offer.status, "absent");
@@ -181,7 +181,7 @@ describe("createX402BuyerFetch", () => {
     const result = await buyer(PAID_URL, undefined, { maxUsdMicros: 5000000 });
 
     assert.equal(creates, 1);
-    assert.equal(result.payment?.amount_usd_micros, 5000000);
+    assert.equal(result.payment?.amountUsdMicros, 5000000);
   });
 
   it("rejects receipt-required payment before signing when no offer is eligible", async () => {

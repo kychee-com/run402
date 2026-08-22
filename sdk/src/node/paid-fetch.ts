@@ -1570,11 +1570,7 @@ async function receiptFromResponse(
   const offerValidUntil = safeInteger(offerPayload?.validUntil);
   const noSignerAuthorizationExpiry: string | null = null;
   return {
-    amount_usd_micros: amount,
-    pay_to: accepted.payTo,
     network: record.network,
-    tx_ref: record.transaction,
-    url,
     paymentId: metadata.paymentId,
     amountUsdMicros: amount,
     asset: accepted.asset,

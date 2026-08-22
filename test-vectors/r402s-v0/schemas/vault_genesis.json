@@ -1,0 +1,92 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "vault_genesis.json",
+ "title": "r402s/v0 vault_genesis path-addressed at head/0000000000000000; no object_id; epoch fixed; envelope receipt epoch bound to it (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "signature",
+  "org_id",
+  "project_id",
+  "allocation_nonce",
+  "generation",
+  "epoch",
+  "git_object_format",
+  "creator_signing_pubkey",
+  "creator_encryption_pubkey",
+  "envelopes",
+  "writer_key_id",
+  "created_at"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "vault_genesis"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "org_id": {
+   "type": "string"
+  },
+  "project_id": {
+   "type": "string"
+  },
+  "allocation_nonce": {
+   "$ref": "common.json#/$defs/hex32"
+  },
+  "generation": {
+   "const": "0000000000000000"
+  },
+  "epoch": {
+   "const": "0000000000000001"
+  },
+  "git_object_format": {
+   "const": "sha1"
+  },
+  "creator_signing_pubkey": {
+   "$ref": "common.json#/$defs/ed25519_pubkey"
+  },
+  "creator_encryption_pubkey": {
+   "$ref": "common.json#/$defs/x25519_pubkey"
+  },
+  "envelopes": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 1,
+   "items": {
+    "allOf": [
+     {
+      "$ref": "common.json#/$defs/receipt_key_envelope"
+     },
+     {
+      "properties": {
+       "epoch": {
+        "const": "0000000000000001"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "writer_key_id": {
+   "$ref": "common.json#/$defs/vk"
+  },
+  "created_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  }
+ },
+ "x-r402s-revision": "40"
+}

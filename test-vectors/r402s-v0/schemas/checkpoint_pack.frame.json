@@ -1,0 +1,41 @@
+{
+ "$id": "checkpoint_pack.frame.json",
+ "title": "r402s/v0 checkpoint_pack binary frame descriptor raw encrypted kinds have no JSON plaintext; this descriptor + generated vectors are their normative definition (DRAFT rev 40)",
+ "encoding": "binary-frame",
+ "object_kind": "checkpoint_pack",
+ "layout": [
+  {
+   "offset": "0",
+   "length": "6",
+   "field": "magic",
+   "value": "R402S0 (ASCII)"
+  },
+  {
+   "offset": "6",
+   "length": "1",
+   "field": "suite_id",
+   "value": "0x01"
+  },
+  {
+   "offset": "7",
+   "length": "24",
+   "field": "nonce",
+   "value": "XChaCha20-Poly1305 nonce (CSPRNG)"
+  },
+  {
+   "offset": "31",
+   "length": "rest",
+   "field": "ct_and_tag",
+   "value": "ciphertext || 16-byte Poly1305 tag"
+  }
+ ],
+ "aead": "XChaCha20-Poly1305 (32-byte key k_obj, 24-byte nonce, 16-byte tag)",
+ "aad": "JCS of {repo_id, object_kind, object_id, epoch, suite, magic:\"R402S0\", suite_id:\"01\"}",
+ "key": "k_obj = HKDF(K_repo, salt=empty, info=length-prefixed [r402s/v0, suite, repo_id, epoch, object_kind, object_id, L=32], L=32)",
+ "plaintext": "a non-thin git packfile chunk of the checkpoint set; multi-object packs bounded by MAX_MULTI_OBJECT_PACK_PLAINTEXT_BYTES, a singleton pack may reach MAX_FRAME_PLAINTEXT_BYTES",
+ "max_plaintext_bytes": {
+  "$constant": "MAX_FRAME_PLAINTEXT_BYTES"
+ },
+ "receipt_hash": "ciphertext_sha256 over the COMPLETE framed blob (magic through tag)",
+ "x-r402s-revision": "40"
+}

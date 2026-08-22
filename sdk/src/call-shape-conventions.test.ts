@@ -1,13 +1,11 @@
 /**
  * Cross-cutting tests for the `sdk-call-shape-conventions` change: the new
- * scope handles (`r.wallet`, `r.admin.org`, `r.admin.project`), the
- * options-object reshapes, and that each reshaped method's new form produces a
- * byte-identical request to its deprecated positional form.
+ * scope handles (`r.wallet`, `r.admin.org`, `r.admin.project`) and the
+ * options-object call shapes, pinning the exact wire body each one sends.
  */
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Run402 } from "./index.js";
-import { _resetDeprecationWarnings } from "./deprecate.js";
 
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -38,19 +36,6 @@ function sdkCapturing(
   });
 }
 
-// Reshaped methods emit deprecation notices on the positional path; silence
-// them here (the notice mechanism itself is covered in deprecate.test.ts).
-let savedEnv: string | undefined;
-beforeEach(() => {
-  _resetDeprecationWarnings();
-  savedEnv = process.env.RUN402_SUPPRESS_DEPRECATIONS;
-  process.env.RUN402_SUPPRESS_DEPRECATIONS = "1";
-});
-afterEach(() => {
-  if (savedEnv === undefined) delete process.env.RUN402_SUPPRESS_DEPRECATIONS;
-  else process.env.RUN402_SUPPRESS_DEPRECATIONS = savedEnv;
-});
-
 describe("scope handles exist", () => {
   const r = sdkCapturing([]);
   it("r.wallet(address) exposes getLabel/setLabel", () => {
@@ -71,14 +56,12 @@ describe("scope handles exist", () => {
   });
 });
 
-describe("wallet handle parity", () => {
-  it("r.wallet(addr).setLabel(label) PUTs the same body as r.wallets.setLabel", async () => {
+describe("wallet handle", () => {
+  it("r.wallet(addr).setLabel(label) PUTs { label }", async () => {
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
     await r.wallet("0xabc").setLabel("kychon");
-    await r.wallets.setLabel("0xabc", "kychon");
-    assert.equal(bodies.length, 2);
-    assert.deepEqual(bodies[0], bodies[1]);
+    assert.equal(bodies.length, 1);
     assert.deepEqual(bodies[0], { label: "kychon" });
   });
 });
@@ -94,7 +77,7 @@ describe("admin lease verb-split", () => {
   });
 });
 
-describe("options-object reshapes match the deprecated positional wire body", () => {
+describe("options-object call shapes send the expected wire body", () => {
   it("domains.ensure", async () => {
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
@@ -116,8 +99,6 @@ describe("options-object reshapes match the deprecated positional wire body", ()
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
     await r.secrets.set("prj_1", "API_KEY", { value: "v1" });
-    await r.secrets.set("prj_1", "API_KEY", "v1");
-    assert.deepEqual(bodies[0], bodies[1]);
     assert.deepEqual(bodies[0], { key: "API_KEY", value: "v1" });
   });
 
@@ -125,8 +106,6 @@ describe("options-object reshapes match the deprecated positional wire body", ()
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
     await r.subdomains.claim({ name: "foo", deploymentId: "dep_1", projectId: "prj_1" });
-    await r.subdomains.claim("foo", "dep_1", { projectId: "prj_1" });
-    assert.deepEqual(bodies[0], bodies[1]);
     assert.deepEqual(bodies[0], { name: "foo", deployment_id: "dep_1" });
   });
 
@@ -134,8 +113,6 @@ describe("options-object reshapes match the deprecated positional wire body", ()
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
     await r.org("org_1").members.setRole("prc_1", { role: "admin" });
-    await r.org("org_1").members.setRole("prc_1", "admin");
-    assert.deepEqual(bodies[0], bodies[1]);
     assert.deepEqual(bodies[0], { role: "admin" });
   });
 
@@ -143,8 +120,6 @@ describe("options-object reshapes match the deprecated positional wire body", ()
     const bodies: unknown[] = [];
     const r = sdkCapturing(bodies);
     await r.admin.transfers.cancel("tr_1", { reason: "oops" });
-    await r.admin.transfers.cancel("tr_1", "oops");
-    assert.deepEqual(bodies[0], bodies[1]);
     assert.deepEqual(bodies[0], { reason: "oops" });
   });
 });
@@ -167,24 +142,3 @@ describe("scoped wrappers use the canonical form", () => {
   });
 });
 
-describe("deprecation routing", () => {
-  it("the deprecated positional form emits exactly one stderr notice", async () => {
-    delete process.env.RUN402_SUPPRESS_DEPRECATIONS;
-    _resetDeprecationWarnings();
-    const writes: string[] = [];
-    const origWrite = process.stderr.write.bind(process.stderr);
-    process.stderr.write = ((chunk: unknown) => {
-      writes.push(String(chunk));
-      return true;
-    }) as typeof process.stderr.write;
-    try {
-      const r = sdkCapturing([]);
-      await r.secrets.set("prj_1", "API_KEY", "v1");
-      await r.secrets.set("prj_1", "API_KEY", "v2");
-    } finally {
-      process.stderr.write = origWrite;
-    }
-    const notices = writes.filter((w) => /DEPRECATED: secrets\.set/.test(w));
-    assert.equal(notices.length, 1);
-  });
-});

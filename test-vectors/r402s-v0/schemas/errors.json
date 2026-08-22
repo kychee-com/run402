@@ -1,0 +1,207 @@
+{
+ "$id": "errors.json",
+ "title": "r402s/v0 error registry (DRAFT rev 40) — closed; each entry carries its canonical next_action (the wire envelope carries the same string plus typed context; the full response schema lands with the task-1.x API schema set)",
+ "errors": [
+  {
+   "code": "TRANSITION_NOT_ACTIVE",
+   "retryable": false,
+   "next_action": "wait for a gateway release that activates this transition kind"
+  },
+  {
+   "code": "REPAIR_TARGET_UNPRESERVABLE",
+   "retryable": false,
+   "next_action": "choose a repair base whose superseded tips can all be preserved"
+  },
+  {
+   "code": "GC_EPOCH_STALE",
+   "retryable": false,
+   "next_action": "refetch the vault state and rebuild the intent at the current epoch"
+  },
+  {
+   "code": "REF_STATE_LIMIT_EXCEEDED",
+   "retryable": false,
+   "next_action": "reduce refs/roots below the documented cardinality bounds"
+  },
+  {
+   "code": "ALLOCATION_SUPERSEDED",
+   "retryable": false,
+   "next_action": "request a fresh allocation and restart creation"
+  },
+  {
+   "code": "UPGRADE_REQUIRED",
+   "retryable": false,
+   "next_action": "upgrade the client; the vault stays readable at the materialized pin"
+  },
+  {
+   "code": "VERIFICATION_BUDGET_EXCEEDED",
+   "retryable": true,
+   "next_action": "resume verification from the persisted verified prefix"
+  },
+  {
+   "code": "GIT_OBJECT_TOO_LARGE",
+   "retryable": false,
+   "next_action": "remove or split the oversize object; consider external storage"
+  },
+  {
+   "code": "GITVAULT_CLIENT_UPGRADE_REQUIRED",
+   "retryable": false,
+   "next_action": "upgrade the run402 CLI"
+  },
+  {
+   "code": "OVERRIDE_NOT_AUTHORIZED",
+   "retryable": false,
+   "next_action": "obtain gitvault.override_unvaulted (owner + step-up)"
+  },
+  {
+   "code": "REPAIR_NOT_AUTHORIZED",
+   "retryable": false,
+   "next_action": "obtain gitvault.repair (owner + step-up)"
+  },
+  {
+   "code": "POLICY_CHANGE_NOT_AUTHORIZED",
+   "retryable": false,
+   "next_action": "obtain gitvault.policy.manage (owner + step-up)"
+  },
+  {
+   "code": "MAINTENANCE_LEASE_HELD",
+   "retryable": true,
+   "next_action": "retry after the active lease completes or expires"
+  },
+  {
+   "code": "CHECKPOINT_INCOMPLETE",
+   "retryable": false,
+   "next_action": "rebuild the checkpoint set; restorers fall back to WAL replay"
+  },
+  {
+   "code": "SNAPSHOT_CONFLICTED_INDEX",
+   "retryable": false,
+   "next_action": "resolve the merge conflict, then redeploy"
+  },
+  {
+   "code": "REF_EXPECTED_OLD_MISMATCH",
+   "retryable": true,
+   "next_action": "refetch, reapply the transaction to the winner's map, retry"
+  },
+  {
+   "code": "HEAD_CAS_CONFLICT",
+   "retryable": true,
+   "next_action": "verify the attached winner from storage, rebase, retry"
+  },
+  {
+   "code": "GENERATION_REGRESSION",
+   "retryable": false,
+   "next_action": "the listing is below your pin; refuse and investigate the host"
+  },
+  {
+   "code": "CHAIN_BROKEN",
+   "retryable": false,
+   "next_action": "fail closed; contact support with the listing evidence"
+  },
+  {
+   "code": "CHAIN_UNUSABLE",
+   "retryable": false,
+   "next_action": "stay read-only at the materialized pin; run the repair path"
+  },
+  {
+   "code": "VAULT_CREATION_CONFLICT",
+   "retryable": false,
+   "next_action": "a foreign genesis exists; adopt it or choose a new project"
+  },
+  {
+   "code": "VAULT_UNRECOVERABLE",
+   "retryable": false,
+   "next_action": "no principal keystore survives; restore deployed artifacts from CAS"
+  },
+  {
+   "code": "KEYSTORE_MISSING",
+   "retryable": false,
+   "next_action": "restore ~/.run402/source from backup or accept vault loss"
+  },
+  {
+   "code": "QUOTA_EXCEEDED",
+   "retryable": false,
+   "next_action": "free storage or upgrade the org tier"
+  },
+  {
+   "code": "RATE_LIMITED",
+   "retryable": true,
+   "next_action": "back off and retry after the indicated interval"
+  },
+  {
+   "code": "INVALID_CURSOR",
+   "retryable": true,
+   "next_action": "restart the heads listing from after_generation without a cursor and echo each page's next_cursor unchanged"
+  },
+  {
+   "code": "GITVAULT_ACCESS_DENIED",
+   "retryable": false,
+   "next_action": "authenticate with a principal holding the required capability"
+  },
+  {
+   "code": "SUITE_UNSUPPORTED",
+   "retryable": false,
+   "next_action": "upgrade the client to a release supporting this suite"
+  },
+  {
+   "code": "REFNAME_UNSUPPORTED",
+   "retryable": false,
+   "next_action": "rename the ref to a supported UTF-8 canonical name"
+  },
+  {
+   "code": "GIT_OBJECT_FORMAT_UNSUPPORTED",
+   "retryable": false,
+   "next_action": "SHA-256 repositories are not supported in V0"
+  },
+  {
+   "code": "AUTHORIZATION_EPOCH_STALE",
+   "retryable": false,
+   "next_action": "re-request authorization under the current epoch"
+  },
+  {
+   "code": "MAINTENANCE_CYCLE_RESTART_REQUIRED",
+   "retryable": false,
+   "next_action": "open a successor cycle referencing the admitted C1"
+  },
+  {
+   "code": "REPAIR_FENCE_PENDING",
+   "retryable": true,
+   "next_action": "retry after the pending repair fence resolves"
+  },
+  {
+   "code": "CHECKPOINT_SET_LIMIT_EXCEEDED",
+   "retryable": false,
+   "next_action": "compact or prune before adding coverage"
+  },
+  {
+   "code": "REGISTRY_ROLLBACK",
+   "retryable": false,
+   "next_action": "fetch the current highest registry version"
+  },
+  {
+   "code": "CYCLE_REPLACEMENT_PENDING",
+   "retryable": true,
+   "next_action": "retry after the replacement fence resolves"
+  },
+  {
+   "code": "STAGE_CANDIDATE_RESERVED",
+   "retryable": false,
+   "next_action": "await the open cycle's terminal, then re-plan the prune"
+  },
+  {
+   "code": "MAINTENANCE_STAGE_LIMIT_EXCEEDED",
+   "retryable": false,
+   "next_action": "run a maintenance cycle before further growth; the projected stage would exceed MAX_STAGE_CANDIDATES or MAX_STAGE_CANDIDATE_STORED_BYTES"
+  },
+  {
+   "code": "CLIENT_OPEN_ID_CONFLICT",
+   "retryable": false,
+   "next_action": "this client_open_id is bound to different request bindings; use a fresh client_open_id"
+  },
+  {
+   "code": "CUT_STORAGE_INTEGRITY_FAILURE",
+   "retryable": false,
+   "next_action": "external storage-integrity fault (D190): the stored cut is absent or does not hash to p_cut_sha256 — no record PUT was issued and no admission, lane, claim, reservation, cut-ownership, replacement, rate-slot, lease, or authority state changed; restore the exact journaled cut bytes at the burned per-attempt key (the mechanical path then resumes) or apply an operator recovery decision; the client cannot retry its way out"
+  }
+ ],
+ "x-r402s-revision": "40"
+}

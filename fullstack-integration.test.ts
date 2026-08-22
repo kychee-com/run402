@@ -509,8 +509,8 @@ describe("Run402 full-stack integration (live API, no mocks)", { timeout: 900_00
       },
     );
 
-    await r.secrets.set(projectId, "FULLSTACK_TEST_SECRET", TEST_SECRET_VALUE);
-    if (EMAIL_TO) await r.secrets.set(projectId, "FULLSTACK_EMAIL_TO", EMAIL_TO);
+    await r.secrets.set(projectId, "FULLSTACK_TEST_SECRET", { value: TEST_SECRET_VALUE });
+    if (EMAIL_TO) await r.secrets.set(projectId, "FULLSTACK_EMAIL_TO", { value: EMAIL_TO });
     const secretList = await r.secrets.list(projectId);
     assert.ok(secretList.secrets.some((secret: any) => secret.key === "FULLSTACK_TEST_SECRET"));
 

@@ -220,7 +220,7 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
         reactivated: true,
       }),
     );
-    const result = await sdk(fetch).admin.setLeasePerpetual("org_known", true);
+    const result = await sdk(fetch).admin.org("org_known").pinLease();
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.method, "POST");
@@ -239,7 +239,7 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
     const { fetch, calls } = mockFetch(() =>
       json({ status: "ok", org_id: "org_known", lease_perpetual: false, reactivated: false }),
     );
-    const result = await sdk(fetch).admin.setLeasePerpetual("org_known", false);
+    const result = await sdk(fetch).admin.org("org_known").unpinLease();
 
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { lease_perpetual: false });
     assert.equal(result.lease_perpetual, false);
@@ -250,7 +250,7 @@ describe("admin.setLeasePerpetual (v1.57)", () => {
     const { fetch, calls } = mockFetch(() =>
       json({ status: "ok", org_id: "org/has space", lease_perpetual: true, reactivated: false }),
     );
-    await sdk(fetch).admin.setLeasePerpetual("org/has space", true);
+    await sdk(fetch).admin.org("org/has space").pinLease();
     assert.equal(
       calls[0]!.url,
       "https://api.test/orgs/v1/admin/org%2Fhas%20space/lease-perpetual",

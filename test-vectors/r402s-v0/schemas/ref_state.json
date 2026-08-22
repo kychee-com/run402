@@ -1,0 +1,55 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "ref_state.json",
+ "title": "r402s/v0 ref_state plaintext encrypted at rest; head_target symref names a refs/heads/* branch (may be unborn); detached carries the exact oid (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "generation",
+  "refs",
+  "head_target"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "ref_state"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/refs"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "refs": {
+   "type": "object",
+   "maxProperties": 10000,
+   "additionalProperties": {
+    "$ref": "common.json#/$defs/oid40"
+   },
+   "propertyNames": {
+    "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*@\\{)refs/(heads|tags|run402)/[^\\u0000-\\u0020\\u007f~^:?*\\[\\\\]+$"
+   }
+  },
+  "head_target": {
+   "$ref": "common.json#/$defs/head_target"
+  }
+ },
+ "x-r402s-revision": "40"
+}

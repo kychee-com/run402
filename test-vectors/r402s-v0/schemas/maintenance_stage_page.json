@@ -1,0 +1,64 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "maintenance_stage_page.json",
+ "title": "r402s/v0 maintenance_stage_page (DRAFT rev 40) — page i IS batch i: its candidates are the stage's contiguous slice, <=10,000 complete pruneable receipts, globally sorted by object_id across the page sequence",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "object_id",
+  "repo_id",
+  "maintenance_cycle_id",
+  "maintenance_prune_role",
+  "page_index",
+  "candidates",
+  "writer_key_id",
+  "signature"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "maintenance_stage_page"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/msp"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "maintenance_cycle_id": {
+   "$ref": "common.json#/$defs/mc"
+  },
+  "maintenance_prune_role": {
+   "enum": [
+    "intermediate",
+    "final"
+   ]
+  },
+  "page_index": {
+   "$ref": "common.json#/$defs/batch_ordinal"
+  },
+  "candidates": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 10000,
+   "items": {
+    "$ref": "common.json#/$defs/receipt_pruneable"
+   }
+  },
+  "writer_key_id": {
+   "$ref": "common.json#/$defs/vk"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  }
+ },
+ "x-r402s-revision": "40"
+}

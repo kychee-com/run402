@@ -1,0 +1,216 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "prune_completion.json",
+ "title": "r402s/v0 prune_completion (DRAFT rev 40) — exactly one entry per intent candidate in the intent's canonical order; AT MOST ONE accepted completion per intent; terminal outcomes are BICONDITIONAL on the result vector + epoch check; cycle batches mirror the intent's role/stage/batch fields",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "object_id",
+  "signature",
+  "service_key_id",
+  "prune_intent_sha256",
+  "maintenance_cycle_id",
+  "maintenance_prune_role",
+  "stage_claim_set_sha256",
+  "batch_index",
+  "batch_count",
+  "outcome",
+  "per_object",
+  "cycle_event_seq",
+  "gc_epoch_at_completion",
+  "completed_at"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "prune_completion"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "object_id": {
+   "$ref": "common.json#/$defs/pc"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "service_key_id": {
+   "$ref": "common.json#/$defs/service_key_id"
+  },
+  "prune_intent_sha256": {
+   "$ref": "common.json#/$defs/sha256"
+  },
+  "maintenance_cycle_id": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/mc"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "outcome": {
+   "enum": [
+    "completed",
+    "superseded_no_delete",
+    "superseded_partial_delete"
+   ]
+  },
+  "per_object": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 10000,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "object_id",
+     "result"
+    ],
+    "properties": {
+     "object_id": {
+      "$ref": "common.json#/$defs/pruneable_object_id"
+     },
+     "result": {
+      "enum": [
+       "deleted",
+       "present_not_attempted",
+       "present_after_attempt"
+      ]
+     }
+    }
+   }
+  },
+  "gc_epoch_at_completion": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "completed_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  },
+  "maintenance_prune_role": {
+   "oneOf": [
+    {
+     "enum": [
+      "intermediate",
+      "final"
+     ]
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "stage_claim_set_sha256": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/sha256"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "batch_index": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/batch_ordinal"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "batch_count": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/batch_ordinal"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "cycle_event_seq": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/cycle_event_seq"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  }
+ },
+ "allOf": [
+  {
+   "if": {
+    "properties": {
+     "maintenance_cycle_id": {
+      "type": "null"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "maintenance_prune_role": {
+      "const": null
+     },
+     "stage_claim_set_sha256": {
+      "const": null
+     },
+     "batch_index": {
+      "const": null
+     },
+     "batch_count": {
+      "const": null
+     },
+     "cycle_event_seq": {
+      "const": null
+     }
+    }
+   }
+  },
+  {
+   "if": {
+    "properties": {
+     "maintenance_cycle_id": {
+      "type": "string"
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "maintenance_prune_role": {
+      "enum": [
+       "intermediate",
+       "final"
+      ]
+     },
+     "stage_claim_set_sha256": {
+      "$ref": "common.json#/$defs/sha256"
+     },
+     "batch_index": {
+      "$ref": "common.json#/$defs/batch_ordinal"
+     },
+     "batch_count": {
+      "$ref": "common.json#/$defs/batch_ordinal"
+     },
+     "cycle_event_seq": {
+      "$ref": "common.json#/$defs/cycle_event_seq"
+     }
+    }
+   }
+  }
+ ],
+ "x-r402s-revision": "40"
+}

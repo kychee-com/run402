@@ -39,7 +39,7 @@ describe("wallets.setLabel", () => {
       seen = { url: String(url), method: init?.method, body: init?.body, auth: init?.headers?.["X-Allowance"] ?? (init?.headers && new Headers(init.headers).get("X-Allowance")) };
       return jsonResponse(200, { ok: true });
     });
-    const res = await r.wallets.setLabel("0xabc", "kychon");
+    const res = await r.wallet("0xabc").setLabel("kychon");
     assert.deepEqual(res, { ok: true });
     assert.equal(seen.method, "POST");
     assert.match(seen.url, /\/wallets\/v1\/0xabc\/label$/);
@@ -47,10 +47,10 @@ describe("wallets.setLabel", () => {
   });
   it("returns { ok: false } on 404 instead of throwing", async () => {
     const r = sdkWithFetch(async () => jsonResponse(404, { error: "not found" }));
-    assert.deepEqual(await r.wallets.setLabel("0xabc", "kychon"), { ok: false });
+    assert.deepEqual(await r.wallet("0xabc").setLabel("kychon"), { ok: false });
   });
   it("returns { ok: false } when the request throws", async () => {
     const r = sdkWithFetch(async () => { throw new Error("network"); });
-    assert.deepEqual(await r.wallets.setLabel("0xabc", "kychon"), { ok: false });
+    assert.deepEqual(await r.wallet("0xabc").setLabel("kychon"), { ok: false });
   });
 });

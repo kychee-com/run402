@@ -132,10 +132,6 @@ export interface ProjectDomain {
   checks: ProjectDomainCheck[];
   /** Ordered follow-ups; `next_actions[0]` is the recommended action. */
   next_actions: ProjectDomainNextAction[];
-  /** @deprecated alias of `next_actions[0] ?? null`; use `next_actions`. */
-  next_action: ProjectDomainNextAction | null;
-  /** @deprecated alias of `next_actions.slice(1)`; use `next_actions`. */
-  alternate_actions: ProjectDomainNextAction[];
   /** Present only for a domain on a Run402-hosted DNS zone. */
   hosted_zone?: ProjectDomainHostedZone | null;
   provenance: {
@@ -167,13 +163,7 @@ export interface ProjectDomainWaitOptions {
   intervalMs?: number;
 }
 
-export type DomainAddOptions = {
-  domain: string;
-  subdomainName?: string;
-};
-
 export type DomainRequestOptions = Record<string, never>;
-export type CustomDomainRemoveOptions = { projectId?: string };
 
 function domainPath(projectId: string, domain: string): string {
   return `/projects/v1/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(domain)}`;
@@ -181,18 +171,6 @@ function domainPath(projectId: string, domain: string): string {
 
 function authMeta(method: string, projectId: string) {
   return { method, target: { project_id: projectId } };
-}
-
-function removed(command: string, replacement: string): never {
-  throw new LocalError(
-    `${command} has been removed. Use ${replacement}.`,
-    command,
-    {
-      code: "COMMAND_REMOVED",
-      details: { command, replacement },
-      next_actions: [{ type: "use_replacement_command", command: replacement }],
-    },
-  );
 }
 
 function waitSatisfied(domain: ProjectDomain, until: ProjectDomainWaitUntil): boolean {
@@ -308,24 +286,5 @@ export class Domains {
       last = await this.check(projectId, domain);
     }
     return last;
-  }
-
-  /** @deprecated Removed. Use ensure(projectId, domain, { desired }). */
-  async add(projectId: string, opts: DomainAddOptions): Promise<never>;
-  /** @deprecated Removed. Use ensure(projectId, domain, { desired }). */
-  async add(projectId: string, domain: string, subdomainName: string): Promise<never>;
-  async add(projectId: string, domainOrOpts: string | DomainAddOptions): Promise<never> {
-    const domain = typeof domainOrOpts === "string" ? domainOrOpts : domainOrOpts.domain;
-    return removed("domains.add", `run402 domains connect ${domain} --project ${projectId} --web`);
-  }
-
-  /** @deprecated Removed. Use get(projectId, domain). */
-  async status(projectId: string, domain: string): Promise<never> {
-    return removed("domains.status", `run402 domains status ${domain} --project ${projectId}`);
-  }
-
-  /** @deprecated Removed. Use disconnect(projectId, domain). */
-  async remove(domain: string, opts: CustomDomainRemoveOptions = {}): Promise<never> {
-    return removed("domains.remove", `run402 domains disconnect ${domain}${opts.projectId ? ` --project ${opts.projectId}` : ""} --confirm`);
   }
 }

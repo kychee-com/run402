@@ -12,10 +12,6 @@ export const deploySiteSchema = {
   project: z
     .string()
     .describe("Project ID to link this deployment to"),
-  target: z
-    .string()
-    .optional()
-    .describe("Deprecated/unsupported: unified deploy v2 does not support deployment target labels. Passing this field returns an error."),
   files: z
     .array(
       z.object({
@@ -32,19 +28,8 @@ export const deploySiteSchema = {
 
 export async function handleDeploySite(args: {
   project: string;
-  target?: string;
   files: Array<{ file: string; data: string; encoding?: string }>;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
-  if (args.target !== undefined) {
-    return mapSdkError(
-      new LocalError(
-        "`target` is unsupported by unified deploy v2 and would otherwise be ignored.",
-        "deploying site",
-      ),
-      "deploying site",
-    );
-  }
-
   const auth = requireAllowanceAuth("/apply/v1/plans");
   if ("error" in auth) return auth.error;
 
@@ -65,7 +50,6 @@ export async function handleDeploySite(args: {
     const body = await getSdk().sites.deployDir({
       project: args.project,
       dir: stage,
-      target: args.target,
     });
 
     updateProject(args.project, { last_deployment_id: body.deployment_id });

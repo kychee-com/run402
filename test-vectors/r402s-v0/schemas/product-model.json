@@ -1,0 +1,2161 @@
+{
+ "$id": "product-model.json",
+ "title": "r402s/v0 normalized admission product model (DRAFT rev 40)",
+ "description": "STRUCTURED, TYPED product model over (admission, cut_subfence, cycle_admission_fence, cycle_replacement, terminal_publication, intent/claim ownership) consumed by product_executor.py. Derived from state-machines.json (the edge relation) + protocol §5A / §7.2 / D154–D162 / D166 (the composed semantics). Round-38 finding 2: every guard is a CLOSED TYPED PREDICATE (atoms over state and ENVIRONMENT coordinates — never a prose string); every action is a typed op with a class (refuses/acquires/releases/... derived, never parallel advisory arrays); every symbol is drawn from the closed enumerations in `algebra` and the executor rejects any unknown symbol. Prose `note` fields are documentation only and are never read. Round-39 fold (D190): the storage_integrity coordinate + the typed `faults` class encode the FALSE forward guard as an external storage-integrity fault with no other state change; `dr_precedence` declares journal-first DR classification; the orphan clear of a successor's PENDING replacement is normative.",
+ "x-r402s-revision": "40",
+ "coordinates": {
+  "admission": [
+   "PREPARED_NO_IO",
+   "RECORD_PUT_ISSUED",
+   "RECORD_WON",
+   "COMMITTED",
+   "CONFLICTED",
+   "ABORTED",
+   "DR_ORPHANED_PRE_RECORD"
+  ],
+  "cut_subfence": [
+   "NONE",
+   "CUT_PUT_ISSUED",
+   "CUT_STORED",
+   "DONE"
+  ],
+  "cycle_admission_fence": [
+   "NONE",
+   "CYCLE_ADMISSION_PENDING",
+   "WON",
+   "CONFLICTED"
+  ],
+  "cycle_replacement": [
+   "NOT_APPLICABLE",
+   "NONE",
+   "PENDING",
+   "INSTALLED",
+   "CLEARED"
+  ],
+  "terminal_publication": [
+   "NOT_APPLICABLE",
+   "TERMINAL_PREPARED_NO_IO",
+   "TERMINAL_PUT_ISSUED",
+   "TERMINAL_STORED",
+   "TERMINAL_APPLIED"
+  ],
+  "repair_fence": [
+   "NOT_APPLICABLE",
+   "NONE",
+   "PENDING",
+   "FINALIZED",
+   "CLEARED"
+  ],
+  "claims": [
+   "CLAIMED_PENDING",
+   "PUBLISHED",
+   "RELEASED"
+  ],
+  "stage_reservation": [
+   "NONE",
+   "RESERVED",
+   "RELEASED"
+  ],
+  "cut_ownership": [
+   "NONE",
+   "CLAIMED",
+   "BOUND_BY_RECORD",
+   "RELEASED_TO_REAPER"
+  ],
+  "rate_slot": [
+   "NONE",
+   "RESERVED"
+  ],
+  "maintenance_lease": [
+   "NONE",
+   "CONSUMED"
+  ],
+  "authority_time": [
+   "OPEN",
+   "FROZEN"
+  ],
+  "record_bytes": [
+   "UNFIXED",
+   "FIXED"
+  ],
+  "carried_reservation": [
+   "NOT_APPLICABLE",
+   "CARRIED",
+   "TRANSFERRED"
+  ],
+  "fence_status": [
+   "NOT_CROSSED",
+   "CROSSED"
+  ],
+  "storage_integrity": [
+   "OK",
+   "FAULTED"
+  ]
+ },
+ "algebra": {
+  "note": "the closed predicate algebra. A guard is a conjunction of ATOMS; an atom names exactly one coordinate (`coord` = a state coordinate from `coordinates`, or `env` = an environment coordinate from `environment`) and exactly one operator from `guard_operators` whose operand(s) lie in that coordinate's domain. The executor EXECUTES every atom over the enumerated state × environment product (∃-quantified over the environment for enabling, ∀-quantified for entailment/purity/MECE) and REJECTS any unknown coordinate, operator, value, op, class, resource, machine, state, shape, branch, domain, cause, or key.",
+  "guard_operators": [
+   "eq",
+   "neq",
+   "in"
+  ],
+  "environment": {
+   "canonical_record": [
+    "none",
+    "binds_exact_cut",
+    "different_winner"
+   ],
+   "journal": [
+    "present",
+    "absent_after_quiescence"
+   ],
+   "stored_cut_hash_match": [
+    true,
+    false
+   ],
+   "different_winner_proven": [
+    true,
+    false
+   ],
+   "timeout": [
+    "none",
+    "expired"
+   ]
+  },
+  "environment_note": "canonical_record: the scan-visible canonical admission record at this generation (none / one binding THIS exact cut / a DIFFERENT generation winner). journal: the composite/record journal is present (resume the live relation) or absent after the DR quiescence gate's second scan. stored_cut_hash_match: the stored cut hashes to p_cut_sha256 (the P-credit forward guard, D155). different_winner_proven: a DIFFERENT canonical record observed at this generation (the live release proof, D166). timeout: the pre-I/O reconciler timeout. fence_status is a STATE coordinate (NOT_CROSSED → CROSSED by exactly the irreversible fence). storage_integrity is a STATE coordinate (D190): OK, or FAULTED once the P-credit forward guard has been observed FALSE — the external storage-integrity fault marker; it lives in the composite journal, so a journal-absent reconstruction never carries it (the DR partition is taken over storage_integrity == OK).",
+  "action_classes": [
+   "refuses",
+   "acquires",
+   "releases",
+   "fixes",
+   "observes",
+   "mechanical",
+   "faults"
+  ],
+  "post_fence_forbidden_classes": [
+   "refuses",
+   "acquires"
+  ],
+  "action_ops": {
+   "refuse_unless": {
+    "class": "refuses",
+    "params": {
+     "checks": [
+      "generation_head_linkage",
+      "request_to_c1_binding_equality",
+      "expected_stage_equality",
+      "stage_candidate_reservation",
+      "stage_capacity_preflight",
+      "generation_rate_slot_reservation",
+      "maintenance_lease",
+      "org_quota",
+      "cycle_predicates",
+      "terminal_predicates",
+      "repair_fence_predicate",
+      "replacement_predicate",
+      "cutoff_ticket",
+      "authorization_epoch",
+      "repair_predicates"
+     ]
+    }
+   },
+   "acquire": {
+    "class": "acquires",
+    "params": {
+     "resource": [
+      "stage_reservation",
+      "rate_slot",
+      "maintenance_lease",
+      "cut_claim"
+     ]
+    }
+   },
+   "release": {
+    "class": "releases",
+    "params": {
+     "resource": [
+      "claims",
+      "stage_reservation",
+      "cut_claim",
+      "predecessor_reservation"
+     ]
+    }
+   },
+   "fix": {
+    "class": "fixes",
+    "params": {
+     "what": [
+      "prepared_at_and_service_key_authority",
+      "exact_record_bytes",
+      "exact_cut_bytes",
+      "authority_time"
+     ]
+    }
+   },
+   "persist": {
+    "class": "fixes",
+    "params": {
+     "what": [
+      "record_journal",
+      "both_journals",
+      "exact_signed_terminal_bytes_and_frontier"
+     ]
+    }
+   },
+   "observe": {
+    "class": "observes",
+    "params": {
+     "what": [
+      "create_only_cut_put_durable",
+      "create_only_record_put_won",
+      "different_winner",
+      "head_put_at_exact_expected_bytes",
+      "create_only_terminal_put_won",
+      "timeout_with_no_io",
+      "stored_cut_bytes_mismatch",
+      "exact_cut_bytes_restored_at_attempt_key"
+     ]
+    }
+   },
+   "verify_guard": {
+    "class": "observes",
+    "params": {
+     "what": [
+      "stored_cut_hash_match"
+     ]
+    }
+   },
+   "fault": {
+    "class": "faults",
+    "params": {
+     "code": [
+      "CUT_STORAGE_INTEGRITY_FAILURE"
+     ],
+     "retains": [
+      "attempt_id_and_per_attempt_cut_key"
+     ]
+    }
+   },
+   "enter_lane": {
+    "class": "mechanical",
+    "params": {}
+   },
+   "publish": {
+    "class": "mechanical",
+    "params": {}
+   },
+   "reap": {
+    "class": "mechanical",
+    "params": {}
+   },
+   "progress": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "mechanical",
+      "replay_persisted_record_bytes",
+      "apply_phase_transition_if_ordinary",
+      "record_restart_source_proved_if_successor"
+     ]
+    }
+   },
+   "arm": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "replacement_if_successor",
+      "repair_fence_if_repair_present",
+      "repair_fence"
+     ]
+    }
+   },
+   "debit": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "cycle_if_cycle_debit"
+     ]
+    }
+   },
+   "terminalize": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "predecessor_restart_required_after_c1"
+     ]
+    }
+   },
+   "install": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "successor"
+     ]
+    }
+   },
+   "clear": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "replacement_fence"
+     ]
+    }
+   },
+   "finalize": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "interval",
+      "repair_version_and_gc_epoch_bump",
+      "token_revocation"
+     ]
+    }
+   },
+   "reconstruct": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "inert_lifecycle_row",
+      "adopt_cut_under_canonical_record",
+      "conflicted"
+     ]
+    }
+   },
+   "resume": {
+    "class": "mechanical",
+    "params": {
+     "what": [
+      "from_journal"
+     ]
+    }
+   }
+  },
+  "resources": {
+   "claims": {
+    "coordinate": "claims",
+    "acquired": null,
+    "released": "RELEASED"
+   },
+   "stage_reservation": {
+    "coordinate": "stage_reservation",
+    "acquired": "RESERVED",
+    "released": "RELEASED"
+   },
+   "rate_slot": {
+    "coordinate": "rate_slot",
+    "acquired": "RESERVED",
+    "released": null
+   },
+   "maintenance_lease": {
+    "coordinate": "maintenance_lease",
+    "acquired": "CONSUMED",
+    "released": null
+   },
+   "cut_claim": {
+    "coordinate": "cut_ownership",
+    "acquired": "CLAIMED",
+    "released": "RELEASED_TO_REAPER"
+   },
+   "predecessor_reservation": {
+    "coordinate": "carried_reservation",
+    "acquired": null,
+    "released": "TRANSFERRED"
+   }
+  },
+  "release_causes": {
+   "pre_fence_timeout": {
+    "domain": "live",
+    "entails": [
+     {
+      "coord": "fence_status",
+      "eq": "NOT_CROSSED"
+     },
+     {
+      "coord": "cut_subfence",
+      "eq": "NONE"
+     },
+     {
+      "env": "timeout",
+      "eq": "expired"
+     }
+    ]
+   },
+   "different_winner_proven": {
+    "domain": "live",
+    "entails": [
+     {
+      "env": "different_winner_proven",
+      "eq": true
+     }
+    ]
+   },
+   "dr_orphan_no_binding_record": {
+    "domain": "reconstruction",
+    "entails": [
+     {
+      "env": "journal",
+      "eq": "absent_after_quiescence"
+     },
+     {
+      "env": "canonical_record",
+      "eq": "none"
+     }
+    ]
+   },
+   "dr_different_generation_winner": {
+    "domain": "reconstruction",
+    "entails": [
+     {
+      "env": "journal",
+      "eq": "absent_after_quiescence"
+     },
+     {
+      "env": "canonical_record",
+      "eq": "different_winner"
+     }
+    ]
+   }
+  },
+  "outcome_laws": {
+   "note": "executed entailments: a transaction LANDING in the named admission state must have a guard that ENTAILS the named atoms (D166 + the DR reconstruction arms); the three-cause release map is the `release_causes` table above",
+   "CONFLICTED": {
+    "live": [
+     {
+      "env": "different_winner_proven",
+      "eq": true
+     }
+    ],
+    "reconstruction": [
+     {
+      "env": "canonical_record",
+      "eq": "different_winner"
+     }
+    ]
+   },
+   "DR_ORPHANED_PRE_RECORD": {
+    "reconstruction": [
+     {
+      "env": "journal",
+      "eq": "absent_after_quiescence"
+     },
+     {
+      "env": "canonical_record",
+      "eq": "none"
+     }
+    ]
+   },
+   "COMMITTED": {
+    "reconstruction": [
+     {
+      "env": "canonical_record",
+      "eq": "binds_exact_cut"
+     }
+    ]
+   }
+  },
+  "journal_dependent_states": {
+   "branch": "p_credit",
+   "atoms": [
+    {
+     "coord": "cut_subfence",
+     "neq": "NONE"
+    },
+    {
+     "coord": "admission",
+     "in": [
+      "PREPARED_NO_IO",
+      "RECORD_PUT_ISSUED"
+     ]
+    },
+    {
+     "coord": "storage_integrity",
+     "eq": "OK"
+    }
+   ],
+   "note": "the set over which the three DR reconstruction arms must be MUTUALLY EXCLUSIVE and COLLECTIVELY EXHAUSTIVE for every environment assignment with journal == absent_after_quiescence; with journal == present exactly the journal-recovered resume applies D190: a FAULTED attempt (forward guard observed false) is outside the partition — its marker lives in the composite journal, so an absent journal cannot carry it; a faulted attempt is fail-closed until restore and no arm fires on it."
+  },
+  "dr_precedence": {
+   "first_discriminator": "journal",
+   "present": {
+    "enabled": [
+     "resume"
+    ],
+    "arms": "none"
+   },
+   "absent_after_quiescence": {
+    "enabled": [
+     "arm"
+    ],
+    "arms": "exactly_one",
+    "discriminator": "canonical_record"
+   },
+   "note": "D190 (ii): journal presence is classified FIRST; present ⇒ byte-identical resume only, no reconstruction arm; absent_after_quiescence ⇒ exactly one bucket-derived arm keyed on canonical_record. Executed by the PITR enumeration over every reachable state × environment assignment."
+  }
+ },
+ "shapes": {
+  "ordinary_c1": {
+   "kind": "maintenance_cycle",
+   "checkpoint_role": "C1",
+   "branches": [
+    "p_less",
+    "p_credit"
+   ],
+   "lane_domain": true,
+   "replacement": false
+  },
+  "ordinary_c2": {
+   "kind": "maintenance_cycle",
+   "checkpoint_role": "C2",
+   "branches": [
+    "p_less",
+    "p_credit"
+   ],
+   "lane_domain": true,
+   "replacement": false
+  },
+  "successor_c1": {
+   "kind": "maintenance_cycle",
+   "checkpoint_role": "C1",
+   "branches": [
+    "p_less",
+    "p_credit"
+   ],
+   "lane_domain": true,
+   "replacement": true
+  },
+  "ordinary_push": {
+   "kind": "ordinary_push",
+   "checkpoint_role": null,
+   "branches": [
+    "p_less"
+   ],
+   "lane_domain": false,
+   "replacement": false
+  },
+  "ordinary_push_cycle_debit": {
+   "kind": "ordinary_push",
+   "checkpoint_role": null,
+   "branches": [
+    "p_less"
+   ],
+   "lane_domain": false,
+   "replacement": false,
+   "cycle_debit": true
+  },
+  "repair": {
+   "kind": "repair_attempt",
+   "checkpoint_role": null,
+   "branches": [
+    "p_less"
+   ],
+   "lane_domain": false,
+   "replacement": false
+  }
+ },
+ "validation_sets": {
+  "pre_composite_maintenance": [
+   "generation_head_linkage",
+   "request_to_c1_binding_equality",
+   "expected_stage_equality",
+   "stage_candidate_reservation",
+   "stage_capacity_preflight",
+   "generation_rate_slot_reservation",
+   "maintenance_lease",
+   "org_quota",
+   "cycle_predicates",
+   "terminal_predicates",
+   "repair_fence_predicate",
+   "replacement_predicate",
+   "cutoff_ticket",
+   "authorization_epoch"
+  ],
+  "ordinary_push": [
+   "generation_head_linkage",
+   "generation_rate_slot_reservation",
+   "org_quota",
+   "cycle_predicates",
+   "cutoff_ticket",
+   "authorization_epoch"
+  ],
+  "repair": [
+   "generation_head_linkage",
+   "generation_rate_slot_reservation",
+   "org_quota",
+   "repair_predicates",
+   "cutoff_ticket",
+   "authorization_epoch"
+  ],
+  "note": "the EXACT fallible set an irreversible fence must exhaust (family maintenance-admission-composite-fence): generation/head linkage, request-to-C1 binding equality, expected-stage equality + stage candidate reservation (+ the capacity preflight), generation/rate slot, maintenance lease, org quota, cycle/terminal/repair/replacement predicates, cutoff ticket, authorization epoch"
+ },
+ "irreversible_fence": {
+  "p_credit": "composite_fence",
+  "p_less": "record_put_issued_p_less_maintenance",
+  "ordinary_push": "record_put_issued_ordinary",
+  "repair": "record_put_issued_repair",
+  "attestation": "the record's service signature attests the irreversible fence's validation (composite for P-credit, main for P-less); authority time freezes there"
+ },
+ "lane_entry": {
+  "p_credit": {
+   "transaction": "composite_fence",
+   "co_transactional_with": {
+    "machine": "maintenance_admission_cut_subfence",
+    "from": "NONE",
+    "to": "CUT_PUT_ISSUED"
+   }
+  },
+  "p_less": {
+   "transaction": "record_put_issued_p_less_maintenance",
+   "co_transactional_with": {
+    "machine": "admission",
+    "from": "PREPARED_NO_IO",
+    "to": "RECORD_PUT_ISSUED"
+   }
+  },
+  "domain": [
+   "ordinary_c1",
+   "ordinary_c2",
+   "successor_c1"
+  ]
+ },
+ "invariants": {
+  "D161_unresolved_state": {
+   "domain": "lane",
+   "if": [
+    {
+     "coord": "cut_subfence",
+     "neq": "NONE"
+    },
+    {
+     "coord": "admission",
+     "in": [
+      "PREPARED_NO_IO",
+      "RECORD_PUT_ISSUED"
+     ]
+    }
+   ],
+   "then": [
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "CYCLE_ADMISSION_PENDING"
+    }
+   ]
+  },
+  "D162_terminal_coupling": {
+   "WON": {
+    "if": [
+     {
+      "coord": "cycle_admission_fence",
+      "eq": "WON"
+     }
+    ],
+    "then": [
+     {
+      "coord": "admission",
+      "in": [
+       "RECORD_WON",
+       "COMMITTED"
+      ]
+     }
+    ],
+    "cut_subfence": {
+     "p_credit": "DONE",
+     "p_less": "NONE"
+    }
+   },
+   "CONFLICTED": {
+    "if": [
+     {
+      "coord": "cycle_admission_fence",
+      "eq": "CONFLICTED"
+     }
+    ],
+    "then": [
+     {
+      "coord": "admission",
+      "eq": "CONFLICTED"
+     }
+    ],
+    "cut_subfence": {
+     "p_credit": "DONE",
+     "p_less": "NONE"
+    }
+   }
+  },
+  "D155_forward_guard": {
+   "branch": "p_credit",
+   "if": [
+    {
+     "coord": "admission",
+     "in": [
+      "RECORD_PUT_ISSUED",
+      "RECORD_WON",
+      "COMMITTED",
+      "CONFLICTED"
+     ]
+    }
+   ],
+   "then": [
+    {
+     "coord": "cut_subfence",
+     "eq": "DONE"
+    }
+   ]
+  },
+  "D155_abort_guard": {
+   "if": [
+    {
+     "coord": "admission",
+     "eq": "ABORTED"
+    }
+   ],
+   "then": [
+    {
+     "coord": "cut_subfence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "NONE"
+    }
+   ]
+  },
+  "converse_resolution": {
+   "domain": "lane",
+   "if": [
+    {
+     "coord": "admission",
+     "in": [
+      "RECORD_WON",
+      "COMMITTED"
+     ]
+    }
+   ],
+   "then": [
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "WON"
+    }
+   ],
+   "and_if": [
+    {
+     "coord": "admission",
+     "eq": "CONFLICTED"
+    }
+   ],
+   "and_then": [
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "CONFLICTED"
+    }
+   ]
+  },
+  "impossible_tuples": [
+   [
+    "RECORD_PUT_ISSUED",
+    "NONE",
+    "NONE"
+   ],
+   [
+    "COMMITTED",
+    "DONE",
+    "CYCLE_ADMISSION_PENDING"
+   ]
+  ],
+  "D190_integrity_fault": {
+   "if": [
+    {
+     "coord": "storage_integrity",
+     "eq": "FAULTED"
+    }
+   ],
+   "then": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "DONE"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "CYCLE_ADMISSION_PENDING"
+    },
+    {
+     "coord": "claims",
+     "eq": "CLAIMED_PENDING"
+    },
+    {
+     "coord": "stage_reservation",
+     "eq": "RESERVED"
+    },
+    {
+     "coord": "cut_ownership",
+     "eq": "CLAIMED"
+    },
+    {
+     "coord": "authority_time",
+     "eq": "FROZEN"
+    },
+    {
+     "coord": "record_bytes",
+     "eq": "FIXED"
+    }
+   ]
+  }
+ },
+ "release_map": {
+  "claims": {
+   "abort_pre_fence": "pre_fence_timeout",
+   "record_conflicted": "different_winner_proven",
+   "dr_orphaned_pre_record": "dr_orphan_no_binding_record",
+   "dr_reconstruct_conflicted": "dr_different_generation_winner"
+  },
+  "claims_note": "the three-cause map (D166): live pre-fence timeout (cut_subfence == NONE — no winner ever existed), live different-winner proof (nonterminal), and the SOLE reconstruction-only exception DR_ORPHANED_PRE_RECORD (no different winner); dr_reconstruct_conflicted is the DR form of the different-winner cause, not a fourth cause. The executor proves each transaction's guard ENTAILS its named cause.",
+  "stage_reservation": {
+   "record_conflicted": {
+    "linearization": "nonterminal"
+   },
+   "record_conflicted_replacement_clear": {
+    "linearization": "nonterminal"
+   },
+   "terminal_applied": {
+    "linearization": "terminal_applied",
+    "terminals": [
+     "ABORTED_BEFORE_C1",
+     "replacement_install",
+     "PREEMPTED_BY_REPAIR",
+     "EXPIRED_STALLED",
+     "COMPLETED"
+    ]
+   },
+   "dr_orphaned_pre_record": {
+    "linearization": "reconstruction"
+   }
+  },
+  "never": {
+   "at_admission": [
+    "RECORD_WON",
+    "COMMITTED"
+   ],
+   "by_timeout_past_fence": true,
+   "at_cycle_terminal_for_losing_attempt": true
+  }
+ },
+ "transactions": [
+  {
+   "id": "composite_fence",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "fence_status",
+     "eq": "NOT_CROSSED"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "maintenance_admission_cut_subfence",
+     "from": "NONE",
+     "to": "CUT_PUT_ISSUED"
+    },
+    {
+     "machine": "cycle_admission_fence",
+     "from": "NONE",
+     "to": "CYCLE_ADMISSION_PENDING"
+    }
+   ],
+   "irreversible": true,
+   "actions": [
+    {
+     "op": "refuse_unless",
+     "checks": [
+      "generation_head_linkage",
+      "request_to_c1_binding_equality",
+      "expected_stage_equality",
+      "stage_candidate_reservation",
+      "stage_capacity_preflight",
+      "generation_rate_slot_reservation",
+      "maintenance_lease",
+      "org_quota",
+      "cycle_predicates",
+      "terminal_predicates",
+      "repair_fence_predicate",
+      "replacement_predicate",
+      "cutoff_ticket",
+      "authorization_epoch"
+     ]
+    },
+    {
+     "op": "fix",
+     "what": "prepared_at_and_service_key_authority"
+    },
+    {
+     "op": "fix",
+     "what": "exact_record_bytes"
+    },
+    {
+     "op": "fix",
+     "what": "exact_cut_bytes"
+    },
+    {
+     "op": "persist",
+     "what": "both_journals"
+    },
+    {
+     "op": "acquire",
+     "resource": "cut_claim"
+    },
+    {
+     "op": "acquire",
+     "resource": "stage_reservation"
+    },
+    {
+     "op": "acquire",
+     "resource": "rate_slot"
+    },
+    {
+     "op": "acquire",
+     "resource": "maintenance_lease"
+    },
+    {
+     "op": "enter_lane"
+    },
+    {
+     "op": "fix",
+     "what": "authority_time"
+    },
+    {
+     "op": "arm",
+     "what": "replacement_if_successor"
+    },
+    {
+     "op": "arm",
+     "what": "repair_fence_if_repair_present"
+    }
+   ],
+   "lane_effect": "enter",
+   "effects": {
+    "cut_ownership": "CLAIMED",
+    "stage_reservation": "RESERVED",
+    "rate_slot": "RESERVED",
+    "maintenance_lease": "CONSUMED",
+    "authority_time": "FROZEN",
+    "record_bytes": "FIXED",
+    "fence_status": "CROSSED"
+   },
+   "domain": "live",
+   "note": "the ONE composite admission fence (D154): every fallible check first, then both journals + the cut claim + the stage reservation + the lane entry in one transaction; nothing after it may refuse"
+  },
+  {
+   "id": "cut_stored",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "CUT_PUT_ISSUED"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "maintenance_admission_cut_subfence",
+     "from": "CUT_PUT_ISSUED",
+     "to": "CUT_STORED"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "observe",
+     "what": "create_only_cut_put_durable"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {},
+   "domain": "live",
+   "note": "identical retry forever; unique per-attempt key"
+  },
+  {
+   "id": "cut_done",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "CUT_STORED"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "maintenance_admission_cut_subfence",
+     "from": "CUT_STORED",
+     "to": "DONE"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "progress",
+     "what": "mechanical"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {},
+   "domain": "live",
+   "note": "no further validation exists"
+  },
+  {
+   "id": "record_put_issued_p_credit",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "DONE"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "CYCLE_ADMISSION_PENDING"
+    },
+    {
+     "env": "stored_cut_hash_match",
+     "eq": true
+    },
+    {
+     "coord": "storage_integrity",
+     "eq": "OK"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "admission",
+     "from": "PREPARED_NO_IO",
+     "to": "RECORD_PUT_ISSUED"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "verify_guard",
+     "what": "stored_cut_hash_match"
+    },
+    {
+     "op": "progress",
+     "what": "replay_persisted_record_bytes"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {},
+   "domain": "live",
+   "note": "D158: performs NO validation and acquires NO resource — forward guard + mechanical progression only; D190: fail-closed while storage_integrity == FAULTED"
+  },
+  {
+   "id": "cut_integrity_fault",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "DONE"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "CYCLE_ADMISSION_PENDING"
+    },
+    {
+     "coord": "storage_integrity",
+     "eq": "OK"
+    },
+    {
+     "env": "stored_cut_hash_match",
+     "eq": false
+    }
+   ],
+   "edges": [],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "observe",
+     "what": "stored_cut_bytes_mismatch"
+    },
+    {
+     "op": "fault",
+     "code": "CUT_STORAGE_INTEGRITY_FAILURE",
+     "retains": "attempt_id_and_per_attempt_cut_key"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "storage_integrity": "FAULTED"
+   },
+   "domain": "live",
+   "note": "D190 (i): the FALSE forward guard is an EXTERNAL storage-integrity fault, not an admission outcome — no machine edge, no record PUT, the ONLY effect is the fault marker; admission/lane/claims/stage reservation/cut ownership/replacement/rate slot/lease/authority all unchanged (the executor asserts the effect set is exactly the marker and nothing rides this transaction); the attempt id + per-attempt cut key stay burned (the cut claim is retained, never released to the reaper)"
+  },
+  {
+   "id": "cut_integrity_restored",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "DONE"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "CYCLE_ADMISSION_PENDING"
+    },
+    {
+     "coord": "storage_integrity",
+     "eq": "FAULTED"
+    },
+    {
+     "env": "stored_cut_hash_match",
+     "eq": true
+    }
+   ],
+   "edges": [],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "observe",
+     "what": "exact_cut_bytes_restored_at_attempt_key"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "storage_integrity": "OK"
+   },
+   "domain": "live",
+   "note": "D190 (i): the exact journaled cut bytes restored at the SAME burned per-attempt key lift the fault marker; the forward guard then holds and record_put_issued_p_credit resumes the mechanical path. A superseding operator recovery decision is outside this relation."
+  },
+  {
+   "id": "record_put_issued_p_less_maintenance",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_less",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "fence_status",
+     "eq": "NOT_CROSSED"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "admission",
+     "from": "PREPARED_NO_IO",
+     "to": "RECORD_PUT_ISSUED"
+    },
+    {
+     "machine": "cycle_admission_fence",
+     "from": "NONE",
+     "to": "CYCLE_ADMISSION_PENDING"
+    }
+   ],
+   "irreversible": true,
+   "actions": [
+    {
+     "op": "refuse_unless",
+     "checks": [
+      "generation_head_linkage",
+      "request_to_c1_binding_equality",
+      "expected_stage_equality",
+      "stage_candidate_reservation",
+      "stage_capacity_preflight",
+      "generation_rate_slot_reservation",
+      "maintenance_lease",
+      "org_quota",
+      "cycle_predicates",
+      "terminal_predicates",
+      "repair_fence_predicate",
+      "replacement_predicate",
+      "cutoff_ticket",
+      "authorization_epoch"
+     ]
+    },
+    {
+     "op": "fix",
+     "what": "prepared_at_and_service_key_authority"
+    },
+    {
+     "op": "fix",
+     "what": "exact_record_bytes"
+    },
+    {
+     "op": "persist",
+     "what": "record_journal"
+    },
+    {
+     "op": "acquire",
+     "resource": "stage_reservation"
+    },
+    {
+     "op": "acquire",
+     "resource": "rate_slot"
+    },
+    {
+     "op": "acquire",
+     "resource": "maintenance_lease"
+    },
+    {
+     "op": "enter_lane"
+    },
+    {
+     "op": "fix",
+     "what": "authority_time"
+    },
+    {
+     "op": "arm",
+     "what": "replacement_if_successor"
+    },
+    {
+     "op": "arm",
+     "what": "repair_fence_if_repair_present"
+    }
+   ],
+   "lane_effect": "enter",
+   "effects": {
+    "stage_reservation": "RESERVED",
+    "rate_slot": "RESERVED",
+    "maintenance_lease": "CONSUMED",
+    "authority_time": "FROZEN",
+    "record_bytes": "FIXED",
+    "fence_status": "CROSSED"
+   },
+   "domain": "live",
+   "note": "P-less: the ordinary main fence IS the irreversible fence; the lane is entered here (round-20 A1)"
+  },
+  {
+   "id": "record_put_issued_ordinary",
+   "shapes": [
+    "ordinary_push",
+    "ordinary_push_cycle_debit"
+   ],
+   "branch": "p_less",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "fence_status",
+     "eq": "NOT_CROSSED"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "admission",
+     "from": "PREPARED_NO_IO",
+     "to": "RECORD_PUT_ISSUED"
+    }
+   ],
+   "irreversible": true,
+   "actions": [
+    {
+     "op": "refuse_unless",
+     "checks": [
+      "generation_head_linkage",
+      "generation_rate_slot_reservation",
+      "org_quota",
+      "cycle_predicates",
+      "cutoff_ticket",
+      "authorization_epoch"
+     ]
+    },
+    {
+     "op": "fix",
+     "what": "prepared_at_and_service_key_authority"
+    },
+    {
+     "op": "fix",
+     "what": "exact_record_bytes"
+    },
+    {
+     "op": "persist",
+     "what": "record_journal"
+    },
+    {
+     "op": "acquire",
+     "resource": "rate_slot"
+    },
+    {
+     "op": "fix",
+     "what": "authority_time"
+    },
+    {
+     "op": "debit",
+     "what": "cycle_if_cycle_debit"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "rate_slot": "RESERVED",
+    "authority_time": "FROZEN",
+    "record_bytes": "FIXED",
+    "fence_status": "CROSSED"
+   },
+   "domain": "live",
+   "note": "ordinary pushes (incl. cycle_debit) never acquire a lane coordinate — cycle_debit is an immutable debit, not progress"
+  },
+  {
+   "id": "record_put_issued_repair",
+   "shapes": [
+    "repair"
+   ],
+   "branch": "p_less",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "repair_fence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "fence_status",
+     "eq": "NOT_CROSSED"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "admission",
+     "from": "PREPARED_NO_IO",
+     "to": "RECORD_PUT_ISSUED"
+    },
+    {
+     "machine": "repair_fence",
+     "from": "NONE",
+     "to": "PENDING"
+    }
+   ],
+   "irreversible": true,
+   "actions": [
+    {
+     "op": "refuse_unless",
+     "checks": [
+      "generation_head_linkage",
+      "generation_rate_slot_reservation",
+      "org_quota",
+      "repair_predicates",
+      "cutoff_ticket",
+      "authorization_epoch"
+     ]
+    },
+    {
+     "op": "fix",
+     "what": "prepared_at_and_service_key_authority"
+    },
+    {
+     "op": "fix",
+     "what": "exact_record_bytes"
+    },
+    {
+     "op": "persist",
+     "what": "record_journal"
+    },
+    {
+     "op": "acquire",
+     "resource": "rate_slot"
+    },
+    {
+     "op": "fix",
+     "what": "authority_time"
+    },
+    {
+     "op": "arm",
+     "what": "repair_fence"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "rate_slot": "RESERVED",
+    "authority_time": "FROZEN",
+    "record_bytes": "FIXED",
+    "fence_status": "CROSSED"
+   },
+   "domain": "live",
+   "note": "repair arms under the org-slot lane (round-13 A7) but acquires NO cycle_admission_fence coordinate"
+  },
+  {
+   "id": "abort_pre_fence",
+   "shapes": "all",
+   "branch": "both",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "PREPARED_NO_IO"
+    },
+    {
+     "coord": "cut_subfence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "NONE"
+    },
+    {
+     "coord": "fence_status",
+     "eq": "NOT_CROSSED"
+    },
+    {
+     "env": "timeout",
+     "eq": "expired"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "admission",
+     "from": "PREPARED_NO_IO",
+     "to": "ABORTED"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "observe",
+     "what": "timeout_with_no_io"
+    },
+    {
+     "op": "release",
+     "resource": "claims"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "claims": "RELEASED"
+   },
+   "domain": "live",
+   "note": "the ONLY abort edge; guarded cut_subfence == NONE (D155) — nothing is ever released from a state past an irreversible fence"
+  },
+  {
+   "id": "record_won",
+   "shapes": "all",
+   "branch": "both",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "RECORD_PUT_ISSUED"
+    },
+    {
+     "env": "different_winner_proven",
+     "eq": false
+    }
+   ],
+   "edges": [
+    {
+     "machine": "admission",
+     "from": "RECORD_PUT_ISSUED",
+     "to": "RECORD_WON"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "observe",
+     "what": "create_only_record_put_won"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {},
+   "domain": "live",
+   "note": "maintenance shapes: the lane resolves WON in the same observation (record_won_lane); repair: fence FINALIZED"
+  },
+  {
+   "id": "record_conflicted",
+   "shapes": "all",
+   "branch": "both",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "RECORD_PUT_ISSUED"
+    },
+    {
+     "env": "different_winner_proven",
+     "eq": true
+    }
+   ],
+   "edges": [
+    {
+     "machine": "admission",
+     "from": "RECORD_PUT_ISSUED",
+     "to": "CONFLICTED"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "observe",
+     "what": "different_winner"
+    },
+    {
+     "op": "release",
+     "resource": "claims"
+    },
+    {
+     "op": "release",
+     "resource": "stage_reservation"
+    },
+    {
+     "op": "release",
+     "resource": "cut_claim"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "claims": "RELEASED",
+    "stage_reservation": "RELEASED",
+    "cut_ownership": "RELEASED_TO_REAPER"
+   },
+   "domain": "live",
+   "note": "different-winner proof: claims + stage reservations release in THIS nonterminal transaction (D160); the unbound cut is released to the reaper (D156)"
+  },
+  {
+   "id": "committed",
+   "shapes": "all",
+   "branch": "both",
+   "guards": [
+    {
+     "coord": "admission",
+     "eq": "RECORD_WON"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "admission",
+     "from": "RECORD_WON",
+     "to": "COMMITTED"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "observe",
+     "what": "head_put_at_exact_expected_bytes"
+    },
+    {
+     "op": "publish"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "claims": "PUBLISHED",
+    "cut_ownership": "BOUND_BY_RECORD"
+   },
+   "domain": "live",
+   "note": "deterministic head PUT; objects PUBLISHED"
+  },
+  {
+   "id": "predecessor_terminal_put_issued",
+   "shapes": [
+    "successor_c1"
+   ],
+   "branch": "both",
+   "guards": [
+    {
+     "coord": "cycle_replacement",
+     "eq": "PENDING"
+    },
+    {
+     "coord": "cycle_admission_fence",
+     "eq": "WON"
+    },
+    {
+     "coord": "terminal_publication",
+     "eq": "TERMINAL_PREPARED_NO_IO"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "terminal_publication",
+     "from": "TERMINAL_PREPARED_NO_IO",
+     "to": "TERMINAL_PUT_ISSUED"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "persist",
+     "what": "exact_signed_terminal_bytes_and_frontier"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {},
+   "domain": "live",
+   "note": "lane tx; IRREVERSIBLE for cycle events (refusals begin here) — NOT an admission refusal"
+  },
+  {
+   "id": "predecessor_terminal_stored",
+   "shapes": [
+    "successor_c1"
+   ],
+   "branch": "both",
+   "guards": [
+    {
+     "coord": "terminal_publication",
+     "eq": "TERMINAL_PUT_ISSUED"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "terminal_publication",
+     "from": "TERMINAL_PUT_ISSUED",
+     "to": "TERMINAL_STORED"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "observe",
+     "what": "create_only_terminal_put_won"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {},
+   "domain": "live",
+   "note": ""
+  },
+  {
+   "id": "predecessor_terminal_applied_installs_successor",
+   "shapes": [
+    "successor_c1"
+   ],
+   "branch": "both",
+   "guards": [
+    {
+     "coord": "terminal_publication",
+     "eq": "TERMINAL_STORED"
+    },
+    {
+     "coord": "cycle_replacement",
+     "eq": "PENDING"
+    }
+   ],
+   "edges": [
+    {
+     "machine": "terminal_publication",
+     "from": "TERMINAL_STORED",
+     "to": "TERMINAL_APPLIED"
+    },
+    {
+     "machine": "cycle_replacement",
+     "from": "PENDING",
+     "to": "INSTALLED"
+    }
+   ],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "terminalize",
+     "what": "predecessor_restart_required_after_c1"
+    },
+    {
+     "op": "release",
+     "resource": "predecessor_reservation"
+    },
+    {
+     "op": "install",
+     "what": "successor"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "carried_reservation": "TRANSFERRED"
+   },
+   "domain": "live",
+   "note": "ONE idempotent tx at the predecessor terminal's TERMINAL_STORED -> TERMINAL_APPLIED (round-13 A2); never at the admission win alone"
+  },
+  {
+   "id": "dr_orphaned_pre_record",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "in": [
+      "PREPARED_NO_IO",
+      "RECORD_PUT_ISSUED"
+     ]
+    },
+    {
+     "coord": "cut_subfence",
+     "in": [
+      "CUT_PUT_ISSUED",
+      "CUT_STORED",
+      "DONE"
+     ]
+    },
+    {
+     "env": "journal",
+     "eq": "absent_after_quiescence"
+    },
+    {
+     "env": "canonical_record",
+     "eq": "none"
+    },
+    {
+     "coord": "storage_integrity",
+     "eq": "OK"
+    }
+   ],
+   "edges": [],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "reconstruct",
+     "what": "inert_lifecycle_row"
+    },
+    {
+     "op": "release",
+     "resource": "claims"
+    },
+    {
+     "op": "release",
+     "resource": "stage_reservation"
+    },
+    {
+     "op": "release",
+     "resource": "cut_claim"
+    },
+    {
+     "op": "reap"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "admission": "DR_ORPHANED_PRE_RECORD",
+    "claims": "RELEASED",
+    "stage_reservation": "RELEASED",
+    "cut_ownership": "RELEASED_TO_REAPER",
+    "cycle_admission_fence": "NONE"
+   },
+   "domain": "reconstruction",
+   "reconstruction_role": "arm",
+   "note": "the SOLE reconstruction-only release exception (D166): released with NO different winner; the cut carries no record bytes so the record PUT is never resumed"
+  },
+  {
+   "id": "dr_adopt",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "in": [
+      "PREPARED_NO_IO",
+      "RECORD_PUT_ISSUED"
+     ]
+    },
+    {
+     "coord": "cut_subfence",
+     "in": [
+      "CUT_PUT_ISSUED",
+      "CUT_STORED",
+      "DONE"
+     ]
+    },
+    {
+     "env": "journal",
+     "eq": "absent_after_quiescence"
+    },
+    {
+     "env": "canonical_record",
+     "eq": "binds_exact_cut"
+    },
+    {
+     "coord": "storage_integrity",
+     "eq": "OK"
+    }
+   ],
+   "edges": [],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "reconstruct",
+     "what": "adopt_cut_under_canonical_record"
+    },
+    {
+     "op": "publish"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "admission": "COMMITTED",
+    "cut_subfence": "DONE",
+    "cycle_admission_fence": "WON",
+    "claims": "PUBLISHED",
+    "cut_ownership": "BOUND_BY_RECORD"
+   },
+   "domain": "reconstruction",
+   "reconstruction_role": "arm",
+   "note": "a binding canonical record adopts the cut"
+  },
+  {
+   "id": "dr_reconstruct_conflicted",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "guards": [
+    {
+     "coord": "admission",
+     "in": [
+      "PREPARED_NO_IO",
+      "RECORD_PUT_ISSUED"
+     ]
+    },
+    {
+     "coord": "cut_subfence",
+     "in": [
+      "CUT_PUT_ISSUED",
+      "CUT_STORED",
+      "DONE"
+     ]
+    },
+    {
+     "env": "journal",
+     "eq": "absent_after_quiescence"
+    },
+    {
+     "env": "canonical_record",
+     "eq": "different_winner"
+    },
+    {
+     "coord": "storage_integrity",
+     "eq": "OK"
+    }
+   ],
+   "edges": [],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "reconstruct",
+     "what": "conflicted"
+    },
+    {
+     "op": "release",
+     "resource": "claims"
+    },
+    {
+     "op": "release",
+     "resource": "stage_reservation"
+    },
+    {
+     "op": "release",
+     "resource": "cut_claim"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {
+    "admission": "CONFLICTED",
+    "cut_subfence": "DONE",
+    "cycle_admission_fence": "CONFLICTED",
+    "claims": "RELEASED",
+    "stage_reservation": "RELEASED",
+    "cut_ownership": "RELEASED_TO_REAPER"
+   },
+   "domain": "reconstruction",
+   "reconstruction_role": "arm",
+   "note": "a different generation winner reconstructs CONFLICTED and releases (different-winner proof)"
+  },
+  {
+   "id": "dr_resume_journal_recovered",
+   "shapes": "all",
+   "branch": "both",
+   "guards": [
+    {
+     "env": "journal",
+     "eq": "present"
+    }
+   ],
+   "edges": [],
+   "irreversible": false,
+   "actions": [
+    {
+     "op": "resume",
+     "what": "from_journal"
+    }
+   ],
+   "lane_effect": null,
+   "effects": {},
+   "domain": "reconstruction",
+   "reconstruction_role": "resume",
+   "note": "a recovered journal resumes the live relation from its persisted state — totality of the live relation covers it D190 (ii): journal presence is classified FIRST — present ⇒ this resume ONLY, no arm."
+  }
+ ],
+ "couplings": [
+  {
+   "id": "record_won_lane",
+   "with": "record_won",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "both",
+   "edges": [
+    {
+     "machine": "cycle_admission_fence",
+     "from": "CYCLE_ADMISSION_PENDING",
+     "to": "WON"
+    }
+   ],
+   "actions": [
+    {
+     "op": "progress",
+     "what": "apply_phase_transition_if_ordinary"
+    },
+    {
+     "op": "progress",
+     "what": "record_restart_source_proved_if_successor"
+    }
+   ],
+   "note": "ordinary C1/C2 advance the phase; successor C1 only proves the restart source"
+  },
+  {
+   "id": "record_conflicted_lane",
+   "with": "record_conflicted",
+   "shapes": [
+    "ordinary_c1",
+    "ordinary_c2",
+    "successor_c1"
+   ],
+   "branch": "both",
+   "edges": [
+    {
+     "machine": "cycle_admission_fence",
+     "from": "CYCLE_ADMISSION_PENDING",
+     "to": "CONFLICTED"
+    }
+   ],
+   "actions": [
+    {
+     "op": "release",
+     "resource": "stage_reservation"
+    }
+   ],
+   "note": "the CONFLICTED release rule"
+  },
+  {
+   "id": "record_conflicted_replacement_clear",
+   "with": "record_conflicted",
+   "shapes": [
+    "successor_c1"
+   ],
+   "branch": "both",
+   "edges": [
+    {
+     "machine": "cycle_replacement",
+     "from": "PENDING",
+     "to": "CLEARED"
+    }
+   ],
+   "actions": [
+    {
+     "op": "clear",
+     "what": "replacement_fence"
+    }
+   ],
+   "note": "predecessor remains open; no side effects"
+  },
+  {
+   "id": "record_won_repair_finalize",
+   "with": "record_won",
+   "shapes": [
+    "repair"
+   ],
+   "branch": "p_less",
+   "edges": [
+    {
+     "machine": "repair_fence",
+     "from": "PENDING",
+     "to": "FINALIZED"
+    }
+   ],
+   "actions": [
+    {
+     "op": "finalize",
+     "what": "interval"
+    },
+    {
+     "op": "finalize",
+     "what": "repair_version_and_gc_epoch_bump"
+    },
+    {
+     "op": "finalize",
+     "what": "token_revocation"
+    }
+   ],
+   "note": "one tx"
+  },
+  {
+   "id": "record_conflicted_repair_clear",
+   "with": "record_conflicted",
+   "shapes": [
+    "repair"
+   ],
+   "branch": "p_less",
+   "edges": [
+    {
+     "machine": "repair_fence",
+     "from": "PENDING",
+     "to": "CLEARED"
+    }
+   ],
+   "actions": [],
+   "note": "no supersession side effects"
+  },
+  {
+   "id": "dr_reconstruct_conflicted_replacement_clear",
+   "with": "dr_reconstruct_conflicted",
+   "shapes": [
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "edges": [
+    {
+     "machine": "cycle_replacement",
+     "from": "PENDING",
+     "to": "CLEARED"
+    }
+   ],
+   "actions": [
+    {
+     "op": "clear",
+     "what": "replacement_fence"
+    }
+   ],
+   "note": "DR form of the live CLEAR: on a different canonical winner the replacement fence clears and the predecessor stays open (§7.2)"
+  },
+  {
+   "id": "dr_orphan_replacement_clear",
+   "with": "dr_orphaned_pre_record",
+   "shapes": [
+    "successor_c1"
+   ],
+   "branch": "p_credit",
+   "edges": [
+    {
+     "machine": "cycle_replacement",
+     "from": "PENDING",
+     "to": "CLEARED"
+    }
+   ],
+   "actions": [
+    {
+     "op": "clear",
+     "what": "replacement_fence"
+    }
+   ],
+   "note": "D190 (iii), NORMATIVE: when DR_ORPHANED_PRE_RECORD applies to a successor C₁ whose replacement arm is PENDING, the SAME reconstruction transaction clears it to CLEARED — the predecessor remains the sole open cycle; no predecessor terminal is published, no successor installed, no carried reservation transferred (the executor pins the coupling to exactly this edge and this action). Without the clear the successor lands non-quiescent with no live continuation (the org-slot wedge the round-39 reviewer named)."
+  }
+ ],
+ "riders": [
+  {
+   "id": "arm_replacement",
+   "rides": [
+    "composite_fence",
+    "record_put_issued_p_less_maintenance"
+   ],
+   "shapes": [
+    "successor_c1"
+   ],
+   "edges": [
+    {
+     "machine": "cycle_replacement",
+     "from": "NONE",
+     "to": "PENDING"
+    }
+   ],
+   "note": "the replacement arms IN the irreversible-fence transaction per branch (D154/D159)"
+  }
+ ]
+}

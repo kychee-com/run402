@@ -65,7 +65,6 @@ Commands:
   email       Send template-based emails from your project
   message     Send messages to Run402 developers
   auth        Manage project user authentication (magic link, passwords, settings)
-  sender-domain  Removed; use domains connect/status/repair
   billing     Email organizations, Stripe tier checkout, email packs
   contracts   KMS signers ($0.04/day rental + $0.000005/sign)
   agent       Manage agent identity (contact info)
@@ -385,11 +384,6 @@ switch (cmd) {
   }
   case "auth": {
     const { run } = await import("./lib/auth.mjs");
-    await run(sub, rest);
-    break;
-  }
-  case "sender-domain": {
-    const { run } = await import("./lib/sender-domain.mjs");
     await run(sub, rest);
     break;
   }

@@ -501,7 +501,6 @@ describe("ScopedRun402 drift protection", () => {
     functions: new Set(),
     jobs: new Set(),
     secrets: new Set(),
-    senderDomain: new Set(),
     subdomains: new Set(),
     grants: new Set(),
   };
@@ -514,7 +513,6 @@ describe("ScopedRun402 drift protection", () => {
     "auth", // auth IS scoped — but listed below
     "billing",
     "admin",
-    "senderDomain",
     "assets",
     "ai",
     "subdomains",
@@ -556,7 +554,6 @@ describe("ScopedRun402 drift protection", () => {
       "functions",
       "jobs",
       "secrets",
-      "senderDomain",
       "subdomains",
       "grants",
     ];

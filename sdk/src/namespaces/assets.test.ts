@@ -699,66 +699,6 @@ describe("blobs.put — AssetRef widening (v1.45)", () => {
   // synthesized from local information by buildAssetRef.
 });
 
-describe("blobs upload sessions (REMOVED in v2.1.0)", () => {
-  // v1.48 gateway dropped /storage/v1/uploads*. The SDK's low-level resumable-
-  // upload session methods (initUploadSession/getUploadSession/
-  // completeUploadSession) were removed in v2.1.0 — they have no underlying
-  // gateway endpoint. The replacement is the apply hero
-  // (r.project(id).apply / r.assets.uploadDir etc) which routes bytes
-  // through /content/v1/plans and the activation transaction.
-
-  it("initUploadSession throws LocalError with migration guidance", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch — method should throw before any network call");
-    });
-    const sdk = makeSdk(fetch);
-
-    await assert.rejects(
-      sdk.assets.initUploadSession("prj_known", {
-        key: "x",
-        size_bytes: 1,
-        content_type: "text/plain",
-        sha256: "00".repeat(32),
-      }),
-      (err: unknown) =>
-        err instanceof LocalError &&
-        /removed in v2\.1\.0/.test(err.message) &&
-        /r\.project\(id\)\.apply/.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("getUploadSession throws LocalError with migration guidance", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch");
-    });
-    const sdk = makeSdk(fetch);
-
-    await assert.rejects(
-      sdk.assets.getUploadSession("prj_known", "up_1"),
-      (err: unknown) =>
-        err instanceof LocalError && /removed in v2\.1\.0/.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-
-  it("completeUploadSession throws LocalError with migration guidance", async () => {
-    const { fetch, calls } = mockFetch(() => {
-      throw new Error("unexpected fetch");
-    });
-    const sdk = makeSdk(fetch);
-
-    await assert.rejects(
-      sdk.assets.completeUploadSession("prj_known", "up_1", {
-        parts: [{ part_number: 1, etag: '"e"', sha256: "00".repeat(32) }],
-      }),
-      (err: unknown) =>
-        err instanceof LocalError && /removed in v2\.1\.0/.test(err.message),
-    );
-    assert.equal(calls.length, 0);
-  });
-});
-
 describe("blobs.diagnoseUrl", () => {
   it("GETs /storage/v1/blobs/diagnose with the URL query-encoded", async () => {
     const { fetch, calls } = mockFetch(() =>

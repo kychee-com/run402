@@ -1,0 +1,97 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "heads_listing_page.json",
+ "title": "r402s/v0 heads listing page API message (the ONE frozen response of GET /gitvault/v1/vaults/:vault_id/heads?after_generation=&cursor=&limit=): unsigned, bucket-derived, ascending by generation, at most MAX_HEADS_PER_LISTING_PAGE entries, every entry carries the stored-bytes hash the client chain-verifies from its pinned generation; after_generation echoes the request anchor; has_more/next_cursor are coupled (false => null, true => opaque token); total is null unless exactly known; the retired pre-D186 continuation member is forbidden by additionalProperties (D184 as completed by D186; DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "repo_id",
+  "after_generation",
+  "heads",
+  "has_more",
+  "next_cursor",
+  "total"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "after_generation": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "heads": {
+   "type": "array",
+   "minItems": 0,
+   "maxItems": 1000,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "generation",
+     "stored_bytes_sha256"
+    ],
+    "properties": {
+     "generation": {
+      "$ref": "common.json#/$defs/hex16"
+     },
+     "stored_bytes_sha256": {
+      "$ref": "common.json#/$defs/sha256"
+     }
+    }
+   }
+  },
+  "has_more": {
+   "type": "boolean"
+  },
+  "next_cursor": {
+   "oneOf": [
+    {
+     "$ref": "heads_listing_request.json#/$defs/heads_cursor"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "total": {
+   "oneOf": [
+    {
+     "$ref": "common.json#/$defs/size_bytes"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  }
+ },
+ "allOf": [
+  {
+   "if": {
+    "properties": {
+     "has_more": {
+      "const": false
+     }
+    }
+   },
+   "then": {
+    "properties": {
+     "next_cursor": {
+      "type": "null"
+     }
+    }
+   },
+   "else": {
+    "properties": {
+     "next_cursor": {
+      "$ref": "heads_listing_request.json#/$defs/heads_cursor"
+     }
+    }
+   }
+  }
+ ],
+ "x-r402s-revision": "40"
+}

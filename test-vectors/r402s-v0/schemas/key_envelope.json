@@ -1,0 +1,60 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "key_envelope.json",
+ "title": "r402s/v0 key_envelope path-addressed by (repo_id, epoch, recipient_fingerprint); no object_id; ct = HPKE-sealed 32-byte K_repo (48 bytes, 64 b64url chars) (DRAFT rev 40)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "format",
+  "object_kind",
+  "suite",
+  "repo_id",
+  "signature",
+  "epoch",
+  "recipient_kind",
+  "recipient_fingerprint",
+  "enc",
+  "ct",
+  "created_by",
+  "created_at"
+ ],
+ "properties": {
+  "format": {
+   "$ref": "common.json#/$defs/format"
+  },
+  "object_kind": {
+   "const": "key_envelope"
+  },
+  "suite": {
+   "$ref": "common.json#/$defs/suite"
+  },
+  "repo_id": {
+   "$ref": "common.json#/$defs/src"
+  },
+  "signature": {
+   "$ref": "common.json#/$defs/signature"
+  },
+  "epoch": {
+   "$ref": "common.json#/$defs/hex16"
+  },
+  "recipient_kind": {
+   "const": "principal"
+  },
+  "recipient_fingerprint": {
+   "$ref": "common.json#/$defs/ek"
+  },
+  "enc": {
+   "$ref": "common.json#/$defs/b64u_32bytes"
+  },
+  "ct": {
+   "$ref": "common.json#/$defs/hpke_sealed_key32"
+  },
+  "created_by": {
+   "$ref": "common.json#/$defs/vk"
+  },
+  "created_at": {
+   "$ref": "common.json#/$defs/timestamp"
+  }
+ },
+ "x-r402s-revision": "40"
+}

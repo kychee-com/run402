@@ -605,7 +605,7 @@ Function authoring limits per tier: prototype 10s / 128 MB / 1 scheduled trigger
 - **`list_emails`** / **`get_email`** / **`get_email_raw`** — read messages. `get_email_raw` returns RFC-822 bytes for DKIM / zk-email verification.
 - **`register_mailbox_webhook`** / **`list_mailbox_webhooks`** / **`get_mailbox_webhook`** / **`update_mailbox_webhook`** / **`delete_mailbox_webhook`** — email-event webhooks (delivery, bounced, complained, reply_received, mailbox_suspended).
 - **`list_mailbox_webhook_deliveries`** / **`redrive_mailbox_webhook_delivery`** — durable-delivery visibility + replay. Delivery is at-least-once (bounded retries + exponential backoff); failures land in `failed_permanent`, the dead-letter queue. The delivered body is the canonical envelope `{ id, type, created_at, schema_version, idempotency_key, payload }` — consumers MUST dedupe on `idempotency_key`. `list_emails` accepts an optional `direction` (`inbound`|`outbound`); `inbound` lists received replies as the reconciliation backstop if a `reply_received` webhook is lost.
-- **ProjectDomain email** — use **`domains_ensure`**, **`domains_check`**, **`domains_repair`**, and **`domains_test_receive`** for custom email sending and inbound receive. The retired `sender-domain` workflow now fails locally with `COMMAND_REMOVED`.
+- **ProjectDomain email** — use **`domains_ensure`**, **`domains_check`**, **`domains_repair`**, and **`domains_test_receive`** for custom email sending and inbound receive.
 
 Tier rate limits: prototype 10/day, hobby 50/day, team 500/day. Unique recipients per lease: 25 / 200 / 1000. Google OAuth is on for all projects with zero config — `http://localhost:*` and any claimed subdomain are allowed redirect origins.
 

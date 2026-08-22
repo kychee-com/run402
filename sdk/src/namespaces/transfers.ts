@@ -30,7 +30,6 @@ import type { OperationActorSnapshot, PrincipalRepresentation } from "./identity
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
-import { deprecatePositional } from "../deprecate.js";
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -538,17 +537,8 @@ export class Transfers {
    * the addressed-email principal). Already-processed transfers return 409
    * `TRANSFER_ALREADY_PROCESSED`.
    */
-  async cancel(transferId: string, opts?: CancelTransferOptions): Promise<CancelTransferResult>;
-  /** @deprecated A bare string reason is swap-prone next to `transferId`. Use `cancel(transferId, { reason })`. */
-  async cancel(transferId: string, reason: string): Promise<CancelTransferResult>;
-  async cancel(transferId: string, reasonOrOpts?: string | CancelTransferOptions): Promise<CancelTransferResult> {
-    let reason: string | undefined;
-    if (typeof reasonOrOpts === "string") {
-      deprecatePositional("transfers.cancel", "use cancel(transferId, { reason })");
-      reason = reasonOrOpts;
-    } else if (reasonOrOpts && typeof reasonOrOpts === "object") {
-      reason = reasonOrOpts.reason;
-    }
+  async cancel(transferId: string, opts?: CancelTransferOptions): Promise<CancelTransferResult> {
+    const reason = opts?.reason;
     const body: Record<string, unknown> = {};
     if (reason !== undefined) body.reason = reason;
     return this.client.request<CancelTransferResult>(

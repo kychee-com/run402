@@ -1,0 +1,123 @@
+; r402s/v0 scalar grammars (RFC 5234 ABNF, RFC 7405 case-sensitive strings) -- DRAFT rev 40
+;
+; Every rule here is the grammar behind ONE JSON-Schema `pattern` (or `const`/`enum`) in
+; common.json. validate.py carries the rule-name <-> $defs crosswalk and fails when a
+; patterned def has no ABNF rule, when a crosswalked rule is missing from this file, or when
+; a pinned sample string disagrees between the regex and the rule's stated shape -- AND (D187,
+; round-38 finding 3) it runs abnf_differential.py: an RFC 5234 interpreter of THIS file judges
+; mechanically generated positives and mutants (non-ASCII decimal digits, case flips, leading
+; zeros, length +-1, base64url alphabet/padding/final-char class, refname constraints) over
+; their UTF-8 bytes, the schema judges the same samples with its own pattern under re.fullmatch
+; WITHOUT re.ASCII, and every verdict must agree. Schema patterns therefore spell digits as
+; [0-9], never \d (Python's \d accepts U+0662; DIGIT here is %x30-39). Bare-quoted strings are
+; case-INSENSITIVE in RFC 5234 -- every case-bearing literal below is %s (RFC 7405); the first
+; generated run caught the base64url pad classes written without it.
+;
+; Scope: LEXICAL shape only. Three facts the grammar cannot state live in
+; semantic-constraints.json and are enforced by the validator/vector harness:
+;   - canonical-b64u: every base64url value round-trips decode->encode byte-for-byte
+;     (no padding, length mod 4 != 1, zero trailing bits);
+;   - timestamp-calendar: the timestamp must be a real RFC 3339 calendar instant
+;     (month lengths, leap days) -- the rule below bounds fields, not the calendar;
+;     implementations MUST semantically parse and reject e.g. 2026-02-31 (D187);
+;   - refname-full-validation: the frozen `git check-ref-format` subset (no segment
+;     ending in ".lock" or ".", no trailing "/", valid UTF-8) beyond the lexical class.
+; Strict parsing also rejects non-lowercase hex and noncanonical ids at the byte frontier.
+
+; ---- RFC 5234 core rules used (restated for self-containment) ----
+ALPHA            =  %x41-5A / %x61-7A
+DIGIT            =  %x30-39
+NZDIGIT          =  %x31-39                         ; 1-9
+
+; ---- RFC 3629 UTF-8 multi-octet sequences (refnames are UTF-8) ----
+UTF8-2           =  %xC2-DF UTF8-tail
+UTF8-3           =  %xE0 %xA0-BF UTF8-tail / %xE1-EC 2UTF8-tail /
+                    %xED %x80-9F UTF8-tail / %xEE-EF 2UTF8-tail
+UTF8-4           =  %xF0 %x90-BF 2UTF8-tail / %xF1-F3 3UTF8-tail /
+                    %xF4 %x80-8F 2UTF8-tail
+UTF8-tail        =  %x80-BF
+
+; ---- protocol tags (common.json $defs format / suite) ----
+format           =  %s"r402s/v0"
+suite            =  %s"r402s-1"
+
+; ---- lowercase hex scalars ----
+LHEX             =  DIGIT / %x61-66                 ; 0-9 a-f, lowercase ONLY
+hex16            =  16LHEX                          ; generations, epochs, registry versions
+hex32            =  32LHEX                          ; capture_id, nonces, client ids, id bodies
+sha256           =  64LHEX                          ; every *_sha256 / keyed HMAC-SHA-256 value
+oid40            =  40LHEX                          ; git sha1 object id
+authorization-epoch =  hex32                        ; the DR-gate CSPRNG epoch, compared bytewise
+
+; ---- base64url (no padding) ----
+B64U             =  ALPHA / DIGIT / "-" / "_"
+b64url           =  1*B64U                          ; admitted_stored_bytes, transition payload
+; exact encoded lengths (round-8 B11): the final char of a length-(3k+1)-byte value is
+; restricted to the 16-value class, of a length-(3k+2)-byte value to the 4-value class.
+B64U-PAD16       =  %s"A" / %s"E" / %s"I" / %s"M" / %s"Q" / %s"U" / %s"Y" / %s"c" /
+                    %s"g" / %s"k" / %s"o" / %s"s" / %s"w" / "0" / "4" / "8"
+B64U-PAD4        =  %s"A" / %s"Q" / %s"g" / %s"w"
+b64u-32bytes     =  42B64U B64U-PAD16               ; Ed25519/X25519 public keys, HPKE enc
+b64u-64bytes     =  85B64U B64U-PAD4                ; Ed25519 signatures
+hpke-sealed-key32 =  64B64U                         ; HPKE-sealed 32-byte K_repo (48 bytes)
+
+; ---- timestamp: RFC 3339 UTC, millisecond precision, literal "Z", pinned calendar form ----
+timestamp        =  4DIGIT "-" month "-" day %s"T" hour ":" minsec ":" minsec "." 3DIGIT %s"Z"
+month            =  ( "0" NZDIGIT ) / ( "1" %x30-32 )
+day              =  ( "0" NZDIGIT ) / ( ( "1" / "2" ) DIGIT ) / ( "3" ( "0" / "1" ) )
+hour             =  ( ( "0" / "1" ) DIGIT ) / ( "2" %x30-33 )
+minsec           =  %x30-35 DIGIT
+
+; ---- decimal-string quantities (the protocol carries NO JSON numbers) ----
+size-bytes       =  "0" / ( NZDIGIT *14DIGIT )      ; at most 15 digits (< 10^15)
+batch-ordinal    =  NZDIGIT *3DIGIT                  ; batch_index / batch_count, 1..9999
+cycle-event-seq  =  "0" / ( NZDIGIT *9DIGIT )       ; lane-assigned frontier, at most 10 digits
+reserved-sessions =  1*4DIGIT                        ; repair lane reservation counters
+reserved-objects =  1*6DIGIT
+
+; ---- prefixed 32-hex identifiers: <prefix> "_" hex32 (CSPRNG bodies) ----
+id-body          =  hex32
+; key fingerprints (first 16 bytes of SHA-256(raw pubkey), hex)
+vk               =  %s"vk_" id-body                  ; writer / signing-key fingerprint
+ek               =  %s"ek_" id-body                  ; encryption-key fingerprint
+; the vault itself
+src              =  %s"src_" id-body
+; ID-ADDRESSED stored kinds (protocol section 1 identity taxonomy)
+wal              =  %s"wal_" id-body                 ; wal_pack
+refs             =  %s"refs_" id-body                ; ref_state
+rr               =  %s"rr_" id-body                  ; retention_roots
+chk              =  %s"chk_" id-body                 ; checkpoint_manifest
+ckp              =  %s"ckp_" id-body                 ; checkpoint_pack
+ccs              =  %s"ccs_" id-body                 ; checkpoint_claim_set
+msc              =  %s"msc_" id-body                 ; maintenance_stage_claim_set
+msp              =  %s"msp_" id-body                 ; maintenance_stage_page
+mct              =  %s"mct_" id-body                 ; maintenance_cycle_terminal
+rc               =  %s"rc_" id-body                  ; retention_cutoff ticket
+adm              =  %s"adm_" id-body                 ; admission_record
+pi               =  %s"pi_" id-body                  ; prune_intent (+ its core)
+pc               =  %s"pc_" id-body                  ; prune_completion
+vr               =  %s"vr_" id-body                  ; verifier_receipt
+ct               =  %s"ct_" id-body                  ; activation_token
+; non-storage protocol ids (same grammar)
+mc               =  %s"mc_" id-body                  ; maintenance cycle
+ml               =  %s"ml_" id-body                  ; maintenance lease
+ra               =  %s"ra_" id-body                  ; repair attempt
+; service keys are NOT 32-hex: unique within the registry
+service-key-id   =  %s"sk_" 4*64( DIGIT / %x61-7A / "-" )
+
+; ---- refnames ----
+; Lexical class = the JSON-Schema pattern in common.json: "refs/" followed by one or more
+; characters outside {U+0000..U+0020, U+007F, "~", "^", ":", "?", "*", "[", "\"}.
+; The three substring exclusions the regex states as lookaheads -- no "..", no "//", no "@{" --
+; plus the 1024-character maximum are stated here as constraints (ABNF has no negation):
+;   refname-constraints = <no ".." / "//" / "@{" substring; total length 1..1024 characters>
+; Allowed ASCII = %x21-7E minus { ~ ^ : ? * [ \ } ; every non-ASCII scalar value is allowed
+; lexically (full validity is refname-full-validation).
+refchar          =  %x21-29 / %x2B-39 / %x3B-3E / %x40-5A / %x5D / %x5F-7D /
+                    UTF8-2 / UTF8-3 / UTF8-4
+refname          =  %s"refs/" 1*refchar              ; + refname-constraints
+canonical-refname =  %s"refs/" ( %s"heads" / %s"tags" / %s"run402" ) "/" 1*refchar
+branch-refname   =  %s"refs/heads/" 1*refchar        ; head_target symref; MAY be unborn
+
+; ---- closed identifier sets carried as schema enums ----
+implementation-id =  %s"run402-cli" / %s"r402s-verify"
