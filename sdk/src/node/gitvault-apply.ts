@@ -36,12 +36,11 @@ import type {
   ReleaseSpec,
 } from "../namespaces/deploy.types.js";
 import type { GitvaultVaultRecord } from "./gitvault-publication.js";
-import {
-  runGitvaultDeploy,
-  type GitvaultDeployLane,
-  type GitvaultDeployLaneCommitInput,
-  type GitvaultDeployLanePlan,
-  type GitvaultDeployResult,
+import type {
+  GitvaultDeployLane,
+  GitvaultDeployLaneCommitInput,
+  GitvaultDeployLanePlan,
+  GitvaultDeployResult,
 } from "./gitvault-deploy.js";
 
 // ─── The lane ────────────────────────────────────────────────────────────────
