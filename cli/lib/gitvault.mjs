@@ -18,6 +18,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolveProjectId } from "./config.mjs";
+import { resolveOwningOrgId } from "./org-context.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
@@ -36,18 +37,34 @@ const COMMON_VALUE_FLAGS = ["--project", "--repo"];
 export const HELP = `run402 gitvault — your source, encrypted before it leaves the machine
 
 Usage:
-  run402 gitvault status  [--project <id>] [--repo <repo_id>]
+  run402 gitvault init    [--project <id>] [--org <org_id>] [--git-remote] [--no-remote]
+  run402 gitvault status  [--project <id>] [--repo <repo_id>] [--refs]
   run402 gitvault push    [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint]
+  run402 gitvault policy  <required|grandfathered> [--project <id>] [--repo <repo_id>]
+                          [--reason <why>]
   run402 gitvault compact [--project <id>] [--repo <repo_id>]
   run402 gitvault prune   [--project <id>] [--repo <repo_id>]
                           [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
   run402 gitvault verify  [--project <id>] [--repo <repo_id>] [--budget <n>]
 
 Subcommands:
+  init      ALLOCATE the project's vault. This is the one step that mints key
+            material on this machine and emits the one-shot recovery receipt,
+            so it is explicit rather than a side effect of \`run402 init\` (which
+            only adds the git remote). Idempotent: an existing vault is
+            reported with \`deduplicated: true\` and nothing is re-minted. Adds
+            the \`run402\` remote too when the current directory is already a
+            repository.
   status    What this machine and the control plane each believe about the
             vault: allocation, policy, whether this keystore can sign, the
-            authenticated and materialized pins, and any pending
-            unvaulted-override journals. Never reports key material.
+            authenticated and materialized pins, any pending
+            unvaulted-override journals, and where the keystore lives. Never
+            reports key material.
+  policy    Set the activation policy — \`required\` (a deploy must present a
+            vaulted capture) or \`grandfathered\` (it need not). Owner + step-up,
+            audited. \`grandfathered\` is the documented way out of a deploy
+            blocked by GITVAULT_CLIENT_UPGRADE_REQUIRED, and leaves a
+            doctor-persistent warning until the project returns to \`required\`.
   push      Capture the working tree and publish it. This is NOT gated on a
             deploy — a vault-only project pushes for months without one.
             Before reporting a push as landed the SDK compares finalization
@@ -64,6 +81,21 @@ Subcommands:
 
 Options:
   --project <id>    Project whose vault to act on (defaults to the active project)
+  --org <org_id>    init: the owning organization (resolved from the project
+                    when omitted)
+  --git-remote      init: 'git init' the current directory when it is not a
+                    repository yet, so the run402 remote can be added there.
+                    Opt-in: creating a repository where you did not ask for one
+                    is a bad surprise, so without it a non-repository directory
+                    allocates the vault and adds no remote.
+  --no-remote       init: allocate the vault only; touch no git configuration
+  --reason <why>    policy: why the policy is changing — recorded in the audit
+                    event. REQUIRED for \`grandfathered\`, which is a deliberate
+                    weakening of the activation guarantee.
+  --refs            status: also materialize and report the vault's ref map and
+                    HEAD target. This is a VERIFICATION (it walks the head
+                    chain and advances the local materialized pin), which is
+                    why plain \`status\` — an observation — does not do it.
   --repo <repo_id>  Address the vault directly by id, skipping project lookup
   --message <text>  push: commit message for the synthetic commit a dirty tree
                     produces (a clean tree pushes HEAD itself, no message used)
@@ -111,8 +143,10 @@ Terminal loss (protocol §0):
   stderr and carries it in its JSON — read it before you rely on this.
 
 Examples:
-  run402 gitvault status
+  run402 gitvault init
+  run402 gitvault status --refs
   run402 gitvault push --message "wip: refactor the parser"
+  run402 gitvault policy grandfathered --reason "migrating CI to a vaulted client"
   run402 gitvault verify --budget 500
   run402 gitvault prune --project prj_1a2b3c
 `;
@@ -143,24 +177,194 @@ function vaultTarget(a) {
  * NORMATIVE COPY, printed verbatim straight from the SDK's own constants and
  * never paraphrased, summarized, or reassembled here. Both lines also ride in
  * the JSON payload on stdout.
+ *
+ * The PATH is printed with it. "Whole-keystore loss is terminal" appeared three
+ * times across this surface while the directory to back up appeared nowhere
+ * (dogfood #1, finding D2) — a warning nobody can act on.
  */
 function printTerminalLoss(status) {
   console.error("");
   console.error(status.terminal_loss_statement);
   console.error(status.terminal_loss_detail);
+  console.error(`Back up this directory: ${status.keystore.root}`);
   console.error("");
+}
+
+/** Where the keystore lives — for verbs whose payload is not a `status`. */
+async function printKeystoreLocation() {
+  try {
+    const { getGitvaultKeystoreRoot } = await import("#sdk/node");
+    console.error(`keystore: ${getGitvaultKeystoreRoot()} — back this up; whole-keystore loss is terminal for vault history`);
+  } catch {
+    // Never let a diagnostic line fail a command that already succeeded.
+  }
+}
+
+/**
+ * `run402 gitvault init` — allocate the project's vault.
+ *
+ * WHY THIS EXISTS AS ITS OWN VERB (dogfood #1, finding A). Until it did, the
+ * only way to allocate was `sdk.gitvault.init()` through the vendored SDK:
+ * `gitvault status` pointed at `run402 init`, which scaffolds the remote and
+ * says so in a comment; `gitvault push` and `git push run402` both 404'd and
+ * handed the user a raw `POST /gitvault/v1/vaults`. A published CLI that can
+ * do everything except start is not a usable product.
+ *
+ * It stays SEPARATE from `run402 init` on purpose: this is the step that mints
+ * key material on this machine and emits a one-shot recovery receipt, and
+ * whole-keystore loss is terminal for vault history. That belongs to a command
+ * the user typed, not to a setup command's side effects.
+ */
+async function init(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--project", "--org"];
+  assertKnownFlags(a, [...valueFlags, "--git-remote", "--no-remote", "--help", "-h"], valueFlags);
+  requirePositionalCount(a, valueFlags, {
+    min: 0, max: 0, command: "run402 gitvault init", missing: "",
+  });
+  if (a.includes("--git-remote") && a.includes("--no-remote")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--git-remote and --no-remote contradict each other.",
+      hint: "--git-remote creates a repository to add the remote to; --no-remote touches no git configuration at all.",
+    });
+  }
+  const projectId = resolveProjectId(flagValue(a, "--project"));
+  const orgId = flagValue(a, "--org") ?? await resolveOwningOrgId(projectId);
+  if (!orgId) {
+    fail({
+      code: "ORG_UNRESOLVED",
+      message: `Could not resolve the organization that owns ${projectId}.`,
+      hint: "Pass --org <org_id>, or check that this wallet can see the project (`run402 projects list`).",
+      details: { project_id: projectId },
+    });
+  }
+
+  // Whether to touch git at all. Mirrors `run402 init`: adding a remote inside
+  // an EXISTING repository is pure addition and is the default; CREATING a
+  // repository is opt-in, because a vault can be allocated from anywhere and
+  // `git init`-ing whatever directory you happened to be in is a bad surprise.
+  let scaffold = !a.includes("--no-remote");
+  let remoteSkipped = null;
+  if (scaffold && !a.includes("--git-remote")) {
+    const { hardenedGit } = await import("#sdk/node");
+    try {
+      await hardenedGit(process.cwd(), ["rev-parse", "--git-dir"]);
+    } catch {
+      scaffold = false;
+      remoteSkipped = "not a git repository — the vault was allocated; re-run with --git-remote to create one and add the remote";
+    }
+  }
+
+  try {
+    const result = await getSdk().gitvault.init({
+      org_id: orgId,
+      project_id: projectId,
+      ...(scaffold ? { repo_dir: process.cwd() } : { scaffold_git: false }),
+    });
+    console.log(JSON.stringify(remoteSkipped ? { ...result, remote_skipped: remoteSkipped } : result, null, 2));
+    console.error(
+      result.deduplicated
+        ? `vault ${result.repo_id} already existed — nothing was re-allocated and no new key material was minted`
+        : `allocated vault ${result.repo_id} (genesis ${result.genesis_sha256})`,
+    );
+    if (result.remote) console.error(`remote '${result.remote.name}' -> ${result.remote.url}`);
+    if (remoteSkipped) console.error(`remote not added: ${remoteSkipped}`);
+    // The recovery receipt is integrity data, not a secret, and it is worth
+    // exactly as much as the number of copies you keep. It is persisted into
+    // the keystore automatically; say where, because "keep many copies" is
+    // advice nobody can act on without a path.
+    console.error("");
+    console.error(result.terminal_loss_statement);
+    await printKeystoreLocation();
+    console.error("");
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/**
+ * `run402 gitvault policy <required|grandfathered>` — the activation gate.
+ *
+ * The gateway's own `GITVAULT_CLIENT_UPGRADE_REQUIRED` envelope names
+ * `run402 gitvault policy grandfathered --reason <why>` as the second way out
+ * of a blocked deploy. Until this verb existed, running exactly what the
+ * platform told you to run returned UNKNOWN_SUBCOMMAND, so a user could
+ * allocate themselves into a blocked-deploy state with no way back.
+ */
+async function policy(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = [...COMMON_VALUE_FLAGS, "--reason"];
+  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  const [requested] = requirePositionalCount(a, valueFlags, {
+    min: 1, max: 1, command: "run402 gitvault policy <required|grandfathered>",
+    missing: "Missing <policy>. Expected `required` or `grandfathered`.",
+  });
+  if (requested !== "required" && requested !== "grandfathered") {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unknown policy: ${requested}.`,
+      hint: "Expected `required` (a deploy must present a vaulted capture) or `grandfathered` (it need not).",
+      details: { policy: requested, known_policies: ["required", "grandfathered"] },
+    });
+  }
+  const reason = flagValue(a, "--reason");
+  // Required only for the weakening direction. Returning to `required` is
+  // restoring the default and needs no justification; leaving it does.
+  if (requested === "grandfathered" && (reason == null || reason.trim() === "")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "`grandfathered` needs --reason <why>.",
+      hint: "It weakens the activation guarantee for this project and is recorded in the audit event. Say why, e.g. --reason \"migrating CI to a vaulted client\".",
+      details: { policy: requested },
+    });
+  }
+
+  const target = vaultTarget(a);
+  try {
+    const sdk = getSdk();
+    const repoId = target.repo_id ?? (await sdk.gitvault.forProject(target.project_id)).repo_id;
+    const result = await sdk.gitvault.setPolicy(repoId, {
+      gitvault_policy: requested,
+      ...(reason != null ? { reason } : {}),
+    });
+    console.log(JSON.stringify({ repo_id: repoId, ...result }, null, 2));
+    console.error(
+      result.changed
+        ? `gitvault_policy is now ${result.gitvault_policy} (version ${result.gitvault_policy_version})`
+        : `gitvault_policy was already ${result.gitvault_policy} — nothing changed`,
+    );
+    for (const w of result.warnings ?? []) console.error(`warning (${w.kind}): ${w.message}`);
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function status(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--refs", "--help", "-h"], COMMON_VALUE_FLAGS);
   requirePositionalCount(a, COMMON_VALUE_FLAGS, {
     min: 0, max: 0, command: "run402 gitvault status", missing: "",
   });
+  const target = vaultTarget(a);
+  if (a.includes("--refs")) target.refs = true;
   try {
-    const s = await getSdk().gitvault.status(vaultTarget(a));
+    const s = await getSdk().gitvault.status(target);
     console.log(JSON.stringify(s, null, 2));
     printTerminalLoss(s);
+    // Two facts the user otherwise has to leave the CLI for: which vault this
+    // checkout is wired to, and what the control plane says is in it.
+    if (s.remote) {
+      console.error(`remote '${s.remote.name}': ${s.remote.url}${s.remote.matches ? "" : "  ← points at a DIFFERENT project than this status"}`);
+    }
+    if (s.refs) {
+      const names = Object.keys(s.refs).sort();
+      console.error(names.length === 0 ? "refs: (none yet)" : `refs (${names.length}):`);
+      for (const ref of names) console.error(`  ${s.refs[ref]}  ${ref}`);
+      if (s.head_target) {
+        console.error(s.head_target.kind === "symref" ? `  HEAD -> ${s.head_target.ref}` : `  HEAD ${s.head_target.oid} (detached)`);
+      }
+    }
     // Advisories are echoed EXACTLY as the SDK reported them. Nothing is
     // synthesized here — in particular a project that has never deployed gets
     // no deploy-related warning, because a vault-only project is a first-class
@@ -342,6 +546,14 @@ export async function run(sub, args) {
     process.exit(0);
   }
   switch (sub) {
+    case "init": {
+      await init(argv);
+      break;
+    }
+    case "policy": {
+      await policy(argv);
+      break;
+    }
     case "status": {
       await status(argv);
       break;

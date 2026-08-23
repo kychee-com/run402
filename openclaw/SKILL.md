@@ -1124,10 +1124,13 @@ Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wal
 Run every verb from inside the git working tree.
 
 ```bash
+run402 projects use prj_1a2b3c                # the scaffold needs a project selected
 run402 init                                   # inside a repo: adds the `run402` remote (run402::<org_id>/<project_id>)
                                               # not a repo yet? `run402 init --git-remote` creates one first
+run402 gitvault init                          # ALLOCATE the vault (mints key material + a recovery receipt)
 run402 gitvault push --message "wip: refactor the parser"
-git push run402 main                          # ...or push with git itself, via git-remote-run402
+git push run402 main                          # ...push your own branches, via git-remote-run402
+git clone run402::<org_id>/<project_id> restored   # ...and restore anywhere with plain git
 run402 gitvault status                        # what this machine and the control plane each believe
 run402 gitvault verify --budget 500           # verify the head chain from your authenticated pin
 run402 gitvault compact                       # checkpoint under a maintenance lease (owner)
@@ -1136,11 +1139,11 @@ run402 gitvault prune                         # plans; add --submit --intent-cor
 
 `--project <id>` picks the vault's project; `--repo <repo_id>` addresses the vault directly and needs no project lookup — that is the cold-restart path for an agent with no local state. Stdout is JSON; every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 gitvault status | jq` stays clean.
 
-Allocation happens on the first push, not at `init`. Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `verify` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — the verified prefix persists, so run it again to resume).
+Allocation is its own verb: `run402 gitvault init`. `run402 init` scaffolds the git remote and nothing else — it needs a project selected (`run402 projects use <project_id>`, or `RUN402_PROJECT_ID`) and says so in its summary when none is. Allocation is separate because it is the step that mints key material on this machine and prints a one-shot recovery receipt; it is idempotent, so an existing vault comes back `deduplicated: true`. **Allocating gates the project's deploys**: `gitvault_policy` becomes `required`, and this CLI's deploy lane does not yet produce the vaulted capture a commit then needs, so `run402 deploy apply` is refused `409 GITVAULT_CLIENT_UPGRADE_REQUIRED` until either that lands or the project is un-gated with `run402 gitvault policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible). Capturing source is never gated on a deploy. Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `verify` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — the verified prefix persists, so run it again to resume).
 
 **A vault-only project is first-class.** `run402 init`, then `git push run402 …`, then compact / prune / verify, and never a deploy. Nothing in allocation, admission, retention, or maintenance requires a deployment to exist. One consequence to state plainly if a user asks: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty — and so is the custodial restore path.
 
-**Tell the user this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up `~/.run402/source`. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better.
+**Tell the user this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up the keystore directory `run402 gitvault status` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better.
 
 **Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing.
 

@@ -357,10 +357,12 @@ export {
   materializeSnapshot,
   parseGitConfigAsData,
   probeGitVersion,
+  resolveGitInvocationRepo,
   snapshotCommitment,
 } from "./gitvault-snapshot.js";
 export type {
   GitConfigDiscoveryEnv,
+  GitInvocationRepo,
   GitvaultRepositoryInspection,
   GitvaultRepositoryRefusalCode,
   GitvaultSnapshot,

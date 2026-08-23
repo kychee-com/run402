@@ -796,7 +796,7 @@ const plan = await r.gitvault.prune({ project_id: projectId }); // plans; plan.s
 
 `gitvaultRemoteUrl(orgId, projectId)` / `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote form that `git-remote-run402` serves; `r.gitvault.scaffoldRemote(...)` is what `run402 init` calls to add it.
 
-**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship** — `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up `~/.run402/source`. The recovery receipt `init` prints once is an integrity anchor, not a decryption key: it proves the vault you are served is the one you created, and it decrypts nothing.
+**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship** — `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up the keystore directory `run402 gitvault status` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt `init` prints once is an integrity anchor, not a decryption key: it proves the vault you are served is the one you created, and it decrypts nothing.
 
 ### GitHub Actions OIDC — CI credentials drive deploy
 

@@ -371,17 +371,30 @@ Three claims, three different strengths. These are the entire approved claims vo
 ```bash
 # 1. Provision. Inside a repository that already exists, this adds a `run402`
 #    remote (run402::<org_id>/<project_id>). Not a repository yet?
-#    `run402 init --git-remote` creates one first.
+#    `run402 init --git-remote` creates one first. It needs a project selected
+#    (`run402 projects use <project_id>`, or RUN402_PROJECT_ID).
 run402 init
 
-# 2. Push — capture the working tree, encrypt it, publish a signed head.
-run402 gitvault push --message "wip: refactor the parser"
-git push run402 main            # ...or push with git itself, via git-remote-run402
+# 2. Allocate the vault. Separate from `run402 init` on purpose: this is the
+#    step that mints key material on this machine and prints a one-shot
+#    recovery receipt. Idempotent — an existing vault comes back deduplicated.
+run402 gitvault init
 
-# 3. Status, then verify the head chain from your authenticated pin.
-run402 gitvault status
+# 3. Push — capture the working tree, encrypt it, publish a signed head.
+run402 gitvault push --message "wip: refactor the parser"
+git push run402 main            # ...or push your own branches, via git-remote-run402
+
+# 4. Status, then verify the head chain from your authenticated pin.
+run402 gitvault status --refs
 run402 gitvault verify --budget 500
+
+# Restore anywhere, with plain git.
+git clone run402::<org_id>/<project_id> restored
 ```
+
+`gitvault push` is the CAPTURE lane — the protocol deploy ref plus the HEAD target — because a dirty tree captures as a synthetic commit that sits on no branch. Your own branches and tags reach the vault through `git push run402 <branch>`.
+
+**Allocating a vault gates the project's deploys.** `gitvault_policy` flips to `required`, and a deploy must then present a vaulted capture at commit. This CLI's deploy lane does not produce one yet, so `run402 deploy apply` is refused `409 GITVAULT_CLIENT_UPGRADE_REQUIRED` until either that lands or you un-gate the project with `run402 gitvault policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible with `run402 gitvault policy required`). Vaulting your source is never gated on a deploy. `run402 doctor` reports the policy, whether this machine can satisfy it, and where the keystore lives.
 
 Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. Maintenance is `run402 gitvault compact` (checkpoint under a lease) and `run402 gitvault prune` (**two phases**: it plans locally, and submits only when handed both verifier receipts — one from this CLI, one from the independent `r402s-verify`; only the control-plane-signed completion says what was deleted).
 
@@ -398,7 +411,7 @@ const state = await r.gitvault.verify({ project_id: projectId });
 
 **A vault-only project is first-class.** `run402 init`, then `git push run402 …`, then compact / prune / verify, and never a deploy — a supported shape, not a degraded one. One consequence is worth stating plainly: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty and there is consequently no custodial restore path.
 
-**If you lose the keystore.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up `~/.run402/source`. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and it decrypts nothing. It is not a secret; the more copies the better.
+**If you lose the keystore.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up the keystore directory `run402 gitvault status` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and it decrypts nothing. It is not a secret; the more copies the better.
 
 **Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — a separate language, separate authorship, and a separate primitive stack, deliberately sharing no implementation code with the SDK. That non-sharing is the point: a differential verifier that reuses the code it is checking verifies nothing. It lives on the `r402s-verify` branch of this repository with its own workflow, and builds with `cargo build --release`.
 

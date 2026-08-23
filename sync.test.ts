@@ -730,7 +730,19 @@ const SURFACE: Capability[] = [
   // MCP session strands it until its deadline); `prune` is destructive by
   // contract; policy management needs owner + step-up, which the MCP path does
   // not carry. Each wants a human at a terminal, not an agent transcript.
+  // Allocation is a CLI verb, not a side effect of `run402 init`: it is the one
+  // step that mints key material on the machine and emits a one-shot recovery
+  // receipt. Until it existed the ONLY way to allocate was the SDK directly,
+  // so the published CLI could push, verify, compact and prune a vault it had
+  // no way to create (dogfood #1, finding A).
+  { id: "gitvault_init",     endpoint: "POST /gitvault/v1/vaults (+ genesis admission)",             mcp: null,                   cli: "gitvault:init",     openclaw: "gitvault:init" },
   { id: "gitvault_status",   endpoint: "GET /gitvault/v1/vaults/:vault_id",                          mcp: "get_gitvault_status",  cli: "gitvault:status",   openclaw: "gitvault:status" },
+  // The gateway's own GITVAULT_CLIENT_UPGRADE_REQUIRED envelope names
+  // `run402 gitvault policy grandfathered --reason <why>` as a next_action, so
+  // the verb has to exist: without it a user can allocate themselves into a
+  // blocked-deploy state and the platform's documented way out is a command
+  // that returns UNKNOWN_SUBCOMMAND. Owner + step-up keeps it off MCP.
+  { id: "gitvault_policy",   endpoint: "PATCH /gitvault/v1/vaults/:vault_id/policy",                 mcp: null,                   cli: "gitvault:policy",   openclaw: "gitvault:policy" },
   { id: "gitvault_heads",    endpoint: "GET /gitvault/v1/vaults/:vault_id/heads",                    mcp: "list_gitvault_heads",  cli: null,                openclaw: null },
   { id: "gitvault_verify",   endpoint: "GET /gitvault/v1/vaults/:vault_id/heads[/:generation]",      mcp: "verify_gitvault",      cli: "gitvault:verify",   openclaw: "gitvault:verify" },
   { id: "gitvault_push",     endpoint: "POST /gitvault/v1/vaults/:vault_id/upload-sessions (+ admission)", mcp: null,             cli: "gitvault:push",     openclaw: "gitvault:push" },
@@ -779,7 +791,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   buzz_notify_revoke: "buzz.notifications.revoke",
 
   // gitvault — all protocol logic is SDK-side; CLI/MCP are adapters (task 5.0).
+  gitvault_init: "gitvault.init",
   gitvault_status: "gitvault.status",
+  gitvault_policy: "gitvault.setPolicy",
   gitvault_heads: "gitvault.heads",
   gitvault_verify: "gitvault.verify",
   gitvault_push: "gitvault.push",
@@ -1472,9 +1486,8 @@ describe("SDK surface alignment", () => {
       "gitvault.forProject",
       "gitvault.allHeads",
       "gitvault.open",
-      // `init` + `scaffoldRemote` are reached through `run402 init` (the
-      // scaffold capability), not through a `gitvault` subcommand.
-      "gitvault.init",
+      // `scaffoldRemote` is reached through `run402 init` (the scaffold
+      // capability); `gitvault.init` has its own `run402 gitvault init` verb.
       "gitvault.scaffoldRemote",
       // `deploy` is the push-gated deploy — it belongs to the deploy surface
       // (`run402 deploy`), not to the vault verb group.
@@ -1487,7 +1500,7 @@ describe("SDK surface alignment", () => {
       "gitvault.restore",
       // Owner + step-up writes with no MCP tool by design; the CLI reaches
       // them through the vault group's flags rather than dedicated verbs.
-      "gitvault.setPolicy",
+      // (`setPolicy` has its own `run402 gitvault policy` verb — see SURFACE.)
       "gitvault.completeOverride",
       "gitvault.acquireMaintenanceLease",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────

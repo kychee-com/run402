@@ -19,6 +19,17 @@
  *   push [+]<src>:<dst>     → publish one atomic ref transaction
  *   option <name> <value>   → ok / unsupported, never a silent lie
  *
+ * WHICH REPOSITORY (the fail-closed rule). `process.cwd()` is NOT the
+ * repository. git identifies the repository with `GIT_DIR`, and during
+ * `git clone` cwd is the directory clone was RUN FROM — routinely some other,
+ * unrelated repository. Discovering the repository from cwd therefore wrote a
+ * vault's DECRYPTED objects into a repository the user never named, silently,
+ * on every clone (dogfood #1). Every repository-touching command now resolves
+ * through the SDK's `resolveGitInvocationRepo`, which proves `GIT_DIR` names a
+ * real repository and refuses otherwise; a refusal writes nothing at all.
+ * `capabilities`, `option` and `list` need no repository and are unaffected,
+ * so a repository-free `git ls-remote run402::<org>/<project>` still works.
+ *
  * NOT advertised, deliberately: `list` is a COMMAND in this protocol, not a
  * capability keyword — git's capability vocabulary is fetch/push/import/export/
  * connect/stateless-connect/option/refspec/check-connectivity/object-format/
@@ -39,15 +50,17 @@
  *     `run402 gitvault push`, which sets the HEAD target from the local HEAD.
  *   - `option dry-run` is `unsupported`: this helper cannot rehearse a
  *     publication, and reporting a fake success would be worse than refusing.
- *   - The repository is discovered from `process.cwd()` (git's own upward
- *     discovery). `hardenedGit` scrubs `GIT_DIR`/`GIT_WORK_TREE` on purpose, so
- *     an invocation from outside the work tree is not supported.
+ *   - `fetch` and `push` REQUIRE the `GIT_DIR` git sets when it drives a
+ *     helper against a repository, so running this binary by hand from a shell
+ *     is refused rather than silently pointed at the current directory. Only
+ *     `capabilities`, `option` and `list` work without one, which is exactly
+ *     the set `git ls-remote <url>` outside a checkout needs.
  */
 
 import { createInterface } from "node:readline";
 import { getSdk } from "./lib/sdk.mjs";
 import { parseGitvaultRemoteUrl } from "#sdk";
-import { hardenedGit } from "#sdk/node";
+import { hardenedGit, resolveGitInvocationRepo } from "#sdk/node";
 
 const out = (line) => process.stdout.write(`${line}\n`);
 /** Every helper response block is terminated by a blank line. */
@@ -107,12 +120,35 @@ async function main(argv) {
     return 1;
   }
 
-  const repoDir = process.cwd();
-  const target = { project_id: address.project_id, repo_dir: repoDir };
+  const target = { project_id: address.project_id };
   let verbosity = 1;
 
+  /**
+   * The repository git invoked us for, resolved once and PROVEN.
+   *
+   * Deliberately lazy: `list` needs no repository, so `git ls-remote` outside
+   * any checkout keeps working. Deliberately not cached across a failure
+   * either — a refusal is terminal for the command that asked, and there is
+   * nothing to retry.
+   */
+  let resolvedRepo = null;
+  async function requireRepo() {
+    if (!resolvedRepo) resolvedRepo = await resolveGitInvocationRepo(process.env, process.cwd());
+    return resolvedRepo.repo_dir;
+  }
+
+  /**
+   * What to tell a human when we refuse. `git clone` is the case that used to
+   * fail; naming the working alternative beats a bare error.
+   */
+  function repoRefusalNote(err) {
+    note(describeError(err));
+    note("refusing to touch a repository git did not name — nothing was read or written.");
+    note(`if you meant to restore this vault: git init --bare <dir> && git -C <dir> remote add run402 run402::${address.org_id}/${address.project_id} && git -C <dir> fetch run402 '+refs/heads/*:refs/heads/*'`);
+  }
+
   /** Open the vault lazily — `capabilities` and `option` must never touch the network. */
-  const openVault = async () => (await getSdk().gitvault.open(target)).vault;
+  const openVault = async (repoDir) => (await getSdk().gitvault.open(repoDir ? { ...target, repo_dir: repoDir } : target)).vault;
 
   async function runList() {
     const state = await (await openVault()).materialize();
@@ -128,30 +164,49 @@ async function main(argv) {
   }
 
   async function runFetch(batch) {
-    if (verbosity >= 1) note(`restoring the vault object database for ${batch.length} ref(s)`);
-    const restored = await getSdk().gitvault.restore({ ...target, target_dir: repoDir });
+    // Resolve the target repository BEFORE a single byte is decrypted: a
+    // refusal here must leave no objects anywhere. This is what makes `clone`
+    // work (git names the fresh repo in `GIT_DIR`) and what stops a clone run
+    // from inside an unrelated checkout from writing into that checkout.
+    let repoDir;
+    try {
+      repoDir = await requireRepo();
+    } catch (err) {
+      repoRefusalNote(err);
+      return 1;
+    }
+    if (verbosity >= 1) note(`restoring the vault object database for ${batch.length} ref(s) into ${repoDir}`);
+    const restored = await getSdk().gitvault.restore({ ...target, repo_dir: repoDir, target_dir: repoDir });
     if (verbosity >= 1) note(`restored generation ${restored.generation}`);
     endBlock();
+    return 0;
   }
 
   async function runPush(batch) {
     const specs = batch.map(parsePushSpec);
     try {
-      const vault = await openVault();
+      // Repository first, then every source revision, and only then the
+      // network: a push that names a ref this repository does not have must
+      // fail locally rather than after opening the vault.
+      const repoDir = await requireRepo();
+      const newOids = new Map();
+      for (const spec of specs) {
+        // A deletion carries an empty <src>. Everything else is resolved by
+        // git itself; `--end-of-options` keeps a hostile refname from being
+        // read as a flag.
+        newOids.set(spec, spec.src === ""
+          ? null
+          : (await hardenedGit(repoDir, ["rev-parse", "--verify", "--end-of-options", spec.src])).text().trim());
+      }
+      const vault = await openVault(repoDir);
       const base = await vault.materialize();
       const updates = [];
       for (const spec of specs) {
         const expectedOld = base.refs?.[spec.dst] ?? null;
-        // A deletion carries an empty <src>. Everything else is resolved by
-        // git itself; `--end-of-options` keeps a hostile refname from being
-        // read as a flag.
-        const newOid = spec.src === ""
-          ? null
-          : (await hardenedGit(repoDir, ["rev-parse", "--verify", "--end-of-options", spec.src])).text().trim();
         updates.push({
           ref: spec.dst,
           expected_old_oid: expectedOld,
-          new_oid: newOid,
+          new_oid: newOids.get(spec),
           // Force-with-lease still requires a lease, so a CREATE is never
           // forced. The SDK owns what force actually permits.
           force: spec.force && expectedOld !== null,
@@ -166,10 +221,12 @@ async function main(argv) {
     } catch (err) {
       // The transaction is atomic, so a failure failed every ref in it. Report
       // it against each one rather than letting some look like they landed.
+      if (err?.code === "GIT_INVOCATION_REPO_UNRESOLVED") repoRefusalNote(err);
       const reason = describeError(err);
       for (const spec of specs) out(`error ${spec.dst} ${reason}`);
     }
     endBlock();
+    return 0;
   }
 
   function handleOption(name, value) {
@@ -200,18 +257,19 @@ async function main(argv) {
   let fetchBatch = [];
   let pushBatch = [];
 
+  /** Returns the process exit code the flushed batch demands (0 = keep going). */
   async function flushBatches() {
     if (fetchBatch.length > 0) {
       const batch = fetchBatch;
       fetchBatch = [];
-      await runFetch(batch);
-      return;
+      return await runFetch(batch);
     }
     if (pushBatch.length > 0) {
       const batch = pushBatch;
       pushBatch = [];
-      await runPush(batch);
+      return await runPush(batch);
     }
+    return 0;
   }
 
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -219,7 +277,8 @@ async function main(argv) {
     for await (const raw of rl) {
       const line = raw.replace(/\r$/, "");
       if (line === "") {
-        await flushBatches();
+        const code = await flushBatches();
+        if (code !== 0) return code;
         continue;
       }
       const space = line.indexOf(" ");
@@ -254,8 +313,7 @@ async function main(argv) {
     // EOF. Git always terminates a batch with a blank line, but flushing here
     // means a truncated stream still does the work it already asked for
     // instead of silently dropping it.
-    await flushBatches();
-    return 0;
+    return await flushBatches();
   } finally {
     rl.close();
   }

@@ -1936,12 +1936,12 @@ Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_d
 ```
 init({ repo_dir, project_id, ... }): Promise<GitvaultCreationResult>    // allocate + genesis; prints the one-shot recovery receipt
 push({ snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>
-status(opts?): Promise<GitvaultStatus>
+status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target
 compact(opts?): Promise<GitvaultCompactResult>
 prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
 verify(opts?): Promise<GitvaultVerifiedState>
 deploy(opts): Promise<GitvaultDeployResult>                             // the push-gated deploy
-restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives
+restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives; index-packs objects and leaves ref creation to the caller
 scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<{ name, url, created_repository, already_present, existing_url }>
 open(opts?): Promise<GitvaultHandle>                                    // the raw protocol object, for ref transactions or repair
 drainOverrides(opts?): Promise<GitvaultOverrideDrainReport>
@@ -1966,7 +1966,11 @@ const state  = await r.gitvault.verify({ project_id: "prj_123" });
 
 `gitvaultRemoteUrl(orgId, projectId)` and `parseGitvaultRemoteUrl(url)` are exported helpers for the `run402::<org_id>/<project_id>` remote URL form that `git-remote-run402` serves.
 
-**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up `~/.run402/source`. The recovery receipt is an integrity anchor, not a decryption key.
+**`status()` never mutates and never mints.** It READS the keystore rather than calling `ensureIdentity()`, so observing a vault cannot create the key material it is reporting on. Its `keystore.root` / `keystore.paths` name the directory to back up (see terminal loss below), `remote` reports the local `run402` git remote and whether it points at THIS vault, and `refs` / `head_target` are `null` unless `{ refs: true }` was passed — reading the ref map means materializing the chain, which is a verification and advances the local materialized pin.
+
+**`resolveGitInvocationRepo(env?, cwd?)`** (Node) resolves — and proves — the repository git invoked a remote helper for, from `GIT_DIR` rather than `process.cwd()`, and throws `GIT_INVOCATION_REPO_UNRESOLVED` rather than guessing. Any consumer that writes git objects on git's behalf should route through it: during `git clone`, cwd is the directory clone was run FROM, which is routinely an unrelated repository.
+
+**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up the keystore directory `status()` reports as `keystore.root` — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key.
 
 `r402s-verify` is the deliberate exception to "all protocol logic lives in the SDK": an independent second lineage that must NOT share implementation code with this namespace, because differential verification is its entire purpose.
 

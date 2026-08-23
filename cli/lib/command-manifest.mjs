@@ -238,8 +238,10 @@ export const COMMAND_MANIFEST = [
   // all but `status`) a local git working tree, so the gate runs structural
   // checks only — an in-process behavioral run would either no-op against the
   // universal `{}` fetch mock or touch the gate's own checkout.
+  { path: ["gitvault", "init"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "allocates a vault: mints key material on this machine and runs the six-stage creation journal" },
   { path: ["gitvault", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the local principal keystore and the live vault record" },
   { path: ["gitvault", "push"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
+  { path: ["gitvault", "policy"], positionals: [p("gitvault_policy")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["required"], runStyle: "sub", skipBehavioral: "owner + step-up mutation of the live project's activation policy" },
   { path: ["gitvault", "compact"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "takes a maintenance lease and builds a checkpoint from the local repository" },
   { path: ["gitvault", "prune"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "materializes the live vault head to enumerate retention roots" },
   { path: ["gitvault", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain against the keystore's authenticated pin" },

@@ -284,6 +284,39 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     const status = await sdk.gitvault.status({ project_id: "prj_none", keystore_root: join(tmpdir(), "gitvault-absent-keystore-fixture") });
     assert.equal(status.vault, null);
     assert.equal(status.repo_id, null);
-    assert.ok(status.next_actions.some((a) => a.command === "run402 init"));
+    // The command named here must be one that ACTUALLY ALLOCATES. This
+    // assertion used to pin `run402 init`, which scaffolds the git remote and
+    // deliberately allocates nothing — so status sent every user with no vault
+    // to a command that silently did not do what status promised, and the test
+    // enshrined it (gitvault dogfood #1, finding A).
+    assert.ok(
+      status.next_actions.some((a) => a.command === "run402 gitvault init"),
+      `expected the allocation verb, got ${JSON.stringify(status.next_actions)}`,
+    );
+    assert.equal(
+      status.next_actions.some((a) => a.command === "run402 init"),
+      false,
+      "`run402 init` scaffolds the remote and allocates nothing — it must never be offered as the allocation step",
+    );
+  });
+
+  it("says where the keystore lives, so 'whole-keystore loss is terminal' is actionable", async () => {
+    const root = join(tmpdir(), "gitvault-keystore-paths-fixture");
+    const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+    const status = await sdk.gitvault.status({ project_id: "prj_demo", keystore_root: root });
+    assert.equal(status.keystore.root, root);
+    assert.equal(status.keystore.paths.identity, join(root, "identity.json"));
+    assert.equal(status.keystore.paths.receipts, join(root, "receipts"));
+    assert.ok(status.keystore.paths.repo?.startsWith(join(root, "repos")), status.keystore.paths.repo ?? "null");
+    // A path is not key material; nothing here may leak a value.
+    assert.equal(JSON.stringify(status).includes("k_repo"), false);
+  });
+
+  it("leaves the ref map null unless it is asked for — status is an observation, not a verification", async () => {
+    const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+    const status = await sdk.gitvault.status({ project_id: "prj_demo", keystore_root: join(tmpdir(), "gitvault-refs-off-fixture") });
+    assert.equal(status.refs, null);
+    assert.equal(status.head_target, null);
+    assert.equal(status.remote, null, "no repo_dir was given, so there is no remote to report");
   });
 });

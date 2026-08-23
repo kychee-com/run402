@@ -12,7 +12,7 @@
  */
 
 import { existsSync, statSync } from "node:fs";
-import { configDir, readAllowance, loadKeyStore } from "./config.mjs";
+import { configDir, readAllowance, loadKeyStore, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import {
   resolveScanRoot,
@@ -58,6 +58,10 @@ Checks performed:
   - Function runtime staleness: deployed functions running an older platform
     runtime than the current gateway build (refresh with 'run402 functions
     rebuild --all'; re-bundles from your stored source, no source change)
+  - gitvault: the active project's vault — activation policy, whether THIS
+    machine can produce the capture a 'required' policy demands, open
+    unvaulted-override journals, and where the keystore lives (back it up:
+    whole-keystore loss is terminal for vault history)
   - Source scan: hallucinated SDK auth names (R402_AUTH_UNKNOWN_EXPORT),
     state-changing GET handlers (R402_AUTH_STATE_CHANGING_GET),
     auth.* calls in prerendered pages (R402_AUTH_PRERENDERED),
@@ -390,6 +394,81 @@ export async function run(sub, args = []) {
       status: "skipped",
       message: describeCheckFailure("operator status check", err),
     });
+  }
+
+  // 6c. gitvault (add-gitvault). Doctor was completely silent about the vault
+  // even when `gitvault_policy: required` was the single thing that would break
+  // the project's next deploy (dogfood #1, finding D1) — and doctor is where a
+  // user looks when something is wrong. It also prints WHERE the keystore is:
+  // "whole-keystore loss is terminal" was stated three times across this
+  // surface while the directory to back up was stated nowhere (finding D2).
+  //
+  // Read-only and best-effort in every branch: no project, no vault, or a
+  // gateway that does not know gitvault are all ordinary and report `skipped`
+  // or `ok`, never a doctor failure. A vault-only project that has never
+  // deployed is a first-class shape (protocol D183), so its mere absence of a
+  // deploy raises nothing.
+  {
+    const projectId = (process.env.RUN402_PROJECT_ID || "").trim() || getActiveProjectId() || null;
+    if (!projectId) {
+      checks.push({
+        name: "gitvault",
+        status: "skipped",
+        ...(verbose && { hint: "no active project — run 'run402 projects use <project_id>' to check its vault." }),
+      });
+    } else {
+      try {
+        const gv = await getSdk().gitvault.status({ project_id: projectId, repo_dir: process.cwd() });
+        const value = {
+          project_id: projectId,
+          repo_id: gv.repo_id,
+          vault: gv.vault === null ? null : "allocated",
+          gitvault_policy: gv.gitvault_policy,
+          keystore_root: gv.keystore.root,
+          can_sign: gv.keystore.can_sign,
+          holds_repo_key: gv.keystore.holds_repo_key,
+          pending_overrides: gv.pending_overrides,
+          pins: gv.pins,
+          remote: gv.remote,
+        };
+        const gaps = [];
+        // The one that actually breaks the next deploy: the project demands a
+        // vaulted capture and THIS machine cannot produce one.
+        if (gv.gitvault_policy === "required" && !gv.keystore.holds_repo_key) {
+          gaps.push(
+            "gitvault_policy is 'required' but this machine holds no key for the vault — a deploy from here is refused with GITVAULT_CLIENT_UPGRADE_REQUIRED. " +
+            "Run 'run402 gitvault init' (idempotent; resolves to the existing vault), or 'run402 gitvault policy grandfathered --reason <why>' to un-gate the project.",
+          );
+        } else if (gv.gitvault_policy === "required" && !gv.keystore.can_sign) {
+          gaps.push("gitvault_policy is 'required' and this keystore is read-only (no signing key) — it can verify but cannot publish the capture a deploy needs");
+        }
+        if (gv.pending_overrides > 0) {
+          gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 gitvault push' to drain them`);
+        }
+        if (gv.remote && !gv.remote.matches) {
+          gaps.push(`the '${gv.remote.name}' git remote points at a different project than ${projectId} (${gv.remote.url})`);
+        }
+        // Echoed exactly as the SDK reported them — including the
+        // doctor-persistent `grandfathered` advisory it owns.
+        for (const w of gv.warnings ?? []) gaps.push(`${w.kind}: ${w.message}`);
+        checks.push({
+          name: "gitvault",
+          status: gaps.length > 0 ? "warning" : "ok",
+          value: gaps.length > 0 ? { ...value, gaps } : value,
+          hint: gv.vault === null
+            ? `No vault for this project (that is a normal shape). Allocate one with 'run402 gitvault init'. Keystore: ${gv.keystore.root}`
+            : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`,
+        });
+      } catch (err) {
+        // A gateway without gitvault, an unreachable API, or a project this
+        // wallet cannot see. None of those is a local health problem.
+        checks.push({
+          name: "gitvault",
+          status: "skipped",
+          message: describeCheckFailure("gitvault status check", err),
+        });
+      }
+    }
   }
 
   // 7. Source-tree scan (auth-aware-ssr Section 9). Detects hallucinated

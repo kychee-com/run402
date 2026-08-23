@@ -33,7 +33,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { LocalError } from "../errors.js";
@@ -152,6 +152,92 @@ export function hardenedGit(cwd: string, args: string[], options: HardenedGitOpt
     if (options.input !== undefined) child.stdin?.end(typeof options.input === "string" ? Buffer.from(options.input, "utf8") : Buffer.from(options.input));
     else child.stdin?.end();
   });
+}
+
+// ─── Which repository did git invoke us for? (fail-closed) ───────────────────
+
+/**
+ * The repository a `git-remote-*` helper was invoked for.
+ *
+ * `repo_dir` is what every hardened git call takes as `cwd`. Because
+ * {@link hardenedGitEnv} builds its environment from scratch — `GIT_DIR` is
+ * never inherited — git's discovery starts at that directory, and starting it
+ * AT the git directory makes discovery land on that repository and no other.
+ */
+export interface GitInvocationRepo {
+  /** The absolute git directory git named for this invocation. */
+  git_dir: string;
+  /** Hand this to `hardenedGit` as `cwd`; discovery from here resolves to `git_dir`. */
+  repo_dir: string;
+}
+
+/** `realpath` when it resolves, the input otherwise — path equality across `/tmp` → `/private/tmp` and friends. */
+function canonicalPath(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+/**
+ * Resolve — and PROVE — the repository git invoked this helper for.
+ *
+ * git always sets `GIT_DIR` when it runs a remote helper against a
+ * repository: `.git` (relative, cwd already moved to the top level) for
+ * fetch/push, the linked worktree's git dir inside a worktree, `.` in a bare
+ * repository, and the ABSOLUTE path of the not-yet-populated target during
+ * `git clone`. It is unset only for a repository-free invocation such as
+ * `git ls-remote <url>` run outside any checkout, which needs no repository
+ * at all.
+ *
+ * So `process.cwd()` is NOT the repository: during a clone it is the directory
+ * the user ran clone FROM, which is routinely inside some unrelated repo. A
+ * helper that discovers its repository from cwd therefore writes the vault's
+ * decrypted objects into a repository the user never named — the leak this
+ * function exists to make impossible. It fails closed: no `GIT_DIR`, a
+ * `GIT_DIR` that is not a repository, or a `GIT_DIR` whose own
+ * `--absolute-git-dir` disagrees with the path we were handed, all refuse.
+ * The caller must write nothing after a refusal.
+ */
+export async function resolveGitInvocationRepo(
+  env: { GIT_DIR?: string | undefined } = process.env,
+  cwd: string = process.cwd(),
+): Promise<GitInvocationRepo> {
+  const declared = typeof env.GIT_DIR === "string" ? env.GIT_DIR.trim() : "";
+  if (declared === "") {
+    fail(
+      "GIT_INVOCATION_REPO_UNRESOLVED",
+      "git set no GIT_DIR for this invocation, so the repository it wants operated on cannot be established; refusing rather than guessing from the current directory",
+      "resolving the invoking git repository",
+      { reason: "no_git_dir", cwd },
+    );
+  }
+  const absolute = resolve(cwd, declared);
+  let observed: string;
+  try {
+    observed = (await hardenedGit(absolute, ["rev-parse", "--absolute-git-dir"])).text().trim();
+  } catch (cause) {
+    fail(
+      "GIT_INVOCATION_REPO_UNRESOLVED",
+      `GIT_DIR ${absolute} is not a readable git repository`,
+      "resolving the invoking git repository",
+      { reason: "git_dir_not_a_repository", git_dir: absolute, cause: cause instanceof Error ? cause.message : String(cause) },
+    );
+  }
+  // The proof: discovery started AT the named directory must come back to that
+  // same directory. A `GIT_DIR` pointing at a plain subdirectory of some other
+  // repository resolves upward to that other repository — which is exactly the
+  // confusion that must never be acted on.
+  if (canonicalPath(observed) !== canonicalPath(absolute)) {
+    fail(
+      "GIT_INVOCATION_REPO_UNRESOLVED",
+      `GIT_DIR ${absolute} resolves to a different repository (${observed}); refusing to operate on a repository git did not name`,
+      "resolving the invoking git repository",
+      { reason: "git_dir_mismatch", git_dir: absolute, resolved: observed },
+    );
+  }
+  return { git_dir: observed, repo_dir: observed };
 }
 
 /** `git version` parsed as [major, minor]; refuses below {@link GITVAULT_MIN_GIT_VERSION}. */

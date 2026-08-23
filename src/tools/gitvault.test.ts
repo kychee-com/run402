@@ -48,7 +48,22 @@ const STATUS = {
   repo_id: VAULT_RECORD.repo_id,
   project_id: "prj_demo",
   vault: VAULT_RECORD,
-  keystore: { present: true, identity_fingerprint: "vk_abc", can_sign: true, holds_repo_key: true },
+  keystore: {
+    present: true, identity_fingerprint: "vk_abc", can_sign: true, holds_repo_key: true,
+    root: "/home/agent/.config/run402/gitvault",
+    paths: {
+      identity: "/home/agent/.config/run402/gitvault/identity.json",
+      repos: "/home/agent/.config/run402/gitvault/repos",
+      receipts: "/home/agent/.config/run402/gitvault/receipts",
+      journal: "/home/agent/.config/run402/gitvault/journal",
+      audit_log: "/home/agent/.config/run402/gitvault/audit.log",
+      repo: null,
+      recovery_receipt: null,
+    },
+  },
+  remote: null,
+  refs: null,
+  head_target: null,
   pins: { highest_authenticated: "000000000000000a", highest_materialized: "000000000000000a" },
   gitvault_policy: "required" as const,
   pending_overrides: 0,
@@ -163,6 +178,14 @@ describe("get_gitvault_status", () => {
     assert.equal(calls.length, 0, "it must not call the vault with an unresolved target");
   });
 
+  it("names the keystore directory, so the terminal-loss warning is actionable", async () => {
+    // The §0 statement below appears on every gitvault surface; the directory
+    // it refers to appeared on none of them (dogfood #1, finding D2). A path
+    // is not key material, and a warning nobody can act on is not a warning.
+    const out = textOf(await handleGetGitvaultStatus({ project_id: "prj_demo" }));
+    assert.match(out, /keystore directory\s+\/home\/agent\/\.config\/run402\/gitvault\s+\(back this up\)/);
+  });
+
   it("prints the terminal-loss sentence VERBATIM, and its full detail", async () => {
     const out = textOf(await handleGetGitvaultStatus({ project_id: "prj_demo" }));
     assert.ok(out.includes(GITVAULT_TERMINAL_LOSS_STATEMENT), "the reviewed sentence must reach the agent unchanged");
@@ -170,10 +193,12 @@ describe("get_gitvault_status", () => {
   });
 
   it("is truthful when no vault is allocated", async () => {
-    statusBehavior = async () => ({ ...STATUS, repo_id: null, vault: null, pins: { highest_authenticated: null, highest_materialized: null }, next_actions: [{ action: "allocate the project's vault", command: "run402 init" }] });
+    statusBehavior = async () => ({ ...STATUS, repo_id: null, vault: null, pins: { highest_authenticated: null, highest_materialized: null }, next_actions: [{ action: "allocate the project's vault", command: "run402 gitvault init" }] });
     const out = textOf(await handleGetGitvaultStatus({ project_id: "prj_demo" }));
     assert.match(out, /No vault is allocated for project prj_demo\./);
-    assert.match(out, /run402 init/);
+    // The allocation verb, not `run402 init` — that one scaffolds the git
+    // remote and allocates nothing (dogfood #1, finding A).
+    assert.match(out, /run402 gitvault init/);
     assert.ok(out.includes(GITVAULT_TERMINAL_LOSS_STATEMENT), "a vault-less project still gets the statement");
   });
 

@@ -1,7 +1,8 @@
-import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase, getActiveProjectId, getProject, updateProject } from "./config.mjs";
+import { readAllowance, saveAllowance, loadKeyStore, configDir, configureApiBase, getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { setTierAction, deployAction } from "./next-actions.mjs";
+import { resolveOwningOrgId } from "./org-context.mjs";
 import { getActiveProfile } from "../core-dist/config.js";
 import { readMeta } from "../core-dist/profiles.js";
 import { mkdirSync } from "fs";
@@ -46,11 +47,18 @@ Options:
 
 Output:
   Stdout is a JSON summary { config_dir, wallet, rail, network, balances,
-  tier, projects_saved, next_step }. Progress lines (Config / Allowance /
-  Balance / Tier / Next) go to stderr so a human re-running interactively
-  sees what's happening while a script piping stdout to jq stays clean.
-  With --git-remote the summary also carries { gitvault } (the scaffolded
-  remote) or { gitvault: null, gitvault_error } when it could not be added.
+  tier, projects_saved, active_project_id, next_step }. Progress lines
+  (Config / Allowance / Balance / Tier / Next) go to stderr so a human
+  re-running interactively sees what's happening while a script piping stdout
+  to jq stays clean. The summary also carries { gitvault } (the scaffolded
+  remote), or { gitvault: null, gitvault_skipped } naming why no remote was
+  added, or { gitvault: null, gitvault_error } when it could not be added.
+  \`projects_saved\` counts projects with LOCAL keys; \`active_project_id\` is the
+  project the gitvault scaffold acted on.
+
+  init scaffolds the git remote only. It does NOT allocate the vault — that is
+  \`run402 gitvault init\`, which mints key material and a recovery receipt and
+  therefore stays an explicit step.
 
 Steps (idempotent when re-run with the same rail; pass --switch-rail to change rails):
   1. Creates config directory (~/.config/run402)
@@ -174,42 +182,28 @@ function errorMessage(err) {
 }
 
 /**
- * The owning org of the locally-active project — from the KEYSTORE first, and
- * only then from the named inventory.
+ * Which project the gitvault scaffold acts on — and why it may act on none.
  *
- * Why the cache exists (task 5.12c): the gitvault scaffold is the one part of
- * `run402 init` the client-surface spec says adds no network dependency to the
- * cold-start path, and resolving the org through `projects.list()` quietly made
- * that untrue. `org_id` is a non-secret routing identifier the control plane
- * already hands back with every listing, so the honest fix is to remember it:
- * the FIRST init on a machine still asks, every RETURNING init reads it locally
- * and the scaffold really is network-free.
+ * The CLI-wide resolution order (`RUN402_PROJECT_ID`, then the active
+ * project), not `getActiveProjectId()` alone. Reading only the active project
+ * meant an agent that had exported `RUN402_PROJECT_ID` — the normal way to
+ * address a project without mutating machine state — got a silent no-op: no
+ * remote, no allocation, and no `gitvault` key in the summary at all, with
+ * nothing anywhere saying `run402 projects use` was a prerequisite
+ * (dogfood #1, finding A). A command that exits 0 having done nothing is worse
+ * than an error, so the no-project case names itself.
  *
- * Best-effort by construction — the caller treats `null` as "do not scaffold" —
- * and an EXACT id match is required: a near-miss must never make init add a
- * remote pointing at somebody else's project. `updateProject` is a no-op for a
- * project this machine holds no credentials for, so such a project asks again
- * next time rather than being silently mis-cached.
+ * Exported so the decision is testable on its own: it is one expression, and
+ * it was wrong in two ways at once.
  */
-async function resolveOwningOrgId(projectId) {
-  const cached = getProject(projectId)?.org_id;
-  if (typeof cached === "string" && cached.length > 0) return cached;
-  try {
-    const listed = await getSdk().projects.list();
-    const rows = Array.isArray(listed?.projects) ? listed.projects : [];
-    const row = rows.find((p) => (p?.id ?? p?.project_id) === projectId);
-    const orgId = row?.org_id;
-    if (typeof orgId !== "string" || orgId.length === 0) return null;
-    try {
-      updateProject(projectId, { org_id: orgId });
-    } catch {
-      // Caching is an optimization; a read-only or contended keystore costs a
-      // round trip next time and must never fail the scaffold.
-    }
-    return orgId;
-  } catch {
-    return null;
-  }
+export function resolveScaffoldProject(env = process.env, activeProjectId = getActiveProjectId()) {
+  const fromEnv = typeof env.RUN402_PROJECT_ID === "string" ? env.RUN402_PROJECT_ID.trim() : "";
+  const projectId = fromEnv || activeProjectId || null;
+  if (projectId) return { projectId, skipped: null };
+  return {
+    projectId: null,
+    skipped: "no project is selected, so there is nothing to point a run402 remote at — run `run402 projects use <project_id>` (or set RUN402_PROJECT_ID), then re-run `run402 init`",
+  };
 }
 
 export async function run(args = []) {
@@ -337,6 +331,8 @@ export async function run(args = []) {
     ...(voucherCode ? { voucher: null } : {}),
     tier: null,
     projects_saved: 0,
+    /** The project init acted on — the input to the gitvault scaffold decision. */
+    active_project_id: null,
     next_actions: [],
     next_step: null,
   };
@@ -547,7 +543,12 @@ export async function run(args = []) {
 
   // 5. Projects — count locally saved project entries. Note: "saved" (not
   // "active") — these are all projects in the keystore, regardless of whether
-  // the server considers them active.
+  // the server considers them active. A project selected with
+  // `run402 projects use` but never provisioned FROM this machine holds no
+  // local keys, so it is legitimately not counted here; `active_project_id`
+  // below is the field that says which project init actually acted on, and
+  // reading `projects_saved: 0` as "init did nothing" is what made the
+  // gitvault skip look silent (dogfood #1, finding A).
   summary.projects_saved = Object.keys(store.projects).length;
   line("Projects", `${summary.projects_saved} saved`);
 
@@ -568,8 +569,13 @@ export async function run(args = []) {
   // NON-FATAL in every branch: a missing git, a directory that is not a
   // repository, an unreachable gateway, or a `run402` remote already pointing
   // somewhere else must warn and let setup finish.
-  const activeProjectId = getActiveProjectId();
-  if (activeProjectId) {
+  const { projectId: activeProjectId, skipped: noProjectSkip } = resolveScaffoldProject();
+  summary.active_project_id = activeProjectId;
+  if (noProjectSkip) {
+    summary.gitvault = null;
+    summary.gitvault_skipped = noProjectSkip;
+    line("Gitvault", "skipped — no project selected (run402 projects use <project_id>)");
+  } else {
     summary.gitvault = null;
     try {
       // Dynamic import: the scaffold is the only thing here that needs the

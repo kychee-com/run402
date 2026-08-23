@@ -32,7 +32,7 @@
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT } from "./gitvault.crypto.js";
-import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest } from "./gitvault.types.js";
+import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget } from "./gitvault.types.js";
 import type {
   GitvaultMaintenanceLease,
   GitvaultMaintenanceLeaseRequest,
@@ -53,6 +53,16 @@ type KeystoreModule = typeof import("../node/gitvault-keystore.js");
 type CreationModule = typeof import("../node/gitvault-creation-journal.js");
 type SnapshotModule = typeof import("../node/gitvault-snapshot.js");
 type PruneModule = typeof import("../node/gitvault-prune.js");
+
+/** A keystore path, or `null` when there is no id to derive it from (or it is malformed). */
+function safePath(derive: () => string, repoId: string | null): string | null {
+  if (!repoId) return null;
+  try {
+    return derive();
+  } catch {
+    return null;
+  }
+}
 
 async function nodeOnly<T>(load: () => Promise<T>, verb: string): Promise<T> {
   try {
@@ -82,7 +92,41 @@ export interface GitvaultStatus {
     can_sign: boolean;
     /** `true` once this machine holds K_repo for the vault. */
     holds_repo_key: boolean;
+    /**
+     * WHERE the keystore lives, and what is in it.
+     *
+     * Terminal loss is stated three times in this surface; until 5.13 the path
+     * to back up was stated nowhere, which made the warning unactionable. These
+     * are file paths, never contents — nothing here is key material.
+     * `repo` / `recovery_receipt` are `null` until a `repo_id` is known.
+     */
+    root: string;
+    paths: {
+      identity: string;
+      repos: string;
+      receipts: string;
+      journal: string;
+      audit_log: string;
+      repo: string | null;
+      recovery_receipt: string | null;
+    };
   };
+  /**
+   * The `run402` git remote in the local repository, when there is one to read.
+   * `null` when no `repo_dir` was given, the directory is not a repository, or
+   * no such remote is configured. `matches` is false when the remote points at
+   * a DIFFERENT vault than the one this status is about — the case where a
+   * checkout is wired to somebody else's project and nothing says so.
+   */
+  remote: { name: string; url: string; matches: boolean } | null;
+  /**
+   * The vault's ref map and HEAD target — present only when `refs: true` was
+   * requested. Reading them means MATERIALIZING the chain, which is a
+   * verification and advances the local materialized pin, so plain `status`
+   * (an observation) leaves both `null`.
+   */
+  refs: Record<string, string> | null;
+  head_target: GitvaultHeadTarget | null;
   pins: {
     highest_authenticated: string | null;
     highest_materialized: string | null;
@@ -434,7 +478,17 @@ export class Gitvault {
    * deployed raises no deploy-related warning, and the terminal-loss statement
    * is stated verbatim exactly as for any other vault.
    */
-  async status(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultStatus> {
+  async status(options: GitvaultVaultHandleOptions & {
+    /**
+     * Also report the vault's ref map and HEAD target.
+     *
+     * Opt-in because it is not free and not read-only in the local sense:
+     * materializing walks the head chain (a verification) and advances the
+     * keystore's materialized pin. `status` without it stays a pure
+     * observation, which is what makes it safe to run anywhere.
+     */
+    refs?: boolean;
+  } = {}): Promise<GitvaultStatus> {
     const { GitvaultKeystore } = await this.#keystore();
     const { listPendingOverrideJournals } = await this.#deploy();
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
@@ -492,15 +546,74 @@ export class Gitvault {
       warnings.push({ kind: "policy_grandfathered", message: "activation does not require vault admission on this project; return it to `required` when the migration is done" });
     }
 
+    // The local git remote, when there is a repository to read it from. A
+    // pure read: `status` must never write git configuration.
+    let remote: GitvaultStatus["remote"] = null;
+    if (options.repo_dir) {
+      const { hardenedGit } = await this.#snapshot();
+      const name = "run402";
+      try {
+        const url = (await hardenedGit(options.repo_dir, ["remote", "get-url", name])).text().trim();
+        if (url) {
+          const parsed = parseGitvaultRemoteUrl(url);
+          const project = options.project_id ?? record?.project_id ?? null;
+          remote = { name, url, matches: parsed !== null && (project === null || parsed.project_id === project) };
+        }
+      } catch {
+        remote = null; // not a repository, or no such remote — both are ordinary
+      }
+    }
+
+    // The ref map, only when asked (see the `refs` option's doc). Best-effort:
+    // a status that cannot materialize still reports everything else.
+    let refs: GitvaultStatus["refs"] = null;
+    let headTarget: GitvaultStatus["head_target"] = null;
+    if (options.refs === true && repoId && holdsRepoKey) {
+      try {
+        const handle = await this.open({ ...options, repo_id: repoId });
+        const state = await handle.vault.materialize();
+        refs = { ...(state.refs ?? {}) };
+        headTarget = state.head_target ?? null;
+      } catch (e) {
+        warnings.push({ kind: "refs_unavailable", message: `the vault's ref map could not be materialized: ${e instanceof Error ? e.message : String(e)}` });
+      }
+    } else if (options.refs === true && !holdsRepoKey) {
+      warnings.push({ kind: "refs_unavailable", message: "this machine does not hold K_repo for the vault, so its ref map cannot be decrypted here" });
+    }
+
     const nextActions: GitvaultStatus["next_actions"] = [];
-    if (!record) nextActions.push({ action: "allocate the project's vault", command: "run402 init" });
+    // `run402 init` scaffolds the git remote and deliberately allocates
+    // nothing; pointing at it here sent users to a command that silently did
+    // not do what this line promised (dogfood #1, finding A).
+    if (!record) nextActions.push({ action: "allocate the project's vault", command: "run402 gitvault init" });
     else if (pending.length > 0) nextActions.push({ action: `complete ${pending.length} unvaulted-override journal(s)`, command: "run402 gitvault push" });
+    else if (record && !holdsRepoKey) nextActions.push({ action: "this machine holds no key for the vault — allocate resolves to the existing vault and is idempotent", command: "run402 gitvault init" });
 
     return {
       repo_id: repoId,
       project_id: options.project_id ?? record?.project_id ?? null,
       vault: record,
-      keystore: { present: keystorePresent, identity_fingerprint: identityFingerprint, can_sign: canSign, holds_repo_key: holdsRepoKey },
+      keystore: {
+        present: keystorePresent,
+        identity_fingerprint: identityFingerprint,
+        can_sign: canSign,
+        holds_repo_key: holdsRepoKey,
+        root: keystore.rootDir,
+        paths: {
+          identity: keystore.identityPath,
+          repos: keystore.reposDir,
+          receipts: keystore.receiptsDir,
+          journal: keystore.journalDir,
+          audit_log: keystore.auditLogPath,
+          // Path derivation validates the id shape and refuses a malformed
+          // one; a bad `--repo` must not turn `status` into a stack trace.
+          repo: safePath(() => keystore.repoPath(repoId!), repoId),
+          recovery_receipt: safePath(() => keystore.recoveryReceiptPath(repoId!), repoId),
+        },
+      },
+      remote,
+      refs,
+      head_target: headTarget,
       pins: { highest_authenticated: authenticated, highest_materialized: materialized },
       gitvault_policy: record?.gitvault_policy ?? null,
       pending_overrides: pending.length,
