@@ -627,6 +627,29 @@ export async function run(args = []) {
     }
   }
 
+  // 5b. The org. `init` already materializes it (the tier read above
+  // authenticates, which provisions the wallet's org-of-one), so NOT reporting
+  // it forced every agent that wanted to coordinate to go find it with a second
+  // command and copy a UUID by hand. It is an identifier, not a credential.
+  try {
+    const orgs = await getSdk().orgs.list();
+    const rows = Array.isArray(orgs) ? orgs : (orgs?.orgs ?? []);
+    summary.orgs = rows.map((o) => ({
+      org_id: o.org_id,
+      display_name: o.display_name ?? null,
+      role: o.role ?? null,
+    }));
+    if (rows.length === 1) {
+      line("Org", `${rows[0].org_id}${rows[0].display_name ? ` (${rows[0].display_name})` : ""}`);
+    } else if (rows.length > 1) {
+      line("Org", `${rows.length} organizations — run402 org list`);
+    }
+  } catch {
+    // Best-effort, exactly like the billing read: a listing failure must never
+    // fail setup.
+    summary.orgs = null;
+  }
+
   // 6. Next step — canonical typed action(s); `next_step` is the back-compat
   // string mirror of the first action's command (one spelling, surface-wide).
   write("");

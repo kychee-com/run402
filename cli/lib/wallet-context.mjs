@@ -19,7 +19,7 @@
  * wallets and no flag is given, that is a hard error (not a silent pick).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fail } from "./sdk-errors.mjs";
 import { isValidProfileName } from "../core-dist/config.js";
@@ -27,6 +27,7 @@ import { getDefaultWallet, profileExists, readMeta, profileDir } from "../core-d
 import { readAllowance } from "../core-dist/allowance.js";
 
 const DEFAULT = "default";
+const BINDING_FILE = ".run402.json";
 const GLOBAL_FLAGS = new Set(["--wallet", "--profile"]);
 // The `wallets` group is the management + escape surface — it must work even
 // when selection is ambiguous (so you can `wallets unbind`), and it validates
@@ -82,6 +83,45 @@ function readBindingKeyFrom(dir, key) {
     }
   }
   return null;
+}
+
+/** Path of the committed binding file for a directory. */
+export function bindingFilePath(dir = process.cwd()) {
+  return join(dir, BINDING_FILE);
+}
+
+/** Parse a directory's committed binding file, or `{}` when absent/unreadable. */
+export function readBindingFile(dir = process.cwd()) {
+  try {
+    const parsed = JSON.parse(readFileSync(bindingFilePath(dir), "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * MERGE keys into a directory's binding file. A `null` value removes its key;
+ * a file left with no keys is deleted rather than committed empty.
+ *
+ * The file is shared by tiers (`wallet` from `wallets bind`, `org`/`room` from
+ * `org bind`) and unknown keys are preserved, so one tier can never clobber
+ * another's binding — which a whole-file write did until this existed.
+ */
+export function updateBindingFile(dir, patch) {
+  const file = bindingFilePath(dir);
+  const next = { ...readBindingFile(dir) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null || v === undefined) delete next[k];
+    else next[k] = v;
+  }
+  if (Object.keys(next).length === 0) {
+    const existed = existsSync(file);
+    if (existed) rmSync(file, { force: true });
+    return { file, contents: null, removed: existed };
+  }
+  writeFileSync(file, JSON.stringify(next, null, 2) + "\n");
+  return { file, contents: next, removed: false };
 }
 
 /**

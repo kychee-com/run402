@@ -1,6 +1,9 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
+import { readBindingFile, updateBindingFile } from "./wallet-context.mjs";
+import { nextAction } from "./next-actions.mjs";
 import {
+  requireOrgIdShape,
   resolveOrg,
   orgProvenance,
   getSelectedOrgId,
@@ -31,6 +34,8 @@ Usage:
   run402 org use     <org_id>
   run402 org current
   run402 org clear
+  run402 org bind   [--org <org_id>] [--room <key>]
+  run402 org unbind
   run402 org audit  <org_id> [--limit N] [--after <cursor>] [--before <cursor>]
   run402 org member list <org_id>
   run402 org member add  <org_id> --wallet <wallet_address> [--role <role>]
@@ -51,6 +56,8 @@ Subcommands:
   use         Select the current org for this wallet profile
   current     Report the resolved current org and where it came from
   clear       Clear this wallet profile's org selection
+  bind        Write this checkout's org (+room) into .run402.json — commit it
+  unbind      Remove the org/room keys from .run402.json
   payout-wallet  Set or clear the tenant route payout wallet (admin+)
   whoami      Resolved principal + org memberships (GET /agent/v1/whoami)
   member      Manage members (list, add, role, rm) — mutations require owner
@@ -237,6 +244,99 @@ async function clear(args) {
   const previous = getSelectedOrgId();
   clearSelectedOrgId();
   console.log(JSON.stringify({ org_id: null, selected: false, previous_org_id: previous ?? null }, null, 2));
+}
+
+/**
+ * Slugify a directory name into a legal room key.
+ * Room keys match /^[a-z0-9][a-z0-9._-]{0,63}$/ (the DB CHECK on every
+ * agent-messaging table), so the repo's own name has to be coerced, not trusted.
+ */
+function roomKeyFromDir(dir) {
+  const base = dir.split("/").filter(Boolean).pop() ?? "";
+  const slug = base.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+/, "").slice(0, 64);
+  return /^[a-z0-9]/.test(slug) ? slug : null;
+}
+
+/**
+ * Write this checkout's org (and room) into `.run402.json`.
+ *
+ * WHY THIS PICKS FOR YOU WHEN YOU OWN EXACTLY ONE ORG, while the resolution
+ * chain never does: they are different acts. The chain runs on EVERY command
+ * and must not change meaning the day you are invited to a second org — so it
+ * refuses to infer. This runs ONCE, because you asked it to, and it WRITES THE
+ * ANSWER DOWN. Nothing is inferred afterwards; the file is read verbatim
+ * forever after. An explicit act with a recorded result is not a heuristic.
+ *
+ * With two or more orgs there is nothing to pick, so it lists them and stops.
+ */
+async function bind(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--org", "--room"];
+  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  requirePositionalCount(a, valueFlags, { min: 0, max: 0, command: "run402 org bind [--org <org_id>] [--room <key>]" });
+
+  let orgId = flagValue(a, "--org");
+  let picked = "flag";
+  if (!orgId) {
+    let orgs;
+    try {
+      orgs = await getSdk().orgs.list();
+    } catch (err) {
+      reportSdkError(err);
+      return;
+    }
+    const rows = Array.isArray(orgs) ? orgs : (orgs?.orgs ?? []);
+    if (rows.length === 0) {
+      fail({
+        code: "NO_ORGS",
+        message: "This wallet is a member of no organization yet.",
+        hint: "Run 'run402 init' to provision one, or ask an owner to add you with 'run402 org member add'.",
+        next_actions: [nextAction("initialize_wallet", { command: "run402 init", why: "Provision this wallet's organization, then retry." })],
+      });
+    }
+    if (rows.length > 1) {
+      fail({
+        code: "AMBIGUOUS_ORG",
+        message: `This wallet belongs to ${rows.length} organizations — name the one to bind.`,
+        hint: "run402 org bind --org <org_id>",
+        details: { orgs: rows.map((o) => ({ org_id: o.org_id, display_name: o.display_name ?? null, role: o.role ?? null })) },
+        next_actions: [nextAction("edit_request", { command: "run402 org bind --org <org_id>", why: "Name which organization this checkout coordinates in." })],
+      });
+    }
+    orgId = rows[0].org_id;
+    picked = "sole_membership";
+  }
+
+  const room = flagValue(a, "--room") ?? roomKeyFromDir(process.cwd());
+  const { contents, file } = updateBindingFile(process.cwd(), {
+    org: requireOrgIdShape(orgId, picked === "flag" ? "--org" : "org list"),
+    ...(room ? { room } : {}),
+  });
+  console.log(JSON.stringify({
+    org_id: orgId,
+    room_key: room ?? null,
+    org_source: picked,
+    file: ".run402.json",
+    path: file,
+    bound: true,
+    safe_to_commit: true,
+    note: "Safe to commit — an org id is an identifier, not a credential; authorization stays server-side.",
+    binding: contents,
+  }, null, 2));
+}
+
+async function unbind(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--help", "-h"]);
+  requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org unbind" });
+  const previous = readBindingFile(process.cwd());
+  const { contents, removed } = updateBindingFile(process.cwd(), { org: null, room: null });
+  console.log(JSON.stringify({
+    file: ".run402.json",
+    unbound: previous.org !== undefined || previous.room !== undefined,
+    removed,
+    binding: contents,
+  }, null, 2));
 }
 
 async function current(args) {
@@ -534,6 +634,8 @@ export async function run(sub, args) {
     case "use": await use(args); break;
     case "current": await current(args); break;
     case "clear": await clear(args); break;
+    case "bind": await bind(args); break;
+    case "unbind": await unbind(args); break;
     case "audit": await audit(args); break;
     default:
       failUnknownSubcommand("org", sub);

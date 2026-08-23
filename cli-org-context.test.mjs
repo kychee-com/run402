@@ -450,3 +450,55 @@ describe("state.json stays readable by an older CLI", () => {
     assert.equal(getActiveProjectId(), "prj_from_old_cli");
   });
 });
+
+describe("org bind — the bootstrap, not the chain", () => {
+  it("merges into the binding file without clobbering a wallet key", async () => {
+    const { updateBindingFile, readBindingFile } = await import("./cli/lib/wallet-context.mjs");
+    const dir = join(tempDir, "mergecheck");
+    mkdirSync(dir, { recursive: true });
+    updateBindingFile(dir, { wallet: "platform-deploy" });
+    updateBindingFile(dir, { org: A, room: "my-repo" });
+    assert.deepEqual(readBindingFile(dir), { wallet: "platform-deploy", org: A, room: "my-repo" });
+  });
+
+  it("removing one tier's keys leaves the other tier's binding intact", async () => {
+    const { updateBindingFile, readBindingFile } = await import("./cli/lib/wallet-context.mjs");
+    const dir = join(tempDir, "unbindcheck");
+    mkdirSync(dir, { recursive: true });
+    updateBindingFile(dir, { wallet: "w", org: A, room: "r" });
+    updateBindingFile(dir, { org: null, room: null });   // `org unbind`
+    assert.deepEqual(readBindingFile(dir), { wallet: "w" });
+    updateBindingFile(dir, { wallet: null });            // `wallets unbind`
+    assert.deepEqual(readBindingFile(dir), {});
+  });
+
+  it("deletes the file only when nothing is left to bind", async () => {
+    const { updateBindingFile, bindingFilePath } = await import("./cli/lib/wallet-context.mjs");
+    const { existsSync } = await import("node:fs");
+    const dir = join(tempDir, "emptycheck");
+    mkdirSync(dir, { recursive: true });
+    updateBindingFile(dir, { org: A });
+    assert.ok(existsSync(bindingFilePath(dir)));
+    updateBindingFile(dir, { org: null });
+    assert.ok(!existsSync(bindingFilePath(dir)), "an empty binding is removed, never committed empty");
+  });
+
+  it("preserves unknown keys written by a newer CLI", async () => {
+    const { updateBindingFile, readBindingFile } = await import("./cli/lib/wallet-context.mjs");
+    const dir = join(tempDir, "unknownkeys");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, ".run402.json"), JSON.stringify({ org: A, somethingNew: "keep me" }));
+    updateBindingFile(dir, { room: "r" });
+    assert.equal(readBindingFile(dir).somethingNew, "keep me");
+  });
+
+  it("what bind writes is what the chain then reads, with no inference left", async () => {
+    const { updateBindingFile } = await import("./cli/lib/wallet-context.mjs");
+    const dir = join(tempDir, "roundtrip");
+    mkdirSync(dir, { recursive: true });
+    updateBindingFile(dir, { org: A, room: "my-repo" });
+    const r = await orgCtx.resolveOrg({}, { cwd: dir, env: {} });
+    assert.equal(r.orgId, A);
+    assert.equal(r.source, "binding");
+  });
+});

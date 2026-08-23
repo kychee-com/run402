@@ -32,6 +32,7 @@ import {
 } from "../core-dist/profiles.js";
 import { readAllowance, saveAllowance } from "../core-dist/allowance.js";
 import { getSdk } from "./sdk.mjs";
+import { readBindingFile, updateBindingFile } from "./wallet-context.mjs";
 
 const DEFAULT = "default";
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -208,14 +209,15 @@ async function cmdRename(args) {
 function cmdBind(args) {
   let name = args.find((a) => a && !a.startsWith("-"));
   name = name ? requireName(name) : getActiveProfile();
-  const file = join(process.cwd(), ".run402.json");
-  writeFileSync(file, JSON.stringify({ wallet: name }, null, 2) + "\n");
+  // MERGE, never clobber: the same file carries `org`/`room` from `org bind`.
+  const { contents } = updateBindingFile(process.cwd(), { wallet: name });
   const result = {
     wallet: name,
     file: ".run402.json",
     bound: true,
     safe_to_commit: true,
     note: "Safe to commit — contains no secrets, only the wallet name.",
+    binding: contents,
   };
   if (name !== DEFAULT && !profileExists(name)) {
     result.warning = `No local wallet named '${name}' yet — create it with 'run402 wallets new ${name}'.`;
@@ -224,10 +226,12 @@ function cmdBind(args) {
 }
 
 function cmdUnbind() {
-  const file = join(process.cwd(), ".run402.json");
-  const existed = existsSync(file);
-  if (existed) rmSync(file, { force: true });
-  out({ file: ".run402.json", unbound: existed });
+  // Removes only the WALLET key. An `org`/`room` binding in the same file
+  // belongs to another tier and must survive; the file is deleted only when
+  // unbinding leaves nothing behind.
+  const had = readBindingFile(process.cwd()).wallet !== undefined;
+  const { contents, removed } = updateBindingFile(process.cwd(), { wallet: null });
+  out({ file: ".run402.json", unbound: had, removed, binding: contents });
 }
 
 async function cmdImport(args) {

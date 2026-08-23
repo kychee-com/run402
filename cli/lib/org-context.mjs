@@ -258,6 +258,11 @@ export async function resolveOrgId(a, opts = {}) {
   return resolved ? resolved.orgId : null;
 }
 
+/** Validate an org id supplied by a human, naming the origin. Throws via fail(). */
+export function requireOrgIdShape(orgId, origin = "--org") {
+  return assertOrgIdShape(orgId, origin);
+}
+
 /** The profile's selected organization, without running the chain. */
 export function getSelectedOrgId() {
   return trimmed(coreGetActiveOrgId());
