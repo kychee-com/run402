@@ -2,16 +2,23 @@ name: r402s-verify
 
 # The independent-lineage gitvault verifier (Rust). Lives outside the npm
 # workspaces and outside publish.yml; see r402s-verify/README.md for release.
+#
+# It watches test-vectors/** as well as its own tree: the replay exists to
+# disagree with the vendored set, so a vector-only refresh is exactly the change
+# it must not sit out. Filtering on r402s-verify/** alone let the frozen set move
+# without the one job that proves an independent implementation still agrees.
 on:
   push:
     branches: [main]
     paths:
       - "r402s-verify/**"
+      - "test-vectors/**"
       - ".github/workflows/r402s-verify.yml"
   pull_request:
     branches: [main]
     paths:
       - "r402s-verify/**"
+      - "test-vectors/**"
       - ".github/workflows/r402s-verify.yml"
 
 jobs:

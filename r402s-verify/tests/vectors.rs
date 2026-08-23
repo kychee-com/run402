@@ -1,15 +1,18 @@
-//! Replays the task-1.2 vector set when it is reachable
-//! (`R402S_VECTORS=/path/to/vectors.json`, or the private checkout beside this
-//! repo). The vectors are NOT in this repository; without them the test
-//! reports that it skipped and passes — the replay itself is the 5.9 gate and
-//! runs wherever the private docs are checked out.
+//! Replays the task-1.2 vector set. The frozen set is VENDORED at
+//! `test-vectors/r402s-v0/` and integrity-pinned by its `CONTINUITY.json`, so
+//! the replay is a real gate here — not an opportunistic extra that runs only
+//! on a machine with the private docs checked out.
+//!
+//! Resolution order (`vectors::locate_vectors`): `R402S_VECTORS=/path/to/
+//! vectors.json`, else the vendored copy, else a `run402-private` checkout
+//! beside this repo. An unreachable set is a FAILURE, never a skip.
 
 use r402s_verify::vectors;
 
 #[test]
 fn replay_vector_set() {
-    // NOT a skip: the frozen set is vendored at , so an
-    // unreachable path is a broken checkout, not an absent optional input. A
+    // NOT a skip: the frozen set is vendored at `test-vectors/r402s-v0/`, so
+    // an unreachable path is a broken checkout, not an absent optional input. A
     // silently-skipped replay would let this lineage drift from the vectors it
     // exists to disagree with.
     let path = vectors::locate_vectors().expect(

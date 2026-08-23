@@ -110,28 +110,42 @@ one-shot "RNG" whose output is exactly the vector's `ikmE`, through the public
 the resulting `enc`/`ct` equal the reference bytes. Nothing of HPKE is
 re-implemented; the RNG is the only thing supplied (`IkmRng`, vector replay only).
 
-### Test vectors are NOT in this repository
+### Test vectors are VENDORED, and the replay is a gate
 
-They live in the private repo (`docs/strategy/products/gitvault/vectors/`).
-`cargo test` replays them when found via `R402S_VECTORS=/path/to/vectors.json`
-or a `run402-private` checkout beside this repo, and otherwise prints
-`SKIP: vectors.json not found …` and passes. The crate's own unit tests carry
-the RFC 9180 A.2.1 KAT, the reviewer-pinned open-binding golden digest, the
-JCS/strict-parse edge cases, and Ed25519 strictness, so CI is never vacuous.
+The frozen set lives at `test-vectors/r402s-v0/` in this repository —
+`vectors.json`, `hpke-interop/golden.json`, the `schemas/`, and the
+`CONTINUITY.json` that pins their digests. It is generated in the private repo
+(`docs/strategy/products/gitvault/{vectors,schemas}/`) and copied across; never
+hand-edit it.
+
+`cargo test` resolves the set from `R402S_VECTORS=/path/to/vectors.json`, else
+the vendored copy, else a `run402-private` checkout beside this repo — and an
+unreachable set FAILS rather than skipping. Schemas follow the vectors
+(`<vectors>/schemas` when present, else `<vectors>/../schemas`; override with
+`R402S_SCHEMAS`). `PROTOCOL_REVISION` in `src/lib.rs` should equal the set's
+`x-r402s-revision`; a mismatch is reported as a note.
+
+The crate's own unit tests carry the RFC 9180 A.2.1 KAT, the reviewer-pinned
+open-binding golden digest, the JCS/strict-parse edge cases, and Ed25519
+strictness, so even a hypothetically vector-less run is never vacuous.
 
 ## CI
 
-`.github/workflows/r402s-verify.yml` runs on changes under `r402s-verify/**`:
-`cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test`,
-and `scripts/never-assembled-gate.sh`.
+`.github/workflows/r402s-verify.yml` runs on changes under `r402s-verify/**`
+and under `test-vectors/**`: `cargo fmt --check`, `cargo clippy --all-targets
+-D warnings`, `cargo test`, and `scripts/never-assembled-gate.sh`. The vector
+path is in the filter on purpose — a refresh of the frozen set is the change this
+replay most needs to see, and watching only `r402s-verify/**` let the set move
+without it.
 
 ## Release
 
 This crate cannot ride `publish.yml` (that workflow lockstep-publishes the npm
 packages via OIDC). A release of `r402s-verify` is:
 
-1. bump `version` in `Cargo.toml`; `cargo test` with `R402S_VECTORS` pointing
-   at the frozen vector set for the protocol revision (`PROTOCOL_REVISION` in
+1. bump `version` in `Cargo.toml`; `cargo test` against the frozen vector set
+   for the protocol revision — the vendored `test-vectors/r402s-v0/` by
+   default, or `R402S_VECTORS` pointing elsewhere (`PROTOCOL_REVISION` in
    `src/lib.rs` must equal the set's `x-r402s-revision`);
 2. `cargo build --release --locked` on each target and attach the binaries
    (plus `sha256sum`) to a GitHub release tagged `r402s-verify-v<version>`;

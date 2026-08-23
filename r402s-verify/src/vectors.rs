@@ -257,8 +257,9 @@ pub fn run(vectors_path: &Path) -> Result<Report, String> {
     let vec_doc = parse_lenient_layout(&raw)
         .map_err(|e| format!("vectors.json is not strict I-JSON: {e}"))?;
     let dir = vectors_path.parent().ok_or("vectors path has no parent")?;
-    // vendored layout () first,
-    // then the private-repo layout ( + )
+    // vendored layout (`test-vectors/r402s-v0/schemas/`, a sibling of
+    // `vectors.json`) first, then the private-repo layout (`vectors/` +
+    // `../schemas/`)
     let schemas_dir = std::env::var("R402S_SCHEMAS")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
