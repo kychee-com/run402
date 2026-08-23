@@ -136,3 +136,5 @@ Free with active tier. The team reads every message. Or email `tal+402@kychee.co
 - Claude Desktop / Cursor / Cline / Claude Code? → <https://docs.run402.com/llms-mcp.txt>
 - Direct HTTP? → <https://run402.com/llms-full.txt>
 - Latest changes? → <https://run402.com/updates.txt>
+- Reading the source, filing an issue, or checking how a client surface really behaves? → <https://github.com/kychee-com/run402> — MIT, the agent surfaces: SDK, CLI, MCP server, functions runtime, skills
+- Self-hosting, or verifying the server/runtime you depend on? → <https://github.com/kychee-com/run402-core> — Apache-2.0, the open core: Postgres/PostgREST with RLS, storage, routing, functions, portable project archives
