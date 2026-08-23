@@ -23,7 +23,10 @@
     "sdk/"
   ],
   "dependencies": {
+    "@hpke/chacha20poly1305": "^1.8.0",
+    "@hpke/core": "^1.9.0",
     "@humanwhocodes/momoa": "3.3.10",
+    "@noble/ciphers": "^2.3.0",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "@scure/base": "1.2.6",
