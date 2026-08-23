@@ -364,3 +364,89 @@ describe("org use / current / clear", () => {
     }
   });
 });
+
+describe("the Agent Trace recovery paths, end to end", () => {
+  it("ORG_REQUIRED -> org use -> the same call succeeds", async () => {
+    // 1. Nothing configured: the wall names every way forward.
+    const envelope = await expectFailure(() => orgCtx.resolveOrg({}, { cwd: bareDir, env: {} }));
+    assert.equal(envelope.code, "ORG_REQUIRED");
+    const recovery = envelope.next_actions.find((n) => n.command?.startsWith("run402 org use"));
+    assert.ok(recovery, "the wall must offer `org use` as a recovery action");
+
+    // 2. Take the offered action.
+    orgCtx.setSelectedOrgId(SELECTED);
+
+    // 3. The ORIGINAL call now succeeds, unchanged.
+    const r = await orgCtx.resolveOrg({}, { cwd: bareDir, env: {} });
+    assert.equal(r.orgId, SELECTED);
+  });
+
+  it("stale RUN402_ORG vs a binding -> AMBIGUOUS_ORG -> --org resolves it", async () => {
+    // 1. A shell exported for another repo, inside a bound checkout.
+    const envelope = await expectFailure(() =>
+      orgCtx.resolveOrg({}, { cwd: deepDir, env: { RUN402_ORG: A } }),
+    );
+    assert.equal(envelope.code, "AMBIGUOUS_ORG");
+    const flagAction = envelope.next_actions.find((n) => n.command?.includes("--org"));
+    assert.ok(flagAction, "the conflict must name the flag as the resolver");
+
+    // 2. Take the offered action; provenance confirms which source won.
+    const r = await orgCtx.resolveOrg({ org: BOUND }, { cwd: deepDir, env: { RUN402_ORG: A } });
+    assert.equal(r.orgId, BOUND);
+    assert.equal(r.source, "flag");
+  });
+});
+
+describe("an authorization failure is the server's answer, not a retry", () => {
+  it("an explicitly named project that the caller cannot read stops the chain", async () => {
+    orgCtx.setSelectedOrgId(SELECTED); // a LOWER class that could paper over the failure
+    const previous = globalThis.fetch;
+    globalThis.fetch = async () => json({ error: "forbidden" }, 403);
+    try {
+      await assert.rejects(
+        () => orgCtx.resolveOrg({ project: "prj_forbidden" }, { cwd: bareDir, env: {} }),
+        "a named project the caller cannot read must surface, not fall through to the profile selection",
+      );
+    } finally {
+      globalThis.fetch = previous;
+    }
+  });
+
+  it("an IMPLICITLY selected project that no longer resolves falls through, as designed", async () => {
+    // The asymmetry is deliberate: a project the caller NAMED is a hard stop; a
+    // stale active project is just a class that supplies nothing.
+    const previous = globalThis.fetch;
+    globalThis.fetch = async () => json({ error: "forbidden" }, 403);
+    try {
+      orgCtx.setSelectedOrgId(SELECTED);
+      const r = await orgCtx.resolveOrg({}, { cwd: bareDir, env: { RUN402_PROJECT_ID: "prj_stale" } });
+      assert.equal(r.orgId, SELECTED);
+      assert.equal(r.source, "profile");
+    } finally {
+      globalThis.fetch = previous;
+    }
+  });
+});
+
+describe("state.json stays readable by an older CLI", () => {
+  it("the new key does not disturb the active-project state an older reader uses", async () => {
+    const { loadProfileState, setActiveProjectId, getActiveProjectId } =
+      await import("./cli/core-dist/profile-state.js");
+    setActiveProjectId("prj_older");
+    orgCtx.setSelectedOrgId(SELECTED);
+
+    // An older binary reads active_projects / active_project_id and knows
+    // nothing about active_orgs — that must still resolve.
+    assert.equal(getActiveProjectId(), "prj_older");
+    const raw = loadProfileState();
+    assert.ok(raw.active_orgs, "the new key is written");
+    assert.ok(raw.active_projects || raw.active_project_id, "the old keys are untouched");
+
+    // And the reverse: a state.json written by an OLDER CLI (no active_orgs)
+    // reads back as simply having no selection, never as a crash.
+    const { saveProfileState } = await import("./cli/core-dist/profile-state.js");
+    saveProfileState({ active_project_id: "prj_from_old_cli" });
+    assert.equal(orgCtx.getSelectedOrgId(), null);
+    assert.equal(getActiveProjectId(), "prj_from_old_cli");
+  });
+});
