@@ -230,7 +230,32 @@ jobs:
             done
             echo "[$label] exhausted retries."; return 1
           }
-          publish_idempotent run402-mcp
+          # An exit code is not proof of publication. npm can in principle exit
+          # 0 without the version landing, and .npmrc sets loglevel=silent so a
+          # publish step prints nothing either way - there is no signal in this
+          # step's own output. Confirm against the registry instead.
+          #
+          # The window is deliberately long. On 4.25.0, @run402/sdk took several
+          # MINUTES to become visible while run402 and run402-mcp were readable
+          # within seconds; during that window the version endpoint 404'd, the
+          # dist-tags endpoint reported the previous version, and `npm view`
+          # agreed - four signals that all looked like a failed publish and were
+          # simply stale. A short timeout here turns that lag into a red release.
+          verify_on_registry() {
+            local pkg="$1" version="$2" attempt=0 code=000
+            while [ "$attempt" -lt 60 ]; do
+              attempt=$((attempt + 1))
+              code=$(curl -sS -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${pkg}/${version}" || echo 000)
+              if [ "$code" = "200" ]; then
+                echo "[$pkg] verified live on the registry at $version (check $attempt)"
+                return 0
+              fi
+              sleep 10
+            done
+            echo "::error::[$pkg] ${pkg}@${version} still not visible on the registry after ${attempt} checks over ~10 minutes (last HTTP ${code}). Registry lag of this length has been seen before - re-check by hand before concluding the publish failed. If it genuinely did not land, packages published earlier in this run ARE live and this release is partial: do not re-tag, re-run with a fresh patch bump."
+            return 1
+          }
+          publish_idempotent run402-mcp && verify_on_registry run402-mcp "${{ steps.bump.outputs.new }}"
 
       - name: Publish run402 to npm
         if: ${{ !inputs.dry_run }}
@@ -253,7 +278,32 @@ jobs:
             done
             echo "[$label] exhausted retries."; return 1
           }
-          publish_idempotent run402
+          # An exit code is not proof of publication. npm can in principle exit
+          # 0 without the version landing, and .npmrc sets loglevel=silent so a
+          # publish step prints nothing either way - there is no signal in this
+          # step's own output. Confirm against the registry instead.
+          #
+          # The window is deliberately long. On 4.25.0, @run402/sdk took several
+          # MINUTES to become visible while run402 and run402-mcp were readable
+          # within seconds; during that window the version endpoint 404'd, the
+          # dist-tags endpoint reported the previous version, and `npm view`
+          # agreed - four signals that all looked like a failed publish and were
+          # simply stale. A short timeout here turns that lag into a red release.
+          verify_on_registry() {
+            local pkg="$1" version="$2" attempt=0 code=000
+            while [ "$attempt" -lt 60 ]; do
+              attempt=$((attempt + 1))
+              code=$(curl -sS -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${pkg}/${version}" || echo 000)
+              if [ "$code" = "200" ]; then
+                echo "[$pkg] verified live on the registry at $version (check $attempt)"
+                return 0
+              fi
+              sleep 10
+            done
+            echo "::error::[$pkg] ${pkg}@${version} still not visible on the registry after ${attempt} checks over ~10 minutes (last HTTP ${code}). Registry lag of this length has been seen before - re-check by hand before concluding the publish failed. If it genuinely did not land, packages published earlier in this run ARE live and this release is partial: do not re-tag, re-run with a fresh patch bump."
+            return 1
+          }
+          publish_idempotent run402 && verify_on_registry run402 "${{ steps.bump.outputs.new }}"
 
       - name: Publish @run402/sdk to npm
         if: ${{ !inputs.dry_run }}
@@ -276,7 +326,32 @@ jobs:
             done
             echo "[$label] exhausted retries."; return 1
           }
-          publish_idempotent "@run402/sdk"
+          # An exit code is not proof of publication. npm can in principle exit
+          # 0 without the version landing, and .npmrc sets loglevel=silent so a
+          # publish step prints nothing either way - there is no signal in this
+          # step's own output. Confirm against the registry instead.
+          #
+          # The window is deliberately long. On 4.25.0, @run402/sdk took several
+          # MINUTES to become visible while run402 and run402-mcp were readable
+          # within seconds; during that window the version endpoint 404'd, the
+          # dist-tags endpoint reported the previous version, and `npm view`
+          # agreed - four signals that all looked like a failed publish and were
+          # simply stale. A short timeout here turns that lag into a red release.
+          verify_on_registry() {
+            local pkg="$1" version="$2" attempt=0 code=000
+            while [ "$attempt" -lt 60 ]; do
+              attempt=$((attempt + 1))
+              code=$(curl -sS -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${pkg}/${version}" || echo 000)
+              if [ "$code" = "200" ]; then
+                echo "[$pkg] verified live on the registry at $version (check $attempt)"
+                return 0
+              fi
+              sleep 10
+            done
+            echo "::error::[$pkg] ${pkg}@${version} still not visible on the registry after ${attempt} checks over ~10 minutes (last HTTP ${code}). Registry lag of this length has been seen before - re-check by hand before concluding the publish failed. If it genuinely did not land, packages published earlier in this run ARE live and this release is partial: do not re-tag, re-run with a fresh patch bump."
+            return 1
+          }
+          publish_idempotent "@run402/sdk" && verify_on_registry "@run402/sdk" "${{ steps.bump.outputs.new }}"
 
       - name: Commit version bump (rebase-safe — retries against a moving main)
         if: ${{ !inputs.dry_run }}
