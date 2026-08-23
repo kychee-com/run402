@@ -18,11 +18,20 @@ export interface ActiveProjectState {
   updated_at: string;
 }
 
+export interface ActiveOrgState {
+  org_id: string;
+  api_base: string;
+  principal?: string | null;
+  profile: string;
+  updated_at: string;
+}
+
 export interface ProfileState {
   version?: 1;
   active_project_id?: string;
   previous_active_project_id?: string;
   active_projects?: Record<string, ActiveProjectState>;
+  active_orgs?: Record<string, ActiveOrgState>;
   migrations?: Record<string, unknown>;
 }
 
@@ -146,6 +155,55 @@ export function clearActiveProjectId(projectId: string, path?: string, scope: Ac
       }
       delete state.previous_active_project_id;
     }
+    saveProfileState(state, p);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Selected organization (add-cli-current-org, design D3).
+//
+// Scoped exactly like the active project id — by api_base, profile, and
+// principal — and stored in the SAME per-profile state.json, never in the
+// base-level config.json beside `active_wallet`. The chain is
+// wallet -> principal -> memberships, so a globally-selected org survives
+// `wallets use other` and then either 403s or, worse, silently resolves to a
+// valid-but-wrong org when both principals are members. Per-profile makes the
+// failure mode "this profile has no current org", which the ORG_REQUIRED
+// envelope already knows how to explain.
+//
+// There is deliberately no top-level `active_org_id` mirror: the project one
+// exists only to carry pre-scoping installs forward, and this key is new.
+// ---------------------------------------------------------------------------
+
+export function getActiveOrgId(path?: string, scope: ActiveProjectScope = {}): string | undefined {
+  const state = loadProfileState(path);
+  return state.active_orgs?.[activeProjectScopeKey(scope)]?.org_id;
+}
+
+export function setActiveOrgId(orgId: string, path?: string, scope: ActiveProjectScope = {}): void {
+  const p = path ?? getProfileStatePath();
+  withFileLock(p, () => {
+    const state = loadProfileState(p);
+    const key = activeProjectScopeKey(scope);
+    const resolved = defaultActiveProjectScope(scope);
+    state.active_orgs = state.active_orgs ?? {};
+    state.active_orgs[key] = {
+      org_id: orgId,
+      api_base: resolved.api_base,
+      principal: resolved.principal ?? null,
+      profile: resolved.profile,
+      updated_at: new Date().toISOString(),
+    };
+    saveProfileState(state, p);
+  });
+}
+
+export function clearActiveOrgId(path?: string, scope: ActiveProjectScope = {}): void {
+  const p = path ?? getProfileStatePath();
+  withFileLock(p, () => {
+    const state = loadProfileState(p);
+    const key = activeProjectScopeKey(scope);
+    if (state.active_orgs?.[key]) delete state.active_orgs[key];
     saveProfileState(state, p);
   });
 }

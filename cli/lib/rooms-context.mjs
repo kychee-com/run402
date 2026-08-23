@@ -5,6 +5,10 @@
  * Room addressing (precedence):
  *   --org <org_id> + --room <key>   explicit (named org rooms)
  *   RUN402_ROOM=<org_id>/<key>      env form of the same
+ *   <room key> + the shared chain   a room key from --room or the binding
+ *                                   file's `room`, with the ORG resolved by
+ *                                   `org-context.mjs` — this is what reaches a
+ *                                   named room in a checkout with no project
  *   (default)                       the project's DEFAULT room — the room key
  *                                   IS the project id; org resolved via the
  *                                   project overview (`rooms.forProject`).
@@ -21,8 +25,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fail } from "./sdk-errors.mjs";
-import { resolveProjectId } from "./config.mjs";
+import { getActiveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
+import { resolveOrg } from "./org-context.mjs";
+import { findBindingKey } from "./wallet-context.mjs";
+import { nextAction } from "./next-actions.mjs";
 
 export const ROOM_ENV = "RUN402_ROOM";
 export const PRESENCE_ENV = "RUN402_PRESENCE_ID";
@@ -30,16 +37,22 @@ export const PRESENCE_ENV = "RUN402_PRESENCE_ID";
 const STATE_DIR = ".run402";
 const STATE_FILE = "messaging.json";
 
-/** Resolve the addressed room to { orgId, roomKey } (one SDK lookup at most). */
+/**
+ * Resolve the addressed room to { orgId, roomKey } (one SDK lookup at most).
+ *
+ * A room is a PAIR, and this function owns the pair. What it no longer owns is
+ * the org half of its own fallback: below the explicit forms, the org comes
+ * from the shared chain in `org-context.mjs` (flag → env → binding → profile
+ * selection → active project) while the room key comes from `--room`, the
+ * binding file's `room` key, or the project's default room. That is what makes
+ * a named room reachable in a checkout with no project link at all.
+ */
 export async function resolveRoom({ org, room, project } = {}) {
-  if (room && !org) {
-    fail({
-      code: "BAD_USAGE",
-      message: "--room names an org room and needs --org <org_id> beside it.",
-      hint: "For the project's default room, omit both (or pass --project). For a named room: --org <org_id> --room <key>.",
-    });
-  }
-  if (org && room) return { orgId: org, roomKey: room };
+  // 1. Both halves named explicitly.
+  if (org && room) return { orgId: org, roomKey: room, orgSource: "flag", orgSourceDetail: "--org" };
+
+  // 2. The compound env form names both, and keeps outranking everything below
+  //    it — a harness wired with RUN402_ROOM selects exactly the room it names.
   const envRoom = (process.env[ROOM_ENV] ?? "").trim();
   if (envRoom) {
     const slash = envRoom.indexOf("/");
@@ -50,11 +63,61 @@ export async function resolveRoom({ org, room, project } = {}) {
         details: { value: envRoom },
       });
     }
-    return { orgId: envRoom.slice(0, slash), roomKey: envRoom.slice(slash + 1) };
+    return {
+      orgId: envRoom.slice(0, slash),
+      roomKey: envRoom.slice(slash + 1),
+      orgSource: "env",
+      orgSourceDetail: ROOM_ENV,
+    };
   }
-  const projectId = resolveProjectId(project);
-  const scoped = await getSdk().rooms.forProject(projectId);
-  return { orgId: scoped.orgId, roomKey: scoped.roomKey };
+
+  // 3. A room key without an org: the org resolves through the shared chain.
+  //    (`--room` alone used to be a hard error; it now works whenever the org
+  //    resolves, and fails with ORG_REQUIRED — naming every way to supply one —
+  //    when it does not.)
+  const bindingRoom = findBindingKey(process.cwd(), "room");
+  const roomKey = room ?? bindingRoom?.value ?? null;
+  if (roomKey) {
+    const resolved = await resolveOrg({ org, project }, { cmd: "rooms" });
+    return {
+      orgId: resolved.orgId,
+      roomKey,
+      orgSource: resolved.source,
+      orgSourceDetail: resolved.sourceDetail,
+    };
+  }
+
+  // 4. No room key anywhere: the project's DEFAULT room, whose key IS the
+  //    project id — the zero-config rendezvous carried by run402.config.json.
+  const effectiveProject = project || (process.env.RUN402_PROJECT_ID ?? "").trim() || getActiveProjectId();
+  if (!effectiveProject) {
+    fail({
+      code: "ROOM_REQUIRED",
+      message: "No room addressed and no current project to take a default room from.",
+      hint: `Pass --org <org_id> --room <key>, set ${ROOM_ENV}="<org_id>/<room_key>", add a "room" key to .run402.json, or select a project with: run402 projects use <project_id>`,
+      next_actions: [
+        nextAction("edit_request", {
+          command: "run402 rooms who --org <org_id> --room <key>",
+          why: "Name the organization and room on this one call.",
+        }),
+        nextAction("edit_request", {
+          command: `echo '{"org":"<org_id>","room":"<key>"}' > .run402.json`,
+          why: "Bind this checkout so every agent in it lands in the same room with no flags.",
+        }),
+        nextAction("edit_request", {
+          command: "run402 projects use <project_id>",
+          why: "Select a project to use its default room (the room key IS the project id).",
+        }),
+      ],
+    });
+  }
+  const scoped = await getSdk().rooms.forProject(effectiveProject);
+  return {
+    orgId: scoped.orgId,
+    roomKey: scoped.roomKey,
+    orgSource: "profile",
+    orgSourceDetail: "projects use",
+  };
 }
 
 function statePath() {

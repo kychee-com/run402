@@ -5,6 +5,7 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 import { withAutoApprove } from "./operator.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
+import { stampOrgFromProject } from "./org-context.mjs";
 import { assertKnownFlags, failBadProjectId, flagValue, hasHelp, normalizeArgv, positionalArgs, resolveProjectSelector, validateRegularFile, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 projects — Manage your deployed Run402 projects
@@ -802,7 +803,11 @@ async function use(projectId) {
   }
   try {
     await getSdk().projects.use(projectId);
-    console.log(JSON.stringify({ active_project_id: projectId, set: true }));
+    // A project determines its org unambiguously, so selecting one also makes
+    // that org current (add-cli-current-org D4). Best-effort by construction:
+    // the project selection the caller asked for must not fail on this.
+    const orgId = await stampOrgFromProject(projectId);
+    console.log(JSON.stringify({ active_project_id: projectId, set: true, org_id: orgId ?? null }));
   } catch (err) {
     reportSdkError(err);
   }

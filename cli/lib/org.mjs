@@ -1,9 +1,17 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
+  resolveOrg,
+  orgProvenance,
+  getSelectedOrgId,
+  setSelectedOrgId,
+  clearSelectedOrgId,
+} from "./org-context.mjs";
+import {
   normalizeArgv,
   assertKnownFlags,
   flagValue,
+  positionalArgs,
   parseIntegerFlag,
   requirePositionalCount,
   failUnknownSubcommand,
@@ -20,6 +28,9 @@ Usage:
   run402 org rename <org_id> --name <display_name>   (or: --clear to remove the label)
   run402 org payout-wallet <org_id> --wallet <wallet_address>  (or: --clear to remove the explicit default)
   run402 org whoami
+  run402 org use     <org_id>
+  run402 org current
+  run402 org clear
   run402 org audit  <org_id> [--limit N] [--after <cursor>] [--before <cursor>]
   run402 org member list <org_id>
   run402 org member add  <org_id> --wallet <wallet_address> [--role <role>]
@@ -37,6 +48,9 @@ Subcommands:
   list        Orgs you are a member of
   get         Read one org (label + tier/lease + your role)
   rename      Set or clear an org's display label (owner-only)
+  use         Select the current org for this wallet profile
+  current     Report the resolved current org and where it came from
+  clear       Clear this wallet profile's org selection
   payout-wallet  Set or clear the tenant route payout wallet (admin+)
   whoami      Resolved principal + org memberships (GET /agent/v1/whoami)
   member      Manage members (list, add, role, rm) — mutations require owner
@@ -193,6 +207,52 @@ async function whoami(args) {
   requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org whoami" });
   try {
     console.log(JSON.stringify(await getSdk().orgs.whoami(), null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+// ── Current organization (add-cli-current-org) ─────────────────────────────────
+//
+// The selection is per WALLET PROFILE, not global: the chain is
+// wallet -> principal -> memberships, so a global selection survives
+// `wallets use other` and then either 403s or silently resolves to a
+// valid-but-wrong org when both principals are members.
+
+async function use(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--help", "-h"]);
+  requirePositionalCount(a, [], {
+    min: 1, max: 1, command: "run402 org use <org_id>", missing: "<org_id>",
+  });
+  const orgId = positionalArgs(a, [])[0];
+  setSelectedOrgId(orgId);
+  console.log(JSON.stringify({ org_id: orgId, selected: true, scope: "wallet_profile" }, null, 2));
+}
+
+async function clear(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--help", "-h"]);
+  requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org clear" });
+  const previous = getSelectedOrgId();
+  clearSelectedOrgId();
+  console.log(JSON.stringify({ org_id: null, selected: false, previous_org_id: previous ?? null }, null, 2));
+}
+
+async function current(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--help", "-h"]);
+  requirePositionalCount(a, [], { min: 0, max: 0, command: "run402 org current" });
+  try {
+    // `cmd: "org"` exempts this from the ambiguity error on purpose: the
+    // command that reports the selection must stay usable while it is ambiguous.
+    // `optional` keeps an empty selection an explicit null state rather than a
+    // failure — reporting is not acting.
+    const resolved = await resolveOrg([], { cmd: "org", optional: true });
+    console.log(JSON.stringify({
+      ...orgProvenance(resolved),
+      selected_org_id: getSelectedOrgId() ?? null,
+    }, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
@@ -471,6 +531,9 @@ export async function run(sub, args) {
     case "rename": await rename(args); break;
     case "payout-wallet": await payoutWallet(args); break;
     case "whoami": await whoami(args); break;
+    case "use": await use(args); break;
+    case "current": await current(args); break;
+    case "clear": await clear(args); break;
     case "audit": await audit(args); break;
     default:
       failUnknownSubcommand("org", sub);

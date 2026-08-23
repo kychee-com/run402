@@ -647,6 +647,12 @@ const SURFACE: Capability[] = [
   { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      mcp: "set_org_member_role",   cli: "org:member:role",   openclaw: "org:member:role" },
   { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     mcp: "remove_org_member",     cli: "org:member:rm",     openclaw: "org:member:rm" },
   { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        mcp: null,                    cli: "org:audit",         openclaw: "org:audit" },
+  // Current-org selection (add-cli-current-org): LOCAL state, like wallets:use
+  // and the local half of projects:use. No endpoint — the org id is resolved
+  // client-side and only travels as a path segment on the calls that use it.
+  { id: "org_use",             endpoint: "(local)",                                           mcp: null,                    cli: "org:use",           openclaw: "org:use" },
+  { id: "org_current",         endpoint: "(local)",                                           mcp: null,                    cli: "org:current",       openclaw: "org:current" },
+  { id: "org_clear",           endpoint: "(local)",                                           mcp: null,                    cli: "org:clear",         openclaw: "org:clear" },
   { id: "org_invite_list",     endpoint: "GET /orgs/v1/:org_id/invites",                      mcp: null,                    cli: "org:invite:list",   openclaw: "org:invite:list" },
   { id: "org_invite_create",   endpoint: "POST /orgs/v1/:org_id/invites",                     mcp: null,                    cli: "org:invite:create", openclaw: "org:invite:create" },
   { id: "org_invite_rm",       endpoint: "DELETE /orgs/v1/:org_id/invites/:principal_id",     mcp: null,                    cli: "org:invite:rm",     openclaw: "org:invite:rm" },
@@ -807,6 +813,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   wallets_current: null,
   wallets_new: null,
   wallets_use: null,
+  org_use: null,
+  org_current: null,
+  org_clear: null,
   wallets_rename: null,
   wallets_bind: null,
   wallets_unbind: null,

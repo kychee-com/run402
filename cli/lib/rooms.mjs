@@ -50,6 +50,12 @@ Room addressing (all subcommands):
   --org <org_id> --room <key>
                         A named org room (multi-repo products); also
                         RUN402_ROOM=<org_id>/<key>.
+  --room <key>          A named org room whose ORG comes from the current-org
+                        chain: --org / RUN402_ORG / the 'org' key of the nearest
+                        .run402.json / 'run402 org use'. A checkout that hosts
+                        nothing on run402 reaches a room this way.
+  .run402.json          {"org":"<org_id>","room":"<key>"} binds a checkout, so
+                        every agent in it lands in the same room with no flags.
 
 Subcommands:
   who     Who is live in the room (name, task, active claims). Registers your
@@ -155,6 +161,8 @@ async function who(args) {
     });
     console.log(JSON.stringify({
       org_id: room.orgId,
+      org_source: room.orgSource ?? null,
+      org_source_detail: room.orgSourceDetail ?? null,
       room_key: room.roomKey,
       you: me,
       ...page,

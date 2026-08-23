@@ -69,14 +69,14 @@ export function splitWalletFlag(rawArgv = []) {
   return { argv, walletFlag: flag };
 }
 
-function readBindingFrom(dir) {
+function readBindingKeyFrom(dir, key) {
   // .run402.local.json (gitignored personal override) beats .run402.json.
   for (const fname of [".run402.local.json", ".run402.json"]) {
     const p = join(dir, fname);
     try {
       const parsed = JSON.parse(readFileSync(p, "utf8"));
-      const w = parsed?.wallet;
-      if (typeof w === "string" && w.trim()) return { wallet: w.trim(), file: p };
+      const v = parsed?.[key];
+      if (typeof v === "string" && v.trim()) return { value: v.trim(), file: p };
     } catch {
       /* missing / unreadable / malformed → skip */
     }
@@ -84,16 +84,30 @@ function readBindingFrom(dir) {
   return null;
 }
 
-/** Nearest binding walking up from `startDir` to the filesystem root. */
-export function findBinding(startDir) {
+/**
+ * Nearest binding carrying `key`, walking up from `startDir` to the root.
+ *
+ * Keys bind INDEPENDENTLY (add-cli-current-org, design D7): a file declaring
+ * only `org` leaves wallet resolution untouched, and each key resolves at the
+ * nearest file that carries it — so `/work/.run402.json` may supply the org
+ * while `/work/api/.run402.json` supplies the wallet. Unknown keys are ignored,
+ * which is what makes older CLIs forward-compatible with these files.
+ */
+export function findBindingKey(startDir, key) {
   let dir = resolve(startDir);
   for (;;) {
-    const b = readBindingFrom(dir);
-    if (b) return b;
+    const hit = readBindingKeyFrom(dir, key);
+    if (hit) return hit;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
+}
+
+/** Nearest wallet binding walking up from `startDir` to the filesystem root. */
+export function findBinding(startDir) {
+  const hit = findBindingKey(startDir, "wallet");
+  return hit ? { wallet: hit.value, file: hit.file } : null;
 }
 
 function assertValidName(name, origin) {
