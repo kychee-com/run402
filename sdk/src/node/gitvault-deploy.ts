@@ -1,5 +1,5 @@
 /**
- * gitvault — push-gated deploy (protocol rev 40 §6.5; task 5.6, lane supplied
+ * gitvault — push-gated deploy (protocol rev 41 §6.5; task 5.6, lane supplied
  * by change `gitvault-deploy-lane`).
  *
  * Every deploy has a commit, and the artifacts it ships CORRESPOND to it:

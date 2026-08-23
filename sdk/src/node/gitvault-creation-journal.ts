@@ -1,5 +1,5 @@
 /**
- * gitvault — the six-stage crash-safe creation journal (protocol rev 40 §5.2;
+ * gitvault — the six-stage crash-safe creation journal (protocol rev 41 §5.2;
  * task 5.3).
  *
  *   LOCAL_KEYS_PREPARED   identity + client_creation_id            (no ciphertext yet —

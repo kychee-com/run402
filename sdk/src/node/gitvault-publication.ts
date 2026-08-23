@@ -1,5 +1,5 @@
 /**
- * gitvault — publication (protocol rev 40 §6 + §4.4–4.7 + §5A client side;
+ * gitvault — publication (protocol rev 41 §6 + §4.4–4.7 + §5A client side;
  * task 5.4).
  *
  * What lives here:

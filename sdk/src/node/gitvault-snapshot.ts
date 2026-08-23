@@ -1,5 +1,5 @@
 /**
- * gitvault — snapshot + hardened git execution (protocol rev 40 §6.6; task 5.5).
+ * gitvault — snapshot + hardened git execution (protocol rev 41 §6.6; task 5.5).
  *
  * Snapshot policy: clean tree → `HEAD`; dirty → a synthetic commit of tracked
  * + untracked-not-ignored paths (parented on HEAD; parentless on an unborn

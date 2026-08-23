@@ -1,5 +1,5 @@
 /**
- * gitvault — the principal keystore (protocol rev 40 §5.1; task 5.2).
+ * gitvault — the principal keystore (protocol rev 41 §5.1; task 5.2).
  *
  * Layout (under the active profile's config dir, beside the project-key cache
  * `core/src/keystore.ts` manages — `RUN402_CONFIG_DIR` / `RUN402_WALLET` aware):
