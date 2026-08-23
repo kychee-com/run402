@@ -5964,3 +5964,149 @@ describe("Deploy.apply (Astro adapter build-tree guard — gh#411)", () => {
     assert.equal(result.release_id, "rel_ok");
   });
 });
+
+/**
+ * gitvault §6.5 on the wire (change `gitvault-deploy-lane`).
+ *
+ * The lane's correctness is tested against a real vault in
+ * `node/gitvault-apply.test.ts`; what is pinned HERE is the two-field wire
+ * contract itself — the exact bodies the 7.2 production smoke proved against
+ * the live gateway. A rename on either side is invisible to the lane tests
+ * (they fake the engine) and would show up only as a `required` project
+ * refusing every deploy in production.
+ */
+describe("gitvault: the capture declaration and the activation block on the wire", () => {
+  const CAPTURE = { capture_id: "a".repeat(32), snapshot_oid_hmac: "b".repeat(64) };
+
+  it("plan carries `gitvault: {capture_id, snapshot_oid_hmac}` and reads back the canonical digest", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        return { ...noContentPlan("plan_gv", "op_gv"), gitvault: { apply_plan_sha256: "c".repeat(64) } };
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const { plan } = await new Deploy(w.client).plan(
+      { project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
+      { gitvault: CAPTURE },
+    );
+
+    const body = w.requests.find((r) => r.path === "/apply/v1/plans")!.body as Record<string, unknown>;
+    assert.deepEqual(body.gitvault, CAPTURE);
+    assert.equal(plan.gitvault?.apply_plan_sha256, "c".repeat(64));
+  });
+
+  it("a plan with no capture sends no gitvault key at all — not an empty object", async () => {
+    const w = makeWiring();
+    w.setHandler(() => noContentPlan("plan_plain", "op_plain"));
+    await new Deploy(w.client).plan({ project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } });
+    const body = w.requests[0]!.body as Record<string, unknown>;
+    assert.equal("gitvault" in body, false);
+  });
+
+  it("commit presents the activation token by id, and the override by reason", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path.endsWith("/commit")) return readyCommit("op_gv", "rel_gv");
+      if (req.path.startsWith("/apply/v1/operations/")) {
+        return { operation_id: "op_gv", status: "ready", release_id: "rel_gv", urls: {} } as OperationSnapshot;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+
+    await deploy.commit("plan_gv", { project: "prj_test", gitvault: { activation_token_id: "ct_" + "0".repeat(32) } });
+    assert.deepEqual(
+      (w.requests.find((r) => r.path === "/apply/v1/plans/plan_gv/commit")!.body as Record<string, unknown>).gitvault,
+      { activation_token_id: "ct_" + "0".repeat(32) },
+    );
+
+    w.requests.length = 0;
+    await deploy.commit("plan_gv", { project: "prj_test", gitvault: { allow_unvaulted: true, override_reason: "vault unreachable" } });
+    assert.deepEqual(
+      (w.requests.find((r) => r.path === "/apply/v1/plans/plan_gv/commit")!.body as Record<string, unknown>).gitvault,
+      { allow_unvaulted: true, override_reason: "vault unreachable" },
+    );
+  });
+
+  it("apply() threads the declaration to the plan and the authorized block to the commit", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        return { ...noContentPlan("plan_gv", "op_gv"), gitvault: { apply_plan_sha256: "d".repeat(64) } };
+      }
+      if (req.path.endsWith("/commit")) return readyCommit("op_gv", "rel_gv");
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    const seen: unknown[] = [];
+    await new Deploy(w.client).apply(
+      { project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
+      {
+        gitvault: {
+          declaration: CAPTURE,
+          authorize: async (planned) => {
+            seen.push(planned);
+            return { activation_token_id: "ct_" + "1".repeat(32) };
+          },
+        },
+      },
+    );
+
+    // `authorize` is handed the plan identity the token must be minted against,
+    // and runs AFTER content upload — the artifacts are fixed by then, which is
+    // what makes the correspondence check meaningful at that point.
+    assert.deepEqual(seen, [{ plan_id: "plan_gv", operation_id: "op_gv", apply_plan_sha256: "d".repeat(64) }]);
+    assert.deepEqual((w.requests[0]!.body as Record<string, unknown>).gitvault, CAPTURE);
+    assert.deepEqual(
+      (w.requests.find((r) => r.path.endsWith("/commit"))!.body as Record<string, unknown>).gitvault,
+      { activation_token_id: "ct_" + "1".repeat(32) },
+    );
+  });
+
+  it("a throwing `authorize` aborts before the commit — nothing is activated", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        return { ...noContentPlan("plan_gv", "op_gv"), gitvault: { apply_plan_sha256: "e".repeat(64) } };
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+
+    await assert.rejects(
+      new Deploy(w.client).apply(
+        { project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
+        {
+          gitvault: {
+            declaration: CAPTURE,
+            authorize: async () => { throw new LocalError("the captured source changed", "verifying snapshot correspondence", { code: "SNAPSHOT_MOVED_DURING_DEPLOY" }); },
+          },
+        },
+      ),
+      (e: unknown) => (e as { code?: string }).code === "SNAPSHOT_MOVED_DURING_DEPLOY",
+    );
+    assert.equal(w.requests.some((r) => r.path.endsWith("/commit")), false);
+  });
+
+  it("a gitvault-bound apply never auto-retries: one operation, one token", async () => {
+    const w = makeWiring();
+    let plans = 0;
+    w.setHandler((req) => {
+      if (req.path === "/apply/v1/plans") {
+        plans += 1;
+        return { ...noContentPlan(`plan_${plans}`, `op_${plans}`), gitvault: { apply_plan_sha256: "f".repeat(64) } };
+      }
+      // A commit race that WOULD be auto-retried on a plain apply.
+      throw new Run402DeployError("plan superseded", { code: "PLAN_SUPERSEDED", phase: "commit", retryable: true, context: "committing deploy" });
+    });
+
+    await assert.rejects(
+      new Deploy(w.client).apply(
+        { project: "prj_test", site: { replace: { "index.html": "<h1>hi</h1>" } } },
+        { maxRetries: 2, gitvault: { declaration: CAPTURE, authorize: async () => ({ activation_token_id: "ct_" + "2".repeat(32) }) } },
+      ),
+    );
+    assert.equal(plans, 1, "a retry would plan a NEW operation the minted token cannot answer for");
+  });
+});
