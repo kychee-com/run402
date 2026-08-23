@@ -1,6 +1,6 @@
 {
  "$id": "constants.json",
- "title": "r402s/v0 constants the single machine-readable source; all values decimal strings (DRAFT rev 40)",
+ "title": "r402s/v0 constants the single machine-readable source; all values decimal strings (DRAFT rev 41)",
  "constants": {
   "MAX_CANONICAL_REFS": "10000",
   "MAX_REF_UPDATES_PER_TRANSACTION": "1000",
@@ -33,5 +33,5 @@
   "MAX_STAGE_CANDIDATE_STORED_BYTES": "100000000000000",
   "MAX_CUT_COMPLETIONS": "10000"
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

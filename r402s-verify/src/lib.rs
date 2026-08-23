@@ -34,4 +34,4 @@ pub mod vectors;
 pub const IMPLEMENTATION_ID: &str = "r402s-verify";
 pub const IMPLEMENTATION_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The protocol revision this verifier was written against.
-pub const PROTOCOL_REVISION: &str = "40";
+pub const PROTOCOL_REVISION: &str = "41";

@@ -144,13 +144,13 @@
   ]
  },
  "current": {
-  "description": "the committed artifacts at protocol rev 40. Every difference from pre_fold is the revision stamp alone: golden.json differs from the pre-fold file ONLY in its `x-r402s-revision` member (38 -> 40); the 127 vectors differ ONLY in the seven `state-<machine>-edges` descriptions that spell `rev 40` instead of `rev 38` — the revision-neutral aggregates are byte-equal to pre_fold, which is the D188 \"no golden byte changed\" proof across the rev-38 -> rev-40 bumps.",
-  "protocol_revision": "40",
-  "golden_json_sha256": "3997eb623aef2e8f795263eb6abc01308ee4c0adad1f091734135972260bf857",
+  "description": "the committed artifacts at protocol rev 41. Every difference from pre_fold is the revision stamp alone: golden.json differs from the pre-fold file ONLY in its `x-r402s-revision` member (38 -> 41); the 127 vectors differ ONLY in the seven `state-<machine>-edges` descriptions that spell `rev 41` instead of `rev 38` — the revision-neutral aggregates are byte-equal to pre_fold, which is the D188 \"no golden byte changed\" proof across the rev-38 -> rev-41 bumps.",
+  "protocol_revision": "41",
+  "golden_json_sha256": "4dc5053a7e2f98e350cf15a8b4d2b0ae72a365bf0f5fa8f9299c06502c9e5065",
   "golden_json_revision_neutral_sha256": "f7c3ff76abbdfb30718e28b86de6250920bb1d52c0db5594a69041d48282b3b5",
-  "vectors_json_sha256": "ed6c87d23ab3bc95d86d8030cd623516f0a6066f3ff30439cd4e2dcec89acb20",
+  "vectors_json_sha256": "f7a2119c319ed11652051499f96a174facd77fea765fe70288dcd716240c10cf",
   "vectors_json_vector_count": "275",
-  "vectors_127_aggregate_sha256": "e041fb54a44eb7627c65cace319e8534d7798c613e7873cda5f12aef5bf12bb0",
+  "vectors_127_aggregate_sha256": "dbe9f9a6d405699d0f9fa55cb8bd1eaeb9fcb6d66fe762243c0cba068ff8d215",
   "vectors_127_aggregate_revision_neutral_sha256": "36c0dd43ce024dfbc0a16faa94ce436d613c166f4589fb47b321dbec1be2e6c5",
   "vectors_differing_from_pre_fold_by_revision_stamp_only": [
    "state-activation_token-edges",

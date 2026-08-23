@@ -1,4 +1,4 @@
-; r402s/v0 scalar grammars (RFC 5234 ABNF, RFC 7405 case-sensitive strings) -- DRAFT rev 40
+; r402s/v0 scalar grammars (RFC 5234 ABNF, RFC 7405 case-sensitive strings) -- DRAFT rev 41
 ;
 ; Every rule here is the grammar behind ONE JSON-Schema `pattern` (or `const`/`enum`) in
 ; common.json. validate.py carries the rule-name <-> $defs crosswalk and fails when a

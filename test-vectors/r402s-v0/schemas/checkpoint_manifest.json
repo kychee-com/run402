@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "checkpoint_manifest.json",
- "title": "r402s/v0 checkpoint_manifest plaintext encrypted at rest; total_plaintext_size_bytes = sum of packs[i].plaintext_size_bytes (the manifest object itself excluded) (DRAFT rev 40)",
+ "title": "r402s/v0 checkpoint_manifest plaintext encrypted at rest; total_plaintext_size_bytes = sum of packs[i].plaintext_size_bytes (the manifest object itself excluded) (DRAFT rev 41)",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -89,5 +89,5 @@
    "$ref": "common.json#/$defs/sha256"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

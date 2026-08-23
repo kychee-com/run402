@@ -1076,7 +1076,7 @@ export class GitvaultVault {
   }
 
   repoFile(): GitvaultRepoFile {
-    if (!this.keystore.readIdentity()) fail("KEYSTORE_MISSING", "no gitvault identity in the keystore", "opening gitvault vault", undefined, [{ action: "restore ~/.run402/source from backup or accept vault loss" }]);
+    if (!this.keystore.readIdentity()) fail("KEYSTORE_MISSING", "no gitvault identity in the keystore", "opening gitvault vault", undefined, [{ action: "restore ~/.config/run402/gitvault from backup or accept vault loss" }]);
     const repo = this.keystore.readRepo(this.repoId);
     if (!repo) fail("GITVAULT_REPO_STATE_MISSING", `no keystore repo file for ${this.repoId}; restore it from the principal's own envelope (keystore.restoreRepoFromEnvelope)`, "opening gitvault vault", { repo_id: this.repoId });
     return repo;

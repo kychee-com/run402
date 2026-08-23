@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "prune_completion.json",
- "title": "r402s/v0 prune_completion (DRAFT rev 40) — exactly one entry per intent candidate in the intent's canonical order; AT MOST ONE accepted completion per intent; terminal outcomes are BICONDITIONAL on the result vector + epoch check; cycle batches mirror the intent's role/stage/batch fields",
+ "title": "r402s/v0 prune_completion (DRAFT rev 41) — exactly one entry per intent candidate in the intent's canonical order; AT MOST ONE accepted completion per intent; terminal outcomes are BICONDITIONAL on the result vector + epoch check; cycle batches mirror the intent's role/stage/batch fields",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -212,5 +212,5 @@
    }
   }
  ],
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

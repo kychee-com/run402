@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "maintenance_cycle_terminal.json",
- "title": "r402s/v0 maintenance_cycle_terminal (DRAFT rev 40) — stored CREATE-ONLY at the deterministic per-cycle path maintenance/terminals/<maintenance_cycle_id>.terminal.json (the terminal CAS; object_id in the body, admission-record precedent); published through the four-state terminal machine (exact signed bytes persisted BEFORE I/O); carries the accepted-event frontier — DR counts exactly the cycle-tagged completions with cycle_event_seq <= last_accepted_cycle_event_seq",
+ "title": "r402s/v0 maintenance_cycle_terminal (DRAFT rev 41) — stored CREATE-ONLY at the deterministic per-cycle path maintenance/terminals/<maintenance_cycle_id>.terminal.json (the terminal CAS; object_id in the body, admission-record precedent); published through the four-state terminal machine (exact signed bytes persisted BEFORE I/O); carries the accepted-event frontier — DR counts exactly the cycle-tagged completions with cycle_event_seq <= last_accepted_cycle_event_seq",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -197,5 +197,5 @@
    }
   }
  ],
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

@@ -1,8 +1,8 @@
 {
  "$id": "product-model.json",
- "title": "r402s/v0 normalized admission product model (DRAFT rev 40)",
+ "title": "r402s/v0 normalized admission product model (DRAFT rev 41)",
  "description": "STRUCTURED, TYPED product model over (admission, cut_subfence, cycle_admission_fence, cycle_replacement, terminal_publication, intent/claim ownership) consumed by product_executor.py. Derived from state-machines.json (the edge relation) + protocol §5A / §7.2 / D154–D162 / D166 (the composed semantics). Round-38 finding 2: every guard is a CLOSED TYPED PREDICATE (atoms over state and ENVIRONMENT coordinates — never a prose string); every action is a typed op with a class (refuses/acquires/releases/... derived, never parallel advisory arrays); every symbol is drawn from the closed enumerations in `algebra` and the executor rejects any unknown symbol. Prose `note` fields are documentation only and are never read. Round-39 fold (D190): the storage_integrity coordinate + the typed `faults` class encode the FALSE forward guard as an external storage-integrity fault with no other state change; `dr_precedence` declares journal-first DR classification; the orphan clear of a successor's PENDING replacement is normative.",
- "x-r402s-revision": "40",
+ "x-r402s-revision": "41",
  "coordinates": {
   "admission": [
    "PREPARED_NO_IO",

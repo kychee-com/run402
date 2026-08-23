@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "head.json",
- "title": "r402s/v0 head path-addressed at head/<generation>; no object_id; V0 epoch pinned (rotate_epoch is post-V0) (DRAFT rev 40)",
+ "title": "r402s/v0 head path-addressed at head/<generation>; no object_id; V0 epoch pinned (rotate_epoch is post-V0) (DRAFT rev 41)",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -199,5 +199,5 @@
    }
   }
  ],
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

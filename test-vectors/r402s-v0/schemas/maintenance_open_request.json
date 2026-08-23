@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "maintenance_open_request.json",
- "title": "r402s/v0 cycle-open request (DRAFT rev 40 — client-side, vector material) — the canonical binding content, fields in THIS EXACT ORDER: client_open_id, base_head_sha256, prior_checkpoint_claim_set_sha256 (nullable), requested_r2_cap_size_bytes; open_binding_sha256 = SHA-256('r402s/v0/open-binding' || lp(client_open_id) || lp(base_head_sha256) || lp_opt(prior_checkpoint_claim_set_sha256) || lp(requested_r2_cap_size_bytes)) with lp(x) = uint32_be(len(UTF8(x))) || UTF8(x) and lp_opt(null) = 0x00, lp_opt(x) = 0x01 || lp(x); the open-ids CAS key K = SHA-256('r402s/v0/open-id' || lp(org_id) || lp(repo_id) || lp(client_open_id)); golden vectors: the null-prior example digests are pinned in validate.py",
+ "title": "r402s/v0 cycle-open request (DRAFT rev 41 — client-side, vector material) — the canonical binding content, fields in THIS EXACT ORDER: client_open_id, base_head_sha256, prior_checkpoint_claim_set_sha256 (nullable), requested_r2_cap_size_bytes; open_binding_sha256 = SHA-256('r402s/v0/open-binding' || lp(client_open_id) || lp(base_head_sha256) || lp_opt(prior_checkpoint_claim_set_sha256) || lp(requested_r2_cap_size_bytes)) with lp(x) = uint32_be(len(UTF8(x))) || UTF8(x) and lp_opt(null) = 0x00, lp_opt(x) = 0x01 || lp(x); the open-ids CAS key K = SHA-256('r402s/v0/open-id' || lp(org_id) || lp(repo_id) || lp(client_open_id)); golden vectors: the null-prior example digests are pinned in validate.py",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -31,5 +31,5 @@
    "$ref": "common.json#/$defs/size_bytes"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

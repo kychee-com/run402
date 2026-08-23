@@ -1,6 +1,6 @@
 {
  "$id": "wal_pack.frame.json",
- "title": "r402s/v0 wal_pack binary frame descriptor raw encrypted kinds have no JSON plaintext; this descriptor + generated vectors are their normative definition (DRAFT rev 40)",
+ "title": "r402s/v0 wal_pack binary frame descriptor raw encrypted kinds have no JSON plaintext; this descriptor + generated vectors are their normative definition (DRAFT rev 41)",
  "encoding": "binary-frame",
  "object_kind": "wal_pack",
  "layout": [
@@ -37,5 +37,5 @@
   "$constant": "MAX_FRAME_PLAINTEXT_BYTES"
  },
  "receipt_hash": "ciphertext_sha256 over the COMPLETE framed blob (magic through tag)",
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

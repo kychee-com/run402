@@ -164,5 +164,5 @@
  },
  "reference_implementation": "pyhpke 0.6.5 (proved against RFC 9180 A.2.1 at generation time)",
  "status": "golden inputs + reference-sealed envelopes; the cross-language seal/open runs have NOT been executed here — they are task 5.1 / 5.9 CI gates",
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "ref_state.json",
- "title": "r402s/v0 ref_state plaintext encrypted at rest; head_target symref names a refs/heads/* branch (may be unborn); detached carries the exact oid (DRAFT rev 40)",
+ "title": "r402s/v0 ref_state plaintext encrypted at rest; head_target symref names a refs/heads/* branch (may be unborn); detached carries the exact oid (DRAFT rev 41)",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -51,5 +51,5 @@
    "$ref": "common.json#/$defs/head_target"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

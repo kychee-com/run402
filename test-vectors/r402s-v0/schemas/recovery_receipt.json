@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "recovery_receipt.json",
- "title": "r402s/v0 recovery_receipt local/API message; no object_id (DRAFT rev 40)",
+ "title": "r402s/v0 recovery_receipt local/API message; no object_id (DRAFT rev 41)",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -48,5 +48,5 @@
    "$ref": "common.json#/$defs/ek"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

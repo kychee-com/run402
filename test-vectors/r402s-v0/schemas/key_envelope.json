@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "key_envelope.json",
- "title": "r402s/v0 key_envelope path-addressed by (repo_id, epoch, recipient_fingerprint); no object_id; ct = HPKE-sealed 32-byte K_repo (48 bytes, 64 b64url chars) (DRAFT rev 40)",
+ "title": "r402s/v0 key_envelope path-addressed by (repo_id, epoch, recipient_fingerprint); no object_id; ct = HPKE-sealed 32-byte K_repo (48 bytes, 64 b64url chars) (DRAFT rev 41)",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -56,5 +56,5 @@
    "$ref": "common.json#/$defs/timestamp"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

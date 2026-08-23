@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "common.json",
- "title": "r402s/v0 shared definitions  (DRAFT rev 40)",
+ "title": "r402s/v0 shared definitions  (DRAFT rev 41)",
  "$defs": {
   "format": {
    "const": "r402s/v0"
@@ -931,5 +931,5 @@
    "pattern": "^ml_[0-9a-f]{32}$"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

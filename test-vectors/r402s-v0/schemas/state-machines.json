@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "state-machines.json",
- "title": "r402s/v0 state machines (DRAFT rev 40 — machine-readable)",
+ "title": "r402s/v0 state machines (DRAFT rev 41 — machine-readable)",
  "machines": {
   "admission": {
    "states": [
@@ -483,5 +483,5 @@
    ]
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

@@ -233,7 +233,7 @@ export interface GitvaultVaultHandleOptions {
   project_id?: string;
   /** The local git working tree. Defaults to `process.cwd()`. */
   repo_dir?: string;
-  /** Keystore root override (defaults to `~/.run402/source`). */
+  /** Keystore root override (defaults to `~/.config/run402/gitvault`; `~/.config/run402/profiles/<wallet>/gitvault` under a named wallet). */
   keystore_root?: string;
   /** Pinned service public key for control-plane signature checks (cutoff tickets). */
   service_public_key?: Uint8Array | string;

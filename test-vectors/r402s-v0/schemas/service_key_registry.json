@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "service_key_registry.json",
- "title": "r402s/v0 service_key_registry version-addressed, monotonic, rollback-refused; root-signed (domain r402s/v0/service_key_registry over JCS minus registry_root_signature); entries sorted by service_key_id, ids unique, history preserved (DRAFT rev 40)",
+ "title": "r402s/v0 service_key_registry version-addressed, monotonic, rollback-refused; root-signed (domain r402s/v0/service_key_registry over JCS minus registry_root_signature); entries sorted by service_key_id, ids unique, history preserved (DRAFT rev 41)",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -66,5 +66,5 @@
    "$ref": "common.json#/$defs/ed25519_signature"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

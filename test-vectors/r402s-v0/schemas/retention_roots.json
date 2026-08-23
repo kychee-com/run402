@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "retention_roots.json",
- "title": "r402s/v0 retention_roots plaintext encrypted at rest; roots sorted by (dropped_at_generation, ref, oid), map-keyed (ref, oid) (DRAFT rev 40)",
+ "title": "r402s/v0 retention_roots plaintext encrypted at rest; roots sorted by (dropped_at_generation, ref, oid), map-keyed (ref, oid) (DRAFT rev 41)",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -85,5 +85,5 @@
    }
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

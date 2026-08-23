@@ -1,6 +1,6 @@
 {
  "$id": "semantic-constraints.json",
- "title": "r402s/v0 semantic constraints (DRAFT rev 40) — normative cross-field/cross-object rules the JSON Schemas cannot express; validator_coverage ∈ covered (fully exercised) | partial (subset exercised — remainder is task-1.x) | deferred (task-1.x vector harness)",
+ "title": "r402s/v0 semantic constraints (DRAFT rev 41) — normative cross-field/cross-object rules the JSON Schemas cannot express; validator_coverage ∈ covered (fully exercised) | partial (subset exercised — remainder is task-1.x) | deferred (task-1.x vector harness)",
  "constraints": [
   {
    "id": "covers-through-triple",
@@ -812,5 +812,5 @@
    "validator_coverage": "covered"
   }
  ],
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

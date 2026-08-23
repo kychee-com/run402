@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "transition_envelope.json",
- "title": "r402s/v0 transition envelope the frozen opaque descriptor embedded in head.transition (covered by the head signature, never a top-level signed kind); kind is a CLOSED enum and V0 admission refuses every non-null transition with TRANSITION_NOT_ACTIVE, a V0 client fails closed with UPGRADE_REQUIRED, an unknown kind is a parse reject (DRAFT rev 40)",
+ "title": "r402s/v0 transition envelope the frozen opaque descriptor embedded in head.transition (covered by the head signature, never a top-level signed kind); kind is a CLOSED enum and V0 admission refuses every non-null transition with TRANSITION_NOT_ACTIVE, a V0 client fails closed with UPGRADE_REQUIRED, an unknown kind is a parse reject (DRAFT rev 41)",
  "$ref": "common.json#/$defs/transition_envelope",
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

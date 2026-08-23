@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "maintenance_completion_cut.json",
- "title": "r402s/v0 maintenance_completion_cut (DRAFT rev 40) — the reconstructible P-cut, keyed by ADMISSION ATTEMPT: create-only at maintenance/cuts/<admission_object_id>.json, published AFTER the admission's irreversible COMPOSITE fence (which runs every fallible check, fixes exact cut + record bytes, claims the cut, and enters the cycle lane) and BEFORE the main RECORD_PUT_ISSUED step; a cut whose attempt reaches CONFLICTED is INERT (released to the reaper; honored only via a canonical record's p_cut_sha256) and a journal-lost visible cut adjudicates DR_ORPHANED_PRE_RECORD — those are the ONLY unbound-cut exits; entries sorted and UNIQUE by prune_completion object_id; credited_deleted_size_bytes derives exactly from the completion's deleted results and their receipts; p_before_size_bytes equals the exact sum; a stored EMPTY cut is prohibited (no P credited iff p_cut_sha256 null iff no cut object)",
+ "title": "r402s/v0 maintenance_completion_cut (DRAFT rev 41) — the reconstructible P-cut, keyed by ADMISSION ATTEMPT: create-only at maintenance/cuts/<admission_object_id>.json, published AFTER the admission's irreversible COMPOSITE fence (which runs every fallible check, fixes exact cut + record bytes, claims the cut, and enters the cycle lane) and BEFORE the main RECORD_PUT_ISSUED step; a cut whose attempt reaches CONFLICTED is INERT (released to the reaper; honored only via a canonical record's p_cut_sha256) and a journal-lost visible cut adjudicates DR_ORPHANED_PRE_RECORD — those are the ONLY unbound-cut exits; entries sorted and UNIQUE by prune_completion object_id; credited_deleted_size_bytes derives exactly from the completion's deleted results and their receipts; p_before_size_bytes equals the exact sum; a stored EMPTY cut is prohibited (no P credited iff p_cut_sha256 null iff no cut object)",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -89,5 +89,5 @@
    "$ref": "common.json#/$defs/adm"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

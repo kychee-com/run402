@@ -1,7 +1,7 @@
 # `r402s/v0` conformance vectors (vendored)
 
 The frozen task-1.2 vector set for the gitvault wire protocol `r402s/v0`, at
-**protocol rev 40**. Vendored here so the public repo's CI actually replays
+**protocol rev 41**. Vendored here so the public repo's CI actually replays
 them — before this copy existed the SDK suites resolved a hard-coded absolute
 path, found nothing on a CI runner, and **silently skipped ~130 vectors while
 reporting green**.
@@ -14,11 +14,12 @@ reporting green**.
 | `CONTINUITY.json` | The D188 golden-byte continuity manifest — the authority for whether this copy is the frozen set |
 | `hpke-interop/golden.json` | The two cross-implementation HPKE golden cases |
 | `hpke-interop/INTEROP.md` | How the golden cases were produced |
+| `schemas/` | The frozen schema set the vectors validate against — the Rust verifier (`r402s-verify`) reads it, and its `x-r402s-revision` must equal the vectors' |
 
 ## The integrity check is not decorative
 
 `CONTINUITY.json`'s `current` block records the exact SHA-256 of `vectors.json`
-and `hpke-interop/golden.json` at rev 40. Every SDK suite that loads vectors
+and `hpke-interop/golden.json` at rev 41. Every SDK suite that loads vectors
 asserts those digests before running a single case
 (`sdk/src/node/gitvault-vectors.test-helper.ts`). A vendored copy that drifts
 from the source of truth therefore fails loudly rather than replaying stale
@@ -26,9 +27,10 @@ expectations — which is the whole failure mode this directory exists to close.
 
 **Do not hand-edit these files.** They are generated in the private repo
 (`docs/strategy/products/gitvault/vectors/`, by `gen_vectors.py`). To update:
-regenerate there, copy `vectors.json`, `CONTINUITY.json`, and
-`hpke-interop/*` across in one commit, and let the digest assertions confirm
-the copy.
+regenerate there, copy `vectors.json`, `CONTINUITY.json`, `hpke-interop/*`,
+and the `schemas/*` files already vendored here (from the private repo's
+sibling `../schemas/`) across in one commit, and let the digest assertions
+confirm the copy.
 
 ## Overriding the location
 

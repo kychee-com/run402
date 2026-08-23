@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "allocation.json",
- "title": "r402s/v0 allocation (DRAFT rev 40) — API message; no object_id; issued_at is the service-key authority-time instant of THIS representation (a superseded republication carries a fresh issued_at under the then-current key); created_at is immutable creation metadata",
+ "title": "r402s/v0 allocation (DRAFT rev 41) — API message; no object_id; issued_at is the service-key authority-time instant of THIS representation (a superseded republication carries a fresh issued_at under the then-current key); created_at is immutable creation metadata",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -79,5 +79,5 @@
    "$ref": "common.json#/$defs/timestamp"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

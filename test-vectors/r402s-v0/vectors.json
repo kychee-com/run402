@@ -2068,7 +2068,7 @@
   },
   {
    "class": "state-machine-table",
-   "description": "every legal edge of `admission` (derived from state-machines.json rev 40)",
+   "description": "every legal edge of `admission` (derived from state-machines.json rev 41)",
    "expect_accept": "true",
    "expected": {
     "edges": [
@@ -2234,7 +2234,7 @@
   },
   {
    "class": "state-machine-table",
-   "description": "every legal edge of `activation_token` (derived from state-machines.json rev 40)",
+   "description": "every legal edge of `activation_token` (derived from state-machines.json rev 41)",
    "expect_accept": "true",
    "expected": {
     "edges": [
@@ -2324,7 +2324,7 @@
   },
   {
    "class": "state-machine-table",
-   "description": "every legal edge of `terminal_publication` (derived from state-machines.json rev 40)",
+   "description": "every legal edge of `terminal_publication` (derived from state-machines.json rev 41)",
    "expect_accept": "true",
    "expected": {
     "edges": [
@@ -2412,7 +2412,7 @@
   },
   {
    "class": "state-machine-table",
-   "description": "every legal edge of `repair_fence` (derived from state-machines.json rev 40)",
+   "description": "every legal edge of `repair_fence` (derived from state-machines.json rev 41)",
    "expect_accept": "true",
    "expected": {
     "edges": [
@@ -2501,7 +2501,7 @@
   },
   {
    "class": "state-machine-table",
-   "description": "every legal edge of `cycle_replacement` (derived from state-machines.json rev 40)",
+   "description": "every legal edge of `cycle_replacement` (derived from state-machines.json rev 41)",
    "expect_accept": "true",
    "expected": {
     "edges": [
@@ -2590,7 +2590,7 @@
   },
   {
    "class": "state-machine-table",
-   "description": "every legal edge of `cycle_admission_fence` (derived from state-machines.json rev 40)",
+   "description": "every legal edge of `cycle_admission_fence` (derived from state-machines.json rev 41)",
    "expect_accept": "true",
    "expected": {
     "edges": [
@@ -2679,7 +2679,7 @@
   },
   {
    "class": "state-machine-table",
-   "description": "every legal edge of `maintenance_admission_cut_subfence` (derived from state-machines.json rev 40)",
+   "description": "every legal edge of `maintenance_admission_cut_subfence` (derived from state-machines.json rev 41)",
    "expect_accept": "true",
    "expected": {
     "edges": [
@@ -11361,5 +11361,5 @@
    "reject_code": "HEAD_CAS_CONFLICT"
   }
  ],
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

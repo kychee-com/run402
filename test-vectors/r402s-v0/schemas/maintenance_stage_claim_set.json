@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "maintenance_stage_claim_set.json",
- "title": "r402s/v0 maintenance_stage_claim_set (DRAFT rev 40) — paged ROOT; CANONICAL PACKING: every page except the final one holds exactly 10,000 candidates, batch_count = page_count = ceil(candidate_count/10000); stage_candidate_stored_size_bytes = sum of candidate size_bytes (D_stage — deletion/accounting EVIDENCE only, never re-charged) and stage_metadata_stored_size_bytes = root + all page stored bytes (A_stage — the NET-NEW admission charge inside the R terms); candidates == expected_stage(role) byte-for-byte; root+pages become pruneable once the cycle's terminal reaches TERMINAL_APPLIED",
+ "title": "r402s/v0 maintenance_stage_claim_set (DRAFT rev 41) — paged ROOT; CANONICAL PACKING: every page except the final one holds exactly 10,000 candidates, batch_count = page_count = ceil(candidate_count/10000); stage_candidate_stored_size_bytes = sum of candidate size_bytes (D_stage — deletion/accounting EVIDENCE only, never re-charged) and stage_metadata_stored_size_bytes = root + all page stored bytes (A_stage — the NET-NEW admission charge inside the R terms); candidates == expected_stage(role) byte-for-byte; root+pages become pruneable once the cycle's terminal reaches TERMINAL_APPLIED",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -74,5 +74,5 @@
    "$ref": "common.json#/$defs/size_bytes"
   }
  },
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }

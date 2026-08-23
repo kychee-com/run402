@@ -1,6 +1,6 @@
 {
  "$id": "errors.json",
- "title": "r402s/v0 error registry (DRAFT rev 40) — closed; each entry carries its canonical next_action (the wire envelope carries the same string plus typed context; the full response schema lands with the task-1.x API schema set)",
+ "title": "r402s/v0 error registry (DRAFT rev 41) — closed; each entry carries its canonical next_action (the wire envelope carries the same string plus typed context; the full response schema lands with the task-1.x API schema set)",
  "errors": [
   {
    "code": "TRANSITION_NOT_ACTIVE",
@@ -115,7 +115,7 @@
   {
    "code": "KEYSTORE_MISSING",
    "retryable": false,
-   "next_action": "restore ~/.run402/source from backup or accept vault loss"
+   "next_action": "restore ~/.config/run402/gitvault from backup or accept vault loss"
   },
   {
    "code": "QUOTA_EXCEEDED",
@@ -203,5 +203,5 @@
    "next_action": "external storage-integrity fault (D190): the stored cut is absent or does not hash to p_cut_sha256 — no record PUT was issued and no admission, lane, claim, reservation, cut-ownership, replacement, rate-slot, lease, or authority state changed; restore the exact journaled cut bytes at the burned per-attempt key (the mechanical path then resumes) or apply an operator recovery decision; the client cannot retry its way out"
   }
  ],
- "x-r402s-revision": "40"
+ "x-r402s-revision": "41"
 }
