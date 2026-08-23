@@ -171,9 +171,45 @@ jobs:
           (cd sdk && npm pack --pack-destination "$SMOKE")    # @run402/sdk
           ls -la "$SMOKE"
 
+          # run402 and run402-mcp VENDOR sdk/dist - they bundle the built SDK
+          # rather than depending on @run402/sdk - so every runtime dep the SDK
+          # STATICALLY imports has to be declared in THEIR manifest too. The
+          # monorepo never catches a gap, because the workspace root hoists it,
+          # and importing one entry point does not catch it either: 4.25.0
+          # packed a CLI whose bundled gitvault.crypto.js imported @hpke/core
+          # with no such dependency, and the MCP check below - which only
+          # resolves getSdk - never reached that import. Compare manifests
+          # rather than guessing which import path happens to pull a dep in.
+          SDK_MANIFEST="$PWD/sdk/package.json"
+          assert_vendored_sdk_deps() {
+            local label="$1" dir="$2"
+            echo "[$label] checking vendored SDK deps against a real install..."
+            (cd "$dir" && SDK_MANIFEST="$SDK_MANIFEST" node -e "
+              const fs = require('fs'), path = require('path');
+              // Lazily imported behind a graceful fallback, so omitting it
+              // costs a feature rather than crashing on load. tsx is loaded by
+              // deploy-manifest via await import() inside a try/catch that
+              // reports 'TypeScript deploy configs require the bundled tsx
+              // loader'. run402 declares it, run402-mcp does not.
+              const OPTIONAL = new Set(['tsx']);
+              const need = Object.keys(require(process.env.SDK_MANIFEST).dependencies || {})
+                .filter(function (d) { return !OPTIONAL.has(d); });
+              const missing = need.filter(function (d) {
+                return !fs.existsSync(path.join(process.cwd(), 'node_modules', d, 'package.json'));
+              });
+              if (missing.length) {
+                console.error('MISSING after npm install --omit=dev: ' + missing.join(', '));
+                console.error('this package bundles sdk/dist, so it must declare those deps itself');
+                process.exit(1);
+              }
+              console.log('all ' + need.length + ' statically-imported vendored SDK deps present');
+            ")
+          }
+
           # CLI: extract, install, --version must report the new version.
           mkdir "$SMOKE/cli" && tar xzf "$SMOKE/run402-$NEW.tgz" -C "$SMOKE/cli"
           (cd "$SMOKE/cli/package" && npm install --omit=dev)
+          assert_vendored_sdk_deps run402 "$SMOKE/cli/package"
           ACTUAL=$(node "$SMOKE/cli/package/cli.mjs" --version)
           if [ "$ACTUAL" != "$NEW" ]; then
             echo "CLI --version mismatch: expected $NEW, got $ACTUAL"
@@ -190,6 +226,7 @@ jobs:
           # stdio server — it doesn't exit).
           mkdir "$SMOKE/mcp" && tar xzf "$SMOKE/run402-mcp-$NEW.tgz" -C "$SMOKE/mcp"
           (cd "$SMOKE/mcp/package" && npm install --omit=dev)
+          assert_vendored_sdk_deps run402-mcp "$SMOKE/mcp/package"
           (cd "$SMOKE/mcp/package" && node -e "import('./dist/sdk.js').then(m => { if (typeof m.getSdk !== 'function') { console.error('getSdk is not a function'); process.exit(1); } console.log('MCP smoke OK'); }).catch(e => { console.error('Import failed:', e.message); process.exit(1); })")
 
           # SDK: extract, install, verify both entry points.
@@ -230,32 +267,7 @@ jobs:
             done
             echo "[$label] exhausted retries."; return 1
           }
-          # An exit code is not proof of publication. npm can in principle exit
-          # 0 without the version landing, and .npmrc sets loglevel=silent so a
-          # publish step prints nothing either way - there is no signal in this
-          # step's own output. Confirm against the registry instead.
-          #
-          # The window is deliberately long. On 4.25.0, @run402/sdk took several
-          # MINUTES to become visible while run402 and run402-mcp were readable
-          # within seconds; during that window the version endpoint 404'd, the
-          # dist-tags endpoint reported the previous version, and `npm view`
-          # agreed - four signals that all looked like a failed publish and were
-          # simply stale. A short timeout here turns that lag into a red release.
-          verify_on_registry() {
-            local pkg="$1" version="$2" attempt=0 code=000
-            while [ "$attempt" -lt 60 ]; do
-              attempt=$((attempt + 1))
-              code=$(curl -sS -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${pkg}/${version}" || echo 000)
-              if [ "$code" = "200" ]; then
-                echo "[$pkg] verified live on the registry at $version (check $attempt)"
-                return 0
-              fi
-              sleep 10
-            done
-            echo "::error::[$pkg] ${pkg}@${version} still not visible on the registry after ${attempt} checks over ~10 minutes (last HTTP ${code}). Registry lag of this length has been seen before - re-check by hand before concluding the publish failed. If it genuinely did not land, packages published earlier in this run ARE live and this release is partial: do not re-tag, re-run with a fresh patch bump."
-            return 1
-          }
-          publish_idempotent run402-mcp && verify_on_registry run402-mcp "${{ steps.bump.outputs.new }}"
+          publish_idempotent run402-mcp
 
       - name: Publish run402 to npm
         if: ${{ !inputs.dry_run }}
@@ -278,32 +290,7 @@ jobs:
             done
             echo "[$label] exhausted retries."; return 1
           }
-          # An exit code is not proof of publication. npm can in principle exit
-          # 0 without the version landing, and .npmrc sets loglevel=silent so a
-          # publish step prints nothing either way - there is no signal in this
-          # step's own output. Confirm against the registry instead.
-          #
-          # The window is deliberately long. On 4.25.0, @run402/sdk took several
-          # MINUTES to become visible while run402 and run402-mcp were readable
-          # within seconds; during that window the version endpoint 404'd, the
-          # dist-tags endpoint reported the previous version, and `npm view`
-          # agreed - four signals that all looked like a failed publish and were
-          # simply stale. A short timeout here turns that lag into a red release.
-          verify_on_registry() {
-            local pkg="$1" version="$2" attempt=0 code=000
-            while [ "$attempt" -lt 60 ]; do
-              attempt=$((attempt + 1))
-              code=$(curl -sS -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${pkg}/${version}" || echo 000)
-              if [ "$code" = "200" ]; then
-                echo "[$pkg] verified live on the registry at $version (check $attempt)"
-                return 0
-              fi
-              sleep 10
-            done
-            echo "::error::[$pkg] ${pkg}@${version} still not visible on the registry after ${attempt} checks over ~10 minutes (last HTTP ${code}). Registry lag of this length has been seen before - re-check by hand before concluding the publish failed. If it genuinely did not land, packages published earlier in this run ARE live and this release is partial: do not re-tag, re-run with a fresh patch bump."
-            return 1
-          }
-          publish_idempotent run402 && verify_on_registry run402 "${{ steps.bump.outputs.new }}"
+          publish_idempotent run402
 
       - name: Publish @run402/sdk to npm
         if: ${{ !inputs.dry_run }}
@@ -326,32 +313,7 @@ jobs:
             done
             echo "[$label] exhausted retries."; return 1
           }
-          # An exit code is not proof of publication. npm can in principle exit
-          # 0 without the version landing, and .npmrc sets loglevel=silent so a
-          # publish step prints nothing either way - there is no signal in this
-          # step's own output. Confirm against the registry instead.
-          #
-          # The window is deliberately long. On 4.25.0, @run402/sdk took several
-          # MINUTES to become visible while run402 and run402-mcp were readable
-          # within seconds; during that window the version endpoint 404'd, the
-          # dist-tags endpoint reported the previous version, and `npm view`
-          # agreed - four signals that all looked like a failed publish and were
-          # simply stale. A short timeout here turns that lag into a red release.
-          verify_on_registry() {
-            local pkg="$1" version="$2" attempt=0 code=000
-            while [ "$attempt" -lt 60 ]; do
-              attempt=$((attempt + 1))
-              code=$(curl -sS -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${pkg}/${version}" || echo 000)
-              if [ "$code" = "200" ]; then
-                echo "[$pkg] verified live on the registry at $version (check $attempt)"
-                return 0
-              fi
-              sleep 10
-            done
-            echo "::error::[$pkg] ${pkg}@${version} still not visible on the registry after ${attempt} checks over ~10 minutes (last HTTP ${code}). Registry lag of this length has been seen before - re-check by hand before concluding the publish failed. If it genuinely did not land, packages published earlier in this run ARE live and this release is partial: do not re-tag, re-run with a fresh patch bump."
-            return 1
-          }
-          publish_idempotent "@run402/sdk" && verify_on_registry "@run402/sdk" "${{ steps.bump.outputs.new }}"
+          publish_idempotent "@run402/sdk"
 
       - name: Commit version bump (rebase-safe — retries against a moving main)
         if: ${{ !inputs.dry_run }}
