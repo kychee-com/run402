@@ -25,6 +25,13 @@
  * ever started (the acceptance test asserts a sentinel the filter would write
  * never appears).
  *
+ * The capture also records the CAPTURED SET (`snapshot.captured`) and a digest
+ * over it (`snapshot.captured_digest`). The deploy lane re-derives that digest
+ * after artifacts are collected and before a plan commits, and refuses
+ * `SNAPSHOT_MOVED_DURING_DEPLOY` on any difference. The set is tracked plus
+ * untracked-but-not-ignored — so a build rewriting gitignored output changes
+ * nothing, deliberately.
+ *
  * Every git invocation is argv-only (no shell), with `GIT_*` cleared,
  * `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null` (no user config), an
  * empty `core.hooksPath`, `--no-replace-objects`, `core.fsmonitor=false`, and
@@ -37,7 +44,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSy
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { LocalError } from "../errors.js";
-import { GITVAULT_OID40_RE, deriveDigestKey, keyedCommitment, snapshotOidContent } from "../namespaces/gitvault.crypto.js";
+import { GITVAULT_OID40_RE, deriveDigestKey, keyedCommitment, sha256Hex, snapshotOidContent } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultHeadTarget } from "../namespaces/gitvault.types.js";
 
 // ─── Constants (constants.json) ──────────────────────────────────────────────
@@ -517,14 +524,149 @@ export interface GitvaultSnapshot {
   head_oid: string | null;
   /** Paths included in a synthetic commit (tracked + untracked-not-ignored); empty for `head`. */
   paths: string[];
+  /**
+   * The CAPTURED SET, always populated for both kinds: every tracked or
+   * untracked-but-not-ignored path present on disk at capture, with the mode
+   * and the raw-bytes oid the snapshot corresponds to. This is the set the
+   * correspondence check re-derives — NOT the whole working directory, and
+   * deliberately NOT gitignored build output (see {@link capturedSetDigest}).
+   */
+  captured: GitvaultCapturedFile[];
+  /** `sha256` over {@link captured} — the value re-derived before a plan commits. */
+  captured_digest: string;
   /** The global excludes file honored (as data), when one existed. */
   global_excludes_path: string | null;
   top_level: string;
 }
 
-interface Entry { path: string; mode: "100644" | "100755" | "120000"; oid: string }
+/** One member of the captured set: path, mode, and the oid of its RAW bytes (`--no-filters`). */
+export interface GitvaultCapturedFile {
+  path: string;
+  mode: "100644" | "100755" | "120000";
+  oid: string;
+}
+
+type Entry = GitvaultCapturedFile;
 
 function isExecutable(mode: number): boolean { return (mode & 0o111) !== 0; }
+
+/**
+ * Enumerate the captured set: tracked ∪ untracked-but-not-ignored, restricted
+ * to what is actually present on disk. Sizes ride along so the caller can
+ * enforce the per-object cap before any object is written.
+ *
+ * This is the ONE enumeration both the capture and the correspondence check
+ * use, so the two can never drift into disagreeing about what "the captured
+ * set" means — which would show up as a deploy that refuses an untouched tree.
+ */
+async function enumerateCapturedPaths(
+  top: string,
+  excludeArgs: string[],
+  untracked?: string[],
+): Promise<Array<{ path: string; mode: Entry["mode"]; size: number }>> {
+  const others = untracked ?? (await hardenedGit(top, ["ls-files", "-z", "--others", "--exclude-standard", ...excludeArgs])).nul();
+  const tracked = (await hardenedGit(top, ["ls-files", "-z", "--cached"])).nul();
+  const candidates = [...new Set([...tracked, ...others])].sort();
+  const present: Array<{ path: string; mode: Entry["mode"]; size: number }> = [];
+  for (const p of candidates) {
+    const abs = join(top, p);
+    let st;
+    try { st = lstatSync(abs); } catch { continue; } // deleted in the work tree → absent from the snapshot
+    if (st.isSymbolicLink()) present.push({ path: p, mode: "120000", size: st.size });
+    else if (st.isFile()) present.push({ path: p, mode: isExecutable(st.mode) ? "100755" : "100644", size: st.size });
+    // directories (e.g. nested repos) and specials are skipped — git would not track them either
+  }
+  return present;
+}
+
+/**
+ * Hash the enumerated set's RAW bytes (`--no-filters`, so no clean/smudge
+ * command is ever started). `write` persists the blobs — the capture needs
+ * them to build a tree; the correspondence check does not and must not.
+ */
+async function hashCapturedPaths(
+  top: string,
+  present: Array<{ path: string; mode: Entry["mode"]; size: number }>,
+  write: boolean,
+  context: string,
+): Promise<GitvaultCapturedFile[]> {
+  const entries: Entry[] = [];
+  const writeArgs = write ? ["-w"] : [];
+  const regular = present.filter((e) => e.mode !== "120000");
+  if (regular.length > 0) {
+    const out = await hardenedGit(top, ["hash-object", ...writeArgs, "--no-filters", "--stdin-paths"], { input: regular.map((e) => e.path).join("\n") + "\n" });
+    const oids = out.lines();
+    if (oids.length !== regular.length) fail("GIT_COMMAND_FAILED", "hash-object returned a different number of ids than paths", context);
+    regular.forEach((e, i) => entries.push({ path: e.path, mode: e.mode, oid: oids[i]! }));
+  }
+  for (const e of present.filter((x) => x.mode === "120000")) {
+    const target = readlinkSync(join(top, e.path));
+    const out = await hardenedGit(top, ["hash-object", ...writeArgs, "--no-filters", "--stdin"], { input: target });
+    entries.push({ path: e.path, mode: "120000", oid: out.text().trim() });
+  }
+  // regular files were hashed in one batch and symlinks after them — restore path order.
+  entries.sort((a, b) => (a.path === b.path ? 0 : a.path < b.path ? -1 : 1));
+  return entries;
+}
+
+/**
+ * `sha256` over the captured set, in git's own index-info line form
+ * (`<mode> <oid>\t<path>\n`, path-sorted) so the serialization is the one the
+ * tree is built from rather than a second, drifting encoding.
+ *
+ * WHAT THIS COVERS, EXACTLY: the captured source set — tracked plus
+ * untracked-but-not-ignored. It does NOT cover gitignored paths, so a build
+ * that rewrites `dist/` between capture and commit changes nothing here, by
+ * design: a project with a build step would otherwise be undeployable. The
+ * guarantee this digest buys is "the captured source did not change while the
+ * artifacts were produced", NOT "the artifacts are a function of that source".
+ */
+export function capturedSetDigest(files: GitvaultCapturedFile[]): string {
+  const sorted = [...files].sort((a, b) => (a.path === b.path ? 0 : a.path < b.path ? -1 : 1));
+  return sha256Hex(new TextEncoder().encode(sorted.map((e) => `${e.mode} ${e.oid}\t${e.path}\n`).join("")));
+}
+
+/**
+ * Re-derive the captured set from the work tree, without writing any object.
+ *
+ * `global_excludes_path` is the file the capture honored — passed through
+ * rather than rediscovered, so the comparison is about the TREE and cannot be
+ * perturbed by the user's git config changing mid-deploy.
+ */
+export async function deriveCapturedSet(options: { top_level: string; global_excludes_path?: string | null }): Promise<GitvaultCapturedFile[]> {
+  const excludeArgs = options.global_excludes_path ? ["--exclude-from", options.global_excludes_path] : [];
+  const present = await enumerateCapturedPaths(options.top_level, excludeArgs);
+  return hashCapturedPaths(options.top_level, present, false, "re-deriving the captured set");
+}
+
+/** What changed between two captured sets. Empty on every list means the set is byte-identical. */
+export interface GitvaultCapturedSetDrift {
+  added: string[];
+  removed: string[];
+  modified: string[];
+}
+
+/** Name the paths that moved — added, removed, or changed content/mode. */
+export function diffCapturedSets(before: GitvaultCapturedFile[], after: GitvaultCapturedFile[]): GitvaultCapturedSetDrift {
+  const b = new Map(before.map((e) => [e.path, e]));
+  const a = new Map(after.map((e) => [e.path, e]));
+  const drift: GitvaultCapturedSetDrift = { added: [], removed: [], modified: [] };
+  for (const [path, entry] of a) {
+    const prior = b.get(path);
+    if (!prior) drift.added.push(path);
+    else if (prior.oid !== entry.oid || prior.mode !== entry.mode) drift.modified.push(path);
+  }
+  for (const path of b.keys()) if (!a.has(path)) drift.removed.push(path);
+  drift.added.sort();
+  drift.removed.sort();
+  drift.modified.sort();
+  return drift;
+}
+
+/** True when nothing in the captured set moved. */
+export function capturedSetUnchanged(drift: GitvaultCapturedSetDrift): boolean {
+  return drift.added.length === 0 && drift.removed.length === 0 && drift.modified.length === 0;
+}
 
 /**
  * Capture the work tree per the §6.6 policy. Branches, index, and work tree
@@ -556,21 +698,18 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
   }
   if (!dirty && headOid) {
     const tree = (await hardenedGit(top, ["rev-parse", "HEAD^{tree}"])).text().trim();
-    return { kind: "head", oid: headOid, tree_oid: tree, head: headTarget, head_oid: headOid, paths: [], global_excludes_path: excludes.path, top_level: top };
+    // The captured set is recorded for a clean tree too, through the SAME
+    // enumerate+hash path the dirty branch uses. Reading it off `HEAD`'s tree
+    // instead would be cheaper and wrong: a filtered path's committed blob is
+    // the CLEANED content while the work tree holds the SMUDGED bytes, so an
+    // untouched tree would re-derive differently and refuse its own deploy.
+    const cleanPresent = await enumerateCapturedPaths(top, excludeArgs, untracked);
+    const cleanCaptured = await hashCapturedPaths(top, cleanPresent, false, "capturing snapshot");
+    return { kind: "head", oid: headOid, tree_oid: tree, head: headTarget, head_oid: headOid, paths: [], captured: cleanCaptured, captured_digest: capturedSetDigest(cleanCaptured), global_excludes_path: excludes.path, top_level: top };
   }
 
   // Synthetic commit: tracked paths present on disk + untracked-not-ignored.
-  const tracked = (await hardenedGit(top, ["ls-files", "-z", "--cached"])).nul();
-  const candidates = [...new Set([...tracked, ...untracked])].sort();
-  const present: Array<{ path: string; mode: Entry["mode"]; size: number }> = [];
-  for (const p of candidates) {
-    const abs = join(top, p);
-    let st;
-    try { st = lstatSync(abs); } catch { continue; } // deleted in the work tree → absent from the snapshot
-    if (st.isSymbolicLink()) present.push({ path: p, mode: "120000", size: st.size });
-    else if (st.isFile()) present.push({ path: p, mode: isExecutable(st.mode) ? "100755" : "100644", size: st.size });
-    // directories (e.g. nested repos) and specials are skipped — git would not track them either
-  }
+  const present = await enumerateCapturedPaths(top, excludeArgs, untracked);
   // Size cap before any object is written.
   const oversize = present.find((e) => e.size > GITVAULT_MAX_GIT_OBJECT_BYTES);
   if (oversize) {
@@ -583,22 +722,8 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
     const code = lfs.length > 0 ? "GITVAULT_LFS_UNSUPPORTED" : "GITVAULT_FILTER_ACTIVE";
     fail(code, `${active.length} captured path(s) have an active clean/smudge filter (${[...new Set(active.map((a) => a.filter))].join(", ")}); gitvault never runs filters, so the capture is refused by name — first: ${active[0]!.path}`, "capturing snapshot", { paths: active });
   }
-  // Hash raw bytes with filters structurally disabled.
-  const entries: Entry[] = [];
-  const regular = present.filter((e) => e.mode !== "120000");
-  if (regular.length > 0) {
-    const out = await hardenedGit(top, ["hash-object", "-w", "--no-filters", "--stdin-paths"], { input: regular.map((e) => e.path).join("\n") + "\n" });
-    const oids = out.lines();
-    if (oids.length !== regular.length) fail("GIT_COMMAND_FAILED", "hash-object returned a different number of ids than paths", "capturing snapshot");
-    regular.forEach((e, i) => entries.push({ path: e.path, mode: e.mode, oid: oids[i]! }));
-  }
-  for (const e of present.filter((x) => x.mode === "120000")) {
-    const target = readlinkSync(join(top, e.path));
-    const out = await hardenedGit(top, ["hash-object", "-w", "--no-filters", "--stdin"], { input: target });
-    entries.push({ path: e.path, mode: "120000", oid: out.text().trim() });
-  }
-  // regular files were hashed in one batch and symlinks after them — restore path order.
-  entries.sort((a, b) => (a.path === b.path ? 0 : a.path < b.path ? -1 : 1));
+  // Hash raw bytes with filters structurally disabled (`-w`: the tree below needs the blobs).
+  const entries: Entry[] = await hashCapturedPaths(top, present, true, "capturing snapshot");
   // Build the tree in a TEMPORARY index so the user's index stays byte-identical.
   const tmp = mkdtempSync(join(tmpdir(), "run402-gitvault-snapshot-"));
   try {
@@ -613,7 +738,7 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
     if (options.update_local_deploy_ref !== false) {
       await hardenedGit(top, ["update-ref", GITVAULT_DEPLOY_REF, commit]);
     }
-    return { kind: "synthetic", oid: commit, tree_oid: tree, head: headTarget, head_oid: headOid, paths: entries.map((e) => e.path), global_excludes_path: excludes.path, top_level: top };
+    return { kind: "synthetic", oid: commit, tree_oid: tree, head: headTarget, head_oid: headOid, paths: entries.map((e) => e.path), captured: entries, captured_digest: capturedSetDigest(entries), global_excludes_path: excludes.path, top_level: top };
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

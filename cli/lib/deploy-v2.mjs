@@ -25,6 +25,7 @@
 import { existsSync, fstatSync, readFileSync } from "node:fs";
 import { resolve, dirname, extname, isAbsolute } from "node:path";
 import {
+  applyWithGitvault,
   buildDeployResolveSummary,
   githubActionsCredentials,
   loadDeployManifest,
@@ -1241,17 +1242,52 @@ async function applyCmd(args) {
     const requiredPlan = opts.mode && opts.mode.kind === "applyReviewed"
       ? { planId: opts.mode.planId, ...(opts.mode.planFingerprint ? { planFingerprint: opts.mode.planFingerprint } : {}) }
       : undefined;
-    const result = await withAutoApprove(() =>
-      getSdk(sdkOpts)._applyEngine.apply(releaseSpec, {
-        onEvent: makeStderrEventWriter(opts.quiet),
-        idempotencyKey,
-        allowWarnings: opts.allowWarnings,
-        allowWarningCodes: opts.allowWarningCodes,
-        ...(requiredPlan ? { requiredPlan } : {}),
+    // A thin shim over the SDK lane (add-gitvault 5.0). `applyWithGitvault`
+    // takes the project's `gitvault_policy` into account: a project that is
+    // not `required` runs the same `apply()` this line always ran, with the
+    // same options object; a `required` one captures, publishes, mints an
+    // activation token, and commits with it.
+    const outcome = await withAutoApprove(() =>
+      applyWithGitvault({
+        sdk: getSdk(sdkOpts),
+        spec: releaseSpec,
+        apply: {
+          onEvent: makeStderrEventWriter(opts.quiet),
+          idempotencyKey,
+          allowWarnings: opts.allowWarnings,
+          allowWarningCodes: opts.allowWarningCodes,
+          ...(requiredPlan ? { requiredPlan } : {}),
+        },
         target: isCoreApiTarget() ? "core" : "cloud",
+        // The `gitvault_commit` line is printed ALWAYS, and to stderr, so
+        // `run402 deploy apply | jq` stays clean (the pipe contract).
+        onCommitLine: (line) => { if (!opts.quiet) process.stderr.write(`${line}\n`); },
       }),
     );
-    console.log(JSON.stringify(result, null, 2));
+    if (!outcome.gitvault) {
+      console.log(JSON.stringify(outcome.deploy, null, 2));
+      return;
+    }
+    const vaulted = outcome.gitvault;
+    // Both `DEPLOYED_*` outcomes activated a release; the override one just
+    // did it without a vaulted capture and carries a draining advisory.
+    const activated = vaulted.outcome === "DEPLOYED_AND_VAULTED" || vaulted.outcome === "DEPLOYED_UNVAULTED_OVERRIDE";
+    console.log(JSON.stringify({
+      ok: activated,
+      outcome: vaulted.outcome,
+      gitvault_commit: vaulted.gitvault_commit,
+      capture_id: vaulted.capture_id,
+      operation_id: vaulted.operation_id,
+      ...("generation" in vaulted ? { generation: vaulted.generation } : {}),
+      ...("push_error" in vaulted ? { push_error: vaulted.push_error } : {}),
+      ...("deploy_error" in vaulted ? { deploy_error: vaulted.deploy_error } : {}),
+      next_actions: vaulted.next_actions,
+      deploy: outcome.deploy,
+    }, null, 2));
+    // A non-activating outcome is a failed deploy even though it resolved
+    // rather than threw: the five outcomes are a result type, not an error
+    // channel, so the exit code has to carry the verdict.
+    if (!activated) process.exit(1);
   } catch (err) {
     reportDeployApplyError(err, useGithubActionsOidc);
   }
@@ -1348,87 +1384,22 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
   },
 };
 
+/**
+ * The gitvault advisory rewrite is RETIRED (change `gitvault-deploy-lane`,
+ * design D4). `GITVAULT_DEPLOY_LANE = "unsupported"` and the client-side
+ * rewrite of `GITVAULT_CLIENT_UPGRADE_REQUIRED` existed only for as long as no
+ * published client could satisfy `gitvault_policy: required`. This one can:
+ * `applyCmd` deploys through `applyWithGitvault`, which declares
+ * `{capture_id, snapshot_oid_hmac}` at plan time and presents an activation
+ * token at commit. The gateway's envelope — `upgrade_client` first, then
+ * `grandfather_policy` — is now TRUE as written, so it is relayed untouched;
+ * re-authoring it here would be the client lying in the opposite direction.
+ * `cli-deploy-gitvault-lane.test.mjs` is the successor gate.
+ */
 function reportDeployApplyError(err, useGithubActionsOidc) {
-  const warningEnhanced = enhanceGitvaultDeployError(enhanceDeployWarningError(err));
+  const warningEnhanced = enhanceDeployWarningError(err);
   if (!useGithubActionsOidc) return reportSdkError(warningEnhanced);
   return reportSdkError(enhanceCiDeployError(warningEnhanced));
-}
-
-/**
- * Whether THIS client's deploy lane speaks the gitvault protocol.
- *
- * `"unsupported"` is a statement of fact about the code in this file: it
- * declares no capture at plan time and sends no gitvault block on commit, so a
- * project with `gitvault_policy: required` refuses its commits. The vault
- * itself works — `run402 gitvault push` and `git push run402` publish captures
- * — it is the DEPLOY lane that has no capture wiring.
- *
- * RETIREMENT CONDITION: flip this to `"supported"` in the same change that
- * makes `applyCmd` declare `{capture_id, snapshot_oid_hmac}` on
- * `POST /apply/v1/plans` and present an activation token on
- * `POST /apply/v1/plans/:id/commit` (protocol §6.5). Doing that faithfully also
- * means building the deploy artifacts from an isolated materialization of the
- * snapshot commit, which is why it is a design change and not a wiring one:
- * build output is normally gitignored, so it is not in the snapshot at all.
- * `cli-deploy-gitvault-advisory.test.mjs` fails if the flag and the advisory
- * ever disagree.
- */
-export const GITVAULT_DEPLOY_LANE = "unsupported";
-
-/**
- * Tell the truth about a deploy the vault gate refused.
- *
- * The gateway's `GITVAULT_CLIENT_UPGRADE_REQUIRED` envelope leads with
- * `upgrade_client` / `npm i -g run402@latest`, which is correct in principle
- * and WRONG right now: no published `run402` has a gitvault-capable deploy
- * lane, so upgrading changes nothing about this refusal (dogfood #1, finding
- * C). Relaying it unedited sends an agent into an upgrade loop. The gateway's
- * SECOND action — grandfather the policy — is real and reachable, and this
- * client now has the verb for it.
- *
- * The gateway's own actions are PRESERVED, never dropped: they are re-ordered
- * behind an honest one, and the upgrade action keeps its place with its
- * promise corrected. When the lane ships, the flag above retires this whole
- * function's rewrite and the envelope passes through untouched.
- */
-export function enhanceGitvaultDeployError(err) {
-  const body = err?.body && typeof err.body === "object" && !Array.isArray(err.body) ? err.body : {};
-  const code = body.code || err?.code || null;
-  if (code !== "GITVAULT_CLIENT_UPGRADE_REQUIRED") return err;
-  if (GITVAULT_DEPLOY_LANE === "supported") return err;
-
-  const gatewayActions = Array.isArray(body.next_actions) ? body.next_actions : [];
-  const enhanced = Object.assign(new Error(err?.message || body.message || code), err);
-  enhanced.body = {
-    ...body,
-    hint:
-      "This project requires a vaulted capture on deploy, and this run402 CLI's deploy lane does not produce one — " +
-      "upgrading the CLI does not currently fix it. Either grandfather the policy (owner + step-up) and deploy, or " +
-      "keep the project vaulted and deploy later. Your source can still be vaulted today: `run402 gitvault push` and " +
-      "`git push run402 <branch>` are not gated on a deploy.",
-    next_actions: [
-      editRequestAction(
-        "run402 gitvault policy grandfathered --reason \"<why>\"",
-        "Un-gate this project so deploys activate without a vaulted capture. Owner + step-up, audited, and it leaves a doctor-persistent warning until you return the project to `required`.",
-      ),
-      editRequestAction(
-        "run402 gitvault push",
-        "Capture and publish your source into the vault. Independent of deploy — a vault-only project pushes for months without one.",
-      ),
-      editRequestAction(
-        "run402 gitvault policy required",
-        "Restore the gate once a gitvault-capable deploy lane is available.",
-      ),
-      // Preserved verbatim in shape, with the promise corrected: the gateway
-      // is describing the eventual client, not one you can install today.
-      ...gatewayActions.map((action) =>
-        action?.type === "upgrade_client"
-          ? { ...action, why: "Tracks the eventual gitvault-capable deploy lane. No published run402 has one yet, so this does not resolve the refusal today." }
-          : action,
-      ),
-    ],
-  };
-  return enhanced;
 }
 
 function enhanceDeployWarningError(err) {

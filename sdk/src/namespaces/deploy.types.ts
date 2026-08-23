@@ -1590,6 +1590,11 @@ export interface PlanResponse {
   planner_semantics_version?: string | null;
   base_identity?: string | null;
   next_actions?: unknown[];
+  /** gitvault (protocol §6.5). Present only when the plan declared a capture. */
+  gitvault?: {
+    /** The canonical `apply_plan_canonical/v1` digest the activation token binds. */
+    apply_plan_sha256?: string | null;
+  } | null;
   base_release_id: string | null;
   manifest_digest: string;
   is_noop?: boolean;
@@ -2422,7 +2427,25 @@ export interface PlanRequest {
     plan_id: string;
     plan_fingerprint?: string;
   };
+  /** gitvault (protocol §6.5): declares the capture this plan is bound to. */
+  gitvault?: GitvaultPlanDeclaration;
 }
+
+/**
+ * The capture declaration a gitvault-capable client sends at plan time. The
+ * gateway answers with the canonical `apply_plan_sha256` the activation token
+ * is minted against; without this block the plan carries no capture and a
+ * `gitvault_policy: required` project refuses its commit.
+ */
+export interface GitvaultPlanDeclaration {
+  capture_id: string;
+  snapshot_oid_hmac: string;
+}
+
+/** The gitvault block on a commit: an activation token, or an audited override. */
+export type GitvaultCommitDeclaration =
+  | { activation_token_id: string }
+  | { allow_unvaulted: true; override_reason: string };
 
 export interface NormalizedReleaseSpec {
   project: string;
@@ -2727,6 +2750,27 @@ export interface ApplyOptions {
    *  Cloud keeps CAS content plans and operation polling; Core uses the
    *  self-hosted gateway's direct content staging and immediate commit result. */
   target?: "cloud" | "core";
+  /** gitvault §6.5 — supplied by `applyWithGitvault`, never by hand. */
+  gitvault?: GitvaultApplyHooks;
+}
+
+/**
+ * The gitvault handshake `applyWithGitvault` (`@run402/sdk/node`) injects into
+ * `apply()`. The declaration rides the plan; `authorize` is called once the
+ * plan exists and its content is uploaded, and returns the block the commit
+ * presents. Throwing from `authorize` aborts the apply with NOTHING committed
+ * — which is how `SNAPSHOT_MOVED_DURING_DEPLOY` stops a deploy.
+ *
+ * An apply carrying these hooks does not auto-retry: a retry would re-plan
+ * under a NEW operation, and an activation token is minted for exactly one.
+ */
+export interface GitvaultApplyHooks {
+  declaration: GitvaultPlanDeclaration;
+  authorize(planned: {
+    plan_id: string;
+    operation_id: string;
+    apply_plan_sha256: string | null;
+  }): Promise<GitvaultCommitDeclaration>;
 }
 
 export interface StartOptions {

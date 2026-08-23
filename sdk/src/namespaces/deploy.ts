@@ -65,6 +65,8 @@ import type {
   FileSet,
   FsFileSource,
   GatewayDeployError,
+  GitvaultCommitDeclaration,
+  GitvaultPlanDeclaration,
   LocalDirRef,
   MissingContent,
   NormalizedAssetSpec,
@@ -180,7 +182,12 @@ export class Deploy {
    * {@link Run402DeployError} on any state-machine failure.
    */
   async apply(spec: ReleaseSpec, opts: ApplyOptions = {}): Promise<DeployResult> {
-    const maxRetries = normalizeApplyMaxRetries(opts.maxRetries);
+    // A gitvault-bound apply never auto-retries: each attempt plans a NEW
+    // operation, and an activation token is minted for exactly one. Retrying
+    // would either present a token bound elsewhere (the platform refuses, as
+    // it should) or demand a fresh capture, which is the caller's deliberate
+    // re-run — not something the client does behind their back.
+    const maxRetries = opts.gitvault ? 0 : normalizeApplyMaxRetries(opts.maxRetries);
     const maxAttempts = maxRetries + 1;
     const emit = makeEmitter(opts.onEvent);
 
@@ -243,12 +250,15 @@ export class Deploy {
       dryRun?: boolean;
       mode?: "legacyDryRun" | "reviewedPlan";
       requiredPlan?: { planId: string; planFingerprint?: string };
+      /** gitvault §6.5: bind this plan to a capture (see `runGitvaultDeploy`). */
+      gitvault?: GitvaultPlanDeclaration;
     } = {},
   ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
     return planInternal(this.client, spec, opts.idempotencyKey, {
       dryRun: opts.dryRun ?? opts.mode === "legacyDryRun",
       reviewedPlan: opts.mode === "reviewedPlan",
       requiredPlan: opts.requiredPlan,
+      ...(opts.gitvault ? { gitvault: opts.gitvault } : {}),
     });
   }
 
@@ -289,11 +299,17 @@ export class Deploy {
       idempotencyKey?: string;
       project?: string;
       requiredPlan?: { planId: string; planFingerprint?: string };
+      /**
+       * gitvault §6.5: present the activation token minted for this operation,
+       * or the audited unvaulted override. A `required` project refuses a
+       * commit that carries neither.
+       */
+      gitvault?: GitvaultCommitDeclaration;
     } = {},
   ): Promise<DeployResult> {
     const emit = makeEmitter(opts.onEvent);
     const commit = requireCloudCommitResponse(
-      await commitInternal(this.client, planId, opts.idempotencyKey, opts.project, opts.requiredPlan),
+      await commitInternal(this.client, planId, opts.idempotencyKey, opts.project, opts.requiredPlan, opts.gitvault),
       "committing deploy",
     );
     return await pollUntilReady(this.client, commit, {}, [], emit, opts.project);
@@ -792,11 +808,20 @@ async function applyOnce(
 ): Promise<DeployResult> {
   const allowWarningCodes = normalizeAllowWarningCodes(opts.allowWarningCodes);
   const target: DeployTarget = opts.target === "core" ? "core" : "cloud";
+  if (opts.gitvault && target === "core") {
+    // Refuse rather than drop the hooks: silently committing without the
+    // activation block would activate a `required` project unvaulted.
+    throw new Run402DeployError(
+      "gitvault-bound deploys are not supported against a self-hosted Core gateway; the vault gate is a Cloud control-plane capability.",
+      { code: "GITVAULT_UNSUPPORTED_TARGET", phase: "validate", retryable: false, context: "applying deploy" },
+    );
+  }
   const sliceKinds = deriveSliceKinds(spec);
   emit({ type: "plan.started" });
   const { plan, byteReaders } = await planInternal(client, spec, opts.idempotencyKey, {
     target,
     requiredPlan: opts.requiredPlan,
+    ...(opts.gitvault ? { gitvault: opts.gitvault.declaration } : {}),
   });
   emit({ type: "plan.diff", diff: plan.diff });
   emitPlanWarnings(plan, emit);
@@ -841,9 +866,21 @@ async function applyOnce(
     status: "started",
     ...(sliceKinds.length > 0 ? { slice_kinds: sliceKinds } : {}),
   });
-  const { planId } = requirePersistedPlan(plan, "applying deploy");
+  const { planId, operationId } = requirePersistedPlan(plan, "applying deploy");
+  // gitvault §6.5 — the handshake. Content is uploaded, so the artifacts this
+  // release ships are fixed; `authorize` verifies snapshot correspondence,
+  // mints the activation token, and hands back the commit block. It throws
+  // rather than returning when the deploy must not proceed, and nothing has
+  // been committed at that point.
+  const gitvaultCommit = opts.gitvault
+    ? await opts.gitvault.authorize({
+        plan_id: planId,
+        operation_id: operationId,
+        apply_plan_sha256: plan.gitvault?.apply_plan_sha256 ?? null,
+      })
+    : undefined;
   const commit = requireCloudCommitResponse(
-    await commitInternal(client, planId, opts.idempotencyKey, spec.project, opts.requiredPlan),
+    await commitInternal(client, planId, opts.idempotencyKey, spec.project, opts.requiredPlan, gitvaultCommit),
     "applying deploy",
   );
   const result = await pollUntilReady(client, commit, plan.diff, plan.warnings, emit, spec.project, sliceKinds);
@@ -1272,6 +1309,7 @@ async function planInternal(
     reviewedPlan?: boolean;
     requiredPlan?: { planId: string; planFingerprint?: string };
     target?: DeployTarget;
+    gitvault?: GitvaultPlanDeclaration;
   } = {},
 ): Promise<{ plan: PlanResponse; byteReaders: Map<string, ByteReader> }> {
   const dryRun = opts.dryRun === true;
@@ -1298,6 +1336,10 @@ async function planInternal(
   if (idempotencyKey && !dryRun && !reviewedPlan) inlineBody.idempotency_key = idempotencyKey;
   if (reviewedPlan) inlineBody.mode = "reviewed_plan";
   if (opts.requiredPlan) inlineBody.required_plan = requiredPlanToWire(opts.requiredPlan);
+  // gitvault §6.5: the capture declaration must ride the SAME plan the gateway
+  // digests, so it is set before the inline/manifest_ref size decision below
+  // and re-attached to the manifest_ref body too.
+  if (opts.gitvault) inlineBody.gitvault = opts.gitvault;
   const inlineBytes = new TextEncoder().encode(JSON.stringify(inlineBody)).byteLength;
 
   let body: PlanRequest;
@@ -1351,6 +1393,7 @@ async function planInternal(
     );
     body = { spec: { project_id: spec.project }, manifest_ref: contentRefToWire(ref) };
     if (idempotencyKey) body.idempotency_key = idempotencyKey;
+    if (opts.gitvault) body.gitvault = opts.gitvault;
   }
 
   let plan: PlanResponse;
@@ -1889,11 +1932,13 @@ async function commitInternal(
   idempotencyKey?: string,
   project?: string,
   requiredPlan?: { planId: string; planFingerprint?: string },
+  gitvault?: GitvaultCommitDeclaration,
 ): Promise<CommitResponse | CoreCommitResponse> {
   try {
     const body: Record<string, unknown> = {};
     if (idempotencyKey) body.idempotency_key = idempotencyKey;
     if (requiredPlan) body.required_plan = requiredPlanToWire(requiredPlan);
+    if (gitvault) body.gitvault = gitvault;
     return await client.request<CommitResponse>(
       `/apply/v1/plans/${encodeURIComponent(planId)}/commit`,
       {

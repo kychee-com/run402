@@ -1,7 +1,8 @@
 /**
  * gitvault push-gated deploy (task 5.6) — the §6.5 machine: a fresh
- * `capture_id` before both lanes, a deploy lane that builds from an ISOLATED
- * materialization of the snapshot commit, a `capture_binding` whose plan digest
+ * `capture_id` before both lanes, a deploy lane that collects artifacts from
+ * the work tree with SNAPSHOT CORRESPONDENCE verified before any commit
+ * (change `gitvault-deploy-lane`, D1–D3), a `capture_binding` whose plan digest
  * may be null (capture-the-attempt), token exchange + binding check +
  * consumption, the CLOSED five outcomes, the always-printed `gitvault_commit`,
  * and the override journal (full contents, crash-safe, drained by equality on
@@ -15,7 +16,7 @@
 import { describe, it } from "node:test";
 import { loadGitvaultVectors, OPTOUT_SKIP_MESSAGE, type GitvaultVector } from "./gitvault-vectors.test-helper.js";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LocalError } from "../errors.js";
 import { storedBytesSha256, verifyGitvaultObject } from "../namespaces/gitvault.crypto.js";
@@ -36,7 +37,7 @@ import {
   type GitvaultDeployLanePlanInput,
 } from "./gitvault-deploy.js";
 import { GitvaultVault } from "./gitvault-publication.js";
-import { GITVAULT_DEPLOY_REF } from "./gitvault-snapshot.js";
+import { GITVAULT_DEPLOY_REF, captureSnapshot, capturedSetDigest, capturedSetUnchanged, deriveCapturedSet, diffCapturedSets } from "./gitvault-snapshot.js";
 import { git, makeVault, type GitvaultMemoryTransport, type VaultFixture } from "./gitvault-memory-transport.test.js";
 
 // ─── Vector loading (same contract as the crypto suite) ──────────────────────
@@ -77,14 +78,14 @@ async function rejectsCode(p: Promise<unknown>, code: string, message?: string):
 interface FakeLane extends GitvaultDeployLane {
   plans: GitvaultDeployLanePlanInput[];
   commits: GitvaultDeployLaneCommitInput[];
-  /** What `plan` observed in the ISOLATED materialization. */
+  /** What `plan` observed in the work tree it was handed. */
   seen: string[];
 }
 
 /**
- * A deploy lane that behaves like apply-v1: it builds from the materialization
- * it is handed, registers the operation row the token mint validates against,
- * and consumes the activation token at commit.
+ * A deploy lane that behaves like apply-v1: it collects artifacts from the
+ * work tree it is handed, registers the operation row the token mint validates
+ * against, and consumes the activation token at commit.
  */
 function makeLane(transport: GitvaultMemoryTransport, options: { planFails?: string; commitFails?: string; overrideAuthorized?: boolean; onPlan?: () => void } = {}): FakeLane {
   let n = 0;
@@ -93,8 +94,8 @@ function makeLane(transport: GitvaultMemoryTransport, options: { planFails?: str
     async plan(input) {
       lane.plans.push(input);
       options.onPlan?.();
-      // build from the materialized snapshot, never the work tree
-      const appPath = join(input.materialized_dir, "app.js");
+      // collect artifacts from the work tree — correspondence is verified, not isolated
+      const appPath = join(input.source_dir, "app.js");
       lane.seen.push(existsSync(appPath) ? readFileSync(appPath, "utf8") : "<absent>");
       if (options.planFails) throw new LocalError("build failed before a plan existed", "planning apply", { code: options.planFails });
       n += 1;
@@ -117,7 +118,7 @@ function makeLane(transport: GitvaultMemoryTransport, options: { planFails?: str
   return lane;
 }
 
-/** A fixture whose work tree carries `app.js` so the isolation check has something to read. */
+/** A fixture whose work tree carries `app.js` so the correspondence check has something to read. */
 async function deployFixture(): Promise<VaultFixture> {
   const f = await makeVault();
   writeFileSync(join(f.repoDir, "app.js"), "v1\n");
@@ -174,15 +175,15 @@ describe("§6.5 push-gated deploy — the closed five outcomes", () => {
     for (const carrier of plaintextCarriers) assert.ok(!carrier.includes(r.gitvault_commit), "no plaintext control-plane message carries the commit id");
   });
 
-  it("the deploy lane builds from an ISOLATED materialization — mid-deploy edits cannot skew provenance", async (t) => {
+  it("the deploy lane collects from the work tree — correspondence is verified, not isolated", async (t) => {
     const f = await deployFixture();
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
-    const lane = makeLane(f.transport, { onPlan: () => writeFileSync(join(f.repoDir, "app.js"), "v2 (edited mid-deploy)\n") });
+    const lane = makeLane(f.transport);
     const r = await runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir });
     assert.equal(r.outcome, "DEPLOYED_AND_VAULTED");
-    assert.deepEqual(lane.seen, ["v1\n"], "the build read the snapshot, not the mutating work tree");
-    assert.notEqual(lane.plans[0]!.materialized_dir, f.repoDir);
-    assert.equal(existsSync(lane.plans[0]!.materialized_dir), false, "the isolated build dir is removed unless kept");
+    assert.deepEqual(lane.seen, ["v1\n"]);
+    assert.equal(lane.plans[0]!.source_dir, r.snapshot.top_level, "artifacts come from the tree the capture describes, not a materialization of it");
+    assert.equal(existsSync(join(lane.plans[0]!.source_dir, ".git")), true, "and that tree is the live repository");
   });
 
   it("DEPLOY_FAILED_VAULTED: a build that fails before a plan exists still captures the attempt — with a NULL digest, from which no token is mintable", async (t) => {
@@ -285,6 +286,191 @@ describe("§6.5 push-gated deploy — the closed five outcomes", () => {
     await rejectsCode(runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir }), "SNAPSHOT_CONFLICTED_INDEX");
     assert.deepEqual(lane.plans, []);
     assert.equal(f.transport.calls.filter((c) => c.startsWith("admit:")).length, 0);
+  });
+});
+
+// ─── Snapshot correspondence (change `gitvault-deploy-lane`, design D1–D3) ───
+
+/**
+ * The property the retired isolation requirement existed to protect: the
+ * artifacts a release ships correspond to the source the vault recorded.
+ *
+ * Every test here drives the REAL deploy sequence — a real git work tree, the
+ * real `captureSnapshot`, the real push/mint/commit machine — and makes its
+ * edit MID-FLIGHT from the lane's own `plan` callback, exactly where a build
+ * step would run. A unit test over `diffCapturedSets` alone would pass while
+ * the refusal sat unreachable behind a check nobody called.
+ */
+describe("snapshot correspondence — the captured set may not move under a deploy", () => {
+  it("a tracked file edited between capture and commit REFUSES, and commits nothing", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const lane = makeLane(f.transport, { onPlan: () => writeFileSync(join(f.repoDir, "app.js"), "v2 (edited mid-deploy)\n") });
+
+    await rejectsCode(runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir }), "SNAPSHOT_MOVED_DURING_DEPLOY");
+
+    assert.equal(lane.commits.length, 0, "nothing was committed — a refusal must not activate");
+    assert.deepEqual([...f.transport.consumedTokens.keys()], [], "and no activation token was spent");
+  });
+
+  it("the refusal NAMES the changed paths, and says which side moved", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    writeFileSync(join(f.repoDir, "removed.txt"), "gone soon\n");
+    await git(f.repoDir, ["add", "removed.txt"]);
+    await git(f.repoDir, ["commit", "-q", "-m", "removed.txt"]);
+    const lane = makeLane(f.transport, {
+      onPlan: () => {
+        writeFileSync(join(f.repoDir, "app.js"), "v2\n");          // modified
+        writeFileSync(join(f.repoDir, "brand-new.txt"), "hello\n"); // added (untracked, not ignored)
+        rmSync(join(f.repoDir, "removed.txt"));                     // removed
+      },
+    });
+
+    try {
+      await runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir });
+      assert.fail("expected SNAPSHOT_MOVED_DURING_DEPLOY");
+    } catch (e) {
+      assert.equal(codeOf(e), "SNAPSHOT_MOVED_DURING_DEPLOY");
+      const details = (e as LocalError).details as { modified: string[]; added: string[]; removed: string[]; captured_digest: string; observed_digest: string; gitvault_commit: string };
+      assert.deepEqual(details.modified, ["app.js"]);
+      assert.deepEqual(details.added, ["brand-new.txt"]);
+      assert.deepEqual(details.removed, ["removed.txt"]);
+      assert.notEqual(details.captured_digest, details.observed_digest);
+      assert.match((e as LocalError).message, /app\.js/, "the message names a path so the caller can act without parsing details");
+    }
+  });
+
+  it("an untouched tree proceeds — the check must not refuse its own deploy", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const lane = makeLane(f.transport);
+    const r = await runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir });
+    assert.equal(r.outcome, "DEPLOYED_AND_VAULTED");
+    assert.equal(lane.commits.length, 1);
+  });
+
+  it("an untouched DIRTY tree proceeds too — the synthetic-commit path re-derives identically", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    writeFileSync(join(f.repoDir, "app.js"), "uncommitted work\n");
+    writeFileSync(join(f.repoDir, "scratch.txt"), "untracked but not ignored\n");
+    const lane = makeLane(f.transport);
+    const r = await runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir });
+    assert.equal(r.snapshot.kind, "synthetic");
+    assert.equal(r.outcome, "DEPLOYED_AND_VAULTED");
+  });
+
+  /**
+   * THE SCENARIO THAT KEEPS THE FEATURE USABLE. Build output is conventionally
+   * gitignored, so it is not in the captured set at all — a build that runs
+   * between capture and commit (which is to say: every real deploy of every
+   * project with a build step) must not trip the refusal. If this test ever
+   * goes red because someone widened the digest to "the working directory",
+   * the feature is dead for most of its users.
+   */
+  it("a build that rewrites GITIGNORED output between capture and commit still proceeds", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    writeFileSync(join(f.repoDir, ".gitignore"), "dist/\n");
+    mkdirSync(join(f.repoDir, "dist"), { recursive: true });
+    writeFileSync(join(f.repoDir, "dist", "bundle.js"), "stale build\n");
+    await git(f.repoDir, ["add", ".gitignore"]);
+    await git(f.repoDir, ["commit", "-q", "-m", "ignore dist"]);
+
+    const lane = makeLane(f.transport, {
+      onPlan: () => {
+        writeFileSync(join(f.repoDir, "dist", "bundle.js"), "fresh build\n");
+        writeFileSync(join(f.repoDir, "dist", "chunk-abc123.js"), "a new chunk each build\n");
+      },
+    });
+    const r = await runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir });
+
+    assert.equal(r.outcome, "DEPLOYED_AND_VAULTED", "gitignored build output is outside the correspondence claim");
+    assert.equal(lane.commits.length, 1);
+    assert.ok(!r.snapshot.captured.some((e) => e.path.startsWith("dist/")), "and the vault never held the build output either");
+  });
+
+  it("refuses BEFORE the override journal is written — a refusal leaves no advisory to drain", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    f.transport.tamperReceiptAt = 1; // the push fails, so the override path is the one that would commit
+    const lane = makeLane(f.transport, { overrideAuthorized: true, onPlan: () => writeFileSync(join(f.repoDir, "app.js"), "v2\n") });
+
+    await rejectsCode(
+      runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir, allow_unvaulted: { reason: "vault unreachable" } }),
+      "SNAPSHOT_MOVED_DURING_DEPLOY",
+    );
+    assert.deepEqual(listPendingOverrideJournals(f.keystore, f.repoId), [], "no advisory for an operation that never committed");
+    assert.equal(lane.commits.length, 0);
+  });
+
+  it("REFUSES, never repairs: no second capture is published and no generation is churned", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const lane = makeLane(f.transport, { onPlan: () => writeFileSync(join(f.repoDir, "app.js"), "v2\n") });
+    await rejectsCode(runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir }), "SNAPSHOT_MOVED_DURING_DEPLOY");
+    // Exactly one generation exists: the one the refused deploy published. A
+    // re-capture-and-continue loop would keep minting more.
+    const state = await f.vault.materialize();
+    assert.equal(state.generation, "0000000000000001");
+    assert.equal(lane.plans.length, 1, "the lane was planned once; the caller re-runs deliberately");
+  });
+
+  it("the refusal carries the vaulted facts, so the caller knows the source DID reach the vault", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const lane = makeLane(f.transport, { onPlan: () => writeFileSync(join(f.repoDir, "app.js"), "v2\n") });
+    try {
+      await runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir });
+      assert.fail("expected SNAPSHOT_MOVED_DURING_DEPLOY");
+    } catch (e) {
+      const details = (e as LocalError).details as { generation?: string; gitvault_commit: string; capture_id: string };
+      assert.equal(details.generation, "0000000000000001");
+      assert.match(details.gitvault_commit, /^[0-9a-f]{40}$/);
+      assert.match(details.capture_id, /^[0-9a-f]{32}$/);
+      assert.ok(((e as LocalError).nextActions ?? []).length > 0, "and hands the caller something to do");
+    }
+  });
+
+  it("the snapshot records the captured set and its digest for BOTH kinds", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+
+    const clean = await captureSnapshot({ dir: f.repoDir });
+    assert.equal(clean.kind, "head");
+    assert.ok(clean.captured.some((e) => e.path === "app.js"), "the captured set names the tracked files");
+    assert.match(clean.captured_digest, /^[0-9a-f]{64}$/);
+    assert.equal(capturedSetDigest(clean.captured), clean.captured_digest);
+    // Re-deriving an untouched tree reproduces it exactly — the property the
+    // whole refusal rests on, checked directly rather than only through a deploy.
+    assert.equal(
+      capturedSetDigest(await deriveCapturedSet({ top_level: clean.top_level, global_excludes_path: clean.global_excludes_path })),
+      clean.captured_digest,
+    );
+
+    writeFileSync(join(f.repoDir, "app.js"), "dirty\n");
+    const dirty = await captureSnapshot({ dir: f.repoDir });
+    assert.equal(dirty.kind, "synthetic");
+    assert.equal(capturedSetDigest(dirty.captured), dirty.captured_digest);
+    assert.notEqual(dirty.captured_digest, clean.captured_digest);
+    assert.deepEqual(dirty.captured.map((e) => e.path), dirty.paths);
+  });
+
+  it("diffCapturedSets names each kind of move, and reports none for an identical set", () => {
+    const before = [
+      { path: "a.txt", mode: "100644" as const, oid: "1".repeat(40) },
+      { path: "b.txt", mode: "100644" as const, oid: "2".repeat(40) },
+      { path: "c.sh", mode: "100644" as const, oid: "3".repeat(40) },
+    ];
+    assert.deepEqual(diffCapturedSets(before, before), { added: [], removed: [], modified: [] });
+    assert.equal(capturedSetUnchanged(diffCapturedSets(before, before)), true);
+    const after = [
+      { path: "a.txt", mode: "100644" as const, oid: "9".repeat(40) }, // content changed
+      { path: "c.sh", mode: "100755" as const, oid: "3".repeat(40) },  // mode changed — still a move
+      { path: "d.txt", mode: "100644" as const, oid: "4".repeat(40) },
+    ];
+    assert.deepEqual(diffCapturedSets(before, after), { added: ["d.txt"], removed: ["b.txt"], modified: ["a.txt", "c.sh"] });
   });
 });
 

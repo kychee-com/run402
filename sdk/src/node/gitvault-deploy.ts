@@ -1,21 +1,40 @@
 /**
- * gitvault — push-gated deploy (protocol rev 40 §6.5; task 5.6).
+ * gitvault — push-gated deploy (protocol rev 40 §6.5; task 5.6, lane supplied
+ * by change `gitvault-deploy-lane`).
  *
- * Every deploy has a commit, and artifacts build from it:
- *   1. snapshot (§6.6) → the `gitvault_commit`, printed ALWAYS, never sent;
+ * Every deploy has a commit, and the artifacts it ships CORRESPOND to it:
+ *   1. snapshot (§6.6) → the `gitvault_commit`, printed ALWAYS, never sent,
+ *      plus a digest over the captured file set;
  *   2. a fresh `capture_id` before BOTH lanes;
- *   3. the deploy lane builds from an ISOLATED materialization of the snapshot
- *      commit and produces the canonical plan digest (`apply_plan_sha256`,
- *      null when the build fails before a plan exists) — concurrently, the
- *      push lane prepares the publication;
+ *   3. the deploy lane collects artifacts from the work tree and produces the
+ *      canonical plan digest (`apply_plan_sha256`, null when the build fails
+ *      before a plan exists) — concurrently, the push lane prepares the
+ *      publication;
  *   4. the push's head carries `capture_binding {capture_id, apply_plan_sha256|null,
  *      snapshot_oid_hmac}` — capture-the-attempt survives a failed build; no
  *      token is mintable from a null digest;
- *   5. with a digest and an admitted head, the capture receipt is exchanged
+ *   5. BEFORE any plan commits, the captured-set digest is RE-DERIVED. A
+ *      difference is `SNAPSHOT_MOVED_DURING_DEPLOY`: the deploy stops, naming
+ *      the changed paths, and commits nothing;
+ *   6. with a digest and an admitted head, the capture receipt is exchanged
  *      for an activation token, and the apply commit is submitted ONLY with it;
- *   6. the outcome is one of the CLOSED five: `DEPLOYED_AND_VAULTED`,
+ *   7. the outcome is one of the CLOSED five: `DEPLOYED_AND_VAULTED`,
  *      `DEPLOY_BLOCKED_PUSH_FAILED`, `DEPLOY_FAILED_VAULTED`,
  *      `DEPLOY_FAILED_UNVAULTED`, `DEPLOYED_UNVAULTED_OVERRIDE`.
+ *
+ * WHAT CORRESPONDENCE MEANS, AND WHAT IT DOES NOT. Step 5 establishes that the
+ * captured source did NOT change while the artifacts were produced. It does
+ * NOT establish that the artifacts are a reproducible function of that source:
+ * nothing here ties a gitignored `dist/` to the `src/` it came from, and the
+ * captured set deliberately excludes gitignored paths so a project with a
+ * build step stays deployable. The stronger property — build inside an
+ * isolated materialization, making artifacts a function of the snapshot — is a
+ * recorded forward TODO, not a thing this module quietly delivers.
+ *
+ * REFUSE, NEVER REPAIR. On a detected move the deploy stops rather than
+ * re-capturing: a second capture publishes a generation whose relationship to
+ * the artifacts already collected is exactly what is in doubt, and a
+ * capture→collect→capture loop churns generations. The caller re-runs.
  *
  * The push is never gated on deploy success. The unvaulted override
  * (`allow_unvaulted`) is journaled crash-safely BEFORE the commit with the
@@ -31,7 +50,7 @@ import { formatGitvaultTimestamp, hexToBytes, newHex32 } from "../namespaces/git
 import type { GitvaultActivationToken, GitvaultCaptureBinding, GitvaultCaptureReceipt, GitvaultHeadTarget } from "../namespaces/gitvault.types.js";
 import { GitvaultKeystore, readFileNoFollow, writeFileAtomic0600 } from "./gitvault-keystore.js";
 import { GitvaultVault, captureBinding, deployRefTransaction, type GitvaultPublishResult } from "./gitvault-publication.js";
-import { GITVAULT_DEPLOY_REF, captureSnapshot, gitvaultCommitLine, materializeSnapshot, snapshotCommitment, type GitvaultSnapshot, type GitvaultSnapshotOptions } from "./gitvault-snapshot.js";
+import { GITVAULT_DEPLOY_REF, capturedSetDigest, capturedSetUnchanged, captureSnapshot, deriveCapturedSet, diffCapturedSets, gitvaultCommitLine, snapshotCommitment, type GitvaultCapturedSetDrift, type GitvaultSnapshot, type GitvaultSnapshotOptions } from "./gitvault-snapshot.js";
 
 // ─── Outcomes ────────────────────────────────────────────────────────────────
 
@@ -82,8 +101,14 @@ export type GitvaultDeployResult =
 // ─── The deploy lane (injected; 5.10 wires `Run402.deploy`) ──────────────────
 
 export interface GitvaultDeployLanePlanInput {
-  /** The isolated materialization of the snapshot commit — build from THIS. */
-  materialized_dir: string;
+  /**
+   * The work tree the snapshot was captured from — collect artifacts from
+   * HERE. It is the mutable tree on purpose (a materialization of the snapshot
+   * commit holds source and no build output, because build output is
+   * gitignored). Correspondence is enforced by re-deriving the captured-set
+   * digest before the plan commits, not by isolating this directory.
+   */
+  source_dir: string;
   capture_id: string;
   snapshot_oid_hmac: string;
 }
@@ -222,9 +247,6 @@ export interface GitvaultDeployOptions {
   allow_unvaulted?: { reason: string };
   /** Test/replay hook: pin the capture id. */
   capture_id?: string;
-  /** Where the isolated build dir is created (temp when omitted); always removed unless `keep_materialized`. */
-  materialize_dir?: string;
-  keep_materialized?: boolean;
   now?: () => Date;
   /** Called with the `gitvault_commit` line as soon as the snapshot exists — the CLI prints it. */
   onCommitLine?: (line: string) => void;
@@ -243,10 +265,78 @@ function code(e: unknown): string | undefined {
 }
 
 /**
+ * The correspondence refusal. CLIENT-LOCAL by decision (design open question,
+ * resolved 2026-08-23): the moved tree is detected before any plan is
+ * committed, so this code never crosses the wire and is deliberately absent
+ * from the protocol's frozen §11 wire registry. The accepted cost is
+ * discoverability — which is why it is named here, in the client's own error
+ * surface, rather than left to be found by grep.
+ */
+export const SNAPSHOT_MOVED_DURING_DEPLOY = "SNAPSHOT_MOVED_DURING_DEPLOY";
+
+/** What `SNAPSHOT_MOVED_DURING_DEPLOY` carries in `details`. */
+export interface GitvaultSnapshotMovedDetails extends GitvaultCapturedSetDrift {
+  gitvault_commit: string;
+  capture_id: string;
+  captured_digest: string;
+  observed_digest: string;
+  /** Present when the snapshot reached the vault before the tree moved. */
+  generation?: string;
+}
+
+function driftSummary(drift: GitvaultCapturedSetDrift): string {
+  const parts: string[] = [];
+  const name = (label: string, paths: string[]): void => {
+    if (paths.length === 0) return;
+    const shown = paths.slice(0, 5).join(", ");
+    parts.push(`${label} ${paths.length > 5 ? `${shown}, …and ${paths.length - 5} more` : shown}`);
+  };
+  name("modified", drift.modified);
+  name("added", drift.added);
+  name("removed", drift.removed);
+  return parts.join("; ");
+}
+
+/**
+ * Re-derive the captured-set digest and refuse if it moved. Called before ANY
+ * plan commit — including the override path, and before its journal is written,
+ * so a refusal never leaves an advisory for an operation that never committed.
+ */
+async function assertCapturedSetUnchanged(
+  snapshot: GitvaultSnapshot,
+  context: { capture_id: string; generation?: string },
+): Promise<void> {
+  const now = await deriveCapturedSet({ top_level: snapshot.top_level, global_excludes_path: snapshot.global_excludes_path });
+  const drift = diffCapturedSets(snapshot.captured, now);
+  if (capturedSetUnchanged(drift)) return;
+  const details: GitvaultSnapshotMovedDetails = {
+    ...drift,
+    gitvault_commit: snapshot.oid,
+    capture_id: context.capture_id,
+    captured_digest: snapshot.captured_digest,
+    observed_digest: capturedSetDigest(now),
+    ...(context.generation !== undefined ? { generation: context.generation } : {}),
+  };
+  throw new LocalError(
+    `the captured source changed between capture and commit (${driftSummary(drift)}); refusing to activate artifacts the vaulted snapshot ${snapshot.oid} does not describe`,
+    "verifying snapshot correspondence",
+    {
+      code: SNAPSHOT_MOVED_DURING_DEPLOY,
+      details,
+      next_actions: [
+        { action: "redeploy — the next run captures the tree as it is now" },
+        { action: "if the change was not yours, inspect the named paths before redeploying" },
+      ],
+    },
+  );
+}
+
+/**
  * Run the push-gated deploy. Throws ONLY for refusals that precede any lane
  * (snapshot refusals such as `SNAPSHOT_CONFLICTED_INDEX`, unsupported
- * repositories) and for `OVERRIDE_NOT_AUTHORIZED`; every other path resolves
- * to one of the five outcomes.
+ * repositories), for `SNAPSHOT_MOVED_DURING_DEPLOY` (the tree moved under the
+ * capture; nothing is committed), and for `OVERRIDE_NOT_AUTHORIZED`; every
+ * other path resolves to one of the five outcomes.
  */
 export async function runGitvaultDeploy(options: GitvaultDeployOptions): Promise<GitvaultDeployResult> {
   const { vault, lane } = options;
@@ -266,12 +356,12 @@ export async function runGitvaultDeploy(options: GitvaultDeployOptions): Promise
     apply_plan_sha256: null, operation_id: null, next_actions: [], ...fields,
   });
 
-  // 3. isolated materialization — the deploy lane builds from the commit, never the work tree.
-  const materialized = await materializeSnapshot(options.repo_dir, snapshot.oid, options.materialize_dir);
+  // 3. the deploy lane collects artifacts from the work tree; step 5 below
+  //    verifies the captured set did not move while it did so.
   let plan: GitvaultDeployLanePlan | null = null;
   let planError: unknown = null;
   const planPromise = (async () => {
-    try { plan = await lane.plan({ materialized_dir: materialized, capture_id: captureId, snapshot_oid_hmac: snapshotOidHmac }); }
+    try { plan = await lane.plan({ source_dir: snapshot.top_level, capture_id: captureId, snapshot_oid_hmac: snapshotOidHmac }); }
     catch (e) { planError = e; }
   })();
 
@@ -293,7 +383,6 @@ export async function runGitvaultDeploy(options: GitvaultDeployOptions): Promise
     } catch (e) { pushError = e; }
   })();
   await Promise.all([planPromise, pushPromise]);
-  if (!options.keep_materialized) rmSync(materialized, { recursive: true, force: true });
 
   const planned = plan as GitvaultDeployLanePlan | null;
   const pub = published as GitvaultPublishResult | null;
@@ -306,6 +395,10 @@ export async function runGitvaultDeploy(options: GitvaultDeployOptions): Promise
       return { ...common, outcome: "DEPLOY_FAILED_UNVAULTED", push_error, deploy_error: summarize(planError), next_actions: [{ action: "fix the build, then redeploy" }, { action: "retry the push (run402 gitvault push)" }] };
     }
     if (options.allow_unvaulted) {
+      // Correspondence is checked BEFORE the journal is written: an override
+      // still activates artifacts, and a refusal must not leave an advisory
+      // for an operation that never committed.
+      await assertCapturedSetUnchanged(snapshot, { capture_id: captureId });
       // journal BEFORE the commit so a crash leaves the advisory + the exact snapshot to resume
       const journal: GitvaultOverrideJournal = {
         version: 1, repo_id: vault.repoId, operation_id: planned.operation_id, capture_id: captureId, apply_plan_sha256: planned.apply_plan_sha256,
@@ -342,6 +435,10 @@ export async function runGitvaultDeploy(options: GitvaultDeployOptions): Promise
   if (!pub.capture_receipt) {
     return { ...common, outcome: "DEPLOY_FAILED_VAULTED", ...vaulted, deploy_error: { code: "GITVAULT_CAPTURE_RECEIPT_MISSING", message: "admission returned no capture receipt for a head carrying a capture binding; no activation token can be exchanged", retryable: true }, next_actions: [{ action: "retry the deploy" }] };
   }
+  // Correspondence, before the token is even minted: an unspent token is
+  // harmless, but refusing after the mint would leave one bound to a deploy
+  // that can never legitimately present it.
+  await assertCapturedSetUnchanged(snapshot, { capture_id: captureId, generation: pub.generation });
   let token: GitvaultActivationToken;
   try {
     token = await vault.transport.exchangeActivationToken({ repo_id: vault.repoId, operation_id: planned.operation_id, capture_receipt: pub.capture_receipt });

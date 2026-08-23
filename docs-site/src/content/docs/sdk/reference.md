@@ -1940,7 +1940,7 @@ status(opts?): Promise<GitvaultStatus>                                  // pass 
 compact(opts?): Promise<GitvaultCompactResult>
 prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
 verify(opts?): Promise<GitvaultVerifiedState>
-deploy(opts): Promise<GitvaultDeployResult>                             // the push-gated deploy
+deploy(opts): Promise<GitvaultDeployResult>                             // the push-gated deploy (raw; takes an injected lane — see applyWithGitvault below)
 restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives; index-packs objects and leaves ref creation to the caller
 scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<{ name, url, created_repository, already_present, existing_url }>
 open(opts?): Promise<GitvaultHandle>                                    // the raw protocol object, for ref transactions or repair
@@ -1961,6 +1961,41 @@ const state  = await r.gitvault.verify({ project_id: "prj_123" });
 ```
 
 `heads` paging (D186): `after_generation` is the REQUIRED verification anchor — a semantic input, never a paging knob — and must stay CONSTANT across a page sequence. `limit` is required. `cursor` is omitted on the first request and is then the prior page's `next_cursor` echoed UNCHANGED. `allHeads` is the convenience wrapper that walks the sequence for you.
+
+#### Deploying a vaulted project — `applyWithGitvault`
+
+`r.gitvault.deploy(...)` is the raw push-gated machine and takes an injected lane. `applyWithGitvault` (`@run402/sdk/node`) is the supplied one: it reads the project's `gitvault_policy`, and only a `required` project captures at all.
+
+```ts
+import { applyWithGitvault, run402 } from "@run402/sdk/node";
+import type { ReleaseSpec } from "@run402/sdk";
+const r = run402();
+const spec: ReleaseSpec = { project: "prj_123", site: { replace: { "index.html": "<h1>hi</h1>" } } };
+
+const { mode, deploy, gitvault } = await applyWithGitvault({
+  sdk: r,
+  spec,                                     // the same ReleaseSpec `r.project(id).apply` takes
+  apply: { idempotencyKey: "deploy-42" },   // the same options, passed through untouched
+  repo_dir: process.cwd(),
+  onCommitLine: (line) => process.stderr.write(`${line}\n`),   // `gitvault_commit <oid>`
+});
+
+if (gitvault?.outcome === "DEPLOYED_AND_VAULTED") {
+  console.log(mode.kind, deploy?.operation_id);   // `deploy` is the usual DeployResult
+}
+```
+
+`mode` says what happened about the vault: `{ kind: "vaulted" }`, `{ kind: "grandfathered" }`, or `{ kind: "none" }`. For anything but `vaulted` this is `apply()` and nothing else — no capture, no token, no added refusal, and the only added cost is the single policy read that determined the project is not `required`. `gitvault` is `null` on those paths and carries the five-outcome envelope on the vaulted one.
+
+**A vaulted apply never auto-retries.** Each attempt plans a new operation, and an activation token is minted for exactly one; retrying under a fresh capture would paper over a refusal (revoked, expired, bound elsewhere) that is the platform telling you something true. `maxRetries` is forced to 0 on this path.
+
+**Snapshot correspondence, and its exact scope.** The client digests the captured file set at capture and re-derives it after artifacts are collected, before the plan commits. A difference refuses the deploy with **`SNAPSHOT_MOVED_DURING_DEPLOY`** — a `LocalError` whose `details` name the `modified` / `added` / `removed` paths plus the `gitvault_commit`, `capture_id`, and both digests. It is **client-local**: it is detected before anything is committed, never crosses the wire, and therefore is not in the protocol's error registry. The client refuses and stops; it does not re-capture and continue, because a second capture would publish a snapshot whose relationship to the already-collected artifacts is exactly the thing in doubt.
+
+The captured set is tracked plus untracked-but-not-ignored — so a build that rewrites gitignored output between capture and commit proceeds, by design. **What the vault records is the source a release corresponds to; the artifacts are not proven to be derived from it.** The guarantee is that the captured source did not change while the artifacts were produced, not that the artifacts are a reproducible function of that source.
+
+`captureSnapshot()` carries the same set on every snapshot: `snapshot.captured` (`{path, mode, oid}[]`) and `snapshot.captured_digest`. `deriveCapturedSet({ top_level, global_excludes_path })`, `capturedSetDigest(files)`, and `diffCapturedSets(before, after)` are exported for callers building their own lane.
+
+**A `required` project needs the vault keystore on the deploying machine** — the capture is encrypted client-side and the platform holds no key that could produce it. Without it the deploy refuses with the protocol's own `KEYSTORE_MISSING` / `GITVAULT_REPO_STATE_MISSING`, with next actions leading on restoring the keystore and on `setPolicy(repoId, { gitvault_policy: "grandfathered", reason })` (owner + step-up, audited, doctor-persistent advisory).
 
 **Nothing here is memoised.** Two of these responses are secret-bearing — the maintenance lease's `holder_token` (returned exactly once) and anything derived from the keystore — and a secret-bearing response is never cached, never persisted into an agent-surface result store, and never logged.
 

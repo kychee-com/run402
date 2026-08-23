@@ -1229,15 +1229,36 @@ The helper resolves the repository from the `GIT_DIR` git hands it, never from t
 
 **Back up the keystore directory, and it prints its own path.** `run402 gitvault status` reports it as `keystore.root` and echoes it under the terminal-loss statement; `run402 gitvault init` prints it too. It is `~/.config/run402/gitvault` for the default wallet and `~/.config/run402/profiles/<wallet>/gitvault` for a named one, so read the printed path rather than assuming. Inside are `identity.json` (the principal keys), `repos/<repo_id>.json` (the per-vault key), `receipts/<repo_id>.recovery_receipt.json`, `journal/`, and `audit.log`. The recovery receipt `gitvault init` prints once is an integrity anchor, not a decryption key: it proves the vault you are served is the one you created, and it can decrypt nothing. It is not a secret — the more copies the better.
 
-**Deploying a vaulted project, today.** Allocating a vault sets the project's `gitvault_policy` to `required`, and from then on a deploy must present a vaulted capture at commit. **This CLI's deploy lane does not produce one yet**, so `run402 deploy apply` against a `required` project is refused `409 GITVAULT_CLIENT_UPGRADE_REQUIRED` — and upgrading the CLI does not currently change that, because no published `run402` has a gitvault-capable deploy lane. Until one does, either keep the project vaulted and deploy later, or un-gate it and deploy now:
+**Deploying a vaulted project.** Allocating a vault sets the project's `gitvault_policy` to `required`, and from then on a deploy must present a vaulted capture at commit. `run402 deploy apply` produces one automatically: it snapshots your work tree, publishes the capture to the vault, exchanges the capture receipt for a single-use activation token, and commits with it. Nothing to pass, no extra command — a `required` project deploys the same way any other one does.
 
 ```bash
-run402 gitvault policy grandfathered --reason "no vaulted deploy lane yet"
 run402 deploy apply --manifest run402.config.json
-run402 gitvault policy required                # once a vaulted deploy lane exists
+# gitvault_commit 4f2a…  (stderr; always printed, never sent to the platform)
+# { "ok": true, "outcome": "DEPLOYED_AND_VAULTED", … }
 ```
 
-Vaulting your source is unaffected in either case: `run402 gitvault push` and `git push run402 <branch>` are never gated on a deploy. `run402 doctor` reports the project's policy, whether this machine can produce the capture a `required` policy demands, and where the keystore lives.
+The result reports one of five terminal outcomes, and the exit code follows it: `DEPLOYED_AND_VAULTED` (the normal one) and `DEPLOYED_UNVAULTED_OVERRIDE` exit 0 because a release activated; `DEPLOY_BLOCKED_PUSH_FAILED` (the vault was unreachable, so nothing activated and your previous release keeps serving), `DEPLOY_FAILED_VAULTED` (the build or commit failed, but the attempt is in the vault), and `DEPLOY_FAILED_UNVAULTED` (neither landed) exit 1.
+
+**What this machine needs: the keystore.** A `required` project can only be deployed from a machine holding the vault keystore, because the capture is encrypted client-side and the platform holds no key that could produce it. `run402 gitvault status` prints its path as `keystore.root`; back that directory up. Without it the deploy refuses by name (`KEYSTORE_MISSING`, or `GITVAULT_REPO_STATE_MISSING` when the identity is present but this vault's key file is not) and hands you two actions that work: restore the keystore, or un-gate the project —
+
+```bash
+run402 gitvault policy grandfathered --reason "deploying from CI without the keystore"
+run402 deploy apply --manifest run402.config.json
+run402 gitvault policy required                # when the keystore is back
+```
+
+Grandfathering is an owner action, needs step-up, is audited, and leaves a `run402 doctor` warning until you return the project to `required`. Vaulting your source is unaffected either way: `run402 gitvault push` and `git push run402 <branch>` are never gated on a deploy.
+
+**`SNAPSHOT_MOVED_DURING_DEPLOY` — the deploy refused because your tree changed under it.** The client digests the captured file set at capture time and re-derives it after the artifacts are collected, before the plan commits. If a captured file was modified, added, or removed in between, the deploy stops and names the paths rather than activating artifacts the vaulted snapshot does not describe. This code is **client-local**: it never crosses the wire, so it will not appear in the protocol's error registry.
+
+```
+the captured source changed between capture and commit (modified src/app.ts);
+refusing to activate artifacts the vaulted snapshot 4f2a… does not describe
+```
+
+Redeploy — the next run captures the tree as it is now. The client deliberately does not re-capture and continue for you: a second capture would publish a snapshot whose relationship to the artifacts already collected is exactly the thing in doubt.
+
+**Build output is outside this claim, deliberately.** The captured set is tracked files plus untracked-but-not-ignored ones — the same set `gitvault push` captures. Gitignored paths are not in it, so a build that rewrites `dist/` between capture and commit does **not** trip the refusal; if it did, no project with a build step could ever deploy. The guarantee the vault gives you is that *the captured source did not change while the artifacts were produced* — **not** that the artifacts are a reproducible function of that source. Nothing ties a gitignored bundle back to the `src/` it came from.
 
 **Cost.** There is no separate gitvault price. A vault's bytes count against the same organization-pooled `storage_bytes` budget your projects already share, charged once per unique object, with a 64 KiB per-object accounting floor.
 

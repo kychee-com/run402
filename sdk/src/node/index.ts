@@ -345,7 +345,11 @@ export {
   GITVAULT_MIN_GIT_VERSION,
   HARDENED_GIT_ARGV_PREFIX,
   captureSnapshot,
+  capturedSetDigest,
+  capturedSetUnchanged,
+  deriveCapturedSet,
   detectActiveFilters,
+  diffCapturedSets,
   discoverGlobalExcludes,
   findOversizeObjects,
   gitvaultCommitLine,
@@ -363,6 +367,8 @@ export {
 export type {
   GitConfigDiscoveryEnv,
   GitInvocationRepo,
+  GitvaultCapturedFile,
+  GitvaultCapturedSetDrift,
   GitvaultRepositoryInspection,
   GitvaultRepositoryRefusalCode,
   GitvaultSnapshot,
@@ -448,6 +454,7 @@ export type {
 } from "./gitvault-publication.js";
 export {
   GITVAULT_DEPLOY_OUTCOMES,
+  SNAPSHOT_MOVED_DURING_DEPLOY,
   checkActivationTokenBinding,
   checkAuthorizationEpoch,
   drainOverrideJournals,
@@ -472,7 +479,19 @@ export type {
   GitvaultDeployResult,
   GitvaultOverrideDrainReport,
   GitvaultOverrideJournal,
+  GitvaultSnapshotMovedDetails,
 } from "./gitvault-deploy.js";
+// The deploy lane the interface above was always missing (change
+// `gitvault-deploy-lane`): apply-v1 plan + commit driven through `Deploy`,
+// and the entry point that engages it only for a `required` project.
+export { applyWithGitvault, createApplyDeployLane } from "./gitvault-apply.js";
+export type {
+  ApplyDeployLane,
+  ApplyDeployLaneOptions,
+  ApplyWithGitvaultOptions,
+  ApplyWithGitvaultResult,
+  GitvaultApplyMode,
+} from "./gitvault-apply.js";
 export * from "../namespaces/gitvault.crypto.js";
 export { signCiDelegation } from "./ci.js";
 export type { SignCiDelegationOptions } from "./ci.js";
