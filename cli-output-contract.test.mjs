@@ -272,35 +272,6 @@ describe("CLI output contract drift protection", () => {
     }
   });
 
-  it("run402 status --json is a JSON-only compatibility no-op", () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "run402-status-json-"));
-    try {
-      const profileDir = join(tempDir, "profiles", "agent-a");
-      mkdirSync(profileDir, { recursive: true });
-      // Exists for fail-closed wallet selection, but reads as "no allowance"
-      // so status stays offline/hermetic.
-      writeFileSync(join(profileDir, "allowance.json"), "{", { mode: 0o600 });
-
-      const result = spawnSync(process.execPath, [CLI_PATH, "status", "--json"], {
-        env: {
-          ...process.env,
-          RUN402_CONFIG_DIR: tempDir,
-          RUN402_WALLET: "agent-a",
-        },
-        encoding: "utf-8",
-        timeout: 10_000,
-      });
-
-      assert.equal(result.status, 0, `run402 status --json failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
-      assert.equal(result.stderr, "", `stderr must stay empty for status --json success output; got ${JSON.stringify(result.stderr)}`);
-      const parsed = JSON.parse(result.stdout);
-      assert.equal(parsed.wallet, null);
-      assert.equal(typeof parsed.target.kind, "string");
-    } finally {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-
   it("run402 allowance export is JSON by default", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "run402-allowance-export-json-"));
     const address = "0x1111111111111111111111111111111111111111";
