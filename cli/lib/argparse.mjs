@@ -20,10 +20,17 @@ export function hasHelp(args = []) {
   return args.includes("--help") || args.includes("-h");
 }
 
-// CLI-wide convention: every command accepts `--json`. Where stdout is already
-// JSON (the vast majority of commands) it is a no-op; commands with a human
-// default switch on it explicitly. Baking it into the baseline known set here
-// makes the convention self-maintaining for future commands.
+// CLI-wide convention (cli-output-shape): JSON is ALWAYS the default on
+// stdout, and `--json` is a universally-accepted NO-OP. Every command accepts
+// it; passing it never changes the shape, content, or byte count of stdout.
+// Baking it into the baseline known set here makes acceptance structural, so a
+// newly added command inherits it without a per-command allowlist entry.
+//
+// No command may gate its stdout format on this flag. A command offering a
+// human-readable view exposes it behind `--human` (see `up.mjs`, `errors.mjs`)
+// and rejects `--human` combined with `--json`. The single sanctioned
+// exception to the no-op rule is `assets put --json`, a preserved deprecated
+// alias for `--stream` that selects NDJSON progress rather than a format.
 const ALWAYS_KNOWN_FLAGS = ["--json"];
 
 export function assertKnownFlags(args = [], knownFlags = [], flagsWithValues = []) {

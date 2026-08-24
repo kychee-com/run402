@@ -92,7 +92,6 @@ async function create(rawArgs) {
   const output = flagValue(args, "--output");
   const wait = args.includes("--wait") || Boolean(output);
   const jsonStream = args.includes("--json-stream");
-  const json = args.includes("--json") || jsonStream || true;
   const idempotencyKey = flagValue(args, "--idempotency-key") ?? undefined;
   const pollIntervalMs = parseIntegerFlag("--poll-interval", flagValue(args, "--poll-interval"), { min: 100, def: 1000 });
   const timeoutMs = parseIntegerFlag("--timeout", flagValue(args, "--timeout"), { min: 1000, def: 600000 });
@@ -156,7 +155,7 @@ async function create(rawArgs) {
         retryable: false,
         result,
       }));
-    } else if (json) {
+    } else {
       console.log(JSON.stringify(result, null, 2));
     }
     if (archive.status !== "ready") process.exit(1);

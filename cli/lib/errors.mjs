@@ -3,12 +3,15 @@
  * promote/revert verdict (gateway release-error-rollup).
  *
  * Two audiences from one wire envelope:
- *   --json  → the gateway envelope VERBATIM (list page, detail row, or the
- *             watch triggering/final page). No reshaping — CLI-JSON and HTTP
- *             consumers see one contract.
- *   default → a rendered read: the verdict first (so "0 errors over 0 traffic"
+ *   default → the gateway envelope VERBATIM as JSON (list page, detail row, or
+ *             the watch triggering/final page). No reshaping — CLI-JSON and
+ *             HTTP consumers see one contract.
+ *   --human → a rendered read: the verdict first (so "0 errors over 0 traffic"
  *             is never mistaken for health), then one line per fingerprint,
  *             then a runnable logs drill-down.
+ *
+ * JSON is ALWAYS the default (cli-output-shape). `--json` is a universally
+ * accepted no-op; stdout shape is never gated on it.
  *
  * The promote gate: `--new-in <release> --fail-on-new` exits 0 when no error
  * identity was first seen under that release, 1 when new fingerprints appear,
@@ -40,9 +43,9 @@ export const DEFAULT_INTERVAL_MS = 15000;
 const HELP = `run402 errors — grouped error fingerprints + a promote/revert verdict
 
 Usage:
-  run402 errors [--project <id>] [filters] [--json]
-  run402 errors <fingerprint_id> [--project <id>] [--json]
-  run402 errors --new-in <release_id|active> --fail-on-new [--json]
+  run402 errors [--project <id>] [filters] [--human]
+  run402 errors <fingerprint_id> [--project <id>] [--human]
+  run402 errors --new-in <release_id|active> --fail-on-new [--human]
   run402 errors --new-in <release_id|active> --watch <dur> [--fail-on-new]
 
 What this is:
@@ -76,7 +79,9 @@ Filters (each maps 1:1 to a query param):
                         Never parse or compare it — pass it back as-is.
 
 Output:
-  --json                Emit the gateway envelope verbatim (never reshaped)
+  --human               Render the human-readable view instead of JSON.
+                        Cannot be combined with --json.
+  --json                Accepted no-op (JSON is already the default).
   --watch <dur>         Poll the release for new identities for <dur>, then
                         stop. Requires --new-in. Durations: 90s, 10m, 2h, or a
                         bare number of seconds. Progress ticks go to stderr so
@@ -136,7 +141,7 @@ export async function run(sub, args = []) {
     "--project", "--since", "--until", "--function", "--kind",
     "--fingerprint", "--new-in", "--limit", "--cursor", "--watch", "--interval",
   ];
-  const boolFlags = ["--json", "--fail-on-new", "--help", "-h"];
+  const boolFlags = ["--json", "--human", "--fail-on-new", "--help", "-h"];
   assertKnownFlags(a, [...valueFlags, ...boolFlags], valueFlags);
 
   const positionals = positionalArgs(a, valueFlags);
@@ -148,7 +153,18 @@ export async function run(sub, args = []) {
     });
   }
   const fingerprintId = positionals[0] ?? null;
-  const json = a.includes("--json");
+  // Output contract (cli-output-shape): JSON is ALWAYS the default. `--json`
+  // is a universally-accepted no-op; human rendering is the `--human`
+  // opt-out, matching `run402 up`. Never gate stdout shape on `--json`.
+  const human = a.includes("--human");
+  if (human && a.includes("--json")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--human cannot be combined with --json.",
+      details: { flags: a.filter((arg) => arg === "--human" || arg === "--json") },
+      hint: "JSON is the default; drop --json to keep it, or keep --human alone for the rendered view.",
+    });
+  }
   const failOnNew = a.includes("--fail-on-new");
   const project = flagValue(a, "--project");
   const newIn = flagValue(a, "--new-in");
@@ -166,7 +182,7 @@ export async function run(sub, args = []) {
       fail({
         code: "BAD_USAGE",
         message: `${offending} is not valid with a <fingerprint_id> (detail view).`,
-        hint: "Detail view accepts only --project and --json. Drop the fingerprint id to list + get a verdict.",
+        hint: "Detail view accepts only --project and --human. Drop the fingerprint id to list + get a verdict.",
       });
     }
     const projectId = resolveProjectId(project);
@@ -177,7 +193,7 @@ export async function run(sub, args = []) {
       reportSdkError(err);
       return;
     }
-    if (json) {
+    if (!human) {
       console.log(JSON.stringify(detail, null, 2));
       return;
     }
@@ -277,19 +293,19 @@ export async function run(sub, args = []) {
     return;
   }
 
-  if (json) console.log(JSON.stringify(page, null, 2));
+  if (!human) console.log(JSON.stringify(page, null, 2));
 
   if (failOnNew) {
     const totalNew = Number(page?.verdict?.new_fingerprints ?? 0);
     if (totalNew > 0) {
-      if (!json) console.log(renderFailOnNewList(page?.errors ?? [], newIn, totalNew));
+      if (human) console.log(renderFailOnNewList(page?.errors ?? [], newIn, totalNew));
       process.exit(1);
     }
-    if (!json) console.log(renderCleanGate(page?.verdict, newIn));
+    if (human) console.log(renderCleanGate(page?.verdict, newIn));
     process.exit(0);
   }
 
-  if (!json) console.log(renderHumanList(page));
+  if (human) console.log(renderHumanList(page));
 }
 
 // ─── Watch driver ────────────────────────────────────────────────────────────
@@ -327,7 +343,7 @@ async function runWatch({ projectId, newIn, durationMs, intervalMs, failOnNew, j
   const newErrors = Array.isArray(result?.new_errors) ? result.new_errors : [];
   const totalNew = Number(result?.verdict?.new_fingerprints ?? newErrors.length);
 
-  if (json) {
+  if (!human) {
     // The triggering page if we fired early, else the last poll's page. Fall
     // back to a page-shaped envelope only if no poll ever ran (edge case).
     const page = triggeringPage ?? lastPage ?? {
@@ -340,17 +356,17 @@ async function runWatch({ projectId, newIn, durationMs, intervalMs, failOnNew, j
 
   if (failOnNew) {
     if (!clean) {
-      if (!json) console.log(renderFailOnNewList(newErrors, newIn, totalNew));
+      if (human) console.log(renderFailOnNewList(newErrors, newIn, totalNew));
       process.exit(1);
     }
-    if (!json) {
+    if (human) {
       console.log(renderCleanGate(result?.verdict, newIn, { watched: true, durationMs, polls: result?.polls }));
     }
     process.exit(0);
   }
 
   // --watch without --fail-on-new: report and exit 0.
-  if (!json) {
+  if (human) {
     const page = triggeringPage ?? lastPage;
     if (page) console.log(renderHumanList(page));
     else console.log(renderVerdict(result?.verdict));
@@ -532,7 +548,7 @@ export function renderHumanList(page) {
 
   if (p.has_more) {
     parts.push("");
-    parts.push(`More rows available — page with --cursor ${p.next_cursor ?? "<next_cursor from --json>"} (cursors are opaque; pass as-is).`);
+    parts.push(`More rows available — page with --cursor ${p.next_cursor ?? "<next_cursor from the JSON output>"} (cursors are opaque; pass as-is).`);
   }
 
   const top = errors[0];
