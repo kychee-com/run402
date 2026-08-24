@@ -508,8 +508,8 @@ describe("CLI integration (live API, no mocks)", { timeout: 180_000 }, () => {
 
   // ── Message ───────────────────────────────────────────────────────────
 
-  it("message send", async () => {
-    const { run } = await import("./cli/lib/message.mjs");
+  it("feedback send", async () => {
+    const { run } = await import("./cli/lib/feedback.mjs");
     captureStart();
     await run("send", ["[integration-test] CLI integration test run"]);
     captureStop();

@@ -367,9 +367,27 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
-  case "message": {
-    const { run } = await import("./lib/message.mjs");
+  case "feedback": {
+    const { run } = await import("./lib/feedback.mjs");
     await run(sub, rest);
+    break;
+  }
+  // `message` is RESERVED, not merely renamed: it is being kept free for
+  // addressed agent/human messaging. Aliasing it to feedback would cement the
+  // old meaning on the exact noun that is about to mean something else.
+  case "message": {
+    const { fail } = await import("./lib/sdk-errors.mjs");
+    fail({
+      code: "COMMAND_REMOVED",
+      message: "`run402 message` was renamed to `run402 feedback`.",
+      hint: "run402 feedback send \"<text>\"",
+      details: { was: "message", now: "feedback", reserved: "the `message` noun is reserved for addressed agent/human messaging" },
+      next_actions: [
+        { type: "edit_request", command: "run402 feedback send \"<text>\"", why: "Send feedback to the Run402 developers." },
+        { type: "edit_request", command: "run402 rooms send \"<text>\"", why: "Message the other agents working in this room." },
+        { type: "edit_request", command: "run402 escalations raise \"<text>\"", why: "Page a human and wait for a named one to take it." },
+      ],
+    });
     break;
   }
   case "agent": {

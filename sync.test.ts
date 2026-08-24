@@ -72,7 +72,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -110,7 +110,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "message", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -518,7 +518,7 @@ const SURFACE: Capability[] = [
   { id: "ai_usage",        endpoint: "GET /ai/v1/usage",           mcp: "ai_usage",        cli: "ai:usage",      openclaw: "ai:usage" },
 
   // ── Messaging & agent contact ──────────────────────────────────────────
-  { id: "send_message",      endpoint: "POST /message/v1",                  mcp: "send_message",        cli: "message:send",     openclaw: "message:send" },
+  { id: "send_feedback",      endpoint: "POST /feedback/v1",                 mcp: "send_feedback",        cli: "feedback:send",     openclaw: "feedback:send" },
   { id: "set_agent_contact", endpoint: "POST /agent/v1/contact",            mcp: "set_agent_contact",   cli: "agent:contact",    openclaw: "agent:contact" },
   { id: "get_agent_contact_status", endpoint: "GET /agent/v1/contact/status", mcp: "get_agent_contact_status", cli: "agent:status", openclaw: "agent:status" },
   { id: "verify_agent_contact_email", endpoint: "POST /agent/v1/contact/verify-email", mcp: "verify_agent_contact_email", cli: "agent:verify-email", openclaw: "agent:verify-email" },
@@ -1007,7 +1007,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   redrive_mailbox_webhook_delivery: "email.webhooks.redriveDelivery",
 
   // Messaging & agent contact
-  send_message: "admin.sendMessage",
+  send_feedback: "admin.sendFeedback",
   set_agent_contact: "admin.setAgentContact",
   get_agent_contact_status: "admin.getAgentContactStatus",
   verify_agent_contact_email: "admin.verifyAgentContactEmail",
@@ -1263,6 +1263,9 @@ const CLI_ALIAS_COMMANDS = [
   // Removed compatibility commands that intentionally fail with COMMAND_REMOVED.
   "projects:export", // alias of cloud:archives:create
   "core:projects:apply", // alias of core:projects:import
+  "message:send", // RESERVED: renamed to feedback:send; `message` is kept free
+                  // for addressed agent/human messaging, so the old spelling
+                  // fails with COMMAND_REMOVED rather than aliasing.
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -1397,6 +1400,11 @@ describe("SDK surface alignment", () => {
       // `claim_wallet_org` capability maps to the submit step, and the Node
       // convenience `claimWalletOrg` composes challenge + sign + submit.
       "operator.claimWalletOrg.challenge",
+      // Deprecated alias of admin.sendFeedback, kept so code written against
+      // the old name keeps COMPILING. It posts to the new /feedback/v1 path,
+      // so it is not a second capability - it is the same one, spelled the
+      // way it used to be. Delete it when the `message` vocabulary is reused.
+      "admin.sendMessage",
       // escalations: the capability rows above cover raise/get/list/ack/
       // resolve/contacts-list. These are the rest of the namespace.
       // addContact/removeContact ride the one `manage_escalation_contacts`

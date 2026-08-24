@@ -3,12 +3,15 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, normalizeArgv, failUnknownSubcommand } from "./argparse.mjs";
 
-const HELP = `run402 message — Send messages to Run402 developers
+const HELP = `run402 feedback — Send feedback to the Run402 developers
 
 Usage:
-  run402 message send <text>
+  run402 feedback send <text>
 
 Notes:
+  - WRITE-ONLY: there is no inbox to read and no reply path. If you need an
+    answer from a human, raise an escalation instead:
+    run402 escalations raise "<what you need>" --severity high
   - Requires an active tier (run402 tier set <tier>)
   - Requires an allowance (run402 allowance create)
   - Messages are capped at 8 KB (8192 bytes UTF-8) to keep the developer
@@ -16,7 +19,7 @@ Notes:
     content (e.g. stack traces) before sending.
 
 Examples:
-  run402 message send "Hello from my agent!"
+  run402 feedback send "Hello from my agent!"
 `;
 
 // Cap message body at a Twitter-ish but engineer-generous size: enough for
@@ -27,10 +30,10 @@ Examples:
 const MESSAGE_MAX_BYTES = 8192;
 
 const SUB_HELP = {
-  send: `run402 message send — Send a message to Run402 developers
+  send: `run402 feedback send — Send feedback to the Run402 developers
 
 Usage:
-  run402 message send <text>
+  run402 feedback send <text>
 
 Arguments:
   <text>              Message body (quote it; remaining args are joined with
@@ -43,7 +46,7 @@ Notes:
     inbox useful and prevent payload-dump misuse.
 
 Examples:
-  run402 message send "Hello from my agent!"
+  run402 feedback send "Hello from my agent!"
 `,
 };
 
@@ -64,10 +67,10 @@ async function send(text) {
     });
   }
   // Preserve the aggressive early exit when no allowance is configured.
-  allowanceAuthHeaders("/message/v1");
+  allowanceAuthHeaders("/feedback/v1");
 
   try {
-    await getSdk().admin.sendMessage(text);
+    await getSdk().admin.sendFeedback(text);
     console.log(JSON.stringify({
       bytes_sent: bytes,
       sent: true,
@@ -84,7 +87,7 @@ export async function run(sub, args) {
     process.exit(0);
   }
   if (sub !== "send") {
-    failUnknownSubcommand("message", sub);
+    failUnknownSubcommand("feedback", sub);
   }
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--help", "-h"]);

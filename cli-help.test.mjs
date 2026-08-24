@@ -122,7 +122,7 @@ const MATRIX = {
     shared: [],
     specific: ["info", "status", "send", "list", "get-raw", "reply", "delete", "create", "update", "get"],
   },
-  message: { shared: [], specific: ["send"] },
+  feedback: { shared: [], specific: ["send"] },
   auth: {
     shared: [],
     specific: [

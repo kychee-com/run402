@@ -687,7 +687,7 @@ For agents that need to sign Ethereum transactions. Private keys never leave AWS
 - **`project_get`** — server-authoritative project detail. Returns no keys.
 - **`project_use`** — server-validates a project and stores only the active project id pointer for this local profile.
 - **`project_key_cache_status`** / **`project_key_cache_export`** — explicit local project-key cache tools. `status` is redacted; `export` requires `reveal: true` and emits cached secret key material.
-- **`send_message`** — send feedback to the Run402 team.
+- **`send_feedback`** — send feedback to the Run402 team. Write-only; no reply comes back.
 - **`set_agent_contact`** / **`get_agent_contact_status`** / **`verify_agent_contact_email`** — register agent contact info, read assurance status, and start the operator email reply challenge.
 - **`start_operator_passkey_enrollment`** — email a Run402 operator passkey enrollment link to the verified contact email.
 - **`get_operator_status`** — compact operator-health snapshot (contact assurance, critical items, skipped notifications, organizations, projects, active thresholds). Consumed by `run402 doctor`.

@@ -600,8 +600,8 @@ describe("2026-05 CLI bug backlog argv validation", () => {
     },
     {
       issue: "GH-302",
-      name: "message send rejects option-looking tokens",
-      module: "./cli/lib/message.mjs",
+      name: "feedback send rejects option-looking tokens",
+      module: "./cli/lib/feedback.mjs",
       call: (run) => run("send", ["--file", "./message.txt"]),
       code: "UNKNOWN_FLAG",
     },

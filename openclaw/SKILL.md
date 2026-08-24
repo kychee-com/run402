@@ -1231,7 +1231,7 @@ Don't confuse with `run402 status` (your organization's allowance, balance, tier
 ## Send feedback
 
 ```bash
-run402 message send "deploy-dir was magical, but the cdn wait-fresh timeout default felt too aggressive"
+run402 feedback send "deploy-dir was magical, but the cdn wait-fresh timeout default felt too aggressive"
 ```
 
 Free with active tier. The team reads every message.

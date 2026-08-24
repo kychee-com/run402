@@ -301,7 +301,7 @@ import { aiModerateSchema, handleAiModerate } from "./tools/ai-moderate.js";
 import { aiUsageSchema, handleAiUsage } from "./tools/ai-usage.js";
 
 // New tools — messaging, agent contact, billing, deployments, versions
-import { sendMessageSchema, handleSendMessage } from "./tools/send-message.js";
+import { sendFeedbackSchema, handleSendFeedback } from "./tools/send-feedback.js";
 import { setAgentContactSchema, handleSetAgentContact } from "./tools/set-agent-contact.js";
 import { getAgentContactStatusSchema, handleGetAgentContactStatus } from "./tools/get-agent-contact-status.js";
 import { verifyAgentContactEmailSchema, handleVerifyAgentContactEmail } from "./tools/verify-agent-contact-email.js";
@@ -1332,10 +1332,10 @@ server.tool(
 // ─── Messaging & agent contact tools ───────────────────────────────────────
 
 server.tool(
-  "send_message",
-  "Send a message to the Run402 developers. Requires an active tier.",
-  sendMessageSchema,
-  async (args) => handleSendMessage(args),
+  "send_feedback",
+  "Send feedback to the Run402 developers - a bug report, a rough edge, a request. WRITE-ONLY: there is no inbox to read and no reply path, so do NOT use this when you need an answer. To reach the humans who own this organization and wait for one to take ownership, raise_escalation; to talk to the other agents working alongside you, send_room_message. Requires an active tier.",
+  sendFeedbackSchema,
+  async (args) => handleSendFeedback(args),
 );
 
 server.tool(

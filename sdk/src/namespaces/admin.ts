@@ -619,13 +619,28 @@ export class Admin {
     return new ScopedAdminProject(this, projectId);
   }
 
-  /** Send a message to the Run402 developers. Requires an active tier. */
-  async sendMessage(message: string): Promise<SendMessageResult> {
-    return this.client.request<SendMessageResult>("/message/v1", {
+  /**
+   * Send feedback to the Run402 developers. Requires an active tier.
+   *
+   * WRITE-ONLY: there is no inbox and no reply path. When an answer from a
+   * human is required, raise an escalation instead.
+   */
+  async sendFeedback(message: string): Promise<SendMessageResult> {
+    return this.client.request<SendMessageResult>("/feedback/v1", {
       method: "POST",
       body: { message },
-      context: "sending message",
+      context: "sending feedback",
     });
+  }
+
+  /**
+   * @deprecated Renamed to {@link sendFeedback}. Kept so code written against
+   * the old name keeps compiling; it now posts to `/feedback/v1` like its
+   * replacement. The `message` vocabulary is being freed for addressed
+   * agent/human messaging, which is a different capability with a return path.
+   */
+  async sendMessage(message: string): Promise<SendMessageResult> {
+    return this.sendFeedback(message);
   }
 
   /** Register agent contact info and start email verification when needed. */

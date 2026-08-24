@@ -808,7 +808,7 @@ async function mockFetch(input, init) {
   }
 
   // Message
-  if (path === "/message/v1" && method === "POST") {
+  if (path === "/feedback/v1" && method === "POST") {
     return Promise.resolve(json({ status: "ok", delivered: true }));
   }
 
@@ -3698,8 +3698,8 @@ describe("CLI e2e happy path", () => {
 
   // ── Message ─────────────────────────────────────────────────────────────
 
-  it("message send", async () => {
-    const { run } = await import("./cli/lib/message.mjs");
+  it("feedback send", async () => {
+    const { run } = await import("./cli/lib/feedback.mjs");
     captureStart();
     await run("send", ["Hello", "from", "e2e", "test"]);
     captureStop();
@@ -4646,10 +4646,10 @@ describe("CLI e2e happy path", () => {
 
   // #54 — CRITICAL: sends a real message if --help isn't short-circuited
   makeHelpTest({
-    label: "message send --help prints help and does not send (GH-54)",
-    module: "./cli/lib/message.mjs",
+    label: "feedback send --help prints help and does not send (GH-54)",
+    module: "./cli/lib/feedback.mjs",
     sub: "send",
-    bannerRegex: /^run402 message/,
+    bannerRegex: /^run402 feedback/,
   });
 
   // #55 — "Missing --email"
@@ -5832,7 +5832,7 @@ describe("CLI subdomains list --project", () => {
 
 // ── Message size cap (GH-175) ──────────────────────────────────────────────
 // `run402 message send <text>` previously had no client-side cap, so a
-// 200 KB single message was happily POSTed to /message/v1 and stored in the
+// 200 KB single message was happily POSTed to /feedback/v1 and stored in the
 // developer inbox. We now enforce an 8 KB UTF-8 byte cap at the CLI edge
 // with a structured MESSAGE_TOO_LONG error. The success envelope echoes
 // `bytes_sent` so callers can confirm the payload size that landed.
@@ -5867,7 +5867,7 @@ describe("CLI message send size cap (GH-175)", () => {
     globalThis.fetch = (input, init) => {
       const url = typeof input === "string" ? input : (input?.url ?? String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
-      if (url.includes("/message/v1") && method === "POST") postCount++;
+      if (url.includes("/feedback/v1") && method === "POST") postCount++;
       return prevFetch(input, init);
     };
     return {
@@ -5876,8 +5876,8 @@ describe("CLI message send size cap (GH-175)", () => {
     };
   }
 
-  it("rejects 200 KB message with MESSAGE_TOO_LONG and does NOT call admin.sendMessage", async () => {
-    const { run } = await import("./cli/lib/message.mjs");
+  it("rejects 200 KB message with MESSAGE_TOO_LONG and does NOT call admin.sendFeedback", async () => {
+    const { run } = await import("./cli/lib/feedback.mjs");
     const big = "a".repeat(200000);
     const tracker = trackMessagePosts();
     let threw = null;
@@ -5898,11 +5898,11 @@ describe("CLI message send size cap (GH-175)", () => {
     assert.ok(/8192/.test(parsed.message),
       `message should mention 8192 byte limit, got: ${parsed.message}`);
     assert.equal(tracker.count, 0,
-      "must NOT POST to /message/v1 when payload exceeds the cap");
+      "must NOT POST to /feedback/v1 when payload exceeds the cap");
   });
 
   it("rejects 8193 bytes (one byte over cap) with MESSAGE_TOO_LONG", async () => {
-    const { run } = await import("./cli/lib/message.mjs");
+    const { run } = await import("./cli/lib/feedback.mjs");
     const justOver = "b".repeat(8193);
     const tracker = trackMessagePosts();
     let threw = null;
@@ -5921,7 +5921,7 @@ describe("CLI message send size cap (GH-175)", () => {
   });
 
   it("accepts exactly 8192 bytes and echoes bytes_sent", async () => {
-    const { run } = await import("./cli/lib/message.mjs");
+    const { run } = await import("./cli/lib/feedback.mjs");
     const exact = "c".repeat(8192);
     const tracker = trackMessagePosts();
     let threw = null;
@@ -5945,7 +5945,7 @@ describe("CLI message send size cap (GH-175)", () => {
   });
 
   it("accepts a short message and echoes bytes_sent", async () => {
-    const { run } = await import("./cli/lib/message.mjs");
+    const { run } = await import("./cli/lib/feedback.mjs");
     const tracker = trackMessagePosts();
     let threw = null;
     captureStart();
@@ -5967,7 +5967,7 @@ describe("CLI message send size cap (GH-175)", () => {
 
   it("counts bytes (not characters) — multibyte UTF-8 over cap is rejected", async () => {
     // Each "é" is 2 bytes in UTF-8. 4097 chars = 8194 bytes, which exceeds 8192.
-    const { run } = await import("./cli/lib/message.mjs");
+    const { run } = await import("./cli/lib/feedback.mjs");
     const multibyte = "é".repeat(4097); // 8194 bytes
     const tracker = trackMessagePosts();
     let threw = null;

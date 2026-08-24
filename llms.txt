@@ -124,7 +124,7 @@ The same wallet key works on both chains; switching rails just changes which cha
 ## Talk to us
 
 ```bash
-run402 message send "your message here"
+run402 feedback send "your message here"
 ```
 
 Free with active tier. The team reads every message. Or email `tal+402@kychee.com`, or follow `@run402com`.

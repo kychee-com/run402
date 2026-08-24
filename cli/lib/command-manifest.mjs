@@ -349,7 +349,7 @@ export const COMMAND_MANIFEST = [
   { path: ["email", "webhooks", "redrive"], positionals: [p("delivery_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["dlv_gate1"] },
 
   // ── message / agent / operator ───────────────────────────────────────────
-  { path: ["message", "send"], positionals: [p("words", { variadic: true })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["hello", "from", "the", "gate"] },
+  { path: ["feedback", "send"], positionals: [p("words", { variadic: true })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["hello", "from", "the", "gate"] },
   { path: ["agent", "contact"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--name", "gate-agent"] },
   { path: ["agent", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["agent", "verify-email"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
@@ -422,4 +422,9 @@ export const COMMAND_MANIFEST = [
 export const SKIPPED_FAMILIES = {
   "apply": "pure alias for `deploy apply` (covered by the deploy family)",
   "dev": "interactive wrapper that spawns `astro dev`",
+  // RESERVED, not dispatched: every `run402 message …` fails with
+  // COMMAND_REMOVED pointing at `feedback send` / `rooms send` /
+  // `escalations raise`. It has no subcommands to manifest because it takes
+  // none — the noun is being held for addressed agent/human messaging.
+  "message": "reserved noun; fails with COMMAND_REMOVED (renamed to `feedback`)",
 };

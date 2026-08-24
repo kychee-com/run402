@@ -53,7 +53,7 @@ const GROUPED_COMMANDS = [
   "grants",
   "image",
   "jobs",
-  "message",
+  "feedback",
   "notifications",
   "operator",
   "org",

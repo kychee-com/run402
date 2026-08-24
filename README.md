@@ -774,7 +774,7 @@ The full MCP surface: every tool is a thin shim over an SDK call.
 | `project_get` / `project_use` | Server project detail and active-project selection. `project_use` validates through the server, then stores only an active id pointer. |
 | `project_key_cache_status` / `project_key_cache_export` | Explicit local project-key cache tools. `status` is redacted; `export` requires `reveal: true` and emits cached secret key material. |
 | `create_checkout` | Org checkout for balance top-ups, tiers, or email packs. |
-| `send_message` | Send feedback to the run402 team. |
+| `send_feedback` | Send feedback to the run402 team. Write-only: no inbox, no reply path. |
 | `set_agent_contact` / `get_agent_contact_status` / `verify_agent_contact_email` | Register agent contact info, read assurance status, and start the operator email reply challenge. |
 | `start_operator_passkey_enrollment` | Email a run402 operator passkey enrollment link to the verified contact email. |
 | `get_operator_status` | Compact operator-health snapshot: contact assurance state, critical items, skipped notifications, organizations, projects, active thresholds. Read via `run402 doctor` or directly. |

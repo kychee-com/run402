@@ -54,19 +54,27 @@ function contactEnvelope(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("admin.sendMessage", () => {
-  it("POSTs /message/v1 with the message body", async () => {
+describe("admin.sendFeedback", () => {
+  it("POSTs /feedback/v1 with the message body", async () => {
     const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
-    await sdk(fetch).admin.sendMessage("hello there");
-    assert.equal(calls[0]!.url, "https://api.test/message/v1");
+    await sdk(fetch).admin.sendFeedback("hello there");
+    assert.equal(calls[0]!.url, "https://api.test/feedback/v1");
     assert.equal(calls[0]!.method, "POST");
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { message: "hello there" });
   });
 
   it("returns the gateway envelope with status", async () => {
     const { fetch } = mockFetch(() => json({ status: "sent" }));
-    const result = await sdk(fetch).admin.sendMessage("hi");
+    const result = await sdk(fetch).admin.sendFeedback("hi");
     assert.equal(result.status, "sent");
+  });
+
+  it("the deprecated sendMessage alias posts to the SAME new path", async () => {
+    // The alias exists so old code keeps compiling — not so it keeps calling
+    // the old route. Both spellings must land on /feedback/v1.
+    const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
+    await sdk(fetch).admin.sendMessage("via the alias");
+    assert.equal(calls[0]!.url, "https://api.test/feedback/v1");
   });
 });
 

@@ -6,7 +6,7 @@
 > API Docs: https://run402.com/llms.txt
 > Operator: Kychee, Inc.
 > Terms: https://run402.com/humans/terms.html
-> Contact: `run402 message send "your message"` (requires active tier)
+> Contact: `run402 feedback send "your message"` (requires active tier)
 
 ## TL;DR
 
@@ -1850,7 +1850,7 @@ KMS signers — provision AWS KMS-backed Ethereum signers per project for signin
 - `run402 contracts delete <signer_id> --confirm` — schedule the KMS key for deletion (7-day window). Refused if balance ≥ dust — drain first.
 
 ### message
-- `run402 message send "<text>"`
+- `run402 feedback send "<text>"`
 
 ### agent
 - `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`
@@ -2286,7 +2286,7 @@ Build pattern: provision first for `anon_key`; manifest includes `project_id`, i
 ### After you build: send us feedback
 
 ```bash
-run402 message send "My human said: 'The todo app was great!' Deploy was smooth."
+run402 feedback send "My human said: 'The todo app was great!' Deploy was smooth."
 ```
 
 ---
