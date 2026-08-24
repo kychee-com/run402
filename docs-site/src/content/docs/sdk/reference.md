@@ -1787,17 +1787,24 @@ Every response carries `next_actions[]` (ordered; `[0]` is the recommended step)
 
 ### `r.events`
 
-The cursored project events feed — "what happened to my project since I last looked". Also project-scoped as `r.project(id).events.list(opts)`.
+The cursored events feed — "what happened since I last looked". Also project-scoped as `r.project(id).events.list(opts)`.
+
+An **organization** owns each fact and `project_id` says what it is *about*. So `listForOrg` is a **superset** of the project feeds rather than a union of them — it also carries organization-level facts, which belong to no project and arrive with `project_id: null` — and a fact **outlives** the project it describes: deleting a project no longer erases its history, so `project_id` may name a project that is gone.
 
 ```
 list(projectId, { cursor?, limit?, source?, eventType? }): Promise<ProjectEventFeedPage>
 listForOrg(orgId, { cursor?, limit?, source?, eventType? }): Promise<ProjectEventFeedPage>
 // ProjectEventFeedPage = { events: ProjectEvent[], cursor, has_more, reset, earliest_cursor?,
 //                          platform_incidents?, platform_status? }
-// ProjectEvent = { id, event_type, class, occurred_at, payload, next_actions[] }
+// ProjectEvent = { id, project_id, event_type, class, source, occurred_at, payload, next_actions[] }
+//   project_id: string | null   ← null for an organization-level fact
 ```
 
-Cursors are opaque (`evc_…`): store the page's `cursor` and pass it back as `{ cursor }` — never parse or compare. An unusable cursor never throws; the page returns `reset: true` + `earliest_cursor` to restart from. Events become visible within seconds of the underlying commit and are never lost after that. `list` accepts the project's own service_key, a wallet/control-plane principal with `project.read`, or a scoped delegate; `listForOrg` is principal-only (active org membership). Never lifecycle-gated — a frozen project's feed stays readable. Retention 90d (365d for mandatory classes).
+**An id is not a cursor.** Both tokens are opaque (`evc_…`, never parse or compare) and they mean different things. An event's `id` names a **fact**: the same event carries the same `id` from `list` and from `listForOrg`, which is how you dedup across both. The page `cursor` names a **position**, and a position only means something inside the row set it came from — so it is bound to that projection (which feed, plus any `source` / `eventType` filters). Passing a `list` cursor to `listForOrg`, an unfiltered cursor to a filtered read, or an event `id` in place of a cursor returns `reset: true` instead of resuming, because resuming would silently skip exactly the rows the other projection omitted. Key any cursor you persist by the read shape it came from.
+
+Store the page's `cursor` and pass it back as `{ cursor }`. An unusable cursor never throws; the page returns `reset: true` + `earliest_cursor` to restart from. Events become visible within a couple of seconds of the underlying commit — a bound rather than a proof (the watermark gives a write's commit window time to close), and in practice a cursor read misses nothing that committed before it was issued.
+
+`list` accepts the project's own service_key, a wallet/control-plane principal with `project.read`, or a scoped delegate; `listForOrg` is principal-only (active org membership). Never lifecycle-gated — a frozen project's feed stays readable. Retention is **age and class only**: 90d, 365d for mandatory classes. Project deletion does not delete events; organization purge is what erases.
 
 **App events vs platform events.** The feed also carries app-emitted business facts (a deployed function's own `events.emit(...)` calls, `@run402/functions`) alongside the platform events above; every row is `source`-discriminated (`"app"` vs `"platform"` — every non-app source, e.g. the platform's internal `gateway` / `email-lambda` producers, collapses under `"platform"`). `source?: "app" | "platform"` restricts to one lane; `eventType?: string | string[]` restricts to one or more event types (an array serializes as the comma-joined wire param `event_type=a,b`; a plain string is passed through as-is). Both filters compose with `cursor`/`limit` unchanged and are additive — omit either to keep reading the unfiltered feed. Consumers should key on the pair `(source, event_type)` together: app-chosen `event_type` names are free-form per app, so only the pair disambiguates them from the platform's own vocabulary.
 

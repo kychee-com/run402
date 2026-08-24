@@ -30,7 +30,8 @@ Usage:
 
 Options:
   --project <id>    Project to read (defaults to the active project)
-  --org <id>        Read the org-wide feed instead (union across the org's projects)
+  --org <id>        Read the org-wide feed instead — a SUPERSET of the project
+                    feeds: it also carries org-level facts (project_id null)
   --cursor <cursor> Opaque cursor from a previous response. Returns events strictly
                     after it. Omit on first contact to start from the earliest
                     retained event.
@@ -52,28 +53,41 @@ App events vs platform events:
   one your app already uses — the source field is what disambiguates.
   Omit --source to read both lanes in one merged, cursor-ordered feed.
 
-The cursor model:
+The cursor model — an id is not a cursor:
   - Every response carries "cursor": the high-water mark. Store it (a file in
     your repo, a memory note — wherever you keep state) and pass it back as
     --cursor next time. One call then returns everything you missed.
-  - Cursors are opaque (evc_...). Never parse or compare them; any event's
-    "id" is also a valid --cursor value to resume right after that event.
-  - Events become visible within a couple of seconds of the change committing
-    (a short visibility watermark orders concurrent writes). After that they
-    are never lost: a cursor read misses nothing that committed before the
-    cursor was issued.
+  - Two opaque tokens, and they are different things. An event's "id" names a
+    FACT: the same event has the same id in the project feed and the org feed,
+    which is how you dedup across both. The page "cursor" names a POSITION,
+    and a position only means something inside the row set it came from.
+  - So a cursor is NOT portable. Replaying a --project cursor against --org,
+    an unfiltered cursor against a --source/--type read, or an event "id" in
+    place of a cursor all return "reset": true instead of resuming — because
+    resuming would silently skip exactly the rows the other view omitted.
+    Store each cursor against the read shape that produced it.
+  - Never parse or compare either token.
+  - Events become visible within a couple of seconds of the change committing.
+    That watermark is a bound, not a proof: it gives a write's commit window
+    time to close, so in practice a cursor read misses nothing that committed
+    before it was issued.
   - "has_more": true means more events are immediately available — call again
     with the new cursor right away.
 
-When your cursor is too old (reset semantics):
+When your cursor is unusable (reset semantics):
   - Feed retention is 90 days (365 for security/recovery/billing-critical
-    classes). A cursor older than that — or malformed — still returns 200,
-    with "reset": true and "earliest_cursor": the point to restart from.
-    Nothing is silently skipped; you are told exactly what happened and how
-    to proceed.
+    classes). A cursor older than that — malformed, from another view, or an
+    event id — still returns 200, with "reset": true and "earliest_cursor":
+    the point to restart from. Nothing is silently skipped; you are told
+    exactly what happened and how to proceed.
 
 Event shape:
-  { "id", "event_type", "class", "occurred_at", "payload", "next_actions" }
+  { "id", "project_id", "event_type", "class", "occurred_at", "payload",
+    "next_actions" }
+  project_id is what the fact is ABOUT. It is null for an org-level fact —
+  one that belongs to the org and to no project, visible only via --org. It
+  may also name a project that no longer exists: a fact outlives the project
+  it describes, so deleting a project no longer erases its history.
   event_type is flat snake_case: deploy_activated, mailbox_suspended,
   project_transfer_completed, organization_past_due, verification_failed,
   webhook_disabled, ... Each event's next_actions[] is the platform's own

@@ -60,10 +60,19 @@ export class Events {
   }
 
   /**
-   * Read the org-wide feed — the union across every project the org owns
-   * (`GET /orgs/v1/:org_id/events`). Principal-only: requires an active org
-   * membership; a project service_key is rejected by the gateway. Same
-   * `opts.source` / `opts.eventType` filters as {@link list}.
+   * Read the org-wide feed (`GET /orgs/v1/:org_id/events`) — every fact the
+   * organization owns. That is a SUPERSET of its project feeds, not a union
+   * of them: it also carries organization-level facts, which belong to no
+   * project, arrive with `project_id: null`, and are unreachable from any
+   * project feed.
+   *
+   * Principal-only: requires an active org membership; a project service_key
+   * is rejected by the gateway. Same `opts.source` / `opts.eventType` filters
+   * as {@link list}.
+   *
+   * Cursors do NOT interchange with {@link list}, even though an event's `id`
+   * is the same in both — a cursor names a position inside one projection.
+   * Carrying one across returns `reset: true`; see {@link ListEventsOptions.cursor}.
    */
   async listForOrg(orgId: string, opts: ListEventsOptions = {}): Promise<ProjectEventFeedPage> {
     if (!orgId) {

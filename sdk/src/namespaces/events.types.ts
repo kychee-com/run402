@@ -6,8 +6,18 @@
  * The feed is the platform's durable, ordered record of operationally
  * significant facts (deploy activations, mailbox suspensions, transfers,
  * lifecycle cliffs, verification outcomes, and `platform_incident`
- * fault-attribution events). Cursors are OPAQUE (`evc_…`): store the page's
- * `cursor` and pass it back as `{ cursor }` next time — never parse it. The
+ * fault-attribution events).
+ *
+ * An ORGANIZATION owns each fact and `project_id` says what it is about, so
+ * three things follow. The org feed is a SUPERSET of the project feeds: it
+ * also carries organization-level facts, which belong to no project and
+ * arrive with `project_id: null`. A fact OUTLIVES the project it describes —
+ * deleting a project no longer erases its history, so a row may name a
+ * project that no longer exists. And an event's `id` is NOT a page cursor:
+ * see {@link ProjectEvent.id} and {@link ListEventsOptions.cursor}.
+ *
+ * Both tokens are OPAQUE (`evc_…`) — store the page's `cursor`, pass it back
+ * as `{ cursor }` next time, and never parse either one. The
  * platform owns the event vocabulary, `next_actions` synthesis, and reset
  * behavior; the SDK passes everything through (index signatures keep unknown
  * future fields, including the additive `platform_incidents[]` overlay and
@@ -34,10 +44,27 @@ export interface ProjectEventNextAction {
   [key: string]: unknown;
 }
 
-/** One immutable fact from the project events feed. */
+/** One immutable fact from the events feed. */
 export interface ProjectEvent {
-  /** Opaque event cursor (`evc_…`) — also a valid `cursor` input to resume after this event. */
+  /**
+   * This event's opaque identity (`evc_…`). The SAME event carries the SAME
+   * `id` in the project feed and the organization feed, which is what lets
+   * you dedup across both.
+   *
+   * NOT a page cursor. An id names a FACT; a cursor names a POSITION inside
+   * one projection, and only the page's `cursor` is that. Passing an `id` as
+   * `{ cursor }` returns `reset: true` rather than resuming.
+   */
   id: string;
+  /**
+   * What this fact is ABOUT — `null` for an organization-level fact, which
+   * belongs to the organization and to no project. Those appear only on the
+   * organization feed; a project feed can never show them.
+   *
+   * May name a project that NO LONGER EXISTS: a fact outlives the project it
+   * describes, so do not assume this resolves.
+   */
+  project_id: string | null;
   /** Flat snake_case event name, e.g. `deploy_activated`, `mailbox_suspended`. */
   event_type: string;
   /** Event class stamped at write time (drives retention: mandatory classes keep 365 days, others 90). */
@@ -53,9 +80,18 @@ export interface ProjectEvent {
 /** Options for {@link Events.list} / {@link Events.listForOrg}. */
 export interface ListEventsOptions {
   /**
-   * Opaque cursor from a prior page (`cursor` field or an event `id`).
-   * Returns events strictly after it. Omit on first contact to start from
-   * the earliest retained event.
+   * Opaque page cursor from a prior page's `cursor` field. Returns events
+   * strictly after it. Omit on first contact to start from the earliest
+   * retained event.
+   *
+   * A page cursor is bound to the PROJECTION that issued it — the feed you
+   * read plus any `source` / `eventType` filters. It is not portable:
+   * replaying a project feed's cursor against the organization feed, an
+   * unfiltered cursor against a filtered read, or an event `id` in place of a
+   * cursor all return `reset: true` instead of resuming, because resuming
+   * would silently skip exactly the rows the other projection omitted.
+   *
+   * So key any cursor you persist by the read shape it came from.
    */
   cursor?: string;
   /** Page size (server default 50, max 200). */
@@ -85,12 +121,17 @@ export interface ProjectEventFeedPage {
   /** True when more events are immediately available past `cursor`. */
   has_more: boolean;
   /**
-   * True when the supplied cursor was unusable (malformed or older than the
-   * retention floor). The page restarts from the earliest retained event and
-   * `earliest_cursor` is provided — never a bare error, never a silent skip.
+   * True when the supplied cursor was unusable — malformed, older than the
+   * retention floor, issued for a DIFFERENT projection (another feed or
+   * filter set), or actually an event `id`. The page restarts from the
+   * earliest retained event and `earliest_cursor` is provided — never a bare
+   * error, never a silent skip.
    */
   reset: boolean;
-  /** Present only when `reset` is true: a cursor just before the earliest retained event. */
+  /**
+   * Present only when `reset` is true: a page cursor just before the earliest
+   * retained event, issued for the projection you actually read.
+   */
   earliest_cursor?: string;
   /**
    * Sidecar overlay of open GLOBAL (unattributed) platform incidents, each

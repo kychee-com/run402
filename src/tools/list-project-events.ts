@@ -17,6 +17,11 @@ import { mapSdkError } from "../errors.js";
  * `(source, event_type)` together, since app event_type names are
  * free-form per app and only the pair disambiguates them from the
  * platform's own vocabulary.
+ *
+ * An ORGANIZATION owns each fact and `project_id` says what it is about, so
+ * the org feed is a SUPERSET of the project feeds (it also carries org-level
+ * facts, `project_id: null`), a fact outlives the project it describes, and
+ * an event's `id` is NOT a page cursor — see the `cursor` field.
  */
 
 export const listProjectEventsSchema = {
@@ -24,10 +29,10 @@ export const listProjectEventsSchema = {
     "Project whose feed to read. Omit when passing org_id.",
   ),
   org_id: z.string().optional().describe(
-    "Read the org-wide feed instead (union across the org's projects; requires an active org membership).",
+    "Read the org-wide feed instead — every fact the organization owns. A SUPERSET of the project feeds, not a union of them: it also carries organization-level facts, which belong to no project and arrive with project_id: null. Requires an active org membership.",
   ),
   cursor: z.string().optional().describe(
-    "Opaque cursor from a prior page (the response's `cursor`, or any event's `id`). Returns events strictly after it. Omit on first contact to start from the earliest retained event. Never parse cursors.",
+    "Opaque PAGE cursor from a prior page's `cursor` field. Returns events strictly after it. Omit on first contact to start from the earliest retained event. Never parse it. An event's `id` is NOT a cursor — an id names a fact (identical in every feed, which is how you dedup), a cursor names a position inside ONE view. A cursor is bound to the view that issued it (project vs org, plus any source/event_type filters): carrying one across views, or passing an id, returns `reset: true` instead of resuming, because resuming would skip exactly the rows the other view omitted.",
   ),
   limit: z.number().int().min(1).max(200).optional().describe(
     "Page size (default 50, max 200).",
@@ -58,7 +63,7 @@ export async function handleListProjectEvents(args: {
   }
   if (args.project_id && args.org_id) {
     return {
-      content: [{ type: "text", text: "Pass either project_id or org_id, not both — the org feed already unions every project the org owns." }],
+      content: [{ type: "text", text: "Pass either project_id or org_id, not both — the org feed already covers every project the org owns, plus the org-level facts no project feed can show." }],
       isError: true,
     };
   }
