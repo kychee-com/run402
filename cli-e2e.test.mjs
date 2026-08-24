@@ -6616,7 +6616,7 @@ describe("CLI errors verdict + promote gate", () => {
     let threw = null;
     captureStart();
     try {
-      await invokeErrors(["--project", TEST_PROJECT.project_id]);
+      await invokeErrors(["--project", TEST_PROJECT.project_id, "--human"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;

@@ -2,6 +2,28 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — JSON is always the default
+
+- **BREAKING — `run402 errors` emits JSON by default.** Every output path (list,
+  single-fingerprint detail, the `--fail-on-new` promote gate, and the `--watch`
+  variants of each) now writes the gateway envelope verbatim to stdout with no
+  flag. The human-rendered view moved behind `--human`, matching `run402 up`;
+  `--human` combined with `--json` is a `BAD_USAGE` error. Exit codes are
+  unchanged: 1 on new fingerprints, 0 clean, 2 on gate misuse. If you piped
+  `run402 errors` and read prose, add `--human`; if you passed `--json`, you can
+  drop it.
+- **`--json` is a documented universal no-op.** Every command accepts it and it
+  never changes stdout. It was already accepted everywhere structurally; what
+  changes is that no command may now *branch* output on it. The single exception
+  stays `assets put --json`, a deprecated alias for `--stream`.
+- **Cleanup:** `cloud archives status` dropped a vacuous `--json` gate that was
+  always true, leaving zero `--json` output bindings across the CLI.
+- **Tests:** new `cli-json-noop-contract.test.mjs` enforces the rule on four
+  axes — structural acceptance, byte-identical stdout with and without the flag,
+  a static scan that fails on any reintroduced output gate, and an in-process
+  mocked-gateway check of the `errors` default. The scan and the `errors` checks
+  were both verified to fail against the pre-change code.
+
 ## Unreleased — first-party skill distribution
 
 - **`run402 up` manifest parity:** a release-shaped `run402.json` now follows

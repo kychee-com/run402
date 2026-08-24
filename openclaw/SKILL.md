@@ -756,7 +756,7 @@ Host ownership is server-validated; cross-project hosts throw `R402_CACHE_INVALI
 
 **Agent-DX shortcuts:**
 
-- `run402 doctor` — 5 health checks (credentials, allowance, project, network, SDK build), `--json` for machine-readable output, exit 1 on fail.
+- `run402 doctor` — 5 health checks (credentials, allowance, project, network, SDK build). Output is JSON by default (no flag needed); exit 1 on fail.
 - `run402 dev` — runs `npx astro dev` with `.env.local` + Run402 credentials in scope.
 - `run402 logs --request-id req_XYZ` — fetch logs for a specific request id across every function in the project (parallel scan, timestamp-ascending merge).
 
