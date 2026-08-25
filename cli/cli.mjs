@@ -63,7 +63,7 @@ Commands:
   ai          AI translation and moderation tools
   image       Generate AI images via x402 or MPP micropayments
   email       Send template-based emails from your project
-  message     Send messages to Run402 developers
+  feedback    Send feedback to the Run402 developers (free with an active tier)
   auth        Manage project user authentication (magic link, passwords, settings)
   billing     Email organizations, Stripe tier checkout, email packs
   contracts   KMS signers ($0.04/day rental + $0.000005/sign)
