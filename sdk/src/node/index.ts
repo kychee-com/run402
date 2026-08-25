@@ -320,6 +320,7 @@ export {
   GITVAULT_CREATION_STAGES,
   GitvaultCreation,
   createGitvault,
+  findResumableGitvaultJournal,
   gitvaultDoctorRecoveryText,
   gitvaultJournalPath,
   listIncompleteGitvaultJournals,
@@ -482,6 +483,10 @@ export type {
   GitvaultSnapshotMovedDetails,
 } from "./gitvault-deploy.js";
 // The deploy lane the interface above was always missing (change
+// gitvault D2 (repo-first-onramp task 2.2) — lazy allocation on first push;
+// the orchestration `Gitvault.openOrCreate` delegates to.
+export { openOrCreateGitvault } from "./gitvault-open-or-create.js";
+export type { OpenOrCreateGitvaultOptions, OpenOrCreateGitvaultResult } from "./gitvault-open-or-create.js";
 // `gitvault-deploy-lane`): apply-v1 plan + commit driven through `Deploy`,
 // and the entry point that engages it only for a `required` project.
 export { applyWithGitvault, createApplyDeployLane } from "./gitvault-apply.js";

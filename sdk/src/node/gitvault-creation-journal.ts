@@ -255,6 +255,36 @@ export function listIncompleteGitvaultJournals(keystore: GitvaultKeystore): Gitv
   return out;
 }
 
+/**
+ * The client-side half of D2's resumability guarantee (repo-first-onramp
+ * task 2.2): find an in-progress LOCAL creation attempt for this exact
+ * (org, project) pair, so a second lazy-create call after a crash RESUMES
+ * that attempt's `client_creation_id` instead of starting a fresh one.
+ *
+ * A fresh random id every call would still converge on one vault in
+ * practice (the gateway's own allocate route is idempotent per project),
+ * but only this local check makes it provable client-side, with no
+ * dependency on that server behavior: interrupt a creation mid-flight,
+ * call this again, and the SAME journal — not a second competing one —
+ * drives to ACTIVE.
+ *
+ * Refused journals (`VAULT_CREATION_CONFLICT` / `ALLOCATION_SUPERSEDED`) are
+ * skipped: `GitvaultCreation.run()` refuses to retry a refused journal
+ * destructively, so resuming one here would only reproduce the refusal.
+ * When more than one live candidate exists (should not happen in practice —
+ * this function is what prevents it — but a manually-edited keystore or a
+ * pre-D2 stray journal could produce one), the most recently updated one is
+ * preferred, on the theory that it is the attempt most likely still moving.
+ */
+export function findResumableGitvaultJournal(keystore: GitvaultKeystore, orgId: string, projectId: string): GitvaultCreationJournal | null {
+  const candidates = listIncompleteGitvaultJournals(keystore).filter(
+    (j) => j.org_id === orgId && j.project_id === projectId && j.refusal === null,
+  );
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
+  return candidates[0]!;
+}
+
 export class GitvaultCreation {
   private readonly keystore: GitvaultKeystore;
   private readonly transport: GitvaultCreationTransport;

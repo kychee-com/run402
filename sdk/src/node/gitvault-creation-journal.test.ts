@@ -18,6 +18,7 @@ import {
   GITVAULT_CREATION_STAGES,
   GitvaultCreation,
   createGitvault,
+  findResumableGitvaultJournal,
   gitvaultDoctorRecoveryText,
   listIncompleteGitvaultJournals,
   readGitvaultJournal,
@@ -352,6 +353,41 @@ describe("gitvault creation journal — refusals (never destructive)", () => {
     const result = await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID });
     const g = result.journal.genesis as GitvaultVaultGenesis;
     assert.equal(storedBytesSha256(g as unknown as GitvaultSignedObject), result.genesis_sha256);
+  });
+});
+
+describe("findResumableGitvaultJournal (repo-first-onramp D2 — client-side resumability)", () => {
+  it("finds an incomplete journal matching the exact (org, project) pair", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    await assert.rejects(createGitvault({ keystore: ks, transport: t, org_id: "org_a", project_id: "proj_a", client_creation_id: CCID, onStage: (s) => { if (s === "ALLOCATED") throw new Error("crash"); } }));
+    const found = findResumableGitvaultJournal(ks, "org_a", "proj_a");
+    assert.equal(found?.client_creation_id, CCID);
+  });
+
+  it("never matches a different org or a different project", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    await assert.rejects(createGitvault({ keystore: ks, transport: t, org_id: "org_a", project_id: "proj_a", client_creation_id: CCID, onStage: (s) => { if (s === "ALLOCATED") throw new Error("crash"); } }));
+    assert.equal(findResumableGitvaultJournal(ks, "org_b", "proj_a"), null);
+    assert.equal(findResumableGitvaultJournal(ks, "org_a", "proj_b"), null);
+  });
+
+  it("never resumes a REFUSED journal — that would only reproduce the refusal", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    await assert.rejects(createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, onStage: (s) => { if (s === "OBJECTS_PREPARED") throw new Error("crash"); } }));
+    const j = readGitvaultJournal(ks, CCID)!;
+    t.objects.set(`${j.allocation!.repo_id}/${j.objects[0]!.path}`, new TextEncoder().encode("{\"foreign\":true}"));
+    await assert.rejects(createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID }), (e: unknown) => e instanceof LocalError && e.code === "VAULT_CREATION_CONFLICT");
+    assert.equal(readGitvaultJournal(ks, CCID)!.refusal?.code, "VAULT_CREATION_CONFLICT");
+
+    assert.equal(findResumableGitvaultJournal(ks, "o", "p"), null, "a refused attempt is never offered up for reuse");
+  });
+
+  it("returns null when nothing is incomplete (a fresh call gets a fresh id)", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    assert.equal(findResumableGitvaultJournal(ks, "o", "p"), null);
   });
 });
 

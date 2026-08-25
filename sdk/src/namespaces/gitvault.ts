@@ -53,6 +53,7 @@ type KeystoreModule = typeof import("../node/gitvault-keystore.js");
 type CreationModule = typeof import("../node/gitvault-creation-journal.js");
 type SnapshotModule = typeof import("../node/gitvault-snapshot.js");
 type PruneModule = typeof import("../node/gitvault-prune.js");
+type OpenOrCreateModule = typeof import("../node/gitvault-open-or-create.js");
 
 /** A keystore path, or `null` when there is no id to derive it from (or it is malformed). */
 function safePath(derive: () => string, repoId: string | null): string | null {
@@ -266,6 +267,21 @@ export interface GitvaultHandle {
   vault: import("../node/gitvault-publication.js").GitvaultVault;
 }
 
+/** What {@link Gitvault.openOrCreate} did. `created` is `null` exactly when `found` is `true`. */
+export interface GitvaultOpenOrCreateResult {
+  handle: GitvaultHandle;
+  /** `true` when the vault already existed — nothing was allocated by this call. */
+  found: boolean;
+  created: {
+    /** Mirrors `GitvaultInitResult.deduplicated`: an existing local creation journal was resumed to completion rather than started fresh — nothing was re-minted. */
+    deduplicated: boolean;
+    /** Emitted once at creation — integrity data, not a secret. Print it, copy it, keep many copies. Persisted into the keystore regardless. */
+    recovery_receipt: GitvaultCreationResult["recovery_receipt"];
+    genesis_sha256: string;
+  } | null;
+  terminal_loss_statement: typeof GITVAULT_TERMINAL_LOSS_STATEMENT;
+}
+
 // ─── The namespace ───────────────────────────────────────────────────────────
 
 export class Gitvault {
@@ -397,6 +413,58 @@ export class Gitvault {
       ...(options.service_public_key !== undefined ? { service_public_key: options.service_public_key } : {}),
     });
     return { repo_id: repoId, keystore, transport, vault };
+  }
+
+  /**
+   * Open a vault, allocating it first when it does not exist yet (D2 — lazy
+   * allocation on first push).
+   *
+   * This is the ONE primitive the remote helper and the capture lane
+   * (`run402 gitvault push`/`snapshot`) drive so that a push against an
+   * unallocated project runs the six-stage creation journal inline instead of
+   * refusing: it resolves `repo_id` from `project_id` exactly like
+   * {@link open}, and when that resolution fails, tries to create the vault —
+   * but ONLY when `org_id` was supplied. Without `org_id` this method is
+   * byte-identical to `open()`: the original resolution failure is rethrown
+   * unchanged, so every existing caller of `open()` that has no reason to
+   * create anything sees no behavior change at all by switching to this.
+   *
+   * RESUMABILITY (client-surface spec, D2): before starting a fresh creation
+   * attempt this looks for an INCOMPLETE local journal already matching this
+   * exact `(org_id, project_id)` and resumes ITS `client_creation_id`, rather
+   * than starting a second competing attempt every time the process is
+   * interrupted mid-creation. Kill the process after ALLOCATED and call this
+   * again: the same journal — not a new one — drives to ACTIVE, and exactly
+   * one vault exists either way. An explicit `client_creation_id` (tests, or
+   * a caller resuming a specific attempt by hand) always wins over that search.
+   */
+  async openOrCreate(options: GitvaultVaultHandleOptions & { org_id?: string; client_creation_id?: string }): Promise<GitvaultOpenOrCreateResult> {
+    if (!options.repo_id && !options.project_id) {
+      throw new LocalError("pass repo_id, or project_id to resolve it from the control plane", "opening the gitvault", { code: "GITVAULT_VAULT_UNRESOLVED" });
+    }
+    // An explicit repo_id addresses the vault directly — there is nothing to
+    // resolve or lazily create from an id alone, so this degrades to a plain
+    // open (matches `open()`'s own precedence: repo_id always wins).
+    if (options.repo_id) {
+      const handle = await this.open(options);
+      return { handle, found: true, created: null, terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT };
+    }
+
+    const [{ createGitvaultHttpTransport }, { GitvaultKeystore }, { openOrCreateGitvault }] = await Promise.all([this.#publication(), this.#keystore(), this.#openOrCreate()]);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const transport = createGitvaultHttpTransport(this.#client);
+    const result = await openOrCreateGitvault({
+      keystore,
+      transport,
+      project_id: options.project_id!,
+      ...(options.org_id !== undefined ? { org_id: options.org_id } : {}),
+      ...(options.client_creation_id !== undefined ? { client_creation_id: options.client_creation_id } : {}),
+      ...(options.service_public_key !== undefined ? { service_public_key: options.service_public_key } : {}),
+    });
+    const handle = await this.open({ ...options, repo_id: result.repo_id });
+    return result.found
+      ? { handle, found: true, created: null, terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT }
+      : { handle, found: false, created: result.created, terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT };
   }
 
   /**
@@ -1171,6 +1239,9 @@ export class Gitvault {
   }
   #prune(): Promise<PruneModule> {
     return nodeOnly(() => import("../node/gitvault-prune.js"), "prune");
+  }
+  #openOrCreate(): Promise<OpenOrCreateModule> {
+    return nodeOnly(() => import("../node/gitvault-open-or-create.js"), "openOrCreate");
   }
 }
 

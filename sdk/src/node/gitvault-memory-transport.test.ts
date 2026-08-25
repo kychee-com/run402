@@ -288,7 +288,10 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
 
   async findVaultByProject({ project_id }: { project_id: string }): Promise<GitvaultVaultRecord> {
     this.calls.push("find-vault");
-    const repoId = this.vaultRecord.repo_id ?? [...this.objects.keys()][0]?.split("|")[0];
+    // `key()` joins with `/` (`${repoId}/${path}`), never `|` — this used to
+    // split on the wrong separator and return the whole compound key as
+    // `repo_id` whenever `vaultRecord.repo_id` was not pre-set by hand.
+    const repoId = this.vaultRecord.repo_id ?? [...this.objects.keys()][0]?.split("/")[0];
     if (!repoId) throw err("RESOURCE_NOT_FOUND", `no gitvault for ${project_id}`);
     return { ...(await this.getVaultRecord({ repo_id: repoId })), project_id };
   }
