@@ -105,12 +105,14 @@ describe("rooms.registerPresence", () => {
       task: "migrations",
       program: "claude-code",
       model: "fable-5",
+      sessionKey: "sess-abc-123",
     });
     assert.deepEqual(parsedBody(calls[0]!), {
       requested_name: "Opus",
       task: "migrations",
       program: "claude-code",
       model: "fable-5",
+      session_key: "sess-abc-123",
     });
     // Honored-or-suffixed report passes through untouched.
     assert.equal(reg.name, "Opus-2");
@@ -123,6 +125,33 @@ describe("rooms.registerPresence", () => {
     const reg = await makeSdk(fetch).rooms.registerPresence(ORG, "prj_1");
     assert.deepEqual(parsedBody(calls[0]!), {});
     assert.equal(reg.presence_id, "prs_1");
+  });
+
+  it("surfaces a resumed presence's resumed/why fields without reinterpretation (presence-naming-ergonomics)", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse({ ...PRESENCE, resumed: true }, 201),
+    );
+    const reg = await makeSdk(fetch).rooms.registerPresence(ORG, "prj_1", { sessionKey: "sess-abc-123" });
+    assert.equal(reg.resumed, true);
+    assert.equal(reg.requested_name, undefined);
+    assert.equal(reg.renamed, undefined);
+  });
+
+  it("surfaces the why explanation on a task-qualified rename", async () => {
+    const { fetch } = mockFetch(() =>
+      jsonResponse(
+        {
+          ...PRESENCE,
+          name: "Opus-fix-login-bug",
+          requested_name: "Opus",
+          renamed: true,
+          why: '"Opus" was taken; you became "Opus-fix-login-bug", derived from your task instead of a counter.',
+        },
+        201,
+      ),
+    );
+    const reg = await makeSdk(fetch).rooms.registerPresence(ORG, "prj_1", { requestedName: "Opus", task: "Fix login bug" });
+    assert.equal(reg.why, '"Opus" was taken; you became "Opus-fix-login-bug", derived from your task instead of a counter.');
   });
 
   it("rejects locally when orgId or roomKey is missing", async () => {
@@ -213,6 +242,7 @@ describe("rooms.sendMessage", () => {
       presenceId: "prs_1",
       requestedName: "Opus",
       task: "deploys",
+      sessionKey: "sess-abc-123",
     });
     assert.deepEqual(parsedBody(calls[0]!), {
       body: "deploying in 5",
@@ -225,6 +255,7 @@ describe("rooms.sendMessage", () => {
       presence_id: "prs_1",
       requested_name: "Opus",
       task: "deploys",
+      session_key: "sess-abc-123",
     });
   });
 
@@ -292,7 +323,7 @@ describe("rooms.listMessages", () => {
     const { fetch } = mockFetch((call) => {
       assert.equal(
         call.url,
-        `${ROOMS}/messages?cursor=mcr_1a&order=desc&before=mcr_2b&thread_id=msg_0&addressed_to=me&unread=true&presence_id=prs_1&limit=5`,
+        `${ROOMS}/messages?cursor=mcr_1a&order=desc&before=mcr_2b&thread_id=msg_0&addressed_to=me&unread=true&presence_id=prs_1&session_key=sess-abc-123&limit=5`,
       );
       return jsonResponse({ messages: [], cursor: "mcr_1a", has_more: false });
     });
@@ -304,6 +335,7 @@ describe("rooms.listMessages", () => {
       addressedTo: "me",
       unread: true,
       presenceId: "prs_1",
+      sessionKey: "sess-abc-123",
       limit: 5,
     });
   });
@@ -369,6 +401,14 @@ describe("rooms.ackMessage", () => {
     assert.equal(ack.already_acked, true);
   });
 
+  it("passes sessionKey through as the wire session_key body field", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ message_id: "msg_1", acked_at: "2026-08-07T09:02:00.000Z", already_acked: false }),
+    );
+    await makeSdk(fetch).rooms.ackMessage(ORG, "prj_1", "msg_1", { sessionKey: "sess-abc-123" });
+    assert.deepEqual(parsedBody(calls[0]!), { session_key: "sess-abc-123" });
+  });
+
   it("rejects locally when messageId is missing", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({}));
     await assert.rejects(
@@ -392,6 +432,7 @@ describe("rooms.createClaim", () => {
       ttlSeconds: 1800,
       note: "auth refactor",
       presenceId: "prs_1",
+      sessionKey: "sess-abc-123",
     });
     assert.deepEqual(parsedBody(calls[0]!), {
       resource: "repo:src/auth/**",
@@ -399,6 +440,7 @@ describe("rooms.createClaim", () => {
       ttl_seconds: 1800,
       note: "auth refactor",
       presence_id: "prs_1",
+      session_key: "sess-abc-123",
     });
   });
 

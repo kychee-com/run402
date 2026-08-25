@@ -86,13 +86,14 @@ async function create(args) {
     org: flagValue(a, "--org"), room: flagValue(a, "--room"), project: flagValue(a, "--project"),
   });
   try {
-    const created = await withPresenceRetry(room.orgId, room.roomKey, (presenceId) =>
+    const created = await withPresenceRetry(room.orgId, room.roomKey, (presenceId, sessionKey) =>
       getSdk().rooms.createClaim(room.orgId, room.roomKey, {
         resource: positionals[0],
         mode,
         ttlSeconds: ttl != null ? parseIntegerFlag("--ttl", ttl, { min: 1, max: 86400 }) : undefined,
         note: flagValue(a, "--note") ?? undefined,
         presenceId: presenceId ?? undefined,
+        sessionKey,
       }));
     console.log(JSON.stringify(created, null, 2));
     const conflicts = Array.isArray(created.conflicts) ? created.conflicts : [];

@@ -34,6 +34,7 @@ import {
   getRoomState,
   updateRoomState,
 } from "./rooms-context.mjs";
+import { resolveTaskLabel } from "./harness-context.mjs";
 
 export const IMPORTANCE = ["normal", "high"];
 
@@ -53,6 +54,20 @@ Addressing:
 Notes:
   - join registers this session's presence and returns who else is live, what
     they are working on, and what they have claimed — the arrive-and-look call.
+  - A quiet session's presence now resumes automatically across an idle gap
+    or a lost local cache: join derives a stable session identity from your
+    harness (Claude Code's own session id, Codex's own thread id, or a
+    generated key persisted in ./.run402/) and the gateway revives the same
+    presence under the same name no matter how long it was silent — the ~1h
+    TTL only decays liveness, never that binding. Override with
+    RUN402_SESSION_KEY. Two genuinely concurrent sessions never resume each
+    other's presence.
+  - --task is worth passing even without a name collision: on a taken name
+    it now qualifies your name from your task instead of a bare counter
+    (Opus taken + --task "mpp triage" -> Opus-mpp-triage, not Opus-2), and
+    the output says why. Omit --task and join best-effort fills it from your
+    harness's own thread title (Claude Code or Codex) — set
+    RUN402_NO_TASK_FROM_TITLE=1 to opt out.
   - Presence expires after ~1h of silence. Releasing it early (\`rooms leave\`),
     enumerating reachable rooms, and inspecting one are not here yet — each
     needs a gateway route that does not exist. Filed as follow-ups.
@@ -96,7 +111,8 @@ async function who(args) {
     org: flagValue(a, "--org"), room: flagValue(a, "--room"), project: flagValue(a, "--project"),
   });
   try {
-    const me = await ensurePresence(room, { name: flagValue(a, "--name"), task: flagValue(a, "--task") });
+    const { task } = await resolveTaskLabel({ explicitTask: flagValue(a, "--task") });
+    const me = await ensurePresence(room, { name: flagValue(a, "--name"), task });
     const page = await getSdk().rooms.listPresences(room.orgId, room.roomKey, {
       includeExpired: a.includes("--all"),
     });
@@ -108,8 +124,10 @@ async function who(args) {
       you: me,
       ...page,
     }, null, 2));
-    if (me.registered && me.renamed) {
-      console.error(`You are ${me.name} — ${me.requested_name} was taken.`);
+    if (me.registered && me.resumed) {
+      console.error(`Welcome back — resumed as ${me.name}.`);
+    } else if (me.registered && me.renamed) {
+      console.error(me.why ?? `You are ${me.name} — ${me.requested_name} was taken.`);
     }
   } catch (err) {
     reportSdkError(err);

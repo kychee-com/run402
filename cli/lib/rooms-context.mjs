@@ -30,6 +30,7 @@ import { getSdk } from "./sdk.mjs";
 import { resolveOrg } from "./org-context.mjs";
 import { findBindingKey } from "./wallet-context.mjs";
 import { nextAction } from "./next-actions.mjs";
+import { resolveSessionKey } from "./harness-context.mjs";
 
 export const ROOM_ENV = "RUN402_ROOM";
 export const PRESENCE_ENV = "RUN402_PRESENCE_ID";
@@ -174,33 +175,61 @@ function cachedRequestedName(orgId, roomKey) {
 }
 
 /**
+ * This process's session identity, resolved once and reused for every
+ * coordination call the process makes (see harness-context.mjs — explicit
+ * override, then the harness's own session id, then a locally generated and
+ * persisted key). Memoized because `resolveSessionKey` touches the
+ * filesystem on its slowest path and every caller in one invocation is
+ * asking about the same session.
+ */
+let mySessionKeyMemo;
+function mySessionKey() {
+  if (mySessionKeyMemo === undefined) mySessionKeyMemo = resolveSessionKey().key;
+  return mySessionKeyMemo;
+}
+
+/**
  * Register a NEW session presence and make it this checkout's presence.
  * `name` is the name to ask for — honored when free, honestly suffixed when
  * taken (names are never recycled, so a replacement for `Fable` becomes
- * `Fable-2`, and the caller is told).
+ * `Fable-2`, and the caller is told). Carries this session's resolved
+ * identity, so a session presenting the SAME key it used before RESUMES its
+ * existing presence here instead of registering a stranger under a fresh
+ * name — the response says `resumed: true` and `name`/`renamed`/`why` are
+ * absent, because nothing about naming happened.
  */
 export async function registerFreshPresence(orgId, roomKey, { name, task } = {}) {
   const requestedName = name ?? cachedRequestedName(orgId, roomKey);
   const registration = await getSdk().rooms.registerPresence(orgId, roomKey, {
     ...(requestedName ? { requestedName } : {}),
     ...(task ? { task } : {}),
+    sessionKey: mySessionKey(),
   });
   rememberPresence(orgId, roomKey, registration, requestedName);
   return registration;
 }
 
 /**
- * Run a room call carrying this session's presence. On PRESENCE_EXPIRED (410 —
- * this session's presence aged out) drop the cache, REGISTER a replacement,
- * and retry ONCE with it. The registration is explicit on purpose: a bare call
- * cannot mean "me", because the server cannot tell one credential's concurrent
- * sessions apart — it would either guess (adopting a sibling session's
- * presence, run402-private#663) or refuse. Asking is unambiguous.
+ * Run a room call carrying this session's presence. Every call carries this
+ * session's resolved identity ALONGSIDE any cached `presence_id` — the
+ * gateway tries the session identity first, so a presence whose TTL lapsed
+ * between calls REVIVES under its own name via that path rather than 410ing;
+ * the retry below is now reached only when no resolvable session identity
+ * exists (a harness this couldn't identify, RUN402_PRESENCE_ID pinned to a
+ * stale id) or the presence aged past the 90-day retention sweep, not on an
+ * ordinary hour of silence. On PRESENCE_EXPIRED (410) drop the cache,
+ * REGISTER a replacement, and retry ONCE with it. The registration is
+ * explicit on purpose: a bare call cannot mean "me" from the credential
+ * alone, because the server cannot tell one credential's concurrent sessions
+ * apart — it would either guess (adopting a sibling session's presence,
+ * run402-private#663) or refuse. Asking — by session identity when we have
+ * one, by explicit (re-)registration when we don't — is unambiguous.
  */
 export async function withPresenceRetry(orgId, roomKey, call, { name, task } = {}) {
   const presenceId = cachedPresenceId(orgId, roomKey);
+  const sessionKey = mySessionKey();
   try {
-    return await call(presenceId);
+    return await call(presenceId, sessionKey);
   } catch (err) {
     const code = err?.body?.code ?? err?.code;
     if (code === "PRESENCE_EXPIRED" && presenceId) {
@@ -209,7 +238,7 @@ export async function withPresenceRetry(orgId, roomKey, call, { name, task } = {
       if (replacement?.renamed) {
         console.error(`Your presence expired; you are now ${replacement.name}.`);
       }
-      return call(replacement?.presence_id ?? null);
+      return call(replacement?.presence_id ?? null, sessionKey);
     }
     throw err;
   }

@@ -33,6 +33,7 @@ import {
   getRoomState,
   updateRoomState,
 } from "./rooms-context.mjs";
+import { resolveTaskLabel } from "./harness-context.mjs";
 
 export const IMPORTANCE = ["normal", "high"];
 
@@ -57,6 +58,10 @@ Notes:
     message. --ack asks the recipient to confirm they saw it.
   - Messages are durable. An agent that is not running now reads them when it
     next wakes.
+  - send carries this session's identity like \`rooms join\` does: it resumes
+    your existing presence (no rename) when one is resolvable, and --task —
+    or, if omitted, your harness's own thread title — refreshes what the room
+    sees you working on.
   - The room itself — arriving, leaving, seeing who is live — is \`run402 rooms\`.
 `;
 
@@ -112,7 +117,8 @@ async function send(args) {
     org: flagValue(a, "--org"), room: flagValue(a, "--room"), project: flagValue(a, "--project"),
   });
   try {
-    const result = await withPresenceRetry(room.orgId, room.roomKey, (presenceId) =>
+    const { task } = await resolveTaskLabel({ explicitTask: flagValue(a, "--task") });
+    const result = await withPresenceRetry(room.orgId, room.roomKey, (presenceId, sessionKey) =>
       getSdk().rooms.sendMessage(room.orgId, room.roomKey, {
         body: positionals[0],
         to: splitNames(flagValue(a, "--to")),
@@ -122,10 +128,11 @@ async function send(args) {
         ackRequired: a.includes("--ack"),
         idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
         presenceId: presenceId ?? undefined,
+        sessionKey,
         requestedName: flagValue(a, "--name") ?? undefined,
-        task: flagValue(a, "--task") ?? undefined,
+        task: task ?? undefined,
       }),
-      { name: flagValue(a, "--name"), task: flagValue(a, "--task") });
+      { name: flagValue(a, "--name"), task });
     rememberPresence(room.orgId, room.roomKey, result.sender_presence, flagValue(a, "--name"));
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {
@@ -149,12 +156,13 @@ async function list(args) {
   const stored = getRoomState(room.orgId, room.roomKey).cursor;
   const cursor = flagValue(a, "--cursor") ?? (before ? undefined : (typeof stored === "string" ? stored : undefined));
   try {
-    const page = await withPresenceRetry(room.orgId, room.roomKey, (presenceId) =>
+    const page = await withPresenceRetry(room.orgId, room.roomKey, (presenceId, sessionKey) =>
       getSdk().rooms.listMessages(room.orgId, room.roomKey, {
         ...(before ? { order: "desc", before } : cursor ? { cursor } : {}),
         threadId: flagValue(a, "--thread") ?? undefined,
         ...(unread ? { addressedTo: "me", unread: true } : {}),
         presenceId: presenceId ?? undefined,
+        sessionKey,
         limit: limit != null ? parseIntegerFlag("--limit", limit, { min: 1, max: 200 }) : undefined,
       }));
     // NOTE: an unread/addressed_to=me read needs a resolvable "me"; the retry
@@ -197,9 +205,10 @@ async function ack(args) {
     org: flagValue(a, "--org"), room: flagValue(a, "--room"), project: flagValue(a, "--project"),
   });
   try {
-    const result = await withPresenceRetry(room.orgId, room.roomKey, (presenceId) =>
+    const result = await withPresenceRetry(room.orgId, room.roomKey, (presenceId, sessionKey) =>
       getSdk().rooms.ackMessage(room.orgId, room.roomKey, positionals[0], {
         presenceId: presenceId ?? undefined,
+        sessionKey,
       }));
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {

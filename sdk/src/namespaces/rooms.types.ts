@@ -62,23 +62,33 @@ export interface RoomPresence {
  * name-resolution report and the platform's suggested next call.
  */
 export interface PresenceRegistration extends RoomPresence {
-  /** Echo of the name you asked for. Present only when `requestedName` was sent. */
+  /**
+   * True when `sessionKey` matched an existing live-or-revivable presence:
+   * this call resumed it rather than creating a new one. A resumption keeps
+   * its existing `name` — `requested_name`/`renamed`/`why` are never present
+   * alongside `resumed: true`, because nothing about naming happened.
+   */
+  resumed?: boolean;
+  /** Echo of the name you asked for. Present only when `requestedName` was sent AND this was not a resumption. */
   requested_name?: string;
   /**
    * True when the room's forever-unique name index suffixed your requested
    * name (`Opus` → `Opus-2`); `name` carries the resolved result.
    */
   renamed?: boolean;
+  /** Plain-language reason for the naming outcome, present only when `renamed` is true. */
+  why?: string;
   next_actions?: RoomNextAction[];
 }
 
-/** Options for {@link Rooms.registerPresence}. All fields are display-only metadata. */
+/** Options for {@link Rooms.registerPresence}. */
 export interface RegisterPresenceOptions {
   /**
    * Self-chosen name — honored verbatim when free, else deterministically
    * suffixed against the room's forever-unique index (reported via
    * `renamed: true`, never an error). Omit for a server-assigned memorable
-   * name.
+   * name. Ignored when `sessionKey` resumes an existing presence — an
+   * existing presence keeps its existing name, full stop.
    */
   requestedName?: string;
   /** What you're working on — shown to the other presences. */
@@ -87,6 +97,16 @@ export interface RegisterPresenceOptions {
   program?: string;
   /** Model label, e.g. `fable-5`. */
   model?: string;
+  /**
+   * Opaque, client-resolved session identity (1-128 chars) — never a
+   * credential, never guessed server-side. Presenting the SAME key later
+   * resumes this exact presence, restoring its liveness and refreshing
+   * `task`/`program`/`model`, no matter how long it was silent: the TTL
+   * decays liveness only, never this binding. Omit it and the presence is
+   * reachable only by its returned `presence_id`, exactly as before this
+   * field existed.
+   */
+  sessionKey?: string;
 }
 
 /** Options for {@link Rooms.listPresences}. */
@@ -168,6 +188,8 @@ export interface SendRoomMessageInput {
   requestedName?: string;
   /** Task metadata for the implicit presence-creation case. */
   task?: string;
+  /** Resume as this session (see {@link RegisterPresenceOptions.sessionKey}) instead of registering a fresh presence when no `presenceId` is cached. */
+  sessionKey?: string;
 }
 
 /**
@@ -205,6 +227,8 @@ export interface ListRoomMessagesOptions {
   unread?: boolean;
   /** Read as this presence (`prs_…`) when your credential holds several. */
   presenceId?: string;
+  /** Resolve "you" via this session (see {@link RegisterPresenceOptions.sessionKey}) instead of `presenceId`. */
+  sessionKey?: string;
   /** Page size (server default 50, max 200). */
   limit?: number;
 }
@@ -233,6 +257,8 @@ export interface RoomMessagePage {
 export interface AckRoomMessageOptions {
   /** Ack as this presence (`prs_…`) when your credential holds several. */
   presenceId?: string;
+  /** Resolve "you" via this session (see {@link RegisterPresenceOptions.sessionKey}) instead of `presenceId`. */
+  sessionKey?: string;
 }
 
 /** Response of {@link Rooms.ackMessage}. Idempotent — a replay reports the ORIGINAL `acked_at`. */
@@ -290,6 +316,8 @@ export interface CreateRoomClaimInput {
   note?: string;
   /** Claim as this presence (`prs_…`). Omitting it REGISTERS a fresh session presence — it never adopts one. */
   presenceId?: string;
+  /** Resume as this session (see {@link RegisterPresenceOptions.sessionKey}) instead of registering a fresh presence when no `presenceId` is cached. */
+  sessionKey?: string;
 }
 
 /** Options for {@link Rooms.listClaims}. */

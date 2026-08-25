@@ -72,6 +72,7 @@ function messagesQuery(opts: ListRoomMessagesOptions = {}): string {
   if (opts.addressedTo !== undefined) params.set("addressed_to", opts.addressedTo);
   if (opts.unread !== undefined) params.set("unread", String(opts.unread));
   if (opts.presenceId !== undefined) params.set("presence_id", opts.presenceId);
+  if (opts.sessionKey !== undefined) params.set("session_key", opts.sessionKey);
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
   const qs = params.toString();
   return qs ? `?${qs}` : "";
@@ -113,6 +114,7 @@ export class Rooms {
     if (opts.task !== undefined) body.task = opts.task;
     if (opts.program !== undefined) body.program = opts.program;
     if (opts.model !== undefined) body.model = opts.model;
+    if (opts.sessionKey !== undefined) body.session_key = opts.sessionKey;
     return this.client.request<PresenceRegistration>(`${roomPath(orgId, roomKey)}/presences`, {
       method: "POST",
       body,
@@ -195,6 +197,7 @@ export class Rooms {
     if (input.presenceId !== undefined) body.presence_id = input.presenceId;
     if (input.requestedName !== undefined) body.requested_name = input.requestedName;
     if (input.task !== undefined) body.task = input.task;
+    if (input.sessionKey !== undefined) body.session_key = input.sessionKey;
     return this.client.request<SentRoomMessage>(`${roomPath(orgId, roomKey)}/messages`, {
       method: "POST",
       body,
@@ -271,6 +274,7 @@ export class Rooms {
     }
     const body: Record<string, unknown> = {};
     if (opts.presenceId !== undefined) body.presence_id = opts.presenceId;
+    if (opts.sessionKey !== undefined) body.session_key = opts.sessionKey;
     return this.client.request<RoomAckResult>(
       `${roomPath(orgId, roomKey)}/messages/${encodeURIComponent(messageId)}/ack`,
       { method: "POST", body, context: "acknowledging room message" },
@@ -303,6 +307,7 @@ export class Rooms {
     if (input.ttlSeconds !== undefined) body.ttl_seconds = input.ttlSeconds;
     if (input.note !== undefined) body.note = input.note;
     if (input.presenceId !== undefined) body.presence_id = input.presenceId;
+    if (input.sessionKey !== undefined) body.session_key = input.sessionKey;
     return this.client.request<CreatedRoomClaim>(`${roomPath(orgId, roomKey)}/claims`, {
       method: "POST",
       body,
