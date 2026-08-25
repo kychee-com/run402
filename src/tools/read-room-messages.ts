@@ -6,7 +6,7 @@ import { resolveRoomArgs, cachedPresenceId } from "./rooms-shared.js";
 export const readRoomMessagesSchema = {
   project_id: z.string().optional().describe("Project whose default room to read. Omit when passing org_id + room_key."),
   org_id: z.string().optional().describe("Org id (with room_key) for a named org room."),
-  room_key: z.string().optional().describe("Named room slug (with org_id)."),
+  room_key: z.string().optional().describe("Named room slug (with org_id). Omit every addressing parameter to use the checkout's own context: RUN402_ROOM, or an `org`/`room` binding in .run402.json, or the wallet profile's selected org (read from the MCP server's working directory)."),
   message_id: z.string().optional().describe("Fetch ONE message with its FULL body (lists carry snippets). When set, every other filter is ignored."),
   cursor: z.string().optional().describe("Opaque resume cursor (mcr_...) from a prior page. Store and echo — never parse. A stale cursor returns reset: true + earliest_cursor instead of an error."),
   unread: z.boolean().optional().describe("Only messages addressed to this session's presence that are newer than its read watermark. Requires having joined (or sent) at least once."),

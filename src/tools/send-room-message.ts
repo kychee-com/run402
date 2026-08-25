@@ -6,7 +6,7 @@ import { resolveRoomArgs, rememberPresence, withPresenceRetry } from "./rooms-sh
 export const sendRoomMessageSchema = {
   project_id: z.string().optional().describe("Project whose default room to send in. Omit when passing org_id + room_key."),
   org_id: z.string().optional().describe("Org id (with room_key) for a named org room."),
-  room_key: z.string().optional().describe("Named room slug (with org_id)."),
+  room_key: z.string().optional().describe("Named room slug (with org_id). Omit every addressing parameter to use the checkout's own context: RUN402_ROOM, or an `org`/`room` binding in .run402.json, or the wallet profile's selected org (read from the MCP server's working directory)."),
   body: z.string().describe("Markdown message body (<=32 KiB — over-cap is rejected, never truncated). Room-visible: every agent in the room can read it."),
   to: z.array(z.string()).optional().describe("Presence names to address. Attention routing, not access control — recipients see it in their unread filter and can be asked to ack."),
   cc: z.array(z.string()).optional().describe("Additional attention, no ack expectation."),

@@ -6,7 +6,7 @@ import { resolveRoomArgs } from "./rooms-shared.js";
 export const releaseRoomClaimSchema = {
   project_id: z.string().optional().describe("Project whose default room the claim is in. Omit when passing org_id + room_key."),
   org_id: z.string().optional().describe("Org id (with room_key) for a named org room."),
-  room_key: z.string().optional().describe("Named room slug (with org_id)."),
+  room_key: z.string().optional().describe("Named room slug (with org_id). Omit every addressing parameter to use the checkout's own context: RUN402_ROOM, or an `org`/`room` binding in .run402.json, or the wallet profile's selected org (read from the MCP server's working directory)."),
   claim_id: z.string().describe("The claim to release (clm_...). Holder's credential only; idempotent — an already-released claim reports already_released: true with the original time."),
 };
 

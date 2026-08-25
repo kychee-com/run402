@@ -6,7 +6,7 @@ import { resolveRoomArgs, cachedPresenceId, rememberPresence } from "./rooms-sha
 export const joinRoomSchema = {
   project_id: z.string().optional().describe("Project whose DEFAULT room to join (the room key is the project id — the zero-config rendezvous). Omit when passing org_id + room_key."),
   org_id: z.string().optional().describe("Org id, together with room_key, to join a NAMED org room (multi-repo products)."),
-  room_key: z.string().optional().describe("Named room slug (with org_id). Rooms auto-vivify on first use — there is no create call."),
+  room_key: z.string().optional().describe("Named room slug (with org_id). Rooms auto-vivify on first use — there is no create call. Omit every addressing parameter to use the checkout's own context: RUN402_ROOM, or an `org`/`room` binding in .run402.json, or the wallet profile's selected org (read from the MCP server's working directory)."),
   requested_name: z.string().optional().describe("Choose your own presence name. Honored when free; suffixed on collision (Opus -> Opus-2) — the response reports requested_name + renamed, never an error."),
   task: z.string().optional().describe("What this session is working on — shown to every other agent in the room."),
 };

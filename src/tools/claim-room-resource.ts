@@ -6,7 +6,7 @@ import { resolveRoomArgs, withPresenceRetry } from "./rooms-shared.js";
 export const claimRoomResourceSchema = {
   project_id: z.string().optional().describe("Project whose default room to claim in. Omit when passing org_id + room_key."),
   org_id: z.string().optional().describe("Org id (with room_key) for a named org room."),
-  room_key: z.string().optional().describe("Named room slug (with org_id)."),
+  room_key: z.string().optional().describe("Named room slug (with org_id). Omit every addressing parameter to use the checkout's own context: RUN402_ROOM, or an `org`/`room` binding in .run402.json, or the wallet profile's selected org (read from the MCP server's working directory)."),
   resource: z.string().describe("What you're working on: repo:<glob> (glob-overlap conflicts, e.g. repo:src/auth/**), function:<name>, table:<name>, deploy, or any free-form string (exact match)."),
   mode: z.enum(["exclusive", "shared"]).optional().describe("exclusive (default): one worker. shared: parallel-safe (only conflicts with an exclusive)."),
   ttl_seconds: z.number().int().min(1).max(86400).optional().describe("Lifetime (default 3600). Claims auto-expire so a dead session never wedges the room."),

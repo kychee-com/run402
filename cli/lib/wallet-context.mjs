@@ -19,15 +19,26 @@
  * wallets and no flag is given, that is a hard error (not a silent pick).
  */
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fail } from "./sdk-errors.mjs";
 import { isValidProfileName } from "../core-dist/config.js";
 import { getDefaultWallet, profileExists, readMeta, profileDir } from "../core-dist/profiles.js";
 import { readAllowance } from "../core-dist/allowance.js";
+// The binding file is a CHECKOUT-LEVEL CONTRACT read by more than one surface,
+// so its reader lives in core — `run402-mcp` ships core/dist but not cli/, and
+// two readers of one file format is exactly the drift worth not having.
+// Re-exported here under the names the rest of the CLI already imports.
+import {
+  findBindingKey,
+  bindingFilePath,
+  readBindingFile,
+  BINDING_FILE,
+} from "../core-dist/binding-file.js";
+
+export { findBindingKey, bindingFilePath, readBindingFile };
 
 const DEFAULT = "default";
-const BINDING_FILE = ".run402.json";
 const GLOBAL_FLAGS = new Set(["--wallet", "--profile"]);
 // The `wallets` group is the management + escape surface — it must work even
 // when selection is ambiguous (so you can `wallets unbind`), and it validates
@@ -70,36 +81,6 @@ export function splitWalletFlag(rawArgv = []) {
   return { argv, walletFlag: flag };
 }
 
-function readBindingKeyFrom(dir, key) {
-  // .run402.local.json (gitignored personal override) beats .run402.json.
-  for (const fname of [".run402.local.json", ".run402.json"]) {
-    const p = join(dir, fname);
-    try {
-      const parsed = JSON.parse(readFileSync(p, "utf8"));
-      const v = parsed?.[key];
-      if (typeof v === "string" && v.trim()) return { value: v.trim(), file: p };
-    } catch {
-      /* missing / unreadable / malformed → skip */
-    }
-  }
-  return null;
-}
-
-/** Path of the committed binding file for a directory. */
-export function bindingFilePath(dir = process.cwd()) {
-  return join(dir, BINDING_FILE);
-}
-
-/** Parse a directory's committed binding file, or `{}` when absent/unreadable. */
-export function readBindingFile(dir = process.cwd()) {
-  try {
-    const parsed = JSON.parse(readFileSync(bindingFilePath(dir), "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 /**
  * MERGE keys into a directory's binding file. A `null` value removes its key;
  * a file left with no keys is deleted rather than committed empty.
@@ -122,26 +103,6 @@ export function updateBindingFile(dir, patch) {
   }
   writeFileSync(file, JSON.stringify(next, null, 2) + "\n");
   return { file, contents: next, removed: false };
-}
-
-/**
- * Nearest binding carrying `key`, walking up from `startDir` to the root.
- *
- * Keys bind INDEPENDENTLY (add-cli-current-org, design D7): a file declaring
- * only `org` leaves wallet resolution untouched, and each key resolves at the
- * nearest file that carries it — so `/work/.run402.json` may supply the org
- * while `/work/api/.run402.json` supplies the wallet. Unknown keys are ignored,
- * which is what makes older CLIs forward-compatible with these files.
- */
-export function findBindingKey(startDir, key) {
-  let dir = resolve(startDir);
-  for (;;) {
-    const hit = readBindingKeyFrom(dir, key);
-    if (hit) return hit;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
 }
 
 /** Nearest wallet binding walking up from `startDir` to the filesystem root. */
