@@ -254,11 +254,11 @@ describe("run402 gitvault init — the verb that allocates", () => {
   });
 });
 
-describe("run402 gitvault push — the capture lane, D2 lazy allocation (repo-first-onramp task 2.2)", () => {
+describe("run402 gitvault snapshot — the capture lane, D2 lazy allocation (repo-first-onramp task 2.2)", () => {
   it("resolves the project's owning org exactly like init does, and threads it into gitvault.push", async () => {
-    const payload = await ok("push", []);
+    const payload = await ok("snapshot", []);
     const call = calls.find((c) => c.method === "gitvault.push");
-    assert.ok(call, `gitvault push did not reach the SDK; calls=${JSON.stringify(calls)}`);
+    assert.ok(call, `gitvault snapshot did not reach the SDK; calls=${JSON.stringify(calls)}`);
     assert.equal(call.input.org_id, ORG);
     assert.equal(call.input.project_id, PROJECT);
     assert.equal(payload.generation, "0000000000000004");
@@ -277,7 +277,7 @@ describe("run402 gitvault push — the capture lane, D2 lazy allocation (repo-fi
     };
     captureStart();
     try {
-      await run("push", []);
+      await run("snapshot", []);
     } finally {
       captureStop();
     }
@@ -287,10 +287,10 @@ describe("run402 gitvault push — the capture lane, D2 lazy allocation (repo-fi
     assert.match(joined, /keystore: .*gitvault/, joined);
   });
 
-  it("prints nothing extra about allocation for an ordinary push against an already-existing vault", async () => {
+  it("prints nothing extra about allocation for an ordinary snapshot against an already-existing vault", async () => {
     captureStart();
     try {
-      await run("push", []);
+      await run("snapshot", []);
     } finally {
       captureStop();
     }
@@ -298,18 +298,40 @@ describe("run402 gitvault push — the capture lane, D2 lazy allocation (repo-fi
   });
 
   it("--repo addresses the vault directly and skips org resolution entirely — nothing to create FROM", async () => {
-    await ok("push", ["--repo", REPO]);
+    await ok("snapshot", ["--repo", REPO]);
     assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "--repo alone must not trigger a project lookup");
     const call = calls.find((c) => c.method === "gitvault.push");
     assert.equal(call.input.org_id, undefined);
     assert.equal(call.input.repo_id, REPO);
   });
 
-  it("still carries --message on snapshot and --checkpoint through, unaffected by the org resolution", async () => {
-    await ok("push", ["--message", "wip", "--checkpoint"]);
+  it("still carries --message and --checkpoint through, unaffected by the org resolution", async () => {
+    await ok("snapshot", ["--message", "wip", "--checkpoint"]);
     const call = calls.find((c) => c.method === "gitvault.push");
     assert.equal(call.input.snapshot.message, "wip");
     assert.equal(call.input.checkpoint, true);
+  });
+});
+
+describe("run402 gitvault push — D5 deprecation alias for `snapshot` (repo-first-onramp task 2.5)", () => {
+  it("still publishes — a deprecation-warning alias is not a removal", async () => {
+    const payload = await ok("push", []);
+    const call = calls.find((c) => c.method === "gitvault.push");
+    assert.ok(call, `gitvault push did not reach the SDK; calls=${JSON.stringify(calls)}`);
+    assert.equal(payload.generation, "0000000000000004");
+  });
+
+  it("warns on stderr that it is deprecated and names the replacement, without touching stdout", async () => {
+    captureStart();
+    try {
+      await run("push", []);
+    } finally {
+      captureStop();
+    }
+    assert.match(stderr.join("\n"), /`run402 gitvault push` is deprecated.*use `run402 gitvault snapshot`/);
+    // stdout stays the JSON payload alone — the deprecation notice is a
+    // human/agent-readable line, never mixed into the piped result.
+    assert.doesNotThrow(() => JSON.parse(stdout.join("")));
   });
 });
 
@@ -465,6 +487,15 @@ describe("run402 doctor — gitvault is no longer invisible", () => {
     const check = await runDoctor();
     assert.equal(check.status, "warning");
     assert.match(check.value.gaps.join("\n"), /policy_grandfathered: activation does not require vault admission/);
+  });
+
+  it("D7 (repo-first-onramp task 2.7): a tripped terminal_loss_risk warning surfaces the same way, with no doctor-side threshold logic of its own", async () => {
+    impl.status = async () => vaultStatus({
+      warnings: [{ kind: "terminal_loss_risk", message: "this vault has accrued real value at risk (≥10 generations) while only one principal can open it." }],
+    });
+    const check = await runDoctor();
+    assert.equal(check.status, "warning");
+    assert.match(check.value.gaps.join("\n"), /terminal_loss_risk: this vault has accrued real value at risk/);
   });
 
   it("a project with NO vault is a normal shape, not a problem", async () => {

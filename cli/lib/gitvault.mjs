@@ -37,15 +37,15 @@ const COMMON_VALUE_FLAGS = ["--project", "--repo"];
 export const HELP = `run402 gitvault — your source, encrypted before it leaves the machine
 
 Usage:
-  run402 gitvault init    [--project <id>] [--org <org_id>] [--git-remote] [--no-remote]
-  run402 gitvault status  [--project <id>] [--repo <repo_id>] [--refs]
-  run402 gitvault push    [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint]
-  run402 gitvault policy  <required|grandfathered> [--project <id>] [--repo <repo_id>]
-                          [--reason <why>]
-  run402 gitvault compact [--project <id>] [--repo <repo_id>]
-  run402 gitvault prune   [--project <id>] [--repo <repo_id>]
-                          [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
-  run402 gitvault verify  [--project <id>] [--repo <repo_id>] [--budget <n>]
+  run402 gitvault init     [--project <id>] [--org <org_id>] [--git-remote] [--no-remote]
+  run402 gitvault status   [--project <id>] [--repo <repo_id>] [--refs]
+  run402 gitvault snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint]
+  run402 gitvault policy   <required|grandfathered> [--project <id>] [--repo <repo_id>]
+                           [--reason <why>]
+  run402 gitvault compact  [--project <id>] [--repo <repo_id>]
+  run402 gitvault prune    [--project <id>] [--repo <repo_id>]
+                           [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
+  run402 gitvault verify   [--project <id>] [--repo <repo_id>] [--budget <n>]
 
 Subcommands:
   init      ALLOCATE the project's vault. This is the one step that mints key
@@ -65,15 +65,20 @@ Subcommands:
             audited. \`grandfathered\` is the documented way out of a deploy
             blocked by GITVAULT_CLIENT_UPGRADE_REQUIRED, and leaves a
             doctor-persistent warning until the project returns to \`required\`.
-  push      Capture the working tree and publish it. This is NOT gated on a
-            deploy — a vault-only project pushes for months without one.
+  snapshot  Capture the working tree and publish it. This is NOT gated on a
+            deploy — a vault-only project snapshots for months without one.
             Against a project with no vault yet, this ALLOCATES one inline
             (the six-stage creation, same as \`init\`) before publishing — one
             command, no prior \`gitvault init\`. The one-shot recovery receipt
             and keystore path print to stderr the moment that happens.
-            Before reporting a push as landed the SDK compares finalization
+            Before reporting a snapshot as landed the SDK compares finalization
             receipts against the expected manifest and reads the admitted head
-            back from storage; a 200 alone is never enough.
+            back from storage; a 200 alone is never enough. \`push\` is a
+            deprecation-warning alias for one release — it will be removed
+            next release. Once \`gitvault\` was the only publish verb; \`git
+            push\` is now the actual publish path (via the remote helper),
+            so \`push\` here was renamed to name what it does: one verb per
+            operation.
   compact   Publish a checkpoint covering the canonical refs, every root
             unexpired at the cutoff, and the HEAD target, under a maintenance
             lease so a concurrent cycle cannot race it.
@@ -101,9 +106,9 @@ Options:
                     chain and advances the local materialized pin), which is
                     why plain \`status\` — an observation — does not do it.
   --repo <repo_id>  Address the vault directly by id, skipping project lookup
-  --message <text>  push: commit message for the synthetic commit a dirty tree
+  --message <text>  snapshot: commit message for the synthetic commit a dirty tree
                     produces (a clean tree pushes HEAD itself, no message used)
-  --checkpoint      push: force the checkpoint-bearing form regardless of delta size
+  --checkpoint      snapshot: force the checkpoint-bearing form regardless of delta size
   --budget <n>      verify: heads to verify in this call. The verified prefix is
                     persisted, so a budget-exceeded run resumes where it stopped
                     instead of restarting.
@@ -194,8 +199,12 @@ function printTerminalLoss(status) {
   console.error("");
 }
 
-/** Where the keystore lives — for verbs whose payload is not a `status`. */
-async function printKeystoreLocation() {
+/**
+ * Where the keystore lives — for verbs whose payload is not a `status`.
+ * Exported: `repos create` (repo-first-onramp task 2.6) prints the same
+ * line after allocating a vault, and must not restate this logic.
+ */
+export async function printKeystoreLocation() {
   try {
     const { getGitvaultKeystoreRoot } = await import("#sdk/node");
     console.error(`keystore: ${getGitvaultKeystoreRoot()} — back this up; whole-keystore loss is terminal for vault history`);
@@ -380,12 +389,19 @@ async function status(args) {
   }
 }
 
-async function push(args) {
+/**
+ * D5 (repo-first-onramp task 2.5): one verb per operation. Renamed from
+ * `push` — `push` now means exactly one thing everywhere: `git push`. The
+ * capture lane keeps its old function name internally to minimize churn;
+ * only the dispatched SUBCOMMAND name changed (see `run()` below, where
+ * `gitvault push` survives one release as a deprecation-warning alias).
+ */
+async function snapshot(args) {
   const a = normalizeArgv(args);
   const valueFlags = [...COMMON_VALUE_FLAGS, "--message"];
   assertKnownFlags(a, [...valueFlags, "--checkpoint", "--help", "-h"], valueFlags);
   requirePositionalCount(a, valueFlags, {
-    min: 0, max: 0, command: "run402 gitvault push", missing: "",
+    min: 0, max: 0, command: "run402 gitvault snapshot", missing: "",
   });
   const message = flagValue(a, "--message");
   const target = vaultTarget(a);
@@ -580,8 +596,17 @@ export async function run(sub, args) {
       await status(argv);
       break;
     }
+    case "snapshot": {
+      await snapshot(argv);
+      break;
+    }
     case "push": {
-      await push(argv);
+      // D5: one verb per operation — "push" now means exactly one thing,
+      // `git push`. Retained as a deprecation-warning alias for ONE release
+      // (pre-launch, the benchmark gate prefers the rename now over an
+      // alias forever); it will be removed next release.
+      console.error("`run402 gitvault push` is deprecated and will be removed in the next release — use `run402 gitvault snapshot` instead.");
+      await snapshot(argv);
       break;
     }
     case "compact": {

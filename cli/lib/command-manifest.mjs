@@ -257,11 +257,23 @@ export const COMMAND_MANIFEST = [
   // universal `{}` fetch mock or touch the gate's own checkout.
   { path: ["gitvault", "init"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "allocates a vault: mints key material on this machine and runs the six-stage creation journal" },
   { path: ["gitvault", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the local principal keystore and the live vault record" },
-  { path: ["gitvault", "push"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
+  { path: ["gitvault", "snapshot"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
+  // D5 (repo-first-onramp task 2.5): `push` is a deprecation-warning alias
+  // for `snapshot`, retained for exactly one release — same structural
+  // shape, same skip reason, so it stays covered by this gate too.
+  { path: ["gitvault", "push"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "deprecated alias for `snapshot` — captures the cwd git working tree and publishes a signed head" },
   { path: ["gitvault", "policy"], positionals: [p("gitvault_policy")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["required"], runStyle: "sub", skipBehavioral: "owner + step-up mutation of the live project's activation policy" },
   { path: ["gitvault", "compact"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "takes a maintenance lease and builds a checkpoint from the local repository" },
   { path: ["gitvault", "prune"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "materializes the live vault head to enumerate retention roots" },
   { path: ["gitvault", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain against the keystore's authenticated pin" },
+
+  // ── repos (vault-only porcelain, repo-first-onramp D8, task 2.6) ────────
+  // `create` writes real git state into cwd and allocates a vault; `list`
+  // and `delete` read/mutate the live gitvault record — same structural-
+  // checks-only rationale as the gitvault family just above.
+  { path: ["repos", "create"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "provisions a project, allocates a vault, and scaffolds a real git remote into cwd" },
+  { path: ["repos", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "cross-references live projects against their live gitvault status, one call per project" },
+  { path: ["repos", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [], runStyle: "sub", skipBehavioral: "irreversibly deletes a project after reading its live vault generation count" },
   { path: ["errors"], positionals: [p("fingerprint_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
 
   // ── jobs ─────────────────────────────────────────────────────────────────
