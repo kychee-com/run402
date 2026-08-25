@@ -262,6 +262,47 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     assert.ok(status.warnings.some((w) => w.kind === "policy_grandfathered"));
   });
 
+  // D7 (repo-first-onramp task 2.7): the progressive terminal-loss warning.
+  // Quiet at genesis (the fixture default — 3 generations, 1 KB, no genesis
+  // timestamp — trips nothing above), standing once any composite threshold
+  // crosses. See gitvault.ts's `gitvaultLossWarningTrip` for the OR-composite.
+  it("stays quiet for a small, young vault — a red banner on an empty vault teaches agents to ignore red banners", async () => {
+    const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+    const status = await sdk.gitvault.status({ project_id: "prj_demo", keystore_root: join(tmpdir(), "gitvault-absent-keystore-fixture") });
+    assert.equal(status.warnings.some((w) => w.kind === "terminal_loss_risk"), false);
+  });
+
+  it("escalates to a standing warning once generations cross the threshold alone", async () => {
+    const { sdk } = sdkWith(() => ({ body: { ...VAULT_RECORD, admitted_generations: "10" } }));
+    const status = await sdk.gitvault.status({ project_id: "prj_demo", keystore_root: join(tmpdir(), "gitvault-absent-keystore-fixture") });
+    const w = status.warnings.find((w) => w.kind === "terminal_loss_risk");
+    assert.ok(w, `expected terminal_loss_risk, got ${JSON.stringify(status.warnings)}`);
+    assert.match(w!.message, /generations/);
+    assert.match(w!.message, /No attestation or flag clears it\./);
+  });
+
+  it("escalates on source_bytes alone", async () => {
+    const { sdk } = sdkWith(() => ({ body: { ...VAULT_RECORD, storage: { ...VAULT_RECORD.storage, source_bytes: String(11 * 1024 * 1024) } } }));
+    const status = await sdk.gitvault.status({ project_id: "prj_demo", keystore_root: join(tmpdir(), "gitvault-absent-keystore-fixture") });
+    assert.ok(status.warnings.some((w) => w.kind === "terminal_loss_risk" && /MB of source/.test(w.message)));
+  });
+
+  it("escalates on days-since-genesis alone", async () => {
+    const oldGenesis = new Date(Date.now() - 20 * 86_400_000).toISOString();
+    const { sdk } = sdkWith(() => ({ body: { ...VAULT_RECORD, genesis_admitted_at: oldGenesis } }));
+    const status = await sdk.gitvault.status({ project_id: "prj_demo", keystore_root: join(tmpdir(), "gitvault-absent-keystore-fixture") });
+    assert.ok(status.warnings.some((w) => w.kind === "terminal_loss_risk" && /days since genesis/.test(w.message)));
+  });
+
+  it("names every metric that tripped, not just the first", async () => {
+    const oldGenesis = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const { sdk } = sdkWith(() => ({ body: { ...VAULT_RECORD, admitted_generations: "50", genesis_admitted_at: oldGenesis } }));
+    const status = await sdk.gitvault.status({ project_id: "prj_demo", keystore_root: join(tmpdir(), "gitvault-absent-keystore-fixture") });
+    const w = status.warnings.find((w) => w.kind === "terminal_loss_risk");
+    assert.match(w!.message, /generations/);
+    assert.match(w!.message, /days since genesis/);
+  });
+
   it("does NOT mint key material — observing a vault must never create the identity it reports on", async () => {
     // Regression: `status()` originally called `ensureIdentity()`, which
     // GENERATES an Ed25519 + X25519 keypair and writes it to disk. That made a

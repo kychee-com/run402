@@ -641,5 +641,13 @@ export type * from "./namespaces/wallets.js";
 export * from "./namespaces/gitvault.crypto.js";
 export type * from "./namespaces/gitvault.crypto.js";
 export type * from "./namespaces/gitvault.types.js";
-export { Gitvault, gitvaultRemoteUrl, parseGitvaultRemoteUrl } from "./namespaces/gitvault.js";
+export {
+  Gitvault,
+  gitvaultRemoteUrl,
+  parseGitvaultRemoteUrl,
+  GITVAULT_LOSS_WARNING_THRESHOLDS,
+  gitvaultLossWarningTrip,
+  gitvaultLossWarningTripped,
+  gitvaultLossWarningMessage,
+} from "./namespaces/gitvault.js";
 export type * from "./namespaces/gitvault.js";

@@ -694,6 +694,16 @@ export class Gitvault {
     if (record?.gitvault_policy === "grandfathered") {
       warnings.push({ kind: "policy_grandfathered", message: "activation does not require vault admission on this project; return it to `required` when the migration is done" });
     }
+    // D7 (repo-first-onramp task 2.7): a vault that has accrued enough value
+    // at risk gets a STANDING warning instead of the one-time genesis note.
+    // `record` is `null` for an unallocated project, which is the ordinary
+    // "nothing to warn about" shape, not a gap in this check.
+    if (record) {
+      const trip = gitvaultLossWarningTrip(record);
+      if (gitvaultLossWarningTripped(trip)) {
+        warnings.push({ kind: "terminal_loss_risk", message: gitvaultLossWarningMessage(trip) });
+      }
+    }
 
     // The local git remote, when there is a repository to read it from. A
     // pure read: `status` must never write git configuration.
@@ -1264,6 +1274,84 @@ export class Gitvault {
   #openOrCreate(): Promise<OpenOrCreateModule> {
     return nodeOnly(() => import("../node/gitvault-open-or-create.js"), "openOrCreate");
   }
+}
+
+// ─── D7 — progressive terminal-loss warning (repo-first-onramp task 2.7) ────
+//
+// The §0 terminal-loss statement (`GITVAULT_TERMINAL_LOSS_STATEMENT`) never
+// changes — this governs only PROMINENCE and CADENCE. A quiet stderr line
+// already runs at genesis (the one-shot receipt path in `push`/`openOrCreate`
+// callers). This is the OTHER half: once the vault has accrued enough value
+// at risk, `status`/`doctor` carry a STANDING warning instead of a one-time
+// note nobody re-reads.
+
+/**
+ * The composite escalation trigger (design D7): ANY of these crossing its
+ * threshold escalates the quiet genesis-time note into a standing warning.
+ * Deliberately an OR — any single metric alone is gameable by triviality
+ * (an agent that pads one dimension to stay under a lone threshold). Shipped
+ * as defaults; tunable in this ONE place, not a protocol contract.
+ */
+export const GITVAULT_LOSS_WARNING_THRESHOLDS = {
+  generations: 10,
+  source_bytes: 10 * 1024 * 1024,
+  days_since_genesis: 14,
+} as const;
+
+/** Which composite metric(s) crossed their D7 threshold, if any. */
+export interface GitvaultLossWarningTrip {
+  generations: boolean;
+  source_bytes: boolean;
+  days_since_genesis: boolean;
+}
+
+/**
+ * D7: has this vault crossed the composite terminal-loss escalation trigger?
+ * Pure — no I/O, no clock dependency beyond the optional `now` override
+ * (tests). `admitted_generations` and `storage.source_bytes` are decimal
+ * strings (protocol convention for values that could exceed safe-integer
+ * precision in principle; comfortably within it here).
+ *
+ * There is deliberately no companion "is this resolved" function: V0-A
+ * cannot detect a second principal or human envelope able to open the vault
+ * (design D7's stricter-than-drafted resolution), so once tripped this has
+ * nothing further to compute — a caller does not un-trip it, ever, in V0.
+ */
+export function gitvaultLossWarningTrip(
+  record: Pick<GitvaultVaultRecord, "admitted_generations" | "storage" | "genesis_admitted_at">,
+  now: Date = new Date(),
+): GitvaultLossWarningTrip {
+  const generations = Number(record.admitted_generations ?? "0");
+  const sourceBytes = Number(record.storage?.source_bytes ?? "0");
+  const genesisAt = record.genesis_admitted_at ? new Date(record.genesis_admitted_at) : null;
+  const daysSinceGenesis = genesisAt && !Number.isNaN(genesisAt.getTime()) ? (now.getTime() - genesisAt.getTime()) / 86_400_000 : null;
+  return {
+    generations: Number.isFinite(generations) && generations >= GITVAULT_LOSS_WARNING_THRESHOLDS.generations,
+    source_bytes: Number.isFinite(sourceBytes) && sourceBytes >= GITVAULT_LOSS_WARNING_THRESHOLDS.source_bytes,
+    days_since_genesis: daysSinceGenesis !== null && daysSinceGenesis >= GITVAULT_LOSS_WARNING_THRESHOLDS.days_since_genesis,
+  };
+}
+
+/** Any composite metric tripped — the standing warning threshold itself. */
+export function gitvaultLossWarningTripped(trip: GitvaultLossWarningTrip): boolean {
+  return trip.generations || trip.source_bytes || trip.days_since_genesis;
+}
+
+/**
+ * The standing warning text (design D7): names what tripped, states the
+ * resolution honestly (a second principal or human envelope — nothing this
+ * client can verify yet), and never claims an attestation would clear it.
+ */
+export function gitvaultLossWarningMessage(trip: GitvaultLossWarningTrip): string {
+  const reasons: string[] = [];
+  if (trip.generations) reasons.push(`≥${GITVAULT_LOSS_WARNING_THRESHOLDS.generations} generations`);
+  if (trip.source_bytes) reasons.push(`≥${Math.round(GITVAULT_LOSS_WARNING_THRESHOLDS.source_bytes / (1024 * 1024))} MB of source`);
+  if (trip.days_since_genesis) reasons.push(`≥${GITVAULT_LOSS_WARNING_THRESHOLDS.days_since_genesis} days since genesis`);
+  return (
+    `this vault has accrued real value at risk (${reasons.join(", ")}) while only one principal can open it. ` +
+    "Only a second principal — another keystore, or later a human envelope — demonstrably able to open the vault clears this warning; " +
+    "this client cannot verify that yet, so it stands until you add one. No attestation or flag clears it."
+  );
 }
 
 /** `run402::<org_id>/<project_id>` — what `git-remote-run402` resolves. */
