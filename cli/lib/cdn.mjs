@@ -4,7 +4,7 @@
  * Usage:
  *   run402 cdn wait-fresh <url> --sha <sha256> [--timeout <seconds>] [--project <id>]
  *
- * Wraps the SDK's `client.blobs.waitFresh(...)`. Polls the gateway diagnose
+ * Wraps the SDK's `client.project(id).assets.waitFresh(...)`. Polls the gateway diagnose
  * endpoint until the URL serves the expected SHA, then exits 0. On timeout,
  * exits 1 (agent shell loops can chain a fallback action).
  *
@@ -108,7 +108,14 @@ async function waitFresh(projectId, argv) {
 
   const timeoutMs = (opts.timeout ?? 60) * 1000;
   try {
-    const result = await getSdk().blobs.waitFresh(resolvedId, {
+    // TWO things were wrong here, and together they meant this command threw
+    // "Cannot read properties of undefined" on EVERY invocation — it has
+    // never worked. `blobs` is not a namespace at all (the surface is
+    // `assets`, renamed at some point without this call site following), and
+    // the scoped handle is a thenable that must be AWAITED before its
+    // namespaces exist. Found by the SDK-method gate.
+    const scoped = await getSdk().project(resolvedId);
+    const result = await scoped.assets.waitFresh({
       url,
       sha256: opts.sha.toLowerCase(),
       timeoutMs,

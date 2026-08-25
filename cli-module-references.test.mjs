@@ -129,3 +129,63 @@ test("no module calls a helper that lives in a sibling module it never imported"
       + "This is what a file split leaves behind. It passes every arg-parsing test and fails on the first real call.",
   );
 });
+
+/**
+ * Every `getSdk().a.b()` a CLI module calls must exist on the built SDK.
+ *
+ * Second bug of this exact class in one change: `messages send` called a
+ * helper stranded in a sibling module, and `contacts list` called
+ * `sdk.admin.listNotificationChannels()` — a method name I invented, where the
+ * real one is `sdk.admin.channels.list()`. Both shipped past a green suite,
+ * because the CLI tests stop at argument parsing and the call only happens
+ * against a live server.
+ *
+ * The check above catches strandings WITHIN cli/lib. This one catches the
+ * other half: a path into the SDK that resolves to nothing.
+ */
+test("every SDK method a CLI module calls exists on the built SDK", async () => {
+  // The NODE entrypoint, because that is what `cli/lib/sdk.mjs` constructs
+  // (`import { run402 } from "#sdk/node"`). Building the base client instead
+  // reports node-only surfaces — `sites.deployDir`, `blobs.waitFresh` — as
+  // missing, which is a false alarm about code that works.
+  const nodeEntry = join(here, "sdk", "dist", "node", "index.js");
+  let run402;
+  try {
+    ({ run402 } = await import(nodeEntry));
+  } catch {
+    // Built by `npm run build`, which `npm test` runs first. If it is really
+    // absent, say so rather than passing vacuously.
+    assert.fail(`sdk node entrypoint not built — run \`npm run build\` (looked for ${nodeEntry})`);
+  }
+  // Nothing here makes a request: namespaces are built at construction, and
+  // walking them is the whole check.
+  const sdk = run402({ apiBase: "http://localhost" });
+
+  const missing = [];
+  for (const file of modules) {
+    const src = readFileSync(join(LIB, file), "utf8");
+    // ONLY `getSdk().a.b(` — the explicit factory call. A bare `sdk.` is
+    // often a rebound local (`const sdk = getSdk().domains`), and treating
+    // those as client paths produced false positives, which is how a gate
+    // becomes noise and then gets suppressed.
+    for (const m of src.matchAll(/getSdk\(\)\.([A-Za-z_$][\w$]*)(?:\.([A-Za-z_$][\w$]*))?(?:\.([A-Za-z_$][\w$]*))?\s*\(/g)) {
+      const path = [m[1], m[2], m[3]].filter(Boolean);
+      let cur = sdk;
+      const walked = [];
+      for (const part of path) {
+        walked.push(part);
+        cur = cur?.[part];
+        if (cur === undefined) {
+          missing.push(`${file}: sdk.${walked.join(".")} — sdk.${path.join(".")}() resolves to nothing`);
+          break;
+        }
+      }
+    }
+  }
+  assert.deepEqual(
+    [...new Set(missing)],
+    [],
+    `\n  ${[...new Set(missing)].join("\n  ")}\n\n`
+      + "An invented SDK method passes every arg-parsing test and fails on the first real call.",
+  );
+});

@@ -318,8 +318,8 @@ async function listContacts(args) {
   }
 
   try {
-    allowanceAuthHeaders("/agent/v1/notifications");
-    const res = await sdk.admin.listNotificationChannels();
+    allowanceAuthHeaders("/agent/v1/notifications/channels");
+    const res = await sdk.admin.channels.list();
     for (const ch of res.channels ?? []) {
       rows.push({ kind: "telegram", id: ch.binding_id ?? ch.id, ...ch });
     }
@@ -353,11 +353,11 @@ async function removeContact(args) {
         return;
       }
     }
-    allowanceAuthHeaders("/agent/v1/notifications");
-    const chans = await sdk.admin.listNotificationChannels();
+    allowanceAuthHeaders("/agent/v1/notifications/channels");
+    const chans = await sdk.admin.channels.list();
     const chan = (chans.channels ?? []).find((c) => (c.binding_id ?? c.id) === id);
     if (chan) {
-      console.log(JSON.stringify({ kind: "telegram", ...(await sdk.admin.revokeNotificationChannel(id)) }, null, 2));
+      console.log(JSON.stringify({ kind: "telegram", ...(await sdk.admin.channels.revokeTelegram(id)) }, null, 2));
       return;
     }
     fail({
