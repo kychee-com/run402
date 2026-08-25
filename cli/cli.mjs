@@ -69,7 +69,9 @@ AUTHORITY — who may act, and with what credential
   operator    Operator (human/email) session — login, then overview across your wallets
 
 DELIVER — reach a human when something happens
-  notifications  Delivery records, preferences, channels and routing rules
+  deliveries     Did a notification actually land (list, get)
+  contacts       Where a human is reachable — paging ladder + Telegram (list, add, connect, rm, preferences)
+  subscriptions  Which events go where (add, list, rm)
   webhook-secret Rotate the operator webhook signing secret
   email          Send template-based emails from your project
 
@@ -449,6 +451,21 @@ switch (cmd) {
   }
   case "doctor": {
     const { run } = await import("./lib/doctor.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "deliveries": {
+    const { run } = await import("./lib/deliveries.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "contacts": {
+    const { run } = await import("./lib/contacts.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "subscriptions": {
+    const { run } = await import("./lib/subscriptions.mjs");
     await run(sub, rest);
     break;
   }

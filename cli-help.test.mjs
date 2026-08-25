@@ -147,10 +147,13 @@ const MATRIX = {
   operator: { shared: ["login", "logout", "overview", "whoami", "claim-wallet-org"], specific: [] },
   service: { shared: [], specific: ["status", "health"] },
   cache: { shared: ["inspect", "invalidate"], specific: [] },
-  notifications: {
-    shared: ["list", "get", "preferences", "test"],
-    specific: ["channels", "rules"],
-  },
+  // RETIRED (legible-cli-surface): one help — the migration map — and no
+  // per-subcommand help, because it has no subcommands any more. Its verbs
+  // live in `deliveries`, `contacts` and `subscriptions`, each covered below.
+  notifications: { shared: [], specific: [] },
+  deliveries: { shared: ["list", "get"], specific: [] },
+  contacts: { shared: ["list", "add", "connect", "rm", "preferences", "test"], specific: [] },
+  subscriptions: { shared: ["add", "list", "rm"], specific: [] },
   "webhook-secret": { shared: ["rotate"], specific: [] },
   org: { shared: [], specific: ["create", "get", "rename", "whoami", "list", "audit", "member", "invite"] },
   grants: { shared: [], specific: ["create", "revoke"] },
@@ -498,25 +501,7 @@ describe("CLI --help contract", () => {
     }
   });
 
-  describe("run402 notifications channels (nested)", () => {
-    for (const action of NOTIFICATIONS_CHANNELS.shared) {
-      it(`notifications channels ${action} --help prints usage (group-level help)`, async () => {
-        assertHelp(await runCli(["notifications", "channels", action, "--help"]),
-          `run402 notifications channels ${action} --help`,
-          { expectHeadingStartsWith: "run402 notifications channels" });
-      });
-    }
-  });
 
-  describe("run402 notifications rules (nested)", () => {
-    for (const action of NOTIFICATIONS_RULES.shared) {
-      it(`notifications rules ${action} --help prints usage (group-level help)`, async () => {
-        assertHelp(await runCli(["notifications", "rules", action, "--help"]),
-          `run402 notifications rules ${action} --help`,
-          { expectHeadingStartsWith: "run402 notifications rules" });
-      });
-    }
-  });
 
   // `run402 apply` is a root-level alias that dispatches straight into
   // runDeployV2("apply", ...) — its help must be the deploy-apply help, not a

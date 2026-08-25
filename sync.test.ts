@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -125,7 +125,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -542,13 +542,13 @@ const SURFACE: Capability[] = [
 
   // ── Operator health notifications (v1.55) ──────────────────────────────
   { id: "get_operator_status",          endpoint: "GET /agent/v1/operator/status",                 mcp: "get_operator_status",          cli: null,                            openclaw: null },
-  { id: "list_notifications",           endpoint: "GET /agent/v1/notifications",                   mcp: "list_notifications",           cli: "notifications:list",            openclaw: "notifications:list" },
-  { id: "get_notification",             endpoint: "GET /agent/v1/notifications/:id",               mcp: null,                            cli: "notifications:get",             openclaw: "notifications:get" },
-  { id: "get_notification_preferences", endpoint: "GET /agent/v1/notifications/preferences",       mcp: "get_notification_preferences", cli: "notifications:preferences",     openclaw: "notifications:preferences" },
+  { id: "list_notifications",           endpoint: "GET /agent/v1/notifications",                   mcp: "list_notifications",           cli: "deliveries:list",            openclaw: "deliveries:list" },
+  { id: "get_notification",             endpoint: "GET /agent/v1/notifications/:id",               mcp: null,                            cli: "deliveries:get",             openclaw: "deliveries:get" },
+  { id: "get_notification_preferences", endpoint: "GET /agent/v1/notifications/preferences",       mcp: "get_notification_preferences", cli: "contacts:preferences",     openclaw: "contacts:preferences" },
   // CLI surfaces both get + set under one `notifications preferences` command
   // (positional `set k=v...`). MCP keeps the read and write as separate tools.
   { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     mcp: "set_notification_preferences", cli: null,                            openclaw: null },
-  { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             mcp: "test_notification",            cli: "notifications:test",            openclaw: "notifications:test" },
+  { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             mcp: "test_notification",            cli: "contacts:test",                 openclaw: "contacts:test" },
   { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/webhook-secret/rotate",          mcp: "rotate_webhook_secret",        cli: "webhook-secret:rotate",         openclaw: "webhook-secret:rotate" },
 
   // ── Telegram notification channel + routing rules
@@ -558,14 +558,14 @@ const SURFACE: Capability[] = [
   // tool call can't sensibly block on that), and neither was in the MCP
   // scope this change shipped (channels list + rules list/add/rm only) — see
   // the PR description for the full write-tool-parity rationale.
-  { id: "connect_telegram_channel", endpoint: "POST /agent/v1/notifications/channels/telegram",              mcp: null,                          cli: "notifications:channels:connect", openclaw: "notifications:channels:connect" },
-  { id: "list_notification_channels", endpoint: "GET /agent/v1/notifications/channels",                      mcp: "list_notification_channels", cli: "notifications:channels:list",    openclaw: "notifications:channels:list" },
-  { id: "revoke_telegram_channel",  endpoint: "DELETE /agent/v1/notifications/channels/telegram/:binding_id", mcp: null,                          cli: "notifications:channels:revoke",  openclaw: "notifications:channels:revoke" },
-  { id: "list_notification_rules",  endpoint: "GET /agent/v1/notifications/rules",                           mcp: "list_notification_rules",    cli: "notifications:rules:list",       openclaw: "notifications:rules:list" },
-  { id: "create_notification_rule", endpoint: "POST /agent/v1/notifications/rules",                          mcp: "create_notification_rule",   cli: "notifications:rules:add",        openclaw: "notifications:rules:add" },
+  { id: "connect_telegram_channel", endpoint: "POST /agent/v1/notifications/channels/telegram",              mcp: null,                          cli: "contacts:connect", openclaw: "contacts:connect" },
+  { id: "list_notification_channels", endpoint: "GET /agent/v1/notifications/channels",                      mcp: "list_notification_channels", cli: "contacts:list",    openclaw: "contacts:list" },
+  { id: "revoke_telegram_channel",  endpoint: "DELETE /agent/v1/notifications/channels/telegram/:binding_id", mcp: null,                          cli: "contacts:rm",     openclaw: "contacts:rm" },
+  { id: "list_notification_rules",  endpoint: "GET /agent/v1/notifications/rules",                           mcp: "list_notification_rules",    cli: "subscriptions:list",       openclaw: "subscriptions:list" },
+  { id: "create_notification_rule", endpoint: "POST /agent/v1/notifications/rules",                          mcp: "create_notification_rule",   cli: "subscriptions:add",        openclaw: "subscriptions:add" },
   // update_notification_rule (PATCH .../rules/:rule_id) is SDK-typed only in
   // v1 (admin.rules.update) — no CLI verb or MCP tool; see SDK_ONLY_METHODS.
-  { id: "delete_notification_rule", endpoint: "DELETE /agent/v1/notifications/rules/:rule_id",               mcp: "delete_notification_rule",   cli: "notifications:rules:rm",         openclaw: "notifications:rules:rm" },
+  { id: "delete_notification_rule", endpoint: "DELETE /agent/v1/notifications/rules/:rule_id",               mcp: "delete_notification_rule",   cli: "subscriptions:rm",         openclaw: "subscriptions:rm" },
 
   // ── Project events feed (project-events-outbox) ─────────────────────────
   // One CLI command + one MCP tool cover both scopes: the org-wide union
@@ -596,7 +596,7 @@ const SURFACE: Capability[] = [
   // Owner-only contact management (who gets paged). No MCP tool by design: an
   // agent raises, it does not decide which humans exist to be paged — that is
   // an owner action gated behind a passkey step-up.
-  { id: "manage_escalation_contacts",   endpoint: "GET /orgs/v1/:org_id/escalation-contacts", mcp: null,                  cli: "escalations:contacts", openclaw: "escalations:contacts" },
+  { id: "manage_escalation_contacts",   endpoint: "GET /orgs/v1/:org_id/escalation-contacts", mcp: null,                  cli: "contacts:add", openclaw: "contacts:add" },
   { id: "claim_room_resource",          endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/claims",  mcp: "claim_room_resource",          cli: "claims:create", openclaw: "claims:create" },
   { id: "list_room_claims",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/claims", mcp: null, cli: "claims:list", openclaw: "claims:list" },
   { id: "release_room_claim",           endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/claims/:claim_id", mcp: "release_room_claim",           cli: "claims:release", openclaw: "claims:release" },

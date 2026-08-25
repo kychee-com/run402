@@ -1169,7 +1169,7 @@ The hotline: the vertical tier next to rooms (agent⇄agent) and the events feed
 - `run402 escalations get <escalation_id> [--delivery]` — **the wait-for-human loop.** Poll until `status` is `acknowledged`; `acknowledged.by_email` names the human who owns it. `--delivery` adds `delivery_attempts[]` from the delivery audit log — what actually reached each contact per channel, rather than what was intended (opt-in, because the poll is the hot path).
 - `run402 escalations ack <escalation_id>` — for a human who was paged. First writer wins; a replay reports the ORIGINAL acker with `changed: false`. Acknowledging says a human owns it; it does not resolve it.
 - `run402 escalations resolve <escalation_id> [--note <text>]` — close it out; backfills the acknowledgement if nobody had acknowledged.
-- `run402 escalations contacts list|add <email> [--level <n>] [--name <display>]|remove <contact_id>` — who gets paged. **Owner + passkey step-up** to change. Contacts are ATTENTION POLICY, never authorization: adding someone says "page this human", never "this human may do anything". `--level` is an ordering, not a rank — level 1 is paged first, level 2 only if level 1 lets the deadline lapse, and unstaffed levels are skipped. An address with no verified operator email is accepted WITH a reachability warning rather than rejected, because the person you most want at the top of a chain may hold no platform credential at all.
+- `run402 contacts list|add <email> [--level <n>] [--name <display>]|rm <id>` — who gets paged. (Was `escalations contacts`; merged into `contacts` with Telegram channels — one question, "where is a human reachable", under one noun. Every row carries `kind`.) **Owner + passkey step-up** to change. Contacts are ATTENTION POLICY, never authorization: adding someone says "page this human", never "this human may do anything". `--level` is an ordering, not a rank — level 1 is paged first, level 2 only if level 1 lets the deadline lapse, and unstaffed levels are skipped. An address with no verified operator email is accepted WITH a reachability warning rather than rejected, because the person you most want at the top of a chain may hold no platform credential at all.
 
 Addressing: resolved by the shared current-org chain (see `org use` above) — `--org <org_id>` or `--project <id>`, else `RUN402_ORG` / `RUN402_PROJECT_ID`, else the `org` key of the nearest `.run402.json`, else this wallet profile's selected org or its active project. No flags are needed inside a bound checkout, and an org that owns no project is addressable like any other. Auth: raising is delegate-capable by design — the most compartmentalized agent is exactly the one most likely to need a human — while a project `service_key` is rejected, because an escalation is judgement and needs a principal to attribute (an app reporting facts has the events lane). Acking, resolving, and reading the whole org's escalations are for members.
 
@@ -1873,22 +1873,22 @@ KMS signers — provision AWS KMS-backed Ethereum signers per project for signin
 ### notifications
 Operator health notifications (audit log, preferences) plus the self-serve Telegram push channel and its routing rules.
 
-- `run402 notifications list [--type <event_type>] [--since <iso>] [--limit N] [--after <cursor>]` — paginated delivery-attempt audit log.
-- `run402 notifications get <id>` — one audit row.
-- `run402 notifications preferences` / `preferences set <key>=<value> ...` — read/update cadence, per-class toggles, `webhook_url`, locale, timezone. Cross-wallet effects need `email_verified`; `webhook_url` changes need `operator_passkey`.
-- `run402 notifications test [--source app|platform] [--type <event_type>]` — fires a real synthetic event through the FULL pipeline (email/webhook AND Telegram routing rules), rate-limited to 1/min. Omit the flags for the default sample event, or set them to exercise a specific rule's filters. The response's `telegram.destinations[]` reports one delivered/failed outcome per matched Telegram binding — empty when no rule matches (not an error).
+- `run402 deliveries list [--type <event_type>] [--since <iso>] [--limit N] [--after <cursor>]` — paginated delivery-attempt audit log.
+- `run402 deliveries get <id>` — one audit row.
+- `run402 contacts preferences` / `preferences set <key>=<value> ...` — read/update cadence, per-class toggles, `webhook_url`, locale, timezone. Cross-wallet effects need `email_verified`; `webhook_url` changes need `operator_passkey`.
+- `run402 contacts test [--source app|platform] [--type <event_type>]` — fires a real synthetic event through the FULL pipeline (email/webhook AND Telegram routing rules), rate-limited to 1/min. Omit the flags for the default sample event, or set them to exercise a specific rule's filters. The response's `telegram.destinations[]` reports one delivered/failed outcome per matched Telegram binding — empty when no rule matches (not an error).
 
 **Telegram channel** (`notification-channel-routing-telegram`):
-- `run402 notifications channels connect telegram [--label <name>]` — creates a PENDING binding, prints `connect_url` (private chat) and `connect_group_url` (group chat) — single-use, 15-minute deep links — then POLLS `channels list` until the binding flips to `active` or the code expires, printing progress to stderr. Requires `operator_passkey` assurance AND a VERIFIED operator email (bindings are addressed to it). Until the platform's dedicated bot is provisioned on this deployment, this returns `503 TELEGRAM_CHANNEL_NOT_CONFIGURED` with a `next_actions` entry — printed verbatim.
-- `run402 notifications channels list` — every channel (email, webhook, and every live Telegram binding) for the authenticated wallet.
-- `run402 notifications channels revoke <binding_id>` — requires `operator_passkey`; a missing/already-revoked/foreign binding id all return the same not-found error (no existence oracle).
+- `run402 contacts connect telegram [--label <name>]` — creates a PENDING binding, prints `connect_url` (private chat) and `connect_group_url` (group chat) — single-use, 15-minute deep links — then POLLS `contacts list` until the binding flips to `active` or the code expires, printing progress to stderr. Requires `operator_passkey` assurance AND a VERIFIED operator email (bindings are addressed to it). Until the platform's dedicated bot is provisioned on this deployment, this returns `503 TELEGRAM_CHANNEL_NOT_CONFIGURED` with a `next_actions` entry — printed verbatim.
+- `run402 contacts list` — every channel (email, webhook, and every live Telegram binding) for the authenticated wallet.
+- `run402 contacts rm <binding_id>` — requires `operator_passkey`; a missing/already-revoked/foreign binding id all return the same not-found error (no existence oracle).
 
 **Routing rules** — one rule routes to exactly ONE Telegram binding; every match dimension you set (`--project`, `--source`, `--type`, `--class`) is ANDed, and an OMITTED dimension is a wildcard. `--type`/`--class` accept comma-separated lists (matches ANY listed value). **No rules = no Telegram traffic** — Telegram is opt-in per event, per rule; the mandatory email floor (security/recovery/billing_critical/destructive_lifecycle/verification classes) is completely untouched by rules and can never be silenced by one.
-- `run402 notifications rules add --binding <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]` — requires `operator_passkey`; an unusable/foreign `telegram_binding_id` returns the same 404 as a nonexistent one.
-- `run402 notifications rules list` — the operator's routing rules.
-- `run402 notifications rules rm <rule_id>` — requires `operator_passkey`.
+- `run402 subscriptions add --binding <binding_id> [--project <id>] [--source app|platform] [--type a,b] [--class a,b]` — requires `operator_passkey`; an unusable/foreign `telegram_binding_id` returns the same 404 as a nonexistent one.
+- `run402 subscriptions list` — the operator's routing rules.
+- `run402 subscriptions rm <rule_id>` — requires `operator_passkey`.
 
-Full rule-model explanation: `run402 notifications channels --help` / `run402 notifications rules --help`.
+Full rule-model explanation: `run402 notifications channels --help` / `run402 subscriptions --help`.
 
 ### buzz notifications — route project events into a Buzz channel
 

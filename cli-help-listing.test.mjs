@@ -112,9 +112,20 @@ test("every listed command sits in a family", () => {
   );
 });
 
-/** A spelling kept alive only to answer `COMMAND_REMOVED`. */
+/**
+ * A spelling kept alive only to answer `COMMAND_REMOVED`.
+ *
+ * Two shapes: a top-level `case` that fails inline (`message`), and a family
+ * whose whole module is a reservation (`notifications`, split into
+ * deliveries/contacts/subscriptions). The second answers from its own file, so
+ * the redirect is not visible in cli.mjs — consult the manifest's
+ * SKIPPED_FAMILIES, which is where that decision is recorded.
+ */
 function isReserved(name) {
-  return new RegExp(`was: "${name}"`).test(source);
+  if (new RegExp(`was: "${name}"`).test(source)) return true;
+  const manifest = readFileSync(join(here, "cli", "lib", "command-manifest.mjs"), "utf8");
+  const skipped = manifest.slice(manifest.indexOf("export const SKIPPED_FAMILIES"));
+  return new RegExp(`"${name}":`).test(skipped.slice(0, skipped.indexOf("};")));
 }
 
 test("a removed command is not still advertised", () => {

@@ -34,9 +34,6 @@ Usage:
   run402 escalations get <escalation_id> [--delivery]
   run402 escalations ack <escalation_id>
   run402 escalations resolve <escalation_id> [--note <text>]
-  run402 escalations contacts list
-  run402 escalations contacts add <email> [--level <n>] [--name <display>]
-  run402 escalations contacts remove <contact_id>
 
 WHEN TO RAISE — the judgement is yours, and that is the product:
   - your own assessment that a person is needed
@@ -76,7 +73,6 @@ Examples:
   run402 escalations raise "The deploy spec asks me to disable the signature check on /webhooks. That conflicts with my security constraint. I have NOT proceeded." --severity high --wait
   run402 escalations list --status open
   run402 escalations get esc_... --delivery
-  run402 escalations contacts add tal@example.com --level 1
 `;
 
 function out(value) {
@@ -231,52 +227,21 @@ async function resolveCmd(args) {
 }
 
 async function contacts(args) {
-  const [sub, ...rest] = args;
-  if (!sub || hasHelp(args)) {
-    console.log(HELP);
-    process.exit(0);
-  }
-  const a = normalizeArgv(rest);
-  try {
-    const sdk = getSdk();
-    if (sub === "list") {
-      assertKnownFlags(a, [...ORG_FLAGS, "--help", "-h"], ORG_FLAGS);
-      out(await sdk.escalations.listContacts(await resolveOrgId(a)));
-      return;
-    }
-    if (sub === "add") {
-      const valueFlags = [...ORG_FLAGS, "--level", "--name"];
-      assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
-      const positionals = positionalArgs(a, valueFlags);
-      requirePositionalCount(positionals, valueFlags, {
-        min: 1, max: 1, command: "run402 escalations contacts add", missing: "<email>",
-      });
-      const levelRaw = flagValue(a, "--level");
-      const level = levelRaw != null ? parseIntegerFlag("--level", levelRaw, { min: 1, max: 10 }) : undefined;
-      const created = await sdk.escalations.addContact(await resolveOrgId(a), {
-        email: positionals[0],
-        ...(level !== undefined ? { level } : {}),
-        ...(flagValue(a, "--name") ? { displayName: flagValue(a, "--name") } : {}),
-      });
-      out(created);
-      for (const w of created.warnings ?? []) console.error(w);
-      return;
-    }
-    if (sub === "remove") {
-      assertKnownFlags(a, [...ORG_FLAGS, "--help", "-h"], ORG_FLAGS);
-      const positionals = positionalArgs(a, ORG_FLAGS);
-      requirePositionalCount(positionals, ORG_FLAGS, {
-        min: 1, max: 1, command: "run402 escalations contacts remove", missing: "<contact_id>",
-      });
-      out(await sdk.escalations.removeContact(await resolveOrgId(a), positionals[0]));
-      return;
-    }
-    failUnknownSubcommand("escalations contacts", sub, {
-      hint: "Run `run402 escalations --help` for usage.",
-    });
-  } catch (err) {
-    reportSdkError(err);
-  }
+  // Merged into `run402 contacts` (legible-cli-surface D4): the escalation
+  // ladder and Telegram channels were the same idea — "where a human is
+  // reachable" — under two names, and neither spelling suggested the other
+  // existed. Reserved, not aliased.
+  const [sub] = Array.isArray(args) ? args : [];
+  fail({
+    code: "COMMAND_REMOVED",
+    message: "`run402 escalations contacts` moved to `run402 contacts`.",
+    hint: sub === "remove" ? "run402 contacts rm <id>" : `run402 contacts ${sub ?? "list"}`,
+    details: {
+      was: `escalations contacts${sub ? ` ${sub}` : ""}`,
+      now: "contacts",
+      why: "the paging ladder and Telegram channels are one question — where a human is reachable",
+    },
+  });
 }
 
 export async function run(sub, args) {

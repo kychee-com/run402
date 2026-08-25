@@ -224,6 +224,17 @@ export const COMMAND_MANIFEST = [
 
   // ── events / errors (flat, merged runners) ───────────────────────────────
   { path: ["events"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
+  { path: ["deliveries", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["deliveries", "get"], positionals: [p("notification_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["n_1"], runStyle: "sub" },
+  { path: ["contacts", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["contacts", "add"], positionals: [p("email")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["a@b.co"], runStyle: "sub" },
+  { path: ["contacts", "connect"], positionals: [p("channel")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["telegram"], runStyle: "sub" },
+  { path: ["contacts", "rm"], positionals: [p("contact_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["c_1"], runStyle: "sub" },
+  { path: ["contacts", "test"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["contacts", "preferences"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["subscriptions", "add"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["subscriptions", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["subscriptions", "rm"], positionals: [p("subscription_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["r_1"], runStyle: "sub" },
   { path: ["rooms", "join"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["messages", "send"], positionals: [p("body")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["hello"], runStyle: "sub" },
   { path: ["messages", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
@@ -403,16 +414,6 @@ export const COMMAND_MANIFEST = [
   { path: ["cache", "inspect"], positionals: [p("url")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["https://example.com/"] },
   { path: ["cache", "invalidate"], positionals: [p("url", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--all", "--host", "example.com"] },
   { path: ["doctor"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--no-scan"], runStyle: "merged" },
-  { path: ["notifications", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["notifications", "get"], positionals: [p("notification_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["ntf_gate1"] },
-  { path: ["notifications", "preferences"], positionals: [p("set_kv", { required: false, variadic: true })], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["notifications", "test"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["notifications", "channels", "connect"], positionals: [p("channel_type")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["telegram"], skipBehavioral: "polls interactively for the Telegram connect handshake" },
-  { path: ["notifications", "channels", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["notifications", "channels", "revoke"], positionals: [p("binding_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["bnd_gate1"] },
-  { path: ["notifications", "rules", "add"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--binding", "bnd_gate1"] },
-  { path: ["notifications", "rules", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["notifications", "rules", "rm"], positionals: [p("rule_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["rul_gate1"] },
   { path: ["webhook-secret", "rotate"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["logs"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--request-id", "req_gate123"], runStyle: "merged" },
 ];
@@ -427,6 +428,9 @@ export const SKIPPED_FAMILIES = {
   // `escalations raise`. It has no subcommands to manifest because it takes
   // none — the noun is being held for addressed agent/human messaging.
   "message": "reserved noun; fails with COMMAND_REMOVED (renamed to `feedback`)",
+  // Split into `deliveries` / `contacts` / `subscriptions`; every subcommand
+  // answers COMMAND_REMOVED naming its successor.
+  "notifications": "reserved group; split by legible-cli-surface",
 };
 
 /**
@@ -447,4 +451,5 @@ export const RESERVED_SUBCOMMANDS = {
   "rooms:list": "moved to `messages list` — the verb acts on a message",
   "rooms:get": "moved to `messages get` — the verb acts on a message",
   "rooms:ack": "moved to `messages ack` — the verb acts on a message",
+  "escalations:contacts": "merged into `contacts` — the ladder and Telegram channels are one question",
 };
