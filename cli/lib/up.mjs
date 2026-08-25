@@ -4,11 +4,13 @@ import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs } from "./argparse.mjs";
 import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs";
+import { allowanceAuthHeaders, isCoreApiTarget } from "./config.mjs";
+import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 
 const HELP = `run402 up — Provision/link/deploy the current app
 
 Usage:
-  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>] [--verify] [--human|--json-stream] [--quiet]
+  run402 up [repo-or-path] [--name <name>] [--project <id>] [--manifest <path>] [--dir <path>] [--tier <tier>] [-y|--yes] [--check|--print-spec|--plan|--require-plan <id>|--repo-only] [--verify] [--human|--json-stream] [--quiet]
   run402 up verify [repo-or-path] [--project <id>] [--manifest <path>] [--dir <path>] [--human|--json-stream]
 
 Options:
@@ -49,6 +51,19 @@ Options:
   --no-propagation-wait
                       Return propagation_pending immediately when the edge is
                       still settling.
+  --repo-only         Provision + scaffold the run402 remote + first push,
+                      and stop there — no deploy. The vault-only track
+                      (D8), composed through up instead of run402 repos
+                      create. Incompatible with --check/--print-spec/--plan/
+                      --require-plan/--verify.
+
+Repo composition (D4): against a local directory (not a git URL source), up
+composes git init (only when not already a repository) + provision + a
+run402 remote scaffold (D1: claims origin when free, falls back to run402)
++ a first gitvault push — one command, the fly-launch shape. The scaffold
+and first push are best-effort: a git or vault hiccup never turns an
+otherwise-successful deploy into a failure, and is reported under
+result.repo (default apply) or result (--repo-only) instead.
   --json              Emit one final JSON object on stdout (default; compatibility no-op).
   --human             Emit the legacy human success/blocking summary on stdout.
   --json-stream       Emit NDJSON progress events on stdout and a final result event.
@@ -70,6 +85,7 @@ Examples:
   run402 up --manifest run402.deploy.ts --check
   run402 up --manifest run402.deploy.ts --plan
   run402 up --manifest run402.deploy.ts --require-plan pln_...
+  run402 up --repo-only -y --json
 `;
 
 const VERIFY_HELP = `run402 up verify — Rerun manifest HTTP verification (verify.http[])
@@ -132,6 +148,7 @@ export async function run(args = []) {
       "--json",
       "--human",
       "--json-stream",
+      "--repo-only",
     ],
     [
       "--name",
@@ -242,42 +259,81 @@ export async function run(args = []) {
       details: { flag: "--require-plan" },
     });
   }
+  const repoOnly = parsed.includes("--repo-only");
+  if (repoOnly && (dryRun || isNonApplyingMode(mode) || isApplyReviewedMode(mode) || verifyEdge)) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--repo-only cannot be combined with --dry-run, --check, --print-spec, --plan, --require-plan, or --verify.",
+      details: { flag: "--repo-only" },
+    });
+  }
   const allowWarningCodes = collectRepeatedValues(parsed, "--allow-warning");
   const updateScheduler = createUpdateCheckScheduler({
     command: ["run402", "up", ...parsed],
   });
   emitUpdateNotice(updateScheduler.cachedNotice, { jsonStream, quiet });
 
+  // D4 (repo-first-onramp task 2.4): `up` composes git init + provision +
+  // remote scaffold + first push (+ deploy unless --repo-only) — the
+  // `fly launch` shape. Scoped to the plain local-directory apply path (no
+  // dry-run, no non-applying mode, and no remote git-URL source — those
+  // clone into somewhere ephemeral, so there is no local working tree here
+  // to scaffold a remote onto).
+  const composeRepo = !dryRun && mode === undefined && !looksLikeGitRemoteUrl(source);
+  const workDir = flagValue(parsed, "--dir") ?? (source && !looksLikeGitRemoteUrl(source) ? source : undefined) ?? process.cwd();
+
   try {
     const sdk = getSdk();
-    const result = await sdk.up({
-      source,
-      name: flagValue(parsed, "--name") ?? undefined,
-      projectId: flagValue(parsed, "--project") ?? undefined,
-      manifest: flagValue(parsed, "--manifest") ?? undefined,
-      dir: flagValue(parsed, "--dir") ?? undefined,
-      tier,
-      idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined,
-      allowPrune: parsed.includes("--allow-prune") ? true : undefined,
-      maxSpendUsd,
-      buildMode,
-      allowShellBuild: parsed.includes("--allow-shell-build") ? true : undefined,
-      allowWarnings: parsed.includes("--allow-warnings") ? true : undefined,
-      allowWarningCodes,
-      propagationBudgetSeconds,
-      propagationWait: parsed.includes("--no-propagation-wait") ? false : undefined,
-    }, {
-      ...(mode !== undefined ? { mode } : {}),
-      dryRun,
-      approval: makeApproval(yes),
-      onEvent: jsonStream
-        ? (event) => console.log(JSON.stringify({ type: "action.event", event }))
-        : quiet
-          ? undefined
-          : (event) => {
-              console.error(JSON.stringify(event));
-            },
-    });
+    let createdRepository = false;
+    if (composeRepo) {
+      createdRepository = await gitInitIfNeeded(workDir);
+    }
+
+    let result;
+    if (repoOnly) {
+      result = await runRepoOnly({ sdk, workDir, createdRepository, opts: parsed, tier, allowWarningCodes, idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined });
+    } else {
+      result = await sdk.up({
+        source,
+        name: flagValue(parsed, "--name") ?? undefined,
+        projectId: flagValue(parsed, "--project") ?? undefined,
+        manifest: flagValue(parsed, "--manifest") ?? undefined,
+        dir: flagValue(parsed, "--dir") ?? undefined,
+        tier,
+        idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined,
+        allowPrune: parsed.includes("--allow-prune") ? true : undefined,
+        maxSpendUsd,
+        buildMode,
+        allowShellBuild: parsed.includes("--allow-shell-build") ? true : undefined,
+        allowWarnings: parsed.includes("--allow-warnings") ? true : undefined,
+        allowWarningCodes,
+        propagationBudgetSeconds,
+        propagationWait: parsed.includes("--no-propagation-wait") ? false : undefined,
+      }, {
+        ...(mode !== undefined ? { mode } : {}),
+        dryRun,
+        approval: makeApproval(yes),
+        onEvent: jsonStream
+          ? (event) => console.log(JSON.stringify({ type: "action.event", event }))
+          : quiet
+            ? undefined
+            : (event) => {
+                console.error(JSON.stringify(event));
+              },
+      });
+      // The remote scaffold + first push are best-effort ADDITIONS to an
+      // already-successful deploy: a git hiccup here must never flip an
+      // otherwise-successful `up` into a failure (the same non-fatal
+      // discipline `projects provision`'s own fold-in follows).
+      if (composeRepo && mode === undefined) {
+        const projectId = result?.result?.project_id ?? result?.result?.deploy?.project_id ?? null;
+        if (projectId) {
+          const repoResult = await composeRepoPushStep({ sdk, workDir, projectId, createdRepository });
+          if (result.result) result.result.repo = repoResult;
+        }
+      }
+    }
+
     const edgeWait = verifyEdge
       ? await attachEdgeVerification(result, {
           sdk,
@@ -513,6 +569,88 @@ function collectRepeatedValues(args, flag) {
     values.push(args[++i]);
   }
   return values;
+}
+
+// ─── D4 (repo-first-onramp task 2.4): repo composition ───────────────────────
+//
+// `up` composes git init + provision + remote scaffold + first push
+// (+ deploy unless --repo-only) — the `fly launch` shape. A remote git URL
+// source clones into somewhere ephemeral (no local working tree here to
+// scaffold a remote onto), so composition is scoped to the plain
+// local-directory apply path.
+
+/** A positional `up` source that names a remote repository rather than a local path. */
+function looksLikeGitRemoteUrl(source) {
+  if (!source || typeof source !== "string") return false;
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(source) || /^[^\s@]+@[^\s:]+:/.test(source);
+}
+
+/** `git init` only when `dir` is not a repository yet. Returns whether it did. */
+async function gitInitIfNeeded(dir) {
+  const { hardenedGit } = await import("#sdk/node");
+  try {
+    await hardenedGit(dir, ["rev-parse", "--git-dir"]);
+    return false;
+  } catch {
+    await hardenedGit(dir, ["init", "-q", "-b", "main", "."]);
+    return true;
+  }
+}
+
+/**
+ * Remote scaffold + first push, against an already-known project. Best-effort
+ * in every branch — the same non-fatal discipline `projects provision`'s own
+ * fold-in follows (`gitvault-scaffold.mjs`): a git or vault hiccup here must
+ * never turn an otherwise-successful `up` into a failure.
+ */
+async function composeRepoPushStep({ sdk, workDir, projectId, createdRepository }) {
+  const { resolveOwningOrgId } = await import("./org-context.mjs");
+  const { scaffoldGitvaultRemote } = await import("./gitvault-scaffold.mjs");
+  const orgId = await resolveOwningOrgId(projectId);
+  const scaffold = await scaffoldGitvaultRemote({ repoDir: workDir, projectId, orgId: orgId ?? undefined, createRepoIfMissing: false });
+  if (createdRepository && scaffold.gitvault) scaffold.gitvault.created_repository = true;
+  const out = { ...scaffold, first_push: null, first_push_error: null };
+  if (!orgId) {
+    out.first_push_error = { code: "GITVAULT_ORG_UNRESOLVED", message: `could not resolve the owning org for ${projectId} — the first push was skipped` };
+    return out;
+  }
+  try {
+    let vaultCreated = null;
+    const pushed = await sdk.gitvault.push({
+      project_id: projectId,
+      org_id: orgId,
+      repo_dir: workDir,
+      onVaultCreated: (created) => { vaultCreated = created; },
+    });
+    out.first_push = { generation: pushed.generation, form: pushed.form, gitvault_commit: pushed.gitvault_commit, vault_created: vaultCreated };
+  } catch (err) {
+    out.first_push_error = { code: err?.body?.code ?? err?.code ?? "GITVAULT_PUSH_FAILED", message: err?.message ?? String(err) };
+  }
+  return out;
+}
+
+/**
+ * `--repo-only`: the vault-only track composed through `up` — provision +
+ * remote scaffold + first push, zero deploy ceremony. Mirrors `run402 repos
+ * create`'s own shape (task 2.6); `up --repo-only` is the "I'm already
+ * inside `up`'s mental model" entry point to the same outcome.
+ */
+async function runRepoOnly({ sdk, workDir, createdRepository, opts, tier, idempotencyKey }) {
+  // `sdk.up()`'s action graph auto-approves prerequisites (allowance, tier)
+  // for a cold start; calling projects.provision directly bypasses that, so
+  // this mirrors the SAME gate `run402 projects provision` itself uses —
+  // fail with the actionable NO_ALLOWANCE guidance rather than an opaque
+  // auth error from the gateway.
+  if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) allowanceAuthHeaders("/projects/v1");
+  const name = flagValue(opts, "--name") ?? undefined;
+  const provisioned = await sdk.projects.provision({ tier, name, idempotencyKey });
+  const repo = await composeRepoPushStep({ sdk, workDir, projectId: provisioned.project_id, createdRepository });
+  return {
+    action: "up",
+    mode: "repo-only",
+    dry_run: false,
+    result: { project_id: provisioned.project_id, provision: provisioned, repo },
+  };
 }
 
 function parsePropagationBudget(args) {
