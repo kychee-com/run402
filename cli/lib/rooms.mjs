@@ -116,11 +116,6 @@ async function who(args) {
   }
 }
 
-function splitNames(value) {
-  return value ? value.split(",").map((s) => s.trim()).filter(Boolean) : [];
-}
-
-
 export async function run(sub, args) {
   const argv = Array.isArray(args) ? args : [];
   if (!sub || hasHelp([sub, ...argv])) {

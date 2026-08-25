@@ -60,6 +60,18 @@ Notes:
   - The room itself — arriving, leaving, seeing who is live — is \`run402 rooms\`.
 `;
 
+/** `--to a,b` / `--cc a,b` → presence names. Moved here with `send`, the only
+ *  verb that reads them (it stayed behind in rooms.mjs on the first split and
+ *  broke every send — a runtime reference no arg-parsing test could see). */
+
+
+/** `--to a,b` / `--cc a,b` → presence names. Moved here with `send`, the only
+ *  verb that reads them — it stayed behind in rooms.mjs on the first split and
+ *  broke every send, which no arg-parsing test could see. */
+function splitNames(value) {
+  return value ? value.split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
 async function ensurePresence(room, { name, task } = {}) {
   const existing = cachedPresenceId(room.orgId, room.roomKey);
   if (existing) {
