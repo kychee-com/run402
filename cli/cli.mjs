@@ -18,62 +18,78 @@ https://run402.com
 Usage:
   run402 <command> [subcommand] [options]
 
-Commands:
-  up          Provision/link/deploy the current app with SDK orchestration
+Commands, grouped by when you reach for them:
+
+SET UP — get an agent funded and entitled
   init        Set up allowance, funding, and check tier status (x402 default)
   init mpp    Set up with MPP payment rail (Tempo Moderato testnet)
-  pay         Call an arbitrary x402-priced URL with a bounded payment
-  redeem      Redeem a promo code for run402 credit
-  status      Show full account state (allowance, balance, tier, projects)
   wallets     Manage multiple named wallets (list, new, use, rename, bind, import)
-  credentials Manage local credential material (project-keys)
   allowance   Manage your agent allowance (create, fund, balance, status)
   tier        Manage tier subscription (status, set)
+  redeem      Redeem a promo code for run402 credit
+  pay         Call an arbitrary x402-priced URL with a bounded payment
+
+BUILD & SHIP — the app and everything it serves
+  up          Provision/link/deploy the current app with SDK orchestration
   projects    Manage projects (provision, list, get, sql, delete)
-  apply       Alias for deploy apply; supports --rehearse for migration rehearsal
-  snapshots   Create/list/restore/delete project data snapshots
-  branches    Create/list/renew/delete contained project branches
-  admin       Platform-admin operations (lease-perpetual, archive, reactivate)
-  cloud       Cloud portability archive export (archives create/download/status)
-  archives    Inspect and verify portable project archives locally
-  core        Local Run402 Core import helpers
   deploy      Unified deploy operations (requires active tier)
-  ci          Link GitHub Actions OIDC deploy bindings
-  transfer    Two-party project transfer (init, preview, list, accept, cancel)
-  org         Org membership, invites & audit (whoami, list, member, invite, audit)
-  identity    Public proof-backed external agent identity links
-  buzz        Buzz human/community/agent control-plane workflows
-  grants      Per-project capability grants for agent/CI principals (create, revoke)
-  delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
-  events      What happened to your project since you last looked (cursored feed)
-  rooms       Coordinate with the other agents on your project (who/send/ack)
-  escalations Page a human when you judge you need one (raise/list/ack)
-  claims      Say what you're working on before you collide (advisory)
-  gitvault    Host-blind encrypted Git remote (init/status/push/policy/compact/prune/verify)
-  errors      Grouped error fingerprints + a promote/revert verdict (release-baselined)
-  jobs        Submit and inspect platform-managed jobs
+  apply       Alias for deploy apply; supports --rehearse for migration rehearsal
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
   secrets     Manage project secrets (set, list, delete)
-  assets      Direct-to-S3 asset storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB
   sites       Deploy static sites
-  cdn         CloudFront CDN diagnostics (wait-fresh) for public asset URLs
-  subdomains  Manage custom subdomains (claim, list, delete)
+  assets      Direct-to-S3 asset storage (put, get, ls, rm, sign, diagnose) — up to 5 TiB
   domains     Manage ProjectDomain lifecycle (connect, check, repair, wait)
+  subdomains  Manage custom subdomains (claim, list, delete)
+
+OPERATE — what happened, and is it healthy
+  events      What happened to your project since you last looked (cursored feed)
+  errors      Grouped error fingerprints + a promote/revert verdict (release-baselined)
+  logs        Fetch function logs by request id (--request-id req_...)
+  status      Show full account state (allowance, balance, tier, projects)
+  doctor      Health and config diagnostics (JSON by default; includes --buzz preflight)
+  service     Run402 service health and availability (status, health)
+  snapshots   Create/list/restore/delete project data snapshots
+  branches    Create/list/renew/delete contained project branches
+
+COORDINATE — work alongside other agents and humans
+  rooms       Coordinate with the other agents on your project (who/send/ack)
+  claims      Say what you're working on before you collide (advisory)
+  escalations Page a human when you judge you need one (raise/list/ack)
+  feedback    Send feedback to the Run402 developers (free with an active tier)
+
+AUTHORITY — who may act, and with what credential
+  credentials Manage local credential material (project-keys)
+  delegates   Scoped deploy credentials for agents (create, list, revoke, rotate)
+  grants      Per-project capability grants for agent/CI principals (create, revoke)
+  org         Org membership, invites & audit (whoami, list, member, invite, audit)
+  identity    Public proof-backed external agent identity links
+  auth        Manage project user authentication (magic link, passwords, settings)
+  ci          Link GitHub Actions OIDC deploy bindings
+  operator    Operator (human/email) session — login, then overview across your wallets
+
+DELIVER — reach a human when something happens
+  notifications  Delivery records, preferences, channels and routing rules
+  webhook-secret Rotate the operator webhook signing secret
+  email          Send template-based emails from your project
+
+PLATFORM — everything else, and the things still finding a home
+  admin       Platform-admin operations (lease-perpetual, archive, reactivate)
+  billing     Email organizations, Stripe tier checkout, email packs
+  contracts   KMS signers ($0.04/day rental + $0.000005/sign)
+  jobs        Submit and inspect platform-managed jobs
+  transfer    Two-party project transfer (init, preview, list, accept, cancel)
+  cloud       Cloud portability archive export (archives create/download/status)
+  archives    Inspect and verify portable project archives locally
+  gitvault    Host-blind encrypted Git remote (init/status/push/policy/compact/prune/verify)
+  buzz        Buzz human/community/agent control-plane workflows
   apps        Browse and manage the app marketplace
   ai          AI translation and moderation tools
   image       Generate AI images via x402 or MPP micropayments
-  email       Send template-based emails from your project
-  feedback    Send feedback to the Run402 developers (free with an active tier)
-  auth        Manage project user authentication (magic link, passwords, settings)
-  billing     Email organizations, Stripe tier checkout, email packs
-  contracts   KMS signers ($0.04/day rental + $0.000005/sign)
-  agent       Manage agent identity (contact info)
-  operator    Operator (human/email) session — login, then overview across your wallets
-  service     Run402 service health and availability (status, health)
+  cdn         CloudFront CDN diagnostics (wait-fresh) for public asset URLs
   cache       Inspect and invalidate the SSR origin cache (inspect, invalidate)
-  doctor      Health and config diagnostics (JSON by default; includes --buzz preflight)
+  agent       Manage agent identity (contact info)
+  core        Local Run402 Core import helpers
   dev         Run Astro dev with Run402 env + credentials in scope
-  logs        Fetch function logs by request id (--request-id req_...)
 
 Global options (any command):
   --wallet <name>   Select a named wallet for this command (see 'run402 wallets')
