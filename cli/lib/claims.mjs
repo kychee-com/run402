@@ -62,7 +62,7 @@ Options:
   --all             list: include released/expired history.
 
 Tip: claim before you edit, release when you hand off — and put the handoff
-     in \`run402 rooms send\` so the room's timeline tells the story.
+     in \`run402 messages send\` so the room's timeline tells the story.
 
 Examples:
   run402 claims create repo:src/auth/** --note "migrating to passkeys"
@@ -97,7 +97,7 @@ async function create(args) {
     console.log(JSON.stringify(created, null, 2));
     const conflicts = Array.isArray(created.conflicts) ? created.conflicts : [];
     if (conflicts.length > 0) {
-      console.error(`Granted with ${conflicts.length} conflict(s) — advisory, nothing is blocked. Coordinate via run402 rooms send.`);
+      console.error(`Granted with ${conflicts.length} conflict(s) — advisory, nothing is blocked. Coordinate via run402 messages send.`);
     }
   } catch (err) {
     reportSdkError(err);

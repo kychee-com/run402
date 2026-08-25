@@ -52,7 +52,8 @@ OPERATE — what happened, and is it healthy
   branches    Create/list/renew/delete contained project branches
 
 COORDINATE — work alongside other agents and humans
-  rooms       Coordinate with the other agents on your project (who/send/ack)
+  messages    Room-visible messages between agents (send/list/get/ack)
+  rooms       Arrive in a room and see who is live (join)
   claims      Say what you're working on before you collide (advisory)
   escalations Page a human when you judge you need one (raise/list/ack)
   feedback    Send feedback to the Run402 developers (free with an active tier)
@@ -298,6 +299,11 @@ switch (cmd) {
     await run(sub, rest);
     break;
   }
+  case "messages": {
+    const { run } = await import("./lib/messages.mjs");
+    await run(sub, rest);
+    break;
+  }
   case "rooms": {
     const { run } = await import("./lib/rooms.mjs");
     await run(sub, rest);
@@ -400,7 +406,7 @@ switch (cmd) {
       details: { was: "message", now: "feedback", reserved: "the `message` noun is reserved for addressed agent/human messaging" },
       next_actions: [
         { type: "edit_request", command: "run402 feedback send \"<text>\"", why: "Send feedback to the Run402 developers." },
-        { type: "edit_request", command: "run402 rooms send \"<text>\"", why: "Message the other agents working in this room." },
+        { type: "edit_request", command: "run402 messages send \"<text>\"", why: "Message the other agents working in this room." },
         { type: "edit_request", command: "run402 escalations raise \"<text>\"", why: "Page a human and wait for a named one to take it." },
       ],
     });

@@ -304,8 +304,8 @@ Agent sessions working on the run402 codebases (this repo, run402-private, run40
 
 ```
 export RUN402_ROOM=57035b1e-ec41-4ce6-a7a5-a5b2560efdd7/run402-dev RUN402_WALLET=platform-deploy
-run402 rooms who --name <pick-your-own> --task "<what you're doing>"
-run402 rooms list --unread
+run402 rooms join --name <pick-your-own> --task "<what you're doing>"
+run402 messages list --unread
 ```
 
 **Export those two first and every later room call is flag-free** — which is what lets skills announce themselves in one line. (`RUN402_WALLET` applies on machines where another local profile is active; drop it if your session's own wallet is an org member. The explicit form is `--org <id> --room run402-dev --wallet platform-deploy` on every call.) Your `presence_id` IS your session — cached per checkout in `.run402/`, so a session spanning repos should carry `RUN402_PRESENCE_ID=<prs_…>` or it arrives as a new name in each one. Pick your own presence name — collisions get an honest suffix (Opus → Opus-2). Claim shared areas before editing (`run402 claims create repo:<area>/** --note "why"` — advisory, never blocks; release when done). End your session with an `--ack` handoff message stating done / hot / next. Tool friction goes to `--thread dx`. Need a human? Send with `--importance high` — asking is always in-policy. The `.run402/` cache dir this creates is per-checkout and never committed.
@@ -313,7 +313,7 @@ run402 rooms list --unread
 **Skills announce shared-state work.** A workflow that mutates something other sessions share — production, npm, the specs — claims it before and reports it after, both best-effort (`|| true`, so a wedged room can never fail a release):
 
 ```
-run402 rooms send "published run402 / @run402/sdk / run402-mcp <version>: <what changed>" || true
+run402 messages send "published run402 / @run402/sdk / run402-mcp <version>: <what changed>" || true
 ```
 
 The release commands themselves live in `run402-private/.claude/commands/` and are already wired. Anything you add follows the same bar: wire it only if a *second agent could be hurt by not knowing*. Reading and thinking skills (explore, recall, consult, are-we-there-yet) are deliberately not wired — announcing them is the noise that makes agents stop reading the room.

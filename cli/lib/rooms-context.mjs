@@ -97,7 +97,7 @@ export async function resolveRoom({ org, room, project } = {}) {
       hint: `Pass --org <org_id> --room <key>, set ${ROOM_ENV}="<org_id>/<room_key>", add a "room" key to .run402.json, or select a project with: run402 projects use <project_id>`,
       next_actions: [
         nextAction("edit_request", {
-          command: "run402 rooms who --org <org_id> --room <key>",
+          command: "run402 rooms join --org <org_id> --room <key>",
           why: "Name the organization and room on this one call.",
         }),
         nextAction("edit_request", {

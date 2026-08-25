@@ -15,6 +15,18 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Reserved SUBCOMMAND spellings, read from their single declaration in
+ * cli/lib/command-manifest.mjs rather than restated here. Each has a `case`
+ * branch (that branch IS the COMMAND_REMOVED redirect) but dispatches nothing,
+ * so it is not a command the capability map should have to cover.
+ */
+function reservedSubcommands(): Set<string> {
+  const src = readFileSync(join(__dirname, "cli/lib/command-manifest.mjs"), "utf8");
+  const block = src.slice(src.indexOf("export const RESERVED_SUBCOMMANDS"));
+  return new Set([...block.matchAll(/"([a-z-]+:[a-z-]+)":/g)].map((m) => m[1]));
+}
 const RELEASE_SPEC_SCHEMA_URL = "https://run402.com/schemas/release-spec.v1.json";
 const RELEASE_SPEC_SCHEMA_PATH = join(__dirname, "schemas/release-spec.v1.json");
 
@@ -72,8 +84,10 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
+  const reserved = reservedSubcommands();
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
+      if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
     }
   }
@@ -110,8 +124,10 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "claims", "escalations", "gitvault"]) {
+  const reserved = reservedSubcommands();
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "notifications", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
+      if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
     }
   }
@@ -558,16 +574,17 @@ const SURFACE: Capability[] = [
   { id: "list_project_events",          endpoint: "GET /projects/v1/:id/events",                   mcp: "list_project_events",          cli: "events",                        openclaw: "events" },
 
   // ── Agent messaging — coordination rooms (add-agent-messaging) ──────────
-  // One CLI family per resource: `rooms` (presence + messages: who/send/list/
-  // get/ack) and `claims`. join_room folds presence-register + who + claims
+  // One CLI family per resource: `rooms` (the room itself: join), `messages`
+  // (the messages in it: send/list/get/ack) and `claims`. The split is
+  // legible-cli-surface — four of the old `rooms` verbs acted on a message. join_room folds presence-register + who + claims
   // into the single arrival call; read_room_messages folds list + get-one
   // (message_id param). Org-scoped addressing (org_id + room_key) and the
   // default-room resolution (rooms.forProject) ride the same tools/commands.
-  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences", mcp: "join_room",                    cli: "rooms:who", openclaw: "rooms:who" },
-  { id: "send_room_message",            endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "send_room_message",            cli: "rooms:send", openclaw: "rooms:send" },
-  { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "read_room_messages",           cli: "rooms:list", openclaw: "rooms:list" },
-  { id: "ack_room_message",             endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages/:message_id/ack", mcp: "ack_room_message",             cli: "rooms:ack", openclaw: "rooms:ack" },
-  { id: "get_room_message",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages/:message_id", mcp: null, cli: "rooms:get", openclaw: "rooms:get" },
+  { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences", mcp: "join_room",                    cli: "rooms:join", openclaw: "rooms:join" },
+  { id: "send_room_message",            endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "send_room_message",            cli: "messages:send", openclaw: "messages:send" },
+  { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "read_room_messages",           cli: "messages:list", openclaw: "messages:list" },
+  { id: "ack_room_message",             endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages/:message_id/ack", mcp: "ack_room_message",             cli: "messages:ack", openclaw: "messages:ack" },
+  { id: "get_room_message",             endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages/:message_id", mcp: null, cli: "messages:get", openclaw: "messages:get" },
   { id: "raise_escalation",             endpoint: "POST /orgs/v1/:org_id/escalations", mcp: "raise_escalation",           cli: "escalations:raise", openclaw: "escalations:raise" },
   { id: "get_escalation",               endpoint: "GET /orgs/v1/:org_id/escalations/:escalation_id", mcp: "get_escalation",  cli: "escalations:get", openclaw: "escalations:get" },
   // One MCP tool covers both reads: get_escalation with escalation_id omitted

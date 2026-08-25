@@ -224,11 +224,11 @@ export const COMMAND_MANIFEST = [
 
   // ── events / errors (flat, merged runners) ───────────────────────────────
   { path: ["events"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
-  { path: ["rooms", "who"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
-  { path: ["rooms", "send"], positionals: [p("body")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["hello"], runStyle: "sub" },
-  { path: ["rooms", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
-  { path: ["rooms", "get"], positionals: [p("message_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["msg_1"], runStyle: "sub" },
-  { path: ["rooms", "ack"], positionals: [p("message_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["msg_1"], runStyle: "sub" },
+  { path: ["rooms", "join"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["messages", "send"], positionals: [p("body")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["hello"], runStyle: "sub" },
+  { path: ["messages", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["messages", "get"], positionals: [p("message_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["msg_1"], runStyle: "sub" },
+  { path: ["messages", "ack"], positionals: [p("message_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["msg_1"], runStyle: "sub" },
   { path: ["escalations", "raise"], positionals: [p("reason")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["a human is needed"], runStyle: "sub" },
   { path: ["escalations", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["escalations", "get"], positionals: [p("escalation_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["esc_1"], runStyle: "sub" },
@@ -423,8 +423,28 @@ export const SKIPPED_FAMILIES = {
   "apply": "pure alias for `deploy apply` (covered by the deploy family)",
   "dev": "interactive wrapper that spawns `astro dev`",
   // RESERVED, not dispatched: every `run402 message …` fails with
-  // COMMAND_REMOVED pointing at `feedback send` / `rooms send` /
+  // COMMAND_REMOVED pointing at `feedback send` / `messages send` /
   // `escalations raise`. It has no subcommands to manifest because it takes
   // none — the noun is being held for addressed agent/human messaging.
   "message": "reserved noun; fails with COMMAND_REMOVED (renamed to `feedback`)",
+};
+
+/**
+ * SUBCOMMAND spellings kept alive only to answer `COMMAND_REMOVED`.
+ *
+ * A retired spelling still needs a `case` branch — that branch IS the redirect,
+ * and without it a caller gets a generic "unknown subcommand" instead of being
+ * told where the verb went. But it is not a command: it dispatches nothing and
+ * belongs in no capability mapping, so the inventory gate must not demand one.
+ *
+ * The family-level equivalent is SKIPPED_FAMILIES above. This exists because
+ * legible-cli-surface retired four spellings INSIDE a family rather than a
+ * whole family, which the family list could not express.
+ */
+export const RESERVED_SUBCOMMANDS = {
+  "rooms:who": "renamed to `rooms join` — an interrogative must not name a write",
+  "rooms:send": "moved to `messages send` — the verb acts on a message",
+  "rooms:list": "moved to `messages list` — the verb acts on a message",
+  "rooms:get": "moved to `messages get` — the verb acts on a message",
+  "rooms:ack": "moved to `messages ack` — the verb acts on a message",
 };
