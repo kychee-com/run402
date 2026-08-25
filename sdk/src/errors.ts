@@ -712,7 +712,8 @@ export type NextActionType =
   | "initialize_wallet"
   | "deploy"
   | "operator_approve"
-  | "contact_support";
+  | "contact_support"
+  | "gitvault_policy_required";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's

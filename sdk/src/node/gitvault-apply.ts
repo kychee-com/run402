@@ -26,13 +26,14 @@
  * that wait so the apply unwinds with nothing committed.
  */
 
-import { LocalError, isRun402Error } from "../errors.js";
+import { LocalError, isRun402Error, type NextAction } from "../errors.js";
 import type { Deploy } from "../namespaces/deploy.js";
 import type { Gitvault } from "../namespaces/gitvault.js";
 import type {
   ApplyOptions,
   DeployResult,
   GitvaultCommitDeclaration,
+  LegacyWarningEntry,
   ReleaseSpec,
 } from "../namespaces/deploy.types.js";
 import type { GitvaultVaultRecord } from "./gitvault-publication.js";
@@ -164,8 +165,46 @@ export type GitvaultApplyMode =
   | { kind: "none"; reason: "no_vault" | "policy_unreadable" }
   /** A vault exists but the policy is `grandfathered` — the plain path ran. */
   | { kind: "grandfathered"; repo_id: string }
+  /**
+   * A vault exists but `gitvault_policy` was never set either way — D3:
+   * allocating a vault no longer flips the policy, so this is the ordinary
+   * shape for a project whose vault came from `run402 gitvault init` (or a
+   * lazy first push) and nobody has opted into gating deploys yet. The plain
+   * path ran, and the DeployResult carries the offer/warning (see
+   * {@link decorateUngatedResult}).
+   */
+  | { kind: "ungated"; repo_id: string }
   /** The policy is `required` — capture, token, and commit ran. */
   | { kind: "vaulted"; repo_id: string };
+
+/** `run402 gitvault policy required` — the offer D3 attaches to every ungated deploy. */
+export function gitvaultPolicyRequiredNextAction(repoId: string): NextAction {
+  return {
+    type: "gitvault_policy_required",
+    command: "run402 gitvault policy required",
+    why: `vault ${repoId} exists but gitvault_policy was never set, so this deploy ran without requiring a vaulted capture. Set it to require one, or run \`run402 gitvault policy grandfathered --reason <why>\` to explicitly accept the current state.`,
+  };
+}
+
+/** The standing `warnings[]` entry D3 attaches to every ungated deploy, until the policy is set either way. */
+export function gitvaultUngatedWarning(repoId: string): LegacyWarningEntry {
+  return {
+    code: "GITVAULT_POLICY_UNSET",
+    severity: "low",
+    requires_confirmation: false,
+    message: `vault ${repoId} is not gated: gitvault_policy was never set, so a deploy can activate without a vaulted capture. Run \`run402 gitvault policy required\` (or \`grandfathered --reason <why>\` to explicitly accept this) to clear the drift.`,
+    affected: [repoId],
+  };
+}
+
+/** Attach D3's offer + warning to an ungated deploy's result, without disturbing anything else on it. */
+function decorateUngatedResult(result: DeployResult, repoId: string): DeployResult {
+  return {
+    ...result,
+    warnings: [...(result.warnings ?? []), gitvaultUngatedWarning(repoId)],
+    next_actions: [...(result.next_actions ?? []), gitvaultPolicyRequiredNextAction(repoId)],
+  };
+}
 
 export interface ApplyWithGitvaultResult {
   mode: GitvaultApplyMode;
@@ -216,8 +255,19 @@ export async function applyWithGitvault(options: ApplyWithGitvaultOptions): Prom
 
   const record = await readVaultRecord(options.sdk.gitvault, options.spec.project);
   if (!record) return plain({ kind: "none", reason: "policy_unreadable" });
-  if (record.gitvault_policy !== "required") {
+  if (record.gitvault_policy === "grandfathered") {
     return plain({ kind: "grandfathered", repo_id: record.repo_id });
+  }
+  if (record.gitvault_policy !== "required") {
+    // D3: allocation no longer sets `gitvault_policy`, so a vault whose
+    // policy is `null` is the ORDINARY shape, not a weakened one — the
+    // deploy is never blocked or interactively prompted on this. It still
+    // runs the untouched plain path (same options object, no gitvault hooks);
+    // the only difference from `grandfathered` is that the result carries an
+    // offer to gate, plus a standing warning naming the drift until the
+    // policy is set either way (spec scenario "Ungated drift stays visible").
+    const deploy = await options.sdk._applyEngine.apply(options.spec, applyOpts);
+    return { mode: { kind: "ungated", repo_id: record.repo_id }, deploy: decorateUngatedResult(deploy, record.repo_id), gitvault: null };
   }
 
   const lane = createApplyDeployLane({ engine: options.sdk._applyEngine, spec: options.spec, apply: applyOpts });

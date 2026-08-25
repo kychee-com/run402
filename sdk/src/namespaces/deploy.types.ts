@@ -8,6 +8,7 @@
  * refs via the CAS content service before issuing the plan request.
  */
 
+import type { NextAction } from "../errors.js";
 import type { OperationActorSnapshot } from "./identity-links.types.js";
 
 // ─── Byte sources ────────────────────────────────────────────────────────────
@@ -2621,6 +2622,14 @@ export interface DeployResult {
   diff: DeployDiff;
   /** Structured plan warnings that were observed before commit. */
   warnings: WarningEntry[];
+  /**
+   * Advisory follow-ups the deploy itself synthesized — never a gateway plan
+   * warning (those stay in {@link warnings}). Today this carries exactly one
+   * shape: `gitvault_policy_required`, offered on every deploy of a vaulted
+   * project whose `gitvault_policy` was never set (repo-first-onramp D3).
+   * Absent when there is nothing to offer.
+   */
+  next_actions?: NextAction[];
   /** Freshness hints for stable hosts affected by this deploy. Managed
    *  subdomains and custom domains are eventually consistent at the edge, so
    *  app installers can distinguish fresh propagation misses from real verify

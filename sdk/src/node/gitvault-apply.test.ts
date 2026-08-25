@@ -183,6 +183,90 @@ describe("projects that are not `required` deploy exactly as they did before", (
   });
 });
 
+// ─── D3 (repo-first-onramp task 2.3) — a vaulted, ungated project ────────────
+//
+// Allocating a vault no longer sets `gitvault_policy` (design D3), so a vault
+// whose policy is `null` is the ORDINARY post-allocation shape, not a
+// weakened one. The deploy must never block or prompt on this — it takes the
+// exact same untouched plain path as `grandfathered` — but the result offers
+// the gate as a typed next_action and names the drift as a standing warning,
+// on EVERY such deploy (the client holds no local state to distinguish a
+// "first" deploy from a "subsequent" one, and the spec's two scenarios are
+// both satisfied by attaching both every time: scenario one only requires the
+// offer to be present, scenario two only requires the warning to be present).
+
+describe("D3 — a vaulted, ungated project deploys ungated and says so", () => {
+  it("carries the policy-required offer and a standing warning naming the vault", async (t) => {
+    const f = await fixtureWithApp();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const engine = fakeEngine();
+    const vault = fakeGitvault(f, null);
+
+    const r = await applyWithGitvault({ sdk: { _applyEngine: engine.engine, gitvault: vault.gitvault }, spec: SPEC });
+
+    assert.deepEqual(r.mode, { kind: "ungated", repo_id: f.repoId });
+    assert.equal(r.gitvault, null, "no capture, no token — this is not the vaulted lane");
+    assert.equal(vault.deployCalls, 0, "no capture, no push");
+    assert.equal(engine.applies.length, 1);
+    assert.deepEqual(engine.applies[0], {}, "the apply carries the caller's own options and NO gitvault hooks — byte-identical to the untouched path");
+
+    assert.ok(r.deploy);
+    assert.equal(r.deploy!.next_actions?.length, 1);
+    assert.equal(r.deploy!.next_actions?.[0]?.type, "gitvault_policy_required");
+    assert.equal(r.deploy!.next_actions?.[0]?.command, "run402 gitvault policy required");
+    assert.equal(r.deploy!.warnings.length, 1);
+    assert.equal(r.deploy!.warnings[0]?.code, "GITVAULT_POLICY_UNSET");
+    assert.deepEqual((r.deploy!.warnings[0] as { affected?: string[] }).affected, [f.repoId]);
+  });
+
+  it("a second ungated deploy carries the same offer and warning again — nothing is ever blocked or prompted", async (t) => {
+    const f = await fixtureWithApp();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const engine = fakeEngine();
+    const vault = fakeGitvault(f, null);
+
+    const first = await applyWithGitvault({ sdk: { _applyEngine: engine.engine, gitvault: vault.gitvault }, spec: SPEC });
+    const second = await applyWithGitvault({ sdk: { _applyEngine: engine.engine, gitvault: vault.gitvault }, spec: SPEC });
+
+    for (const r of [first, second]) {
+      assert.deepEqual(r.mode, { kind: "ungated", repo_id: f.repoId });
+      assert.equal(r.deploy!.next_actions?.length, 1, "the offer to gate stays present — never escalates into a block or a prompt");
+      assert.equal(r.deploy!.warnings.length, 1, "the drift warning names the same vault every time the policy stays unset");
+    }
+  });
+
+  it("preserves the deploy's own plan warnings and next_actions alongside D3's own", async (t) => {
+    const f = await fixtureWithApp();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const ownWarning = { code: "SOME_OTHER_WARNING", severity: "low" as const, requires_confirmation: false, message: "unrelated" };
+    const engine: FakeEngine = {
+      engine: { async apply() { return { operation_id: "op_x", status: "ready", warnings: [ownWarning], diff: {} } as unknown as DeployResult; } } as unknown as Deploy,
+      applies: [],
+      declarations: [],
+      commitBlocks: [],
+    };
+    const vault = fakeGitvault(f, null);
+
+    const r = await applyWithGitvault({ sdk: { _applyEngine: engine.engine, gitvault: vault.gitvault }, spec: SPEC });
+
+    assert.equal(r.deploy!.warnings.length, 2);
+    assert.deepEqual(r.deploy!.warnings[0], ownWarning);
+    assert.equal(r.deploy!.warnings[1]?.code, "GITVAULT_POLICY_UNSET");
+  });
+
+  it("a `grandfathered` project is unaffected: no offer, no D3 warning — the explicit choice already made", async (t) => {
+    const f = await fixtureWithApp();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const engine = fakeEngine();
+    const vault = fakeGitvault(f, "grandfathered");
+
+    const r = await applyWithGitvault({ sdk: { _applyEngine: engine.engine, gitvault: vault.gitvault }, spec: SPEC });
+
+    assert.deepEqual(r.mode, { kind: "grandfathered", repo_id: f.repoId });
+    assert.equal(r.deploy!.next_actions, undefined);
+  });
+});
+
 // ─── The five terminal outcomes, through the real lane (task 3.4) ────────────
 
 describe("the deploy lane reaches every one of the closed five", () => {
