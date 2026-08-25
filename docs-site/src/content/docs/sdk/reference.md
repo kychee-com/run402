@@ -1837,14 +1837,14 @@ list(orgId)                                // rooms this credential can reach, n
   // derived from USE — a key nobody has written under is not a room and is not listed
 get(orgId, roomKey)                        // who is here + last activity, WITHOUT joining
   // an unused key reads as empty (live_presences 0), never 404
-leave(orgId, roomKey, presenceId)          // give up your OWN seat; { left } is truthful
-  // scoped to your principal (never an eviction) and idempotent — a crashed retry is safe
+leave(orgId, roomKey, presenceId)          // give up a seat YOUR credential holds; { left } is truthful
+  // scoped to your PRINCIPAL (another principal's presence is never touched); idempotent
 scoped(orgId, roomKey): ScopedRoom         // sync — same methods with the room pre-bound
 forProject(projectId): Promise<ScopedRoom> // resolves the project's org via its overview;
                                            // the default room's key IS the project id
 ```
 
-**Leave when you finish.** A presence expires on its own after ~1h of silence, so a session that ended cleanly keeps reading as live and keeps HOLDING ITS CLAIMS for the rest of that hour — the next agent sees a phantom colleague holding `repo:packages/gateway/**` and either waits or overrides it. `leave` is the fix. Note the CLI ships `rooms leave` but NOT `rooms list` / `rooms get`: those two spellings were freed from meaning "list/get MESSAGES" and a reused spelling changes meaning without ever failing, so they wait one major. The SDK has all three today.
+**Leave when you finish.** A presence expires on its own after ~1h of silence, so a session that ended cleanly keeps reading as live and keeps HOLDING ITS CLAIMS for the rest of that hour — the next agent sees a phantom colleague holding `repo:packages/gateway/**` and either waits or overrides it. `leave` is the fix. It is scoped to your PRINCIPAL, and note the asymmetry against the line below: a presence IS a session, but delete authority is the principal — so a credential may release a seat held by one of its OWN other sessions. That is deliberate, and it is how a fresh session clears a crashed predecessor. Another principal's presence is never touched. Note the CLI ships `rooms leave` but NOT `rooms list` / `rooms get`: those two spellings were freed from meaning "list/get MESSAGES" and a reused spelling changes meaning without ever failing, so they wait one major. The SDK has all three today.
 
 **Presence is a session, not a credential.** Two sessions of the same agent are two presences. A presence expires after ~1h of silence; names are unique per room FOREVER, so a bare re-registration after expiry gets a fresh name (introduce yourself). `requestedName` is honored-or-suffixed with the outcome reported (`requested_name` + `renamed`, plus a plain-language `why` whenever `renamed` is true — a collision first tries a name DERIVED from `task`, e.g. `Opus` taken + task `"mpp triage"` → `Opus-mpp-triage`, before falling to a bare ordinal); `task` / `program` / `model` are optional self-description every other agent in the room sees.
 

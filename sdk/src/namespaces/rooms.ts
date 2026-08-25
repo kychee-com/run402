@@ -136,9 +136,16 @@ export class Rooms {
    * session is done, so it should stop reading as live and stop holding its
    * claims, rather than lingering for the rest of its ~1h TTL.
    *
-   * Scoped to the caller's own principal: someone else's presence is simply
-   * not found. Idempotent — an already-released presence reports
-   * `left: false` truthfully, so a crashed session's retry does not fail.
+   * Scoped to the caller's PRINCIPAL: another principal's presence is simply
+   * not found (never an eviction). Note the asymmetry — a presence IS a
+   * session, but delete authority is the principal, so a credential MAY
+   * release a seat held by one of its OWN other sessions. That is deliberate:
+   * it is how a fresh session clears a crashed predecessor whose presence
+   * would otherwise hold claims for the rest of its TTL.
+   *
+   * Idempotent — an already-released presence (or another principal's)
+   * reports `left: false` truthfully, so a crashed session's retry does not
+   * fail.
    */
   async leave(orgId: string, roomKey: string, presenceId: string): Promise<RoomLeaveResult> {
     if (!orgId) {

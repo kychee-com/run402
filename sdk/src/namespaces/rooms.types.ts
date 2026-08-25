@@ -371,7 +371,7 @@ export interface RoomList {
 
 /**
  * Response of {@link Rooms.leave}. Idempotent — a presence already gone (or
- * belonging to someone else) reports `left: false` rather than erroring.
+ * belonging to another PRINCIPAL) reports `left: false` rather than erroring.
  */
 export interface RoomLeaveResult {
   presence_id: string;
