@@ -29,7 +29,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -185,5 +186,125 @@ describe("git-remote-run402 — repository resolution is fail-closed", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+// ─── D2 (repo-first-onramp task 2.2) — lazy allocation on first push ─────────
+//
+// A live server, not the dead port above: the two things pinned here —
+// `list` degrading to empty rather than erroring, and `push` actually
+// REACHING the allocate route — both need a 404 the helper can read to tell
+// "unallocated" apart from "unreachable". The full six-stage creation itself
+// (crypto, PUT/admit wire shapes, resumability) is proven exhaustively at the
+// SDK level against GitvaultMemoryTransport
+// (sdk/src/node/gitvault-open-or-create.test.ts) — reimplementing that
+// protocol as an HTTP fixture here would duplicate it, not add coverage.
+// Recording that `POST /gitvault/v1/vaults` was reached is the wiring proof
+// this layer owns: org_id came from the parsed run402::<org>/<project>
+// address, all the way through to the SDK's lazy-create primitive.
+//
+// ASYNC spawn, not the spawnSync `runHelper` above: the mock server lives in
+// THIS process, and spawnSync blocks this process's entire event loop until
+// the child exits — which starves the very server the child is waiting on
+// and deadlocks both sides. spawnSync only ever worked against DEAD_API
+// because a closed port fails at the OS/TCP level with no event-loop
+// involvement at all; a live server needs the parent free to service it.
+
+/** Drive the helper asynchronously, so this process's event loop stays free to serve the mock gateway below. */
+function runHelperAsync({ cwd, env = {}, stdin }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [HELPER, "run402", ADDRESS], {
+      cwd,
+      env: {
+        ...process.env,
+        RUN402_CONFIG_DIR: env.RUN402_CONFIG_DIR ?? mkdtempSync(join(tmpdir(), "run402-gvh-cfg-")),
+        ...env,
+      },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (c) => { stdout += c; });
+    child.stderr.on("data", (c) => { stderr += c; });
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+    child.stdin.end(stdin);
+  });
+}
+
+/** A gateway stub that answers exactly the two gitvault creation routes this file needs. */
+function withUnallocatedVaultGateway(handler) {
+  const calls = [];
+  const server = createServer((req, res) => {
+    calls.push({ method: req.method, url: req.url });
+    if (req.method === "GET" && req.url.startsWith("/gitvault/v1/vaults?")) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ code: "RESOURCE_NOT_FOUND", message: "no vault for this project" }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/gitvault/v1/vaults") {
+      // Reaching this route is what the test proves; the response need not
+      // complete the six-stage journal (that machinery is proven at the SDK
+      // level) — a deliberately incomplete/invalid body still counts as
+      // "the allocate route was hit with org_id resolved from the address".
+      // Drain the request body before answering — an unconsumed body can
+      // leave the client's request stream unflushed on some platforms.
+      req.resume();
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ code: "NOT_IMPLEMENTED_IN_TEST_STUB" }));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ code: "RESOURCE_NOT_FOUND" }));
+  });
+  return new Promise((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => {
+      handler(`http://127.0.0.1:${server.address().port}`, calls).then(
+        () => server.close(() => resolve()),
+        (err) => server.close(() => reject(err)),
+      );
+    });
+  });
+}
+
+describe("git-remote-run402 — D2 lazy allocation", () => {
+  it("list against an unallocated vault reports an EMPTY ref set, never an error — a read never creates anything", async () => {
+    await withUnallocatedVaultGateway(async (apiBase, calls) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-d2-list-")));
+      try {
+        const r = await runHelperAsync({
+          cwd: root,
+          env: { GIT_DIR: undefined, RUN402_API_BASE: apiBase },
+          stdin: "capabilities\n\nlist for-push\n\n",
+        });
+        assert.equal(r.status, 0, `${r.stdout}\n---\n${r.stderr}`);
+        // capabilities block, then an EMPTY list block — no refs, no error.
+        assert.equal(r.stdout, "fetch\npush\noption\n\n\n");
+        assert.doesNotMatch(r.stderr, /error|refus/i, r.stderr);
+        assert.equal(calls.filter((c) => c.method === "POST").length, 0, "list must never allocate");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("push against an unallocated vault reaches the allocate route — org_id came from the parsed address", async () => {
+    await withUnallocatedVaultGateway(async (apiBase, calls) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-d2-push-")));
+      try {
+        const target = makeRepo(root, { commit: true });
+        const r = await runHelperAsync({
+          cwd: target,
+          env: { GIT_DIR: realpathSync(join(target, ".git")), RUN402_API_BASE: apiBase },
+          stdin: "capabilities\n\npush refs/heads/main:refs/heads/main\n\n",
+        });
+        // The stub's allocate response is deliberately incomplete, so creation
+        // itself fails past this point — that failure is expected and fine;
+        // what this test asserts is that the attempt happened at all.
+        const allocateCalls = calls.filter((c) => c.method === "POST" && c.url === "/gitvault/v1/vaults");
+        assert.equal(allocateCalls.length, 1, `expected exactly one allocate call; saw: ${JSON.stringify(calls)}\n${r.stdout}\n---\n${r.stderr}`);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
   });
 });

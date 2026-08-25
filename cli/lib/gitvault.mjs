@@ -67,6 +67,10 @@ Subcommands:
             doctor-persistent warning until the project returns to \`required\`.
   push      Capture the working tree and publish it. This is NOT gated on a
             deploy — a vault-only project pushes for months without one.
+            Against a project with no vault yet, this ALLOCATES one inline
+            (the six-stage creation, same as \`init\`) before publishing — one
+            command, no prior \`gitvault init\`. The one-shot recovery receipt
+            and keystore path print to stderr the moment that happens.
             Before reporting a push as landed the SDK compares finalization
             receipts against the expected manifest and reads the admitted head
             back from storage; a 200 alone is never enough.
@@ -384,12 +388,30 @@ async function push(args) {
     min: 0, max: 0, command: "run402 gitvault push", missing: "",
   });
   const message = flagValue(a, "--message");
+  const target = vaultTarget(a);
+  // D2: lazily allocate the vault on first push when there is a project to
+  // resolve the owning org from — the same resolution `gitvault init` uses.
+  // `--repo`-only addressing has nothing to create FROM (no project_id), so
+  // it is skipped there, matching `open()`'s own precedence.
+  const orgId = target.project_id ? await resolveOwningOrgId(target.project_id) : null;
   const opts = {
-    ...vaultTarget(a),
+    ...target,
+    ...(orgId ? { org_id: orgId } : {}),
     // The gitvault_commit line is progress, not payload: print it the moment
     // the snapshot exists, well before the publication round-trips finish, so
     // a human watching a slow push sees what is being pushed.
     onCommitLine: (line) => console.error(line),
+    // Fires synchronously, BEFORE the capture/publish that follows — printed
+    // here rather than deferred past `push()`'s return so the receipt is
+    // never lost if a later step in the SAME push fails after allocation
+    // already landed on the server.
+    onVaultCreated: async (created) => {
+      console.error("");
+      console.error(`vault allocated (genesis ${created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
+      console.error(JSON.stringify(created.recovery_receipt));
+      await printKeystoreLocation();
+      console.error("");
+    },
   };
   // The message rides on `snapshot`, which is what `captureSnapshot` reads —
   // and, since 5.12b removed the dead top-level `push({ message })` field, is

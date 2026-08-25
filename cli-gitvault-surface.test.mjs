@@ -109,6 +109,17 @@ mock.module("./cli/lib/sdk.mjs", {
           calls.push({ method: "gitvault.setPolicy", repoId, input });
           return { gitvault_policy: input.gitvault_policy, gitvault_policy_version: "2", changed: true, warnings: [] };
         },
+        push: async (input) => {
+          calls.push({ method: "gitvault.push", input });
+          return (impl.push ?? (async () => ({
+            generation: "0000000000000004",
+            form: "wal",
+            head_sha256: "e5f6",
+            snapshot: { oid: "aaaa000011112222333344445555666677778888", head: { kind: "symref", ref: "refs/heads/main" } },
+            gitvault_commit: "aaaa000011112222333344445555666677778888",
+            gitvault_commit_line: "gitvault_commit aaaa000011112222333344445555666677778888",
+          })))(input);
+        },
       },
     }),
   },
@@ -240,6 +251,65 @@ describe("run402 gitvault init — the verb that allocates", () => {
     await ok("init", ["--org", "org_explicit"]);
     assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "an explicit --org must not trigger a project listing");
     assert.equal(calls.find((c) => c.method === "gitvault.init").input.org_id, "org_explicit");
+  });
+});
+
+describe("run402 gitvault push — the capture lane, D2 lazy allocation (repo-first-onramp task 2.2)", () => {
+  it("resolves the project's owning org exactly like init does, and threads it into gitvault.push", async () => {
+    const payload = await ok("push", []);
+    const call = calls.find((c) => c.method === "gitvault.push");
+    assert.ok(call, `gitvault push did not reach the SDK; calls=${JSON.stringify(calls)}`);
+    assert.equal(call.input.org_id, ORG);
+    assert.equal(call.input.project_id, PROJECT);
+    assert.equal(payload.generation, "0000000000000004");
+  });
+
+  it("prints the recovery receipt and keystore path the moment the SDK reports the vault was created", async () => {
+    impl.push = async (input) => {
+      // Exactly what a lazily-creating push() reports: onVaultCreated fires
+      // before this resolves.
+      await input.onVaultCreated?.({
+        deduplicated: false,
+        recovery_receipt: { format: "r402s/v0", object_kind: "recovery_receipt" },
+        genesis_sha256: "cafe1234",
+      });
+      return { generation: "0000000000000000", form: "wal", head_sha256: "abc", snapshot: {}, gitvault_commit: "x", gitvault_commit_line: "gitvault_commit x" };
+    };
+    captureStart();
+    try {
+      await run("push", []);
+    } finally {
+      captureStop();
+    }
+    const joined = stderr.join("\n");
+    assert.match(joined, /vault allocated \(genesis cafe1234\)/, joined);
+    assert.match(joined, /one-shot recovery receipt/, joined);
+    assert.match(joined, /keystore: .*gitvault/, joined);
+  });
+
+  it("prints nothing extra about allocation for an ordinary push against an already-existing vault", async () => {
+    captureStart();
+    try {
+      await run("push", []);
+    } finally {
+      captureStop();
+    }
+    assert.doesNotMatch(stderr.join("\n"), /vault allocated/);
+  });
+
+  it("--repo addresses the vault directly and skips org resolution entirely — nothing to create FROM", async () => {
+    await ok("push", ["--repo", REPO]);
+    assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "--repo alone must not trigger a project lookup");
+    const call = calls.find((c) => c.method === "gitvault.push");
+    assert.equal(call.input.org_id, undefined);
+    assert.equal(call.input.repo_id, REPO);
+  });
+
+  it("still carries --message on snapshot and --checkpoint through, unaffected by the org resolution", async () => {
+    await ok("push", ["--message", "wip", "--checkpoint"]);
+    const call = calls.find((c) => c.method === "gitvault.push");
+    assert.equal(call.input.snapshot.message, "wip");
+    assert.equal(call.input.checkpoint, true);
   });
 });
 

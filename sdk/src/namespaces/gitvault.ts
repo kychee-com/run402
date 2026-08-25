@@ -805,6 +805,25 @@ export class Gitvault {
   async push(
     options: GitvaultVaultHandleOptions & {
       /**
+       * The owning org. Supply it to run D2's lazy allocation: when this
+       * project's vault does not exist yet, push() runs the six-stage
+       * creation journal inline (via {@link openOrCreate}) before capturing
+       * and publishing — one command, no prior `gitvault init`. Without it,
+       * push() behaves exactly as it always did: a push against an
+       * unallocated vault throws the resolution failure unchanged.
+       */
+      org_id?: string;
+      /** Resume a specific creation attempt (or pin it in tests); auto-discovered from the local keystore otherwise. */
+      client_creation_id?: string;
+      /**
+       * Fires once, only when THIS call allocated the vault — the moment to
+       * print the one-shot recovery receipt and keystore path. Awaited
+       * before capture/publish continue, so any async work inside it (e.g.
+       * resolving the keystore path to print) completes and stays ordered
+       * BEFORE the rest of this push's own output.
+       */
+      onVaultCreated?: (created: NonNullable<GitvaultOpenOrCreateResult["created"]>) => void | Promise<void>;
+      /**
        * Capture options, forwarded verbatim to `captureSnapshot`. The commit
        * message for the synthetic commit a dirty tree produces lives HERE
        * (`snapshot: { message }`) — there is deliberately no second top-level
@@ -817,7 +836,9 @@ export class Gitvault {
     },
   ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string }> {
     const [{ deployRefTransaction }, { captureSnapshot, gitvaultCommitLine }] = await Promise.all([this.#publication(), this.#snapshot()]);
-    const handle = await this.open(options);
+    const opened = await this.openOrCreate(options);
+    if (!opened.found && opened.created) await options.onVaultCreated?.(opened.created);
+    const handle = opened.handle;
     const repoDir = options.repo_dir ?? process.cwd();
     const snapshot = await captureSnapshot({ dir: repoDir, ...(options.snapshot ?? {}) });
     const line = gitvaultCommitLine(snapshot);

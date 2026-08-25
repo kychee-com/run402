@@ -19,6 +19,15 @@
  *   push [+]<src>:<dst>     → publish one atomic ref transaction
  *   option <name> <value>   → ok / unsupported, never a silent lie
  *
+ * LAZY ALLOCATION ON FIRST PUSH (design D2). `list` never creates anything —
+ * an unallocated vault reports as an empty ref set, exactly what a fresh
+ * repository looks like — but `push` does: `git push origin main` against a
+ * project whose vault does not exist yet runs the six-stage creation journal
+ * inline (`r.gitvault.openOrCreate`, the SDK-owned primitive), prints the
+ * one-shot recovery receipt and the keystore path to stderr, and then
+ * completes the push. One command, no prior `gitvault init`. `git ls-remote`
+ * / `fetch` stay pure reads and allocate nothing.
+ *
  * WHICH REPOSITORY (the fail-closed rule). `process.cwd()` is NOT the
  * repository. git identifies the repository with `GIT_DIR`, and during
  * `git clone` cwd is the directory clone was RUN FROM — routinely some other,
@@ -120,7 +129,11 @@ async function main(argv) {
     return 1;
   }
 
-  const target = { project_id: address.project_id };
+  // `org_id` rides in the parsed address (`run402::<org_id>/<project_id>`),
+  // so it costs nothing extra to carry — it is exactly what D2's lazy
+  // creation needs to allocate an unresolved vault from `runPush` below, with
+  // no separate lookup.
+  const target = { project_id: address.project_id, org_id: address.org_id };
   let verbosity = 1;
 
   /**
@@ -150,8 +163,55 @@ async function main(argv) {
   /** Open the vault lazily — `capabilities` and `option` must never touch the network. */
   const openVault = async (repoDir) => (await getSdk().gitvault.open(repoDir ? { ...target, repo_dir: repoDir } : target)).vault;
 
+  /** A 404/absent-vault refusal — the "nothing here yet" shape, never a genuine failure to mask. */
+  function isVaultNotFound(err) {
+    return err?.status === 404 || err?.code === "RESOURCE_NOT_FOUND" || err?.code === "ROUTE_NOT_FOUND";
+  }
+
+  /**
+   * Open the vault, allocating it first when it does not exist yet (D2). Used
+   * ONLY by `runPush` — `list`/`fetch` stay pure reads and never create
+   * anything (see `runList`'s own not-found handling below).
+   *
+   * Prints the one-shot recovery receipt and the keystore path to stderr the
+   * moment allocation happens, per the client-surface spec: an agent reads
+   * stderr, and the receipt is worth exactly as many copies as get kept.
+   */
+  async function openOrCreateVault(repoDir) {
+    const result = await getSdk().gitvault.openOrCreate({ ...target, repo_dir: repoDir });
+    if (!result.found && result.created) {
+      note("");
+      note(`vault ${result.handle.repo_id} allocated (genesis ${result.created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
+      note(JSON.stringify(result.created.recovery_receipt));
+      try {
+        const { getGitvaultKeystoreRoot } = await import("#sdk/node");
+        note(`keystore: ${getGitvaultKeystoreRoot()} — back this up; whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship`);
+      } catch {
+        // Never let a diagnostic line fail a push that already allocated successfully.
+      }
+      note("");
+    }
+    return result.handle.vault;
+  }
+
   async function runList() {
-    const state = await (await openVault()).materialize();
+    let state;
+    try {
+      state = await (await openVault()).materialize();
+    } catch (err) {
+      // An unallocated vault is not an error here: `list` is the read half of
+      // the protocol dance and must never create anything on its own (D2
+      // scopes lazy creation to `push`). Reporting it as an EMPTY ref set is
+      // exactly what a fresh repository looks like to git, and `push` still
+      // runs `list` first either way — this is what lets a first push land in
+      // one command instead of `list` failing the whole exchange before
+      // `push` ever gets a turn.
+      if (isVaultNotFound(err)) {
+        endBlock();
+        return;
+      }
+      throw err;
+    }
     const refs = state.refs ?? {};
     for (const ref of Object.keys(refs).sort()) out(`${refs[ref]} ${ref}`);
     const head = state.head_target;
@@ -198,7 +258,7 @@ async function main(argv) {
           ? null
           : (await hardenedGit(repoDir, ["rev-parse", "--verify", "--end-of-options", spec.src])).text().trim());
       }
-      const vault = await openVault(repoDir);
+      const vault = await openOrCreateVault(repoDir);
       const base = await vault.materialize();
       const updates = [];
       for (const spec of specs) {
