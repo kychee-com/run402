@@ -842,6 +842,8 @@ async function rebuild(projectId, args = []) {
   const positionals = [];
   for (const arg of args) {
     if (arg === "--all") { all = true; continue; }
+    // Same rule as assertNoExtraPositionals: a flag is not a positional.
+    if (typeof arg === "string" && arg.startsWith("-")) continue;
     positionals.push(arg);
   }
   if (positionals.length > 1) {
@@ -957,12 +959,18 @@ function parseDepsFlag(value) {
 }
 
 function assertNoExtraPositionals(args, usage) {
-  if (args.length > 0) {
+  // Only POSITIONALS count. A flag-shaped argument that survived
+  // assertKnownFlags is an accepted convention flag (`--json`), not a stray
+  // positional — reporting it as one made `functions list --json` fail with
+  // "Unexpected argument: --json" while the same command without it worked.
+  // Its sibling assertNoUnexpectedPositionals already skips these.
+  const extra = args.filter((a) => !(typeof a === "string" && a.startsWith("-")));
+  if (extra.length > 0) {
     fail({
       code: "BAD_USAGE",
-      message: `Unexpected argument: ${args[0]}`,
+      message: `Unexpected argument: ${extra[0]}`,
       hint: usage,
-      details: { argument: args[0] },
+      details: { argument: extra[0] },
     });
   }
 }
