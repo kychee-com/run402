@@ -32,6 +32,7 @@ SET UP — get an agent funded and entitled
 BUILD & SHIP — the app and everything it serves
   up          Provision/link/deploy the current app with SDK orchestration
   projects    Manage projects (provision, list, get, sql, delete)
+  repos       Vault-only hosted encrypted repos, zero deploy ceremony (create, list, delete)
   deploy      Unified deploy operations (requires active tier)
   apply       Alias for deploy apply; supports --rehearse for migration rehearsal
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
@@ -218,6 +219,11 @@ switch (cmd) {
   }
   case "projects": {
     const { run } = await import("./lib/projects.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "repos": {
+    const { run } = await import("./lib/repos.mjs");
     await run(sub, rest);
     break;
   }

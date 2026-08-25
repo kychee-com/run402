@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -125,7 +125,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -780,12 +780,32 @@ const SURFACE: Capability[] = [
   { id: "gitvault_policy",   endpoint: "PATCH /gitvault/v1/vaults/:vault_id/policy",                 mcp: null,                   cli: "gitvault:policy",   openclaw: "gitvault:policy" },
   { id: "gitvault_heads",    endpoint: "GET /gitvault/v1/vaults/:vault_id/heads",                    mcp: "list_gitvault_heads",  cli: null,                openclaw: null },
   { id: "gitvault_verify",   endpoint: "GET /gitvault/v1/vaults/:vault_id/heads[/:generation]",      mcp: "verify_gitvault",      cli: "gitvault:verify",   openclaw: "gitvault:verify" },
-  { id: "gitvault_push",     endpoint: "POST /gitvault/v1/vaults/:vault_id/upload-sessions (+ admission)", mcp: null,             cli: "gitvault:push",     openclaw: "gitvault:push" },
+  // D5 (repo-first-onramp task 2.5): one verb per operation — `push` now
+  // means exactly one thing everywhere (`git push`), so the capture lane is
+  // `snapshot`. No MCP change: the capture lane never had an MCP tool (it is
+  // a mutating, CLI-only verb by design — one-shot recovery receipt on first
+  // allocation, immutable generations) and does not gain one here.
+  { id: "gitvault_snapshot", endpoint: "POST /gitvault/v1/vaults/:vault_id/upload-sessions (+ admission)", mcp: null,             cli: "gitvault:snapshot", openclaw: "gitvault:snapshot" },
+  // `push` survives as a deprecation-warning alias for exactly one release
+  // (design D5) — same endpoint, same SDK method, tracked as its own row so
+  // the sync gate keeps covering it until it is removed next release.
+  { id: "gitvault_push_alias", endpoint: "POST /gitvault/v1/vaults/:vault_id/upload-sessions (+ admission)", mcp: null,           cli: "gitvault:push",     openclaw: "gitvault:push" },
   { id: "gitvault_compact",  endpoint: "POST /gitvault/v1/vaults/:vault_id/maintenance-leases",      mcp: null,                   cli: "gitvault:compact",  openclaw: "gitvault:compact" },
   // Two-phase by protocol (§7.3): the verb PLANS locally (chain walk + GC root
   // set) and only submits when handed both verifier receipts, one per closed
   // implementation identity. There is still no purge verb.
   { id: "gitvault_prune",    endpoint: "POST /gitvault/v1/vaults/:vault_id/prune-intents",           mcp: null,                   cli: "gitvault:prune",    openclaw: "gitvault:prune" },
+
+  // ── repos (vault-only porcelain, repo-first-onramp D8, task 2.6) ────────
+  // CLI + OpenClaw ONLY, `mcp: null` throughout — the operator family above
+  // is the precedent. `create` mints a vault's one-shot recovery receipt and
+  // `delete` is destructive (irreversible project + vault-history deletion);
+  // both fall under the gitvault row's CLI-only law in documentation.md.
+  // `list` is read-only and could get an MCP tool later, but ships with its
+  // two siblings here rather than splitting a three-verb family on day one.
+  { id: "repos_create", endpoint: "POST /projects/v1 (+ gitvault genesis admission)", mcp: null, cli: "repos:create", openclaw: "repos:create" },
+  { id: "repos_list",   endpoint: "GET /projects/v1 (+ per-project GET /gitvault/v1/vaults/:vault_id)", mcp: null, cli: "repos:list", openclaw: "repos:list" },
+  { id: "repos_delete", endpoint: "DELETE /projects/v1/:id", mcp: null, cli: "repos:delete", openclaw: "repos:delete" },
 
   // ── the lossy-surface expander ──────────────────────────────────────────
   // MCP truncates; agent-response-design requires the full result to stay
@@ -831,8 +851,15 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   gitvault_policy: "gitvault.setPolicy",
   gitvault_heads: "gitvault.heads",
   gitvault_verify: "gitvault.verify",
-  gitvault_push: "gitvault.push",
+  gitvault_snapshot: "gitvault.push",
+  gitvault_push_alias: "gitvault.push",
   gitvault_compact: "gitvault.compact",
+  // `repos` is porcelain over projects.provision + gitvault.init +
+  // projects.delete + gitvault.status — no single SDK method of its own, the
+  // same compound-flow shape as `up`/`init` above.
+  repos_create: null,
+  repos_list: null,
+  repos_delete: null,
   gitvault_prune: "gitvault.prune",
   // The result store is MCP-local plumbing, not a gateway capability.
   expand_result: null,
@@ -1540,6 +1567,11 @@ describe("SDK surface alignment", () => {
       // `scaffoldRemote` is reached through `run402 init` (the scaffold
       // capability); `gitvault.init` has its own `run402 gitvault init` verb.
       "gitvault.scaffoldRemote",
+      // D2 (repo-first-onramp task 2.2): `openOrCreate` is the lazy-allocation
+      // primitive `gitvault.push` and `git-remote-run402`'s push path compose
+      // internally on `GITVAULT_VAULT_UNRESOLVED` — it has no verb of its own,
+      // the same way `open` and `init` already cover the explicit paths.
+      "gitvault.openOrCreate",
       // `deploy` is the push-gated deploy — it belongs to the deploy surface
       // (`run402 deploy`), not to the vault verb group.
       "gitvault.deploy",
@@ -1697,6 +1729,7 @@ describe("SDK surface alignment", () => {
 /** Files that must contain no protocol implementation of their own. */
 const SHIM_SOURCES = [
   "cli/lib/gitvault.mjs",
+  "cli/lib/gitvault-scaffold.mjs",
   "cli/git-remote-run402.mjs",
   "openclaw/scripts/gitvault.mjs",
   "src/tools/gitvault.ts",
