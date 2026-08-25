@@ -154,6 +154,39 @@ function findFlagRejection(lines, flags) {
   return null;
 }
 
+/**
+ * A BAD_USAGE complaining about a POSITIONAL the caller never passed.
+ *
+ * The harness invokes each command with its convention flags and nothing else,
+ * so "Unexpected argument" — the too-many-positionals branch — can only mean
+ * the command's own argument parsing is confused about what it received.
+ *
+ * Why this exists: `run402 rooms leave` shipped in 4.36.0 calling
+ * `assertKnownFlags` and `requirePositionalCount` with the WRONG ARGUMENT
+ * SHAPE — a command-name string where an argv array belongs. Both helpers
+ * exist and both were spelled right, so neither the stranded-reference gate
+ * nor the SDK-method gate could see it; the string was simply iterated as
+ * characters, and the user got `Unexpected argument for command: r`. This
+ * harness already RAN the command — it just only looked at whether the
+ * convention flags were rejected, so the nonsense sailed past it.
+ */
+function findPositionalConfusion(lines) {
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+    let obj;
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (obj.code === "BAD_USAGE" && /unexpected argument/i.test(String(obj.message ?? ""))) {
+      return { obj, line };
+    }
+  }
+  return null;
+}
+
 async function runToleratingFailures(entry, extraFlags) {
   captureStart();
   try {
@@ -267,6 +300,11 @@ describe("--project and --json are accepted by every projectScoped command", () 
     }
     it(id, async () => {
       const { stderr: errLines } = await runToleratingFailures(entry, ["--project", "prj_test123", "--json"]);
+      const confused = findPositionalConfusion(errLines);
+      assert.ok(
+        !confused,
+        `${id} reported a positional problem for arguments it was never given — its argument parsing is misreading what it received: ${confused?.line}`,
+      );
       const rejection = findFlagRejection(errLines, ["--project", "--json"]);
       assert.ok(
         !rejection,
@@ -289,6 +327,11 @@ describe("--json is accepted by every non-projectScoped command", () => {
     }
     it(id, async () => {
       const { stderr: errLines } = await runToleratingFailures(entry, ["--json"]);
+      const confused = findPositionalConfusion(errLines);
+      assert.ok(
+        !confused,
+        `${id} reported a positional problem for arguments it was never given — its argument parsing is misreading what it received: ${confused?.line}`,
+      );
       const rejection = findFlagRejection(errLines, ["--json"]);
       assert.ok(
         !rejection,

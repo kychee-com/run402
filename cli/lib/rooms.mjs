@@ -148,9 +148,11 @@ async function who(args) {
 
 async function leave(argv) {
   const args = normalizeArgv(argv);
-  assertKnownFlags("rooms leave", args, ROOM_FLAGS);
-  const positionals = positionalArgs(args);
-  requirePositionalCount("rooms leave", positionals, 0, 1, "[<presence_id>]");
+  assertKnownFlags(args, [...ROOM_FLAGS, "--help", "-h"], ROOM_FLAGS);
+  const positionals = positionalArgs(args, ROOM_FLAGS);
+  requirePositionalCount(positionals, ROOM_FLAGS, {
+    min: 0, max: 1, command: "run402 rooms leave [<presence_id>]",
+  });
   const room = await resolveRoom({
     org: flagValue(args, "--org"),
     room: flagValue(args, "--room"),
