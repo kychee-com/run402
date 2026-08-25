@@ -608,11 +608,13 @@ export async function run(args = []) {
           if (remote.already_present && remote.existing_url !== remote.url) {
             // Left exactly as it was. Name the URL that is actually in place
             // rather than implying the remote now points at this project.
-            line("Gitvault", `remote '${remote.name}' already points at ${remote.existing_url} — left unchanged`);
+            line("Gitvault", `remote '${remote.name}' already points at ${remote.existing_url} — left unchanged (${remote.reason})`);
           } else if (remote.already_present) {
             line("Gitvault", `remote '${remote.name}' already set (${remote.url})`);
           } else {
-            line("Gitvault", `${remote.created_repository ? "initialized a repository and added" : "added"} remote '${remote.name}' -> ${remote.url}`);
+            // D1: `origin` when it was free, `run402` when it was already
+            // taken by something else — `remote.reason` says which happened.
+            line("Gitvault", `${remote.created_repository ? "initialized a repository and added" : "added"} remote '${remote.name}' -> ${remote.url} (${remote.reason})`);
           }
         }
       }

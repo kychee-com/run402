@@ -144,6 +144,22 @@ export interface GitvaultStatus {
   next_actions: { action: string; command?: string }[];
 }
 
+/**
+ * What {@link Gitvault.scaffoldRemote} did, and why (D1). `name` is `origin`
+ * when it was free (or a caller-supplied name), `run402` when `origin` was
+ * already taken by something else, or the caller's explicit `remote_name`.
+ * `reason` is a human-readable sentence naming exactly what happened —
+ * printed to stderr by every CLI caller, never synthesized twice.
+ */
+export interface GitvaultScaffoldRemoteResult {
+  name: string;
+  url: string;
+  created_repository: boolean;
+  already_present: boolean;
+  existing_url: string | null;
+  reason: string;
+}
+
 export interface GitvaultInitResult {
   repo_id: string;
   project_id: string;
@@ -151,7 +167,7 @@ export interface GitvaultInitResult {
   recovery_receipt: GitvaultCreationResult["recovery_receipt"];
   genesis_sha256: string;
   /** The git remote that was added, when a working tree was scaffolded. */
-  remote: { name: string; url: string } | null;
+  remote: GitvaultScaffoldRemoteResult | null;
   deduplicated: boolean;
   terminal_loss_statement: typeof GITVAULT_TERMINAL_LOSS_STATEMENT;
 }
@@ -442,16 +458,27 @@ export class Gitvault {
   }
 
   /**
-   * Add the `run402` git remote, initialising the repository if absent.
+   * Add the run402 git remote, initialising the repository if absent.
    *
-   * Deliberately additive: an existing `origin` is never modified or claimed,
-   * and an existing `run402` remote pointing elsewhere is reported rather than
-   * silently rewritten. No key material or allocation is required — the
-   * cold-start path gains no prompts or network dependencies from this.
+   * D1 — claim `origin` additively. LLM muscle memory is `git push origin
+   * main` from a billion training examples, and a side-remote name costs
+   * every agent a correction cycle, so when the repository has no `origin`
+   * remote ours BECOMES `origin`. An existing `origin` is NEVER modified or
+   * reclaimed — no matter what it points at, including a prior run of this
+   * exact call — so the fallback is `run402`, and when THAT is also taken by
+   * something else, nothing is added at all: the additive discipline holds
+   * for every remote name this method ever touches, not just `origin`.
+   *
+   * An explicit `remote_name` is a caller override (no current caller passes
+   * one) and skips the origin/run402 dance entirely — the caller already
+   * decided the name; this method still never modifies an existing remote
+   * under it.
+   *
+   * No key material or allocation is required — the cold-start path gains no
+   * prompts or network dependencies from this.
    */
-  async scaffoldRemote(options: { repo_dir: string; org_id: string; project_id: string; remote_name?: string; remote_url?: string }): Promise<{ name: string; url: string; created_repository: boolean; already_present: boolean; existing_url: string | null }> {
+  async scaffoldRemote(options: { repo_dir: string; org_id: string; project_id: string; remote_name?: string; remote_url?: string }): Promise<GitvaultScaffoldRemoteResult> {
     const { hardenedGit } = await this.#snapshot();
-    const name = options.remote_name ?? "run402";
     const url = options.remote_url ?? gitvaultRemoteUrl(options.org_id, options.project_id);
     let createdRepository = false;
     try {
@@ -460,15 +487,69 @@ export class Gitvault {
       await hardenedGit(options.repo_dir, ["init"]);
       createdRepository = true;
     }
-    let existing: string | null = null;
-    try {
-      existing = (await hardenedGit(options.repo_dir, ["remote", "get-url", name])).text().trim();
-    } catch {
-      existing = null;
+    const readRemote = async (name: string): Promise<string | null> => {
+      try {
+        const out = (await hardenedGit(options.repo_dir, ["remote", "get-url", name])).text().trim();
+        return out.length > 0 ? out : null;
+      } catch {
+        return null;
+      }
+    };
+    const add = async (name: string): Promise<void> => {
+      await hardenedGit(options.repo_dir, ["remote", "add", name, url]);
+    };
+
+    if (options.remote_name) {
+      const name = options.remote_name;
+      const existing = await readRemote(name);
+      if (existing) {
+        return {
+          name,
+          url,
+          created_repository: createdRepository,
+          already_present: true,
+          existing_url: existing,
+          reason: existing === url ? `'${name}' already points here — nothing to add` : `'${name}' points at ${existing} — left unchanged, nothing was added`,
+        };
+      }
+      await add(name);
+      return { name, url, created_repository: createdRepository, already_present: false, existing_url: null, reason: `no existing '${name}' remote — added` };
     }
-    if (existing) return { name, url, created_repository: createdRepository, already_present: true, existing_url: existing };
-    await hardenedGit(options.repo_dir, ["remote", "add", name, url]);
-    return { name, url, created_repository: createdRepository, already_present: false, existing_url: null };
+
+    // D1: claim `origin` when it is free.
+    const existingOrigin = await readRemote("origin");
+    if (!existingOrigin) {
+      await add("origin");
+      return { name: "origin", url, created_repository: createdRepository, already_present: false, existing_url: null, reason: "no existing 'origin' remote — claimed it" };
+    }
+    if (existingOrigin === url) {
+      // Idempotent: a prior scaffold already claimed `origin` for this exact vault.
+      return { name: "origin", url, created_repository: createdRepository, already_present: true, existing_url: existingOrigin, reason: "'origin' already points here — nothing to add" };
+    }
+    // `origin` is taken by something else — never touched. Fall back to `run402`.
+    const existingRun402 = await readRemote("run402");
+    if (existingRun402) {
+      return {
+        name: "run402",
+        url,
+        created_repository: createdRepository,
+        already_present: true,
+        existing_url: existingRun402,
+        reason:
+          existingRun402 === url
+            ? `'origin' points at ${existingOrigin} — 'run402' already points here, nothing to add`
+            : `'origin' points at ${existingOrigin}; 'run402' points at ${existingRun402} — neither remote was touched`,
+      };
+    }
+    await add("run402");
+    return {
+      name: "run402",
+      url,
+      created_repository: createdRepository,
+      already_present: false,
+      existing_url: null,
+      reason: `'origin' points at ${existingOrigin} — added as 'run402' instead`,
+    };
   }
 
   /**

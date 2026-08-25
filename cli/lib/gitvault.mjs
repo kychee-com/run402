@@ -268,7 +268,7 @@ async function init(args) {
         ? `vault ${result.repo_id} already existed — nothing was re-allocated and no new key material was minted`
         : `allocated vault ${result.repo_id} (genesis ${result.genesis_sha256})`,
     );
-    if (result.remote) console.error(`remote '${result.remote.name}' -> ${result.remote.url}`);
+    if (result.remote) console.error(`remote '${result.remote.name}' -> ${result.remote.url} (${result.remote.reason})`);
     if (remoteSkipped) console.error(`remote not added: ${remoteSkipped}`);
     // The recovery receipt is integrity data, not a secret, and it is worth
     // exactly as much as the number of copies you keep. It is persisted into
