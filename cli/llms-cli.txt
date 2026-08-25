@@ -1033,6 +1033,20 @@ SQL supports DDL + queries, returns JSON. REST uses PostgREST syntax (`select=`,
 
 User auth: password + Google OAuth. See "User Auth" section below.
 
+### repos — vault-only porcelain, zero deploy ceremony (design D8)
+
+`run402 repos` is the one-shot version of the vault-only track: provision + allocate the vault + scaffold the remote in a single command, and nothing deployed, ever, unless you separately choose to. CLI + OpenClaw only — **there is no MCP tool for this family**, the same "mutating verbs are CLI-only by design" law that keeps `gitvault`'s own mutating verbs off MCP (`create` mints a vault's one-shot recovery receipt; `delete` is irreversible).
+
+- `run402 repos create <name> [--org <org_id>] [--dir <path>] [--tier <tier>]` — provisions a project, ALLOCATES its vault immediately (not lazily — `create` is the moment the repo starts existing), and scaffolds the remote (`origin` when free, `run402` when taken — design D1). `--dir` defaults to `process.cwd()`; if it is not a git repository yet, one is created — `repos create` is a from-a-directory-to-a-hosted-repo verb by definition, the same way `gh repo create --source=.` is. No deploy plan, no release: nothing is deployed, and `run402 doctor` / `run402 gitvault status` show no deploy-related advisory for it (a vault-only project is a first-class shape, not a half-configured one).
+- `run402 repos list [--org <org_id>]` — the organization's vault-bearing projects: every project with an allocated vault, whether or not it has ever deployed. Cross-referenced client-side (list the org's projects, then read each one's gitvault status) — there is no bulk "vaults by org" read yet, so this is sequential per project; fine for a one-shot CLI call, not something to script in a hot loop over a very large org.
+- `run402 repos delete <project_id> [--force]` — deletes the project (database, functions, subdomains, mailbox, secrets — everything `projects delete` destroys). REFUSES while the vault holds any admitted generation unless `--force` is passed: the refusal names exactly what would be lost (generation count, encrypted-source byte count, genesis timestamp) before you have to decide. `--force` **is** the explicit confirmation here — there is no second `--confirm` to pass on top of it.
+
+```bash
+run402 repos create my-notes                  # project + vault + remote, nothing deployed
+run402 repos list --org org_1a2b3c
+run402 repos delete prj_xyz --force            # only once you've read what --force would lose
+```
+
 ### admin (platform-admin only, v1.57+)
 - `run402 admin lease-perpetual <organization_id> --enable | --disable` — toggle the organization-level escape hatch. When enabled, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline (`reactivated: true` in the response). Replaces the v1.56 `run402 projects pin` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57).
 - `run402 admin archive <project_id> [--reason "..."]` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
@@ -1188,39 +1202,55 @@ What an escalation is not: it is never mirrored into the events feed or echoed i
 
 - `run402 gitvault init [--project <id>] [--org <org_id>] [--git-remote] [--no-remote]`
 - `run402 gitvault status [--project <id>] [--repo <repo_id>] [--refs]`
-- `run402 gitvault push [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint]`
+- `run402 gitvault snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint]`
 - `run402 gitvault policy <required|grandfathered> [--project <id>] [--repo <repo_id>] [--reason <why>]`
 - `run402 gitvault compact [--project <id>] [--repo <repo_id>]`
-- `run402 gitvault prune [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault prune [--project <id>] [--repo <repo_id>] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]`
 - `run402 gitvault verify [--project <id>] [--repo <repo_id>] [--budget <n>]`
 
 Run these from inside the git working tree — the repository is `process.cwd()`.
 
+**`gitvault push` is now `gitvault snapshot`** (repo-first-onramp design D5). One verb per operation: `push` used to mean two different things — the capture lane, and `git push`. Now `push` means exactly one thing everywhere — an ordinary `git push` — and the capture lane is `snapshot`. `run402 gitvault push` still works as a deprecation-warning alias for exactly one release (it prints the warning to stderr and calls `snapshot` underneath), then is removed.
+
 | Subcommand | What it does |
 |---|---|
-| `init` | ALLOCATE the project's vault. The one step that mints key material on this machine and emits the one-shot recovery receipt, which is why it is an explicit verb and not a side effect of `run402 init`. Idempotent — an existing vault comes back with `deduplicated: true` and nothing is re-minted. Adds the `run402` remote too when the current directory is already a repository. |
-| `status` | What this machine and the control plane each believe about the vault: allocation, policy, whether this keystore can sign, the authenticated and materialized pins, any pending unvaulted-override journals, the local `run402` remote, and where the keystore lives. Never reports key material. `--refs` additionally reports the vault's ref map and HEAD target — that is a VERIFICATION (it walks the head chain and advances the local materialized pin), which is why plain `status`, an observation, leaves it out. |
-| `policy` | Set the activation policy: `required` (a deploy must present a vaulted capture) or `grandfathered` (it need not). Owner + step-up, audited. `grandfathered` is the documented way out of a deploy the vault gate refused, and needs `--reason`; returning to `required` does not. |
-| `push` | Capture the working tree and publish it. This is NOT gated on a deploy — a vault-only project pushes for months without one. Before reporting a push as landed the SDK compares finalization receipts against the expected manifest and reads the admitted head back from storage; a 200 alone is never enough. |
+| `init` | ALLOCATE the project's vault. The one step that mints key material on this machine and emits the one-shot recovery receipt, which is why it is an explicit verb and not a side effect of `run402 init`. Idempotent — an existing vault comes back with `deduplicated: true` and nothing is re-minted. Adds the `run402` remote too when the current directory is already a repository (see "Which remote name" below). |
+| `status` | What this machine and the control plane each believe about the vault: allocation, policy, whether this keystore can sign, the authenticated and materialized pins, any pending unvaulted-override journals, the local remote, and where the keystore lives. Never reports key material. `--refs` additionally reports the vault's ref map and HEAD target — that is a VERIFICATION (it walks the head chain and advances the local materialized pin), which is why plain `status`, an observation, leaves it out. |
+| `policy` | Set the activation policy: `required` (a deploy must present a vaulted capture) or `grandfathered` (it need not). Owner + step-up, audited. `grandfathered` is the documented way out of a deploy the vault gate refused, and needs `--reason`; returning to `required` does not. Allocating a vault does **not** set this — see "Deploying a vaulted project" below. |
+| `snapshot` | Capture the working tree and publish it. This is NOT gated on a deploy — a vault-only project snapshots for months without one. Against a project with no vault yet, this ALLOCATES one inline (the same six-stage creation as `init`) before publishing — one command, no prior `gitvault init` required (see "Lazy allocation" below). Before reporting a snapshot as landed the SDK compares finalization receipts against the expected manifest and reads the admitted head back from storage; a 200 alone is never enough. |
 | `compact` | Publish a checkpoint covering the canonical refs, every root unexpired at the cutoff, and the HEAD target, under a maintenance lease so a concurrent cycle cannot race it. |
-| `prune` | Report which retention roots have passed their retention window. **Dry run in V0** — see below. |
+| `prune` | Two-phase, because the protocol is: plans locally by default (chain walk + GC root set, prints a signed `intent_core`, deletes nothing), submits only with `--submit --intent-core <path> --verifier-receipt <path>` — see below. |
 | `verify` | Verify the head chain from the authenticated pin up to the newest listed generation. Fails closed on a regression, a gap, or a transition descriptor this client cannot validate. |
 
-**Options.** `--project <id>` picks the project whose vault to act on (defaults to the active project, and `RUN402_PROJECT_ID` is honoured the same way it is everywhere else); `--repo <repo_id>` addresses the vault directly by id, skipping project lookup — the cold-restart path for an agent that knows its `repo_id` and has no local state. `--org <org_id>` names the owning organization for `init` (resolved from the project when omitted); `--git-remote` lets `init` `git init` a directory that is not a repository yet, and `--no-remote` allocates the vault while touching no git configuration at all. `--reason <why>` records why a `policy` change happened and is required for `grandfathered`. `--refs` makes `status` materialize and report the ref map. `--message <text>` is the commit message for the synthetic commit a dirty tree produces on `push` (a clean tree pushes HEAD itself and uses no message); `--checkpoint` forces the checkpoint-bearing form regardless of delta size. `--budget <n>` caps how many heads `verify` checks in one call — the verified prefix is persisted, so a budget-exceeded run resumes where it stopped instead of restarting. `--json` is a no-op: stdout is already JSON. Per the pipe contract, every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 gitvault status | jq` stays clean.
+**Options.** `--project <id>` picks the project whose vault to act on (defaults to the active project, and `RUN402_PROJECT_ID` is honoured the same way it is everywhere else); `--repo <repo_id>` addresses the vault directly by id, skipping project lookup — the cold-restart path for an agent that knows its `repo_id` and has no local state. `--org <org_id>` names the owning organization for `init` (resolved from the project when omitted); `--git-remote` lets `init` `git init` a directory that is not a repository yet, and `--no-remote` allocates the vault while touching no git configuration at all. `--reason <why>` records why a `policy` change happened and is required for `grandfathered`. `--refs` makes `status` materialize and report the ref map. `--message <text>` is the commit message for the synthetic commit a dirty tree produces on `snapshot` (a clean tree publishes HEAD itself and uses no message); `--checkpoint` forces the checkpoint-bearing form regardless of delta size. `--budget <n>` caps how many heads `verify` checks in one call — the verified prefix is persisted, so a budget-exceeded run resumes where it stopped instead of restarting. `--submit`, `--intent-core <path>`, `--verifier-receipt <path>`, and `--wait` belong to `prune`'s submit phase — see below. `--json` is a no-op: stdout is already JSON. Per the pipe contract, every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 gitvault status | jq` stays clean.
 
-**Getting started.** `run402 init` adds a `run402` remote (`run402::<org_id>/<project_id>`) by default when the current directory is already a git repository. When it is not, `run402 init --git-remote` runs `git init` first and then adds the remote. It needs a project selected — `run402 projects use <project_id>` or `RUN402_PROJECT_ID` — and says so in the summary's `gitvault_skipped` when none is. `init` scaffolds the remote and nothing else; **allocating the vault is `run402 gitvault init`**, a separate step because it is the one that mints key material and prints a recovery receipt. The remote is served by `git-remote-run402`, which ships in the same `run402` CLI package, so plain git works against the vault:
+**Which remote name — `origin`, additively (design D1).** When the current directory has no `origin` remote yet, the scaffold (`run402 init`, `gitvault init`, `projects provision` inside a repo, `up`, and `repos create`) names the run402 remote `origin` — `git push origin main` just works, no side-remote name to remember. An existing `origin` is **never** touched or reclaimed, under any circumstance: when it is already taken by something else, the run402 remote is added as `run402` instead, and the response's `remote.reason` says which happened and why. Add a GitHub (or any other) remote later with `git remote add github …`; nothing here prevents a dual-remote setup.
+
+**The vault-only track — the fastest path there is.** No deploy, no manifest, nothing beyond a hosted, host-blind-encrypted git remote:
 
 ```bash
-run402 projects use prj_1a2b3c                # the scaffold needs a project
-run402 init                                   # provision + add the run402 remote
-run402 gitvault init                          # allocate the vault (mints key material)
-run402 gitvault push --message "wip: refactor the parser"
-git push run402 main                          # ...or push with git itself
+run402 init                                   # once per machine
+git remote add origin run402::<org_id>/<project_id>
+git push -u origin main                       # allocates the vault on first push (see below), publishes
+```
+
+Or skip naming the address by hand entirely — `run402 repos create <name>` does provision + allocate + scaffold in one call (see "repos — vault-only porcelain" below).
+
+**One thing to know before you rely on this: V0 is single-principal.** Exactly one machine (this keystore) can open the vault until human envelopes ship — see "Terminal loss" below. This is stated plainly, not buried: back up the keystore directory the moment you have something in the vault worth keeping.
+
+**Lazy allocation on first push (design D2).** `git push origin main` and `run402 gitvault snapshot` both allocate the vault inline — the same six-stage creation `gitvault init` runs explicitly — when the project has none yet, printing the one-shot recovery receipt and keystore path to stderr the moment that happens. There is still no deploy ceremony and nothing is gated: this is allocation, not activation. The explicit `run402 gitvault init` verb remains for scripts and for anyone who wants the ceremonial moment (and its receipt lands in the same JSON stdout payload rather than stderr).
+
+```bash
+run402 projects use prj_1a2b3c                # the scaffold needs a project selected
+run402 init                                   # provision + add the origin remote (D1)
+run402 gitvault init                          # allocate explicitly (optional — snapshot/push would do it lazily)
+run402 gitvault snapshot --message "wip: refactor the parser"
+git push origin main                          # ...or push with git itself; allocates on first push too
 run402 gitvault status --refs
 run402 gitvault verify --budget 500
 ```
 
-**`gitvault push` is the CAPTURE lane, not a whole-repository backup.** It publishes the protocol-owned `refs/run402/deploys/latest` plus the HEAD target, because a dirty tree captures as a synthetic commit that sits on no branch, and moving `refs/heads/main` onto it would rewrite your branch on every dirty push. Your own branches and tags reach the vault through `git push run402 <branch>`.
+**`gitvault snapshot` is the CAPTURE lane, not a whole-repository backup.** It publishes the protocol-owned `refs/run402/deploys/latest` plus the HEAD target, because a dirty tree captures as a synthetic commit that sits on no branch, and moving `refs/heads/main` onto it would rewrite your branch on every dirty push. Your own branches and tags reach the vault through `git push origin <branch>`.
 
 **Restoring: `git clone run402::<org_id>/<project_id> <dir>` works**, and so does the two-step form when you want a bare mirror:
 
@@ -1240,7 +1270,9 @@ The helper resolves the repository from the `GIT_DIR` git hands it, never from t
 
 **Back up the keystore directory, and it prints its own path.** `run402 gitvault status` reports it as `keystore.root` and echoes it under the terminal-loss statement; `run402 gitvault init` prints it too. It is `~/.config/run402/gitvault` for the default wallet and `~/.config/run402/profiles/<wallet>/gitvault` for a named one, so read the printed path rather than assuming. Inside are `identity.json` (the principal keys), `repos/<repo_id>.json` (the per-vault key), `receipts/<repo_id>.recovery_receipt.json`, `journal/`, and `audit.log`. The recovery receipt `gitvault init` prints once is an integrity anchor, not a decryption key: it proves the vault you are served is the one you created, and it can decrypt nothing. It is not a secret — the more copies the better.
 
-**Deploying a vaulted project.** Allocating a vault sets the project's `gitvault_policy` to `required`, and from then on a deploy must present a vaulted capture at commit. `run402 deploy apply` produces one automatically: it snapshots your work tree, publishes the capture to the vault, exchanges the capture receipt for a single-use activation token, and commits with it. Nothing to pass, no extra command — a `required` project deploys the same way any other one does.
+**The backup reminder gets louder as the vault gets more valuable (design D7).** A brand-new vault gets a single quiet stderr line at allocation — a banner on an empty vault just teaches you to ignore banners. Once the vault crosses **any** of ≥10 admitted generations, ≥10 MB of encrypted source, or ≥14 days since genesis, `run402 gitvault status` and `run402 doctor` carry a STANDING `terminal_loss_risk` warning instead. Stated honestly: nothing but a **second principal** — another keystore, or later a human envelope — demonstrably able to open the vault clears it. There is no attestation command and no `--i-backed-it-up` flag, because V0 cannot verify either one is true; the warning stands until you actually add a second principal.
+
+**Deploying a vaulted project.** Allocating a vault does **not** change the project's deploy policy (design D3) — `gitvault_policy` stays unset until you set it explicitly. The first `deploy apply` against a vaulted, ungated project proceeds ungated (nothing is ever blocked or interactively prompted on this) and its result carries a typed `next_actions` entry offering `run402 gitvault policy required`; every later ungated deploy of that project carries a `warnings[]` entry naming the drift, until the policy is set either way — `required` or an explicit, reasoned `grandfathered`. Once `gitvault_policy` is `required`, a deploy must present a vaulted capture at commit, and `run402 deploy apply` produces one automatically: it snapshots your work tree, publishes the capture to the vault, exchanges the capture receipt for a single-use activation token, and commits with it. Nothing to pass, no extra command — a `required` project deploys the same way any other one does.
 
 ```bash
 run402 deploy apply --manifest run402.config.json
@@ -1258,7 +1290,7 @@ run402 deploy apply --manifest run402.config.json
 run402 gitvault policy required                # when the keystore is back
 ```
 
-Grandfathering is an owner action, needs step-up, is audited, and leaves a `run402 doctor` warning until you return the project to `required`. Vaulting your source is unaffected either way: `run402 gitvault push` and `git push run402 <branch>` are never gated on a deploy.
+Grandfathering is an owner action, needs step-up, is audited, and leaves a `run402 doctor` warning until you return the project to `required`. Vaulting your source is unaffected either way: `run402 gitvault snapshot` and `git push origin <branch>` are never gated on a deploy.
 
 **`SNAPSHOT_MOVED_DURING_DEPLOY` — the deploy refused because your tree changed under it.** The client digests the captured file set at capture time and re-derives it after the artifacts are collected, before the plan commits. If a captured file was modified, added, or removed in between, the deploy stops and names the paths rather than activating artifacts the vaulted snapshot does not describe. This code is **client-local**: it never crosses the wire, so it will not appear in the protocol's error registry.
 
@@ -1269,7 +1301,7 @@ refusing to activate artifacts the vaulted snapshot 4f2a… does not describe
 
 Redeploy — the next run captures the tree as it is now. The client deliberately does not re-capture and continue for you: a second capture would publish a snapshot whose relationship to the artifacts already collected is exactly the thing in doubt.
 
-**Build output is outside this claim, deliberately.** The captured set is tracked files plus untracked-but-not-ignored ones — the same set `gitvault push` captures. Gitignored paths are not in it, so a build that rewrites `dist/` between capture and commit does **not** trip the refusal; if it did, no project with a build step could ever deploy. The guarantee the vault gives you is that *the captured source did not change while the artifacts were produced* — **not** that the artifacts are a reproducible function of that source. Nothing ties a gitignored bundle back to the `src/` it came from.
+**Build output is outside this claim, deliberately.** The captured set is tracked files plus untracked-but-not-ignored ones — the same set `gitvault snapshot` captures. Gitignored paths are not in it, so a build that rewrites `dist/` between capture and commit does **not** trip the refusal; if it did, no project with a build step could ever deploy. The guarantee the vault gives you is that *the captured source did not change while the artifacts were produced* — **not** that the artifacts are a reproducible function of that source. Nothing ties a gitignored bundle back to the `src/` it came from.
 
 **Cost.** There is no separate gitvault price. A vault's bytes count against the same organization-pooled `storage_bytes` budget your projects already share, charged once per unique object, with a 64 KiB per-object accounting floor.
 

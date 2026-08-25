@@ -557,7 +557,10 @@ export async function run(args = []) {
   // Purely LOCAL git. No vault is allocated and no key material is written
   // here — the spec is explicit that neither exists until first capture, so the
   // cold-start path gains no prompt and no new failure mode. Allocation happens
-  // on the first `run402 gitvault push` (or deploy).
+  // on the first `git push origin <branch>` or `run402 gitvault snapshot` (D2,
+  // repo-first-onramp) — NOT on deploy: `applyWithGitvault` only ever reads an
+  // EXISTING vault's policy (D3) and never allocates one that does not exist,
+  // so a project with no vault deploys exactly as it always did.
   //
   // Adding the remote is the DEFAULT inside a repository that already exists,
   // because it is pure addition: `origin` is never modified or claimed, no file

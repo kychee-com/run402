@@ -52,6 +52,21 @@ For app manifests with `verify.http[]`, `up` runs HTTP checks after deploy. Fres
 
 For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeScript/JavaScript configs execute local code. Use `--check` for local-only import/normalize/file validation, `--print-spec` to inspect the normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan <plan_id>` to apply only that reviewed intent. Warning flags are not used with `--require-plan`; the reviewed plan binds the exact warning/destructive set. Run402 Core skips Cloud allowance/tier prerequisites and fails closed when no Core project is selected.
 
+### Vault-only repos (zero deploy ceremony)
+
+```bash
+run402 init                                   # once per machine
+git remote add origin run402::<org_id>/<project_id>
+git push -u origin main                       # allocates the vault on first push, publishes
+
+# or, one call: provision + allocate + scaffold, nothing deployed
+run402 repos create my-notes
+run402 repos list --org org_1a2b3c
+run402 repos delete prj_xyz --force           # refuses without --force while the vault holds generations
+```
+
+A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. `repos create|list|delete` and `gitvault`'s mutating verbs (`init`, `snapshot`, `policy`, `compact`, `prune`) are CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete). See `run402 gitvault --help` and `run402 repos --help` for the full surface, and the CLI reference's `gitvault` / `repos` sections for the terminal-loss statement and the progressive backup warning.
+
 ### Allowance
 
 ```bash

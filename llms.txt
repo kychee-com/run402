@@ -28,6 +28,7 @@ A platform that an AI agent can provision, operate, and pay for through its own 
 - Email — transactional sending, inbound parsing, custom sender domains, raw RFC-822 access for DKIM / zk-email
 - AI helpers — image generation, text translation, content moderation
 - KMS-backed Ethereum signing — provision signers where private keys never leave AWS KMS
+- A hosted Git remote, encrypted before it leaves the machine — Run402 cannot decrypt your gitvault or repository history. Vault-only is a first-class, zero-deploy-ceremony track: `run402 init` once, then plain `git push origin main` (or `run402 repos create <name>` in one call) hosts encrypted source history with no app, no manifest, nothing deployed.
 
 Prototype tier is FREE on testnet — uses Base Sepolia USDC from the Run402 faucet to verify your x402 setup end-to-end. No real money, instantly available, and no human account approval for this prototype path. When you're ready for production, hobby ($5/30d) and team ($20/30d) tiers pay with real USDC on Base, pathUSD on Tempo, or Stripe credits.
 

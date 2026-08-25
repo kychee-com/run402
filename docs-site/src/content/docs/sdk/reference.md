@@ -1951,18 +1951,30 @@ acquireMaintenanceLease(request): Promise<GitvaultMaintenanceLease>
 Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_dir?, repo_id?, project_id? }`):
 
 ```
-init({ repo_dir, project_id, ... }): Promise<GitvaultCreationResult>    // allocate + genesis; prints the one-shot recovery receipt
-push({ snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>
+init({ repo_dir, project_id, ... }): Promise<GitvaultInitResult>        // allocate + genesis; prints the one-shot recovery receipt
+openOrCreate({ project_id, org_id?, repo_dir?, ... }): Promise<GitvaultOpenOrCreateResult>  // D2: open, or allocate-then-open when org_id is supplied and the project has no vault yet — byte-identical to open() without org_id
+push({ org_id?, onVaultCreated?, snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>  // composes openOrCreate internally when org_id is passed (D2 lazy allocation)
 status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target
 compact(opts?): Promise<GitvaultCompactResult>
 prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
 verify(opts?): Promise<GitvaultVerifiedState>
 deploy(opts): Promise<GitvaultDeployResult>                             // the push-gated deploy (raw; takes an injected lane — see applyWithGitvault below)
 restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives; index-packs objects and leaves ref creation to the caller
-scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<{ name, url, created_repository, already_present, existing_url }>
+scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<GitvaultScaffoldRemoteResult>  // { name, url, created_repository, already_present, existing_url, reason } — D1: claims `origin` when free, falls back to `run402` when taken, never touches an existing remote either way
 open(opts?): Promise<GitvaultHandle>                                    // the raw protocol object, for ref transactions or repair
 drainOverrides(opts?): Promise<GitvaultOverrideDrainReport>
 ```
+
+**D7 — the progressive terminal-loss warning, as pure functions.** `status()` folds these into `warnings[]` automatically (a `terminal_loss_risk` entry once tripped), but they are exported for any caller building its own surface:
+
+```
+GITVAULT_LOSS_WARNING_THRESHOLDS: { generations: 10, source_bytes: 10 * 1024 * 1024, days_since_genesis: 14 }  // shipped defaults, tunable in this one place
+gitvaultLossWarningTrip(record, now?): { generations, source_bytes, days_since_genesis }  // which composite metric(s) crossed their threshold
+gitvaultLossWarningTripped(trip): boolean                               // any of the three
+gitvaultLossWarningMessage(trip): string                                // names what tripped; states the second-principal resolution honestly
+```
+
+There is no companion "resolved" check — V0-A cannot detect a second principal (another keystore, or later a human envelope) demonstrably able to open the vault, so nothing here ever un-trips a standing warning.
 
 ```ts
 import { run402 } from "@run402/sdk/node";
@@ -2002,7 +2014,9 @@ if (gitvault?.outcome === "DEPLOYED_AND_VAULTED") {
 }
 ```
 
-`mode` says what happened about the vault: `{ kind: "vaulted" }`, `{ kind: "grandfathered" }`, or `{ kind: "none" }`. For anything but `vaulted` this is `apply()` and nothing else — no capture, no token, no added refusal, and the only added cost is the single policy read that determined the project is not `required`. `gitvault` is `null` on those paths and carries the five-outcome envelope on the vaulted one.
+`mode` says what happened about the vault: `{ kind: "vaulted" }`, `{ kind: "grandfathered" }`, `{ kind: "ungated" }`, or `{ kind: "none" }`. For anything but `vaulted` this is `apply()` and nothing else — no capture, no token, no added refusal, and the only added cost is the single policy read that determined the project is not `required`. `gitvault` is `null` on those paths and carries the five-outcome envelope on the vaulted one.
+
+**`ungated` is the ordinary shape for a project whose vault was just allocated (design D3).** Allocating a vault no longer sets `gitvault_policy` — allocation and activation-gating are separate acts. On this path the plain deploy still runs untouched, but `deploy.next_actions` gains a `gitvault_policy_required` entry (`{ type, command: "run402 gitvault policy required", why }`) and `deploy.warnings` gains a `GITVAULT_POLICY_UNSET` entry — both attached on EVERY such deploy, not just a synthesized "first" one, since the client holds no cross-machine state to distinguish first-from-Nth. Neither ever blocks or prompts. `gitvaultPolicyRequiredNextAction(repoId)` and `gitvaultUngatedWarning(repoId)` (`@run402/sdk/node`) are the exported builders, for a caller composing its own lane.
 
 **A vaulted apply never auto-retries.** Each attempt plans a new operation, and an activation token is minted for exactly one; retrying under a fresh capture would paper over a refusal (revoked, expired, bound elsewhere) that is the platform telling you something true. `maxRetries` is forced to 0 on this path.
 
@@ -2022,7 +2036,7 @@ The captured set is tracked plus untracked-but-not-ignored — so a build that r
 
 **`resolveGitInvocationRepo(env?, cwd?)`** (Node) resolves — and proves — the repository git invoked a remote helper for, from `GIT_DIR` rather than `process.cwd()`, and throws `GIT_INVOCATION_REPO_UNRESOLVED` rather than guessing. Any consumer that writes git objects on git's behalf should route through it: during `git clone`, cwd is the directory clone was run FROM, which is routinely an unrelated repository.
 
-**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up the keystore directory `status()` reports as `keystore.root` — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key.
+**Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `status()` carries the statement verbatim in `terminal_loss_statement` / `terminal_loss_detail`. The vault protects source history from host-side loss while a principal keystore survives. Back up the keystore directory `status()` reports as `keystore.root` — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key. The prominence of this reminder is progressive (design D7): quiet at genesis, escalating to a standing `terminal_loss_risk` entry in `status().warnings` once the composite trigger crosses — see the pure `gitvaultLossWarning*` helpers above.
 
 `r402s-verify` is the deliberate exception to "all protocol logic lives in the SDK": an independent second lineage that must NOT share implementation code with this namespace, because differential verification is its entire purpose.
 

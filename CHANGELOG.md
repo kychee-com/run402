@@ -2,6 +2,51 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased — repo-first onramp (client lockstep, Rung 1)
+
+- **New: `run402 repos create|list|delete`** — vault-only porcelain, CLI +
+  OpenClaw only (no MCP tool for this family, by design). `create <name>`
+  provisions a project, allocates its vault immediately, and scaffolds the
+  git remote, with zero deploy ceremony; `list` shows an org's vault-bearing
+  projects; `delete` refuses while the vault holds admitted generations
+  unless `--force` is passed, after naming exactly what would be lost.
+- **`gitvault push` renamed to `gitvault snapshot`.** One verb per operation:
+  `push` now means exactly one thing everywhere — an ordinary `git push`.
+  `run402 gitvault push` remains a deprecation-warning-on-stderr alias for
+  exactly one release, then is removed.
+- **The remote scaffold claims `origin` additively.** `run402 init`,
+  `gitvault init`, `projects provision` (inside a repo), `run402 up`, and
+  `run402 repos create` now name the run402 remote `origin` when the
+  repository has none yet — `git push origin main` works with no
+  run402-specific ceremony. An existing `origin` is never touched or
+  reclaimed; the fallback is `run402` when it is already taken.
+- **Lazy vault allocation on first push.** `git push origin <branch>` and
+  `run402 gitvault snapshot` now allocate an unallocated vault inline (the
+  same six-stage creation `gitvault init` runs explicitly), printing the
+  one-shot recovery receipt and keystore path to stderr the moment that
+  happens. The explicit `run402 gitvault init` verb is unchanged.
+- **BREAKING (deploy result shape): allocating a vault no longer sets
+  `gitvault_policy: required`.** The first `deploy apply` against a vaulted,
+  ungated project now proceeds ungated and carries a typed `next_actions`
+  entry offering `run402 gitvault policy required`; every later ungated
+  deploy of that project carries a `warnings[]` entry naming the drift,
+  until the policy is set either way. No deploy is ever blocked or
+  interactively prompted on this.
+- **`projects provision` folds in the remote scaffold** when the working
+  directory is already a git repository (additive only — no `--git-remote`
+  opt-in exists here, so a non-repository directory is left untouched).
+  `run402 up` gained `--repo-only` (provision + scaffold + first push, no
+  deploy) and now composes `git init` + provision + remote scaffold + first
+  push ahead of an ordinary apply.
+- **New, progressive doctor/status warning for terminal loss.** A vault gets
+  a single quiet note at genesis; once it crosses any of ≥10 admitted
+  generations, ≥10 MB of encrypted source, or ≥14 days since genesis,
+  `run402 gitvault status` and `run402 doctor` carry a standing
+  `terminal_loss_risk` warning. Only a second principal (another keystore,
+  or later a human envelope) demonstrably able to open the vault clears it
+  — there is no attestation command or flag, because V0 cannot verify one
+  is true.
+
 ## Unreleased — JSON is always the default
 
 - **BREAKING — `run402 errors` emits JSON by default.** Every output path (list,

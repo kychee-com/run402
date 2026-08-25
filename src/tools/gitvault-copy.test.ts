@@ -49,6 +49,16 @@ const DOC_SURFACES = {
   "cli/lib/gitvault.mjs": read("../../cli/lib/gitvault.mjs"),
   "openclaw/SKILL.md": read("../../openclaw/SKILL.md"),
   "documentation.md": read("../../documentation.md"),
+  // repo-first-onramp (task 2.8 doc sweep): the vault-only track's new
+  // surfaces. `cli/lib/repos.mjs` prints the SDK's own terminal-loss text
+  // verbatim at runtime rather than hardcoding it, but its HELP string is
+  // still user-facing copy about the vault and belongs under this gate.
+  "cli/README.md": read("../../cli/README.md"),
+  "cli/lib/repos.mjs": read("../../cli/lib/repos.mjs"),
+  "cli/lib/gitvault-scaffold.mjs": read("../../cli/lib/gitvault-scaffold.mjs"),
+  // llms.txt gained its first-ever gitvault mention in this change (task 2.8)
+  // — a pitch-level bullet, so it belongs under the gate from day one.
+  "llms.txt": read("../../llms.txt"),
 } as const;
 
 const GITVAULT_TOOLS = ["get_gitvault_status", "list_gitvault_heads", "verify_gitvault"] as const;

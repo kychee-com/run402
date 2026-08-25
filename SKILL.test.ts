@@ -113,6 +113,11 @@ describe("SKILL.md (root, MCP-based)", () => {
       { pattern: /"secrets"\s*:\s*\{\s*"set"\s*:/, reason: "deploy specs must not carry secret values; use secrets.require" },
       { pattern: /\breplace_all\b/, reason: "secrets.replace_all is not representable in value-free deploy specs" },
       { pattern: /\bpin_project\b/, reason: "pin_project was removed in v1.57; use admin_set_lease_perpetual" },
+      // repo-first-onramp D5 (task 2.5): same regression the OpenClaw skill
+      // guards against — the root skill's body also shows raw `run402
+      // gitvault …` shell commands (mutating verbs are CLI-only, so even
+      // the MCP-facing skill has to teach them as shell commands).
+      { pattern: /\brun402 gitvault push --/, reason: "`gitvault push` was renamed to `gitvault snapshot` (design D5); `push` is a one-release deprecation alias, not the taught spelling" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {
@@ -206,6 +211,12 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       "run402 ci revoke",
       "run402 assets put",
       "run402 tier set",
+      // repo-first-onramp: D5's rename (task 2.5) and the vault-only
+      // porcelain (task 2.6) — both CLI/OpenClaw-only surfaces.
+      "run402 gitvault snapshot",
+      "run402 repos create",
+      "run402 repos list",
+      "run402 repos delete",
     ];
     for (const verb of verbs) {
       it(`references CLI verb: ${verb}`, () => {
@@ -225,6 +236,12 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       { pattern: /"secrets"\s*:\s*\{\s*"set"\s*:/, reason: "deploy specs must not carry secret values; use secrets.require" },
       { pattern: /\breplace_all\b/, reason: "secrets.replace_all is not representable in value-free deploy specs" },
       { pattern: /\brun402 projects pin\b/, reason: "`run402 projects pin` was removed in v1.57; use `run402 admin lease-perpetual`" },
+      // repo-first-onramp D5 (task 2.5): the capture lane's canonical
+      // spelling is `snapshot`. `push` survives as a bare mention in the
+      // deprecation-notice sentence itself (never with a flag, since that
+      // would be teaching it as the way to invoke it) — this pattern only
+      // catches the OLD usage-example shape reappearing.
+      { pattern: /\brun402 gitvault push --/, reason: "`gitvault push` was renamed to `gitvault snapshot` (design D5); `push` is a one-release deprecation alias, not the taught spelling" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {

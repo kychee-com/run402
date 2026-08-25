@@ -1121,15 +1121,36 @@ Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wal
 2. **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, enforced and auditable — not cryptographic against the party enforcing it.
 3. **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
 
-Run every verb from inside the git working tree.
+**The vault-only track — three lines, muscle memory intact:**
+
+```bash
+run402 init                                   # once per machine
+git remote add origin run402::<org_id>/<project_id>
+git push -u origin main                       # allocates the vault on first push, publishes
+```
+
+`origin` is claimed additively: when the repository has no `origin` yet, the scaffold names ours `origin`, so `git push origin main` just works. An existing `origin` is never touched; the fallback is `run402` instead. **State this plainly if the user asks: V0 is single-principal** — exactly one machine can open the vault until human envelopes ship.
+
+**`run402 repos` — the same track, one call.** No address to remember, no separate `gitvault init`:
+
+```bash
+run402 repos create my-notes                  # provision + allocate the vault + scaffold the remote
+run402 repos list --org org_1a2b3c            # the org's vault-bearing projects
+run402 repos delete prj_xyz --force           # refuses without --force while the vault holds generations,
+                                               # naming what would be lost first
+```
+
+`repos create|list|delete` are CLI/OpenClaw-only — no MCP tool exists or will exist for this family, the same law that keeps `gitvault`'s own mutating verbs off MCP (a `create` mints a one-shot recovery receipt; `delete` is irreversible).
+
+Run every other verb from inside the git working tree.
 
 ```bash
 run402 projects use prj_1a2b3c                # the scaffold needs a project selected
-run402 init                                   # inside a repo: adds the `run402` remote (run402::<org_id>/<project_id>)
+run402 init                                   # inside a repo: adds the origin remote (run402::<org_id>/<project_id>)
                                               # not a repo yet? `run402 init --git-remote` creates one first
-run402 gitvault init                          # ALLOCATE the vault (mints key material + a recovery receipt)
-run402 gitvault push --message "wip: refactor the parser"
-git push run402 main                          # ...push your own branches, via git-remote-run402
+run402 gitvault init                          # ALLOCATE the vault explicitly (mints key material + a recovery receipt)
+run402 gitvault snapshot --message "wip: refactor the parser"
+git push origin main                          # ...push your own branches, via git-remote-run402
 git clone run402::<org_id>/<project_id> restored   # ...and restore anywhere with plain git
 run402 gitvault status                        # what this machine and the control plane each believe
 run402 gitvault verify --budget 500           # verify the head chain from your authenticated pin
@@ -1139,11 +1160,13 @@ run402 gitvault prune                         # plans; add --submit --intent-cor
 
 `--project <id>` picks the vault's project; `--repo <repo_id>` addresses the vault directly and needs no project lookup — that is the cold-restart path for an agent with no local state. Stdout is JSON; every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 gitvault status | jq` stays clean.
 
-Allocation is its own verb: `run402 gitvault init`. `run402 init` scaffolds the git remote and nothing else — it needs a project selected (`run402 projects use <project_id>`, or `RUN402_PROJECT_ID`) and says so in its summary when none is. Allocation is separate because it is the step that mints key material on this machine and prints a one-shot recovery receipt; it is idempotent, so an existing vault comes back `deduplicated: true`. **Allocating gates the project's deploys**: `gitvault_policy` becomes `required`, and this CLI's deploy lane does not yet produce the vaulted capture a commit then needs, so `run402 deploy apply` is refused `409 GITVAULT_CLIENT_UPGRADE_REQUIRED` until either that lands or the project is un-gated with `run402 gitvault policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible). Capturing source is never gated on a deploy. Before `push` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `verify` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — the verified prefix persists, so run it again to resume).
+Allocation is its own verb: `run402 gitvault init`. `run402 init` scaffolds the git remote and nothing else — it needs a project selected (`run402 projects use <project_id>`, or `RUN402_PROJECT_ID`) and says so in its summary when none is. Allocation is separate because it is the step that mints key material on this machine and prints a one-shot recovery receipt; it is idempotent, so an existing vault comes back `deduplicated: true` — and `git push` / `run402 gitvault snapshot` allocate it the SAME way, lazily, on first use, printing the receipt to stderr. **Allocating does NOT gate the project's deploys.** `gitvault_policy` stays unset. The first `deploy apply` against a vaulted, ungated project proceeds ungated — never blocked, never an interactive prompt — and its result carries a typed `next_actions` entry offering `run402 gitvault policy required`; every later ungated deploy of that project carries a `warnings[]` entry naming the drift, until the policy is set either way. Once a project's policy IS `required`, un-gate it with `run402 gitvault policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible). Capturing source is never gated on a deploy, either way. Before `snapshot` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. `verify` fails CLOSED and the refusal is the answer: `GENERATION_REGRESSION` (rollback), `CHAIN_BROKEN` (gap), `UPGRADE_REQUIRED` (a transition this client cannot validate), `VERIFICATION_BUDGET_EXCEEDED` (a pause, not a failure — the verified prefix persists, so run it again to resume).
 
-**A vault-only project is first-class.** `run402 init`, then `git push run402 …`, then compact / prune / verify, and never a deploy. Nothing in allocation, admission, retention, or maintenance requires a deployment to exist. One consequence to state plainly if a user asks: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty — and so is the custodial restore path.
+`run402 gitvault push` still works, one release, printing a deprecation warning — it is the OLD name for `snapshot`. Prefer `snapshot`: `push` now means exactly one thing everywhere, an ordinary `git push`.
 
-**Tell the user this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up the keystore directory `run402 gitvault status` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better.
+**A vault-only project is first-class.** `run402 init` (or `run402 repos create <name>`), then `git push origin …`, then compact / prune / verify, and never a deploy. Nothing in allocation, admission, retention, or maintenance requires a deployment to exist. One consequence to state plainly if a user asks: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty — and so is the custodial restore path.
+
+**Tell the user this before they rely on it.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up the keystore directory `run402 gitvault status` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and decrypts nothing; it is not a secret, and the more copies the better. The reminder gets louder as the vault gets more valuable: quiet at genesis, a STANDING `run402 doctor` warning once the vault crosses any of ≥10 generations / ≥10 MB / ≥14 days since genesis — cleared only by adding a second principal, never by an attestation, because V0 cannot verify one is true.
 
 **Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — separate language, separate authorship, separate primitive stack, deliberately sharing no implementation code with the SDK. A differential verifier that reuses the code it is checking verifies nothing.
 
