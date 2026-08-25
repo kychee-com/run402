@@ -40,7 +40,6 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
 import { nextAction } from "./next-actions.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
-import { GITVAULT_ALLOCATION_POLICY_ADVISORY } from "./gitvault-scaffold.mjs";
 import {
   normalizeArgv,
   hasHelp,
@@ -197,7 +196,6 @@ async function create(args) {
     console.error("");
     console.error(vault.terminal_loss_statement);
     await printKeystoreLocation();
-    if (!vault.deduplicated) console.error(GITVAULT_ALLOCATION_POLICY_ADVISORY);
     console.error("");
     console.error("nothing was deployed — this is a vault-only repo. Deploy later with `run402 deploy apply`, or never.");
   } catch (err) {

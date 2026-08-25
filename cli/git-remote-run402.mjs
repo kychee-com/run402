@@ -189,12 +189,6 @@ async function main(argv) {
       } catch {
         // Never let a diagnostic line fail a push that already allocated successfully.
       }
-      try {
-        const { GITVAULT_ALLOCATION_POLICY_ADVISORY } = await import("./lib/gitvault-scaffold.mjs");
-        note(GITVAULT_ALLOCATION_POLICY_ADVISORY);
-      } catch {
-        // Same rule: advisory only, never fatal.
-      }
       note("");
     }
     return result.handle.vault;

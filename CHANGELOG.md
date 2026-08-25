@@ -2,7 +2,17 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
-## Unreleased — repo-first onramp (client lockstep, Rung 1)
+## 4.37.1 — allocation no longer gates deploys (D3 complete)
+
+- **The gateway shipped D3's other half: allocating a vault no longer sets
+  `gitvault_policy: required`.** The state the 4.37.0 client already handled
+  (`ungated` deploy mode with a typed `next_actions` offer and a standing
+  `warnings[]` entry) is now the ordinary post-allocation shape. The interim
+  stderr advisory that 4.37.0 printed after every allocation — true then,
+  false now — is removed, along with the docs' interim wording. Nothing else
+  changed; projects whose policy was already set keep it.
+
+## 4.37.0 — repo-first onramp (client lockstep, Rung 1)
 
 - **New: `run402 repos create|list|delete`** — vault-only porcelain, CLI +
   OpenClaw only (no MCP tool for this family, by design). `create <name>`
