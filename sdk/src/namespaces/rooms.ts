@@ -44,9 +44,12 @@ import type {
   RoomClaimList,
   RoomClaimReleaseResult,
   RoomMessage,
+  RoomLeaveResult,
+  RoomList,
   RoomMessagePage,
   RoomPresence,
   RoomPresenceList,
+  RoomSummary,
   SendRoomMessageInput,
   SentRoomMessage,
 } from "./rooms.types.js";
@@ -87,6 +90,71 @@ function claimsQuery(opts: ListRoomClaimsOptions = {}): string {
 
 export class Rooms {
   constructor(private readonly client: Client) {}
+
+  /**
+   * Rooms this credential can reach (`GET /orgs/v1/:org_id/rooms`), newest
+   * activity first — the answer to "I have an org id, where do I go".
+   *
+   * Enumeration is DERIVED from use: a key nobody has written under is not a
+   * room and is not listed. What comes back is exactly what per-room
+   * authorization would admit one at a time — a member sees the org's rooms,
+   * a delegate or grant-holder sees the named rooms plus the default rooms of
+   * the projects it reaches (never a sibling project's), and a project
+   * service_key sees only its own.
+   */
+  async list(orgId: string): Promise<RoomList> {
+    if (!orgId) {
+      throw new LocalError("rooms.list requires an orgId", "listing rooms");
+    }
+    return this.client.request<RoomList>(`/orgs/v1/${encodeURIComponent(orgId)}/rooms`, {
+      context: "listing rooms",
+    });
+  }
+
+  /**
+   * Look at one room WITHOUT joining it
+   * (`GET /orgs/v1/:org_id/rooms/:room_key`) — is anyone here, and when did
+   * anything last happen. {@link Rooms.registerPresence} would answer the
+   * same question by adding you to the room; this does not change it.
+   *
+   * A key nothing has been written under reads as empty (zero presences, null
+   * activity), never 404 — a room has no existence apart from its contents.
+   */
+  async get(orgId: string, roomKey: string): Promise<RoomSummary> {
+    if (!orgId) {
+      throw new LocalError("rooms.get requires an orgId", "reading room");
+    }
+    if (!roomKey) {
+      throw new LocalError("rooms.get requires a roomKey", "reading room");
+    }
+    return this.client.request<RoomSummary>(roomPath(orgId, roomKey), { context: "reading room" });
+  }
+
+  /**
+   * Give up your seat
+   * (`DELETE /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id`) — the
+   * session is done, so it should stop reading as live and stop holding its
+   * claims, rather than lingering for the rest of its ~1h TTL.
+   *
+   * Scoped to the caller's own principal: someone else's presence is simply
+   * not found. Idempotent — an already-released presence reports
+   * `left: false` truthfully, so a crashed session's retry does not fail.
+   */
+  async leave(orgId: string, roomKey: string, presenceId: string): Promise<RoomLeaveResult> {
+    if (!orgId) {
+      throw new LocalError("rooms.leave requires an orgId", "leaving room");
+    }
+    if (!roomKey) {
+      throw new LocalError("rooms.leave requires a roomKey", "leaving room");
+    }
+    if (!presenceId) {
+      throw new LocalError("rooms.leave requires a presenceId", "leaving room");
+    }
+    return this.client.request<RoomLeaveResult>(
+      `${roomPath(orgId, roomKey)}/presences/${encodeURIComponent(presenceId)}`,
+      { method: "DELETE", context: "leaving room" },
+    );
+  }
 
   /**
    * Register a session presence in a room
@@ -411,6 +479,16 @@ export class ScopedRoom {
     }
     this.orgId = orgId;
     this.roomKey = roomKey;
+  }
+
+  /** See {@link Rooms.get}. */
+  get(): Promise<RoomSummary> {
+    return this.rooms.get(this.orgId, this.roomKey);
+  }
+
+  /** See {@link Rooms.leave}. */
+  leave(presenceId: string): Promise<RoomLeaveResult> {
+    return this.rooms.leave(this.orgId, this.roomKey, presenceId);
   }
 
   /** See {@link Rooms.registerPresence}. */

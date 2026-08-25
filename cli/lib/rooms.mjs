@@ -44,6 +44,7 @@ const HELP = `run402 rooms — arrive in a room, see who is live, leave when don
 
 Usage:
   run402 rooms join [--name <name>] [--task <text>]
+  run402 rooms leave [<presence_id>]
 
 Addressing:
   --project <id>    That project's DEFAULT room (the room key IS the project id)
@@ -68,9 +69,20 @@ Notes:
     the output says why. Omit --task and join best-effort fills it from your
     harness's own thread title (Claude Code or Codex) — set
     RUN402_NO_TASK_FROM_TITLE=1 to opt out.
-  - Presence expires after ~1h of silence. Releasing it early (\`rooms leave\`),
-    enumerating reachable rooms, and inspecting one are not here yet — each
-    needs a gateway route that does not exist. Filed as follow-ups.
+  - leave gives up THIS session's seat: its presence stops reading as live and
+    its claims stop being held by a live session. Takes no argument — it uses
+    the presence this checkout cached when it joined. Pass a \`prs_…\` only to
+    release a specific one. Idempotent: a presence already gone (or belonging
+    to someone else) reports left:false rather than failing, so a retry after
+    a crash is safe.
+  - Presence otherwise expires after ~1h of silence, which is why leaving
+    matters: without it a finished session keeps holding its claims for the
+    rest of that hour.
+  - Enumerating reachable rooms and inspecting one are available on the API
+    and in the SDK (\`rooms.list\` / \`rooms.get\`) but NOT yet as CLI
+    spellings: \`rooms list\` and \`rooms get\` currently answer with their
+    message successors, and a spelling that changes meaning never fails. They
+    wait one major.
   - The messages themselves are \`run402 messages\`.
 `;
 
@@ -134,6 +146,54 @@ async function who(args) {
   }
 }
 
+async function leave(argv) {
+  const args = normalizeArgv(argv);
+  assertKnownFlags("rooms leave", args, ROOM_FLAGS);
+  const positionals = positionalArgs(args);
+  requirePositionalCount("rooms leave", positionals, 0, 1, "[<presence_id>]");
+  const room = await resolveRoom({
+    org: flagValue(args, "--org"),
+    room: flagValue(args, "--room"),
+    project: flagValue(args, "--project"),
+  });
+
+  // No argument is the normal case: a session that is DONE knows which seat
+  // is its own, and asking it to name one would be asking it to look up a
+  // thing it already told us at join.
+  const cached = cachedPresenceId(room.orgId, room.roomKey);
+  const presenceId = positionals[0] ?? cached;
+  if (!presenceId) {
+    fail({
+      code: "NO_PRESENCE",
+      message: "No presence to leave — this checkout has not joined that room.",
+      hint: "run402 rooms join",
+      details: { org_id: room.orgId, room_key: room.roomKey },
+    });
+  }
+
+  try {
+    const result = await getSdk().rooms.leave(room.orgId, room.roomKey, presenceId);
+    // Only forget the cached id when the one we released WAS it. An explicit
+    // id that turned out to be someone else's must not evict this session's
+    // own seat from the cache as a side effect.
+    if (result.left && presenceId === cached) {
+      updateRoomState(room.orgId, room.roomKey, { presence_id: null });
+    }
+    console.log(JSON.stringify({
+      org_id: room.orgId,
+      room_key: room.roomKey,
+      presence_id: presenceId,
+      left: result.left,
+    }, null, 2));
+    if (!result.left) {
+      // Truthful, not alarming: expiry racing release is the normal shape.
+      console.error("Nothing to release — that presence had already expired or was not yours.");
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 export async function run(sub, args) {
   const argv = Array.isArray(args) ? args : [];
   if (!sub || hasHelp([sub, ...argv])) {
@@ -145,15 +205,18 @@ export async function run(sub, args) {
       await who(argv);
       break;
     }
-    // `list`, `get` and `leave` are NOT here. Each needs a gateway route that
-    // does not exist (there is no list-rooms, get-room, or release-presence
-    // endpoint), and this change states plainly that it adds none. They are
-    // filed as follow-ups rather than shipped as a CLI calling into nothing.
-    //
-    // `rooms list` and `rooms get` additionally carry design D3b: they are
-    // FREED by the move of the message verbs, and a freed spelling stays dead
-    // for one major before anything reuses it — a spelling that silently
-    // answers with different data is worse than one that fails.
+    case "leave": {
+      await leave(argv);
+      break;
+    }
+    // `list` and `get` are NOT here, and this is deliberate rather than
+    // missing: the ROUTES exist (agent-room-lifecycle) and the SDK exposes
+    // them as `rooms.list` / `rooms.get`. These two SPELLINGS were freed
+    // hours ago by the move of the message verbs, and a freed spelling stays
+    // dead for one major before anything reuses it (design D3b). Reissuing
+    // them now with room semantics would never fail — an agent holding
+    // `rooms list` would get a successful response containing different data
+    // and nothing would tell it the world moved.
     // Retired here, and NOT aliased (design D3): each answers with its
     // successor so one failed call teaches the new model, where an alias
     // would teach the old one forever.

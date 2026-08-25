@@ -341,3 +341,40 @@ export interface RoomClaimReleaseResult {
   already_released: boolean;
   [key: string]: unknown;
 }
+
+/**
+ * A room the caller can reach, as returned by {@link Rooms.list} and
+ * {@link Rooms.get}.
+ *
+ * A room is the value pair `(org_id, room_key)` and has no existence apart
+ * from its contents, so enumeration is DERIVED from what has been written
+ * under each key: a key nobody has used is not listed, and inspecting one
+ * reads as empty rather than 404.
+ */
+export interface RoomSummary {
+  org_id: string;
+  room_key: string;
+  /** Non-null exactly when this is a project's DEFAULT room (the key is a project id). */
+  project_id: string | null;
+  /** Presences that have not yet expired (~1h of silence). */
+  live_presences: number;
+  /** Most recent presence/message/claim activity, or null for an unused key. */
+  last_activity_at: string | null;
+  [key: string]: unknown;
+}
+
+/** Response of {@link Rooms.list}. Newest activity first. */
+export interface RoomList {
+  rooms: RoomSummary[];
+  [key: string]: unknown;
+}
+
+/**
+ * Response of {@link Rooms.leave}. Idempotent — a presence already gone (or
+ * belonging to someone else) reports `left: false` rather than erroring.
+ */
+export interface RoomLeaveResult {
+  presence_id: string;
+  left: boolean;
+  [key: string]: unknown;
+}

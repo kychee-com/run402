@@ -581,6 +581,16 @@ const SURFACE: Capability[] = [
   // (message_id param). Org-scoped addressing (org_id + room_key) and the
   // default-room resolution (rooms.forProject) ride the same tools/commands.
   { id: "join_room",                    endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/presences", mcp: "join_room",                    cli: "rooms:join", openclaw: "rooms:join" },
+  { id: "leave_room",                   endpoint: "DELETE /orgs/v1/:org_id/rooms/:room_key/presences/:presence_id", mcp: null, cli: "rooms:leave", openclaw: "rooms:leave" },
+  // list_rooms / get_room ship on the API and the SDK but NOT as CLI
+  // spellings: `rooms list` and `rooms get` were freed from meaning "list/get
+  // MESSAGES" and a reused spelling changes meaning without ever failing
+  // (agent-room-lifecycle D5 / legible-cli-surface D3b). They wait one major.
+  // MCP is a deliberate non-goal — join_room already folds presence + who +
+  // claims into arrival, and an agent handed its room by its harness would
+  // never reach for a discovery tool.
+  { id: "list_rooms",                   endpoint: "GET /orgs/v1/:org_id/rooms", mcp: null, cli: null, openclaw: null },
+  { id: "get_room",                     endpoint: "GET /orgs/v1/:org_id/rooms/:room_key", mcp: null, cli: null, openclaw: null },
   { id: "send_room_message",            endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "send_room_message",            cli: "messages:send", openclaw: "messages:send" },
   { id: "read_room_messages",           endpoint: "GET /orgs/v1/:org_id/rooms/:room_key/messages", mcp: "read_room_messages",           cli: "messages:list", openclaw: "messages:list" },
   { id: "ack_room_message",             endpoint: "POST /orgs/v1/:org_id/rooms/:room_key/messages/:message_id/ack", mcp: "ack_room_message",             cli: "messages:ack", openclaw: "messages:ack" },
@@ -1037,6 +1047,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   send_room_message: "rooms.sendMessage",
   read_room_messages: "rooms.listMessages",
   ack_room_message: "rooms.ackMessage",
+  leave_room: "rooms.leave",
+  list_rooms: "rooms.list",
+  get_room: "rooms.get",
   claim_room_resource: "rooms.createClaim",
   release_room_claim: "rooms.releaseClaim",
   get_room_message: "rooms.getMessage",
@@ -1902,13 +1915,34 @@ describe("SURFACE consistency", () => {
     assert.deepEqual(dupes, [], `Duplicate CLI commands: ${dupes.join(", ")}`);
   });
 
+  /**
+   * Capabilities deliberately reachable through the SDK only, each with the
+   * condition that ends the exception.
+   *
+   * The rule this bends is a good one — a gateway capability with no
+   * agent-facing verb is invisible to agents — so an entry here is a dated
+   * decision, not a parking space. State what unblocks it.
+   */
+  const SDK_ONLY_FOR_NOW: Record<string, string> = {
+    list_rooms: "the `rooms list` SPELLING was freed from meaning `messages list` and must stay dead one major before naming the room (agent-room-lifecycle D5); SDK: rooms.list",
+    get_room: "the `rooms get` SPELLING was freed from meaning `messages get` and must stay dead one major before naming the room (agent-room-lifecycle D5); SDK: rooms.get",
+  };
+
   it("every capability is covered by at least one interface", () => {
-    const uncovered = SURFACE.filter(c => !c.mcp && !c.cli && !c.openclaw);
+    const uncovered = SURFACE.filter(c => !c.mcp && !c.cli && !c.openclaw && !(c.id in SDK_ONLY_FOR_NOW));
     assert.deepEqual(
       uncovered.map(c => c.id),
       [],
       `Capabilities with no implementation in any interface: ${uncovered.map(c => c.id).join(", ")}`,
     );
+  });
+
+  it("every SDK-only exception names an SDK method and a condition that ends it", () => {
+    for (const [id, reason] of Object.entries(SDK_ONLY_FOR_NOW)) {
+      assert.ok(SURFACE.some(c => c.id === id), `${id} is allowlisted but not in SURFACE`);
+      assert.ok(SDK_BY_CAPABILITY[id], `${id} is SDK-only but maps to no SDK method — then it is reachable by nothing`);
+      assert.match(reason, /SDK: [a-z]/i, `SDK_ONLY_FOR_NOW["${id}"] must name the SDK method that covers it`);
+    }
   });
 });
 

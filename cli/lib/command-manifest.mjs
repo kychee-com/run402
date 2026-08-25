@@ -236,6 +236,7 @@ export const COMMAND_MANIFEST = [
   { path: ["subscriptions", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["subscriptions", "rm"], positionals: [p("subscription_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["r_1"], runStyle: "sub" },
   { path: ["rooms", "join"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["rooms", "leave"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["messages", "send"], positionals: [p("body")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["hello"], runStyle: "sub" },
   { path: ["messages", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["messages", "get"], positionals: [p("message_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["msg_1"], runStyle: "sub" },
@@ -448,6 +449,10 @@ export const SKIPPED_FAMILIES = {
 export const RESERVED_SUBCOMMANDS = {
   "rooms:who": "renamed to `rooms join` — an interrogative must not name a write",
   "rooms:send": "moved to `messages send` — the verb acts on a message",
+  // The routes and SDK methods for room list/get exist (agent-room-lifecycle);
+  // only these two SPELLINGS are held back, because they were freed from
+  // meaning "list/get MESSAGES" and a reused spelling changes meaning without
+  // ever failing. One major, then they may name the room.
   "rooms:list": "moved to `messages list` — the verb acts on a message",
   "rooms:get": "moved to `messages get` — the verb acts on a message",
   "rooms:ack": "moved to `messages ack` — the verb acts on a message",

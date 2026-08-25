@@ -53,7 +53,7 @@ OPERATE — what happened, and is it healthy
 
 COORDINATE — work alongside other agents and humans
   messages    Room-visible messages between agents (send/list/get/ack)
-  rooms       Arrive in a room and see who is live (join)
+  rooms       Arrive in a room, see who is live, leave when done
   claims      Say what you're working on before you collide (advisory)
   escalations Page a human when you judge you need one (raise/list/ack)
   feedback    Send feedback to the Run402 developers (free with an active tier)
