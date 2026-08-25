@@ -20,6 +20,20 @@ import { getSdk } from "./sdk.mjs";
 import { resolveOwningOrgId } from "./org-context.mjs";
 
 /**
+ * The interim allocation→policy advisory (repo-first-onramp D3, stated as an
+ * interim). TODAY the platform sets `gitvault_policy: required` at allocation
+ * — the decoupling (allocation leaving the policy unset) is design D3's
+ * gateway half and ships in a later release (task 3.1). Until it does, every
+ * client-side path that allocates a vault prints this line so the policy flip
+ * is never a silent side effect of a push or a create. Faithful over flattering:
+ * documenting the designed future as the present is the breach; this line is
+ * the truth. DELETE this export (and its four call sites) when the gateway
+ * decoupling ships.
+ */
+export const GITVAULT_ALLOCATION_POLICY_ADVISORY =
+  "note: allocation currently sets gitvault_policy to 'required' — from now on a deploy must present a vaulted capture (produced automatically by `run402 deploy apply` on any machine holding this keystore). Opt out with `run402 gitvault policy grandfathered --reason \"<why>\"`. A later release decouples allocation from the deploy gate (design D3).";
+
+/**
  * @param {object} options
  * @param {string} [options.repoDir] Working tree to scaffold. Defaults to `process.cwd()`.
  * @param {string} options.projectId The project the remote should point at.

@@ -19,6 +19,7 @@
 import { readFileSync } from "node:fs";
 import { resolveProjectId } from "./config.mjs";
 import { resolveOwningOrgId } from "./org-context.mjs";
+import { GITVAULT_ALLOCATION_POLICY_ADVISORY } from "./gitvault-scaffold.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
@@ -283,6 +284,7 @@ async function init(args) {
     );
     if (result.remote) console.error(`remote '${result.remote.name}' -> ${result.remote.url} (${result.remote.reason})`);
     if (remoteSkipped) console.error(`remote not added: ${remoteSkipped}`);
+    if (!result.deduplicated) console.error(GITVAULT_ALLOCATION_POLICY_ADVISORY);
     // The recovery receipt is integrity data, not a secret, and it is worth
     // exactly as much as the number of copies you keep. It is persisted into
     // the keystore automatically; say where, because "keep many copies" is
@@ -426,6 +428,7 @@ async function snapshot(args) {
       console.error(`vault allocated (genesis ${created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
       console.error(JSON.stringify(created.recovery_receipt));
       await printKeystoreLocation();
+      console.error(GITVAULT_ALLOCATION_POLICY_ADVISORY);
       console.error("");
     },
   };

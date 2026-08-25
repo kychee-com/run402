@@ -25,13 +25,15 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   same six-stage creation `gitvault init` runs explicitly), printing the
   one-shot recovery receipt and keystore path to stderr the moment that
   happens. The explicit `run402 gitvault init` verb is unchanged.
-- **BREAKING (deploy result shape): allocating a vault no longer sets
-  `gitvault_policy: required`.** The first `deploy apply` against a vaulted,
-  ungated project now proceeds ungated and carries a typed `next_actions`
-  entry offering `run402 gitvault policy required`; every later ungated
-  deploy of that project carries a `warnings[]` entry naming the drift,
-  until the policy is set either way. No deploy is ever blocked or
-  interactively prompted on this.
+- **Deploy result learns the ungated-vault shape (design D3, client half).**
+  A `deploy apply` against a vaulted project whose `gitvault_policy` is
+  unset proceeds ungated and carries a typed `next_actions` entry offering
+  `run402 gitvault policy required`, plus a `warnings[]` entry naming the
+  drift on every such deploy — never blocked, never interactively prompted.
+  Note: today's platform still sets `gitvault_policy: required` at
+  allocation, so this state does not normally occur yet; the decoupling is
+  D3's gateway half and ships in a later release. Until then every
+  allocating client path prints an advisory naming the policy flip.
 - **`projects provision` folds in the remote scaffold** when the working
   directory is already a git repository (additive only — no `--git-remote`
   opt-in exists here, so a non-repository directory is left untouched).
