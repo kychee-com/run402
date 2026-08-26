@@ -1205,6 +1205,8 @@ demoteUser(id, email): Promise<void>
 
 `r.projects.rename(projectId, name)` renames a project (`PATCH /projects/v1/:id`, project-findability) and returns `{ project_id, name }`. Caller-authed (SIWX/control-plane, not a project service key), so it works without the project in the local project-key cache. Authorization is org `admin`+ (or a `project:write` grant) on the owning org and authorize-before-reveal — an unauthorized/guessed id throws `Unauthorized` (403), never a not-found oracle; an invalid name throws `ApiError` (400). Scoped form: `r.project(id).rename(name)`.
 
+`r.projects.setRepoName(projectId, name)` claims or renames the project's per-org-unique, ADDRESS-form name (`POST /projects/v1/:id/repo-name`, repo-first-onramp design D6, task 4.2) — the `<name>` half of `run402::<org-slug>/<name>` — and returns `{ project_id, repo_name, previous_repo_name }`. Distinct from `rename` above (the free-text display name, unchanged): the address-form name is charset-restricted (`[a-z0-9-]`, ≤63 chars) and per-org-unique. No fee, unlike the org-slug claim. Same authority as `rename`. Scoped form: `r.project(id).setRepoName(name)`.
+
 `r.projects.getUsage(id)` still surfaces `effective_status` and `organization_lifecycle_state` because that endpoint scopes to a single project and the derivation collapses per-project `archived_at` / `deleted_at` together with the organization's lifecycle.
 
 ### `r.project(id).apply`
@@ -1941,6 +1943,8 @@ Read side (isomorphic — `@run402/sdk` or `@run402/sdk/node`):
 ```
 get(repoId): Promise<GitvaultVaultRecord>                          // the vault record: policy, allocation generation, storage + maintenance state
 forProject(projectId): Promise<GitvaultVaultRecord>                 // cold-restart lookup — resolve repo_id with no local state
+forRepo({ org_slug, repo_name }): Promise<GitvaultVaultRecord>      // D6: resolve a slug-form address (GET /gitvault/v1/vaults?repo=<org-slug>/<name>)
+resolveAddress(address): Promise<GitvaultVaultRecord>               // D6: dispatch a parsed remote address on its form (id -> forProject, slug -> forRepo); pure read, no pin, no create
 heads(repoId, { after_generation, limit, cursor? }): Promise<GitvaultHeadsListingPage>
 allHeads(repoId, { after_generation, limit? }): Promise<{ heads, pages, total }>
 setPolicy(repoId, { gitvault_policy, reason? }): Promise<{ gitvault_policy, gitvault_policy_version, changed, warnings }>
@@ -1953,8 +1957,9 @@ Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_d
 ```
 init({ repo_dir, project_id, ... }): Promise<GitvaultInitResult>        // allocate + genesis; prints the one-shot recovery receipt
 openOrCreate({ project_id, org_id?, repo_dir?, ... }): Promise<GitvaultOpenOrCreateResult>  // D2: open, or allocate-then-open when org_id is supplied and the project has no vault yet — byte-identical to open() without org_id
-push({ org_id?, onVaultCreated?, snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>  // composes openOrCreate internally when org_id is passed (D2 lazy allocation)
-status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target
+resolveOrCreateAddress({ address, repo_dir?, allow_create?, onVaultCreated?, ... }): Promise<GitvaultOpenOrCreateResult & { resolution }>  // D6: resolve a parsed remote address to an open handle, pinning repo_id in local git state on the first successful SLUG-form resolution (task 4.5); allow_create push-to-creates on a slug-form miss (task 4.4). SLUG_RELEASED never auto-follows.
+push({ org_id?, address?, onVaultCreated?, snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>  // composes openOrCreate internally when org_id is passed (D2 lazy allocation); composes resolveOrCreateAddress when address is passed instead (D6)
+status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target; `pinned` reports the D6 id-pin (repo_id + resolved_from) when repo_dir names one
 compact(opts?): Promise<GitvaultCompactResult>
 prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
 verify(opts?): Promise<GitvaultVerifiedState>
@@ -1964,6 +1969,8 @@ scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Pro
 open(opts?): Promise<GitvaultHandle>                                    // the raw protocol object, for ref transactions or repair
 drainOverrides(opts?): Promise<GitvaultOverrideDrainReport>
 ```
+
+**D6 — named addressing (repo-first-onramp task 4).** `parseGitvaultRemoteUrl` already splits `run402::<a>/<b>`; `gitvaultRemoteAddressForm(address): "id" | "slug"` discriminates the two forms — id-form requires the org half to be a UUID AND the name half to be `prj_`-prefixed (real orgs/projects always satisfy both at once), anything else is slug-form. `gitvaultRemoteUrlForRepo(orgSlug, repoName)` builds the slug-form address string. `gitvaultSlugReleasedInfo(err): { successor_slug, released_at, cooldown_until } | null` extracts a `SLUG_RELEASED` refusal's typed detail — never auto-follow it. All four are pure, isomorphic exports of `gitvault.ts`.
 
 **D7 — the progressive terminal-loss warning, as pure functions.** `status()` folds these into `warnings[]` automatically (a `terminal_loss_risk` entry once tripped), but they are exported for any caller building its own surface:
 
@@ -2594,6 +2601,7 @@ A wallet **authenticates** (SIWX → a control-plane *principal*); an **org** ow
 - **`r.orgs.whoami()`** → `{ principal, memberships[], authenticator_id }` (GET `/agent/v1/whoami`). The REMOTE, gateway-resolved identity — distinct from **`r.whoami()`** (local + network-free wallet/profile label, used by `run402 status`).
 - **`r.org(id).get()`** → `{ org_id, display_name, tier, lease_started_at, lease_expires_at, role }`. Any active member; a non-member (incl. a guessed id) gets the same non-revealing 403.
 - **`r.org(id).rename(displayName | null)`** → `{ org_id, display_name, tier, lease_started_at, lease_expires_at }`. Owner-only; set or clear the label (`null`/`""` clears). Step-up gated.
+- **`r.org(id).claimSlug(slug, { idempotencyKey? })`** → `{ org_id, slug, previous_slug, created }` (POST `/orgs/v1/:org_id/slug`, repo-first-onramp design D6). Owner-only. A genesis claim debits a small one-time claim fee; a rename is free but releases the OLD slug into a ~90-day cooldown (typed `SLUG_RELEASED` refusal thereafter, naming this org's new slug as successor). A paid, side-effecting mutation — requires `Idempotency-Key`; the SDK generates a fresh one per call when `idempotencyKey` is omitted, so a retried call after a dropped response cannot double-bill. `OrgSummary`/`OrgDetail` gain an additive `slug: string | null` field.
 - **`r.org(id).members.list()` / `.add({ wallet, role? })` / `.setRole(principalId, { role })` / `.revoke(principalId)`** — owner-gated; a new wallet is provisioned as a `human` principal, `role` defaults to `developer`. Removing/demoting the org's only active owner throws `ApiError code: "LAST_OWNER"` (409).
 - **`r.org(id).invites.list()` / `.create({ email, role, inviteTtlHours? })` / `.revoke(principalId)`** — email invites, claimed automatically at the invitee's first login.
 - **`r.org(id).audit({ limit?, before? })`** → control-plane audit trail (admin+), newest-first; page with `before`.

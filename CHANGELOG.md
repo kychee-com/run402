@@ -2,6 +2,39 @@
 
 All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions are kept in lockstep across the three packages in this repo. `@run402/functions` lives in the public `run402-core` repo and publishes on its own cadence.
 
+## Unreleased
+
+- **New: named repo addressing (repo-first-onramp, Rung 3, design D6).**
+  `run402::<org-slug>/<name>` (e.g. `run402::acme/my-notes`) works alongside
+  the existing `run402::<org_id>/<prj_id>` id-form address in the same
+  `git remote` slot — `gitvaultRemoteAddressForm` discriminates the two
+  (real orgs are always UUIDs, real projects are always `prj_`-prefixed, so
+  a genuine id-form address satisfies both at once). `git push` against a
+  slug-form remote resolves normally, or **push-to-creates** the repo when
+  the name doesn't exist yet: the project and vault are allocated atomically
+  server-side, and a losing concurrent pusher resolves cleanly to the
+  winner's repo rather than erroring — its own work is not lost, it just
+  wasn't the creator. `run402 gitvault snapshot` drives the same
+  push-to-create path when the local `run402`/`origin` remote is slug-form.
+- **New: id-pinning.** The first time a slug-form remote resolves on a
+  checkout, the resolved `repo_id` is pinned into that checkout's local git
+  config (`git config r402.repoId`) — every later push/fetch on that
+  checkout follows the pinned id directly, skipping the network resolution
+  and surviving a later rename of the org slug or repo name. `run402 gitvault
+  status` now reports the pin. An id-form remote never pins (it already
+  survives a rename on its own).
+- **New: `run402 org slug <slug>`** — claim or rename an org's globally
+  unique, address-form slug (owner-only; a genesis claim spends a small
+  one-time claim fee; a rename releases the old slug into a ~90-day cooldown
+  with a typed refusal naming the successor, never a redirect).
+- **New: `run402 repos name <name> [--project <id>]`** — the explicit
+  address-form claim for a project's per-org-unique repo name (no fee).
+  `run402 repos create` now also claims one automatically, best-effort, when
+  the owning org already has a slug, and prints the resulting
+  `run402::<slug>/<name>` address.
+- CLI/SDK-only surface throughout (no MCP tool for the mutating verbs), per
+  the gitvault family's existing "mutating verbs are CLI-only" law.
+
 ## 4.37.1 — allocation no longer gates deploys (D3 complete)
 
 - **The gateway shipped D3's other half: allocating a vault no longer sets

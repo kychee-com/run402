@@ -65,7 +65,9 @@ run402 repos list --org org_1a2b3c
 run402 repos delete prj_xyz --force           # refuses without --force while the vault holds generations
 ```
 
-A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. `repos create|list|delete` and `gitvault`'s mutating verbs (`init`, `snapshot`, `policy`, `compact`, `prune`) are CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete). See `run402 gitvault --help` and `run402 repos --help` for the full surface, and the CLI reference's `gitvault` / `repos` sections for the terminal-loss statement and the progressive backup warning.
+A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. `repos create|list|delete|name` and `gitvault`'s mutating verbs (`init`, `snapshot`, `policy`, `compact`, `prune`) are CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete). See `run402 gitvault --help` and `run402 repos --help` for the full surface, and the CLI reference's `gitvault` / `repos` sections for the terminal-loss statement and the progressive backup warning.
+
+**Named addressing (design D6).** `run402 org slug <slug>` (owner-only, small one-time fee) claims an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos name <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
 
 ### Allowance
 

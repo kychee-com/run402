@@ -1125,11 +1125,13 @@ Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wal
 
 ```bash
 run402 init                                   # once per machine
-git remote add origin run402::<org_id>/<project_id>
-git push -u origin main                       # allocates the vault on first push, publishes
+git remote add origin run402::<org-slug>/<name>
+git push -u origin main                       # push-to-creates the repo on first push, publishes
 ```
 
 `origin` is claimed additively: when the repository has no `origin` yet, the scaffold names ours `origin`, so `git push origin main` just works. An existing `origin` is never touched; the fallback is `run402` instead. **State this plainly if the user asks: V0 is single-principal** — exactly one machine can open the vault until human envelopes ship.
+
+**Named addressing (design D6).** `run402::<org-slug>/<name>` and the id-form `run402::<org_id>/<project_id>` both work in the same `git remote` slot. `run402 org slug <slug>` (owner-only, a small one-time fee) claims an org's slug; every repo under it is `run402::<slug>/<name>`, and pushing a name that doesn't resolve yet **push-to-creates** it (project + vault allocated atomically; a losing concurrent pusher resolves to the winner's repo instead of erroring). The first time a named remote resolves on a checkout it is **pinned** into that checkout's local git config, so a later rename of the slug or name never breaks that clone. The id-form address needs no pin and stays the cold-restart path.
 
 **`run402 repos` — the same track, one call.** No address to remember, no separate `gitvault init`:
 
@@ -1138,9 +1140,10 @@ run402 repos create my-notes                  # provision + allocate the vault +
 run402 repos list --org org_1a2b3c            # the org's vault-bearing projects
 run402 repos delete prj_xyz --force           # refuses without --force while the vault holds generations,
                                                # naming what would be lost first
+run402 repos name my-notes --project prj_xyz  # explicit address-form name claim (no fee)
 ```
 
-`repos create|list|delete` are CLI/OpenClaw-only — no MCP tool exists or will exist for this family, the same law that keeps `gitvault`'s own mutating verbs off MCP (a `create` mints a one-shot recovery receipt; `delete` is irreversible).
+`repos create|list|delete|name` are CLI/OpenClaw-only — no MCP tool exists or will exist for this family, the same law that keeps `gitvault`'s own mutating verbs off MCP (a `create` mints a one-shot recovery receipt; `delete` is irreversible). `repos create` also claims an address-form name automatically, best-effort, when the owning org already has a slug.
 
 Run every other verb from inside the git working tree.
 

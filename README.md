@@ -372,11 +372,13 @@ Three claims, three different strengths. These are the entire approved claims vo
 
 ```bash
 run402 init                                   # once per machine
-git remote add origin run402::<org_id>/<project_id>
-git push -u origin main                       # allocates the vault on first push, publishes
+git remote add origin run402::<org-slug>/<name>
+git push -u origin main                       # push-to-creates the repo on first push, publishes
 ```
 
 `origin` is claimed additively (design D1): when the directory has no `origin` yet, the scaffold names ours `origin` — `git push origin main` just works, no side-remote name to remember. An existing `origin` is never touched; the fallback is `run402` instead, and the response says which happened and why. `run402 repos create <name>` does provision + allocate + scaffold in one call when you would rather not name the address by hand — see the `run402 repos` section of the CLI reference.
+
+**Named addressing (design D6).** `run402::<org-slug>/<name>` works alongside the id-form `run402::<org_id>/<project_id>` in the same slot — pick an org slug once (`run402 org slug <slug>`, owner-only, a small one-time claim fee), and every repo under it is `run402::<slug>/<name>`. Pushing a name that doesn't exist yet **push-to-creates** it: the project and vault are allocated atomically, and a losing concurrent pusher resolves cleanly to the winner's repo instead of erroring — its work is not lost, it just wasn't the creator. The first time a named remote resolves on a checkout, the resolved id is **pinned** into that checkout's local git config — every later push/fetch follows the pin directly, so a later rename of the org slug or repo name never breaks an existing clone. The id-form address needs no pin (a project id never changes) and stays the cold-restart path: an agent that lost its local state but still holds authority on the project can always fall back to `run402::<org_id>/<project_id>`.
 
 **One thing to know up front: V0 is single-principal.** Exactly one machine (this keystore) can open the vault until human envelopes ship. State it plainly, don't bury it — see "If you lose the keystore" below.
 
