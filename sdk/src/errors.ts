@@ -694,7 +694,11 @@ export class TransferFreezeError extends Run402Error {
 /**
  * Known `type` values for a {@link NextAction}. The gateway set (style.md
  * §Errors) extended with the client-side bootstrap verbs `create_project` and
- * `initialize_wallet`, plus `operator_approve` (synthesized for WRITE_AUTH).
+ * `initialize_wallet`, plus `operator_approve` (synthesized for WRITE_AUTH),
+ * and `claim_org_slug` / `claim_repo_name` (named addressing onboarding,
+ * repo-first-onramp follow-up — `run402 repos create` points here when the
+ * owning org has no slug yet, or has one but this project's address-form
+ * name was not claimed).
  * Tolerates unknown future gateway types via the `(string & {})` fallback.
  */
 export type NextActionType =
@@ -713,7 +717,9 @@ export type NextActionType =
   | "deploy"
   | "operator_approve"
   | "contact_support"
-  | "gitvault_policy_required";
+  | "gitvault_policy_required"
+  | "claim_org_slug"
+  | "claim_repo_name";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's

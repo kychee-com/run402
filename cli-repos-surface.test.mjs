@@ -279,10 +279,38 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     assert.equal(payload.project_id, PROJECT, "create itself still succeeded");
   });
 
-  it("claims no address when the owning org has no slug", async () => {
+  it("no address, but the org HAS a slug: next_actions points at 'repos name', not 'org slug' (kychee-com/run402#560)", async () => {
+    impl.orgGet = async (id) => ({ org_id: id, display_name: null, slug: "acme", tier: "prototype", lease_started_at: null, lease_expires_at: null });
+    impl.setRepoName = async () => { throw new Error("REPO_NAME_TAKEN"); };
+    const payload = await ok("create", ["taken-name-2", "--org", ORG]);
+    assert.equal(payload.address, null);
+    assert.equal(payload.next_actions.length, 1);
+    assert.equal(payload.next_actions[0].type, "claim_repo_name");
+    assert.match(payload.next_actions[0].command, /^run402 repos name <name> --project /);
+    assert.match(payload.next_actions[0].command, new RegExp(PROJECT));
+    assert.doesNotMatch(stderr.join("\n"), /org slug/, "the org already has one — do not point there");
+    assert.match(stderr.join("\n"), /no address claimed — run 'run402 repos name/);
+  });
+
+  it("claims no address when the owning org has no slug, and points at claiming one (kychee-com/run402#560)", async () => {
     const payload = await ok("create", ["no-slug-org", "--org", ORG]);
     assert.equal(calls.find((c) => c.method === "projects.setRepoName"), undefined);
     assert.equal(payload.address, null);
+    assert.equal(payload.next_actions.length, 1);
+    assert.equal(payload.next_actions[0].type, "claim_org_slug");
+    assert.equal(payload.next_actions[0].command, "run402 org slug <slug>");
+    assert.ok(payload.next_actions[0].why, "must say why");
+    assert.match(
+      stderr.join("\n"),
+      /no named address yet — claim an org slug \(run402 org slug <slug>, one-time \$1\) to get run402::<slug>\/<name> addresses/,
+    );
+  });
+
+  it("next_actions is empty when an address was actually claimed", async () => {
+    impl.orgGet = async (id) => ({ org_id: id, display_name: null, slug: "acme", tier: "prototype", lease_started_at: null, lease_expires_at: null });
+    const payload = await ok("create", ["clean-notes", "--org", ORG]);
+    assert.equal(payload.address, "run402::acme/clean-notes");
+    assert.deepEqual(payload.next_actions, []);
   });
 
   it("refuses an empty or over-long name before ever calling the SDK", async () => {

@@ -66,3 +66,28 @@ export function deployAction() {
     why: "Apply your release manifest to deploy.",
   });
 }
+
+/**
+ * `repos create` (and `gitvault init`) on an org with no claimed slug: the
+ * response's `address: null` had no pointer to WHY, or to the named-addressing
+ * feature at all (kychee-com/run402#560). One-time $1 fee, owner-only.
+ */
+export function claimOrgSlugAction() {
+  return nextAction("claim_org_slug", {
+    command: "run402 org slug <slug>",
+    why: "This organization has no claimed slug yet, so its repos have no run402::<slug>/<name> address. One-time $1, owner-only.",
+  });
+}
+
+/**
+ * The org already has a slug, but this project's address-form repo name was
+ * not claimed this time (a collision, or the best-effort claim failed for
+ * some other reason) — point at the explicit claim verb instead of leaving
+ * `address: null` unexplained.
+ */
+export function claimRepoNameAction(projectId) {
+  return nextAction("claim_repo_name", {
+    command: `run402 repos name <name> --project ${projectId}`,
+    why: "The owning organization has a slug, but this project has no claimed address-form name yet.",
+  });
+}

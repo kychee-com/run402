@@ -38,7 +38,7 @@ import { withAutoApprove } from "./operator.mjs";
 import { allowanceAuthHeaders, isCoreApiTarget, resolveProjectId } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
-import { nextAction } from "./next-actions.mjs";
+import { nextAction, claimOrgSlugAction, claimRepoNameAction } from "./next-actions.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
 import { gitvaultRemoteUrlForRepo } from "#sdk";
 import {
@@ -214,18 +214,31 @@ async function create(args) {
     // a missing slug, or any other refusal just means no address this time;
     // `run402 repos name <name>` claims it explicitly later.
     let address = null;
+    let orgSlug = null;
     try {
       const orgRecord = await getSdk().org(effectiveOrgId).get();
-      if (orgRecord.slug) {
+      orgSlug = orgRecord.slug ?? null;
+      if (orgSlug) {
         const candidate = slugifyRepoName(name);
         if (candidate) {
           const named = await getSdk().projects.setRepoName(provisioned.project_id, candidate);
-          address = gitvaultRemoteUrlForRepo(orgRecord.slug, named.repo_name);
+          address = gitvaultRemoteUrlForRepo(orgSlug, named.repo_name);
         }
       }
     } catch (err) {
       console.error(`repo name not claimed (non-fatal): ${err?.message ?? String(err)}`);
     }
+
+    // `address: null` used to have no pointer to WHY, or to the
+    // named-addressing feature at all (kychee-com/run402#560): an agent
+    // reading the output had no path from "address is null" to
+    // `run402 org slug`/`run402 repos name`. One typed next_actions entry,
+    // pointing at whichever half is actually missing.
+    const nextActions = address
+      ? []
+      : orgSlug
+        ? [claimRepoNameAction(provisioned.project_id)]
+        : [claimOrgSlugAction()];
 
     const out = {
       project_id: provisioned.project_id,
@@ -237,6 +250,7 @@ async function create(args) {
       recovery_receipt: vault.recovery_receipt,
       terminal_loss_statement: vault.terminal_loss_statement,
       deployed: false,
+      next_actions: nextActions,
     };
     console.log(JSON.stringify(out, null, 2));
     console.error(
@@ -244,6 +258,13 @@ async function create(args) {
       (vault.deduplicated ? "already existed — nothing was re-allocated" : `allocated (genesis ${vault.genesis_sha256})`),
     );
     if (address) console.error(`address: ${address}`);
+    else if (!orgSlug) {
+      console.error(
+        "no named address yet — claim an org slug (run402 org slug <slug>, one-time $1) to get run402::<slug>/<name> addresses",
+      );
+    } else {
+      console.error(`no address claimed — run 'run402 repos name <name> --project ${provisioned.project_id}' to claim one`);
+    }
     if (vault.remote) console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
     console.error("");
     console.error(vault.terminal_loss_statement);
