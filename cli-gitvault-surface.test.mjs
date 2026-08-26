@@ -394,6 +394,57 @@ describe("run402 gitvault — the subcommand surface", () => {
   });
 });
 
+// ─── remote.matches tri-state rendering (kychee-com/run402#562) ───────────
+//
+// `gitvault.status()`'s `remote.matches` is `boolean | null` — see the SDK's
+// own doc comment on `GitvaultStatus.remote`. `false` is a real mismatch;
+// `null` means a slug-form remote has not resolved on this machine yet, and
+// is NOT evidence of anything wrong. `cli/lib/gitvault.mjs`'s `status`
+// renders the mismatch suffix ONLY for `matches === false` — before this
+// fix, `matches ? "" : "..."` treated `null` exactly like `false` and would
+// have printed a false-alarm "DIFFERENT project" warning for a perfectly
+// healthy, simply-not-yet-resolved slug-form remote.
+describe("run402 gitvault status — remote.matches tri-state rendering (kychee-com/run402#562)", () => {
+  it("matches: false prints the DIFFERENT-project warning", async () => {
+    impl.status = async () => vaultStatus({ remote: { name: "origin", url: "run402::other/prj_other", matches: false, reason: null } });
+    captureStart();
+    try {
+      await run("status", []);
+    } finally {
+      captureStop();
+    }
+    assert.match(stderr.join("\n"), /remote 'origin':.*← points at a DIFFERENT project than this status/);
+  });
+
+  it("matches: null prints a neutral not-yet-resolved note — NEVER the mismatch warning", async () => {
+    impl.status = async () => vaultStatus({
+      remote: { name: "origin", url: "run402::acme/my-notes", matches: null, reason: "name-form remote, not yet resolved on this machine" },
+    });
+    captureStart();
+    try {
+      await run("status", []);
+    } finally {
+      captureStop();
+    }
+    const joined = stderr.join("\n");
+    assert.doesNotMatch(joined, /DIFFERENT project/, "null must never render as a mismatch");
+    assert.match(joined, /remote 'origin':.*\(name-form remote, not yet resolved on this machine\)/);
+  });
+
+  it("matches: true prints the remote line with no suffix at all", async () => {
+    impl.status = async () => vaultStatus({ remote: { name: "origin", url: "run402::acme/my-notes", matches: true, reason: null } });
+    captureStart();
+    try {
+      await run("status", []);
+    } finally {
+      captureStop();
+    }
+    const line = stderr.find((s) => s.startsWith("remote 'origin':"));
+    assert.ok(line, `expected a remote line, got: ${stderr.join("\n")}`);
+    assert.equal(line, "remote 'origin': run402::acme/my-notes");
+  });
+});
+
 describe("run402 init — which project the gitvault scaffold acts on", () => {
   it("honours RUN402_PROJECT_ID, the way every other project-scoped command does", () => {
     assert.deepEqual(
@@ -474,10 +525,19 @@ describe("run402 doctor — gitvault is no longer invisible", () => {
   });
 
   it("WARNS when the local run402 remote points at a different project", async () => {
-    impl.status = async () => vaultStatus({ remote: { name: "run402", url: "run402::other_org/prj_other", matches: false } });
+    impl.status = async () => vaultStatus({ remote: { name: "run402", url: "run402::other_org/prj_other", matches: false, reason: null } });
     const check = await runDoctor();
     assert.equal(check.status, "warning");
     assert.match(check.value.gaps.join("\n"), /points at a different project/);
+  });
+
+  it("does NOT warn when remote.matches is null — a slug-form remote not yet resolved on this machine is not a mismatch (kychee-com/run402#562)", async () => {
+    impl.status = async () => vaultStatus({
+      remote: { name: "origin", url: "run402::acme/my-notes", matches: null, reason: "name-form remote, not yet resolved on this machine" },
+    });
+    const check = await runDoctor();
+    assert.equal(check.status, "ok");
+    assert.doesNotMatch(JSON.stringify(check.value), /different project/i);
   });
 
   it("echoes the SDK's own advisories verbatim, including the grandfathered one", async () => {

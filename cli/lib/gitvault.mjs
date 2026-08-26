@@ -392,7 +392,15 @@ async function status(args) {
     // Two facts the user otherwise has to leave the CLI for: which vault this
     // checkout is wired to, and what the control plane says is in it.
     if (s.remote) {
-      console.error(`remote '${s.remote.name}': ${s.remote.url}${s.remote.matches ? "" : "  ← points at a DIFFERENT project than this status"}`);
+      // `matches` is a TRI-STATE (kychee-com/run402#562): `false` is a real
+      // mismatch; `null` only means a slug-form remote has not resolved on
+      // this machine yet — that is NOT evidence of anything wrong, so it
+      // gets a neutral note, never the mismatch warning.
+      const suffix =
+        s.remote.matches === false ? "  ← points at a DIFFERENT project than this status"
+        : s.remote.matches === null ? `  (${s.remote.reason})`
+        : "";
+      console.error(`remote '${s.remote.name}': ${s.remote.url}${suffix}`);
     }
     // The id-pinning state (design D6, task 4.5): a slug-form remote pins
     // repo_id in local git state the first time it resolves; id-form pins

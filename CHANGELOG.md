@@ -155,6 +155,18 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   HEAD branch when it is among them, else the first branch in the batch —
   with a one-line stderr note saying which and why. A HEALTHY HEAD is still
   never moved; that stays the documented rule.
+- **Fix: `gitvault status`'s `remote.matches` was always `false` for a
+  correctly-configured slug-form remote (kychee-com/run402#562).** The
+  comparison used the parsed remote URL's second half as if it were a
+  project id — true for an id-form remote, but for a slug-form one
+  (`run402::<org-slug>/<name>`) that half is a repo NAME, so every valid
+  slug-form remote reported a false "points at a DIFFERENT project"
+  mismatch. `matches` is now a tri-state: id-form is unchanged (`true`/
+  `false` from the URL text); slug-form compares against the local id-pin
+  instead (`git config r402.repoId`, no network) — `true`/`false` once
+  pinned, `null` with a `reason` before it has ever resolved on this
+  machine. `null` renders no mismatch warning anywhere (`gitvault status`,
+  `doctor`) — it means "not yet resolved here", not "wrong".
 
 ## 4.37.1 — allocation no longer gates deploys (D3 complete)
 

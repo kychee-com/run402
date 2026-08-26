@@ -116,11 +116,23 @@ export interface GitvaultStatus {
   /**
    * The `run402` git remote in the local repository, when there is one to read.
    * `null` when no `repo_dir` was given, the directory is not a repository, or
-   * no such remote is configured. `matches` is false when the remote points at
-   * a DIFFERENT vault than the one this status is about — the case where a
-   * checkout is wired to somebody else's project and nothing says so.
+   * no such remote is configured.
+   *
+   * `matches` is a TRI-STATE (kychee-com/run402#562). For an ID-FORM remote
+   * (`run402::<org_id>/<project_id>`) it is `true`/`false` from the URL text
+   * alone — the second half is a real project id, so comparing it against
+   * this status's own project needs no lookup. For a SLUG-FORM remote
+   * (`run402::<org-slug>/<name>`) the URL's second half is a repo NAME, not
+   * a project id — comparing it as if it were one made a CORRECTLY
+   * configured slug-form remote always report `matches: false` (the bug).
+   * Instead it is compared against the local id-pin (`git config
+   * r402.repoId`, task 4.5): pin present + equal → `true`; pin present +
+   * different → `false`; no pin yet → `null` with `reason` explaining why
+   * (no network read — `status` stays a pure observation). Render NO
+   * mismatch warning for the `null` case anywhere — it is not evidence of
+   * anything wrong, only of "not yet resolved on this machine".
    */
-  remote: { name: string; url: string; matches: boolean } | null;
+  remote: { name: string; url: string; matches: boolean | null; reason: string | null } | null;
   /**
    * The id-pinning state of this checkout (design D6, task 4.5) — `null`
    * when no `repo_dir` was given, or nothing is pinned there yet. A SLUG-form
@@ -806,6 +818,18 @@ export class Gitvault {
       }
     }
 
+    // The local id-pin, when there is a repository to read it from (design
+    // D6, task 4.5) — a pure read, same discipline as `remote` below. Read
+    // BEFORE `remote` so a slug-form remote's `matches` comparison can use
+    // it: the pin is the only LOCAL ground truth a slug-form address's own
+    // URL text does not carry (kychee-com/run402#562).
+    let pinned: GitvaultStatus["pinned"] = null;
+    if (options.repo_dir) {
+      const { readPinnedGitvaultRepo } = await this.#address();
+      const p = await readPinnedGitvaultRepo(options.repo_dir);
+      pinned = p ? { repo_id: p.repo_id, resolved_from: p.resolved_from } : null;
+    }
+
     // The local git remote, when there is a repository to read it from. A
     // pure read: `status` must never write git configuration.
     //
@@ -834,18 +858,23 @@ export class Gitvault {
         if (!url) continue;
         const parsed = parseGitvaultRemoteUrl(url);
         if (!parsed) continue;
-        remote = { name, url, matches: project === null || parsed.project_id === project };
+        if (gitvaultRemoteAddressForm(parsed) === "id") {
+          // Id-form: the URL's second half IS the real project id — the
+          // pre-existing, always-correct comparison.
+          remote = { name, url, matches: project === null || parsed.project_id === project, reason: null };
+        } else {
+          // Slug-form: the URL's second half is a repo NAME, not a project
+          // id — comparing it against `project` always mismatched, even for
+          // a perfectly-configured remote (kychee-com/run402#562). The only
+          // LOCAL ground truth for a slug-form remote's real identity is the
+          // id-pin; without one there is nothing to compare against, and
+          // that absence is NOT evidence of a mismatch.
+          remote = pinned
+            ? { name, url, matches: repoId === null || pinned.repo_id === repoId, reason: null }
+            : { name, url, matches: null, reason: "name-form remote, not yet resolved on this machine" };
+        }
         break;
       }
-    }
-
-    // The local id-pin, when there is a repository to read it from (design
-    // D6, task 4.5) — a pure read, same discipline as `remote` above.
-    let pinned: GitvaultStatus["pinned"] = null;
-    if (options.repo_dir) {
-      const { readPinnedGitvaultRepo } = await this.#address();
-      const p = await readPinnedGitvaultRepo(options.repo_dir);
-      pinned = p ? { repo_id: p.repo_id, resolved_from: p.resolved_from } : null;
     }
 
     // The ref map, only when asked (see the `refs` option's doc). Best-effort:

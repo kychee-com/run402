@@ -16,9 +16,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Run402 } from "../index.js";
-import { gitvaultRemoteUrl, parseGitvaultRemoteUrl } from "./gitvault.js";
+import { gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
 import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT } from "./gitvault.crypto.js";
 import { hardenedGit } from "../node/gitvault-snapshot.js";
+import { pinGitvaultRepo } from "../node/gitvault-address.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface Call {
@@ -72,8 +73,25 @@ const VAULT_RECORD = {
   created_at: null,
 };
 
+/**
+ * A genuinely UUID-shaped org id for building ID-FORM remote URLs
+ * (`gitvaultRemoteAddressForm`'s own discrimination — repo-first-onramp
+ * design D6 — requires BOTH halves to look id-shaped: a UUID org id and a
+ * `prj_`-prefixed project id). `VAULT_RECORD.org_id` above ("org_demo") is
+ * deliberately NOT this shape — it is a control-plane response field the
+ * remote-matching logic never reads — but a URL built for these tests must
+ * be, or `status()`'s new tri-state logic (kychee-com/run402#562) correctly
+ * classifies it as slug-form instead and these id-form-only tests would be
+ * exercising the wrong code path.
+ */
+const GITVAULT_TEST_ID_ORG = "11111111-1111-4111-8111-111111111111";
+
 describe("gitvault remote URLs", () => {
   it("round-trips `run402::<org_id>/<project_id>`", () => {
+    // A plain round-trip of the URL builder/parser — classification into
+    // id-form vs slug-form is a SEPARATE concern (see GITVAULT_TEST_ID_ORG's
+    // own doc comment) this test does not exercise, so "org_demo" is fine
+    // here even though it is not UUID-shaped.
     const url = gitvaultRemoteUrl("org_demo", "prj_demo");
     assert.equal(url, "run402::org_demo/prj_demo");
     assert.deepEqual(parseGitvaultRemoteUrl(url), { org_id: "org_demo", project_id: "prj_demo" });
@@ -380,7 +398,7 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     }
 
     it("reports an 'origin' remote (the common case) — not just one literally named 'run402'", async () => {
-      const url = gitvaultRemoteUrl("org_demo", "prj_demo");
+      const url = gitvaultRemoteUrl(GITVAULT_TEST_ID_ORG, "prj_demo");
       const dir = await freshRepoWithRemote("origin", url);
       try {
         const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
@@ -395,7 +413,7 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     });
 
     it("still reports a 'run402'-named remote when that is what exists (the pre-fix behavior, preserved)", async () => {
-      const url = gitvaultRemoteUrl("org_demo", "prj_demo");
+      const url = gitvaultRemoteUrl(GITVAULT_TEST_ID_ORG, "prj_demo");
       const dir = await freshRepoWithRemote("run402", url);
       try {
         const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
@@ -408,7 +426,7 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     });
 
     it("prefers 'run402' over 'origin' when BOTH exist (D1's own naming precedence)", async () => {
-      const runUrl = gitvaultRemoteUrl("org_demo", "prj_demo");
+      const runUrl = gitvaultRemoteUrl(GITVAULT_TEST_ID_ORG, "prj_demo");
       const dir = await freshRepoWithRemote("run402", runUrl);
       try {
         await hardenedGit(dir, ["remote", "add", "origin", "https://github.com/someone/else.git"]);
@@ -422,7 +440,7 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     });
 
     it("an 'origin' that is NOT run402-form is skipped in favor of a run402-form remote under the other name", async () => {
-      const url = gitvaultRemoteUrl("org_demo", "prj_demo");
+      const url = gitvaultRemoteUrl(GITVAULT_TEST_ID_ORG, "prj_demo");
       const dir = await freshRepoWithRemote("origin", "https://github.com/someone/unrelated.git");
       try {
         await hardenedGit(dir, ["remote", "add", "run402", url]);
@@ -436,7 +454,7 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     });
 
     it("reports matches: false when the remote names a DIFFERENT project", async () => {
-      const url = gitvaultRemoteUrl("org_demo", "prj_other");
+      const url = gitvaultRemoteUrl(GITVAULT_TEST_ID_ORG, "prj_other");
       const dir = await freshRepoWithRemote("origin", url);
       try {
         const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
@@ -456,6 +474,88 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
         const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
         const status = await sdk.gitvault.status({ project_id: "prj_demo", repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-ks6") });
         assert.equal(status.remote, null);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  // ─── remote.matches tri-state for SLUG-FORM remotes (kychee-com/run402#562) ──
+  //
+  // THE DEFECT. `status()` used to compare `parsed.project_id` (the parsed
+  // second half of the remote URL) against the real `prj_...` id for EVERY
+  // remote form. For an id-form remote that second half genuinely IS the
+  // project id, so the comparison is correct. For a SLUG-FORM remote
+  // (`run402::<org-slug>/<name>`) that second half is a repo NAME, never a
+  // project id — so a correctly-configured slug-form remote always failed
+  // the comparison and `status`/`doctor` printed a misleading "points at a
+  // DIFFERENT project" warning. The fix compares a slug-form remote against
+  // the local id-pin instead (no network — `status` stays a pure
+  // observation), and reports `null` (with a `reason`, never a mismatch)
+  // when nothing is pinned there yet.
+  describe("status() remote.matches is a tri-state for slug-form remotes (kychee-com/run402#562)", () => {
+    const SLUG_URL = gitvaultRemoteUrlForRepo("acme", "my-notes");
+    let root: string;
+
+    async function freshRepoWithSlugRemote(): Promise<string> {
+      root = mkdtempSync(join(tmpdir(), "run402-gitvault-status-remote-slug-"));
+      const dir = join(root, "repo");
+      await hardenedGit(root, ["init", "-q", "-b", "main", "repo"]);
+      await hardenedGit(dir, ["remote", "add", "origin", SLUG_URL]);
+      return dir;
+    }
+
+    it("pin present + equal → matches: true", async () => {
+      const dir = await freshRepoWithSlugRemote();
+      try {
+        await pinGitvaultRepo(dir, VAULT_RECORD.repo_id, { org_slug: "acme", repo_name: "my-notes" });
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ repo_id: VAULT_RECORD.repo_id, repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-slug-ks1") });
+        assert.ok(status.remote, "a slug-form remote must still be reported, not null");
+        assert.equal(status.remote!.matches, true);
+        assert.equal(status.remote!.reason, null);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("pin present + DIFFERENT → matches: false", async () => {
+      const dir = await freshRepoWithSlugRemote();
+      try {
+        await pinGitvaultRepo(dir, "src_99999999999999999999999999999999", { org_slug: "acme", repo_name: "my-notes" });
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ repo_id: VAULT_RECORD.repo_id, repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-slug-ks2") });
+        assert.equal(status.remote!.matches, false);
+        assert.equal(status.remote!.reason, null);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("no pin yet → matches: null, with a reason — never a mismatch", async () => {
+      const dir = await freshRepoWithSlugRemote();
+      try {
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ repo_id: VAULT_RECORD.repo_id, repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-slug-ks3") });
+        assert.equal(status.remote!.matches, null, "no pin exists yet, so there is nothing local to compare against — that is not evidence of a mismatch");
+        assert.equal(status.remote!.reason, "name-form remote, not yet resolved on this machine");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("an id-form remote is entirely unaffected — its own URL text is still the whole comparison, no pin involved", async () => {
+      root = mkdtempSync(join(tmpdir(), "run402-gitvault-status-remote-idform-"));
+      const dir = join(root, "repo");
+      await hardenedGit(root, ["init", "-q", "-b", "main", "repo"]);
+      const idUrl = gitvaultRemoteUrl(GITVAULT_TEST_ID_ORG, "prj_demo");
+      await hardenedGit(dir, ["remote", "add", "origin", idUrl]);
+      try {
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ project_id: "prj_demo", repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-idform-ks") });
+        assert.equal(status.remote!.matches, true);
+        assert.equal(status.remote!.reason, null, "id-form never carries a reason — the comparison is always fully determined");
+        assert.equal(status.pinned, null, "id-form never pins — a project id already never changes");
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

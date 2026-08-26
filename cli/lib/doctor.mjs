@@ -481,7 +481,11 @@ export async function run(sub, args = []) {
         if (gv.pending_overrides > 0) {
           gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 gitvault push' to drain them`);
         }
-        if (gv.remote && !gv.remote.matches) {
+        // `matches` is a TRI-STATE (kychee-com/run402#562): `false` alone is
+        // a real mismatch. `null` (a slug-form remote not yet resolved on
+        // this machine) is not evidence of anything wrong — `!gv.remote.matches`
+        // used to treat null the same as false and would have warned here.
+        if (gv.remote && gv.remote.matches === false) {
           gaps.push(`the '${gv.remote.name}' git remote points at a different project than ${value.project_id} (${gv.remote.url})`);
         }
         // Echoed exactly as the SDK reported them — including the
