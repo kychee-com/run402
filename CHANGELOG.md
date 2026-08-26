@@ -144,6 +144,17 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   `run402::<slug>/<name>` address.
 - CLI/SDK-only surface throughout (no MCP tool for the mutating verbs), per
   the gitvault family's existing "mutating verbs are CLI-only" law.
+- **Fix: a first `git push` of any branch other than `main` left the vault's
+  HEAD dangling, so the first `git clone` warned "remote HEAD refers to
+  nonexistent ref" and checked out an EMPTY tree (kychee-com/run402#568).**
+  A fresh vault's HEAD symref defaults to `refs/heads/main`; publishing
+  landed fine, but nothing said HEAD still named a ref that would never
+  exist. `git-remote-run402` now repairs a DANGLING HEAD (unset, or a symref
+  naming a ref THIS push's own batch does not leave present) by pointing it
+  at one of the branches the push is publishing — this repository's own
+  HEAD branch when it is among them, else the first branch in the batch —
+  with a one-line stderr note saying which and why. A HEALTHY HEAD is still
+  never moved; that stays the documented rule.
 
 ## 4.37.1 — allocation no longer gates deploys (D3 complete)
 

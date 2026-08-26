@@ -68,10 +68,20 @@
  *     no per-ref object selection, so one batch = one full restore. That is a
  *     superset of what git asked for (git writes the refs itself from `list`),
  *     never a subset — but it is not incremental.
- *   - `push` never changes the vault's HEAD target; the SDK carries it forward.
- *     A fresh vault defaults to `refs/heads/main`, so a first push of some
- *     other branch leaves HEAD naming a ref that does not exist yet. Use
- *     `run402 gitvault snapshot`, which sets the HEAD target from the local HEAD.
+ *   - `push` REPAIRS a DANGLING vault HEAD and otherwise never moves it
+ *     (kychee-com/run402#568). A fresh vault defaults its HEAD symref to
+ *     `refs/heads/main`; before this fix, a first push of any OTHER branch
+ *     left that symref naming a ref that would never exist, and the first
+ *     `git clone` warned "remote HEAD refers to nonexistent ref" and checked
+ *     out an EMPTY tree — publishing landed, but nothing was reachable from
+ *     it. Now: when the vault's current HEAD target is unset, or is a
+ *     symref naming a ref this push's own batch does not leave present, the
+ *     helper points it at one of the branches THIS push is publishing — the
+ *     local repository's own HEAD branch when it is among them, else the
+ *     first branch in the batch — and prints a one-line stderr note saying
+ *     which and why (see `chooseGitvaultHeadTargetForPush`). A HEALTHY HEAD
+ *     (one that already names a ref this push leaves present) is NEVER
+ *     touched — push moving history never means push moving HEAD.
  *   - `option dry-run` is `unsupported`: this helper cannot rehearse a
  *     publication, and reporting a fake success would be worse than refusing.
  *   - `fetch` and `push` REQUIRE the `GIT_DIR` git sets when it drives a
@@ -82,6 +92,7 @@
  */
 
 import { createInterface } from "node:readline";
+import { pathToFileURL } from "node:url";
 import { getSdk } from "./lib/sdk.mjs";
 import { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } from "./lib/wallet-context.mjs";
 import { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } from "#sdk";
@@ -214,6 +225,62 @@ function parsePushSpec(spec) {
   return { src: body.slice(0, colon), dst: body.slice(colon + 1), force: forced };
 }
 
+/**
+ * Decide whether THIS push must repair a DANGLING vault HEAD, and to what
+ * (kychee-com/run402#568 — the first-clone empty-tree hazard). The rule:
+ *
+ *   WHEN the vault's current materialized HEAD target is absent, OR is a
+ *   symref naming a ref this push's own batch does not leave present, set
+ *   `head_target` to one of the branches THIS push is publishing — this
+ *   repository's own HEAD branch when it is among them, else the first
+ *   branch in the batch (git's own order) — and say which, and why, in a
+ *   one-line note. No silent magic.
+ *
+ *   WHEN HEAD is already set and healthy (a symref naming a ref this push
+ *   leaves present, or a detached target), it is NEVER touched — push
+ *   moving history never means push moving HEAD. That stays the documented
+ *   rule (`vault.push`'s own `head_target ?? base.head_target` carry-forward
+ *   already guarantees this at the SDK layer; this function just decides
+ *   WHEN to override that default).
+ *
+ * Pure — no I/O, no git, no network — so it is unit-testable directly.
+ * `updates` is this push's own ref-transaction updates (`{ ref, new_oid }`,
+ * `new_oid: null` for a deletion); `baseRefs`/`baseHeadTarget` are what the
+ * vault materialized BEFORE this push; `localHeadRef` is this repository's
+ * own HEAD branch (`refs/heads/<name>`), or `null` when detached/unknown.
+ *
+ * Returns `{ head_target: undefined }` (never publish an override — the SDK
+ * carries the base forward) when HEAD needs no repair, or when this batch
+ * has no branch update to repair it WITH (a tags-only or deletion-only
+ * batch cannot fix a dangling HEAD by itself).
+ */
+export function chooseGitvaultHeadTargetForPush({ baseHeadTarget, baseRefs, updates, localHeadRef }) {
+  const postPushRefs = { ...(baseRefs ?? {}) };
+  for (const u of updates) {
+    if (u.new_oid === null) delete postPushRefs[u.ref];
+    else postPushRefs[u.ref] = u.new_oid;
+  }
+
+  const dangling =
+    !baseHeadTarget ||
+    (baseHeadTarget.kind === "symref" && !Object.prototype.hasOwnProperty.call(postPushRefs, baseHeadTarget.ref));
+  if (!dangling) return { head_target: undefined, note: null };
+
+  const pushedBranches = updates.filter((u) => u.new_oid !== null && u.ref.startsWith("refs/heads/")).map((u) => u.ref);
+  if (pushedBranches.length === 0) return { head_target: undefined, note: null };
+
+  const localIsPushed = Boolean(localHeadRef) && pushedBranches.includes(localHeadRef);
+  const chosen = localIsPushed ? localHeadRef : pushedBranches[0];
+  const why = localIsPushed
+    ? "this repository's own HEAD branch"
+    : pushedBranches.length > 1
+      ? `the first of ${pushedBranches.length} branches pushed in this batch`
+      : "the branch this push publishes";
+  const priorState = baseHeadTarget ? `dangling (named '${baseHeadTarget.ref}', which this push does not publish)` : "unset";
+  const note = `vault HEAD was ${priorState} — setting it to '${chosen}' (${why}). A healthy HEAD is never moved by push.`;
+  return { head_target: { kind: "symref", ref: chosen }, note };
+}
+
 async function main(argv) {
   const address = resolveRemoteAddress(argv);
   if (!address) {
@@ -243,6 +310,16 @@ async function main(argv) {
   async function requireRepo() {
     if (!resolvedRepo) resolvedRepo = await resolveGitInvocationRepo(process.env, process.cwd());
     return resolvedRepo.repo_dir;
+  }
+
+  /** This repository's own HEAD branch (`refs/heads/<name>`), or `null` when detached, unborn, or unreadable — never a failure by itself. */
+  async function localHeadBranchRef(repoDir) {
+    try {
+      const out = (await hardenedGit(repoDir, ["symbolic-ref", "--quiet", "HEAD"])).text().trim();
+      return out.length > 0 ? out : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -394,10 +471,26 @@ async function main(argv) {
           force: spec.force && expectedOld !== null,
         });
       }
+      // Repair a DANGLING HEAD from this batch's own branches (#568) — see
+      // `chooseGitvaultHeadTargetForPush`'s own doc comment for the exact
+      // rule. `localHeadRef` is read from THIS repository (never cwd, same
+      // fail-closed resolution as everything else in this function).
+      const headFix = chooseGitvaultHeadTargetForPush({
+        baseHeadTarget: base.head_target,
+        baseRefs: base.refs,
+        updates,
+        localHeadRef: await localHeadBranchRef(repoDir),
+      });
+      if (headFix.note) note(headFix.note);
       // ONE transaction for the whole batch: the SDK evaluates fast-forward,
       // tag immutability, protocol-ref refusal and retention roots, builds the
-      // packs, and publishes — all or nothing.
-      const published = await vault.push({ transaction: { updates } });
+      // packs, and publishes — all or nothing. `head_target` is included ONLY
+      // when a repair is called for; omitted, `vault.push` carries the base
+      // forward unchanged — a healthy HEAD is never moved.
+      const published = await vault.push({
+        transaction: { updates },
+        ...(headFix.head_target ? { head_target: headFix.head_target } : {}),
+      });
       if (verbosity >= 1) note(`published generation ${published.generation} (${published.form})`);
       for (const spec of specs) out(`ok ${spec.dst}`);
     } catch (err) {
@@ -501,10 +594,23 @@ async function main(argv) {
   }
 }
 
+// Only run the protocol loop when git (or a human) actually invoked this file
+// as a binary — never on `import` (tests import `chooseGitvaultHeadTargetForPush`
+// directly; without this guard that import would block on stdin forever).
+const invokedDirectly = (() => {
+  try {
+    return process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+})();
+
 // Never `process.exit()` mid-stream: that can truncate a pending stdout write
 // on a pipe, which git reads as a protocol violation. Set the code and let Node
 // flush and exit on its own.
-main(process.argv.slice(2)).then(
-  (code) => { process.exitCode = code; },
-  (err) => { note(describeError(err)); process.exitCode = 1; },
-);
+if (invokedDirectly) {
+  main(process.argv.slice(2)).then(
+    (code) => { process.exitCode = code; },
+    (err) => { note(describeError(err)); process.exitCode = 1; },
+  );
+}

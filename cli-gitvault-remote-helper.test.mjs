@@ -35,6 +35,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chooseGitvaultHeadTargetForPush } from "./cli/git-remote-run402.mjs";
 
 const HELPER = fileURLToPath(new URL("./cli/git-remote-run402.mjs", import.meta.url));
 /** A closed port: any network attempt fails loudly and unmistakably. */
@@ -637,5 +638,160 @@ describe("git-remote-run402 — wallet selection (kychee-com/run402#558)", () =>
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+// ─── first-push HEAD repair (kychee-com/run402#568) ──────────────────────
+//
+// THE DEFECT (dogfood #2). A fresh vault's HEAD symref defaults to
+// `refs/heads/main` (the SDK's own genesis default). A first
+// `git push origin master` (or any non-main branch) published the commit
+// fine, but left HEAD naming a ref that would never exist — the first
+// `git clone` warned "remote HEAD refers to nonexistent ref" and checked
+// out an EMPTY tree, with the real commit sitting right there on the
+// advertised `refs/heads/master`.
+//
+// `chooseGitvaultHeadTargetForPush` is the pure decision this file's own
+// `runPush` composes (see its call site) — no I/O, no git, no network, so
+// it is driven directly here rather than through the full protocol wire
+// (a genuine crypto round trip needs a real vault backend; the SDK-layer
+// plumbing that carries a supplied `head_target` through `push()` and back
+// out of `materialize()` is already pinned in
+// `sdk/src/node/gitvault-publication.test.ts`, "push can set head_target
+// directly, overriding the base"). What is under test here is squarely the
+// CLI-layer decision this bug's fix actually lives in: WHICH ref to repair
+// HEAD to, and when to leave it alone.
+describe("chooseGitvaultHeadTargetForPush — first-push HEAD repair (kychee-com/run402#568)", () => {
+  const MAIN_SYMREF = { kind: "symref", ref: "refs/heads/main" };
+  const oid = (n) => n.toString(16).padStart(40, "0");
+
+  /** What a `list` immediately after this push would advertise — the actual clone-safety property: HEAD must never name an absent ref. */
+  function postPushRefsAndHead({ baseRefs, updates, result }) {
+    const refs = { ...(baseRefs ?? {}) };
+    for (const u of updates) {
+      if (u.new_oid === null) delete refs[u.ref];
+      else refs[u.ref] = u.new_oid;
+    }
+    const headTarget = result.head_target ?? MAIN_SYMREF; // what vault.push() would carry forward when no override is given
+    const headAdvertisable = headTarget.kind === "symref" ? Object.prototype.hasOwnProperty.call(refs, headTarget.ref) : true;
+    return { refs, headTarget, headAdvertisable };
+  }
+
+  it("first push of master (a fresh vault, HEAD defaulting to the never-pushed 'main') sets HEAD to master — and the resulting ref map is clone-safe", () => {
+    const updates = [{ ref: "refs/heads/master", new_oid: oid(1) }];
+    const result = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: MAIN_SYMREF,
+      baseRefs: {},
+      updates,
+      localHeadRef: "refs/heads/master",
+    });
+    assert.deepEqual(result.head_target, { kind: "symref", ref: "refs/heads/master" });
+    assert.match(result.note, /vault HEAD was dangling.*'refs\/heads\/main'/);
+    assert.match(result.note, /setting it to 'refs\/heads\/master'/);
+
+    // The property that actually matters: a `list` right after this push
+    // must never advertise `@<ref> HEAD` for a ref with no entry — that is
+    // exactly the "remote HEAD refers to nonexistent ref" hazard.
+    const { headAdvertisable } = postPushRefsAndHead({ baseRefs: {}, updates, result });
+    assert.equal(headAdvertisable, true, "HEAD must name a ref this push actually published — a clone must never see an empty tree");
+  });
+
+  it("first push of several branches in one batch prefers the local repository's own HEAD branch", () => {
+    const updates = [
+      { ref: "refs/heads/feature", new_oid: oid(2) },
+      { ref: "refs/heads/dev", new_oid: oid(3) },
+    ];
+    const result = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: MAIN_SYMREF,
+      baseRefs: {},
+      updates,
+      localHeadRef: "refs/heads/dev",
+    });
+    assert.deepEqual(result.head_target, { kind: "symref", ref: "refs/heads/dev" });
+    assert.match(result.note, /this repository's own HEAD branch/);
+  });
+
+  it("first push of several branches with NO matching local HEAD picks the first branch in the batch, and says so", () => {
+    const updates = [
+      { ref: "refs/heads/feature", new_oid: oid(2) },
+      { ref: "refs/heads/dev", new_oid: oid(3) },
+    ];
+    const result = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: MAIN_SYMREF,
+      baseRefs: {},
+      updates,
+      localHeadRef: null, // detached, or unresolvable
+    });
+    assert.deepEqual(result.head_target, { kind: "symref", ref: "refs/heads/feature" });
+    assert.match(result.note, /the first of 2 branches pushed in this batch/);
+  });
+
+  it("a later push with an already-healthy HEAD does not move it", () => {
+    // HEAD already names 'main', and 'main' is present both before AND
+    // after this push (which only touches a different branch) — the
+    // documented rule: push never moves a healthy HEAD.
+    const updates = [{ ref: "refs/heads/feature", new_oid: oid(4) }];
+    const result = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: MAIN_SYMREF,
+      baseRefs: { "refs/heads/main": oid(0) },
+      updates,
+      localHeadRef: "refs/heads/feature",
+    });
+    assert.equal(result.head_target, undefined, "a healthy HEAD must not be overridden — vault.push() carries the base forward unchanged");
+    assert.equal(result.note, null, "no repair happened, so there is nothing to note");
+  });
+
+  it("re-pushing the SAME branch HEAD already names is still healthy — updating main's oid never moves HEAD off main", () => {
+    const updates = [{ ref: "refs/heads/main", new_oid: oid(5) }];
+    const result = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: MAIN_SYMREF,
+      baseRefs: { "refs/heads/main": oid(0) },
+      updates,
+      localHeadRef: "refs/heads/main",
+    });
+    assert.equal(result.head_target, undefined);
+    assert.equal(result.note, null);
+  });
+
+  it("a dangling HEAD with no branch in this batch (e.g. a tag-only or deletion-only push) is left alone — nothing here can repair it", () => {
+    const tagOnly = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: MAIN_SYMREF,
+      baseRefs: {},
+      updates: [{ ref: "refs/tags/v1", new_oid: oid(6) }],
+      localHeadRef: "refs/heads/master",
+    });
+    assert.equal(tagOnly.head_target, undefined);
+    assert.equal(tagOnly.note, null);
+
+    const deletionOnly = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: MAIN_SYMREF,
+      baseRefs: { "refs/heads/main": oid(0) },
+      updates: [{ ref: "refs/heads/main", new_oid: null }],
+      localHeadRef: null,
+    });
+    assert.equal(deletionOnly.head_target, undefined);
+    assert.equal(deletionOnly.note, null);
+  });
+
+  it("an UNSET head_target (defensive — the SDK always supplies a default today, but the rule covers it) is repaired the same way", () => {
+    const result = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: null,
+      baseRefs: {},
+      updates: [{ ref: "refs/heads/trunk", new_oid: oid(7) }],
+      localHeadRef: "refs/heads/trunk",
+    });
+    assert.deepEqual(result.head_target, { kind: "symref", ref: "refs/heads/trunk" });
+    assert.match(result.note, /vault HEAD was unset/);
+  });
+
+  it("a detached HEAD target is left untouched — only a dangling SYMREF is ever repaired", () => {
+    const result = chooseGitvaultHeadTargetForPush({
+      baseHeadTarget: { kind: "detached", oid: oid(9) },
+      baseRefs: {},
+      updates: [{ ref: "refs/heads/master", new_oid: oid(1) }],
+      localHeadRef: "refs/heads/master",
+    });
+    assert.equal(result.head_target, undefined);
+    assert.equal(result.note, null);
   });
 });
