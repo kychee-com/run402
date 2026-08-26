@@ -21,7 +21,16 @@ import { gitvaultPaths } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
 import { DirectoryMirrorBackend, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
-import { generationRouteForKey, mirrorPushForGeneration, mirrorSync, objectReadRequestForEntry, planMirrorWrite, type GitvaultObjectEntry } from "./gitvault-mirror.js";
+import {
+  generationRouteForKey,
+  listGitvaultObjectsAll,
+  mirrorPushForGeneration,
+  mirrorSync,
+  objectReadRequestForEntry,
+  planMirrorWrite,
+  readGitvaultObjectBytes,
+  type GitvaultObjectEntry,
+} from "./gitvault-mirror.js";
 import { adjudicateAbsences, discoverAndVerifyChain, recoverGitvaultMirror, verifyGitvaultMirror } from "./gitvault-recover.js";
 
 function scratchDir(prefix: string): string {
@@ -44,26 +53,68 @@ function scratchDir(prefix: string): string {
  * `gitvault-mirror.ts`/`gitvault-recover.ts` against a spelling no REAL
  * mirror (synced from the REAL objects listing) would ever contain — the
  * "self-consistent fiction" this translation exists to close. Every OTHER
- * consumer of this helper below therefore sees gateway-true keys, the same
- * as a real `mirror sync` would produce.
+ * consumer of this helper below therefore sees gateway-true, REPO-RELATIVE
+ * keys — the exact shape the mirror BACKEND stores under (see
+ * `gitvault-mirror.ts`'s module doc mirror-layout mapping), the same as a
+ * real `mirror sync` would leave on disk/S3.
  */
-function toGatewayTrueKey(key: string): string {
+function toRepoRelativeGatewayKey(key: string): string {
   const m = /^envelopes\/([0-9a-f]{16})\/(ek_[0-9a-f]{32})$/.exec(key);
   return m ? `key-envelopes/${m[1]}/${m[2]}.env` : key;
 }
 
-/** Every entry the fixture's transport holds for one vault, keyed relative to the vault root (§3 layout) — exactly the shape `GET .../objects` returns (gateway-true keys — see {@link toGatewayTrueKey}). */
+/** Every entry the fixture's transport holds for one vault, keyed REPO-RELATIVE to the vault root (§3 layout, `source/<repo_id>/` stripped) — the shape the mirror BACKEND stores under, and what `seedBackend` below writes verbatim. NOT the wire listing shape (see {@link toWireListingEntries} for that). */
 function transportEntries(transport: { objects: Map<string, Uint8Array> }, repoId: string): Array<{ key: string; bytes: Uint8Array }> {
   const out: Array<{ key: string; bytes: Uint8Array }> = [];
   const prefix = `${repoId}/`;
   for (const [k, bytes] of transport.objects) {
-    if (k.startsWith(prefix)) out.push({ key: toGatewayTrueKey(k.slice(prefix.length)), bytes });
+    if (k.startsWith(prefix)) out.push({ key: toRepoRelativeGatewayKey(k.slice(prefix.length)), bytes });
   }
   return out;
 }
 
 async function seedBackend(backend: GitvaultMirrorBackend, entries: readonly { key: string; bytes: Uint8Array }[]): Promise<void> {
   for (const e of entries) await backend.putCreateOnly(e.key, e.bytes);
+}
+
+const GENESIS_GEN = "0".repeat(16);
+
+/**
+ * Classify a REPO-RELATIVE key (as {@link transportEntries} produces) by its
+ * `object_kind`, matching the real gateway's `GET …/objects` listing
+ * (task 5.3's live-confirmed contract) — including the two chain kinds and
+ * the genesis/ordinary-generation `vault_genesis`/`head` split. The single
+ * source of truth every WIRE-listing mock below builds from, so the mock
+ * cannot drift kind-by-kind the way the pre-fix fixture did.
+ */
+function wireObjectKindFor(repoRelativeKey: string): string {
+  if (repoRelativeKey === `head/${GENESIS_GEN}`) return "vault_genesis";
+  if (repoRelativeKey.startsWith("head/")) return "head";
+  if (repoRelativeKey.startsWith("admissions/")) return "admission_record";
+  if (repoRelativeKey.startsWith("wal/")) return "wal_pack";
+  if (repoRelativeKey.startsWith("refs/")) return "ref_state";
+  if (repoRelativeKey.startsWith("retention/") && repoRelativeKey.endsWith(".enc")) return "retention_roots";
+  if (repoRelativeKey.startsWith("checkpoints/") && repoRelativeKey.endsWith(".manifest.enc")) return "checkpoint_manifest";
+  if (repoRelativeKey.startsWith("checkpoints/") && repoRelativeKey.endsWith(".pack.enc")) return "checkpoint_pack";
+  if (repoRelativeKey.startsWith("checkpoints/") && repoRelativeKey.endsWith(".claims.json")) return "checkpoint_claim_set";
+  if (repoRelativeKey.startsWith("key-envelopes/") && repoRelativeKey.endsWith(".env")) return "key_envelope";
+  return "unknown";
+}
+
+/**
+ * The WIRE shape of `GET /gitvault/v1/vaults/:vault_id/objects` — full
+ * `source/<repo_id>/`-prefixed keys, `object_kind` per {@link
+ * wireObjectKindFor}, exact `size_bytes` for every kind (including the two
+ * chain kinds). This is the "mock IS the wire model" fixture task 5.3
+ * demanded: no repo-relative shortcut, no omitted chain entries.
+ */
+function toWireListingEntries(entries: readonly { key: string; bytes: Uint8Array }[], repoId: string): Array<{ key: string; object_kind: string; sha256: string; size_bytes: string }> {
+  return entries.map((e) => ({
+    key: `source/${repoId}/${e.key}`,
+    object_kind: wireObjectKindFor(e.key),
+    sha256: sha256Hex(e.bytes),
+    size_bytes: String(e.bytes.length),
+  }));
 }
 
 // ─── Key-shape conformance (protocol §3) ──────────────────────────────────────
@@ -103,7 +154,7 @@ const KEY_SHAPE_TABLE: ReadonlyArray<{
   { kind: "maintenance_cycle_terminal", key: `maintenance/terminals/mc_${SAMPLE_ID}.terminal.json`, expectRead: { object_kind: "maintenance_cycle_terminal", object_id: `mc_${SAMPLE_ID}` } },
   // key_envelope: path-addressed by (epoch, recipient_fingerprint), NOT the
   // SDK's own client-local `envelopes/<epoch>/<fp>` upload-manifest label —
-  // see `toGatewayTrueKey`'s doc comment above.
+  // see `toRepoRelativeGatewayKey`'s doc comment above.
   { kind: "key_envelope", key: `key-envelopes/0000000000000001/ek_${SAMPLE_ID}.env`, expectRead: { object_kind: "key_envelope", epoch: "0000000000000001", recipient_fingerprint: `ek_${SAMPLE_ID}` } },
 ];
 
@@ -131,6 +182,114 @@ describe("gitvault mirror/recover key-shape conformance (protocol §3)", () => {
     for (const e of envelopeEntries) {
       assert.match(e.key, /^key-envelopes\/[0-9a-f]{16}\/ek_[0-9a-f]{32}\.env$/, `${e.key} is not the gateway-true key_envelope shape`);
     }
+  });
+
+  // ── chain kinds: head/vault_genesis/admission_record (task 5.3 findings (a)+(b)) ──
+  //
+  // Both fetch via the exact-bytes generation routes (`.../heads/:generation`,
+  // `.../admissions/:generation`), NEVER through `object-reads` — and the
+  // listed `object_kind` must match what that route/generation actually
+  // means: `admission_record` at every generation (including genesis),
+  // `vault_genesis` ONLY at generation zero, `head` at every later
+  // generation. A mismatch is refused loudly rather than silently read under
+  // the wrong assumption.
+  it("chain kinds: correctly-labeled entries read via the generation route and never touch object-reads", async () => {
+    const repoId = `src_${"3".repeat(32)}`;
+    const fakeClient = {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request() {
+        throw new Error("a generation-addressed entry must never call /object-reads");
+      },
+      async fetch() {
+        return new Response(new Uint8Array([9]), { status: 200 });
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const genesis = await readGitvaultObjectBytes(fakeClient, repoId, { key: `head/${GENESIS_GEN}`, object_kind: "vault_genesis", sha256: "", size_bytes: "1" });
+    assert.deepEqual([...genesis!], [9]);
+    const head = await readGitvaultObjectBytes(fakeClient, repoId, { key: "head/0000000000000005", object_kind: "head", sha256: "", size_bytes: "1" });
+    assert.deepEqual([...head!], [9]);
+    const genesisAdmission = await readGitvaultObjectBytes(fakeClient, repoId, { key: `admissions/${GENESIS_GEN}`, object_kind: "admission_record", sha256: "", size_bytes: "1" });
+    assert.deepEqual([...genesisAdmission!], [9]);
+    const admission = await readGitvaultObjectBytes(fakeClient, repoId, { key: "admissions/0000000000000005", object_kind: "admission_record", sha256: "", size_bytes: "1" });
+    assert.deepEqual([...admission!], [9]);
+  });
+
+  it("chain kinds: a listed object_kind that does NOT match its generation-addressed key is refused, never silently read", async () => {
+    const repoId = `src_${"4".repeat(32)}`;
+    const fakeClient = {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request() {
+        throw new Error("must never be called");
+      },
+      async fetch() {
+        return new Response(new Uint8Array([9]), { status: 200 });
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    const isKeyUnrecognized = (e: unknown): boolean => (e as { code?: string }).code === "GITVAULT_MIRROR_KEY_UNRECOGNIZED";
+
+    // genesis mislabeled as an ordinary head
+    await assert.rejects(readGitvaultObjectBytes(fakeClient, repoId, { key: `head/${GENESIS_GEN}`, object_kind: "head", sha256: "", size_bytes: "1" }), isKeyUnrecognized);
+    // an ordinary generation's head mislabeled as vault_genesis
+    await assert.rejects(readGitvaultObjectBytes(fakeClient, repoId, { key: "head/0000000000000005", object_kind: "vault_genesis", sha256: "", size_bytes: "1" }), isKeyUnrecognized);
+    // an admission record mislabeled as a head (at any generation, including genesis)
+    await assert.rejects(readGitvaultObjectBytes(fakeClient, repoId, { key: `admissions/${GENESIS_GEN}`, object_kind: "vault_genesis", sha256: "", size_bytes: "1" }), isKeyUnrecognized);
+    await assert.rejects(readGitvaultObjectBytes(fakeClient, repoId, { key: "admissions/0000000000000005", object_kind: "head", sha256: "", size_bytes: "1" }), isKeyUnrecognized);
+  });
+});
+
+// ─── source/<repo_id>/ prefix handling (task 5.3 finding (b)) ────────────────
+//
+// The gateway's REAL objects listing always carries the full
+// `source/<repo_id>/…` prefix (live-confirmed 2026-08-26). This is the
+// standing guard against the exact bug that made `mirror sync` fail on every
+// listed object against a real vault: the SDK previously assumed a
+// repo-relative wire key and either rejected every entry outright
+// (`key_envelope`) or mismatched the repo id itself out of the prefix as if
+// it were the object id (every other kind, via an unanchored fallback
+// regex — see `NON_GENERATION_KEY_SPECS`'s doc comment in gitvault-mirror.ts).
+describe("gitvault mirror objects listing — source/<repo_id>/ prefix handling (task 5.3)", () => {
+  const REPO_ID = `src_${"5".repeat(32)}`;
+
+  function fakeListingClient(objects: ReadonlyArray<{ key: string; object_kind: string; sha256: string; size_bytes: string }>): unknown {
+    return {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request(path: string) {
+        if (path.includes("/objects")) return { repo_id: REPO_ID, objects, has_more: false, next_cursor: null };
+        throw new Error(`unexpected request: ${path}`);
+      },
+      async fetch() {
+        throw new Error("unexpected fetch");
+      },
+    };
+  }
+
+  it("strips the exact source/<repo_id>/ prefix, leaving a repo-relative key", async () => {
+    const walId = `wal_${"a".repeat(32)}`;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = fakeListingClient([{ key: `source/${REPO_ID}/wal/${walId}.pack.enc`, object_kind: "wal_pack", sha256: "0".repeat(64), size_bytes: "3" }]) as any;
+    const entries = await listGitvaultObjectsAll(client, REPO_ID);
+    assert.deepEqual(entries, [{ key: `wal/${walId}.pack.enc`, object_kind: "wal_pack", sha256: "0".repeat(64), size_bytes: "3" }]);
+  });
+
+  it("refuses (never silently drops or accepts) a listed key addressed to a DIFFERENT repo id", async () => {
+    const foreignRepoId = `src_${"6".repeat(32)}`;
+    const walId = `wal_${"a".repeat(32)}`;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = fakeListingClient([{ key: `source/${foreignRepoId}/wal/${walId}.pack.enc`, object_kind: "wal_pack", sha256: "0".repeat(64), size_bytes: "3" }]) as any;
+    await assert.rejects(listGitvaultObjectsAll(client, REPO_ID), (e: unknown) => (e as { code?: string }).code === "GITVAULT_MIRROR_FOREIGN_REPO_KEY");
+  });
+
+  it("refuses a listed key with no source/<repo_id>/ prefix at all", async () => {
+    const walId = `wal_${"a".repeat(32)}`;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = fakeListingClient([{ key: `wal/${walId}.pack.enc`, object_kind: "wal_pack", sha256: "0".repeat(64), size_bytes: "3" }]) as any;
+    await assert.rejects(listGitvaultObjectsAll(client, REPO_ID), (e: unknown) => (e as { code?: string }).code === "GITVAULT_MIRROR_LISTING_INCONSISTENT");
   });
 });
 
@@ -362,18 +521,26 @@ describe("gitvault mirror writer + sync engine (task 2.5)", () => {
     };
     // A minimal fake `Client` whose `request` answers the objects listing
     // with one entry the broken backend will fail to write — enough to
-    // exercise the isolation property without a full HTTP fixture.
+    // exercise the isolation property without a full HTTP fixture. Full
+    // `source/<repo_id>/…` wire key + a syntactically valid wal_ id (task
+    // 5.3's real contract), so the failure this test exercises is the
+    // BROKEN BACKEND's write, not an incidental key-shape refusal.
+    const walId = `wal_${"d".repeat(32)}`;
+    const walBytes = new Uint8Array([1, 2, 3]);
     const fakeClient = {
       apiBase: "https://fake.test",
       credentials: { getAuth: async () => ({}) },
       async request(path: string) {
         if (path.includes("/objects")) {
-          return { repo_id: f.repoId, objects: [{ key: "wal/wal_does_not_matter.pack.enc", object_kind: "wal_pack", sha256: "0".repeat(64), size_bytes: "3" }], has_more: false, next_cursor: null };
+          return { repo_id: f.repoId, objects: [{ key: `source/${f.repoId}/wal/${walId}.pack.enc`, object_kind: "wal_pack", sha256: sha256Hex(walBytes), size_bytes: String(walBytes.length) }], has_more: false, next_cursor: null };
+        }
+        if (path.includes("/object-reads")) {
+          return { reads: [{ url: "mem://wal-bytes" }] };
         }
         throw new Error(`unexpected request: ${path}`);
       },
       async fetch() {
-        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+        return new Response(walBytes, { status: 200 });
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
@@ -399,7 +566,7 @@ describe("gitvault mirror writer + sync engine (task 2.5)", () => {
         if (path.includes("/objects")) {
           return {
             repo_id: f.repoId,
-            objects: entries.map((e) => ({ key: e.key, object_kind: keyKindFor(e.key), sha256: sha256Hex(e.bytes), size_bytes: String(e.bytes.length) })),
+            objects: toWireListingEntries(entries, f.repoId),
             has_more: false, next_cursor: null,
           };
         }
@@ -444,19 +611,12 @@ describe("gitvault mirror writer + sync engine (task 2.5)", () => {
 
 // ─── request/response fixture helpers for the sync-idempotency test ──────────
 // Gateway-true key shapes throughout (§3 / storage-keys.ts) — see
-// `toGatewayTrueKey`'s doc comment above for why `key_envelope` is NOT the
-// SDK's own upload-manifest `path` spelling.
-
-function keyKindFor(key: string): string {
-  if (key.startsWith("wal/")) return "wal_pack";
-  if (key.startsWith("refs/")) return "ref_state";
-  if (key.startsWith("retention/") && key.endsWith(".enc")) return "retention_roots";
-  if (key.startsWith("checkpoints/") && key.endsWith(".manifest.enc")) return "checkpoint_manifest";
-  if (key.startsWith("checkpoints/") && key.endsWith(".pack.enc")) return "checkpoint_pack";
-  if (key.startsWith("checkpoints/") && key.endsWith(".claims.json")) return "checkpoint_claim_set";
-  if (key.startsWith("key-envelopes/") && key.endsWith(".env")) return "key_envelope";
-  return "unknown";
-}
+// `toRepoRelativeGatewayKey`'s doc comment above for why `key_envelope` is
+// NOT the SDK's own upload-manifest `path` spelling. The listing itself is
+// built by `toWireListingEntries`/`wireObjectKindFor` above (full
+// `source/<repo_id>/…` keys, real kind classification including the chain
+// kinds) — this helper is only for resolving an `object-reads` request back
+// to the fixture's repo-relative bytes.
 
 function keyForRead(read: Record<string, string>): string {
   if (read.object_kind === "key_envelope") return `key-envelopes/${read.epoch}/${read.recipient_fingerprint}.env`;

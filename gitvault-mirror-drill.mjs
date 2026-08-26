@@ -275,6 +275,15 @@ async function main() {
 
   const mirrorSync = runCli(["gitvault", "mirror", "sync", "--repo", repoId, ...WALLET_ARGS], { label: "gitvault mirror sync" });
   console.log(`  mirror sync: copied=${mirrorSync.json?.objects_copied} already_present=${mirrorSync.json?.objects_already_present} failed=${mirrorSync.json?.objects_failed} bytes=${mirrorSync.json?.bytes_copied}`);
+  // Every failure is named here UNCONDITIONALLY (not just on assertion
+  // failure) — task 5.3's live drill found 11/11 objects failed with only the
+  // bare count visible; `objects_failed` was non-zero but `.errors[]` (which
+  // the CLI/SDK already populate per key+reason) was never printed, so the
+  // next reader had to reconstruct the cause from scratch. Never again: a
+  // non-zero `objects_failed` is self-explaining from this log alone.
+  if ((mirrorSync.json?.objects_failed ?? 0) > 0) {
+    for (const e of mirrorSync.json?.errors ?? []) console.log(`    failed: ${e.key} — ${e.error}`);
+  }
   assertEqual(mirrorSync.json?.objects_failed, 0, "mirror sync copied everything with zero failures");
   assertTrue(Number(mirrorSync.json?.objects_copied) > 0, "mirror sync actually copied objects (not a no-op)", mirrorSync.json);
 
