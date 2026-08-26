@@ -24,11 +24,15 @@ import { doctorUpdateCheck } from "./update-check.mjs";
 import { buildBuzzDoctorReport, parseBuzzDoctorArgs } from "./buzz-doctor.mjs";
 import { queueBuzzDoctorTelemetry } from "./diagnostic-telemetry.mjs";
 import { fail } from "./sdk-errors.mjs";
+import { normalizeArgv, assertKnownFlags, flagValue } from "./argparse.mjs";
+
+/** Value-taking flags (kychee-com/run402#566 — the flag set doctor actually parses; anything else is BAD_USAGE via assertKnownFlags, never silently ignored). */
+const DOCTOR_VALUE_FLAGS = ["--scan-dir", "--buzz-agent", "--project"];
 
 const HELP = `run402 doctor — Health and config diagnostics
 
 Usage:
-  run402 doctor [--verbose] [--refresh] [--no-scan] [--scan-dir <D>]
+  run402 doctor [--verbose] [--refresh] [--no-scan] [--scan-dir <D>] [--project <id>]
   run402 --wallet <profile> doctor --buzz --buzz-agent <npub-or-hex>
 
 Output:
@@ -41,8 +45,16 @@ Options:
   --refresh      Wait for a bounded live npm version check for the run402 CLI
   --no-scan      Skip the source-tree scan (config / health checks only)
   --scan-dir D   Scan a custom directory instead of \`<cwd>/src\`
+  --project <id> Target THIS project's gitvault check instead of the repo-standing
+                 default (the 4.38.0 pin / run402 remote / RUN402_PROJECT_ID / active
+                 project, in that order — see \`gitvault-target.mjs\`). Scoped to the
+                 gitvault check only; every other check is wallet/machine-wide, not
+                 per-project, and is unaffected by this flag.
   --buzz         Run only the zero-mutation Buzz setup preflight
   --buzz-agent P Bind Buzz mode to the intended public agent npub or hex key
+
+Any flag not listed above is rejected (BAD_USAGE / UNKNOWN_FLAG), never
+silently ignored.
 
 Telemetry:
   Buzz preflight sends only anonymous allowlisted start/pass/block counters.
@@ -109,16 +121,25 @@ function describeCheckFailure(label, err) {
 }
 
 export async function run(sub, args = []) {
-  const all = [sub, ...args].filter(Boolean);
+  const all = normalizeArgv([sub, ...args].filter(Boolean));
   if (all.includes("--help") || all.includes("-h")) {
     console.log(HELP);
     return;
   }
+  // kychee-com/run402#566 (--project half): doctor used to accept ANY flag
+  // silently — an unrecognized one (a typo, or --project before this fix)
+  // was simply never looked at. Any flag doctor actually parses is listed
+  // here; anything else is now a structured BAD_USAGE/UNKNOWN_FLAG rejection
+  // instead of quietly doing nothing.
+  assertKnownFlags(all, ["--verbose", "--refresh", "--no-scan", "--buzz", ...DOCTOR_VALUE_FLAGS], DOCTOR_VALUE_FLAGS);
   const verbose = all.includes("--verbose");
   const refresh = all.includes("--refresh");
   const skipScan = all.includes("--no-scan");
   const scanDirArgIdx = all.indexOf("--scan-dir");
   const scanDirOverride = scanDirArgIdx >= 0 ? all[scanDirArgIdx + 1] : null;
+  // Scoped to the gitvault check (see HELP): every other check is
+  // wallet/machine-wide, not per-project.
+  const projectOverride = flagValue(all, "--project");
 
   const buzzArgs = parseBuzzDoctorArgs(all);
   if (buzzArgs.error) fail(buzzArgs.error);
@@ -410,14 +431,16 @@ export async function run(sub, args = []) {
   // deployed is a first-class shape (protocol D183), so its mere absence of a
   // deploy raises nothing.
   //
-  // TARGETING (repo-first-onramp follow-up, kychee-com/run402#559d): when
-  // cwd is a repository with its own pinned repo id or run402/origin remote,
-  // doctor now checks THAT vault, not the profile's active project — the
-  // same pin > remote > RUN402_PROJECT_ID env > active-project order every
-  // other gitvault verb follows (`gitvault-target.mjs`). Doctor has no
-  // `--project`/`--repo` flag of its own, so there is no explicit tier here.
+  // TARGETING (repo-first-onramp follow-up, kychee-com/run402#559d, extended
+  // by kychee-com/run402#566's --project half): when cwd is a repository
+  // with its own pinned repo id or run402/origin remote, doctor checks THAT
+  // vault, not the profile's active project — the same pin > remote >
+  // RUN402_PROJECT_ID env > active-project order every other gitvault verb
+  // follows (`gitvault-target.mjs`). An explicit `--project <id>` outranks
+  // all of that (the resolver's own top tier), same as every other gitvault
+  // verb's `--project`.
   {
-    const target = await resolveGitvaultTarget({ repoDir: process.cwd() });
+    const target = await resolveGitvaultTarget({ repoDir: process.cwd(), explicitProjectId: projectOverride ?? undefined });
     const projectId = target.project_id ?? null;
     const repoId = target.repo_id ?? null;
     if (!projectId && !repoId) {

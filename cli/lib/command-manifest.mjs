@@ -433,7 +433,11 @@ export const COMMAND_MANIFEST = [
   { path: ["service", "health"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["cache", "inspect"], positionals: [p("url")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["https://example.com/"] },
   { path: ["cache", "invalidate"], positionals: [p("url", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--all", "--host", "example.com"] },
-  { path: ["doctor"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--no-scan"], runStyle: "merged" },
+  // projectScoped (kychee-com/run402#566): --project targets the gitvault
+  // check only (see doctor.mjs's own HELP) — every other check stays
+  // wallet/machine-wide, but the gate's contract is "accepts --project
+  // without rejecting it," which this satisfies.
+  { path: ["doctor"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--no-scan"], runStyle: "merged" },
   { path: ["webhook-secret", "rotate"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["logs"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--request-id", "req_gate123"], runStyle: "merged" },
 ];

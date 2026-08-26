@@ -30,6 +30,18 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   across this machine's wallet profiles and, when one holds the repo's key,
   append a hint naming it and both selection mechanisms: `--wallet <name>` or
   `RUN402_WALLET=<name>`.
+- **Fix: `run402 doctor --project <id>` was silently ignored
+  (kychee-com/run402#566, `--project` half).** Doctor accepted any flag
+  without validating it, so a typo — or `--project`, which doctor's argument
+  parser never looked at — was simply dropped on the floor. Doctor now
+  validates its flags like every other command (`assertKnownFlags`); any flag
+  it does not recognize is a structured `UNKNOWN_FLAG`/`BAD_USAGE` rejection.
+  `--project <id>` is honored for the gitvault check specifically (every other
+  check is wallet/machine-wide, not per-project) — it outranks the
+  repo-standing pin/remote/env/active-project default `gitvault-target.mjs`
+  otherwise resolves, the same way an explicit flag already outranks it for
+  every other gitvault verb. The scoped `run402 gitvault doctor` / source-scan
+  suppression half of #566 is still open.
 
 - **Fix: `git-remote-run402` never resolved a wallet — a bound checkout's very
   next `git push` used the wrong wallet's allowance (kychee-com/run402#558).**
