@@ -22,6 +22,14 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   enriched and truthful — the vault belongs to this org; it never says
   "foreign" again — naming the real remedies (restore the keystore, or the
   cross-profile hint below).
+- **Fix: a keystore-miss refusal never said the key might be sitting under a
+  DIFFERENT local wallet profile (kychee-com/run402#564).** `KEYSTORE_MISSING`,
+  `GITVAULT_REPO_STATE_MISSING`, and #563's new non-holder refusal above all
+  now run a purely local, read-only scan (`sdk/src/node/gitvault-profile-scan.ts`
+  — directory listings and repo-key FILENAMES only, never key material)
+  across this machine's wallet profiles and, when one holds the repo's key,
+  append a hint naming it and both selection mechanisms: `--wallet <name>` or
+  `RUN402_WALLET=<name>`.
 
 - **Fix: `git-remote-run402` never resolved a wallet — a bound checkout's very
   next `git push` used the wrong wallet's allowance (kychee-com/run402#558).**

@@ -100,6 +100,7 @@ import type {
   GitvaultPutObjectRequest,
 } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore, type GitvaultHeadPin, type GitvaultRepoFile } from "./gitvault-keystore.js";
+import { crossProfileGitvaultHint } from "./gitvault-profile-scan.js";
 // Type-only: erased at build, so the prune module stays a LEAF (it imports the
 // crypto core and nothing from here) and no runtime import cycle exists.
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
@@ -1087,9 +1088,28 @@ export class GitvaultVault {
   }
 
   repoFile(): GitvaultRepoFile {
-    if (!this.keystore.readIdentity()) fail("KEYSTORE_MISSING", "no gitvault identity in the keystore", "opening gitvault vault", undefined, [{ action: "restore ~/.config/run402/gitvault from backup or accept vault loss" }]);
+    // Cross-profile hint (kychee-com/run402#564): a keystore-miss on the
+    // ACTIVE profile is enriched, when the scan finds one, with which OTHER
+    // local wallet profile holds this repo's key — a purely local
+    // directory/filename read, appended after the existing remedy rather
+    // than replacing it.
+    if (!this.keystore.readIdentity()) {
+      fail("KEYSTORE_MISSING", "no gitvault identity in the keystore", "opening gitvault vault", undefined, [
+        { action: "restore ~/.config/run402/gitvault from backup or accept vault loss" },
+        ...crossProfileGitvaultHint(this.repoId),
+      ]);
+    }
     const repo = this.keystore.readRepo(this.repoId);
-    if (!repo) fail("GITVAULT_REPO_STATE_MISSING", `no keystore repo file for ${this.repoId}; restore it from the principal's own envelope (keystore.restoreRepoFromEnvelope)`, "opening gitvault vault", { repo_id: this.repoId });
+    if (!repo) {
+      const hint = crossProfileGitvaultHint(this.repoId);
+      fail(
+        "GITVAULT_REPO_STATE_MISSING",
+        `no keystore repo file for ${this.repoId}; restore it from the principal's own envelope (keystore.restoreRepoFromEnvelope)`,
+        "opening gitvault vault",
+        { repo_id: this.repoId },
+        hint.length > 0 ? hint : undefined,
+      );
+    }
     return repo;
   }
 

@@ -497,6 +497,10 @@ export type { PushToCreateGitvaultOptions, PushToCreateGitvaultResult } from "./
 // orchestrator `Gitvault.resolveOrCreateAddress` delegates to.
 export { readPinnedGitvaultRepo, pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
 export type { GitvaultPinnedRepo, GitvaultAddressResolution, ResolveGitvaultAddressOptions } from "./gitvault-address.js";
+// gitvault cross-profile repo-key scan (kychee-com/run402#564) — shared by
+// every keystore-miss enrichment point; see the module doc for why this is
+// a directory/filename read, never key material.
+export { findLocalProfilesHoldingGitvaultRepo, crossProfileGitvaultHint } from "./gitvault-profile-scan.js";
 // The deploy lane the interface above was always missing (change
 // `gitvault-deploy-lane`): apply-v1 plan + commit driven through `Deploy`,
 // and the entry point that engages it only for a `required` project.
