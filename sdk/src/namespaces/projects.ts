@@ -31,6 +31,7 @@ import type {
   ProvisionResult,
   QuoteResult,
   RenameProjectResult,
+  SetRepoNameResult,
   SchemaReport,
   ListTenantPaymentsOptions,
   TenantPaymentListResult,
@@ -247,6 +248,23 @@ export class Projects {
       method: "PATCH",
       body: { name },
       context: "renaming project",
+    });
+  }
+
+  /**
+   * Claim or rename this project's per-org-unique, address-form name
+   * (`POST /projects/v1/:id/repo-name`, repo-first-onramp design D6) — the
+   * `<name>` half of `run402::<org-slug>/<name>`. Distinct from
+   * {@link rename} (the free-text display name, unchanged): the address-form
+   * name is charset-restricted (`[a-z0-9-]`, ≤63 chars) and per-org-unique.
+   * No fee, unlike the org-slug namespace. Same authority as `rename`
+   * (`project.rename`).
+   */
+  async setRepoName(projectId: string, name: string): Promise<SetRepoNameResult> {
+    return this.client.request<SetRepoNameResult>(`/projects/v1/${projectId}/repo-name`, {
+      method: "POST",
+      body: { name },
+      context: "setting the project's repo name",
     });
   }
 

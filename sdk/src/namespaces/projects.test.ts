@@ -517,6 +517,31 @@ describe("projects.rename", () => {
   });
 });
 
+describe("projects.setRepoName", () => {
+  it("POSTs /projects/v1/:id/repo-name with the new name (repo-first-onramp design D6)", async () => {
+    const { fetch, calls } = mockFetch(() =>
+      jsonResponse({ project_id: "prj_known", repo_name: "my-notes", previous_repo_name: null }),
+    );
+    const sdk = makeSdk(makeCreds(), fetch);
+    const result = await sdk.projects.setRepoName("prj_known", "my-notes");
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_known/repo-name");
+    assert.equal(calls[0]!.method, "POST");
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "my-notes" });
+    assert.deepEqual(result, { project_id: "prj_known", repo_name: "my-notes", previous_repo_name: null });
+  });
+
+  it("propagates REPO_NAME_TAKEN unchanged", async () => {
+    const { fetch } = mockFetch(() => jsonResponse({ code: "REPO_NAME_TAKEN", message: "already claimed" }, 409));
+    const sdk = makeSdk(makeCreds(), fetch);
+    await assert.rejects(
+      sdk.projects.setRepoName("prj_known", "taken-name"),
+      (err: unknown) => err instanceof Run402Error && (err as Run402Error & { code?: string }).code === "REPO_NAME_TAKEN",
+    );
+  });
+});
+
 describe("projects.listTenantPayments", () => {
   const payment = {
     payment_id: "pay_1",

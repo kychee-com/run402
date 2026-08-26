@@ -96,6 +96,13 @@ export interface CreateOrgInput {
 export interface OrgSummary {
   org_id: string;
   display_name: string | null;
+  /**
+   * The org's globally-unique, claimable address-form slug (repo-first-onramp
+   * design D6) — `null` until claimed via {@link ScopedOrg.claimSlug}. GitHub
+   * + DNS-safe grammar: lowercase `[a-z0-9-]`, no leading/trailing/double
+   * hyphen, ≤39 chars.
+   */
+  slug: string | null;
   tier: string | null;
   /** ISO-8601 lease start; `null` only for pre-subscription placeholders. */
   lease_started_at: string | null;
@@ -111,6 +118,16 @@ export interface OrgSummary {
  */
 export interface OrgDetail extends OrgSummary {
   role: OrgRole | null;
+}
+
+/** `POST /orgs/v1/:org_id/slug` — {@link ScopedOrg.claimSlug}'s result (repo-first-onramp design D6). */
+export interface ClaimOrgSlugResult {
+  org_id: string;
+  slug: string;
+  /** The org's PRIOR slug, or `null` for a genesis claim. Released into its ~90-day cooldown on a rename. */
+  previous_slug: string | null;
+  /** `true` for a genesis claim (this org had no slug before); `false` for a rename or an idempotent no-op replay. */
+  created: boolean;
 }
 
 /** Input to {@link ScopedOrg.setPayoutWallet}. */

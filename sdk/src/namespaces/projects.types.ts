@@ -195,6 +195,14 @@ export interface RenameProjectResult {
   name: string;
 }
 
+/** Result of {@link Projects.setRepoName} (`POST /projects/v1/:id/repo-name`, repo-first-onramp design D6). */
+export interface SetRepoNameResult {
+  project_id: string;
+  repo_name: string;
+  /** The project's PRIOR address-form name, or `null` if it had none. */
+  previous_repo_name: string | null;
+}
+
 // ─── tenant x402 payment history ───────────────────────────────────────────
 
 export type TenantPaymentStatus = "settling" | "settled" | "settle_failed" | "ambiguous";

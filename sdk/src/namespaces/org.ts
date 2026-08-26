@@ -19,6 +19,7 @@ import type {
   AuditEvent,
   AuditOptions,
   AuditResult,
+  ClaimOrgSlugResult,
   CreateInviteInput,
   CreateOrgInput,
   MemberMutationResult,
@@ -35,6 +36,16 @@ import type {
   SetMemberRoleOptions,
   WhoAmIResult,
 } from "./org.types.js";
+
+/** Isomorphic random idempotency key (Node + browser + V8 isolate) — no Node-only crypto import. */
+function randomIdempotencyKey(): string {
+  const crypto = globalThis.crypto;
+  if (crypto?.randomUUID) return `org-slug-${crypto.randomUUID()}`;
+  const bytes = new Uint8Array(16);
+  if (crypto?.getRandomValues) crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  return `org-slug-${[...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
 
 /** Member management — `r.org(id).members.*`. The org id is bound at construction. */
 export class OrgMembers {
@@ -174,6 +185,32 @@ export class ScopedOrg {
       method: "PATCH",
       body: { display_name: displayName },
       context: "renaming org",
+    });
+  }
+
+  /**
+   * Claim or rename this org's address-form slug
+   * (`POST /orgs/v1/:org_id/slug`, repo-first-onramp design D6). Owner-only.
+   * A genesis claim (this org had no prior slug) debits `~$1` (the payable
+   * claim fee, ruins bulk-squatting economics) and is a paid, side-effecting
+   * mutation — REQUIRES `Idempotency-Key`, which this method generates
+   * client-side (a fresh one per call) unless `opts.idempotencyKey` is
+   * supplied, so a retried call after a dropped response cannot double-bill.
+   * A rename releases the OLD slug into its ~90-day cooldown (typed
+   * `SLUG_RELEASED` refusal on the old slug thereafter, naming this org's
+   * new one as successor — never a redirect). `created` is `true` for a
+   * genesis claim, `false` for a rename or an idempotent no-op replay of the
+   * SAME target slug.
+   */
+  async claimSlug(slug: string, opts: { idempotencyKey?: string } = {}): Promise<ClaimOrgSlugResult> {
+    if (!slug) {
+      throw new LocalError("org.claimSlug requires a non-empty slug", "claiming org slug");
+    }
+    return this.client.request<ClaimOrgSlugResult>(`/orgs/v1/${encodeURIComponent(this.orgId)}/slug`, {
+      method: "POST",
+      body: { slug },
+      headers: { "Idempotency-Key": opts.idempotencyKey ?? randomIdempotencyKey() },
+      context: "claiming org slug",
     });
   }
 

@@ -11,6 +11,7 @@ interface FetchCall {
   url: string;
   method: string;
   body: unknown;
+  headers: Headers;
 }
 
 function mockFetch(
@@ -22,6 +23,7 @@ function mockFetch(
       url: String(input),
       method: init?.method ?? "GET",
       body: init?.body ?? null,
+      headers: new Headers(init?.headers as HeadersInit | undefined),
     };
     calls.push(call);
     return handler(call);
@@ -215,6 +217,52 @@ describe("r.org(id).rename", () => {
   });
 });
 
+describe("r.org(id).claimSlug", () => {
+  it("POSTs /orgs/v1/:org_id/slug with a generated Idempotency-Key when none is supplied", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "POST");
+      assert.equal(call.url, "https://api.example.test/orgs/v1/org_abc/slug");
+      assert.equal(parseBody(call.body).slug, "acme");
+      assert.ok(call.headers.get("Idempotency-Key"), "a client-generated Idempotency-Key must be present");
+      return jsonResponse({ org_id: "org_abc", slug: "acme", previous_slug: null, created: true }, 201);
+    });
+    const result = await makeSdk(fetch).org("org_abc").claimSlug("acme");
+    assert.equal(result.slug, "acme");
+    assert.equal(result.created, true);
+    assert.equal(result.previous_slug, null);
+    assert.equal(calls.length, 1);
+  });
+
+  it("passes an explicit idempotencyKey through unchanged", async () => {
+    const { fetch, calls } = mockFetch((call) =>
+      jsonResponse({ org_id: "org_abc", slug: "acme-hq", previous_slug: "acme", created: false }, 200),
+    );
+    const result = await makeSdk(fetch).org("org_abc").claimSlug("acme-hq", { idempotencyKey: "fixed-key-1" });
+    assert.equal(calls[0]!.headers.get("Idempotency-Key"), "fixed-key-1");
+    assert.equal(result.previous_slug, "acme");
+    assert.equal(result.created, false);
+  });
+
+  it("two calls with no explicit key generate DIFFERENT keys (never silently double-billing on an unrelated retry)", async () => {
+    const seen: string[] = [];
+    const { fetch } = mockFetch((call) => {
+      seen.push(call.headers.get("Idempotency-Key") ?? "");
+      return jsonResponse({ org_id: "org_abc", slug: "acme", previous_slug: null, created: true }, 201);
+    });
+    const sdk = makeSdk(fetch);
+    await sdk.org("org_abc").claimSlug("acme");
+    await sdk.org("org_abc").claimSlug("acme");
+    assert.equal(seen.length, 2);
+    assert.notEqual(seen[0], seen[1]);
+  });
+
+  it("rejects an empty slug locally, without a network call", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    await assert.rejects(makeSdk(fetch).org("org_abc").claimSlug(""), (e: unknown) => isLocalError(e));
+    assert.equal(calls.length, 0);
+  });
+});
+
 describe("r.org(id).setPayoutWallet", () => {
   it("PATCHes /orgs/v1/:org_id/payout-wallet with wallet_address", async () => {
     const { fetch, calls } = mockFetch((call) => {
@@ -338,7 +386,7 @@ describe("r.org(id) surface drift guard", () => {
     const { fetch } = mockFetch(() => jsonResponse({}));
     const scoped = makeSdk(fetch).org("org_drift");
     // Direct instance methods.
-    for (const m of ["get", "rename", "audit"]) {
+    for (const m of ["get", "rename", "claimSlug", "audit"]) {
       assert.equal(typeof (scoped as unknown as Record<string, unknown>)[m], "function", `r.org(id).${m} must exist`);
     }
     // Sub-clients with their full method sets — adding an org-instance method

@@ -29,6 +29,7 @@ import type {
   ProjectRestResponse,
   QuoteResult,
   RenameProjectResult,
+  SetRepoNameResult,
   SchemaReport,
   ListTenantPaymentsOptions,
   TenantPaymentListResult,
@@ -280,6 +281,9 @@ class ScopedProjects {
   }
   rename(name: string): Promise<RenameProjectResult> {
     return this.parent.projects.rename(this.projectId, name);
+  }
+  setRepoName(name: string): Promise<SetRepoNameResult> {
+    return this.parent.projects.setRepoName(this.projectId, name);
   }
   listTenantPayments(opts?: ListTenantPaymentsOptions): Promise<TenantPaymentListResult> {
     return this.parent.projects.listTenantPayments(this.projectId, opts);
