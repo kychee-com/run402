@@ -98,6 +98,7 @@
  *     the set `git ls-remote <url>` outside a checkout needs.
  */
 
+import { realpathSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { getSdk } from "./lib/sdk.mjs";
@@ -666,7 +667,20 @@ async function main(argv) {
 // directly; without this guard that import would block on stdin forever).
 const invokedDirectly = (() => {
   try {
-    return process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+    if (process.argv[1] === undefined) return false;
+    // SYMLINK-SAFE, or every real install is dead (4.39.0 shipped without
+    // this and the helper silently no-opped for everyone): npm installs the
+    // bin as a SYMLINK (`/opt/homebrew/bin/git-remote-run402 -> ../lib/...`),
+    // and Node's ESM loader resolves `import.meta.url` through the symlink
+    // to the REAL file while `process.argv[1]` keeps the symlink path — a
+    // naive equality check therefore fails exactly and only in production,
+    // where `git push` then reads zero capabilities and aborts the session.
+    // Compare realpaths on both sides; a vanished argv[1] path falls through
+    // to the plain comparison rather than crashing the guard.
+    const argvReal = (() => {
+      try { return realpathSync(process.argv[1]); } catch { return process.argv[1]; }
+    })();
+    return import.meta.url === pathToFileURL(argvReal).href;
   } catch {
     return false;
   }

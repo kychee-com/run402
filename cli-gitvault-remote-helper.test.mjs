@@ -31,7 +31,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -859,5 +859,41 @@ describe("chooseGitvaultHeadTargetForPush — first-push HEAD repair (kychee-com
     });
     assert.equal(result.head_target, undefined);
     assert.equal(result.note, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The 4.39.0 production regression: npm installs the helper bin as a SYMLINK
+// (`/opt/homebrew/bin/git-remote-run402 -> ../lib/node_modules/...`), and
+// Node's ESM loader resolves `import.meta.url` through the symlink to the
+// REAL file while `process.argv[1]` keeps the symlink path — so a naive
+// entrypoint guard (import.meta.url === pathToFileURL(argv[1]).href) fails
+// exactly and only in production: the helper printed nothing, exited 0, and
+// every real `git push`/`ls-remote` died with "remote helper aborted
+// session". Every test here spawned `node HELPER` directly, so argv[1] was
+// always the real path and the suite stayed green while the product was
+// dead. This test invokes the helper THROUGH a symlink, the way npm does.
+// ---------------------------------------------------------------------------
+describe("entrypoint guard survives symlinked invocation (the npm bin shape)", () => {
+  it("emits capabilities when spawned via a symlink to the helper", () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gvh-symlink-"));
+    const link = join(dir, "git-remote-run402");
+    symlinkSync(HELPER, link);
+    try {
+      const result = spawnSync(link, ["run402", ADDRESS], {
+        input: "capabilities\n\n",
+        encoding: "utf-8",
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          RUN402_API_BASE: DEAD_API,
+          RUN402_CONFIG_DIR: mkdtempSync(join(tmpdir(), "run402-gvh-cfg-")),
+        },
+      });
+      assert.match(result.stdout, /fetch\n/, `symlinked helper emitted no capabilities — the 4.39.0 silent-no-op regression is back. stdout=${JSON.stringify(result.stdout)} stderr=${JSON.stringify(result.stderr)}`);
+      assert.match(result.stdout, /push\n/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
