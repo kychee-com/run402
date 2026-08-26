@@ -21,19 +21,43 @@ import { gitvaultPaths } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
 import { DirectoryMirrorBackend, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
-import { mirrorPushForGeneration, mirrorSync, planMirrorWrite, type GitvaultObjectEntry } from "./gitvault-mirror.js";
+import { generationRouteForKey, mirrorPushForGeneration, mirrorSync, objectReadRequestForEntry, planMirrorWrite, type GitvaultObjectEntry } from "./gitvault-mirror.js";
 import { adjudicateAbsences, discoverAndVerifyChain, recoverGitvaultMirror, verifyGitvaultMirror } from "./gitvault-recover.js";
 
 function scratchDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
-/** Every entry the fixture's transport holds for one vault, keyed relative to the vault root (§3 layout) — exactly the shape `GET .../objects` returns. */
+/**
+ * `GitvaultMemoryTransport` stores every upload at the SDK's OWN client-local
+ * `path` string (`gitvault-memory-transport.test.ts` `uploadObjects`: `this.key(repo_id,
+ * o.path)`), never re-deriving the gateway's independent §3 key the way the
+ * real gateway does. For every kind except `key_envelope` those two
+ * spellings happen to be byte-identical (`wal/<id>.pack.enc`,
+ * `refs/<id>.enc`, …) — but for `key_envelope` they are NOT: the SDK's
+ * `gitvault-creation-journal.ts` labels its upload manifest entry
+ * `envelopes/<epoch>/<fp>` (client-local addressing, "never rides the wire" —
+ * its own doc comment), while the GATEWAY's real key (`upload-sessions.ts`
+ * `UPLOADABLE_KINDS.key_envelope.key()`, mirrored in `storage-keys.ts`
+ * `objectKeyFor`) is `key-envelopes/<epoch>/<fp>.env`, matching protocol §3
+ * exactly. Trusting the fixture's raw key verbatim would validate
+ * `gitvault-mirror.ts`/`gitvault-recover.ts` against a spelling no REAL
+ * mirror (synced from the REAL objects listing) would ever contain — the
+ * "self-consistent fiction" this translation exists to close. Every OTHER
+ * consumer of this helper below therefore sees gateway-true keys, the same
+ * as a real `mirror sync` would produce.
+ */
+function toGatewayTrueKey(key: string): string {
+  const m = /^envelopes\/([0-9a-f]{16})\/(ek_[0-9a-f]{32})$/.exec(key);
+  return m ? `key-envelopes/${m[1]}/${m[2]}.env` : key;
+}
+
+/** Every entry the fixture's transport holds for one vault, keyed relative to the vault root (§3 layout) — exactly the shape `GET .../objects` returns (gateway-true keys — see {@link toGatewayTrueKey}). */
 function transportEntries(transport: { objects: Map<string, Uint8Array> }, repoId: string): Array<{ key: string; bytes: Uint8Array }> {
   const out: Array<{ key: string; bytes: Uint8Array }> = [];
   const prefix = `${repoId}/`;
   for (const [k, bytes] of transport.objects) {
-    if (k.startsWith(prefix)) out.push({ key: k.slice(prefix.length), bytes });
+    if (k.startsWith(prefix)) out.push({ key: toGatewayTrueKey(k.slice(prefix.length)), bytes });
   }
   return out;
 }
@@ -41,6 +65,74 @@ function transportEntries(transport: { objects: Map<string, Uint8Array> }, repoI
 async function seedBackend(backend: GitvaultMirrorBackend, entries: readonly { key: string; bytes: Uint8Array }[]): Promise<void> {
   for (const e of entries) await backend.putCreateOnly(e.key, e.bytes);
 }
+
+// ─── Key-shape conformance (protocol §3) ──────────────────────────────────────
+//
+// Pins the mirror/recover addressing logic against the GATEWAY's real §3 key
+// builders for every stored kind — `packages/gateway/src/services/gitvault/
+// storage-keys.ts` (`objectKeyFor`, `headKey`, `admissionRecordKey`) and
+// `upload-sessions.ts` (`UPLOADABLE_KINDS.key_envelope.key`), read directly
+// from the run402-private worktree named in the gitvault-mirror-and-recover
+// brief. This is the standing guard against the exact bug this test file
+// once carried: an SDK-internal label (`gitvault-creation-journal.ts`'s
+// client-local `envelopes/<epoch>/<fp>` upload-manifest path) silently
+// substituting for the real wire key (`key-envelopes/<epoch>/<fp>.env`) in
+// mirror/recovery addressing. Every row below is the REPO-RELATIVE key (the
+// full gateway key with `source/<repo_id>/` stripped — exactly what a synced
+// mirror and the objects listing both use).
+const SAMPLE_ID = "0".repeat(31) + "1"; // a syntactically valid 32-hex id body
+const KEY_SHAPE_TABLE: ReadonlyArray<{
+  kind: string;
+  key: string;
+  expectRead: { object_kind: string; object_id?: string; epoch?: string; recipient_fingerprint?: string };
+}> = [
+  { kind: "wal_pack", key: `wal/wal_${SAMPLE_ID}.pack.enc`, expectRead: { object_kind: "wal_pack", object_id: `wal_${SAMPLE_ID}` } },
+  { kind: "ref_state", key: `refs/refs_${SAMPLE_ID}.enc`, expectRead: { object_kind: "ref_state", object_id: `refs_${SAMPLE_ID}` } },
+  { kind: "retention_roots", key: `retention/rr_${SAMPLE_ID}.enc`, expectRead: { object_kind: "retention_roots", object_id: `rr_${SAMPLE_ID}` } },
+  { kind: "checkpoint_manifest", key: `checkpoints/chk_${SAMPLE_ID}.manifest.enc`, expectRead: { object_kind: "checkpoint_manifest", object_id: `chk_${SAMPLE_ID}` } },
+  { kind: "checkpoint_pack", key: `checkpoints/ckp_${SAMPLE_ID}.pack.enc`, expectRead: { object_kind: "checkpoint_pack", object_id: `ckp_${SAMPLE_ID}` } },
+  { kind: "checkpoint_claim_set", key: `checkpoints/ccs_${SAMPLE_ID}.claims.json`, expectRead: { object_kind: "checkpoint_claim_set", object_id: `ccs_${SAMPLE_ID}` } },
+  { kind: "maintenance_stage_claim_set", key: `maintenance/msc_${SAMPLE_ID}.stage.json`, expectRead: { object_kind: "maintenance_stage_claim_set", object_id: `msc_${SAMPLE_ID}` } },
+  { kind: "maintenance_stage_page", key: `maintenance/msp_${SAMPLE_ID}.page.json`, expectRead: { object_kind: "maintenance_stage_page", object_id: `msp_${SAMPLE_ID}` } },
+  { kind: "verifier_receipt", key: `verifier-receipts/vr_${SAMPLE_ID}.json`, expectRead: { object_kind: "verifier_receipt", object_id: `vr_${SAMPLE_ID}` } },
+  { kind: "retention_cutoff", key: `retention/rc_${SAMPLE_ID}.ticket.json`, expectRead: { object_kind: "retention_cutoff", object_id: `rc_${SAMPLE_ID}` } },
+  { kind: "maintenance_completion_cut", key: `maintenance/cuts/adm_${SAMPLE_ID}.json`, expectRead: { object_kind: "maintenance_completion_cut", object_id: `adm_${SAMPLE_ID}` } },
+  { kind: "prune_intent", key: `prune/pi_${SAMPLE_ID}.intent.json`, expectRead: { object_kind: "prune_intent", object_id: `pi_${SAMPLE_ID}` } },
+  { kind: "prune_completion", key: `prune/pi_${SAMPLE_ID}.completion.json`, expectRead: { object_kind: "prune_completion", object_id: `pi_${SAMPLE_ID}` } },
+  { kind: "maintenance_cycle_issuance", key: `maintenance/issued/mc_${SAMPLE_ID}.json`, expectRead: { object_kind: "maintenance_cycle_issuance", object_id: `mc_${SAMPLE_ID}` } },
+  { kind: "maintenance_cycle_terminal", key: `maintenance/terminals/mc_${SAMPLE_ID}.terminal.json`, expectRead: { object_kind: "maintenance_cycle_terminal", object_id: `mc_${SAMPLE_ID}` } },
+  // key_envelope: path-addressed by (epoch, recipient_fingerprint), NOT the
+  // SDK's own client-local `envelopes/<epoch>/<fp>` upload-manifest label —
+  // see `toGatewayTrueKey`'s doc comment above.
+  { kind: "key_envelope", key: `key-envelopes/0000000000000001/ek_${SAMPLE_ID}.env`, expectRead: { object_kind: "key_envelope", epoch: "0000000000000001", recipient_fingerprint: `ek_${SAMPLE_ID}` } },
+];
+
+describe("gitvault mirror/recover key-shape conformance (protocol §3)", () => {
+  for (const row of KEY_SHAPE_TABLE) {
+    it(`${row.kind}: ${row.key}`, () => {
+      const entry: GitvaultObjectEntry = { key: row.key, object_kind: row.kind, sha256: "0".repeat(64), size_bytes: "1" };
+      assert.deepEqual(objectReadRequestForEntry(entry), row.expectRead, `object-reads request built for ${row.kind} does not match the gateway's real §3 key shape`);
+      // Every non-generation kind must NOT be misidentified as a head/admissions route.
+      assert.equal(generationRouteForKey(row.key), null, `${row.key} was misidentified as a generation-addressed (head/admissions) route`);
+    });
+  }
+
+  it("head/admissions: generation-addressed, never routed through object-reads", () => {
+    assert.deepEqual(generationRouteForKey("head/0000000000000005"), { route: "heads", generation: "0000000000000005" });
+    assert.deepEqual(generationRouteForKey("admissions/0000000000000005"), { route: "admissions", generation: "0000000000000005" });
+  });
+
+  it("a mirror seeded from the fixture's transport carries ONLY gateway-true key_envelope keys — the fixture's own client-local spelling never leaks through", async () => {
+    const f = await makeVault();
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: await commitFile(f.repoDir, "a.txt", "a\n"), force: false }] } });
+    const entries = transportEntries(f.transport, f.repoId);
+    const envelopeEntries = entries.filter((e) => e.key.includes("envelope"));
+    assert.ok(envelopeEntries.length > 0, "the fixture must have written at least one key_envelope object for this assertion to mean anything");
+    for (const e of envelopeEntries) {
+      assert.match(e.key, /^key-envelopes\/[0-9a-f]{16}\/ek_[0-9a-f]{32}\.env$/, `${e.key} is not the gateway-true key_envelope shape`);
+    }
+  });
+});
 
 // ─── Group 3 — recovery engine (task 3.6) ─────────────────────────────────────
 
@@ -351,6 +443,9 @@ describe("gitvault mirror writer + sync engine (task 2.5)", () => {
 });
 
 // ─── request/response fixture helpers for the sync-idempotency test ──────────
+// Gateway-true key shapes throughout (§3 / storage-keys.ts) — see
+// `toGatewayTrueKey`'s doc comment above for why `key_envelope` is NOT the
+// SDK's own upload-manifest `path` spelling.
 
 function keyKindFor(key: string): string {
   if (key.startsWith("wal/")) return "wal_pack";
@@ -359,12 +454,12 @@ function keyKindFor(key: string): string {
   if (key.startsWith("checkpoints/") && key.endsWith(".manifest.enc")) return "checkpoint_manifest";
   if (key.startsWith("checkpoints/") && key.endsWith(".pack.enc")) return "checkpoint_pack";
   if (key.startsWith("checkpoints/") && key.endsWith(".claims.json")) return "checkpoint_claim_set";
-  if (key.startsWith("envelopes/")) return "key_envelope";
+  if (key.startsWith("key-envelopes/") && key.endsWith(".env")) return "key_envelope";
   return "unknown";
 }
 
 function keyForRead(read: Record<string, string>): string {
-  if (read.object_kind === "key_envelope") return `envelopes/${read.epoch}/${read.recipient_fingerprint}`;
+  if (read.object_kind === "key_envelope") return `key-envelopes/${read.epoch}/${read.recipient_fingerprint}.env`;
   const id = read.object_id!;
   if (read.object_kind === "wal_pack") return gitvaultPaths.wal(id);
   if (read.object_kind === "ref_state") return gitvaultPaths.refState(id);

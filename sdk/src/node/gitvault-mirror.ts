@@ -114,7 +114,8 @@ export async function readGitvaultObjectBytes(client: Client, repoId: string, en
   return new Uint8Array(await r.arrayBuffer());
 }
 
-function generationRouteForKey(key: string): { route: "heads" | "admissions"; generation: string } | null {
+/** Exported for the key-shape conformance test (`gitvault-mirror-recover.test.ts`) — never called for its own sake outside this module. */
+export function generationRouteForKey(key: string): { route: "heads" | "admissions"; generation: string } | null {
   const head = /^head\/([0-9a-f]{16})$/.exec(key);
   if (head) return { route: "heads", generation: head[1]! };
   const adm = /^admissions\/([0-9a-f]{16})$/.exec(key);
@@ -122,12 +123,25 @@ function generationRouteForKey(key: string): { route: "heads" | "admissions"; ge
   return null;
 }
 
-/** `key_envelope` is path-addressed by `(epoch, recipient_fingerprint)`, not a plain object_id — every other kind uses its object_id, read straight from the key's own filename. */
-function objectReadRequestForEntry(entry: GitvaultObjectEntry): { object_kind: string; object_id?: string; epoch?: string; recipient_fingerprint?: string } {
+/**
+ * `key_envelope` is path-addressed by `(epoch, recipient_fingerprint)`, not a
+ * plain object_id — every other kind uses its object_id, read straight from
+ * the key's own filename. Exported for the key-shape conformance test.
+ */
+export function objectReadRequestForEntry(entry: GitvaultObjectEntry): { object_kind: string; object_id?: string; epoch?: string; recipient_fingerprint?: string } {
   if (entry.object_kind === "key_envelope") {
-    // `envelopes/<epoch>/<recipient_fingerprint>` — matches the SDK's own
-    // already-shipped storage-key convention (`gitvault-creation-journal.ts`).
-    const m = /^envelopes\/([0-9a-f]{16})\/(ek_[0-9a-f]{32})$/.exec(entry.key);
+    // `key-envelopes/<epoch>/<recipient_fingerprint>.env` — the GATEWAY's
+    // real §3 wire key (`packages/gateway/src/services/gitvault/
+    // upload-sessions.ts` `UPLOADABLE_KINDS.key_envelope.key()`, mirrored by
+    // `storage-keys.ts` `objectKeyFor`). This is what the live objects
+    // listing actually returns, and is DIFFERENT from the SDK's own
+    // `gitvault-creation-journal.ts` envelope `path` string
+    // (`envelopes/<epoch>/<fp>`, no `key-` prefix, no `.env` suffix) — that
+    // string is CLIENT-LOCAL addressing for the upload manifest only ("never
+    // rides the wire", per its own doc comment); the gateway derives its own
+    // key independently and never echoes the client's `path` back. Do not
+    // re-derive this from that SDK constant.
+    const m = /^key-envelopes\/([0-9a-f]{16})\/(ek_[0-9a-f]{32})\.env$/.exec(entry.key);
     if (!m) fail("GITVAULT_MIRROR_KEY_UNRECOGNIZED", `key_envelope key does not match the expected layout: ${entry.key}`, "building gitvault mirror read request", { key: entry.key });
     return { object_kind: "key_envelope", epoch: m[1]!, recipient_fingerprint: m[2]! };
   }

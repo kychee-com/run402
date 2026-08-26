@@ -364,10 +364,15 @@ async function resolveKRepo(backend: GitvaultMirrorBackend, genesis: GitvaultVau
   }
   const envelopeReceipt = genesis.envelopes[0];
   if (!envelopeReceipt) fail("VAULT_CREATION_CONFLICT", "genesis carries no key envelope", "materializing gitvault recovery");
-  // `envelopes/<epoch>/<recipient_fingerprint>` — the SDK's own already-shipped
-  // storage-key convention (`gitvault-creation-journal.ts`), not the protocol
-  // doc's `key-envelopes/….env` spelling; matched to the real implementation.
-  const envelopeBytes = await backend.get(`envelopes/${envelopeReceipt.epoch}/${envelopeReceipt.recipient_fingerprint}`);
+  // `key-envelopes/<epoch>/<recipient_fingerprint>.env` — the GATEWAY's real
+  // §3 wire key (`upload-sessions.ts` `UPLOADABLE_KINDS.key_envelope.key()`,
+  // mirrored by `storage-keys.ts` `objectKeyFor`), matching protocol §3
+  // exactly. The SDK's OWN `gitvault-creation-journal.ts` envelope `path`
+  // string (`envelopes/<epoch>/<fp>`) is a DIFFERENT, client-local label used
+  // only for the upload manifest ("never rides the wire") — the gateway
+  // derives its own key independently and never echoes that string back, so
+  // a mirror synced from the real objects listing never contains it.
+  const envelopeBytes = await backend.get(`key-envelopes/${envelopeReceipt.epoch}/${envelopeReceipt.recipient_fingerprint}.env`);
   if (!envelopeBytes) fail("VAULT_UNRECOVERABLE", "the mirror holds no key envelope for this genesis — cannot derive K_repo", "materializing gitvault recovery");
   const envelope = parseGitvaultStrict(new TextDecoder().decode(envelopeBytes)) as GitvaultKeyEnvelope;
   const bindingProblems = checkGenesisKeyBindings(genesis, envelope);
