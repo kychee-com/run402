@@ -434,6 +434,169 @@ describe("run402 gitvault push — D5 deprecation alias for `snapshot` (repo-fir
   });
 });
 
+// ─── status --human (kychee-com/run402#569) ───────────────────────────────
+//
+// "status --refs is an admission-debugging protocol dump; the human question
+// is five lines." Pinned here: (1) --human renders the five/six-liner on
+// stdout instead of JSON; (2) plain `status` (no --human) is BYTE-IDENTICAL
+// to before this flag existed; (3) --human + --json is BAD_USAGE; (4)
+// generations render decimal, not the wire's 16-hex-digit form; (5) storage
+// comes from the SAME status() call — no second gitvault.status call; (6)
+// warnings are echoed verbatim as an optional sixth line; (7) HEAD/ref count
+// composes with --refs and names the omission without it; (8) an unallocated
+// vault gets an honest short report, nothing fabricated.
+
+describe("run402 gitvault status --human — the five-liner (kychee-com/run402#569)", () => {
+  it("renders human text on stdout instead of the JSON dump", async () => {
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    const text = stdout.join("\n");
+    assert.throws(() => JSON.parse(text), "the --human view must not be JSON");
+    assert.match(text, /^Address: /m);
+    assert.match(text, /^This machine: /m);
+  });
+
+  it("without --human, plain status is BYTE-IDENTICAL to before this flag existed (JSON on stdout)", async () => {
+    const payload = await ok("status", []);
+    assert.equal(payload.repo_id, REPO);
+    assert.equal(payload.project_id, PROJECT);
+    assert.equal(payload.pins.highest_authenticated, "0000000000000003", "the plain JSON view is untouched — still hex, not decimal");
+  });
+
+  it("--human and --json together is BAD_USAGE", async () => {
+    const envelope = await expectFailure("status", ["--human", "--json"]);
+    assert.equal(envelope.code, "BAD_USAGE");
+  });
+
+  it("generations render DECIMAL, not the wire's hex form", async () => {
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    const text = stdout.join("\n");
+    assert.match(text, /Generations: authenticated 3, materialized 3/, text);
+    assert.doesNotMatch(text, /0000000000000003/, "the human view must not leak the hex generation form");
+  });
+
+  it("storage bytes + object count come from the SAME status() call — no second network read", async () => {
+    impl.status = async () => vaultStatus({
+      vault: { repo_id: REPO, project_id: PROJECT, org_id: ORG, gitvault_policy: "required", storage: { source_bytes: "104857600", open_session_reserved_bytes: "0", objects: { head: "3", wal_pack: "12", ref_state: "3", retention_roots: "3" } } },
+    });
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    const text = stdout.join("\n");
+    assert.match(text, /Storage: 104857600 byte\(s\) across 21 object\(s\)/, text);
+    const statusCalls = calls.filter((c) => c.method === "gitvault.status");
+    assert.equal(statusCalls.length, 1, `--human must not trigger a second gitvault.status read; saw: ${JSON.stringify(statusCalls)}`);
+  });
+
+  it("warnings are echoed VERBATIM as an optional sixth line — never reworded", async () => {
+    const verbatim = "whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship — 12 generations since genesis";
+    impl.status = async () => vaultStatus({ warnings: [{ kind: "terminal_loss_risk", message: verbatim }] });
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    const text = stdout.join("\n");
+    assert.match(text, new RegExp(`^Warnings: .*${verbatim.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "m"), text);
+  });
+
+  it("no warnings ⇒ no sixth line — exactly five lines for a healthy, allocated vault", async () => {
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    const lines = stdout.join("\n").split("\n").filter((l) => l.length > 0);
+    assert.equal(lines.length, 5, `expected exactly five lines, got:\n${lines.join("\n")}`);
+  });
+
+  it("HEAD/ref count composes with --refs; without it, the line names the omission rather than guessing", async () => {
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    assert.match(stdout.join("\n"), /HEAD: \(not materialized — pass --refs to see HEAD\/ref count\)/);
+
+    impl.status = async (input) => vaultStatus(
+      input.refs
+        ? { refs: { "refs/heads/main": "aaaa000011112222333344445555666677778888", "refs/heads/dev": "bbbb000011112222333344445555666677778888" }, head_target: { kind: "symref", ref: "refs/heads/main" } }
+        : {},
+    );
+    captureStart();
+    try {
+      await run("status", ["--human", "--refs"]);
+    } finally {
+      captureStop();
+    }
+    assert.match(stdout.join("\n"), /HEAD: refs\/heads\/main {2}\(2 refs\)/);
+  });
+
+  it("an unallocated vault gets an honest short report — nothing below 'Vault:' is fabricated", async () => {
+    impl.status = async () => vaultStatus({ vault: null, gitvault_policy: null, pins: { highest_authenticated: null, highest_materialized: null } });
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    const text = stdout.join("\n");
+    assert.match(text, /^Vault: not allocated yet/m, text);
+    assert.doesNotMatch(text, /Generations:|Storage:|This machine:/, "nothing knowable-only-with-a-vault may appear for an unallocated project");
+  });
+
+  it("named form (run402::<org-slug>/<name>) when a slug-form pin exists; id-form otherwise", async () => {
+    impl.status = async () => vaultStatus({
+      vault: { repo_id: REPO, project_id: PROJECT, org_id: ORG, gitvault_policy: "required" },
+      pinned: { repo_id: REPO, resolved_from: { org_slug: "acme", repo_name: "my-notes" } },
+    });
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    assert.match(stdout.join("\n"), /^Address: run402::acme\/my-notes/m);
+  });
+
+  it("id-form when there is no pin", async () => {
+    impl.status = async () => vaultStatus({ vault: { repo_id: REPO, project_id: PROJECT, org_id: ORG, gitvault_policy: "required" } });
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    assert.match(stdout.join("\n"), new RegExp(`^Address: run402::${ORG}/${PROJECT}`, "m"));
+  });
+
+  it("can-decrypt line reflects holds_repo_key / can_sign truthfully", async () => {
+    impl.status = async () => vaultStatus({ keystore: { present: true, identity_fingerprint: "vk_abc", can_sign: false, holds_repo_key: true, root: KEYSTORE_ROOT, paths: {} } });
+    captureStart();
+    try {
+      await run("status", ["--human"]);
+    } finally {
+      captureStop();
+    }
+    assert.match(stdout.join("\n"), /This machine: can decrypt \(read-only — no signing key\)\. Policy: required/);
+  });
+});
+
 describe("run402 gitvault policy — the way out of a blocked deploy", () => {
   it("runs the exact command the gateway's 409 next_action names", async () => {
     // Verbatim from GITVAULT_CLIENT_UPGRADE_REQUIRED:

@@ -39,7 +39,7 @@ export const HELP = `run402 gitvault — your source, encrypted before it leaves
 
 Usage:
   run402 gitvault init     [--project <id>] [--org <org_id>] [--git-remote] [--no-remote]
-  run402 gitvault status   [--project <id>] [--repo <repo_id>] [--refs]
+  run402 gitvault status   [--project <id>] [--repo <repo_id>] [--refs] [--human]
   run402 gitvault snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run]
   run402 gitvault policy   <required|grandfathered> [--project <id>] [--repo <repo_id>]
                            [--reason <why>]
@@ -112,6 +112,16 @@ Options:
                     HEAD target. This is a VERIFICATION (it walks the head
                     chain and advances the local materialized pin), which is
                     why plain \`status\` — an observation — does not do it.
+  --human           status: a five/six-line human summary on stdout instead of
+                    the JSON dump (kychee-com/run402#569; explicit opt-in per
+                    the cli-output-contract). Address, remote; HEAD + ref count
+                    (needs --refs too — otherwise the line names the omission);
+                    generations in decimal; storage bytes/object count (from
+                    this SAME status() call — no extra network read); whether
+                    THIS machine can decrypt, and the policy; standing warnings,
+                    if any, verbatim (a live terminal-loss risk may be the sixth
+                    line). Rejected together with --json. No effect on plain
+                    \`status\`'s own output, which is unchanged.
   --repo <repo_id>  Address the vault directly by id, skipping project lookup
   --message <text>  snapshot: commit message for the synthetic commit a dirty tree
                     produces (a clean tree pushes HEAD itself, no message used)
@@ -166,6 +176,7 @@ Terminal loss (protocol §0):
 Examples:
   run402 gitvault init
   run402 gitvault status --refs
+  run402 gitvault status --human
   run402 gitvault snapshot --message "wip: refactor the parser"
   run402 gitvault snapshot --dry-run
   run402 gitvault policy grandfathered --reason "migrating CI to a vaulted client"
@@ -385,16 +396,132 @@ async function policy(args) {
   }
 }
 
+/**
+ * The vault's address in the form a human would actually type it: named
+ * (`run402::<org-slug>/<name>`) when this checkout's local pin resolved from
+ * one — an id-form pin buys nothing and is never written (see
+ * `gitvault-address.ts`'s own doc comment), so a non-null `s.pinned` always
+ * carries `resolved_from` — else id-form (`run402::<org_id>/<project_id>`),
+ * falling back to whichever of project_id/repo_id is known when the vault
+ * record itself is unavailable.
+ */
+function formatGitvaultAddress(s) {
+  if (s.pinned?.resolved_from) {
+    return `run402::${s.pinned.resolved_from.org_slug}/${s.pinned.resolved_from.repo_name}`;
+  }
+  const orgId = s.vault?.org_id ?? null;
+  const projectId = s.project_id ?? s.vault?.project_id ?? null;
+  if (orgId && projectId) return `run402::${orgId}/${projectId}`;
+  if (projectId) return projectId;
+  if (s.repo_id) return `repo ${s.repo_id}`;
+  return "(unresolved)";
+}
+
+/**
+ * `run402 gitvault status --human` (kychee-com/run402#569) — the five-liner:
+ * "status --refs is an admission-debugging protocol dump; the human question
+ * is five lines — remote URL, branch/HEAD, generation, bytes,
+ * can-this-machine-decrypt." Renders from `s` alone — the SAME status() call
+ * the JSON path already made, so `--human` costs no extra network read.
+ *
+ * Generations render DECIMAL, not the wire's 16-hex-digit form — a hex
+ * generation is a protocol detail, not something a human reads at a glance.
+ *
+ * The HEAD/ref-count line needs the vault's OWN ref map, which `status`
+ * fetches only when `--refs` is ALSO passed (materializing is a verification
+ * that advances local state — `status` alone stays a pure observation, see
+ * that option's own doc comment). Composing `--human --refs` gets the full
+ * line; `--human` alone names the omission rather than guessing from the
+ * local git checkout, which could easily disagree with what the vault holds.
+ *
+ * Warnings — including the progressive terminal-loss risk warning — are
+ * echoed EXACTLY as the SDK reported them (never reworded) and become an
+ * optional sixth line, present only when `s.warnings` is non-empty. Without
+ * `--human`, `run402 gitvault status` is unchanged: it always prints the
+ * FULL terminal-loss statement verbatim on stderr regardless of warnings;
+ * this compact view surfaces it only when it is actually live advice.
+ */
+async function formatGitvaultHuman(s) {
+  const lines = [];
+  const remotePart = s.remote
+    ? ` (remote '${s.remote.name}'${s.remote.matches ? "" : " — points at a DIFFERENT project"})`
+    : " (no local remote)";
+  lines.push(`Address: ${formatGitvaultAddress(s)}${remotePart}`);
+
+  if (!s.vault) {
+    // A normal shape (protocol D183) — no vault allocated for this project
+    // yet. Nothing below this line is knowable, so it is not fabricated.
+    lines.push("Vault: not allocated yet for this project — run 'run402 gitvault init' to allocate one.");
+    if (s.warnings.length > 0) lines.push(`Warnings: ${s.warnings.map((w) => w.message).join(" ")}`);
+    return lines.join("\n");
+  }
+
+  if (s.refs) {
+    const count = Object.keys(s.refs).length;
+    const head = !s.head_target
+      ? "(none yet)"
+      : s.head_target.kind === "symref"
+        ? s.head_target.ref
+        : `detached @ ${s.head_target.oid}`;
+    lines.push(`HEAD: ${head}  (${count} ref${count === 1 ? "" : "s"})`);
+  } else {
+    lines.push("HEAD: (not materialized — pass --refs to see HEAD/ref count)");
+  }
+
+  const { generationToBigInt } = await import("#sdk/node");
+  const decimal = (g) => (g ? generationToBigInt(g).toString() : "none");
+  lines.push(`Generations: authenticated ${decimal(s.pins.highest_authenticated)}, materialized ${decimal(s.pins.highest_materialized)}`);
+
+  // Bytes + object count — pulled from the vault record `status()` ALREADY
+  // fetched (no new network read, per the ask). `objects` is per-object-kind
+  // counts; summed for one number a human can glance at.
+  const storage = s.vault.storage;
+  const objectCount = storage?.objects ? Object.values(storage.objects).reduce((sum, n) => sum + Number(n), 0) : null;
+  lines.push(storage ? `Storage: ${storage.source_bytes} byte(s)${objectCount != null ? ` across ${objectCount} object(s)` : ""}` : "Storage: unknown");
+
+  const decryptPart = !s.keystore.holds_repo_key
+    ? "CANNOT decrypt (no key in this machine's keystore)"
+    : s.keystore.can_sign
+      ? "can decrypt and publish"
+      : "can decrypt (read-only — no signing key)";
+  lines.push(`This machine: ${decryptPart}. Policy: ${s.gitvault_policy ?? "(none)"}`);
+
+  if (s.warnings.length > 0) lines.push(`Warnings: ${s.warnings.map((w) => w.message).join(" ")}`);
+
+  return lines.join("\n");
+}
+
 async function status(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--refs", "--help", "-h"], COMMON_VALUE_FLAGS);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--refs", "--human", "--help", "-h"], COMMON_VALUE_FLAGS);
   requirePositionalCount(a, COMMON_VALUE_FLAGS, {
     min: 0, max: 0, command: "run402 gitvault status", missing: "",
   });
+  // kychee-com/run402#569 — an explicit opt-in per the cli-output-contract
+  // (openspec/specs/cli-output-contract/spec.md: raw/human stdout REQUIRES
+  // one), the same shape `run402 up`'s own `--human` already uses. Without
+  // it, behavior is byte-identical to before this flag existed.
+  const human = a.includes("--human");
+  if (human && a.includes("--json")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--human cannot be combined with --json.",
+      details: { flags: a.filter((arg) => arg === "--human" || arg === "--json") },
+    });
+  }
   const target = await vaultTarget(a);
   if (a.includes("--refs")) target.refs = true;
   try {
     const s = await getSdk().gitvault.status(target);
+    if (human) {
+      // The human view REPLACES the JSON dump — it is the sanctioned
+      // exception the CLI-wide `--json` no-op convention already carves out
+      // for a command's OWN `--human` flag (see argparse.mjs's header
+      // comment). No new network read: everything below is already present
+      // on `s`, the SAME status() call the JSON path made.
+      console.log(await formatGitvaultHuman(s));
+      return;
+    }
     console.log(JSON.stringify(s, null, 2));
     printTerminalLoss(s);
     // Two facts the user otherwise has to leave the CLI for: which vault this
