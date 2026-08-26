@@ -197,7 +197,14 @@ async function main() {
   step("2b. Ensure an active prototype tier (subscribe/renew if needed)");
   const tierStatus = runCli(["tier", "status", ...WALLET_ARGS], { label: "tier status" });
   console.log(`  tier status: ${JSON.stringify(tierStatus.json)}`);
-  const tierActive = tierStatus.json?.status === "active" || tierStatus.json?.tier?.status === "active";
+  // `run402 tier status` returns a top-level boolean `active` and a plain
+  // string `tier` name (e.g. {"tier":"prototype","active":true,...}) — NOT
+  // a nested `{tier:{status}}` shape. This drill script previously checked
+  // the wrong fields (always undefined) and re-subscribed on EVERY run even
+  // when a tier was already active for weeks — a real drill-script bug
+  // (needless spend), unrelated to the SDK/gateway fixes this drill exists
+  // to verify. Fixed 2026-08-26 during the fix-and-rerun pass.
+  const tierActive = tierStatus.json?.active === true;
   if (!tierActive) {
     console.log("  no active tier — subscribing to prototype ($0.10 x402)");
     const tierSet = runCli(["tier", "set", "prototype", ...WALLET_ARGS], { label: "tier set prototype" });
@@ -324,12 +331,26 @@ async function main() {
     recoverResult.json?.keystore_still_required,
   );
 
-  // Ref-exact comparison against the source repo.
+  // Ref-exact comparison. `gitvault snapshot` (unlike `git push run402
+  // <branch>`) always publishes under the SINGLE protocol-owned deploy ref
+  // `refs/run402/deploys/latest` (`GITVAULT_DEPLOY_REF`, gitvault-snapshot.ts)
+  // — `head_target` is captured PROVENANCE (verbatim from the local repo's
+  // OWN `git symbolic-ref HEAD` at snapshot time, i.e. `refs/heads/main`
+  // here), never a claim that that branch ref itself gets published. So the
+  // recovered repo legitimately carries ONLY the deploy ref, not
+  // `refs/heads/main` — comparing against `sourceRefs` (this drill's local
+  // branch listing) was this drill's own wrong assumption, not a product
+  // defect (confirmed by reading captureSnapshot's source directly). The
+  // real byte-exactness claim is: the deploy ref's oid equals the exact
+  // commit this drill made.
   const recoveredRefs = git(outDir, ["for-each-ref", "--format=%(refname) %(objectname)"]);
   console.log(`  recovered repo refs:\n${recoveredRefs.split("\n").map((l) => `    ${l}`).join("\n")}`);
-  assertEqual(recoveredRefs, sourceRefs, "recovered repo's refs match the source repo byte-exactly (git for-each-ref)");
-  const recoveredHead = git(outDir, ["rev-parse", "HEAD"]);
-  assertEqual(recoveredHead, finalHead, "recovered repo's HEAD oid matches the source repo's HEAD oid");
+  const expectedDeployRef = `refs/run402/deploys/latest ${finalHead}`;
+  assertEqual(recoveredRefs, expectedDeployRef, "recovered repo's refs match the deploy ref gitvault snapshot actually published, byte-exact");
+  assertEqual(recoverResult.json?.refs?.["refs/run402/deploys/latest"], finalHead, "the recover result's own refs map names the deploy ref at the exact source commit oid");
+  const recoveredDeployRefOid = git(outDir, ["rev-parse", "refs/run402/deploys/latest"]);
+  assertEqual(recoveredDeployRefOid, finalHead, "recovered repo's deploy ref resolves to the source repo's exact commit oid");
+  assertEqual(recoverResult.json?.head_target?.ref, "refs/heads/main", "recover's head_target reports the branch this drill actually snapshotted from (provenance, not a claim that ref itself was published)");
   const fsckResult = spawnSync("git", ["fsck", "--full", "--strict"], { cwd: outDir, encoding: "utf8" });
   assertEqual(fsckResult.status, 0, "recovered repo passes `git fsck --full --strict`");
 

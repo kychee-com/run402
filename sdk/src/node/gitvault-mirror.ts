@@ -304,6 +304,29 @@ export function objectReadRequestForEntry(entry: GitvaultObjectEntry): { object_
   return { object_kind: entry.object_kind, object_id: m[1]! };
 }
 
+/**
+ * Task 5.3 follow-up (found via the live drill 2026-08-26, gateway diagnosis
+ * confirmed correct — NOT a bug): the recipient-only read gate on
+ * `key_envelope` means a mirror can only ever hold envelopes wrapped for
+ * THIS machine's own identity. A multi-recipient vault (gitvault-human-
+ * envelopes) makes a foreign-recipient envelope the NORM, not an anomaly —
+ * it must never be synced as a failure. This extracts the `ek_` fingerprint
+ * straight from the key_envelope's own key (no network round-trip needed to
+ * classify it), reusing the exact pattern `objectReadRequestForEntry` uses;
+ * `null` for a key that doesn't match the expected layout at all (a real,
+ * separate problem — that case falls through to the normal read-and-fail
+ * path so `GITVAULT_MIRROR_KEY_UNRECOGNIZED` still surfaces).
+ */
+function keyEnvelopeRecipientFingerprintFromKey(key: string): string | null {
+  const m = /^key-envelopes\/[0-9a-f]{16}\/(ek_[0-9a-f]{32})\.env$/.exec(key);
+  return m ? m[1]! : null;
+}
+
+/** The local keystore's own `ek_` fingerprint, or `null` when no identity exists on this machine (keyless / never-`gitvault init`-ed). */
+function localEncryptionFingerprint(keystore: GitvaultKeystore): string | null {
+  return keystore.readIdentity()?.encryption_fingerprint ?? null;
+}
+
 // ─── Admission-order planning ──────────────────────────────────────────────────
 
 export interface GitvaultMirrorWritePlan {
@@ -342,7 +365,7 @@ export function planMirrorWrite(entries: readonly GitvaultObjectEntry[]): Gitvau
 
 export interface GitvaultMirrorCopyResult {
   key: string;
-  outcome: "copied" | "already_present" | "failed";
+  outcome: "copied" | "already_present" | "skipped_foreign_recipient" | "failed";
   size_bytes?: string;
   error?: string;
 }
@@ -354,6 +377,18 @@ export interface GitvaultMirrorSyncSummary {
   objects_listed: number;
   objects_copied: number;
   objects_already_present: number;
+  /**
+   * Task 5.3 follow-up: a `key_envelope` wrapped for a DIFFERENT recipient
+   * than this machine's own identity — EXPECTED, not a problem. The
+   * recipient-only read gate means a mirror can only ever hold envelopes
+   * addressed to the local identity; a multi-recipient vault
+   * (gitvault-human-envelopes) makes this the norm. Never counted toward
+   * `objects_failed`, and never causes `mirror sync` to report anything but
+   * success — named per-key in `skipped_foreign_recipient_keys` so a reader
+   * can tell "expected skip" from "silent gap" without cross-referencing.
+   */
+  objects_skipped_foreign_recipient: number;
+  skipped_foreign_recipient_keys: string[];
   objects_failed: number;
   bytes_copied: string;
   errors: Array<{ key: string; error: string }>;
@@ -371,9 +406,21 @@ export interface GitvaultMirrorSyncSummary {
  * failure is tagged with its `object_kind` so a sync summary's `errors[]` is
  * self-explaining without cross-referencing the listing (task 5.3's "no
  * per-entry reason surfaced" gap).
+ *
+ * `ownFingerprint` (task 5.3 follow-up): a `key_envelope` entry addressed to
+ * a DIFFERENT recipient is classified `skipped_foreign_recipient` BEFORE any
+ * network read is attempted (the fingerprint is parsed straight out of the
+ * entry's own key) — never a failure, and never even reaches the gateway,
+ * which would correctly 403 it under the recipient-only read gate.
  */
-async function reconcileOne(client: Client, repoId: string, backend: GitvaultMirrorBackend, entry: GitvaultObjectEntry): Promise<GitvaultMirrorCopyResult> {
+async function reconcileOne(client: Client, repoId: string, backend: GitvaultMirrorBackend, entry: GitvaultObjectEntry, ownFingerprint: string | null): Promise<GitvaultMirrorCopyResult> {
   const kindTag = `[${entry.object_kind}]`;
+  if (entry.object_kind === "key_envelope") {
+    const fp = keyEnvelopeRecipientFingerprintFromKey(entry.key);
+    if (fp !== null && fp !== ownFingerprint) {
+      return { key: entry.key, outcome: "skipped_foreign_recipient" };
+    }
+  }
   try {
     const existing = await backend.head(entry.key);
     if (existing && existing.size_bytes === entry.size_bytes) {
@@ -419,22 +466,28 @@ export async function mirrorSync(client: Client, repoId: string, options: Gitvau
   const config = readMirrorConfig(keystore, repoId);
   const destination = options.backend ? backend.describe() : formatMirrorDestination(config!.destination);
 
+  const ownFingerprint = localEncryptionFingerprint(keystore);
   const entries = await listGitvaultObjectsAll(client, repoId);
   const plan = planMirrorWrite(entries);
   const ordered = [...plan.objects, ...plan.admissionsAndHeads];
 
   let copied = 0;
   let already = 0;
+  let skippedForeign = 0;
   let failed = 0;
   let bytesCopied = 0n;
   const errors: Array<{ key: string; error: string }> = [];
+  const skippedForeignKeys: string[] = [];
   for (const entry of ordered) {
-    const result = await reconcileOne(client, repoId, backend, entry);
+    const result = await reconcileOne(client, repoId, backend, entry, ownFingerprint);
     if (result.outcome === "copied") {
       copied += 1;
       bytesCopied += BigInt(entry.size_bytes);
     } else if (result.outcome === "already_present") {
       already += 1;
+    } else if (result.outcome === "skipped_foreign_recipient") {
+      skippedForeign += 1;
+      skippedForeignKeys.push(result.key);
     } else {
       failed += 1;
       errors.push({ key: result.key, error: result.error ?? "unknown failure" });
@@ -447,6 +500,8 @@ export async function mirrorSync(client: Client, repoId: string, options: Gitvau
     objects_listed: entries.length,
     objects_copied: copied,
     objects_already_present: already,
+    objects_skipped_foreign_recipient: skippedForeign,
+    skipped_foreign_recipient_keys: skippedForeignKeys,
     objects_failed: failed,
     bytes_copied: bytesCopied.toString(),
     errors,

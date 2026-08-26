@@ -1050,6 +1050,7 @@ async function mirrorSyncCmd(args) {
     await spillIfLarge(result.repo_id, "mirror-sync", result);
     console.error(
       `mirror sync for ${result.repo_id}: ${result.objects_copied} copied, ${result.objects_already_present} already present` +
+      `${result.objects_skipped_foreign_recipient > 0 ? `, ${result.objects_skipped_foreign_recipient} skipped (envelopes for other recipients — expected)` : ""}` +
       `${result.objects_failed > 0 ? `, ${result.objects_failed} FAILED` : ""} (${result.bytes_copied} byte(s) copied this run).`,
     );
     for (const e of result.errors) console.error(`  failed: ${e.key} — ${e.error}`);

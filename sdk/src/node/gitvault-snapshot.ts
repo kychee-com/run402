@@ -126,8 +126,19 @@ export const HARDENED_GIT_ARGV_PREFIX = (): string[] => [
 /**
  * Run git with explicit args (no shell) in `cwd` under the hardened env.
  * Throws `GIT_COMMAND_FAILED` on a non-ok exit.
+ *
+ * Task 5.3 follow-up (found via the live drill 2026-08-26): Node's
+ * `execFile` reports a MISSING `cwd` with the exact same `ENOENT` as a
+ * missing `git` binary, so a caller that forgot to create its working
+ * directory (e.g. `recover`'s `out_dir` before this fix) saw the misleading
+ * `GIT_UNAVAILABLE: git could not be executed` even though git itself was
+ * perfectly installed. Disambiguate BEFORE spawning: a missing `cwd` is its
+ * own distinct, honest refusal, never folded into "git is unavailable."
  */
 export function hardenedGit(cwd: string, args: string[], options: HardenedGitOptions = {}): Promise<HardenedGitResult> {
+  if (!existsSync(cwd)) {
+    return Promise.reject(new LocalError(`git working directory does not exist: ${cwd}`, "running hardened git", { code: "GIT_CWD_MISSING", details: { cwd, args } }));
+  }
   const argv = [...HARDENED_GIT_ARGV_PREFIX(), ...args];
   return new Promise((resolvePromise, reject) => {
     const child = execFile(

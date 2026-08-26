@@ -18,6 +18,7 @@
  * offline subset of machinery that already exists."
  */
 import { createHash } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { LocalError } from "../errors.js";
 import {
   GITVAULT_GENESIS_EPOCH,
@@ -362,8 +363,27 @@ async function resolveKRepo(backend: GitvaultMirrorBackend, genesis: GitvaultVau
       { action: "run with --keyless (or `mirror verify`) for the verify-only outcome" },
     ]);
   }
-  const envelopeReceipt = genesis.envelopes[0];
-  if (!envelopeReceipt) fail("VAULT_CREATION_CONFLICT", "genesis carries no key envelope", "materializing gitvault recovery");
+  if (genesis.envelopes.length === 0) fail("VAULT_CREATION_CONFLICT", "genesis carries no key envelope", "materializing gitvault recovery");
+  // Task 5.3 follow-up (gateway diagnosis confirmed 2026-08-26: a real vault
+  // can carry MORE than one key_envelope ledger row — a foreign recipient's
+  // envelope is the norm on a multi-recipient vault, never an anomaly). A
+  // genesis's own `envelopes[]` has always had exactly one entry so far (the
+  // creator's, minted at the six-stage creation — later reconcile-added
+  // envelopes are separate ledger rows, never appended to the SIGNED
+  // genesis), which is why blindly reading index 0 happened to be correct.
+  // SELECT BY FINGERPRINT EXPLICITLY instead of by position: this machine
+  // can only ever decrypt ITS OWN envelope (the recipient-only read gate
+  // means the mirror never even holds anyone else's — see
+  // `keyEnvelopeRecipientFingerprintFromKey`/`skipped_foreign_recipient` in
+  // `gitvault-mirror.ts`), so this function never looks for, and never fails
+  // on, a FOREIGN envelope being absent — that is silent-OK. A missing OWN
+  // envelope in genesis.envelopes (no entry matches our fingerprint at all)
+  // is its own distinct, honest refusal, separate from "the mirror never
+  // synced the bytes for an envelope genesis DOES name for us" below.
+  const envelopeReceipt = genesis.envelopes.find((e) => e.recipient_fingerprint === identity.encryption_fingerprint);
+  if (!envelopeReceipt) {
+    fail("GITVAULT_ENVELOPE_NOT_FOR_RECIPIENT", "genesis carries no key envelope for this machine's identity — this keystore is not a recipient of this vault", "materializing gitvault recovery", { own_fingerprint: identity.encryption_fingerprint });
+  }
   // `key-envelopes/<epoch>/<recipient_fingerprint>.env` — the GATEWAY's real
   // §3 wire key (`upload-sessions.ts` `UPLOADABLE_KINDS.key_envelope.key()`,
   // mirrored by `storage-keys.ts` `objectKeyFor`), matching protocol §3
@@ -399,6 +419,22 @@ async function openCarrier<T>(backend: GitvaultMirrorBackend, kRepo: Uint8Array,
  * a typed non-zero exit (throws) — never a partial, silently-accepted repo.
  */
 export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Promise<GitvaultRecoverResult> {
+  // Task 5.3 follow-up (found via the live drill 2026-08-26): `out_dir` is
+  // "where to materialize the recovered repository" — the CLI's own
+  // documented example (`--out ./restored`) is a path that naturally does
+  // NOT already exist, same expectation as `git clone <url> restored-dir`.
+  // Every unit test happened to pass an already-`mkdtempSync`'d directory,
+  // which is exactly why nothing ever created it here. Create it FIRST,
+  // before any discovery/decrypt work, so a bad `out_dir` fails fast with a
+  // truthful, typed error instead of the misleading `GIT_UNAVAILABLE` the
+  // first `hardenedGit` call used to throw (see that function's own
+  // `GIT_CWD_MISSING` disambiguation in `gitvault-snapshot.ts` — this is the
+  // belt; that is the suspenders).
+  try {
+    mkdirSync(options.out_dir, { recursive: true });
+  } catch (e) {
+    fail("GITVAULT_RECOVER_OUT_DIR_UNWRITABLE", `could not create the recovery output directory: ${options.out_dir}`, "materializing gitvault recovery", { out_dir: options.out_dir, cause: e instanceof Error ? e.message : String(e) });
+  }
   const { backend } = options;
   const keystore = options.keystore ?? GitvaultKeystore.open();
   const discovery = await discoverAndVerifyChain({ backend, ...(options.recovery_receipt ? { recovery_receipt: options.recovery_receipt } : {}), keystore });

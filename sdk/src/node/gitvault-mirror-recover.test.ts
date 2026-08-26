@@ -13,12 +13,13 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { jcs, sha256Hex } from "../namespaces/gitvault.crypto.js";
 import { gitvaultPaths } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
+import { hardenedGit } from "./gitvault-snapshot.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
 import { DirectoryMirrorBackend, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
 import {
@@ -329,6 +330,47 @@ describe("gitvault recovery engine (task 3.6)", () => {
     rmSync(outDir, { recursive: true, force: true });
   });
 
+  // ── task 5.3 follow-up (found via the live drill 2026-08-26): `out_dir`
+  // never got created before this fix, and the resulting Node `ENOENT`
+  // (missing cwd) was indistinguishable from a missing `git` binary. Every
+  // OTHER test in this file passes an already-`mkdtempSync`'d directory,
+  // which is exactly why this was never caught — these two pin the fix at
+  // both layers named in the coordinator's diagnosis. ──
+  it("recover creates a non-pre-existing --out directory (the CLI's own documented usage) instead of crashing GIT_UNAVAILABLE", async () => {
+    const f = await makeVault();
+    const c1 = await commitFile(f.repoDir, "a.txt", "a\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+
+    const mirrorRoot = scratchDir("run402-mirror-mkdir-fix-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    await seedBackend(backend, transportEntries(f.transport, f.repoId));
+
+    // A NESTED path under a fresh scratch parent — deliberately never
+    // mkdtempSync'd itself, matching `run402 gitvault recover s3://… --out
+    // ./restored` against a directory that naturally does not exist yet.
+    const parent = scratchDir("run402-recover-mkdir-parent-");
+    const outDir = join(parent, "nested", "restored");
+    assert.equal(existsSync(outDir), false, "sanity: out_dir must not pre-exist for this test to mean anything");
+
+    const result = await recoverGitvaultMirror({ backend, out_dir: outDir, keystore: f.keystore });
+    assert.equal(result.mode, "recovered");
+    assert.equal(existsSync(outDir), true);
+    const head = (await git(outDir, ["rev-parse", "HEAD"])).trim();
+    assert.equal(head, c1);
+
+    rmSync(mirrorRoot, { recursive: true, force: true });
+    rmSync(parent, { recursive: true, force: true });
+  });
+
+  it("hardenedGit disambiguates a missing cwd (GIT_CWD_MISSING) from a missing git binary (GIT_UNAVAILABLE)", async () => {
+    const missing = join(scratchDir("run402-hardened-git-cwd-"), "does-not-exist");
+    assert.equal(existsSync(missing), false);
+    await assert.rejects(
+      hardenedGit(missing, ["init", "-q", "--bare", "--object-format=sha1", "."]),
+      (e: unknown) => (e as { code?: string }).code === "GIT_CWD_MISSING",
+    );
+  });
+
   it("keyless mode never touches key material and still reports a recoverable generation + inventory", async () => {
     const f = await makeVault();
     const c1 = await commitFile(f.repoDir, "a.txt", "a\n");
@@ -606,6 +648,112 @@ describe("gitvault mirror writer + sync engine (task 2.5)", () => {
     assert.equal(second.objects_failed, 0);
 
     rmSync(mirrorRoot, { recursive: true, force: true });
+  });
+});
+
+// ─── foreign-recipient key_envelope handling (task 5.3 follow-up) ────────────
+//
+// Gateway diagnosis 2026-08-26 (production): a real vault's own `mirror
+// sync` 403 on a `key_envelope` was NOT a bug — it was the recipient-only
+// read gate correctly refusing a genuinely foreign recipient's envelope. A
+// mirror machine can only ever hold ITS OWN envelope; a foreign one is the
+// NORM on a multi-recipient vault (gitvault-human-envelopes), never a
+// failure. These tests pin the fix: classification happens BEFORE any
+// network read is attempted (the fingerprint is parsed straight out of the
+// listed key), a foreign envelope never counts toward `objects_failed`, and
+// `resolveKRepo`/`recover` selects its own envelope by fingerprint rather
+// than by array position.
+describe("gitvault mirror sync — foreign-recipient key_envelope handling (task 5.3 follow-up)", () => {
+  it("a key_envelope addressed to a DIFFERENT recipient is classified skipped_foreign_recipient, never failed — and its bytes are NEVER requested", async () => {
+    const f = await makeVault();
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: await commitFile(f.repoDir, "a.txt", "a\n"), force: false }] } });
+
+    const ownFingerprint = f.keystore.readIdentity()!.encryption_fingerprint;
+    assert.match(ownFingerprint, /^ek_[0-9a-f]{32}$/, "sanity: the fixture's own identity has a real ek_ fingerprint");
+    const foreignFingerprint = `ek_${"f".repeat(32)}`;
+    assert.notEqual(foreignFingerprint, ownFingerprint, "sanity: the synthetic foreign fingerprint must actually differ from our own");
+
+    const entries = transportEntries(f.transport, f.repoId);
+    const foreignKey = `key-envelopes/0000000000000001/${foreignFingerprint}.env`;
+    const foreignBytes = new TextEncoder().encode("not a real envelope — must never be read");
+    entries.push({ key: foreignKey, bytes: foreignBytes });
+
+    const mirrorRoot = scratchDir("run402-mirror-foreign-envelope-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    let foreignKeyRequested = false;
+    const fakeClient = {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request(path: string, init?: { body?: { objects?: Array<Record<string, string>> } }) {
+        if (path.includes("/objects")) {
+          return { repo_id: f.repoId, objects: toWireListingEntries(entries, f.repoId), has_more: false, next_cursor: null };
+        }
+        if (path.includes("/object-reads")) {
+          const requested = init?.body?.objects?.[0];
+          const key = keyForRead(requested!);
+          if (key === foreignKey) {
+            foreignKeyRequested = true;
+            throw new Error("the gateway would 403 this — a correctly-skipping sync must never even ask");
+          }
+          return { reads: [{ url: `mem://${key}` }] };
+        }
+        throw new Error(`unexpected request: ${path}`);
+      },
+      async fetch(url: string) {
+        if (typeof url === "string" && url.startsWith("mem://")) {
+          const key = url.slice("mem://".length);
+          if (key === foreignKey) { foreignKeyRequested = true; throw new Error("must never fetch a foreign envelope's bytes"); }
+          const bytes = entries.find((e) => e.key === key)?.bytes;
+          return bytes ? new Response(bytes, { status: 200 }) : new Response(null, { status: 404 });
+        }
+        const path = url.replace("https://fake.test", "");
+        const m = /\/(heads|admissions)\/([0-9a-f]{16})$/.exec(path);
+        if (m) {
+          const key = m[1] === "heads" ? `head/${m[2]}` : `admissions/${m[2]}`;
+          const bytes = entries.find((e) => e.key === key)?.bytes;
+          return bytes ? new Response(bytes, { status: 200 }) : new Response(null, { status: 404 });
+        }
+        return new Response(null, { status: 404 });
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const summary = await mirrorSync(fakeClient, f.repoId, { keystore: f.keystore, backend });
+    assert.equal(foreignKeyRequested, false, "the foreign envelope's bytes must never be requested from the gateway");
+    assert.equal(summary.objects_failed, 0, "a foreign envelope must never count as a failure");
+    assert.equal(summary.objects_skipped_foreign_recipient, 1);
+    assert.deepEqual(summary.skipped_foreign_recipient_keys, [foreignKey]);
+    assert.equal(await backend.get(foreignKey), null, "the mirror must not hold the foreign envelope's bytes");
+    assert.ok(summary.objects_copied > 0, "everything else must still sync normally");
+
+    // The capture-time dual-push hook (design D6) must report `pushed`, not
+    // `failed`, when the only "issue" was an expected foreign-recipient skip
+    // — this was exactly the live drill's regression (`mirror: dual-push
+    // FAILED (deploy is unaffected)` on a perfectly healthy vault).
+    const pushResult = await mirrorPushForGeneration(fakeClient, f.repoId, { keystore: f.keystore, backend });
+    assert.equal(pushResult.outcome, "pushed");
+
+    rmSync(mirrorRoot, { recursive: true, force: true });
+  });
+
+  it("recoverGitvaultMirror decrypts using the OWN envelope even when a foreign one is absent from the mirror entirely", async () => {
+    const f = await makeVault();
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: await commitFile(f.repoDir, "a.txt", "a\n"), force: false }] } });
+
+    const mirrorRoot = scratchDir("run402-recover-own-envelope-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    // Seed EVERYTHING (including the real own envelope) — a foreign envelope
+    // is simply never present here at all, matching what a real `mirror
+    // sync` leaves behind (it is never even attempted, let alone copied).
+    await seedBackend(backend, transportEntries(f.transport, f.repoId));
+
+    const outDir = scratchDir("run402-recover-own-envelope-out-");
+    const result = await recoverGitvaultMirror({ backend, out_dir: outDir, keystore: f.keystore });
+    assert.equal(result.mode, "recovered");
+    assert.equal(result.chain_break, null);
+
+    rmSync(mirrorRoot, { recursive: true, force: true });
+    rmSync(outDir, { recursive: true, force: true });
   });
 });
 
