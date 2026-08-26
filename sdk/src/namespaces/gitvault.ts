@@ -635,9 +635,27 @@ export class Gitvault {
     try {
       await hardenedGit(options.repo_dir, ["rev-parse", "--git-dir"]);
     } catch {
-      await hardenedGit(options.repo_dir, ["init"]);
+      // `main`, not whatever `init.defaultBranch` (or the pre-2.28 hardcoded
+      // `master`) happens to be — the docs and this helper's own remedy text
+      // (`repoRefusalNote` in git-remote-run402) teach `git push origin main`,
+      // and a first push of any OTHER branch leaves HEAD naming a ref that
+      // does not exist yet (see this file's own KNOWN LIMITS note on
+      // `push` never changing the vault's HEAD target). `-b` needs git 2.28+
+      // (2020); the fallback for anything older is the same result by a
+      // different route: init, then point HEAD at `refs/heads/main` directly
+      // — an EMPTY repository has no ref for `symbolic-ref` to disturb, so
+      // this is exactly as safe as `-b main` would have been.
+      try {
+        await hardenedGit(options.repo_dir, ["init", "-b", "main"]);
+      } catch {
+        await hardenedGit(options.repo_dir, ["init"]);
+        await hardenedGit(options.repo_dir, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+      }
       createdRepository = true;
     }
+    // An EXISTING repository is never touched — only the branch a fresh `init`
+    // above just created gets steered to `main`; this repository's own HEAD
+    // (whatever branch it already uses) is left exactly as it was.
     const readRemote = async (name: string): Promise<string | null> => {
       try {
         const out = (await hardenedGit(options.repo_dir, ["remote", "get-url", name])).text().trim();
@@ -790,19 +808,34 @@ export class Gitvault {
 
     // The local git remote, when there is a repository to read it from. A
     // pure read: `status` must never write git configuration.
+    //
+    // Checks BOTH conventional names, `run402` first then `origin` —
+    // matching `scaffoldRemote`'s own naming (design D1: it claims `origin`
+    // additively when the repository has none yet, falling back to `run402`
+    // only when `origin` is already taken by something else). The common
+    // case is therefore an `origin` remote, not a `run402` one — checking
+    // only "run402" (the pre-fix behavior) reported `remote: null` for most
+    // repositories even though a run402-form remote was sitting right there
+    // under `origin` (kychee-com/run402#559c). A name whose URL exists but
+    // does not parse as a run402 address (someone's own unrelated remote
+    // happening to be named "run402") is skipped rather than reported, so
+    // the other conventional name still gets a chance.
     let remote: GitvaultStatus["remote"] = null;
     if (options.repo_dir) {
       const { hardenedGit } = await this.#snapshot();
-      const name = "run402";
-      try {
-        const url = (await hardenedGit(options.repo_dir, ["remote", "get-url", name])).text().trim();
-        if (url) {
-          const parsed = parseGitvaultRemoteUrl(url);
-          const project = options.project_id ?? record?.project_id ?? null;
-          remote = { name, url, matches: parsed !== null && (project === null || parsed.project_id === project) };
+      const project = options.project_id ?? record?.project_id ?? null;
+      for (const name of ["run402", "origin"]) {
+        let url: string;
+        try {
+          url = (await hardenedGit(options.repo_dir, ["remote", "get-url", name])).text().trim();
+        } catch {
+          continue; // not a repository, or no such remote — try the other name
         }
-      } catch {
-        remote = null; // not a repository, or no such remote — both are ordinary
+        if (!url) continue;
+        const parsed = parseGitvaultRemoteUrl(url);
+        if (!parsed) continue;
+        remote = { name, url, matches: project === null || parsed.project_id === project };
+        break;
       }
     }
 

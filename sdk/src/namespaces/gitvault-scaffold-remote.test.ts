@@ -125,6 +125,36 @@ describe("scaffoldRemote — D1 claim origin additively", () => {
     assert.equal((await hardenedGit(dir, ["remote", "get-url", "origin"])).text().trim(), OUR_URL);
   });
 
+  it("a repository it creates gets branch 'main' — never git's own hardcoded default (kychee-com/run402 second dogfood)", async () => {
+    // `hardenedGit`'s own environment (`hardenedGitEnv`) sets
+    // `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null` for every
+    // invocation, so a PLAIN `git init` here is fully isolated from this
+    // machine's own config either way and falls back to git's built-in
+    // default (historically `master`) with no `-b main` fix — deterministic
+    // and safe to assert without touching real global git state. The docs
+    // teach `git push origin main`, and the remote helper's own KNOWN LIMITS
+    // note says a first push of any OTHER branch leaves HEAD naming a ref
+    // that does not exist yet.
+    const dir = join(root, "fresh-branch-name");
+    mkdirSync(dir, { recursive: true });
+    await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
+    // An empty repository has no commit yet, so the branch name lives only
+    // in the symbolic HEAD ref, not a resolvable commit — read it directly.
+    const headRef = (await hardenedGit(dir, ["symbolic-ref", "HEAD"])).text().trim();
+    assert.equal(headRef, "refs/heads/main");
+  });
+
+  it("an EXISTING repository's branch is never touched, even if it is not 'main'", async () => {
+    const dir = await freshRepo();
+    await hardenedGit(dir, ["symbolic-ref", "HEAD", "refs/heads/develop"]);
+    const before = (await hardenedGit(dir, ["symbolic-ref", "HEAD"])).text().trim();
+    assert.equal(before, "refs/heads/develop");
+    const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT });
+    assert.equal(r.created_repository, false, "the repository already existed");
+    const after = (await hardenedGit(dir, ["symbolic-ref", "HEAD"])).text().trim();
+    assert.equal(after, "refs/heads/develop", "an existing repository's branch must never be changed");
+  });
+
   it("an explicit remote_name is honored verbatim and never claims `origin`", async () => {
     const dir = await freshRepo();
     const r = await sdk().gitvault.scaffoldRemote({ repo_dir: dir, org_id: ORG, project_id: PROJECT, remote_name: "vault" });

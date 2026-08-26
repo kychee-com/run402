@@ -12,7 +12,8 @@
  */
 
 import { existsSync, statSync } from "node:fs";
-import { configDir, readAllowance, loadKeyStore, getActiveProjectId } from "./config.mjs";
+import { configDir, readAllowance, loadKeyStore } from "./config.mjs";
+import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { getSdk } from "./sdk.mjs";
 import {
   resolveScanRoot,
@@ -408,9 +409,18 @@ export async function run(sub, args = []) {
   // or `ok`, never a doctor failure. A vault-only project that has never
   // deployed is a first-class shape (protocol D183), so its mere absence of a
   // deploy raises nothing.
+  //
+  // TARGETING (repo-first-onramp follow-up, kychee-com/run402#559d): when
+  // cwd is a repository with its own pinned repo id or run402/origin remote,
+  // doctor now checks THAT vault, not the profile's active project — the
+  // same pin > remote > RUN402_PROJECT_ID env > active-project order every
+  // other gitvault verb follows (`gitvault-target.mjs`). Doctor has no
+  // `--project`/`--repo` flag of its own, so there is no explicit tier here.
   {
-    const projectId = (process.env.RUN402_PROJECT_ID || "").trim() || getActiveProjectId() || null;
-    if (!projectId) {
+    const target = await resolveGitvaultTarget({ repoDir: process.cwd() });
+    const projectId = target.project_id ?? null;
+    const repoId = target.repo_id ?? null;
+    if (!projectId && !repoId) {
       checks.push({
         name: "gitvault",
         status: "skipped",
@@ -418,9 +428,12 @@ export async function run(sub, args = []) {
       });
     } else {
       try {
-        const gv = await getSdk().gitvault.status({ project_id: projectId, repo_dir: process.cwd() });
+        const gv = await getSdk().gitvault.status({
+          ...(repoId ? { repo_id: repoId } : { project_id: projectId }),
+          repo_dir: process.cwd(),
+        });
         const value = {
-          project_id: projectId,
+          project_id: gv.project_id ?? projectId,
           repo_id: gv.repo_id,
           vault: gv.vault === null ? null : "allocated",
           gitvault_policy: gv.gitvault_policy,
@@ -446,7 +459,7 @@ export async function run(sub, args = []) {
           gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 gitvault push' to drain them`);
         }
         if (gv.remote && !gv.remote.matches) {
-          gaps.push(`the '${gv.remote.name}' git remote points at a different project than ${projectId} (${gv.remote.url})`);
+          gaps.push(`the '${gv.remote.name}' git remote points at a different project than ${value.project_id} (${gv.remote.url})`);
         }
         // Echoed exactly as the SDK reported them — including the
         // doctor-persistent `grandfathered` advisory it owns.

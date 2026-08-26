@@ -19,6 +19,7 @@
 import { readFileSync } from "node:fs";
 import { resolveProjectId } from "./config.mjs";
 import { resolveOwningOrgId } from "./org-context.mjs";
+import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import {
@@ -168,19 +169,36 @@ Examples:
  * Resolve which vault to act on, plus the local git tree.
  *
  * `--repo` addresses the vault directly (the cold-restart path: an agent that
- * knows its repo_id needs no project lookup). Otherwise the project is
- * resolved the CLI-wide way — `--project`, then RUN402_PROJECT_ID, then the
- * active project — and the SDK resolves the vault from it.
+ * knows its repo_id needs no project lookup). Otherwise the project targets,
+ * highest first: `--project` > the repo's own pin/remote > RUN402_PROJECT_ID
+ * > the active project (repo-first-onramp follow-up, kychee-com/run402#559 —
+ * see `gitvault-target.mjs`'s module doc for the full targeting order and
+ * why it exists: a stale active-project pointer used to silently outrank the
+ * repository this command is actually standing in).
  */
-function vaultTarget(a) {
+async function vaultTarget(a) {
   const repoId = flagValue(a, "--repo");
   const project = flagValue(a, "--project");
-  const target = { repo_dir: process.cwd() };
+  const repoDir = process.cwd();
+  const resolved = await resolveGitvaultTarget({
+    repoDir,
+    explicitProjectId: project ?? undefined,
+    explicitRepoId: repoId ?? undefined,
+  });
+  const target = { repo_dir: repoDir };
   if (repoId != null) target.repo_id = repoId;
   // Only demand a project when one is actually needed: `--repo` alone is a
-  // complete address, and requiring an active project on top of it would make
-  // the cold-restart path fail for no reason.
-  if (repoId == null || project != null) target.project_id = resolveProjectId(project);
+  // complete address, and requiring one on top of it would make the
+  // cold-restart path fail for no reason.
+  if (repoId == null || project != null) {
+    if ("repo_id" in resolved && project == null) target.repo_id = resolved.repo_id;
+    // `resolveGitvaultTarget` reports its last (env/active) tier
+    // non-throwingly (`run402 doctor`'s call site needs that) — this call
+    // site is the one that historically failed closed with PROJECT_REQUIRED
+    // when nothing resolves anywhere, and still does: `resolveProjectId`
+    // re-derives the exact same env/active check and throws.
+    if ("project_id" in resolved) target.project_id = resolved.project_id ?? resolveProjectId(project);
+  }
   return target;
 }
 
@@ -337,7 +355,7 @@ async function policy(args) {
     });
   }
 
-  const target = vaultTarget(a);
+  const target = await vaultTarget(a);
   try {
     const sdk = getSdk();
     const repoId = target.repo_id ?? (await sdk.gitvault.forProject(target.project_id)).repo_id;
@@ -363,7 +381,7 @@ async function status(args) {
   requirePositionalCount(a, COMMON_VALUE_FLAGS, {
     min: 0, max: 0, command: "run402 gitvault status", missing: "",
   });
-  const target = vaultTarget(a);
+  const target = await vaultTarget(a);
   if (a.includes("--refs")) target.refs = true;
   try {
     const s = await getSdk().gitvault.status(target);
@@ -452,7 +470,7 @@ async function snapshot(args) {
   // it is skipped there, matching `open()`'s own precedence. Skipped
   // entirely for a slug-form remote (`address` above) — that resolves
   // through the address, not a project_id, and needs no separate org_id.
-  const target = address ? { repo_dir: repoDir } : vaultTarget(a);
+  const target = address ? { repo_dir: repoDir } : await vaultTarget(a);
   const orgId = !address && target.project_id ? await resolveOwningOrgId(target.project_id) : null;
   const opts = {
     ...target,
@@ -495,7 +513,7 @@ async function compact(args) {
     min: 0, max: 0, command: "run402 gitvault compact", missing: "",
   });
   try {
-    const result = await getSdk().gitvault.compact(vaultTarget(a));
+    const result = await getSdk().gitvault.compact(await vaultTarget(a));
     console.log(JSON.stringify(result, null, 2));
     console.error(
       `checkpoint published at generation ${result.generation}: ` +
@@ -564,7 +582,7 @@ async function prune(args) {
       hint: "Add --submit, or drop the flags to plan.",
     });
   }
-  const opts = vaultTarget(a);
+  const opts = await vaultTarget(a);
   if (submitting) {
     opts.submit = {
       core: readJsonFile("--intent-core", corePath),
@@ -610,7 +628,7 @@ async function verify(args) {
   requirePositionalCount(a, valueFlags, {
     min: 0, max: 0, command: "run402 gitvault verify", missing: "",
   });
-  const target = vaultTarget(a);
+  const target = await vaultTarget(a);
   const budget = flagValue(a, "--budget");
   if (budget != null) target.verification_budget = parseIntegerFlag("--budget", budget, { min: 1 });
   try {

@@ -1754,6 +1754,7 @@ describe("SDK surface alignment", () => {
 const SHIM_SOURCES = [
   "cli/lib/gitvault.mjs",
   "cli/lib/gitvault-scaffold.mjs",
+  "cli/lib/gitvault-target.mjs",
   "cli/git-remote-run402.mjs",
   "openclaw/scripts/gitvault.mjs",
   "src/tools/gitvault.ts",

@@ -22,7 +22,8 @@
 
 import { after, before, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -510,5 +511,107 @@ describe("run402 doctor — gitvault is no longer invisible", () => {
     impl.status = async () => { throw Object.assign(new Error("Not Found"), { code: "ROUTE_NOT_FOUND" }); };
     const check = await runDoctor();
     assert.equal(check.status, "skipped");
+  });
+});
+
+// ─── targeting order for a verb run inside a repository (repo-first-onramp
+// follow-up, kychee-com/run402#559) ─────────────────────────────────────
+//
+// The dogfood: `run402 gitvault snapshot` (and `status`, and `doctor`)
+// resolved the profile's ACTIVE project instead of the repo it was standing
+// in — a stale pointer to a DIFFERENT project the wallet was not even
+// authorized on. `RUN402_PROJECT_ID` is set to the STALE `PROJECT` for every
+// test below (the outer suite's own env, left in place on purpose — env is
+// tier 4, beneath the repo's own remote at tier 3); a real git repository
+// with an `origin` remote naming `PROJECT_REMOTE` must win instead.
+const PROJECT_REMOTE = "prj_remote_target_559";
+
+function git(cwd, args) {
+  return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
+}
+
+describe("gitvault verb targeting — the repo's own remote outranks a stale active/env project (kychee-com/run402#559b)", () => {
+  let repoDir;
+  before(() => {
+    repoDir = mkdtempSync(join(tmpdir(), "run402-gv-target-repo-"));
+    git(repoDir, ["init", "-q", "-b", "main", "."]);
+    git(repoDir, ["remote", "add", "origin", `run402::${ORG}/${PROJECT_REMOTE}`]);
+    process.chdir(repoDir);
+  });
+  after(() => {
+    process.chdir(scratch);
+    rmSync(repoDir, { recursive: true, force: true });
+  });
+
+  it("status targets the repo's remote project, not the stale RUN402_PROJECT_ID env", async () => {
+    assert.notEqual(PROJECT_REMOTE, process.env.RUN402_PROJECT_ID, "test setup sanity: the remote and env must actually disagree");
+    await ok("status", []);
+    const call = calls.find((c) => c.method === "gitvault.status");
+    assert.ok(call, "status did not reach the SDK");
+    assert.equal(call.input.project_id, PROJECT_REMOTE, "must target the repo's own remote, not the stale env-selected project");
+  });
+
+  it("snapshot targets the repo's remote project too (id-form, non-push-to-create path)", async () => {
+    await ok("snapshot", []);
+    const call = calls.find((c) => c.method === "gitvault.push");
+    assert.ok(call, "snapshot did not reach the SDK");
+    assert.equal(call.input.project_id, PROJECT_REMOTE);
+  });
+
+  it("an explicit --project flag disagreeing with the repo's remote wins, but prints a one-line mismatch warning naming both", async () => {
+    const explicit = "prj_explicit_override";
+    captureStart();
+    try {
+      await run("status", ["--project", explicit]);
+    } finally {
+      captureStop();
+    }
+    const call = calls.find((c) => c.method === "gitvault.status");
+    assert.equal(call.input.project_id, explicit, "the explicit flag must win");
+    const joined = stderr.join("\n");
+    assert.match(joined, /warning/i, joined);
+    assert.match(joined, new RegExp(explicit), joined);
+    assert.match(joined, new RegExp(PROJECT_REMOTE), joined);
+  });
+
+  it("no warning when an explicit --project agrees with the repo's remote", async () => {
+    captureStart();
+    try {
+      await run("status", ["--project", PROJECT_REMOTE]);
+    } finally {
+      captureStop();
+    }
+    assert.doesNotMatch(stderr.join("\n"), /warning: --project/);
+  });
+
+  it("the 4.38.0 pin outranks the remote when both exist — addresses the vault by repo_id, no project lookup", async () => {
+    const PINNED_REPO = "src_pinned_wins_over_remote";
+    git(repoDir, ["config", "--local", "r402.repoId", PINNED_REPO]);
+    try {
+      await ok("status", []);
+      const call = calls.find((c) => c.method === "gitvault.status");
+      assert.equal(call.input.repo_id, PINNED_REPO, "the pin must win over the remote");
+      assert.equal(call.input.project_id, undefined, "a pinned repo_id addresses the vault directly — no project resolution needed");
+    } finally {
+      git(repoDir, ["config", "--local", "--unset", "r402.repoId"]);
+    }
+  });
+
+  it("run402 doctor's gitvault check targets the repo's remote vault too, not the stale active/env project", async () => {
+    const { run: runDoctor } = await import("./cli/lib/doctor.mjs");
+    captureStart();
+    try {
+      await runDoctor("--no-scan", []);
+    } catch {
+      // doctor always exits; only the report matters here.
+    } finally {
+      captureStop();
+    }
+    const report = JSON.parse(stdout.join("\n"));
+    const check = report.checks.find((c) => c.name === "gitvault");
+    assert.ok(check, "doctor emitted no gitvault check");
+    const call = calls.find((c) => c.method === "gitvault.status");
+    assert.ok(call, "doctor's gitvault check did not reach the SDK");
+    assert.equal(call.input.project_id, PROJECT_REMOTE, "doctor must target the repo's own vault, not the active project");
   });
 });

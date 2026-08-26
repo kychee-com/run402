@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { Run402 } from "../index.js";
 import { gitvaultRemoteUrl, parseGitvaultRemoteUrl } from "./gitvault.js";
 import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT } from "./gitvault.crypto.js";
+import { hardenedGit } from "../node/gitvault-snapshot.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface Call {
@@ -359,5 +360,105 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     assert.equal(status.refs, null);
     assert.equal(status.head_target, null);
     assert.equal(status.remote, null, "no repo_dir was given, so there is no remote to report");
+  });
+
+  describe("status() remote detection checks both conventional names (kychee-com/run402#559c)", () => {
+    // D1's own scaffold (`scaffoldRemote`) claims `origin` when the
+    // repository has none yet, falling back to `run402` only when `origin`
+    // is already taken by something else — so `origin` is the COMMON case,
+    // not `run402`. Before this fix `status()` checked ONLY the literal name
+    // "run402", so the ordinary post-`repos create` repository (whose vault
+    // remote is `origin`) reported `remote: null` even though the remote was
+    // sitting right there — a dogfood-observed regression, not a hypothetical.
+    let root: string;
+    async function freshRepoWithRemote(name: string, url: string): Promise<string> {
+      root = mkdtempSync(join(tmpdir(), "run402-gitvault-status-remote-"));
+      const dir = join(root, "repo");
+      await hardenedGit(root, ["init", "-q", "-b", "main", "repo"]);
+      await hardenedGit(dir, ["remote", "add", name, url]);
+      return dir;
+    }
+
+    it("reports an 'origin' remote (the common case) — not just one literally named 'run402'", async () => {
+      const url = gitvaultRemoteUrl("org_demo", "prj_demo");
+      const dir = await freshRepoWithRemote("origin", url);
+      try {
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ project_id: "prj_demo", repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-ks") });
+        assert.ok(status.remote, "an origin remote pointing at this project must be reported, not null");
+        assert.equal(status.remote!.name, "origin");
+        assert.equal(status.remote!.url, url);
+        assert.equal(status.remote!.matches, true);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("still reports a 'run402'-named remote when that is what exists (the pre-fix behavior, preserved)", async () => {
+      const url = gitvaultRemoteUrl("org_demo", "prj_demo");
+      const dir = await freshRepoWithRemote("run402", url);
+      try {
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ project_id: "prj_demo", repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-ks2") });
+        assert.equal(status.remote!.name, "run402");
+        assert.equal(status.remote!.matches, true);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("prefers 'run402' over 'origin' when BOTH exist (D1's own naming precedence)", async () => {
+      const runUrl = gitvaultRemoteUrl("org_demo", "prj_demo");
+      const dir = await freshRepoWithRemote("run402", runUrl);
+      try {
+        await hardenedGit(dir, ["remote", "add", "origin", "https://github.com/someone/else.git"]);
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ project_id: "prj_demo", repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-ks3") });
+        assert.equal(status.remote!.name, "run402");
+        assert.equal(status.remote!.url, runUrl);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("an 'origin' that is NOT run402-form is skipped in favor of a run402-form remote under the other name", async () => {
+      const url = gitvaultRemoteUrl("org_demo", "prj_demo");
+      const dir = await freshRepoWithRemote("origin", "https://github.com/someone/unrelated.git");
+      try {
+        await hardenedGit(dir, ["remote", "add", "run402", url]);
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ project_id: "prj_demo", repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-ks4") });
+        assert.equal(status.remote!.name, "run402");
+        assert.equal(status.remote!.url, url);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("reports matches: false when the remote names a DIFFERENT project", async () => {
+      const url = gitvaultRemoteUrl("org_demo", "prj_other");
+      const dir = await freshRepoWithRemote("origin", url);
+      try {
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ project_id: "prj_demo", repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-ks5") });
+        assert.equal(status.remote!.name, "origin");
+        assert.equal(status.remote!.matches, false);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("neither name present: remote stays null, same as before", async () => {
+      root = mkdtempSync(join(tmpdir(), "run402-gitvault-status-remote-"));
+      const dir = join(root, "repo");
+      await hardenedGit(root, ["init", "-q", "-b", "main", "repo"]);
+      try {
+        const { sdk } = sdkWith(() => ({ body: VAULT_RECORD }));
+        const status = await sdk.gitvault.status({ project_id: "prj_demo", repo_dir: dir, keystore_root: join(tmpdir(), "gitvault-status-remote-ks6") });
+        assert.equal(status.remote, null);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
   });
 });
