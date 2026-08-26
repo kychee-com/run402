@@ -4,6 +4,25 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **Fix: `gitvault init` was not idempotent against a vault that already
+  completed — it re-threw the gateway's raw 409 and called this org's own
+  vault "foreign" (kychee-com/run402#563).** The documented contract
+  ("an existing vault is reported with `deduplicated: true`") only held
+  through a RESUMED local creation journal; once that journal was gone (the
+  common case — creation had long since finished), a fresh `client_creation_id`
+  hit the gateway's per-project allocate uniqueness and got back
+  `VAULT_CREATION_CONFLICT` with no local recovery. The creation journal
+  (`sdk/src/node/gitvault-creation-journal.ts`) now catches this specific
+  conflict at the allocate step: when the local keystore holds the named
+  `repo_id`'s key and can sign, it reads the vault's ADMITTED genesis back
+  (never trusts the local pin blindly) and, once verified, returns the same
+  `{ deduplicated: true, how: "reconciled" }` shape a resumed journal would
+  have — zero re-mint, zero extra network calls beyond the one probe. When
+  this machine's keystore does NOT hold the key, the refusal is re-thrown
+  enriched and truthful — the vault belongs to this org; it never says
+  "foreign" again — naming the real remedies (restore the keystore, or the
+  cross-profile hint below).
+
 - **Fix: `git-remote-run402` never resolved a wallet — a bound checkout's very
   next `git push` used the wrong wallet's allowance (kychee-com/run402#558).**
   Before this, the remote helper called `getSdk()` directly and ran no wallet

@@ -62,6 +62,15 @@ class MemoryTransport implements GitvaultCreationTransport {
   readonly genesis = new Map<string, Uint8Array>();
   readonly calls: string[] = [];
   allocations = new Map<string, GitvaultAllocation>();
+  allocationsByRepoId = new Map<string, GitvaultAllocation>();
+  /**
+   * `"org_id/project_id"` -> `repo_id`, populated the FIRST time a genesis is
+   * admitted for that project — simulates the real gateway's allocate route
+   * being unique PER PROJECT, not per `client_creation_id`: a brand new
+   * `client_creation_id` allocating against an already-completed project
+   * 409s here instead of minting a second allocation (kychee-com/run402#563).
+   */
+  completedProjects = new Map<string, string>();
   supersedeOnAllocate = false;
   supersedeOnAdmit = false;
   repoCounter = 0;
@@ -83,6 +92,21 @@ class MemoryTransport implements GitvaultCreationTransport {
     }
     let a = this.allocations.get(req.client_creation_id);
     if (!a) {
+      // Real-gateway behavior this mock did not simulate before #563: the
+      // allocate route is unique PER PROJECT, not per client_creation_id. A
+      // brand new attempt against a project that already completed 409s
+      // instead of quietly minting a second allocation.
+      const projectKey = "org_id" in req ? `${req.org_id}/${req.project_id}` : null;
+      const existingRepoId = projectKey ? this.completedProjects.get(projectKey) : undefined;
+      if (existingRepoId) {
+        throw new LocalError("a vault already exists for this project", "memory control plane allocate", {
+          code: "VAULT_CREATION_CONFLICT",
+          details: { repo_id: existingRepoId, genesis_exists: true },
+          // Mirrors the gateway's own raw envelope shape (issue #563's repro)
+          // — the SDK fix must not depend on the gateway's own next_actions.
+          next_actions: [{ type: "edit_request", why: "a foreign genesis exists; adopt it or choose a new project" }],
+        });
+      }
       this.repoCounter += 1;
       const unsigned = {
         format: "r402s/v0" as const,
@@ -104,6 +128,7 @@ class MemoryTransport implements GitvaultCreationTransport {
       };
       a = signGitvaultObject(unsigned, this.service.seed) as GitvaultAllocation;
       this.allocations.set(req.client_creation_id, a);
+      this.allocationsByRepoId.set(a.repo_id, a);
     }
     return a;
   }
@@ -124,6 +149,8 @@ class MemoryTransport implements GitvaultCreationTransport {
     const existing = this.genesis.get(req.repo_id);
     if (existing) return { outcome: "already_admitted" as const, admitted_sha256: sha256Hex(existing) };
     this.genesis.set(req.repo_id, req.stored_bytes);
+    const alloc = this.allocationsByRepoId.get(req.repo_id);
+    if (alloc) this.completedProjects.set(`${alloc.org_id}/${alloc.project_id}`, req.repo_id);
     return { outcome: "admitted" as const, admitted_sha256: req.stored_bytes_sha256 };
   }
   async getGenesis(req: { repo_id: string }) {
@@ -353,6 +380,99 @@ describe("gitvault creation journal — refusals (never destructive)", () => {
     const result = await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID });
     const g = result.journal.genesis as GitvaultVaultGenesis;
     assert.equal(storedBytesSha256(g as unknown as GitvaultSignedObject), result.genesis_sha256);
+  });
+});
+
+describe("kychee-com/run402#563 — init idempotence against a COMPLETED vault (no local journal to resume)", () => {
+  it("a fresh attempt (new client_creation_id, no resumable journal) reconciles: deduplicated, zero re-mint, exactly one allocate probe", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    const original = await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, service_public_key: t.service.public_key });
+    assert.equal(original.how, "created");
+    const repoBefore = ks.readRepo(original.repo_id)!;
+    const callsBefore = t.calls.slice();
+
+    // The ORIGINAL journal is gone (as it would be after `rm -rf` of a stale
+    // journal, or simply because enough time passed that nobody kept it) —
+    // simulate that by never resuming CCID: this call gets a BRAND NEW
+    // random client_creation_id (none passed), which is exactly the
+    // dogfood repro (`gitvault init` on an already-provisioned project).
+    const fresh = await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", service_public_key: t.service.public_key });
+
+    assert.equal(fresh.how, "reconciled");
+    assert.equal(fresh.repo_id, original.repo_id);
+    assert.equal(fresh.genesis_sha256, original.genesis_sha256);
+    assert.deepEqual(fresh.recovery_receipt, original.recovery_receipt);
+
+    // No new key material: the repo file (K_repo, genesis pin) is BYTE
+    // IDENTICAL to before this second call.
+    assert.deepEqual(ks.readRepo(original.repo_id), repoBefore);
+
+    // Exactly one allocate() call happened on this second attempt (the
+    // unavoidable probe that surfaces the 409) — and NOTHING else: no
+    // second put, no second admit.
+    const callsAfter = t.calls.slice(callsBefore.length);
+    assert.deepEqual(callsAfter, ["allocate", "getGenesis"]);
+    assert.equal(t.calls.filter((c) => c === "allocate").length, 2, "one probe on the fresh attempt, on top of the original creation's own allocate");
+    assert.equal(t.calls.filter((c) => c.startsWith("put:")).length, 1, "never re-sealed or re-PUT");
+    assert.equal(t.calls.filter((c) => c === "admit").length, 1, "never re-admitted");
+  });
+
+  it("the CLI-facing dedupe shape matches gitvault init's already-rendered case (result.how drives result.deduplicated one level up)", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, service_public_key: t.service.public_key });
+    const fresh = await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", service_public_key: t.service.public_key });
+    // `Gitvault.init()` (sdk/src/namespaces/gitvault.ts) sets
+    // `deduplicated: created.how === "reconciled"` verbatim — this is the
+    // one field the CLI's `init()` branches its dedupe message on.
+    assert.equal(fresh.how === "reconciled", true);
+  });
+
+  it("a machine whose keystore does NOT hold the key gets a truthful, enriched refusal — never the word 'foreign'", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, service_public_key: t.service.public_key });
+
+    // A DIFFERENT machine/keystore (own identity, no repo file for this
+    // repo_id) reaches the SAME project/transport — e.g. an org-mate who
+    // never held this vault's key, or a moved/reformatted machine.
+    const ks2 = GitvaultKeystore.open({ rootDir: mkdtempSync(join(tmpdir(), "run402-gitvault-nonholder-")) });
+    let caught: unknown;
+    try {
+      await createGitvault({ keystore: ks2, transport: t, org_id: "o", project_id: "p", service_public_key: t.service.public_key });
+    } catch (e) {
+      caught = e;
+    }
+    assert.ok(caught instanceof LocalError);
+    const err = caught as LocalError;
+    assert.equal(err.code, "VAULT_CREATION_CONFLICT");
+    assert.doesNotMatch(err.message.toLowerCase(), /foreign/, "never call the org's own vault 'foreign'");
+    assert.match(err.message, /does not hold/);
+    const details = err.details as { repo_id?: string; org_id?: string; project_id?: string };
+    assert.equal(details.repo_id?.startsWith("src_"), true, "names the real repo_id, not a synthesized one");
+    assert.equal(details.org_id, "o");
+    assert.equal(details.project_id, "p");
+    const actions = (err.nextActions ?? []) as { action: string }[];
+    assert.ok(actions.length > 0, "carries real remedies, not a bare refusal");
+    assert.ok(actions.some((a) => /restore the gitvault keystore/.test(a.action)));
+  });
+
+  it("no allocate() retry and no key material minted on the non-holder path", async () => {
+    const ks = GitvaultKeystore.open({ rootDir: root });
+    const t = new MemoryTransport();
+    const original = await createGitvault({ keystore: ks, transport: t, org_id: "o", project_id: "p", client_creation_id: CCID, service_public_key: t.service.public_key });
+    const callsBefore = t.calls.slice();
+
+    const ks2 = GitvaultKeystore.open({ rootDir: mkdtempSync(join(tmpdir(), "run402-gitvault-nonholder2-")) });
+    await assert.rejects(createGitvault({ keystore: ks2, transport: t, org_id: "o", project_id: "p", service_public_key: t.service.public_key }));
+
+    assert.equal(ks2.readRepo(original.repo_id), null, "the non-holder keystore never gained a repo file");
+    const callsAfter = t.calls.slice(callsBefore.length);
+    // No local repo file at all → nothing to verify, so the non-holder
+    // refusal short-circuits before even reading the genesis back: one
+    // probe, no retry, no put, no admit.
+    assert.deepEqual(callsAfter, ["allocate"], "no retry, no put, no admit, no wasted genesis read");
   });
 });
 

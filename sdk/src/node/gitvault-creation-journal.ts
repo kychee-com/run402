@@ -62,6 +62,7 @@ import type {
   GitvaultVaultGenesis,
 } from "../namespaces/gitvault.types.js";
 import { GitvaultKeystore, readFileNoFollow, writeFileAtomic0600 } from "./gitvault-keystore.js";
+import { crossProfileGitvaultHint } from "./gitvault-profile-scan.js";
 
 // ─── Stages + journal shape ──────────────────────────────────────────────────
 
@@ -281,8 +282,8 @@ export interface GitvaultCreationResult {
   how: "created" | "reconciled";
 }
 
-function fail(code: string, message: string, context: string, details?: unknown): never {
-  throw new LocalError(message, context, { code, details });
+function fail(code: string, message: string, context: string, details?: unknown, nextActions?: unknown[]): never {
+  throw new LocalError(message, context, { code, details, ...(nextActions && nextActions.length > 0 ? { next_actions: nextActions } : {}) });
 }
 
 function envelopePath(epoch: string, recipientFingerprint: string): string {
@@ -471,6 +472,72 @@ export class GitvaultCreation {
   }
 
   /**
+   * kychee-com/run402#563 — init idempotence. Reached only from a FRESH
+   * attempt's `allocate()` call (never a resumed one — that path is
+   * `verifyAllocation`/the mid-journal refusals below), so nothing has been
+   * journaled past LOCAL_KEYS_PREPARED and no ciphertext or K_repo exists to
+   * protect: this method either returns the SAME result a resumed journal
+   * would have produced, or throws, and mints nothing either way.
+   *
+   * `details.repo_id` names the vault the gateway says already exists.
+   * Holding a local repo file for it is necessary but not sufficient —
+   * `assess()` re-verifies the pinned genesis hash against the ADMITTED
+   * genesis this same 409 implies exists (read via the ordinary
+   * `transport.getGenesis` path, not trusted blind), so a stale or
+   * corrupted local pin still falls through to the non-holder refusal
+   * rather than a false "reconciled".
+   */
+  private async reconcileAllocateConflict(err: unknown): Promise<GitvaultCreationResult> {
+    const e = err as { code?: string; details?: Record<string, unknown> } | null;
+    const repoId = typeof e?.details?.repo_id === "string" ? e.details.repo_id : null;
+    if (!repoId) throw err; // nothing to reconcile against — the conflict names no repo_id
+
+    const identity = this.keystore.readIdentity();
+    const canSign = identity !== null && this.keystore.signingKeypair(identity) !== null;
+    const repoFile = this.keystore.readRepo(repoId);
+
+    if (repoFile && canSign) {
+      let genesisBytes: Uint8Array | null = null;
+      try {
+        genesisBytes = await this.transport.getGenesis({ repo_id: repoId });
+      } catch {
+        genesisBytes = null; // an unreachable read is never treated as proof either way — falls through to the non-holder refusal
+      }
+      if (genesisBytes) {
+        const expectedSha = sha256Hex(genesisBytes);
+        const receipt = this.keystore.readRecoveryReceipt(repoId);
+        if (receipt && this.keystore.assess(repoId, expectedSha).state === "ready") {
+          return {
+            repo_id: repoId,
+            org_id: repoFile.org_id,
+            project_id: repoFile.project_id,
+            genesis_sha256: expectedSha,
+            recovery_receipt: receipt,
+            journal: this.journal,
+            how: "reconciled",
+          };
+        }
+      }
+    }
+
+    // Not a holder (or verification failed to confirm it): this machine's
+    // OWN org/project addressing reached this repo_id, so — unlike the raw
+    // gateway envelope this replaces — the word "foreign" never appears
+    // here. The vault belongs to this org; this keystore just does not (or
+    // can no longer provably) hold its key.
+    fail(
+      "VAULT_CREATION_CONFLICT",
+      `a vault already exists for this project (repo_id ${repoId}), and this machine's keystore does not hold (or cannot verify) its key`,
+      "reconciling gitvault creation",
+      { repo_id: repoId, org_id: this.journal.org_id, project_id: this.journal.project_id },
+      [
+        { action: "restore the gitvault keystore onto this machine (run402 gitvault status prints keystore.root; back it up from the machine that holds it)" },
+        ...crossProfileGitvaultHint(repoId),
+      ],
+    );
+  }
+
+  /**
    * Drive the journal to ACTIVE from whatever stage is durable. Safe to call
    * again after any crash; a refused journal stays refused.
    */
@@ -520,6 +587,17 @@ export class GitvaultCreation {
         if (this.journal.push_to_create && code === "REPO_CREATION_CONFLICT") {
           const details = (e as { details?: Record<string, unknown> } | null)?.details;
           this.refuse("REPO_CREATION_CONFLICT", "lost the push-to-create name-claim race to a concurrent pusher", details);
+        }
+        // kychee-com/run402#563 — init idempotence: a fresh creation attempt
+        // (no local journal to resume, e.g. because the ORIGINAL journal
+        // already completed and is long gone) allocates under a BRAND NEW
+        // client_creation_id, and the gateway's allocate route is unique
+        // per project — a project that already has an admitted vault 409s
+        // here, on the very first call, before this journal ever reaches
+        // ALLOCATED. Reconcile it exactly like a resumed journal would:
+        // never mint anything, never call allocate() again.
+        if (!this.journal.push_to_create && code === "VAULT_CREATION_CONFLICT") {
+          return await this.reconcileAllocateConflict(e);
         }
         throw e;
       }
