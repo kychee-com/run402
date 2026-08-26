@@ -139,6 +139,36 @@ export function resolveProjectId(id) {
   return projectId;
 }
 
+/**
+ * `resolveProjectId`, but also honors the deprecated `RUN402_PROJECT` alias
+ * as a last-resort fallback.
+ *
+ * `RUN402_PROJECT_ID` is the canonical env var everywhere in the CLI — it's
+ * what `resolveProjectId`, `run402 doctor`, `org-context.mjs`, and every
+ * other project-scoped command read. Two commands (`cdn wait-fresh` and
+ * every `assets` subcommand) historically read the DIFFERENT, undocumented
+ * `RUN402_PROJECT` instead, so exporting the canonical `RUN402_PROJECT_ID`
+ * and running one of those two commands was a silent no-op: the export did
+ * nothing, and resolution quietly fell through to the active project.
+ *
+ * Precedence, highest first: an explicit `id` (e.g. `--project`) >
+ * `RUN402_PROJECT_ID` > the deprecated `RUN402_PROJECT` alias > the active
+ * project. The alias is only ever consulted when `RUN402_PROJECT_ID` is
+ * unset AND no explicit id was given — so it never silently overrides the
+ * canonical var or a flag. When the alias is what actually resolves the
+ * project, exactly one deprecation line goes to stderr (never stdout — the
+ * pipe contract keeps stdout pure JSON).
+ */
+export function resolveProjectIdAllowingLegacyEnv(id) {
+  if (!id && !process.env.RUN402_PROJECT_ID && process.env.RUN402_PROJECT) {
+    process.stderr.write(
+      "warning: RUN402_PROJECT is deprecated and will be removed; set RUN402_PROJECT_ID instead.\n",
+    );
+    return resolveProjectId(process.env.RUN402_PROJECT);
+  }
+  return resolveProjectId(id);
+}
+
 // Re-export core keystore functions for direct use
 export {
   configureApiBase,

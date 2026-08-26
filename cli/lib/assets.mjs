@@ -28,7 +28,7 @@ import {
 import { basename, dirname, resolve as resolvePath } from "node:path";
 import { pipeline } from "node:stream/promises";
 
-import { resolveProjectId } from "./config.mjs";
+import { resolveProjectIdAllowingLegacyEnv } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, hasHelp, normalizeArgv, parseIntegerFlag, failUnknownSubcommand } from "./argparse.mjs";
@@ -472,10 +472,9 @@ function computeDestKey(filePath, keyOpt) {
   return keyOpt;
 }
 
-async function put(projectId, argv) {
+async function put(argv) {
   const opts = parseArgs(argv);
-  opts.project = opts.project || projectId;
-  const resolvedId = resolveProjectId(opts.project);
+  const resolvedId = resolveProjectIdAllowingLegacyEnv(opts.project);
 
   if (opts.positional.length === 0) die("At least one file path is required");
   if (opts.positional.length > 1 && opts.key && !opts.key.endsWith("/")) {
@@ -499,10 +498,9 @@ async function put(projectId, argv) {
 // get
 // ---------------------------------------------------------------------------
 
-async function get(projectId, argv) {
+async function get(argv) {
   const opts = parseArgs(argv);
-  opts.project = opts.project || projectId;
-  const resolvedId = resolveProjectId(opts.project);
+  const resolvedId = resolveProjectIdAllowingLegacyEnv(opts.project);
   if (opts.positional.length === 0) die("Key required");
   if (opts.positional.length > 1) die("blob get expects exactly one key");
   if (!opts.output) die("--output <file> required");
@@ -526,10 +524,9 @@ async function get(projectId, argv) {
 // ls
 // ---------------------------------------------------------------------------
 
-async function ls(projectId, argv) {
+async function ls(argv) {
   const opts = parseArgs(argv);
-  opts.project = opts.project || projectId;
-  const resolvedId = resolveProjectId(opts.project);
+  const resolvedId = resolveProjectIdAllowingLegacyEnv(opts.project);
 
   try {
     const data = await getSdk().assets.ls(resolvedId, {
@@ -552,10 +549,9 @@ async function ls(projectId, argv) {
 // rm
 // ---------------------------------------------------------------------------
 
-async function rm(projectId, argv) {
+async function rm(argv) {
   const opts = parseArgs(argv);
-  opts.project = opts.project || projectId;
-  const resolvedId = resolveProjectId(opts.project);
+  const resolvedId = resolveProjectIdAllowingLegacyEnv(opts.project);
   if (opts.positional.length === 0) die("Key required");
   if (opts.positional.length > 1) die("blob rm expects exactly one key");
   const key = opts.positional[0];
@@ -572,10 +568,9 @@ async function rm(projectId, argv) {
 // sign
 // ---------------------------------------------------------------------------
 
-async function diagnose(projectId, argv) {
+async function diagnose(argv) {
   const opts = parseArgs(argv);
-  opts.project = opts.project || projectId;
-  const resolvedId = resolveProjectId(opts.project);
+  const resolvedId = resolveProjectIdAllowingLegacyEnv(opts.project);
   if (opts.positional.length === 0) die("URL required");
   if (opts.positional.length > 1) die("blob diagnose expects exactly one URL");
   const url = opts.positional[0];
@@ -623,10 +618,9 @@ function toCliDiagnoseEnvelope(env) {
   };
 }
 
-async function sign(projectId, argv) {
+async function sign(argv) {
   const opts = parseArgs(argv);
-  opts.project = opts.project || projectId;
-  const resolvedId = resolveProjectId(opts.project);
+  const resolvedId = resolveProjectIdAllowingLegacyEnv(opts.project);
   if (opts.positional.length === 0) die("Key required");
   if (opts.positional.length > 1) die("blob sign expects exactly one key");
   const key = opts.positional[0];
@@ -676,14 +670,13 @@ export async function run(sub, args) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
-  const defaultProject = process.env.RUN402_PROJECT ?? null;
   switch (sub) {
-    case "put":      await put(defaultProject, args); break;
-    case "get":      await get(defaultProject, args); break;
-    case "ls":       await ls(defaultProject, args); break;
-    case "rm":       await rm(defaultProject, args); break;
-    case "sign":     await sign(defaultProject, args); break;
-    case "diagnose": await diagnose(defaultProject, args); break;
+    case "put":      await put(args); break;
+    case "get":      await get(args); break;
+    case "ls":       await ls(args); break;
+    case "rm":       await rm(args); break;
+    case "sign":     await sign(args); break;
+    case "diagnose": await diagnose(args); break;
     default:
       failUnknownSubcommand("assets", sub);
   }

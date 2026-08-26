@@ -1599,6 +1599,8 @@ Bulk directories: use `deploy apply` with `assets` slice: additive `assets: { pu
 - `run402 assets diagnose <url> [--project <id>]` — inspect live CDN state for a public URL
 - `run402 cdn wait-fresh <url> --sha <hex> [--timeout <secs>] [--project <id>]` — poll a mutable URL until it serves the expected SHA-256
 
+Project resolution for every command above: `--project <id>` > `RUN402_PROJECT_ID` (the canonical env var, same as every other project-scoped command) > the deprecated `RUN402_PROJECT` alias > the active project. `assets`/`cdn` used to read ONLY `RUN402_PROJECT` — a different, undocumented name from `RUN402_PROJECT_ID` — so exporting the canonical var and running one of these commands was a silent no-op. `RUN402_PROJECT` still works as a fallback but prints one deprecation line to stderr; switch to `RUN402_PROJECT_ID`.
+
 `put` flags (v1.50):
 - `--meta key=value` repeatable; coercion: numeric-looking -> number, `true|false` -> boolean, comma -> `string[]`, else string. Serialized total <=4 KB; no nested objects; invalid -> `INVALID_ASSET_METADATA`.
 - `--exif-policy keep|strip`; default `keep`; `strip` removes EXIF bytes + `image_exif`; invalid -> `INVALID_EXIF_POLICY`.

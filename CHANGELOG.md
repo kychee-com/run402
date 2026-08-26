@@ -4,6 +4,17 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **Fix: `run402 assets *` and `run402 cdn wait-fresh` read the wrong project
+  env var — `RUN402_PROJECT`, not the canonical `RUN402_PROJECT_ID` every
+  other project-scoped command reads.** Exporting `RUN402_PROJECT_ID` (the
+  documented, canonical var) and running one of these two commands was a
+  silent no-op: the export did nothing and resolution quietly fell through
+  to the active project instead. `RUN402_PROJECT_ID` is now checked first,
+  same as everywhere else in the CLI; the old `RUN402_PROJECT` name still
+  works as a deprecated fallback, but only when `RUN402_PROJECT_ID` is unset,
+  and using it now prints one deprecation line to stderr (stdout stays pure
+  JSON). New shared resolver: `resolveProjectIdAllowingLegacyEnv` in
+  `cli/lib/config.mjs`.
 - **Fix: `gitvault init` was not idempotent against a vault that already
   completed — it re-threw the gateway's raw 409 and called this org's own
   vault "foreign" (kychee-com/run402#563).** The documented contract

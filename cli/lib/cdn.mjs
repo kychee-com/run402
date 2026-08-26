@@ -13,7 +13,7 @@
  * are bound to a SHA at upload time and never previously cached.
  */
 
-import { resolveProjectId } from "./config.mjs";
+import { resolveProjectIdAllowingLegacyEnv } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
@@ -91,10 +91,9 @@ function parseArgs(args) {
   return opts;
 }
 
-async function waitFresh(projectId, argv) {
+async function waitFresh(argv) {
   const opts = parseArgs(argv);
-  opts.project = opts.project || projectId;
-  const resolvedId = resolveProjectId(opts.project);
+  const resolvedId = resolveProjectIdAllowingLegacyEnv(opts.project);
   if (opts.positional.length === 0) die("URL required");
   const url = opts.positional[0];
   if (!opts.sha) die("--sha is required");
@@ -136,10 +135,9 @@ export async function run(sub, args) {
     console.log(SUB_HELP[sub] || HELP);
     process.exit(0);
   }
-  const defaultProject = process.env.RUN402_PROJECT ?? null;
   switch (sub) {
     case "wait-fresh":
-      await waitFresh(defaultProject, args);
+      await waitFresh(args);
       break;
     default:
       failUnknownSubcommand("cdn", sub);
