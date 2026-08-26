@@ -33,6 +33,7 @@ const originalExit = process.exit;
 const originalCwd = process.cwd();
 const originalConfigDir = process.env.RUN402_CONFIG_DIR;
 const originalProjectId = process.env.RUN402_PROJECT_ID;
+const originalNoUpdateCheck = process.env.RUN402_NO_UPDATE_CHECK;
 
 const PROJECT = "prj_1777547828162_1049";
 const ORG = "57035b1e-ec41-4ce6-a7a5-a5b2560efdd7";
@@ -176,6 +177,13 @@ before(() => {
   scratch = mkdtempSync(join(tmpdir(), "run402-gv-surface-"));
   process.env.RUN402_CONFIG_DIR = join(scratch, "cfg");
   process.env.RUN402_PROJECT_ID = PROJECT;
+  // `run402 doctor`'s cli_update check now self-refreshes a missing/expired
+  // cache automatically (kychee-com/run402#561) — this file's `getSdk()` is
+  // mocked, but `doctorUpdateCheck` is not reached through it and would
+  // otherwise hit the REAL npm registry with the real `globalThis.fetch` on
+  // every scratch-dir doctor call here (none of this file's assertions read
+  // `cli_update` at all, so there is nothing to lose by opting out).
+  process.env.RUN402_NO_UPDATE_CHECK = "1";
   // Not a git repository: `gitvault init` must allocate anyway and say the
   // remote was skipped, and no test here may touch the developer's checkout.
   process.chdir(scratch);
@@ -190,6 +198,8 @@ after(() => {
   else process.env.RUN402_CONFIG_DIR = originalConfigDir;
   if (originalProjectId === undefined) delete process.env.RUN402_PROJECT_ID;
   else process.env.RUN402_PROJECT_ID = originalProjectId;
+  if (originalNoUpdateCheck === undefined) delete process.env.RUN402_NO_UPDATE_CHECK;
+  else process.env.RUN402_NO_UPDATE_CHECK = originalNoUpdateCheck;
   rmSync(scratch, { recursive: true, force: true });
 });
 

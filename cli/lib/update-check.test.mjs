@@ -421,40 +421,193 @@ describe("CLI update notices and scheduler", () => {
     assert.equal(scheduler.getCompletedLiveNotice().latest, "3.7.16");
   }));
 
-  it("doctor reports stale, unknown, skipped, and refresh states without failing other checks", async () => withTemp(async (dir) => {
+  it("doctor reports a cached warning and skipped state without failing other checks", async () => withTemp(async (dir) => {
     packageJson(dir, { devDependencies: { run402: "3.7.14" } });
     const cachePath = join(dir, "cache.json");
+    const now = Date.parse("2026-07-03T10:30:00.000Z"); // 12min after staleRecord()'s checked_at — inside the 24h TTL
+    // Fixed `now` so this stays a within-TTL read: no live check, no
+    // fetchImpl needed at all for this half of the test.
     writeUpdateCache(staleRecord(), { path: cachePath });
     let check = await doctorUpdateCheck({
       cwd: dir,
       execPath: join(dir, "node_modules", ".bin", "run402"),
       current: "3.7.14",
       cachePath,
+      now,
     });
     assert.equal(check.status, "warning");
     assert.equal(check.value.next_actions[0].mutates_project, true);
-
-    check = await doctorUpdateCheck({ cwd: dir, current: "3.7.14", cachePath: join(dir, "missing.json") });
-    assert.equal(check.status, "unknown");
 
     check = await doctorUpdateCheck({
       cwd: dir,
       current: "3.7.14",
       cachePath,
       env: { RUN402_NO_UPDATE_CHECK: "1" },
+      fetchImpl: async () => { throw new Error("RUN402_NO_UPDATE_CHECK must skip every network attempt"); },
     });
     assert.equal(check.status, "skipped");
-
-    check = await doctorUpdateCheck({
-      cwd: dir,
-      current: "3.7.14",
-      cachePath,
-      refresh: true,
-      fetchImpl: async () => new Response(JSON.stringify({ version: "3.7.14" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    });
-    assert.equal(check.status, "ok");
   }));
+
+  // ─── the real TTL, and what happens at every edge of it (kychee-com/run402#561) ──
+  //
+  // THE DEFECT (grok dogfood, 4.38.0 installed): `run402 doctor` reported
+  // the latest CLI as 4.17.5 from a cache dated Aug 1 — three minor versions
+  // and ~4 weeks stale — because NOTHING besides an explicit `--refresh`
+  // ever re-checked it. `UPDATE_CHECK_TTL_MS` was already 24h; the bug was
+  // that a plain `doctor` invocation never consulted it to trigger a
+  // refresh, only to LABEL the cache `fresh: false` in a field nobody read.
+  // Four states, each hermetic (`fetchImpl` is always injected — no real
+  // npm registry call from this file, ever):
+  describe("doctor's cache TTL actually causes a refresh (kychee-com/run402#561)", () => {
+    it("fresh fetch: no cache at all triggers ONE automatic live check, even without --refresh", () => withTemp(async (dir) => {
+      const cachePath = join(dir, "cache.json");
+      let fetchCalls = 0;
+      const check = await doctorUpdateCheck({
+        cwd: dir,
+        current: "3.7.14",
+        cachePath,
+        fetchImpl: async () => {
+          fetchCalls += 1;
+          return new Response(JSON.stringify({ version: "3.7.16" }), { status: 200, headers: { "content-type": "application/json" } });
+        },
+      });
+      assert.equal(fetchCalls, 1, "no cache existed yet — a live check must run automatically, not just on --refresh");
+      assert.equal(check.status, "warning");
+      assert.equal(check.value.latest, "3.7.16");
+      assert.equal(check.value.cache.fresh, true);
+      assert.equal(check.value.cache.refresh_attempted, true);
+      assert.equal(check.value.cache.refresh_failed, false);
+      assert.ok(readUpdateCache({ path: cachePath }), "the fresh result must be persisted for the next call");
+    }));
+
+    it("within-TTL reuse: a cache inside the 24h window is served as-is, with NO live check at all", () => withTemp(async (dir) => {
+      const cachePath = join(dir, "cache.json");
+      const now = Date.parse("2026-08-01T12:00:00.000Z");
+      writeUpdateCache({
+        current: "3.7.14",
+        latest: "3.7.15",
+        checked_at: new Date(now - 60 * 60 * 1000).toISOString(), // 1h old
+        source: "cache",
+        error: null,
+      }, { path: cachePath });
+      let fetchCalls = 0;
+      const check = await doctorUpdateCheck({
+        cwd: dir,
+        current: "3.7.14",
+        cachePath,
+        now,
+        fetchImpl: async () => { fetchCalls += 1; throw new Error("a fresh cache must never trigger a live check"); },
+      });
+      assert.equal(fetchCalls, 0);
+      assert.equal(check.status, "warning");
+      assert.equal(check.value.latest, "3.7.15");
+      assert.equal(check.value.cache.fresh, true);
+      assert.equal(check.value.cache.refresh_attempted, false);
+      assert.equal(check.value.cache.age_ms, 60 * 60 * 1000);
+    }));
+
+    it("expired-refresh: a cache past the 24h TTL is refreshed automatically, and the FRESH value wins", () => withTemp(async (dir) => {
+      const cachePath = join(dir, "cache.json");
+      // Real wall-clock throughout (no fixed `now`): a SUCCESSFUL live check
+      // stamps `checked_at` with the actual current time internally
+      // (`refreshUpdateCheck` has no clock override), so comparing it
+      // against a fixed test `now` from the past would read as stale by
+      // construction — the "30 days old" fixture only needs to predate the
+      // REAL clock, which `Date.now() - 30d` does unconditionally.
+      writeUpdateCache({
+        current: "3.7.14",
+        latest: "3.7.15",
+        checked_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days old
+        source: "cache",
+        error: null,
+      }, { path: cachePath });
+      let fetchCalls = 0;
+      const check = await doctorUpdateCheck({
+        cwd: dir,
+        current: "3.7.14",
+        cachePath,
+        fetchImpl: async () => {
+          fetchCalls += 1;
+          return new Response(JSON.stringify({ version: "3.7.20" }), { status: 200, headers: { "content-type": "application/json" } });
+        },
+      });
+      assert.equal(fetchCalls, 1, "an expired cache must trigger exactly one automatic live check");
+      assert.equal(check.value.latest, "3.7.20", "the fresh value wins, not the 30-day-old one");
+      assert.equal(check.value.cache.fresh, true);
+      assert.equal(check.value.cache.refresh_failed, false);
+    }));
+
+    it("offline-stale-labeled: an expired cache whose live refresh FAILS falls back to the last known-good value, clearly labeled with its age", () => withTemp(async (dir) => {
+      const cachePath = join(dir, "cache.json");
+      const now = Date.parse("2026-08-26T12:00:00.000Z"); // grok's own dogfood date
+      writeUpdateCache({
+        current: "3.7.14",
+        latest: "4.17.5", // the exact stale value grok saw
+        checked_at: "2026-08-01T10:18:20.000Z", // ~25 days old
+        source: "cache",
+        error: null,
+      }, { path: cachePath });
+      const check = await doctorUpdateCheck({
+        cwd: dir,
+        current: "3.7.14",
+        cachePath,
+        now,
+        fetchImpl: async () => { throw new Error("offline"); },
+      });
+      // Faithful: the network is down, but the LAST KNOWN value is not thrown away as a bare null.
+      assert.equal(check.value.latest, "4.17.5", "a failed refresh must not erase the last known-good value");
+      assert.equal(check.value.cache.fresh, false, "honestly reported as stale, not silently presented as current");
+      assert.equal(check.value.cache.refresh_attempted, true);
+      assert.equal(check.value.cache.refresh_failed, true);
+      assert.ok(check.value.cache.age_ms >= 24 * 60 * 60 * 1000, "the reported age reflects the ORIGINAL successful check, not the failed attempt just now");
+      assert.equal(check.status, "warning", "a known-newer version is still worth flagging, even from stale data");
+      assert.match(check.hint, /\d+d old/, "the hint must name the estimate's age");
+      assert.match(check.hint, /live check just failed/);
+
+      // The next run inherits this SAME good value — a failed refresh must
+      // never clobber what was already known on disk either.
+      const onDisk = readUpdateCache({ path: cachePath });
+      assert.equal(onDisk.latest, "4.17.5");
+      assert.equal(onDisk.checked_at, "2026-08-01T10:18:20.000Z");
+      assert.ok(onDisk.error, "the failed attempt is still recorded, just not destructively");
+    }));
+
+    it("no cache at all AND the auto-refresh fails: unknown, not a crash — and it says a live check was attempted", () => withTemp(async (dir) => {
+      const check = await doctorUpdateCheck({
+        cwd: dir,
+        current: "3.7.14",
+        cachePath: join(dir, "missing.json"),
+        fetchImpl: async () => { throw new Error("offline"); },
+      });
+      assert.equal(check.status, "unknown");
+      assert.equal(check.value.cache.refresh_attempted, true);
+      assert.equal(check.value.cache.refresh_failed, true);
+    }));
+
+    it("--refresh forces a live check even when the cache is still well within the TTL", () => withTemp(async (dir) => {
+      const cachePath = join(dir, "cache.json");
+      const now = Date.parse("2026-08-01T12:00:00.000Z");
+      writeUpdateCache({
+        current: "3.7.14",
+        latest: "3.7.15",
+        checked_at: new Date(now - 60 * 1000).toISOString(), // 1 minute old — as fresh as it gets
+        source: "cache",
+        error: null,
+      }, { path: cachePath });
+      let fetchCalls = 0;
+      const check = await doctorUpdateCheck({
+        cwd: dir,
+        current: "3.7.14",
+        cachePath,
+        now,
+        refresh: true,
+        fetchImpl: async () => {
+          fetchCalls += 1;
+          return new Response(JSON.stringify({ version: "3.7.21" }), { status: 200, headers: { "content-type": "application/json" } });
+        },
+      });
+      assert.equal(fetchCalls, 1, "--refresh must check live regardless of freshness");
+      assert.equal(check.value.latest, "3.7.21");
+    }));
+  });
 });

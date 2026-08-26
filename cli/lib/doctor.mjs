@@ -42,7 +42,14 @@ Output:
 
 Options:
   --verbose      Include extra detail (timing, error messages)
-  --refresh      Wait for a bounded live npm version check for the run402 CLI
+  --refresh      Force a bounded live npm version check for the run402 CLI, even
+                 if the cache is still within its 24h TTL. The cache self-heals
+                 without this flag too: a MISSING or EXPIRED cache gets exactly
+                 one bounded live attempt automatically on a plain \`doctor\` call.
+                 A failed live check (offline) falls back to the last known-good
+                 value, clearly labeled with its age — never a silent weeks-old
+                 "latest" (kychee-com/run402#561). cli_update.value.cache always
+                 reports fresh/age_ms/refresh_attempted/refresh_failed.
   --no-scan      Skip the source-tree scan (config / health checks only)
   --scan-dir D   Scan a custom directory instead of \`<cwd>/src\`
   --project <id> Target THIS project's gitvault check instead of the repo-standing

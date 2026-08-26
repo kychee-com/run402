@@ -167,6 +167,18 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   pinned, `null` with a `reason` before it has ever resolved on this
   machine. `null` renders no mismatch warning anywhere (`gitvault status`,
   `doctor`) — it means "not yet resolved here", not "wrong".
+- **Fix: `run402 doctor` served a weeks-stale cached "latest CLI" version
+  with nothing ever refreshing it short of an explicit `--refresh`
+  (kychee-com/run402#561).** The cache TTL was already 24h, but nothing
+  outside `--refresh` ever consulted it to trigger a re-check — a plain
+  `doctor` call just read whatever was on disk, however old. A MISSING or
+  EXPIRED cache now gets exactly one bounded live check automatically, no
+  flag required; `--refresh` still forces one even when the cache is fresh.
+  A failed live check (offline) falls back to the last known-good value
+  rather than reporting a bare unknown, and never silently as if it were
+  current: `cli_update.value.cache` always reports `fresh`, `age_ms`,
+  `refresh_attempted`, and `refresh_failed`, and a stale fallback's `hint`
+  names the estimate's age and why the live check failed.
 
 ## 4.37.1 — allocation no longer gates deploys (D3 complete)
 

@@ -124,6 +124,12 @@ export async function refreshUpdateCheck({
   timeoutMs = UPDATE_CHECK_TIMEOUT_MS,
   registry = npmRegistryBase(env),
 } = {}) {
+  // Faithful (kychee-com/run402#561): a failed live check must never ERASE a
+  // previously known-good `latest` — reporting `latest: null` in its place
+  // would be a confident lie ("nothing is known"), not an honest stale
+  // estimate. Read what is already cached BEFORE attempting the network
+  // call, so a failure can fall back to it.
+  const previous = readUpdateCache({ path: cachePath });
   try {
     const latest = await fetchLatestRun402Version({ env, fetchImpl, timeoutMs, registry });
     const record = {
@@ -137,16 +143,24 @@ export async function refreshUpdateCheck({
     writeUpdateCache(record, { path: cachePath });
     return { ok: true, ...record };
   } catch (err) {
+    // `checked_at`/`latest`/`source` are carried forward from the last
+    // SUCCESSFUL check (or absent, for a genuine first-ever attempt) —
+    // `checked_at` therefore means "the last time we actually knew
+    // anything", which is exactly what cache-age labeling needs to report.
+    // `last_attempt_at` records THIS failed attempt separately, so a caller
+    // can tell "stale, never rechecked" apart from "stale, just tried and
+    // failed again".
     const record = {
       current,
-      latest: null,
-      checked_at: new Date().toISOString(),
-      source: "registry",
+      latest: previous?.latest ?? null,
+      checked_at: previous?.checked_at ?? new Date().toISOString(),
+      source: previous?.source ?? "registry",
       registry,
       error: {
         code: errorCode(err),
         message: err instanceof Error ? err.message : String(err),
       },
+      last_attempt_at: new Date().toISOString(),
     };
     writeUpdateCache(record, { path: cachePath });
     return { ok: false, ...record };
@@ -217,6 +231,21 @@ export function createUpdateCheckScheduler({
   };
 }
 
+/** `now - checked_at`, or `null` when there is nothing to measure from. */
+function cacheAgeMs(record, now) {
+  const checked = Date.parse(record?.checked_at ?? "");
+  return Number.isFinite(checked) ? Math.max(0, now - checked) : null;
+}
+
+/** A short, human-readable age for a hint string — hours under two days, days beyond that. */
+function humanAge(ms) {
+  if (ms === null) return "an unknown age";
+  const hours = ms / (60 * 60 * 1000);
+  if (hours < 1) return "under an hour";
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
 export async function doctorUpdateCheck({
   refresh = false,
   cwd = process.cwd(),
@@ -246,9 +275,32 @@ export async function doctorUpdateCheck({
   }
 
   let record = readUpdateCache({ path: cachePath });
-  if (refresh) {
-    record = await refreshUpdateCheck({ env, fetchImpl, current, cachePath });
+
+  // A real TTL (24h) that actually causes a refresh (kychee-com/run402#561
+  // — grok saw a THREE-minor-version, four-week-old cached "latest" with
+  // nothing ever having re-checked it). An explicit `--refresh` always
+  // checks live, same as before; now a MISSING or EXPIRED cache also gets
+  // exactly ONE bounded live attempt automatically, so a plain
+  // `run402 doctor` self-heals a stale cache instead of silently reporting
+  // a weeks-old value as if it were current. `refreshUpdateCheck` itself
+  // never erases a previously known-good `latest` on failure (see its own
+  // doc comment), so a failed attempt here degrades gracefully to the LAST
+  // GOOD record — never to a bare unknown when something was already known.
+  const cacheWasFreshAtStart = isCacheFresh(record, { now });
+  const refreshAttempted = refresh || !cacheWasFreshAtStart;
+  let refreshFailed = false;
+  if (refreshAttempted) {
+    const refreshed = await refreshUpdateCheck({ env, fetchImpl, current, cachePath });
+    refreshFailed = !refreshed.ok;
+    record = refreshed;
   }
+  // A refresh (success or failure) just happened at REAL wall-clock time —
+  // `refreshUpdateCheck` has no `now` override, so the instant used to
+  // report freshness/age below is re-derived here rather than reusing a
+  // `now` captured before the refresh ran (which would read the brand-new
+  // record as "in the future" and misreport it as stale). A call that never
+  // triggers a refresh keeps using exactly the `now` it was given.
+  const reportNow = refreshAttempted ? Date.now() : now;
 
   if (!record) {
     return {
@@ -260,26 +312,34 @@ export async function doctorUpdateCheck({
         install_context: install.kind,
         confidence: install.confidence,
         package_manager: install.package_manager,
-        cache: { path: cachePath, fresh: false, source: "none" },
+        cache: { path: cachePath, fresh: false, source: "none", refresh_attempted: refreshAttempted, refresh_failed: refreshFailed },
       },
-      hint: "No cached npm version check yet. Run 'run402 doctor --refresh' to check now.",
+      hint: refreshAttempted
+        ? "No cached npm version check yet, and a live check just failed — try 'run402 doctor --refresh' again, or check network access."
+        : "No cached npm version check yet. Run 'run402 doctor --refresh' to check now.",
     };
   }
 
-  const freshness = isCacheFresh(record, { now });
+  const freshness = isCacheFresh(record, { now: reportNow });
+  const ageMs = cacheAgeMs(record, reportNow);
   const notice = updateNoticeFromRecord(record, {
     cwd,
     env,
     argv,
     execPath,
     current,
-    now,
+    now: reportNow,
     command: ["run402", "doctor"],
     source: record.source ?? "cache",
   });
   const comparison = compareSemver(current, record.latest);
   const stale = notice !== null;
   const status = stale ? "warning" : record.latest && comparison !== null ? "ok" : "unknown";
+  // Faithful: an estimate served from a failed-refresh fallback is labeled
+  // as one, not presented as if it were current.
+  const staleEstimateNote = refreshFailed && ageMs !== null
+    ? ` (from a cached check ${humanAge(ageMs)} old — a live check just failed: ${record.error?.code ?? "network error"})`
+    : "";
   return {
     name: "cli_update",
     status,
@@ -293,15 +353,18 @@ export async function doctorUpdateCheck({
       cache: {
         path: cachePath,
         fresh: freshness,
+        age_ms: ageMs,
         source: record.source ?? "cache",
         error: record.error ?? null,
+        refresh_attempted: refreshAttempted,
+        refresh_failed: refreshFailed,
       },
       ...(stale ? { next_actions: notice.next_actions } : {}),
     },
     ...(stale
-      ? { hint: `A newer run402 CLI is available (${current} -> ${record.latest}).` }
+      ? { hint: `A newer run402 CLI is available (${current} -> ${record.latest})${staleEstimateNote}.` }
       : record.error
-        ? { hint: "Could not check npm for the latest run402 version; other doctor checks still ran." }
+        ? { hint: `Could not check npm for the latest run402 version${staleEstimateNote}; other doctor checks still ran.` }
         : {}),
   };
 }

@@ -2050,16 +2050,18 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.equal(tier.value.active, false);
   });
 
-  it("doctor reports stale cli_update state and --refresh updates it in the JSON payload", async () => {
+  it("doctor reports a cached cli_update state within the TTL, self-heals an EXPIRED one automatically, and --refresh always forces a check (kychee-com/run402#561)", async () => {
+    const { run } = await import("./cli/lib/doctor.mjs");
+
+    // 1. A FRESH cache (checked moments ago) is used as-is — no network
+    // call at all, even though it names an older CLI as "latest".
     writeUpdateCache({
       current: CURRENT_CLI_VERSION,
       latest: STALE_LATEST_VERSION,
-      checked_at: "2026-07-03T10:18:20.000Z",
+      checked_at: new Date().toISOString(),
       source: "cache",
       error: null,
     }, { path: updateCachePath });
-
-    const { run } = await import("./cli/lib/doctor.mjs");
     captureStart();
     let threw = null;
     try {
@@ -2074,9 +2076,41 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.equal(check.status, "warning");
     assert.equal(check.value.current, CURRENT_CLI_VERSION);
     assert.equal(check.value.latest, STALE_LATEST_VERSION);
+    assert.equal(check.value.cache.refresh_attempted, false, "a cache within the 24h TTL must not trigger a live check on its own");
     assert.equal(check.value.next_actions[0].type, "upgrade_client");
     assert.ok(Array.isArray(check.value.next_actions[0].argv));
+    assert.equal(calls.some((call) => call.path === "/npm/run402/latest"), false);
 
+    // 2. An EXPIRED cache (grok's exact dogfood shape — weeks old) is
+    // refreshed AUTOMATICALLY on a plain `doctor` call, with no --refresh
+    // flag at all — the actual #561 fix. This mock's registry route always
+    // answers with the current version, so the report flips to "ok".
+    writeUpdateCache({
+      current: CURRENT_CLI_VERSION,
+      latest: STALE_LATEST_VERSION,
+      checked_at: "2026-07-03T10:18:20.000Z",
+      source: "cache",
+      error: null,
+    }, { path: updateCachePath });
+    captureStart();
+    threw = null;
+    try {
+      await run(undefined, ["--no-scan"]);
+    } catch (e) { threw = e; }
+    finally {
+      captureStop();
+    }
+    assert.ok(threw, "doctor should call process.exit");
+    parsed = JSON.parse(stdout.join("\n").trim());
+    check = parsed.checks.find((entry) => entry.name === "cli_update");
+    assert.equal(check.status, "ok");
+    assert.equal(check.value.latest, CURRENT_CLI_VERSION);
+    assert.equal(check.value.cache.refresh_attempted, true);
+    assert.ok(calls.some((call) => call.path === "/npm/run402/latest"), "an EXPIRED cache must trigger a live check without needing --refresh");
+
+    // 3. --refresh still forces a live check even when the cache it just
+    // wrote in step 2 is already fresh.
+    calls.length = 0;
     captureStart();
     threw = null;
     try {
@@ -2090,7 +2124,7 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     check = parsed.checks.find((entry) => entry.name === "cli_update");
     assert.equal(check.status, "ok");
     assert.equal(check.value.latest, CURRENT_CLI_VERSION);
-    assert.ok(calls.some((call) => call.path === "/npm/run402/latest"));
+    assert.ok(calls.some((call) => call.path === "/npm/run402/latest"), "--refresh must check live even though the cache is already fresh");
   });
 });
 
