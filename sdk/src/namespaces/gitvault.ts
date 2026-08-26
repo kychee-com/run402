@@ -374,6 +374,38 @@ export interface GitvaultOpenOrCreateResult {
   terminal_loss_statement: typeof GITVAULT_TERMINAL_LOSS_STATEMENT;
 }
 
+/**
+ * {@link Gitvault.deploy}'s post-push glue: attach the best-effort
+ * mirror/reconcile hooks to a deploy result, gated on whether this deploy
+ * actually landed a new generation in the vault. Extracted as a standalone
+ * function (rather than inlined in `deploy()`) purely so the gating can be
+ * unit-tested with fake thunks — the real hooks (`#tryMirrorPush` /
+ * `#tryReconcileEnvelopeRecipients`) are private class methods that already
+ * catch everything and never reject, so this function does not need its own
+ * try/catch: it only decides WHETHER to call them and how to merge what they
+ * resolve to.
+ *
+ * `DEPLOYED_AND_VAULTED` and `DEPLOY_FAILED_VAULTED` are the only two
+ * outcomes that carry a `generation` — a vault push actually landed. The
+ * other three (`DEPLOY_BLOCKED_PUSH_FAILED`, `DEPLOY_FAILED_UNVAULTED`,
+ * `DEPLOYED_UNVAULTED_OVERRIDE`) published nothing new, so `mirror_push` /
+ * `reconcile_recipients` are OMITTED rather than a faked `skipped_*` value —
+ * there is nothing this deploy did that either hook could report on.
+ */
+export async function attachGitvaultDeployHooks(
+  result: GitvaultDeployResult,
+  mirror: () => Promise<GitvaultMirrorPushResult>,
+  reconcile: () => Promise<GitvaultReconcileEnvelopeRecipientsPushResult>,
+): Promise<GitvaultDeployResult & { mirror_push?: GitvaultMirrorPushResult; reconcile_recipients?: GitvaultReconcileEnvelopeRecipientsPushResult }> {
+  if (result.outcome !== "DEPLOYED_AND_VAULTED" && result.outcome !== "DEPLOY_FAILED_VAULTED") return result;
+  // Sequential, not Promise.all — same ordering push() uses, so a reconcile
+  // failure can never be misread as a mirror failure in a log line that
+  // assumed ordering.
+  const mirrorPush = await mirror();
+  const reconcileRecipients = await reconcile();
+  return { ...result, mirror_push: mirrorPush, reconcile_recipients: reconcileRecipients };
+}
+
 // ─── The namespace ───────────────────────────────────────────────────────────
 
 export class Gitvault {
@@ -1560,9 +1592,13 @@ export class Gitvault {
    * eventual epoch-rotation design).
    *
    * `run402 gitvault reconcile [--repo <id>]` is the explicit standalone
-   * CLI surface (design D5's "session start" hook); `push()` runs this
-   * itself, best-effort, after every successful publish (design D5's
-   * "deploy time" hook) — see `#tryReconcileEnvelopeRecipients` below.
+   * CLI surface (design D5's "session start" hook). `deploy()` runs this
+   * itself, best-effort, whenever a deploy lands a new generation in the
+   * vault — design D5's "deploy time" hook, "the same 'one command every
+   * agent runs' argument that decided deploy-implies-capture." `push()`
+   * (capture-and-publish outside a deploy) runs the identical hook after
+   * every successful publish, for the vault-only-project cadence. See
+   * `#tryReconcileEnvelopeRecipients` below for both call sites.
    */
   async reconcileEnvelopeRecipients(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultReconcileEnvelopeRecipientsResult> {
     const handle = await this.open(options);
@@ -1578,11 +1614,39 @@ export class Gitvault {
    * The push is never gated on deploy success, and a build that fails before a
    * canonical apply plan exists still captures (with a null plan digest, so no
    * activation token can be minted from it).
+   *
+   * `run402 deploy` is design D5's PRIMARY envelope-recipient reconcile hook
+   * ("the same 'one command every agent runs' argument that decided
+   * deploy-implies-capture") and design D6's primary dual-push mirror trigger
+   * — both fire HERE, not inside {@link runGitvaultDeploy} itself, mirroring
+   * {@link push}'s exact non-blocking contract: best-effort, NEVER throw,
+   * NEVER alter the deploy outcome already resolved above, reported BESIDE it
+   * on `mirror_push` / `reconcile_recipients`. They fire only when this
+   * deploy actually landed a new generation in the vault
+   * (`DEPLOYED_AND_VAULTED` / `DEPLOY_FAILED_VAULTED` — the outcomes carrying
+   * a `generation`); the other three outcomes published nothing new, so
+   * there is nothing to mirror or reconcile against ({@link
+   * import("../node/gitvault-mirror.js").mirrorPushForGeneration}'s own
+   * contract: "fires after an ordinary vault push/deploy produces a new
+   * generation"). Both fields are therefore OMITTED — never a faked
+   * `skipped_*` outcome — when no generation landed.
    */
-  async deploy(options: Omit<GitvaultDeployOptions, "vault"> & GitvaultVaultHandleOptions): Promise<GitvaultDeployResult> {
+  async deploy(
+    options: Omit<GitvaultDeployOptions, "vault"> & GitvaultVaultHandleOptions,
+  ): Promise<GitvaultDeployResult & { mirror_push?: GitvaultMirrorPushResult; reconcile_recipients?: GitvaultReconcileEnvelopeRecipientsPushResult }> {
     const { runGitvaultDeploy } = await this.#deploy();
     const handle = await this.open(options);
-    return runGitvaultDeploy({ ...options, vault: handle.vault, repo_dir: options.repo_dir ?? process.cwd() });
+    const result = await runGitvaultDeploy({ ...options, vault: handle.vault, repo_dir: options.repo_dir ?? process.cwd() });
+    // Same ordering push() uses (mirror, then reconcile) — sequential, not
+    // Promise.all, so a reconcile failure can never be misread as a mirror
+    // failure in a log line that assumed ordering. Extracted to a standalone
+    // function so the outcome-gating is unit-testable with fake thunks,
+    // without standing up a live vault — see gitvault-deploy-hooks.test.ts.
+    return attachGitvaultDeployHooks(
+      result,
+      () => this.#tryMirrorPush(handle.repo_id, handle.keystore),
+      () => this.#tryReconcileEnvelopeRecipients(handle.vault),
+    );
   }
 
   /**

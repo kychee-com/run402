@@ -1281,9 +1281,24 @@ async function applyCmd(args) {
       ...("generation" in vaulted ? { generation: vaulted.generation } : {}),
       ...("push_error" in vaulted ? { push_error: vaulted.push_error } : {}),
       ...("deploy_error" in vaulted ? { deploy_error: vaulted.deploy_error } : {}),
+      // Design D5/D6 (gitvault-human-envelopes task 4.1 + gitvault-mirror):
+      // present only when this deploy landed a new generation — the SDK
+      // omits both fields entirely on the other three outcomes rather than
+      // faking a `skipped_*` value for something that never had a chance to
+      // run. See `Gitvault.deploy`'s doc comment (sdk/src/namespaces/gitvault.ts).
+      ...("mirror_push" in vaulted ? { mirror_push: vaulted.mirror_push } : {}),
+      ...("reconcile_recipients" in vaulted ? { reconcile_recipients: vaulted.reconcile_recipients } : {}),
       next_actions: vaulted.next_actions,
       deploy: outcome.deploy,
     }, null, 2));
+    // Design D6: the mirror result is reported BESIDE the vault outcome
+    // above, on its own stderr line — a mirror failure never blocks the
+    // deploy (mirrors `run402 gitvault snapshot`'s reporting).
+    if (vaulted.mirror_push?.outcome === "pushed") {
+      console.error(`mirror: pushed generation ${vaulted.generation} (${vaulted.mirror_push.summary?.objects_copied ?? 0} object(s) copied)`);
+    } else if (vaulted.mirror_push?.outcome === "failed") {
+      console.error(`mirror: dual-push FAILED (deploy is unaffected) — ${vaulted.mirror_push.error ?? "see mirror_push.summary.errors"}`);
+    }
     // A non-activating outcome is a failed deploy even though it resolved
     // rather than threw: the five outcomes are a result type, not an error
     // channel, so the exit code has to carry the verdict.

@@ -214,6 +214,10 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       // repo-first-onramp: D5's rename (task 2.5) and the vault-only
       // porcelain (task 2.6) — both CLI/OpenClaw-only surfaces.
       "run402 gitvault snapshot",
+      // gitvault-human-envelopes task 4.1: the ADD-path envelope-recipient
+      // reconcile verb — best-effort at `run402 deploy` (primary) and
+      // `run402 gitvault push`/`snapshot`, standalone here.
+      "run402 gitvault reconcile",
       "run402 repos create",
       "run402 repos list",
       "run402 repos delete",
