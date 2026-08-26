@@ -31,8 +31,13 @@
 
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
-import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT } from "./gitvault.crypto.js";
-import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget } from "./gitvault.types.js";
+import {
+  GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
+  GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
+  GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
+  GITVAULT_TERMINAL_LOSS_STATEMENT,
+} from "./gitvault.crypto.js";
+import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultRecoveryReceipt } from "./gitvault.types.js";
 import type {
   GitvaultMaintenanceLease,
   GitvaultMaintenanceLeaseRequest,
@@ -44,6 +49,9 @@ import type { GitvaultPublishResult, GitvaultPushOptions, GitvaultRefMap, Gitvau
 import type { GitvaultCreationResult } from "../node/gitvault-creation-journal.js";
 import type { GitvaultKeystore } from "../node/gitvault-keystore.js";
 import type { GitvaultSnapshot } from "../node/gitvault-snapshot.js";
+import type { GitvaultMirrorConfig, GitvaultMirrorCredential, GitvaultMirrorDestination } from "../node/gitvault-mirror-config.js";
+import type { GitvaultMirrorPushResult, GitvaultMirrorSyncSummary } from "../node/gitvault-mirror.js";
+import type { GitvaultRecoverResult, GitvaultVerifyReport } from "../node/gitvault-recover.js";
 
 // The Node modules are loaded lazily and only ever through these helpers, so
 // the isomorphic entry point stays free of `node:` imports.
@@ -55,6 +63,10 @@ type SnapshotModule = typeof import("../node/gitvault-snapshot.js");
 type PruneModule = typeof import("../node/gitvault-prune.js");
 type OpenOrCreateModule = typeof import("../node/gitvault-open-or-create.js");
 type AddressModule = typeof import("../node/gitvault-address.js");
+type MirrorModule = typeof import("../node/gitvault-mirror.js");
+type MirrorConfigModule = typeof import("../node/gitvault-mirror-config.js");
+type MirrorBackendModule = typeof import("../node/gitvault-mirror-backend.js");
+type RecoverModule = typeof import("../node/gitvault-recover.js");
 
 /** A keystore path, or `null` when there is no id to derive it from (or it is malformed). */
 function safePath(derive: () => string, repoId: string | null): string | null {
@@ -321,6 +333,25 @@ export interface GitvaultHandle {
 }
 
 /** What {@link Gitvault.openOrCreate} did. `created` is `null` exactly when `found` is `true`. */
+/** `run402 gitvault mirror status` — what this machine and the mirror each believe (design D8: both honesty statements ride every response). */
+export interface GitvaultMirrorStatus {
+  repo_id: string;
+  configured: boolean;
+  /** `s3://bucket/prefix` or a directory path — never a credential. */
+  destination: string | null;
+  credential_kind: "profile" | "ambient" | null;
+  /** The newest generation the MIRROR holds and chain-verifies (keyless). `null` when unconfigured, unreachable, or empty. */
+  mirrored_generation: string | null;
+  /** The LIVE vault's newest generation (one vault-record read). `null` when unconfigured or the vault has never captured. */
+  newest_generation: string | null;
+  /** `null` when either side is unknown (never fabricated from a partial read). */
+  is_current: boolean | null;
+  /** Present exactly when `is_current === false`. */
+  closing_command: string | null;
+  validity_not_freshness: typeof GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT;
+  keystore_still_required: typeof GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT;
+}
+
 export interface GitvaultOpenOrCreateResult {
   handle: GitvaultHandle;
   /** `true` when the vault already existed — nothing was allocated by this call. */
@@ -1040,7 +1071,7 @@ export class Gitvault {
       onCommitLine?: (line: string) => void;
       checkpoint?: boolean;
     },
-  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string }> {
+  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string; mirror_push: GitvaultMirrorPushResult }> {
     const [{ deployRefTransaction }, { captureSnapshot, gitvaultCommitLine }] = await Promise.all([this.#publication(), this.#snapshot()]);
     const opened = options.address
       ? await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: true })
@@ -1063,7 +1094,22 @@ export class Gitvault {
       ...(options.checkpoint ? { checkpoint: true } : {}),
     };
     const result = await handle.vault.push(push);
-    return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line };
+    // Capture-time dual-push hook (design D6/task 2.4): fires only when a
+    // mirror is configured; NEVER throws, NEVER alters the vault outcome
+    // above (already returned/committed) — a mirror failure is a named
+    // pending finding reported BESIDE the vault result, on its own field.
+    const mirrorPush = await this.#tryMirrorPush(handle.repo_id, handle.keystore);
+    return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line, mirror_push: mirrorPush };
+  }
+
+  /** Best-effort dual-push: catches EVERYTHING, including the lazy module import itself, so a mirror problem can never surface as a `push()` throw. */
+  async #tryMirrorPush(repoId: string, keystore: GitvaultKeystore): Promise<GitvaultMirrorPushResult> {
+    try {
+      const { mirrorPushForGeneration } = await this.#mirror();
+      return await mirrorPushForGeneration(this.#client, repoId, { keystore });
+    } catch (e) {
+      return { attempted: false, outcome: "skipped_no_mirror", error: e instanceof Error ? e.message : String(e) };
+    }
   }
 
   /**
@@ -1518,6 +1564,116 @@ export class Gitvault {
     return { refs: out.refs, generation: out.generation };
   }
 
+  // ── mirror (gitvault-mirror-and-recover, design D1/D2/D7) ─────────────────
+
+  /**
+   * Configure (or replace) the customer-owned mirror destination for one
+   * vault. Client-side ONLY — the destination + credential NAME are written
+   * beside the keystore (design D2); run402 never sees or stores a raw
+   * secret value. `s3://<bucket>/<prefix>` needs `credential`; a plain
+   * filesystem path needs none.
+   */
+  async mirrorSet(options: GitvaultVaultHandleOptions & { destination_url: string; credential?: GitvaultMirrorCredential; region?: string; endpoint?: string }): Promise<GitvaultMirrorConfig> {
+    const [{ GitvaultKeystore }, { parseMirrorDestinationUrl, saveMirrorConfig }] = await Promise.all([this.#keystore(), this.#mirrorConfig()]);
+    const repoId = await this.#resolveRepoId(options);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const destination: GitvaultMirrorDestination = parseMirrorDestinationUrl(options.destination_url, { region: options.region, endpoint: options.endpoint });
+    return saveMirrorConfig(keystore, { repo_id: repoId, destination, ...(options.credential ? { credential: options.credential } : {}) });
+  }
+
+  /** Remove the mirror config for one vault. Never touches the mirror's own bytes (design: config removal ≠ data deletion). */
+  async mirrorRemove(options: GitvaultVaultHandleOptions = {}): Promise<{ repo_id: string; removed: boolean }> {
+    const [{ GitvaultKeystore }, { removeMirrorConfig }] = await Promise.all([this.#keystore(), this.#mirrorConfig()]);
+    const repoId = await this.#resolveRepoId(options);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    return { repo_id: repoId, ...removeMirrorConfig(keystore, repoId) };
+  }
+
+  /**
+   * What this machine and the mirror each believe: whether a mirror is
+   * configured, the newest generation the MIRROR holds and can chain-verify
+   * (keyless — never touches keys), the LIVE vault's newest generation (one
+   * read of the vault record), and — when they disagree — the closing
+   * command. Both honesty statements (design D8) ride every response.
+   */
+  async mirrorStatus(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultMirrorStatus> {
+    const [{ GitvaultKeystore }, { readMirrorConfig, formatMirrorDestination }, { openGitvaultMirrorBackend }, { verifyGitvaultMirror }] = await Promise.all([
+      this.#keystore(), this.#mirrorConfig(), this.#mirrorBackend(), this.#recovery(),
+    ]);
+    const repoId = await this.#resolveRepoId(options);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const config = readMirrorConfig(keystore, repoId);
+    const base = { repo_id: repoId, validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT, keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT };
+    if (!config) {
+      return { ...base, configured: false, destination: null, credential_kind: null, mirrored_generation: null, newest_generation: null, is_current: null, closing_command: null };
+    }
+    let mirroredGeneration: string | null = null;
+    try {
+      const backend = openGitvaultMirrorBackend(config.destination, repoId, config.credential);
+      const report = await verifyGitvaultMirror(backend, { keystore });
+      mirroredGeneration = report.recovered_generation;
+    } catch {
+      // A configured-but-unreachable/empty mirror is still `configured: true` — the honest report is "unknown", not a thrown status call.
+    }
+    let newestGeneration: string | null = null;
+    try {
+      newestGeneration = (await this.get(repoId)).newest_generation;
+    } catch {
+      /* the live vault read is best-effort here; the mirror half of status still answers */
+    }
+    const isCurrent = mirroredGeneration !== null && newestGeneration !== null ? mirroredGeneration === newestGeneration : null;
+    return {
+      ...base, configured: true, destination: formatMirrorDestination(config.destination), credential_kind: config.credential?.kind ?? null,
+      mirrored_generation: mirroredGeneration, newest_generation: newestGeneration, is_current: isCurrent,
+      closing_command: isCurrent === false ? "run402 gitvault mirror sync" : null,
+    };
+  }
+
+  /** List the vault's stored objects, diff against the mirror, fetch + hash-verify + write what's missing, in admission order. Resumable and idempotent. */
+  async mirrorSync(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultMirrorSyncSummary> {
+    const [{ GitvaultKeystore }, { mirrorSync }] = await Promise.all([this.#keystore(), this.#mirror()]);
+    const repoId = await this.#resolveRepoId(options);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    return mirrorSync(this.#client, repoId, { keystore });
+  }
+
+  /** Keyless integrity probe against the CONFIGURED mirror: discovery + chain verification + closure/absence adjudication, never decryption (`run402 gitvault mirror verify`). */
+  async mirrorVerify(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultVerifyReport> {
+    const [{ GitvaultKeystore }, { readMirrorConfig }, { openGitvaultMirrorBackend }, { verifyGitvaultMirror }] = await Promise.all([
+      this.#keystore(), this.#mirrorConfig(), this.#mirrorBackend(), this.#recovery(),
+    ]);
+    const repoId = await this.#resolveRepoId(options);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const config = readMirrorConfig(keystore, repoId);
+    if (!config) throw new LocalError(`no mirror is configured for ${repoId}`, "verifying gitvault mirror", { code: "GITVAULT_MIRROR_NOT_CONFIGURED", details: { repo_id: repoId }, next_actions: [{ action: "run402 gitvault mirror set <destination>" }] });
+    const backend = openGitvaultMirrorBackend(config.destination, repoId, config.credential);
+    return verifyGitvaultMirror(backend, { keystore });
+  }
+
+  /**
+   * `r402s-recover` (design D4): rebuild a working git repository straight
+   * from a mirrored `source/<repo_id>/` prefix — NO SERVER INVOLVED. `source`
+   * is `s3://<bucket>[/<prefix>]` or a local directory; when it names more
+   * than one mirrored vault, pass `repo_id` explicitly. Recovery proves
+   * validity, never freshness (both honesty statements ride every result).
+   */
+  async recover(options: { source: string; out_dir: string; repo_id?: string; credential?: GitvaultMirrorCredential; region?: string; endpoint?: string; recovery_receipt?: GitvaultRecoveryReceipt; keystore_root?: string }): Promise<GitvaultRecoverResult> {
+    const [{ GitvaultKeystore }, { parseMirrorDestinationUrl }, { openGitvaultMirrorBackend, discoverMirroredRepoIds }, { recoverGitvaultMirror }] = await Promise.all([
+      this.#keystore(), this.#mirrorConfig(), this.#mirrorBackend(), this.#recovery(),
+    ]);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const destination = parseMirrorDestinationUrl(options.source, { region: options.region, endpoint: options.endpoint });
+    let repoId = options.repo_id;
+    if (!repoId) {
+      const found = await discoverMirroredRepoIds(destination, options.credential);
+      if (found.length === 0) throw new LocalError(`${options.source} holds no mirrored vault (no source/<repo_id>/ prefix found)`, "recovering gitvault vault", { code: "GITVAULT_MIRROR_EMPTY", details: { source: options.source } });
+      if (found.length > 1) throw new LocalError(`${options.source} holds ${found.length} mirrored vaults; pass repo_id to pick one`, "recovering gitvault vault", { code: "GITVAULT_MIRROR_AMBIGUOUS", details: { source: options.source, repo_ids: found }, next_actions: found.map((id) => ({ action: `recover --repo ${id}` })) });
+      repoId = found[0]!;
+    }
+    const backend = openGitvaultMirrorBackend(destination, repoId, options.credential);
+    return recoverGitvaultMirror({ backend, out_dir: options.out_dir, keystore, ...(options.recovery_receipt ? { recovery_receipt: options.recovery_receipt } : {}) });
+  }
+
   // ── internals ─────────────────────────────────────────────────────────────
 
   async #resolveRepoId(options: GitvaultVaultHandleOptions): Promise<string> {
@@ -1549,6 +1705,18 @@ export class Gitvault {
   }
   #address(): Promise<AddressModule> {
     return nodeOnly(() => import("../node/gitvault-address.js"), "resolveOrCreateAddress");
+  }
+  #mirror(): Promise<MirrorModule> {
+    return nodeOnly(() => import("../node/gitvault-mirror.js"), "mirrorSync");
+  }
+  #mirrorConfig(): Promise<MirrorConfigModule> {
+    return nodeOnly(() => import("../node/gitvault-mirror-config.js"), "mirrorSet");
+  }
+  #mirrorBackend(): Promise<MirrorBackendModule> {
+    return nodeOnly(() => import("../node/gitvault-mirror-backend.js"), "mirrorSet");
+  }
+  #recovery(): Promise<RecoverModule> {
+    return nodeOnly(() => import("../node/gitvault-recover.js"), "recover");
   }
 }
 

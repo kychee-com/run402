@@ -381,6 +381,29 @@ export function openGitvaultMirrorBackend(destination: GitvaultMirrorDestination
   return new S3MirrorBackend(destination.bucket, prefix, destination.region, credential, destination.endpoint);
 }
 
+/**
+ * List every `repo_id` mirrored under a destination's root (`source/<repo_id>/…`),
+ * WITHOUT repo-scoping the backend first — the discovery step `recover
+ * <source>` needs before it can even open the repo-scoped backend {@link
+ * openGitvaultMirrorBackend} expects. Used only to resolve which vault a bare
+ * destination URL (no `--repo`) names.
+ */
+export async function discoverMirroredRepoIds(destination: GitvaultMirrorDestination, credential?: GitvaultMirrorCredential): Promise<string[]> {
+  const root: GitvaultMirrorBackend = destination.kind === "directory"
+    ? new DirectoryMirrorBackend(destination.path)
+    : (() => {
+        if (!credential) fail("GITVAULT_MIRROR_CREDENTIAL_REQUIRED", "an s3 mirror destination needs a credential", "discovering mirrored gitvault repos");
+        return new S3MirrorBackend(destination.bucket, destination.prefix, destination.region, credential, destination.endpoint);
+      })();
+  const keys = await root.list("source/");
+  const ids = new Set<string>();
+  for (const key of keys) {
+    const m = /^source\/(src_[0-9a-f]{32})\//.exec(key);
+    if (m) ids.add(m[1]!);
+  }
+  return [...ids].sort();
+}
+
 /** Best-effort recursive delete of an empty (or now-empty) mirror root — used by `mirror remove --purge` semantics if ever added; NOT called by plain `mirror remove` (design: config removal never touches the customer's bytes). Exported for tests. */
 export function _rmMirrorRoot(destination: GitvaultMirrorDestination, repoId: string): void {
   if (destination.kind !== "directory") return;
