@@ -3449,9 +3449,13 @@ describe("CLI e2e happy path", () => {
 
   it("blob ls errors cleanly when no project and no active project (GH-40)", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
-    const { setActiveProjectId } = await import("./cli/core-dist/keystore.js");
-    const { clearActiveProjectId } = await import("./cli/core-dist/profile-state.js");
-    // Clear active project + RUN402_PROJECT_ID env var.
+    const { setActiveProjectId, clearActiveProjectId } = await import("./cli/core-dist/keystore.js");
+    // Clear active project + RUN402_PROJECT_ID env var. Scoped the same way
+    // `setActiveProjectId` writes (by the current wallet's principal) —
+    // `profile-state.js`'s own unscoped `clearActiveProjectId` would only
+    // clear the "unknown"-principal bucket, leaving this suite's real wallet
+    // scoped entry (set by an earlier test) resolvable and this test's
+    // "no active project" premise false.
     clearActiveProjectId("prj_test123");
     const prevEnv = process.env.RUN402_PROJECT_ID;
     delete process.env.RUN402_PROJECT_ID;

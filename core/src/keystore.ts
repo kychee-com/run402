@@ -8,6 +8,7 @@ import {
   recordMigration,
   setActiveProjectId as setProfileActiveProjectId,
 } from "./profile-state.js";
+import { readAllowance } from "./allowance.js";
 
 export interface StoredProject {
   anon_key: string;
@@ -136,7 +137,11 @@ function migrateLegacyProjectsJson(targetPath: string): void {
   };
   saveKeyStore(cache, targetPath);
   if (legacy.active_project_id) {
-    setProfileActiveProjectId(legacy.active_project_id);
+    // Scoped the same way every other write in this module now is (see
+    // `currentPrincipal`'s doc comment) — an unscoped write here is exactly
+    // what poisons the "unknown"-principal bucket for good on a machine that
+    // migrates before its wallet allowance exists yet.
+    setProfileActiveProjectId(legacy.active_project_id, undefined, { principal: currentPrincipal() });
   }
   recordMigration("projects_json_import", {
     legacy_path: legacyPath,
@@ -225,16 +230,64 @@ export function removeProject(
     delete store.projects[projectId];
     saveKeyStore(store, p);
   });
-  if (!path) clearProfileActiveProjectId(projectId);
+  if (!path) clearProfileActiveProjectId(projectId, undefined, { principal: currentPrincipal() });
+}
+
+/**
+ * The active-project scope's `principal`, derived from the CURRENT wallet's
+ * allowance — matching exactly what `NodeCredentialsProvider.setActiveProject`
+ * (sdk/src/node/credentials.ts) writes after `projects.provision` /
+ * `projects.use`. Without this, every reader here used the profile-state
+ * module's own default (empty) scope, which resolves to a FIXED
+ * "unknown"-principal bucket — the same bucket for every wallet in this
+ * profile.
+ *
+ * That mismatch is silent for a brand-new profile (the flat fallback in
+ * `profile-state.ts#getActiveProjectId` happens to agree), but once the
+ * "unknown" bucket is EVER populated by any principal-less write — the
+ * one-time legacy `projects.json` migration below, or any provision/`use`
+ * call made before this machine had a wallet allowance — it never gets
+ * updated again (real wallet operations write to the principal-keyed
+ * bucket, not "unknown") and PERMANENTLY shadows every later wallet-scoped
+ * activation for every caller that reads through this module: `resolveProjectId`
+ * / `resolveProject` (cli/lib/config.mjs), `projects current`, and every
+ * gitvault-verb target resolution. That is the root cause behind
+ * kychee-com/run402#559(a) — `repos create` DID call `projects.provision`,
+ * whose `creds.setActiveProject` correctly persisted the new project under
+ * the real wallet's scoped bucket AND the flat fallback, but every CLI read
+ * of "the active project" kept resolving the OLD "unknown"-bucket entry
+ * first and never fell through to the freshly-updated flat value.
+ *
+ * Best-effort: an unreadable/malformed allowance degrades to `null` (the
+ * same "unknown" bucket callers already tolerated before this fix), never a
+ * throw — this is a read-scoping concern, not an allowance-validity one.
+ */
+function currentPrincipal(): string | null {
+  try {
+    return readAllowance()?.address ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function getActiveProjectId(path?: string): string | undefined {
-  return getProfileActiveProjectId(path);
+  return getProfileActiveProjectId(path, { principal: currentPrincipal() });
 }
 
 export function setActiveProjectId(
   projectId: string,
   path?: string,
 ): void {
-  setProfileActiveProjectId(projectId, path);
+  setProfileActiveProjectId(projectId, path, { principal: currentPrincipal() });
+}
+
+/**
+ * Scoped the same way as the getter/setter above — a caller reaching for
+ * `profile-state.ts`'s `clearActiveProjectId` directly (unscoped) clears only
+ * the "unknown"-principal bucket, leaving a real wallet's own scoped entry
+ * (set through `setActiveProjectId` above, or `NodeCredentialsProvider`)
+ * untouched and still resolvable.
+ */
+export function clearActiveProjectId(projectId: string, path?: string): void {
+  clearProfileActiveProjectId(projectId, path, { principal: currentPrincipal() });
 }
