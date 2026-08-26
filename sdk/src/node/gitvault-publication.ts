@@ -1026,6 +1026,36 @@ export interface GitvaultPublishResult {
 }
 
 /**
+ * What {@link GitvaultVault.planPush} reports (kychee-com/run402#565) — a REAL
+ * local computation, not an estimate: every number here comes from actually
+ * building the packs (or checkpoint set) and actually sealing/encrypting
+ * them, exactly as a real `push` would. `would_admit_generation` is what this
+ * push would claim AT THE OBSERVED BASE — a concurrent publisher can still
+ * win the race before a real push runs (see the method doc for why that is
+ * not a defect: `git push --dry-run` carries the identical caveat).
+ */
+export interface GitvaultPushPlan {
+  /** The base this plan was computed against — `materialize()`'s generation at call time. */
+  base_generation: string;
+  /** The generation a real push would claim, computed the same way a real push computes it (`nextGeneration(base_generation)`). */
+  would_admit_generation: string;
+  /** `would_admit_generation` as a plain decimal string — the hex generation is a wire format, not a human one. */
+  would_admit_generation_decimal: string;
+  /** `wal` = direct WAL receipts; `checkpoint` = the delta would ship as a checkpoint set — the SAME threshold real `push` uses. */
+  form: "wal" | "checkpoint";
+  /** The ref map this push would publish (after evaluating the transaction against the base). */
+  refs: GitvaultRefMap;
+  head_target: GitvaultHeadTarget;
+  /** Every object that would be uploaded — `ref_state`, `retention_roots`, and the WAL/checkpoint pack(s) — with their REAL sealed (encrypted) sizes. */
+  objects: Array<{ object_kind: GitvaultUploadObject["object_kind"]; size_bytes: string }>;
+  object_count: number;
+  /** Sum of `objects[].size_bytes` — the REAL ciphertext byte count a real push would upload. */
+  encrypted_bytes: string;
+  /** Sum of the plaintext pack bytes BEFORE sealing — what "objects that would publish" weigh on the wire before encryption overhead. */
+  raw_bytes: string;
+}
+
+/**
  * What {@link GitvaultVault.verifyStoredCheckpoint} observed. Every boolean is
  * a FINDING, not a promise: a `false` here is what makes a truthful negative
  * `verifier_receipt` possible.
@@ -1567,10 +1597,30 @@ export class GitvaultVault {
     head_target: GitvaultHeadTarget;
     force_checkpoint: boolean;
     cutoff: GitvaultCutoffOptions | null;
-    capture_binding: GitvaultPushOptions["capture_binding"];
+    // Optional (not just optional-VALUED): `planPush` never needs a binding —
+    // it stops before `signHead` is reached, so omitting the key entirely
+    // (rather than threading `capture_binding: undefined` through every dry
+    // -run call site) is the honest shape.
+    capture_binding?: GitvaultPushOptions["capture_binding"];
+    /**
+     * kychee-com/run402#565 — a REAL dry run. Every step above this flag's
+     * check is identical to a real push: the same `evolveRetentionRoots`, the
+     * same `buildRefState`/`buildRetentionRoots` (real signing), the same
+     * `buildPacks`/`buildCheckpoint` (real pack building), the same `seal`
+     * (real encryption) — so the sizes and the generation this returns are
+     * exactly what a real push would compute AT THIS OBSERVED BASE, not an
+     * estimate. Only the two NETWORK MUTATIONS (`uploadAll`, `admit`) are
+     * skipped, per the client-surface spec's "refusing beats fake success":
+     * this never claims a generation was admitted, only that it WOULD be, at
+     * this base — a concurrent publisher can still take the same generation
+     * first, exactly as `git push --dry-run` never promises a later
+     * fast-forward will still be possible.
+     */
+    dry_run?: boolean;
   }): Promise<
     | { outcome: "admitted"; generation: string; head: GitvaultHead; head_sha256: string; admission_record_sha256: string; capture_receipt: GitvaultCaptureReceipt | null; form: "wal" | "checkpoint"; refs: GitvaultRefMap }
     | { outcome: "conflict"; generation: string; winner: { generation: string; stored_bytes_sha256: string } }
+    | { outcome: "dry_run"; generation: string; form: "wal" | "checkpoint"; refs: GitvaultRefMap; head_target: GitvaultHeadTarget; objects: GitvaultUploadObject[]; raw_pack_bytes: number }
   > {
     const { base } = input;
     const generation = nextGeneration(base.generation);
@@ -1592,11 +1642,13 @@ export class GitvaultVault {
     const walEntries: GitvaultWalPackReceipt[] = [];
     let checkpoint: GitvaultCheckpointBlock | null = null;
     const objects: GitvaultUploadObject[] = [refState.upload, rootsObj.upload];
+    let rawPackBytes = 0;
     if (input.force_checkpoint || walPacks.length > GITVAULT_MAX_WAL_RECEIPTS_PER_HEAD) {
       form = "checkpoint";
       const built = await this.buildCheckpoint({ generation, ref_state: refState.object, retention_roots: rootsObj.object });
       objects.push(...built.objects);
       checkpoint = { claim_set: built.claim_set_receipt, covers_through_generation: generation, git_object_format: "sha1", cutoff: ticket ? { ticket: ticket.receipt, cutoff_at: ticket.ticket.cutoff_at } : null };
+      rawPackBytes = built.packs.reduce((sum, p) => sum + p.length, 0);
     } else {
       form = "wal";
       for (const pack of walPacks) {
@@ -1604,7 +1656,15 @@ export class GitvaultVault {
         const upload = { ...this.seal("wal_pack", id, pack, gitvaultPaths.wal(id)), base_generation: base.generation };
         objects.push(upload);
         walEntries.push({ object_id: id, object_kind: "wal_pack", ciphertext_sha256: upload.sha256, size_bytes: upload.size_bytes, base_generation: base.generation });
+        rawPackBytes += pack.length;
       }
+    }
+    // kychee-com/run402#565: everything above this point is REAL local work —
+    // real signing, real pack building, real encryption. Stopping HERE is what
+    // makes the dry run honest: nothing below this line has run yet, so
+    // nothing was uploaded and no generation was admitted.
+    if (input.dry_run) {
+      return { outcome: "dry_run", generation, form, refs: input.refs, head_target: input.head_target, objects, raw_pack_bytes: rawPackBytes };
     }
     await this.uploadAll(objects);
     const binding = typeof input.capture_binding === "function" ? await input.capture_binding() : input.capture_binding ?? null;
@@ -1634,9 +1694,58 @@ export class GitvaultVault {
         if (conflicts > this.retries) fail("HEAD_CAS_CONFLICT", `admission lost ${conflicts} races at generation ${published.generation}; giving up`, "publishing gitvault head", { generation: published.generation, winner: published.winner }, [{ action: "verify the attached winner from storage, rebase, retry" }]);
         continue; // the loop re-verifies from storage (the winner), re-applies the transaction to the winner's map, retries
       }
+      // `push()` never sets `dry_run`, so this outcome is unreachable here —
+      // narrows `published` to `"admitted"` for the return below.
+      if (published.outcome === "dry_run") fail("GIT_COMMAND_FAILED", "internal: push() received a dry-run result it never requested", "publishing gitvault head");
       this.keystore.updateRepo(this.repoId, { last_ref_transaction: { generation: published.generation, transaction: options.transaction, at: formatGitvaultTimestamp(this.now()) } });
       return { generation: published.generation, head_sha256: published.head_sha256, head: published.head, admission_record_sha256: published.admission_record_sha256, capture_receipt: published.capture_receipt, form: published.form, conflicts_retried: conflicts, refs: published.refs };
     }
+  }
+
+  /**
+   * A REAL preview of what {@link push} would publish (kychee-com/run402#565)
+   * — runs the SAME local pipeline `push` runs (materialize → evaluate →
+   * evolve retention roots → build refState/retentionRoots → build packs or a
+   * checkpoint set → seal/encrypt) and stops BEFORE the two network
+   * mutations `push` performs (`uploadAll`, `admit`). One shot, no conflict
+   * retry: there is nothing to retry against, since no generation is ever
+   * admitted. `would_admit_generation` is therefore the generation this push
+   * WOULD claim over the CURRENTLY OBSERVED base — a concurrent publisher can
+   * still take it first before a real push runs, exactly as `git push
+   * --dry-run` never promises a fast-forward will still hold by the time a
+   * real push executes.
+   *
+   * Never retries and never allocates: an unallocated vault has no `repo_id`
+   * (hence no encryption key) to preview a push against at all — callers
+   * resolve the vault READ-ONLY first (see `Gitvault.planPush` in
+   * `../namespaces/gitvault.js`, which reports `allocation_needed: true` in
+   * that case instead of calling this method).
+   */
+  async planPush(options: GitvaultPushOptions): Promise<GitvaultPushPlan> {
+    const base = await this.materialize();
+    const evaluation = await evaluateRefTransaction(base.refs, options.transaction, { isAncestor: (a, d) => isAncestor(this.git(), a, d), protocol_refs: options.protocol_refs });
+    const headTarget = options.head_target ?? base.head_target;
+    const published = await this.publishGeneration({
+      base, refs: evaluation.refs, dropped: evaluation.dropped, head_target: headTarget,
+      force_checkpoint: options.checkpoint === true, cutoff: null, dry_run: true,
+    });
+    // `dry_run: true` above means `publishGeneration` returns ONLY the
+    // `"dry_run"` outcome — `"conflict"`/`"admitted"` are reachable only via
+    // `admit()`, which a dry run never calls.
+    if (published.outcome !== "dry_run") fail("GIT_COMMAND_FAILED", "internal: planPush did not receive a dry-run result", "planning gitvault push");
+    const encryptedBytes = published.objects.reduce((sum, o) => sum + BigInt(o.size_bytes), 0n);
+    return {
+      base_generation: base.generation,
+      would_admit_generation: published.generation,
+      would_admit_generation_decimal: generationToBigInt(published.generation).toString(),
+      form: published.form,
+      refs: published.refs,
+      head_target: published.head_target,
+      objects: published.objects.map((o) => ({ object_kind: o.object_kind, size_bytes: o.size_bytes })),
+      object_count: published.objects.length,
+      encrypted_bytes: encryptedBytes.toString(),
+      raw_bytes: String(published.raw_pack_bytes),
+    };
   }
 
   /**
@@ -1671,6 +1780,9 @@ export class GitvaultVault {
         if (conflicts > this.retries) fail("HEAD_CAS_CONFLICT", `the checkpoint lost ${conflicts} races at generation ${published.generation}; giving up`, "publishing gitvault checkpoint", { generation: published.generation, winner: published.winner }, [{ action: "verify the attached winner from storage, retry" }]);
         continue;
       }
+      // `publishCheckpoint` never sets `dry_run`, so this outcome is
+      // unreachable here — narrows `published` to `"admitted"` below.
+      if (published.outcome === "dry_run") fail("GIT_COMMAND_FAILED", "internal: publishCheckpoint() received a dry-run result it never requested", "publishing gitvault checkpoint");
       return { generation: published.generation, head_sha256: published.head_sha256, head: published.head, admission_record_sha256: published.admission_record_sha256, capture_receipt: published.capture_receipt, form: published.form, conflicts_retried: conflicts, refs: published.refs };
     }
   }

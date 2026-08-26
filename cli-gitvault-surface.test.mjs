@@ -122,6 +122,29 @@ mock.module("./cli/lib/sdk.mjs", {
             gitvault_commit_line: "gitvault_commit aaaa000011112222333344445555666677778888",
           })))(input);
         },
+        // kychee-com/run402#565 — the dry-run companion `snapshot --dry-run`
+        // calls INSTEAD OF `push`. The CLI surface under test here is which
+        // SDK method gets called with what, not the SDK's own real sizing
+        // (that is pinned at the SDK level against GitvaultMemoryTransport).
+        planPush: async (input) => {
+          calls.push({ method: "gitvault.planPush", input });
+          return (impl.planPush ?? (async () => ({
+            allocation_needed: false,
+            base_generation: "0000000000000003",
+            would_admit_generation: "0000000000000004",
+            would_admit_generation_decimal: "4",
+            form: "wal",
+            refs: { "refs/run402/deploys/latest": "aaaa000011112222333344445555666677778888" },
+            head_target: { kind: "symref", ref: "refs/heads/main" },
+            objects: [{ object_kind: "ref_state", size_bytes: "512" }, { object_kind: "retention_roots", size_bytes: "128" }, { object_kind: "wal_pack", size_bytes: "2048" }],
+            object_count: 3,
+            encrypted_bytes: "2688",
+            raw_bytes: "2000",
+            snapshot: { oid: "aaaa000011112222333344445555666677778888", head: { kind: "symref", ref: "refs/heads/main" } },
+            gitvault_commit: "aaaa000011112222333344445555666677778888",
+            gitvault_commit_line: "gitvault_commit aaaa000011112222333344445555666677778888",
+          })))(input);
+        },
       },
     }),
   },
@@ -321,6 +344,71 @@ describe("run402 gitvault snapshot — the capture lane, D2 lazy allocation (rep
     const call = calls.find((c) => c.method === "gitvault.push");
     assert.equal(call.input.snapshot.message, "wip");
     assert.equal(call.input.checkpoint, true);
+  });
+
+  // ─── --dry-run (kychee-com/run402#565) — a REAL preview, JSON on stdout ────
+  describe("--dry-run", () => {
+    it("calls gitvault.planPush INSTEAD of gitvault.push — nothing is published", async () => {
+      const payload = await ok("snapshot", ["--dry-run"]);
+      assert.equal(calls.find((c) => c.method === "gitvault.push"), undefined, "a dry run must never reach gitvault.push");
+      const call = calls.find((c) => c.method === "gitvault.planPush");
+      assert.ok(call, `gitvault snapshot --dry-run did not reach planPush; calls=${JSON.stringify(calls)}`);
+      // The JSON report IS the payload — same stdout convention as every
+      // other gitvault verb.
+      assert.equal(payload.would_admit_generation, "0000000000000004");
+      assert.equal(payload.would_admit_generation_decimal, "4");
+      assert.equal(payload.object_count, 3);
+      assert.equal(payload.encrypted_bytes, "2688");
+    });
+
+    it("skips org resolution entirely — a dry run never allocates, so it needs no org to allocate from", async () => {
+      await ok("snapshot", ["--dry-run"]);
+      const call = calls.find((c) => c.method === "gitvault.planPush");
+      assert.equal(call.input.org_id, undefined, "planPush was called with an org_id it should never have needed to resolve");
+      assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "--dry-run must not trigger the org-resolving project lookup");
+    });
+
+    it("prints a stderr summary naming the generation, form, and object/byte counts", async () => {
+      captureStart();
+      try {
+        await run("snapshot", ["--dry-run"]);
+      } finally {
+        captureStop();
+      }
+      const joined = stderr.join("\n");
+      assert.match(joined, /dry-run/i, joined);
+      assert.match(joined, /0000000000000004/, joined);
+      assert.match(joined, /\bwal\b/, joined);
+      assert.match(joined, /3 object/, joined);
+      assert.match(joined, /2688 encrypted byte/, joined);
+    });
+
+    it("reports allocation_needed instead of a fake generation when there is no vault to preview against", async () => {
+      impl.planPush = async () => ({
+        allocation_needed: true,
+        base_generation: null, would_admit_generation: null, would_admit_generation_decimal: null,
+        form: null, refs: {}, head_target: { kind: "symref", ref: "refs/heads/main" }, objects: [], object_count: null,
+        encrypted_bytes: null, raw_bytes: null,
+        snapshot: { oid: "aaaa000011112222333344445555666677778888", head: { kind: "symref", ref: "refs/heads/main" } },
+        gitvault_commit: "aaaa000011112222333344445555666677778888", gitvault_commit_line: "gitvault_commit aaaa000011112222333344445555666677778888",
+      });
+      const payload = await ok("snapshot", ["--dry-run"]);
+      assert.equal(payload.allocation_needed, true);
+      assert.equal(payload.would_admit_generation, null);
+    });
+
+    it("still carries --message and --checkpoint through to planPush", async () => {
+      await ok("snapshot", ["--dry-run", "--message", "wip", "--checkpoint"]);
+      const call = calls.find((c) => c.method === "gitvault.planPush");
+      assert.equal(call.input.snapshot.message, "wip");
+      assert.equal(call.input.checkpoint, true);
+    });
+
+    it("composes with --repo, same as an ordinary snapshot", async () => {
+      await ok("snapshot", ["--dry-run", "--repo", REPO]);
+      const call = calls.find((c) => c.method === "gitvault.planPush");
+      assert.equal(call.input.repo_id, REPO);
+    });
   });
 });
 

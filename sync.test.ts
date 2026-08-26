@@ -1610,6 +1610,13 @@ describe("SDK surface alignment", () => {
       "gitvault.forRepo",
       "gitvault.resolveAddress",
       "gitvault.resolveOrCreateAddress",
+      // kychee-com/run402#565: `planPush` is the real dry-run preview behind
+      // `run402 gitvault snapshot --dry-run` (`gitvault_snapshot`'s OWN
+      // verb, a flag-selected mode, not a second verb) and
+      // `git-remote-run402`'s `option dry-run true` — no SURFACE row of its
+      // own, the same way `deploy apply --rehearse` is a mode of `deploy`
+      // rather than a second capability.
+      "gitvault.planPush",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
       // shares the `run402 functions rebuild --all` CLI verb (and the

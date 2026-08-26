@@ -40,7 +40,7 @@ import type {
   GitvaultVaultRecord,
 } from "../node/gitvault-publication.js";
 import type { GitvaultDeployOptions, GitvaultDeployResult } from "../node/gitvault-deploy.js";
-import type { GitvaultPublishResult, GitvaultPushOptions, GitvaultVerifiedState } from "../node/gitvault-publication.js";
+import type { GitvaultPublishResult, GitvaultPushOptions, GitvaultRefMap, GitvaultVerifiedState } from "../node/gitvault-publication.js";
 import type { GitvaultCreationResult } from "../node/gitvault-creation-journal.js";
 import type { GitvaultKeystore } from "../node/gitvault-keystore.js";
 import type { GitvaultSnapshot } from "../node/gitvault-snapshot.js";
@@ -206,6 +206,36 @@ export interface GitvaultCompactResult {
   cutoff_bound: boolean;
   covered_refs: number;
   covered_roots: number;
+}
+
+/**
+ * `run402 gitvault snapshot --dry-run`'s report shape (kychee-com/run402#565)
+ * — {@link Gitvault.planPush}'s return type. Every sizing field is `null`,
+ * and `refs`/`objects` are empty, exactly when `allocation_needed` is `true`
+ * — see that method's doc comment for why sizing is genuinely UNKNOWABLE
+ * (not merely unreported) before the vault's encryption key exists.
+ */
+export interface GitvaultSnapshotPushPlan {
+  /** `true` when this project has no vault yet — a real push/snapshot would allocate one first (push-to-create). This dry run never does. */
+  allocation_needed: boolean;
+  base_generation: string | null;
+  would_admit_generation: string | null;
+  /** `would_admit_generation` as a plain decimal string. */
+  would_admit_generation_decimal: string | null;
+  form: "wal" | "checkpoint" | null;
+  refs: GitvaultRefMap;
+  head_target: GitvaultHeadTarget | null;
+  /** Every object that would be uploaded, with REAL sealed (encrypted) sizes. Empty when `allocation_needed`. */
+  objects: Array<{ object_kind: string; size_bytes: string }>;
+  object_count: number | null;
+  /** Sum of `objects[].size_bytes` — the REAL ciphertext byte count. */
+  encrypted_bytes: string | null;
+  /** Sum of the plaintext pack bytes before sealing. */
+  raw_bytes: string | null;
+  /** The local capture this dry run computed — real, regardless of `allocation_needed`: capturing the work tree touches no network. */
+  snapshot: GitvaultSnapshot;
+  gitvault_commit: string;
+  gitvault_commit_line: string;
 }
 
 /** One retention ROOT (a dropped ref tip) and whether its 90-day window has closed. */
@@ -1037,6 +1067,81 @@ export class Gitvault {
   }
 
   /**
+   * A REAL preview of what {@link push} would publish (kychee-com/run402#565)
+   * — never publishes anything, and never allocates. `run402 gitvault
+   * snapshot --dry-run` and `git-remote-run402`'s `option dry-run true` are
+   * both thin adapters over this method.
+   *
+   * "Refusing beats fake success" (this file's own architectural law) governs
+   * the shape of what happens when the vault does not exist yet: unlike
+   * {@link push}, this NEVER allocates one (push-to-create must not allocate
+   * on a dry run) — it resolves READ-ONLY (`open`/`resolveOrCreateAddress`
+   * with `allow_create: false`), and when that resolution misses, returns
+   * `allocation_needed: true` with every sizing field `null` rather than a
+   * guess. Sizing is genuinely unknowable before allocation: encryption uses
+   * a `K_repo` this project has not been assigned yet, so there is no key to
+   * preview a push under — only the real capture (this method still runs
+   * `captureSnapshot`, which is local, filter-free work) can be computed.
+   *
+   * Everything else is the SAME real local pipeline `push` runs — capture,
+   * pack building, sealing/encryption — computed by
+   * {@link import("../node/gitvault-publication.js").GitvaultVault.planPush},
+   * which is what actually stops short of the two network mutations
+   * (`uploadObjects`, `admitHead`). See its doc comment for what
+   * `would_admit_generation` does and does not promise.
+   */
+  async planPush(
+    options: GitvaultVaultHandleOptions & {
+      /** Same as {@link push}'s `address` — a parsed remote address (repo-first-onramp task 4, design D6). Resolved READ-ONLY (`allow_create: false`); never push-to-creates. */
+      address?: GitvaultRemoteAddress;
+      snapshot?: Omit<import("../node/gitvault-snapshot.js").GitvaultSnapshotOptions, "dir">;
+      onCommitLine?: (line: string) => void;
+      checkpoint?: boolean;
+    },
+  ): Promise<GitvaultSnapshotPushPlan> {
+    const { captureSnapshot, gitvaultCommitLine } = await this.#snapshot();
+    const repoDir = options.repo_dir ?? process.cwd();
+
+    // READ-ONLY resolution — mirrors `push()`'s own dispatch on `address`,
+    // but with `allow_create: false` and no `openOrCreate` fallback: a dry
+    // run must never mutate the control plane, and allocation is the one
+    // push-time mutation that happens before a single byte is built.
+    let handle: GitvaultHandle | null = null;
+    try {
+      handle = options.address
+        ? (await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: false })).handle
+        : await this.open(options);
+    } catch (e) {
+      if (!isVaultResolutionMiss(e)) throw e;
+      handle = null; // no vault to preview a push against yet
+    }
+
+    const snapshot = await captureSnapshot({ dir: repoDir, ...(options.snapshot ?? {}) });
+    const line = gitvaultCommitLine(snapshot);
+    options.onCommitLine?.(line);
+
+    if (!handle) {
+      return {
+        base_generation: null, would_admit_generation: null, would_admit_generation_decimal: null,
+        form: null, refs: {}, head_target: null, objects: [], object_count: null,
+        encrypted_bytes: null, raw_bytes: null,
+        allocation_needed: true, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line,
+      };
+    }
+
+    const { deployRefTransaction } = await this.#publication();
+    const materialized = await handle.vault.materialize();
+    const push: GitvaultPushOptions = {
+      transaction: deployRefTransaction(materialized.refs, snapshot.oid),
+      head_target: snapshot.head,
+      protocol_refs: "allow", // same opt-in `push()` makes for the SAME move — see its doc comment.
+      ...(options.checkpoint ? { checkpoint: true } : {}),
+    };
+    const plan = await handle.vault.planPush(push);
+    return { ...plan, allocation_needed: false, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line };
+  }
+
+  /**
    * Publish a checkpoint covering the canonical refs, every root unexpired at
    * the cutoff, and the `HEAD` target — under a maintenance lease so a
    * concurrent cycle cannot race it.
@@ -1597,6 +1702,18 @@ export function gitvaultSlugReleasedInfo(err: unknown): GitvaultSlugReleasedInfo
 
 /** A 404/absent-route refusal for the unshipped `retention-cutoffs` endpoint. */
 function isMissingCutoffRoute(e: unknown): boolean {
+  const err = e as { status?: number; code?: string } | null;
+  return Boolean(err && (err.status === 404 || err.code === "RESOURCE_NOT_FOUND" || err.code === "ROUTE_NOT_FOUND"));
+}
+
+/**
+ * "No vault exists for this address/project yet" — the same 404 shape as
+ * {@link isMissingCutoffRoute}, named separately because the two mean
+ * different things to their callers (an absent OPTIONAL route vs. an absent
+ * RESOURCE). Used by {@link Gitvault.planPush} to distinguish "nothing to
+ * preview a push against" from a genuine failure worth rethrowing.
+ */
+function isVaultResolutionMiss(e: unknown): boolean {
   const err = e as { status?: number; code?: string } | null;
   return Boolean(err && (err.status === 404 || err.code === "RESOURCE_NOT_FOUND" || err.code === "ROUTE_NOT_FOUND"));
 }

@@ -40,7 +40,7 @@ export const HELP = `run402 gitvault — your source, encrypted before it leaves
 Usage:
   run402 gitvault init     [--project <id>] [--org <org_id>] [--git-remote] [--no-remote]
   run402 gitvault status   [--project <id>] [--repo <repo_id>] [--refs]
-  run402 gitvault snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint]
+  run402 gitvault snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run]
   run402 gitvault policy   <required|grandfathered> [--project <id>] [--repo <repo_id>]
                            [--reason <why>]
   run402 gitvault compact  [--project <id>] [--repo <repo_id>]
@@ -83,7 +83,9 @@ Subcommands:
             next release. Once \`gitvault\` was the only publish verb; \`git
             push\` is now the actual publish path (via the remote helper),
             so \`push\` here was renamed to name what it does: one verb per
-            operation.
+            operation. \`--dry-run\` (kychee-com/run402#565) previews it
+            instead: the same real local pipeline, publishing nothing and
+            never allocating.
   compact   Publish a checkpoint covering the canonical refs, every root
             unexpired at the cutoff, and the HEAD target, under a maintenance
             lease so a concurrent cycle cannot race it.
@@ -114,6 +116,11 @@ Options:
   --message <text>  snapshot: commit message for the synthetic commit a dirty tree
                     produces (a clean tree pushes HEAD itself, no message used)
   --checkpoint      snapshot: force the checkpoint-bearing form regardless of delta size
+  --dry-run         snapshot: a REAL preview (kychee-com/run402#565) — runs the actual
+                    local pipeline (capture, pack building, encryption sizing) and
+                    reports objects, encrypted bytes, refs, and the generation it
+                    would admit as. Publishes NOTHING, and never allocates a vault
+                    that does not exist yet (reports allocation_needed instead).
   --budget <n>      verify: heads to verify in this call. The verified prefix is
                     persisted, so a budget-exceeded run resumes where it stopped
                     instead of restarting.
@@ -160,6 +167,7 @@ Examples:
   run402 gitvault init
   run402 gitvault status --refs
   run402 gitvault snapshot --message "wip: refactor the parser"
+  run402 gitvault snapshot --dry-run
   run402 gitvault policy grandfathered --reason "migrating CI to a vaulted client"
   run402 gitvault verify --budget 500
   run402 gitvault prune --project prj_1a2b3c
@@ -467,10 +475,11 @@ async function detectSlugFormRemote(a, repoDir) {
 async function snapshot(args) {
   const a = normalizeArgv(args);
   const valueFlags = [...COMMON_VALUE_FLAGS, "--message"];
-  assertKnownFlags(a, [...valueFlags, "--checkpoint", "--help", "-h"], valueFlags);
+  assertKnownFlags(a, [...valueFlags, "--checkpoint", "--dry-run", "--help", "-h"], valueFlags);
   requirePositionalCount(a, valueFlags, {
     min: 0, max: 0, command: "run402 gitvault snapshot", missing: "",
   });
+  const dryRun = a.includes("--dry-run");
   const message = flagValue(a, "--message");
   const repoDir = process.cwd();
   const address = await detectSlugFormRemote(a, repoDir);
@@ -480,20 +489,26 @@ async function snapshot(args) {
   // it is skipped there, matching `open()`'s own precedence. Skipped
   // entirely for a slug-form remote (`address` above) — that resolves
   // through the address, not a project_id, and needs no separate org_id.
+  //
+  // Skipped ENTIRELY for --dry-run (kychee-com/run402#565): org resolution
+  // exists only to feed lazy allocation, and a dry run never allocates — the
+  // read would cost a network round-trip for a fact `planPush` never uses.
   const target = address ? { repo_dir: repoDir } : await vaultTarget(a);
-  const orgId = !address && target.project_id ? await resolveOwningOrgId(target.project_id) : null;
+  const orgId = !address && !dryRun && target.project_id ? await resolveOwningOrgId(target.project_id) : null;
   const opts = {
     ...target,
     ...(address ? { address } : {}),
     ...(orgId ? { org_id: orgId } : {}),
     // The gitvault_commit line is progress, not payload: print it the moment
     // the snapshot exists, well before the publication round-trips finish, so
-    // a human watching a slow push sees what is being pushed.
+    // a human watching a slow push sees what is being pushed. Fires for a
+    // dry run too — the capture itself is real, local work.
     onCommitLine: (line) => console.error(line),
     // Fires synchronously, BEFORE the capture/publish that follows — printed
     // here rather than deferred past `push()`'s return so the receipt is
     // never lost if a later step in the SAME push fails after allocation
-    // already landed on the server.
+    // already landed on the server. Never fires for --dry-run: `planPush`
+    // never allocates, so this callback is simply unused there.
     onVaultCreated: async (created) => {
       console.error("");
       console.error(`vault allocated (genesis ${created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
@@ -508,6 +523,24 @@ async function snapshot(args) {
   if (message != null) opts.snapshot = { message };
   if (a.includes("--checkpoint")) opts.checkpoint = true;
   try {
+    if (dryRun) {
+      // kychee-com/run402#565: a REAL dry run — the same local pipeline
+      // `push` runs (capture, pack building, encryption sizing), stopping
+      // before the two network mutations. Nothing is published; the JSON
+      // report is the entire contract, so it goes on stdout like every other
+      // gitvault verb's payload.
+      const plan = await getSdk().gitvault.planPush(opts);
+      console.log(JSON.stringify(plan, null, 2));
+      if (plan.allocation_needed) {
+        console.error("dry-run: no vault allocated for this project yet — a real snapshot would allocate one first; object/byte sizing is not knowable until then");
+      } else {
+        console.error(
+          `dry-run: would publish generation ${plan.would_admit_generation} (${plan.would_admit_generation_decimal}, ${plan.form}) — ` +
+          `${plan.object_count} object(s), ${plan.encrypted_bytes} encrypted byte(s) (${plan.raw_bytes} raw)`,
+        );
+      }
+      return;
+    }
     const result = await getSdk().gitvault.push(opts);
     console.log(JSON.stringify(result, null, 2));
     console.error(`published generation ${result.generation} (${result.form})`);

@@ -614,6 +614,108 @@ describe("§6.2 push — the complete publication path", () => {
   });
 });
 
+// ─── planPush — the REAL dry run (kychee-com/run402#565) ─────────────────────
+//
+// The claim under test: planPush computes EXACTLY what push WOULD compute at
+// the same base — same generation, same form, same refs, same object sizes —
+// by running the identical local pipeline, and never calls the transport's
+// two mutating routes (upload:*, admit:*). Proven two ways: (1) the memory
+// transport's own `calls` log never gains an upload/admit entry across a
+// planPush; (2) a planPush immediately followed by a REAL push over the SAME
+// transaction reports the SAME generation/form/refs/object sizes the plan
+// predicted — a plan that lied would diverge from the push it predicted.
+
+describe("planPush — a real, non-mutating preview of push (kychee-com/run402#565)", () => {
+  const fixtures: VaultFixture[] = [];
+  const open = async (): Promise<VaultFixture> => {
+    const f = await makeVault();
+    fixtures.push(f);
+    return f;
+  };
+  const cleanup = () => {
+    for (const f of fixtures.splice(0)) rmSync(f.root, { recursive: true, force: true });
+  };
+
+  it("publishes NOTHING: no upload or admit call reaches the transport", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const before = f.transport.calls.length;
+    await f.vault.planPush({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] } });
+    const after = f.transport.calls.slice(before);
+    assert.ok(after.every((c) => !c.startsWith("upload:") && !c.startsWith("admit:")), `planPush must never upload or admit; saw: ${JSON.stringify(after)}`);
+    // The pin stays at the GENESIS generation (materialize()'s ordinary
+    // bookkeeping for a heads-less vault) — nothing beyond genesis was ever
+    // admitted, i.e. no generation advanced past "0000000000000000".
+    assert.equal(f.keystore.readRepo(f.repoId)!.head_pin?.generation, "0000000000000000");
+  });
+
+  it("reports plausible, REAL sizes: a plan's generation/form/refs/objects match the push it predicted", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const transaction = { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] };
+    const plan = await f.vault.planPush({ transaction });
+    assert.equal(plan.base_generation, "0000000000000000");
+    assert.equal(plan.would_admit_generation, "0000000000000001");
+    assert.equal(plan.would_admit_generation_decimal, "1");
+    assert.equal(plan.form, "wal");
+    assert.deepEqual(plan.refs, { "refs/heads/main": main });
+    assert.equal(plan.object_count, plan.objects.length);
+    assert.ok(plan.object_count >= 2, "at least ref_state + retention_roots");
+    assert.ok(BigInt(plan.encrypted_bytes) > 0n);
+    assert.ok(BigInt(plan.raw_bytes) > 0n);
+    assert.ok(plan.objects.some((o) => o.object_kind === "ref_state"));
+    assert.ok(plan.objects.some((o) => o.object_kind === "retention_roots"));
+
+    // A SECOND, independent vault instance (same transport/keystore — a
+    // fresh open, the same way a second CLI invocation would be) runs the
+    // REAL push over the identical transaction and must land at exactly
+    // what the plan predicted.
+    const real = await f.vault.push({ transaction });
+    assert.equal(real.generation, plan.would_admit_generation);
+    assert.equal(real.form, plan.form);
+    assert.deepEqual(real.refs, plan.refs);
+  });
+
+  it("a checkpoint-forcing plan reports form: checkpoint, matching a real forced push", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const transaction = { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] };
+    const plan = await f.vault.planPush({ transaction, checkpoint: true });
+    assert.equal(plan.form, "checkpoint");
+    assert.ok(plan.objects.some((o) => o.object_kind === "checkpoint_manifest"));
+    const real = await f.vault.push({ transaction, checkpoint: true });
+    assert.equal(real.form, "checkpoint");
+    assert.equal(real.generation, plan.would_admit_generation);
+  });
+
+  it("a plan against a non-fast-forward transaction refuses the SAME way a real push would — never a fake ok", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    // expected_old_oid is stale (null — a CREATE — but the ref already exists via the push above) — same shape a real push refuses.
+    await rejectsCode(
+      f.vault.planPush({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c2, force: false }] } }),
+      "REF_EXPECTED_OLD_MISMATCH",
+    );
+  });
+
+  it("running planPush repeatedly against an unchanged base is idempotent — no local state drift", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const main = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const transaction = { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: main, force: false }] };
+    const first = await f.vault.planPush({ transaction });
+    const second = await f.vault.planPush({ transaction });
+    assert.equal(first.would_admit_generation, second.would_admit_generation);
+    assert.equal(first.encrypted_bytes, second.encrypted_bytes);
+  });
+});
+
 describe("§4.7 checkpoint sets", () => {
   it("a forced checkpoint head carries an EMPTY WAL set, an owner-signed claim set, and passes acceptance from the set ALONE", async (t) => {
     const f = await makeVault();

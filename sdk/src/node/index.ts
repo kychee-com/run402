@@ -445,6 +445,7 @@ export type {
   GitvaultOpenBindingRecord,
   GitvaultPublishResult,
   GitvaultPushOptions,
+  GitvaultPushPlan,
   GitvaultRefMap,
   GitvaultRefTransactionEvaluation,
   GitvaultRefUpdateFailure,

@@ -323,6 +323,72 @@ describe("git-remote-run402 — D2 lazy allocation", () => {
   });
 });
 
+// ─── kychee-com/run402#565 — option dry-run true (a REAL dry run) ────────────
+//
+// `option dry-run` used to be honestly `unsupported`: this helper could not
+// rehearse a publication, and a fake success would be worse than refusing.
+// Pinned here, driving the real binary over the real wire protocol:
+//   1. `option dry-run true` now answers `ok`, not `unsupported`.
+//   2. A push-to-create dry run against an UNALLOCATED vault reaches ZERO
+//      mutating routes — the allocate POST is never made — while still
+//      reporting `ok <ref>` per the gitremote-helpers protocol (a real push
+//      here WOULD succeed by allocating first; only sizing is unavailable).
+//   3. `option dry-run true` composes with `push`: the SAME batch, run twice
+//      (dry then real) against a live gateway, is proven at the SDK level
+//      (`sdk/src/node/gitvault-publication.test.ts`'s `planPush` suite) —
+//      reimplementing that as an HTTP fixture here would duplicate it, not
+//      add coverage; this layer's job is the wire-protocol behavior only.
+
+describe("git-remote-run402 — option dry-run true (kychee-com/run402#565)", () => {
+  it("dry-run is acknowledged (`ok`), not `unsupported`", () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-dryrun-cap-")));
+    try {
+      const r = runHelper({ cwd: root, env: { GIT_DIR: undefined }, stdin: "capabilities\n\noption dry-run true\n" });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^ok$/m, `expected an 'ok' line for dry-run; got:\n${r.stdout}`);
+      assert.doesNotMatch(r.stdout, /unsupported/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("an unrecognized dry-run value is honestly unsupported, not guessed", () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-dryrun-bad-")));
+    try {
+      const r = runHelper({ cwd: root, env: { GIT_DIR: undefined }, stdin: "capabilities\n\noption dry-run maybe\n" });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^unsupported$/m, r.stdout);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("push-to-create dry-run against an UNALLOCATED vault allocates NOTHING — zero mutating calls — and still reports ok", async () => {
+    await withUnallocatedVaultGateway(async (apiBase, calls) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-dryrun-unalloc-")));
+      try {
+        const target = makeRepo(root, { commit: true });
+        const r = await runHelperAsync({
+          cwd: target,
+          env: { GIT_DIR: realpathSync(join(target, ".git")), RUN402_API_BASE: apiBase },
+          stdin: "capabilities\n\noption dry-run true\n\npush refs/heads/main:refs/heads/main\n\n",
+        });
+        // The one assertion this test exists for: push-to-create dry-run must
+        // NEVER allocate. The gateway stub's only mutating route is the
+        // allocate POST — zero POSTs of ANY kind proves nothing mutating was
+        // attempted (the GET ?project_id= read is the only call that should
+        // have happened).
+        const postCalls = calls.filter((c) => c.method === "POST");
+        assert.equal(postCalls.length, 0, `dry-run push-to-create must not allocate; saw: ${JSON.stringify(calls)}\n${r.stdout}\n---\n${r.stderr}`);
+        assert.match(r.stdout, /^ok refs\/heads\/main$/m, `${r.stdout}\n---\n${r.stderr}`);
+        assert.match(r.stderr, /dry-run.*no vault allocated/i, r.stderr);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
 // ─── D6 (repo-first-onramp task 4) — named addressing + push-to-create + id-pinning ───
 //
 // `run402::acme/my-notes` is SLUG-form (neither half looks id-shaped —

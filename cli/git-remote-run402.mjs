@@ -82,8 +82,15 @@
  *     which and why (see `chooseGitvaultHeadTargetForPush`). A HEALTHY HEAD
  *     (one that already names a ref this push leaves present) is NEVER
  *     touched — push moving history never means push moving HEAD.
- *   - `option dry-run` is `unsupported`: this helper cannot rehearse a
- *     publication, and reporting a fake success would be worse than refusing.
+ *   - `option dry-run true` (kychee-com/run402#565) runs the REAL local
+ *     pipeline — pack building, encryption sizing, via `vault.planPush` — and
+ *     reports the per-ref `ok` lines a real push would, plus a stderr summary
+ *     (objects, encrypted bytes, refs, the generation it would admit as,
+ *     whether allocation would be needed). It never uploads or admits, and a
+ *     push-to-create dry run never allocates. Still honestly refuses
+ *     anything git's own dry-run negotiation would also refuse (e.g. a
+ *     non-fast-forward update) — reporting a fake `ok` would be worse than
+ *     refusing, which is why this was `unsupported` until it could be real.
  *   - `fetch` and `push` REQUIRE the `GIT_DIR` git sets when it drives a
  *     helper against a repository, so running this binary by hand from a shell
  *     is refused rather than silently pointed at the current directory. Only
@@ -297,6 +304,11 @@ async function main(argv) {
   const addressForm = gitvaultRemoteAddressForm(address);
   const target = { project_id: address.project_id, org_id: address.org_id };
   let verbosity = 1;
+  // kychee-com/run402#565: `option dry-run true` used to be honestly
+  // `unsupported` (this helper could not rehearse a publication, and
+  // reporting a fake success would be worse than refusing). It now IS
+  // real — see `handleOption`'s `dry-run` case and `runPush` below.
+  let dryRun = false;
 
   /**
    * The repository git invoked us for, resolved once and PROVEN.
@@ -457,6 +469,52 @@ async function main(argv) {
           ? null
           : (await hardenedGit(repoDir, ["rev-parse", "--verify", "--end-of-options", spec.src])).text().trim());
       }
+
+      if (dryRun) {
+        // kychee-com/run402#565: READ-ONLY resolution — `openVault`, never
+        // `openOrCreateVault` — so a push-to-create dry run allocates
+        // NOTHING. An unresolved vault means there is nothing to preview a
+        // push against yet (no repo_id ⇒ no encryption key ⇒ sizing is
+        // genuinely unknowable, not merely unreported); still report success
+        // per-ref, since a real push here WOULD succeed (it would allocate
+        // first) — only the sizing is unavailable.
+        let vault;
+        try {
+          vault = await openVault(repoDir);
+        } catch (err) {
+          if (!isVaultNotFound(err)) throw err;
+          note("dry-run: no vault allocated for this project yet — a real push would allocate one (push-to-create) before publishing; object/byte sizing is not knowable until then");
+          for (const spec of specs) out(`ok ${spec.dst}`);
+          endBlock();
+          return 0;
+        }
+        const base = await vault.materialize();
+        const updates = [];
+        for (const spec of specs) {
+          const expectedOld = base.refs?.[spec.dst] ?? null;
+          updates.push({
+            ref: spec.dst,
+            expected_old_oid: expectedOld,
+            new_oid: newOids.get(spec),
+            force: spec.force && expectedOld !== null,
+          });
+        }
+        // Same evaluation, pack building, and sealing/encryption a real push
+        // runs — stops before the two network mutations (upload, admit). A
+        // refusal here (non-fast-forward, tag immutability, ...) throws the
+        // SAME way a real push's would, caught below and reported as
+        // `error`, never a fake `ok`.
+        const plan = await vault.planPush({ transaction: { updates } });
+        note(
+          `dry-run: would publish generation ${plan.would_admit_generation} (${plan.would_admit_generation_decimal}, ${plan.form}) — ` +
+          `${plan.object_count} object(s), ${plan.encrypted_bytes} encrypted byte(s) (${plan.raw_bytes} raw), ` +
+          `${Object.keys(plan.refs).length} ref(s); no allocation needed`,
+        );
+        for (const spec of specs) out(`ok ${spec.dst}`);
+        endBlock();
+        return 0;
+      }
+
       const vault = await openOrCreateVault(repoDir);
       const base = await vault.materialize();
       const updates = [];
@@ -522,8 +580,17 @@ async function main(argv) {
         // whichever way git asked for it.
         out("ok");
         return;
+      case "dry-run":
+        // kychee-com/run402#565: a REAL dry run — `runPush` runs the actual
+        // local pipeline (pack building, encryption sizing) and stops before
+        // the two network mutations. `value` is git's own boolean spelling
+        // ("true"/"false"); anything else is refused rather than guessed.
+        if (value === "true") { dryRun = true; out("ok"); return; }
+        if (value === "false") { dryRun = false; out("ok"); return; }
+        out("unsupported");
+        return;
       default:
-        // Includes dry-run, object-format, depth, cloning, check-connectivity,
+        // Includes object-format, depth, cloning, check-connectivity,
         // followtags, pushcert: honestly unsupported rather than acknowledged.
         out("unsupported");
     }
