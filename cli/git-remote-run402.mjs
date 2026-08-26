@@ -71,7 +71,7 @@
  *   - `push` never changes the vault's HEAD target; the SDK carries it forward.
  *     A fresh vault defaults to `refs/heads/main`, so a first push of some
  *     other branch leaves HEAD naming a ref that does not exist yet. Use
- *     `run402 gitvault push`, which sets the HEAD target from the local HEAD.
+ *     `run402 gitvault snapshot`, which sets the HEAD target from the local HEAD.
  *   - `option dry-run` is `unsupported`: this helper cannot rehearse a
  *     publication, and reporting a fake success would be worse than refusing.
  *   - `fetch` and `push` REQUIRE the `GIT_DIR` git sets when it drives a

@@ -870,7 +870,7 @@ export class Gitvault {
     // nothing; pointing at it here sent users to a command that silently did
     // not do what this line promised (dogfood #1, finding A).
     if (!record) nextActions.push({ action: "allocate the project's vault", command: "run402 gitvault init" });
-    else if (pending.length > 0) nextActions.push({ action: `complete ${pending.length} unvaulted-override journal(s)`, command: "run402 gitvault push" });
+    else if (pending.length > 0) nextActions.push({ action: `complete ${pending.length} unvaulted-override journal(s)`, command: "run402 gitvault snapshot" });
     else if (record && !holdsRepoKey) nextActions.push({ action: "this machine holds no key for the vault — allocate resolves to the existing vault and is idempotent", command: "run402 gitvault init" });
 
     return {

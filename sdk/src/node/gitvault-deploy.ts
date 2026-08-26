@@ -392,7 +392,7 @@ export async function runGitvaultDeploy(options: GitvaultDeployOptions): Promise
   if (!pub) {
     const push_error = summarize(pushError);
     if (!planned) {
-      return { ...common, outcome: "DEPLOY_FAILED_UNVAULTED", push_error, deploy_error: summarize(planError), next_actions: [{ action: "fix the build, then redeploy" }, { action: "retry the push (run402 gitvault push)" }] };
+      return { ...common, outcome: "DEPLOY_FAILED_UNVAULTED", push_error, deploy_error: summarize(planError), next_actions: [{ action: "fix the build, then redeploy" }, { action: "retry the push (run402 gitvault snapshot)" }] };
     }
     if (options.allow_unvaulted) {
       // Correspondence is checked BEFORE the journal is written: an override
@@ -415,7 +415,7 @@ export async function runGitvaultDeploy(options: GitvaultDeployOptions): Promise
           rmSync(overrideJournalPath(vault.keystore, planned.operation_id), { force: true }); // nothing activated; no advisory to drain
           throw e;
         }
-        return { ...common, outcome: "DEPLOY_FAILED_UNVAULTED", push_error, deploy_error: summarize(e), next_actions: [{ action: "retry the push (run402 gitvault push) — the override journal is kept and will drain" }, { action: "retry the deploy" }] };
+        return { ...common, outcome: "DEPLOY_FAILED_UNVAULTED", push_error, deploy_error: summarize(e), next_actions: [{ action: "retry the push (run402 gitvault snapshot) — the override journal is kept and will drain" }, { action: "retry the deploy" }] };
       }
       return { ...common, outcome: "DEPLOYED_UNVAULTED_OVERRIDE", push_error, override_journal: journal, commit, next_actions: [{ action: "run any run402 CLI command later: the override journal drains by pushing this exact snapshot and presenting its capture receipt for completion" }] };
     }

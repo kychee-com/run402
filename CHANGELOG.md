@@ -42,6 +42,16 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   otherwise resolves, the same way an explicit flag already outranks it for
   every other gitvault verb. The scoped `run402 gitvault doctor` / source-scan
   suppression half of #566 is still open.
+- **Docs: the stale `gitvault push` primary spelling left behind by the 4.37.0
+  rename to `snapshot`.** `run402 gitvault --help`'s Examples block still
+  taught `gitvault push --message "..."` as if it were the current form; it
+  now teaches `snapshot`, with one line noting `push` survives as a
+  deprecation-warning alias for this release only. The few remaining
+  `next_actions.command` strings that told a user or agent to literally run
+  `run402 gitvault push` (the unvaulted-override drain hint, both
+  `DEPLOY_FAILED_UNVAULTED` retry hints) now say `snapshot` too — those are
+  machine-actionable suggestions, not narrative, so recommending a
+  soon-to-be-removed alias was the more consequential staleness.
 
 - **Fix: `git-remote-run402` never resolved a wallet — a bound checkout's very
   next `git push` used the wrong wallet's allowance (kychee-com/run402#558).**

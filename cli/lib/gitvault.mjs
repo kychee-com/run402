@@ -159,10 +159,12 @@ Terminal loss (protocol §0):
 Examples:
   run402 gitvault init
   run402 gitvault status --refs
-  run402 gitvault push --message "wip: refactor the parser"
+  run402 gitvault snapshot --message "wip: refactor the parser"
   run402 gitvault policy grandfathered --reason "migrating CI to a vaulted client"
   run402 gitvault verify --budget 500
   run402 gitvault prune --project prj_1a2b3c
+  # \`gitvault push\` still works as a deprecation-warning alias for \`snapshot\`
+  # for one release; it will be removed next release.
 `;
 
 /**
