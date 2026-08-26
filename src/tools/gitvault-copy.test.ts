@@ -2,8 +2,9 @@
  * The gitvault copy gate.
  *
  * gitvault's claims are NORMATIVE, not descriptive: the approved sentences come
- * from the protocol's own claims line (docs/strategy/products/gitvault/
- * threat-model.md §1) and the banned ones from its banned-copy list (§8). Each
+ * from the protocol's own claims line (docs/gitvault/threat-model.md §1 — the
+ * vendored mirror of the private working draft) and the banned ones from its
+ * banned-copy list (§8). Each
  * banned phrase is banned because it OVERCLAIMS — it promises a property the
  * system does not have — so a paraphrase that reads better is a regression, not
  * an edit. Copy may shorten only by omitting a whole clause, never by rewording
@@ -283,6 +284,55 @@ describe("gitvault copy — the approved claims, byte-for-byte", () => {
     assert.ok(
       GITVAULT_SRC.includes(SCOPED_CONFIDENTIALITY),
       "the scoped sentence is the ONLY permitted form of the ciphertext claim",
+    );
+  });
+});
+
+/**
+ * The vendored protocol docs (docs/gitvault/) are byte-identical mirrors of the
+ * private working drafts — the SOURCE of the claims vocabulary, not derivative
+ * copy. They are deliberately NOT in DOC_SURFACES: the threat model quotes the
+ * banned phrases on purpose (its §8 banned-copy table), so the banned-phrase
+ * scan would false-positive on them. What CAN rot is the mirror itself — a
+ * protocol revision in the private repo that forgets to re-sync this copy. So:
+ * pin the mirror against the same constants this gate enforces everywhere else,
+ * and pin its revision to the vendored vector set's.
+ */
+describe("gitvault copy — the vendored protocol docs stay in sync", () => {
+  const THREAT_MODEL = normalize(read("../../docs/gitvault/threat-model.md"));
+  const PROTOCOL_HEAD = read("../../docs/gitvault/protocol-v0.md").split("\n", 1)[0];
+
+  it("the vendored threat model states all three claims verbatim", () => {
+    for (const claim of [CLAIM_CONFIDENTIALITY, CLAIM_ACTIVATION, CLAIM_RETENTION]) {
+      assert.ok(
+        THREAT_MODEL.includes(normalize(claim)),
+        `docs/gitvault/threat-model.md no longer carries the claim "${claim}" — the mirror has drifted from the constants in this gate (or vice versa); re-sync from the private working draft and update BOTH in the same commit`,
+      );
+    }
+  });
+
+  it("the vendored threat model carries the qualified sentences", () => {
+    for (const sentence of [TERMINAL_LOSS, KEYSTORE_QUALIFIED_DURABILITY, SCOPED_CONFIDENTIALITY]) {
+      assert.ok(
+        THREAT_MODEL.includes(normalize(sentence)),
+        `docs/gitvault/threat-model.md no longer carries "${sentence}" — mirror and gate constants must change together`,
+      );
+    }
+  });
+
+  it("the vendored threat model still lists every banned phrase in its banned-copy table", () => {
+    // The banned list's authority is the threat model; if a phrase leaves the
+    // mirror, this gate is enforcing a rule its stated source no longer states.
+    for (const phrase of BANNED_PHRASES.slice(0, 3)) {
+      assert.ok(THREAT_MODEL.includes(phrase), `"${phrase}" is missing from the mirror's banned-copy table`);
+    }
+  });
+
+  it("the vendored protocol's revision matches the vendored vector set's", () => {
+    const vectors = JSON.parse(read("../../test-vectors/r402s-v0/vectors.json")) as { "x-r402s-revision": string };
+    assert.ok(
+      PROTOCOL_HEAD.includes(`rev ${vectors["x-r402s-revision"]}`),
+      `docs/gitvault/protocol-v0.md's title line ("${PROTOCOL_HEAD}") does not carry rev ${vectors["x-r402s-revision"]} — one of the two vendored sets was re-synced without the other`,
     );
   });
 });
