@@ -91,6 +91,20 @@ export const GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT =
   "The remaining paths are the platform's custodial restore of deployed artifacts (the deploy lane's CAS) and org/infra recovery; " +
   "a recovery receipt authenticates a genesis — it cannot decrypt anything.";
 
+/**
+ * gitvault-mirror-and-recover (design D8) — the two honesty statements. Both
+ * appear VERBATIM wherever mirror status or recovery success is shown (mirror
+ * `status`/`sync`, `recover`, keyless `mirror verify`), same voice and
+ * mechanism as {@link GITVAULT_TERMINAL_LOSS_STATEMENT} above. Never
+ * paraphrased — the §6.4 honesty posture is a reviewed product commitment.
+ */
+export const GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT =
+  "this recovery proves validity, never freshness — a mirror (or the vault itself) can only tell you the newest generation it happens to hold, never that a newer one does not exist elsewhere" as const;
+
+/** The mirror does not change the V0 terminal-loss sentence: it is durability, not a second key. */
+export const GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT =
+  "a mirror without the principal keystore (or an equivalent key) recovers nothing — mirroring ciphertext does not create a second key, and the V0 terminal-loss sentence is unchanged" as const;
+
 const FRAME_NONCE_BYTES = 24;
 const FRAME_HEADER_BYTES = 6 + 1 + FRAME_NONCE_BYTES;
 const AEAD_TAG_BYTES = 16;
