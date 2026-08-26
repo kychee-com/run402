@@ -272,6 +272,25 @@ export const COMMAND_MANIFEST = [
   { path: ["gitvault", "prune"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "materializes the live vault head to enumerate retention roots" },
   { path: ["gitvault", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain against the keystore's authenticated pin" },
 
+  // ── gitvault mirror (gitvault-mirror-and-recover) ────────────────────────
+  // The customer-owned ciphertext mirror — client-side only, never a server
+  // call except `sync` (lists the live vault's objects) and `status`/`verify`
+  // (a keyless read against the mirror + one live vault-record read). All
+  // five need a real keystore + (for anything but `remove`) a configured
+  // mirror destination, so — same as the gitvault family above — the gate
+  // runs structural checks only.
+  { path: ["gitvault", "mirror", "set"], positionals: [p("destination")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket"], runStyle: "sub", skipBehavioral: "writes mirror destination config beside the keystore (client-side only)" },
+  { path: ["gitvault", "mirror", "remove"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "removes mirror destination config beside the keystore (client-side only)" },
+  { path: ["gitvault", "mirror", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the configured mirror + the live vault record's newest_generation" },
+  { path: ["gitvault", "mirror", "sync"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "lists the live vault's stored objects and reconciles them against the configured mirror" },
+  { path: ["gitvault", "mirror", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "keyless discovery + chain verification against the configured mirror; touches no key material" },
+
+  // ── gitvault recover (gitvault-mirror-and-recover, design D4) ────────────
+  // `r402s-recover`: offline, no server call at all — reads only from the
+  // mirror source named on the command line. Not project-scoped (the source
+  // URL, not the active project, addresses the vault to recover).
+  { path: ["gitvault", "recover"], positionals: [p("source")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket", "--out", "__SCRATCH_DIR__/recover-out"], runStyle: "sub", skipBehavioral: "materializes a git repository from a mirror source, offline, with no server call" },
+
   // ── repos (vault-only porcelain, repo-first-onramp D8, task 2.6) ────────
   // `create` writes real git state into cwd and allocates a vault; `list`
   // and `delete` read/mutate the live gitvault record — same structural-

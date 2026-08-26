@@ -16,7 +16,8 @@
  *
  * Run these from inside the git working tree: `repo_dir` is `process.cwd()`.
  */
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { resolveProjectId } from "./config.mjs";
 import { resolveOwningOrgId } from "./org-context.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
@@ -47,6 +48,14 @@ Usage:
   run402 gitvault prune    [--project <id>] [--repo <repo_id>]
                            [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
   run402 gitvault verify   [--project <id>] [--repo <repo_id>] [--budget <n>]
+  run402 gitvault mirror set <destination> [--profile <name> | --ambient]
+                           [--region <r>] [--endpoint <url>] [--project <id>] [--repo <repo_id>]
+  run402 gitvault mirror remove   [--project <id>] [--repo <repo_id>]
+  run402 gitvault mirror status   [--project <id>] [--repo <repo_id>]
+  run402 gitvault mirror sync     [--project <id>] [--repo <repo_id>]
+  run402 gitvault mirror verify   [--project <id>] [--repo <repo_id>]
+  run402 gitvault recover <source> --out <dir> [--repo <repo_id>]
+                           [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]
 
 Subcommands:
   init      ALLOCATE the project's vault. This is the one step that mints key
@@ -94,6 +103,23 @@ Subcommands:
   verify    Verify the head chain from the authenticated pin up to the newest
             listed generation. Fails closed on a regression, a gap, or a
             transition descriptor this client cannot validate.
+  mirror    The exit ramp (gitvault-mirror-and-recover): a client-side,
+            customer-owned ciphertext mirror. run402 never holds a
+            credential to it. \`set\` configures the destination (config
+            lives beside the keystore, never in run402.config.json, never a
+            raw secret); \`remove\` drops the config only — it NEVER touches
+            the mirror's own bytes; \`status\` reports whether the mirror is
+            current against the live vault; \`sync\` lists+diffs+copies what
+            the mirror is missing (idempotent, resumable); \`verify\` is the
+            KEYLESS integrity probe — discovery + chain verification +
+            absence adjudication, never decryption. Every deploy/snapshot
+            dual-pushes to a configured mirror automatically; a mirror
+            failure NEVER blocks the deploy — it is reported as a separate
+            \`mirror_push\` field.
+  recover   \`r402s-recover\`: rebuild a working git repository straight from
+            a mirrored prefix, with NO SERVER INVOLVED. Proves this mirror's
+            validity, never freshness — read both honesty statements in the
+            output before relying on the result.
 
 Options:
   --project <id>    Project whose vault to act on (defaults to the active project)
@@ -144,6 +170,15 @@ Options:
                     prune: r402s-verify's \`verifier_receipt\` over that core.
   --wait            prune: poll the submitted intent until the control-plane-
                     signed completion appears, instead of returning immediately.
+  --profile <name>  mirror set / recover: the AWS credential profile name for an
+                    s3:// destination (read from ~/.aws/credentials at USE time —
+                    never stored). Mutually exclusive with --ambient.
+  --ambient         mirror set / recover: use the ambient AWS_ACCESS_KEY_ID /
+                    AWS_SECRET_ACCESS_KEY environment chain instead of a profile.
+  --region <r>      mirror set / recover: AWS region for an s3:// destination
+                    (defaults to AWS_REGION / AWS_DEFAULT_REGION).
+  --endpoint <url>  mirror set / recover: an S3-compatible endpoint override.
+  --out <dir>       recover: where to materialize the recovered repository.
   --json            No-op: stdout is already JSON.
 
 prune is TWO PHASES, because the protocol is:
@@ -182,6 +217,11 @@ Examples:
   run402 gitvault policy grandfathered --reason "migrating CI to a vaulted client"
   run402 gitvault verify --budget 500
   run402 gitvault prune --project prj_1a2b3c
+  run402 gitvault mirror set s3://acme-vault-mirror --profile acme
+  run402 gitvault mirror sync
+  run402 gitvault mirror status
+  run402 gitvault mirror verify
+  run402 gitvault recover s3://acme-vault-mirror --out ./restored
   # \`gitvault push\` still works as a deprecation-warning alias for \`snapshot\`
   # for one release; it will be removed next release.
 `;
@@ -671,6 +711,13 @@ async function snapshot(args) {
     const result = await getSdk().gitvault.push(opts);
     console.log(JSON.stringify(result, null, 2));
     console.error(`published generation ${result.generation} (${result.form})`);
+    // Design D6: the mirror result is reported BESIDE the vault outcome
+    // above, on its own line — a mirror failure never blocked the publish.
+    if (result.mirror_push?.outcome === "pushed") {
+      console.error(`mirror: pushed generation ${result.generation} (${result.mirror_push.summary?.objects_copied ?? 0} object(s) copied)`);
+    } else if (result.mirror_push?.outcome === "failed") {
+      console.error(`mirror: dual-push FAILED (deploy is unaffected) — ${result.mirror_push.error ?? "see mirror_push.summary.errors"}`);
+    }
   } catch (err) {
     reportSdkError(err);
   }
@@ -810,6 +857,223 @@ async function verify(args) {
   }
 }
 
+// ─── mirror (gitvault-mirror-and-recover) ─────────────────────────────────
+
+const LARGE_OUTPUT_THRESHOLD_BYTES = 100 * 1024;
+
+/**
+ * docs/agent-response-design.md's CLI pipe-contract row: stdout ALWAYS keeps
+ * the full JSON (never truncated), and when a result is large it is ALSO
+ * written to a private 0600 file with a one-line stderr breadcrumb naming the
+ * path. Best-effort — a spill failure never changes what the command reports.
+ */
+async function spillIfLarge(repoId, verb, payload) {
+  const json = JSON.stringify(payload, null, 2);
+  if (Buffer.byteLength(json, "utf8") <= LARGE_OUTPUT_THRESHOLD_BYTES) return;
+  try {
+    const { getGitvaultKeystoreRoot } = await import("#sdk/node");
+    const dir = join(getGitvaultKeystoreRoot(), "reports");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const path = join(dir, `${verb}-${repoId ?? "unknown"}-${Date.now()}.json`);
+    writeFileSync(path, json, { mode: 0o600 });
+    console.error(`(this result is large — the full JSON was also written to ${path})`);
+  } catch {
+    // best-effort only; stdout already carries the full result regardless
+  }
+}
+
+/** Design D8: both honesty statements, verbatim, wherever mirror status or recovery success is shown. */
+function printMirrorHonesty(result) {
+  if (result.validity_not_freshness) console.error(result.validity_not_freshness);
+  if (result.keystore_still_required) console.error(result.keystore_still_required);
+}
+
+function resolveMirrorCredential(a) {
+  const profile = flagValue(a, "--profile");
+  const ambient = a.includes("--ambient");
+  if (profile != null && ambient) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--profile and --ambient contradict each other.",
+      hint: "Pick one credential source for the s3:// destination.",
+    });
+  }
+  if (profile != null) return { kind: "profile", profile };
+  if (ambient) return { kind: "ambient" };
+  return undefined;
+}
+
+function formatMirrorDestination(destination) {
+  if (!destination) return "(none)";
+  return destination.kind === "s3" ? `s3://${destination.bucket}/${destination.prefix}` : destination.path;
+}
+
+async function mirrorSetCmd(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = [...COMMON_VALUE_FLAGS, "--profile", "--region", "--endpoint"];
+  assertKnownFlags(a, [...valueFlags, "--ambient", "--help", "-h"], valueFlags);
+  const [destination] = requirePositionalCount(a, valueFlags, {
+    min: 1, max: 1, command: "run402 gitvault mirror set <destination>",
+    missing: "Missing <destination>. Expected s3://<bucket>[/<prefix>] or a directory path.",
+  });
+  const credential = resolveMirrorCredential(a);
+  const region = flagValue(a, "--region");
+  const endpoint = flagValue(a, "--endpoint");
+  const target = await vaultTarget(a);
+  try {
+    const result = await getSdk().gitvault.mirrorSet({
+      ...target,
+      destination_url: destination,
+      ...(credential ? { credential } : {}),
+      ...(region != null ? { region } : {}),
+      ...(endpoint != null ? { endpoint } : {}),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    console.error(`mirror configured for ${result.repo_id} -> ${formatMirrorDestination(result.destination)}`);
+    console.error("run `run402 gitvault mirror sync` to backfill it now, then deploys will dual-push automatically.");
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function mirrorRemoveCmd(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 gitvault mirror remove", missing: "" });
+  const target = await vaultTarget(a);
+  try {
+    const result = await getSdk().gitvault.mirrorRemove(target);
+    console.log(JSON.stringify(result, null, 2));
+    console.error(
+      result.removed
+        ? `mirror config removed for ${result.repo_id} — the mirror's OWN bytes were not touched`
+        : `no mirror was configured for ${result.repo_id} — nothing to remove`,
+    );
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function mirrorStatusCmd(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 gitvault mirror status", missing: "" });
+  const target = await vaultTarget(a);
+  try {
+    const result = await getSdk().gitvault.mirrorStatus(target);
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.configured) {
+      console.error(`no mirror configured for ${result.repo_id}. Configure one: run402 gitvault mirror set <destination>`);
+    } else {
+      const currency = result.is_current === true ? "current" : result.is_current === false ? `STALE — ${result.closing_command}` : "unknown (mirror unreachable or vault unread)";
+      console.error(`mirror ${result.destination}: mirrored generation ${result.mirrored_generation ?? "(none)"}, vault newest ${result.newest_generation ?? "(none)"} — ${currency}`);
+    }
+    printMirrorHonesty(result);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function mirrorSyncCmd(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 gitvault mirror sync", missing: "" });
+  const target = await vaultTarget(a);
+  try {
+    const result = await getSdk().gitvault.mirrorSync(target);
+    console.log(JSON.stringify(result, null, 2));
+    await spillIfLarge(result.repo_id, "mirror-sync", result);
+    console.error(
+      `mirror sync for ${result.repo_id}: ${result.objects_copied} copied, ${result.objects_already_present} already present` +
+      `${result.objects_failed > 0 ? `, ${result.objects_failed} FAILED` : ""} (${result.bytes_copied} byte(s) copied this run).`,
+    );
+    for (const e of result.errors) console.error(`  failed: ${e.key} — ${e.error}`);
+    printMirrorHonesty(result);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function mirrorVerifyCmd(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 gitvault mirror verify", missing: "" });
+  const target = await vaultTarget(a);
+  try {
+    const result = await getSdk().gitvault.mirrorVerify(target);
+    console.log(JSON.stringify(result, null, 2));
+    await spillIfLarge(result.repo_id, "mirror-verify", result);
+    console.error(`mirror keyless verify for ${result.repo_id}: recoverable generation ${result.recovered_generation}${result.chain_break ? ` (chain break at ${result.chain_break.generation}: ${result.chain_break.reason})` : ""}.`);
+    if (result.data_loss_detected) {
+      console.error(`DATA LOSS DETECTED: ${result.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences.`);
+    }
+    printMirrorHonesty(result);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+async function mirror(args) {
+  const a = normalizeArgv(args);
+  if (!a[0] || hasHelp([a[0], ...a.slice(1)])) {
+    console.log(HELP);
+    process.exit(0);
+  }
+  const action = a[0];
+  const rest = a.slice(1);
+  switch (action) {
+    case "set": return mirrorSetCmd(rest);
+    case "remove": return mirrorRemoveCmd(rest);
+    case "status": return mirrorStatusCmd(rest);
+    case "sync": return mirrorSyncCmd(rest);
+    case "verify": return mirrorVerifyCmd(rest);
+    default:
+      failUnknownSubcommand("gitvault mirror", action, {
+        hint: "Run `run402 gitvault --help` for usage.",
+      });
+  }
+}
+
+async function recover(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--out", "--repo", "--profile", "--region", "--endpoint"];
+  assertKnownFlags(a, [...valueFlags, "--ambient", "--help", "-h"], valueFlags);
+  const [source] = requirePositionalCount(a, valueFlags, {
+    min: 1, max: 1, command: "run402 gitvault recover <source> --out <dir>",
+    missing: "Missing <source>. Expected s3://<bucket>[/<prefix>] or a directory path.",
+  });
+  const outDir = flagValue(a, "--out");
+  if (outDir == null) {
+    fail({
+      code: "BAD_USAGE",
+      message: "run402 gitvault recover needs --out <dir>.",
+      hint: "Where to materialize the recovered repository, e.g. --out ./restored",
+    });
+  }
+  const credential = resolveMirrorCredential(a);
+  const repoId = flagValue(a, "--repo");
+  const region = flagValue(a, "--region");
+  const endpoint = flagValue(a, "--endpoint");
+  try {
+    const result = await getSdk().gitvault.recover({
+      source, out_dir: outDir,
+      ...(repoId != null ? { repo_id: repoId } : {}),
+      ...(credential ? { credential } : {}),
+      ...(region != null ? { region } : {}),
+      ...(endpoint != null ? { endpoint } : {}),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    await spillIfLarge(result.repo_id, "recover", result);
+    console.error(`recovered generation ${result.recovered_generation} for ${result.repo_id} into ${outDir}` + (result.chain_break ? ` (chain break at ${result.chain_break.generation} — fell back to the newest fully-verified generation)` : "") + ".");
+    if (result.data_loss_detected) {
+      console.error(`DATA LOSS DETECTED: ${result.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences — see "absences" in the result above.`);
+    }
+    printMirrorHonesty(result);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 export async function run(sub, args) {
   const argv = Array.isArray(args) ? args : [];
   if (!sub || hasHelp([sub, ...argv])) {
@@ -852,6 +1116,14 @@ export async function run(sub, args) {
     }
     case "verify": {
       await verify(argv);
+      break;
+    }
+    case "mirror": {
+      await mirror(argv);
+      break;
+    }
+    case "recover": {
+      await recover(argv);
       break;
     }
     default:

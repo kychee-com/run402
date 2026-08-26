@@ -84,7 +84,7 @@ PLATFORM — everything else, and the things still finding a home
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
   cloud       Cloud portability archive export (archives create/download/status)
   archives    Inspect and verify portable project archives locally
-  gitvault    Host-blind encrypted Git remote (init/status/push/policy/compact/prune/verify)
+  gitvault    Host-blind encrypted Git remote (init/status/push/policy/compact/prune/verify/mirror/recover)
   buzz        Buzz human/community/agent control-plane workflows
   apps        Browse and manage the app marketplace
   ai          AI translation and moderation tools
