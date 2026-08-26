@@ -129,6 +129,11 @@ describe("run402 up — default apply composes the repo as a best-effort additio
     assert.equal(payload.result.project_id, PROJECT);
     // git init happened — this directory is now a repository.
     assert.equal(git(dir, ["rev-parse", "--is-inside-work-tree"]), "true");
+    // kychee-com/run402 second dogfood: `up`'s own git-init path must yield
+    // branch `main`, not git's own hardcoded default — the docs teach
+    // `git push origin main`, and a first push of any other branch leaves
+    // HEAD naming a ref that does not exist yet.
+    assert.equal(git(dir, ["symbolic-ref", "HEAD"]), "refs/heads/main");
     assert.ok(calls.find((c) => c.method === "up"), "the existing deploy flow still ran unchanged");
     assert.ok(calls.find((c) => c.method === "gitvault.scaffoldRemote"), "the remote was scaffolded after deploy");
     assert.ok(calls.find((c) => c.method === "gitvault.push"), "the first push ran after deploy");

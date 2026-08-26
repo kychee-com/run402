@@ -585,14 +585,31 @@ function looksLikeGitRemoteUrl(source) {
   return /^[a-z][a-z0-9+.-]*:\/\//i.test(source) || /^[^\s@]+@[^\s:]+:/.test(source);
 }
 
-/** `git init` only when `dir` is not a repository yet. Returns whether it did. */
+/**
+ * `git init` only when `dir` is not a repository yet. Returns whether it did.
+ *
+ * `-b main`, not whatever `init.defaultBranch` (or the pre-2.28 hardcoded
+ * `master`) happens to be — the docs teach `git push origin main`, and the
+ * gitvault remote helper's own dangling-HEAD hazard note (a first push of
+ * any OTHER branch leaves HEAD naming a ref that does not exist yet) is
+ * exactly what a mismatched default branch here would walk `up` straight
+ * into. `-b` needs git 2.28+ (2020); an older git falls back to the same
+ * result by a different route — `symbolic-ref` on a still-empty repository
+ * has no existing ref to disturb, so it is exactly as safe as `-b main`
+ * would have been. Mirrors `Gitvault.scaffoldRemote`'s identical fallback.
+ */
 async function gitInitIfNeeded(dir) {
   const { hardenedGit } = await import("#sdk/node");
   try {
     await hardenedGit(dir, ["rev-parse", "--git-dir"]);
     return false;
   } catch {
-    await hardenedGit(dir, ["init", "-q", "-b", "main", "."]);
+    try {
+      await hardenedGit(dir, ["init", "-q", "-b", "main", "."]);
+    } catch {
+      await hardenedGit(dir, ["init", "-q", "."]);
+      await hardenedGit(dir, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+    }
     return true;
   }
 }
