@@ -83,6 +83,7 @@
 
 import { createInterface } from "node:readline";
 import { getSdk } from "./lib/sdk.mjs";
+import { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } from "./lib/wallet-context.mjs";
 import { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } from "#sdk";
 import { hardenedGit, resolveGitInvocationRepo } from "#sdk/node";
 
@@ -91,19 +92,91 @@ const out = (line) => process.stdout.write(`${line}\n`);
 const endBlock = () => process.stdout.write("\n");
 const note = (line) => process.stderr.write(`git-remote-run402: ${line}\n`);
 
-/** Protocol lines are single-line: collapse anything that could break framing. */
-function oneLine(value) {
-  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
+/**
+ * Wallet selection (kychee-com/run402#558). Before this, this file called
+ * `getSdk()` directly and ran NO wallet selection at all — a `.run402.json`
+ * binding, and even the global `wallets use` default, silently never
+ * reached it; only the `RUN402_WALLET` env layer worked, so a bound
+ * checkout's very next `git push run402 main` after a correctly-bound
+ * `run402 repos create` used the WRONG wallet's (usually empty) allowance.
+ *
+ * Shares `resolveWalletCore`/`enforceWalletExistsCore` with the CLI
+ * (`cli/lib/wallet-context.mjs`) — ONE implementation, minus the CLI's
+ * `--wallet` flag layer (this binary parses no argv flags at all). Resolved
+ * and applied (`process.env.RUN402_WALLET`) once per invocation, right
+ * before the first credential-touching call — never for `capabilities` /
+ * `option`, which touch neither credentials nor the network.
+ *
+ * WHICH DIRECTORY the binding walk starts from is NOT uniform, for the same
+ * fail-closed reason this file's own header explains for repository
+ * resolution: `list` needs no repository (a repository-free `git ls-remote`
+ * outside any checkout must keep working), so it walks from `process.cwd()`.
+ * `fetch`/`push` DO have a resolved repository by the time wallet selection
+ * runs (`requireRepo()` already succeeded) — walking from ITS directory
+ * rather than cwd is what makes `git clone` (cwd = wherever clone was RUN
+ * FROM, not the target repo) pick up a binding committed in the target
+ * repository, not whatever checkout happened to be current.
+ */
+let resolvedWallet = null;
+
+function applyWalletForDir(dir) {
+  const resolved = resolveWalletCore({ env: process.env, cwd: dir });
+  enforceWalletExistsCore(resolved);
+  process.env.RUN402_WALLET = resolved.name;
+  resolvedWallet = resolved;
+  return resolved;
+}
+
+/** The resolved wallet's selection source, in the same words the CLI's own `--wallet` provenance line uses. `null` for the bare, unselected default. */
+function walletSourceLabel(resolved) {
+  if (!resolved) return null;
+  if (resolved.source === "env") return "RUN402_WALLET";
+  if (resolved.source === "binding") return resolved.sourceDetail; // the .run402.json path
+  if (resolved.source === "config") return "wallets use";
+  return null; // "default" — nothing selected anything
+}
+
+/**
+ * The allowance-missing/malformed family (`core/src/allowance.ts`'s own
+ * throws) all end with "Back up the file and run 'run402 init' to recreate
+ * it." — a remedy that assumes the resolved wallet is the one you meant.
+ * That is only true when NOTHING selected a wallet (the bare default); when
+ * an env var or a binding DID name one, the remedy is actively harmful —
+ * `run402 init` recreates the DEFAULT wallet's allowance, a DIFFERENT
+ * wallet than the one that was actually resolved and whose allowance is
+ * actually missing/broken (kychee-com/run402#558's second defect). Replace
+ * it with the resolved wallet's name and how selection works, so the fix is
+ * "correct the selection" rather than "recreate the wrong wallet".
+ */
+function enrichAllowanceError(message) {
+  if (!resolvedWallet || !/allowance\.json/.test(message)) return message;
+  const source = walletSourceLabel(resolvedWallet);
+  const stripped = message.replace(/\s*Back up the file and run 'run402 init' to recreate it\.?/, "").trim();
+  if (!source) {
+    // Genuinely the bare default wallet with no override anywhere — the
+    // original remedy already names the right target.
+    return `${stripped} Back up the file and run 'run402 init' to recreate it.`;
+  }
+  return (
+    `${stripped} Resolved wallet '${resolvedWallet.name}' via ${source} ` +
+    "(order: RUN402_WALLET env > .run402.json binding > 'wallets use' default > default). " +
+    `Wrong wallet? Fix selection instead. Right wallet, just no allowance yet? 'run402 wallets new ${resolvedWallet.name}'.`
+  );
 }
 
 function describeError(err) {
   const code = err?.code ?? err?.body?.code ?? null;
-  const message = err?.message ?? err?.body?.message ?? String(err);
+  const message = enrichAllowanceError(err?.message ?? err?.body?.message ?? String(err));
   // SLUG_RELEASED is never auto-followed — but the successor slug (design D6)
   // is exactly the fact a human/agent reading stderr needs to act on it.
   const released = gitvaultSlugReleasedInfo(err);
   const suffix = released?.successor_slug ? ` (renamed to "${released.successor_slug}" — update the remote and re-run)` : "";
   return oneLine(code ? `${code}: ${message}${suffix}` : message);
+}
+
+/** Protocol lines are single-line: collapse anything that could break framing. */
+function oneLine(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
 }
 
 /**
@@ -234,6 +307,10 @@ async function main(argv) {
   }
 
   async function runList() {
+    // `list` needs no repository (a repository-free `git ls-remote` outside
+    // any checkout must keep working) — the binding walk falls back to cwd,
+    // same as `capabilities`/`option`'s repository-free tier.
+    applyWalletForDir(process.cwd());
     let state;
     try {
       state = await (await openVault()).materialize();
@@ -274,6 +351,10 @@ async function main(argv) {
       repoRefusalNote(err);
       return 1;
     }
+    // The repository is resolved — walk the binding from ITS directory, not
+    // cwd (the "WHICH REPOSITORY" note above: during `git clone` cwd is
+    // wherever clone was run FROM, unrelated to the target repository).
+    applyWalletForDir(repoDir);
     if (verbosity >= 1) note(`restoring the vault object database for ${batch.length} ref(s) into ${repoDir}`);
     const restored = await getSdk().gitvault.restore({ ...target, repo_dir: repoDir, target_dir: repoDir });
     if (verbosity >= 1) note(`restored generation ${restored.generation}`);
@@ -288,6 +369,8 @@ async function main(argv) {
       // network: a push that names a ref this repository does not have must
       // fail locally rather than after opening the vault.
       const repoDir = await requireRepo();
+      // Same "walk from the resolved repository, not cwd" rule as `fetch`.
+      applyWalletForDir(repoDir);
       const newOids = new Map();
       for (const spec of specs) {
         // A deletion carries an empty <src>. Everything else is resolved by

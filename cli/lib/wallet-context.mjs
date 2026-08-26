@@ -111,9 +111,29 @@ export function findBinding(startDir) {
   return hit ? { wallet: hit.value, file: hit.file } : null;
 }
 
-function assertValidName(name, origin) {
+/**
+ * Thrown by the `*Core` functions below instead of calling `fail()` directly
+ * — carries the exact `{code, message, hint, details}` shape `fail()`
+ * expects, so a caller that CAN safely call `process.exit()` (the CLI, at
+ * the top of `cli.mjs`, before any protocol stream has started) does
+ * `fail(err)` verbatim, and a caller that CANNOT (`git-remote-run402` — see
+ * that file's own header: `process.exit()` mid-stream can truncate a
+ * pending stdout write on a pipe) catches it and reports through its own
+ * non-exiting error path instead.
+ */
+export class WalletSelectionError extends Error {
+  constructor({ code, message, hint, details }) {
+    super(message);
+    this.name = "WalletSelectionError";
+    this.code = code;
+    this.hint = hint;
+    this.details = details;
+  }
+}
+
+function assertValidNameCore(name, origin) {
   if (name === DEFAULT || isValidProfileName(name)) return;
-  fail({
+  throw new WalletSelectionError({
     code: "BAD_WALLET_NAME",
     message: `Invalid wallet name ${JSON.stringify(name)} (from ${origin}).`,
     hint: "Wallet names must match /^[a-z0-9][a-z0-9_-]{0,63}$/ (lowercase letters, digits, '_' and '-').",
@@ -121,13 +141,44 @@ function assertValidName(name, origin) {
   });
 }
 
-/** Pure precedence resolution + conflict detection. Returns { name, source, sourceDetail }. */
-export function resolveWallet({ walletFlag, env = {}, cwd = process.cwd(), cmd } = {}) {
+function assertValidName(name, origin) {
+  try {
+    assertValidNameCore(name, origin);
+  } catch (err) {
+    if (err instanceof WalletSelectionError) fail(err);
+    throw err;
+  }
+}
+
+/**
+ * Pure precedence resolution + conflict detection — no flag layer, never
+ * prompts, never calls `fail()`/`process.exit()`. Returns
+ * `{ name, source, sourceDetail }` or throws {@link WalletSelectionError}.
+ *
+ * Shared verbatim by `resolveWallet` below (the CLI wrapper: `--wallet` flag
+ * layered on top, failures routed through `fail()`) AND by
+ * `git-remote-run402` (no flag layer — the helper has no argv flags at all
+ * — failures routed through its own protocol-safe error reporting). This is
+ * THE fix for kychee-com/run402#558: before it, `git-remote-run402` called
+ * `getSdk()` directly and ran no wallet selection at all, so a `.run402.json`
+ * binding — and even the global `wallets use` default — silently never
+ * reached it; only the `RUN402_WALLET` env layer worked.
+ *
+ * Precedence beneath an optional flag (highest first): `RUN402_WALLET` /
+ * `RUN402_PROFILE` env > nearest `.run402.local.json`/`.run402.json` binding
+ * (walked from `cwd`, which callers choose deliberately — see this file's
+ * own module doc and `git-remote-run402`'s "WHICH REPOSITORY" note: the
+ * binding walk must start from the REPOSITORY directory when one is
+ * resolvable, cwd only for repository-free commands) > `wallets use` global
+ * default > `"default"`. env-vs-binding disagreement is a hard error unless
+ * `cmd` is conflict-exempt (`wallets`) — same rule for every caller.
+ */
+export function resolveWalletCore({ walletFlag, env = {}, cwd = process.cwd(), cmd } = {}) {
   if (walletFlag) {
     if (walletFlag.value === undefined || walletFlag.value === "") {
-      fail({ code: "BAD_FLAG", message: `${walletFlag.flag} requires a value`, details: { flag: walletFlag.flag } });
+      throw new WalletSelectionError({ code: "BAD_FLAG", message: `${walletFlag.flag} requires a value`, details: { flag: walletFlag.flag } });
     }
-    assertValidName(walletFlag.value, walletFlag.flag);
+    assertValidNameCore(walletFlag.value, walletFlag.flag);
     return { name: walletFlag.value, source: "flag", sourceDetail: walletFlag.flag };
   }
 
@@ -136,7 +187,7 @@ export function resolveWallet({ walletFlag, env = {}, cwd = process.cwd(), cmd }
   const binding = findBinding(cwd);
 
   if (envName && binding && envName !== binding.wallet && !CONFLICT_EXEMPT.has(cmd)) {
-    fail({
+    throw new WalletSelectionError({
       code: "WALLET_SELECTION_CONFLICT",
       message: `Ambiguous wallet: RUN402_WALLET=${envName} but ${binding.file} selects '${binding.wallet}'.`,
       hint: "Resolve with one of: pass --wallet <name>, unset RUN402_WALLET, or run402 wallets unbind.",
@@ -145,11 +196,11 @@ export function resolveWallet({ walletFlag, env = {}, cwd = process.cwd(), cmd }
   }
 
   if (envName) {
-    assertValidName(envName, "RUN402_WALLET");
+    assertValidNameCore(envName, "RUN402_WALLET");
     return { name: envName, source: "env", sourceDetail: "RUN402_WALLET" };
   }
   if (binding) {
-    assertValidName(binding.wallet, binding.file);
+    assertValidNameCore(binding.wallet, binding.file);
     return { name: binding.wallet, source: "binding", sourceDetail: binding.file };
   }
   const def = getDefaultWallet();
@@ -157,24 +208,49 @@ export function resolveWallet({ walletFlag, env = {}, cwd = process.cwd(), cmd }
   return { name: DEFAULT, source: "default", sourceDetail: null };
 }
 
+/** CLI wrapper over {@link resolveWalletCore}: identical resolution, `fail()` on error. */
+export function resolveWallet(opts) {
+  try {
+    return resolveWalletCore(opts);
+  } catch (err) {
+    if (err instanceof WalletSelectionError) fail(err);
+    throw err;
+  }
+}
+
 function looksLikeAddress(s) {
   return typeof s === "string" && /^0x[a-fA-F0-9]{40}$/.test(s);
 }
 
-/** Fail closed when a non-default selection names a wallet that does not exist locally. */
-export function enforceWalletExists({ name, source }, cmd) {
+/**
+ * Fail-closed check that a non-default, non-exempt selection names a wallet
+ * that actually exists locally — pure, throws {@link WalletSelectionError}.
+ * `cmd` is `undefined` for a non-CLI caller (`git-remote-run402`), which
+ * matches neither `EXISTENCE_EXEMPT` entry, so the check always runs there.
+ */
+export function enforceWalletExistsCore({ name, source }, cmd) {
   if (name === DEFAULT) return;
   if (EXISTENCE_EXEMPT.has(cmd)) return;
   if (profileExists(name)) return;
   const hint = looksLikeAddress(name)
     ? `'${name}' looks like an address. For billing use: run402 billing ... --wallet-address ${name}`
     : `Run 'run402 wallets list' to see wallets, or 'run402 wallets new ${name}' to create it.`;
-  fail({
+  throw new WalletSelectionError({
     code: "WALLET_NOT_FOUND",
     message: `No local wallet named '${name}'.`,
     hint,
     details: { wallet: name, source },
   });
+}
+
+/** CLI wrapper over {@link enforceWalletExistsCore}: identical check, `fail()` on error. */
+export function enforceWalletExists(resolved, cmd) {
+  try {
+    enforceWalletExistsCore(resolved, cmd);
+  } catch (err) {
+    if (err instanceof WalletSelectionError) fail(err);
+    throw err;
+  }
 }
 
 function shortAddr(a) {

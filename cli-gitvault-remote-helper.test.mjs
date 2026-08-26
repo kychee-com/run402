@@ -491,3 +491,151 @@ describe("git-remote-run402 — D6 slug-form push-to-create wiring", () => {
     });
   });
 });
+
+// ─── wallet selection (kychee-com/run402#558) ────────────────────────────
+//
+// Before this fix, `git-remote-run402` called `getSdk()` directly and ran no
+// wallet selection at all — a `.run402.json` binding, and even the global
+// `wallets use` default, silently never reached it; only `RUN402_WALLET`
+// worked. These drive the REAL binary hermetically (`RUN402_API_BASE` is the
+// closed DEAD_API port from the top of this file) by giving the resolved
+// wallet a deliberately MALFORMED allowance.json (present, but missing a
+// valid `address`) — `core/src/allowance.ts#readAllowance`'s own throw fires
+// BEFORE any network dispatch (SIWX auth headers are computed ahead of the
+// fetch), so the resolved wallet's name surfaces in stderr without ever
+// touching the dead port. `list` is used throughout: it needs no repository,
+// so the binding walk falls back to cwd exactly as `capabilities`/`option`'s
+// tier does — the same "repository-free command" class the CLI's own
+// resolution documents.
+
+/** A profile directory holding ONLY a deliberately malformed allowance.json
+ * (valid JSON object, but missing a valid `address`) — `profileExists()`
+ * still reports it present (existence only checks the file's presence, not
+ * its shape), so wallet SELECTION succeeds and the malformed-shape THROW
+ * happens only once credentials are actually read. */
+function writeMalformedWalletProfile(configDir, name) {
+  const dir = name === "default" ? configDir : join(configDir, "profiles", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "allowance.json"), JSON.stringify({ notAnAddress: true }));
+}
+
+function setGlobalDefaultWallet(configDir, name) {
+  writeFileSync(join(configDir, "config.json"), JSON.stringify({ active_wallet: name }));
+}
+
+function writeBindingFile(dir, patch) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, ".run402.json"), JSON.stringify(patch));
+}
+
+describe("git-remote-run402 — wallet selection (kychee-com/run402#558)", () => {
+  it("a .run402.json binding is honored — the resolved wallet's own (malformed) allowance surfaces, not the default's silence", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-wallet-binding-")));
+    try {
+      const configDir = mkdtempSync(join(tmpdir(), "run402-gvh-cfg-"));
+      writeMalformedWalletProfile(configDir, "bound-wallet");
+      writeBindingFile(root, { wallet: "bound-wallet" });
+
+      const r = await runHelperAsync({
+        cwd: root,
+        env: { GIT_DIR: undefined, RUN402_CONFIG_DIR: configDir },
+        stdin: "capabilities\n\nlist\n\n",
+      });
+      assert.match(r.stderr, /bound-wallet/, `binding must be honored, not silently ignored: ${r.stdout}\n---\n${r.stderr}`);
+      assert.match(r.stderr, /allowance\.json/, r.stderr);
+      // Never reached the dead port — the malformed-shape throw fires before
+      // any fetch dispatch, so this is provably a selection/credential
+      // problem, not a coincidental network failure that also mentions the name.
+      assert.doesNotMatch(r.stderr, /ECONNREFUSED|127\.0\.0\.1:9/, r.stderr);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("RUN402_WALLET env disagreeing with a .run402.json binding is a hard WALLET_SELECTION_CONFLICT — same rule the CLI enforces", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-wallet-conflict-")));
+    try {
+      const configDir = mkdtempSync(join(tmpdir(), "run402-gvh-cfg-"));
+      writeMalformedWalletProfile(configDir, "env-wallet");
+      writeMalformedWalletProfile(configDir, "binding-wallet");
+      writeBindingFile(root, { wallet: "binding-wallet" });
+
+      const r = await runHelperAsync({
+        cwd: root,
+        env: { GIT_DIR: undefined, RUN402_CONFIG_DIR: configDir, RUN402_WALLET: "env-wallet" },
+        stdin: "capabilities\n\nlist\n\n",
+      });
+      assert.match(r.stderr, /WALLET_SELECTION_CONFLICT/, `${r.stdout}\n---\n${r.stderr}`);
+      // Names BOTH candidates, exactly like wallet-context.mjs#resolveWalletCore's
+      // message for the CLI — one shared implementation, not a re-derived copy.
+      assert.match(r.stderr, /RUN402_WALLET=env-wallet/, r.stderr);
+      assert.match(r.stderr, /selects 'binding-wallet'/, r.stderr);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("the global 'wallets use' default is honored when no env and no binding select a wallet", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-wallet-default-")));
+    try {
+      const configDir = mkdtempSync(join(tmpdir(), "run402-gvh-cfg-"));
+      writeMalformedWalletProfile(configDir, "global-default-wallet");
+      setGlobalDefaultWallet(configDir, "global-default-wallet");
+
+      const r = await runHelperAsync({
+        cwd: root,
+        env: { GIT_DIR: undefined, RUN402_CONFIG_DIR: configDir },
+        stdin: "capabilities\n\nlist\n\n",
+      });
+      assert.match(r.stderr, /global-default-wallet/, `${r.stdout}\n---\n${r.stderr}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("the allowance-missing remedy names the resolved wallet/profile and how selection works, instead of blindly suggesting 'run402 init'", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-wallet-remedy-")));
+    try {
+      const configDir = mkdtempSync(join(tmpdir(), "run402-gvh-cfg-"));
+      writeMalformedWalletProfile(configDir, "platform-deploy");
+      writeBindingFile(root, { wallet: "platform-deploy" });
+
+      const r = await runHelperAsync({
+        cwd: root,
+        env: { GIT_DIR: undefined, RUN402_CONFIG_DIR: configDir },
+        stdin: "capabilities\n\nlist\n\n",
+      });
+      // Names WHICH wallet was resolved...
+      assert.match(r.stderr, /Resolved wallet 'platform-deploy'/, r.stderr);
+      // ...and HOW selection works (env/binding/wallets use), naming the binding file specifically.
+      assert.match(r.stderr, /via .*\.run402\.json/, r.stderr);
+      assert.match(r.stderr, /RUN402_WALLET env/, r.stderr);
+      assert.match(r.stderr, /wallets use/, r.stderr);
+      // The harmful part of the original remedy: run402 init would recreate
+      // the DEFAULT wallet's allowance, not this one. It must not be offered
+      // as the (sole, unqualified) fix when a binding/env picked a NAMED wallet.
+      assert.doesNotMatch(r.stderr, /^git-remote-run402:.*run402 init.*$/m, r.stderr);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("a genuinely unselected default wallet keeps the original 'run402 init' remedy — no binding/env means it IS the right fix", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-wallet-plain-default-")));
+    try {
+      const configDir = mkdtempSync(join(tmpdir(), "run402-gvh-cfg-"));
+      // Malformed DEFAULT allowance, nothing selecting any other wallet.
+      writeMalformedWalletProfile(configDir, "default");
+
+      const r = await runHelperAsync({
+        cwd: root,
+        env: { GIT_DIR: undefined, RUN402_CONFIG_DIR: configDir },
+        stdin: "capabilities\n\nlist\n\n",
+      });
+      assert.match(r.stderr, /run402 init/, r.stderr);
+      assert.doesNotMatch(r.stderr, /Resolved wallet/, "no override selected anything — nothing to name");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
