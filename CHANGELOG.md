@@ -4,6 +4,67 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **Fix: `git-remote-run402` never resolved a wallet — a bound checkout's very
+  next `git push` used the wrong wallet's allowance (kychee-com/run402#558).**
+  Before this, the remote helper called `getSdk()` directly and ran no wallet
+  selection at all: a `.run402.json` binding, and even the global
+  `wallets use` default, silently never reached it, and only `RUN402_WALLET`
+  env worked. It now shares ONE implementation with the CLI
+  (`resolveWalletCore`/`enforceWalletExistsCore` in `cli/lib/wallet-context.mjs`)
+  — same precedence, same env-vs-binding conflict rule, minus the `--wallet`
+  flag layer the helper has no argv for. The binding walk starts from the
+  REPOSITORY directory (not `process.cwd()`) for `git push`/`fetch`, since
+  `git clone`'s cwd is wherever clone was run from; `list` stays
+  repository-free like `capabilities`/`option`. The allowance-missing remedy
+  also stopped blindly suggesting `run402 init` (which recreates the DEFAULT
+  wallet, not necessarily the one that was resolved) — it now names the
+  resolved wallet and how it was selected, and only points at `init` when the
+  bare default really was the unselected fallback.
+- **Fix: `repos create` provisioned a project and correctly set it active, but
+  every later "active project" read still resolved a stale one
+  (kychee-com/run402#559a).** Root cause: `core/src/keystore.ts`'s
+  `getActiveProjectId`/`setActiveProjectId` — what `resolveProjectId`,
+  `projects current`, and every gitvault-verb target resolution read through
+  — called the profile-state layer with an EMPTY scope, which resolves to a
+  fixed "unknown"-principal bucket shared by every wallet in a profile. The
+  SDK's `NodeCredentialsProvider` (what `projects.provision`/`projects.use`
+  actually write through) scopes by the wallet's real address. Once that
+  "unknown" bucket was EVER populated by any principal-less write (the
+  one-time legacy `projects.json` migration, or any provision/`use` call made
+  before a wallet existed), it permanently shadowed every later
+  correctly-scoped activation for every CLI-facing reader — the write always
+  worked; only the read was looking in the wrong bucket. Both sides now derive
+  the same principal from the current wallet's allowance.
+- **Fix: gitvault verbs (and `run402 doctor`) ignored the repository they were
+  standing in, targeting a stale active project instead
+  (kychee-com/run402#559b/c/d).** `run402 gitvault status|snapshot|policy|
+  compact|prune|verify` and `run402 doctor` now resolve their target, highest
+  first: an explicit `--repo`/`--project` flag > the 4.38.0 id-pin
+  (`git config r402.repoId`) > the repo's own `run402`/`origin` remote
+  (id-form parsed for free; slug-form resolved via one read-only SDK call) >
+  `RUN402_PROJECT_ID` > the active project. A mismatch between an explicit
+  flag and the repo's own remote prints a one-line stderr warning naming
+  both, then still honors the flag. New shared resolver:
+  `cli/lib/gitvault-target.mjs`. Also fixed: `gitvault status`'s `remote`
+  field checked only a remote literally named `run402`, so the common case —
+  D1's own scaffold claims `origin` first — reported `remote: null` even
+  though the remote was right there; it now checks both conventional names.
+- **Fix: `repos create` on an org with no slug returned `address: null` with
+  no pointer to why, or to the named-addressing feature at all
+  (kychee-com/run402#560).** The response now carries a typed `next_actions`
+  entry — `{ type: "claim_org_slug", command: "run402 org slug <slug>", why }`
+  when the org has no slug, or `{ type: "claim_repo_name", command: "run402
+  repos name <name> --project <id>", why }` when it does but this project's
+  own name claim didn't land — plus a matching one-line stderr note.
+- **Fix: a fresh repository from `repos create`, `run402 up`, or `gitvault
+  init --git-remote` could come up on branch `master` instead of `main`,
+  depending on this machine's own git defaults, contradicting the
+  `git push origin main` every doc surface teaches (and the dangling-HEAD
+  hazard `git-remote-run402`'s own header already warns a non-main first push
+  into.** `git init` now always requests `-b main` explicitly, falling back to
+  `init` + `symbolic-ref HEAD refs/heads/main` on git older than 2.28.
+  Existing repositories are never touched.
+
 - **New: named repo addressing (repo-first-onramp, Rung 3, design D6).**
   `run402::<org-slug>/<name>` (e.g. `run402::acme/my-notes`) works alongside
   the existing `run402::<org_id>/<prj_id>` id-form address in the same

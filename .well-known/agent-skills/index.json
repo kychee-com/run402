@@ -5,8 +5,8 @@
       "name": "run402",
       "type": "skill-md",
       "description": "Provision Postgres + REST API + auth + content-addressed storage + serverless functions + email — paid with x402 USDC on Base. Prototype tier is free on testnet. Use when the user asks to build a webapp, deploy a site, create a database, generate images, or mentions Run402.",
-      "url": "https://run402.com/skills/run402/f4920cae1edeb2c43471d16c10bdb55a79bcefc3be45d1124503064ef028e65c/SKILL.md",
-      "digest": "sha256:f4920cae1edeb2c43471d16c10bdb55a79bcefc3be45d1124503064ef028e65c"
+      "url": "https://run402.com/skills/run402/c1a5891164188010fa91691fe5745f6187fe0d8c906586290ffaef8d1acb22cf/SKILL.md",
+      "digest": "sha256:c1a5891164188010fa91691fe5745f6187fe0d8c906586290ffaef8d1acb22cf"
     },
     {
       "name": "run402-buzz",
