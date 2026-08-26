@@ -1210,8 +1210,14 @@ What an escalation is not: it is never mirrored into the events feed or echoed i
 - `run402 gitvault compact [--project <id>] [--repo <repo_id>]`
 - `run402 gitvault prune [--project <id>] [--repo <repo_id>] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]`
 - `run402 gitvault verify [--project <id>] [--repo <repo_id>] [--budget <n>]`
+- `run402 gitvault mirror set <destination> [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault mirror remove [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault mirror status [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault mirror sync [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault mirror verify [--project <id>] [--repo <repo_id>]`
+- `run402 gitvault recover <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]`
 
-Run these from inside the git working tree — the repository is `process.cwd()`.
+Run these from inside the git working tree — the repository is `process.cwd()`. `recover` is the one exception: it never touches the current directory's git state and does not need to run inside a repository at all — see "Mirror your vault to your own storage" below.
 
 **`gitvault push` is now `gitvault snapshot`** (repo-first-onramp design D5). One verb per operation: `push` used to mean two different things — the capture lane, and `git push`. Now `push` means exactly one thing everywhere — an ordinary `git push` — and the capture lane is `snapshot`. `run402 gitvault push` still works as a deprecation-warning alias for exactly one release (it prints the warning to stderr and calls `snapshot` underneath), then is removed.
 
@@ -1224,6 +1230,8 @@ Run these from inside the git working tree — the repository is `process.cwd()`
 | `compact` | Publish a checkpoint covering the canonical refs, every root unexpired at the cutoff, and the HEAD target, under a maintenance lease so a concurrent cycle cannot race it. |
 | `prune` | Two-phase, because the protocol is: plans locally by default (chain walk + GC root set, prints a signed `intent_core`, deletes nothing), submits only with `--submit --intent-core <path> --verifier-receipt <path>` — see below. |
 | `verify` | Verify the head chain from the authenticated pin up to the newest listed generation. Fails closed on a regression, a gap, or a transition descriptor this client cannot validate. |
+| `mirror set / remove / status / sync / verify` | Configure and drive a client-side, customer-owned ciphertext mirror of this vault (an S3 bucket or a local directory) — the exit ramp. See "Mirror your vault to your own storage" below. |
+| `recover` | Rebuild a working git repository straight from a mirrored prefix, with no server involved. See "Mirror your vault to your own storage" below. |
 
 **Options.** `--project <id>` picks the project whose vault to act on (defaults to the active project, and `RUN402_PROJECT_ID` is honoured the same way it is everywhere else); `--repo <repo_id>` addresses the vault directly by id, skipping project lookup — the cold-restart path for an agent that knows its `repo_id` and has no local state. `--org <org_id>` names the owning organization for `init` (resolved from the project when omitted); `--git-remote` lets `init` `git init` a directory that is not a repository yet, and `--no-remote` allocates the vault while touching no git configuration at all. `--reason <why>` records why a `policy` change happened and is required for `grandfathered`. `--refs` makes `status` materialize and report the ref map; `--human` renders `status` as a five/six-line summary instead. `--message <text>` is the commit message for the synthetic commit a dirty tree produces on `snapshot` (a clean tree publishes HEAD itself and uses no message); `--checkpoint` forces the checkpoint-bearing form regardless of delta size; `--dry-run` previews `snapshot` without publishing. `--budget <n>` caps how many heads `verify` checks in one call — the verified prefix is persisted, so a budget-exceeded run resumes where it stopped instead of restarting. `--submit`, `--intent-core <path>`, `--verifier-receipt <path>`, and `--wait` belong to `prune`'s submit phase — see below. `--json` is a no-op: stdout is already JSON. Per the pipe contract, every human line (progress, the terminal-loss statement, advisories) goes to stderr, so `run402 gitvault status | jq` stays clean.
 
@@ -1328,6 +1336,46 @@ Redeploy — the next run captures the tree as it is now. The client deliberatel
 **Cost.** There is no separate gitvault price. A vault's bytes count against the same organization-pooled `storage_bytes` budget your projects already share, charged once per unique object, with a 64 KiB per-object accounting floor.
 
 **Verify it without trusting this client.** `r402s-verify` is an independent-lineage verifier for the same protocol — a separate language, separate authorship, and a separate primitive stack, deliberately sharing no implementation code with the SDK. That non-sharing is the point: a differential verifier that reuses the code it is checking verifies nothing.
+
+**Mirror your vault to your own storage — the exit ramp (gitvault-mirror-and-recover).** Everything above proves Run402 cannot read your source. It says nothing about what happens if Run402 itself is unreachable — an outage, a dispute, a company that stops existing. `run402 gitvault mirror` is the answer: a second, **customer-owned** copy of your vault's ciphertext, in an S3 bucket or a local (or network-mounted) directory you control, kept current automatically every time you publish. Run402 never holds a credential to it — the destination and credential *name* live in a config file beside the keystore (`<keystore root>/mirrors/<repo_id>.json`), never in `run402.config.json`, and never containing a raw secret: an S3 credential is an AWS profile name (`--profile <name>`, resolved from `~/.aws/credentials` at USE time, never stored) or the ambient environment chain (`--ambient`). `<destination>`/`<source>` is `s3://<bucket>[/<prefix>]` or a plain directory path.
+
+| Subcommand | What it does |
+|---|---|
+| `mirror set <destination>` | Configure (or replace) the mirror destination for this vault. An `s3://` destination needs `--profile` or `--ambient`; a directory needs neither. |
+| `mirror remove` | Drop the config only — it **never** touches the mirror's own bytes. Re-`set` the same destination later and `sync` resumes exactly where it left off. |
+| `mirror status` | What this machine and the mirror each believe: whether one is configured, the newest generation the mirror holds and can chain-verify (keyless), the live vault's newest generation (one network read), and — when they disagree — the closing command. |
+| `mirror sync` | List the vault's stored objects, diff against the mirror by key + size, fetch + hash-verify + write everything missing, in strict admission order. Idempotent and resumable — running it twice with nothing new copies nothing the second time. |
+| `mirror verify` | The KEYLESS integrity probe against the configured mirror: discovery + chain verification + absence adjudication, reporting the recoverable generation. No key material is touched and nothing is decrypted — this is the cheap way to know what the mirror could recover *right now*. |
+| `recover <source> --out <dir>` | `r402s-recover`: rebuild a working git repository straight from a mirrored `source/<repo_id>/` prefix, with **no server involved** — see "Recovering with no server, no gateway" below. |
+
+**Every publish dual-pushes to a configured mirror automatically, and a mirror failure never blocks your deploy.** Once a mirror is set, `run402 gitvault snapshot` (and `git push`) publishes to the vault exactly as before, then pushes the same generation to the mirror — reported as a separate `mirror_push` field beside the vault result, never folded into it. A mirror outage, a bad credential, a full disk: none of it can fail, slow, or block the actual publish. On success you get `mirror: pushed generation … (N object(s) copied)` on stderr; on failure, `mirror: dual-push FAILED (deploy is unaffected) — <reason>` — and the vault push stands either way. Catch up later with `run402 gitvault mirror sync`, which is exactly the same incremental, idempotent write the dual-push hook itself runs.
+
+**Why admission order matters.** `mirror sync` writes every plain object first (any order among themselves — nothing depends on another), then writes each generation's admission record and head, strictly ascending, admission always immediately before its head. That ordering means an interruption at any point — the dual-push hook killed mid-publish, a `sync` cut off — leaves the mirror in one of exactly two shapes, both completely valid: either no admission/head has landed at all (an inert, harmless state), or every generation below some K is fully written and K itself has at most its admission record without its head — which recovery reads simply as "the mirror's newest generation is K-1," an ordinary and expected state, never corruption.
+
+**A `skipped_foreign_recipient` entry in a sync summary is expected, not a problem.** A multi-recipient vault wraps its epoch key separately for each org member, and the recipient-only read gate means your mirror can only ever hold the key envelopes addressed to *your own* identity. `mirror sync` classifies another member's envelope this way before it even attempts a network read for it — never counted toward `objects_failed`, and never what turns an otherwise-clean sync into a reported failure. Each skipped key is named in `skipped_foreign_recipient_keys`, so you can always tell "expected skip" from "silent gap" without cross-referencing anything else.
+
+**Recovering with no server, no gateway.** `run402 gitvault recover <source> --out <dir>` needs nothing but the mirror and your own keystore: it lists the mirror, walks and verifies the head chain from genesis, decrypts with the local keystore's key, and materializes a working git repository — no request to the run402 gateway at any point. That is a structural fact, not a policy choice: `recover` and `mirror verify` never construct an API client at all, the same way `RUN402_API_BASE` pointed at a dead port still succeeds in the drill this feature ships with. A source that mirrors more than one vault needs `--repo <repo_id>` to disambiguate. A torn or truncated mirror falls back to the newest generation it can still fully verify (`chain_break: null` when nothing further was ever synced there — not evidence of a problem); an object a head references but the mirror does not hold is named, not silently dropped — see `absences[]` and `data_loss_detected` in the result.
+
+Every `mirror status`, `mirror sync`, `mirror verify`, and `recover` result carries two fixed statements, verbatim, every time — read both before you rely on a mirror for anything:
+
+> this recovery proves validity, never freshness — a mirror (or the vault itself) can only tell you the newest generation it happens to hold, never that a newer one does not exist elsewhere
+
+> a mirror without the principal keystore (or an equivalent key) recovers nothing — mirroring ciphertext does not create a second key, and the V0 terminal-loss sentence is unchanged
+
+The first means an offline recovery that looks current only proves what it *saw* — it cannot distinguish a genuinely short history from a stale one it simply hasn't caught up to. The second means the mirror is durability for the ciphertext, not a second way in: it changes nothing about "Terminal loss" above. Whole-keystore loss is still terminal for vault history until human envelopes ship, and a mirror with no surviving keystore behind it recovers exactly nothing.
+
+```bash
+run402 gitvault mirror set s3://acme-vault-mirror --profile acme --region us-east-1
+run402 gitvault mirror sync                    # backfill everything published so far
+run402 gitvault mirror status                  # is the mirror current against the live vault?
+run402 gitvault mirror verify                  # keyless: what generation could this mirror recover, right now?
+run402 gitvault snapshot                        # ordinary publish — dual-pushes to the mirror from here on
+
+# later, with no run402 credentials and no network access to the gateway:
+run402 gitvault recover s3://acme-vault-mirror --out ./restored --repo src_1a2b3c
+```
+
+**CLI/SDK only — no MCP tool for this family.** `mirror set`/`remove`/`sync` mutate local config or move real bytes into a customer-owned bucket, the same "mutating verbs are CLI-only" law that keeps `gitvault`'s own `init`/`snapshot`/`compact`/`prune` off MCP. `mirror status`/`mirror verify` and `recover` are read-only in effect and could get MCP tools later, but ship CLI-only for v1 rather than splitting a six-verb family on day one.
 
 ### errors — grouped fingerprints + a promote/revert verdict
 

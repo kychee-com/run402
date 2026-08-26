@@ -4,6 +4,38 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **New: `run402 gitvault mirror set|remove|status|sync|verify` and `run402 gitvault recover` — the exit ramp (gitvault-mirror-and-recover).**
+  A second, customer-owned copy of a vault's ciphertext, in an S3 bucket or
+  a plain (or network-mounted) directory. `mirror set <destination>
+  [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]` writes
+  the destination and a credential *name* to a config file beside the
+  keystore (`<keystore root>/mirrors/<repo_id>.json`) — never in
+  `run402.config.json`, never a raw secret; run402 never holds a credential
+  to it. Once configured, every `snapshot`/`push` dual-pushes to the mirror
+  automatically, reported as a separate `mirror_push` field beside the vault
+  result on stderr; a mirror failure (outage, bad credential, full disk)
+  never blocks, slows, or changes the actual vault publish. `mirror sync`
+  lists the vault's objects, diffs by key + size, and fetches + hash-verifies
+  + writes what's missing in strict admission order — idempotent and
+  resumable, and an interruption at any point leaves the mirror in an
+  earlier, fully valid generation, never a torn one. A `key_envelope`
+  addressed to a different org member is classified `skipped_foreign_recipient`
+  — expected on a multi-recipient vault, never counted as a failure.
+  `mirror status` reports whether the mirror is current against the live
+  vault; `mirror verify` is a KEYLESS integrity probe (discovery + chain
+  verification + absence adjudication, no key material touched) reporting
+  the recoverable generation. `mirror remove` drops the config only — it
+  never touches the mirror's own bytes. `run402 gitvault recover <source>
+  --out <dir>` rebuilds a working git repository straight from a mirrored
+  prefix with **no server involved** — `recover` and `mirror verify`
+  structurally never construct an API client. Every mirror status/sync/verify
+  and recover result carries two fixed statements verbatim: recovery proves
+  *validity, never freshness* (a mirror can only report the newest generation
+  it happens to hold, never that a newer one doesn't exist elsewhere), and a
+  mirror without the principal keystore recovers nothing — mirroring
+  ciphertext does not create a second key, so V0's terminal-loss posture is
+  unchanged. CLI/SDK/OpenClaw only, `mcp: null` for the whole family, same
+  "mutating verbs are CLI-only" law as the rest of `gitvault`.
 - **Fix: `run402 assets *` and `run402 cdn wait-fresh` read the wrong project
   env var — `RUN402_PROJECT`, not the canonical `RUN402_PROJECT_ID` every
   other project-scoped command reads.** Exporting `RUN402_PROJECT_ID` (the
