@@ -27,12 +27,53 @@ import { fail } from "./sdk-errors.mjs";
 import { normalizeArgv, assertKnownFlags, flagValue } from "./argparse.mjs";
 
 /** Value-taking flags (kychee-com/run402#566 — the flag set doctor actually parses; anything else is BAD_USAGE via assertKnownFlags, never silently ignored). */
-const DOCTOR_VALUE_FLAGS = ["--scan-dir", "--buzz-agent", "--project"];
+const DOCTOR_VALUE_FLAGS = ["--scan-dir", "--buzz-agent", "--project", "--only"];
+
+/**
+ * The stable, complete registry of ordinary-mode check names (kychee-com/run402#566,
+ * the remaining half). One entry per `checks.push({ name: ... })` call below,
+ * in the order each check normally runs. This is the ONE place `--only`
+ * validates its argument against and the ONE place its help text is derived
+ * from, so a check can never be selectable-but-undocumented or
+ * documented-but-unselectable.
+ *
+ * Deliberately excludes buzz mode's own check names (`session_shell`,
+ * `node_runtime`, …) — buzz mode is a wholly separate report shape that
+ * returns before this array is ever consulted; see the `--only`/`--buzz`
+ * mutual-exclusion check in `run()`.
+ */
+const DOCTOR_CHECK_NAMES = [
+  "config_dir",
+  "cli_update",
+  "allowance",
+  "projects",
+  "api_reachable",
+  "tier",
+  "operator_health",
+  "runtime_staleness",
+  "gitvault",
+  "source_scan",
+];
+
+/** Every value passed to a repeatable flag, in argv order (mirrors the pattern in buzz-notifications.mjs). */
+function collectRepeatableFlag(args, flag) {
+  const values = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== flag) continue;
+    if (i + 1 >= args.length || (typeof args[i + 1] === "string" && args[i + 1].startsWith("--"))) {
+      fail({ code: "BAD_FLAG", message: `${flag} requires a value`, details: { flag } });
+    }
+    values.push(args[i + 1]);
+    i += 1;
+  }
+  return values;
+}
 
 const HELP = `run402 doctor — Health and config diagnostics
 
 Usage:
   run402 doctor [--verbose] [--refresh] [--no-scan] [--scan-dir <D>] [--project <id>]
+                [--only <check> ...]
   run402 --wallet <profile> doctor --buzz --buzz-agent <npub-or-hex>
 
 Output:
@@ -50,15 +91,28 @@ Options:
                  value, clearly labeled with its age — never a silent weeks-old
                  "latest" (kychee-com/run402#561). cli_update.value.cache always
                  reports fresh/age_ms/refresh_attempted/refresh_failed.
-  --no-scan      Skip the source-tree scan (config / health checks only)
+  --no-scan      Skip the source-tree scan (config / health checks only). Implied
+                 by any --only that omits source_scan.
   --scan-dir D   Scan a custom directory instead of \`<cwd>/src\`
   --project <id> Target THIS project's gitvault check instead of the repo-standing
                  default (the 4.38.0 pin / run402 remote / RUN402_PROJECT_ID / active
                  project, in that order — see \`gitvault-target.mjs\`). Scoped to the
                  gitvault check only; every other check is wallet/machine-wide, not
-                 per-project, and is unaffected by this flag.
+                 per-project, and is unaffected by this flag. Composes with --only.
+  --only <check> Run ONLY the named check (repeatable — pass it more than once
+                 to run several). Every other check, INCLUDING the monorepo
+                 source-tree scan, is suppressed rather than merely hidden: a
+                 skipped check's network/filesystem work never runs at all, so
+                 \`doctor --only gitvault\` costs one gitvault read, not a
+                 config/tier/operator/scan sweep. An unknown check name is
+                 BAD_USAGE listing the valid names below. Not used with --buzz
+                 (buzz mode is its own separate, always-complete check set).
   --buzz         Run only the zero-mutation Buzz setup preflight
   --buzz-agent P Bind Buzz mode to the intended public agent npub or hex key
+
+--only check names (ordinary mode; see "Checks performed" below for what each
+one reports):
+  ${DOCTOR_CHECK_NAMES.join(", ")}
 
 Any flag not listed above is rejected (BAD_USAGE / UNKNOWN_FLAG), never
 silently ignored.
@@ -148,6 +202,38 @@ export async function run(sub, args = []) {
   // wallet/machine-wide, not per-project.
   const projectOverride = flagValue(all, "--project");
 
+  // kychee-com/run402#566 (the remaining half): --only <check>, repeatable.
+  // Validated against the stable registry ABOVE the buzz early-return, so an
+  // unknown name is BAD_USAGE regardless of which mode was also requested —
+  // the same "every accepted flag must work or BAD_USAGE" bar #569 named for
+  // doctor's own --human bug.
+  const onlyChecks = collectRepeatableFlag(all, "--only");
+  for (const name of onlyChecks) {
+    if (!DOCTOR_CHECK_NAMES.includes(name)) {
+      fail({
+        code: "BAD_USAGE",
+        message: `Unknown doctor check: '${name}'.`,
+        hint: `Valid check names: ${DOCTOR_CHECK_NAMES.join(", ")}.`,
+        details: { check: name, known_checks: DOCTOR_CHECK_NAMES },
+      });
+    }
+  }
+  // Buzz mode is a wholly separate, always-complete report shape — an --only
+  // that named ordinary-mode checks would be silently ignored under --buzz,
+  // exactly the class of bug #569 flagged for --human. Reject the
+  // combination instead.
+  if (onlyChecks.length > 0 && all.includes("--buzz")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--only is not used with --buzz — buzz mode runs its own fixed, always-complete check set.",
+      hint: "Drop --buzz to scope the ordinary check set with --only, or drop --only to run every buzz check.",
+      details: { only: onlyChecks },
+    });
+  }
+  const only = new Set(onlyChecks);
+  /** `true` when `name` should run — every check when --only was not passed, otherwise exactly the named ones. */
+  const wanted = (name) => only.size === 0 || only.has(name);
+
   const buzzArgs = parseBuzzDoctorArgs(all);
   if (buzzArgs.error) fail(buzzArgs.error);
   if (buzzArgs.buzz) {
@@ -163,7 +249,7 @@ export async function run(sub, args = []) {
   const CONFIG_DIR = configDir();
 
   // 1. Config directory.
-  try {
+  if (wanted("config_dir")) try {
     if (existsSync(CONFIG_DIR) && statSync(CONFIG_DIR).isDirectory()) {
       checks.push({ name: "config_dir", status: "ok", value: CONFIG_DIR });
     } else {
@@ -184,7 +270,7 @@ export async function run(sub, args = []) {
 
   // 1b. CLI version/update state. This is advisory: stale or unknown version
   // state should help the user, not hide the rest of doctor.
-  try {
+  if (wanted("cli_update")) try {
     checks.push(await doctorUpdateCheck({ refresh }));
   } catch (err) {
     checks.push({
@@ -196,7 +282,7 @@ export async function run(sub, args = []) {
 
   // 2. Allowance.
   let allowanceConfigured = false;
-  try {
+  if (wanted("allowance")) try {
     const allowance = readAllowance();
     if (allowance) {
       allowanceConfigured = true;
@@ -231,7 +317,7 @@ export async function run(sub, args = []) {
   // service_key) that `run402 projects provision` writes. An empty store is
   // normal for fresh installs that haven't provisioned a project yet, so
   // report informationally as `ok` rather than warning.
-  try {
+  if (wanted("projects")) try {
     const keystore = loadKeyStore();
     const projectCount = Object.keys(keystore?.projects ?? {}).length;
     checks.push({
@@ -256,7 +342,7 @@ export async function run(sub, args = []) {
   }
 
   // 4. API base reachability.
-  try {
+  if (wanted("api_reachable")) try {
     const sdk = getSdk();
     // Use the service.status endpoint (read-only, unauthenticated).
     const t0 = Date.now();
@@ -277,7 +363,7 @@ export async function run(sub, args = []) {
   }
 
   // 5. Active tier.
-  try {
+  if (wanted("tier")) try {
     const sdk = getSdk();
     const tier = await sdk.tier.status();
     const tierName = tier?.tier ?? null;
@@ -320,7 +406,12 @@ export async function run(sub, args = []) {
   }
 
   // 6. Operator health snapshot (v1.55 + v1.56 verification attempt detail).
-  try {
+  // Both checks below ride the SAME operator-status read (runtime_staleness
+  // reuses the response operator_health already pulled), so the whole block
+  // is gated on wanting EITHER — --only runtime_staleness alone still needs
+  // this read, but --only-ing neither skips it entirely, same "don't do the work of a
+  // check nobody asked for" discipline the rest of --only follows.
+  if (wanted("operator_health") || wanted("runtime_staleness")) try {
     const sdk = getSdk();
     const status = await sdk.admin.getOperatorStatus();
     const gaps = [];
@@ -362,15 +453,17 @@ export async function run(sub, args = []) {
         gaps.push(`${item.kind}: ${item.detail}`);
       }
     }
-    if (gaps.length > 0) {
-      checks.push({
-        name: "operator_health",
-        status: "warning",
-        value: { gaps },
-        hint: "Address the above gaps; they're what 'run402 notifications' is designed to surface.",
-      });
-    } else {
-      checks.push({ name: "operator_health", status: "ok" });
+    if (wanted("operator_health")) {
+      if (gaps.length > 0) {
+        checks.push({
+          name: "operator_health",
+          status: "warning",
+          value: { gaps },
+          hint: "Address the above gaps; they're what 'run402 notifications' is designed to surface.",
+        });
+      } else {
+        checks.push({ name: "operator_health", status: "ok" });
+      }
     }
 
     // 6b. Function runtime staleness (v1.69, capability
@@ -380,45 +473,47 @@ export async function run(sub, args = []) {
     // NOT refresh it (apply's release diff keys on the source code_hash, not
     // the wrapper). Read-only signal; refreshing is strictly opt-in. Reuses
     // the operator status fetched above to avoid a second round-trip.
-    const runtime = status.runtime;
-    if (runtime && typeof runtime.stale_function_count === "number") {
-      if (runtime.stale_function_count > 0) {
-        checks.push({
-          name: "runtime_staleness",
-          status: "warning",
-          value: {
-            stale_function_count: runtime.stale_function_count,
-            stale_functions: runtime.stale_functions ?? [],
-          },
-          hint: `${runtime.stale_function_count} function(s) are running an older platform runtime. Run 'run402 functions rebuild --all' to refresh (re-bundles from your stored source; no source change).`,
-        });
+    if (wanted("runtime_staleness")) {
+      const runtime = status.runtime;
+      if (runtime && typeof runtime.stale_function_count === "number") {
+        if (runtime.stale_function_count > 0) {
+          checks.push({
+            name: "runtime_staleness",
+            status: "warning",
+            value: {
+              stale_function_count: runtime.stale_function_count,
+              stale_functions: runtime.stale_functions ?? [],
+            },
+            hint: `${runtime.stale_function_count} function(s) are running an older platform runtime. Run 'run402 functions rebuild --all' to refresh (re-bundles from your stored source; no source change).`,
+          });
+        } else {
+          checks.push({
+            name: "runtime_staleness",
+            status: "ok",
+            value: { stale_function_count: 0 },
+          });
+        }
       } else {
+        // Gateway older than v1.69 doesn't surface the runtime block.
         checks.push({
           name: "runtime_staleness",
-          status: "ok",
-          value: { stale_function_count: 0 },
+          status: "skipped",
+          ...(verbose && { hint: "operator status has no 'runtime' block; requires v1.69+ gateway." }),
         });
       }
-    } else {
-      // Gateway older than v1.69 doesn't surface the runtime block.
-      checks.push({
-        name: "runtime_staleness",
-        status: "skipped",
-        ...(verbose && { hint: "operator status has no 'runtime' block; requires v1.69+ gateway." }),
-      });
     }
   } catch (err) {
     // Operator status endpoint may not be reachable if the operator-binding
     // substrate isn't deployed yet on the target API. Don't fail the whole
     // doctor over it — emit as a soft warning. The runtime-staleness check
     // rides on the same fetch, so skip it for the same reason.
-    checks.push({
+    if (wanted("operator_health")) checks.push({
       name: "operator_health",
       status: "skipped",
       message: describeCheckFailure("operator status check", err),
       ...(verbose && { hint: "GET /agent/v1/operator/status not reachable; requires v1.55+ gateway." }),
     });
-    checks.push({
+    if (wanted("runtime_staleness")) checks.push({
       name: "runtime_staleness",
       status: "skipped",
       message: describeCheckFailure("operator status check", err),
@@ -446,7 +541,7 @@ export async function run(sub, args = []) {
   // follows (`gitvault-target.mjs`). An explicit `--project <id>` outranks
   // all of that (the resolver's own top tier), same as every other gitvault
   // verb's `--project`.
-  {
+  if (wanted("gitvault")) {
     const target = await resolveGitvaultTarget({ repoDir: process.cwd(), explicitProjectId: projectOverride ?? undefined });
     const projectId = target.project_id ?? null;
     const repoId = target.repo_id ?? null;
@@ -522,8 +617,10 @@ export async function run(sub, args = []) {
   // SDK names, state-changing GETs, auth.* in prerendered pages, and
   // direct mutation of internal.sessions.authz_version. Hits with severity
   // `error` block deploy (`run402 deploy` wraps doctor and respects exit
-  // code). Skipped via --no-scan when the user wants config-only checks.
-  if (!skipScan) {
+  // code). Skipped via --no-scan when the user wants config-only checks, and
+  // by any --only that omits it (kychee-com/run402#566 — this is the check
+  // that used to bury the gitvault diagnosis under ~1,800 monorepo findings).
+  if (!skipScan && wanted("source_scan")) {
     try {
       const scanRoot = scanDirOverride ?? resolveScanRoot(process.cwd());
       const findings = scanSourceTree(scanRoot, { cwd: process.cwd() });

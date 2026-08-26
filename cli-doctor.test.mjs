@@ -42,6 +42,8 @@ let stdout = [];
 let stderr = [];
 /** Every `/gitvault/v1/vaults?project_id=...` read the gitvault check made. */
 let gitvaultProjectReads = [];
+/** Every URL any check fetched this run, in order — used to prove --only skips the WORK of an unselected check, not just its output. */
+let allFetchUrls = [];
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -49,6 +51,7 @@ function json(data, status = 200) {
 
 async function mockFetch(input) {
   const url = typeof input === "string" ? input : String(input?.url ?? input);
+  allFetchUrls.push(url);
   if (url.includes("/gitvault/v1/vaults")) {
     const projectId = new URL(url).searchParams.get("project_id");
     gitvaultProjectReads.push(projectId);
@@ -66,6 +69,7 @@ function captureStart() {
   stdout = [];
   stderr = [];
   gitvaultProjectReads = [];
+  allFetchUrls = [];
   console.log = (...args) => stdout.push(args.map(String).join(" "));
   console.error = (...args) => stderr.push(args.map(String).join(" "));
 }
@@ -116,6 +120,29 @@ function firstJsonError(lines) {
 }
 
 describe("run402 doctor — unknown flags are BAD_USAGE, never silently ignored", () => {
+  // kychee-com/run402#569's bonus bug: 'run402 doctor --human' was accepted,
+  // silently ignored, and printed JSON anyway. Fixed as a side effect of
+  // #566's --project half (doctor now validates every flag it is handed) —
+  // pinned here directly so a regression on EITHER issue is caught.
+  it("--human is not a doctor flag — BAD_USAGE, never silently-ignored JSON (kychee-com/run402#569)", async () => {
+    captureStart();
+    let threw = null;
+    try {
+      await run("--human", ["--no-scan"]);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw, "--human must fail, not silently print the JSON report anyway");
+    const err = firstJsonError(stderr);
+    assert.ok(err, `expected a structured error envelope on stderr, got: ${stderr.join("\n")}`);
+    assert.equal(err.code, "UNKNOWN_FLAG");
+    assert.equal(err.details?.flag, "--human");
+    // The bug's own symptom: no JSON report snuck onto stdout regardless.
+    assert.equal(stdout.length, 0, `stdout must stay empty on a rejected flag, got: ${stdout.join("\n")}`);
+  });
+
   it("a made-up flag is rejected", async () => {
     captureStart();
     let threw = null;
@@ -191,5 +218,139 @@ describe("run402 doctor --project <id> — targets the gitvault check (kychee-co
     // targeting proof is which project_id was READ (asserted above), not
     // this check's status, but assert the report still shapes as expected.
     assert.ok(["skipped", "ok", "warning"].includes(gitvaultCheck.status));
+  });
+});
+
+// ─── --only <check> (kychee-com/run402#566, the remaining half) ──────────────
+//
+// Codex's exact ask was `--only gitvault`: it should run JUST the gitvault
+// check and suppress everything else — INCLUDING the source-tree scan that
+// buried the gitvault diagnosis under ~1,800 monorepo findings. Pinned here:
+// (1) the report contains exactly the named check(s), nothing else; (2) the
+// UNSELECTED checks' network work never runs at all (not merely hidden from
+// the report — a skipped check costs nothing); (3) an unknown name is
+// BAD_USAGE listing the valid registry; (4) --only composes with --project;
+// (5) --only is rejected together with --buzz.
+
+describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)", () => {
+  it("--only gitvault runs ONLY the gitvault check — report has exactly one check, named gitvault", async () => {
+    captureStart();
+    try {
+      await run("--only", ["gitvault"]);
+    } catch {
+      // process.exit(N) throws — tolerated
+    } finally {
+      captureStop();
+    }
+    const report = JSON.parse(stdout.join("\n"));
+    assert.deepEqual(report.checks.map((c) => c.name), ["gitvault"]);
+  });
+
+  it("--only gitvault suppresses the source-tree scan WITHOUT needing --no-scan", async () => {
+    captureStart();
+    try {
+      await run("--only", ["gitvault"]);
+    } catch {
+      // tolerated
+    } finally {
+      captureStop();
+    }
+    const report = JSON.parse(stdout.join("\n"));
+    assert.equal(report.checks.some((c) => c.name === "source_scan"), false);
+  });
+
+  it("--only gitvault does the WORK of only the gitvault check — no tier/api/operator fetch happened", async () => {
+    captureStart();
+    try {
+      await run("--only", ["gitvault"]);
+    } catch {
+      // tolerated
+    } finally {
+      captureStop();
+    }
+    // Exactly one network read: the gitvault vault lookup. Every other
+    // check's own fetch (service/status, tier/status, operator/status) must
+    // never have been attempted — --only skips the WORK, not just the output.
+    assert.equal(allFetchUrls.length, 1, `expected exactly one fetch; saw: ${JSON.stringify(allFetchUrls)}`);
+    assert.match(allFetchUrls[0], /\/gitvault\/v1\/vaults/);
+  });
+
+  it("--only is repeatable — --only config_dir --only allowance runs exactly those two, in registry order", async () => {
+    captureStart();
+    try {
+      await run("--only", ["config_dir", "--only", "allowance"]);
+    } catch {
+      // tolerated
+    } finally {
+      captureStop();
+    }
+    const report = JSON.parse(stdout.join("\n"));
+    assert.deepEqual(report.checks.map((c) => c.name), ["config_dir", "allowance"]);
+    assert.equal(allFetchUrls.length, 0, "neither config_dir nor allowance touches the network");
+  });
+
+  it("an unknown check name is BAD_USAGE, listing the valid registry", async () => {
+    captureStart();
+    let threw = null;
+    try {
+      await run("--only", ["not_a_real_check"]);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw, "an unknown --only name must fail, not silently run every check");
+    const err = firstJsonError(stderr);
+    assert.ok(err, `expected a structured error envelope on stderr, got: ${stderr.join("\n")}`);
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /not_a_real_check/);
+    assert.ok(Array.isArray(err.details?.known_checks) && err.details.known_checks.includes("gitvault"));
+    assert.match(err.hint ?? "", /gitvault/);
+  });
+
+  it("--only composes with --project: the gitvault check still targets the explicit project", async () => {
+    captureStart();
+    try {
+      await run("--only", ["gitvault", "--project", EXPLICIT_PROJECT]);
+    } catch {
+      // tolerated
+    } finally {
+      captureStop();
+    }
+    assert.deepEqual(gitvaultProjectReads, [EXPLICIT_PROJECT]);
+    const report = JSON.parse(stdout.join("\n"));
+    assert.deepEqual(report.checks.map((c) => c.name), ["gitvault"]);
+  });
+
+  it("--only is not used with --buzz — rejected as BAD_USAGE before buzz mode runs", async () => {
+    captureStart();
+    let threw = null;
+    try {
+      await run("--only", ["gitvault", "--buzz"]);
+    } catch (err) {
+      threw = err;
+    } finally {
+      captureStop();
+    }
+    assert.ok(threw, "--only combined with --buzz must fail");
+    const err = firstJsonError(stderr);
+    assert.ok(err, `expected a structured error envelope on stderr, got: ${stderr.join("\n")}`);
+    assert.equal(err.code, "BAD_USAGE");
+    assert.match(err.message, /--buzz/);
+    // Buzz mode never started — no "mode": "buzz" report on stdout.
+    assert.equal(stdout.join("\n").includes("\"mode\": \"buzz\""), false);
+  });
+
+  it("--only <check> ... is documented in --help, alongside the full registry", async () => {
+    captureStart();
+    try {
+      await run("--help", []);
+    } finally {
+      captureStop();
+    }
+    const help = stdout.join("\n");
+    assert.match(help, /--only <check>/);
+    assert.match(help, /gitvault/);
+    assert.match(help, /source_scan/);
   });
 });
