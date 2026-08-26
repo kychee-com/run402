@@ -1021,17 +1021,22 @@ async function mirror(args) {
   }
   const action = a[0];
   const rest = a.slice(1);
-  switch (action) {
-    case "set": return mirrorSetCmd(rest);
-    case "remove": return mirrorRemoveCmd(rest);
-    case "status": return mirrorStatusCmd(rest);
-    case "sync": return mirrorSyncCmd(rest);
-    case "verify": return mirrorVerifyCmd(rest);
-    default:
-      failUnknownSubcommand("gitvault mirror", action, {
-        hint: "Run `run402 gitvault --help` for usage.",
-      });
-  }
+  // Deliberately if/else, not a switch statement (`policy()`'s own
+  // precedent above): sync.test.ts's CLI-command scanner regexes switch
+  // labels FLATLY across the whole file with no nesting awareness, so a
+  // nested switch here would misattribute "set"/"remove"/"sync" as bogus
+  // top-level `gitvault:set` etc. commands. `gitvault mirror <action>` is
+  // ONE compound verb (SURFACE's `gitvault_mirror` row), not five leaf
+  // commands.
+  if (action === "set") return mirrorSetCmd(rest);
+  if (action === "remove") return mirrorRemoveCmd(rest);
+  if (action === "status") return mirrorStatusCmd(rest);
+  if (action === "sync") return mirrorSyncCmd(rest);
+  if (action === "verify") return mirrorVerifyCmd(rest);
+  failUnknownSubcommand("gitvault mirror", action, {
+    hint: "Run `run402 gitvault mirror --help` for usage.",
+    extraSubcommands: ["set", "remove", "status", "sync", "verify"],
+  });
 }
 
 async function recover(args) {

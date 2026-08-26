@@ -802,6 +802,22 @@ const SURFACE: Capability[] = [
   // implementation identity. There is still no purge verb.
   { id: "gitvault_prune",    endpoint: "POST /gitvault/v1/vaults/:vault_id/prune-intents",           mcp: null,                   cli: "gitvault:prune",    openclaw: "gitvault:prune" },
 
+  // ── gitvault mirror + recover (gitvault-mirror-and-recover, design D1/D4) ──
+  // MCP parity decision (design.md open question, resolved here per task
+  // 4.4): CLI/SDK-only, mcp: null, following the SAME "mutating verbs are
+  // CLI-only" law the gitvault family above already established — `mirror
+  // set`/`remove` write local config beside the keystore, `sync` moves real
+  // bytes into a customer-owned bucket, and `recover` is an offline drill an
+  // agent runs deliberately, not a mid-session read. `mirror status`/`verify`
+  // are read-only and COULD get MCP tools later on the same "reads are on
+  // MCP" precedent as gitvault_status/gitvault_heads above, but ship CLI-only
+  // for v1 rather than splitting a five-verb family on day one (the
+  // `repos`-family precedent just below takes the identical position).
+  { id: "gitvault_mirror",   endpoint: "GET /gitvault/v1/vaults/:vault_id/objects",                  mcp: null,                   cli: "gitvault:mirror",   openclaw: "gitvault:mirror" },
+  // `recover` is offline by design — NO server call at all (design D4), the
+  // same "(local)" shape as `expand_result` below.
+  { id: "gitvault_recover",  endpoint: "(local)",                                                    mcp: null,                   cli: "gitvault:recover",  openclaw: "gitvault:recover" },
+
   // ── repos (vault-only porcelain, repo-first-onramp D8, task 2.6) ────────
   // CLI + OpenClaw ONLY, `mcp: null` throughout — the operator family above
   // is the precedent. `create` mints a vault's one-shot recovery receipt and
@@ -863,6 +879,12 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   gitvault_snapshot: "gitvault.push",
   gitvault_push_alias: "gitvault.push",
   gitvault_compact: "gitvault.compact",
+  // `mirror` is a compound CLI verb (set/remove/status/sync/verify) that
+  // dispatches to five distinct SDK methods internally — same
+  // compound-flow shape as `up`/`init` above; see SDK_ONLY_METHODS for the
+  // individual mappings.
+  gitvault_mirror: null,
+  gitvault_recover: "gitvault.recover",
   // `repos` is porcelain over projects.provision + gitvault.init +
   // projects.delete + gitvault.status — no single SDK method of its own, the
   // same compound-flow shape as `up`/`init` above.
@@ -1617,6 +1639,16 @@ describe("SDK surface alignment", () => {
       // own, the same way `deploy apply --rehearse` is a mode of `deploy`
       // rather than a second capability.
       "gitvault.planPush",
+      // gitvault-mirror-and-recover: the five methods behind the compound
+      // `run402 gitvault mirror <action>` verb (`gitvault_mirror` maps to
+      // null in SDK_BY_CAPABILITY above, same "compound-flow" shape as
+      // `up`/`init`/`repos_*`) — each has its OWN CLI action, just not its
+      // own top-level SURFACE row.
+      "gitvault.mirrorSet",
+      "gitvault.mirrorRemove",
+      "gitvault.mirrorStatus",
+      "gitvault.mirrorSync",
+      "gitvault.mirrorVerify",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
       // shares the `run402 functions rebuild --all` CLI verb (and the
