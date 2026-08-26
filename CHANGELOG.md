@@ -179,6 +179,53 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   current: `cli_update.value.cache` always reports `fresh`, `age_ms`,
   `refresh_attempted`, and `refresh_failed`, and a stale fallback's `hint`
   names the estimate's age and why the live check failed.
+- **New: a REAL `git push --dry-run` against the encrypted remote
+  (kychee-com/run402#565).** `option dry-run` used to be honestly
+  `unsupported` — "refusing beats fake success" — but that left an
+  append-only, immutable-generation remote with no way to preview what a
+  push would do. `option dry-run true` now runs the actual local pipeline a
+  real push runs (evaluate the ref transaction, build packs, seal/encrypt)
+  and stops before the two network mutations (upload, admit), so the
+  objects, encrypted bytes, and the generation it would admit as are REAL
+  numbers, not estimates — computed by the new `GitvaultVault.planPush`
+  (`sdk/src/node/gitvault-publication.ts`) and its `Gitvault.planPush`
+  wrapper (`sdk/src/namespaces/gitvault.ts`), shared with `run402 gitvault
+  snapshot --dry-run` (same real preview, JSON report on stdout, nothing
+  published). A push-to-create dry run never allocates a vault that does not
+  exist yet — sizing is genuinely unknowable before the vault's encryption
+  key exists, so the report says `allocation_needed: true` rather than
+  guessing. Any refusal a real push would hit (non-fast-forward, tag
+  immutability, …) refuses the SAME way here, never a fake `ok`.
+- **New: `run402 gitvault status --human` — the five-line summary
+  (kychee-com/run402#569).** `status --refs` is an admission-debugging
+  protocol dump; the human question is five lines: address (named
+  `run402::<org-slug>/<name>` form when a slug-form pin resolved it, id
+  form otherwise) plus the local remote; HEAD target and ref count (composes
+  with `--refs`; without it the line names the omission rather than
+  guessing); generations in DECIMAL, not the wire's 16-hex-digit form;
+  storage bytes and object count (read from the SAME `status()` call — no
+  extra network read); and whether this machine can decrypt plus the
+  activation policy. Standing warnings, when present, are echoed EXACTLY as
+  the SDK reported them — including a tripped terminal-loss-risk warning,
+  verbatim, never reworded — as an optional sixth line. Explicit opt-in per
+  the cli-output-contract spec; rejected together with `--json`; plain
+  `status` is byte-identical to before. Also closes the bonus bug #569
+  flagged in the same class as #566: `run402 doctor --human` was accepted,
+  silently ignored, and printed JSON anyway — already fixed as a side effect
+  of #566's `--project` half (doctor now validates every flag), pinned here
+  with a dedicated regression test.
+- **New: `run402 doctor --only <check>` — scoped checks
+  (kychee-com/run402#566, the remaining half).** `--only gitvault` (Codex's
+  exact ask) runs JUST the gitvault check and suppresses every other one —
+  INCLUDING the source-tree scan that buried the gitvault diagnosis under
+  ~1,800 monorepo findings in the original dogfood report. Repeatable (pass
+  it more than once to run several); an unknown check name is `BAD_USAGE`
+  listing the valid registry (`run402 doctor --help`); composes with
+  `--project`, which still scopes only the gitvault check; rejected together
+  with `--buzz` (a wholly separate, always-complete check set) rather than
+  silently doing nothing under it. A skipped check's work never runs at
+  all — `--only gitvault` costs one gitvault read, not the full
+  config/tier/operator/scan sweep.
 
 ## 4.37.1 — allocation no longer gates deploys (D3 complete)
 

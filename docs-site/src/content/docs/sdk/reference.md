@@ -1994,6 +1994,17 @@ const page  = await r.gitvault.heads(vault.repo_id, { after_generation: "0000000
 // Write side — Node only (keystore + git working tree).
 const pushed = await r.gitvault.push({ project_id: "prj_123", snapshot: { message: "wip: refactor the parser" } });
 const state  = await r.gitvault.verify({ project_id: "prj_123" });
+
+// A REAL preview of what push() would publish (kychee-com/run402#565) — the same local
+// pipeline (capture, pack building, encryption sizing), stopping before either network
+// mutation. `run402 gitvault snapshot --dry-run` is a thin adapter over this.
+const plan = await r.gitvault.planPush({ project_id: "prj_123" });
+if (plan.allocation_needed) {
+  // No vault yet — a real push/snapshot would allocate one first; sizing is unknowable until then.
+} else {
+  // plan.would_admit_generation, plan.would_admit_generation_decimal, plan.form,
+  // plan.refs, plan.objects[], plan.object_count, plan.encrypted_bytes, plan.raw_bytes
+}
 ```
 
 `heads` paging (D186): `after_generation` is the REQUIRED verification anchor — a semantic input, never a paging knob — and must stay CONSTANT across a page sequence. `limit` is required. `cursor` is omitted on the first request and is then the prior page's `next_cursor` echoed UNCHANGED. `allHeads` is the convenience wrapper that walks the sequence for you.
