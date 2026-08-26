@@ -801,6 +801,14 @@ const SURFACE: Capability[] = [
   // set) and only submits when handed both verifier receipts, one per closed
   // implementation identity. There is still no purge verb.
   { id: "gitvault_prune",    endpoint: "POST /gitvault/v1/vaults/:vault_id/prune-intents",           mcp: null,                   cli: "gitvault:prune",    openclaw: "gitvault:prune" },
+  // gitvault-human-envelopes task 4.1's ADD-path workaround: diffs the org's
+  // encryption-key directory against the vault's current envelope
+  // recipients and wraps whoever is missing — a mutating verb (uploads new
+  // `key_envelope` objects), so it follows the same CLI-only law as every
+  // other write in this family. `snapshot`/`push` also run it themselves,
+  // best-effort, after every publish (design D5's "deploy time" hook); this
+  // is the standalone "session start" hook.
+  { id: "gitvault_reconcile", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET .../envelope-recipients (+ POST .../upload-sessions)", mcp: null, cli: "gitvault:reconcile", openclaw: "gitvault:reconcile" },
 
   // ── gitvault mirror + recover (gitvault-mirror-and-recover, design D1/D4) ──
   // MCP parity decision (design.md open question, resolved here per task
@@ -896,6 +904,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // siblings above.
   repos_name: "projects.setRepoName",
   gitvault_prune: "gitvault.prune",
+  gitvault_reconcile: "gitvault.reconcileEnvelopeRecipients",
   // The result store is MCP-local plumbing, not a gateway capability.
   expand_result: null,
 

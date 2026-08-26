@@ -48,6 +48,7 @@ Usage:
   run402 gitvault prune    [--project <id>] [--repo <repo_id>]
                            [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
   run402 gitvault verify   [--project <id>] [--repo <repo_id>] [--budget <n>]
+  run402 gitvault reconcile [--project <id>] [--repo <repo_id>]
   run402 gitvault mirror set <destination> [--profile <name> | --ambient]
                            [--region <r>] [--endpoint <url>] [--project <id>] [--repo <repo_id>]
   run402 gitvault mirror remove   [--project <id>] [--repo <repo_id>]
@@ -103,6 +104,21 @@ Subcommands:
   verify    Verify the head chain from the authenticated pin up to the newest
             listed generation. Fails closed on a regression, a gap, or a
             transition descriptor this client cannot validate.
+  reconcile Wrap this vault's current epoch key to every org member who has
+            published an encryption key but has no envelope on this vault
+            yet (gitvault-human-envelopes task 4.1's ADD-path workaround).
+            \`snapshot\`/\`push\` already run this themselves, best-effort,
+            after every successful publish — run it explicitly at session
+            start, or to see the per-recipient breakdown on its own. Pins
+            each recipient's fingerprint on first wrap (TOFU); a directory
+            fingerprint that no longer matches its pin is refused, never
+            silently re-wrapped — reported loudly, one recipient at a time.
+            THIS IS A WORKAROUND, not full epoch rotation: a newly-wrapped
+            member gets this vault's ENTIRE history under V0's single fixed
+            epoch, not \"from here forward\" — the org directory route also
+            does not yet publish the raw key bytes this needs, so every
+            recipient reports \`skipped\` (reason \`missing_public_key\`)
+            until the gateway ships that field.
   mirror    The exit ramp (gitvault-mirror-and-recover): a client-side,
             customer-owned ciphertext mirror. run402 never holds a
             credential to it. \`set\` configures the destination (config
@@ -216,6 +232,7 @@ Examples:
   run402 gitvault snapshot --dry-run
   run402 gitvault policy grandfathered --reason "migrating CI to a vaulted client"
   run402 gitvault verify --budget 500
+  run402 gitvault reconcile
   run402 gitvault prune --project prj_1a2b3c
   run402 gitvault mirror set s3://acme-vault-mirror --profile acme
   run402 gitvault mirror sync
@@ -857,6 +874,54 @@ async function verify(args) {
   }
 }
 
+/**
+ * `run402 gitvault reconcile` — gitvault-human-envelopes task 4.1's ADD-path
+ * workaround (design D5's "session start" hook; `push`/`snapshot` also runs
+ * this itself, best-effort, on the "deploy time" hook — see its
+ * `reconcile_recipients` field).
+ *
+ * Wraps this vault's current epoch key to every org member who has published
+ * an encryption key but has no envelope on this vault yet. This is the
+ * WORKAROUND shape, not full epoch rotation (blocked on a protocol
+ * revision) — see `Gitvault.reconcileEnvelopeRecipients`'s doc comment for
+ * the honest scope: a newly-wrapped member gets this vault's ENTIRE history
+ * under V0's single epoch, not "from here forward."
+ */
+async function reconcile(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  requirePositionalCount(a, COMMON_VALUE_FLAGS, {
+    min: 0, max: 0, command: "run402 gitvault reconcile", missing: "",
+  });
+  const target = await vaultTarget(a);
+  try {
+    const result = await getSdk().gitvault.reconcileEnvelopeRecipients(target);
+    console.log(JSON.stringify(result, null, 2));
+    if (result.wrapped.length > 0) {
+      console.error(`wrapped ${result.wrapped.length} new recipient(s) at epoch ${result.epoch}`);
+    }
+    if (result.already_covered.length > 0) {
+      console.error(`${result.already_covered.length} recipient(s) already covered`);
+    }
+    for (const s of result.skipped) {
+      if (s.reason === "pinned_key_mismatch") {
+        console.error(
+          `SKIPPED ${s.principal_id}: the org directory's key changed (was ${s.details?.pinned_fingerprint}, now ${s.details?.directory_fingerprint}) — this repo will not silently re-wrap under it; investigate before re-running`,
+        );
+      } else if (s.reason === "missing_public_key") {
+        console.error(`skipped ${s.principal_id}: the org directory has no public key on record yet for ${s.ek_fingerprint}`);
+      } else {
+        console.error(`skipped ${s.principal_id} (${s.ek_fingerprint}): ${s.reason}${s.details ? ` ${JSON.stringify(s.details)}` : ""}`);
+      }
+    }
+    if (result.wrapped.length === 0 && result.skipped.length === 0 && result.already_covered.length === 0) {
+      console.error("nothing to reconcile — the org directory has no envelope-capable members yet");
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 // ─── mirror (gitvault-mirror-and-recover) ─────────────────────────────────
 
 const LARGE_OUTPUT_THRESHOLD_BYTES = 100 * 1024;
@@ -1121,6 +1186,10 @@ export async function run(sub, args) {
     }
     case "verify": {
       await verify(argv);
+      break;
+    }
+    case "reconcile": {
+      await reconcile(argv);
       break;
     }
     case "mirror": {

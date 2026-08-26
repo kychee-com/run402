@@ -45,7 +45,7 @@ import type {
   GitvaultVaultRecord,
 } from "../node/gitvault-publication.js";
 import type { GitvaultDeployOptions, GitvaultDeployResult } from "../node/gitvault-deploy.js";
-import type { GitvaultPublishResult, GitvaultPushOptions, GitvaultRefMap, GitvaultVerifiedState } from "../node/gitvault-publication.js";
+import type { GitvaultPublishResult, GitvaultPushOptions, GitvaultRefMap, GitvaultReconcileEnvelopeRecipientsResult, GitvaultVerifiedState } from "../node/gitvault-publication.js";
 import type { GitvaultCreationResult } from "../node/gitvault-creation-journal.js";
 import type { GitvaultKeystore } from "../node/gitvault-keystore.js";
 import type { GitvaultSnapshot } from "../node/gitvault-snapshot.js";
@@ -330,6 +330,14 @@ export interface GitvaultHandle {
   transport: GitvaultTransport;
   /** The full protocol object — every verb below is built on it. */
   vault: import("../node/gitvault-publication.js").GitvaultVault;
+}
+
+/** {@link Gitvault.push}'s best-effort envelope-recipient reconcile outcome, reported beside (never folded into) the vault result — same non-blocking contract as {@link GitvaultMirrorPushResult}. */
+export interface GitvaultReconcileEnvelopeRecipientsPushResult {
+  attempted: boolean;
+  outcome: "reconciled" | "skipped_error";
+  result?: GitvaultReconcileEnvelopeRecipientsResult;
+  error?: string;
 }
 
 /** What {@link Gitvault.openOrCreate} did. `created` is `null` exactly when `found` is `true`. */
@@ -1071,7 +1079,7 @@ export class Gitvault {
       onCommitLine?: (line: string) => void;
       checkpoint?: boolean;
     },
-  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string; mirror_push: GitvaultMirrorPushResult }> {
+  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string; mirror_push: GitvaultMirrorPushResult; reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult }> {
     const [{ deployRefTransaction }, { captureSnapshot, gitvaultCommitLine }] = await Promise.all([this.#publication(), this.#snapshot()]);
     const opened = options.address
       ? await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: true })
@@ -1099,7 +1107,13 @@ export class Gitvault {
     // above (already returned/committed) — a mirror failure is a named
     // pending finding reported BESIDE the vault result, on its own field.
     const mirrorPush = await this.#tryMirrorPush(handle.repo_id, handle.keystore);
-    return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line, mirror_push: mirrorPush };
+    // Deploy-time reconcile hook (design D5's "deploy time" cadence,
+    // gitvault-human-envelopes task 4.1): fires on every successful push,
+    // best-effort — a reconcile failure (including a read-only principal
+    // with no signing key) is reported BESIDE the vault result, never a
+    // `push()` throw, same non-blocking contract as the mirror hook above.
+    const reconcileRecipients = await this.#tryReconcileEnvelopeRecipients(handle.vault);
+    return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line, mirror_push: mirrorPush, reconcile_recipients: reconcileRecipients };
   }
 
   /** Best-effort dual-push: catches EVERYTHING, including the lazy module import itself, so a mirror problem can never surface as a `push()` throw. */
@@ -1109,6 +1123,16 @@ export class Gitvault {
       return await mirrorPushForGeneration(this.#client, repoId, { keystore });
     } catch (e) {
       return { attempted: false, outcome: "skipped_no_mirror", error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /** Best-effort envelope-recipient reconcile: catches EVERYTHING so a reconcile problem can never surface as a `push()` throw (mirrors {@link #tryMirrorPush}'s contract exactly). */
+  async #tryReconcileEnvelopeRecipients(vault: import("../node/gitvault-publication.js").GitvaultVault): Promise<GitvaultReconcileEnvelopeRecipientsPushResult> {
+    try {
+      const result = await vault.reconcileEnvelopeRecipients();
+      return { attempted: true, outcome: "reconciled", result };
+    } catch (e) {
+      return { attempted: false, outcome: "skipped_error", error: e instanceof Error ? e.message : String(e) };
     }
   }
 
@@ -1524,6 +1548,25 @@ export class Gitvault {
   async verify(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultVerifiedState> {
     const handle = await this.open(options);
     return handle.vault.verifyToNewest();
+  }
+
+  /**
+   * Wrap this vault's current epoch key to every org member who has
+   * published an encryption key but has no `key_envelope` on this vault yet
+   * — gitvault-human-envelopes task 4.1's ADD-path workaround. See {@link
+   * import("../node/gitvault-publication.js").GitvaultVault.
+   * reconcileEnvelopeRecipients} for the full design (TOFU pinning, the
+   * gateway `public_key` gap, and why this is a workaround rather than the
+   * eventual epoch-rotation design).
+   *
+   * `run402 gitvault reconcile [--repo <id>]` is the explicit standalone
+   * CLI surface (design D5's "session start" hook); `push()` runs this
+   * itself, best-effort, after every successful publish (design D5's
+   * "deploy time" hook) — see `#tryReconcileEnvelopeRecipients` below.
+   */
+  async reconcileEnvelopeRecipients(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultReconcileEnvelopeRecipientsResult> {
+    const handle = await this.open(options);
+    return handle.vault.reconcileEnvelopeRecipients();
   }
 
   /**

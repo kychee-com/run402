@@ -271,6 +271,7 @@ export const COMMAND_MANIFEST = [
   { path: ["gitvault", "compact"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "takes a maintenance lease and builds a checkpoint from the local repository" },
   { path: ["gitvault", "prune"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "materializes the live vault head to enumerate retention roots" },
   { path: ["gitvault", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain against the keystore's authenticated pin" },
+  { path: ["gitvault", "reconcile"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the live org encryption-key directory + vault envelope recipients, and may publish new key_envelope objects" },
 
   // ── gitvault mirror (gitvault-mirror-and-recover) ────────────────────────
   // The customer-owned ciphertext mirror — client-side only, never a server

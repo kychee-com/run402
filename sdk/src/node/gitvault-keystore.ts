@@ -105,6 +105,16 @@ export interface GitvaultRepoFile {
   materialized_pin?: GitvaultHeadPin | null;
   /** The verified-prefix watermark of a budget-interrupted verification (§9.3 — resumable). Absent/`null` when none is pending. */
   verified_prefix?: GitvaultHeadPin | null;
+  /**
+   * TOFU pins for {@link GitvaultVault.reconcileEnvelopeRecipients}
+   * (gitvault-human-envelopes design D4 point 3): `principal_id ->` the
+   * `ek_` fingerprint this repo last wrapped a `key_envelope` for (or
+   * observed already covering the vault). A later reconcile whose org
+   * directory reports a DIFFERENT fingerprint for the same `principal_id`
+   * refuses to wrap under it — a pinned-key change is a refusal, never a
+   * silent re-wrap. Absent/`null` until reconcile has run at least once.
+   */
+  envelope_recipient_pins?: Record<string, string> | null;
   /** The last ref transaction this principal published (5.4 fills it). */
   last_ref_transaction: Record<string, unknown> | null;
   /** How this file came to exist — creation, or a §5.1 restore from the principal's own envelope. */
@@ -429,7 +439,7 @@ export class GitvaultKeystore {
   }
 
   /** Update the dual pins / last ref transaction without touching key material. */
-  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch">>): GitvaultRepoFile {
+  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins">>): GitvaultRepoFile {
     return this.withRepoLock(repoId, () => {
       const existing = this.readRepo(repoId);
       if (!existing) fail("GITVAULT_REPO_STATE_MISSING", `no repo file for ${repoId}`, "updating gitvault repo file", { repo_id: repoId });

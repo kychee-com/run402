@@ -48,7 +48,9 @@ import {
   GITVAULT_SUITE,
   deriveDigestKey,
   deriveObjectKey,
+  ekFingerprint,
   formatGitvaultTimestamp,
+  fromBase64url,
   hexToBytes,
   jcs,
   keyedCommitment,
@@ -58,6 +60,7 @@ import {
   openFrame,
   parseGitvaultStrict,
   sealFrame,
+  sealKeyEnvelope,
   sha256Hex,
   signGitvaultObject,
   storedBytes,
@@ -88,6 +91,7 @@ import type {
   GitvaultRetentionRoots,
   GitvaultRetentionRootsReceipt,
   GitvaultSignedObject,
+  GitvaultSigningKeypair,
   GitvaultVaultGenesis,
   GitvaultWalPackReceipt,
 } from "../namespaces/gitvault.types.js";
@@ -642,6 +646,60 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
   submitPruneIntent(request: { repo_id: string; intent_bytes: Uint8Array }): Promise<GitvaultPruneIntentRecord & { stored: boolean }>;
   /** `GET …/prune-intents/:id` — the intent's state and, once signed, its completion. */
   getPruneIntent(request: { repo_id: string; prune_intent_object_id: string }): Promise<GitvaultPruneIntentRecord | null>;
+  /**
+   * The org's directory of envelope-capable principals (gitvault-human-
+   * envelopes design D7, `GET /orgs/v1/:org_id/encryption-keys`) — every
+   * active human member who has published an encryption key. Read by
+   * {@link GitvaultVault.reconcileEnvelopeRecipients} to diff against a
+   * vault's current recipient set.
+   */
+  listOrgEncryptionKeys(request: { org_id: string }): Promise<GitvaultOrgEncryptionKeyDirectory>;
+  /**
+   * The `ek_` fingerprints already covering this vault, at any epoch
+   * (`GET /gitvault/v1/vaults/:vault_id/envelope-recipients`, task 2.2) —
+   * fingerprints only, never envelope bytes; the recipient-only rule on
+   * envelope BYTES elsewhere is unaffected.
+   */
+  listEnvelopeRecipients(request: { repo_id: string }): Promise<GitvaultEnvelopeRecipientsResponse>;
+}
+
+/**
+ * One row of the org's envelope-capable-principal directory
+ * ({@link GitvaultTransport.listOrgEncryptionKeys}).
+ *
+ * `public_key` is OPTIONAL because the shipped gateway route
+ * (`GET /orgs/v1/:org_id/encryption-keys`, `routes/org.ts` in
+ * run402-private) does not return it yet: `services/
+ * principal-encryption-keys.ts:listOrgEncryptionKeyDirectory`'s SELECT
+ * omits `pk.public_key` and the route's response `.map()` doesn't forward
+ * it — a three-line fix (the SELECT list, the `EncryptionKeyDirectoryEntry`
+ * type, and the route's map) that has not shipped as of 2026-08-26. Until
+ * it does, {@link GitvaultVault.reconcileEnvelopeRecipients} reports every
+ * directory entry as `skipped` with reason `missing_public_key` — this type
+ * and the reconcile method are written against the INTENDED response shape
+ * and need no further change once the gateway ships the field.
+ */
+export interface GitvaultOrgEncryptionKeyEntry {
+  principal_id: string;
+  display_name: string | null;
+  ek_fingerprint: string;
+  suite: string;
+  created_at: string;
+  /** Raw base64url X25519 public key — absent on gateways that haven't shipped the fix noted above. */
+  public_key?: string;
+  [key: string]: unknown;
+}
+
+/** `GET /orgs/v1/:org_id/encryption-keys` — {@link GitvaultTransport.listOrgEncryptionKeys}'s result. */
+export interface GitvaultOrgEncryptionKeyDirectory {
+  org_id: string;
+  keys: GitvaultOrgEncryptionKeyEntry[];
+}
+
+/** `GET /gitvault/v1/vaults/:vault_id/envelope-recipients` — {@link GitvaultTransport.listEnvelopeRecipients}'s result. */
+export interface GitvaultEnvelopeRecipientsResponse {
+  vault_id: string;
+  recipient_fingerprints: string[];
 }
 
 /** `GET /gitvault/v1/vaults/:vault_id` — the shape `reads.ts:getVaultRecord` returns. */
@@ -878,6 +936,8 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     getVaultRecord: ({ repo_id }) => client.request<GitvaultVaultRecord>(base(repo_id), { context: "reading the gitvault record" }),
     findVaultByProject: ({ project_id }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?project_id=${encodeURIComponent(project_id)}`, { context: "resolving the project's gitvault" }),
     findVaultByRepo: ({ org_slug, repo_name }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?repo=${encodeURIComponent(`${org_slug}/${repo_name}`)}`, { context: "resolving the gitvault by repo address" }),
+    listOrgEncryptionKeys: ({ org_id }) => client.request<GitvaultOrgEncryptionKeyDirectory>(`/orgs/v1/${encodeURIComponent(org_id)}/encryption-keys`, { context: "reading the org encryption-key directory" }),
+    listEnvelopeRecipients: ({ repo_id }) => client.request<GitvaultEnvelopeRecipientsResponse>(`${base(repo_id)}/envelope-recipients`, { context: "reading the gitvault envelope recipients" }),
     acquireMaintenanceLease: ({ repo_id, base_head_sha256, current_checkpoint_hash, r1_size_bytes, r2_cap_size_bytes, p_before_c1_size_bytes, p_before_c2_size_bytes }) =>
       client.request<GitvaultMaintenanceLease>(`${base(repo_id)}/maintenance-leases`, {
         method: "POST",
@@ -955,6 +1015,8 @@ export const gitvaultPaths = {
   cutoffTicket: (id: string) => `retention/${id}.ticket.json`,
   /** `verifier-receipts/<vr>.json` — plaintext-structured, uploaded before a prune intent may reference it (§7.3). */
   verifierReceipt: (id: string) => `verifier-receipts/${id}.json`,
+  /** `envelopes/<epoch>/<recipient_fingerprint>` — mirrors `gitvault-creation-journal.ts`'s private `envelopePath` (the genesis creator's envelope); this is the same addressing for every OTHER recipient's `key_envelope`. */
+  envelope: (epoch: string, recipientFingerprint: string) => `envelopes/${epoch}/${recipientFingerprint}`,
 } as const;
 
 // ─── The vault ───────────────────────────────────────────────────────────────
@@ -998,6 +1060,37 @@ export interface GitvaultMaterializedState extends GitvaultVerifiedState {
   refs: GitvaultRefMap;
   roots: GitvaultRetentionRoot[];
   head_target: GitvaultHeadTarget;
+}
+
+/** One directory entry {@link GitvaultVault.reconcileEnvelopeRecipients} wrapped a fresh `key_envelope` for. */
+export interface GitvaultReconcileEnvelopeRecipientsWrapped {
+  principal_id: string;
+  ek_fingerprint: string;
+}
+
+/** Why {@link GitvaultVault.reconcileEnvelopeRecipients} did NOT wrap a directory entry it otherwise would have. */
+export type GitvaultReconcileEnvelopeRecipientsSkipReason = "missing_public_key" | "invalid_public_key" | "pinned_key_mismatch";
+
+export interface GitvaultReconcileEnvelopeRecipientsSkipped {
+  principal_id: string;
+  ek_fingerprint: string;
+  reason: GitvaultReconcileEnvelopeRecipientsSkipReason;
+  /** `pinned_key_mismatch`: `{pinned_fingerprint, directory_fingerprint}`. `invalid_public_key` (derivation mismatch): `{derived_fingerprint}`. Absent for `missing_public_key` and a bad-encoding `invalid_public_key`. */
+  details?: Record<string, unknown>;
+}
+
+/** {@link GitvaultVault.reconcileEnvelopeRecipients}'s full per-recipient breakdown. */
+export interface GitvaultReconcileEnvelopeRecipientsResult {
+  repo_id: string;
+  org_id: string;
+  /** The epoch every wrap in this call used (V0: always {@link GITVAULT_GENESIS_EPOCH}). */
+  epoch: string;
+  /** Directory entries this call itself wrapped a NEW `key_envelope` for. */
+  wrapped: GitvaultReconcileEnvelopeRecipientsWrapped[];
+  /** `ek_` fingerprints already covering the vault before (or, for a raced wrap, as of) this call — no action taken. */
+  already_covered: string[];
+  /** Directory entries this call could not (or, for `pinned_key_mismatch`, would not) wrap. */
+  skipped: GitvaultReconcileEnvelopeRecipientsSkipped[];
 }
 
 export interface GitvaultPushOptions {
@@ -1260,6 +1353,138 @@ export class GitvaultVault {
     return { ...state, ref_state: refState, retention_roots: roots, refs: { ...refState.refs }, roots: roots.roots.map((r) => ({ ...r })), head_target: refState.head_target };
   }
 
+  // ── envelope recipients (gitvault-human-envelopes task 4.1, the ADD-path workaround) ──
+
+  /**
+   * Wrap the vault's CURRENT epoch key to every org member the directory
+   * lists but the vault does not yet have a `key_envelope` for.
+   *
+   * **This is task 1.1's residual WORKAROUND, not the design D5 ideal.** D5
+   * describes a recipient-set change as an epoch rotation — "history epochs
+   * stay wrapped as they were; a new member reads from their first covered
+   * epoch forward" — which needs a protocol revision (task 1, BLOCKED as of
+   * 2026-08-26: V0 pins `epoch` to the single constant
+   * `GITVAULT_GENESIS_EPOCH` on every head, so there is no "forward" to
+   * speak of yet). What this method actually does, legally, without any
+   * protocol change: `key_envelope` objects are never head-referenced (not
+   * even genesis's own envelope is), so uploading an ADDITIONAL one at
+   * `envelopes/<current epoch>/<recipient fingerprint>` for a missing
+   * recipient is accepted by the existing generic create-only upload route
+   * as-is. The honest consequence: a newly-wrapped member gets the SAME
+   * single epoch every existing member already has, which in V0 means the
+   * vault's ENTIRE history — not "from here forward." True forward-only
+   * semantics wait on task 1's protocol revision; this method does not
+   * pretend otherwise.
+   *
+   * **TOFU pinning (design D4 point 3).** The first time this repo wraps a
+   * given `principal_id`, its CURRENT `ek_fingerprint` is pinned in the
+   * keystore repo file (`envelope_recipient_pins`). On a later call, a
+   * directory entry whose fingerprint no longer matches its pin is a
+   * REFUSAL for that recipient ONLY — reported under `skipped` with reason
+   * `pinned_key_mismatch` and both fingerprints in `details`, never wrapped
+   * under the new key, and never a thrown error that would abort the whole
+   * call (other recipients still get processed). Whether that mismatch is a
+   * legitimate key rotation or a substitution is a product/human decision
+   * this SDK does not make unattended.
+   *
+   * **The gateway directory route does not carry `public_key` yet**
+   * (`GET /orgs/v1/:org_id/encryption-keys` — see the doc comment on
+   * {@link GitvaultOrgEncryptionKeyEntry}). Until it does, every directory
+   * entry is reported under `skipped` with reason `missing_public_key`;
+   * this method needs no further change once the gateway ships the field.
+   *
+   * Best-effort by design at the call site, not here: this method itself
+   * either completes (returning a full per-recipient breakdown) or throws
+   * (e.g. `GITVAULT_READ_ONLY` when this principal holds no signing key).
+   * Callers that want "never block on this" (the deploy hook) wrap the call
+   * themselves — see `Gitvault.push`'s `#tryReconcileEnvelopeRecipients`.
+   */
+  async reconcileEnvelopeRecipients(): Promise<GitvaultReconcileEnvelopeRecipientsResult> {
+    const repo = this.repoFile();
+    const epoch = this.epoch();
+    const signer = this.signingKeypair();
+    const [directory, coverage] = await Promise.all([
+      this.transport.listOrgEncryptionKeys({ org_id: repo.org_id }),
+      this.transport.listEnvelopeRecipients({ repo_id: this.repoId }),
+    ]);
+    const covered = new Set(coverage.recipient_fingerprints);
+    const pins = { ...(repo.envelope_recipient_pins ?? {}) };
+    const wrapped: GitvaultReconcileEnvelopeRecipientsWrapped[] = [];
+    const alreadyCovered: string[] = [];
+    const skipped: GitvaultReconcileEnvelopeRecipientsSkipped[] = [];
+    let pinsChanged = false;
+
+    for (const entry of directory.keys) {
+      if (covered.has(entry.ek_fingerprint)) {
+        alreadyCovered.push(entry.ek_fingerprint);
+        continue;
+      }
+      const pinned = pins[entry.principal_id];
+      if (pinned !== undefined && pinned !== entry.ek_fingerprint) {
+        skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "pinned_key_mismatch", details: { pinned_fingerprint: pinned, directory_fingerprint: entry.ek_fingerprint } });
+        continue;
+      }
+      if (typeof entry.public_key !== "string" || entry.public_key.length === 0) {
+        skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "missing_public_key" });
+        continue;
+      }
+      let recipientPublicKey: Uint8Array;
+      try {
+        recipientPublicKey = fromBase64url(entry.public_key, "public_key");
+      } catch {
+        skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "invalid_public_key" });
+        continue;
+      }
+      // Defense in depth: a directory row whose printed fingerprint does not
+      // derive from its own public_key is corrupt data, not a valid
+      // recipient — fail loud here rather than let `sealKeyEnvelope` (which
+      // derives the fingerprint itself and never trusts a caller-supplied
+      // one) silently seal under a fingerprint that disagrees with the one
+      // the directory printed.
+      const derived = ekFingerprint(recipientPublicKey);
+      if (derived !== entry.ek_fingerprint) {
+        skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "invalid_public_key", details: { derived_fingerprint: derived } });
+        continue;
+      }
+      const sealed = await sealKeyEnvelope({
+        k_repo: this.kRepo(),
+        repo_id: this.repoId,
+        epoch,
+        recipient_public_key: recipientPublicKey,
+        signer,
+        created_at: formatGitvaultTimestamp(this.now()),
+      });
+      try {
+        await this.transport.putObject({
+          repo_id: this.repoId,
+          path: gitvaultPaths.envelope(epoch, sealed.receipt.recipient_fingerprint),
+          bytes: sealed.stored_bytes,
+          expected_sha256: sealed.stored_bytes_sha256,
+          expected_size_bytes: sealed.size_bytes,
+        });
+        wrapped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint });
+      } catch (e) {
+        // A concurrent reconcile (another machine/session) may have wrapped
+        // the SAME recipient first — HPKE seal is randomized, so two valid
+        // wraps of the same K_repo to the same recipient produce DIFFERENT
+        // ciphertext bytes, and the create-only path's read-and-compare
+        // reports that as `GITVAULT_OBJECT_EXISTS_DIFFERENT` even though the
+        // recipient is now genuinely covered. Treat exactly that code as a
+        // benign race, not a failure; anything else propagates.
+        if (isRun402Error(e) && (e as { code?: string }).code === "GITVAULT_OBJECT_EXISTS_DIFFERENT") {
+          alreadyCovered.push(entry.ek_fingerprint);
+        } else {
+          throw e;
+        }
+      }
+      pins[entry.principal_id] = entry.ek_fingerprint;
+      pinsChanged = true;
+    }
+
+    if (pinsChanged) this.keystore.updateRepo(this.repoId, { envelope_recipient_pins: pins });
+    return { repo_id: this.repoId, org_id: repo.org_id, epoch, wrapped, already_covered: alreadyCovered, skipped };
+  }
+
   // ── object building ──
 
   private seal(kind: "wal_pack" | "ref_state" | "retention_roots" | "checkpoint_manifest" | "checkpoint_pack", objectId: string, plaintext: Uint8Array, path: string): GitvaultUploadObject {
@@ -1284,6 +1509,14 @@ export class GitvaultVault {
   }
 
   private writerKeyId(): string { return this.keystore.ensureIdentity().signing_fingerprint; }
+
+  /** The owner's full signing keypair, or `GITVAULT_READ_ONLY` — same refusal path as {@link signer}, which returns only the seed; {@link sealKeyEnvelope} needs both halves. */
+  private signingKeypair(): GitvaultSigningKeypair {
+    const identity = this.keystore.ensureIdentity();
+    const kp = this.keystore.signingKeypair(identity);
+    if (!kp) fail("GITVAULT_READ_ONLY", "the signing key is missing from identity.json; this principal is read-only", "signing gitvault object", undefined, [{ action: "stay read-only at the materialized pin" }]);
+    return kp;
+  }
 
   private buildRefState(generation: string, refs: GitvaultRefMap, headTarget: GitvaultHeadTarget): { object: GitvaultRefState; upload: GitvaultUploadObject } {
     if (headTarget.kind === "symref" && !BRANCH_REF_RE.test(headTarget.ref)) fail("REFNAME_UNSUPPORTED", `head_target symref must name a refs/heads/* branch: ${headTarget.ref}`, "building ref_state");

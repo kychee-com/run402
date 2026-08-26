@@ -38,7 +38,7 @@ import type { GitvaultActivationToken, GitvaultAllocation, GitvaultCaptureReceip
 import type { GitvaultAdmitGenesisRequest, GitvaultAdmitGenesisResult, GitvaultAllocateRequest, GitvaultObjectReceipt, GitvaultPutObjectRequest } from "./gitvault-creation-journal.js";
 import { createGitvault } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
-import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord } from "./gitvault-publication.js";
+import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord } from "./gitvault-publication.js";
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
 import { GitvaultVault, generationToBigInt, bigIntToGeneration, gitvaultPaths } from "./gitvault-publication.js";
 import { hardenedGit } from "./gitvault-snapshot.js";
@@ -343,6 +343,26 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   // ── control-plane reads + the maintenance lease (5.6c) ──
   vaultRecord: Partial<GitvaultVaultRecord> = {};
   leases = new Map<string, { holder_token: string; released: boolean }>();
+  /** `org_id -> directory rows` — gitvault-human-envelopes task 4.1's org encryption-key directory (`GET /orgs/v1/:org_id/encryption-keys`). Tests set this directly. */
+  orgEncryptionKeys = new Map<string, GitvaultOrgEncryptionKeyEntry[]>();
+
+  async listOrgEncryptionKeys({ org_id }: { org_id: string }): Promise<GitvaultOrgEncryptionKeyDirectory> {
+    this.calls.push("org-encryption-keys");
+    return { org_id, keys: this.orgEncryptionKeys.get(org_id) ?? [] };
+  }
+
+  /** Derives the covering fingerprints from `envelopes/<epoch>/<fp>` objects actually stored for this repo — the SAME source the real gateway route (`listVaultEnvelopeFingerprints`) reads from. */
+  async listEnvelopeRecipients({ repo_id }: { repo_id: string }): Promise<GitvaultEnvelopeRecipientsResponse> {
+    this.calls.push("envelope-recipients");
+    const prefix = this.key(repo_id, "envelopes/");
+    const fingerprints = new Set<string>();
+    for (const k of this.objects.keys()) {
+      if (!k.startsWith(prefix)) continue;
+      const parts = k.slice(prefix.length).split("/");
+      if (parts.length === 2 && parts[1]) fingerprints.add(parts[1]);
+    }
+    return { vault_id: repo_id, recipient_fingerprints: [...fingerprints].sort() };
+  }
 
   async getVaultRecord({ repo_id }: { repo_id: string }): Promise<GitvaultVaultRecord> {
     this.calls.push("vault-record");
