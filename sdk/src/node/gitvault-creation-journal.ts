@@ -91,13 +91,43 @@ export interface GitvaultJournaledObject {
   finalized: boolean;
 }
 
-/** `journal/<client_creation_id>.json`. Stage-monotonic; every field from an earlier stage survives. */
+/**
+ * Push-to-create addressing (repo-first-onramp task 4.5; design D6). A journal
+ * opened this way does not know its `org_id`/`project_id` until the ALLOCATED
+ * stage's response tells it (the gateway resolves `org_slug` and creates the
+ * project atomically inside the SAME allocate call — see routes/gitvault.ts's
+ * `resolveAllocationAuthz` in run402-private) — see `GitvaultCreationJournal`'s
+ * doc comment on why `org_id`/`project_id` are nullable.
+ */
+export interface GitvaultPushToCreateAddress {
+  org_slug: string;
+  repo_name: string;
+}
+
+/**
+ * `journal/<client_creation_id>.json`. Stage-monotonic; every field from an
+ * earlier stage survives.
+ *
+ * `org_id` / `project_id` are `string | null` because of push-to-create
+ * (repo-first-onramp task 4.5, design D6): a journal opened with
+ * `push_to_create` set does not know either value until the ALLOCATED stage's
+ * response names them (trust-on-first-use — `checkAllocation` skips those two
+ * comparisons while they are `null` and this module pins them from the
+ * allocation the FIRST time, then treats the pin as authoritative on every
+ * later call for this same journal, same as an ordinary `project_id`-addressed
+ * journal always has been). Exactly one of `project_id` or `push_to_create` is
+ * set at open time; `push_to_create` itself never changes across the journal's
+ * life — it is the RESUMABILITY KEY for a push-to-create attempt, the way
+ * `(org_id, project_id)` is for the ordinary path.
+ */
 export interface GitvaultCreationJournal {
   version: 1;
   stage: GitvaultCreationStage;
   client_creation_id: string;
-  org_id: string;
-  project_id: string;
+  org_id: string | null;
+  project_id: string | null;
+  /** Set only for a push-to-create journal (task 4.5); `null` otherwise. */
+  push_to_create: GitvaultPushToCreateAddress | null;
   creator_signing_fingerprint: string;
   creator_encryption_fingerprint: string;
   created_at: string;
@@ -112,8 +142,16 @@ export interface GitvaultCreationJournal {
   genesis_sha256: string | null;
   /** ACTIVE — the emitted recovery receipt. */
   recovery_receipt: GitvaultRecoveryReceipt | null;
-  /** A terminal refusal, if reconciliation hit one (the journal is kept for diagnosis, never retried destructively). */
-  refusal: { code: "VAULT_CREATION_CONFLICT" | "ALLOCATION_SUPERSEDED"; at: string; details?: Record<string, unknown> } | null;
+  /**
+   * A terminal refusal, if reconciliation hit one (the journal is kept for
+   * diagnosis, never retried destructively). `REPO_CREATION_CONFLICT` (task
+   * 4.5) marks a push-to-create journal that lost the atomic name-claim race
+   * — `details.project_id` names the winner, exactly what
+   * `pushToCreateGitvault` needs to resolve to it and proceed as an ordinary
+   * push (design D6: "the loser's work is not lost — it just wasn't the
+   * creator").
+   */
+  refusal: { code: "VAULT_CREATION_CONFLICT" | "ALLOCATION_SUPERSEDED" | "REPO_CREATION_CONFLICT"; at: string; details?: Record<string, unknown> } | null;
 }
 
 // ─── Transport (injected; 5.4 wires HTTP) ───────────────────────────────────
@@ -136,15 +174,30 @@ export interface GitvaultCreationJournal {
  * `checkAllocation` compares the record's fingerprints back against this
  * principal's — which is what proves the keys we sent are the keys it stored.
  */
-export interface GitvaultAllocateRequest {
-  client_creation_id: string;
-  org_id: string;
-  project_id: string;
-  /** Raw Ed25519 public key, canonical base64url (43 chars, decodes to 32 bytes). */
-  creator_signing_pubkey: string;
-  /** Raw X25519 public key, canonical base64url (43 chars, decodes to 32 bytes). */
-  creator_encryption_pubkey: string;
-}
+export type GitvaultAllocateRequest =
+  | {
+      client_creation_id: string;
+      org_id: string;
+      project_id: string;
+      /** Raw Ed25519 public key, canonical base64url (43 chars, decodes to 32 bytes). */
+      creator_signing_pubkey: string;
+      /** Raw X25519 public key, canonical base64url (43 chars, decodes to 32 bytes). */
+      creator_encryption_pubkey: string;
+    }
+  | {
+      /**
+       * Push-to-create (repo-first-onramp task 4.4/4.5, design D6):
+       * `{org_slug, repo_name}` in place of `{org_id, project_id}`. The
+       * gateway resolves the slug, atomically claims the name, creates the
+       * project, and allocates the vault — all inside this one call
+       * (`POST /gitvault/v1/vaults`, same route, alternate body shape).
+       */
+      client_creation_id: string;
+      org_slug: string;
+      repo_name: string;
+      creator_signing_pubkey: string;
+      creator_encryption_pubkey: string;
+    };
 
 export interface GitvaultPutObjectRequest {
   repo_id: string;
@@ -196,8 +249,16 @@ export interface GitvaultCreationTransport {
 export interface GitvaultCreationOptions {
   keystore: GitvaultKeystore;
   transport: GitvaultCreationTransport;
-  org_id: string;
-  project_id: string;
+  /**
+   * Exactly ONE addressing form: either `{org_id, project_id}` (the ordinary
+   * path — a project already exists) or `push_to_create` (task 4.5 — the
+   * project does not exist yet; the gateway creates it atomically alongside
+   * the vault). Passing both, or neither, is a local validation error.
+   */
+  org_id?: string;
+  project_id?: string;
+  /** Push-to-create addressing (repo-first-onramp task 4.5, design D6) — mutually exclusive with `{org_id, project_id}`. */
+  push_to_create?: GitvaultPushToCreateAddress;
   /** Resume an existing journal, or pin the idempotency key (tests). Fresh CSPRNG when omitted. */
   client_creation_id?: string;
   /** Clock injection. */
@@ -210,6 +271,9 @@ export interface GitvaultCreationOptions {
 
 export interface GitvaultCreationResult {
   repo_id: string;
+  /** The owning org/project, resolved by ACTIVE either way — trust-on-first-use for a push-to-create journal (task 4.5). */
+  org_id: string;
+  project_id: string;
   genesis_sha256: string;
   recovery_receipt: GitvaultRecoveryReceipt;
   journal: GitvaultCreationJournal;
@@ -278,7 +342,26 @@ export function listIncompleteGitvaultJournals(keystore: GitvaultKeystore): Gitv
  */
 export function findResumableGitvaultJournal(keystore: GitvaultKeystore, orgId: string, projectId: string): GitvaultCreationJournal | null {
   const candidates = listIncompleteGitvaultJournals(keystore).filter(
-    (j) => j.org_id === orgId && j.project_id === projectId && j.refusal === null,
+    (j) => j.push_to_create === null && j.org_id === orgId && j.project_id === projectId && j.refusal === null,
+  );
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
+  return candidates[0]!;
+}
+
+/**
+ * The push-to-create sibling of {@link findResumableGitvaultJournal} (task
+ * 4.5): find an in-progress LOCAL push-to-create attempt for this exact
+ * `(org_slug, repo_name)` address, so a retry after a crash resumes it rather
+ * than starting a second competing attempt. A journal that already lost the
+ * name-claim race (`REPO_CREATION_CONFLICT`) is excluded — resuming it would
+ * only reproduce the same refusal; `pushToCreateGitvault` starts a fresh
+ * attempt in that case (and typically does not even reach here, since its
+ * own fast-path read resolves the winner's repo directly).
+ */
+export function findResumablePushToCreateJournal(keystore: GitvaultKeystore, orgSlug: string, repoName: string): GitvaultCreationJournal | null {
+  const candidates = listIncompleteGitvaultJournals(keystore).filter(
+    (j) => j.push_to_create !== null && j.push_to_create.org_slug === orgSlug && j.push_to_create.repo_name === repoName && j.refusal === null,
   );
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
@@ -308,6 +391,10 @@ export class GitvaultCreation {
    * network; no ciphertext exists yet.
    */
   static open(options: GitvaultCreationOptions): GitvaultCreation {
+    const usingPushToCreate = options.push_to_create !== undefined;
+    if (usingPushToCreate === (options.org_id !== undefined || options.project_id !== undefined)) {
+      fail("GITVAULT_BAD_ADDRESS", "pass exactly one of {org_id, project_id} or push_to_create, never both or neither", "opening gitvault creation");
+    }
     const ks = options.keystore;
     const identity = ks.ensureIdentity();
     const signing = ks.signingKeypair(identity);
@@ -318,8 +405,18 @@ export class GitvaultCreation {
     const id = options.client_creation_id ?? newHex32();
     const existing = readGitvaultJournal(ks, id);
     if (existing) {
-      if (existing.org_id !== options.org_id || existing.project_id !== options.project_id) {
-        fail("VAULT_CREATION_CONFLICT", "journal belongs to a different org/project", "resuming gitvault creation", { client_creation_id: id });
+      // Addressing-key mismatch refuses a destructive retry — the ordinary
+      // (org_id, project_id) form and push-to-create's (org_slug, repo_name)
+      // form are each other's cross-check: a journal opened one way must
+      // never silently resume under the other, and a push-to-create journal
+      // compares its OWN address (`push_to_create` never changes across a
+      // journal's life, unlike `org_id`/`project_id`, which start null there
+      // and get pinned from the allocation response).
+      const mismatch = usingPushToCreate
+        ? existing.push_to_create === null || existing.push_to_create.org_slug !== options.push_to_create!.org_slug || existing.push_to_create.repo_name !== options.push_to_create!.repo_name
+        : existing.push_to_create !== null || existing.org_id !== options.org_id || existing.project_id !== options.project_id;
+      if (mismatch) {
+        fail("VAULT_CREATION_CONFLICT", "journal belongs to a different org/project (or addressing form)", "resuming gitvault creation", { client_creation_id: id });
       }
       if (existing.creator_signing_fingerprint !== identity.signing_fingerprint || existing.creator_encryption_fingerprint !== identity.encryption_fingerprint) {
         fail("VAULT_CREATION_CONFLICT", "journal was prepared by a different identity; refusing the destructive retry", "resuming gitvault creation", { client_creation_id: id });
@@ -331,8 +428,9 @@ export class GitvaultCreation {
       version: 1,
       stage: "LOCAL_KEYS_PREPARED",
       client_creation_id: id,
-      org_id: options.org_id,
-      project_id: options.project_id,
+      org_id: usingPushToCreate ? null : options.org_id!,
+      project_id: usingPushToCreate ? null : options.project_id!,
+      push_to_create: options.push_to_create ?? null,
       creator_signing_fingerprint: identity.signing_fingerprint,
       creator_encryption_fingerprint: identity.encryption_fingerprint,
       created_at: at,
@@ -366,7 +464,7 @@ export class GitvaultCreation {
     await this.options.onStage?.(stage, this.journal);
   }
 
-  private refuse(code: "VAULT_CREATION_CONFLICT" | "ALLOCATION_SUPERSEDED", message: string, details?: Record<string, unknown>): never {
+  private refuse(code: "VAULT_CREATION_CONFLICT" | "ALLOCATION_SUPERSEDED" | "REPO_CREATION_CONFLICT", message: string, details?: Record<string, unknown>): never {
     this.journal = { ...this.journal, refusal: { code, at: formatGitvaultTimestamp(this.now()), ...(details ? { details } : {}) } };
     this.persist();
     fail(code, message, "reconciling gitvault creation", { client_creation_id: this.journal.client_creation_id, ...details });
@@ -390,17 +488,52 @@ export class GitvaultCreation {
 
     // ── 2. ALLOCATED ──
     if (this.journal.stage === "LOCAL_KEYS_PREPARED") {
-      const allocation = await this.transport.allocate({
-        client_creation_id: this.journal.client_creation_id,
-        org_id: this.journal.org_id,
-        project_id: this.journal.project_id,
-        // PUBKEYS on the request; the returned record carries the fingerprints
-        // the gateway derives from them. See GitvaultAllocateRequest.
-        creator_signing_pubkey: identity.signing_pubkey,
-        creator_encryption_pubkey: identity.encryption_pubkey,
-      });
+      // PUBKEYS on the request; the returned record carries the fingerprints
+      // the gateway derives from them. See GitvaultAllocateRequest.
+      const request: GitvaultAllocateRequest = this.journal.push_to_create
+        ? {
+            client_creation_id: this.journal.client_creation_id,
+            org_slug: this.journal.push_to_create.org_slug,
+            repo_name: this.journal.push_to_create.repo_name,
+            creator_signing_pubkey: identity.signing_pubkey,
+            creator_encryption_pubkey: identity.encryption_pubkey,
+          }
+        : {
+            client_creation_id: this.journal.client_creation_id,
+            org_id: this.journal.org_id!,
+            project_id: this.journal.project_id!,
+            creator_signing_pubkey: identity.signing_pubkey,
+            creator_encryption_pubkey: identity.encryption_pubkey,
+          };
+      let allocation: GitvaultAllocation;
+      try {
+        allocation = await this.transport.allocate(request);
+      } catch (e) {
+        // Push-to-create's race (task 4.4/4.5, design D6): the atomic
+        // name-claim was lost to a concurrent pusher. Mark the journal
+        // refused with the winner's project_id so `pushToCreateGitvault` can
+        // resolve to it and proceed as an ordinary push — "the loser's work
+        // is not lost, it just wasn't the creator." Never retried
+        // destructively from here; a fresh push-to-create attempt (if one is
+        // ever made) starts its own journal.
+        const code = (e as { code?: string } | null)?.code;
+        if (this.journal.push_to_create && code === "REPO_CREATION_CONFLICT") {
+          const details = (e as { details?: Record<string, unknown> } | null)?.details;
+          this.refuse("REPO_CREATION_CONFLICT", "lost the push-to-create name-claim race to a concurrent pusher", details);
+        }
+        throw e;
+      }
+      // Trust-on-first-use (task 4.5): a push-to-create journal has no
+      // org_id/project_id to check the allocation against yet — `checkAllocation`
+      // skips those two comparisons while `expected.org_id`/`project_id` are
+      // `undefined`, and the (owner-authorized, signature-verified)
+      // allocation's own values become the pin from here on.
       this.verifyAllocation(allocation);
-      await this.advance("ALLOCATED", { allocation });
+      await this.advance("ALLOCATED", {
+        allocation,
+        org_id: this.journal.org_id ?? allocation.org_id,
+        project_id: this.journal.project_id ?? allocation.project_id,
+      });
     }
     const allocation = this.journal.allocation!;
     const repoId = allocation.repo_id;
@@ -461,8 +594,10 @@ export class GitvaultCreation {
       if (!envelopeObject) this.refuse("VAULT_CREATION_CONFLICT", "journal has no finalized key_envelope");
       const genesis = buildVaultGenesis({
         repo_id: repoId,
-        org_id: this.journal.org_id,
-        project_id: this.journal.project_id,
+        // Guaranteed non-null past ALLOCATED, which pins both from the
+        // allocation response either way (ordinary or push-to-create).
+        org_id: this.journal.org_id!,
+        project_id: this.journal.project_id!,
         allocation_nonce: allocation.allocation_nonce,
         creator_signing: signing,
         creator_encryption_public_key: encryption.public_key,
@@ -497,8 +632,8 @@ export class GitvaultCreation {
       }
       const receipt = buildRecoveryReceipt({
         repo_id: repoId,
-        org_id: this.journal.org_id,
-        project_id: this.journal.project_id,
+        org_id: this.journal.org_id!,
+        project_id: this.journal.project_id!,
         genesis_sha256: hash,
         creator_signing: signing,
         creator_encryption_public_key: encryption.public_key,
@@ -507,8 +642,8 @@ export class GitvaultCreation {
       // crash between them leaves a GENESIS_PREPARED journal whose resume is an idempotent read-back.
       this.keystore.saveRepo({
         repo_id: repoId,
-        org_id: this.journal.org_id,
-        project_id: this.journal.project_id,
+        org_id: this.journal.org_id!,
+        project_id: this.journal.project_id!,
         k_repo_hex: this.journal.k_repo_hex!,
         epoch,
         genesis_sha256: hash,
@@ -522,6 +657,8 @@ export class GitvaultCreation {
 
     return {
       repo_id: repoId,
+      org_id: this.journal.org_id!,
+      project_id: this.journal.project_id!,
       genesis_sha256: this.journal.genesis_sha256!,
       recovery_receipt: this.journal.recovery_receipt!,
       journal: this.journal,
@@ -536,8 +673,12 @@ export class GitvaultCreation {
         client_creation_id: this.journal.client_creation_id,
         creator_signing_fingerprint: this.journal.creator_signing_fingerprint,
         creator_encryption_fingerprint: this.journal.creator_encryption_fingerprint,
-        org_id: this.journal.org_id,
-        project_id: this.journal.project_id,
+        // `undefined`, not `null`, is what tells checkAllocation to skip a
+        // comparison — trust-on-first-use for a fresh push-to-create journal
+        // (task 4.5). A resumed journal past its first ALLOCATED call already
+        // has these pinned and compares them normally.
+        org_id: this.journal.org_id ?? undefined,
+        project_id: this.journal.project_id ?? undefined,
       },
       this.options.service_public_key,
     );

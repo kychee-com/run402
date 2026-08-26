@@ -616,6 +616,16 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
   getVaultRecord(request: { repo_id: string }): Promise<GitvaultVaultRecord>;
   /** Resolve a project's vault without local state (the cold-restart entry point). */
   findVaultByProject(request: { project_id: string }): Promise<GitvaultVaultRecord>;
+  /**
+   * Resolve a vault by its address-form `org-slug/name` (repo-first-onramp
+   * task 4.3, design D6) — `GET /gitvault/v1/vaults?repo=<org-slug>/<name>`.
+   * `RESOURCE_NOT_FOUND` for no such org OR no such name within it (the two
+   * collapse deliberately, so slug-namespace probing learns nothing extra);
+   * `SLUG_RELEASED` (with `successor_slug`/`released_at`/`cooldown_until` on
+   * the error) while the slug is in its post-rename cooldown — never
+   * auto-followed.
+   */
+  findVaultByRepo(request: { org_slug: string; repo_name: string }): Promise<GitvaultVaultRecord>;
   acquireMaintenanceLease(request: GitvaultMaintenanceLeaseRequest): Promise<GitvaultMaintenanceLease>;
   heartbeatMaintenanceLease(request: { repo_id: string; maintenance_lease_id: string; holder_token: string }): Promise<{ maintenance_lease_id: string; expires_at: string | null }>;
   releaseMaintenanceLease(request: { repo_id: string; maintenance_lease_id: string; holder_token: string }): Promise<{ maintenance_lease_id: string; status: string }>;
@@ -866,6 +876,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     },
     getVaultRecord: ({ repo_id }) => client.request<GitvaultVaultRecord>(base(repo_id), { context: "reading the gitvault record" }),
     findVaultByProject: ({ project_id }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?project_id=${encodeURIComponent(project_id)}`, { context: "resolving the project's gitvault" }),
+    findVaultByRepo: ({ org_slug, repo_name }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?repo=${encodeURIComponent(`${org_slug}/${repo_name}`)}`, { context: "resolving the gitvault by repo address" }),
     acquireMaintenanceLease: ({ repo_id, base_head_sha256, current_checkpoint_hash, r1_size_bytes, r2_cap_size_bytes, p_before_c1_size_bytes, p_before_c2_size_bytes }) =>
       client.request<GitvaultMaintenanceLease>(`${base(repo_id)}/maintenance-leases`, {
         method: "POST",

@@ -838,10 +838,19 @@ export function checkRecoveryReceipt(receipt: GitvaultRecoveryReceipt, genesis: 
  * Field-level checks on an `allocation` for THIS creation attempt (the
  * control-plane signature itself is verified through the service-key registry,
  * which task 5.4 wires; pass `service_public_key` once it is pinned).
+ *
+ * `expected.org_id` / `expected.project_id` are OPTIONAL (repo-first-onramp
+ * task 4.5's push-to-create addition): a push-to-create attempt does not know
+ * its org/project ahead of the allocation response (only `org_slug`/
+ * `repo_name`), so those two fields are trust-on-first-use — the caller skips
+ * the comparison on the FIRST allocation of a fresh push-to-create journal and
+ * pins whatever the (owner-authorized, signature-verified) allocation says,
+ * then compares against that pin on every later call for the SAME journal.
+ * Every other field is checked unconditionally, same as before.
  */
 export function checkAllocation(
   allocation: GitvaultAllocation,
-  expected: { client_creation_id: string; creator_signing_fingerprint: string; creator_encryption_fingerprint: string; org_id: string; project_id: string },
+  expected: { client_creation_id: string; creator_signing_fingerprint: string; creator_encryption_fingerprint: string; org_id?: string; project_id?: string },
   servicePublicKey?: Uint8Array | string,
 ): string[] {
   const problems: string[] = [];
@@ -853,8 +862,8 @@ export function checkAllocation(
   if (allocation.client_creation_id !== expected.client_creation_id) problems.push("client_creation_id");
   if (allocation.creator_signing_fingerprint !== expected.creator_signing_fingerprint) problems.push("creator_signing_fingerprint");
   if (allocation.creator_encryption_fingerprint !== expected.creator_encryption_fingerprint) problems.push("creator_encryption_fingerprint");
-  if (allocation.org_id !== expected.org_id) problems.push("org_id");
-  if (allocation.project_id !== expected.project_id) problems.push("project_id");
+  if (expected.org_id !== undefined && allocation.org_id !== expected.org_id) problems.push("org_id");
+  if (expected.project_id !== undefined && allocation.project_id !== expected.project_id) problems.push("project_id");
   if (!isValidGitvaultTimestamp(allocation.issued_at) || !isValidGitvaultTimestamp(allocation.created_at)) problems.push("timestamp");
   if (servicePublicKey !== undefined && !verifyGitvaultObject(allocation as unknown as GitvaultSignedObject, servicePublicKey)) problems.push("signature");
   return problems;

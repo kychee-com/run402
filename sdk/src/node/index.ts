@@ -321,6 +321,7 @@ export {
   GitvaultCreation,
   createGitvault,
   findResumableGitvaultJournal,
+  findResumablePushToCreateJournal,
   gitvaultDoctorRecoveryText,
   gitvaultJournalPath,
   listIncompleteGitvaultJournals,
@@ -338,6 +339,7 @@ export type {
   GitvaultDoctorRecoveryText,
   GitvaultJournaledObject,
   GitvaultObjectReceipt,
+  GitvaultPushToCreateAddress,
   GitvaultPutObjectRequest,
 } from "./gitvault-creation-journal.js";
 export {
@@ -486,6 +488,15 @@ export type {
 // the orchestration `Gitvault.openOrCreate` delegates to.
 export { openOrCreateGitvault } from "./gitvault-open-or-create.js";
 export type { OpenOrCreateGitvaultOptions, OpenOrCreateGitvaultResult } from "./gitvault-open-or-create.js";
+// gitvault D6 — push-to-create (repo-first-onramp task 4.4/4.5), the
+// orchestration `Gitvault.resolveOrCreateAddress` delegates to.
+export { pushToCreateGitvault } from "./gitvault-push-to-create.js";
+export type { PushToCreateGitvaultOptions, PushToCreateGitvaultResult } from "./gitvault-push-to-create.js";
+// gitvault D6 — named-address resolution + id-pinning (repo-first-onramp
+// task 4.5): local git-config pin read/write, and the resolve-or-create
+// orchestrator `Gitvault.resolveOrCreateAddress` delegates to.
+export { readPinnedGitvaultRepo, pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
+export type { GitvaultPinnedRepo, GitvaultAddressResolution, ResolveGitvaultAddressOptions } from "./gitvault-address.js";
 // The deploy lane the interface above was always missing (change
 // `gitvault-deploy-lane`): apply-v1 plan + commit driven through `Deploy`,
 // and the entry point that engages it only for a `required` project.

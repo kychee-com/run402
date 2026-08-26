@@ -54,6 +54,7 @@ type CreationModule = typeof import("../node/gitvault-creation-journal.js");
 type SnapshotModule = typeof import("../node/gitvault-snapshot.js");
 type PruneModule = typeof import("../node/gitvault-prune.js");
 type OpenOrCreateModule = typeof import("../node/gitvault-open-or-create.js");
+type AddressModule = typeof import("../node/gitvault-address.js");
 
 /** A keystore path, or `null` when there is no id to derive it from (or it is malformed). */
 function safePath(derive: () => string, repoId: string | null): string | null {
@@ -120,6 +121,16 @@ export interface GitvaultStatus {
    * checkout is wired to somebody else's project and nothing says so.
    */
   remote: { name: string; url: string; matches: boolean } | null;
+  /**
+   * The id-pinning state of this checkout (design D6, task 4.5) — `null`
+   * when no `repo_dir` was given, or nothing is pinned there yet. A SLUG-form
+   * remote pins `repo_id` in local git state the first time it resolves;
+   * `resolved_from` names the `org-slug/name` it was resolved from. An
+   * id-form remote never pins (it needs no pin — see
+   * `resolveGitvaultAddress`'s doc comment), so a checkout on one always
+   * reports `null` here even once its vault is otherwise fully resolved.
+   */
+  pinned: { repo_id: string; resolved_from: { org_slug: string; repo_name: string } | null } | null;
   /**
    * The vault's ref map and HEAD target — present only when `refs: true` was
    * requested. Reading them means MATERIALIZING the chain, which is a
@@ -308,6 +319,33 @@ export class Gitvault {
   }
 
   /**
+   * Resolve a vault by its address-form `org-slug/name` (repo-first-onramp
+   * task 4.3, design D6) — `GET /gitvault/v1/vaults?repo=<org-slug>/<name>`.
+   * `RESOURCE_NOT_FOUND` for no such org OR no such name (deliberately
+   * collapsed — see the design's slug-namespace-probing note);
+   * `SLUG_RELEASED` (read it with {@link gitvaultSlugReleasedInfo}) while the
+   * slug is in its post-rename cooldown — never auto-followed.
+   */
+  async forRepo(address: { org_slug: string; repo_name: string }): Promise<GitvaultVaultRecord> {
+    const repo = `${address.org_slug}/${address.repo_name}`;
+    return this.#client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?repo=${encodeURIComponent(repo)}`, { context: "resolving the gitvault by repo address" });
+  }
+
+  /**
+   * Resolve a parsed remote address (`parseGitvaultRemoteUrl`'s output),
+   * dispatching on its form (design D6): id-form resolves exactly like
+   * {@link forProject}; slug-form resolves via {@link forRepo}. A pure read —
+   * no pinning, no creation. Node-only callers wanting BOTH should use
+   * {@link resolveOrCreateAddress} instead, which also drives the local pin
+   * and (opt-in) push-to-create.
+   */
+  async resolveAddress(address: GitvaultRemoteAddress): Promise<GitvaultVaultRecord> {
+    return gitvaultRemoteAddressForm(address) === "id"
+      ? this.forProject(address.project_id)
+      : this.forRepo({ org_slug: address.org_id, repo_name: address.project_id });
+  }
+
+  /**
    * One page of the heads listing (D186).
    *
    * `after_generation` is the REQUIRED verification anchor — a semantic input,
@@ -465,6 +503,51 @@ export class Gitvault {
     return result.found
       ? { handle, found: true, created: null, terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT }
       : { handle, found: false, created: result.created, terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT };
+  }
+
+  /**
+   * Resolve a parsed remote address to an OPEN handle, pinning `repo_id` in
+   * local git state on the first successful slug-form resolution (design D6,
+   * task 4.5), and — when `allow_create` is set and resolution misses —
+   * push-to-create it (task 4.4/4.5). This is what the remote helper and
+   * `gitvault snapshot` drive for a `run402::<org-slug>/<name>` remote; an
+   * id-form remote resolves through here too (no pin, since it needs none)
+   * so a caller need not branch on the address's form itself.
+   *
+   * `SLUG_RELEASED` is NEVER auto-followed — it rethrows unchanged; read it
+   * with {@link gitvaultSlugReleasedInfo} for the successor slug and cooldown.
+   */
+  async resolveOrCreateAddress(
+    options: GitvaultVaultHandleOptions & {
+      address: GitvaultRemoteAddress;
+      /** Push-to-create on a slug-form miss (D6). `false` (default): a miss is an ordinary not-found refusal — the read path (`list`/`fetch`, `status`). */
+      allow_create?: boolean;
+      client_creation_id?: string;
+      /** Fires once, only when THIS call allocated the vault. Awaited before the handle is returned. */
+      onVaultCreated?: (created: NonNullable<import("../node/gitvault-address.js").GitvaultAddressResolution["created"]>) => void | Promise<void>;
+    },
+  ): Promise<GitvaultOpenOrCreateResult & { resolution: import("../node/gitvault-address.js").GitvaultAddressResolution }> {
+    const [{ createGitvaultHttpTransport }, { GitvaultKeystore }, { resolveGitvaultAddress }] = await Promise.all([this.#publication(), this.#keystore(), this.#address()]);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const transport = createGitvaultHttpTransport(this.#client);
+    const resolution = await resolveGitvaultAddress({
+      keystore,
+      transport,
+      address: options.address,
+      ...(options.repo_dir !== undefined ? { repo_dir: options.repo_dir } : {}),
+      ...(options.allow_create !== undefined ? { allow_create: options.allow_create } : {}),
+      ...(options.client_creation_id !== undefined ? { client_creation_id: options.client_creation_id } : {}),
+      ...(options.service_public_key !== undefined ? { service_public_key: options.service_public_key } : {}),
+      ...(options.onVaultCreated !== undefined ? { onVaultCreated: options.onVaultCreated } : {}),
+    });
+    const handle = await this.open({ ...options, repo_id: resolution.repo_id });
+    return {
+      handle,
+      found: resolution.via !== "created",
+      created: resolution.created,
+      terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT,
+      resolution,
+    };
   }
 
   /**
@@ -723,6 +806,15 @@ export class Gitvault {
       }
     }
 
+    // The local id-pin, when there is a repository to read it from (design
+    // D6, task 4.5) — a pure read, same discipline as `remote` above.
+    let pinned: GitvaultStatus["pinned"] = null;
+    if (options.repo_dir) {
+      const { readPinnedGitvaultRepo } = await this.#address();
+      const p = await readPinnedGitvaultRepo(options.repo_dir);
+      pinned = p ? { repo_id: p.repo_id, resolved_from: p.resolved_from } : null;
+    }
+
     // The ref map, only when asked (see the `refs` option's doc). Best-effort:
     // a status that cannot materialize still reports everything else.
     let refs: GitvaultStatus["refs"] = null;
@@ -771,6 +863,7 @@ export class Gitvault {
         },
       },
       remote,
+      pinned,
       refs,
       head_target: headTarget,
       pins: { highest_authenticated: authenticated, highest_materialized: materialized },
@@ -823,6 +916,17 @@ export class Gitvault {
        * unallocated vault throws the resolution failure unchanged.
        */
       org_id?: string;
+      /**
+       * A parsed remote address (`parseGitvaultRemoteUrl`'s output) —
+       * repo-first-onramp task 4, design D6. When given, this push resolves
+       * (and, for a slug-form address, pins — task 4.5) through
+       * {@link resolveOrCreateAddress} INSTEAD of `openOrCreate`'s
+       * project_id-based path; `org_id`/`project_id`/`repo_id` are ignored.
+       * Mirrors `git push`'s own push-to-create dispatch in the remote
+       * helper, for callers (`gitvault snapshot`) that resolve the target
+       * from the local git remote instead of `--project`.
+       */
+      address?: GitvaultRemoteAddress;
       /** Resume a specific creation attempt (or pin it in tests); auto-discovered from the local keystore otherwise. */
       client_creation_id?: string;
       /**
@@ -846,7 +950,9 @@ export class Gitvault {
     },
   ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string }> {
     const [{ deployRefTransaction }, { captureSnapshot, gitvaultCommitLine }] = await Promise.all([this.#publication(), this.#snapshot()]);
-    const opened = await this.openOrCreate(options);
+    const opened = options.address
+      ? await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: true })
+      : await this.openOrCreate(options);
     if (!opened.found && opened.created) await options.onVaultCreated?.(opened.created);
     const handle = opened.handle;
     const repoDir = options.repo_dir ?? process.cwd();
@@ -1274,6 +1380,9 @@ export class Gitvault {
   #openOrCreate(): Promise<OpenOrCreateModule> {
     return nodeOnly(() => import("../node/gitvault-open-or-create.js"), "openOrCreate");
   }
+  #address(): Promise<AddressModule> {
+    return nodeOnly(() => import("../node/gitvault-address.js"), "resolveOrCreateAddress");
+  }
 }
 
 // ─── D7 — progressive terminal-loss warning (repo-first-onramp task 2.7) ────
@@ -1359,11 +1468,69 @@ export function gitvaultRemoteUrl(orgId: string, projectId: string): string {
   return `run402::${orgId}/${projectId}`;
 }
 
+/**
+ * `run402::<org-slug>/<repo-name>` — the address-form remote builder
+ * (repo-first-onramp task 4, design D6). Same string shape as
+ * {@link gitvaultRemoteUrl} (the wire slot admits both forms undiscriminated
+ * — see {@link gitvaultRemoteAddressForm}); kept as its own named function so
+ * a call site states which form it means rather than reusing the id-form
+ * builder for a semantically different pair of arguments.
+ */
+export function gitvaultRemoteUrlForRepo(orgSlug: string, repoName: string): string {
+  return `run402::${orgSlug}/${repoName}`;
+}
+
+/** What {@link parseGitvaultRemoteUrl} returns — the two undiscriminated address halves. */
+export interface GitvaultRemoteAddress {
+  org_id: string;
+  project_id: string;
+}
+
 /** Parse a `run402::<org>/<project>` remote URL. `null` when it is not one. */
-export function parseGitvaultRemoteUrl(url: string): { org_id: string; project_id: string } | null {
+export function parseGitvaultRemoteUrl(url: string): GitvaultRemoteAddress | null {
   const m = /^run402::([^/]+)\/(.+)$/.exec(url.trim());
   if (!m) return null;
   return { org_id: m[1]!, project_id: m[2]! };
+}
+
+/** Which address form a parsed `run402::` remote is (repo-first-onramp task 4, design D6). */
+export type GitvaultRemoteAddressForm = "id" | "slug";
+
+const GITVAULT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GITVAULT_PROJECT_ID_RE = /^prj_/;
+
+/**
+ * Discriminate a parsed address's form (design D6, "resolved"): "org UUIDs
+ * and `prj_` prefixes make slug-vs-id in the same slot unambiguous." Both
+ * halves must look id-shaped for the address to be treated as id-form — a
+ * genuine `run402::<org_uuid>/<prj_id>` address always satisfies both at
+ * once, since real org ids are UUIDs and real project ids are always
+ * `prj_`-prefixed; anything else (an org slug half, or a bare repo-name half)
+ * is slug-form. Resolution accepts either (task 4.3).
+ */
+export function gitvaultRemoteAddressForm(address: GitvaultRemoteAddress): GitvaultRemoteAddressForm {
+  return GITVAULT_UUID_RE.test(address.org_id) && GITVAULT_PROJECT_ID_RE.test(address.project_id) ? "id" : "slug";
+}
+
+/** What a `SLUG_RELEASED` refusal names — the successor slug and the cooldown window (design D6). */
+export interface GitvaultSlugReleasedInfo {
+  successor_slug: string | null;
+  released_at: string | null;
+  cooldown_until: string | null;
+}
+
+/**
+ * `SLUG_RELEASED` (a renamed/deleted org slug, still inside its ~90-day
+ * cooldown) surfaces as a typed, actionable fact — NEVER auto-followed
+ * (design D6: "no redirects, deliberately"). `null` when `err` is not a
+ * `SLUG_RELEASED` refusal.
+ */
+export function gitvaultSlugReleasedInfo(err: unknown): GitvaultSlugReleasedInfo | null {
+  const e = err as { code?: string; details?: Record<string, unknown>; body?: Record<string, unknown> } | null;
+  if (!e || e.code !== "SLUG_RELEASED") return null;
+  const source = (e.details ?? e.body ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+  return { successor_slug: str(source.successor_slug), released_at: str(source.released_at), cooldown_until: str(source.cooldown_until) };
 }
 
 /** A 404/absent-route refusal for the unshipped `retention-cutoffs` endpoint. */

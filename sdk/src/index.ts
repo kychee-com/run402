@@ -644,7 +644,10 @@ export type * from "./namespaces/gitvault.types.js";
 export {
   Gitvault,
   gitvaultRemoteUrl,
+  gitvaultRemoteUrlForRepo,
   parseGitvaultRemoteUrl,
+  gitvaultRemoteAddressForm,
+  gitvaultSlugReleasedInfo,
   GITVAULT_LOSS_WARNING_THRESHOLDS,
   gitvaultLossWarningTrip,
   gitvaultLossWarningTripped,

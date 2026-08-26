@@ -66,6 +66,31 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   readonly calls: string[] = [];
   authorizationEpoch = "29ecd26abcb16d47cfd6b853a1c9130d";
   repoCounter = 0;
+  // ── D6 push-to-create (repo-first-onramp task 4.4/4.5) — modelled server
+  // state: `internal.repo_names` (run402-private services/repo-names.ts).
+  // Keyed by `${org_slug}/${repo_name}`. `null` project_id = an in-flight
+  // RESERVATION (the atomic-claim window); a request from a client_creation_id
+  // that never "won" the reservation loses the race, exactly like the
+  // gateway's real PRIMARY KEY arbiter.
+  readonly repoNames = new Map<string, { orgId: string; projectId: string | null; winnerClientCreationId: string }>();
+  /** Org slugs currently in their post-rename cooldown (design D6) — `findVaultByRepo`/push-to-create both refuse `SLUG_RELEASED`. */
+  readonly slugReleased = new Map<string, { successor_slug: string | null; released_at: string; cooldown_until: string }>();
+  /**
+   * `project_id -> repo_id` / `repo_id -> {orgId, projectId}` — what
+   * `findVaultByProject`/`findVaultByRepo`/`getVaultRecord` resolve through
+   * for a multi-repo fixture instance (D6 push-to-create tests hold more
+   * than one repo per transport). Promoted from `pendingOwners` in
+   * `uploadObjects`, matching the SAME "objects exist" gate this fixture has
+   * always used to mean "a vault is resolvable" (its pre-existing
+   * single-vault fallback reads `[...this.objects.keys()]`) — a fresh
+   * ALLOCATION alone does NOT make a vault resolvable here, which is exactly
+   * what the D2 resumability test below depends on (a local journal, not a
+   * network fast path, must drive a crashed creation to completion).
+   */
+  readonly projectRepoIds = new Map<string, string>();
+  readonly repoOwners = new Map<string, { orgId: string; projectId: string }>();
+  /** `repo_id -> {orgId, projectId}` from `allocate()`, promoted into the maps above once `uploadObjects` proves the repo has real content. */
+  readonly pendingOwners = new Map<string, { orgId: string; projectId: string }>();
   // ── fault knobs ──
   /** Tamper every Nth receipt's hash (1-based index into the upload order); null = honest. */
   tamperReceiptAt: number | null = null;
@@ -103,16 +128,55 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     const encryptionPubkey = requirePubkey(req.creator_encryption_pubkey, "creator_encryption_pubkey");
     let a = this.allocations.get(req.client_creation_id);
     if (!a) {
+      // ── D6 push-to-create addressing: resolve {org_id, project_id} from
+      // {org_slug, repo_name} — the SYNCHRONOUS check-and-reserve below (no
+      // `await` between the read and the write) models the gateway's atomic
+      // PRIMARY KEY reservation: of two concurrent callers, whichever's
+      // synchronous portion runs first (deterministic in a single-threaded
+      // event loop, exactly the ordering `Promise.all([a(), b()])` produces)
+      // wins the name, and the other sees REPO_CREATION_CONFLICT — never both.
+      let orgId: string;
+      let projectId: string;
+      if ("org_slug" in req) {
+        const key = `${req.org_slug}/${req.repo_name}`;
+        const released = this.slugReleased.get(req.org_slug);
+        if (released) throw err("SLUG_RELEASED", `slug "${req.org_slug}" is in cooldown`, released);
+        const existing = this.repoNames.get(key);
+        if (existing) {
+          if (existing.winnerClientCreationId !== req.client_creation_id || existing.projectId === null) {
+            // Either a different client won it (this one races and loses), or
+            // the same reservation is still pending finalization — either way
+            // this call did not win the atomic claim.
+            throw err("REPO_CREATION_CONFLICT", `repo "${key}" was just created by a concurrent push`, { project_id: existing.projectId });
+          }
+          orgId = existing.orgId;
+          projectId = existing.projectId;
+        } else {
+          this.repoCounter += 1;
+          orgId = `org_${req.org_slug}`;
+          projectId = `prj_${String(this.repoCounter).padStart(8, "0")}`;
+          // Reserve + finalize synchronously — the fixture's atomic claim window.
+          this.repoNames.set(key, { orgId, projectId, winnerClientCreationId: req.client_creation_id });
+        }
+      } else {
+        orgId = req.org_id;
+        projectId = req.project_id;
+      }
       this.repoCounter += 1;
       const unsigned = {
         format: GITVAULT_FORMAT, object_kind: "allocation" as const, suite: GITVAULT_SUITE,
-        repo_id: `src_${String(this.repoCounter).padStart(32, "0")}`, service_key_id: "sk_test-1", org_id: req.org_id, project_id: req.project_id, principal_id: "principal_1",
+        repo_id: `src_${String(this.repoCounter).padStart(32, "0")}`, service_key_id: "sk_test-1", org_id: orgId, project_id: projectId, principal_id: "principal_1",
         creator_signing_fingerprint: vkFingerprint(fromBase64url(signingPubkey, "creator_signing_pubkey")),
         creator_encryption_fingerprint: ekFingerprint(fromBase64url(encryptionPubkey, "creator_encryption_pubkey")),
         client_creation_id: req.client_creation_id,
         allocation_nonce: "ab".repeat(16), allocation_generation: "0000000000000001", status: "active" as const, issued_at: "2026-08-22T12:00:00.000Z", created_at: "2026-08-22T12:00:00.000Z",
       };
       a = signGitvaultObject(unsigned, this.service.seed) as GitvaultAllocation;
+      // Same "objects exist" gate as the ordinary path (see the class doc
+      // comment on `projectRepoIds`) — a fresh ALLOCATION alone, push-to-create
+      // or not, does not yet mean the client holds K_repo locally; only a
+      // completed creation (this fixture's proxy: objects uploaded) does.
+      this.pendingOwners.set(a.repo_id, { orgId, projectId });
       this.allocations.set(req.client_creation_id, a);
     }
     return a;
@@ -183,6 +247,16 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       receipts.push({ path: o.path, object_id: o.object_id, sha256: tampered ? "00".repeat(32) : o.sha256, size_bytes: o.size_bytes });
     });
     if (this.tamperReceiptAt !== null) this.tamperReceiptAt = null;
+    // Promote the pending owner NOW — the SAME "objects exist" instant this
+    // fixture's own single-vault fallback (`[...objects.keys()]`) has always
+    // used to mean "a vault is resolvable." A fresh allocation alone must
+    // NOT make `findVaultByProject`/`findVaultByRepo` succeed (see the class
+    // doc comment on `projectRepoIds`).
+    const owner = this.pendingOwners.get(repo_id);
+    if (owner) {
+      this.repoOwners.set(repo_id, owner);
+      this.projectRepoIds.set(owner.projectId, repo_id);
+    }
     return receipts;
   }
 
@@ -273,8 +347,14 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   async getVaultRecord({ repo_id }: { repo_id: string }): Promise<GitvaultVaultRecord> {
     this.calls.push("vault-record");
     const generations = [...this.objects.keys()].filter((k) => k.startsWith(`${repo_id}|head/`)).map((k) => k.slice(`${repo_id}|head/`.length)).sort();
+    // The REAL owner, when this fixture created the repo via `allocate()` —
+    // matters once a single transport instance holds more than one repo
+    // (D6 push-to-create tests); falls back to the historical single-vault
+    // default for every test that hand-rolled a `repo_id` without going
+    // through `allocate()`.
+    const owner = this.repoOwners.get(repo_id);
     return {
-      repo_id, project_id: "prj_memory", org_id: "org_memory",
+      repo_id, project_id: owner?.projectId ?? "prj_memory", org_id: owner?.orgId ?? "org_memory",
       gitvault_policy: "required", gitvault_policy_version: "1", gitvault_policy_changed_at: null,
       allocation_generation: "1", allocation_sha256: null,
       newest_generation: generations.at(-1) ?? null, genesis_admitted_at: null, latest_effective_admitted_at: null,
@@ -291,9 +371,19 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     // `key()` joins with `/` (`${repoId}/${path}`), never `|` — this used to
     // split on the wrong separator and return the whole compound key as
     // `repo_id` whenever `vaultRecord.repo_id` was not pre-set by hand.
-    const repoId = this.vaultRecord.repo_id ?? [...this.objects.keys()][0]?.split("/")[0];
+    const repoId = this.vaultRecord.repo_id ?? this.projectRepoIds.get(project_id) ?? [...this.objects.keys()][0]?.split("/")[0];
     if (!repoId) throw err("RESOURCE_NOT_FOUND", `no gitvault for ${project_id}`);
     return { ...(await this.getVaultRecord({ repo_id: repoId })), project_id };
+  }
+
+  /** D6 (task 4.3) — resolve by address-form `org-slug/name`. */
+  async findVaultByRepo({ org_slug, repo_name }: { org_slug: string; repo_name: string }): Promise<GitvaultVaultRecord> {
+    this.calls.push("find-vault-by-repo");
+    const released = this.slugReleased.get(org_slug);
+    if (released) throw err("SLUG_RELEASED", `slug "${org_slug}" is in cooldown`, released);
+    const entry = this.repoNames.get(`${org_slug}/${repo_name}`);
+    if (!entry || entry.projectId === null) throw err("RESOURCE_NOT_FOUND", `no repo at ${org_slug}/${repo_name}`);
+    return this.findVaultByProject({ project_id: entry.projectId });
   }
 
   async acquireMaintenanceLease(request: GitvaultMaintenanceLeaseRequest): Promise<GitvaultMaintenanceLease> {
