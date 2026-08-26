@@ -30,6 +30,7 @@ Usage:
   run402 org get    <org_id>
   run402 org rename <org_id> --name <display_name>   (or: --clear to remove the label)
   run402 org payout-wallet <org_id> --wallet <wallet_address>  (or: --clear to remove the explicit default)
+  run402 org slug   <slug> [--org <org_id>]
   run402 org whoami
   run402 org use     <org_id>
   run402 org current
@@ -53,6 +54,9 @@ Subcommands:
   list        Orgs you are a member of
   get         Read one org (label + tier/lease + your role)
   rename      Set or clear an org's display label (owner-only)
+  slug        Claim or rename the org's globally-unique, address-form slug
+              (owner-only). A genesis claim spends a one-time claim fee; a
+              rename releases the old slug into a ~90-day cooldown.
   use         Select the current org for this wallet profile
   current     Report the resolved current org and where it came from
   clear       Clear this wallet profile's org selection
@@ -120,6 +124,26 @@ Legacy (still supported):
 
 Owner-only + step-up gated. Pass --clear (or an empty display_name) to remove
 the label. Output includes the updated tier and lease timestamps.
+`,
+  slug: `run402 org slug — claim or rename the org's address-form slug
+
+Usage:
+  run402 org slug <slug> [--org <org_id>] [--idempotency-key <key>]
+
+The slug is a globally-unique, claimable, address-form handle for the org
+(repo-first-onramp design D6) — the <org-slug> half of a named repo address
+run402::<org-slug>/<name>. Grammar: lowercase [a-z0-9-], no leading/trailing/
+double hyphen, max 39 chars. Owner-only.
+
+A genesis claim (the org had no prior slug) spends a one-time claim fee off
+the org's balance. A rename is free but releases the OLD slug into a ~90-day
+cooldown: it stops resolving, with a typed SLUG_RELEASED refusal naming the
+new slug as successor — there is no redirect, so update every remote and
+address that still names the old one.
+
+This is a paid, side-effecting mutation and requires Idempotency-Key; the SDK
+generates one automatically unless --idempotency-key is passed, so a retried
+call after a dropped response can never double-bill.
 `,
   "payout-wallet": `run402 org payout-wallet — set or clear the tenant route payout wallet
 
@@ -413,6 +437,51 @@ async function payoutWallet(args) {
   }
 }
 
+/**
+ * `run402 org slug <slug>` — claim or rename the org's address-form slug
+ * (repo-first-onramp design D6). Owner-only, and a genesis claim spends a
+ * one-time claim fee — this is a PAID, side-effecting mutation, so it
+ * requires `Idempotency-Key`; the SDK generates one client-side when
+ * `--idempotency-key` is omitted, so a retried call after a dropped response
+ * can never double-bill.
+ */
+async function slug(args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--org", "--idempotency-key"];
+  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  const [newSlug] = requirePositionalCount(a, valueFlags, {
+    min: 1,
+    max: 1,
+    command: "run402 org slug <slug> [--org <org_id>]",
+    missing: "Missing <slug>.",
+  });
+  const org = await resolveOrg(a, { cmd: "org" });
+  if (!org) {
+    fail({
+      code: "ORG_UNRESOLVED",
+      message: "Could not resolve which organization to claim this slug for.",
+      hint: "Pass --org <org_id>, or select one first with `run402 org use <id>`.",
+    });
+  }
+  const idempotencyKey = flagValue(a, "--idempotency-key");
+  try {
+    const result = await getSdk().org(org.orgId).claimSlug(newSlug, idempotencyKey != null ? { idempotencyKey } : {});
+    console.log(JSON.stringify(result, null, 2));
+    if (result.created) {
+      console.error(`slug "${result.slug}" claimed for ${org.orgId} — a one-time claim fee was debited from the org's balance.`);
+    } else if (result.previous_slug && result.previous_slug !== result.slug) {
+      console.error(
+        `org ${org.orgId} renamed from "${result.previous_slug}" to "${result.slug}" — no fee. ` +
+        `"${result.previous_slug}" now enters its ~90-day release cooldown: it stops resolving with a typed SLUG_RELEASED refusal (naming "${result.slug}" as the successor), never a redirect. Update every remote and address that still names it.`,
+      );
+    } else {
+      console.error(`"${result.slug}" was already ${org.orgId}'s current slug — nothing changed, no fee.`);
+    }
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function audit(args) {
   const a = normalizeArgv(args);
   const valueFlags = ["--limit", "--after", "--before"];
@@ -630,6 +699,7 @@ export async function run(sub, args) {
     case "get": await get(args); break;
     case "rename": await rename(args); break;
     case "payout-wallet": await payoutWallet(args); break;
+    case "slug": await slug(args); break;
     case "whoami": await whoami(args); break;
     case "use": await use(args); break;
     case "current": await current(args); break;

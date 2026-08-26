@@ -28,6 +28,21 @@
  * completes the push. One command, no prior `gitvault init`. `git ls-remote`
  * / `fetch` stay pure reads and allocate nothing.
  *
+ * NAMED ADDRESSING + PUSH-TO-CREATE (repo-first-onramp task 4, design D6).
+ * `run402::<org>/<name>` admits TWO forms in the same slot — id-form
+ * (`org_id`/`prj_...`, unchanged: resolved via `r.gitvault.openOrCreate`
+ * above) and slug-form (`run402::<org-slug>/<name>`, e.g.
+ * `run402::acme/my-notes`) — discriminated by
+ * `gitvaultRemoteAddressForm`. A slug-form remote resolves through
+ * `r.gitvault.resolveOrCreateAddress`, which ALSO drives push-to-create on a
+ * miss (`push` only; `list`/`fetch` pass `allow_create: false`, same "reads
+ * never allocate" discipline as the id-form path) and PINS the resolved
+ * `repo_id` in this checkout's local git config the first time it resolves
+ * (task 4.5) — every later invocation on THIS checkout goes straight to the
+ * pinned id, skipping the address resolution round-trip entirely and
+ * surviving a later rename of either half. `SLUG_RELEASED` is never
+ * auto-followed: it refuses, naming the successor slug.
+ *
  * WHICH REPOSITORY (the fail-closed rule). `process.cwd()` is NOT the
  * repository. git identifies the repository with `GIT_DIR`, and during
  * `git clone` cwd is the directory clone was RUN FROM — routinely some other,
@@ -68,7 +83,7 @@
 
 import { createInterface } from "node:readline";
 import { getSdk } from "./lib/sdk.mjs";
-import { parseGitvaultRemoteUrl } from "#sdk";
+import { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } from "#sdk";
 import { hardenedGit, resolveGitInvocationRepo } from "#sdk/node";
 
 const out = (line) => process.stdout.write(`${line}\n`);
@@ -84,7 +99,11 @@ function oneLine(value) {
 function describeError(err) {
   const code = err?.code ?? err?.body?.code ?? null;
   const message = err?.message ?? err?.body?.message ?? String(err);
-  return oneLine(code ? `${code}: ${message}` : message);
+  // SLUG_RELEASED is never auto-followed — but the successor slug (design D6)
+  // is exactly the fact a human/agent reading stderr needs to act on it.
+  const released = gitvaultSlugReleasedInfo(err);
+  const suffix = released?.successor_slug ? ` (renamed to "${released.successor_slug}" — update the remote and re-run)` : "";
+  return oneLine(code ? `${code}: ${message}${suffix}` : message);
 }
 
 /**
@@ -132,7 +151,10 @@ async function main(argv) {
   // `org_id` rides in the parsed address (`run402::<org_id>/<project_id>`),
   // so it costs nothing extra to carry — it is exactly what D2's lazy
   // creation needs to allocate an unresolved vault from `runPush` below, with
-  // no separate lookup.
+  // no separate lookup. Only meaningful for an ID-FORM address; a slug-form
+  // one resolves through `resolveOrCreateAddress` instead (below), which
+  // needs no separate org_id at all — the gateway resolves the slug itself.
+  const addressForm = gitvaultRemoteAddressForm(address);
   const target = { project_id: address.project_id, org_id: address.org_id };
   let verbosity = 1;
 
@@ -160,25 +182,42 @@ async function main(argv) {
     note(`if you meant to restore this vault: git init --bare <dir> && git -C <dir> remote add run402 run402::${address.org_id}/${address.project_id} && git -C <dir> fetch run402 '+refs/heads/*:refs/heads/*'`);
   }
 
-  /** Open the vault lazily — `capabilities` and `option` must never touch the network. */
-  const openVault = async (repoDir) => (await getSdk().gitvault.open(repoDir ? { ...target, repo_dir: repoDir } : target)).vault;
-
   /** A 404/absent-vault refusal — the "nothing here yet" shape, never a genuine failure to mask. */
   function isVaultNotFound(err) {
     return err?.status === 404 || err?.code === "RESOURCE_NOT_FOUND" || err?.code === "ROUTE_NOT_FOUND";
   }
 
   /**
-   * Open the vault, allocating it first when it does not exist yet (D2). Used
-   * ONLY by `runPush` — `list`/`fetch` stay pure reads and never create
-   * anything (see `runList`'s own not-found handling below).
+   * Open the vault lazily — `capabilities` and `option` must never touch the
+   * network. Dispatches on the address form (design D6): id-form is
+   * BYTE-IDENTICAL to before (`gitvault.open` with `{org_id, project_id}`);
+   * slug-form resolves (and, on the first successful resolution, PINS
+   * `repo_id` in local git state — task 4.5) through
+   * `gitvault.resolveOrCreateAddress` with `allow_create: false` — a read
+   * never allocates, same discipline the id-form path already had.
+   */
+  const openVault = async (repoDir) => {
+    if (addressForm === "id") return (await getSdk().gitvault.open(repoDir ? { ...target, repo_dir: repoDir } : target)).vault;
+    const result = await getSdk().gitvault.resolveOrCreateAddress({ address, allow_create: false, ...(repoDir ? { repo_dir: repoDir } : {}) });
+    return result.handle.vault;
+  };
+
+  /**
+   * Open the vault, allocating it first when it does not exist yet (D2), and
+   * — for a SLUG-form address whose name does not resolve yet —
+   * PUSH-TO-CREATE it (design D6, task 4.4/4.5). Used ONLY by `runPush` —
+   * `list`/`fetch` stay pure reads and never create anything (see
+   * `runList`'s own not-found handling below).
    *
    * Prints the one-shot recovery receipt and the keystore path to stderr the
    * moment allocation happens, per the client-surface spec: an agent reads
    * stderr, and the receipt is worth exactly as many copies as get kept.
    */
   async function openOrCreateVault(repoDir) {
-    const result = await getSdk().gitvault.openOrCreate({ ...target, repo_dir: repoDir });
+    const result =
+      addressForm === "id"
+        ? await getSdk().gitvault.openOrCreate({ ...target, repo_dir: repoDir })
+        : await getSdk().gitvault.resolveOrCreateAddress({ address, repo_dir: repoDir, allow_create: true });
     if (!result.found && result.created) {
       note("");
       note(`vault ${result.handle.repo_id} allocated (genesis ${result.created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);

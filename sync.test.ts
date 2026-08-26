@@ -667,6 +667,12 @@ const SURFACE: Capability[] = [
   { id: "get_org",             endpoint: "GET /orgs/v1/:org_id",                          mcp: "get_org",               cli: "org:get",           openclaw: "org:get" },
   { id: "rename_org",          endpoint: "PATCH /orgs/v1/:org_id",                        mcp: "rename_org",            cli: "org:rename",        openclaw: "org:rename" },
   { id: "set_org_payout_wallet", endpoint: "PATCH /orgs/v1/:org_id/payout-wallet",         mcp: "set_org_payout_wallet", cli: "org:payout-wallet", openclaw: "org:payout-wallet" },
+  // repo-first-onramp task 4 (design D6): the slug CLAIM spends money and is
+  // a permanent handle — CLI/SDK only, no MCP tool (documentation.md's
+  // gitvault row's "mutating verbs are CLI-only" law extends to this sibling
+  // org-owned naming surface for the same reasons: a paid, side-effecting,
+  // hard-to-undo mutation belongs to a command the caller typed).
+  { id: "org_slug",            endpoint: "POST /orgs/v1/:org_id/slug",                    mcp: null,                    cli: "org:slug",          openclaw: "org:slug" },
   { id: "whoami",              endpoint: "GET /agent/v1/whoami",                          mcp: "whoami",                cli: "org:whoami",        openclaw: "org:whoami" },
   { id: "list_orgs",           endpoint: "GET /orgs/v1",                                  mcp: "list_orgs",             cli: "org:list",          openclaw: "org:list" },
   { id: "list_org_members",    endpoint: "GET /orgs/v1/:org_id/members",                      mcp: "list_org_members",      cli: "org:member:list",   openclaw: "org:member:list" },
@@ -806,6 +812,9 @@ const SURFACE: Capability[] = [
   { id: "repos_create", endpoint: "POST /projects/v1 (+ gitvault genesis admission)", mcp: null, cli: "repos:create", openclaw: "repos:create" },
   { id: "repos_list",   endpoint: "GET /projects/v1 (+ per-project GET /gitvault/v1/vaults/:vault_id)", mcp: null, cli: "repos:list", openclaw: "repos:list" },
   { id: "repos_delete", endpoint: "DELETE /projects/v1/:id", mcp: null, cli: "repos:delete", openclaw: "repos:delete" },
+  // repo-first-onramp task 4.2 (design D6): the explicit address-form name
+  // claim — no fee, but still CLI-only under the same family precedent above.
+  { id: "repos_name",   endpoint: "POST /projects/v1/:id/repo-name", mcp: null, cli: "repos:name", openclaw: "repos:name" },
 
   // ── the lossy-surface expander ──────────────────────────────────────────
   // MCP truncates; agent-response-design requires the full result to stay
@@ -860,6 +869,10 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   repos_create: null,
   repos_list: null,
   repos_delete: null,
+  // repo-first-onramp task 4.2 (design D6): a thin one-call wrapper (plus a
+  // non-load-bearing best-effort address preview), unlike its compound
+  // siblings above.
+  repos_name: "projects.setRepoName",
   gitvault_prune: "gitvault.prune",
   // The result store is MCP-local plumbing, not a gateway capability.
   expand_result: null,
@@ -1140,6 +1153,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_org: "org.get",
   rename_org: "org.rename",
   set_org_payout_wallet: "org.setPayoutWallet",
+  org_slug: "org.claimSlug",
   whoami: "orgs.whoami",
   list_orgs: "orgs.list",
   list_org_members: "org.members.list",
@@ -1586,6 +1600,16 @@ describe("SDK surface alignment", () => {
       // (`setPolicy` has its own `run402 gitvault policy` verb — see SURFACE.)
       "gitvault.completeOverride",
       "gitvault.acquireMaintenanceLease",
+      // D6 named addressing (repo-first-onramp task 4): `forRepo` is
+      // address-form resolution sugar the verbs use internally, the same
+      // shape as `forProject` above; `resolveAddress` (pure read) and
+      // `resolveOrCreateAddress` (open + push-to-create + id-pinning) are the
+      // orchestration `git-remote-run402` and `gitvault snapshot`'s `push`
+      // compose internally — no verb of their own, the same way `open` and
+      // `openOrCreate` already cover the id-form paths.
+      "gitvault.forRepo",
+      "gitvault.resolveAddress",
+      "gitvault.resolveOrCreateAddress",
       // ─── function-runtime-rebuild (v1.69) — project-wide variant ──────────
       // `functions.rebuild` (single) is the canonical capability; `rebuildAll`
       // shares the `run402 functions rebuild --all` CLI verb (and the

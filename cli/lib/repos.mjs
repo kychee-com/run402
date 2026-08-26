@@ -35,11 +35,12 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { withAutoApprove } from "./operator.mjs";
-import { allowanceAuthHeaders, isCoreApiTarget } from "./config.mjs";
+import { allowanceAuthHeaders, isCoreApiTarget, resolveProjectId } from "./config.mjs";
 import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.js";
 import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
 import { nextAction } from "./next-actions.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
+import { gitvaultRemoteUrlForRepo } from "#sdk";
 import {
   normalizeArgv,
   hasHelp,
@@ -56,21 +57,30 @@ Usage:
   run402 repos create <name> [--org <org_id>] [--dir <path>] [--tier <tier>]
   run402 repos list   [--org <org_id>]
   run402 repos delete <project_id> [--force]
+  run402 repos name   <name> [--project <id>]
 
 Subcommands:
   create  Provision a project, ALLOCATE its vault (mints key material and a
           one-shot recovery receipt), and scaffold the run402 remote —
           origin when free, run402 when taken (D1). No deploy plan, no
           release, nothing deployed: the vault-only track (design D8), for a
-          project that only ever hosts encrypted source.
+          project that only ever hosts encrypted source. When the owning org
+          has a slug (run402 org slug), also claims the project's address-
+          form repo name (best-effort — a name collision or missing slug
+          never fails the command) and prints the run402::<slug>/<name>
+          address (design D6).
   list    The organization's vault-bearing projects — those with an
           allocated vault, whether or not they have ever deployed. Not
-          every project in the org; ones with no vault are omitted.
+          every project in the org; ones with no vault are omitted. Shows
+          the run402::<slug>/<name> address for a repo that has claimed one.
   delete  Delete the project and everything in it (database, functions,
           subdomains, mailbox, secrets). REFUSES while the vault holds any
           admitted generation unless --force is passed — this is
           irreversible and destroys the vault's entire encrypted history
           along with everything else.
+  name    Claim or rename the project's per-org-unique, address-form name
+          (design D6) — the <name> half of run402::<org-slug>/<name>. No
+          fee, unlike the org slug. Same authority as renaming the project.
 
 Options:
   --org <org_id>    create/list: the owning organization. create resolves it
@@ -88,6 +98,8 @@ Options:
                      derived from the name)
   --force           delete: proceed even though the vault holds generations
                      that would be permanently and irrecoverably lost
+  --project <id>    name: project to claim the repo name for (default: the
+                     active project)
   --json            No-op: stdout is already JSON.
 
 There is no separate gitvault price: bytes count against the same
@@ -97,6 +109,7 @@ organization-pooled storage budget every project already has.
 const CREATE_VALUE_FLAGS = ["--org", "--dir", "--tier", "--idempotency-key"];
 const LIST_VALUE_FLAGS = ["--org"];
 const DELETE_VALUE_FLAGS = ["--project"];
+const NAME_VALUE_FLAGS = ["--project"];
 
 function validateProjectName(name) {
   if (name === "") {
@@ -121,6 +134,24 @@ function validateProjectName(name) {
       details: { field: "name" },
     });
   }
+}
+
+/**
+ * Best-effort slugify for the address-form repo name (design D6's grammar:
+ * lowercase [a-z0-9-], no leading/trailing/double hyphen, <=63 chars). The
+ * free-text project display name (`repos create <name>`'s positional) is
+ * NOT already in this charset, so `create` derives a candidate rather than
+ * sending the raw name straight to the claim route and failing on the first
+ * space or capital letter.
+ */
+function slugifyRepoName(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63)
+    .replace(/-+$/g, "");
 }
 
 async function create(args) {
@@ -177,9 +208,29 @@ async function create(args) {
       project_id: provisioned.project_id,
       repo_dir: dir,
     });
+    // Best-effort address-form name claim (design D6): when the owning org
+    // has a slug, name this repo so it is reachable as
+    // run402::<slug>/<name> too — never fails `create` itself. A collision,
+    // a missing slug, or any other refusal just means no address this time;
+    // `run402 repos name <name>` claims it explicitly later.
+    let address = null;
+    try {
+      const orgRecord = await getSdk().org(effectiveOrgId).get();
+      if (orgRecord.slug) {
+        const candidate = slugifyRepoName(name);
+        if (candidate) {
+          const named = await getSdk().projects.setRepoName(provisioned.project_id, candidate);
+          address = gitvaultRemoteUrlForRepo(orgRecord.slug, named.repo_name);
+        }
+      }
+    } catch (err) {
+      console.error(`repo name not claimed (non-fatal): ${err?.message ?? String(err)}`);
+    }
+
     const out = {
       project_id: provisioned.project_id,
       repo_id: vault.repo_id,
+      address,
       remote: vault.remote,
       deduplicated: vault.deduplicated,
       genesis_sha256: vault.genesis_sha256,
@@ -192,6 +243,7 @@ async function create(args) {
       `project ${provisioned.project_id} provisioned; vault ${vault.repo_id} ` +
       (vault.deduplicated ? "already existed — nothing was re-allocated" : `allocated (genesis ${vault.genesis_sha256})`),
     );
+    if (address) console.error(`address: ${address}`);
     if (vault.remote) console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
     console.error("");
     console.error(vault.terminal_loss_statement);
@@ -244,8 +296,21 @@ async function list(args) {
       genesis_admitted_at: status.vault.genesis_admitted_at,
     });
   }
-  console.log(JSON.stringify({ org_id: orgId, repos }, null, 2));
+  // The org's slug, when claimed (design D6) — printed so a human/agent can
+  // construct run402::<slug>/<name> addresses by hand. There is deliberately
+  // no per-project `address` field here yet: the gateway has no bulk (or
+  // even single) READ for a project's claimed repo_name today, only the
+  // WRITE route (`POST /projects/v1/:id/repo-name`) — adding one is gateway
+  // work, out of scope for this client-only change (see the final report).
+  let orgSlug = null;
+  try {
+    orgSlug = (await getSdk().org(orgId).get()).slug;
+  } catch {
+    // Best-effort — `list` must not fail over an org-slug lookup.
+  }
+  console.log(JSON.stringify({ org_id: orgId, org_slug: orgSlug, repos }, null, 2));
   console.error(`${repos.length} vault-bearing project(s) of ${projects.length} total in this organization`);
+  if (orgSlug) console.error(`org slug: ${orgSlug} — a repo with a claimed address-form name is reachable at run402::${orgSlug}/<name>`);
 }
 
 async function del(args) {
@@ -297,6 +362,41 @@ async function del(args) {
   }
 }
 
+/**
+ * `run402 repos name <name> [--project <id>]` — the explicit address-form
+ * claim (design D6, task 4.2): a project gets its per-org-unique `<name>`
+ * half of `run402::<org-slug>/<name>` either at push-to-create time or here.
+ */
+async function name(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...NAME_VALUE_FLAGS, "--help", "-h"], NAME_VALUE_FLAGS);
+  const [repoName] = requirePositionalCount(a, NAME_VALUE_FLAGS, {
+    min: 1, max: 1, command: "run402 repos name <name> [--project <id>]", missing: "run402 repos name <name>: a name is required",
+  });
+  const projectId = resolveProjectId(flagValue(a, "--project"));
+  try {
+    const result = await getSdk().projects.setRepoName(projectId, repoName);
+    let address = null;
+    try {
+      const owningOrg = await resolveOwningOrgId(projectId);
+      const orgSlug = owningOrg ? (await getSdk().org(owningOrg).get()).slug : null;
+      if (orgSlug) address = gitvaultRemoteUrlForRepo(orgSlug, result.repo_name);
+    } catch {
+      // The claim itself already succeeded — a failed address-preview lookup is never fatal.
+    }
+    console.log(JSON.stringify({ ...result, address }, null, 2));
+    console.error(
+      result.previous_repo_name && result.previous_repo_name !== result.repo_name
+        ? `renamed from "${result.previous_repo_name}" to "${result.repo_name}"`
+        : `name "${result.repo_name}" claimed for ${projectId}`,
+    );
+    if (address) console.error(`address: ${address}`);
+    else console.error("this org has no slug yet — claim one with `run402 org slug <slug>` to get a full run402::<slug>/<name> address");
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 export async function run(sub, args) {
   const argv = Array.isArray(args) ? args : [];
   if (!sub || hasHelp([sub, ...argv])) {
@@ -314,6 +414,10 @@ export async function run(sub, args) {
     }
     case "delete": {
       await del(argv);
+      break;
+    }
+    case "name": {
+      await name(argv);
       break;
     }
     default:

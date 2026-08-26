@@ -17,6 +17,10 @@ const API = "https://test-api.run402.com";
 process.env.RUN402_CONFIG_DIR = configDir;
 process.env.RUN402_API_BASE = API;
 
+// `resolveOrg`'s `--org` path validates shape (a real UUID) — unlike
+// `rename`'s bare positional passthrough, which never validates, so a
+// short "org_abc" fixture works there but not for `slug`.
+const SLUG_ORG_ID = "11111111-2222-3333-4444-555555555555";
 const TEST_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const TEST_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const LEASE_STARTED_AT = "2026-06-19T12:00:00.000Z";
@@ -45,18 +49,20 @@ function safeJson(text) {
 async function mockFetch(input, init) {
   // The Node SDK's x402-wrapped fetch may pass either (urlString, init) or a
   // Request object — handle both so body/method/url assertions are reliable.
-  let url, method, body;
+  let url, method, body, headers;
   if (typeof Request !== "undefined" && input instanceof Request) {
     url = input.url;
     method = (init?.method || input.method || "GET").toUpperCase();
     const raw = init?.body ?? (await input.clone().text());
     body = raw ? safeJson(String(raw)) : null;
+    headers = new Headers(init?.headers ?? input.headers);
   } else {
     url = typeof input === "string" ? input : String(input);
     method = (init?.method || "GET").toUpperCase();
     body = init?.body ? safeJson(String(init.body)) : null;
+    headers = new Headers(init?.headers);
   }
-  calls.push({ url, method, body });
+  calls.push({ url, method, body, headers });
   // first-class-orgs (v1.82) routes — specific matches BEFORE the generic handlers below.
   if (url.endsWith("/orgs/v1") && method === "POST") {
     return Promise.resolve(json({
@@ -85,6 +91,14 @@ async function mockFetch(input, init) {
       lease_started_at: LEASE_STARTED_AT,
       lease_expires_at: LEASE_EXPIRES_AT,
     }));
+  }
+  if (url.endsWith(`/orgs/v1/${SLUG_ORG_ID}/slug`) && method === "POST") {
+    return Promise.resolve(json({
+      org_id: SLUG_ORG_ID,
+      slug: body?.slug ?? null,
+      previous_slug: body?.slug === "acme" ? null : "acme",
+      created: body?.slug === "acme",
+    }, body?.slug === "acme" ? 201 : 200));
   }
   if (url.endsWith("/orgs/v1/org_abc/payout-wallet") && method === "PATCH") {
     return Promise.resolve(json({
@@ -253,6 +267,22 @@ describe("run402 org", () => {
   it("rename --clear PATCHes display_name: null", async () => {
     capture(); await runOrg("rename", ["org_abc", "--clear"]); uncapture();
     assert.deepEqual(lastCall().body, { display_name: null });
+  });
+
+  it("slug POSTs {slug} to /orgs/v1/:org_id/slug with a generated Idempotency-Key", async () => {
+    capture(); await runOrg("slug", ["acme", "--org", SLUG_ORG_ID]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/${SLUG_ORG_ID}/slug`);
+    assert.equal(lastCall().method, "POST");
+    assert.deepEqual(lastCall().body, { slug: "acme" });
+    assert.ok(lastCall().headers.get("Idempotency-Key"), "a client-generated Idempotency-Key must be present");
+    assert.match(stdout.join("\n"), /"created": true/);
+  });
+
+  it("slug rename reports created:false and names the previous slug (cooldown consequence)", async () => {
+    capture(); await runOrg("slug", ["acme-hq", "--org", SLUG_ORG_ID]); uncapture();
+    assert.deepEqual(lastCall().body, { slug: "acme-hq" });
+    assert.match(stdout.join("\n"), /"previous_slug": "acme"/);
+    assert.match(stdout.join("\n"), /"created": false/);
   });
 
   it("payout-wallet PATCHes wallet_address", async () => {

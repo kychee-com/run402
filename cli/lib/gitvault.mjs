@@ -69,8 +69,12 @@ Subcommands:
             deploy — a vault-only project snapshots for months without one.
             Against a project with no vault yet, this ALLOCATES one inline
             (the six-stage creation, same as \`init\`) before publishing — one
-            command, no prior \`gitvault init\`. The one-shot recovery receipt
-            and keystore path print to stderr the moment that happens.
+            command, no prior \`gitvault init\`. When --repo/--project are
+            both omitted and the local run402/origin remote is a slug-form
+            address (run402::<org-slug>/<name>), PUSH-TO-CREATES through it
+            instead (design D6) — same as pushing that name with \`git\`. The
+            one-shot recovery receipt and keystore path print to stderr the
+            moment that happens.
             Before reporting a snapshot as landed the SDK compares finalization
             receipts against the expected manifest and reads the admitted head
             back from storage; a 200 alone is never enough. \`push\` is a
@@ -370,6 +374,15 @@ async function status(args) {
     if (s.remote) {
       console.error(`remote '${s.remote.name}': ${s.remote.url}${s.remote.matches ? "" : "  ← points at a DIFFERENT project than this status"}`);
     }
+    // The id-pinning state (design D6, task 4.5): a slug-form remote pins
+    // repo_id in local git state the first time it resolves; id-form pins
+    // nothing (it needs no pin — see resolveGitvaultAddress's doc comment).
+    if (s.pinned) {
+      console.error(
+        `pinned: repo_id ${s.pinned.repo_id}` +
+        (s.pinned.resolved_from ? ` (resolved from run402::${s.pinned.resolved_from.org_slug}/${s.pinned.resolved_from.repo_name})` : ""),
+      );
+    }
     if (s.refs) {
       const names = Object.keys(s.refs).sort();
       console.error(names.length === 0 ? "refs: (none yet)" : `refs (${names.length}):`);
@@ -396,6 +409,33 @@ async function status(args) {
  * only the dispatched SUBCOMMAND name changed (see `run()` below, where
  * `gitvault push` survives one release as a deprecation-warning alias).
  */
+/**
+ * D6 (repo-first-onramp task 4): when neither `--repo` nor `--project` was
+ * given explicitly, look at the local `run402`/`origin` remote (in that
+ * order, mirroring `scaffoldRemote`'s own naming) and, if it is a SLUG-form
+ * address (`run402::<org-slug>/<name>`), return the parsed address so
+ * `snapshot` can push-to-create through it — the same address-form
+ * resolution `git push` drives via the remote helper. `null` for an
+ * id-form remote, no remote at all, or an explicit `--repo`/`--project`.
+ */
+async function detectSlugFormRemote(a, repoDir) {
+  if (flagValue(a, "--repo") != null || flagValue(a, "--project") != null) return null;
+  const { hardenedGit } = await import("#sdk/node");
+  const { parseGitvaultRemoteUrl, gitvaultRemoteAddressForm } = await import("#sdk");
+  for (const name of ["run402", "origin"]) {
+    let url;
+    try {
+      url = (await hardenedGit(repoDir, ["remote", "get-url", name])).text().trim();
+    } catch {
+      continue;
+    }
+    if (!url) continue;
+    const address = parseGitvaultRemoteUrl(url);
+    if (address && gitvaultRemoteAddressForm(address) === "slug") return address;
+  }
+  return null;
+}
+
 async function snapshot(args) {
   const a = normalizeArgv(args);
   const valueFlags = [...COMMON_VALUE_FLAGS, "--message"];
@@ -404,14 +444,19 @@ async function snapshot(args) {
     min: 0, max: 0, command: "run402 gitvault snapshot", missing: "",
   });
   const message = flagValue(a, "--message");
-  const target = vaultTarget(a);
+  const repoDir = process.cwd();
+  const address = await detectSlugFormRemote(a, repoDir);
   // D2: lazily allocate the vault on first push when there is a project to
   // resolve the owning org from — the same resolution `gitvault init` uses.
   // `--repo`-only addressing has nothing to create FROM (no project_id), so
-  // it is skipped there, matching `open()`'s own precedence.
-  const orgId = target.project_id ? await resolveOwningOrgId(target.project_id) : null;
+  // it is skipped there, matching `open()`'s own precedence. Skipped
+  // entirely for a slug-form remote (`address` above) — that resolves
+  // through the address, not a project_id, and needs no separate org_id.
+  const target = address ? { repo_dir: repoDir } : vaultTarget(a);
+  const orgId = !address && target.project_id ? await resolveOwningOrgId(target.project_id) : null;
   const opts = {
     ...target,
+    ...(address ? { address } : {}),
     ...(orgId ? { org_id: orgId } : {}),
     // The gitvault_commit line is progress, not payload: print it the moment
     // the snapshot exists, well before the publication round-trips finish, so

@@ -94,7 +94,17 @@ mock.module("./cli/lib/sdk.mjs", {
           calls.push({ method: "projects.delete", id });
           return (impl.projectsDelete ?? (async () => undefined))(id);
         },
+        setRepoName: async (id, repoName) => {
+          calls.push({ method: "projects.setRepoName", id, repoName });
+          return (impl.setRepoName ?? (async () => ({ project_id: id, repo_name: repoName, previous_repo_name: null })))(id, repoName);
+        },
       },
+      org: (id) => ({
+        get: async () => {
+          calls.push({ method: "org.get", id });
+          return (impl.orgGet ?? (async () => ({ org_id: id, display_name: null, slug: null, tier: "prototype", lease_started_at: null, lease_expires_at: null })))(id);
+        },
+      }),
       gitvault: {
         init: async (input) => {
           calls.push({ method: "gitvault.init", input });
@@ -251,6 +261,30 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     assert.equal(payload.repo_id, REPO);
   });
 
+  it("claims the address-form repo name and prints run402::<slug>/<name> when the owning org has a slug (design D6)", async () => {
+    impl.orgGet = async (id) => ({ org_id: id, display_name: null, slug: "acme", tier: "prototype", lease_started_at: null, lease_expires_at: null });
+    const payload = await ok("create", ["My Notes!", "--org", ORG]);
+    const setNameCall = calls.find((c) => c.method === "projects.setRepoName");
+    assert.ok(setNameCall, "must claim the address-form repo name when the org has a slug");
+    assert.equal(setNameCall.id, PROJECT);
+    assert.equal(setNameCall.repoName, "my-notes", "slugified from the free-text display name");
+    assert.equal(payload.address, "run402::acme/my-notes");
+  });
+
+  it("never fails create when the repo-name claim errors (best-effort, non-fatal)", async () => {
+    impl.orgGet = async (id) => ({ org_id: id, display_name: null, slug: "acme", tier: "prototype", lease_started_at: null, lease_expires_at: null });
+    impl.setRepoName = async () => { throw new Error("REPO_NAME_TAKEN"); };
+    const payload = await ok("create", ["taken-name", "--org", ORG]);
+    assert.equal(payload.address, null);
+    assert.equal(payload.project_id, PROJECT, "create itself still succeeded");
+  });
+
+  it("claims no address when the owning org has no slug", async () => {
+    const payload = await ok("create", ["no-slug-org", "--org", ORG]);
+    assert.equal(calls.find((c) => c.method === "projects.setRepoName"), undefined);
+    assert.equal(payload.address, null);
+  });
+
   it("refuses an empty or over-long name before ever calling the SDK", async () => {
     const envelope = await expectFailure("create", [""]);
     assert.equal(envelope.code, "BAD_PROJECT_NAME");
@@ -332,5 +366,33 @@ describe("run402 repos delete — refuses while the vault holds generations", ()
   it("rejects a bare non-prj_ positional rather than silently targeting the active project", async () => {
     const envelope = await expectFailure("delete", ["not-a-project-id"]);
     assert.equal(envelope.code, "BAD_PROJECT_ID");
+  });
+});
+
+describe("run402 repos name — the explicit address-form claim (design D6, task 4.2)", () => {
+  it("claims the name for --project and prints the run402::<slug>/<name> address when the org has one", async () => {
+    impl.orgGet = async (id) => ({ org_id: id, display_name: null, slug: "acme", tier: "prototype", lease_started_at: null, lease_expires_at: null });
+    const payload = await ok("name", ["my-notes", "--project", PROJECT]);
+    const setNameCall = calls.find((c) => c.method === "projects.setRepoName");
+    assert.ok(setNameCall);
+    assert.equal(setNameCall.id, PROJECT);
+    assert.equal(setNameCall.repoName, "my-notes");
+    assert.equal(payload.address, "run402::acme/my-notes");
+    assert.equal(payload.repo_name, "my-notes");
+  });
+
+  it("reports address: null (with guidance) when the owning org has no slug yet", async () => {
+    const payload = await ok("name", ["my-notes", "--project", PROJECT]);
+    assert.equal(payload.address, null);
+  });
+
+  it("propagates a REPO_NAME_TAKEN refusal from the SDK", async () => {
+    impl.setRepoName = async () => { const e = new Error("REPO_NAME_TAKEN"); e.code = "REPO_NAME_TAKEN"; throw e; };
+    await expectFailure("name", ["taken", "--project", PROJECT]);
+  });
+
+  it("requires exactly one positional name", async () => {
+    const envelope = await expectFailure("name", ["--project", PROJECT]);
+    assert.equal(envelope.code, "BAD_USAGE");
   });
 });

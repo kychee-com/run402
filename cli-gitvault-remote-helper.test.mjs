@@ -39,7 +39,14 @@ import { fileURLToPath } from "node:url";
 const HELPER = fileURLToPath(new URL("./cli/git-remote-run402.mjs", import.meta.url));
 /** A closed port: any network attempt fails loudly and unmistakably. */
 const DEAD_API = "http://127.0.0.1:9";
-const ADDRESS = "org_test/prj_test";
+// ID-form: a UUID org id + a prj_-prefixed project id (repo-first-onramp
+// design D6's discrimination — see `gitvaultRemoteAddressForm`). Every test
+// in this file predates named addressing and exercises the ORDINARY
+// project_id-addressed path, so this must classify as id-form, not
+// slug-form, or these tests would silently start exercising a different
+// code path (resolve-by-repo / push-to-create) the mock gateway stub below
+// does not implement.
+const ADDRESS = "11111111-1111-4111-8111-111111111111/prj_test";
 
 function git(cwd, args) {
   return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
@@ -211,9 +218,9 @@ describe("git-remote-run402 — repository resolution is fail-closed", () => {
 // involvement at all; a live server needs the parent free to service it.
 
 /** Drive the helper asynchronously, so this process's event loop stays free to serve the mock gateway below. */
-function runHelperAsync({ cwd, env = {}, stdin }) {
+function runHelperAsync({ cwd, env = {}, stdin, address = ADDRESS }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [HELPER, "run402", ADDRESS], {
+    const child = spawn(process.execPath, [HELPER, "run402", address], {
       cwd,
       env: {
         ...process.env,
@@ -235,26 +242,32 @@ function runHelperAsync({ cwd, env = {}, stdin }) {
 function withUnallocatedVaultGateway(handler) {
   const calls = [];
   const server = createServer((req, res) => {
-    calls.push({ method: req.method, url: req.url });
-    if (req.method === "GET" && req.url.startsWith("/gitvault/v1/vaults?")) {
+    const call = { method: req.method, url: req.url, body: "" };
+    calls.push(call);
+    // Captured for every request (including GET, where it stays "") — the
+    // D6 push-to-create wiring test below needs the JSON body to prove
+    // `{org_slug, repo_name}` rode the wire, not `{project_id}`; every
+    // pre-existing assertion in this file only reads `.method`/`.url` and is
+    // unaffected by the additive `.body` field.
+    req.on("data", (chunk) => { call.body += chunk; });
+    req.on("end", () => {
+      if (req.method === "GET" && req.url.startsWith("/gitvault/v1/vaults?")) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ code: "RESOURCE_NOT_FOUND", message: "no vault for this project" }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/gitvault/v1/vaults") {
+        // Reaching this route is what the test proves; the response need not
+        // complete the six-stage journal (that machinery is proven at the SDK
+        // level) — a deliberately incomplete/invalid body still counts as
+        // "the allocate route was hit with org_id resolved from the address".
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ code: "NOT_IMPLEMENTED_IN_TEST_STUB" }));
+        return;
+      }
       res.writeHead(404, { "content-type": "application/json" });
-      res.end(JSON.stringify({ code: "RESOURCE_NOT_FOUND", message: "no vault for this project" }));
-      return;
-    }
-    if (req.method === "POST" && req.url === "/gitvault/v1/vaults") {
-      // Reaching this route is what the test proves; the response need not
-      // complete the six-stage journal (that machinery is proven at the SDK
-      // level) — a deliberately incomplete/invalid body still counts as
-      // "the allocate route was hit with org_id resolved from the address".
-      // Drain the request body before answering — an unconsumed body can
-      // leave the client's request stream unflushed on some platforms.
-      req.resume();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ code: "NOT_IMPLEMENTED_IN_TEST_STUB" }));
-      return;
-    }
-    res.writeHead(404, { "content-type": "application/json" });
-    res.end(JSON.stringify({ code: "RESOURCE_NOT_FOUND" }));
+      res.end(JSON.stringify({ code: "RESOURCE_NOT_FOUND" }));
+    });
   });
   return new Promise((resolve, reject) => {
     server.listen(0, "127.0.0.1", () => {
@@ -302,6 +315,176 @@ describe("git-remote-run402 — D2 lazy allocation", () => {
         // what this test asserts is that the attempt happened at all.
         const allocateCalls = calls.filter((c) => c.method === "POST" && c.url === "/gitvault/v1/vaults");
         assert.equal(allocateCalls.length, 1, `expected exactly one allocate call; saw: ${JSON.stringify(calls)}\n${r.stdout}\n---\n${r.stderr}`);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+// ─── D6 (repo-first-onramp task 4) — named addressing + push-to-create + id-pinning ───
+//
+// `run402::acme/my-notes` is SLUG-form (neither half looks id-shaped —
+// `gitvaultRemoteAddressForm`), routing through `resolveOrCreateAddress`
+// instead of the plain project_id-addressed path above. Two things are
+// pinned here, driving the REAL binary exactly like the D2 suite above:
+//   1. a resolvable slug-form remote pins `repo_id` into this checkout's
+//      LOCAL git config (`r402.repoId`) the FIRST time it resolves, and a
+//      later invocation on the SAME checkout never re-resolves the address
+//      over the network again;
+//   2. a slug-form push against a NAME THAT DOES NOT RESOLVE YET reaches the
+//      push-to-create route with `{org_slug, repo_name}` in the body — never
+//      `{project_id}` — proving the address routed into D6's push-to-create
+//      form and not the ordinary allocate. The full six-stage creation
+//      itself is proven exhaustively at the SDK level
+//      (sdk/src/node/gitvault-address.test.ts); reimplementing it as an HTTP
+//      fixture here would duplicate it, not add coverage.
+
+const SLUG_ADDRESS = "acme/my-notes";
+
+function vaultRecordFixture(overrides = {}) {
+  return {
+    repo_id: "src_00000000000000000000000000000001", project_id: "prj_pinned", org_id: "org_pinned",
+    gitvault_policy: "required", gitvault_policy_version: "1", gitvault_policy_changed_at: null,
+    allocation_generation: "0000000000000001", allocation_sha256: null,
+    newest_generation: null, genesis_admitted_at: null, latest_effective_admitted_at: null,
+    admitted_generations: "0", gc_epoch: "0", repair_version: "0", repair_fence_state: "none",
+    storage: { source_bytes: "0", open_session_reserved_bytes: "0", objects: {} },
+    maintenance: { lease: null, open_cycle: null, pending_repair_attempt_id: null },
+    warnings: [], created_at: null,
+    ...overrides,
+  };
+}
+
+/** A gateway stub whose `?repo=` read ALREADY resolves — the "found, no creation needed" fixture. */
+function withResolvableRepoGateway(handler) {
+  const calls = [];
+  const server = createServer((req, res) => {
+    calls.push({ method: req.method, url: req.url });
+    if (req.method === "GET" && req.url === `/gitvault/v1/vaults?repo=${encodeURIComponent(SLUG_ADDRESS)}`) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(vaultRecordFixture()));
+      return;
+    }
+    // `materialize()` reads the vault record by id (for `newest_generation`)
+    // before it ever needs the local identity that this test deliberately
+    // omits — the SAME fixture answers both routes, so a resolved-by-address
+    // handle behaves identically to one resolved by id.
+    if (req.method === "GET" && req.url === "/gitvault/v1/vaults/src_00000000000000000000000000000001") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(vaultRecordFixture()));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ code: "RESOURCE_NOT_FOUND" }));
+  });
+  return new Promise((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => {
+      handler(`http://127.0.0.1:${server.address().port}`, calls).then(
+        () => server.close(() => resolve()),
+        (err) => server.close(() => reject(err)),
+      );
+    });
+  });
+}
+
+/** Read the pinned `r402.repoId` straight from the checkout's local git config, bypassing the SDK entirely. */
+function readPinnedRepoId(dir) {
+  try {
+    return execFileSync("git", ["config", "--local", "--get", "r402.repoId"], { cwd: dir, encoding: "utf-8" }).trim();
+  } catch {
+    return null;
+  }
+}
+
+describe("git-remote-run402 — D6 slug-form id-pinning (task 4.5)", () => {
+  // Neither of these helper invocations completes a full push — that needs
+  // a local gitvault IDENTITY (this fresh RUN402_CONFIG_DIR never ran
+  // `gitvault init`), which is a SEPARATE, later concern from address
+  // resolution and pinning. What this test isolates is that resolution +
+  // pinning happen BEFORE anything identity-dependent: `resolveOrCreateAddress`
+  // resolves the address and writes the pin, and only THEN does opening the
+  // vault for real work (materialize/sign) hit the (expected, typed)
+  // `KEYSTORE_MISSING` wall — so the pin is durable even though the push
+  // itself does not complete on a machine with no local key material yet.
+  it("a resolvable slug-form remote pins repo_id on first push, and a SECOND push never re-resolves the address", async () => {
+    await withResolvableRepoGateway(async (apiBase, calls) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-d6-pin-")));
+      try {
+        const target = makeRepo(root, { commit: true });
+        const gitDir = realpathSync(join(target, ".git"));
+        assert.equal(readPinnedRepoId(target), null, "nothing pinned yet");
+
+        const first = await runHelperAsync({
+          cwd: target,
+          env: { GIT_DIR: gitDir, RUN402_API_BASE: apiBase },
+          stdin: "capabilities\n\npush refs/heads/main:refs/heads/main\n\n",
+          address: SLUG_ADDRESS,
+        });
+        assert.match(first.stdout, /KEYSTORE_MISSING/, `expected the push to reach the (later, identity-dependent) KEYSTORE_MISSING wall, not fail resolution itself: ${first.stdout}\n---\n${first.stderr}`);
+        assert.equal(readPinnedRepoId(target), "src_00000000000000000000000000000001", "the pin survives even though the push itself did not complete");
+        const repoCallsAfterFirst = calls.filter((c) => c.method === "GET" && c.url.startsWith("/gitvault/v1/vaults?repo=")).length;
+        assert.equal(repoCallsAfterFirst, 1, "exactly one address resolution for the first push");
+
+        // A SECOND push on the SAME checkout: the pin short-circuits address
+        // resolution entirely — no further `?repo=` read, even though the
+        // push still cannot complete for the same identity reason.
+        const second = await runHelperAsync({
+          cwd: target,
+          env: { GIT_DIR: gitDir, RUN402_API_BASE: apiBase },
+          stdin: "capabilities\n\npush refs/heads/main:refs/heads/main\n\n",
+          address: SLUG_ADDRESS,
+        });
+        assert.match(second.stdout, /KEYSTORE_MISSING/, `${second.stdout}\n---\n${second.stderr}`);
+        const repoCallsAfterSecond = calls.filter((c) => c.method === "GET" && c.url.startsWith("/gitvault/v1/vaults?repo=")).length;
+        assert.equal(repoCallsAfterSecond, repoCallsAfterFirst, "the pin must be followed, never re-resolved");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("list against a slug-form remote resolves it cleanly — no repository, so nothing to pin, and no crash beyond the expected typed refusal", async () => {
+    await withResolvableRepoGateway(async (apiBase, calls) => {
+      const r = await runHelperAsync({
+        cwd: mkdtempSync(join(tmpdir(), "run402-gvh-d6-list-")),
+        env: { GIT_DIR: undefined, RUN402_API_BASE: apiBase },
+        stdin: "capabilities\n\nlist for-push\n\n",
+        address: SLUG_ADDRESS,
+      });
+      // Same identity wall as the push tests above — but note.equal(1) below
+      // is the actual point: the address DID resolve (one clean `?repo=`
+      // read), it is only the LOCAL identity that is missing.
+      assert.match(r.stderr, /KEYSTORE_MISSING/, `${r.stdout}\n---\n${r.stderr}`);
+      const repoCalls = calls.filter((c) => c.method === "GET" && c.url.startsWith("/gitvault/v1/vaults?repo=")).length;
+      assert.equal(repoCalls, 1, "list resolved the address over the network exactly once");
+    });
+  });
+});
+
+describe("git-remote-run402 — D6 slug-form push-to-create wiring", () => {
+  it("a push against a slug-form name that does NOT resolve yet reaches push-to-create with {org_slug, repo_name} — never {project_id}", async () => {
+    await withUnallocatedVaultGateway(async (apiBase, calls) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-d6-create-")));
+      try {
+        const target = makeRepo(root, { commit: true });
+        const r = await runHelperAsync({
+          cwd: target,
+          env: { GIT_DIR: realpathSync(join(target, ".git")), RUN402_API_BASE: apiBase },
+          stdin: "capabilities\n\npush refs/heads/main:refs/heads/main\n\n",
+          address: SLUG_ADDRESS,
+        });
+        // Same "deliberately incomplete stub response" shape as the D2 test
+        // above — what this test proves is the WIRING, not the six-stage
+        // protocol (proven exhaustively at the SDK level).
+        const repoReads = calls.filter((c) => c.method === "GET" && c.url.startsWith("/gitvault/v1/vaults?repo="));
+        assert.equal(repoReads.length, 1, `expected the fast-path resolve read; saw: ${JSON.stringify(calls)}\n${r.stdout}\n---\n${r.stderr}`);
+        const allocateCalls = calls.filter((c) => c.method === "POST" && c.url === "/gitvault/v1/vaults");
+        assert.equal(allocateCalls.length, 1, `expected exactly one push-to-create call; saw: ${JSON.stringify(calls)}\n${r.stdout}\n---\n${r.stderr}`);
+        const body = JSON.parse(allocateCalls[0].body ?? "{}");
+        assert.equal(body.org_slug, "acme");
+        assert.equal(body.repo_name, "my-notes");
+        assert.equal(body.project_id, undefined, "push-to-create must never send project_id");
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

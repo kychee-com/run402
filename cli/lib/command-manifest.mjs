@@ -197,6 +197,11 @@ export const COMMAND_MANIFEST = [
   { path: ["org", "get"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
   { path: ["org", "rename"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--name", "Gate"] },
   { path: ["org", "payout-wallet"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--wallet", "0x1111111111111111111111111111111111111111"] },
+  // repo-first-onramp task 4.1 (design D6). `--org` (not a positional org_id
+  // like rename/payout-wallet above) goes through resolveOrg's SHAPE
+  // validation (a real UUID) — "org_gate1" fails that locally, so this needs
+  // the same UUID-shaped fixture `org use` below already established.
+  { path: ["org", "slug"], positionals: [p("slug")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["acme", "--org", "11111111-2222-3333-4444-555555555555"] },
   { path: ["org", "whoami"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["org", "audit"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
   { path: ["org", "use"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["11111111-2222-3333-4444-555555555555"] },
@@ -274,6 +279,8 @@ export const COMMAND_MANIFEST = [
   { path: ["repos", "create"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "provisions a project, allocates a vault, and scaffolds a real git remote into cwd" },
   { path: ["repos", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "cross-references live projects against their live gitvault status, one call per project" },
   { path: ["repos", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [], runStyle: "sub", skipBehavioral: "irreversibly deletes a project after reading its live vault generation count" },
+  // repo-first-onramp task 4.2 (design D6): explicit address-form name claim.
+  { path: ["repos", "name"], positionals: [p("name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "claims a per-org-unique repo name against a live project" },
   { path: ["errors"], positionals: [p("fingerprint_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
 
   // ── jobs ─────────────────────────────────────────────────────────────────
