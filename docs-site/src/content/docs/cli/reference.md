@@ -1249,11 +1249,11 @@ Run these from inside the git working tree — the repository is `process.cwd()`
 
 ```bash
 run402 init                                   # once per machine
-git remote add origin run402::<org-slug>/<name>
-git push -u origin main                       # push-to-creates the repo on first push (see below), publishes
+run402 repos create my-notes                  # project + vault + origin remote, one free call
+git push -u origin main                       # publishes, encrypted before it leaves the machine
 ```
 
-Or skip naming the address by hand entirely — `run402 repos create <name>` does provision + allocate + scaffold in one call (see "repos — vault-only porcelain" below).
+The free path is the whole path — no slug, no fee, no ceremony. The named-address upgrade: claim an org slug once and `git remote add origin run402::<org-slug>/<name>` + `git push` also works, push-to-creating a repo that does not exist yet (see "Named addressing" below).
 
 **Named addressing, id-pinning, and push-to-create (design D6).** `run402::<org-slug>/<name>` and the id-form `run402::<org_id>/<project_id>` work in the same `git remote` slot, distinguished by shape: a real org id is always a UUID and a real project id is always `prj_`-prefixed, so an id-form address always satisfies both at once; anything else is slug-form. `run402 org slug <slug>` (owner-only, small one-time fee) claims an org's slug; every repo under it is `run402::<slug>/<name>`. Pushing (or `gitvault snapshot`-ing) a name that does not resolve yet **push-to-creates** it: the project and vault are allocated atomically server-side, and a losing concurrent pusher resolves cleanly to the winner's repo instead of erroring — its work is not lost, it just was not the creator. The first time a slug-form remote resolves on a checkout, the resolved `repo_id` is **pinned** into that checkout's LOCAL git config (`git config r402.repoId`); every later push/fetch on that checkout follows the pin directly, skipping the network resolution and surviving a later rename of either the slug or the name. `run402 gitvault status` reports the pin. The id-form address never pins (a project id already never changes) and remains the cold-restart path — an agent with no local state but authority on the project can always fall back to it. `SLUG_RELEASED` (the old slug's ~90-day post-rename cooldown) is NEVER auto-followed; the typed refusal names the successor. `run402 repos name <name> [--project <id>]` claims a project's address-form name explicitly (see "repos — vault-only porcelain" above).
 

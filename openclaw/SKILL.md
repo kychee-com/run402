@@ -1125,8 +1125,8 @@ Arrive, look, claim, work, hand off. Your presence is this SESSION, not your wal
 
 ```bash
 run402 init                                   # once per machine
-git remote add origin run402::<org-slug>/<name>
-git push -u origin main                       # push-to-creates the repo on first push, publishes
+run402 repos create my-notes                  # project + vault + origin remote, one free call
+git push -u origin main                       # publishes, encrypted before it leaves the machine
 ```
 
 `origin` is claimed additively: when the repository has no `origin` yet, the scaffold names ours `origin`, so `git push origin main` just works. An existing `origin` is never touched; the fallback is `run402` instead. When the scaffold has to `git init` a fresh directory (`repos create`, `run402 init --git-remote`, no repo yet), it always creates branch `main` — regardless of this machine's own git defaults — so `git push origin main` is never a guess. **State this plainly if the user asks: V0 is single-principal** — exactly one machine can open the vault until human envelopes ship.

@@ -368,15 +368,15 @@ Three claims, three different strengths. These are the entire approved claims vo
 2. **Activation requires vault admission by default; an explicit, audited override can bypass it.** An operational platform invariant, enforced and auditable — not cryptographic against the platform that enforces it.
 3. **Retention is an operational promise of the platform, not a cryptographic guarantee against it** (the host controls timestamps and bytes).
 
-**The vault-only track — three lines, muscle memory intact:**
+**The vault-only track — three lines, muscle memory intact, nothing to pay:**
 
 ```bash
 run402 init                                   # once per machine
-git remote add origin run402::<org-slug>/<name>
-git push -u origin main                       # push-to-creates the repo on first push, publishes
+run402 repos create my-notes                  # project + vault + origin remote, one free call
+git push -u origin main                       # publishes, encrypted before it leaves the machine
 ```
 
-`origin` is claimed additively (design D1): when the directory has no `origin` yet, the scaffold names ours `origin` — `git push origin main` just works, no side-remote name to remember. An existing `origin` is never touched; the fallback is `run402` instead, and the response says which happened and why. `run402 repos create <name>` does provision + allocate + scaffold in one call when you would rather not name the address by hand — see the `run402 repos` section of the CLI reference.
+`origin` is claimed additively (design D1): when the directory has no `origin` yet, the scaffold names ours `origin` — `git push origin main` just works, no side-remote name to remember. An existing `origin` is never touched; the fallback is `run402` instead, and the response says which happened and why. The free path is the whole path — no slug, no fee, no ceremony. When you want pretty `run402::<org-slug>/<name>` addresses (clone-by-name, push-to-create), claim an org slug once — the optional named-address upgrade described below.
 
 **Named addressing (design D6).** `run402::<org-slug>/<name>` works alongside the id-form `run402::<org_id>/<project_id>` in the same slot — pick an org slug once (`run402 org slug <slug>`, owner-only, a small one-time claim fee), and every repo under it is `run402::<slug>/<name>`. Pushing a name that doesn't exist yet **push-to-creates** it: the project and vault are allocated atomically, and a losing concurrent pusher resolves cleanly to the winner's repo instead of erroring — its work is not lost, it just wasn't the creator. The first time a named remote resolves on a checkout, the resolved id is **pinned** into that checkout's local git config — every later push/fetch follows the pin directly, so a later rename of the org slug or repo name never breaks an existing clone. The id-form address needs no pin (a project id never changes) and stays the cold-restart path: an agent that lost its local state but still holds authority on the project can always fall back to `run402::<org_id>/<project_id>`.
 
