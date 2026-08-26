@@ -56,6 +56,13 @@ r402s-verify/
 └── scripts/never-assembled-gate.sh
 ```
 
+## Install
+
+Prebuilt binaries (macOS arm64/x64, Linux x64/arm64) are attached to GitHub
+releases tagged `r402s-verify-v<version>` — download, check the `.sha256`,
+`chmod +x`, run. Every published binary passed the vendored-vector replay on
+its build machine before upload. Building from source works too:
+
 ## Usage
 
 ```
@@ -147,8 +154,10 @@ packages via OIDC). A release of `r402s-verify` is:
    for the protocol revision — the vendored `test-vectors/r402s-v0/` by
    default, or `R402S_VECTORS` pointing elsewhere (`PROTOCOL_REVISION` in
    `src/lib.rs` must equal the set's `x-r402s-revision`);
-2. `cargo build --release --locked` on each target and attach the binaries
-   (plus `sha256sum`) to a GitHub release tagged `r402s-verify-v<version>`;
+2. push the tag `r402s-verify-v<version>` —
+   `.github/workflows/release-r402s-verify.yml` builds `--release --locked`
+   on each target, re-runs the vector replay per binary, and attaches the
+   binaries (plus `.sha256`) to the GitHub release automatically;
 3. any change to the `hpke` pin is a reviewed change that re-runs the D182
    acceptance plan (RFC 9180 A.2 KAT, the interop golden file, the
    never-assembled gate) before merge.

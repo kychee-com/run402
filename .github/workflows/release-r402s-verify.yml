@@ -1,0 +1,83 @@
+# Prebuilt r402s-verify binaries on GitHub Releases (kychee-com/run402#570).
+#
+# The dual-receipt prune ceremony and the independent-lineage verification
+# story both lean on r402s-verify existing OUTSIDE the TypeScript client —
+# but until this workflow, obtaining it meant building the crate from source.
+# A verifier nobody can run is a verifier in name only.
+#
+# Trigger: push a tag `r402s-verify-v<semver>` (matching r402s-verify/Cargo.toml's
+# version), or workflow_dispatch with an existing tag ref checked out.
+# Each platform job builds --release --locked, runs the vendored-vector replay
+# (the same gate .github/workflows/r402s-verify.yml runs on every push — a
+# binary that skipped the replay must never be published), and uploads to one
+# GitHub Release for the tag. SHA-256 sums are published alongside.
+
+name: Release r402s-verify binaries
+
+on:
+  push:
+    tags: ["r402s-verify-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the release + upload assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: r402s-verify-macos-arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: r402s-verify-macos-x64
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            artifact: r402s-verify-linux-x64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: r402s-verify-linux-arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: r402s-verify
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build (release, locked)
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Vector replay gate
+        # The binary must prove agreement with the frozen vector set before it
+        # is allowed to exist as a release asset — same bar as CI, no shortcut.
+        run: cargo test --release --locked --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          cp "target/${{ matrix.target }}/release/r402s-verify" "${{ matrix.artifact }}"
+          shasum -a 256 "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            r402s-verify/${{ matrix.artifact }}
+            r402s-verify/${{ matrix.artifact }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Create release with assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release create "$TAG" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "$TAG" \
+            --notes "Prebuilt r402s-verify binaries — the independent-lineage gitvault verifier. Verify the checksum, then: chmod +x and run. Built --locked from the tagged source; every binary passed the vendored-vector replay before upload." \
+            r402s-verify-* || \
+          gh release upload "$TAG" --repo "${GITHUB_REPOSITORY}" --clobber r402s-verify-*
