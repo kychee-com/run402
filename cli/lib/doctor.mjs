@@ -593,6 +593,39 @@ export async function run(sub, args = []) {
         // Echoed exactly as the SDK reported them — including the
         // doctor-persistent `grandfathered` advisory it owns.
         for (const w of gv.warnings ?? []) gaps.push(`${w.kind}: ${w.message}`);
+
+        // gitvault-mirror-and-recover task 4.3: mirror currency, reported
+        // ALONGSIDE (never in place of) the deploy-related gaps above, and
+        // never blocking `run402 deploy`'s own gate — the vault lane's
+        // outcome is unaffected regardless of mirror state (design D6).
+        // `mirror_currency` mirrors `mirror status`'s own tri-state:
+        // `current` / `stale` / `unknown` (mirror unreachable or vault
+        // unread) only STALE is actionable enough to become a warning; NO
+        // mirror configured is a purely informational, ungated advisory —
+        // most vaults have never opted in, and that is a normal shape.
+        if (gv.vault !== null && value.repo_id) {
+          try {
+            const mirrorStatus = await getSdk().gitvault.mirrorStatus({ repo_id: value.repo_id });
+            value.gitvault_mirror = {
+              configured: mirrorStatus.configured,
+              destination: mirrorStatus.destination,
+              mirrored_generation: mirrorStatus.mirrored_generation,
+              newest_generation: mirrorStatus.newest_generation,
+              is_current: mirrorStatus.is_current,
+              validity_not_freshness: mirrorStatus.validity_not_freshness,
+              keystore_still_required: mirrorStatus.keystore_still_required,
+            };
+            if (!mirrorStatus.configured) {
+              value.gitvault_mirror.advisory = "no ciphertext mirror is configured for this vault — the exit ramp is opt-in; 'run402 gitvault mirror set <destination>' to configure one.";
+            } else if (mirrorStatus.is_current === false) {
+              gaps.push(`the ciphertext mirror at ${mirrorStatus.destination} is STALE (mirrored generation ${mirrorStatus.mirrored_generation ?? "(none)"}, vault newest ${mirrorStatus.newest_generation ?? "(none)"}) — ${mirrorStatus.closing_command}`);
+            }
+          } catch {
+            // Best-effort: a mirror status read failing is never a doctor
+            // failure, and never touches the deploy-related gaps above.
+          }
+        }
+
         checks.push({
           name: "gitvault",
           status: gaps.length > 0 ? "warning" : "ok",

@@ -364,7 +364,10 @@ async function resolveKRepo(backend: GitvaultMirrorBackend, genesis: GitvaultVau
   }
   const envelopeReceipt = genesis.envelopes[0];
   if (!envelopeReceipt) fail("VAULT_CREATION_CONFLICT", "genesis carries no key envelope", "materializing gitvault recovery");
-  const envelopeBytes = await backend.get(`key-envelopes/${envelopeReceipt.epoch}/${envelopeReceipt.recipient_fingerprint}.env`);
+  // `envelopes/<epoch>/<recipient_fingerprint>` — the SDK's own already-shipped
+  // storage-key convention (`gitvault-creation-journal.ts`), not the protocol
+  // doc's `key-envelopes/….env` spelling; matched to the real implementation.
+  const envelopeBytes = await backend.get(`envelopes/${envelopeReceipt.epoch}/${envelopeReceipt.recipient_fingerprint}`);
   if (!envelopeBytes) fail("VAULT_UNRECOVERABLE", "the mirror holds no key envelope for this genesis — cannot derive K_repo", "materializing gitvault recovery");
   const envelope = parseGitvaultStrict(new TextDecoder().decode(envelopeBytes)) as GitvaultKeyEnvelope;
   const bindingProblems = checkGenesisKeyBindings(genesis, envelope);

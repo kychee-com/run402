@@ -125,7 +125,9 @@ function generationRouteForKey(key: string): { route: "heads" | "admissions"; ge
 /** `key_envelope` is path-addressed by `(epoch, recipient_fingerprint)`, not a plain object_id — every other kind uses its object_id, read straight from the key's own filename. */
 function objectReadRequestForEntry(entry: GitvaultObjectEntry): { object_kind: string; object_id?: string; epoch?: string; recipient_fingerprint?: string } {
   if (entry.object_kind === "key_envelope") {
-    const m = /^key-envelopes\/([0-9a-f]{16})\/(ek_[0-9a-f]{32})\.env$/.exec(entry.key);
+    // `envelopes/<epoch>/<recipient_fingerprint>` — matches the SDK's own
+    // already-shipped storage-key convention (`gitvault-creation-journal.ts`).
+    const m = /^envelopes\/([0-9a-f]{16})\/(ek_[0-9a-f]{32})$/.exec(entry.key);
     if (!m) fail("GITVAULT_MIRROR_KEY_UNRECOGNIZED", `key_envelope key does not match the expected layout: ${entry.key}`, "building gitvault mirror read request", { key: entry.key });
     return { object_kind: "key_envelope", epoch: m[1]!, recipient_fingerprint: m[2]! };
   }
