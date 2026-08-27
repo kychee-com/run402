@@ -409,6 +409,8 @@ run402 repos fsck --budget 500
 git clone run402::<org_id>/<project_id> restored
 ```
 
+Cloning needs a Run402 principal on this machine — a wallet with an allowance and a keystore holding an envelope for this vault — this is encrypted git, not a shareable link.
+
 `repos snapshot` is the CAPTURE lane — the protocol deploy ref plus the HEAD target — because a dirty tree captures as a synthetic commit that sits on no branch. Your own branches and tags reach the vault through `git push origin <branch>`.
 
 **Allocating a vault does NOT gate the project's deploys.** `gitvault_policy` stays unset until you set it — a vault created by a first `git push` or `repos create` never silently changes how you deploy. A deploy against a vaulted, ungated project proceeds ungated and its result carries a typed `next_actions` entry offering `run402 repos policy required`; every later ungated deploy carries a `warnings[]` entry naming the drift, until the policy is set either way — never a block, never an interactive prompt. Once `gitvault_policy` is `required`, a deploy must present a vaulted capture at commit — `run402 deploy apply` produces one automatically on any machine holding the keystore; un-gate with `run402 repos policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible with `run402 repos policy required`). Vaulting your source is never gated on a deploy, either way. `run402 doctor` reports the policy, whether this machine can satisfy it, and where the keystore lives.
@@ -442,7 +444,7 @@ run402 repos recover s3://acme-vault-mirror --out ./restored --repo src_1a2b3c
 
 **Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — a separate language, separate authorship, and a separate primitive stack, deliberately sharing no implementation code with the SDK. That non-sharing is the point: a differential verifier that reuses the code it is checking verifies nothing. It lives on the `r402s-verify` branch of this repository with its own workflow, ships prebuilt release binaries, and also builds with `cargo build --release`. The full protocol specification and threat model it verifies against are published in [`docs/gitvault/`](docs/gitvault/README.md), and the frozen conformance vectors in [`test-vectors/r402s-v0/`](test-vectors/r402s-v0/README.md).
 
-**Cost.** There is no separate repos price — a vault's bytes count against the same organization-pooled storage budget your projects already share, charged once per unique object with a 64 KiB per-object accounting floor.
+**Cost.** There is no separate repos price — a vault's bytes count against the same organization-pooled storage budget your projects already share, charged once per unique object with a 4 KiB per-object accounting floor and a 1 MiB per-vault minimum.
 
 ## SDK: `@run402/sdk`
 
