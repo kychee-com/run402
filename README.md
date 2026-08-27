@@ -414,7 +414,7 @@ git clone run402::<org_id>/<project_id> restored
 
 Cloning needs a Run402 principal on this machine — a wallet with an allowance and a keystore holding an envelope for this vault — this is encrypted git, not a shareable link.
 
-A fresh clone may show dangling commits under a plain `git fsck` — that's the vault's retained deploy/capture history, delivered in the pack but not referenced by any local ref. Expected and harmless, not corruption; `git fsck`'s exit status stays clean.
+A fresh clone installs local `refs/r402/retain/<oid>` refs for every retained deploy-capture tip no branch reaches, so a plain `git fsck` is silent — `git for-each-ref refs/r402/` lists what is retained. Clones made by a client older than this one (or a checkout whose ref write degraded) may still show dangling commits under `git fsck`; harmless, not corruption — one `run402 repos fsck` run installs the missing refs. A retained ref locally pins that history against `git gc` until the vault prunes the capture, at which point the next fetch retracts it.
 
 `repos snapshot` is the CAPTURE lane — the protocol deploy ref plus the HEAD target — because a dirty tree captures as a synthetic commit that sits on no branch. Your own branches and tags reach the vault through `git push origin <branch>`.
 
