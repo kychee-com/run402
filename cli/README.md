@@ -54,7 +54,7 @@ For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeS
 
 ### repos — host-blind encrypted git repos (zero deploy ceremony)
 
-One noun, twelve verbs (repo-surface-consolidation; `repo` singular resolves identically). `run402 gitvault <verb>` is RETIRED — every old spelling now answers `COMMAND_MOVED`/`COMMAND_REMOVED`.
+One noun, twelve verbs (`repo` singular resolves identically). `run402 gitvault <verb>` answers `COMMAND_MOVED`/`COMMAND_REMOVED`.
 
 ```bash
 run402 init                                   # once per machine
@@ -70,7 +70,7 @@ run402 repos delete --project prj_xyz --force # refuses without --force while th
 
 A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. Every mutating `repos` verb (`create`, `rename`, `delete`, `snapshot`, `policy`, `mirror`, `gc`) is CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete). Three READ-ONLY tools do exist — `repos_view`, `repos_list_heads`, `repos_fsck` — teaching only `repos` spellings. See `run402 repos --help` for the full tiered surface (common: `create`/`view`/`list`; occasional: `snapshot`/`mirror`/`recover`; lifecycle: `rename`/`delete`; maintenance: `fsck`/`gc`/`access`/`policy`), and the CLI reference's `repos` section for the terminal-loss statement and the progressive backup warning.
 
-**Named addressing (design D6).** `run402 org slug <slug>` (owner-only, small one-time fee) claims an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos rename <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee, absorbs the old `repos name`); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
+**Named addressing.** `run402 org slug <slug>` (owner-only, small one-time fee) claims an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos rename <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
 
 ### Allowance
 
