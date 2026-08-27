@@ -213,7 +213,7 @@ describe("D3 — a vaulted, ungated project deploys ungated and says so", () => 
     assert.ok(r.deploy);
     assert.equal(r.deploy!.next_actions?.length, 1);
     assert.equal(r.deploy!.next_actions?.[0]?.type, "gitvault_policy_required");
-    assert.equal(r.deploy!.next_actions?.[0]?.command, "run402 gitvault policy required");
+    assert.equal(r.deploy!.next_actions?.[0]?.command, "run402 repos policy required");
     assert.equal(r.deploy!.warnings.length, 1);
     assert.equal(r.deploy!.warnings[0]?.code, "GITVAULT_POLICY_UNSET");
     assert.deepEqual((r.deploy!.warnings[0] as { affected?: string[] }).affected, [f.repoId]);

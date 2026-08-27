@@ -512,7 +512,7 @@ export async function mirrorSync(client: Client, repoId: string, options: Gitvau
 
 function openBackendFromConfig(keystore: GitvaultKeystore, repoId: string): GitvaultMirrorBackend {
   const config = readMirrorConfig(keystore, repoId);
-  if (!config) fail("GITVAULT_MIRROR_NOT_CONFIGURED", `no mirror is configured for ${repoId}`, "opening gitvault mirror", { repo_id: repoId }, [{ action: "run402 gitvault mirror set <destination>" }]);
+  if (!config) fail("GITVAULT_MIRROR_NOT_CONFIGURED", `no mirror is configured for ${repoId}`, "opening gitvault mirror", { repo_id: repoId }, [{ action: "run402 repos mirror <destination>" }]);
   if (config.destination.kind === "s3" && config.credential) {
     // Fail fast on a missing/misconfigured credential BEFORE any network call,
     // so a sync's error names the credential problem instead of a confusing

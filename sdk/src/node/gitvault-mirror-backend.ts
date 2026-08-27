@@ -225,7 +225,7 @@ export function resolveMirrorCredentials(credential: GitvaultMirrorCredential): 
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
     if (!accessKeyId || !secretAccessKey) {
-      fail("GITVAULT_MIRROR_CREDENTIALS_UNRESOLVED", "no ambient AWS credentials found (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY unset)", "resolving gitvault mirror credentials", undefined, [{ action: "export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or configure a named profile with `run402 gitvault mirror set ... --profile <name>`" }]);
+      fail("GITVAULT_MIRROR_CREDENTIALS_UNRESOLVED", "no ambient AWS credentials found (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY unset)", "resolving gitvault mirror credentials", undefined, [{ action: "export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or configure a named profile with `run402 repos mirror <destination> --profile <name>`" }]);
     }
     return { access_key_id: accessKeyId, secret_access_key: secretAccessKey, ...(process.env.AWS_SESSION_TOKEN ? { session_token: process.env.AWS_SESSION_TOKEN } : {}) };
   }

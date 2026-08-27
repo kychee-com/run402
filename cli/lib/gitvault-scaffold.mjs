@@ -49,7 +49,7 @@ export async function scaffoldGitvaultRemote({ repoDir = process.cwd(), projectI
     const remote = await getSdk().gitvault.scaffoldRemote({ repo_dir: repoDir, org_id: resolvedOrgId, project_id: projectId });
     // `allocated: false` is stated, not left to be inferred: this is local
     // git only — no vault exists for the project yet (allocation happens
-    // lazily on first push, or explicitly via `run402 gitvault init`).
+    // lazily on first push, or explicitly via `run402 repos create --project <id>`).
     out.gitvault = { ...remote, allocated: false };
   } catch (err) {
     out.gitvault = null;

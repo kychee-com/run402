@@ -1263,8 +1263,18 @@ export class GitvaultVault {
    * List from the authenticated pin and verify every link upward. Persists
    * the verified prefix after each page, so a `VERIFICATION_BUDGET_EXCEEDED`
    * continues rather than restarts. Returns the newest verified state.
+   *
+   * `options.persist` (default `true`, repo-surface-consolidation task 3.3 —
+   * `repos fsck --no-write`'s audit mode): when `false`, the chain is walked
+   * and verified exactly the same way, but every `keystore.updateRepo(...)`
+   * write below is skipped — no local trust pin advances. A
+   * `VERIFICATION_BUDGET_EXCEEDED` pause in this mode persists nothing, so a
+   * retry restarts from the ORIGINAL pin rather than resuming — the honest
+   * consequence of asking for a no-write audit and then walking off the end
+   * of one call's budget.
    */
-  async verifyToNewest(): Promise<GitvaultVerifiedState> {
+  async verifyToNewest(options: { persist?: boolean } = {}): Promise<GitvaultVerifiedState> {
+    const persist = options.persist ?? true;
     const { genesis, sha256: genesisSha } = await this.genesis();
     const writerKey = genesis.creator_signing_pubkey;
     const writerKeyId = genesis.writer_key_id;
@@ -1280,8 +1290,16 @@ export class GitvaultVault {
       progress = verifyHeadsListingPage(page, request, progress, this.repoId);
       for (const entry of page.heads) {
         if (verified >= this.budget) {
-          this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
-          fail("VERIFICATION_BUDGET_EXCEEDED", `${verified} heads verified this call; the verified prefix (generation ${pin.generation}) is persisted — call again to continue`, "verifying gitvault chain", { verified_through: pin.generation }, [{ action: "resume verification from the persisted verified prefix" }]);
+          if (persist) this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
+          fail(
+            "VERIFICATION_BUDGET_EXCEEDED",
+            persist
+              ? `${verified} heads verified this call; the verified prefix (generation ${pin.generation}) is persisted — call again to continue`
+              : `${verified} heads verified this call in no-write mode; nothing was persisted — a retry restarts from the original pin, not generation ${pin.generation}`,
+            "verifying gitvault chain",
+            { verified_through: pin.generation, persisted: persist },
+            [{ action: persist ? "resume verification from the persisted verified prefix" : "re-run without --no-write to persist and resume incrementally, or re-run this same audit call again from the start" }],
+          );
         }
         const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(entry.generation) });
         if (!bytes) fail("CHAIN_BROKEN", `listed head ${entry.generation} is absent from storage`, "verifying gitvault chain", { generation: entry.generation });
@@ -1291,20 +1309,20 @@ export class GitvaultVault {
           assertNoTransition(head);
         } catch (e) {
           // fail closed: pin stays BELOW the transition head; the verified prefix is cleared (this is the final state, not a budget pause)
-          this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
+          if (persist) this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
           throw e;
         }
         pin = { generation: head.generation, head_sha256: entry.stored_bytes_sha256, pinned_at: formatGitvaultTimestamp(this.now()) };
         lastHead = head;
         verified += 1;
       }
-      // verified prefix persists per page (resumable)
-      this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
+      // verified prefix persists per page (resumable) — skipped entirely in no-write mode
+      if (persist) this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
       const next = nextListingRequest(request, page);
       if (!next) break;
       request = next;
     }
-    this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
+    if (persist) this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
     return { generation: pin.generation, head_sha256: pin.head_sha256, head: lastHead, genesis };
   }
 
@@ -1338,18 +1356,25 @@ export class GitvaultVault {
     return object;
   }
 
-  /** Verify to newest, then decrypt + apply its carriers — advancing the materialized pin. */
-  async materialize(): Promise<GitvaultMaterializedState> {
-    const state = await this.verifyToNewest();
+  /**
+   * Verify to newest, then decrypt + apply its carriers — advancing the
+   * materialized pin. `options.persist` (default `true`) is forwarded to
+   * {@link verifyToNewest} and gates this method's OWN `materialized_pin`
+   * write the same way — `repos fsck --no-write` computes and returns the
+   * real ref map and generation without moving either local pin.
+   */
+  async materialize(options: { persist?: boolean } = {}): Promise<GitvaultMaterializedState> {
+    const persist = options.persist ?? true;
+    const state = await this.verifyToNewest({ persist });
     const writerKey = state.genesis.creator_signing_pubkey;
     if (!state.head) {
-      this.keystore.updateRepo(this.repoId, { materialized_pin: { generation: state.generation, head_sha256: state.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) } });
+      if (persist) this.keystore.updateRepo(this.repoId, { materialized_pin: { generation: state.generation, head_sha256: state.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) } });
       return { ...state, ref_state: null, retention_roots: null, refs: {}, roots: [], head_target: { kind: "symref", ref: "refs/heads/main" } };
     }
     const refState = await this.openCarrier<GitvaultRefState>("ref_state", state.head.ref_state, gitvaultPaths.refState(state.head.ref_state.object_id), writerKey);
     const roots = await this.openCarrier<GitvaultRetentionRoots>("retention_roots", state.head.retention_roots, gitvaultPaths.retentionRoots(state.head.retention_roots.object_id), writerKey);
     if (refState.generation !== state.generation || roots.generation !== state.generation) fail("CHAIN_UNUSABLE", "carrier generation does not match the head", "materializing gitvault head");
-    this.keystore.updateRepo(this.repoId, { materialized_pin: { generation: state.generation, head_sha256: state.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) } });
+    if (persist) this.keystore.updateRepo(this.repoId, { materialized_pin: { generation: state.generation, head_sha256: state.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) } });
     return { ...state, ref_state: refState, retention_roots: roots, refs: { ...refState.refs }, roots: roots.roots.map((r) => ({ ...r })), head_target: refState.head_target };
   }
 

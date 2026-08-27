@@ -575,13 +575,13 @@ export async function run(sub, args = []) {
         if (gv.gitvault_policy === "required" && !gv.keystore.holds_repo_key) {
           gaps.push(
             "gitvault_policy is 'required' but this machine holds no key for the vault — a deploy from here is refused with GITVAULT_CLIENT_UPGRADE_REQUIRED. " +
-            "Run 'run402 gitvault init' (idempotent; resolves to the existing vault), or 'run402 gitvault policy grandfathered --reason <why>' to un-gate the project.",
+            "Run 'run402 repos create --project <id>' (idempotent; resolves to the existing repo), or 'run402 repos policy grandfathered --reason <why>' to un-gate the project.",
           );
         } else if (gv.gitvault_policy === "required" && !gv.keystore.can_sign) {
           gaps.push("gitvault_policy is 'required' and this keystore is read-only (no signing key) — it can verify but cannot publish the capture a deploy needs");
         }
         if (gv.pending_overrides > 0) {
-          gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 gitvault push' to drain them`);
+          gaps.push(`${gv.pending_overrides} unvaulted-override journal(s) are still open — run 'run402 repos snapshot' to drain them`);
         }
         // `matches` is a TRI-STATE (kychee-com/run402#562): `false` alone is
         // a real mismatch. `null` (a slug-form remote not yet resolved on
@@ -616,7 +616,7 @@ export async function run(sub, args = []) {
               keystore_still_required: mirrorStatus.keystore_still_required,
             };
             if (!mirrorStatus.configured) {
-              value.gitvault_mirror.advisory = "no ciphertext mirror is configured for this vault — the exit ramp is opt-in; 'run402 gitvault mirror set <destination>' to configure one.";
+              value.gitvault_mirror.advisory = "no ciphertext mirror is configured for this vault — the exit ramp is opt-in; 'run402 repos mirror <destination>' to configure one.";
             } else if (mirrorStatus.is_current === false) {
               gaps.push(`the ciphertext mirror at ${mirrorStatus.destination} is STALE (mirrored generation ${mirrorStatus.mirrored_generation ?? "(none)"}, vault newest ${mirrorStatus.newest_generation ?? "(none)"}) — ${mirrorStatus.closing_command}`);
             }
@@ -631,7 +631,7 @@ export async function run(sub, args = []) {
           status: gaps.length > 0 ? "warning" : "ok",
           value: gaps.length > 0 ? { ...value, gaps } : value,
           hint: gv.vault === null
-            ? `No vault for this project (that is a normal shape). Allocate one with 'run402 gitvault init'. Keystore: ${gv.keystore.root}`
+            ? `No vault for this project (that is a normal shape). Allocate one with 'run402 repos create --project <id>'. Keystore: ${gv.keystore.root}`
             : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`,
         });
       } catch (err) {

@@ -698,7 +698,10 @@ export class TransferFreezeError extends Run402Error {
  * and `claim_org_slug` / `claim_repo_name` (named addressing onboarding,
  * repo-first-onramp follow-up — `run402 repos create` points here when the
  * owning org has no slug yet, or has one but this project's address-form
- * name was not claimed).
+ * name was not claimed). `push_repo`, `verify_refs`, `submit_gc`,
+ * `use_moved_command`, and `access_repair_pending` are repo-surface-
+ * consolidation's own additions — see `cli/lib/repos.mjs` for where each is
+ * emitted.
  * Tolerates unknown future gateway types via the `(string & {})` fallback.
  */
 export type NextActionType =
@@ -719,7 +722,12 @@ export type NextActionType =
   | "contact_support"
   | "gitvault_policy_required"
   | "claim_org_slug"
-  | "claim_repo_name";
+  | "claim_repo_name"
+  | "push_repo"
+  | "verify_refs"
+  | "submit_gc"
+  | "use_moved_command"
+  | "access_repair_pending";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's

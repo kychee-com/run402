@@ -350,7 +350,7 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     // to a command that silently did not do what status promised, and the test
     // enshrined it (gitvault dogfood #1, finding A).
     assert.ok(
-      status.next_actions.some((a) => a.command === "run402 gitvault init"),
+      status.next_actions.some((a) => a.command === "run402 repos create --project <id>"),
       `expected the allocation verb, got ${JSON.stringify(status.next_actions)}`,
     );
     assert.equal(

@@ -341,7 +341,7 @@ export interface GitvaultReconcileEnvelopeRecipientsPushResult {
 }
 
 /** What {@link Gitvault.openOrCreate} did. `created` is `null` exactly when `found` is `true`. */
-/** `run402 gitvault mirror status` — what this machine and the mirror each believe (design D8: both honesty statements ride every response). */
+/** `run402 repos mirror` (no-arg, a READ) and `repos view`'s mirror summary both compose this — what this machine and the mirror each believe (design D8: both honesty statements ride every response). */
 export interface GitvaultMirrorStatus {
   repo_id: string;
   configured: boolean;
@@ -358,6 +358,92 @@ export interface GitvaultMirrorStatus {
   closing_command: string | null;
   validity_not_freshness: typeof GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT;
   keystore_still_required: typeof GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT;
+}
+
+/**
+ * `repos fsck`'s result (repo-surface-consolidation D2/D3, review's target
+ * shape). Explicit pin fields make a local mutation visible rather than
+ * implicit — the external review's clause-5 requirement for any verb that
+ * may advance local trust state.
+ */
+export interface GitvaultFsckResult {
+  repo_id: string;
+  /** `false` under `--no-write` (`write: false`) — nothing local was persisted, regardless of what was computed. */
+  write: boolean;
+  verified_from_generation: string | null;
+  verified_to_generation: string;
+  /** `true` only when `write` was true AND a pin actually moved. */
+  local_state_changed: boolean;
+  pin_before: { highest_authenticated: string | null; highest_materialized: string | null };
+  pin_after: { highest_authenticated: string | null; highest_materialized: string | null };
+  /** The real, computed ref map — present even under `--no-write` (computing is not the same as persisting). */
+  refs: GitvaultRefMap;
+  head_target: GitvaultHeadTarget | null;
+  /** Present only when `--mirror` was requested. Proves validity, never freshness — see its own honesty statements. */
+  mirror: GitvaultVerifyReport | null;
+}
+
+/**
+ * `repos access`'s result (repo-surface-consolidation D5/D10) — a READ over
+ * whatever the live gateway surface exposes today. Two gaps are stated
+ * honestly rather than invented: the gateway does not yet report a
+ * per-recipient `envelope_state` (converged/pending) or `history_scope` —
+ * that is server-authoritative desired-recipient-state work owned by
+ * `gitvault-human-envelopes` and has not shipped as of this change. `access`
+ * reports what the read surface HAS: the org's directory of encryption-key-
+ * holding members, which of the vault's current envelope-recipient
+ * fingerprints match a directory entry, and (Node-only, best-effort) this
+ * machine's own local TOFU pin for each principal, when it has ever wrapped
+ * one.
+ */
+export interface GitvaultAccessRecipient {
+  principal_id: string;
+  display_name: string | null;
+  /** This recipient's fingerprint per the org directory. */
+  fingerprint: string;
+  /** `true` when this fingerprint has a `key_envelope` on the vault today. */
+  covered: boolean;
+  /** THIS machine's own local trust-on-first-use record for this principal, or `null` if this machine never wrapped them. Never a server-side fact. */
+  tofu_pin: { fingerprint: string; matches_directory: boolean } | null;
+}
+export interface GitvaultAccessResult {
+  repo_id: string;
+  org_id: string | null;
+  recipients: GitvaultAccessRecipient[];
+  /** Vault-covering fingerprints (from the server) that match no known org-directory entry — orphaned, revoked, or an external recipient outside this org. */
+  unmatched_covered_fingerprints: string[];
+  /** Always `false` today — see this type's own doc comment for why. */
+  envelope_state_available: false;
+  /** Always `false` today — see this type's own doc comment for why. */
+  history_scope_available: false;
+  /** The honest, human-readable statement of the gap above. Read it before assuming `covered: true` means "converged." */
+  gap: string;
+}
+
+/**
+ * `repos list`'s bulk read (repo-surface-consolidation task 2.4) —
+ * `GET /gitvault/v1/vaults?org_id=<uuid>`, replacing the per-project N+1
+ * `repos list` used to run. FROZEN response shape, agreed with the gateway
+ * team ahead of the route landing; the route may still 404 on a gateway
+ * that has not shipped it yet, and callers should fall back to the
+ * per-project walk (`status()` in a loop) until then — see
+ * `cli/lib/repos.mjs`'s `list()` for that fallback, kept only until every
+ * deployed gateway answers this route.
+ */
+export interface GitvaultOrgVaultSummary {
+  repo_id: string;
+  project_id: string;
+  project_name: string | null;
+  repo_name: string | null;
+  org_slug: string | null;
+  gitvault_policy: "required" | "grandfathered" | null;
+  newest_generation: string | null;
+  source_bytes: string;
+  genesis_admitted_at: string | null;
+  created_at: string;
+}
+export interface GitvaultOrgVaultsListing {
+  vaults: GitvaultOrgVaultSummary[];
 }
 
 export interface GitvaultOpenOrCreateResult {
@@ -429,6 +515,16 @@ export class Gitvault {
    */
   async forProject(projectId: string): Promise<GitvaultVaultRecord> {
     return this.#client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?project_id=${encodeURIComponent(projectId)}`, { context: "resolving the project's gitvault" });
+  }
+
+  /**
+   * Every vault the organization owns, one round trip — `repos list`'s bulk
+   * read (repo-surface-consolidation task 2.4). See {@link
+   * GitvaultOrgVaultsListing}'s doc comment for the FROZEN response shape and
+   * the 404-until-shipped fallback contract.
+   */
+  async listByOrg(orgId: string): Promise<GitvaultOrgVaultsListing> {
+    return this.#client.request<GitvaultOrgVaultsListing>(`/gitvault/v1/vaults?org_id=${encodeURIComponent(orgId)}`, { context: "listing the organization's vaults" });
   }
 
   /**
@@ -999,9 +1095,9 @@ export class Gitvault {
     // `run402 init` scaffolds the git remote and deliberately allocates
     // nothing; pointing at it here sent users to a command that silently did
     // not do what this line promised (dogfood #1, finding A).
-    if (!record) nextActions.push({ action: "allocate the project's vault", command: "run402 gitvault init" });
-    else if (pending.length > 0) nextActions.push({ action: `complete ${pending.length} unvaulted-override journal(s)`, command: "run402 gitvault snapshot" });
-    else if (record && !holdsRepoKey) nextActions.push({ action: "this machine holds no key for the vault — allocate resolves to the existing vault and is idempotent", command: "run402 gitvault init" });
+    if (!record) nextActions.push({ action: "allocate the project's vault", command: "run402 repos create --project <id>" });
+    else if (pending.length > 0) nextActions.push({ action: `complete ${pending.length} unvaulted-override journal(s)`, command: "run402 repos snapshot" });
+    else if (record && !holdsRepoKey) nextActions.push({ action: "this machine holds no key for the vault — allocate resolves to the existing vault and is idempotent", command: "run402 repos create --project <id>" });
 
     return {
       repo_id: repoId,
@@ -1428,7 +1524,7 @@ export class Gitvault {
         submitted: false,
         intent: null,
         confirmation: null,
-        note: "run `run402 gitvault compact` to publish a checkpoint bound to a fresh retention_cutoff ticket, then plan the prune again.",
+        note: "run `run402 repos gc` to publish a checkpoint bound to a fresh retention_cutoff ticket, then plan the prune again.",
       };
     }
 
@@ -1577,9 +1673,64 @@ export class Gitvault {
    * budget is resumable — a `VERIFICATION_BUDGET_EXCEEDED` client continues
    * from its verified prefix rather than restarting.
    */
-  async verify(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultVerifiedState> {
+  async verify(options: GitvaultVaultHandleOptions & { persist?: boolean } = {}): Promise<GitvaultVerifiedState> {
     const handle = await this.open(options);
-    return handle.vault.verifyToNewest();
+    return handle.vault.verifyToNewest({ persist: options.persist ?? true });
+  }
+
+  /**
+   * `repos fsck` (repo-surface-consolidation D2/D3): walk the head chain
+   * (what `verify()` did) AND materialize the ref map (what `status({refs:
+   * true})` used to do before `--refs` was removed from `view`), reporting
+   * BOTH local trust pins — authenticated and materialized — before and
+   * after, with an explicit `local_state_changed` flag. This is the one
+   * place chain materialization and pin advance live now; `view` never
+   * calls it.
+   *
+   * `options.write` (default `true`) is the inverse of the CLI's
+   * `--no-write`: `false` still walks and decrypts everything (the returned
+   * `refs`/`verified_to_generation` are real, computed answers, not
+   * estimates) but persists neither pin — a genuine audit mode, not a
+   * simulation. `options.mirror` additionally runs the keyless mirror
+   * verification ({@link mirrorVerify}) and folds its report in; that half
+   * proves the mirror's validity, never its freshness (its own honesty
+   * statements ride the result unchanged).
+   */
+  async fsck(options: GitvaultVaultHandleOptions & { write?: boolean; mirror?: boolean } = {}): Promise<GitvaultFsckResult> {
+    const before = await this.status(options);
+    const repoId = before.repo_id;
+    if (!repoId) {
+      throw new LocalError(
+        options.repo_id || options.project_id
+          ? "no vault is allocated for this project yet — nothing to fsck"
+          : "pass repo_id, or project_id to resolve it from the control plane",
+        "running gitvault fsck",
+        { code: "GITVAULT_VAULT_UNRESOLVED", details: { project_id: options.project_id ?? null } },
+      );
+    }
+    const write = options.write ?? true;
+    const handle = await this.open({ ...options, repo_id: repoId });
+    const state = await handle.vault.materialize({ persist: write });
+    const mirror = options.mirror ? await this.mirrorVerify({ ...options, repo_id: repoId }) : null;
+
+    const pinBefore = { highest_authenticated: before.pins.highest_authenticated, highest_materialized: before.pins.highest_materialized };
+    const pinAfter = write
+      ? { highest_authenticated: state.generation, highest_materialized: state.generation }
+      : pinBefore;
+    const localStateChanged = write && (pinBefore.highest_authenticated !== pinAfter.highest_authenticated || pinBefore.highest_materialized !== pinAfter.highest_materialized);
+
+    return {
+      repo_id: repoId,
+      write,
+      verified_from_generation: pinBefore.highest_authenticated,
+      verified_to_generation: state.generation,
+      local_state_changed: localStateChanged,
+      pin_before: pinBefore,
+      pin_after: pinAfter,
+      refs: { ...state.refs },
+      head_target: state.head_target,
+      mirror,
+    };
   }
 
   /**
@@ -1591,18 +1742,88 @@ export class Gitvault {
    * gateway `public_key` gap, and why this is a workaround rather than the
    * eventual epoch-rotation design).
    *
-   * `run402 gitvault reconcile [--repo <id>]` is the explicit standalone
-   * CLI surface (design D5's "session start" hook). `deploy()` runs this
-   * itself, best-effort, whenever a deploy lands a new generation in the
-   * vault — design D5's "deploy time" hook, "the same 'one command every
-   * agent runs' argument that decided deploy-implies-capture." `push()`
-   * (capture-and-publish outside a deploy) runs the identical hook after
-   * every successful publish, for the vault-only-project cadence. See
-   * `#tryReconcileEnvelopeRecipients` below for both call sites.
+   * `run402 gitvault reconcile` was this method's explicit standalone CLI
+   * surface (design D5's "session start" hook); repo-surface-consolidation
+   * D5/D7/D10 REMOVED it (no `repos` equivalent — `reconcile` is a
+   * workaround, not a permanent verb) and it now answers `COMMAND_REMOVED`
+   * pointing at `repos access` for inspection. This method itself is
+   * unchanged and un-retired: `deploy()` still runs it, best-effort,
+   * whenever a deploy lands a new generation in the vault — design D5's
+   * "deploy time" hook, "the same 'one command every agent runs' argument
+   * that decided deploy-implies-capture." `push()` (capture-and-publish
+   * outside a deploy) runs the identical hook after every successful
+   * publish, for the vault-only-project cadence. See
+   * `#tryReconcileEnvelopeRecipients` below for both call sites, and
+   * {@link Gitvault.access} for the READ half repo-surface-consolidation
+   * ships in its place.
    */
   async reconcileEnvelopeRecipients(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultReconcileEnvelopeRecipientsResult> {
     const handle = await this.open(options);
     return handle.vault.reconcileEnvelopeRecipients();
+  }
+
+  /**
+   * `repos access` (repo-surface-consolidation D5/D10) — a READ-ONLY report
+   * of who can open this vault, composed from whatever the live gateway
+   * surface exposes today. Never wraps, never mutates a `key_envelope` —
+   * that mutating half stays {@link reconcileEnvelopeRecipients}, reachable
+   * only through the deploy/push best-effort hooks until `access repair`
+   * ships (gated on `gitvault-human-envelopes`' epoch-rotation work). See
+   * {@link GitvaultAccessResult}'s doc comment for the honest gap this
+   * reports rather than invents.
+   */
+  async access(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultAccessResult> {
+    const repoId = await this.#resolveRepoId(options);
+    const record = await this.get(repoId).catch(() => null);
+    const orgId = record?.org_id ?? null;
+
+    const [directory, coverage] = await Promise.all([
+      orgId
+        ? this.#client.request<{ org_id: string; keys: Array<{ principal_id: string; display_name: string | null; ek_fingerprint: string }> }>(`/orgs/v1/${encodeURIComponent(orgId)}/encryption-keys`, { context: "reading the org encryption-key directory" })
+        : Promise.resolve({ org_id: "", keys: [] }),
+      this.#client.request<{ vault_id: string; recipient_fingerprints: string[] }>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/envelope-recipients`, { context: "reading the gitvault envelope recipients" }),
+    ]);
+    const covered = new Set(coverage.recipient_fingerprints);
+
+    // Node-only, best-effort: THIS machine's own local TOFU pins. Never
+    // fails the whole read — a browser/worker caller, or a machine that has
+    // never wrapped anyone, simply reports every `tofu_pin` as `null`.
+    let pins: Record<string, string> = {};
+    try {
+      const { GitvaultKeystore } = await this.#keystore();
+      const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+      pins = keystore.readRepo(repoId)?.envelope_recipient_pins ?? {};
+    } catch {
+      // Not Node, or no local keystore for this repo — pins stay empty.
+    }
+
+    const recipients: GitvaultAccessResult["recipients"] = directory.keys.map((k) => {
+      const pinned = pins[k.principal_id];
+      return {
+        principal_id: k.principal_id,
+        display_name: k.display_name,
+        fingerprint: k.ek_fingerprint,
+        covered: covered.has(k.ek_fingerprint),
+        tofu_pin: pinned !== undefined ? { fingerprint: pinned, matches_directory: pinned === k.ek_fingerprint } : null,
+      };
+    });
+    const directoryFingerprints = new Set(directory.keys.map((k) => k.ek_fingerprint));
+    const unmatched = coverage.recipient_fingerprints.filter((fp) => !directoryFingerprints.has(fp));
+
+    return {
+      repo_id: repoId,
+      org_id: orgId,
+      recipients,
+      unmatched_covered_fingerprints: unmatched,
+      envelope_state_available: false,
+      history_scope_available: false,
+      gap:
+        "the gateway does not yet expose per-recipient envelope_state (converged/pending) or history_scope — " +
+        "that is server-authoritative desired-recipient-state work owned by gitvault-human-envelopes and has not shipped. " +
+        "This reports what the read surface has today: the org's directory of encryption-key-holding members, which of " +
+        "the vault's current envelope-recipient fingerprints match a directory entry (covered), and this machine's own " +
+        "local TOFU pin per principal when it has ever wrapped one (tofu_pin) — never a server-side fact.",
+    };
   }
 
   /**
@@ -1732,7 +1953,7 @@ export class Gitvault {
     return {
       ...base, configured: true, destination: formatMirrorDestination(config.destination), credential_kind: config.credential?.kind ?? null,
       mirrored_generation: mirroredGeneration, newest_generation: newestGeneration, is_current: isCurrent,
-      closing_command: isCurrent === false ? "run402 gitvault mirror sync" : null,
+      closing_command: isCurrent === false ? "run402 repos mirror --backfill" : null,
     };
   }
 
@@ -1744,7 +1965,7 @@ export class Gitvault {
     return mirrorSync(this.#client, repoId, { keystore });
   }
 
-  /** Keyless integrity probe against the CONFIGURED mirror: discovery + chain verification + closure/absence adjudication, never decryption (`run402 gitvault mirror verify`). */
+  /** Keyless integrity probe against the CONFIGURED mirror: discovery + chain verification + closure/absence adjudication, never decryption (`run402 repos fsck --mirror`). */
   async mirrorVerify(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultVerifyReport> {
     const [{ GitvaultKeystore }, { readMirrorConfig }, { openGitvaultMirrorBackend }, { verifyGitvaultMirror }] = await Promise.all([
       this.#keystore(), this.#mirrorConfig(), this.#mirrorBackend(), this.#recovery(),
@@ -1752,7 +1973,7 @@ export class Gitvault {
     const repoId = await this.#resolveRepoId(options);
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
     const config = readMirrorConfig(keystore, repoId);
-    if (!config) throw new LocalError(`no mirror is configured for ${repoId}`, "verifying gitvault mirror", { code: "GITVAULT_MIRROR_NOT_CONFIGURED", details: { repo_id: repoId }, next_actions: [{ action: "run402 gitvault mirror set <destination>" }] });
+    if (!config) throw new LocalError(`no mirror is configured for ${repoId}`, "verifying gitvault mirror", { code: "GITVAULT_MIRROR_NOT_CONFIGURED", details: { repo_id: repoId }, next_actions: [{ action: "run402 repos mirror <destination>" }] });
     const backend = openGitvaultMirrorBackend(config.destination, repoId, config.credential);
     return verifyGitvaultMirror(backend, { keystore });
   }

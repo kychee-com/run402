@@ -177,12 +177,12 @@ export type GitvaultApplyMode =
   /** The policy is `required` — capture, token, and commit ran. */
   | { kind: "vaulted"; repo_id: string };
 
-/** `run402 gitvault policy required` — the offer D3 attaches to every ungated deploy. */
+/** `run402 repos policy required` — the offer D3 attaches to every ungated deploy. */
 export function gitvaultPolicyRequiredNextAction(repoId: string): NextAction {
   return {
     type: "gitvault_policy_required",
-    command: "run402 gitvault policy required",
-    why: `vault ${repoId} exists but gitvault_policy was never set, so this deploy ran without requiring a vaulted capture. Set it to require one, or run \`run402 gitvault policy grandfathered --reason <why>\` to explicitly accept the current state.`,
+    command: "run402 repos policy required",
+    why: `vault ${repoId} exists but gitvault_policy was never set, so this deploy ran without requiring a vaulted capture. Set it to require one, or run \`run402 repos policy grandfathered --reason <why>\` to explicitly accept the current state.`,
   };
 }
 
@@ -192,7 +192,7 @@ export function gitvaultUngatedWarning(repoId: string): LegacyWarningEntry {
     code: "GITVAULT_POLICY_UNSET",
     severity: "low",
     requires_confirmation: false,
-    message: `vault ${repoId} is not gated: gitvault_policy was never set, so a deploy can activate without a vaulted capture. Run \`run402 gitvault policy required\` (or \`grandfathered --reason <why>\` to explicitly accept this) to clear the drift.`,
+    message: `vault ${repoId} is not gated: gitvault_policy was never set, so a deploy can activate without a vaulted capture. Run \`run402 repos policy required\` (or \`grandfathered --reason <why>\` to explicitly accept this) to clear the drift.`,
     affected: [repoId],
   };
 }
@@ -328,8 +328,8 @@ function enrichCaptureRefusal(err: unknown, repoId: string): unknown {
       code: e.code,
       details: { repo_id: repoId, ...(e.details && typeof e.details === "object" ? e.details : {}) },
       next_actions: [
-        { action: "restore the gitvault keystore onto this machine (run402 gitvault status prints keystore.root; back it up from the machine that holds it)" },
-        { action: 'run402 gitvault policy grandfathered --reason "<why>" — un-gate the project so deploys activate without a capture (owner + step-up, audited, doctor-persistent advisory)' },
+        { action: "restore the gitvault keystore onto this machine (run402 repos view prints keystore.root; back it up from the machine that holds it)" },
+        { action: 'run402 repos policy grandfathered --reason "<why>" — un-gate the project so deploys activate without a capture (owner + step-up, audited, doctor-persistent advisory)' },
         ...(Array.isArray(e.next_actions) ? e.next_actions : []),
       ],
     },

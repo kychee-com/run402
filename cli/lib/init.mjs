@@ -57,8 +57,8 @@ Output:
   project the gitvault scaffold acted on.
 
   init scaffolds the git remote only. It does NOT allocate the vault — that is
-  \`run402 gitvault init\`, which mints key material and a recovery receipt and
-  therefore stays an explicit step.
+  \`run402 repos create --project <id>\`, which mints key material and a
+  recovery receipt and therefore stays an explicit step.
 
 Steps (idempotent when re-run with the same rail; pass --switch-rail to change rails):
   1. Creates config directory (~/.config/run402)

@@ -531,7 +531,7 @@ export class GitvaultCreation {
       "reconciling gitvault creation",
       { repo_id: repoId, org_id: this.journal.org_id, project_id: this.journal.project_id },
       [
-        { action: "restore the gitvault keystore onto this machine (run402 gitvault status prints keystore.root; back it up from the machine that holds it)" },
+        { action: "restore the gitvault keystore onto this machine (run402 repos view prints keystore.root; back it up from the machine that holds it)" },
         ...crossProfileGitvaultHint(repoId),
       ],
     );
