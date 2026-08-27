@@ -97,3 +97,26 @@ describe("the deploy lane speaks gitvault", () => {
     assert.match(code, /process\.exit\(1\)/);
   });
 });
+
+describe("deploy apply dirty-tree refusal (Observability + dirty-tree-refusal)", () => {
+  /**
+   * `--allow-dirty` must reach `applyWithGitvault` (which threads it into
+   * `gitvault.deploy`'s `snapshot.allowDirty`, same option name captureSnapshot
+   * checks) — never re-implemented locally in the CLI, which would risk
+   * drifting from the SDK's own `SNAPSHOT_DIRTY_TREE` refusal rule.
+   */
+  it("--allow-dirty threads to applyWithGitvault's allowDirty option", () => {
+    assert.match(deployV2, /["']--allow-dirty["']/);
+    assert.match(deployV2, /opts\.allowDirty\s*\?\s*\{\s*allowDirty:\s*true\s*\}/);
+  });
+
+  it("dirty-tree disclosure (modified_captured/untracked_captured) is printed to stderr, even under --allow-dirty", () => {
+    assert.match(deployV2, /modified_captured/);
+    assert.match(deployV2, /untracked_captured/);
+  });
+
+  it("every apply result carries the always-on stats block, and -v prints a verbose summary", () => {
+    assert.match(deployV2, /stats:\s*sdkStats\(sdk\)/);
+    assert.match(deployV2, /printVerboseStats\(opts\.verbose,\s*sdk\)/);
+  });
+});

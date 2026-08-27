@@ -33,6 +33,7 @@ import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { nextAction, claimOrgSlugAction, claimRepoNameAction } from "./next-actions.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
 import { gitvaultRemoteUrlForRepo } from "#sdk";
+import { sdkStats, printVerboseStats } from "./stats.mjs";
 import {
   normalizeArgv,
   hasHelp,
@@ -55,29 +56,33 @@ Usage:
 Common:
   run402 repos create [name]  [--org <org_id>] [--dir <path>] [--tier <tier>] [--project <id>]
   run402 repos view           [--project <id>] [--repo <repo_id>] [--human]
-  run402 repos list           [--org <org_id>]
+  run402 repos list           [--org <org_id>] [--human]
 
 Then plain git, forever:
   git push
   git clone run402::<org>/<repo>
 
 Occasional:
-  run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run]
+  run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty]
   run402 repos mirror   [<destination>] [--off] [--backfill] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--project <id>] [--repo <repo_id>]
-  run402 repos recover  <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]
+  run402 repos recover  <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--human]
 
 Lifecycle:
   run402 repos rename <new_name> [--repo <repo_id> | --project <project_id>]
   run402 repos delete [--project <id>] [--repo <repo_id>] [--force]
 
 Maintenance:
-  run402 repos fsck   [--project <id>] [--repo <repo_id>] [--mirror] [--budget <n>] [--no-write]
+  run402 repos fsck   [--project <id>] [--repo <repo_id>] [--mirror] [--budget <n>] [--no-write] [--human]
   run402 repos gc     [--project <id>] [--repo <repo_id>] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
-  run402 repos access [--project <id>] [--repo <repo_id>]
+  run402 repos access [--project <id>] [--repo <repo_id>] [--human]
   run402 repos access repair [--project <id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
   run402 repos access revoke-key <principal_id> [--project <id>] [--repo <repo_id>]
   run402 repos access declare-exposure [--project <id>] [--repo <repo_id>]
   run402 repos policy <required|grandfathered> [--project <id>] [--repo <repo_id>] [--reason <why>]
+
+Every verb above also accepts -v/--verbose (a stderr summary line of request
+stats — round trips, wire time, bytes — coexists with --human) and always
+carries a \`stats\` block in its JSON result.
 
 Subcommands:
   create   Provision (or, with --project, ADOPT an existing project), ALLOCATE
@@ -103,7 +108,8 @@ Subcommands:
            vaults-by-org read when the gateway has it (one round trip);
            gracefully falls back to the older per-project walk when it
            404s. Not every project in the org — ones with no vault are
-           omitted.
+           omitted. \`--human\` renders a compact roster (address,
+           generation, bytes, policy) instead of JSON.
   rename   Claim or rename the repo's per-org-unique, address-form name
            (the <name> half of run402::<org-slug>/<name>). Address by
            --repo or --project (not both).
@@ -122,6 +128,12 @@ Subcommands:
            publishing. Push-to-creates through a slug-form remote
            (run402::<org-slug>/<name>) the same way \`git push\` does.
            \`--dry-run\` previews the real local pipeline without publishing.
+           A DIRTY tree (modified/staged tracked paths, or untracked-not-
+           ignored paths) REFUSES by default (SNAPSHOT_DIRTY_TREE, before any
+           object is created) — commit and retry, or pass \`--allow-dirty\` to
+           capture it as-is; the result then discloses exactly what was
+           swept in (modified_captured / untracked_captured), printed to
+           stderr too. \`--dry-run\` surfaces the same refusal.
   mirror   ONE flag-driven verb for the client-side, customer-
            owned ciphertext mirror — run402 never holds a credential to it.
            No argument: READ the configured destination + a keyless
@@ -138,7 +150,7 @@ Subcommands:
            path (normal retrieval is plain \`git clone run402::<org>/<repo>\`,
            no \`repos clone\` verb exists). Proves this mirror's validity,
            never freshness — read both honesty statements before relying on
-           the result.
+           the result. \`--human\` renders a short summary instead of JSON.
   fsck     Walks the head chain AND materializes
            the ref map, advancing BOTH
            local trust pins — reported EXPLICITLY as local_state_changed +
@@ -149,6 +161,7 @@ Subcommands:
            normal writing mode, so a budget-exceeded run resumes). \`--mirror\`
            additionally runs the keyless mirror integrity probe — it proves
            the mirror's VALIDITY, never its FRESHNESS, and says so.
+           \`--human\` renders a short summary instead of JSON.
   gc       \`git gc\`'s own two halves — checkpoint publication (compact) and
            prune planning — in one verb, NOT described as "exactly git gc":
            the deletion ceremony is stricter. Plans and checkpoints by
@@ -169,6 +182,8 @@ Subcommands:
            bookkeeping, not enforcement, until \`access repair\`/\`revoke-key\`
            actually rotates. history_scope (which epochs each recipient can
            read) is not reported by this read — see the \`gap\` field.
+           \`--human\` renders a compact roster instead of JSON (the read
+           form only — repair/revoke-key/declare-exposure stay JSON-only).
   access repair
            Epoch rotation (D193-D203, rev 42) with reason:"elective_rekey" —
            re-keys this vault's CURRENT epoch away from every stale_access
@@ -221,8 +236,8 @@ Options:
                     access repair: the D194 frozen watermark pair this
                     rotation attempt is fenced against. Required — see
                     \`run402 repos access repair --help\` for why.
-  --human           view: a short summary on stdout instead of the JSON dump.
-                    Rejected together with --json.
+  --human           view/list/access/fsck/recover: a short summary on stdout
+                    instead of the JSON dump. Rejected together with --json.
   --force           delete: proceed even though the repo holds generations
                     that would be permanently and irrecoverably lost. Never
                     overrides the non-repo-infrastructure refusal.
@@ -230,7 +245,13 @@ Options:
                     tree produces (a clean tree pushes HEAD itself, unused)
   --checkpoint      snapshot: force the checkpoint-bearing form regardless of delta size
   --dry-run         snapshot: a REAL preview — runs the actual local pipeline
-                    and reports what would publish. Publishes nothing.
+                    and reports what would publish. Publishes nothing. A
+                    dirty tree still refuses SNAPSHOT_DIRTY_TREE here (a
+                    preview that hid the refusal would lie).
+  --allow-dirty     snapshot: capture a dirty tree as-is instead of refusing.
+                    The result discloses exactly what was swept in
+                    (modified_captured / untracked_captured) — even this
+                    override never captures silently.
   --off             mirror: remove the configured destination (config only)
   --backfill        mirror: copy every object the configured mirror is missing
   --profile <name>  mirror / recover: the AWS credential profile name for an
@@ -259,6 +280,10 @@ Options:
                     signed completion appears, instead of returning immediately
   --reason <why>    policy: why the policy is changing — recorded in the
                     audit event. REQUIRED for \`grandfathered\`.
+  -v, --verbose     Print one stderr summary line of this call's request
+                    stats (round trips, wire time, bytes). Coexists with
+                    --human. The JSON result always carries a \`stats\` block
+                    regardless of this flag.
   --json            No-op: stdout is already JSON.
 
 Terminal loss (protocol §0):
@@ -272,15 +297,16 @@ Examples:
   run402 repos create --project prj_1a2b3c  # allocate for an existing project
   git push -u origin HEAD                   # the printed next_action, verbatim
   run402 repos view --human
-  run402 repos list --org org_1a2b3c
+  run402 repos list --org org_1a2b3c --human
   run402 repos rename my-notes --project prj_1a2b3c
   run402 repos snapshot --dry-run
+  run402 repos snapshot --allow-dirty
   run402 repos mirror s3://acme-vault-mirror --profile acme
   run402 repos mirror --backfill
-  run402 repos fsck --mirror
+  run402 repos fsck --mirror --human
   run402 repos gc
-  run402 repos access
-  run402 repos recover s3://acme-vault-mirror --out ./restored
+  run402 repos access --human
+  run402 repos recover s3://acme-vault-mirror --out ./restored --human
   run402 repos delete --project prj_xyz --force
 `;
 
@@ -328,6 +354,19 @@ function printTerminalLoss(status) {
   }
   console.error(`Back up this directory: ${status.keystore.root}`);
   console.error("");
+}
+
+/**
+ * Print a verb's JSON result with the always-on `stats` block (Observability:
+ * RUN402_TRACE + always-on stats + -v). `sdk.stats()` reflects only calls
+ * made through THIS `sdk` instance — every verb below resolves one `sdk =
+ * getSdk()` and reuses it for its own direct calls so the count is accurate
+ * for the work this function did; calls a shared cross-cutting helper
+ * (org/wallet resolution) makes through its own internal instance are not
+ * reflected (see `cli/lib/stats.mjs`'s doc comment).
+ */
+function printJson(sdk, payload) {
+  console.log(JSON.stringify({ ...payload, stats: sdkStats(sdk) }, null, 2));
 }
 
 const LARGE_OUTPUT_THRESHOLD_BYTES = 100 * 1024;
@@ -532,17 +571,17 @@ async function inferRepoName(dir) {
 
 const CREATE_VALUE_FLAGS = ["--org", "--dir", "--tier", "--idempotency-key", "--project"];
 
-async function printCreateResult({ projectId, vault, adopted, name }) {
+async function printCreateResult({ sdk, projectId, vault, adopted, name, verboseArgv }) {
   let address = null;
   let orgSlug = null;
   try {
     const owningOrg = await resolveOwningOrgId(projectId);
-    const orgRecord = owningOrg ? await getSdk().org(owningOrg).get() : null;
+    const orgRecord = owningOrg ? await sdk.org(owningOrg).get() : null;
     orgSlug = orgRecord?.slug ?? null;
     if (orgSlug && name) {
       const candidate = slugifyRepoName(name);
       if (candidate) {
-        const named = await getSdk().projects.setRepoName(projectId, candidate);
+        const named = await sdk.projects.setRepoName(projectId, candidate);
         address = gitvaultRemoteUrlForRepo(orgSlug, named.repo_name);
       }
     }
@@ -571,13 +610,13 @@ async function printCreateResult({ projectId, vault, adopted, name }) {
     deployed: false,
     next_actions: nextActions,
   };
-  console.log(JSON.stringify(out, null, 2));
+  printJson(sdk, out);
   console.error(
     `project ${projectId} ${adopted ? "adopted" : "provisioned"}; repo ${vault.repo_id} ` +
     (vault.deduplicated ? "already existed — nothing was re-allocated" : `allocated (genesis ${vault.genesis_sha256})`),
   );
   if (address) console.error(`address: ${address}`);
-  else if (!orgSlug) console.error("no named address yet — claim an org slug (run402 org slug <slug>, one-time $1) to get run402::<slug>/<name> addresses");
+  else if (!orgSlug) console.error("no named address yet — claim an org slug (run402 org slug <slug>) to get run402::<slug>/<name> addresses");
   else console.error(`no address claimed — run 'run402 repos rename <name> --project ${projectId}' to claim one`);
   if (vault.remote) console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
   if (pushAction) console.error(`next: ${pushAction.command}`);
@@ -586,9 +625,11 @@ async function printCreateResult({ projectId, vault, adopted, name }) {
   await printKeystoreLocation();
   console.error("");
   console.error("nothing was deployed — this is a vault-only repo. Deploy later with `run402 deploy apply`, or never.");
+  printVerboseStats(verboseArgv, sdk);
 }
 
 async function createAdopt(projectId, dir, a) {
+  const sdk = getSdk();
   const orgId = flagValue(a, "--org") ?? await resolveOwningOrgId(projectId);
   if (!orgId) {
     fail({
@@ -599,14 +640,15 @@ async function createAdopt(projectId, dir, a) {
     });
   }
   try {
-    const vault = await getSdk().gitvault.init({ org_id: orgId, project_id: projectId, repo_dir: dir });
-    await printCreateResult({ projectId, vault, adopted: true, name: null });
+    const vault = await sdk.gitvault.init({ org_id: orgId, project_id: projectId, repo_dir: dir });
+    await printCreateResult({ sdk, projectId, vault, adopted: true, name: null, verboseArgv: a });
   } catch (err) {
     reportSdkError(err);
   }
 }
 
 async function createProvision(name, dir, a) {
+  const sdk = getSdk();
   const tier = flagValue(a, "--tier") ?? "prototype";
   const idempotencyKey = flagValue(a, "--idempotency-key") ?? `repos-create:${name}`;
   // `optional: true` — a fresh wallet with no org yet is the cold-start path
@@ -618,7 +660,7 @@ async function createProvision(name, dir, a) {
   let provisioned;
   try {
     provisioned = await withAutoApprove(() =>
-      getSdk().projects.provision({ tier, name, ...(orgId ? { orgId } : {}), idempotencyKey }),
+      sdk.projects.provision({ tier, name, ...(orgId ? { orgId } : {}), idempotencyKey }),
     );
   } catch (err) {
     reportSdkError(err);
@@ -637,8 +679,8 @@ async function createProvision(name, dir, a) {
   }
 
   try {
-    const vault = await getSdk().gitvault.init({ org_id: effectiveOrgId, project_id: provisioned.project_id, repo_dir: dir });
-    await printCreateResult({ projectId: provisioned.project_id, vault, adopted: false, name });
+    const vault = await sdk.gitvault.init({ org_id: effectiveOrgId, project_id: provisioned.project_id, repo_dir: dir });
+    await printCreateResult({ sdk, projectId: provisioned.project_id, vault, adopted: false, name, verboseArgv: a });
   } catch (err) {
     reportSdkError(err);
   }
@@ -646,7 +688,7 @@ async function createProvision(name, dir, a) {
 
 async function create(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--help", "-h"], CREATE_VALUE_FLAGS);
+  assertKnownFlags(a, [...CREATE_VALUE_FLAGS, "--help", "-h", "-v", "--verbose"], CREATE_VALUE_FLAGS);
   const positionals = requirePositionalCount(a, CREATE_VALUE_FLAGS, {
     min: 0, max: 1, command: "run402 repos create [name]", missing: "",
   });
@@ -680,8 +722,8 @@ async function create(args) {
 // ─── list ───────────────────────────────────────────────────────────────────
 
 /** The FROZEN bulk-read shape (task 2.4) — one round trip. */
-async function listViaBulkRead(orgId) {
-  const result = await getSdk().gitvault.listByOrg(orgId);
+async function listViaBulkRead(sdk, orgId) {
+  const result = await sdk.gitvault.listByOrg(orgId);
   return Array.isArray(result.vaults) ? result.vaults : [];
 }
 
@@ -692,14 +734,14 @@ async function listViaBulkRead(orgId) {
  * function once the bulk route has shipped long enough that no gateway
  * still 404s it.
  */
-async function listViaFallback(orgId) {
-  const result = await getSdk().projects.list({ org: orgId });
+async function listViaFallback(sdk, orgId) {
+  const result = await sdk.projects.list({ org: orgId });
   const projects = Array.isArray(result.projects) ? result.projects : [];
   const repos = [];
   for (const p of projects) {
     let status;
     try {
-      status = await getSdk().gitvault.status({ project_id: p.id });
+      status = await sdk.gitvault.status({ project_id: p.id });
     } catch {
       continue;
     }
@@ -720,21 +762,38 @@ async function listViaFallback(orgId) {
   return repos;
 }
 
+/** `repos list --human`: a compact roster — one line per repo (address, generation, bytes, policy). */
+async function formatRepoListHuman(orgSlug, repos) {
+  if (repos.length === 0) return "(no vault-bearing repos in this organization)";
+  const { generationToBigInt } = await import("#sdk/node");
+  const decimal = (g) => (g ? generationToBigInt(g).toString() : "none");
+  const lines = repos.map((r) => {
+    const address = orgSlug && r.repo_name ? `run402::${orgSlug}/${r.repo_name}` : (r.repo_name ?? r.project_id);
+    return `${address}  gen=${decimal(r.newest_generation)}  ${r.source_bytes} byte(s)  policy=${r.gitvault_policy ?? "(none)"}  (${r.repo_id})`;
+  });
+  return lines.join("\n");
+}
+
 async function list(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, ["--org", "--help", "-h"], ["--org"]);
+  assertKnownFlags(a, ["--org", "--human", "-v", "--verbose", "--help", "-h"], ["--org"]);
   requirePositionalCount(a, ["--org"], { min: 0, max: 0, command: "run402 repos list", missing: "" });
+  const human = a.includes("--human");
+  if (human && a.includes("--json")) {
+    fail({ code: "BAD_USAGE", message: "--human cannot be combined with --json.", details: { flags: a.filter((arg) => arg === "--human" || arg === "--json") } });
+  }
+  const sdk = getSdk();
   const orgId = await resolveOrgId(a, { cmd: "repos" });
 
   let repos;
   let usedFallback = false;
   try {
-    repos = await listViaBulkRead(orgId);
+    repos = await listViaBulkRead(sdk, orgId);
   } catch (err) {
     if (err?.status === 404) {
       usedFallback = true;
       try {
-        repos = await listViaFallback(orgId);
+        repos = await listViaFallback(sdk, orgId);
       } catch (fallbackErr) {
         reportSdkError(fallbackErr);
         return;
@@ -748,42 +807,50 @@ async function list(args) {
   let orgSlug = repos.find((r) => r.org_slug)?.org_slug ?? null;
   if (orgSlug == null) {
     try {
-      orgSlug = (await getSdk().org(orgId).get()).slug;
+      orgSlug = (await sdk.org(orgId).get()).slug;
     } catch {
       // best-effort — `list` must not fail over an org-slug lookup
     }
   }
 
-  console.log(JSON.stringify({ org_id: orgId, org_slug: orgSlug, repos }, null, 2));
+  if (human) {
+    console.log(await formatRepoListHuman(orgSlug, repos));
+    printVerboseStats(a, sdk);
+    return;
+  }
+  printJson(sdk, { org_id: orgId, org_slug: orgSlug, repos });
   console.error(`${repos.length} vault-bearing project(s) in this organization${usedFallback ? " (per-project fallback read — the bulk vaults-by-org route is not live on this gateway yet)" : ""}`);
   if (orgSlug) console.error(`org slug: ${orgSlug} — a repo with a claimed address-form name is reachable at run402::${orgSlug}/<name>`);
+  printVerboseStats(a, sdk);
 }
 
 // ─── view ───────────────────────────────────────────────────────────────────
 
 async function view(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "--help", "-h"], COMMON_VALUE_FLAGS);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
   requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos view", missing: "" });
   const human = a.includes("--human");
   if (human && a.includes("--json")) {
     fail({ code: "BAD_USAGE", message: "--human cannot be combined with --json.", details: { flags: a.filter((arg) => arg === "--human" || arg === "--json") } });
   }
+  const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
     // Design D3: `view` NEVER passes `refs: true` — it is side-effect-free
     // by construction, not by convention. Materialization belongs to `fsck`.
-    const s = await getSdk().gitvault.status(target);
+    const s = await sdk.gitvault.status(target);
     let mirror = null;
     if (s.repo_id) {
       try {
-        mirror = await getSdk().gitvault.mirrorStatus({ ...target, repo_id: s.repo_id });
+        mirror = await sdk.gitvault.mirrorStatus({ ...target, repo_id: s.repo_id });
       } catch {
         // best-effort — a mirror read failure never fails `view`
       }
     }
     if (human) {
       console.log(await formatRepoHuman(s, mirror));
+      printVerboseStats(a, sdk);
       return;
     }
     const verifyRefsAction = nextAction("verify_refs", { command: "run402 repos fsck", why: "Walk the signed chain and materialize verified refs." });
@@ -794,7 +861,7 @@ async function view(args) {
       mirror,
       next_actions: combinedNextActions,
     };
-    console.log(JSON.stringify(out, null, 2));
+    printJson(sdk, out);
     printTerminalLoss(s);
     if (s.remote) {
       const suffix =
@@ -812,6 +879,7 @@ async function view(args) {
     }
     for (const w of s.warnings) console.error(`warning (${w.kind}): ${w.message}`);
     for (const n of combinedNextActions) console.error(`next: ${n.why ?? n.action ?? n.type}${n.command ? ` — ${n.command}` : ""}`);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -821,11 +889,12 @@ async function view(args) {
 
 async function rename(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
   const [repoName] = requirePositionalCount(a, COMMON_VALUE_FLAGS, {
     min: 1, max: 1, command: "run402 repos rename <new_name> [--repo <repo_id> | --project <project_id>]",
     missing: "run402 repos rename <new_name>: a new name is required",
   });
+  const sdk = getSdk();
   const repoFlag = flagValue(a, "--repo");
   const projectFlag = flagValue(a, "--project");
   if (repoFlag != null && projectFlag != null) {
@@ -834,7 +903,7 @@ async function rename(args) {
   let projectId;
   if (repoFlag != null) {
     try {
-      projectId = (await getSdk().gitvault.get(repoFlag)).project_id;
+      projectId = (await sdk.gitvault.get(repoFlag)).project_id;
     } catch (err) {
       reportSdkError(err);
       return;
@@ -843,16 +912,16 @@ async function rename(args) {
     projectId = resolveProjectId(projectFlag);
   }
   try {
-    const result = await getSdk().projects.setRepoName(projectId, repoName);
+    const result = await sdk.projects.setRepoName(projectId, repoName);
     let address = null;
     try {
       const owningOrg = await resolveOwningOrgId(projectId);
-      const orgSlug = owningOrg ? (await getSdk().org(owningOrg).get()).slug : null;
+      const orgSlug = owningOrg ? (await sdk.org(owningOrg).get()).slug : null;
       if (orgSlug) address = gitvaultRemoteUrlForRepo(orgSlug, result.repo_name);
     } catch {
       // The claim itself already succeeded — a failed address-preview lookup is never fatal.
     }
-    console.log(JSON.stringify({ ...result, address }, null, 2));
+    printJson(sdk, { ...result, address });
     console.error(
       result.previous_repo_name && result.previous_repo_name !== result.repo_name
         ? `renamed from "${result.previous_repo_name}" to "${result.repo_name}"`
@@ -860,6 +929,7 @@ async function rename(args) {
     );
     if (address) console.error(`address: ${address}`);
     else console.error("this org has no slug yet — claim one with `run402 org slug <slug>` to get a full run402::<slug>/<name> address");
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -888,22 +958,22 @@ async function checkResource(read, resourceName, countOf) {
  * that fails for a reason OTHER than "genuinely absent" (404) is reported
  * `unknown` and REFUSES delete too — D9 never guesses its way to yes.
  */
-async function checkNonRepoResources(projectId) {
+async function checkNonRepoResources(sdk, projectId) {
   const refused = [];
   try {
-    const detail = await getSdk().projects.get(projectId);
+    const detail = await sdk.projects.get(projectId);
     if (Array.isArray(detail.mailbox) && detail.mailbox.length > 0) refused.push({ resource: "mailbox", status: "present", count: detail.mailbox.length });
     if (Array.isArray(detail.custom_domains) && detail.custom_domains.length > 0) refused.push({ resource: "custom_domains", status: "present", count: detail.custom_domains.length });
   } catch (err) {
     refused.push({ resource: "project_detail", status: "unknown", reason: err?.message ?? String(err) });
   }
-  const schema = await checkResource(() => getSdk().projects.getSchema(projectId), "database_schema", (s) => (Array.isArray(s?.tables) ? s.tables.length : 0));
+  const schema = await checkResource(() => sdk.projects.getSchema(projectId), "database_schema", (s) => (Array.isArray(s?.tables) ? s.tables.length : 0));
   if (schema) refused.push(schema);
-  const functions = await checkResource(() => getSdk().functions.list(projectId), "functions", (r) => (Array.isArray(r?.functions) ? r.functions.length : 0));
+  const functions = await checkResource(() => sdk.functions.list(projectId), "functions", (r) => (Array.isArray(r?.functions) ? r.functions.length : 0));
   if (functions) refused.push(functions);
-  const secrets = await checkResource(() => getSdk().secrets.list(projectId), "secrets", (r) => (Array.isArray(r?.secrets) ? r.secrets.length : 0));
+  const secrets = await checkResource(() => sdk.secrets.list(projectId), "secrets", (r) => (Array.isArray(r?.secrets) ? r.secrets.length : 0));
   if (secrets) refused.push(secrets);
-  const subdomains = await checkResource(() => getSdk().subdomains.list(projectId), "subdomains", (r) => (Array.isArray(r) ? r.length : 0));
+  const subdomains = await checkResource(() => sdk.subdomains.list(projectId), "subdomains", (r) => (Array.isArray(r) ? r.length : 0));
   if (subdomains) refused.push(subdomains);
   return refused;
 }
@@ -918,7 +988,8 @@ function stripFlag(args, flag) {
 
 async function del(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, ["--project", "--repo", "--force", "--help", "-h"], ["--project", "--repo"]);
+  assertKnownFlags(a, ["--project", "--repo", "--force", "-v", "--verbose", "--help", "-h"], ["--project", "--repo"]);
+  const sdk = getSdk();
   const repoFlag = flagValue(a, "--repo");
   let projectId;
   let rest;
@@ -927,7 +998,7 @@ async function del(args) {
       fail({ code: "BAD_USAGE", message: "pass --repo or --project, not both." });
     }
     try {
-      projectId = (await getSdk().gitvault.get(repoFlag)).project_id;
+      projectId = (await sdk.gitvault.get(repoFlag)).project_id;
     } catch (err) {
       reportSdkError(err);
       return;
@@ -941,7 +1012,7 @@ async function del(args) {
 
   let status;
   try {
-    status = await getSdk().gitvault.status({ project_id: projectId });
+    status = await sdk.gitvault.status({ project_id: projectId });
   } catch (err) {
     reportSdkError(err);
     return;
@@ -952,7 +1023,7 @@ async function del(args) {
 
   // D9, checked FIRST and unconditionally: --force below overrides only the
   // vault-history confirmation, never this refusal.
-  const refusedResources = await checkNonRepoResources(projectId);
+  const refusedResources = await checkNonRepoResources(sdk, projectId);
   if (refusedResources.length > 0) {
     fail({
       code: "PROJECT_HAS_NON_REPO_RESOURCES",
@@ -982,13 +1053,14 @@ async function del(args) {
   }
 
   try {
-    await getSdk().projects.delete(projectId);
-    console.log(JSON.stringify({
+    await sdk.projects.delete(projectId);
+    printJson(sdk, {
       project_id: projectId,
       deleted: true,
       deleted_resources: ["project", ...(vault ? ["vault_history"] : [])],
       vault: vault ? { repo_id: status.repo_id, admitted_generations: admittedGenerations, source_bytes: sourceBytes } : null,
-    }, null, 2));
+    });
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1023,12 +1095,26 @@ async function detectSlugFormRemote(a, repoDir) {
   return null;
 }
 
+/**
+ * Dirty-tree disclosure (help people not make mistakes): even an explicit
+ * `--allow-dirty` override never captures silently — every modified/staged
+ * tracked path and every untracked-not-ignored path that got swept into the
+ * capture is named on stderr, one per line.
+ */
+function printDirtyDisclosure(snapshot) {
+  if (!snapshot) return;
+  for (const p of snapshot.modified_captured ?? []) console.error(`captured (modified): ${p}`);
+  for (const p of snapshot.untracked_captured ?? []) console.error(`captured (untracked): ${p}`);
+}
+
 async function snapshot(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...SNAPSHOT_VALUE_FLAGS, "--checkpoint", "--dry-run", "--help", "-h"], SNAPSHOT_VALUE_FLAGS);
+  assertKnownFlags(a, [...SNAPSHOT_VALUE_FLAGS, "--checkpoint", "--dry-run", "--allow-dirty", "-v", "--verbose", "--help", "-h"], SNAPSHOT_VALUE_FLAGS);
   requirePositionalCount(a, SNAPSHOT_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos snapshot", missing: "" });
+  const sdk = getSdk();
   const dryRun = a.includes("--dry-run");
   const message = flagValue(a, "--message");
+  const allowDirty = a.includes("--allow-dirty");
   const repoDir = process.cwd();
   const address = await detectSlugFormRemote(a, repoDir);
   const target = address ? { repo_dir: repoDir } : await vaultTarget(a);
@@ -1046,12 +1132,15 @@ async function snapshot(args) {
       console.error("");
     },
   };
-  if (message != null) opts.snapshot = { message };
+  const snapshotOpts = {};
+  if (message != null) snapshotOpts.message = message;
+  if (allowDirty) snapshotOpts.allowDirty = true;
+  if (Object.keys(snapshotOpts).length > 0) opts.snapshot = snapshotOpts;
   if (a.includes("--checkpoint")) opts.checkpoint = true;
   try {
     if (dryRun) {
-      const plan = await getSdk().gitvault.planPush(opts);
-      console.log(JSON.stringify(plan, null, 2));
+      const plan = await sdk.gitvault.planPush(opts);
+      printJson(sdk, plan);
       if (plan.allocation_needed) {
         console.error("dry-run: no repo allocated for this project yet — a real snapshot would allocate one first; object/byte sizing is not knowable until then");
       } else {
@@ -1060,16 +1149,20 @@ async function snapshot(args) {
           `${plan.object_count} object(s), ${plan.encrypted_bytes} encrypted byte(s) (${plan.raw_bytes} raw)`,
         );
       }
+      printDirtyDisclosure(plan.snapshot);
+      printVerboseStats(a, sdk);
       return;
     }
-    const result = await getSdk().gitvault.push(opts);
-    console.log(JSON.stringify(result, null, 2));
+    const result = await sdk.gitvault.push(opts);
+    printJson(sdk, result);
     console.error(`published generation ${result.generation} (${result.form})`);
     if (result.mirror_push?.outcome === "pushed") {
       console.error(`mirror: pushed generation ${result.generation} (${result.mirror_push.summary?.objects_copied ?? 0} object(s) copied)`);
     } else if (result.mirror_push?.outcome === "failed") {
       console.error(`mirror: dual-push FAILED (deploy is unaffected) — ${result.mirror_push.error ?? "see mirror_push.summary.errors"}`);
     }
+    printDirtyDisclosure(result.snapshot);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1080,7 +1173,7 @@ async function snapshot(args) {
 async function policy(args) {
   const a = normalizeArgv(args);
   const valueFlags = [...COMMON_VALUE_FLAGS, "--reason"];
-  assertKnownFlags(a, [...valueFlags, "--help", "-h"], valueFlags);
+  assertKnownFlags(a, [...valueFlags, "-v", "--verbose", "--help", "-h"], valueFlags);
   const [requested] = requirePositionalCount(a, valueFlags, {
     min: 1, max: 1, command: "run402 repos policy <required|grandfathered>",
     missing: "Missing <policy>. Expected `required` or `grandfathered`.",
@@ -1108,13 +1201,14 @@ async function policy(args) {
     const sdk = getSdk();
     const repoId = target.repo_id ?? (await sdk.gitvault.forProject(target.project_id)).repo_id;
     const result = await sdk.gitvault.setPolicy(repoId, { gitvault_policy: requested, ...(reason != null ? { reason } : {}) });
-    console.log(JSON.stringify({ repo_id: repoId, ...result }, null, 2));
+    printJson(sdk, { repo_id: repoId, ...result });
     console.error(
       result.changed
         ? `gitvault_policy is now ${result.gitvault_policy} (version ${result.gitvault_policy_version})`
         : `gitvault_policy was already ${result.gitvault_policy} — nothing changed`,
     );
     for (const w of result.warnings ?? []) console.error(`warning (${w.kind}): ${w.message}`);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1124,10 +1218,11 @@ async function policy(args) {
 
 const MIRROR_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--profile", "--region", "--endpoint"];
 
-async function mirrorRead(target) {
+async function mirrorRead(target, a) {
+  const sdk = getSdk();
   try {
-    const result = await getSdk().gitvault.mirrorStatus(target);
-    console.log(JSON.stringify(result, null, 2));
+    const result = await sdk.gitvault.mirrorStatus(target);
+    printJson(sdk, result);
     if (!result.configured) {
       console.error(`no mirror configured for ${result.repo_id}. Configure one: run402 repos mirror <destination>`);
     } else {
@@ -1135,49 +1230,55 @@ async function mirrorRead(target) {
       console.error(`mirror ${result.destination}: mirrored generation ${result.mirrored_generation ?? "(none)"}, vault newest ${result.newest_generation ?? "(none)"} — ${currency}`);
     }
     printMirrorHonesty(result);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
 }
 
 async function mirrorSet(target, destination, a) {
+  const sdk = getSdk();
   const credential = resolveMirrorCredential(a);
   const region = flagValue(a, "--region");
   const endpoint = flagValue(a, "--endpoint");
   try {
-    const result = await getSdk().gitvault.mirrorSet({
+    const result = await sdk.gitvault.mirrorSet({
       ...target,
       destination_url: destination,
       ...(credential ? { credential } : {}),
       ...(region != null ? { region } : {}),
       ...(endpoint != null ? { endpoint } : {}),
     });
-    console.log(JSON.stringify(result, null, 2));
+    printJson(sdk, result);
     console.error(`mirror configured for ${result.repo_id} -> ${formatMirrorDestination(result.destination)}`);
     console.error("run `run402 repos mirror --backfill` to catch it up now, then every publish dual-pushes automatically.");
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function mirrorOff(target) {
+async function mirrorOff(target, a) {
+  const sdk = getSdk();
   try {
-    const result = await getSdk().gitvault.mirrorRemove(target);
-    console.log(JSON.stringify(result, null, 2));
+    const result = await sdk.gitvault.mirrorRemove(target);
+    printJson(sdk, result);
     console.error(
       result.removed
         ? `mirror config removed for ${result.repo_id} — the mirror's OWN bytes were not touched`
         : `no mirror was configured for ${result.repo_id} — nothing to remove`,
     );
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
 }
 
-async function mirrorBackfill(target) {
+async function mirrorBackfill(target, a) {
+  const sdk = getSdk();
   try {
-    const result = await getSdk().gitvault.mirrorSync(target);
-    console.log(JSON.stringify(result, null, 2));
+    const result = await sdk.gitvault.mirrorSync(target);
+    printJson(sdk, result);
     await spillIfLarge(result.repo_id, "mirror-backfill", result);
     console.error(
       `mirror backfill for ${result.repo_id}: ${result.objects_copied} copied, ${result.objects_already_present} already present` +
@@ -1186,6 +1287,7 @@ async function mirrorBackfill(target) {
     );
     for (const e of result.errors) console.error(`  failed: ${e.key} — ${e.error}`);
     printMirrorHonesty(result);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1193,7 +1295,7 @@ async function mirrorBackfill(target) {
 
 async function mirror(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...MIRROR_VALUE_FLAGS, "--off", "--backfill", "--ambient", "--help", "-h"], MIRROR_VALUE_FLAGS);
+  assertKnownFlags(a, [...MIRROR_VALUE_FLAGS, "--off", "--backfill", "--ambient", "-v", "--verbose", "--help", "-h"], MIRROR_VALUE_FLAGS);
   const positionals = requirePositionalCount(a, MIRROR_VALUE_FLAGS, {
     min: 0, max: 1, command: "run402 repos mirror [<destination>]", missing: "",
   });
@@ -1210,26 +1312,57 @@ async function mirror(args) {
   }
   const target = await vaultTarget(a);
   if (destination != null) return mirrorSet(target, destination, a);
-  if (off) return mirrorOff(target);
-  if (backfill) return mirrorBackfill(target);
-  return mirrorRead(target);
+  if (off) return mirrorOff(target, a);
+  if (backfill) return mirrorBackfill(target, a);
+  return mirrorRead(target, a);
 }
 
 // ─── fsck (verify the head chain + materialize refs) ──────────────────
 
+/** `repos fsck --human`: the same verdict the stderr lines already carry, condensed into one block. */
+function formatFsckHuman(result, mirrorRequested) {
+  const lines = [`Repo: ${result.repo_id}`];
+  lines.push(
+    !result.write
+      ? `Verified through generation ${result.verified_to_generation} — audit mode, nothing local was persisted.`
+      : result.local_state_changed
+        ? `Verified through generation ${result.verified_to_generation} — local pin advanced from ${result.pin_before.highest_authenticated ?? "genesis"} to ${result.pin_after.highest_authenticated}.`
+        : `Verified through generation ${result.verified_to_generation} — already at the newest verified generation.`,
+  );
+  if (mirrorRequested && result.mirror) {
+    lines.push(
+      `Mirror: recoverable generation ${result.mirror.recovered_generation}` +
+      (result.mirror.chain_break ? ` (chain break at ${result.mirror.chain_break.generation}: ${result.mirror.chain_break.reason})` : "") +
+      (result.mirror.data_loss_detected ? ` — DATA LOSS DETECTED (${result.mirror.absences.filter((x) => x.adjudication === "unexplained_absence").length} unexplained absence(s))` : ""),
+    );
+  }
+  return lines.join("\n");
+}
+
 async function fsck(args) {
   const a = normalizeArgv(args);
   const valueFlags = [...COMMON_VALUE_FLAGS, "--budget"];
-  assertKnownFlags(a, [...valueFlags, "--mirror", "--no-write", "--help", "-h"], valueFlags);
+  assertKnownFlags(a, [...valueFlags, "--mirror", "--no-write", "--human", "-v", "--verbose", "--help", "-h"], valueFlags);
   requirePositionalCount(a, valueFlags, { min: 0, max: 0, command: "run402 repos fsck", missing: "" });
+  const human = a.includes("--human");
+  if (human && a.includes("--json")) {
+    fail({ code: "BAD_USAGE", message: "--human cannot be combined with --json.", details: { flags: a.filter((arg) => arg === "--human" || arg === "--json") } });
+  }
+  const sdk = getSdk();
   const target = await vaultTarget(a);
   const budget = flagValue(a, "--budget");
   if (budget != null) target.verification_budget = parseIntegerFlag("--budget", budget, { min: 1 });
   const write = !a.includes("--no-write");
   const mirrorRequested = a.includes("--mirror");
   try {
-    const result = await getSdk().gitvault.fsck({ ...target, write, mirror: mirrorRequested });
-    console.log(JSON.stringify(result, null, 2));
+    const result = await sdk.gitvault.fsck({ ...target, write, mirror: mirrorRequested });
+    if (human) {
+      console.log(formatFsckHuman(result, mirrorRequested));
+      if (mirrorRequested && result.mirror) printMirrorHonesty(result.mirror);
+      printVerboseStats(a, sdk);
+      return;
+    }
+    printJson(sdk, result);
     await spillIfLarge(result.repo_id, "fsck", result);
     if (!write) {
       console.error(`--no-write: verified through generation ${result.verified_to_generation} — nothing local was persisted (pin_before === pin_after).`);
@@ -1245,6 +1378,7 @@ async function fsck(args) {
       }
       printMirrorHonesty(result.mirror);
     }
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1256,8 +1390,9 @@ const GC_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--intent-core", "--verifier-rece
 
 async function gc(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...GC_VALUE_FLAGS, "--submit", "--wait", "--help", "-h"], GC_VALUE_FLAGS);
+  assertKnownFlags(a, [...GC_VALUE_FLAGS, "--submit", "--wait", "-v", "--verbose", "--help", "-h"], GC_VALUE_FLAGS);
   requirePositionalCount(a, GC_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos gc", missing: "" });
+  const sdk = getSdk();
   const submitting = a.includes("--submit");
   const corePath = flagValue(a, "--intent-core");
   const receiptPath = flagValue(a, "--verifier-receipt");
@@ -1277,9 +1412,9 @@ async function gc(args) {
     if (submitting) {
       const opts = { ...target, submit: { core: readJsonFile("--intent-core", corePath), verifier_receipt: readJsonFile("--verifier-receipt", receiptPath) } };
       if (a.includes("--wait")) opts.submit.wait = {};
-      const prune = await getSdk().gitvault.prune(opts);
+      const prune = await sdk.gitvault.prune(opts);
       const out = { phase: "submitted", prune };
-      console.log(JSON.stringify(out, null, 2));
+      printJson(sdk, out);
       if (prune.confirmation?.outcome) {
         console.error(
           `submitted — the signed completion reports ${prune.confirmation.deleted.length} deleted, ` +
@@ -1290,11 +1425,12 @@ async function gc(args) {
         console.error("submitted — no completion yet. Nothing is deleted until the control-plane-signed completion says so; re-run with --wait or poll the intent.");
       }
       console.error(prune.note);
+      printVerboseStats(a, sdk);
       return;
     }
 
-    const checkpoint = await getSdk().gitvault.compact(target);
-    const prune = await getSdk().gitvault.prune(target);
+    const checkpoint = await sdk.gitvault.compact(target);
+    const prune = await sdk.gitvault.prune(target);
     const nextActions = [];
     if (!prune.blocked_reason && prune.object_candidates.length > 0) {
       // Additive fields beyond the CLI's usual {type, command, why}: the
@@ -1310,7 +1446,7 @@ async function gc(args) {
       });
     }
     const out = { phase: "planned", checkpoint, prune, next_actions: nextActions };
-    console.log(JSON.stringify(out, null, 2));
+    printJson(sdk, out);
     console.error(`checkpoint published at generation ${checkpoint.generation}: ${checkpoint.covered_refs} ref(s), ${checkpoint.covered_roots} retention root(s).`);
     if (!checkpoint.cutoff_bound) {
       console.error("no retention-cutoff ticket was obtained, so roots were RETAINED — expiry is permissive. The checkpoint published, but no expired root left the map.");
@@ -1328,6 +1464,7 @@ async function gc(args) {
       }
     }
     console.error("`gc` is NOT \"exactly git gc\" — the deletion ceremony is stricter: nothing is removed until a control-plane-signed completion confirms it.");
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1335,14 +1472,40 @@ async function gc(args) {
 
 // ─── access (read-only; repair gated) ──────────────────────
 
+/** `repos access --human`: a compact roster of directory recipients and their coverage. */
+function formatAccessHuman(result) {
+  const lines = [`Repo: ${result.repo_id}`];
+  lines.push(`Recipients: ${result.recipients.length} directory, ${result.recipients.filter((r) => r.covered).length} covered`);
+  for (const r of result.recipients) {
+    lines.push(`  ${r.covered ? "covered" : "NOT covered"}  ${r.display_name ?? r.principal_id}${r.envelope_state ? ` (${r.envelope_state})` : ""}`);
+  }
+  if (result.this_keystore) lines.push(`This machine's own keystore also covers (writing principal, not in org directory): ${result.this_keystore.fingerprint}`);
+  if (result.unmatched_covered_fingerprints.length > 0) lines.push(`Orphaned/external coverage: ${result.unmatched_covered_fingerprints.join(", ")}`);
+  if (Array.isArray(result.stale_access) && result.stale_access.length > 0) {
+    lines.push(`Stale access (removed members that still decrypt): ${result.stale_access.map((s) => s.display_name ?? s.principal_id).join(", ")}`);
+  }
+  lines.push(result.gap);
+  return lines.join("\n");
+}
+
 async function accessRead(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
   requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos access", missing: "" });
+  const human = a.includes("--human");
+  if (human && a.includes("--json")) {
+    fail({ code: "BAD_USAGE", message: "--human cannot be combined with --json.", details: { flags: a.filter((arg) => arg === "--human" || arg === "--json") } });
+  }
+  const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await getSdk().gitvault.access(target);
-    console.log(JSON.stringify(result, null, 2));
+    const result = await sdk.gitvault.access(target);
+    if (human) {
+      console.log(formatAccessHuman(result));
+      printVerboseStats(a, sdk);
+      return;
+    }
+    printJson(sdk, result);
     await spillIfLarge(result.repo_id, "access", result);
     console.error(`${result.recipients.length} directory recipient(s), ${result.recipients.filter((r) => r.covered).length} covered on this repo.`);
     if (result.this_keystore) {
@@ -1356,6 +1519,7 @@ async function accessRead(args) {
       console.error(`${result.stale_access.length} removed member(s) STILL decrypt this vault (not yet revocable — no epoch rotation in v0): ${names}`);
     }
     console.error(result.gap);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1394,7 +1558,7 @@ const ROTATION_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--recipient-state-version"
  */
 async function accessRepair(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...ROTATION_VALUE_FLAGS, "--help", "-h"], ROTATION_VALUE_FLAGS);
+  assertKnownFlags(a, [...ROTATION_VALUE_FLAGS, "-v", "--verbose", "--help", "-h"], ROTATION_VALUE_FLAGS);
   requirePositionalCount(a, ROTATION_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos access repair", missing: "" });
   const recipientStateVersion = flagValue(a, "--recipient-state-version");
   const recipientRevocationVersion = flagValue(a, "--recipient-revocation-version");
@@ -1406,19 +1570,21 @@ async function accessRepair(args) {
       next_actions: [nextAction("edit_request", { command: "run402 repos access revoke-key <principal_id>", why: "the ONE fully self-contained rotation entry point today — no counters needed" })],
     });
   }
+  const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await getSdk().gitvault.rotateEpoch({
+    const result = await sdk.gitvault.rotateEpoch({
       ...target,
       reason: "elective_rekey",
       recipient_state_version: recipientStateVersion,
       recipient_revocation_version: recipientRevocationVersion,
       ...(flagValue(a, "--idempotency-key") != null ? { client_idempotency_key: flagValue(a, "--idempotency-key") } : {}),
     });
-    console.log(JSON.stringify(result, null, 2));
+    printJson(sdk, result);
     await spillIfLarge(result.rotation_id, "access-repair", result);
     console.error(`rotated to epoch ${result.new_epoch} at generation ${result.generation}: ${result.included.length} recipient(s) included, ${result.excluded_keyless_principal_ids.length} keyless, ${result.excluded_unconfirmed_principal_ids.length} unconfirmed.`);
     console.error(`self_check: ${result.self_check}${result.self_check === "not_a_recipient" ? " (this machine's own principal is not itself a vault recipient — nothing to self-verify)" : " (this machine's own opened envelope reproduced the committed epoch key)"}.`);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1434,21 +1600,23 @@ async function accessRepair(args) {
  */
 async function accessRevokeKey(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--idempotency-key", "--help", "-h"], [...COMMON_VALUE_FLAGS, "--idempotency-key"]);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--idempotency-key", "-v", "--verbose", "--help", "-h"], [...COMMON_VALUE_FLAGS, "--idempotency-key"]);
   const [principalId] = requirePositionalCount(a, [...COMMON_VALUE_FLAGS, "--idempotency-key"], {
     min: 1, max: 1, command: "run402 repos access revoke-key <principal_id>",
     missing: "Missing <principal_id>. This is the principal whose current key should no longer be trusted — the next rotation excludes them from the new epoch.",
   });
+  const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await getSdk().gitvault.rotateEpochForKeyRevocation(principalId, {
+    const result = await sdk.gitvault.rotateEpochForKeyRevocation(principalId, {
       ...target,
       ...(flagValue(a, "--idempotency-key") != null ? { client_idempotency_key: flagValue(a, "--idempotency-key") } : {}),
     });
-    console.log(JSON.stringify(result, null, 2));
+    printJson(sdk, result);
     await spillIfLarge(result.rotation_id, "access-revoke-key", result);
     console.error(`declared ${principalId}'s key revoked and rotated to epoch ${result.new_epoch} at generation ${result.generation}: ${result.included.length} recipient(s) included going forward.`);
     console.error(`self_check: ${result.self_check}.`);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1482,18 +1650,19 @@ async function accessRevokeKey(args) {
  */
 async function accessDeclareExposure(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
   requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos access declare-exposure", missing: "" });
   const target = await vaultTarget(a);
   try {
     const sdk = getSdk();
     const repoId = target.repo_id ?? (await sdk.gitvault.forProject(target.project_id)).repo_id;
     const result = await sdk.gitvault.declareEpochSecretExposed(repoId);
-    console.log(JSON.stringify(result, null, 2));
+    printJson(sdk, result);
     console.error(`declared epoch_secret_exposed for ${repoId} (epoch_secret_exposure_version now ${result.epoch_secret_exposure_version}).`);
     console.error("THIS DECLARATION DOES NOT ROTATE THE VAULT BY ITSELF — the next ordinary push now refuses EPOCH_ROTATION_REQUIRED until a rotate_epoch with reason:\"epoch_secret_exposed\" commits.");
     console.error("submit that rotation via r.gitvault.rotateEpoch({repo_id, reason: \"epoch_secret_exposed\", recipient_state_version, recipient_revocation_version}) once you have the two counter values (no CLI shortcut exists for this reason yet — see `run402 repos access repair --help`).");
     console.error("if a /confirm or /repin receipt is already pending for a directory principal, do NOT publish it separately (publishPinManifestUpdate is itself gated the same way) — pass it as rotateEpoch's pending_confirmations instead so it rides the SAME head as this rotation.");
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }
@@ -1509,10 +1678,24 @@ async function access(args) {
 
 // ─── recover ─────────────────────
 
+/** `repos recover --human`: the same verdict the stderr lines already carry, condensed into one block. */
+function formatRecoverHuman(result, outDir) {
+  const lines = [
+    `Repo: ${result.repo_id}`,
+    `Recovered generation ${result.recovered_generation} into ${outDir}` +
+      (result.chain_break ? ` (chain break at ${result.chain_break.generation} — fell back to the newest fully-verified generation)` : "") + ".",
+  ];
+  if (result.data_loss_detected) {
+    lines.push(`DATA LOSS DETECTED: ${result.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences.`);
+  }
+  lines.push(`Layout: ${result.layout}` + (result.layout === "bare" ? " (no working files — not a failed recovery)" : ""));
+  return lines.join("\n");
+}
+
 async function recover(args) {
   const a = normalizeArgv(args);
   const valueFlags = ["--out", "--repo", "--profile", "--region", "--endpoint"];
-  assertKnownFlags(a, [...valueFlags, "--ambient", "--help", "-h"], valueFlags);
+  assertKnownFlags(a, [...valueFlags, "--ambient", "--human", "-v", "--verbose", "--help", "-h"], valueFlags);
   const [source] = requirePositionalCount(a, valueFlags, {
     min: 1, max: 1, command: "run402 repos recover <source> --out <dir>",
     missing: "Missing <source>. Expected s3://<bucket>[/<prefix>] or a directory path.",
@@ -1521,19 +1704,31 @@ async function recover(args) {
   if (outDir == null) {
     fail({ code: "BAD_USAGE", message: "run402 repos recover needs --out <dir>.", hint: "Where to materialize the recovered repository, e.g. --out ./restored" });
   }
+  const human = a.includes("--human");
+  if (human && a.includes("--json")) {
+    fail({ code: "BAD_USAGE", message: "--human cannot be combined with --json.", details: { flags: a.filter((arg) => arg === "--human" || arg === "--json") } });
+  }
+  const sdk = getSdk();
   const credential = resolveMirrorCredential(a);
   const repoId = flagValue(a, "--repo");
   const region = flagValue(a, "--region");
   const endpoint = flagValue(a, "--endpoint");
   try {
-    const result = await getSdk().gitvault.recover({
+    const result = await sdk.gitvault.recover({
       source, out_dir: outDir,
       ...(repoId != null ? { repo_id: repoId } : {}),
       ...(credential ? { credential } : {}),
       ...(region != null ? { region } : {}),
       ...(endpoint != null ? { endpoint } : {}),
     });
-    console.log(JSON.stringify(result, null, 2));
+    if (human) {
+      console.log(formatRecoverHuman(result, outDir));
+      if (result.layout === "bare") for (const n of result.next_actions ?? []) console.error(`next: ${n.action} — ${n.command}`);
+      printMirrorHonesty(result);
+      printVerboseStats(a, sdk);
+      return;
+    }
+    printJson(sdk, result);
     await spillIfLarge(result.repo_id, "recover", result);
     console.error(`recovered generation ${result.recovered_generation} for ${result.repo_id} into ${outDir}` + (result.chain_break ? ` (chain break at ${result.chain_break.generation} — fell back to the newest fully-verified generation)` : "") + ".");
     if (result.data_loss_detected) {
@@ -1544,6 +1739,7 @@ async function recover(args) {
       for (const n of result.next_actions ?? []) console.error(`next: ${n.action} — ${n.command}`);
     }
     printMirrorHonesty(result);
+    printVerboseStats(a, sdk);
   } catch (err) {
     reportSdkError(err);
   }

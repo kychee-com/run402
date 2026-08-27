@@ -41,6 +41,7 @@ import { loadLiveControlPlaneSession } from "../core-dist/control-plane-session.
 import { withAutoApprove } from "./operator.mjs";
 import { editRequestAction, nextAction, retryAction } from "./next-actions.mjs";
 import { createUpdateCheckScheduler, emitUpdateNotice } from "./update-check.mjs";
+import { sdkStats, printVerboseStats } from "./stats.mjs";
 
 const APPLY_HELP = `run402 deploy apply — Unified deploy primitive (v1.34+)
 
@@ -106,9 +107,16 @@ Options:
   --final-only            Alias for --quiet; final success/error envelope is still preserved
   --allow-warning <code>  Continue past this reviewed warning code (repeatable)
   --allow-warnings        Continue past plan warnings that require confirmation
+  --allow-dirty           gitvault-required projects only: capture a dirty
+                          work tree as-is instead of refusing
+                          SNAPSHOT_DIRTY_TREE. The result discloses exactly
+                          what was swept in, printed to stderr too — even
+                          this override never captures silently.
+  -v, --verbose           Print one stderr summary line of this call's
+                          request stats (round trips, wire time, bytes)
 
 Output:
-  stdout: { "release_id": "rel_...", "operation_id": "op_...", "urls": {...}, "warnings": [...] }
+  stdout: { "release_id": "rel_...", "operation_id": "op_...", "urls": {...}, "warnings": [...], "stats": {...} }
   stderr: one JSON event per line (suppressed with --quiet or --final-only)
 
 Secrets:
@@ -654,8 +662,10 @@ function parseApplyArgs(args) {
     planFingerprint: null,
     rehearsalTeardown: "keep",
     commitAfterRehearse: false,
+    allowDirty: false,
+    verbose: false,
   };
-  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--json", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--plan", "--rehearse", "--teardown", "--commit", "--require-plan", "--plan-fingerprint", "--help", "-h"];
+  const allowedFlags = ["--manifest", "--spec", "--dir", "--project", "--quiet", "--final-only", "--json", "--allow-warning", "--allow-warnings", "--check", "--print-spec", "--plan", "--rehearse", "--teardown", "--commit", "--require-plan", "--plan-fingerprint", "--allow-dirty", "-v", "--verbose", "--help", "-h"];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -723,6 +733,8 @@ function parseApplyArgs(args) {
     if (arg === "--quiet" || arg === "--final-only") { opts.quiet = true; continue; }
     if (arg === "--json") { continue; }
     if (arg === "--allow-warnings") { opts.allowWarnings = true; continue; }
+    if (arg === "--allow-dirty") { opts.allowDirty = true; continue; }
+    if (arg === "-v" || arg === "--verbose") { opts.verbose = true; continue; }
     if (arg === "--check") { setApplyMode(opts, "check", "--check"); continue; }
     if (arg === "--print-spec") { setApplyMode(opts, "printSpec", "--print-spec"); continue; }
     if (arg === "--plan") { setApplyMode(opts, "plan", "--plan"); continue; }
@@ -1247,9 +1259,10 @@ async function applyCmd(args) {
     // not `required` runs the same `apply()` this line always ran, with the
     // same options object; a `required` one captures, publishes, mints an
     // activation token, and commits with it.
+    const sdk = getSdk(sdkOpts);
     const outcome = await withAutoApprove(() =>
       applyWithGitvault({
-        sdk: getSdk(sdkOpts),
+        sdk,
         spec: releaseSpec,
         apply: {
           onEvent: makeStderrEventWriter(opts.quiet),
@@ -1259,13 +1272,15 @@ async function applyCmd(args) {
           ...(requiredPlan ? { requiredPlan } : {}),
         },
         target: isCoreApiTarget() ? "core" : "cloud",
+        ...(opts.allowDirty ? { allowDirty: true } : {}),
         // The `gitvault_commit` line is printed ALWAYS, and to stderr, so
         // `run402 deploy apply | jq` stays clean (the pipe contract).
         onCommitLine: (line) => { if (!opts.quiet) process.stderr.write(`${line}\n`); },
       }),
     );
     if (!outcome.gitvault) {
-      console.log(JSON.stringify(outcome.deploy, null, 2));
+      console.log(JSON.stringify({ ...outcome.deploy, stats: sdkStats(sdk) }, null, 2));
+      printVerboseStats(opts.verbose, sdk);
       return;
     }
     const vaulted = outcome.gitvault;
@@ -1290,6 +1305,7 @@ async function applyCmd(args) {
       ...("reconcile_recipients" in vaulted ? { reconcile_recipients: vaulted.reconcile_recipients } : {}),
       next_actions: vaulted.next_actions,
       deploy: outcome.deploy,
+      stats: sdkStats(sdk),
     }, null, 2));
     // Design D6: the mirror result is reported BESIDE the vault outcome
     // above, on its own stderr line — a mirror failure never blocks the
@@ -1299,6 +1315,13 @@ async function applyCmd(args) {
     } else if (vaulted.mirror_push?.outcome === "failed") {
       console.error(`mirror: dual-push FAILED (deploy is unaffected) — ${vaulted.mirror_push.error ?? "see mirror_push.summary.errors"}`);
     }
+    // Dirty-tree disclosure (Tal's decision, "help people not make
+    // mistakes"): even an explicit --allow-dirty override never captures
+    // silently — name every modified/staged and untracked-not-ignored path
+    // that got swept into this deploy's capture.
+    for (const p of vaulted.snapshot?.modified_captured ?? []) console.error(`captured (modified): ${p}`);
+    for (const p of vaulted.snapshot?.untracked_captured ?? []) console.error(`captured (untracked): ${p}`);
+    printVerboseStats(opts.verbose, sdk);
     // A non-activating outcome is a failed deploy even though it resolved
     // rather than threw: the five outcomes are a result type, not an error
     // channel, so the exit code has to carry the verdict.

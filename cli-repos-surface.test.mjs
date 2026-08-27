@@ -290,6 +290,17 @@ async function ok(sub, args = []) {
   return JSON.parse(stdout.join("\n"));
 }
 
+/** Like `ok`, but for `--human` output: raw (non-JSON) stdout text. */
+async function human(sub, args = []) {
+  captureStart();
+  try {
+    await run(sub, args);
+  } finally {
+    captureStop();
+  }
+  return stdout.join("\n");
+}
+
 async function expectFailure(sub, args = []) {
   captureStart();
   process.exit = (code) => { throw new Error(`process.exit(${code})`); };
@@ -444,6 +455,25 @@ describe("run402 repos list — bulk read with graceful fallback", () => {
     const payload = await ok("list", ["--org", ORG]);
     assert.deepEqual(payload.repos, []);
   });
+
+  it("every JSON result carries a stats block, always on (Observability)", async () => {
+    impl.gitvaultListByOrg = async () => ({ vaults: [] });
+    const payload = await ok("list", ["--org", ORG]);
+    assert.deepEqual(payload.stats, { round_trips: 0, wire_ms: 0, bytes_up: 0, bytes_down: 0 });
+  });
+
+  it("--human renders a compact roster instead of JSON, and is rejected with --json", async () => {
+    impl.gitvaultListByOrg = async () => ({
+      vaults: [{ repo_id: REPO, project_id: PROJECT, project_name: "fresh", repo_name: "fresh", org_slug: "acme", gitvault_policy: "required", newest_generation: null, source_bytes: "0", genesis_admitted_at: null, created_at: "2026-01-01T00:00:00.000Z" }],
+    });
+    const text = await human("list", ["--org", ORG, "--human"]);
+    assert.throws(() => JSON.parse(text), "human output must not itself be valid JSON");
+    assert.match(text, /run402::acme\/fresh/);
+    assert.match(text, /policy=required/);
+
+    const envelope = await expectFailure("list", ["--org", ORG, "--human", "--json"]);
+    assert.equal(envelope.code, "BAD_USAGE");
+  });
 });
 
 describe("run402 repos view — side-effect-free (design D3)", () => {
@@ -585,6 +615,29 @@ describe("run402 repos snapshot — thin passthrough to gitvault.push", () => {
     assert.equal(calls.find((c) => c.method === "gitvault.push"), undefined);
     assert.equal(payload.allocation_needed, false);
   });
+
+  it("--allow-dirty threads opts.snapshot.allowDirty through to gitvault.push, and discloses what was captured", async () => {
+    impl.push = async (input) => ({
+      generation: "0000000000000001", form: "wal",
+      snapshot: { modified_captured: ["app.js"], untracked_captured: ["scratch.txt"] },
+    });
+    await ok("snapshot", ["--project", PROJECT, "--allow-dirty"]);
+    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    assert.equal(pushCall.input.snapshot.allowDirty, true);
+    assert.ok(stderr.some((line) => line === "captured (modified): app.js"));
+    assert.ok(stderr.some((line) => line === "captured (untracked): scratch.txt"));
+  });
+
+  it("--message and --allow-dirty combine into a single opts.snapshot object", async () => {
+    await ok("snapshot", ["--project", PROJECT, "--message", "wip", "--allow-dirty"]);
+    const pushCall = calls.find((c) => c.method === "gitvault.push");
+    assert.deepEqual(pushCall.input.snapshot, { message: "wip", allowDirty: true });
+  });
+
+  it("-v prints a stats summary line to stderr", async () => {
+    await ok("snapshot", ["--project", PROJECT, "-v"]);
+    assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
+  });
 });
 
 describe("run402 repos policy", () => {
@@ -665,6 +718,15 @@ describe("run402 repos fsck — absorbs verify + mirror verify (design D2/D3)", 
     const fsckCall = calls.find((c) => c.method === "gitvault.fsck");
     assert.equal(fsckCall.input.verification_budget, 50);
   });
+
+  it("--human renders a short summary instead of JSON, and is rejected with --json", async () => {
+    const text = await human("fsck", ["--project", PROJECT, "--human"]);
+    assert.throws(() => JSON.parse(text));
+    assert.match(text, /Repo: /);
+
+    const envelope = await expectFailure("fsck", ["--project", PROJECT, "--human", "--json"]);
+    assert.equal(envelope.code, "BAD_USAGE");
+  });
 });
 
 describe("run402 repos gc — absorbs compact + prune, never described as exactly git gc (design D2)", () => {
@@ -728,6 +790,20 @@ describe("run402 repos access — read-only; repair/revoke-key/declare-exposure 
     assert.equal(payload.recipients.length, 1);
     assert.equal(payload.envelope_state_available, false);
     assert.equal(calls.find((c) => c.method === "gitvault.reconcileEnvelopeRecipients"), undefined, "access must never wrap a key");
+  });
+
+  it("--human renders a compact roster instead of JSON, and is rejected with --json", async () => {
+    impl.access = async () => ({
+      repo_id: REPO, org_id: ORG,
+      recipients: [{ principal_id: "prn_1", display_name: "Alice", fingerprint: "ek_abc", covered: true, tofu_pin: null }],
+      unmatched_covered_fingerprints: [], envelope_state_available: false, history_scope_available: false, gap: "GAP STATEMENT",
+    });
+    const text = await human("access", ["--project", PROJECT, "--human"]);
+    assert.throws(() => JSON.parse(text));
+    assert.match(text, /Alice/);
+
+    const envelope = await expectFailure("access", ["--project", PROJECT, "--human", "--json"]);
+    assert.equal(envelope.code, "BAD_USAGE");
   });
 
   it("labels this machine's own covering fingerprint distinctly from orphaned/external (dogfood item 4)", async () => {
@@ -814,5 +890,15 @@ describe("run402 repos recover — kept, D10 confirms the name", () => {
     assert.equal(payload.next_actions[0].command, `git clone ${outDir} ${outDir}-worktree`);
     assert.ok(stderr.some((line) => line.includes("layout: bare")));
     assert.ok(stderr.some((line) => line.includes(`git clone ${outDir} ${outDir}-worktree`)));
+  });
+
+  it("--human renders a short summary instead of JSON, and is rejected with --json", async () => {
+    const outDir = join(scratch, "restored-human");
+    const text = await human("recover", ["s3://acme-bucket", "--out", outDir, "--human"]);
+    assert.throws(() => JSON.parse(text));
+    assert.match(text, /Repo: /);
+
+    const envelope = await expectFailure("recover", ["s3://acme-bucket", "--out", outDir, "--human", "--json"]);
+    assert.equal(envelope.code, "BAD_USAGE");
   });
 });
