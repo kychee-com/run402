@@ -229,7 +229,12 @@ mock.module("./cli/lib/sdk.mjs", {
         },
         recover: async (input) => {
           calls.push({ method: "gitvault.recover", input });
-          return (impl.recover ?? (async () => ({ repo_id: REPO, recovered_generation: "0000000000000001", chain_break: null, absences: [], data_loss_detected: false, validity_not_freshness: "VALIDITY NOT FRESHNESS", keystore_still_required: "KEYSTORE STILL REQUIRED" })))(input);
+          return (impl.recover ?? (async () => ({
+            repo_id: REPO, recovered_generation: "0000000000000001", chain_break: null, absences: [], data_loss_detected: false,
+            validity_not_freshness: "VALIDITY NOT FRESHNESS", keystore_still_required: "KEYSTORE STILL REQUIRED",
+            layout: "bare",
+            next_actions: [{ action: "the recovered repository is bare (no working files) — clone it to get a working tree", command: `git clone ${input.out_dir} ${input.out_dir}-worktree` }],
+          })))(input);
         },
       },
     }),
@@ -453,6 +458,27 @@ describe("run402 repos view — side-effect-free (design D3)", () => {
   it("--human renders a summary instead of JSON, and is rejected with --json", async () => {
     const envelope = await expectFailure("view", ["--project", PROJECT, "--human", "--json"]);
     assert.equal(envelope.code, "BAD_USAGE");
+  });
+
+  it("prints the terminal-loss statement verbatim when the SDK reports a single (or unknown) covering principal", async () => {
+    impl.gitvaultStatus = async () => vaultStatus({ vault: vaultRecord() });
+    await ok("view", ["--project", PROJECT]);
+    assert.ok(stderr.some((line) => line === "TERMINAL LOSS STATEMENT"));
+    assert.ok(stderr.some((line) => line === "TERMINAL LOSS DETAIL"));
+  });
+
+  it("prints the durability sentence instead — never the terminal-loss claim — once the SDK reports >= 2 covering recipients (dogfood item 2)", async () => {
+    impl.gitvaultStatus = async () => vaultStatus({
+      vault: vaultRecord(),
+      terminal_loss_statement: null,
+      terminal_loss_detail: null,
+      durability_statement: "The vault protects source history from host-side loss while a principal keystore survives.",
+      covering_recipients: 2,
+    });
+    await ok("view", ["--project", PROJECT]);
+    assert.ok(stderr.some((line) => line === "The vault protects source history from host-side loss while a principal keystore survives."));
+    assert.ok(stderr.some((line) => line.includes("covering_recipients: 2")));
+    assert.equal(stderr.some((line) => line.includes("terminal for vault history")), false, "must never print the terminal-loss claim for a vault with a proven second recipient");
   });
 });
 
@@ -682,6 +708,21 @@ describe("run402 repos access — read-only; repair refuses until epoch rotation
     assert.equal(calls.find((c) => c.method === "gitvault.reconcileEnvelopeRecipients"), undefined, "access must never wrap a key");
   });
 
+  it("labels this machine's own covering fingerprint distinctly from orphaned/external (dogfood item 4)", async () => {
+    impl.access = async () => ({
+      repo_id: REPO, org_id: ORG,
+      recipients: [{ principal_id: "prn_1", display_name: "Alice", fingerprint: "ek_abc", covered: true, tofu_pin: null }],
+      unmatched_covered_fingerprints: ["ek_truly_orphan"],
+      this_keystore: { fingerprint: "ek_this_machine", covered: true },
+      envelope_state_available: false, history_scope_available: false, gap: "GAP STATEMENT",
+    });
+    const payload = await ok("access", ["--project", PROJECT]);
+    assert.deepEqual(payload.this_keystore, { fingerprint: "ek_this_machine", covered: true });
+    assert.ok(stderr.some((line) => line.includes("ek_this_machine") && line.includes("this machine's own keystore")));
+    assert.ok(stderr.some((line) => line.includes("ek_truly_orphan") && line.includes("orphaned/external")));
+    assert.equal(stderr.some((line) => line.includes("ek_this_machine") && line.includes("orphaned/external")), false, "this machine's own fingerprint must never be labeled orphaned/external");
+  });
+
   it("summarizes stale_access on stderr when the gateway ships desired-recipient state", async () => {
     impl.access = async () => ({
       repo_id: REPO, org_id: ORG,
@@ -713,5 +754,14 @@ describe("run402 repos recover — kept, D10 confirms the name", () => {
     const recoverCall = calls.find((c) => c.method === "gitvault.recover");
     assert.equal(recoverCall.input.source, "s3://acme-bucket");
     assert.equal(payload.repo_id, REPO);
+  });
+
+  it("names the bare layout and the exact git clone command to materialize working files (dogfood item 3)", async () => {
+    const outDir = join(scratch, "restored");
+    const payload = await ok("recover", ["s3://acme-bucket", "--out", outDir]);
+    assert.equal(payload.layout, "bare");
+    assert.equal(payload.next_actions[0].command, `git clone ${outDir} ${outDir}-worktree`);
+    assert.ok(stderr.some((line) => line.includes("layout: bare")));
+    assert.ok(stderr.some((line) => line.includes(`git clone ${outDir} ${outDir}-worktree`)));
   });
 });

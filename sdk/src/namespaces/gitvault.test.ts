@@ -20,6 +20,7 @@ import { gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } f
 import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT } from "./gitvault.crypto.js";
 import { hardenedGit } from "../node/gitvault-snapshot.js";
 import { pinGitvaultRepo } from "../node/gitvault-address.js";
+import { GitvaultKeystore } from "../node/gitvault-keystore.js";
 import type { CredentialsProvider } from "../credentials.js";
 
 interface Call {
@@ -645,6 +646,50 @@ describe("gitvault access() — envelope_state + stale_access from desired[]", (
     assert.deepEqual(result.unmatched_covered_fingerprints, ["ek_orphan"]);
     assert.match(result.gap, /did not report desired-recipient state/);
     assert.match(result.gap, /history_scope/);
+  });
+
+  it("breaks this keystore's own fingerprint out of unmatched_covered_fingerprints (dogfood #4)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gitvault-access-this-keystore-"));
+    try {
+      const identity = new GitvaultKeystore({ rootDir: root }).ensureIdentity();
+      const ownFingerprint = identity.encryption_fingerprint;
+
+      const { sdk } = sdkWith(
+        routeAccess(
+          [{ principal_id: "prn_alice", display_name: "Alice", ek_fingerprint: "ek_alice" }],
+          // The vault creator's own wallet-principal keystore is covered but
+          // never in the org directory (it only lists human-enrolled keys) —
+          // this must NOT read as orphaned/external.
+          { vault_id: REPO, recipient_fingerprints: ["ek_alice", ownFingerprint, "ek_truly_orphan"] },
+        ),
+      );
+
+      const result = await sdk.gitvault.access({ repo_id: REPO, keystore_root: root });
+
+      assert.deepEqual(result.this_keystore, { fingerprint: ownFingerprint, covered: true });
+      assert.deepEqual(result.unmatched_covered_fingerprints, ["ek_truly_orphan"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("this_keystore is null when this machine holds no local identity for the vault", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gitvault-access-no-keystore-"));
+    try {
+      const { sdk } = sdkWith(
+        routeAccess(
+          [{ principal_id: "prn_alice", display_name: "Alice", ek_fingerprint: "ek_alice" }],
+          { vault_id: REPO, recipient_fingerprints: ["ek_alice", "ek_orphan"] },
+        ),
+      );
+
+      const result = await sdk.gitvault.access({ repo_id: REPO, keystore_root: root });
+
+      assert.equal(result.this_keystore, null);
+      assert.deepEqual(result.unmatched_covered_fingerprints, ["ek_orphan"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("never wraps a key — access() issues only GET requests", async () => {

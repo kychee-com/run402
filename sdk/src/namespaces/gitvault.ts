@@ -32,6 +32,7 @@
 import type { Client } from "../kernel.js";
 import { LocalError } from "../errors.js";
 import {
+  GITVAULT_DURABILITY_STATEMENT,
   GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
   GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
   GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
@@ -172,11 +173,33 @@ export interface GitvaultStatus {
   /** Override journals on this machine that have not yet been completed. */
   pending_overrides: number;
   /**
+   * Best-effort count of this vault's covering `key_envelope` recipients (the
+   * same envelope-recipients read `Gitvault.access` uses), taken inside
+   * `status()` when a vault is allocated. `null` when unknown — no vault, or
+   * the read failed (never a new failure mode for `status`; falls back to the
+   * single-principal V0-A statements below). This is what decides between
+   * `terminal_loss_statement` and `durability_statement`: the V0-A terminal-loss
+   * claim is specifically a single-principal claim, and is factually false to
+   * print for a vault this client can locally prove has >= 2 recipients.
+   */
+  covering_recipients: number | null;
+  /**
    * Stated verbatim per the client-surface spec — this sentence is normative
    * copy, not a summary, and is printed by `status` and `doctor` alike.
+   * `null` exactly when `covering_recipients >= 2` — see `durability_statement`
+   * for what is printed in that case instead.
    */
-  terminal_loss_statement: typeof GITVAULT_TERMINAL_LOSS_STATEMENT;
-  terminal_loss_detail: typeof GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT;
+  terminal_loss_statement: typeof GITVAULT_TERMINAL_LOSS_STATEMENT | null;
+  /** `null` exactly when `terminal_loss_statement` is — same condition, same reasoning. */
+  terminal_loss_detail: typeof GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT | null;
+  /**
+   * The protocol's durability sentence — printed in place of
+   * `terminal_loss_statement` exactly when `covering_recipients >= 2`, since
+   * the terminal-loss claim is false for a vault this client has locally
+   * proven has a second covering recipient. `null` otherwise (including
+   * "unknown" — the single-principal statements are the honest default).
+   */
+  durability_statement: typeof GITVAULT_DURABILITY_STATEMENT | null;
   warnings: { kind: string; message: string }[];
   next_actions: { action: string; command?: string }[];
 }
@@ -443,8 +466,18 @@ export interface GitvaultAccessResult {
   repo_id: string;
   org_id: string | null;
   recipients: GitvaultAccessRecipient[];
-  /** Vault-covering fingerprints (from the server) that match neither a directory entry nor a desired-state row — genuinely orphaned, revoked outside this org's membership model, or external. Excludes fingerprints already explained by `stale_access`. */
+  /** Vault-covering fingerprints (from the server) that match neither a directory entry nor a desired-state row — genuinely orphaned, revoked outside this org's membership model, or external. Excludes fingerprints already explained by `stale_access` AND by `this_keystore`. */
   unmatched_covered_fingerprints: string[];
+  /**
+   * Node-only, best-effort: set when an otherwise-unmatched covering
+   * fingerprint equals THIS keystore's own encryption-key fingerprint — the
+   * one case an unmatched fingerprint is locally provable rather than a
+   * genuine unknown. Typically the vault creator's own wallet-principal
+   * keystore, which the org directory never lists (it only enrolls human
+   * keys). `null` when no local match was found (including non-Node
+   * callers, or a machine that never held this identity).
+   */
+  this_keystore: { fingerprint: string; covered: true } | null;
   /** Removed members who still decrypt this vault — see {@link GitvaultStaleAccessEntry}. Always `[]` when `envelope_state_available` is `false` (no desired-state substrate to compute it from). */
   stale_access: GitvaultStaleAccessEntry[];
   /** `true` when the gateway reported desired-recipient state (`desired[]`) for this read, making `recipients[].envelope_state` and `stale_access` real rather than absent. `false` only against an older gateway. */
@@ -1050,6 +1083,29 @@ export class Gitvault {
         pending = [];
       }
     }
+    // Best-effort covering-recipient count (dogfood item 2): the same
+    // envelope-recipients read `access()` uses. Decides whether the V0-A
+    // single-principal terminal-loss statement is still honest to print for
+    // THIS vault, or whether this client has locally proven a second covering
+    // recipient. Only attempted when a vault record is already in hand
+    // (`record` non-null means the credentials that fetched it already work)
+    // — a session-less or offline caller never pays for a second failing
+    // request, and any failure here falls back to exactly today's
+    // single-principal behavior, never a new failure mode for `status`.
+    let coveringRecipients: number | null = null;
+    if (repoId && record) {
+      try {
+        const coverage = await this.#client.request<GitvaultEnvelopeRecipientsResponse>(
+          `/gitvault/v1/vaults/${encodeURIComponent(repoId)}/envelope-recipients`,
+          { context: "reading the gitvault envelope recipients" },
+        );
+        coveringRecipients = coverage.recipient_fingerprints.length;
+      } catch {
+        coveringRecipients = null;
+      }
+    }
+    const isMultiPrincipal = coveringRecipients !== null && coveringRecipients >= 2;
+
     const warnings = [...(record?.warnings ?? [])];
     if (keystorePresent && !canSign) {
       warnings.push({ kind: "read_only", message: "the signing key is missing from identity.json — this principal can decrypt and verify but cannot publish a new head" });
@@ -1060,11 +1116,20 @@ export class Gitvault {
     // D7 (repo-first-onramp task 2.7): a vault that has accrued enough value
     // at risk gets a STANDING warning instead of the one-time genesis note.
     // `record` is `null` for an unallocated project, which is the ordinary
-    // "nothing to warn about" shape, not a gap in this check.
+    // "nothing to warn about" shape, not a gap in this check. Once this
+    // client has locally proven >= 2 covering recipients, the SAME threshold
+    // still fires — real value at risk still deserves a standing reminder —
+    // but the copy downgrades to `keystore_backup_reminder`, which never
+    // claims terminal loss (dogfood item 2: the single-principal premise
+    // behind `terminal_loss_risk` is provably false for this vault).
     if (record) {
       const trip = gitvaultLossWarningTrip(record);
       if (gitvaultLossWarningTripped(trip)) {
-        warnings.push({ kind: "terminal_loss_risk", message: gitvaultLossWarningMessage(trip) });
+        if (isMultiPrincipal) {
+          warnings.push({ kind: "keystore_backup_reminder", message: gitvaultKeystoreBackupReminderMessage(trip, coveringRecipients!) });
+        } else {
+          warnings.push({ kind: "terminal_loss_risk", message: gitvaultLossWarningMessage(trip) });
+        }
       }
     }
 
@@ -1178,8 +1243,10 @@ export class Gitvault {
       pins: { highest_authenticated: authenticated, highest_materialized: materialized },
       gitvault_policy: record?.gitvault_policy ?? null,
       pending_overrides: pending.length,
-      terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT,
-      terminal_loss_detail: GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
+      covering_recipients: coveringRecipients,
+      terminal_loss_statement: isMultiPrincipal ? null : GITVAULT_TERMINAL_LOSS_STATEMENT,
+      terminal_loss_detail: isMultiPrincipal ? null : GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
+      durability_statement: isMultiPrincipal ? GITVAULT_DURABILITY_STATEMENT : null,
       warnings,
       next_actions: nextActions,
     };
@@ -1844,16 +1911,23 @@ export class Gitvault {
     const envelopeStateAvailable = desiredList !== null;
     const desiredByPrincipal = new Map(desiredList?.map((d) => [d.principal_id, d] as const) ?? []);
 
-    // Node-only, best-effort: THIS machine's own local TOFU pins. Never
-    // fails the whole read — a browser/worker caller, or a machine that has
-    // never wrapped anyone, simply reports every `tofu_pin` as `null`.
+    // Node-only, best-effort: THIS machine's own local TOFU pins, and this
+    // keystore's own encryption-key fingerprint (used below to keep the
+    // vault creator's own machine out of `unmatched_covered_fingerprints` —
+    // the org directory only lists human-enrolled keys, so a wallet-principal
+    // creator's fingerprint is legitimately absent from it, not orphaned).
+    // Never fails the whole read — a browser/worker caller, or a machine that
+    // has never wrapped anyone, simply reports every `tofu_pin` as `null` and
+    // `this_keystore` as `null`.
     let pins: Record<string, string> = {};
+    let ownFingerprint: string | null = null;
     try {
       const { GitvaultKeystore } = await this.#keystore();
       const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
       pins = keystore.readRepo(repoId)?.envelope_recipient_pins ?? {};
+      ownFingerprint = keystore.readIdentity()?.encryption_fingerprint ?? null;
     } catch {
-      // Not Node, or no local keystore for this repo — pins stay empty.
+      // Not Node, or no local keystore for this repo — pins/ownFingerprint stay empty/null.
     }
 
     const recipients: GitvaultAccessResult["recipients"] = directory.keys.map((k) => {
@@ -1884,8 +1958,15 @@ export class Gitvault {
     // Genuinely unexplained: covering fingerprints that match neither a
     // current directory entry NOR a desired-state row (already broken out
     // above as stale_access) — orphaned, externally revoked, or a recipient
-    // outside this org's membership model entirely.
-    const unmatched = coverage.recipient_fingerprints.filter((fp) => !directoryFingerprints.has(fp) && !staleAccessFingerprints.has(fp));
+    // outside this org's membership model entirely. THIS keystore's own
+    // fingerprint is a separate, locally-provable case: the org directory
+    // only lists human-enrolled keys, so the vault creator's own
+    // wallet-principal keystore legitimately never appears there — that is
+    // not orphaned/external, it is provably this machine, so it is broken
+    // out into `this_keystore` instead of left to read as a misconfiguration.
+    const unmatchedRaw = coverage.recipient_fingerprints.filter((fp) => !directoryFingerprints.has(fp) && !staleAccessFingerprints.has(fp));
+    const thisKeystore: GitvaultAccessResult["this_keystore"] = ownFingerprint !== null && unmatchedRaw.includes(ownFingerprint) ? { fingerprint: ownFingerprint, covered: true } : null;
+    const unmatched = thisKeystore ? unmatchedRaw.filter((fp) => fp !== thisKeystore.fingerprint) : unmatchedRaw;
 
     const gap = envelopeStateAvailable
       ? "history_scope (which epochs each recipient can read) is not available: gitvault protocol v0 pins a single fixed epoch for a " +
@@ -1906,6 +1987,7 @@ export class Gitvault {
       org_id: orgId,
       recipients,
       unmatched_covered_fingerprints: unmatched,
+      this_keystore: thisKeystore,
       stale_access: staleAccess,
       envelope_state_available: envelopeStateAvailable,
       history_scope_available: false,
@@ -2171,10 +2253,16 @@ export interface GitvaultLossWarningTrip {
  * strings (protocol convention for values that could exceed safe-integer
  * precision in principle; comfortably within it here).
  *
- * There is deliberately no companion "is this resolved" function: V0-A
- * cannot detect a second principal or human envelope able to open the vault
- * (design D7's stricter-than-drafted resolution), so once tripped this has
- * nothing further to compute — a caller does not un-trip it, ever, in V0.
+ * There is deliberately no companion "is this resolved" function on the
+ * TRIP computation itself: whether the generations/bytes/days thresholds
+ * crossed is independent of how many principals cover the vault, and this
+ * function stays a pure threshold check forever — a caller does not un-trip
+ * it, ever, in V0. What DOES now exist, one call site up in `status()`, is a
+ * way to downgrade the COPY once tripped: a locally-provable read of the
+ * vault's covering-recipient count (the same envelope-recipients read
+ * `Gitvault.access` uses) can show this is no longer the single-principal
+ * case the message below describes. See
+ * {@link gitvaultKeystoreBackupReminderMessage} for that downgraded form.
  */
 export function gitvaultLossWarningTrip(
   record: Pick<GitvaultVaultRecord, "admitted_generations" | "storage" | "genesis_admitted_at">,
@@ -2196,20 +2284,51 @@ export function gitvaultLossWarningTripped(trip: GitvaultLossWarningTrip): boole
   return trip.generations || trip.source_bytes || trip.days_since_genesis;
 }
 
-/**
- * The standing warning text (design D7): names what tripped, states the
- * resolution honestly (a second principal or human envelope — nothing this
- * client can verify yet), and never claims an attestation would clear it.
- */
-export function gitvaultLossWarningMessage(trip: GitvaultLossWarningTrip): string {
+/** Shared by both D7 message forms below — which threshold(s) tripped, in prose. */
+function gitvaultLossWarningReasons(trip: GitvaultLossWarningTrip): string[] {
   const reasons: string[] = [];
   if (trip.generations) reasons.push(`≥${GITVAULT_LOSS_WARNING_THRESHOLDS.generations} generations`);
   if (trip.source_bytes) reasons.push(`≥${Math.round(GITVAULT_LOSS_WARNING_THRESHOLDS.source_bytes / (1024 * 1024))} MB of source`);
   if (trip.days_since_genesis) reasons.push(`≥${GITVAULT_LOSS_WARNING_THRESHOLDS.days_since_genesis} days since genesis`);
+  return reasons;
+}
+
+/**
+ * The standing warning text (design D7): names what tripped, states the
+ * resolution honestly (a second principal or human envelope — nothing this
+ * client can verify yet), and never claims an attestation would clear it.
+ *
+ * This is the SINGLE-PRINCIPAL form — use it only when the vault's
+ * covering-recipient count is unknown or <= 1. Once a caller has locally
+ * proven >= 2 covering recipients, its premise ("only one principal can open
+ * it") is false; use {@link gitvaultKeystoreBackupReminderMessage} instead.
+ */
+export function gitvaultLossWarningMessage(trip: GitvaultLossWarningTrip): string {
+  const reasons = gitvaultLossWarningReasons(trip);
   return (
     `this vault has accrued real value at risk (${reasons.join(", ")}) while only one principal can open it. ` +
     "Only a second principal — another keystore, or later a human envelope — demonstrably able to open the vault clears this warning; " +
     "this client cannot verify that yet, so it stands until you add one. No attestation or flag clears it."
+  );
+}
+
+/**
+ * D7's downgraded form (dogfood item 2): once `status()` has locally proven
+ * this vault carries >= 2 covering recipients (via the same envelope-recipients
+ * read `Gitvault.access` uses), the single-principal premise behind
+ * {@link gitvaultLossWarningMessage} is false for THIS vault — printing it
+ * anyway would be a false terminal-loss claim. The composite threshold still
+ * fires the SAME way (this function does not touch `gitvaultLossWarningTrip`/
+ * `gitvaultLossWarningTripped` at all — a real value-at-risk signal is still
+ * worth a reminder), but the copy switches to the protocol's own
+ * keystore-qualified durability sentence instead of asserting single-principal
+ * risk, and never claims terminal loss.
+ */
+export function gitvaultKeystoreBackupReminderMessage(trip: GitvaultLossWarningTrip, coveringRecipients: number): string {
+  const reasons = gitvaultLossWarningReasons(trip);
+  return (
+    `this vault has accrued real value at risk (${reasons.join(", ")}), but it is covered by ${coveringRecipients} recipients today — not the single-principal case. ` +
+    `${GITVAULT_DURABILITY_STATEMENT} Back up this machine's keystore anyway: losing it does not lose the vault, but it does lose YOUR access to it.`
   );
 }
 

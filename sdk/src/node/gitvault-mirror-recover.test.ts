@@ -321,6 +321,12 @@ describe("gitvault recovery engine (task 3.6)", () => {
     assert.match(result.validity_not_freshness, /validity, never freshness/);
     assert.match(result.keystore_still_required, /recovers nothing/);
 
+    // dogfood item 3: a bare-repo recovery must say so and name exactly how
+    // to get working files, rather than reading as a failed/empty recovery.
+    assert.equal(result.layout, "bare");
+    assert.ok(Array.isArray(result.next_actions) && result.next_actions.length > 0);
+    assert.equal(result.next_actions[0].command, `git clone ${outDir} ${outDir}-worktree`);
+
     const head = (await git(outDir, ["rev-parse", "HEAD"])).trim();
     assert.equal(head, c2);
     const symref = (await git(outDir, ["symbolic-ref", "HEAD"])).trim();

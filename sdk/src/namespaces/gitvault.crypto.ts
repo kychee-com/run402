@@ -84,10 +84,22 @@ export const GITVAULT_ENVELOPE_INFO_LABEL = "r402s/v0/envelope" as const;
 export const GITVAULT_TERMINAL_LOSS_STATEMENT =
   "whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship" as const;
 
+/**
+ * The protocol's durability sentence — the keystore-qualified half of the
+ * terminal-loss statement, reusable on its own. It is TRUE regardless of how
+ * many principals cover a vault (unlike {@link GITVAULT_TERMINAL_LOSS_STATEMENT},
+ * which is specifically the single-principal V0-A claim), so a caller that has
+ * locally proven a vault carries >= 2 covering recipients prints this sentence
+ * instead of the terminal-loss one — see `Gitvault.status()`'s `covering_recipients`
+ * field. Never paraphrase; the wording is a reviewed product commitment.
+ */
+export const GITVAULT_DURABILITY_STATEMENT =
+  "The vault protects source history from host-side loss while a principal keystore survives." as const;
+
 /** Protocol §0 sentence in full, as `doctor`/`status` print it. */
 export const GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT =
   "In V0-A, whole-machine or whole-keystore loss is terminal for vault history (VAULT_UNRECOVERABLE) until human envelopes ship. " +
-  "The vault protects source history from host-side loss while a principal keystore survives. " +
+  `${GITVAULT_DURABILITY_STATEMENT} ` +
   "The remaining paths are the platform's custodial restore of deployed artifacts (the deploy lane's CAS) and org/infra recovery; " +
   "a recovery receipt authenticates a genesis — it cannot decrypt anything.";
 

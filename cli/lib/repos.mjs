@@ -284,11 +284,23 @@ async function vaultTarget(a) {
   return target;
 }
 
-/** Print the protocol §0 terminal-loss statement, verbatim, from the SDK's own constants — never paraphrased here. */
+/**
+ * Print the protocol §0 terminal-loss statement, verbatim, from the SDK's own
+ * constants — never paraphrased here. The SDK's `status()` already downgrades
+ * this to the durability sentence when it has locally proven the vault has
+ * >= 2 covering recipients (dogfood item 2: the single-principal terminal-loss
+ * claim is false for that vault) — this function only renders whichever
+ * statement the SDK selected, it never chooses between them itself.
+ */
 function printTerminalLoss(status) {
   console.error("");
-  console.error(status.terminal_loss_statement);
-  console.error(status.terminal_loss_detail);
+  if (status.terminal_loss_statement) {
+    console.error(status.terminal_loss_statement);
+    console.error(status.terminal_loss_detail);
+  } else if (status.durability_statement) {
+    console.error(status.durability_statement);
+    if (status.covering_recipients != null) console.error(`covering_recipients: ${status.covering_recipients}`);
+  }
   console.error(`Back up this directory: ${status.keystore.root}`);
   console.error("");
 }
@@ -1308,6 +1320,9 @@ async function accessRead(args) {
     console.log(JSON.stringify(result, null, 2));
     await spillIfLarge(result.repo_id, "access", result);
     console.error(`${result.recipients.length} directory recipient(s), ${result.recipients.filter((r) => r.covered).length} covered on this repo.`);
+    if (result.this_keystore) {
+      console.error(`1 covering fingerprint is this machine's own keystore (the vault's writing principal, not in the org directory): ${result.this_keystore.fingerprint}`);
+    }
     if (result.unmatched_covered_fingerprints.length > 0) {
       console.error(`${result.unmatched_covered_fingerprints.length} covering fingerprint(s) match no directory entry or desired-state row (orphaned/external): ${result.unmatched_covered_fingerprints.join(", ")}`);
     }
@@ -1370,6 +1385,10 @@ async function recover(args) {
     console.error(`recovered generation ${result.recovered_generation} for ${result.repo_id} into ${outDir}` + (result.chain_break ? ` (chain break at ${result.chain_break.generation} — fell back to the newest fully-verified generation)` : "") + ".");
     if (result.data_loss_detected) {
       console.error(`DATA LOSS DETECTED: ${result.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences — see "absences" in the result above.`);
+    }
+    if (result.layout === "bare") {
+      console.error(`layout: bare (no working files in ${outDir} — this is not a failed recovery)`);
+      for (const n of result.next_actions ?? []) console.error(`next: ${n.action} — ${n.command}`);
     }
     printMirrorHonesty(result);
   } catch (err) {

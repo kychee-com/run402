@@ -152,15 +152,20 @@ export async function handleGetGitvaultStatus(args: { project_id?: string; repo_
     }
 
     // Normative copy, printed verbatim. The sentences come from the SDK's own
-    // constants, so this surface cannot paraphrase them by drifting.
-    lines.push(
-      "",
-      status.terminal_loss_statement,
-      "",
-      status.terminal_loss_detail,
-      "",
-      `Confidentiality: ${SCOPED_CONFIDENTIALITY}.`,
-    );
+    // constants, so this surface cannot paraphrase them by drifting. The SDK's
+    // `status()` already selects between the two — `terminal_loss_statement`
+    // is `null` exactly when it has locally proven this vault has >= 2
+    // covering recipients, in which case `durability_statement` (a reviewed
+    // sentence in its own right, never a paraphrase) is printed instead: the
+    // single-principal terminal-loss claim would be false for this vault.
+    lines.push("");
+    if (status.terminal_loss_statement) {
+      lines.push(status.terminal_loss_statement, "", status.terminal_loss_detail ?? "");
+    } else if (status.durability_statement) {
+      lines.push(status.durability_statement);
+      if (status.covering_recipients != null) lines.push(`covering_recipients: ${status.covering_recipients}`);
+    }
+    lines.push("", `Confidentiality: ${SCOPED_CONFIDENTIALITY}.`);
 
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {

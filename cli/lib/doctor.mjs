@@ -568,6 +568,11 @@ export async function run(sub, args = []) {
           pending_overrides: gv.pending_overrides,
           pins: gv.pins,
           remote: gv.remote,
+          // dogfood item 2: `null` (unknown) or <= 1 means the single-principal
+          // V0-A terminal-loss statement below is honest; >= 2 means the SDK
+          // already proved a second covering recipient, so the hint switches
+          // to the durability sentence instead of the terminal-loss claim.
+          covering_recipients: gv.covering_recipients ?? null,
         };
         const gaps = [];
         // The one that actually breaks the next deploy: the project demands a
@@ -632,7 +637,9 @@ export async function run(sub, args = []) {
           value: gaps.length > 0 ? { ...value, gaps } : value,
           hint: gv.vault === null
             ? `No vault for this project (that is a normal shape). Allocate one with 'run402 repos create --project <id>'. Keystore: ${gv.keystore.root}`
-            : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`,
+            : gv.durability_statement
+              ? `Back up ${gv.keystore.root} anyway — ${gv.durability_statement} (covering_recipients: ${gv.covering_recipients})`
+              : `Back up ${gv.keystore.root} — whole-machine or whole-keystore loss is terminal for vault history.`,
         });
       } catch (err) {
         // A gateway without gitvault, an unreachable API, or a project this

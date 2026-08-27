@@ -8,8 +8,8 @@
  * INVOLVED: everything here reads from the {@link GitvaultMirrorBackend}
  * alone. Only the decrypt/materialize step touches key material (design D5)
  * — discovery, chain verification, and closure/absence adjudication run
- * keylessly and are a first-class outcome on their own (`run402 gitvault
- * mirror verify`), not a degraded mode of the keyed path.
+ * keylessly and are a first-class outcome on their own (`run402 repos fsck
+ * --mirror`), not a degraded mode of the keyed path.
  *
  * Reuses the SAME pure protocol functions the live SDK verifies pushes with
  * ({@link checkChainLink}, {@link assertNoTransition}, {@link
@@ -294,7 +294,7 @@ export interface GitvaultVerifyReport extends GitvaultRecoveryReport {
 
 /**
  * Discovery + chain verification + closure/absence adjudication, WITHOUT
- * touching any key material — `run402 gitvault mirror verify`. Reports the
+ * touching any key material — `run402 repos fsck --mirror`. Reports the
  * recoverable generation and an inventory; never decrypts, never
  * materializes. A genuinely keyless integrity probe (design D5) — useful as a
  * CI check that never needs a secret.
@@ -345,6 +345,17 @@ export interface GitvaultRecoverResult extends GitvaultRecoveryReport {
   out_dir: string;
   refs: Record<string, string>;
   head_target: { kind: "symref"; ref: string } | { kind: "detached"; oid: string };
+  /**
+   * `out_dir` is a BARE repository (`git init --bare`) — objects/refs/HEAD
+   * directly in `out_dir`, no working files. This is deliberate and matches
+   * every other on-disk gitvault layout; it is named explicitly here (rather
+   * than left for the reader to discover via `ls`) because a bare directory
+   * with no working tree reads as a failed or empty recovery otherwise
+   * (dogfood item 3). See `next_actions` for how to get working files.
+   */
+  layout: "bare";
+  /** `git clone <out_dir> <out_dir>-worktree` — materializes working files from the bare recovery above. */
+  next_actions: { action: string; command: string }[];
 }
 
 export interface GitvaultRecoverOptions {
@@ -360,7 +371,7 @@ async function resolveKRepo(backend: GitvaultMirrorBackend, genesis: GitvaultVau
   if (!identity?.encryption_private_key_hex) {
     fail("VAULT_UNRECOVERABLE", "no encryption key in this keystore — recovery can verify and adjudicate but cannot decrypt or materialize anything", "materializing gitvault recovery", undefined, [
       { action: "restore the principal keystore (identity.json) from backup, then re-run recover" },
-      { action: "run with --keyless (or `mirror verify`) for the verify-only outcome" },
+      { action: "run `run402 repos fsck --mirror` for the verify-only outcome" },
     ]);
   }
   if (genesis.envelopes.length === 0) fail("VAULT_CREATION_CONFLICT", "genesis carries no key envelope", "materializing gitvault recovery");
@@ -524,5 +535,9 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
     validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
     keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
     mode: "recovered", out_dir: options.out_dir, refs: refState.refs, head_target: refState.head_target,
+    layout: "bare",
+    next_actions: [
+      { action: "the recovered repository is bare (no working files) — clone it to get a working tree", command: `git clone ${options.out_dir} ${options.out_dir}-worktree` },
+    ],
   };
 }
