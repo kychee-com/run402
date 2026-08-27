@@ -151,10 +151,9 @@ export interface Run402AstroOptions {
    * path relative to the assetsDir (e.g., 'demo/eagles/assets/hero.jpg'
    * → key 'hero.jpg'; nested 'avatars/01.jpg' → key 'avatars/01.jpg').
    *
-   * Closes kychee-com/run402-private#406. The static-template `<Image>`
-   * scan continues to run alongside this; both feed the same upload
-   * batch + the same registry. CAS dedup at the gateway means an image
-   * referenced via BOTH paths uploads once.
+   * The static-template `<Image>` scan continues to run alongside this;
+   * both feed the same upload batch + the same registry. CAS dedup at the
+   * gateway means an image referenced via BOTH paths uploads once.
    */
   assetsDir?: string | string[];
   /**

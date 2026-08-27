@@ -605,7 +605,7 @@ class ScopedContracts {
  * documented happy path; the attached `plan`/`start`/`resume` sub-methods
  * are advanced primitives for callers building their own plan/upload/commit
  * pipelines. The same object owns release and operation reads, so the public
- * project-scoped lifecycle has one noun: apply. Per design D5 the hero is the
+ * project-scoped lifecycle has one noun: apply. The hero is the
  * only public apply surface — no bare `r.apply`, no `r.deploy.apply`, no
  * `r.assets.apply`.
  */
@@ -997,7 +997,7 @@ export class ScopedRun402 {
   readonly assets: ScopedAssets;
   readonly contracts: ScopedContracts;
   /**
-   * Hero apply surface. Per design D5 / unified-apply: `r.project(id).apply(spec)`
+   * Hero apply surface: `r.project(id).apply(spec)`
    * is the documented happy path for both release-only and mixed apply.
    * Callable directly, with `.plan(spec)` / `.start(spec)` / `.resume(opId)`
    * sub-methods for advanced plan-upload-commit pipelines.

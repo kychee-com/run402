@@ -1400,16 +1400,13 @@ const CI_DEPLOY_ERROR_GUIDANCE = {
 };
 
 /**
- * The gitvault advisory rewrite is RETIRED (change `gitvault-deploy-lane`,
- * design D4). `GITVAULT_DEPLOY_LANE = "unsupported"` and the client-side
- * rewrite of `GITVAULT_CLIENT_UPGRADE_REQUIRED` existed only for as long as no
- * published client could satisfy `gitvault_policy: required`. This one can:
- * `applyCmd` deploys through `applyWithGitvault`, which declares
- * `{capture_id, snapshot_oid_hmac}` at plan time and presents an activation
- * token at commit. The gateway's envelope — `upgrade_client` first, then
- * `grandfather_policy` — is now TRUE as written, so it is relayed untouched;
- * re-authoring it here would be the client lying in the opposite direction.
- * `cli-deploy-gitvault-lane.test.mjs` is the successor gate.
+ * The gateway's envelope for gitvault deploy errors — `upgrade_client` first,
+ * then `grandfather_policy` — is relayed untouched: `applyCmd` deploys
+ * through `applyWithGitvault`, which declares `{capture_id,
+ * snapshot_oid_hmac}` at plan time and presents an activation token at
+ * commit, satisfying `gitvault_policy: required`, so no client-side rewrite
+ * of the envelope is needed. `cli-deploy-gitvault-lane.test.mjs` is the gate
+ * for this behavior.
  */
 function reportDeployApplyError(err, useGithubActionsOidc) {
   const warningEnhanced = enhanceDeployWarningError(err);

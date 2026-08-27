@@ -1,18 +1,14 @@
 /**
- * `run402 notifications` — RETIRED (legible-cli-surface).
- *
- * The group was two nouns in one coat: `list`/`get` read delivery RECORDS
- * while `preferences`/`channels`/`rules` were the CONFIGURATION producing
- * them. It has been split along that line:
+ * `run402 notifications` — tombstone dispatcher. Delivery RECORDS and the
+ * CONFIGURATION producing them live under separate nouns:
  *
  *   notifications list|get      -> deliveries list|get
  *   notifications channels      -> contacts        (merged with escalations contacts)
  *   notifications rules         -> subscriptions
  *   notifications preferences   -> contacts preferences
  *
- * Reserved, not aliased (design D3): each subcommand names its successor so
- * one failed call teaches the new model, where an alias would teach the old
- * one forever.
+ * Reserved, not aliased: each subcommand names its successor so one failed
+ * call teaches the new model, where an alias would teach the old one forever.
  */
 import { fail } from "./sdk-errors.mjs";
 import { hasHelp } from "./argparse.mjs";

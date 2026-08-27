@@ -2,12 +2,10 @@
  * `run402 rooms` — the coordination room itself: arriving, leaving, and who is
  * in it.
  *
- * The MESSAGES exchanged in a room are `run402 messages` (legible-cli-surface).
- * Four of this family's five verbs used to act on a message, which made the
- * container the noun and left the thing you handle without one.
+ * The MESSAGES exchanged in a room are `run402 messages` — a separate noun
+ * from the room itself.
  *
- * `who` is now `join`: it REGISTERS a presence, and an interrogative must not
- * name a write.
+ * `join` REGISTERS a presence, and an interrogative must not name a write.
  *
  * Gateway subsystem: add-agent-messaging (/orgs/v1/:org_id/rooms/:room_key/*).
  * Session presence cache: ./.run402/messaging.json (gitignore).
@@ -213,15 +211,14 @@ export async function run(sub, args) {
     }
     // `list` and `get` are NOT here, and this is deliberate rather than
     // missing: the ROUTES exist (agent-room-lifecycle) and the SDK exposes
-    // them as `rooms.list` / `rooms.get`. These two SPELLINGS were freed
-    // hours ago by the move of the message verbs, and a freed spelling stays
-    // dead for one major before anything reuses it (design D3b). Reissuing
-    // them now with room semantics would never fail — an agent holding
-    // `rooms list` would get a successful response containing different data
-    // and nothing would tell it the world moved.
-    // Retired here, and NOT aliased (design D3): each answers with its
-    // successor so one failed call teaches the new model, where an alias
-    // would teach the old one forever.
+    // them as `rooms.list` / `rooms.get`. These two SPELLINGS are reserved —
+    // a freed spelling stays dead for one major before anything reuses it.
+    // Reissuing them now with room semantics would never fail — an agent
+    // holding `rooms list` would get a successful response containing
+    // different data and nothing would tell it the world moved.
+    // Retired here, and NOT aliased: each answers with its successor so one
+    // failed call teaches the new model, where an alias would teach the old
+    // one forever.
     case "who":
       fail({
         code: "COMMAND_REMOVED",

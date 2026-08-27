@@ -130,7 +130,7 @@ export interface GitvaultStatus {
    * `null` when no `repo_dir` was given, the directory is not a repository, or
    * no such remote is configured.
    *
-   * `matches` is a TRI-STATE (kychee-com/run402#562). For an ID-FORM remote
+   * `matches` is a TRI-STATE. For an ID-FORM remote
    * (`run402::<org_id>/<project_id>`) it is `true`/`false` from the URL text
    * alone — the second half is a real project id, so comparing it against
    * this status's own project needs no lookup. For a SLUG-FORM remote
@@ -146,7 +146,7 @@ export interface GitvaultStatus {
    */
   remote: { name: string; url: string; matches: boolean | null; reason: string | null } | null;
   /**
-   * The id-pinning state of this checkout (design D6, task 4.5) — `null`
+   * The id-pinning state of this checkout — `null`
    * when no `repo_dir` was given, or nothing is pinned there yet. A SLUG-form
    * remote pins `repo_id` in local git state the first time it resolves;
    * `resolved_from` names the `org-slug/name` it was resolved from. An
@@ -221,7 +221,7 @@ export interface GitvaultCompactResult {
 }
 
 /**
- * `run402 gitvault snapshot --dry-run`'s report shape (kychee-com/run402#565)
+ * `run402 gitvault snapshot --dry-run`'s report shape
  * — {@link Gitvault.planPush}'s return type. Every sizing field is `null`,
  * and `refs`/`objects` are empty, exactly when `allocation_needed` is `true`
  * — see that method's doc comment for why sizing is genuinely UNKNOWABLE
@@ -341,7 +341,7 @@ export interface GitvaultReconcileEnvelopeRecipientsPushResult {
 }
 
 /** What {@link Gitvault.openOrCreate} did. `created` is `null` exactly when `found` is `true`. */
-/** `run402 repos mirror` (no-arg, a READ) and `repos view`'s mirror summary both compose this — what this machine and the mirror each believe (design D8: both honesty statements ride every response). */
+/** `run402 repos mirror` (no-arg, a READ) and `repos view`'s mirror summary both compose this — what this machine and the mirror each believe (both honesty statements ride every response). */
 export interface GitvaultMirrorStatus {
   repo_id: string;
   configured: boolean;
@@ -361,8 +361,7 @@ export interface GitvaultMirrorStatus {
 }
 
 /**
- * `repos fsck`'s result (repo-surface-consolidation D2/D3, review's target
- * shape). Explicit pin fields make a local mutation visible rather than
+ * `repos fsck`'s result. Explicit pin fields make a local mutation visible rather than
  * implicit — the external review's clause-5 requirement for any verb that
  * may advance local trust state.
  */
@@ -384,12 +383,12 @@ export interface GitvaultFsckResult {
 }
 
 /**
- * `repos access`'s result (repo-surface-consolidation D5/D10) — a READ over
+ * `repos access`'s result — a READ over
  * whatever the live gateway surface exposes today. Two gaps are stated
  * honestly rather than invented: the gateway does not yet report a
  * per-recipient `envelope_state` (converged/pending) or `history_scope` —
  * that is server-authoritative desired-recipient-state work owned by
- * `gitvault-human-envelopes` and has not shipped as of this change. `access`
+ * `gitvault-human-envelopes` and has not shipped. `access`
  * reports what the read surface HAS: the org's directory of encryption-key-
  * holding members, which of the vault's current envelope-recipient
  * fingerprints match a directory entry, and (Node-only, best-effort) this
@@ -421,9 +420,9 @@ export interface GitvaultAccessResult {
 }
 
 /**
- * `repos list`'s bulk read (repo-surface-consolidation task 2.4) —
- * `GET /gitvault/v1/vaults?org_id=<uuid>`, replacing the per-project N+1
- * `repos list` used to run. FROZEN response shape, agreed with the gateway
+ * `repos list`'s bulk read —
+ * `GET /gitvault/v1/vaults?org_id=<uuid>`.
+ * FROZEN response shape, agreed with the gateway
  * team ahead of the route landing; the route may still 404 on a gateway
  * that has not shipped it yet, and callers should fall back to the
  * per-project walk (`status()` in a loop) until then — see
@@ -522,7 +521,7 @@ export class Gitvault {
 
   /**
    * Every vault the organization owns, one round trip — `repos list`'s bulk
-   * read (repo-surface-consolidation task 2.4). See {@link
+   * read. See {@link
    * GitvaultOrgVaultsListing}'s doc comment for the FROZEN response shape and
    * the 404-until-shipped fallback contract.
    */
@@ -546,8 +545,8 @@ export class Gitvault {
   }
 
   /**
-   * Resolve a vault by its address-form `org-slug/name` (repo-first-onramp
-   * task 4.3, design D6) — `GET /gitvault/v1/vaults?repo=<org-slug>/<name>`.
+   * Resolve a vault by its address-form `org-slug/name` —
+   * `GET /gitvault/v1/vaults?repo=<org-slug>/<name>`.
    * `RESOURCE_NOT_FOUND` for no such org OR no such name (deliberately
    * collapsed — see the design's slug-namespace-probing note);
    * `SLUG_RELEASED` (read it with {@link gitvaultSlugReleasedInfo}) while the
@@ -560,7 +559,7 @@ export class Gitvault {
 
   /**
    * Resolve a parsed remote address (`parseGitvaultRemoteUrl`'s output),
-   * dispatching on its form (design D6): id-form resolves exactly like
+   * dispatching on its form: id-form resolves exactly like
    * {@link forProject}; slug-form resolves via {@link forRepo}. A pure read —
    * no pinning, no creation. Node-only callers wanting BOTH should use
    * {@link resolveOrCreateAddress} instead, which also drives the local pin
@@ -734,9 +733,9 @@ export class Gitvault {
 
   /**
    * Resolve a parsed remote address to an OPEN handle, pinning `repo_id` in
-   * local git state on the first successful slug-form resolution (design D6,
-   * task 4.5), and — when `allow_create` is set and resolution misses —
-   * push-to-create it (task 4.4/4.5). This is what the remote helper and
+   * local git state on the first successful slug-form resolution, and —
+   * when `allow_create` is set and resolution misses —
+   * push-to-create it. This is what the remote helper and
    * `gitvault snapshot` drive for a `run402::<org-slug>/<name>` remote; an
    * id-form remote resolves through here too (no pin, since it needs none)
    * so a caller need not branch on the address's form itself.
@@ -1033,11 +1032,11 @@ export class Gitvault {
       }
     }
 
-    // The local id-pin, when there is a repository to read it from (design
-    // D6, task 4.5) — a pure read, same discipline as `remote` below. Read
+    // The local id-pin, when there is a repository to read it from — a pure
+    // read, same discipline as `remote` below. Read
     // BEFORE `remote` so a slug-form remote's `matches` comparison can use
     // it: the pin is the only LOCAL ground truth a slug-form address's own
-    // URL text does not carry (kychee-com/run402#562).
+    // URL text does not carry.
     let pinned: GitvaultStatus["pinned"] = null;
     if (options.repo_dir) {
       const { readPinnedGitvaultRepo } = await this.#address();
@@ -1049,13 +1048,10 @@ export class Gitvault {
     // pure read: `status` must never write git configuration.
     //
     // Checks BOTH conventional names, `run402` first then `origin` —
-    // matching `scaffoldRemote`'s own naming (design D1: it claims `origin`
+    // matching `scaffoldRemote`'s own naming: it claims `origin`
     // additively when the repository has none yet, falling back to `run402`
-    // only when `origin` is already taken by something else). The common
-    // case is therefore an `origin` remote, not a `run402` one — checking
-    // only "run402" (the pre-fix behavior) reported `remote: null` for most
-    // repositories even though a run402-form remote was sitting right there
-    // under `origin` (kychee-com/run402#559c). A name whose URL exists but
+    // only when `origin` is already taken by something else. The common
+    // case is therefore an `origin` remote, not a `run402` one. A name whose URL exists but
     // does not parse as a run402 address (someone's own unrelated remote
     // happening to be named "run402") is skipped rather than reported, so
     // the other conventional name still gets a chance.
@@ -1079,8 +1075,8 @@ export class Gitvault {
           remote = { name, url, matches: project === null || parsed.project_id === project, reason: null };
         } else {
           // Slug-form: the URL's second half is a repo NAME, not a project
-          // id — comparing it against `project` always mismatched, even for
-          // a perfectly-configured remote (kychee-com/run402#562). The only
+          // id — comparing it against `project` would always mismatch, even for
+          // a perfectly-configured remote. The only
           // LOCAL ground truth for a slug-form remote's real identity is the
           // id-pin; without one there is nothing to compare against, and
           // that absence is NOT evidence of a mismatch.
@@ -1194,9 +1190,9 @@ export class Gitvault {
        */
       org_id?: string;
       /**
-       * A parsed remote address (`parseGitvaultRemoteUrl`'s output) —
-       * repo-first-onramp task 4, design D6. When given, this push resolves
-       * (and, for a slug-form address, pins — task 4.5) through
+       * A parsed remote address (`parseGitvaultRemoteUrl`'s output).
+       * When given, this push resolves
+       * (and, for a slug-form address, pins) through
        * {@link resolveOrCreateAddress} INSTEAD of `openOrCreate`'s
        * project_id-based path; `org_id`/`project_id`/`repo_id` are ignored.
        * Mirrors `git push`'s own push-to-create dispatch in the remote
@@ -1248,13 +1244,12 @@ export class Gitvault {
       ...(options.checkpoint ? { checkpoint: true } : {}),
     };
     const result = await handle.vault.push(push);
-    // Capture-time dual-push hook (design D6/task 2.4): fires only when a
+    // Capture-time dual-push hook: fires only when a
     // mirror is configured; NEVER throws, NEVER alters the vault outcome
     // above (already returned/committed) — a mirror failure is a named
     // pending finding reported BESIDE the vault result, on its own field.
     const mirrorPush = await this.#tryMirrorPush(handle.repo_id, handle.keystore);
-    // Deploy-time reconcile hook (design D5's "deploy time" cadence,
-    // gitvault-human-envelopes task 4.1): fires on every successful push,
+    // Deploy-time reconcile hook: fires on every successful push,
     // best-effort — a reconcile failure (including a read-only principal
     // with no signing key) is reported BESIDE the vault result, never a
     // `push()` throw, same non-blocking contract as the mirror hook above.
@@ -1308,7 +1303,7 @@ export class Gitvault {
    */
   async planPush(
     options: GitvaultVaultHandleOptions & {
-      /** Same as {@link push}'s `address` — a parsed remote address (repo-first-onramp task 4, design D6). Resolved READ-ONLY (`allow_create: false`); never push-to-creates. */
+      /** Same as {@link push}'s `address` — a parsed remote address. Resolved READ-ONLY (`allow_create: false`); never push-to-creates. */
       address?: GitvaultRemoteAddress;
       snapshot?: Omit<import("../node/gitvault-snapshot.js").GitvaultSnapshotOptions, "dir">;
       onCommitLine?: (line: string) => void;

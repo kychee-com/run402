@@ -265,7 +265,7 @@ function parseArgs(rawArgs) {
     else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];
     else if (a === "--ttl") out.ttl = parseIntegerFlag("--ttl", args[++i], { min: 60, max: 604800 });
-    // v1.50: repeatable --meta key=value (number-coerce on pure digits,
+    // Repeatable --meta key=value (number-coerce on pure digits,
     // comma-split into string[] when value contains ',', "true"/"false"
     // → boolean, else string). Multiple --meta flags accumulate into a
     // single flat metadata object.
@@ -274,7 +274,7 @@ function parseArgs(rawArgs) {
       applyMetaFlag(out.metadata, args[++i]);
     }
     else if (a === "--exif-policy") out.exifPolicy = parseExifPolicyFlag(args[++i]);
-    // v1.50: ls --sort and repeatable --filter k=v.
+    // ls --sort and repeatable --filter k=v.
     else if (a === "--sort") out.sort = parseSortFlag(args[++i]);
     else if (a === "--filter") {
       if (out.filter === null) out.filter = {};
@@ -285,7 +285,7 @@ function parseArgs(rawArgs) {
   return out;
 }
 
-/** v1.50: parse a single `--meta key=value` token. Coerces value:
+/** Parses a single `--meta key=value` token. Coerces value:
  *    - numeric digits (with optional leading `-` / decimal) → number
  *    - "true" / "false" → boolean
  *    - commas → string[] (each segment stays a string; agents wanting
@@ -436,23 +436,19 @@ async function putOne(projectId, filePath, opts) {
   }
   const destKey = computeDestKey(filePath, opts.key);
 
-  // v2.1.0: the legacy /storage/v1/uploads* session API is gone. The CLI
-  // now delegates to `sdk.assets.put`, which routes through the
+  // The CLI delegates to `sdk.assets.put`, which routes through the
   // unified-apply hero (apply/v1/plans -> content/v1/plans -> S3 PUT ->
-  // commit).
-  //
-  // Trade-off vs v2.0.x: resumable uploads via persisted state under
-  // ~/.run402/uploads/ are no longer supported. Resume semantics now live
-  // at the apply-plan level (24h plan TTL); a future CLI redesign can
-  // expose that. The --concurrency and --no-resume flags are accepted but
-  // ignored — the SDK upload paths handle parallelism internally.
+  // commit). Resume semantics live at the apply-plan level (24h plan TTL);
+  // a future CLI redesign can expose that. The --concurrency and --no-resume
+  // flags are accepted but ignored — the SDK upload paths handle parallelism
+  // internally.
   log(opts, { event: "start", key: destKey, size_bytes: stat.size });
   const bytes = new Uint8Array(readFileSync(filePath));
   const result = await getSdk().assets.put(projectId, destKey, { bytes }, {
     contentType: opts.contentType ?? guessContentType(destKey),
     visibility: opts.private ? "private" : "public",
     immutable: opts.immutable,
-    // v1.50: thread caller-supplied metadata + EXIF policy through. The
+    // Threads caller-supplied metadata + EXIF policy through. The
     // SDK validates each value with the same error code (INVALID_ASSET_
     // METADATA / INVALID_EXIF_POLICY) the gateway returns, so a bad
     // --meta / --exif-policy fails fast without an HTTP roundtrip.
@@ -532,7 +528,7 @@ async function ls(argv) {
     const data = await getSdk().assets.ls(resolvedId, {
       prefix: opts.prefix ?? undefined,
       limit: opts.limit ?? undefined,
-      // v1.50: forward sort + filter to the SDK. Cursor stays absent for
+      // Forward sort + filter to the SDK. Cursor stays absent for
       // first-page calls; agents pass `--cursor` for follow-ups but the
       // cursor is sort-pinned by the gateway so it doesn't accept a
       // separate `--cursor` flag here yet.

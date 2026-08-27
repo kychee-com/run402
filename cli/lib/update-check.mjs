@@ -124,7 +124,7 @@ export async function refreshUpdateCheck({
   timeoutMs = UPDATE_CHECK_TIMEOUT_MS,
   registry = npmRegistryBase(env),
 } = {}) {
-  // Faithful (kychee-com/run402#561): a failed live check must never ERASE a
+  // Faithful: a failed live check must never ERASE a
   // previously known-good `latest` — reporting `latest: null` in its place
   // would be a confident lie ("nothing is known"), not an honest stale
   // estimate. Read what is already cached BEFORE attempting the network
@@ -276,13 +276,11 @@ export async function doctorUpdateCheck({
 
   let record = readUpdateCache({ path: cachePath });
 
-  // A real TTL (24h) that actually causes a refresh (kychee-com/run402#561
-  // — grok saw a THREE-minor-version, four-week-old cached "latest" with
-  // nothing ever having re-checked it). An explicit `--refresh` always
-  // checks live, same as before; now a MISSING or EXPIRED cache also gets
-  // exactly ONE bounded live attempt automatically, so a plain
-  // `run402 doctor` self-heals a stale cache instead of silently reporting
-  // a weeks-old value as if it were current. `refreshUpdateCheck` itself
+  // A real TTL (24h) that actually causes a refresh. An explicit `--refresh`
+  // always checks live; a MISSING or EXPIRED cache also gets exactly ONE
+  // bounded live attempt automatically, so a plain `run402 doctor` self-heals
+  // a stale cache instead of silently reporting a weeks-old value as if it
+  // were current. `refreshUpdateCheck` itself
   // never erases a previously known-good `latest` on failure (see its own
   // doc comment), so a failed attempt here degrades gracefully to the LAST
   // GOOD record — never to a bare unknown when something was already known.

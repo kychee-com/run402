@@ -188,10 +188,10 @@ function addCodeGuidance(
       lines.push(`\nNext step: Authenticate again or check the project key used for this request.`);
       return true;
     case "NOT_AUTHORIZED": {
-      // Org-owned control plane (gateway v1.77+): the wallet authenticated, but
-      // the resolved principal lacks the org membership/role or per-project
-      // grant the action needs. This is NOT a payment, lease, or
-      // re-authentication problem — surface it distinctly from the generic 403.
+      // Org-owned control plane: the wallet authenticated, but the resolved
+      // principal lacks the org membership/role or per-project grant the
+      // action needs. This is NOT a payment, lease, or re-authentication
+      // problem — surface it distinctly from the generic 403.
       const details =
         body && typeof body.details === "object" && body.details !== null && !Array.isArray(body.details)
           ? (body.details as Record<string, unknown>)

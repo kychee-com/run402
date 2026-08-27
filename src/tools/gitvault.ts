@@ -1,9 +1,5 @@
 /**
- * `repos` MCP tools (repo-surface-consolidation D10 — one noun across every
- * agent surface) — `repos_view`, `repos_list_heads`, `repos_fsck`. Same
- * handlers and schemas as before the rename; only the registered tool NAME
- * and the descriptions/next_actions they teach changed, from `gitvault …`
- * spellings to `repos …` ones.
+ * `repos` MCP tools — `repos_view`, `repos_list_heads`, `repos_fsck`.
  *
  * READ-ONLY BY DESIGN. The repo family's mutating verbs are deliberately CLI-only:
  *
@@ -24,7 +20,7 @@
  *     MCP credential path does not carry — offering it here would only produce
  *     confident 403s.
  *
- * Every one of them is reachable as `run402 gitvault …`. These three tools are
+ * Every one of them is reachable as `run402 repos …`. These three tools are
  * what an agent needs to ANSWER questions — is there a vault, is my chain
  * intact, what has been admitted — which is the half that composes safely with
  * an autonomous loop.
@@ -136,10 +132,7 @@ export async function handleGetGitvaultStatus(args: { project_id?: string; repo_
       `  identity fingerprint   ${status.keystore.identity_fingerprint ?? "(none)"}`,
       `  can sign               ${status.keystore.can_sign ? "yes" : "no — read-only: this principal can decrypt and verify but cannot publish a new head"}`,
       `  holds repo key         ${status.keystore.holds_repo_key ? "yes" : "no"}`,
-      // The directory to back up. The terminal-loss statement below is stated
-      // on every gitvault surface; until 5.13 the path it implicitly refers to
-      // was printed on none of them, which made the warning unactionable
-      // (dogfood #1, finding D2). A filesystem path is not key material.
+      // The directory to back up. A filesystem path is not key material.
       `  keystore directory     ${status.keystore.root}  (back this up)`,
       "",
       "Pins",

@@ -1,27 +1,25 @@
 /**
- * `run402 repos` — the consolidated encrypted-repository family
- * (repo-surface-consolidation). One noun, twelve verbs, each one either a
- * `gh repo` verb, a `git` verb meaning what it means in git, or a plain-
- * English verb for an operation with no analog (design D2). `repo` singular
- * resolves identically (`cli.mjs` dispatches both spellings here).
+ * `run402 repos` — the consolidated encrypted-repository family. One noun,
+ * twelve verbs, each one either a `gh repo` verb, a `git` verb meaning what
+ * it means in git, or a plain-English verb for an operation with no analog.
+ * `repo` singular resolves identically (`cli.mjs` dispatches both spellings
+ * here).
  *
- * ARCHITECTURAL LAW (unchanged from `gitvault.mjs`, which this module
- * replaces as the family's CLI home): every piece of protocol behavior —
- * crypto core, keystore, creation journal, snapshot + capture, publication
- * state machines, ref transactions, verification budget, repair — lives
- * ONCE in `@run402/sdk` under `r.gitvault` (the SDK KEEPS that name; it is
- * infrastructure language — see design D1). This module is a THIN ADAPTER:
- * argument parsing, TTY output, exit codes, local file I/O. It adds zero
- * protocol behavior of its own.
+ * ARCHITECTURAL LAW: every piece of protocol behavior — crypto core,
+ * keystore, creation journal, snapshot + capture, publication state
+ * machines, ref transactions, verification budget, repair — lives ONCE in
+ * `@run402/sdk` under `r.gitvault` (the SDK keeps that name; it is
+ * infrastructure language). This module is a THIN ADAPTER: argument
+ * parsing, TTY output, exit codes, local file I/O. It adds zero protocol
+ * behavior of its own.
  *
  * Pipe contract (docs/style.md): the payload is JSON on stdout; every human
  * line (progress, the terminal-loss statement, advisories) goes to stderr,
  * so `run402 repos view | jq` stays clean.
  *
- * The nineteen-command `gitvault` family this replaces (D7): its dispatcher
- * has RETIRED — see `cli/lib/gitvault.mjs`, now a tombstone that answers
- * every old spelling with a typed `COMMAND_MOVED` (naming its `repos`
- * successor) or `COMMAND_REMOVED` (for `reconcile`, which has none) error.
+ * `cli/lib/gitvault.mjs` is a tombstone that answers every `gitvault <verb>`
+ * spelling with a typed `COMMAND_MOVED` (naming its `repos` successor) or
+ * `COMMAND_REMOVED` (for `reconcile`, which has none) error.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -83,8 +81,7 @@ Subcommands:
   create   Provision (or, with --project, ADOPT an existing project), ALLOCATE
            its vault (mints key material and, on first allocation, a one-shot
            recovery receipt), and scaffold the git remote — origin when free,
-           run402 when taken (design D1). Absorbs the old \`gitvault init\`:
-           \`--project <id>\` allocates for a project that already exists,
+           run402 when taken. \`--project <id>\` allocates for a project that already exists,
            nothing is provisioned. \`[name]\` is inferred from an existing git
            remote's basename or the directory name when unambiguous — NEVER a
            prompt; if the directory and an existing remote disagree, or
@@ -96,7 +93,7 @@ Subcommands:
            believe about the repo — allocation, policy, whether this keystore
            can sign, the authenticated and materialized pins, the mirror
            summary (when one is configured), and where the keystore lives.
-           NEVER materializes refs or advances any local pin (design D3) —
+           NEVER materializes refs or advances any local pin —
            that belongs to \`fsck\`, which is why \`refs\` reports
            {known:false, reason:"not_materialized"} with a next_action
            pointing there. \`--human\` renders a short summary instead of JSON.
@@ -106,10 +103,10 @@ Subcommands:
            404s. Not every project in the org — ones with no vault are
            omitted.
   rename   Claim or rename the repo's per-org-unique, address-form name
-           (the <name> half of run402::<org-slug>/<name>) — absorbs the old
-           \`repos name\`. Address by --repo or --project (not both).
+           (the <name> half of run402::<org-slug>/<name>). Address by
+           --repo or --project (not both).
   delete   Deletes a REPO-ONLY project — database, functions, subdomains,
-           mailbox, and secrets must all be absent (design D9). When any of
+           mailbox, and secrets must all be absent. When any of
            them is materialized, this REFUSES with
            PROJECT_HAS_NON_REPO_RESOURCES, enumerates refused_resources, and
            points at \`run402 projects delete\` — the verb whose name says
@@ -123,7 +120,7 @@ Subcommands:
            publishing. Push-to-creates through a slug-form remote
            (run402::<org-slug>/<name>) the same way \`git push\` does.
            \`--dry-run\` previews the real local pipeline without publishing.
-  mirror   ONE flag-driven verb (design D4) for the client-side, customer-
+  mirror   ONE flag-driven verb for the client-side, customer-
            owned ciphertext mirror — run402 never holds a credential to it.
            No argument: READ the configured destination + a keyless
            freshness check against the live vault. \`<destination>\`:
@@ -140,8 +137,8 @@ Subcommands:
            no \`repos clone\` verb exists). Proves this mirror's validity,
            never freshness — read both honesty statements before relying on
            the result.
-  fsck     Walks the head chain (what \`verify\` used to do) AND materializes
-           the ref map (what \`status --refs\` used to do), advancing BOTH
+  fsck     Walks the head chain AND materializes
+           the ref map, advancing BOTH
            local trust pins — reported EXPLICITLY as local_state_changed +
            pin_before + pin_after, never implied. \`--no-write\` is a genuine
            audit mode: the same real walk and decrypt, computing the same
@@ -169,8 +166,8 @@ Subcommands:
            with gitvault-human-envelopes' epoch-rotation work.
   access repair
            NOT YET AVAILABLE — gated on the epoch-rotation mechanism above
-           landing. \`reconcile\`, the workaround it replaces, is REMOVED
-           (design D5/D7): it never wrapped a key correctly-scoped to "from
+           landing. \`reconcile\`, the workaround it replaces, is REMOVED:
+           it never wrapped a key correctly-scoped to "from
            here forward," and a temporary mechanism does not get a
            permanent verb. This refuses cleanly and points at \`repos
            access\` for what IS available today.
@@ -256,12 +253,11 @@ Examples:
   run402 repos delete --project prj_xyz --force
 `;
 
-// ─── shared targeting + printing (ported from the retired gitvault.mjs) ────
+// ─── shared targeting + printing ────
 
 /**
- * Resolve which repo to act on, plus the local git tree. Identical
- * resolution order the old `gitvault.mjs` used (design change: none —
- * naming only): explicit `--repo`/`--project` > the repo's own pin/remote
+ * Resolve which repo to act on, plus the local git tree. Resolution order:
+ * explicit `--repo`/`--project` > the repo's own pin/remote
  * > RUN402_PROJECT_ID > the active project.
  */
 async function vaultTarget(a) {
@@ -299,8 +295,7 @@ const LARGE_OUTPUT_THRESHOLD_BYTES = 100 * 1024;
  * to a private 0600 file with a one-line stderr breadcrumb naming the path.
  * Best-effort. Deliberately NEVER called on `create`'s result — that JSON
  * carries the one-shot recovery receipt, and a secret-bearing response is
- * never spilled into any cache path (agent-response-design's secrets rule,
- * design D10).
+ * never spilled into any cache path (agent-response-design's secrets rule).
  */
 async function spillIfLarge(repoId, verb, payload) {
   const json = JSON.stringify(payload, null, 2);
@@ -400,7 +395,7 @@ async function formatRepoHuman(s, mirror) {
   return lines.join("\n");
 }
 
-// ─── name inference (design D10 — create's delight pass) ──────────────────
+// ─── name inference ──────────────────
 
 function validateProjectName(name) {
   if (name === "") {
@@ -416,8 +411,8 @@ function validateProjectName(name) {
 }
 
 /**
- * Best-effort slugify for the address-form repo name (design D6's grammar:
- * lowercase [a-z0-9-], no leading/trailing/double hyphen, <=63 chars).
+ * Best-effort slugify for the address-form repo name (the address-form
+ * grammar: lowercase [a-z0-9-], no leading/trailing/double hyphen, <=63 chars).
  */
 function slugifyRepoName(name) {
   return name
@@ -458,7 +453,7 @@ function dirBasenameCandidate(dir) {
 }
 
 /**
- * `repos create [name]`'s inference (design D10): the directory or an
+ * `repos create [name]`'s inference: the directory or an
  * existing git remote's basename, when unambiguous. NEVER a prompt —
  * ambiguity (the two candidates disagree) or a dead end (neither yields a
  * usable slug) is a structured error naming exactly one next_action.
@@ -827,7 +822,7 @@ async function rename(args) {
   }
 }
 
-// ─── delete (design D9) ─────────────────────────────────────────────────────
+// ─── delete ─────────────────────────────────────────────────────
 
 /** One non-repo-resource read, `null` when absent (including a clean 404), an entry when present or genuinely unverifiable. */
 async function checkResource(read, resourceName, countOf) {
@@ -1082,7 +1077,7 @@ async function policy(args) {
   }
 }
 
-// ─── mirror (design D4 — ONE flag-driven verb) ─────────────────────────────
+// ─── mirror (ONE flag-driven verb) ─────────────────────────────
 
 const MIRROR_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--profile", "--region", "--endpoint"];
 
@@ -1177,7 +1172,7 @@ async function mirror(args) {
   return mirrorRead(target);
 }
 
-// ─── fsck (design D2/D3 — absorbs verify + mirror verify) ──────────────────
+// ─── fsck (verify the head chain + materialize refs) ──────────────────
 
 async function fsck(args) {
   const a = normalizeArgv(args);
@@ -1212,7 +1207,7 @@ async function fsck(args) {
   }
 }
 
-// ─── gc (design D2 — absorbs compact + prune) ──────────────────────────────
+// ─── gc (checkpoint + prune) ──────────────────────────────
 
 const GC_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--intent-core", "--verifier-receipt"];
 
@@ -1260,9 +1255,8 @@ async function gc(args) {
     const nextActions = [];
     if (!prune.blocked_reason && prune.object_candidates.length > 0) {
       // Additive fields beyond the CLI's usual {type, command, why}: the
-      // external review's explicit ask (design D2 clause 5) — `gc` is never
-      // described as "exactly git gc," and its submit next_action must say
-      // so structurally, not just in prose.
+      // `gc` is never described as "exactly git gc," and its submit
+      // next_action must say so structurally, not just in prose.
       nextActions.push({
         type: "submit_gc",
         command: "run402 repos gc --submit --intent-core <core.json> --verifier-receipt <receipt.json>",
@@ -1296,7 +1290,7 @@ async function gc(args) {
   }
 }
 
-// ─── access (design D5/D10 — read-only; repair gated) ──────────────────────
+// ─── access (read-only; repair gated) ──────────────────────
 
 async function accessRead(args) {
   const a = normalizeArgv(args);
@@ -1335,7 +1329,7 @@ async function access(args) {
   return accessRead(a);
 }
 
-// ─── recover (design D4 — kept, D10 confirms the name) ─────────────────────
+// ─── recover ─────────────────────
 
 async function recover(args) {
   const a = normalizeArgv(args);

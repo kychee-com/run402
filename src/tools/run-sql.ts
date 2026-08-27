@@ -53,10 +53,7 @@ export async function handleRunSql(args: {
     return mapSdkError(err, "running SQL");
   }
 
-  // The wire field is snake_case `row_count` (docs/style.md). This tool
-  // previously destructured a nonexistent camelCase `rowCount`, which was
-  // always undefined — every mutation rendered as "Statement executed"
-  // instead of "N rows affected" (2026-07-19 review finding).
+  // The wire field is snake_case `row_count` (docs/style.md).
   const { rows, row_count: rowCount, schema, fields } = body;
   const columns = formatColumns(fields);
 

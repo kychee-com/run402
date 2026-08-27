@@ -197,7 +197,7 @@ export const COMMAND_MANIFEST = [
   { path: ["org", "get"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
   { path: ["org", "rename"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--name", "Gate"] },
   { path: ["org", "payout-wallet"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--wallet", "0x1111111111111111111111111111111111111111"] },
-  // repo-first-onramp task 4.1 (design D6). `--org` (not a positional org_id
+  // `--org` (not a positional org_id
   // like rename/payout-wallet above) goes through resolveOrg's SHAPE
   // validation (a real UUID) — "org_gate1" fails that locally, so this needs
   // the same UUID-shaped fixture `org use` below already established.
@@ -255,13 +255,13 @@ export const COMMAND_MANIFEST = [
   { path: ["claims", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["claims", "release"], positionals: [p("claim_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["clm_1"], runStyle: "sub" },
 
-  // ── gitvault — RETIRED (repo-surface-consolidation, design D7) ──────────
-  // No manifest entries: `cli/lib/gitvault.mjs`'s dispatcher retired, and
-  // every `gitvault <verb>` now answers a structural COMMAND_MOVED (or, for
-  // `push`/`reconcile`, COMMAND_REMOVED) redirect that dispatches nothing —
-  // see RESERVED_SUBCOMMANDS below, and "gitvault" in SKIPPED_FAMILIES.
+  // ── gitvault — no manifest entries ──────────────────────
+  // `cli/lib/gitvault.mjs`'s dispatcher handles every `gitvault <verb>` and
+  // answers a structural COMMAND_MOVED (or, for `push`/`reconcile`,
+  // COMMAND_REMOVED) redirect that dispatches nothing — see
+  // RESERVED_SUBCOMMANDS below, and "gitvault" in SKIPPED_FAMILIES.
 
-  // ── repos (repo-surface-consolidation — the consolidated 12-verb family) ─
+  // ── repos (the consolidated 12-verb family) ─
   // Every verb needs a real principal keystore and, for most, an allocated
   // repo and a local git working tree, so the gate runs structural checks
   // only — an in-process behavioral run would either no-op against the
@@ -269,21 +269,19 @@ export const COMMAND_MANIFEST = [
   { path: ["repos", "create"], positionals: [p("name", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "provisions a project, allocates a repo, and scaffolds a real git remote into cwd" },
   { path: ["repos", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the live bulk vaults-by-org route, or falls back to a live per-project walk" },
   { path: ["repos", "view"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the local principal keystore and the live repo record" },
-  // repo-surface-consolidation D2 (`gh repo rename`): absorbs the old
-  // `repos name` — same claim/rename, `--repo`/`--project` addressing added.
+  // (`gh repo rename`): claims/renames the per-org-unique address-form
+  // name, with `--repo`/`--project` addressing.
   { path: ["repos", "rename"], positionals: [p("new_name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "claims a per-org-unique repo name against a live project" },
-  { path: ["repos", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [], runStyle: "sub", skipBehavioral: "irreversibly deletes a project after reading its live non-repo-resource state and vault generation count (design D9)" },
+  { path: ["repos", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [], runStyle: "sub", skipBehavioral: "irreversibly deletes a project after reading its live non-repo-resource state and vault generation count" },
   { path: ["repos", "snapshot"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
   { path: ["repos", "policy"], positionals: [p("repos_policy")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["required"], runStyle: "sub", skipBehavioral: "owner + step-up mutation of the live project's activation policy" },
-  // design D4 — ONE flag-driven verb; `<destination>` is a real attribute
-  // (not a sub-verb literal like the old `mirror set/remove/...`), so this
-  // stays a single manifest entry.
+  // ONE flag-driven verb; `<destination>` is a real attribute (not a
+  // sub-verb literal), so this stays a single manifest entry.
   { path: ["repos", "mirror"], positionals: [p("destination", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads/writes mirror destination config beside the keystore and may move real bytes into a customer-owned bucket" },
   { path: ["repos", "fsck"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain and materializes the ref map against the keystore's local pins" },
   { path: ["repos", "gc"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "publishes a checkpoint under a maintenance lease and materializes the live vault head to enumerate retention roots" },
-  // `access repair` is a nested sub-verb literal (same shape the old
-  // `gitvault mirror set/remove/...` used) — two manifest entries, one
-  // dispatched `run("access", ...)` case in repos.mjs, matching precedent.
+  // `access repair` is a nested sub-verb literal — two manifest entries,
+  // one dispatched `run("access", ...)` case in repos.mjs.
   { path: ["repos", "access"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the live org encryption-key directory + vault envelope recipients" },
   { path: ["repos", "access", "repair"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "always refuses — gated on gitvault-human-envelopes' epoch-rotation work, not shipped yet" },
   { path: ["repos", "recover"], positionals: [p("source")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket", "--out", "__SCRATCH_DIR__/recover-out"], runStyle: "sub", skipBehavioral: "materializes a git repository from a mirror source, offline, with no server call" },
@@ -439,7 +437,7 @@ export const COMMAND_MANIFEST = [
   { path: ["service", "health"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["cache", "inspect"], positionals: [p("url")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["https://example.com/"] },
   { path: ["cache", "invalidate"], positionals: [p("url", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--all", "--host", "example.com"] },
-  // projectScoped (kychee-com/run402#566): --project targets the gitvault
+  // projectScoped: --project targets the gitvault
   // check only (see doctor.mjs's own HELP) — every other check stays
   // wallet/machine-wide, but the gate's contract is "accepts --project
   // without rejecting it," which this satisfies.
@@ -461,13 +459,13 @@ export const SKIPPED_FAMILIES = {
   // Split into `deliveries` / `contacts` / `subscriptions`; every subcommand
   // answers COMMAND_REMOVED naming its successor.
   "notifications": "reserved group; split by legible-cli-surface",
-  // repo-surface-consolidation D7: the dispatcher retired. Every
-  // `gitvault <verb>` answers COMMAND_MOVED/COMMAND_REMOVED (see
-  // RESERVED_SUBCOMMANDS below for the per-verb list) — the family stays
-  // dispatched in cli.mjs (so the redirect fires instead of UNKNOWN_COMMAND)
-  // but has zero manifest entries, since a redirect dispatches nothing.
+  // The gitvault dispatcher answers COMMAND_MOVED/COMMAND_REMOVED for every
+  // `gitvault <verb>` (see RESERVED_SUBCOMMANDS below for the per-verb list)
+  // — the family stays dispatched in cli.mjs (so the redirect fires instead
+  // of UNKNOWN_COMMAND) but has zero manifest entries, since a redirect
+  // dispatches nothing.
   "gitvault": "retired; every subcommand answers COMMAND_MOVED/COMMAND_REMOVED naming its `repos`/git successor",
-  // `repo` singular resolves identically to `repos` (design D1) — same
+  // `repo` singular resolves identically to `repos` — same
   // module, same case block in cli.mjs, so it needs no manifest of its own.
   "repo": "alias for `repos`, resolves identically (design D1)",
 };
@@ -481,8 +479,8 @@ export const SKIPPED_FAMILIES = {
  * belongs in no capability mapping, so the inventory gate must not demand one.
  *
  * The family-level equivalent is SKIPPED_FAMILIES above. This exists because
- * legible-cli-surface retired four spellings INSIDE a family rather than a
- * whole family, which the family list could not express.
+ * some spellings are retired INSIDE a family rather than as a whole family,
+ * which the family list cannot express.
  */
 export const RESERVED_SUBCOMMANDS = {
   "rooms:who": "renamed to `rooms join` — an interrogative must not name a write",
@@ -495,7 +493,7 @@ export const RESERVED_SUBCOMMANDS = {
   "rooms:get": "moved to `messages get` — the verb acts on a message",
   "rooms:ack": "moved to `messages ack` — the verb acts on a message",
   "escalations:contacts": "merged into `contacts` — the ladder and Telegram channels are one question",
-  // repo-surface-consolidation D7: every `gitvault <verb>` spelling. Nine
+  // Every `gitvault <verb>` spelling. Nine
   // answer COMMAND_MOVED naming their `repos` successor; `push` and
   // `reconcile` answer COMMAND_REMOVED (no equivalent successor for either —
   // `push`'s one-release alias window is over, `reconcile` was a workaround

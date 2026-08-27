@@ -272,7 +272,7 @@ export function requirePositionalCount(args = [], flagsWithValues = [], opts = {
   return pos;
 }
 
-// Resolve a positional project_id argument with active-project fallback (GH-102, GH-187).
+// Resolve a positional project_id argument with active-project fallback.
 // If the first positional starts with "prj_", treat it as the project id and
 // strip it from the rest. Otherwise, fall through to the active project from
 // the keystore. Callers can tighten the legacy shorthand when a bare non-prj

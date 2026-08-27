@@ -73,9 +73,8 @@ export async function resolveRoom({ org, room, project } = {}) {
   }
 
   // 3. A room key without an org: the org resolves through the shared chain.
-  //    (`--room` alone used to be a hard error; it now works whenever the org
-  //    resolves, and fails with ORG_REQUIRED — naming every way to supply one —
-  //    when it does not.)
+  //    (`--room` alone works whenever the org resolves, and fails with
+  //    ORG_REQUIRED — naming every way to supply one — when it does not.)
   const bindingRoom = findBindingKey(process.cwd(), "room");
   const roomKey = room ?? bindingRoom?.value ?? null;
   if (roomKey) {

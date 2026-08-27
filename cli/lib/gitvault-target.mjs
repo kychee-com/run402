@@ -1,19 +1,17 @@
 /**
  * Shared "which vault does this repo mean" resolution for `run402 gitvault`
- * and `run402 doctor`'s gitvault check (repo-first-onramp follow-up,
- * kychee-com/run402#559's design gap): gitvault verbs were purely
- * active-project-scoped even when run standing inside a repository that
- * already names its own vault via a pinned repo id or a run402/origin
- * remote — git muscle memory says a command run inside a repo acts on THAT
- * repo, and a stale active-project pointer silently targeted a DIFFERENT
- * one instead (GITVAULT_ACCESS_DENIED, or worse, a silently WRONG vault).
+ * and `run402 doctor`'s gitvault check. When a verb runs standing inside a
+ * repository that already names its own vault via a pinned repo id or a
+ * run402/origin remote, targeting prefers that repo over the active-project
+ * pointer — git muscle memory says a command run inside a repo acts on THAT
+ * repo.
  *
  * Targeting order for a verb run standing inside a git repository, highest
  * first:
  *   1. an explicit --repo/--project flag (owned by each call site — this
  *      module supplies only the fallback chain beneath it, plus the
  *      mismatch warning against tier 3)
- *   2. the 4.38.0 pin (`r402.repoId` in local git config) — addresses the
+ *   2. the pinned `r402.repoId` in local git config — addresses the
  *      vault by repo_id directly, no network read at all
  *   3. the repo's run402/origin remote address — id-form is parsed
  *      directly out of the address string (free, no network); slug-form is
@@ -24,7 +22,7 @@
  *   5. the profile's active project
  *
  * Outside a repository (or when repo detection itself fails), only tiers 4
- * and 5 apply — unchanged from before this module existed.
+ * and 5 apply.
  *
  * ARCHITECTURAL NOTE: this is CLI-edge policy (which flag/env/file wins),
  * not gitvault protocol behavior — the same class of concern

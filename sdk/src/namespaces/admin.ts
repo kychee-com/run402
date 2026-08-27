@@ -410,7 +410,7 @@ export class Channels {
 }
 
 /**
- * `r.admin.rules` — Telegram routing rules (design D4): one match (ANDed
+ * `r.admin.rules` — Telegram routing rules: one match (ANDed
  * dimensions; an omitted dimension is a wildcard) → one Telegram binding.
  * Rules govern the Telegram channel ONLY in v1 — email/webhook keep their
  * existing preference-toggle semantics untouched. Mutations require

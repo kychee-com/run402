@@ -1,18 +1,17 @@
 /**
- * `run402 gitvault` — RETIRED (repo-surface-consolidation, design D7).
+ * `run402 gitvault` — retired from the CLI; every spelling answers a
+ * structured error naming its `repos`/git successor.
  *
- * The 19-command dispatcher this module used to hold is gone. Every old
- * spelling now answers a proper stderr JSON error envelope: typed
+ * Every spelling answers a proper stderr JSON error envelope: typed
  * `next_actions`, non-zero exit, EMPTY stdout — never silence, never new
  * behavior. Renamed verbs answer `COMMAND_MOVED` naming their `repos`
  * successor; verbs with no behavioral successor answer `COMMAND_REMOVED`
- * (never a `COMMAND_MOVED` that would lie about equivalence — design
- * D7/D10). The freed spellings are RESERVED for one release, never
- * re-pointed at different behavior — the `rooms`→`messages` precedent.
+ * (never a `COMMAND_MOVED` that would lie about equivalence). The freed
+ * spellings are never re-pointed at different behavior.
  *
  * `gitvault` itself survives only as protocol/infrastructure language: the
- * SDK keeps `r.gitvault.*` (design D1 — "gitvault is what the thing IS;
- * repos is what the user HAS"). This module's one surviving export,
+ * SDK keeps `r.gitvault.*` ("gitvault is what the thing IS; repos is what
+ * the user HAS"). This module's one surviving export,
  * `printKeystoreLocation`, is a shared print helper `cli/lib/repos.mjs`
  * still composes — moving it there instead would make repos.mjs restate
  * logic this file already owns for zero benefit.

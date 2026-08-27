@@ -82,11 +82,10 @@ export class GatewayUploadError extends Error {
     absolutePath: string,
     gatewayStatus?: number,
   ) {
-    // v0.1.6 (closes kychee-com/run402-private#405): append a code-specific
-    // remediation hint so the operator sees the exact CLI command to run
-    // instead of having to grep docs or file an issue. Adapter consumers
-    // hit these errors deep in a Vite plugin output stream where context
-    // is otherwise hard to come by.
+    // Append a code-specific remediation hint so the operator sees the exact
+    // CLI command to run instead of having to grep docs or file an issue.
+    // Adapter consumers hit these errors deep in a Vite plugin output stream
+    // where context is otherwise hard to come by.
     super(`${code} while uploading ${absolutePath}: ${message}${hintForCode(code, gatewayStatus)}`);
     this.name = "GatewayUploadError";
     this.code = code;
@@ -126,8 +125,7 @@ function hintForCode(code: string, gatewayStatus: number | undefined): string {
       // The CI/OIDC binding existed but was revoked — most often because the
       // project was transferred or handed to a new owner (a transfer suspends
       // the prior org's CI bindings). The fix is to RE-LINK, not to widen
-      // asset scopes: `set-asset-scopes` 409s on a revoked binding. Closes the
-      // red-herring asset-scope hint from kychee-com/run402#470 / #473.
+      // asset scopes: `set-asset-scopes` 409s on a revoked binding.
       return (
         "\n\n  The CI/OIDC binding was revoked — most often because the project was\n" +
         "  transferred or handed to a new owner (a transfer suspends the prior org's\n" +

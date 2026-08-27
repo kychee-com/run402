@@ -107,7 +107,7 @@ import { listSubdomainsSchema, handleListSubdomains } from "./tools/list-subdoma
 import { deleteProjectSchema, handleDeleteProject } from "./tools/delete-project.js";
 import { renameProjectSchema, handleRenameProject } from "./tools/rename-project.js";
 
-// v1.57 — operator-only project + organization actions
+// Operator-only project + organization actions
 import {
   adminSetLeasePerpetualSchema,
   handleAdminSetLeasePerpetual,
@@ -395,7 +395,7 @@ const server = new McpServer({
  * wants ONE tool — buy an image for three cents — pays that for 197 tools it
  * will never call. A harness with a modest context budget may simply decline to
  * load us, and that happens before any request reaches our gateway, so it is
- * invisible in every metric we have. (kychee-com/run402-private#629.)
+ * invisible in every metric we have.
  *
  * `RUN402_MCP_PROFILE=buyer` registers only what a buy-only agent needs:
  * ~6-700 tokens, a 98.5% reduction, and the same order as our remote discovery
@@ -1366,7 +1366,7 @@ server.tool(
   async (args) => handleStartOperatorPasskeyEnrollment(args),
 );
 
-// ─── Operator notifications (v1.55) ───────────────────────────────────────
+// ─── Operator notifications ─────────────────────────────────────────────
 
 server.tool(
   "get_operator_status",
@@ -1987,11 +1987,10 @@ server.tool(
 
 // ─── repos — the host-blind encrypted git repo family (read-only surface) ───
 //
-// One noun across every agent surface (repo-surface-consolidation D10): these
-// three tools teach only `repos` CLI spellings, never the retired `gitvault`
-// ones. Only the READ verbs are exposed here. create / delete / rename /
-// snapshot / policy / mirror / gc / access stay CLI-only — see the header of
-// src/tools/gitvault.ts for why each mutating one is excluded.
+// One noun across every agent surface: these three tools teach only `repos`
+// CLI spellings. Only the READ verbs are exposed here. create / delete /
+// rename / snapshot / policy / mirror / gc / access stay CLI-only — see the
+// header of src/tools/gitvault.ts for why each mutating one is excluded.
 
 server.tool(
   "repos_view",

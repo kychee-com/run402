@@ -14,7 +14,7 @@
  *
  * Agent-first: JSON to stdout. `login` additionally prints the verification URL
  * + user code to stderr (human-in-the-loop) and degrades gracefully when not a
- * TTY. Gated on the gateway device-auth bridge (kychee-com/run402-private#443).
+ * TTY. Gated on the gateway device-auth bridge.
  */
 
 import { setTimeout as sleep } from "node:timers/promises";

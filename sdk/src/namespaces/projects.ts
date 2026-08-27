@@ -253,7 +253,7 @@ export class Projects {
 
   /**
    * Claim or rename this project's per-org-unique, address-form name
-   * (`POST /projects/v1/:id/repo-name`, repo-first-onramp design D6) — the
+   * (`POST /projects/v1/:id/repo-name`) — the
    * `<name>` half of `run402::<org-slug>/<name>`. Distinct from
    * {@link rename} (the free-text display name, unchanged): the address-form
    * name is charset-restricted (`[a-z0-9-]`, ≤63 chars) and per-org-unique.

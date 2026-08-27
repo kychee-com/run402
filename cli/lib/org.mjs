@@ -438,9 +438,9 @@ async function payoutWallet(args) {
 }
 
 /**
- * `run402 org slug <slug>` — claim or rename the org's address-form slug
- * (repo-first-onramp design D6). Owner-only, and a genesis claim spends a
- * one-time claim fee — this is a PAID, side-effecting mutation, so it
+ * `run402 org slug <slug>` — claim or rename the org's address-form slug.
+ * Owner-only, and a genesis claim spends a one-time claim fee — this is a
+ * PAID, side-effecting mutation, so it
  * requires `Idempotency-Key`; the SDK generates one client-side when
  * `--idempotency-key` is omitted, so a retried call after a dropped response
  * can never double-bill.

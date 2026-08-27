@@ -1622,7 +1622,7 @@ export interface PlanResponse {
   /** v1.48 unified-apply: one entry per `assets.put` item, with the
    *  AssetRef envelope resolved at plan time (URLs are deterministic
    *  from `(project_public_id, key, content_sha256)` so they're
-   *  computable BEFORE commit per design D8). Agents that need URLs
+   *  computable BEFORE commit). Agents that need URLs
    *  pre-commit (for HTML injection between plan and commit) read
    *  these directly. */
   asset_entries?: AssetEntryPlanResult[];
@@ -2652,7 +2652,7 @@ export interface DeployResult {
  * shape without importing the Node entry.
  *
  * `byKey` and `manifest` MUST be constructed with `Object.create(null)`
- * (design D9) so attacker-controlled or filesystem-derived keys like
+ * so attacker-controlled or filesystem-derived keys like
  * `__proto__` / `constructor` / `toString` don't collide with prototype
  * properties.
  */

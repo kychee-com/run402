@@ -195,7 +195,7 @@ export interface RenameProjectResult {
   name: string;
 }
 
-/** Result of {@link Projects.setRepoName} (`POST /projects/v1/:id/repo-name`, repo-first-onramp design D6). */
+/** Result of {@link Projects.setRepoName} (`POST /projects/v1/:id/repo-name`). */
 export interface SetRepoNameResult {
   project_id: string;
   repo_name: string;
