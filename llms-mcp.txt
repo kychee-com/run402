@@ -300,7 +300,7 @@ Fluent surface on both: `.select() / .eq() / .neq() / .gt() / .lt() / .gte() / .
 
 For TypeScript autocomplete, `npm install @run402/functions` in your editor's project. Same package also works at build time for static-site generation if you set `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in `.env`.
 
-### Function-level auth gates (v1.51+)
+### Function-level auth gates
 
 Declare auth requirements directly on each function spec — the gateway enforces them before invoking the function, so unauthorized callers get `401`/`403` without your code running, and the gateway injects the resolved identity into trustworthy request headers.
 
@@ -555,7 +555,7 @@ For agents that sign Ethereum transactions. Private keys never leave AWS KMS. $0
 - `check_balance` — USDC for an allowance address.
 - `list_projects` — the named, domain-aware project inventory (project-findability, `GET /projects/v1`). Each row carries `name`, `site_url`, `custom_domains`, the owning org `organization_id`, `created_by`, and v1.57 lifecycle fields (`status`/`effective_status`, `organization_lifecycle_state`, `lease_perpetual`, `deleted_at`, `archived_at`). Membership-scoped by default (org-owned control plane, v1.77+): a wallet *authenticates* but does not *own* — lists projects owned by orgs the wallet's resolved principal is an active member of, ∪ projects with an active per-project grant. Args: `org_id` filters to one org (authorize-before-reveal — non-member/guessed id → 403, non-UUID → 400), `all: true` reads the cross-wallet inventory across every wallet controlling your operator email, and `limit`/`cursor` paginate.
 - `rename_project` — rename a project (project-findability, `PATCH /projects/v1/:id`) to fix an auto-generated name. Org `admin`+ (or a `project:write` grant) on the owning org; authorize-before-reveal (unauthorized/guessed id → 403, never a not-found oracle). Uses the wallet's SIWX auth, not a service key, so it works even if the project isn't in the local key store.
-- `admin_set_lease_perpetual` — operator escape hatch (v1.57+). Toggles `lease_perpetual` on a organization; when `true`, the organization never advances past `active`. Replaces the v1.56 per-project pin tool (gateway endpoint /projects/v1/admin/:id/pin was removed). Platform-admin only.
+- `admin_set_lease_perpetual` — operator escape hatch. Toggles `lease_perpetual` on a organization; when `true`, the organization never advances past `active`. Platform-admin only.
 - `admin_archive_project` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; siblings on the same organization keep serving. Platform-admin only.
 - `admin_reactivate_project` — un-archive a project (flips `archived_at` to NULL). In v1.57 this no longer touches organization lifecycle. Platform-admin only.
 - `project_info` / `project_keys` / `project_use` — inspect / set the active project.
@@ -735,7 +735,7 @@ Suggest $10 to your human for two Hobby projects, or $20 for one Team plus renew
 | `402 payment_required` on `set_tier` | Allowance is empty. Call `request_faucet` (testnet) or fund with real USDC. If the user gave you a promo code, `redeem_voucher` credits the balance instead. |
 | `403` with `lifecycle_state: frozen` | Project past lease + 14 days. `set_tier` reactivates instantly. |
 | `403 admin_required` | Tool is platform-admin only (e.g., `admin_set_lease_perpetual`, `admin_archive_project`, `admin_reactivate_project`). Use a platform admin allowance wallet; project owners can't toggle these on their own. |
-| `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane (v1.77+): the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
+| `403 NOT_AUTHORIZED` on a control-plane action | Org-owned control plane: the wallet authenticated, but its principal lacks the org role/grant for this action — not a payment or lease issue. `details` carries `required_role` / `required_capability` / `reason`. Obtain a covering org membership/role or per-project grant; high-stakes ops (delete, transfer, membership change) need an active `owner` membership. Returned as 403 even when the project doesn't exist (existence isn't leaked), so also re-check the `project_id`. |
 | `409 LAST_OWNER` on `remove_org_member` / `set_org_member_role` | An org must keep at least one active `owner`. The change would remove or demote the last one. Promote another member to `owner` first (`set_org_member_role`), then retry. |
 | `409 PROJECT_HAS_PENDING_TRANSFER` on an owner-side mutation | A pending project transfer is freezing the control plane. `details.transfer_id` carries the id; `next_actions[]` has the cancel route. Run `cancel_project_transfer` to unblock, or `preview_project_transfer` to view what's pending. The freeze auto-clears 72h after init. |
 | Empty `[]` from `rest_query` for anon | Table not in manifest with `expose: true`. Call `apply_expose`. |

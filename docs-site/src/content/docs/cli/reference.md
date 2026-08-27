@@ -179,7 +179,7 @@ Retry policy:
 - `run402 deploy apply` already handles safe `BASE_RELEASE_CONFLICT` release races for omitted/current-base deploy specs: it re-plans, emits `deploy.retry` events on stderr, and stops after its bounded SDK retry budget. Exhausted deploy retries include `attempts`, `max_retries`, and `last_retry_code` in the error envelope. Do not hand-roll this specific retry loop around the CLI unless you intentionally disabled SDK retries upstream.
 - For mutating 5xx with `safe_to_retry: false`, or `mutation_state` in `committed|partial|unknown`, inspect/poll/reconcile before retry. For deploys prefer `deploy events`/`deploy resume` over duplicate apply.
 - Lifecycle/payment: `PROJECT_FROZEN`/`PROJECT_DORMANT`/`PROJECT_PAST_DUE` -> `projects usage <id>` or `tier set <tier>`; `PAYMENT_REQUIRED`/`INSUFFICIENT_FUNDS` -> submit payment/fund allowance.
-- `NOT_AUTHORIZED` (HTTP 403) is an org-owned-control-plane authorization denial (v1.77+), distinct from auth or payment: the wallet *authenticated*, but its resolved principal lacks the org role or per-project grant the action needs. `details` carries `required_role` / `required_capability` / `reason`. Not retryable without obtaining a covering org membership/role or grant; high-stakes ops (delete, transfer-of-ownership, membership change) require an active `owner` membership. The gateway returns 403 even when the project does not exist (so existence isn't leaked) — re-check the `<id>` too. The CLI envelope adds an actionable `hint`.
+- `NOT_AUTHORIZED` (HTTP 403) is an org-owned-control-plane authorization denial, distinct from auth or payment: the wallet *authenticated*, but its resolved principal lacks the org role or per-project grant the action needs. `details` carries `required_role` / `required_capability` / `reason`. Not retryable without obtaining a covering org membership/role or grant; high-stakes ops (delete, transfer-of-ownership, membership change) require an active `owner` membership. The gateway returns 403 even when the project does not exist (so existence isn't leaked) — re-check the `<id>` too. The CLI envelope adds an actionable `hint`.
 - `STEP_UP_REQUIRED` (HTTP 403) is a freshness/provenance demand for a high-stakes control-plane op: the session is valid but not fresh enough, or was minted by a read/device-flow path that can't satisfy a passkey step-up. `details` carries `required_amr` / `max_age_seconds` / `challenge_url` / `reason`, plus `next_actions[]`. The SDK raises a typed `StepUpRequiredError` (`isStepUpRequired()` guard). Resolve with `run402 operator login --step-up` on the same client, then retry. Distinct from `NOT_AUTHORIZED` (a role/grant gap, not a freshness gap).
 - `WRITE_AUTH_REQUIRED` / `WRITE_AUTH_BINDING_MISMATCH` / `WRITE_AUTH_SESSION_INVALID` (HTTP 403) — a wallet-less human's control-plane session needs a passkey **operator approval** scoped to this `(action, target)` (the SIWX wallet path never hits this). The SDK raises a typed `OperatorApprovalRequiredError` (`isOperatorApprovalRequired()` guard) carrying `capability`, `target`, and a fully-resolved `approveCommand` / `nextActions[]` (e.g. `run402 operator approve --action project.deploy --project prj_x`). `BINDING_MISMATCH` = a cached approval targeted the wrong org/project; `SESSION_INVALID` = it's stale. Resolve by running the surfaced `operator approve` command (or let an interactive `provision`/`deploy` auto-approve).
 - Client-side `BAD_JSON_FLAG` errors include `details.flag` (the offending flag, e.g. `--abi`) and `details.value_preview` (truncated value) so callers know which flag value to fix.
@@ -541,7 +541,7 @@ run402 deploy resume <operation_id> [--project prj_...]
 
 Gateway reruns only failed phase forward; SQL is never replayed.
 
-Destructive apply recovery (v1.58+): `run402 deploy promote <release-id>` re-points live release at a prior ready row without re-running apply (no bytes/bundling/migration), just `internal.projects.live_release_id` pointer swap + ssr_cache flush.
+Destructive apply recovery: `run402 deploy promote <release-id>` re-points live release at a prior ready row without re-running apply (no bytes/bundling/migration), just `internal.projects.live_release_id` pointer swap + ssr_cache flush.
 
 ```bash
 # rel_old (good)  →  rel_new (bad, destructive)  →  promote back
@@ -815,7 +815,7 @@ if (role !== "operator") return Astro.redirect("/admin/login", 303);
 
 Binary files (images, fonts, PDFs): Set `"encoding": "base64"` and provide base64-encoded data. MIME types are auto-detected from the file extension (`.png` → `image/png`, `.woff2` → `font/woff2`, etc.). Text files use `"encoding": "utf-8"` (the default — can be omitted).
 
-Assets slice (v2.0+): top-level `ReleaseSpec.assets` promotes content-addressed asset entries in the same atomic transaction as site/functions/secrets.
+Assets slice: top-level `ReleaseSpec.assets` promotes content-addressed asset entries in the same atomic transaction as site/functions/secrets.
 
 ```json
 "assets": {
@@ -1004,7 +1004,7 @@ Authority split: `issue`/`rotate`/`revoke` require owner membership on the proje
 - `run402 credentials project-keys status --project <id>` — LOCAL CACHE read for one project id. `configured: false` means this selected wallet/profile lacks cached keys; it does not mean the server project is missing.
 - `run402 credentials project-keys import --project <id> --service-key-stdin` — import a service key from stdin. Optional anon key comes from `--anon-key-env <env>`.
 - `run402 credentials project-keys import --project <id> --service-key-env <env>` — import a service key from an environment variable. Do not pass service keys as argv values.
-- `run402 credentials project-keys import --project <id> --anon-key-env <env>` — anon-only rotation (v4.18.1+). Import writes the whole cache entry, so the FIRST import for a project must supply a service key; once an entry exists, `--anon-key-env` alone rotates the anon key and keeps the cached service key. Rotating the anon key therefore never requires exporting the service key with `--reveal` and passing it back through a shell. Passing `--anon-key-env` with no cached service key fails with `BAD_USAGE` naming that flag.
+- `run402 credentials project-keys import --project <id> --anon-key-env <env>` — anon-only rotation. Import writes the whole cache entry, so the FIRST import for a project must supply a service key; once an entry exists, `--anon-key-env` alone rotates the anon key and keeps the cached service key. Rotating the anon key therefore never requires exporting the service key with `--reveal` and passing it back through a shell. Passing `--anon-key-env` with no cached service key fails with `BAD_USAGE` naming that flag.
 - `run402 credentials project-keys export --project <id> --reveal` — print cached secret key material. Requires `--reveal`.
 - `run402 credentials project-keys remove --project <id>` — remove one local cache entry without deleting or changing the server project.
 
@@ -1092,9 +1092,9 @@ run402 repos access
 run402 repos recover s3://acme-vault-mirror --out ./restored
 ```
 
-**MCP.** Three read-only tools carry the SAME one-noun renaming: `repos_view`, `repos_list_heads`, `repos_fsck` (formerly `get_gitvault_status`, `list_gitvault_heads`, `verify_gitvault`). No mutating verb has an MCP tool, and none will — the same "mutating verbs are CLI-only by design" law as before (immutable generations with no undo, the one-shot recovery receipt, the once-returned maintenance lease token, destructive `gc --submit`, owner+step-up `policy`).
+**MCP.** Three read-only tools carry the SAME one-noun renaming: `repos_view`, `repos_list_heads`, `repos_fsck`. No mutating verb has an MCP tool, and none will — mutating verbs are CLI-only by design (immutable generations with no undo, the one-shot recovery receipt, the once-returned maintenance lease token, destructive `gc --submit`, owner+step-up `policy`).
 
-**Wallet selection, remote naming, id-pinning, named addressing, lazy allocation, the vault-only track, dry-run preview, `--human` rendering, the deploy-time capture lane, `gc`'s two-phase submit ceremony, expiry, terminal loss, the backup reminder, and mirroring to your own storage** all work exactly as `gitvault` used to document them — only the CLI noun and a few verb names changed (`status`→`view`, `compact`+`prune`→`gc`, `verify`+`--refs`→`fsck`, `mirror <action>`→`mirror` with flags, `name`→`rename`). See the sections below for the full mechanics; every `run402 gitvault …` example there now reads `run402 repos …`.
+**Wallet selection, remote naming, id-pinning, named addressing, lazy allocation, the vault-only track, dry-run preview, `--human` rendering, the deploy-time capture lane, `gc`'s two-phase submit ceremony, expiry, terminal loss, the backup reminder, and mirroring to your own storage** are all covered in the sections below.
 
 **Cost.** There is no separate repos price. A repo's bytes count against the same organization-pooled `storage_bytes` budget your projects already share, charged once per unique object, with a 64 KiB per-object accounting floor.
 
@@ -1103,9 +1103,9 @@ run402 repos recover s3://acme-vault-mirror --out ./restored
 **Terminal loss (protocol §0).** In V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**. `view` prints the full statement verbatim on stderr and carries it in its JSON — read it before you rely on this. The vault protects source history from host-side loss while a principal keystore survives.
 
 ### admin (platform-admin only, v1.57+)
-- `run402 admin lease-perpetual <organization_id> --enable | --disable` — toggle the organization-level escape hatch. When enabled, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline (`reactivated: true` in the response). Replaces the v1.56 `run402 projects pin` (gateway endpoint /projects/v1/admin/:id/pin was removed in v1.57).
+- `run402 admin lease-perpetual <organization_id> --enable | --disable` — toggle the organization-level escape hatch. When enabled, the organization never advances past `active` regardless of lease expiry; every project on the organization is pinned. Enabling on a grace-state organization (past_due / frozen / dormant) reactivates inline (`reactivated: true` in the response).
 - `run402 admin archive <project_id> [--reason "..."]` — operator moderation. Sets `projects.archived_at = NOW()` on a single project; sibling projects on the same organization keep serving. No-op when already archived (returns `note: "already archived"`).
-- `run402 admin reactivate <project_id>` — un-archive a project (flips `archived_at` back to NULL). In v1.57 this was narrowed: it no longer touches organization-level lifecycle. To reactivate a grace-state organization, run `run402 tier set <tier>` (the tier flow runs the lifecycle advance inline) or enable `run402 admin lease-perpetual <org_id> --enable`.
+- `run402 admin reactivate <project_id>` — un-archive a project (flips `archived_at` back to NULL). It does not touch organization-level lifecycle. To reactivate a grace-state organization, run `run402 tier set <tier>` (the tier flow runs the lifecycle advance inline) or enable `run402 admin lease-perpetual <org_id> --enable`.
 
 All admin subcommands require a platform-admin allowance wallet (or an admin OAuth session). Project owners with a non-admin wallet receive `403 admin_required`.
 
@@ -1346,8 +1346,8 @@ Built-in helper: `import { auth, db, adminDb, email, ai, assets, getRoutedPaymen
 - `email.send(opts)` — send email from the project's mailbox (see email section below)
 - `ai.generateImage({ prompt, aspect? })` — live image generation from deployed functions using project billing authority, not local allowance/x402 signing. Aspects: `square`, `landscape`, `portrait`; result: `{ image, content_type, aspect }`. Add app auth/rate limits before calling it from public routed functions.
 - `assets.put(key, source, opts?)` — upload bytes to the project's blob store from inside a deployed function. Uses the same CAS substrate as deploy-time assets. `source` is a string, `Uint8Array`, or `{ content | bytes }` object. Options: `contentType`, `visibility` (`"public"` | `"private"`, default `"public"`), `immutable` (default `true`). Returns an `AssetRef` with `url`, `immutableUrl`, `cdnUrl`, `sha256`, `size_bytes`, etc. (camelCase aliases included). Use for user-uploaded content, generated images, runtime-produced files.
-- `assets.fromRef(raw)` (v2.7+) — local rehydrate stored AssetRef JSONB into typed shape with camelCase aliases + variants. Store full `AssetRef` from `r.assets.put` in JSONB; variant SHAs/immutable URLs cannot be re-derived from `(source_sha,key)`. Tolerates partial legacy inputs; throws only on null/undefined/non-object.
-- `getRun402Context(req)` (v2.7+) — reads `x-run402-*` context headers across `Request`/`Headers`/plain objects. Returns `{ requestId, projectId, releaseId, host, locale, defaultLocale }` (`string|null`), same as `Astro.locals.run402`; never throws.
+- `assets.fromRef(raw)` — local rehydrate stored AssetRef JSONB into typed shape with camelCase aliases + variants. Store full `AssetRef` from `r.assets.put` in JSONB; variant SHAs/immutable URLs cannot be re-derived from `(source_sha,key)`. Tolerates partial legacy inputs; throws only on null/undefined/non-object.
+- `getRun402Context(req)` — reads `x-run402-*` context headers across `Request`/`Headers`/plain objects. Returns `{ requestId, projectId, releaseId, host, locale, defaultLocale }` (`string|null`), same as `Astro.locals.run402`; never throws.
 
 TypeScript types: `npm install @run402/functions@^3.7` to get full autocomplete for the `auth.*` namespace, `db(req?)`, `adminDb()`, `getRun402Context()`, `getRoutedPaymentContext()`, `email.send()`, `ai.translate()`, `ai.generateImage()`, `assets.put()`, and `assets.fromRef()`. Works in any Node.js/TypeScript project (Astro, Next.js, plain TS). For static site generation, use `adminDb().from()` at build time with `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in your `.env`.
 
@@ -1517,7 +1517,7 @@ the filename was not recorded for that run.
 
 ### assets (primary storage API)
 
-Direct-to-S3 asset storage, 1 byte to 5 TiB. Flat key namespace per project; renamed from `blob` in v2.0.
+Direct-to-S3 asset storage, 1 byte to 5 TiB. Flat key namespace per project.
 
 Bulk directories: use `deploy apply` with `assets` slice: additive `assets: { put: [...] }`; declarative sync `assets: { put: [...], sync: { prefix, prune: true, confirm? } }`. No `run402 assets sync`; apply is canonical so HTML + asset URLs stage atomically.
 
@@ -1529,7 +1529,7 @@ Bulk directories: use `deploy apply` with `assets` slice: additive `assets: { pu
 - `run402 assets diagnose <url> [--project <id>]` — inspect live CDN state for a public URL
 - `run402 cdn wait-fresh <url> --sha <hex> [--timeout <secs>] [--project <id>]` — poll a mutable URL until it serves the expected SHA-256
 
-Project resolution for every command above: `--project <id>` > `RUN402_PROJECT_ID` (the canonical env var, same as every other project-scoped command) > the deprecated `RUN402_PROJECT` alias > the active project. `assets`/`cdn` used to read ONLY `RUN402_PROJECT` — a different, undocumented name from `RUN402_PROJECT_ID` — so exporting the canonical var and running one of these commands was a silent no-op. `RUN402_PROJECT` still works as a fallback but prints one deprecation line to stderr; switch to `RUN402_PROJECT_ID`.
+Project resolution for every command above: `--project <id>` > `RUN402_PROJECT_ID` (the canonical env var, same as every other project-scoped command) > the deprecated `RUN402_PROJECT` alias > the active project. `RUN402_PROJECT` works as a fallback but prints one deprecation line to stderr; switch to `RUN402_PROJECT_ID`.
 
 `put` flags (v1.50):
 - `--meta key=value` repeatable; coercion: numeric-looking -> number, `true|false` -> boolean, comma -> `string[]`, else string. Serialized total <=4 KB; no nested objects; invalid -> `INVALID_ASSET_METADATA`.
@@ -1616,7 +1616,7 @@ Image variants (v1.49+ gateway, `@run402/sdk@2.3.0+`, image MIME >=320x320):
 - `display_url` / `display_immutable_url`: browser-displayable; jpeg/png/webp/avif = `cdn_url`; HEIC/HEIF -> JPEG `display_jpeg`, original bytes preserved in CAS. `imgTag`/`imgTagWithSrcSet` default `<img src>` to `display_url`.
 - `variants.thumb|medium|large`: WebP 320w/800w/1920w with `url`, `cdn_url`, `width_px`, `height_px`, `format`, `sha256`; use `variants.thumb.cdn_url` for grids.
 - `variants.display_jpeg`: HEIC/HEIF only, full-res JPEG quality 90 sRGB.
-- `thumbUrl` / `displayUrl` SDK conveniences (v2.3+): `thumbUrl = variants.thumb.cdn_url ?? displayUrl`, `displayUrl = display_url ?? cdn_url`; `undefined` for non-images.
+- `thumbUrl` / `displayUrl` SDK conveniences: `thumbUrl = variants.thumb.cdn_url ?? displayUrl`, `displayUrl = display_url ?? cdn_url`; `undefined` for non-images.
 - `imgTagWithSrcSet(opts)` emits WebP `<picture>` + `display_url` fallback; throws on missing `opts.sizes` or missing `variants`; use `imgTag()` when no variants. AVIF deferred.
 - `r.assets.put(...)` and `r.project(id).apply({ assets: { put: [...] } })` produce identical `AssetRef` shape.
 - Encoder errors: 422 `IMAGE_DECODE_FAILED`, 413 `IMAGE_INPUT_TOO_LARGE` (>40 MP or >12000 px any axis), 504 `IMAGE_ENCODE_TIMEOUT`, 429 `TOO_MANY_ENCODES_QUEUED` (retry after 2s).
