@@ -14,7 +14,7 @@
 import { after, before, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -637,6 +637,111 @@ describe("run402 repos snapshot — thin passthrough to gitvault.push", () => {
   it("-v prints a stats summary line to stderr", async () => {
     await ok("snapshot", ["--project", PROJECT, "-v"]);
     assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
+  });
+});
+
+describe("run402 repos snapshot --dry-run — flood fix (dogfood item 1)", () => {
+  function bigCaptured(n) {
+    return Array.from({ length: n }, (_, i) => ({ path: `file${i}.txt`, mode: "100644", oid: "a".repeat(40) }));
+  }
+
+  it("default output summarizes instead of inlining the full captured-file inventory", async () => {
+    impl.planPush = async () => ({
+      allocation_needed: false, would_admit_generation: "0000000000000002", would_admit_generation_decimal: "2",
+      form: "wal", object_count: 1, encrypted_bytes: "1284", raw_bytes: "1180",
+      snapshot: {
+        kind: "head", oid: "deadbeef", tree_oid: "treeoid", head: { kind: "symref", ref: "refs/heads/main" },
+        head_oid: "deadbeef", captured: bigCaptured(3042), captured_digest: "digest123",
+        modified_captured: [], untracked_captured: [], paths: [], top_level: "/repo", global_excludes_path: null,
+      },
+    });
+    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run"]);
+    assert.equal(payload.files_total, 3042);
+    assert.equal(payload.files_changed, 0);
+    assert.equal(payload.files_new, 0);
+    assert.deepEqual(payload.changed_paths, []);
+    assert.equal(payload.changed_more, 0);
+    assert.equal(payload.manifest_path, null);
+    // the flood is gone: no raw captured/paths arrays in the default snapshot object
+    assert.equal(payload.snapshot.captured, undefined);
+    assert.equal(payload.snapshot.paths, undefined);
+    assert.equal(payload.snapshot.modified_captured, undefined);
+    assert.equal(payload.snapshot.untracked_captured, undefined);
+    // generation/commitment fields survive untouched
+    assert.equal(payload.would_admit_generation, "0000000000000002");
+    assert.equal(payload.form, "wal");
+    assert.equal(payload.object_count, 1);
+    assert.equal(payload.encrypted_bytes, "1284");
+    assert.equal(payload.raw_bytes, "1180");
+    assert.equal(payload.snapshot.oid, "deadbeef");
+    assert.equal(payload.snapshot.captured_digest, "digest123");
+  });
+
+  it("changed_paths caps at 200 with an explicit changed_more overflow, never silent truncation", async () => {
+    const untracked = Array.from({ length: 250 }, (_, i) => `new${String(i).padStart(4, "0")}.txt`);
+    impl.planPush = async () => ({
+      allocation_needed: false, would_admit_generation: "0000000000000002", would_admit_generation_decimal: "2",
+      form: "wal", object_count: 1, encrypted_bytes: "1284", raw_bytes: "1180",
+      snapshot: {
+        kind: "head", oid: "deadbeef", tree_oid: "treeoid", head: { kind: "symref", ref: "refs/heads/main" },
+        head_oid: "deadbeef", captured: bigCaptured(300), captured_digest: "digest123",
+        modified_captured: [], untracked_captured: untracked, paths: [], top_level: "/repo", global_excludes_path: null,
+      },
+    });
+    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run"]);
+    assert.equal(payload.files_new, 250);
+    assert.equal(payload.changed_paths.length, 200);
+    assert.equal(payload.changed_more, 50);
+  });
+
+  it("--manifest-out writes the complete untouched inventory to a file and names it in manifest_path", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-manifest-out-"));
+    const outPath = join(dir, "plan.json");
+    impl.planPush = async () => ({
+      allocation_needed: false, would_admit_generation: "0000000000000002", would_admit_generation_decimal: "2",
+      form: "wal", object_count: 1, encrypted_bytes: "1284", raw_bytes: "1180",
+      snapshot: {
+        kind: "head", oid: "deadbeef", tree_oid: "treeoid", head: { kind: "symref", ref: "refs/heads/main" },
+        head_oid: "deadbeef", captured: bigCaptured(10), captured_digest: "digest123",
+        modified_captured: [], untracked_captured: [], paths: [], top_level: "/repo", global_excludes_path: null,
+      },
+    });
+    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run", "--manifest-out", outPath]);
+    assert.equal(payload.manifest_path, outPath);
+    assert.equal(payload.snapshot.captured, undefined); // stdout still summarized
+    const written = JSON.parse(readFileSync(outPath, "utf-8"));
+    assert.equal(written.snapshot.captured.length, 10); // the file holds the FULL inventory
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("-v/--verbose inlines the full inventory in the JSON in addition to the stats line", async () => {
+    impl.planPush = async () => ({
+      allocation_needed: false, would_admit_generation: "0000000000000002", would_admit_generation_decimal: "2",
+      form: "wal", object_count: 1, encrypted_bytes: "1284", raw_bytes: "1180",
+      snapshot: {
+        kind: "head", oid: "deadbeef", tree_oid: "treeoid", head: { kind: "symref", ref: "refs/heads/main" },
+        head_oid: "deadbeef", captured: bigCaptured(10), captured_digest: "digest123",
+        modified_captured: [], untracked_captured: [], paths: [], top_level: "/repo", global_excludes_path: null,
+      },
+    });
+    const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run", "-v"]);
+    assert.equal(payload.snapshot.captured.length, 10); // fully inlined under -v
+    assert.equal(payload.files_total, 10); // summary fields compose, they don't disappear
+    assert.ok(stderr.some((line) => line.startsWith("stats: round_trips=")));
+  });
+
+  it("a real (non-dry-run) snapshot gets the same summarize-by-default treatment", async () => {
+    impl.push = async () => ({
+      generation: "0000000000000001", form: "wal",
+      snapshot: {
+        kind: "head", oid: "deadbeef", tree_oid: "treeoid", head: { kind: "symref", ref: "refs/heads/main" },
+        head_oid: "deadbeef", captured: bigCaptured(3042), captured_digest: "digest123",
+        modified_captured: [], untracked_captured: [], paths: [], top_level: "/repo", global_excludes_path: null,
+      },
+    });
+    const payload = await ok("snapshot", ["--project", PROJECT]);
+    assert.equal(payload.files_total, 3042);
+    assert.equal(payload.snapshot.captured, undefined);
   });
 });
 

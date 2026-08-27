@@ -33,7 +33,7 @@ import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { nextAction, claimOrgSlugAction, claimRepoNameAction } from "./next-actions.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
 import { gitvaultRemoteUrlForRepo } from "#sdk";
-import { sdkStats, printVerboseStats } from "./stats.mjs";
+import { sdkStats, printVerboseStats, isVerbose } from "./stats.mjs";
 import {
   normalizeArgv,
   hasHelp,
@@ -63,7 +63,7 @@ Then plain git, forever:
   git clone run402::<org>/<repo>
 
 Occasional:
-  run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty]
+  run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
   run402 repos mirror   [<destination>] [--off] [--backfill] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--project <id>] [--repo <repo_id>]
   run402 repos recover  <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--human]
 
@@ -134,6 +134,15 @@ Subcommands:
            capture it as-is; the result then discloses exactly what was
            swept in (modified_captured / untracked_captured), printed to
            stderr too. \`--dry-run\` surfaces the same refusal.
+           Both \`--dry-run\` and a real snapshot print a SUMMARY by default —
+           file counts (files_total/files_changed/files_new), total/delta
+           bytes, and up to 200 changed/new paths (changed_more names any
+           overflow) — never the full captured-file inventory, which can run
+           to thousands of entries on a real repo. \`--manifest-out <path>\`
+           writes the complete inventory to a file (the result's
+           manifest_path names it); \`-v\`/\`--verbose\` inlines the full
+           inventory directly in the JSON (in addition to its usual stderr
+           stats line, not instead of it).
   mirror   ONE flag-driven verb for the client-side, customer-
            owned ciphertext mirror — run402 never holds a credential to it.
            No argument: READ the configured destination + a keyless
@@ -145,12 +154,16 @@ Subcommands:
            mirror that fell behind). Exactly one of these per call. Mirror
            state also renders inside \`repos view\`; mirror INTEGRITY inside
            \`repos fsck --mirror\`.
-  recover  \`r402s-recover\`: rebuild a working git repository straight from
-           a mirrored prefix, with NO SERVER INVOLVED — the offline disaster
-           path (normal retrieval is plain \`git clone run402::<org>/<repo>\`,
-           no \`repos clone\` verb exists). Proves this mirror's validity,
-           never freshness — read both honesty statements before relying on
-           the result. \`--human\` renders a short summary instead of JSON.
+  recover  \`r402s-recover\`: rebuild a BARE recovery repository (no working
+           files) straight from a mirrored prefix, with NO SERVER INVOLVED —
+           the offline disaster path (normal retrieval is plain \`git clone
+           run402::<org>/<repo>\`, no \`repos clone\` verb exists). The result's
+           \`layout\` is \`"bare"\` and its \`next_actions\` print the exact
+           \`git clone <out_dir> <out_dir>-worktree\` to run for a working
+           tree — recover itself never checks files out. Proves this
+           mirror's validity, never freshness — read both honesty statements
+           before relying on the result. \`--human\` renders a short summary
+           instead of JSON.
   fsck     Walks the head chain AND materializes
            the ref map, advancing BOTH
            local trust pins — reported EXPLICITLY as local_state_changed +
@@ -181,7 +194,11 @@ Subcommands:
            has NOT yet been rotated away — pending_removal is honest
            bookkeeping, not enforcement, until \`access repair\`/\`revoke-key\`
            actually rotates. history_scope (which epochs each recipient can
-           read) is not reported by this read — see the \`gap\` field.
+           read) is not reported by this read — see the \`gap\` field. An
+           enrolled teammate's key envelope is wrapped AUTOMATICALLY — no
+           manual step — by the next \`git push\` or \`repos snapshot\` any
+           key-holding client runs (best-effort, non-blocking; the retired
+           \`gitvault reconcile\` verb did this by hand and is REMOVED).
            \`--human\` renders a compact roster instead of JSON (the read
            form only — repair/revoke-key/declare-exposure stay JSON-only).
   access repair
@@ -252,6 +269,12 @@ Options:
                     The result discloses exactly what was swept in
                     (modified_captured / untracked_captured) — even this
                     override never captures silently.
+  --manifest-out <path>
+                    snapshot: write the complete captured-file inventory
+                    (the full JSON the SDK returned, untouched) to a private
+                    0600 file instead of stdout's default summary. The
+                    printed result's manifest_path names it. Composes with
+                    --dry-run and with -v/--verbose.
   --off             mirror: remove the configured destination (config only)
   --backfill        mirror: copy every object the configured mirror is missing
   --profile <name>  mirror / recover: the AWS credential profile name for an
@@ -283,7 +306,10 @@ Options:
   -v, --verbose     Print one stderr summary line of this call's request
                     stats (round trips, wire time, bytes). Coexists with
                     --human. The JSON result always carries a \`stats\` block
-                    regardless of this flag.
+                    regardless of this flag. On \`snapshot\`/\`snapshot
+                    --dry-run\`, ALSO inlines the full captured-file
+                    inventory in stdout's JSON (composes with the stats
+                    line — both happen, not one or the other).
   --json            No-op: stdout is already JSON.
 
 Terminal loss (protocol §0):
@@ -300,6 +326,7 @@ Examples:
   run402 repos list --org org_1a2b3c --human
   run402 repos rename my-notes --project prj_1a2b3c
   run402 repos snapshot --dry-run
+  run402 repos snapshot --dry-run --manifest-out /tmp/snapshot-plan.json
   run402 repos snapshot --allow-dirty
   run402 repos mirror s3://acme-vault-mirror --profile acme
   run402 repos mirror --backfill
@@ -1068,7 +1095,7 @@ async function del(args) {
 
 // ─── snapshot ───────────────────────────────────────────────────────────────
 
-const SNAPSHOT_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--message"];
+const SNAPSHOT_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--message", "--manifest-out"];
 
 /**
  * When neither `--repo` nor `--project` was given explicitly, look at the
@@ -1107,6 +1134,74 @@ function printDirtyDisclosure(snapshot) {
   for (const p of snapshot.untracked_captured ?? []) console.error(`captured (untracked): ${p}`);
 }
 
+/** How many `changed_paths` entries {@link summarizeSnapshotPayload} inlines before capping. */
+const SNAPSHOT_CHANGED_PATHS_CAP = 200;
+
+/**
+ * item 1 (dogfood): `snapshot.captured` — the SDK's full captured-file
+ * inventory (every tracked + untracked-not-ignored path in the repo, always
+ * populated regardless of how small the actual push delta is) — is a
+ * multi-thousand-line flood on a real repo, even when what actually
+ * publishes is a handful of kilobytes. The SDK keeps returning it in full
+ * (thin-shim law: other SDK consumers may want it) — this reshapes ONLY the
+ * CLI's own stdout, by default:
+ *
+ *   - `files_total` / `files_changed` / `files_new` — counts. `files_total`
+ *     is `captured.length`; `files_changed`/`files_new` are
+ *     `modified_captured`/`untracked_captured` — the ONLY per-path drift
+ *     this data distinguishes (the `--allow-dirty` sweep-in disclosure).
+ *     On the common clean-tree path both are empty, so `changed_paths` is
+ *     too — there is no `files_deleted` here, because `captured` only
+ *     lists paths PRESENT on disk today; nothing in this data names which
+ *     paths a plain clean push's new commits touched.
+ *   - `changed_paths` — `modified_captured` ∪ `untracked_captured`,
+ *     sorted, capped at `SNAPSHOT_CHANGED_PATHS_CAP`; `changed_more` names
+ *     the overflow explicitly rather than truncating silently.
+ *   - `snapshot.captured` / `.paths` / `.modified_captured` /
+ *     `.untracked_captured` are dropped from the default `snapshot` object
+ *     (its other scalar fields — kind, oid, tree_oid, head, head_oid,
+ *     captured_digest, top_level, global_excludes_path — stay). `verbose`
+ *     restores them (composes with the summary fields, does not replace
+ *     them) — the `-v`/`--verbose` flag already means "print a stats
+ *     line"; on `snapshot --dry-run`/`snapshot` it ALSO inlines the full
+ *     inventory.
+ *   - `manifest_path` is `null` unless `--manifest-out <path>` wrote the
+ *     COMPLETE, untouched payload to that file — see `writeManifestOut`.
+ */
+function summarizeSnapshotPayload(payload, { verbose = false, manifestPath = null } = {}) {
+  const out = { ...payload, manifest_path: manifestPath };
+  const snapshot = payload.snapshot;
+  if (!snapshot) return out;
+  const modified = snapshot.modified_captured ?? [];
+  const untracked = snapshot.untracked_captured ?? [];
+  const changedAll = [...modified, ...untracked].sort();
+  const changedPaths = changedAll.slice(0, SNAPSHOT_CHANGED_PATHS_CAP);
+  out.files_total = Array.isArray(snapshot.captured) ? snapshot.captured.length : 0;
+  out.files_changed = modified.length;
+  out.files_new = untracked.length;
+  out.changed_paths = changedPaths;
+  out.changed_more = changedAll.length - changedPaths.length;
+  if (!verbose) {
+    const { captured, paths, modified_captured, untracked_captured, ...trimmedSnapshot } = snapshot;
+    out.snapshot = trimmedSnapshot;
+  }
+  return out;
+}
+
+/** `--manifest-out <path>`: write the COMPLETE, untouched plan/push payload — the full captured-file inventory included — to a private 0600 file. */
+function writeManifestOut(path, payload) {
+  try {
+    writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  } catch (e) {
+    fail({
+      code: "MANIFEST_OUT_WRITE_FAILED",
+      message: `could not write the full snapshot inventory to ${path}: ${e instanceof Error ? e.message : String(e)}`,
+      hint: "Check that the path is writable and its parent directory exists.",
+      details: { path },
+    });
+  }
+}
+
 async function snapshot(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, [...SNAPSHOT_VALUE_FLAGS, "--checkpoint", "--dry-run", "--allow-dirty", "-v", "--verbose", "--help", "-h"], SNAPSHOT_VALUE_FLAGS);
@@ -1137,10 +1232,13 @@ async function snapshot(args) {
   if (allowDirty) snapshotOpts.allowDirty = true;
   if (Object.keys(snapshotOpts).length > 0) opts.snapshot = snapshotOpts;
   if (a.includes("--checkpoint")) opts.checkpoint = true;
+  const manifestOutPath = flagValue(a, "--manifest-out");
+  const verbose = isVerbose(a);
   try {
     if (dryRun) {
       const plan = await sdk.gitvault.planPush(opts);
-      printJson(sdk, plan);
+      if (manifestOutPath != null) writeManifestOut(manifestOutPath, plan);
+      printJson(sdk, summarizeSnapshotPayload(plan, { verbose, manifestPath: manifestOutPath }));
       if (plan.allocation_needed) {
         console.error("dry-run: no repo allocated for this project yet — a real snapshot would allocate one first; object/byte sizing is not knowable until then");
       } else {
@@ -1154,7 +1252,8 @@ async function snapshot(args) {
       return;
     }
     const result = await sdk.gitvault.push(opts);
-    printJson(sdk, result);
+    if (manifestOutPath != null) writeManifestOut(manifestOutPath, result);
+    printJson(sdk, summarizeSnapshotPayload(result, { verbose, manifestPath: manifestOutPath }));
     console.error(`published generation ${result.generation} (${result.form})`);
     if (result.mirror_push?.outcome === "pushed") {
       console.error(`mirror: pushed generation ${result.generation} (${result.mirror_push.summary?.objects_copied ?? 0} object(s) copied)`);

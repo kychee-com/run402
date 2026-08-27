@@ -394,7 +394,10 @@ run402 init
 # 2. Allocate the repo's vault explicitly. Separate from `run402 init` on
 #    purpose: this is the step that mints key material on this machine and
 #    prints a one-shot recovery receipt. Idempotent — an existing vault comes
-#    back deduplicated. (git push / repos snapshot would allocate it lazily too.)
+#    back deduplicated. (Skip this step and git push / repos snapshot
+#    against an unallocated project allocates the SAME way, lazily, on
+#    first use — the two paths don't stack; this one just does it now,
+#    explicitly, so the receipt lands in JSON stdout instead of stderr.)
 run402 repos create --project <id>
 
 # 3. Snapshot — capture the working tree, encrypt it, publish a signed head.
@@ -410,6 +413,8 @@ git clone run402::<org_id>/<project_id> restored
 ```
 
 Cloning needs a Run402 principal on this machine — a wallet with an allowance and a keystore holding an envelope for this vault — this is encrypted git, not a shareable link.
+
+A fresh clone may show dangling commits under a plain `git fsck` — that's the vault's retained deploy/capture history, delivered in the pack but not referenced by any local ref. Expected and harmless, not corruption; `git fsck`'s exit status stays clean.
 
 `repos snapshot` is the CAPTURE lane — the protocol deploy ref plus the HEAD target — because a dirty tree captures as a synthetic commit that sits on no branch. Your own branches and tags reach the vault through `git push origin <branch>`.
 
