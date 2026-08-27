@@ -297,6 +297,28 @@ describe("the deploy lane reaches every one of the closed five", () => {
     assert.deepEqual(engine.commitBlocks[0], { activation_token_id: r.gitvault!.activation_token.object_id });
   });
 
+  it("a dirty work tree refuses SNAPSHOT_DIRTY_TREE before capture, and allowDirty threads through to capture it", async (t) => {
+    const f = await fixtureWithApp();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    writeFileSync(join(f.repoDir, "app.js"), "uncommitted work\n");
+    const engine = fakeEngine({ transport: f.transport });
+    const vault = fakeGitvault(f, "required");
+
+    await assert.rejects(
+      applyWithGitvault({ sdk: { _applyEngine: engine.engine, gitvault: vault.gitvault }, spec: SPEC, repo_dir: f.repoDir }),
+      (e: unknown) => (e as { code?: string }).code === "SNAPSHOT_DIRTY_TREE",
+    );
+    assert.equal(engine.commitBlocks.length, 0, "nothing committed on the refusal path");
+
+    const r = await applyWithGitvault({
+      sdk: { _applyEngine: engine.engine, gitvault: vault.gitvault },
+      spec: SPEC,
+      repo_dir: f.repoDir,
+      allowDirty: true,
+    });
+    assert.equal(outcomeOf(r), "DEPLOYED_AND_VAULTED");
+  });
+
   it("DEPLOY_BLOCKED_PUSH_FAILED: nothing commits, the previous release keeps serving", async (t) => {
     const f = await fixtureWithApp();
     t.after(() => rmSync(f.root, { recursive: true, force: true }));

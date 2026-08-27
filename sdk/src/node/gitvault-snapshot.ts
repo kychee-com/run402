@@ -1,13 +1,19 @@
 /**
  * gitvault — snapshot + hardened git execution (protocol rev 41 §6.6; task 5.5).
  *
- * Snapshot policy: clean tree → `HEAD`; dirty → a synthetic commit of tracked
- * + untracked-not-ignored paths (parented on HEAD; parentless on an unborn
- * HEAD); unmerged index → `SNAPSHOT_CONFLICTED_INDEX`; detached HEAD is
- * representable; linked worktrees, bare layouts, sparse checkouts, shallow
- * clones, submodules, SHA-256 repositories, alternates/grafts, and active
- * filters on any captured path are REFUSED BY NAME before any object is
- * created.
+ * Snapshot policy: clean tree → `HEAD`; dirty → REFUSED BY DEFAULT
+ * (`SNAPSHOT_DIRTY_TREE`, before any object is created) unless
+ * `allowDirty: true`, in which case a synthetic commit of tracked +
+ * untracked-not-ignored paths is captured (parented on HEAD; parentless on
+ * an unborn HEAD) and the result discloses exactly what got swept in
+ * (`modified_captured` / `untracked_captured`). "Dirty" means any modified
+ * or staged tracked path, or any untracked-not-ignored path — a project
+ * whose build step writes gitignored output is never dirty on that account.
+ * Unmerged index → `SNAPSHOT_CONFLICTED_INDEX` (checked first — allowDirty
+ * does not touch it); detached HEAD is representable; linked worktrees, bare
+ * layouts, sparse checkouts, shallow clones, submodules, SHA-256
+ * repositories, alternates/grafts, and active filters on any captured path
+ * are REFUSED BY NAME before any object is created.
  *
  * Ignore authority is FROZEN and read AS DATA: repository `.gitignore`,
  * `.git/info/exclude`, and the user's global excludes file. The global path
@@ -43,7 +49,7 @@ import { execFile } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { LocalError } from "../errors.js";
+import { LocalError, type NextAction } from "../errors.js";
 import { GITVAULT_OID40_RE, deriveDigestKey, keyedCommitment, sha256Hex, snapshotOidContent } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultHeadTarget } from "../namespaces/gitvault.types.js";
 
@@ -56,8 +62,8 @@ export const GITVAULT_DEPLOY_REF = "refs/run402/deploys/latest";
 /** Probed git version range: `[2.32, ∞)` — `GIT_CONFIG_GLOBAL` landed in 2.32. */
 export const GITVAULT_MIN_GIT_VERSION = [2, 32] as const;
 
-function fail(code: string, message: string, context: string, details?: unknown): never {
-  throw new LocalError(message, context, { code, details });
+function fail(code: string, message: string, context: string, details?: unknown, next_actions?: NextAction[]): never {
+  throw new LocalError(message, context, { code, details, ...(next_actions ? { next_actions } : {}) });
 }
 
 // ─── Hardened runner ─────────────────────────────────────────────────────────
@@ -515,6 +521,26 @@ export interface GitvaultSnapshotOptions {
   message?: string;
   /** Clock (synthetic commit timestamps). */
   now?: () => Date;
+  /**
+   * Capture a dirty tree anyway. Default `false` — a dirty tree (any
+   * modified/staged tracked path, or any untracked-not-ignored path) is
+   * refused with `SNAPSHOT_DIRTY_TREE` before any object is created, in
+   * BOTH capture lanes (manual `repos snapshot` and the deploy-lane
+   * capture). Has no effect on a clean tree, and never overrides
+   * `SNAPSHOT_CONFLICTED_INDEX` (an unmerged index is checked first and
+   * refuses regardless). See {@link GitvaultSnapshot.modified_captured} /
+   * {@link GitvaultSnapshot.untracked_captured} for the disclosure this
+   * produces once set.
+   */
+  allowDirty?: boolean;
+}
+
+/** How many dirty-tree paths `SNAPSHOT_DIRTY_TREE`'s `details.modified`/`details.untracked` list before capping. */
+export const SNAPSHOT_DIRTY_TREE_LIST_CAP = 500;
+
+function cappedPathList(paths: string[]): { list: string[]; more: number } {
+  if (paths.length <= SNAPSHOT_DIRTY_TREE_LIST_CAP) return { list: paths, more: 0 };
+  return { list: paths.slice(0, SNAPSHOT_DIRTY_TREE_LIST_CAP), more: paths.length - SNAPSHOT_DIRTY_TREE_LIST_CAP };
 }
 
 export interface GitvaultSnapshotRefusalPath {
@@ -548,6 +574,19 @@ export interface GitvaultSnapshot {
   /** The global excludes file honored (as data), when one existed. */
   global_excludes_path: string | null;
   top_level: string;
+  /**
+   * Disclosure for an `allowDirty: true` capture: tracked paths that were
+   * modified/staged relative to `HEAD` (or, on an unborn `HEAD`, every
+   * populated index path) and got swept into the capture. Empty for a clean
+   * tree (`kind: "head"`) — there was nothing to sweep in.
+   */
+  modified_captured: string[];
+  /**
+   * Disclosure for an `allowDirty: true` capture: untracked-not-ignored
+   * paths that got swept into the capture. Empty for a clean tree
+   * (`kind: "head"`).
+   */
+  untracked_captured: string[];
 }
 
 /** One member of the captured set: path, mode, and the oid of its RAW bytes (`--no-filters`). */
@@ -698,15 +737,44 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
   const headOid = repo.head.resolved_oid;
 
   // Dirty detection: index/worktree vs HEAD, plus untracked-not-ignored.
+  // Both lists are collected in full (not just a boolean) — SNAPSHOT_DIRTY_TREE
+  // discloses them below, and an `allowDirty` capture discloses them again as
+  // `modified_captured` / `untracked_captured` on the result.
   const untracked = (await hardenedGit(top, ["ls-files", "-z", "--others", "--exclude-standard", ...excludeArgs])).nul();
-  let dirty = untracked.length > 0;
-  if (!dirty) {
-    if (!headOid) dirty = (await hardenedGit(top, ["ls-files", "-z"])).nul().length > 0; // unborn HEAD with a populated index
-    else {
-      await hardenedGit(top, ["update-index", "-q", "--refresh"], { okStatuses: [1] });
-      dirty = (await hardenedGit(top, ["diff-index", "--name-only", "-z", "HEAD", "--"])).nul().length > 0;
-    }
+  let modified: string[];
+  if (!headOid) {
+    modified = (await hardenedGit(top, ["ls-files", "-z"])).nul(); // unborn HEAD with a populated index — every entry is new
+  } else {
+    await hardenedGit(top, ["update-index", "-q", "--refresh"], { okStatuses: [1] });
+    modified = (await hardenedGit(top, ["diff-index", "--name-only", "-z", "HEAD", "--"])).nul();
   }
+  const dirty = untracked.length > 0 || modified.length > 0;
+
+  // Fail fast and free: this refusal fires BEFORE any object is created,
+  // hashed, or uploaded — Tal's decision "help people not make mistakes"
+  // applies to both capture lanes (manual `repos snapshot` and the
+  // deploy-lane capture), and to `--dry-run` (which reaches this same
+  // function — a preview that hid the refusal would lie).
+  if (dirty && options.allowDirty !== true) {
+    const modifiedCap = cappedPathList(modified);
+    const untrackedCap = cappedPathList(untracked);
+    fail(
+      "SNAPSHOT_DIRTY_TREE",
+      `the work tree is dirty (${modified.length} modified/staged tracked path(s), ${untracked.length} untracked-not-ignored path(s)) — refusing to capture by default. Commit your changes and retry, or capture the tree as-is with allowDirty:true (SDK) / --allow-dirty (CLI); the result will disclose exactly what was swept in.`,
+      "capturing snapshot",
+      {
+        modified: modifiedCap.list,
+        modified_more: modifiedCap.more,
+        untracked: untrackedCap.list,
+        untracked_more: untrackedCap.more,
+      },
+      [
+        { type: "edit_request", why: "Commit your changes, then retry." },
+        { type: "edit_request", why: "Or capture the tree as-is: pass allowDirty:true (SDK) / --allow-dirty (CLI)." },
+      ],
+    );
+  }
+
   if (!dirty && headOid) {
     const tree = (await hardenedGit(top, ["rev-parse", "HEAD^{tree}"])).text().trim();
     // The captured set is recorded for a clean tree too, through the SAME
@@ -716,10 +784,13 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
     // untouched tree would re-derive differently and refuse its own deploy.
     const cleanPresent = await enumerateCapturedPaths(top, excludeArgs, untracked);
     const cleanCaptured = await hashCapturedPaths(top, cleanPresent, false, "capturing snapshot");
-    return { kind: "head", oid: headOid, tree_oid: tree, head: headTarget, head_oid: headOid, paths: [], captured: cleanCaptured, captured_digest: capturedSetDigest(cleanCaptured), global_excludes_path: excludes.path, top_level: top };
+    return { kind: "head", oid: headOid, tree_oid: tree, head: headTarget, head_oid: headOid, paths: [], captured: cleanCaptured, captured_digest: capturedSetDigest(cleanCaptured), global_excludes_path: excludes.path, top_level: top, modified_captured: [], untracked_captured: [] };
   }
 
   // Synthetic commit: tracked paths present on disk + untracked-not-ignored.
+  // Reached only when `dirty` (an unborn HEAD with an empty index is NOT
+  // dirty and falls through to here too — `headOid` is null, `modified`/
+  // `untracked` are both empty, and the loop below simply commits nothing).
   const present = await enumerateCapturedPaths(top, excludeArgs, untracked);
   // Size cap before any object is written.
   const oversize = present.find((e) => e.size > GITVAULT_MAX_GIT_OBJECT_BYTES);
@@ -749,7 +820,18 @@ export async function captureSnapshot(options: GitvaultSnapshotOptions): Promise
     if (options.update_local_deploy_ref !== false) {
       await hardenedGit(top, ["update-ref", GITVAULT_DEPLOY_REF, commit]);
     }
-    return { kind: "synthetic", oid: commit, tree_oid: tree, head: headTarget, head_oid: headOid, paths: entries.map((e) => e.path), captured: entries, captured_digest: capturedSetDigest(entries), global_excludes_path: excludes.path, top_level: top };
+    // Disclosure (allowDirty override): restrict `modified`/`untracked` to
+    // paths that actually landed in the captured set — a `modified` path
+    // that was deleted in the work tree is real drift but is not itself
+    // CAPTURED (it is simply absent, like any other deleted path).
+    const presentPaths = new Set(present.map((e) => e.path));
+    return {
+      kind: "synthetic", oid: commit, tree_oid: tree, head: headTarget, head_oid: headOid,
+      paths: entries.map((e) => e.path), captured: entries, captured_digest: capturedSetDigest(entries),
+      global_excludes_path: excludes.path, top_level: top,
+      modified_captured: modified.filter((p) => presentPaths.has(p)),
+      untracked_captured: untracked.filter((p) => presentPaths.has(p)),
+    };
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

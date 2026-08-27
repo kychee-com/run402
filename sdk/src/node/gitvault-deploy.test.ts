@@ -356,9 +356,20 @@ describe("snapshot correspondence — the captured set may not move under a depl
     writeFileSync(join(f.repoDir, "app.js"), "uncommitted work\n");
     writeFileSync(join(f.repoDir, "scratch.txt"), "untracked but not ignored\n");
     const lane = makeLane(f.transport);
-    const r = await runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir });
+    const r = await runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir, snapshot: { allowDirty: true } });
     assert.equal(r.snapshot.kind, "synthetic");
     assert.equal(r.outcome, "DEPLOYED_AND_VAULTED");
+    assert.deepEqual(r.snapshot.modified_captured, ["app.js"]);
+    assert.deepEqual(r.snapshot.untracked_captured, ["scratch.txt"]);
+  });
+
+  it("a dirty tree WITHOUT allowDirty refuses SNAPSHOT_DIRTY_TREE before the deploy-lane capture runs — same rule, same lane", async (t) => {
+    const f = await deployFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    writeFileSync(join(f.repoDir, "app.js"), "uncommitted work\n");
+    const lane = makeLane(f.transport);
+    await rejectsCode(runGitvaultDeploy({ vault: f.vault, lane, repo_dir: f.repoDir }), "SNAPSHOT_DIRTY_TREE");
+    assert.equal(lane.plans.length, 0, "the refusal fires before the lane is ever engaged");
   });
 
   /**
@@ -450,7 +461,7 @@ describe("snapshot correspondence — the captured set may not move under a depl
     );
 
     writeFileSync(join(f.repoDir, "app.js"), "dirty\n");
-    const dirty = await captureSnapshot({ dir: f.repoDir });
+    const dirty = await captureSnapshot({ dir: f.repoDir, allowDirty: true });
     assert.equal(dirty.kind, "synthetic");
     assert.equal(capturedSetDigest(dirty.captured), dirty.captured_digest);
     assert.notEqual(dirty.captured_digest, clean.captured_digest);

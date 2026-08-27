@@ -78,7 +78,7 @@ describe("snapshot policies", () => {
     assert.equal(gitvaultCommitLine(s), `gitvault_commit ${head}`);
   });
 
-  it("dirty tree → synthetic commit of tracked + untracked-not-ignored; git status unchanged; branches untouched", async () => {
+  it("dirty tree → synthetic commit of tracked + untracked-not-ignored (allowDirty); git status unchanged; branches untouched; disclosure lists what was captured", async () => {
     const dir = await makeRepo(root);
     const head = await git(dir, ["rev-parse", "HEAD"]);
     writeFileSync(join(dir, "README.md"), "changed\n");
@@ -89,11 +89,14 @@ describe("snapshot policies", () => {
     writeFileSync(join(dir, "sub", "deep.txt"), "deep\n");
     symlinkSync("README.md", join(dir, "link"));
     const before = await git(dir, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
-    const s = await captureSnapshot({ dir, env: env() });
+    const s = await captureSnapshot({ dir, env: env(), allowDirty: true });
     assert.equal(s.kind, "synthetic");
     assert.notEqual(s.oid, head);
     assert.deepEqual(s.paths, [".gitignore", "README.md", "link", "new.txt", "sub/deep.txt"]);
     assert.equal(gitvaultCommitLine(s), `gitvault_commit ${s.oid} (synthetic)`);
+    // disclosure: README.md was modified (tracked, changed); the rest were untracked-not-ignored
+    assert.deepEqual(s.modified_captured, ["README.md"]);
+    assert.deepEqual([...s.untracked_captured].sort(), [".gitignore", "link", "new.txt", "sub/deep.txt"]);
     // parented on HEAD; tree contents are the work tree's raw bytes
     assert.equal(await git(dir, ["rev-parse", `${s.oid}^`]), head);
     assert.equal(await git(dir, ["show", `${s.oid}:README.md`]), "changed");
@@ -107,25 +110,64 @@ describe("snapshot policies", () => {
     assert.equal(await git(dir, ["rev-parse", GITVAULT_DEPLOY_REF]), s.oid);
   });
 
-  it("tracked file deleted from the work tree is absent from the synthetic commit", async () => {
+  it("dirty tree without allowDirty refuses SNAPSHOT_DIRTY_TREE before any object is created — fails fast and free", async () => {
+    const dir = await makeRepo(root);
+    const headBefore = await git(dir, ["rev-parse", "HEAD"]);
+    writeFileSync(join(dir, "README.md"), "changed\n");
+    writeFileSync(join(dir, "new.txt"), "new\n");
+    const objectsBefore = await git(dir, ["count-objects", "-v"]);
+    const caught = await refusal(captureSnapshot({ dir, env: env() }));
+    assert.equal(caught?.code, "SNAPSHOT_DIRTY_TREE");
+    assert.deepEqual((caught as { details?: { modified?: string[] } })?.details?.modified, ["README.md"]);
+    assert.deepEqual((caught as { details?: { untracked?: string[] } })?.details?.untracked, ["new.txt"]);
+    const withNextActions = caught as { nextActions?: Array<{ why?: string }> };
+    assert.ok(withNextActions.nextActions?.some((a) => /commit/i.test(a.why ?? "")));
+    assert.ok(withNextActions.nextActions?.some((a) => /allowDirty|--allow-dirty/.test(a.why ?? "")));
+    // fails fast and free: no object, ref, or branch state changed
+    assert.equal(await git(dir, ["count-objects", "-v"]), objectsBefore);
+    assert.equal(await git(dir, ["rev-parse", "HEAD"]), headBefore);
+    assert.equal(await code(captureSnapshot({ dir, env: env() })), "SNAPSHOT_DIRTY_TREE"); // idempotent
+  });
+
+  it("a staged-but-uncommitted tracked file is `modified`, not `untracked`, in the refusal's details", async () => {
+    const dir = await makeRepo(root);
+    writeFileSync(join(dir, "staged.txt"), "s\n");
+    await git(dir, ["add", "staged.txt"]);
+    const caught = await refusal(captureSnapshot({ dir, env: env() }));
+    assert.equal(caught?.code, "SNAPSHOT_DIRTY_TREE");
+    assert.deepEqual((caught as { details?: { modified?: string[]; untracked?: string[] } })?.details, { modified: ["staged.txt"], modified_more: 0, untracked: [], untracked_more: 0 });
+  });
+
+  it("tracked file deleted from the work tree is absent from the synthetic commit (allowDirty)", async () => {
     const dir = await makeRepo(root);
     await commitFile(dir, "gone.txt", "x\n");
     rmSync(join(dir, "gone.txt"));
-    const s = await captureSnapshot({ dir, env: env() });
+    const s = await captureSnapshot({ dir, env: env(), allowDirty: true });
     assert.equal(s.kind, "synthetic");
     assert.ok(!s.paths.includes("gone.txt"));
+    // a deleted path is real drift but was never CAPTURED — it must not appear as "captured"
+    assert.ok(!s.modified_captured.includes("gone.txt"));
   });
 
-  it("unborn HEAD → parentless synthetic commit; symref head_target (unborn branch)", async () => {
+  it("unborn HEAD → parentless synthetic commit; symref head_target (unborn branch) (allowDirty)", async () => {
     const dir = join(root, "unborn");
     mkdirSync(dir);
     await git(dir, ["init", "-q", "-b", "main", "."]);
     writeFileSync(join(dir, "a.txt"), "a\n");
-    const s = await captureSnapshot({ dir, env: env() });
+    const s = await captureSnapshot({ dir, env: env(), allowDirty: true });
     assert.equal(s.kind, "synthetic");
     assert.equal(s.head_oid, null);
     assert.deepEqual(s.head, { kind: "symref", ref: "refs/heads/main" });
     assert.equal(await git(dir, ["rev-list", "--count", s.oid]), "1");
+  });
+
+  it("unborn HEAD with a clean (empty) index is NOT dirty — no allowDirty needed", async () => {
+    const dir = join(root, "unborn-empty");
+    mkdirSync(dir);
+    await git(dir, ["init", "-q", "-b", "main", "."]);
+    const s = await captureSnapshot({ dir, env: env() });
+    assert.equal(s.kind, "synthetic");
+    assert.equal(s.paths.length, 0);
   });
 
   it("detached HEAD is supported and representable as {kind: detached, oid}", async () => {
@@ -136,7 +178,8 @@ describe("snapshot policies", () => {
     assert.deepEqual(clean.head, { kind: "detached", oid: head });
     assert.equal(clean.kind, "head");
     writeFileSync(join(dir, "x.txt"), "x\n");
-    const dirty = await captureSnapshot({ dir, env: env() });
+    assert.equal(await code(captureSnapshot({ dir, env: env() })), "SNAPSHOT_DIRTY_TREE");
+    const dirty = await captureSnapshot({ dir, env: env(), allowDirty: true });
     assert.equal(dirty.kind, "synthetic");
     assert.deepEqual(dirty.head, { kind: "detached", oid: head });
     assert.equal(await git(dir, ["rev-parse", `${dirty.oid}^`]), head);
@@ -164,7 +207,7 @@ describe("frozen ignore authority — global excludes as data", () => {
     const d = discoverGlobalExcludes(env());
     assert.equal(d.path, join(home, "my-ignores"));
     assert.equal(d.source, "core.excludesFile");
-    const s = await captureSnapshot({ dir, env: env() });
+    const s = await captureSnapshot({ dir, env: env(), allowDirty: true });
     assert.deepEqual(s.paths, ["README.md", "keep.txt"]);
     assert.equal(s.global_excludes_path, join(home, "my-ignores"));
   });
@@ -243,7 +286,7 @@ describe("filter-free object creation (no-filter acceptance)", () => {
     await git(dir, ["config", "filter.evil.required", "true"]);
     writeFileSync(join(dir, ".gitattributes"), "payload.bin filter=evil\n");
     writeFileSync(join(dir, "payload.bin"), "raw bytes\n");
-    const caught = await refusal(captureSnapshot({ dir, env: env() }));
+    const caught = await refusal(captureSnapshot({ dir, env: env(), allowDirty: true }));
     assert.equal(caught?.code, "GITVAULT_FILTER_ACTIVE");
     assert.deepEqual(caught?.details?.paths, [{ path: "payload.bin", filter: "evil" }]);
     assert.equal(existsSync(sentinel), false, "the filter process must never start");
@@ -255,14 +298,14 @@ describe("filter-free object creation (no-filter acceptance)", () => {
     const dir = await makeRepo(root);
     writeFileSync(join(dir, ".gitattributes"), "*.bin filter=lfs diff=lfs merge=lfs -text\n");
     writeFileSync(join(dir, "big.bin"), "x\n");
-    assert.equal(await code(captureSnapshot({ dir, env: env() })), "GITVAULT_LFS_UNSUPPORTED");
+    assert.equal(await code(captureSnapshot({ dir, env: env(), allowDirty: true })), "GITVAULT_LFS_UNSUPPORTED");
   });
 
   it("a tracked file with CRLF/eol config is hashed RAW (no text conversion)", async () => {
     const dir = await makeRepo(root);
     await git(dir, ["config", "core.autocrlf", "true"]);
     writeFileSync(join(dir, "crlf.txt"), "a\r\nb\r\n");
-    const s = await captureSnapshot({ dir, env: env() });
+    const s = await captureSnapshot({ dir, env: env(), allowDirty: true });
     const blob = await git(dir, ["rev-parse", `${s.oid}:crlf.txt`]);
     const raw = await git(dir, ["hash-object", "--no-filters", "--stdin"], "a\r\nb\r\n");
     assert.equal(blob, raw);
@@ -310,7 +353,7 @@ describe("snapshot materialization — builds from the commit, never the mutatin
   it("mid-deploy edits cannot skew provenance", async () => {
     const dir = await makeRepo(root);
     writeFileSync(join(dir, "app.js"), "v1\n");
-    const s = await captureSnapshot({ dir, env: env() });
+    const s = await captureSnapshot({ dir, env: env(), allowDirty: true });
     writeFileSync(join(dir, "app.js"), "v2 (edited while the deploy is in flight)\n");
     writeFileSync(join(dir, "sneaky.js"), "never captured\n");
     const out = await materializeSnapshot(dir, s.oid, join(root, "build"));

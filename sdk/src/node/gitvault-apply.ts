@@ -224,6 +224,14 @@ export interface ApplyWithGitvaultOptions {
   keystore_root?: string;
   /** The audited unvaulted override — requires `gitvault.override_unvaulted`. */
   allow_unvaulted?: { reason: string };
+  /**
+   * Capture a dirty tree anyway. Default `false` — a dirty work tree refuses
+   * `SNAPSHOT_DIRTY_TREE` before this deploy's capture runs at all (same
+   * default as the manual `repos snapshot` lane; see `gitvault-snapshot.ts`).
+   * Has no effect on a `none`/`grandfathered`/`ungated` deploy, which never
+   * captures.
+   */
+  allowDirty?: boolean;
   /** Receives the `gitvault_commit` line the moment the snapshot exists. */
   onCommitLine?: (line: string) => void;
   /** Target passthrough; a Core target never engages the vault lane. */
@@ -280,6 +288,7 @@ export async function applyWithGitvault(options: ApplyWithGitvaultOptions): Prom
       ...(options.keystore_root !== undefined ? { keystore_root: options.keystore_root } : {}),
       ...(options.allow_unvaulted ? { allow_unvaulted: options.allow_unvaulted } : {}),
       ...(options.onCommitLine ? { onCommitLine: options.onCommitLine } : {}),
+      ...(options.allowDirty ? { snapshot: { allowDirty: true } } : {}),
     });
   } catch (err) {
     // Every throw here is a refusal that precedes activation — a snapshot
