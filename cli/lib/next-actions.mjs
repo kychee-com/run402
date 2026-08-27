@@ -70,12 +70,15 @@ export function deployAction() {
 /**
  * `repos create` (and `gitvault init`) on an org with no claimed slug: the
  * response's `address: null` had no pointer to WHY, or to the named-addressing
- * feature at all (kychee-com/run402#560). One-time $1 fee, owner-only.
+ * feature at all (kychee-com/run402#560). Owner-only. Wording deliberately
+ * omits a price: the first slug per org is free, and renames/re-claims cost
+ * $1 — a gateway change lands the fee separately, so this stays true under
+ * both the old and new pricing rule.
  */
 export function claimOrgSlugAction() {
   return nextAction("claim_org_slug", {
     command: "run402 org slug <slug>",
-    why: "This organization has no claimed slug yet, so its repos have no run402::<slug>/<name> address. One-time $1, owner-only.",
+    why: "This organization has no claimed slug yet, so its repos have no run402::<slug>/<name> address. Owner-only.",
   });
 }
 

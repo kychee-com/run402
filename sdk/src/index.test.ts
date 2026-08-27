@@ -163,6 +163,27 @@ describe("Run402 constructor validation", () => {
     }
   });
 
+  it("r.stats() reflects this instance's own request kernel activity, monotonic across calls", async () => {
+    const r = new Run402({
+      apiBase: "https://api.example.test",
+      credentials: makeCreds({ getAuth: async () => ({}) }),
+      fetch: (async () =>
+        new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as typeof globalThis.fetch,
+    });
+    assert.deepEqual(r.stats(), { round_trips: 0, wire_ms: 0, bytes_up: 0, bytes_down: 0 });
+    await r.service.health();
+    assert.equal(r.stats().round_trips, 1);
+    await r.service.health();
+    assert.equal(r.stats().round_trips, 2, "stats accumulate across calls on the same instance");
+
+    // A fresh instance starts back at zero — stats are per-instance, not global.
+    const r2 = new Run402({ apiBase: "https://api.example.test", credentials: makeCreds() });
+    assert.equal(r2.stats().round_trips, 0);
+  });
+
   it("LocalError thrown from the constructor carries the constructing-client context", () => {
     try {
       new Run402({} as never);

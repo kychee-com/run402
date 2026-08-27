@@ -6,7 +6,7 @@
  * defaults (keystore + allowance + x402), use `@run402/sdk/node` instead.
  */
 
-import { buildClient, type Client, type KernelConfig, type Run402ClientMetadata } from "./kernel.js";
+import { buildClient, type Client, type ClientStats, type KernelConfig, type Run402ClientMetadata } from "./kernel.js";
 import type { CredentialsProvider } from "./credentials.js";
 import { Projects } from "./namespaces/projects.js";
 import { Assets } from "./namespaces/assets.js";
@@ -375,6 +375,18 @@ export class Run402 {
       address,
       activeProject: activeProject ?? null,
     };
+  }
+
+  /**
+   * Cumulative request-kernel observability for this SDK instance: round
+   * trips, wire time, and bytes transferred, across every namespace call
+   * this instance has made. Monotonic — never resets — and reflects only
+   * THIS `Run402` instance (a fresh one, e.g. from a fresh `getSdk()` call,
+   * starts back at zero). See `RUN402_TRACE` in `kernel.ts` for the matching
+   * per-request stderr trace line.
+   */
+  stats(): ClientStats {
+    return this.#client.stats();
   }
 }
 

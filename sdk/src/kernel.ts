@@ -36,6 +36,15 @@ export interface KernelConfig {
   fetch: typeof globalThis.fetch;
   credentials: CredentialsProvider;
   clientMetadata?: Run402ClientMetadata | false;
+  /**
+   * Per-client observability accumulator, mutated by every request made
+   * through this kernel config. Set by {@link buildClient} — a fresh
+   * {@link ClientStats} object per `Run402` instance, monotonic (no reset)
+   * for the instance's lifetime. Exposed to callers via `Client.stats()` /
+   * `Run402.stats()`. Not meant to be set directly by SDK consumers.
+   * @internal
+   */
+  stats?: ClientStats;
 }
 
 export interface Run402ClientMetadata {
@@ -56,6 +65,101 @@ export interface RequestOptions {
   authMeta?: AuthRequestMeta;
   /** Short verb phrase attached to thrown errors (e.g. "provisioning project"). */
   context: string;
+  /**
+   * Logical retry attempt number, surfaced verbatim in the `RUN402_TRACE`
+   * line's `attempt=<n>` field. Default 1 — the kernel itself never retries
+   * a request; a caller that re-issues the same logical request after a
+   * higher-level retry (e.g. a safe release-race replan) may pass an
+   * incrementing value so the trace reads as one logical operation's history
+   * rather than unrelated single-attempt calls.
+   */
+  attempt?: number;
+}
+
+/** Cumulative request-kernel observability for one SDK instance (`Run402.stats()`). Monotonic — never resets. */
+export interface ClientStats {
+  /** Number of fetch calls made (successful or not). */
+  round_trips: number;
+  /** Summed wall-clock time spent in fetch + body read, in milliseconds. */
+  wire_ms: number;
+  /** Summed request body bytes sent, where knowable. */
+  bytes_up: number;
+  /** Summed response body bytes received (Content-Length when present, measured otherwise). */
+  bytes_down: number;
+}
+
+function emptyClientStats(): ClientStats {
+  return { round_trips: 0, wire_ms: 0, bytes_up: 0, bytes_down: 0 };
+}
+
+function recordClientStats(stats: ClientStats | undefined, delta: { ms: number; up: number; down: number }): void {
+  if (!stats) return;
+  stats.round_trips += 1;
+  stats.wire_ms += Math.round(delta.ms);
+  stats.bytes_up += delta.up;
+  stats.bytes_down += delta.down;
+}
+
+/** Monotonic clock, isomorphic-safe (`performance.now()` when present, else `Date.now()`). */
+function nowMs(): number {
+  try {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") return performance.now();
+  } catch {
+    // fall through to Date.now()
+  }
+  return Date.now();
+}
+
+/** Exact byte length of a request/response body payload. */
+function byteLength(value: string | Uint8Array | undefined): number {
+  if (value === undefined) return 0;
+  if (typeof value === "string") {
+    try {
+      return new TextEncoder().encode(value).length;
+    } catch {
+      return value.length;
+    }
+  }
+  return value.byteLength;
+}
+
+/**
+ * `RUN402_TRACE`: any non-empty value enables one stderr line per request.
+ * Feature-detects `process`/`process.env` so this isomorphic file never
+ * throws in a runtime (browser, V8 isolate) that lacks either.
+ */
+function traceEnabled(): boolean {
+  try {
+    return typeof process !== "undefined" && typeof process.env === "object" && process.env !== null &&
+      typeof process.env.RUN402_TRACE === "string" && process.env.RUN402_TRACE.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `r402 <METHOD> <path> -> <status> <ms>ms attempt=<n>` on stderr — path
+ * WITHOUT its query string, never headers, never bodies, never tokens (same
+ * redaction posture as the Node payment-attempt journal). `status` is `ERR`
+ * for a request that never got a response (network failure).
+ */
+function traceLine(method: string, path: string, status: number | "ERR", ms: number, attempt: number): void {
+  if (!traceEnabled()) return;
+  const pathOnly = path.split("?")[0];
+  const line = `r402 ${method} ${pathOnly} -> ${status} ${Math.round(ms)}ms attempt=${attempt}\n`;
+  try {
+    if (typeof process !== "undefined" && process.stderr && typeof process.stderr.write === "function") {
+      process.stderr.write(line);
+      return;
+    }
+  } catch {
+    // fall through to console.error
+  }
+  try {
+    if (typeof console !== "undefined" && typeof console.error === "function") console.error(line.trimEnd());
+  } catch {
+    // tracing must never break a request
+  }
 }
 
 /**
@@ -134,6 +238,8 @@ export interface Client {
    * a multipart upload, where auth + apiBase injection would be wrong.
    */
   readonly fetch: typeof globalThis.fetch;
+  /** Cumulative observability for this client instance. See {@link ClientStats}. */
+  stats(): ClientStats;
 }
 
 export async function request<T>(
@@ -166,7 +272,7 @@ export async function requestWithResponse<T>(
   opts: RequestOptions,
 ): Promise<ResponseEnvelope<T>> {
   const { apiBase, fetch, credentials } = kernel;
-  const { method = "GET", headers = {}, body, rawBody, withAuth = true, context } = opts;
+  const { method = "GET", headers = {}, body, rawBody, withAuth = true, context, attempt = 1 } = opts;
   const url = `${apiBase}${path}`;
 
   const fetchHeaders: Record<string, string> = { ...headers };
@@ -199,6 +305,8 @@ export async function requestWithResponse<T>(
     fetchBody = JSON.stringify(body);
   }
 
+  const upBytes = byteLength(fetchBody);
+  const startedAt = nowMs();
   let res: Response;
   try {
     res = await fetch(url, {
@@ -207,6 +315,9 @@ export async function requestWithResponse<T>(
       body: fetchBody as BodyInit | undefined,
     });
   } catch (err) {
+    const elapsed = nowMs() - startedAt;
+    recordClientStats(kernel.stats, { ms: elapsed, up: upBytes, down: 0 });
+    traceLine(method, path, "ERR", elapsed, attempt);
     // The kernel's `fetch` is injectable, and the paid clients inject an x402
     // payment fetch. That fetch throws DOMAIN errors, not just transport ones —
     // a confirmed balance miss (`X402_INSUFFICIENT_FUNDS`) surfaces here exactly
@@ -237,6 +348,11 @@ export async function requestWithResponse<T>(
   } else {
     resBody = await res.text();
   }
+
+  const elapsed = nowMs() - startedAt;
+  const downBytes = measureDownBytes(res, resBody, ct);
+  recordClientStats(kernel.stats, { ms: elapsed, up: upBytes, down: downBytes });
+  traceLine(method, path, res.status, elapsed, attempt);
 
   if (res.ok) {
     // OMIT the key entirely when no payment settled, rather than setting null.
@@ -320,6 +436,24 @@ function displayMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Response body bytes: `Content-Length` when present and well-formed, else measured from the parsed body. */
+function measureDownBytes(res: { headers: { get(name: string): string | null } }, resBody: unknown, ct: string): number {
+  const headerLen = res.headers.get("content-length");
+  if (headerLen !== null) {
+    const n = Number(headerLen);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  try {
+    if (typeof resBody === "string") return byteLength(resBody);
+    if (ct.includes("application/json") && resBody !== null && resBody !== undefined) {
+      return byteLength(JSON.stringify(resBody));
+    }
+  } catch {
+    // best-effort measurement only
+  }
+  return 0;
+}
+
 function envelopeCode(body: unknown): string | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const code = (body as Record<string, unknown>).code;
@@ -327,19 +461,25 @@ function envelopeCode(body: unknown): string | null {
 }
 
 export function buildClient(kernel: KernelConfig): Client {
+  // One stats accumulator per client: every request this `Run402` instance
+  // makes (directly or through a namespace) mutates the SAME object, because
+  // every closure below captures `kernelWithStats`, not the caller's `kernel`.
+  const stats: ClientStats = kernel.stats ?? emptyClientStats();
+  const kernelWithStats: KernelConfig = kernel.stats === stats ? kernel : { ...kernel, stats };
   const getProjectCredentials = (id: string) =>
     kernel.credentials.getProjectCredentials
       ? kernel.credentials.getProjectCredentials(id)
       : kernel.credentials.getProject?.(id) ?? Promise.resolve(null);
   return {
     apiBase: kernel.apiBase,
-    request: <T>(path: string, opts: RequestOptions) => request<T>(kernel, path, opts),
+    request: <T>(path: string, opts: RequestOptions) => request<T>(kernelWithStats, path, opts),
     requestWithResponse: <T>(path: string, opts: RequestOptions) =>
-      requestWithResponse<T>(kernel, path, opts),
+      requestWithResponse<T>(kernelWithStats, path, opts),
     getProjectCredentials,
     getProject: getProjectCredentials,
     credentials: kernel.credentials,
     fetch: kernel.fetch,
+    stats: () => ({ ...stats }),
   };
 }
 

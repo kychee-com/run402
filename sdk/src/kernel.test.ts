@@ -6,7 +6,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { clientMetadataHeaders, request, type KernelConfig } from "./kernel.js";
+import { buildClient, clientMetadataHeaders, request, requestWithResponse, type KernelConfig } from "./kernel.js";
 import {
   ApiError,
   NetworkError,
@@ -526,5 +526,113 @@ describe("kernel request", () => {
     await request(kernel, "/projects/v1/admin/abc", { context: "x" });
     assert.equal(capturedUrl, "https://api.example.test/projects/v1/admin/abc");
     exitSpy.restore();
+  });
+});
+
+describe("kernel observability (RUN402_TRACE + per-client stats)", () => {
+  let exitSpy: { restore: () => void };
+  let originalTrace: string | undefined;
+  let stderrLines: string[];
+  let originalWrite: typeof process.stderr.write;
+
+  beforeEach(() => {
+    const original = process.exit;
+    (process as unknown as { exit: (code?: number) => never }).exit = ((code?: number) => {
+      throw new Error(`process.exit(${code}) called during SDK test`);
+    }) as typeof process.exit;
+    exitSpy = { restore: () => { process.exit = original; } };
+    originalTrace = process.env.RUN402_TRACE;
+    stderrLines = [];
+    originalWrite = process.stderr.write.bind(process.stderr);
+    (process.stderr.write as unknown) = (chunk: unknown) => {
+      stderrLines.push(String(chunk));
+      return true;
+    };
+  });
+
+  function restoreEnv() {
+    if (originalTrace === undefined) delete process.env.RUN402_TRACE;
+    else process.env.RUN402_TRACE = originalTrace;
+    process.stderr.write = originalWrite;
+    exitSpy.restore();
+  }
+
+  it("RUN402_TRACE unset: no trace line is written", async () => {
+    delete process.env.RUN402_TRACE;
+    const kernel = makeKernel(async () => makeRes({ ok: true }));
+    await request(kernel, "/projects/v1?secret=shh", { context: "listing" });
+    assert.equal(stderrLines.length, 0);
+    restoreEnv();
+  });
+
+  it("RUN402_TRACE set: writes one line per request, path without query string, status, ms, attempt", async () => {
+    process.env.RUN402_TRACE = "1";
+    const kernel = makeKernel(async () => makeRes({ ok: true }));
+    await request(kernel, "/projects/v1?secret=shh", { method: "POST", context: "listing" });
+    assert.equal(stderrLines.length, 1);
+    assert.match(stderrLines[0]!, /^r402 POST \/projects\/v1 -> 200 \d+ms attempt=1\n$/);
+    assert.doesNotMatch(stderrLines[0]!, /secret/, "the query string must never appear in the trace line");
+    restoreEnv();
+  });
+
+  it("RUN402_TRACE: a non-2xx status still traces, with the real status code", async () => {
+    process.env.RUN402_TRACE = "1";
+    const kernel = makeKernel(async () => makeRes({ error: "nope" }, { status: 404 }));
+    await assert.rejects(request(kernel, "/x", { context: "x" }));
+    assert.equal(stderrLines.length, 1);
+    assert.match(stderrLines[0]!, /^r402 GET \/x -> 404 \d+ms attempt=1\n$/);
+    restoreEnv();
+  });
+
+  it("RUN402_TRACE: a network failure traces with status ERR instead of throwing during tracing", async () => {
+    process.env.RUN402_TRACE = "1";
+    const kernel = makeKernel(async () => { throw new Error("ECONNREFUSED"); });
+    await assert.rejects(request(kernel, "/x", { context: "x" }));
+    assert.equal(stderrLines.length, 1);
+    assert.match(stderrLines[0]!, /^r402 GET \/x -> ERR \d+ms attempt=1\n$/);
+    restoreEnv();
+  });
+
+  it("RUN402_TRACE: attempt is threaded from RequestOptions.attempt, default 1", async () => {
+    process.env.RUN402_TRACE = "1";
+    const kernel = makeKernel(async () => makeRes({ ok: true }));
+    await request(kernel, "/x", { context: "x", attempt: 3 });
+    assert.match(stderrLines[0]!, /attempt=3$/m);
+    restoreEnv();
+  });
+
+  it("buildClient(kernel).stats() accumulates round_trips/wire_ms/bytes across multiple requests on one client", async () => {
+    delete process.env.RUN402_TRACE;
+    const kernel = makeKernel(async () => makeRes({ hello: "world" }));
+    const client = buildClient(kernel);
+    assert.deepEqual(client.stats(), { round_trips: 0, wire_ms: 0, bytes_up: 0, bytes_down: 0 });
+    await client.request("/a", { context: "a" });
+    await client.request("/b", { method: "POST", body: { x: 1 }, context: "b" });
+    const stats = client.stats();
+    assert.equal(stats.round_trips, 2);
+    assert.ok(stats.wire_ms >= 0);
+    assert.ok(stats.bytes_up > 0, "the POST body's bytes must be counted");
+    assert.ok(stats.bytes_down > 0, "the JSON response bytes must be counted");
+    restoreEnv();
+  });
+
+  it("two separate buildClient() instances never share stats", async () => {
+    delete process.env.RUN402_TRACE;
+    const kernelA = makeKernel(async () => makeRes({ ok: true }));
+    const kernelB = makeKernel(async () => makeRes({ ok: true }));
+    const clientA = buildClient(kernelA);
+    const clientB = buildClient(kernelB);
+    await clientA.request("/a", { context: "a" });
+    assert.equal(clientA.stats().round_trips, 1);
+    assert.equal(clientB.stats().round_trips, 0);
+    restoreEnv();
+  });
+
+  it("requestWithResponse called directly (bypassing buildClient) still traces but has no stats sink to mutate", async () => {
+    process.env.RUN402_TRACE = "1";
+    const kernel = makeKernel(async () => makeRes({ ok: true }));
+    await requestWithResponse(kernel, "/x", { context: "x" });
+    assert.equal(stderrLines.length, 1, "tracing works even without a stats accumulator");
+    restoreEnv();
   });
 });
