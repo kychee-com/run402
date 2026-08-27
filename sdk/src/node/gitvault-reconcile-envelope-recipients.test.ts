@@ -124,7 +124,7 @@ describe("GitvaultVault.reconcileEnvelopeRecipients — gitvault-human-envelopes
     assert.deepEqual(v.keystore.readRepo(v.repoId)!.envelope_recipient_pins, { principal_b: b1Fp });
   });
 
-  it("skips a directory entry with no public_key on record (the gateway gap this method is already written to consume once fixed)", async () => {
+  it("skips a directory entry that arrives without public_key (older/rolling-deploy gateway tolerance — the current gateway sends it on every row)", async () => {
     const v = await makeVault();
     v.transport.orgEncryptionKeys.set("org_1", [principalEntry({ principal_id: "principal_c", ek_fingerprint: `ek_${"c".repeat(32)}` })]);
     const result = await v.vault.reconcileEnvelopeRecipients();

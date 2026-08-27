@@ -667,17 +667,15 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
  * One row of the org's envelope-capable-principal directory
  * ({@link GitvaultTransport.listOrgEncryptionKeys}).
  *
- * `public_key` is OPTIONAL because the shipped gateway route
- * (`GET /orgs/v1/:org_id/encryption-keys`, `routes/org.ts` in
- * run402-private) does not return it yet: `services/
- * principal-encryption-keys.ts:listOrgEncryptionKeyDirectory`'s SELECT
- * omits `pk.public_key` and the route's response `.map()` doesn't forward
- * it — a three-line fix (the SELECT list, the `EncryptionKeyDirectoryEntry`
- * type, and the route's map) that has not shipped as of 2026-08-26. Until
- * it does, {@link GitvaultVault.reconcileEnvelopeRecipients} reports every
- * directory entry as `skipped` with reason `missing_public_key` — this type
- * and the reconcile method are written against the INTENDED response shape
- * and need no further change once the gateway ships the field.
+ * The gateway route (`GET /orgs/v1/:org_id/encryption-keys`, `routes/org.ts`
+ * in run402-private) returns `public_key` on every row — the raw key
+ * material is what makes the directory usable for wrapping at all
+ * (deployed 2026-08-26). The field stays OPTIONAL in this wire type the
+ * same way `desired[]` does on {@link GitvaultEnvelopeRecipientsResponse}:
+ * a response is network data, and an older/rolling-deploy gateway that
+ * omits the field must degrade to a per-entry `skipped` report
+ * (`missing_public_key`) from {@link GitvaultVault.reconcileEnvelopeRecipients},
+ * never a hardcoded assumption or a thrown error.
  */
 export interface GitvaultOrgEncryptionKeyEntry {
   principal_id: string;
@@ -685,7 +683,7 @@ export interface GitvaultOrgEncryptionKeyEntry {
   ek_fingerprint: string;
   suite: string;
   created_at: string;
-  /** Raw base64url X25519 public key — absent on gateways that haven't shipped the fix noted above. */
+  /** Raw base64url X25519 public key. Present on every current-gateway row; tolerated as absent (per-entry `missing_public_key` skip) for wire robustness only. */
   public_key?: string;
   [key: string]: unknown;
 }
@@ -1444,11 +1442,13 @@ export class GitvaultVault {
    * legitimate key rotation or a substitution is a product/human decision
    * this SDK does not make unattended.
    *
-   * **The gateway directory route does not carry `public_key` yet**
-   * (`GET /orgs/v1/:org_id/encryption-keys` — see the doc comment on
-   * {@link GitvaultOrgEncryptionKeyEntry}). Until it does, every directory
-   * entry is reported under `skipped` with reason `missing_public_key`;
-   * this method needs no further change once the gateway ships the field.
+   * **The gateway directory route carries `public_key` on every row**
+   * (`GET /orgs/v1/:org_id/encryption-keys`, deployed 2026-08-26 — see the
+   * doc comment on {@link GitvaultOrgEncryptionKeyEntry}), so against a
+   * current gateway entries actually wrap. A directory entry that arrives
+   * WITHOUT the field (an older/rolling-deploy gateway) is still tolerated
+   * per-entry — reported under `skipped` with reason `missing_public_key`,
+   * never a thrown error that would abort the other recipients.
    *
    * Best-effort by design at the call site, not here: this method itself
    * either completes (returning a full per-recipient breakdown) or throws
