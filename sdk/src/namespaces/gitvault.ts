@@ -444,6 +444,9 @@ export interface GitvaultOrgVaultSummary {
 }
 export interface GitvaultOrgVaultsListing {
   vaults: GitvaultOrgVaultSummary[];
+  /** Keyset pagination (agent-response-design): opaque, store-and-echo. */
+  has_more?: boolean;
+  next_cursor?: string | null;
 }
 
 export interface GitvaultOpenOrCreateResult {
@@ -524,7 +527,22 @@ export class Gitvault {
    * the 404-until-shipped fallback contract.
    */
   async listByOrg(orgId: string): Promise<GitvaultOrgVaultsListing> {
-    return this.#client.request<GitvaultOrgVaultsListing>(`/gitvault/v1/vaults?org_id=${encodeURIComponent(orgId)}`, { context: "listing the organization's vaults" });
+    // The gateway keyset-paginates (has_more/next_cursor, opaque store-and-
+    // echo). This method's contract is "the org's vaults", so it follows the
+    // cursor and aggregates — a silently-truncated page one would be the
+    // Faithful breach agent-response-design.md names. The page bound is a
+    // runaway guard, far above any real org; hitting it surfaces has_more:
+    // true honestly instead of looping forever on a misbehaving cursor.
+    const all: GitvaultOrgVaultSummary[] = [];
+    let cursor: string | null | undefined;
+    for (let page = 0; page < 100; page++) {
+      const url = `/gitvault/v1/vaults?org_id=${encodeURIComponent(orgId)}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+      const res = await this.#client.request<GitvaultOrgVaultsListing>(url, { context: "listing the organization's vaults" });
+      all.push(...res.vaults);
+      if (!res.has_more || !res.next_cursor) return { vaults: all, has_more: false, next_cursor: null };
+      cursor = res.next_cursor;
+    }
+    return { vaults: all, has_more: true, next_cursor: cursor ?? null };
   }
 
   /**

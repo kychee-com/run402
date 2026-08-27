@@ -562,3 +562,28 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
     });
   });
 });
+
+describe("listByOrg follows the keyset cursor (never a silent page one)", () => {
+  it("aggregates every page and returns has_more:false at the end", async () => {
+    const { sdk, calls } = sdkWith((call) => {
+      const cursor = new URL(call.url).searchParams.get("cursor");
+      if (cursor === "c2") return { body: { vaults: [{ repo_id: "src_" + "3".repeat(32) }], has_more: false, next_cursor: null } };
+      if (cursor === "c1") return { body: { vaults: [{ repo_id: "src_" + "2".repeat(32) }], has_more: true, next_cursor: "c2" } };
+      return { body: { vaults: [{ repo_id: "src_" + "1".repeat(32) }], has_more: true, next_cursor: "c1" } };
+    });
+    const out = await sdk.gitvault.listByOrg("57035b1e-ec41-4ce6-a7a5-a5b2560efdd7");
+    assert.equal(out.vaults.length, 3, "all three pages aggregated");
+    assert.equal(out.has_more, false);
+    assert.equal(out.next_cursor, null);
+    assert.equal(calls.length, 3, "exactly one request per page");
+    assert.match(calls[1]!.url, /cursor=c1/);
+    assert.match(calls[2]!.url, /cursor=c2/);
+  });
+
+  it("a single-page listing makes exactly one request", async () => {
+    const { sdk, calls } = sdkWith(() => ({ body: { vaults: [], has_more: false, next_cursor: null } }));
+    const out = await sdk.gitvault.listByOrg("57035b1e-ec41-4ce6-a7a5-a5b2560efdd7");
+    assert.equal(out.vaults.length, 0);
+    assert.equal(calls.length, 1);
+  });
+});
