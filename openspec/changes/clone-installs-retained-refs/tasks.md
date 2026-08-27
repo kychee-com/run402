@@ -33,10 +33,10 @@
 - [x] 4.1 Unit tests: reconcile add/retract, branch-reachable skip,
       namespace-scoped deletion, write-failure degradation.
 - [x] 4.2 Helper tests: push-refusal envelope; fetch drives the writes.
-- [ ] 4.3 Live acceptance: clone a production vault → `git fsck` silent →
-      `for-each-ref refs/r402/` non-empty; delete the refs → `repos fsck`
-      restores them. NOT RUN — this implementing session has no production
-      vault/credentials available; the equivalent shape is proven against a
-      real local git repo + `GitvaultMemoryTransport` in
-      `sdk/src/node/gitvault-publication.test.ts` instead. Needs a human
-      (or an agent holding a real wallet/allowance) to run live.
+- [x] 4.3 Live acceptance: run against the production run402-private vault
+      (prj_1787728095934_0044, 2026-08-28) — clone installed 2 retained refs
+      (one displaced tip, one live refs/run402 protocol tip), `git fsck`
+      reported 0 dangling, deleting the refs and running `repos fsck`
+      restored both. The first run caught a real gap: live protocol-ref tips
+      dangled because the reachability basis wrongly included refs git never
+      writes locally — fixed, with a unit test.

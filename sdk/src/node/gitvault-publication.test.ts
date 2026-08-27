@@ -906,6 +906,29 @@ describe("clone-installs-retained-refs — refs/r402/retain/* reconciliation", (
     assert.equal(listed, "");
   });
 
+  it("a vault-canonical protocol ref's tip (refs/run402/*) joins the retain set — git never writes it locally (live-acceptance catch)", async (t) => {
+    const repoDir = await makeRetainTestRepo();
+    t.after(() => rmSync(repoDir, { recursive: true, force: true }));
+    const c1 = await commitFile(repoDir, "a.txt", "a\n");
+    // A capture commit off to the side, as the deploy lane produces: present
+    // in the object db, named only by a refs/run402/* ref in the vault map.
+    await git(repoDir, ["checkout", "-q", "--detach", c1]);
+    const capture = await commitFile(repoDir, "capture.txt", "wip\n");
+    await git(repoDir, ["checkout", "-q", "main"]);
+
+    const result = await reconcileRetainedTipRefs(repoDir, {
+      refs: { "refs/heads/main": c1, "refs/run402/deploys/latest": capture },
+      roots: [],
+      head_target: { kind: "symref", ref: "refs/heads/main" },
+    });
+    assert.equal(result.warning, null);
+    assert.equal(result.retained_count, 1);
+    assert.equal(await git(repoDir, ["rev-parse", `${GITVAULT_RETAIN_REF_PREFIX}${capture}`]), capture);
+    // And main's own tip gained no redundant ref.
+    const listed = await git(repoDir, ["for-each-ref", "--format=%(refname)", GITVAULT_RETAIN_REF_PREFIX]);
+    assert.deepEqual(listed.split("\n").filter(Boolean), [`${GITVAULT_RETAIN_REF_PREFIX}${capture}`]);
+  });
+
   it("adds refs for every retained tip, then retracts one on the next reconcile — namespace-scoped, nothing else touched", async (t) => {
     const repoDir = await makeRetainTestRepo();
     t.after(() => rmSync(repoDir, { recursive: true, force: true }));

@@ -426,10 +426,23 @@ export async function reconcileRetainedTipRefs(repoDir: string, state: { refs: G
   if (!isRepo) return empty();
 
   try {
-    const reachableTips = [...new Set(Object.values(state.refs))];
+    // Reachability basis = refs git actually WRITES locally on clone/fetch
+    // (refs/heads/*, refs/tags/*, plus a detached HEAD). A vault-canonical
+    // protocol ref (refs/run402/*) exists only in the vault's ref map — git's
+    // clone refspec never materializes it as a local ref, so its tip would
+    // dangle locally exactly like a displaced retention root. Its tip
+    // therefore joins the candidate set instead of the reachability basis
+    // (live-acceptance catch: the current deploy-capture tip dangled).
+    const locallyWritten: string[] = [];
+    const protocolTips: string[] = [];
+    for (const [ref, oid] of Object.entries(state.refs)) {
+      if (ref.startsWith("refs/heads/") || ref.startsWith("refs/tags/")) locallyWritten.push(oid);
+      else protocolTips.push(oid);
+    }
+    const reachableTips = [...new Set(locallyWritten)];
     if (state.head_target.kind === "detached") reachableTips.push(state.head_target.oid);
 
-    const candidateOids = [...new Set(state.roots.map((r) => r.oid))].sort();
+    const candidateOids = [...new Set([...state.roots.map((r) => r.oid), ...protocolTips])].sort();
     const retainedOids: string[] = [];
     for (const oid of candidateOids) {
       if (!(await hasObject(repoDir, oid))) continue; // not present locally — nothing to reference, not a failure
