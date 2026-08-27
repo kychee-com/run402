@@ -1258,9 +1258,40 @@ export interface GitvaultRotationResult {
    * returning here — there is no `"failed"` value). `"not_a_recipient"` —
    * this principal (the vault's writer) is not itself in `included` (e.g.
    * it was excluded, or holds no local encryption key) — there is nothing
-   * for this machine to self-check.
+   * for this machine to self-check. This is NOT a confidentiality gap: the
+   * writer sampled `kE` itself (it never needs a `key_envelope` to learn its
+   * own secret) and `keystore.recordEpochRotation` below advances the LOCAL
+   * pointer unconditionally, regardless of `self_check` — an agent/CI writer
+   * that is deliberately never a directory envelope recipient (design D1 of
+   * `services/gitvault/desired-recipients.ts`: "agents hold their own vault
+   * keys in their CLI keystore") keeps read/write access to its own vault
+   * through every rotation it itself drives, with or without an envelope.
    */
   self_check: "passed" | "not_a_recipient";
+  /**
+   * Present iff `options.pending_confirmations` was non-empty and its
+   * receipted entries were folded into THIS SAME head's `pin_manifest`
+   * field (D197 conservation; schema-legal per §4.3 — `transition` and
+   * `pin_manifest` are independent optional fields on one `head`). `null`
+   * when no fold was requested.
+   *
+   * **D196 boundary, load-bearing:** folding does NOT make these principals
+   * `included` in THIS rotation's envelope set — "for a non-genesis
+   * rotation, `confirmed(h)` reads the NEAREST PREDECESSOR admitted pin
+   * manifest — a manifest update riding the SAME head never self-authorizes
+   * its own recipients" (protocol-v0.md D196). They land in
+   * `excluded_unconfirmed_principal_ids` for THIS rotation exactly as they
+   * would without folding. What folding buys: the manifest becomes DURABLY
+   * ADMITTED in the same atomic submission that is itself EXEMPT from
+   * `EPOCH_ROTATION_REQUIRED` (a `rotate_epoch` admission is the gate's own
+   * escape valve — it must be, or the flag it clears could never clear) —
+   * closing the standalone `publishPinManifestUpdate` deadlock where the
+   * manifest-only push is ITSELF an ordinary admission and therefore
+   * ITSELF gated while migration/revocation/exposure is outstanding. The
+   * newly-published principals become eligible starting from the NEXT
+   * rotation (or the next ordinary push, once the flag clears).
+   */
+  pin_manifest_published: { pin_manifest_version: string; stored_bytes_sha256: string; principal_ids: string[] } | null;
 }
 
 /**
@@ -2309,6 +2340,53 @@ export class GitvaultVault {
   }
 
   /**
+   * Build the successor `recipient_pin_manifest` object from the currently-
+   * effective PREDECESSOR manifest plus a batch of receipted updates (D197
+   * full-map conservation: `next_map = prior_map + receipt-authorized
+   * additions/replacements`). Shared by {@link publishPinManifestUpdate} (a
+   * single-entry ordinary-push publish) and {@link rotateEpoch}'s
+   * `pending_confirmations` fold (a multi-entry publish riding the SAME
+   * head as the rotation, D196). Validates EVERY update's receipt against
+   * `prior` before building — a receipt issued against a stale predecessor
+   * fails closed here (`VALIDATION_FAILED`), never silently overwritten,
+   * matching the gateway's own admission-time field-by-field check.
+   *
+   * Does NOT admit anything — the caller uploads `.upload` and attaches the
+   * returned `{object_kind, pin_manifest_version, stored_bytes_sha256,
+   * size_bytes}` receipt shape to whichever head it is publishing on.
+   */
+  private buildPinManifestUpdate(
+    prior: { pinManifestVersion: string; pinManifestSha256: string; pinnedFingerprintOf: Map<string, string> },
+    updates: { principal_id: string; ek_fingerprint: string; confirmed_by: "operator_confirmation"; receipt: GitvaultRecipientConfirmationReceipt }[],
+  ): { nextVersion: string; manifestSha: string; upload: GitvaultUploadObject } {
+    for (const u of updates) {
+      if (u.receipt.base_pin_manifest_sha256 !== prior.pinManifestSha256) {
+        fail("VALIDATION_FAILED", `the confirmation receipt for ${u.principal_id} was issued against a different predecessor manifest than the one currently effective — obtain a fresh /confirm or /repin`, "publishing a recipient_pin_manifest update", { principal_id: u.principal_id, receipt_base: u.receipt.base_pin_manifest_sha256, current_base: prior.pinManifestSha256 });
+      }
+    }
+    const updateIds = new Set(updates.map((u) => u.principal_id));
+    if (updateIds.size !== updates.length) {
+      fail("VALIDATION_FAILED", "duplicate principal_id across pin-manifest updates in one publish", "publishing a recipient_pin_manifest update", { principal_ids: updates.map((u) => u.principal_id) });
+    }
+    const nextVersion = (generationToBigInt(prior.pinManifestVersion) + 1n).toString(16).padStart(16, "0");
+    const pins: GitvaultRecipientPinManifestEntry[] = [];
+    for (const [principalId, ekFp] of prior.pinnedFingerprintOf) {
+      if (updateIds.has(principalId)) continue; // replaced below
+      pins.push({ principal_id: principalId, ek_fingerprint: ekFp, pinned_at: formatGitvaultTimestamp(this.now()), confirmed_by: "operator_confirmation", confirmation_receipt_sha256: GITVAULT_ZERO_SHA256_SENTINEL });
+    }
+    for (const u of updates) {
+      pins.push({ principal_id: u.principal_id, ek_fingerprint: u.ek_fingerprint, pinned_at: formatGitvaultTimestamp(this.now()), confirmed_by: "operator_confirmation", confirmation_receipt_sha256: storedBytesSha256(u.receipt as unknown as GitvaultSignedObject) });
+    }
+    pins.sort((a, b) => (a.principal_id < b.principal_id ? -1 : a.principal_id > b.principal_id ? 1 : 0));
+    const unsignedManifest = { format: GITVAULT_FORMAT, object_kind: "recipient_pin_manifest" as const, suite: GITVAULT_SUITE, repo_id: this.repoId, pin_manifest_version: nextVersion, base_pin_manifest_sha256: prior.pinManifestSha256, pins, writer_key_id: this.writerKeyId() };
+    const manifest = signGitvaultObject(unsignedManifest, this.signer());
+    const manifestBytes = storedBytes(manifest as unknown as GitvaultSignedObject);
+    const manifestSha = sha256Hex(manifestBytes);
+    const upload: GitvaultUploadObject = { path: gitvaultPaths.pinManifest(nextVersion), object_kind: "recipient_pin_manifest", object_id: null, bytes: manifestBytes, sha256: manifestSha, size_bytes: String(manifestBytes.length) };
+    return { nextVersion, manifestSha, upload };
+  }
+
+  /**
    * Build a `recipient_pin_manifest` update (D197 full-map conservation) and
    * publish it via an ORDINARY head (`gitvault.writer`-sufficient — the
    * OWNER-GATED half of the ceremony already happened at `/confirm`/`/repin`,
@@ -2316,28 +2394,23 @@ export class GitvaultVault {
    * ordinary-writer authority, same split as envelope-wrap authority
    * always had). Carries the SAME refs/roots forward unchanged, at the
    * CURRENT epoch (this is not a rotation — no new epoch, no new K_e).
+   *
+   * **This is an ORDINARY admission (`transition: null`) and is therefore
+   * itself refused `EPOCH_ROTATION_REQUIRED` while a migration/revocation/
+   * exposure condition is outstanding on this vault (D193) — the exact
+   * deadlock the incident behind {@link GitvaultVault.rotateEpoch}'s
+   * `pending_confirmations` parameter closes.** When this vault is in that
+   * state, fold the receipt into `rotateEpoch({..., pending_confirmations:
+   * [{principal_id, ek_fingerprint, receipt}]})` instead of calling this
+   * method directly — that submission carries a `rotate_epoch` transition,
+   * which IS the gate's own escape valve.
    */
   async publishPinManifestUpdate(input: { principal_id: string; ek_fingerprint: string; confirmed_by: "operator_confirmation"; receipt: GitvaultRecipientConfirmationReceipt }): Promise<GitvaultPublishResult> {
     let conflicts = 0;
     for (;;) {
       const base = await this.materialize();
       const prior = await this.loadEffectivePinManifest(base.generation);
-      if (input.receipt.base_pin_manifest_sha256 !== prior.pinManifestSha256) {
-        fail("VALIDATION_FAILED", "the confirmation receipt was issued against a different predecessor manifest than the one currently effective — obtain a fresh /confirm or /repin", "publishing a recipient_pin_manifest update", { receipt_base: input.receipt.base_pin_manifest_sha256, current_base: prior.pinManifestSha256 });
-      }
-      const nextVersion = (generationToBigInt(prior.pinManifestVersion) + 1n).toString(16).padStart(16, "0");
-      const pins: GitvaultRecipientPinManifestEntry[] = [];
-      for (const [principalId, ekFp] of prior.pinnedFingerprintOf) {
-        if (principalId === input.principal_id) continue; // replaced below
-        pins.push({ principal_id: principalId, ek_fingerprint: ekFp, pinned_at: formatGitvaultTimestamp(this.now()), confirmed_by: "operator_confirmation", confirmation_receipt_sha256: GITVAULT_ZERO_SHA256_SENTINEL });
-      }
-      pins.push({ principal_id: input.principal_id, ek_fingerprint: input.ek_fingerprint, pinned_at: formatGitvaultTimestamp(this.now()), confirmed_by: "operator_confirmation", confirmation_receipt_sha256: storedBytesSha256(input.receipt as unknown as GitvaultSignedObject) });
-      pins.sort((a, b) => (a.principal_id < b.principal_id ? -1 : a.principal_id > b.principal_id ? 1 : 0));
-      const unsignedManifest = { format: GITVAULT_FORMAT, object_kind: "recipient_pin_manifest" as const, suite: GITVAULT_SUITE, repo_id: this.repoId, pin_manifest_version: nextVersion, base_pin_manifest_sha256: prior.pinManifestSha256, pins, writer_key_id: this.writerKeyId() };
-      const manifest = signGitvaultObject(unsignedManifest, this.signer());
-      const manifestBytes = storedBytes(manifest as unknown as GitvaultSignedObject);
-      const manifestSha = sha256Hex(manifestBytes);
-      const manifestUpload: GitvaultUploadObject = { path: gitvaultPaths.pinManifest(nextVersion), object_kind: "recipient_pin_manifest", object_id: null, bytes: manifestBytes, sha256: manifestSha, size_bytes: String(manifestBytes.length) };
+      const { nextVersion, manifestSha, upload: manifestUpload } = this.buildPinManifestUpdate(prior, [input]);
       await this.uploadAll([manifestUpload]);
 
       const generation = nextGeneration(base.generation);
@@ -2351,7 +2424,7 @@ export class GitvaultVault {
           retention_roots: { object_id: rootsObj.object.object_id, object_kind: "retention_roots", ciphertext_sha256: rootsObj.upload.sha256, size_bytes: rootsObj.upload.size_bytes },
           checkpoint: null, checkpoint_purpose: null, capture_binding: null, repair: null,
         },
-        { pin_manifest: { object_kind: "recipient_pin_manifest", pin_manifest_version: nextVersion, stored_bytes_sha256: manifestSha, size_bytes: String(manifestBytes.length) } },
+        { pin_manifest: { object_kind: "recipient_pin_manifest", pin_manifest_version: nextVersion, stored_bytes_sha256: manifestSha, size_bytes: String(manifestUpload.size_bytes) } },
       );
       const admitted = await this.admit(head);
       if (admitted.outcome === "conflict") {
@@ -2396,8 +2469,39 @@ export class GitvaultVault {
    * safely: the admission fence's D194 frozen-counter comparison refuses
    * `RECIPIENT_SET_MISMATCH` rather than silently canonizing against wrong
    * evidence.
+   *
+   * **`options.pending_confirmations` (the manifest-publish deadlock fix).**
+   * `publishPinManifestUpdate` is an ORDINARY admission (`transition:
+   * null`) and is therefore itself refused `EPOCH_ROTATION_REQUIRED` while
+   * this vault has an urgent/migration condition outstanding — the exact
+   * state a `rotateEpoch` call is being made to clear. Reproduced live in
+   * production 2026-08-27 (a vault's first `epoch_secret_exposed` rekey:
+   * `/confirm` minted a receipt server-side, but the ordinary push that
+   * would publish it never admitted). Pass the pending receipted updates
+   * here instead — they ride the SAME head as this rotation's `transition`,
+   * which IS `EPOCH_ROTATION_REQUIRED`'s own escape valve, so the publish
+   * is no longer blocked. **This does NOT include these principals in
+   * THIS rotation's `envelopes[]`** — protocol-v0.md D196 is explicit: "a
+   * manifest update riding the SAME head never self-authorizes its own
+   * recipients"; `confirmed(h)` for THIS rotation still reads only the
+   * PREDECESSOR manifest, unchanged. They land in
+   * `excluded_unconfirmed_principal_ids` here (same as without folding) and
+   * become eligible starting at the NEXT rotation, once this manifest is
+   * the admitted predecessor. See {@link GitvaultRotationResult.pin_manifest_published}.
+   *
+   * **Honest residual — this does not rescue a vault with ZERO ever-
+   * confirmed principals.** If `included` would be empty even with the
+   * fold (no predecessor-confirmed principal exists at all — e.g. a
+   * grandfathered pre-rev-42 vault whose bare genesis never published a
+   * pin manifest and which was never bootstrapped before its
+   * `migration_rotation_required` flag was set), the gateway refuses
+   * `EPOCH_ROTATION_WOULD_LEAVE_VAULT_UNCOVERED` regardless of what rides
+   * along on `pin_manifest` — D196's same-head exclusion makes THIS
+   * impossible to route around from the client. That is a genuine,
+   * currently-open protocol gap (not something this parameter can paper
+   * over) and needs an operator-side decision, not a client workaround.
    */
-  async rotateEpoch(options: { reason: GitvaultRotationReason; recipient_state_version: string; recipient_revocation_version: string; client_idempotency_key?: string; ikm_e?: Uint8Array }): Promise<GitvaultRotationResult> {
+  async rotateEpoch(options: { reason: GitvaultRotationReason; recipient_state_version: string; recipient_revocation_version: string; client_idempotency_key?: string; ikm_e?: Uint8Array; pending_confirmations?: { principal_id: string; ek_fingerprint: string; receipt: GitvaultRecipientConfirmationReceipt }[] }): Promise<GitvaultRotationResult> {
     let conflicts = 0;
     for (;;) {
       const base = await this.materialize();
@@ -2539,11 +2643,29 @@ export class GitvaultVault {
       const payloadBytes = jcs(payload);
       const transition: GitvaultTransitionEnvelope = { kind: "rotate_epoch", payload_format: "base64url-jcs", payload: toBase64url(payloadBytes), payload_sha256: sha256Hex(payloadBytes) };
 
+      // The manifest-publish deadlock fix: fold receipted pending
+      // confirmations into THIS SAME head's `pin_manifest` field (schema-
+      // legal, §4.3 — `transition` and `pin_manifest` are independent
+      // optional fields on one `head`). Built from `pinManifest`, the
+      // PREDECESSOR already loaded above for the H-partition — NEVER used
+      // to recompute `included`/`excludedUnconfirmed` above, which is what
+      // keeps this conformant with D196 ("a manifest update riding the SAME
+      // head never self-authorizes its own recipients"). This durably
+      // publishes the receipts (unblocking every future ordinary admission
+      // once this rotation clears the urgent/migration condition) without
+      // claiming these principals are covered by THIS rotation's envelopes.
+      const pendingConfirmations = options.pending_confirmations ?? [];
+      const pinManifestFold = pendingConfirmations.length > 0
+        ? this.buildPinManifestUpdate(pinManifest, pendingConfirmations.map((p) => ({ principal_id: p.principal_id, ek_fingerprint: p.ek_fingerprint, confirmed_by: "operator_confirmation" as const, receipt: p.receipt })))
+        : null;
+
       // The new epoch's ref_state/retention_roots — CARRIED FORWARD unchanged, sealed under kE.
       const generation = nextGeneration(base.generation);
       const refState = this.buildRefState(generation, base.refs, base.head_target, { k_repo: kE, epoch: newEpoch });
       const rootsObj = this.buildRetentionRoots(generation, base.roots, null, { k_repo: kE, epoch: newEpoch });
-      await this.uploadAll([refState.upload, rootsObj.upload]);
+      const uploads = [refState.upload, rootsObj.upload];
+      if (pinManifestFold) uploads.push(pinManifestFold.upload);
+      await this.uploadAll(uploads);
 
       const head = this.signHead(
         {
@@ -2552,7 +2674,10 @@ export class GitvaultVault {
           retention_roots: { object_id: rootsObj.object.object_id, object_kind: "retention_roots", ciphertext_sha256: rootsObj.upload.sha256, size_bytes: rootsObj.upload.size_bytes },
           checkpoint: null, checkpoint_purpose: null, capture_binding: null, repair: null,
         },
-        { epoch: newEpoch, transition },
+        {
+          epoch: newEpoch, transition,
+          ...(pinManifestFold ? { pin_manifest: { object_kind: "recipient_pin_manifest" as const, pin_manifest_version: pinManifestFold.nextVersion, stored_bytes_sha256: pinManifestFold.manifestSha, size_bytes: pinManifestFold.upload.size_bytes } } : {}),
+        },
       );
       const admitted = await this.admit(head);
       if (admitted.outcome === "conflict") {
@@ -2602,6 +2727,7 @@ export class GitvaultVault {
         included: included.map((p) => ({ principal_id: p.principal_id, ek_fingerprint: p.ek_fingerprint })),
         excluded_keyless_principal_ids: excludedKeyless, excluded_unconfirmed_principal_ids: excludedUnconfirmed,
         admission_record_sha256: admitted.admission_record_sha256, capture_receipt: admitted.capture_receipt, self_check: selfCheck,
+        pin_manifest_published: pinManifestFold ? { pin_manifest_version: pinManifestFold.nextVersion, stored_bytes_sha256: pinManifestFold.manifestSha, principal_ids: pendingConfirmations.map((p) => p.principal_id) } : null,
       };
     }
   }

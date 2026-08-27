@@ -1986,10 +1986,13 @@ export class Gitvault {
    * rotateEpoch}'s own doc comment for the full obligations and — load-
    * bearing — the confirmed gap in what the gateway exposes for
    * `recipient_state_version`/`recipient_revocation_version` outside the
-   * `recipient_key_revoked` reason.
+   * `recipient_key_revoked` reason, and (also load-bearing) `options.
+   * pending_confirmations` for folding a receipted `/confirm`/`/repin`
+   * result into THIS rotation's head instead of a separately-gated
+   * `publishPinManifestUpdate` call.
    */
   async rotateEpoch(
-    options: GitvaultVaultHandleOptions & { reason: GitvaultRotationReason; recipient_state_version: string; recipient_revocation_version: string; client_idempotency_key?: string },
+    options: GitvaultVaultHandleOptions & { reason: GitvaultRotationReason; recipient_state_version: string; recipient_revocation_version: string; client_idempotency_key?: string; pending_confirmations?: { principal_id: string; ek_fingerprint: string; receipt: GitvaultRecipientConfirmationReceipt }[] },
   ): Promise<import("../node/gitvault-publication.js").GitvaultRotationResult> {
     const handle = await this.open(options);
     return handle.vault.rotateEpoch(options);
@@ -2014,12 +2017,44 @@ export class Gitvault {
    * after {@link confirmRecipient}/{@link repinRecipient} returns a receipt;
    * this is `gitvault.writer`-sufficient (the owner-gated half already
    * happened at the ceremony route).
+   *
+   * **This publish is an ORDINARY admission** and is therefore itself
+   * refused `EPOCH_ROTATION_REQUIRED` while this vault has a migration/
+   * revocation/exposure condition outstanding (D193) — reproduced live in
+   * production 2026-08-27. `#enrichEpochRotationRequiredForPinManifest`
+   * below decorates that refusal with the remedy: fold the SAME receipt
+   * into `rotateEpoch({..., pending_confirmations: [...]})` instead, which
+   * durably publishes it on a `rotate_epoch` admission (the gate's own
+   * escape valve) rather than a separately-gated ordinary one.
    */
   async publishPinManifestUpdate(
     input: { principal_id: string; ek_fingerprint: string; receipt: GitvaultRecipientConfirmationReceipt } & GitvaultVaultHandleOptions,
   ): Promise<import("../node/gitvault-publication.js").GitvaultPublishResult> {
     const handle = await this.open(input);
-    return handle.vault.publishPinManifestUpdate({ principal_id: input.principal_id, ek_fingerprint: input.ek_fingerprint, confirmed_by: "operator_confirmation", receipt: input.receipt });
+    return handle.vault
+      .publishPinManifestUpdate({ principal_id: input.principal_id, ek_fingerprint: input.ek_fingerprint, confirmed_by: "operator_confirmation", receipt: input.receipt })
+      .catch((e) => { throw this.#enrichEpochRotationRequiredForPinManifest(e, handle.repo_id); });
+  }
+
+  /**
+   * `EPOCH_ROTATION_REQUIRED` from a `publishPinManifestUpdate` call names
+   * the SAME three causes {@link #enrichEpochRotationRequired} decodes for
+   * `push()`, but the remedy is different: a manifest-only publish should
+   * fold into the NEXT `rotateEpoch` call via `pending_confirmations`
+   * rather than run a separate migration/revocation/exposure rotation
+   * first and publish again afterward — one admission instead of two, and
+   * the only path that works at all while EVERY predecessor-confirmed
+   * principal is already exhausted (see `GitvaultVault.rotateEpoch`'s own
+   * doc comment for the honest residual: this does not rescue a vault with
+   * zero ever-confirmed principals, which needs an operator-side fix).
+   */
+  #enrichEpochRotationRequiredForPinManifest(e: unknown, repoId: string): unknown {
+    if (!isRun402Error(e) || (e as { code?: string }).code !== "EPOCH_ROTATION_REQUIRED") return e;
+    return new LocalError(
+      `this vault requires a rotate_epoch admission before an ordinary pin-manifest publish is admissible (repo_id ${repoId}) — fold this SAME receipt into rotateEpoch({..., pending_confirmations: [{principal_id, ek_fingerprint, receipt}]}) instead of retrying this call`,
+      "publishing a recipient_pin_manifest update",
+      { code: "EPOCH_ROTATION_REQUIRED", details: (e as { details?: unknown }).details, next_actions: [{ action: "r.gitvault.rotateEpoch({..., pending_confirmations: [{principal_id, ek_fingerprint, receipt}]})", why: "the manifest publish rides the SAME head as the required rotation, which is EPOCH_ROTATION_REQUIRED's own escape valve — a standalone publish never is" }], cause: e },
+    );
   }
 
   /**

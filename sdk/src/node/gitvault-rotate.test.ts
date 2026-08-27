@@ -342,4 +342,128 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  /**
+   * The exact ceremony deadlock reproduced live in production 2026-08-27
+   * (vault `src_7f7933b3…`, its first-ever `epoch_secret_exposed` rekey):
+   * `declareEpochSecretExposed` gates every ordinary admission
+   * (`EPOCH_ROTATION_REQUIRED`) — including a pin-manifest-only publish,
+   * since that publish carries `transition: null` and is therefore an
+   * ORDINARY admission by the exact same rule. `/confirm` minted a receipt
+   * server-side (it is `gitvault.rotate`-gated, never touches the ordinary-
+   * push admission path), but `publishPinManifestUpdate` for that receipt
+   * was itself stuck behind the gate it was needed to help clear.
+   *
+   * The fix: fold the receipt into `rotateEpoch`'s `pending_confirmations`
+   * so it rides the SAME head as the `rotate_epoch` transition — which IS
+   * `EPOCH_ROTATION_REQUIRED`'s own escape valve (the flag can only ever
+   * clear via a rotation admission, so a rotation admission cannot itself
+   * be refused by that same flag). D196 is honored throughout: the folded
+   * principal is NOT counted toward THIS rotation's H-partition (still
+   * `excluded_unconfirmed`, exactly as it would be without folding) — only
+   * the ALREADY-predecessor-confirmed creator is `included`. What changes
+   * is that the manifest becomes durably admitted in the SAME atomic
+   * submission, unblocking every subsequent ordinary admission (no second,
+   * separately-gated publish needed) and making the folded principal
+   * eligible starting at the very NEXT rotation.
+   */
+  it("D196/D197 fold: rotateEpoch's pending_confirmations durably publishes a receipted pin-manifest update on the SAME head as the rotation, closing the standalone publishPinManifestUpdate deadlock while an urgent condition is outstanding", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-fold-"));
+    try {
+      const { transport, vault, repoDir } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownEk = ekFingerprint((vault.keystore.encryptionKeypair(identity)!).public_key);
+      const p2 = generateEncryptionKeypair();
+      const p2Ek = ekFingerprint(p2.public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Creator", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from((vault.keystore.encryptionKeypair(identity)!).public_key).toString("base64url"), suite: "r402s-1", covered: false },
+        { principal_id: "principal_2", display_name: "Directory member", status: "active", ek_fingerprint: p2Ek, public_key: Buffer.from(p2.public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+
+      // The creator's pin was bootstrapped BEFORE the incident, while the
+      // vault was healthy — the SAME "documented residual" scenario the
+      // migration test above already exercises (a vault that already has
+      // ONE confirmed principal, later needing an urgent rotation while a
+      // SECOND, not-yet-confirmed directory principal is pending).
+      await bootstrapPin(vault, "principal_1", ownEk);
+
+      // The incident: this vault's own epoch secret is declared exposed.
+      await vault.transport.declareEpochSecretExposed({ repo_id: vault.repoId });
+
+      // The confirmation ceremony for principal_2 already succeeded
+      // server-side (owner + step-up; does not touch the ordinary-push gate).
+      const receipt2 = await vault.transport.confirmRecipient({ repo_id: vault.repoId, principal_id: "principal_2", new_fingerprint: p2Ek });
+
+      // The pre-fix deadlock — a STANDALONE publish of this SAME receipt
+      // is itself refused `EPOCH_ROTATION_REQUIRED` while exposure is
+      // outstanding — is pinned as its OWN negative test below (a fresh
+      // vault instance: a failed `publishPinManifestUpdate` attempt still
+      // uploads manifest bytes for that version before admission is
+      // attempted, so replaying it here first would collide with THIS
+      // test's own fold attempt at the identical `pin_manifest_version`).
+
+      // THE FIX: fold the SAME receipt into the required rotation.
+      const rotated = await vault.rotateEpoch({
+        reason: "epoch_secret_exposed", recipient_state_version: "0", recipient_revocation_version: "0",
+        pending_confirmations: [{ principal_id: "principal_2", ek_fingerprint: p2Ek, receipt: receipt2 }],
+      });
+      assert.equal(rotated.outcome, "admitted");
+      assert.equal(rotated.included.length, 1, "only the already-predecessor-confirmed creator is included in THIS rotation");
+      assert.equal(rotated.included[0]!.principal_id, "principal_1");
+      // D196: folding does NOT self-authorize principal_2 for THIS rotation.
+      assert.deepEqual(rotated.excluded_unconfirmed_principal_ids, ["principal_2"]);
+      assert.ok(rotated.pin_manifest_published, "the receipted update WAS durably published on this same head");
+      assert.deepEqual(rotated.pin_manifest_published!.principal_ids, ["principal_2"]);
+      assert.equal(rotated.pin_manifest_published!.pin_manifest_version, "0000000000000002", "version 2 — principal_1's bootstrap publish was version 1");
+
+      // The manifest is now the admitted predecessor: an ORDINARY push
+      // succeeds with no separate publish call — the flag cleared.
+      const c1 = await commitFile(repoDir, "a.txt", "a\n");
+      const materialized = await vault.materialize();
+      const push = await vault.push({ transaction: { updates: [{ ref: "refs/heads/main", new_oid: c1, expected_old_oid: null, force: false }] }, head_target: materialized.head_target });
+      assert.equal(push.head.epoch, rotated.new_epoch);
+
+      // AND: principal_2 is now confirmed for the NEXT rotation — the
+      // deadlock is fully closed, not merely deferred.
+      const rotated2 = await vault.rotateEpoch({ reason: "elective_rekey", recipient_state_version: "0", recipient_revocation_version: "0" });
+      assert.equal(rotated2.outcome, "admitted");
+      assert.equal(rotated2.included.length, 2);
+      assert.ok(rotated2.included.some((p) => p.principal_id === "principal_2"));
+      assert.equal(rotated2.excluded_unconfirmed_principal_ids.length, 0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("PRE-FIX negative, pinned: a STANDALONE publishPinManifestUpdate for a receipt minted while an urgent condition is outstanding is refused EPOCH_ROTATION_REQUIRED — the deadlock the previous test's fold closes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-fold-negative-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownEk = ekFingerprint((vault.keystore.encryptionKeypair(identity)!).public_key);
+      const p2 = generateEncryptionKeypair();
+      const p2Ek = ekFingerprint(p2.public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Creator", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from((vault.keystore.encryptionKeypair(identity)!).public_key).toString("base64url"), suite: "r402s-1", covered: false },
+        { principal_id: "principal_2", display_name: "Directory member", status: "active", ek_fingerprint: p2Ek, public_key: Buffer.from(p2.public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+      await bootstrapPin(vault, "principal_1", ownEk);
+      await vault.transport.declareEpochSecretExposed({ repo_id: vault.repoId });
+      const receipt2 = await vault.transport.confirmRecipient({ repo_id: vault.repoId, principal_id: "principal_2", new_fingerprint: p2Ek });
+
+      // publishPinManifestUpdate carries `transition: null` — an ORDINARY
+      // admission, refused by the SAME D193 gate as any other ordinary push
+      // for as long as exposure stays outstanding. This is the exact
+      // deadlock reproduced live in production 2026-08-27: the receipt
+      // exists, but nothing can admit it standalone.
+      await assert.rejects(
+        vault.publishPinManifestUpdate({ principal_id: "principal_2", ek_fingerprint: p2Ek, confirmed_by: "operator_confirmation", receipt: receipt2 }),
+        (e: unknown) => (e as { code?: string }).code === "EPOCH_ROTATION_REQUIRED",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

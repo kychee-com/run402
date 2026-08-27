@@ -346,8 +346,16 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       this.migrationRotationRequired.set(req.repo_id, false);
       const exposure = this.epochSecretExposure.get(req.repo_id);
       if (exposure) exposure.clearedThrough = exposure.version;
-      if (head.pin_manifest) this.effectivePinManifest.set(req.repo_id, { version: head.pin_manifest.pin_manifest_version, sha256: head.pin_manifest.stored_bytes_sha256 });
     }
+    // `head.pin_manifest` is an independent, schema-optional field (§4.3) —
+    // it can ride EITHER an ordinary head (`publishPinManifestUpdate`) OR a
+    // `rotate_epoch` head (the `pending_confirmations` fold). Track it
+    // unconditionally so `confirmRecipient`/`repinRecipient`'s
+    // `base_pin_manifest_sha256` stamp reflects the REAL currently-effective
+    // predecessor after an ordinary pin-manifest-only publish too — this was
+    // previously nested inside the `rotate_epoch` branch above, which meant
+    // this fixture never observed an ordinary publish's manifest at all.
+    if (head.pin_manifest) this.effectivePinManifest.set(req.repo_id, { version: head.pin_manifest.pin_manifest_version, sha256: head.pin_manifest.stored_bytes_sha256 });
     const stored = this.tamperReadback ? new TextEncoder().encode(new TextDecoder().decode(req.stored_bytes) + " ") : req.stored_bytes;
     this.objects.set(this.key(req.repo_id, gitvaultPaths.head(req.generation)), stored);
     const record = new TextEncoder().encode(JSON.stringify({ admission: req.generation, admitted_sha256: req.stored_bytes_sha256 }));

@@ -1379,6 +1379,18 @@ const ROTATION_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--recipient-state-version"
  * route ships, this verb needs the pair supplied explicitly — refusing
  * cleanly and naming exactly this when they are omitted, rather than
  * guessing and either failing opaquely or (worse) never converging.
+ *
+ * **`elective_rekey` refuses ANY exclusion** (`EPOCH_ROTATION_INCOMPLETE_ENROLLMENT`
+ * on even one keyless/unconfirmed desired principal) — so a pending
+ * `/confirm`/`/repin` receipt does NOT help here: folding it into THIS
+ * rotation's `pending_confirmations` still leaves that principal
+ * `excluded_unconfirmed` for THIS rotation (D196 — same-head manifest
+ * updates never self-authorize), which `elective_rekey`'s own
+ * completeness check then refuses on. If a directory principal is
+ * unconfirmed when this vault needs to clear its migration requirement,
+ * use `run402 repos access revoke-key`/`declare-exposure` instead (an
+ * urgent reason, which admits with a nonempty partial target set) and
+ * fold the pending receipt into THAT rotation.
  */
 async function accessRepair(args) {
   const a = normalizeArgv(args);
@@ -1453,6 +1465,20 @@ async function accessRevokeKey(args) {
  * reason value either. This is the rekey remedy the exposed-key incident
  * needs: declare here, then rotate (via `--recipient-state-version`/
  * `--recipient-revocation-version` once known, e.g. from platform staff).
+ *
+ * **If a `/confirm`/`/repin` receipt is already pending** (a directory
+ * principal was confirmed BEFORE this declaration, or gets confirmed while
+ * the rotation is outstanding), do NOT call `publishPinManifestUpdate`
+ * separately — that call is itself an ORDINARY admission and is itself
+ * refused `EPOCH_ROTATION_REQUIRED` for as long as this declaration stays
+ * outstanding (reproduced live in production 2026-08-27). Pass the receipt
+ * to `r.gitvault.rotateEpoch({..., pending_confirmations: [{principal_id,
+ * ek_fingerprint, receipt}]})` instead — it rides the SAME head as the
+ * rotation this declaration requires, publishing durably without needing a
+ * second, separately-gated admission. See `GitvaultVault.rotateEpoch`'s
+ * doc comment for what this does NOT do: the folded principal is still
+ * excluded from THIS rotation's own envelope set (D196) and becomes
+ * eligible starting at the NEXT rotation.
  */
 async function accessDeclareExposure(args) {
   const a = normalizeArgv(args);
@@ -1467,6 +1493,7 @@ async function accessDeclareExposure(args) {
     console.error(`declared epoch_secret_exposed for ${repoId} (epoch_secret_exposure_version now ${result.epoch_secret_exposure_version}).`);
     console.error("THIS DECLARATION DOES NOT ROTATE THE VAULT BY ITSELF — the next ordinary push now refuses EPOCH_ROTATION_REQUIRED until a rotate_epoch with reason:\"epoch_secret_exposed\" commits.");
     console.error("submit that rotation via r.gitvault.rotateEpoch({repo_id, reason: \"epoch_secret_exposed\", recipient_state_version, recipient_revocation_version}) once you have the two counter values (no CLI shortcut exists for this reason yet — see `run402 repos access repair --help`).");
+    console.error("if a /confirm or /repin receipt is already pending for a directory principal, do NOT publish it separately (publishPinManifestUpdate is itself gated the same way) — pass it as rotateEpoch's pending_confirmations instead so it rides the SAME head as this rotation.");
   } catch (err) {
     reportSdkError(err);
   }
