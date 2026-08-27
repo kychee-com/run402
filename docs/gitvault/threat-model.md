@@ -123,6 +123,20 @@ Four rows deserve emphasis because they are the ones people get wrong:
 
 **Can, separately, in the deploy lane.** The plaintext of every deployed release — which is every file the owner chose to publish to the world anyway, plus build inputs under `functions`/`site` as declared. This is the custody boundary the corrected claim discloses, and it is also the only recovery net that survives total keystore loss (§6).
 
+### 5a. Compelled disclosure — a compelled host is a special case of the malicious host
+
+This subsection adds no new claims. It restates §3 and §4 against the question every serious reviewer asks: *what can legal process extract?* It deliberately makes no statement about any jurisdiction's law — laws change and this page does not; it states the facts a reader's own counsel can plug into their own analysis.
+
+**Jurisdiction, stated plainly, worst case first.** Run402 is operated by Kychee, Inc., a Delaware (US) corporation. The bucket is Amazon S3 — a US provider — and today it lives in a US region. Assume, for this subsection, that both are fully subject to US legal process (subpoena, court order, CLOUD Act production order, national-security process), wherever the bytes physically sit. Nothing below depends on softening that assumption.
+
+**What process can yield.** An order served on run402 can compel at most what the platform-operator row of the observer matrix (§4) possesses: the §10 metadata enumeration for the vault lane, plus the deploy lane's plaintext artifacts. An order served on the bucket operator can compel at most the S3-operator row: the same object set minus control-plane context, plus access patterns. Neither party can be compelled to produce `K_repo`, `k_obj`, vault plaintext, commit ids, branch names, file paths, or an un-keyed plaintext digest — none of it exists on their side to produce.
+
+**Compelled ⊆ malicious.** Every property in §3 is stated against a *malicious* control plane plus a malicious bucket. A compelled host is a strictly weaker adversary, so the table transfers unchanged: confidentiality holds cryptographically against a compelled host; availability, durability, retention timing, and freshness do not — a compelled host, like a malicious one, can delete bytes, withhold service, refuse admission, or serve a stale-but-authentic suffix. Per §7, deletion is attested and attributable — silent loss is loud loss — and the exit ramp (opt-in mirror + offline recovery) is the availability answer: for an owner who mirrors, denial of service is not denial of the repository.
+
+**The client-side residual, stated rather than hidden.** The trust boundary (§2) places the creator's machine and keystore on the trusted side, so an order aimed at the *client* — compelling a modified build that exfiltrates keys — is an attack on the trusted side, not a gap in the claims above. The mitigations are the ones the product already ships for other reasons: the CLI is open source, the protocol has a second independent implementation, and a reader who audits or pins their client keeps the machine-side trust assumption in their own hands. This paragraph exists so nobody can say the page pretended the vector away.
+
+**What this subsection does not promise.** No commitment to notify an owner of legal process — some orders forbid exactly that, and this page does not make promises the platform could be legally barred from keeping. And no claim that metadata is harmless: the §10 enumeration (who, when, how big, how often) is real information, and it is exactly what a compelled host would produce.
+
 ---
 
 ## 6. Terminal loss
