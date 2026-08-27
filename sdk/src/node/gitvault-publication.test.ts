@@ -16,7 +16,7 @@
 import { describe, it } from "node:test";
 import { loadGitvaultVectors, OPTOUT_SKIP_MESSAGE, type GitvaultVector } from "./gitvault-vectors.test-helper.js";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,7 @@ import type { GitvaultHead, GitvaultHeadsListingPage, GitvaultHeadsListingReques
 import {
   GITVAULT_MAX_CANONICAL_REFS,
   GITVAULT_MAX_REF_UPDATES_PER_TRANSACTION,
+  GITVAULT_RETAIN_REF_PREFIX,
   GitvaultVault,
   assertNoTransition,
   assertRefMapCardinality,
@@ -38,10 +39,12 @@ import {
   evolveRetentionRoots,
   generationToBigInt,
   gitvaultPaths,
+  gitvaultRetainedRefName,
   isRootEligibleForRemoval,
   nextGeneration,
   nextListingRequest,
   openBindingDigest,
+  reconcileRetainedTipRefs,
   validateHeadsListingRequest,
   verifyHeadsListingPage,
   type GitvaultListingProgress,
@@ -831,6 +834,141 @@ describe("§4.3 repair + restore", () => {
     assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
     assert.equal(await hasObject(target, c1), true);
     assert.equal(await hasObject(target, c2), true);
+  });
+});
+
+// ─── clone-installs-retained-refs (D1-D5): refs/r402/retain/* ────────────────
+
+/** A root, unrelated commit — never an ancestor of anything else built this way (no `-p` parent). */
+async function orphanCommit(dir: string, label: string): Promise<string> {
+  const blob = await git(dir, ["hash-object", "-w", "-t", "blob", "--stdin"], `${label}\n`);
+  const tree = await git(dir, ["mktree"], `100644 blob ${blob}\t${label}.txt\n`);
+  return git(dir, ["commit-tree", tree, "-m", `orphan ${label}`]);
+}
+
+async function makeRetainTestRepo(): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-retain-repo-"));
+  mkdirSync(dir, { recursive: true });
+  await git(dir, ["init", "-q", "-b", "main", "."]);
+  return dir;
+}
+
+describe("clone-installs-retained-refs — refs/r402/retain/* reconciliation", () => {
+  it("restoreObjectsInto installs a retained ref for a branch-unreachable, force-displaced tip; git fsck is silent", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] }, checkpoint: true });
+    // An unrelated (orphan) commit force-displaces c1 off main — the same
+    // shape a deploy re-capture produces against refs/run402/deploys/latest,
+    // generalized to any force-updated branch (D2's own wording is "the
+    // vault's admitted history", not "deploy captures" specifically).
+    const c2 = await orphanCommit(f.repoDir, "unrelated");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: true }] } });
+
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-retain-clone-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    const restored = await f.vault.restoreObjectsInto(target);
+
+    assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
+    const retainRef = gitvaultRetainedRefName(c1);
+    assert.deepEqual(restored.retained_refs, { written: [retainRef], deleted: [], retained_count: 1, warning: null });
+    assert.equal(await git(target, ["rev-parse", retainRef]), c1);
+
+    // `restoreObjectsInto` restores OBJECTS only — canonical branch refs are
+    // git's OWN job in the real remote-helper protocol (`list` advertises
+    // them, git writes them; see git-remote-run402.mjs's own header comment).
+    // Reproduce that one step so `git fsck` sees exactly what a real `git
+    // clone` leaves behind, and assert the spec's own acceptance scenario:
+    // a fresh clone is fsck-silent.
+    for (const [ref, oid] of Object.entries(restored.refs)) await git(target, ["update-ref", ref, oid]);
+    const fsckOut = await git(target, ["fsck", "--full"]);
+    assert.doesNotMatch(fsckOut, /dangling commit/);
+  });
+
+  it("skips a retained tip already reachable from a canonical ref — no redundant ref (D2)", async (t) => {
+    const repoDir = await makeRetainTestRepo();
+    t.after(() => rmSync(repoDir, { recursive: true, force: true }));
+    const c1 = await commitFile(repoDir, "a.txt", "a\n");
+    const c2 = await commitFile(repoDir, "b.txt", "b\n"); // c2 is a descendant of c1
+
+    const result = await reconcileRetainedTipRefs(repoDir, {
+      refs: { "refs/heads/main": c2 },
+      // c1 is named as a retention root (as if some OTHER, now-deleted ref
+      // once pointed at it) but is still reachable through main's own history.
+      roots: [{ ref: "refs/heads/old", oid: c1, dropped_at_generation: "0000000000000002" }],
+      head_target: { kind: "symref", ref: "refs/heads/main" },
+    });
+    assert.deepEqual(result, { written: [], deleted: [], retained_count: 0, warning: null });
+    const listed = await git(repoDir, ["for-each-ref", GITVAULT_RETAIN_REF_PREFIX]);
+    assert.equal(listed, "");
+  });
+
+  it("adds refs for every retained tip, then retracts one on the next reconcile — namespace-scoped, nothing else touched", async (t) => {
+    const repoDir = await makeRetainTestRepo();
+    t.after(() => rmSync(repoDir, { recursive: true, force: true }));
+    const oidX = await orphanCommit(repoDir, "x");
+    const oidY = await orphanCommit(repoDir, "y");
+    const oidDecoy = await orphanCommit(repoDir, "decoy");
+    await git(repoDir, ["update-ref", "refs/heads/decoy", oidDecoy]);
+
+    const rootsWithX = [
+      { ref: "refs/heads/x", oid: oidX, dropped_at_generation: "0000000000000002" },
+      { ref: "refs/heads/y", oid: oidY, dropped_at_generation: "0000000000000003" },
+    ];
+    const first = await reconcileRetainedTipRefs(repoDir, { refs: {}, roots: rootsWithX, head_target: { kind: "symref", ref: "refs/heads/main" } });
+    assert.deepEqual(new Set(first.written), new Set([gitvaultRetainedRefName(oidX), gitvaultRetainedRefName(oidY)]));
+    assert.deepEqual(first.deleted, []);
+    assert.equal(first.retained_count, 2);
+    assert.equal(first.warning, null);
+
+    // The vault has since pruned X (X's own root is gone from the materialized set) — reconcile again.
+    const second = await reconcileRetainedTipRefs(repoDir, {
+      refs: {},
+      roots: [{ ref: "refs/heads/y", oid: oidY, dropped_at_generation: "0000000000000003" }],
+      head_target: { kind: "symref", ref: "refs/heads/main" },
+    });
+    assert.deepEqual(second.written, []);
+    assert.deepEqual(second.deleted, [gitvaultRetainedRefName(oidX)]);
+    assert.equal(second.retained_count, 1);
+
+    assert.equal(await git(repoDir, ["rev-parse", gitvaultRetainedRefName(oidY)]), oidY, "Y's ref survives — only X's own root was pruned");
+    await assert.rejects(git(repoDir, ["rev-parse", "--verify", gitvaultRetainedRefName(oidX)]), "X's ref was retracted");
+    assert.equal(await git(repoDir, ["rev-parse", "refs/heads/decoy"]), oidDecoy, "reconcile is namespace-scoped — a ref outside refs/r402/ is never touched");
+  });
+
+  it("degrades to a warning and touches nothing further on a ref-write failure — never throws (D3)", async (t) => {
+    if (process.getuid?.() === 0) return; // root ignores file modes — the failure this test injects cannot occur
+    const repoDir = await makeRetainTestRepo();
+    t.after(() => rmSync(repoDir, { recursive: true, force: true }));
+    const oidX = await orphanCommit(repoDir, "x");
+    const refsDir = join(repoDir, ".git", "refs");
+    chmodSync(refsDir, 0o500); // read + execute, no write — update-ref cannot create refs/r402/retain/*
+    try {
+      const result = await reconcileRetainedTipRefs(repoDir, {
+        refs: {},
+        roots: [{ ref: "refs/heads/x", oid: oidX, dropped_at_generation: "0000000000000002" }],
+        head_target: { kind: "symref", ref: "refs/heads/main" },
+      });
+      assert.deepEqual(result.written, []);
+      assert.deepEqual(result.deleted, []);
+      assert.match(result.warning ?? "", /refs\/r402\/retain bookkeeping failed/);
+    } finally {
+      chmodSync(refsDir, 0o700);
+    }
+  });
+
+  it("is a silent no-op — not a warning — when repoDir names no git repository at all", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-retain-norepo-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const result = await reconcileRetainedTipRefs(dir, {
+      refs: {},
+      roots: [{ ref: "refs/heads/x", oid: OID(1), dropped_at_generation: "0000000000000002" }],
+      head_target: { kind: "symref", ref: "refs/heads/main" },
+    });
+    assert.deepEqual(result, { written: [], deleted: [], retained_count: 0, warning: null });
   });
 });
 

@@ -1435,6 +1435,11 @@ function formatFsckHuman(result, mirrorRequested) {
       (result.mirror.data_loss_detected ? ` — DATA LOSS DETECTED (${result.mirror.absences.filter((x) => x.adjudication === "unexplained_absence").length} unexplained absence(s))` : ""),
     );
   }
+  if (result.retained_refs?.warning) {
+    lines.push(`refs/r402/retain: ${result.retained_refs.warning}`);
+  } else if (result.retained_refs) {
+    lines.push(`refs/r402/retain: ${result.retained_refs.retained_count} retained tip(s) referenced (+${result.retained_refs.written.length} -${result.retained_refs.deleted.length} this run).`);
+  }
   return lines.join("\n");
 }
 
@@ -1469,6 +1474,13 @@ async function fsck(args) {
       console.error(`verified through generation ${result.verified_to_generation} — local pin advanced from ${result.pin_before.highest_authenticated ?? "genesis"} to ${result.pin_after.highest_authenticated}.`);
     } else {
       console.error(`verified through generation ${result.verified_to_generation} — already at the newest verified generation, nothing changed.`);
+    }
+    // clone-installs-retained-refs D3: a bookkeeping failure degrades to
+    // exactly one stderr note here — fsck's own result already landed above.
+    if (result.retained_refs?.warning) {
+      console.error(`repos fsck: ${result.retained_refs.warning}`);
+    } else if (result.retained_refs && (result.retained_refs.written.length > 0 || result.retained_refs.deleted.length > 0)) {
+      console.error(`refs/r402/retain: +${result.retained_refs.written.length} -${result.retained_refs.deleted.length} (${result.retained_refs.retained_count} retained tip(s) total).`);
     }
     if (mirrorRequested && result.mirror) {
       console.error(`mirror: recoverable generation ${result.mirror.recovered_generation}${result.mirror.chain_break ? ` (chain break at ${result.mirror.chain_break.generation}: ${result.mirror.chain_break.reason})` : ""}.`);

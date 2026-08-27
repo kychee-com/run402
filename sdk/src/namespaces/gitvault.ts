@@ -404,6 +404,15 @@ export interface GitvaultFsckResult {
   head_target: GitvaultHeadTarget | null;
   /** Present only when `--mirror` was requested. Proves validity, never freshness — see its own honesty statements. */
   mirror: GitvaultVerifyReport | null;
+  /**
+   * clone-installs-retained-refs (D2, task 1.3): the healing path for a
+   * pre-change clone (or a checkout whose original write degraded per D3) —
+   * `null` under `--no-write` (a genuine audit mode persists nothing, refs
+   * included) or when no local checkout was addressed (`repo_dir` absent, or
+   * `repo_dir` is not itself a git repository — an ordinary, silent no-op,
+   * never a warning).
+   */
+  retained_refs: import("../node/gitvault-publication.js").GitvaultRetainedRefsReconcileResult | null;
 }
 
 /**
@@ -1931,6 +1940,19 @@ export class Gitvault {
       : pinBefore;
     const localStateChanged = write && (pinBefore.highest_authenticated !== pinAfter.highest_authenticated || pinBefore.highest_materialized !== pinAfter.highest_materialized);
 
+    // clone-installs-retained-refs (D2, task 1.3): the SAME reconcile the
+    // fetch path drives, run here so `repos fsck` heals a pre-change clone
+    // (or a checkout whose original write degraded per D3) in one call.
+    // `write: false` stays a genuine audit mode — nothing local is persisted,
+    // refs included — and no `repo_dir` (or one that is not itself a git
+    // repository — fsck addresses a vault by repo_id/project_id alone as
+    // often as by a checkout) is an ordinary, silent no-op.
+    let retainedRefs: import("../node/gitvault-publication.js").GitvaultRetainedRefsReconcileResult | null = null;
+    if (write && options.repo_dir) {
+      const { reconcileRetainedTipRefs } = await this.#publication();
+      retainedRefs = await reconcileRetainedTipRefs(options.repo_dir, { refs: state.refs, roots: state.roots, head_target: state.head_target });
+    }
+
     return {
       repo_id: repoId,
       write,
@@ -1942,6 +1964,7 @@ export class Gitvault {
       refs: { ...state.refs },
       head_target: state.head_target,
       mirror,
+      retained_refs: retainedRefs,
     };
   }
 
@@ -2243,10 +2266,10 @@ export class Gitvault {
    * path. Needs only git and a surviving keystore: no deployment artifact, CAS
    * entry, or apply operation is consulted.
    */
-  async restore(options: GitvaultVaultHandleOptions & { target_dir: string }): Promise<{ refs: Record<string, string>; generation: string }> {
+  async restore(options: GitvaultVaultHandleOptions & { target_dir: string }): Promise<{ refs: Record<string, string>; generation: string; retained_refs: import("../node/gitvault-publication.js").GitvaultRetainedRefsReconcileResult }> {
     const handle = await this.open(options);
     const out = await handle.vault.restoreObjectsInto(options.target_dir);
-    return { refs: out.refs, generation: out.generation };
+    return { refs: out.refs, generation: out.generation, retained_refs: out.retained_refs };
   }
 
   // ── mirror (gitvault-mirror-and-recover, design D1/D2/D7) ─────────────────

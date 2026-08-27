@@ -328,6 +328,144 @@ export function evolveRetentionRoots(previous: GitvaultRetentionRoot[], options:
   return roots;
 }
 
+// ─── clone-installs-retained-refs (D1-D5): local refs/r402/retain/* bookkeeping ──
+
+/**
+ * The client-local, protocol-owned namespace (design D4). Distinct from the
+ * VAULT-side `refs/run402/*` (e.g. `GITVAULT_DEPLOY_REF`) that rides the wire
+ * as part of `ref_state` — `refs/r402/*` never rides the wire at all; it is
+ * written directly into the local `.git` by the materializer and reconciled
+ * on every later fetch/fsck. A push naming any ref under it is refused by the
+ * remote helper before a transaction is ever built (see
+ * `git-remote-run402.mjs`'s `partitionProtectedRefPushes`) — this constant is
+ * the ONE place the namespace string is spelled, shared by both sides.
+ */
+export const GITVAULT_R402_REF_NAMESPACE = "refs/r402/";
+/** Where a retained (branch-unreachable) deploy-capture tip gets its local ref (design D1/D2). */
+export const GITVAULT_RETAIN_REF_PREFIX = `${GITVAULT_R402_REF_NAMESPACE}retain/`;
+
+/**
+ * D1's ref-identity choice, recorded here because the design doc's own
+ * assumption did not hold: `GitvaultRetentionRoot` carries no per-capture
+ * stable id (only `{ref, oid, dropped_at_generation}`) — the capture id that
+ * DOES exist (`GitvaultHead.capture_binding.capture_id`) lives on the head
+ * that INTRODUCED a tip onto a canonical ref, not on the retention-root entry
+ * recording its later displacement, and correlating the two would require
+ * walking the chain further back than materialization already reads (D2
+ * forbids new reads here). The commit oid itself is already in hand, is
+ * content-addressed (so it is exactly as stable as a capture id — neither
+ * ever changes for the same history), and needs no correlation at all — the
+ * ref name IS the tip's own identity.
+ */
+export function gitvaultRetainedRefName(oid: string): string {
+  return `${GITVAULT_RETAIN_REF_PREFIX}${oid}`;
+}
+
+export interface GitvaultRetainedRefsReconcileResult {
+  /** `refs/r402/retain/<oid>` refs created or moved this call. */
+  written: string[];
+  /** `refs/r402/retain/*` refs removed this call — a root the vault no longer retains. */
+  deleted: string[];
+  /** How many distinct retained, branch-unreachable, locally-present tips this call found. */
+  retained_count: number;
+  /**
+   * Non-null on ANY bookkeeping failure (D3) — permissions, an exotic
+   * filesystem, a git invocation error. The caller (fetch/fsck) turns this
+   * into exactly one stderr note and otherwise proceeds unchanged: a clone,
+   * fetch, or fsck NEVER fails because this could not be written.
+   */
+  warning: string | null;
+}
+
+/** `git for-each-ref --format='%(objectname) %(refname)' <prefix>` → `Map<refname, oid>`. Namespace-scoped by construction (the prefix argv). */
+async function listRefsUnderPrefix(repoDir: string, prefix: string): Promise<Map<string, string>> {
+  const r = await hardenedGit(repoDir, ["for-each-ref", "--format=%(objectname) %(refname)", prefix]);
+  const out = new Map<string, string>();
+  for (const raw of r.lines()) {
+    const line = raw.trim();
+    if (!line) continue;
+    const sp = line.indexOf(" ");
+    if (sp === -1) continue;
+    out.set(line.slice(sp + 1), line.slice(0, sp));
+  }
+  return out;
+}
+
+/**
+ * D2: install/remove local `refs/r402/retain/<oid>` refs so every retained
+ * (branch-unreachable) tip the vault's materialized retention roots name is
+ * locally referenced — the git-ecosystem `refs/pull/*` precedent, so a fresh
+ * `git fsck` is silent and `git for-each-ref refs/r402/` names what is
+ * retained and why (D6).
+ *
+ * Skips a root tip already reachable from a canonical ref (`state.refs`) or
+ * the HEAD target when detached — no redundant refs (D2). Reconciliation is
+ * namespace-scoped: only `refs/r402/retain/*` is ever read, written, or
+ * deleted; nothing else is touched, even when other bookkeeping under
+ * `refs/r402/*` exists.
+ *
+ * D3 — warn, never fail: driven from a SINGLE try/catch around the whole
+ * operation (list existing → compute the desired set → one atomic
+ * `update-ref --stdin` transaction for every create/update/delete). Any
+ * failure anywhere in that sequence returns a `warning` string and touches
+ * nothing further; it never throws, so a clone/fetch/fsck calling this can
+ * never fail on it. Called only when `repoDir` is an actual git repository —
+ * `repos fsck` addresses a vault by `repo_id`/`project_id` alone as often as
+ * by a local checkout, and "no local repo here" is a normal, silent no-op,
+ * never a warning.
+ */
+export async function reconcileRetainedTipRefs(repoDir: string, state: { refs: GitvaultRefMap; roots: readonly GitvaultRetentionRoot[]; head_target: GitvaultHeadTarget }): Promise<GitvaultRetainedRefsReconcileResult> {
+  const empty = (warning: string | null = null): GitvaultRetainedRefsReconcileResult => ({ written: [], deleted: [], retained_count: 0, warning });
+  let isRepo: boolean;
+  try {
+    const probe = await hardenedGit(repoDir, ["rev-parse", "--git-dir"], { okStatuses: [128] });
+    isRepo = probe.status === 0;
+  } catch {
+    return empty(); // no repository here (or it vanished) — nothing to reconcile, not a failure
+  }
+  if (!isRepo) return empty();
+
+  try {
+    const reachableTips = [...new Set(Object.values(state.refs))];
+    if (state.head_target.kind === "detached") reachableTips.push(state.head_target.oid);
+
+    const candidateOids = [...new Set(state.roots.map((r) => r.oid))].sort();
+    const retainedOids: string[] = [];
+    for (const oid of candidateOids) {
+      if (!(await hasObject(repoDir, oid))) continue; // not present locally — nothing to reference, not a failure
+      let reachable = false;
+      for (const tip of reachableTips) {
+        if ((await hasObject(repoDir, tip)) && (await isAncestor(repoDir, oid, tip))) { reachable = true; break; }
+      }
+      if (!reachable) retainedOids.push(oid);
+    }
+
+    const existing = await listRefsUnderPrefix(repoDir, GITVAULT_RETAIN_REF_PREFIX);
+    const desired = new Map(retainedOids.map((oid) => [gitvaultRetainedRefName(oid), oid]));
+
+    const toWrite: Array<[string, string]> = [];
+    for (const [ref, oid] of desired) if (existing.get(ref) !== oid) toWrite.push([ref, oid]);
+    const toDelete: string[] = [...existing.keys()].filter((ref) => !desired.has(ref));
+
+    if (toWrite.length === 0 && toDelete.length === 0) {
+      return { written: [], deleted: [], retained_count: retainedOids.length, warning: null };
+    }
+
+    // ONE `update-ref --stdin` transaction for every create/update/delete —
+    // git applies the whole batch atomically, so a mid-batch failure leaves
+    // the namespace exactly as it was before this call (D3's "degrades to
+    // exactly today's behavior", not a half-reconciled namespace).
+    const lines: string[] = [];
+    for (const [ref, oid] of toWrite) lines.push(`update ${ref} ${oid}\n`);
+    for (const ref of toDelete) lines.push(`delete ${ref}\n`);
+    await hardenedGit(repoDir, ["update-ref", "--stdin"], { input: lines.join("") });
+
+    return { written: toWrite.map(([ref]) => ref), deleted: toDelete, retained_count: retainedOids.length, warning: null };
+  } catch (e) {
+    return empty(`refs/r402/retain bookkeeping failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 // ─── §6.3 Heads listing (pure) ───────────────────────────────────────────────
 
 export interface GitvaultListingProgress {
@@ -2894,9 +3032,12 @@ export class GitvaultVault {
    * `targetRepoDir` (an initialized repository), then verify every canonical
    * ref + the HEAD target resolves. Returns the materialized refs.
    */
-  async restoreObjectsInto(targetRepoDir: string): Promise<{ refs: GitvaultRefMap; head_target: GitvaultHeadTarget; generation: string }> {
+  async restoreObjectsInto(targetRepoDir: string): Promise<{ refs: GitvaultRefMap; head_target: GitvaultHeadTarget; generation: string; retained_refs: GitvaultRetainedRefsReconcileResult }> {
     const newest = await this.materialize();
-    if (!newest.head) return { refs: {}, head_target: newest.head_target, generation: newest.generation };
+    if (!newest.head) {
+      const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: {}, roots: [], head_target: newest.head_target });
+      return { refs: {}, head_target: newest.head_target, generation: newest.generation, retained_refs };
+    }
     const writerKey = newest.genesis.creator_signing_pubkey;
     // walk back to the newest checkpoint-bearing head
     const heads: GitvaultHead[] = [];
@@ -2938,7 +3079,12 @@ export class GitvaultVault {
     for (const t of GitvaultVault.coverageTips(newest.refs, newest.roots, newest.head_target)) {
       if (!(await hasObject(targetRepoDir, t))) fail("CHAIN_UNUSABLE", `covered tip ${t} does not resolve after restore`, "restoring gitvault objects", { oid: t });
     }
-    return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation };
+    // clone-installs-retained-refs (D2): every retained tip just restored
+    // above is now present locally — install/reconcile its refs/r402/retain/*
+    // ref so `git fsck` is silent. Runs AFTER coverage verification so a
+    // reconcile never references an object the restore itself failed to land.
+    const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: newest.refs, roots: newest.roots, head_target: newest.head_target });
+    return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
   }
 }
 

@@ -104,7 +104,7 @@ import { pathToFileURL } from "node:url";
 import { getSdk } from "./lib/sdk.mjs";
 import { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } from "./lib/wallet-context.mjs";
 import { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } from "#sdk";
-import { hardenedGit, resolveGitInvocationRepo } from "#sdk/node";
+import { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo } from "#sdk/node";
 
 const out = (line) => process.stdout.write(`${line}\n`);
 /** Every helper response block is terminated by a blank line. */
@@ -231,6 +231,31 @@ function parsePushSpec(spec) {
   const colon = body.indexOf(":");
   if (colon === -1) return { src: body, dst: body, force: forced };
   return { src: body.slice(0, colon), dst: body.slice(colon + 1), force: forced };
+}
+
+/** `R402_PROTECTED_REF_NAMESPACE`'s one-line reason, shared by the protocol `error` line and the stderr note. */
+export const R402_PROTECTED_REF_NAMESPACE_REASON = `R402_PROTECTED_REF_NAMESPACE: ${GITVAULT_R402_REF_NAMESPACE}* is client-local bookkeeping maintained by fetch, not push — push branches instead.`;
+
+/**
+ * D4: `refs/r402/*` is client-local (design D1/D2's local ref bookkeeping) —
+ * never advertised for push, never part of a `GitvaultRefTransaction`. Split
+ * one push batch into the specs this helper will actually publish and the
+ * ones it refuses, PURE and pre-repository (a refname prefix check needs no
+ * repo, no network, no wallet), so a batch made ENTIRELY of protected refs
+ * costs nothing beyond parsing, and a MIXED batch still lets its unrelated
+ * branch updates proceed (client-surface spec's own scenario) — this is why
+ * the split happens here, before `vault.push`'s one all-or-nothing
+ * transaction is ever built, rather than inside the SDK's existing (whole-
+ * transaction-refusing) `refs/run402/*` guard.
+ */
+export function partitionProtectedRefPushes(specs) {
+  const refused = [];
+  const allowed = [];
+  for (const spec of specs) {
+    if (spec.dst.startsWith(GITVAULT_R402_REF_NAMESPACE)) refused.push(spec);
+    else allowed.push(spec);
+  }
+  return { refused, allowed };
 }
 
 /**
@@ -448,12 +473,32 @@ async function main(argv) {
     if (verbosity >= 1) note(`restoring the vault object database for ${batch.length} ref(s) into ${repoDir}`);
     const restored = await getSdk().gitvault.restore({ ...target, repo_dir: repoDir, target_dir: repoDir });
     if (verbosity >= 1) note(`restored generation ${restored.generation}`);
+    // clone-installs-retained-refs D3: a bookkeeping failure here degrades to
+    // exactly today's (pre-change) behavior — one stderr note, fetch still
+    // completes. `restored.retained_refs` is never absent (the SDK always
+    // returns a result, never throws for this step).
+    if (restored.retained_refs?.warning) note(restored.retained_refs.warning);
+    else if (verbosity >= 1 && (restored.retained_refs?.written.length > 0 || restored.retained_refs?.deleted.length > 0)) {
+      note(`refs/r402/retain: +${restored.retained_refs.written.length} -${restored.retained_refs.deleted.length} (${restored.retained_refs.retained_count} retained tip(s) total)`);
+    }
     endBlock();
     return 0;
   }
 
   async function runPush(batch) {
     const specs = batch.map(parsePushSpec);
+    // D4: `refs/r402/*` is client-local — refuse it per-ref, BEFORE any
+    // repository/wallet/network work, while unrelated branch updates in the
+    // SAME push proceed normally (client-surface spec's own scenario).
+    const { refused, allowed } = partitionProtectedRefPushes(specs);
+    for (const spec of refused) {
+      note(`refusing ${spec.dst}: ${R402_PROTECTED_REF_NAMESPACE_REASON}`);
+      out(`error ${spec.dst} ${R402_PROTECTED_REF_NAMESPACE_REASON}`);
+    }
+    if (allowed.length === 0) {
+      endBlock();
+      return 0;
+    }
     try {
       // Repository first, then every source revision, and only then the
       // network: a push that names a ref this repository does not have must
@@ -462,7 +507,7 @@ async function main(argv) {
       // Same "walk from the resolved repository, not cwd" rule as `fetch`.
       applyWalletForDir(repoDir);
       const newOids = new Map();
-      for (const spec of specs) {
+      for (const spec of allowed) {
         // A deletion carries an empty <src>. Everything else is resolved by
         // git itself; `--end-of-options` keeps a hostile refname from being
         // read as a flag.
@@ -485,13 +530,13 @@ async function main(argv) {
         } catch (err) {
           if (!isVaultNotFound(err)) throw err;
           note("dry-run: no vault allocated for this project yet — a real push would allocate one (push-to-create) before publishing; object/byte sizing is not knowable until then");
-          for (const spec of specs) out(`ok ${spec.dst}`);
+          for (const spec of allowed) out(`ok ${spec.dst}`);
           endBlock();
           return 0;
         }
         const base = await vault.materialize();
         const updates = [];
-        for (const spec of specs) {
+        for (const spec of allowed) {
           const expectedOld = base.refs?.[spec.dst] ?? null;
           updates.push({
             ref: spec.dst,
@@ -511,7 +556,7 @@ async function main(argv) {
           `${plan.object_count} object(s), ${plan.encrypted_bytes} encrypted byte(s) (${plan.raw_bytes} raw), ` +
           `${Object.keys(plan.refs).length} ref(s); no allocation needed`,
         );
-        for (const spec of specs) out(`ok ${spec.dst}`);
+        for (const spec of allowed) out(`ok ${spec.dst}`);
         endBlock();
         return 0;
       }
@@ -519,7 +564,7 @@ async function main(argv) {
       const vault = await openOrCreateVault(repoDir);
       const base = await vault.materialize();
       const updates = [];
-      for (const spec of specs) {
+      for (const spec of allowed) {
         const expectedOld = base.refs?.[spec.dst] ?? null;
         updates.push({
           ref: spec.dst,
@@ -551,13 +596,13 @@ async function main(argv) {
         ...(headFix.head_target ? { head_target: headFix.head_target } : {}),
       });
       if (verbosity >= 1) note(`published generation ${published.generation} (${published.form})`);
-      for (const spec of specs) out(`ok ${spec.dst}`);
+      for (const spec of allowed) out(`ok ${spec.dst}`);
     } catch (err) {
       // The transaction is atomic, so a failure failed every ref in it. Report
       // it against each one rather than letting some look like they landed.
       if (err?.code === "GIT_INVOCATION_REPO_UNRESOLVED") repoRefusalNote(err);
       const reason = describeError(err);
-      for (const spec of specs) out(`error ${spec.dst} ${reason}`);
+      for (const spec of allowed) out(`error ${spec.dst} ${reason}`);
     }
     endBlock();
     return 0;

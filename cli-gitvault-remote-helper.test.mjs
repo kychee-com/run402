@@ -35,7 +35,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chooseGitvaultHeadTargetForPush } from "./cli/git-remote-run402.mjs";
+import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes } from "./cli/git-remote-run402.mjs";
 
 const HELPER = fileURLToPath(new URL("./cli/git-remote-run402.mjs", import.meta.url));
 /** A closed port: any network attempt fails loudly and unmistakably. */
@@ -859,6 +859,97 @@ describe("chooseGitvaultHeadTargetForPush — first-push HEAD repair (kychee-com
     });
     assert.equal(result.head_target, undefined);
     assert.equal(result.note, null);
+  });
+});
+
+// ─── D4 (clone-installs-retained-refs) — refs/r402/* push refusal ────────────
+//
+// `refs/r402/*` is client-local bookkeeping (D1/D2's `refs/r402/retain/*`)
+// installed by FETCH, never by push. `partitionProtectedRefPushes` is the
+// pure, pre-repository split that lets `runPush` refuse those specs while
+// unrelated branch updates in the SAME batch still proceed — proven twice
+// here: as a pure function (this describe block) and end-to-end over the
+// real wire protocol (the next one), matching this file's own
+// `chooseGitvaultHeadTargetForPush` precedent for testing helper-local pure
+// logic directly.
+describe("partitionProtectedRefPushes — D4 refs/r402/* push refusal", () => {
+  const oid = (n) => n.toString(16).padStart(40, "0");
+
+  it("refuses every refs/r402/* destination, regardless of source or force", () => {
+    const specs = [
+      { src: oid(1), dst: "refs/r402/retain/deadbeef", force: false },
+      { src: "", dst: "refs/r402/anything-else", force: true },
+    ];
+    const { refused, allowed } = partitionProtectedRefPushes(specs);
+    assert.deepEqual(refused, specs);
+    assert.deepEqual(allowed, []);
+  });
+
+  it("allows every ordinary refs/heads/* and refs/tags/* destination through unchanged", () => {
+    const specs = [
+      { src: oid(1), dst: "refs/heads/main", force: false },
+      { src: oid(2), dst: "refs/tags/v1", force: true },
+    ];
+    const { refused, allowed } = partitionProtectedRefPushes(specs);
+    assert.deepEqual(refused, []);
+    assert.deepEqual(allowed, specs);
+  });
+
+  it("splits a MIXED batch — the client-surface spec's own scenario: unrelated branch updates proceed", () => {
+    const branch = { src: oid(1), dst: "refs/heads/main", force: false };
+    const protectedSpec = { src: oid(2), dst: "refs/r402/retain/cafef00d", force: false };
+    const { refused, allowed } = partitionProtectedRefPushes([branch, protectedSpec]);
+    assert.deepEqual(refused, [protectedSpec]);
+    assert.deepEqual(allowed, [branch]);
+  });
+
+  it("the shared reason names the code and the fix", () => {
+    assert.match(R402_PROTECTED_REF_NAMESPACE_REASON, /^R402_PROTECTED_REF_NAMESPACE:/);
+    assert.match(R402_PROTECTED_REF_NAMESPACE_REASON, /maintained by fetch/);
+    assert.match(R402_PROTECTED_REF_NAMESPACE_REASON, /push branches instead/);
+  });
+});
+
+describe("git-remote-run402 push — D4 refs/r402/* refusal over the real wire protocol", () => {
+  it("refuses a protected-only batch with a typed per-ref error, touching no repository and no network", () => {
+    // No GIT_DIR at all: proves this refusal needs neither a resolved
+    // repository nor the network — the filter runs before `requireRepo()`.
+    const r = runHelper({
+      cwd: mkdtempSync(join(tmpdir(), "run402-gvh-protected-")),
+      env: { GIT_DIR: undefined },
+      stdin: "capabilities\n\npush refs/r402/retain/deadbeef00000000000000000000000000000000:refs/r402/retain/deadbeef00000000000000000000000000000000\n\n",
+    });
+    assert.equal(r.status, 0, `${r.stdout}\n---\n${r.stderr}`);
+    assert.match(r.stdout, /^error refs\/r402\/retain\/deadbeef00000000000000000000000000000000 R402_PROTECTED_REF_NAMESPACE:/m, r.stdout);
+    assert.match(r.stderr, /refusing refs\/r402\/retain/, r.stderr);
+    // Never reached a repository resolution, let alone the network.
+    assert.doesNotMatch(r.stderr, /GIT_INVOCATION_REPO_UNRESOLVED/, r.stderr);
+    assert.doesNotMatch(`${r.stdout}\n${r.stderr}`, /ECONNREFUSED|127\.0\.0\.1:9/, r.stderr);
+  });
+
+  it("refuses ONLY the refs/r402/* ref in a mixed batch — the unrelated branch update is still attempted", () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-protected-mixed-")));
+    try {
+      const decoy = makeRepo(join(root, "decoy"), { commit: true });
+      const head = git(decoy, ["rev-parse", "HEAD"]);
+      const r = runHelper({
+        cwd: decoy,
+        env: { GIT_DIR: undefined },
+        stdin: `capabilities\n\npush refs/heads/main:refs/heads/main\npush ${head}:refs/r402/retain/${head}\n\n`,
+      });
+      assert.equal(r.status, 0, `${r.stdout}\n---\n${r.stderr}`);
+      const lines = r.stdout.trim().split("\n");
+      // The protected ref is refused immediately, before repository resolution.
+      assert.ok(lines.some((l) => l === `error refs/r402/retain/${head} ${R402_PROTECTED_REF_NAMESPACE_REASON}`), r.stdout);
+      // The unrelated branch update was NOT silently dropped alongside it —
+      // it was actually attempted (reached network resolution against the
+      // dead port) and failed for an UNRELATED reason.
+      const branchLine = lines.find((l) => l.startsWith("error refs/heads/main "));
+      assert.ok(branchLine, `expected an attempt at refs/heads/main, got:\n${r.stdout}`);
+      assert.doesNotMatch(branchLine, /R402_PROTECTED_REF_NAMESPACE/, branchLine);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
