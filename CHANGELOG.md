@@ -4,6 +4,42 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **BREAKING: `run402 gitvault <verb>` is RETIRED — one noun, `repos`, twelve verbs (repo-surface-consolidation).**
+  The 19-command `gitvault`/`repos` sprawl collapses to one noun and twelve
+  verbs, each one either a `gh repo` verb, a `git` verb meaning what it means
+  in git, or a plain-English verb for an operation with no analog. Every old
+  `run402 gitvault <verb>` spelling answers a structured `COMMAND_MOVED`
+  (naming its successor) or, for `push`/`reconcile` (no behavioral
+  successor), `COMMAND_REMOVED`, for this one release — after which the
+  spellings are reserved and answer nothing at all. `repo` singular resolves
+  identically to `repos`. `r.gitvault` is UNCHANGED in the SDK — `gitvault`
+  stays the protocol/infrastructure name; `repos` is the CLI noun.
+
+  | Old | New |
+  |---|---|
+  | `gitvault init` | `repos create --project <id>` (or `repos create <name>` for a new project) |
+  | `gitvault status` | `repos view` — now genuinely side-effect-free; `--refs` is REMOVED |
+  | `repos name` | `repos rename` |
+  | `gitvault snapshot` | `repos snapshot` |
+  | `gitvault policy` | `repos policy` |
+  | `gitvault compact`, `gitvault prune` | `repos gc` — plans/checkpoints by default, `--submit` for the destructive path |
+  | `gitvault verify` | `repos fsck` — now also materializes refs (absorbing `status --refs`), with explicit `local_state_changed`/`pin_before`/`pin_after` and a `--no-write` audit mode |
+  | `gitvault mirror set/remove/status/sync/verify` | `repos mirror` — one flag-driven verb (no-arg read, `<destination>` upsert, `--off`, `--backfill`) |
+  | `gitvault recover` | `repos recover` — name unchanged; `restore` was considered and rejected because `git restore` already means something else |
+  | `gitvault push` | REMOVED — its one-release deprecation-alias window is over; use `git push` or `repos snapshot` |
+  | `gitvault reconcile` | REMOVED (no successor) — was a workaround (its own help text said so); `repos access` is the new READ-ONLY inspection surface; `repos access repair` is not yet available, gated on `gitvault-human-envelopes`' epoch-rotation work |
+
+  New: `repos list` uses a bulk `GET /gitvault/v1/vaults?org_id=` read (one
+  round trip) with a graceful fallback to the old per-project walk when a
+  gateway hasn't shipped the route yet. New: `repos delete` refuses
+  `PROJECT_HAS_NON_REPO_RESOURCES` when the project holds a materialized
+  database, functions, subdomains, mailbox, or secrets, pointing at
+  `run402 projects delete`; `--force` overrides only the separate
+  vault-history confirmation, never that refusal. The three read-only MCP
+  tools are renamed to match: `get_gitvault_status` → `repos_view`,
+  `list_gitvault_heads` → `repos_list_heads`, `verify_gitvault` →
+  `repos_fsck` — same handlers, one noun across every agent surface.
+
 - **New: `run402 gitvault mirror set|remove|status|sync|verify` and `run402 gitvault recover` — the exit ramp (gitvault-mirror-and-recover).**
   A second, customer-owned copy of a vault's ciphertext, in an S3 bucket or
   a plain (or network-mounted) directory. `mirror set <destination>

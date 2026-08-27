@@ -358,9 +358,9 @@ curl -X POST https://api.run402.com/admin/v1/rest/audit \
   -d '{"event":"seed","ts":"2026-04-30"}'
 ```
 
-### gitvault: your repository history, encrypted before it leaves the machine
+### repos: your repository history, encrypted before it leaves the machine
 
-`gitvault` is a Git remote whose contents are encrypted on your own machine and stored as a chain of signed, admitted heads. It exists so your repository history outlives the machine it was written on — without that outliving requiring you to hand Run402 the plaintext. The wire protocol is `r402s/v0`.
+`run402 repos` is a Git remote whose contents are encrypted on your own machine and stored as a chain of signed, admitted heads. It exists so your repository history outlives the machine it was written on — without that outliving requiring you to hand Run402 the plaintext. The wire protocol is `r402s/v0`. One noun, twelve verbs (`repo` singular resolves identically) — this replaces the earlier nineteen-command `gitvault`/`repos` split (repo-surface-consolidation): `run402 gitvault <verb>` is RETIRED, every old spelling answers `COMMAND_MOVED`/`COMMAND_REMOVED`, and `r.gitvault` is unchanged in the SDK (`gitvault` stays the protocol/infrastructure name; `repos` is what you type).
 
 Three claims, three different strengths. These are the entire approved claims vocabulary for this feature:
 
@@ -391,29 +391,29 @@ The explicit, ceremonial form still works, and allocates the SAME way `git push`
 #    (`run402 projects use <project_id>`, or RUN402_PROJECT_ID).
 run402 init
 
-# 2. Allocate the vault explicitly. Separate from `run402 init` on purpose:
-#    this is the step that mints key material on this machine and prints a
-#    one-shot recovery receipt. Idempotent — an existing vault comes back
-#    deduplicated. (git push / gitvault snapshot would allocate it lazily too.)
-run402 gitvault init
+# 2. Allocate the repo's vault explicitly. Separate from `run402 init` on
+#    purpose: this is the step that mints key material on this machine and
+#    prints a one-shot recovery receipt. Idempotent — an existing vault comes
+#    back deduplicated. (git push / repos snapshot would allocate it lazily too.)
+run402 repos create --project <id>
 
 # 3. Snapshot — capture the working tree, encrypt it, publish a signed head.
-run402 gitvault snapshot --message "wip: refactor the parser"
+run402 repos snapshot --message "wip: refactor the parser"
 git push origin main            # ...or push your own branches, via git-remote-run402
 
-# 4. Status, then verify the head chain from your authenticated pin.
-run402 gitvault status --refs
-run402 gitvault verify --budget 500
+# 4. View, then fsck: walk the head chain from your authenticated pin.
+run402 repos view
+run402 repos fsck --budget 500
 
 # Restore anywhere, with plain git.
 git clone run402::<org_id>/<project_id> restored
 ```
 
-`gitvault snapshot` (`gitvault push` before design D5's rename) is the CAPTURE lane — the protocol deploy ref plus the HEAD target — because a dirty tree captures as a synthetic commit that sits on no branch. Your own branches and tags reach the vault through `git push origin <branch>`.
+`repos snapshot` (`gitvault push`, then `gitvault snapshot`, before repo-surface-consolidation's rename) is the CAPTURE lane — the protocol deploy ref plus the HEAD target — because a dirty tree captures as a synthetic commit that sits on no branch. Your own branches and tags reach the vault through `git push origin <branch>`.
 
-**Allocating a vault does NOT gate the project's deploys** (design D3). `gitvault_policy` stays unset until you set it — a vault created by a first `git push` or `repos create` never silently changes how you deploy. A deploy against a vaulted, ungated project proceeds ungated and its result carries a typed `next_actions` entry offering `run402 gitvault policy required`; every later ungated deploy carries a `warnings[]` entry naming the drift, until the policy is set either way — never a block, never an interactive prompt. Once `gitvault_policy` is `required`, a deploy must present a vaulted capture at commit — `run402 deploy apply` produces one automatically on any machine holding the keystore; un-gate with `run402 gitvault policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible with `run402 gitvault policy required`). Vaulting your source is never gated on a deploy, either way. `run402 doctor` reports the policy, whether this machine can satisfy it, and where the keystore lives.
+**Allocating a vault does NOT gate the project's deploys** (design D3). `gitvault_policy` stays unset until you set it — a vault created by a first `git push` or `repos create` never silently changes how you deploy. A deploy against a vaulted, ungated project proceeds ungated and its result carries a typed `next_actions` entry offering `run402 repos policy required`; every later ungated deploy carries a `warnings[]` entry naming the drift, until the policy is set either way — never a block, never an interactive prompt. Once `gitvault_policy` is `required`, a deploy must present a vaulted capture at commit — `run402 deploy apply` produces one automatically on any machine holding the keystore; un-gate with `run402 repos policy grandfathered --reason "<why>"` (owner + step-up, audited, reversible with `run402 repos policy required`). Vaulting your source is never gated on a deploy, either way. `run402 doctor` reports the policy, whether this machine can satisfy it, and where the keystore lives.
 
-Before `snapshot` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. Maintenance is `run402 gitvault compact` (checkpoint under a lease) and `run402 gitvault prune` (**two phases**: it plans locally, and submits only when handed both verifier receipts — one from this CLI, one from the independent `r402s-verify`; only the control-plane-signed completion says what was deleted).
+Before `snapshot` reports that anything landed, the client compares every finalization receipt against its local expected manifest and reads the admitted head back from storage — a 200 alone is never enough. Maintenance is one verb, `run402 repos gc` — `git gc`'s own two halves (checkpoint publication + prune planning), never described as "exactly `git gc`" since the deletion ceremony is stricter: it plans locally, and submits only when handed both verifier receipts — one from this CLI, one from the independent `r402s-verify` — with `--submit --intent-core <path> --verifier-receipt <path>`; only the control-plane-signed completion says what was deleted.
 
 From the SDK, with identical semantics — vault reads run anywhere, and the verbs that touch a git working tree or the on-disk keystore are Node-only:
 
@@ -428,21 +428,21 @@ const state = await r.gitvault.verify({ project_id: projectId });
 
 **The encrypted second remote — the zero-migration pattern.** Keep GitHub/GitLab as the primary (collaboration, CI, reviews, unchanged) and add GitVault as the second remote: `git remote add gitvault run402::<org_id>/<project_id>` + `git push gitvault --all`, and a complete, continuously updated copy of your history exists that the storage provider itself cannot read. The reason this matters, said plainly and as capability rather than accusation: a host that can READ private repositories can — under a future policy, an acquisition, a training pipeline, a subpoena, or a breach — index them, train models on them, or hand them to someone who will. Run402 cannot decrypt your gitvault or repository history. Deployment artifacts remain a disclosed plaintext custody boundary.
 
-**A vault-only project is first-class.** `run402 init` (or `run402 repos create <name>`), then `git push origin …`, then compact / prune / verify, and never a deploy — a supported shape, not a degraded one. One consequence is worth stating plainly: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty and there is consequently no custodial restore path.
+**A vault-only project is first-class.** `run402 init` (or `run402 repos create <name>`), then `git push origin …`, then `gc` / `fsck` / `access`, and never a deploy — a supported shape, not a degraded one. One consequence is worth stating plainly: a vault-only project has no deploy lane, so the disclosed plaintext custody boundary is empty and there is consequently no custodial restore path.
 
-**If you lose the keystore.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 gitvault status` prints that sentence verbatim. Back up the keystore directory `run402 gitvault status` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and it decrypts nothing. It is not a secret; the more copies the better. The reminder gets louder as the vault gets more valuable (design D7): quiet at genesis, a STANDING `run402 doctor` warning once the vault crosses any of ≥10 generations / ≥10 MB / ≥14 days since genesis — cleared only by adding a second principal, never by an attestation, because V0 cannot verify one is true.
+**If you lose the keystore.** The vault protects source history from host-side loss while a principal keystore survives. The "while" clause is load-bearing: in V0-A, **whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship**, and `run402 repos view` prints that sentence verbatim. Back up the keystore directory `run402 repos view` reports as `keystore.root` and prints under the terminal-loss statement — `~/.config/run402/gitvault` for the default wallet, `~/.config/run402/profiles/<wallet>/gitvault` for a named one. The recovery receipt is an integrity anchor, not a decryption key — it proves the vault you are served is the one you created, and it decrypts nothing. It is not a secret; the more copies the better. The reminder gets louder as the vault gets more valuable (design D7): quiet at genesis, a STANDING `run402 doctor` warning once the vault crosses any of ≥10 generations / ≥10 MB / ≥14 days since genesis — cleared only by adding a second principal, never by an attestation, because V0 cannot verify one is true.
 
-**The exit ramp: mirror your own copy.** `run402 gitvault mirror set <destination> [--profile <name> | --ambient]` (S3 or a plain directory) configures a second, customer-owned copy of the vault's ciphertext — the destination and credential *name* live in a config file beside the keystore, never in `run402.config.json`, never a raw secret. Once set, every `snapshot`/`push` dual-pushes to it automatically, reported as a separate `mirror_push` field beside the vault result; a mirror failure never blocks, slows, or changes the actual publish. `run402 gitvault mirror sync` (idempotent, resumable) backfills it on demand; `run402 gitvault mirror verify` is a KEYLESS integrity probe — it reports the recoverable generation without touching key material. `run402 gitvault recover <source> --out <dir>` needs no server at all: it reads the mirror, verifies the chain, and decrypts with the local keystore alone. Two things to know before you rely on it: it proves *validity, never freshness* — an older mirror looks identical to a genuinely short history — and a mirror without the keystore recovers nothing, since mirroring ciphertext does not create a second key; the V0 terminal-loss statement above is unchanged.
+**The exit ramp: mirror your own copy.** `run402 repos mirror <destination> [--profile <name> | --ambient]` (S3 or a plain directory) configures a second, customer-owned copy of the vault's ciphertext — the destination and credential *name* live in a config file beside the keystore, never in `run402.config.json`, never a raw secret. Once set, every `snapshot` dual-pushes to it automatically, reported as a separate `mirror_push` field beside the vault result; a mirror failure never blocks, slows, or changes the actual publish. `run402 repos mirror --backfill` (idempotent, resumable) catches it up on demand; `run402 repos fsck --mirror` is a KEYLESS integrity probe — it reports the recoverable generation without touching key material. `run402 repos recover <source> --out <dir>` needs no server at all: it reads the mirror, verifies the chain, and decrypts with the local keystore alone. Kept its name (design D10) rather than `restore`, which already means something else in git. Two things to know before you rely on it: it proves *validity, never freshness* — an older mirror looks identical to a genuinely short history — and a mirror without the keystore recovers nothing, since mirroring ciphertext does not create a second key; the V0 terminal-loss statement above is unchanged.
 
 ```bash
-run402 gitvault mirror set s3://acme-vault-mirror --profile acme --region us-east-1
-run402 gitvault mirror sync
-run402 gitvault recover s3://acme-vault-mirror --out ./restored --repo src_1a2b3c
+run402 repos mirror s3://acme-vault-mirror --profile acme --region us-east-1
+run402 repos mirror --backfill
+run402 repos recover s3://acme-vault-mirror --out ./restored --repo src_1a2b3c
 ```
 
-**Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — a separate language, separate authorship, and a separate primitive stack, deliberately sharing no implementation code with the SDK. That non-sharing is the point: a differential verifier that reuses the code it is checking verifies nothing. It lives on the `r402s-verify` branch of this repository with its own workflow, and builds with `cargo build --release`. The full protocol specification and threat model it verifies against are published in [`docs/gitvault/`](docs/gitvault/README.md), and the frozen conformance vectors in [`test-vectors/r402s-v0/`](test-vectors/r402s-v0/README.md).
+**Verify it without trusting our client.** `r402s-verify` is an independent-lineage verifier for the same protocol — a separate language, separate authorship, and a separate primitive stack, deliberately sharing no implementation code with the SDK. That non-sharing is the point: a differential verifier that reuses the code it is checking verifies nothing. It lives on the `r402s-verify` branch of this repository with its own workflow, ships prebuilt release binaries, and also builds with `cargo build --release`. The full protocol specification and threat model it verifies against are published in [`docs/gitvault/`](docs/gitvault/README.md), and the frozen conformance vectors in [`test-vectors/r402s-v0/`](test-vectors/r402s-v0/README.md).
 
-**Cost.** There is no separate gitvault price — a vault's bytes count against the same organization-pooled storage budget your projects already share, charged once per unique object with a 64 KiB per-object accounting floor.
+**Cost.** There is no separate repos price — a vault's bytes count against the same organization-pooled storage budget your projects already share, charged once per unique object with a 64 KiB per-object accounting floor.
 
 ## SDK: `@run402/sdk`
 
@@ -841,15 +841,17 @@ Contact management (who gets paged) is CLI/SDK only by design — an agent raise
 
 Route mutations (configure / test / pause / resume / rotate / revoke) are CLI/SDK only by design — they need owner step-up, and configure/rotate hand off a Buzz-side authorization a human completes: `run402 buzz notifications configure --org <uuid> --installation <buzzci_id> --name <route_name> --channel <nip29-channel-id> --project <id>`. No surface anywhere accepts or prints a signing secret. Buzz is never a deadman channel: mandatory operator notifications keep their human paths regardless of route state.
 
-### gitvault (read-only)
+### repos (read-only) — the host-blind encrypted git repo family
+
+One noun across every agent surface (repo-surface-consolidation design D10): `get_gitvault_status` / `list_gitvault_heads` / `verify_gitvault` are renamed `repos_view` / `repos_list_heads` / `repos_fsck`, teaching only `repos` CLI spellings. `run402 gitvault …` is RETIRED — every old CLI spelling now answers `COMMAND_MOVED`/`COMMAND_REMOVED`; `r.gitvault` is unchanged in the SDK.
 
 | Tool | Description |
 |------|-------------|
-| `get_gitvault_status` | What this machine and the control plane each believe about a project's gitvault: the vault record, the activation policy, the local keystore (present? can it sign? does it hold the repo key?), the authenticated and materialized pins, pending unvaulted-override journals. Also the cold-restart entry point — pass `project_id` with no local state and it resolves the vault for you. Read-only: it signs nothing, publishes nothing, and moves no pin. |
-| `list_gitvault_heads` | One page of a vault's heads listing — the admitted generations above a fixed anchor, each with its stored-bytes hash. `after_generation` is the VERIFICATION ANCHOR, not a paging knob, and must stay identical across every page of one sequence; `cursor` is opaque (store and echo, never parse). Listing is not verifying. |
-| `verify_gitvault` | Verify the head chain from your authenticated pin up to the newest listed generation, then advance the pin to what was proved. Monotonic and non-destructive. Fails CLOSED, and the refusal is the answer: `GENERATION_REGRESSION` on a rollback, `CHAIN_BROKEN` on a gap, `UPGRADE_REQUIRED` on a transition this client cannot validate, `VERIFICATION_BUDGET_EXCEEDED` when the per-call budget runs out (a pause, not a failure — the verified prefix persists). |
+| `repos_view` | What this machine and the control plane each believe about a repo: the vault record, the activation policy, the local keystore (present? can it sign? does it hold the repo key?), the authenticated and materialized pins, pending unvaulted-override journals. Also the cold-restart entry point — pass `project_id` with no local state and it resolves the repo for you. Read-only: it signs nothing, publishes nothing, and moves no pin — materializing refs belongs to `run402 repos fsck`. |
+| `repos_list_heads` | One page of a repo's heads listing — the admitted generations above a fixed anchor, each with its stored-bytes hash. `after_generation` is the VERIFICATION ANCHOR, not a paging knob, and must stay identical across every page of one sequence; `cursor` is opaque (store and echo, never parse). Listing is not verifying. |
+| `repos_fsck` | Verify the head chain from your authenticated pin up to the newest listed generation, then advance the pin to what was proved. Monotonic and non-destructive. Fails CLOSED, and the refusal is the answer: `GENERATION_REGRESSION` on a rollback, `CHAIN_BROKEN` on a gap, `UPGRADE_REQUIRED` on a transition this client cannot validate, `VERIFICATION_BUDGET_EXCEEDED` when the per-call budget runs out (a pause, not a failure — the verified prefix persists). The CLI's `run402 repos fsck` also materializes the ref map and supports `--no-write`/`--mirror`; this tool is the chain-walk half only. |
 
-The vault's mutating verbs are deliberately CLI-only. `push` / `init` write an IMMUTABLE generation with no undo, and `init` mints the one-shot recovery receipt — an MCP transcript is the wrong place for the only copy of it to exist. `compact` holds a maintenance lease whose `holder_token` is returned exactly once, so a dropped session strands it. `prune` is destructive by contract and `deploy` can change what production serves. `setPolicy` needs owner membership plus step-up, which the MCP credential path does not carry. All of them are reachable as `run402 gitvault …`.
+The repo's mutating verbs are deliberately CLI-only. `snapshot` / `create` write an IMMUTABLE generation with no undo, and `create` mints the one-shot recovery receipt — an MCP transcript is the wrong place for the only copy of it to exist. `gc` holds a maintenance lease whose `holder_token` is returned exactly once, so a dropped session strands it, and its submit half is destructive by contract. `policy` needs owner membership plus step-up, which the MCP credential path does not carry. All twelve verbs are reachable as `run402 repos …` (`repo` singular resolves identically).
 
 ### Service status (no auth)
 

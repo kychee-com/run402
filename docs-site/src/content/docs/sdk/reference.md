@@ -1928,7 +1928,7 @@ Only three reviewed event types are routable (`deploy_activated`, `error_fingerp
 
 ### `r.gitvault`
 
-The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 gitvault …`, `git-remote-run402`, and the MCP tools are adapters over this namespace: argument parsing, TTY output, exit codes, and local file I/O only. Anything the CLI can do is reachable programmatically with identical semantics.
+The host-blind encrypted Git remote (`r402s/v0`). All protocol behaviour — crypto core, keystore, creation journal, snapshot + capture, publication state machines, ref transactions, verification budget, token exchange, repair — is implemented ONCE here. `run402 repos …`, `git-remote-run402`, and the MCP tools (`repos_view`/`repos_list_heads`/`repos_fsck`) are adapters over this namespace: argument parsing, TTY output, exit codes, and local file I/O only. Anything the CLI can do is reachable programmatically with identical semantics. This is the SDK's own name for the family — `r.gitvault` is UNCHANGED by repo-surface-consolidation (design D1: `gitvault` is what the thing IS, infrastructure language; `repos` is what the CLI user HAS, and is the noun that changed).
 
 **What Run402 claims about it.** These are the entire approved claims vocabulary:
 
@@ -1950,6 +1950,8 @@ allHeads(repoId, { after_generation, limit? }): Promise<{ heads, pages, total }>
 setPolicy(repoId, { gitvault_policy, reason? }): Promise<{ gitvault_policy, gitvault_policy_version, changed, warnings }>
 completeOverride(repoId, { operation_id, capture_receipt }): Promise<{ operation_id, advisory_cleared, generation, head_sha256 }>
 acquireMaintenanceLease(request): Promise<GitvaultMaintenanceLease>
+listByOrg(orgId): Promise<GitvaultOrgVaultsListing>                 // repo-surface-consolidation task 2.4: every vault the org owns, one round trip — `repos list`'s bulk read, FROZEN response shape
+access(opts?): Promise<GitvaultAccessResult>                        // repo-surface-consolidation D5/D10: READ-ONLY recipients + coverage + (Node-only, best-effort) this machine's local TOFU pins; never wraps a key. Reports envelope_state_available/history_scope_available: false with an honest `gap` string until gitvault-human-envelopes ships server-authoritative desired-recipient state
 ```
 
 Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_dir?, repo_id?, project_id? }`):
@@ -1959,10 +1961,11 @@ init({ repo_dir, project_id, ... }): Promise<GitvaultInitResult>        // alloc
 openOrCreate({ project_id, org_id?, repo_dir?, ... }): Promise<GitvaultOpenOrCreateResult>  // D2: open, or allocate-then-open when org_id is supplied and the project has no vault yet — byte-identical to open() without org_id
 resolveOrCreateAddress({ address, repo_dir?, allow_create?, onVaultCreated?, ... }): Promise<GitvaultOpenOrCreateResult & { resolution }>  // D6: resolve a parsed remote address to an open handle, pinning repo_id in local git state on the first successful SLUG-form resolution (task 4.5); allow_create push-to-creates on a slug-form miss (task 4.4). SLUG_RELEASED never auto-follows.
 push({ org_id?, address?, onVaultCreated?, snapshot?: { message?, ... }, checkpoint?, ... }): Promise<GitvaultPublishResult & { snapshot, gitvault_commit, gitvault_commit_line }>  // composes openOrCreate internally when org_id is passed (D2 lazy allocation); composes resolveOrCreateAddress when address is passed instead (D6)
-status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target; `pinned` reports the D6 id-pin (repo_id + resolved_from) when repo_dir names one
+status(opts?): Promise<GitvaultStatus>                                  // pass { refs: true } to also materialize the ref map + HEAD target; `pinned` reports the D6 id-pin (repo_id + resolved_from) when repo_dir names one. `repos view` never passes `refs: true` (design D3) — it stays side-effect-free by construction
 compact(opts?): Promise<GitvaultCompactResult>
 prune(opts?): Promise<GitvaultPruneResult>                              // plan; pass { submit } with both verifier receipts to submit
-verify(opts?): Promise<GitvaultVerifiedState>
+verify(opts?: { persist? }): Promise<GitvaultVerifiedState>             // persist defaults true; false walks + verifies the same way but writes neither local pin
+fsck(opts?: { write?, mirror? }): Promise<GitvaultFsckResult>           // repo-surface-consolidation D2/D3: `repos fsck`'s primitive — verify + materialize + explicit pin_before/pin_after/local_state_changed; write:false is the `--no-write` audit mode (computes the real answer, persists nothing); mirror:true also runs mirrorVerify and folds its report in
 deploy(opts): Promise<GitvaultDeployResult>                             // the push-gated deploy (raw; takes an injected lane — see applyWithGitvault below)
 restore({ target_dir, ... }): Promise<{ refs, generation }>             // the clone-back path git-remote-run402 fetch drives; index-packs objects and leaves ref creation to the caller
 scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<GitvaultScaffoldRemoteResult>  // { name, url, created_repository, already_present, existing_url, reason } — D1: claims `origin` when free, falls back to `run402` when taken, never touches an existing remote either way
@@ -1997,7 +2000,7 @@ const state  = await r.gitvault.verify({ project_id: "prj_123" });
 
 // A REAL preview of what push() would publish (kychee-com/run402#565) — the same local
 // pipeline (capture, pack building, encryption sizing), stopping before either network
-// mutation. `run402 gitvault snapshot --dry-run` is a thin adapter over this.
+// mutation. `run402 repos snapshot --dry-run` is a thin adapter over this.
 const plan = await r.gitvault.planPush({ project_id: "prj_123" });
 if (plan.allocation_needed) {
   // No vault yet — a real push/snapshot would allocate one first; sizing is unknowable until then.
@@ -2034,7 +2037,7 @@ if (gitvault?.outcome === "DEPLOYED_AND_VAULTED") {
 
 `mode` says what happened about the vault: `{ kind: "vaulted" }`, `{ kind: "grandfathered" }`, `{ kind: "ungated" }`, or `{ kind: "none" }`. For anything but `vaulted` this is `apply()` and nothing else — no capture, no token, no added refusal, and the only added cost is the single policy read that determined the project is not `required`. `gitvault` is `null` on those paths and carries the five-outcome envelope on the vaulted one.
 
-**`ungated` is the ordinary shape for a project whose vault was just allocated (design D3).** Allocation does not set `gitvault_policy` — allocation and activation-gating are separate acts, and the policy stays unset until an owner chooses. On this path the plain deploy runs untouched, but `deploy.next_actions` gains a `gitvault_policy_required` entry (`{ type, command: "run402 gitvault policy required", why }`) and `deploy.warnings` gains a `GITVAULT_POLICY_UNSET` entry — both attached on EVERY such deploy, not just a synthesized "first" one, since the client holds no cross-machine state to distinguish first-from-Nth. Neither ever blocks or prompts. `gitvaultPolicyRequiredNextAction(repoId)` and `gitvaultUngatedWarning(repoId)` (`@run402/sdk/node`) are the exported builders, for a caller composing its own lane.
+**`ungated` is the ordinary shape for a project whose vault was just allocated (design D3).** Allocation does not set `gitvault_policy` — allocation and activation-gating are separate acts, and the policy stays unset until an owner chooses. On this path the plain deploy runs untouched, but `deploy.next_actions` gains a `gitvault_policy_required` entry (`{ type, command: "run402 repos policy required", why }`) and `deploy.warnings` gains a `GITVAULT_POLICY_UNSET` entry — both attached on EVERY such deploy, not just a synthesized "first" one, since the client holds no cross-machine state to distinguish first-from-Nth. Neither ever blocks or prompts. `gitvaultPolicyRequiredNextAction(repoId)` and `gitvaultUngatedWarning(repoId)` (`@run402/sdk/node`) are the exported builders, for a caller composing its own lane.
 
 **A vaulted apply never auto-retries.** Each attempt plans a new operation, and an activation token is minted for exactly one; retrying under a fresh capture would paper over a refusal (revoked, expired, bound elsewhere) that is the platform telling you something true. `maxRetries` is forced to 0 on this path.
 

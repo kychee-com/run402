@@ -52,7 +52,9 @@ For app manifests with `verify.http[]`, `up` runs HTTP checks after deploy. Fres
 
 For typed `run402.deploy.ts` configs, pass `--manifest` explicitly because TypeScript/JavaScript configs execute local code. Use `--check` for local-only import/normalize/file validation, `--print-spec` to inspect the normalized `ReleaseSpec`, `--plan` for a gateway-reviewed non-deploying plan, and `--require-plan <plan_id>` to apply only that reviewed intent. Warning flags are not used with `--require-plan`; the reviewed plan binds the exact warning/destructive set. Run402 Core skips Cloud allowance/tier prerequisites and fails closed when no Core project is selected.
 
-### Vault-only repos (zero deploy ceremony)
+### repos — host-blind encrypted git repos (zero deploy ceremony)
+
+One noun, twelve verbs (repo-surface-consolidation; `repo` singular resolves identically). `run402 gitvault <verb>` is RETIRED — every old spelling now answers `COMMAND_MOVED`/`COMMAND_REMOVED`.
 
 ```bash
 run402 init                                   # once per machine
@@ -61,13 +63,14 @@ git push -u origin main                       # allocates the vault on first pus
 
 # or, one call: provision + allocate + scaffold, nothing deployed
 run402 repos create my-notes
+run402 repos view --human
 run402 repos list --org org_1a2b3c
-run402 repos delete prj_xyz --force           # refuses without --force while the vault holds generations
+run402 repos delete --project prj_xyz --force # refuses without --force while the vault holds generations
 ```
 
-A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. `repos create|list|delete|name` and `gitvault`'s mutating verbs (`init`, `snapshot`, `policy`, `compact`, `prune`) are CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete). See `run402 gitvault --help` and `run402 repos --help` for the full surface, and the CLI reference's `gitvault` / `repos` sections for the terminal-loss statement and the progressive backup warning.
+A hosted git remote, encrypted before it leaves the machine — no deploy, no manifest, no app. `origin` is claimed additively — an existing `origin` is never touched, the run402 remote falls back to `run402` instead. Every mutating `repos` verb (`create`, `rename`, `delete`, `snapshot`, `policy`, `mirror`, `gc`) is CLI/OpenClaw-only by design — no MCP tool exists or will exist for them (one-shot recovery receipts, immutable generations, irreversible delete). Three READ-ONLY tools do exist — `repos_view`, `repos_list_heads`, `repos_fsck` — teaching only `repos` spellings. See `run402 repos --help` for the full tiered surface (common: `create`/`view`/`list`; occasional: `snapshot`/`mirror`/`recover`; lifecycle: `rename`/`delete`; maintenance: `fsck`/`gc`/`access`/`policy`), and the CLI reference's `repos` section for the terminal-loss statement and the progressive backup warning.
 
-**Named addressing (design D6).** `run402 org slug <slug>` (owner-only, small one-time fee) claims an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos name <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
+**Named addressing (design D6).** `run402 org slug <slug>` (owner-only, small one-time fee) claims an org's globally-unique, address-form slug, after which `run402::<slug>/<name>` addresses any repo under it — `git push` to a name that doesn't exist yet push-to-creates it. `run402 repos rename <name> [--project <id>]` claims the per-org-unique `<name>` half explicitly (no fee, absorbs the old `repos name`); `repos create` claims one automatically, best-effort, when the org already has a slug. Also CLI/SDK-only — no MCP tool.
 
 ### Allowance
 
