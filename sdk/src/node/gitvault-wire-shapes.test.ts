@@ -62,6 +62,37 @@ describe("gitvaultWireRefForPath — every §3 storage path maps to a control-pl
     });
   });
 
+  it("maps a recipient_pin_manifest to pin_manifest_version, NOT epoch/recipient_fingerprint (D197, rev 42 — the SECOND path-addressed, null-idScalar kind)", () => {
+    const VERSION = "0000000000000001";
+    assert.deepEqual(gitvaultWireRefForPath(gitvaultPaths.pinManifest(VERSION)), {
+      kind: "object",
+      read: { object_kind: "recipient_pin_manifest", pin_manifest_version: VERSION },
+    });
+    // Regression guard for the exact live failure (confirmed 2026-08-27
+    // against src_c78d2f710a8f49d22f9c66faf2a915cd): the gateway's
+    // object-reads route still validates every null-idScalar kind against
+    // key_envelope's `{epoch, recipient_fingerprint}` shape, so it 400s
+    // "epoch must be 16 hex" on a genuinely protocol-correct
+    // `{object_kind:"recipient_pin_manifest", pin_manifest_version}` read.
+    // This IS the correct wire shape per protocol-v0.md's identity taxonomy
+    // ("VERSION-ADDRESSED: ... recipient_pin_manifest by (repo_id,
+    // pin_manifest_version)") and the gateway's own upload-side
+    // `UPLOADABLE_KINDS.recipient_pin_manifest.pathFields` — a future "fix"
+    // that reshapes this call to send epoch/recipient_fingerprint to
+    // appease the buggy gateway would be the regression this test exists
+    // to catch, not a fix. See GitvaultVault.readPinManifestObject's own
+    // doc comment (gitvault-publication.ts) for the read-side gap this
+    // maps to, and its local-cache workaround for a keystore reading back
+    // a manifest it itself just published.
+    const ref = gitvaultWireRefForPath(gitvaultPaths.pinManifest(VERSION));
+    assert.equal(ref?.kind, "object");
+    if (ref?.kind === "object") {
+      assert.deepEqual(Object.keys(ref.read).sort(), ["object_kind", "pin_manifest_version"]);
+      assert.equal("epoch" in ref.read, false);
+      assert.equal("recipient_fingerprint" in ref.read, false);
+    }
+  });
+
   it("does not confuse `retention/<rr>.enc` with `retention/<id>.ticket.json` — the ticket has no wire identity", () => {
     assert.deepEqual(gitvaultWireRefForPath(gitvaultPaths.retentionRoots(RR)), { kind: "object", read: { object_kind: "retention_roots", object_id: RR } });
     assert.equal(gitvaultWireRefForPath(gitvaultPaths.cutoffTicket(RR)), null, "a cutoff ticket is held locally; it is not a readable vault object");
@@ -96,6 +127,13 @@ describe("gitvaultManifestEntry — the closed-key upload manifest", () => {
     assert.deepEqual(Object.keys(entry).sort(), ["epoch", "object_kind", "recipient_fingerprint", "sha256", "size_bytes"]);
     assert.equal(entry.epoch, EPOCH);
     assert.equal(entry.recipient_fingerprint, EK);
+  });
+
+  it("emits pin_manifest_version for a recipient_pin_manifest upload, and no object_id/epoch/recipient_fingerprint", () => {
+    const VERSION = "0000000000000001";
+    const entry = gitvaultManifestEntry(obj({ path: gitvaultPaths.pinManifest(VERSION), object_kind: "recipient_pin_manifest", object_id: null }));
+    assert.deepEqual(Object.keys(entry).sort(), ["object_kind", "pin_manifest_version", "sha256", "size_bytes"]);
+    assert.equal((entry as unknown as { pin_manifest_version?: string }).pin_manifest_version, VERSION);
   });
 
   it("carries base_generation for a wal_pack — the ONLY receipt kind that has one (§4.1)", () => {

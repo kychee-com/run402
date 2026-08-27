@@ -43,7 +43,7 @@ import {
 } from "../namespaces/gitvault.crypto.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { GitvaultMemoryTransport, commitFile, makeVault } from "./gitvault-memory-transport.test.js";
-import { GitvaultVault } from "./gitvault-publication.js";
+import { GitvaultVault, gitvaultPaths } from "./gitvault-publication.js";
 
 describe("epoch rotation — pure decisive vectors (D193-D203)", () => {
   it("nextEpoch increments by exactly one, no skip (D194 chain-link rule)", () => {
@@ -249,6 +249,72 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
       const reopened = GitvaultVault.open({ keystore: vault.keystore, transport, repo_id: vault.repoId, repo_dir: repoDir });
       const remat = await reopened.materialize();
       assert.equal(remat.generation, push2.generation);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Local pin-manifest cache (D197 read-side gap, confirmed live 2026-08-27
+   * against `src_c78d2f710a8f49d22f9c66faf2a915cd`): the gateway's real
+   * `POST …/object-reads` route does not yet accept `recipient_pin_manifest`
+   * reads — its null-idScalar branch is still hardcoded to `key_envelope`'s
+   * `{epoch, recipient_fingerprint}` shape, so EVERY read of a published pin
+   * manifest 400s `VALIDATION_FAILED "epoch must be 16 hex"` (pinned in
+   * `gitvault-wire-shapes.test.ts`, which shows the request THIS SDK sends
+   * is protocol-correct — the gateway's read validation is what's stale).
+   * `loadEffectivePinManifest` calls that read on EVERY `rotateEpoch` once
+   * ANY manifest has ever been admitted — this in-memory fake transport
+   * has no such bug, so it never caught the gap: a same-keystore
+   * publish-then-rotate sequence passed here while failing live. The fix
+   * (`GitvaultRepoFile.known_pin_manifest`) caches the manifest a keystore
+   * itself just built+admitted so it never needs to re-fetch its OWN bytes;
+   * this test pins BOTH halves — the cache hit skips the network call, and
+   * a cache MISS still falls through to it unchanged (never a blanket
+   * bypass of verification for a manifest this keystore did not author).
+   */
+  it("local pin-manifest cache: a manifest this keystore just published is read back locally (no network round trip); a cache miss still falls through to the network path unchanged", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-cache-"));
+    try {
+      const { transport, vault, repoDir } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownEk = ekFingerprint((vault.keystore.encryptionKeypair(identity)!).public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Creator", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from((vault.keystore.encryptionKeypair(identity)!).public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+      await bootstrapPin(vault, "principal_1", ownEk);
+
+      const cached = vault.keystore.readRepo(vault.repoId)!.known_pin_manifest;
+      assert.ok(cached, "publishPinManifestUpdate caches the manifest it just admitted");
+      assert.equal(cached!.pin_manifest_version, "0000000000000001");
+      assert.deepEqual(cached!.pins, [{ principal_id: "principal_1", ek_fingerprint: ownEk }]);
+
+      // A fresh open of the SAME keystore/repo — the realistic shape of the
+      // exact ceremony this fixes (confirm/publish and rotate as separate
+      // CLI invocations, each a brand-new GitvaultVault instance sharing
+      // one on-disk keystore, per Gitvault.open()'s "new instance per call"
+      // contract).
+      const reopened = GitvaultVault.open({ keystore: vault.keystore, transport, repo_id: vault.repoId, repo_dir: repoDir });
+      const callsBeforeRotate = transport.calls.length;
+      const rotated = await reopened.rotateEpochForKeyRevocation("principal_1");
+      assert.equal(rotated.outcome, "admitted");
+      assert.equal(rotated.included.length, 1);
+      assert.equal(rotated.included[0]!.principal_id, "principal_1", "the predecessor manifest's pin resolved correctly from the cache — the principal is confirmed and included");
+      const pinManifestReadsAfterCacheHit = transport.calls.slice(callsBeforeRotate).filter((c) => c.startsWith("get:recipient-pins/"));
+      assert.deepEqual(pinManifestReadsAfterCacheHit, [], "the cache hit skipped the network object-reads round trip entirely");
+
+      // Clear the cache (simulating a keystore that did not itself author
+      // this manifest — a genuinely different machine/principal, or an
+      // older SDK version's local file with no known_pin_manifest field at
+      // all) and confirm the read still falls through to the network path,
+      // unchanged, rather than silently trusting nothing or crashing.
+      vault.keystore.updateRepo(vault.repoId, { known_pin_manifest: null });
+      const callsBeforeSecondRotate = transport.calls.length;
+      const rotatedAgain = await vault.rotateEpochForKeyRevocation("principal_1");
+      assert.equal(rotatedAgain.outcome, "admitted");
+      const pinManifestReadsAfterCacheMiss = transport.calls.slice(callsBeforeSecondRotate).filter((c) => c.startsWith("get:recipient-pins/"));
+      assert.deepEqual(pinManifestReadsAfterCacheMiss, [`get:${gitvaultPaths.pinManifest("0000000000000001")}`], "a cache miss falls through to the SAME network object-reads read the pre-fix code always made");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

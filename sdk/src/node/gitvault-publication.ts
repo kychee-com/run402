@@ -891,6 +891,24 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     } catch (e) {
       if (isRun402Error(e) && (e as { status?: number }).status === 404) return null;
       if (isRun402Error(e) && (e as { code?: string }).code === "RESOURCE_NOT_FOUND") return null;
+      // A known live gateway gap (confirmed 2026-08-27 against
+      // src_c78d2f710a8f49d22f9c66faf2a915cd): `POST …/object-reads`
+      // validates every null-idScalar (path-addressed) object_kind against
+      // key_envelope's `{epoch, recipient_fingerprint}` shape, never having
+      // been generalized for the SECOND path-addressed kind D197 shipped —
+      // `recipient_pin_manifest`'s real `{pin_manifest_version}` fields —
+      // so a genuine read always 400s `"epoch must be 16 hex"`. This is a
+      // read-back of a manifest neither uploaded nor cached by THIS
+      // keystore (a cache hit in `readPinManifestObject` never reaches
+      // here at all) — re-thrown with an attribution that names the gap
+      // instead of leaving a caller to read this as a client validation bug.
+      if (ref.read.object_kind === "recipient_pin_manifest" && isRun402Error(e) && (e as { code?: string }).code === "VALIDATION_FAILED") {
+        throw new LocalError(
+          `the gateway's object-reads route does not yet accept recipient_pin_manifest reads by pin_manifest_version (its null-idScalar branch is still hardcoded to key_envelope's epoch/recipient_fingerprint shape) — this vault's pin manifest at ${path} cannot be read back over the network by a keystore that did not itself just publish it`,
+          "reading gitvault object",
+          { code: "GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED", details: { path, pin_manifest_version: ref.read.pin_manifest_version }, cause: e },
+        );
+      }
       throw e;
     }
     const target = presigned.reads[0];
@@ -2325,7 +2343,36 @@ export class GitvaultVault {
     return { pinManifestVersion: "0".repeat(16), pinManifestSha256: GITVAULT_ZERO_SHA256_SENTINEL, pinnedFingerprintOf: new Map() };
   }
 
+  /**
+   * Local-cache short-circuit (see {@link GitvaultRepoFile.known_pin_manifest}'s
+   * own doc comment for why this is safe): a manifest THIS keystore itself
+   * just built, signed, and admitted is resolved from the on-disk cache
+   * instead of a network `object-reads` round trip — same return shape,
+   * skipped only on an exact `(pin_manifest_version, stored_bytes_sha256)`
+   * match against `receipt`. A miss (cache absent, or naming a DIFFERENT
+   * manifest — e.g. one another principal/machine published) falls through
+   * to the unchanged network path below.
+   *
+   * **Known gap this happens to route around, not fix:** the gateway's
+   * `POST …/object-reads` route does not yet recognize `recipient_pin_manifest`
+   * as a readable `object_kind` at all (`services/gitvault/reads.ts`
+   * `validateReadRequest`'s null-`idScalar` branch is still hardcoded to
+   * `key_envelope`'s `{epoch, recipient_fingerprint}` shape — the ONE other
+   * path-addressed kind, `recipient_pin_manifest`, was never folded in when
+   * D197 shipped it with its own `{pin_manifest_version}` `pathFields`).
+   * Confirmed live 2026-08-27 against `src_c78d2f710a8f49d22f9c66faf2a915cd`:
+   * every read attempt fails `400 VALIDATION_FAILED "objects[0]: epoch must
+   * be 16 hex"`. This cache unblocks the SAME keystore re-reading its OWN
+   * just-published manifest (this ceremony's actual need) but does nothing
+   * for a genuinely fresh keystore/machine reading an EXISTING manifest for
+   * the first time (§4.11's "fresh client... SEEDS its local pin file from
+   * it" onboarding path) — that still needs the gateway fix.
+   */
   private async readPinManifestObject(receipt: GitvaultPinManifestReceipt): Promise<{ pinManifestVersion: string; pinManifestSha256: string; pinnedFingerprintOf: Map<string, string> }> {
+    const known = this.repoFile().known_pin_manifest;
+    if (known && known.pin_manifest_version === receipt.pin_manifest_version && known.stored_bytes_sha256 === receipt.stored_bytes_sha256) {
+      return { pinManifestVersion: known.pin_manifest_version, pinManifestSha256: known.stored_bytes_sha256, pinnedFingerprintOf: new Map(known.pins.map((p) => [p.principal_id, p.ek_fingerprint] as const)) };
+    }
     const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.pinManifest(receipt.pin_manifest_version) });
     if (!bytes || sha256Hex(bytes) !== receipt.stored_bytes_sha256) {
       fail("GITVAULT_RECEIPT_MISMATCH", `recipient_pin_manifest ${receipt.pin_manifest_version} is absent or does not match its receipted hash`, "resolving the effective recipient pin manifest", { pin_manifest_version: receipt.pin_manifest_version });
@@ -2358,7 +2405,7 @@ export class GitvaultVault {
   private buildPinManifestUpdate(
     prior: { pinManifestVersion: string; pinManifestSha256: string; pinnedFingerprintOf: Map<string, string> },
     updates: { principal_id: string; ek_fingerprint: string; confirmed_by: "operator_confirmation"; receipt: GitvaultRecipientConfirmationReceipt }[],
-  ): { nextVersion: string; manifestSha: string; upload: GitvaultUploadObject } {
+  ): { nextVersion: string; manifestSha: string; upload: GitvaultUploadObject; pins: { principal_id: string; ek_fingerprint: string }[] } {
     for (const u of updates) {
       if (u.receipt.base_pin_manifest_sha256 !== prior.pinManifestSha256) {
         fail("VALIDATION_FAILED", `the confirmation receipt for ${u.principal_id} was issued against a different predecessor manifest than the one currently effective — obtain a fresh /confirm or /repin`, "publishing a recipient_pin_manifest update", { principal_id: u.principal_id, receipt_base: u.receipt.base_pin_manifest_sha256, current_base: prior.pinManifestSha256 });
@@ -2383,7 +2430,7 @@ export class GitvaultVault {
     const manifestBytes = storedBytes(manifest as unknown as GitvaultSignedObject);
     const manifestSha = sha256Hex(manifestBytes);
     const upload: GitvaultUploadObject = { path: gitvaultPaths.pinManifest(nextVersion), object_kind: "recipient_pin_manifest", object_id: null, bytes: manifestBytes, sha256: manifestSha, size_bytes: String(manifestBytes.length) };
-    return { nextVersion, manifestSha, upload };
+    return { nextVersion, manifestSha, upload, pins: pins.map((p) => ({ principal_id: p.principal_id, ek_fingerprint: p.ek_fingerprint })) };
   }
 
   /**
@@ -2410,7 +2457,7 @@ export class GitvaultVault {
     for (;;) {
       const base = await this.materialize();
       const prior = await this.loadEffectivePinManifest(base.generation);
-      const { nextVersion, manifestSha, upload: manifestUpload } = this.buildPinManifestUpdate(prior, [input]);
+      const { nextVersion, manifestSha, upload: manifestUpload, pins } = this.buildPinManifestUpdate(prior, [input]);
       await this.uploadAll([manifestUpload]);
 
       const generation = nextGeneration(base.generation);
@@ -2432,6 +2479,12 @@ export class GitvaultVault {
         if (conflicts > this.retries) fail("HEAD_CAS_CONFLICT", `the pin-manifest update lost ${conflicts} races at generation ${generation}; giving up`, "publishing a recipient_pin_manifest update", { generation, winner: admitted.winner });
         continue;
       }
+      // Cache OUR OWN just-admitted manifest (see readPinManifestObject's
+      // doc comment) so a LATER call on this vault — most importantly
+      // rotateEpoch's own loadEffectivePinManifest, which MUST read the
+      // predecessor manifest back to compute confirmed() (D196) — resolves
+      // it locally instead of a network object-reads round trip.
+      this.keystore.updateRepo(this.repoId, { known_pin_manifest: { pin_manifest_version: nextVersion, stored_bytes_sha256: manifestSha, pins } });
       return { generation, head_sha256: admitted.head_sha256, head, admission_record_sha256: admitted.admission_record_sha256, capture_receipt: admitted.capture_receipt, form: "wal", conflicts_retried: conflicts, refs: base.refs };
     }
   }
@@ -2721,6 +2774,12 @@ export class GitvaultVault {
 
       // Advance the local pointer only after the self-check (when applicable) confirms this principal genuinely holds the committed K_e.
       this.keystore.recordEpochRotation(this.repoId, { new_epoch: newEpoch, new_k_repo_hex: bytesToHex(kE) });
+      // Same local-cache short-circuit as publishPinManifestUpdate's own
+      // success path (see readPinManifestObject's doc comment) — the fold
+      // built and admitted its OWN recipient_pin_manifest on this SAME head.
+      if (pinManifestFold) {
+        this.keystore.updateRepo(this.repoId, { known_pin_manifest: { pin_manifest_version: pinManifestFold.nextVersion, stored_bytes_sha256: pinManifestFold.manifestSha, pins: pinManifestFold.pins } });
+      }
 
       return {
         outcome: "admitted", generation, head_sha256: admitted.head_sha256, new_epoch: newEpoch, rotation_id: rotationId, reason: options.reason,

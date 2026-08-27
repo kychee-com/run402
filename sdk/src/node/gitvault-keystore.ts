@@ -127,6 +127,25 @@ export interface GitvaultRepoFile {
    * silent re-wrap. Absent/`null` until reconcile has run at least once.
    */
   envelope_recipient_pins?: Record<string, string> | null;
+  /**
+   * The MOST RECENT `recipient_pin_manifest` this principal itself built,
+   * signed, and successfully admitted (D197) — via {@link
+   * GitvaultVault.publishPinManifestUpdate} or {@link
+   * GitvaultVault.rotateEpoch}'s `pending_confirmations` fold. Read-side
+   * short-circuit ONLY: {@link GitvaultVault} `readPinManifestObject`
+   * consults this before a network `object-reads` round trip, and uses it
+   * ONLY when `pin_manifest_version` + `stored_bytes_sha256` match the
+   * receipt it is resolving — never as a substitute for verification of a
+   * manifest this principal did not itself author (a version/hash mismatch
+   * falls through to the network path unchanged). Safe to skip the network
+   * fetch + re-verify-own-signature step in the match case: those exact
+   * bytes were built with `this.signer()` moments earlier and the upload
+   * already round-tripped a checksum-verified PUT, so re-fetching and
+   * re-checking our own signature over our own just-authored bytes proves
+   * nothing a network failure couldn't ALSO independently fail to prove.
+   * Absent/`null` until this principal has published its first manifest.
+   */
+  known_pin_manifest?: { pin_manifest_version: string; stored_bytes_sha256: string; pins: { principal_id: string; ek_fingerprint: string }[] } | null;
   /** The last ref transaction this principal published (5.4 fills it). */
   last_ref_transaction: Record<string, unknown> | null;
   /** How this file came to exist — creation, or a §5.1 restore from the principal's own envelope. */
@@ -452,7 +471,7 @@ export class GitvaultKeystore {
   }
 
   /** Update the dual pins / last ref transaction without touching key material. */
-  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys">>): GitvaultRepoFile {
+  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys" | "known_pin_manifest">>): GitvaultRepoFile {
     return this.withRepoLock(repoId, () => {
       const existing = this.readRepo(repoId);
       if (!existing) fail("GITVAULT_REPO_STATE_MISSING", `no repo file for ${repoId}`, "updating gitvault repo file", { repo_id: repoId });
