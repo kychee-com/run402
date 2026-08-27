@@ -38,17 +38,30 @@
  *   - Network access to https://api.run402.com and a git binary on PATH.
  *
  * What it proves:
- *   1. A real vault, mirrored to a local directory via `gitvault mirror sync`,
- *      recovers byte-exact via `gitvault recover` — with the gateway made
- *      UNREACHABLE for the recover step (RUN402_API_BASE pointed at a closed
- *      port), proving `recover`/`mirror verify` are what the SDK's own code
- *      structurally is: pure reads against the mirror backend, zero HTTP.
+ *   1. A real vault, mirrored to a local directory via `repos mirror
+ *      --backfill`, recovers byte-exact via `repos recover` — with the
+ *      gateway made UNREACHABLE for the recover step (RUN402_API_BASE
+ *      pointed at a closed port), proving `recover` is what the SDK's own
+ *      code structurally is: pure reads against the mirror backend, zero
+ *      HTTP. (`repos fsck --mirror`, the keyless integrity probe that
+ *      replaced `mirror verify`, additionally walks the live head chain, so
+ *      the zero-network claim attaches to `recover` alone now.)
  *   2. A torn/truncated mirror (newest head+admission missing) recovers at
  *      the PREVIOUS generation with `chain_break: null` (an honest "nothing
  *      further was ever synced here", never mistaken for corruption).
  *   3. A mirror missing a WAL pack referenced by its newest head (but with
  *      the head itself present) falls back a generation and NAMES the loss
  *      as `unexplained_absence` in the recovery report — never a silent skip.
+ *
+ * COMMAND SURFACE (2026-08: the `gitvault` verb family was consolidated into
+ * `run402 repos`; the old spellings now answer COMMAND_MOVED/COMMAND_REMOVED
+ * tombstones). This drill drives the successors:
+ *   gitvault init --project <id>    →  repos create --project <id>   (adopt)
+ *   gitvault snapshot               →  repos snapshot
+ *   gitvault mirror set <dest>      →  repos mirror <dest>
+ *   gitvault mirror sync            →  repos mirror --backfill
+ *   gitvault mirror verify          →  repos fsck --mirror   (report nested under .mirror)
+ *   gitvault recover <src> --out d  →  repos recover <src> --out d
  *
  * Cleanup (project delete via the CLI's own locally-cached project service
  * key) runs in a `finally` block so a failed assertion still tears down the
@@ -234,17 +247,23 @@ async function main() {
   const localHead = git(REPO_DIR, ["rev-parse", "HEAD"]);
   console.log(`  local HEAD after 3 commits: ${localHead}`);
 
-  // ── 5. gitvault init (allocate the vault, mint the recovery receipt) ──
-  step("5. gitvault init — allocate the vault");
-  const gvInit = runCli(["gitvault", "init", "--project", projectId, "--no-remote", ...WALLET_ARGS], { cwd: REPO_DIR, label: "gitvault init" });
+  // ── 5. repos create --project (ADOPT: allocate the vault, mint the receipt) ──
+  //
+  // The successor to `gitvault init --project <id>`. There is no `--no-remote`
+  // any more — `repos create` always scaffolds the git remote (claiming
+  // `origin` since this fresh drill repo has none). Harmless here: every
+  // later command targets the vault explicitly via --project/--repo, which
+  // outranks the repo's own remote in the shared target resolver.
+  step("5. repos create --project — adopt the project, allocate the vault");
+  const gvInit = runCli(["repos", "create", "--project", projectId, ...WALLET_ARGS], { cwd: REPO_DIR, label: "repos create --project" });
   repoId = gvInit.json?.repo_id;
-  assertTrue(typeof repoId === "string" && repoId.startsWith("src_"), "gitvault init returned a src_ repo_id", gvInit.json);
+  assertTrue(typeof repoId === "string" && repoId.startsWith("src_"), "repos create returned a src_ repo_id", gvInit.json);
   console.log(`  repo_id: ${repoId}, genesis_sha256: ${gvInit.json?.genesis_sha256}`);
-  assertTrue(typeof gvInit.json?.recovery_receipt === "object" && gvInit.json.recovery_receipt !== null, "gitvault init emitted a recovery_receipt", gvInit.json?.recovery_receipt);
+  assertTrue(typeof gvInit.json?.recovery_receipt === "object" && gvInit.json.recovery_receipt !== null, "repos create emitted a recovery_receipt", gvInit.json?.recovery_receipt);
 
   // ── 6. Publish 3 distinct generations, one snapshot per commit. ──
   //
-  // `gitvault snapshot` captures whatever the working tree looks like RIGHT
+  // `repos snapshot` captures whatever the working tree looks like RIGHT
   // NOW — so to get 3 ascending, DISTINCT generations we replay the 3 commits
   // one at a time, snapshotting after each, rather than snapshotting once
   // against the already-fully-committed tree from step 4 (which would yield
@@ -261,7 +280,7 @@ async function main() {
       git(REPO_DIR, ["add", "-A"]);
       git(REPO_DIR, ["commit", "-m", `commit ${i}`]);
     }
-    const snap = runCli(["gitvault", "snapshot", "--project", projectId, "--message", `snapshot ${i}`, ...WALLET_ARGS], { cwd: REPO_DIR, label: `gitvault snapshot #${i}` });
+    const snap = runCli(["repos", "snapshot", "--project", projectId, "--message", `snapshot ${i}`, ...WALLET_ARGS], { cwd: REPO_DIR, label: `repos snapshot #${i}` });
     console.log(`  snapshot #${i}: generation=${snap.json?.generation} form=${snap.json?.form}`);
     generations.push(snap.json?.generation);
   }
@@ -274,14 +293,14 @@ async function main() {
   console.log(`  source repo final HEAD: ${finalHead}`);
   console.log(`  source repo refs:\n${sourceRefs.split("\n").map((l) => `    ${l}`).join("\n")}`);
 
-  // ── 7. Configure + sync + verify the mirror ──
-  step("7. gitvault mirror set / sync / verify");
-  const mirrorSet = runCli(["gitvault", "mirror", "set", MIRROR_DIR, "--repo", repoId, ...WALLET_ARGS], { label: "gitvault mirror set" });
-  console.log(`  mirror set: ${JSON.stringify(mirrorSet.json)}`);
-  assertEqual(mirrorSet.json?.repo_id, repoId, "mirror set targeted the right repo_id");
+  // ── 7. Configure + backfill + verify the mirror ──
+  step("7. repos mirror <dest> / --backfill / fsck --mirror");
+  const mirrorSet = runCli(["repos", "mirror", MIRROR_DIR, "--repo", repoId, ...WALLET_ARGS], { label: "repos mirror <dest>" });
+  console.log(`  mirror configure: ${JSON.stringify(mirrorSet.json)}`);
+  assertEqual(mirrorSet.json?.repo_id, repoId, "mirror configure targeted the right repo_id");
 
-  const mirrorSync = runCli(["gitvault", "mirror", "sync", "--repo", repoId, ...WALLET_ARGS], { label: "gitvault mirror sync" });
-  console.log(`  mirror sync: copied=${mirrorSync.json?.objects_copied} already_present=${mirrorSync.json?.objects_already_present} failed=${mirrorSync.json?.objects_failed} bytes=${mirrorSync.json?.bytes_copied}`);
+  const mirrorSync = runCli(["repos", "mirror", "--backfill", "--repo", repoId, ...WALLET_ARGS], { label: "repos mirror --backfill" });
+  console.log(`  mirror backfill: copied=${mirrorSync.json?.objects_copied} already_present=${mirrorSync.json?.objects_already_present} failed=${mirrorSync.json?.objects_failed} bytes=${mirrorSync.json?.bytes_copied}`);
   // Every failure is named here UNCONDITIONALLY (not just on assertion
   // failure) — task 5.3's live drill found 11/11 objects failed with only the
   // bare count visible; `objects_failed` was non-zero but `.errors[]` (which
@@ -291,23 +310,31 @@ async function main() {
   if ((mirrorSync.json?.objects_failed ?? 0) > 0) {
     for (const e of mirrorSync.json?.errors ?? []) console.log(`    failed: ${e.key} — ${e.error}`);
   }
-  assertEqual(mirrorSync.json?.objects_failed, 0, "mirror sync copied everything with zero failures");
-  assertTrue(Number(mirrorSync.json?.objects_copied) > 0, "mirror sync actually copied objects (not a no-op)", mirrorSync.json);
+  assertEqual(mirrorSync.json?.objects_failed, 0, "mirror backfill copied everything with zero failures");
+  assertTrue(Number(mirrorSync.json?.objects_copied) > 0, "mirror backfill actually copied objects (not a no-op)", mirrorSync.json);
 
-  const mirrorVerify = runCli(["gitvault", "mirror", "verify", "--repo", repoId, ...WALLET_ARGS], { label: "gitvault mirror verify" });
-  console.log(`  mirror verify: recovered_generation=${mirrorVerify.json?.recovered_generation} chain_break=${JSON.stringify(mirrorVerify.json?.chain_break)} data_loss_detected=${mirrorVerify.json?.data_loss_detected}`);
-  console.log(`  validity_not_freshness statement: "${mirrorVerify.json?.validity_not_freshness}"`);
-  console.log(`  keystore_still_required statement: "${mirrorVerify.json?.keystore_still_required}"`);
-  assertEqual(mirrorVerify.json?.recovered_generation, newestGeneration, "mirror verify (keyless) reports the newest published generation");
-  assertEqual(mirrorVerify.json?.chain_break, null, "mirror verify reports no chain break on a freshly-synced mirror");
-  assertEqual(mirrorVerify.json?.data_loss_detected, false, "mirror verify reports no data loss on a freshly-synced mirror");
+  // `repos fsck --mirror` is the successor to `gitvault mirror verify`: the
+  // fsck itself walks the signed head chain (live, network-using, advances
+  // this drill config dir's local trust pins — fine, it is throwaway), and
+  // the KEYLESS mirror integrity probe rides along nested under `.mirror`.
+  const fsckRun = runCli(["repos", "fsck", "--mirror", "--repo", repoId, ...WALLET_ARGS], { label: "repos fsck --mirror" });
+  const mirrorVerify = fsckRun.json?.mirror ?? null;
+  console.log(`  fsck: verified_to_generation=${fsckRun.json?.verified_to_generation} local_state_changed=${fsckRun.json?.local_state_changed}`);
+  console.log(`  fsck --mirror probe: recovered_generation=${mirrorVerify?.recovered_generation} chain_break=${JSON.stringify(mirrorVerify?.chain_break)} data_loss_detected=${mirrorVerify?.data_loss_detected}`);
+  console.log(`  validity_not_freshness statement: "${mirrorVerify?.validity_not_freshness}"`);
+  console.log(`  keystore_still_required statement: "${mirrorVerify?.keystore_still_required}"`);
+  assertTrue(mirrorVerify !== null, "fsck --mirror carries the keyless mirror probe under .mirror", fsckRun.json);
+  assertEqual(fsckRun.json?.verified_to_generation, newestGeneration, "fsck verified the head chain through the newest published generation");
+  assertEqual(mirrorVerify?.recovered_generation, newestGeneration, "mirror probe (keyless) reports the newest published generation");
+  assertEqual(mirrorVerify?.chain_break, null, "mirror probe reports no chain break on a freshly-backfilled mirror");
+  assertEqual(mirrorVerify?.data_loss_detected, false, "mirror probe reports no data loss on a freshly-backfilled mirror");
 
   // ── 8. THE PROOF: recover with the gateway unreachable ──
-  step("8. gitvault recover — gateway UNREACHABLE (RUN402_API_BASE points at a dead port)");
+  step("8. repos recover — gateway UNREACHABLE (RUN402_API_BASE points at a dead port)");
   const outDir = join(RECOVER_DIR, "restored");
   const recoverResult = runCli(
-    ["gitvault", "recover", MIRROR_DIR, "--out", outDir, "--repo", repoId, ...WALLET_ARGS],
-    { env: { RUN402_API_BASE: DEAD_API_BASE }, label: "gitvault recover (dead api base)" },
+    ["repos", "recover", MIRROR_DIR, "--out", outDir, "--repo", repoId, ...WALLET_ARGS],
+    { env: { RUN402_API_BASE: DEAD_API_BASE }, label: "repos recover (dead api base)" },
   );
   console.log(`  recovered_generation: ${recoverResult.json?.recovered_generation}`);
   console.log(`  chain_break: ${JSON.stringify(recoverResult.json?.chain_break)}`);
@@ -331,7 +358,7 @@ async function main() {
     recoverResult.json?.keystore_still_required,
   );
 
-  // Ref-exact comparison. `gitvault snapshot` (unlike `git push run402
+  // Ref-exact comparison. `repos snapshot` (unlike `git push origin
   // <branch>`) always publishes under the SINGLE protocol-owned deploy ref
   // `refs/run402/deploys/latest` (`GITVAULT_DEPLOY_REF`, gitvault-snapshot.ts)
   // — `head_target` is captured PROVENANCE (verbatim from the local repo's
@@ -346,7 +373,7 @@ async function main() {
   const recoveredRefs = git(outDir, ["for-each-ref", "--format=%(refname) %(objectname)"]);
   console.log(`  recovered repo refs:\n${recoveredRefs.split("\n").map((l) => `    ${l}`).join("\n")}`);
   const expectedDeployRef = `refs/run402/deploys/latest ${finalHead}`;
-  assertEqual(recoveredRefs, expectedDeployRef, "recovered repo's refs match the deploy ref gitvault snapshot actually published, byte-exact");
+  assertEqual(recoveredRefs, expectedDeployRef, "recovered repo's refs match the deploy ref repos snapshot actually published, byte-exact");
   assertEqual(recoverResult.json?.refs?.["refs/run402/deploys/latest"], finalHead, "the recover result's own refs map names the deploy ref at the exact source commit oid");
   const recoveredDeployRefOid = git(outDir, ["rev-parse", "refs/run402/deploys/latest"]);
   assertEqual(recoveredDeployRefOid, finalHead, "recovered repo's deploy ref resolves to the source repo's exact commit oid");
@@ -354,10 +381,11 @@ async function main() {
   const fsckResult = spawnSync("git", ["fsck", "--full", "--strict"], { cwd: outDir, encoding: "utf8" });
   assertEqual(fsckResult.status, 0, "recovered repo passes `git fsck --full --strict`");
 
-  console.log("\n  Structural proof of zero network dependency: `recover`/`mirror verify`");
-  console.log("  never call `this.#client` in the SDK (sdk/src/namespaces/gitvault.ts");
-  console.log("  lines 1748-1782) — only mirrorSet/mirrorStatus/mirrorSync do. The dead");
-  console.log("  RUN402_API_BASE above is defense-in-depth on top of that structural fact.");
+  console.log("\n  Structural proof of zero network dependency: `Gitvault.recover` never");
+  console.log("  calls `this.#client` in the SDK (sdk/src/namespaces/gitvault.ts) — it is");
+  console.log("  keystore + mirror-backend reads only. The dead RUN402_API_BASE above is");
+  console.log("  defense-in-depth on top of that structural fact. (`fsck --mirror` is NOT");
+  console.log("  covered by this claim — its head-chain walk is a live gateway read.)");
 
   // ── 5.2a. Torn-mirror probe: delete the newest head (+ admission) ──
   step("5.2a. Torn-mirror probe — delete the newest head + admission record");
@@ -373,8 +401,8 @@ async function main() {
   const priorGeneration = generations[generations.length - 2];
   const tornOut1 = join(RECOVER_DIR, "restored-torn-head");
   const tornRecover1 = runCli(
-    ["gitvault", "recover", tornDir1, "--out", tornOut1, "--repo", repoId, ...WALLET_ARGS],
-    { env: { RUN402_API_BASE: DEAD_API_BASE }, label: "gitvault recover (torn: missing newest head)" },
+    ["repos", "recover", tornDir1, "--out", tornOut1, "--repo", repoId, ...WALLET_ARGS],
+    { env: { RUN402_API_BASE: DEAD_API_BASE }, label: "repos recover (torn: missing newest head)" },
   );
   console.log(`  recovered_generation: ${tornRecover1.json?.recovered_generation} (expected prior generation ${priorGeneration})`);
   console.log(`  chain_break: ${JSON.stringify(tornRecover1.json?.chain_break)}`);
@@ -401,8 +429,8 @@ async function main() {
 
     const tornOut2 = join(RECOVER_DIR, "restored-torn-wal");
     const tornRecover2 = runCli(
-      ["gitvault", "recover", tornDir2, "--out", tornOut2, "--repo", repoId, ...WALLET_ARGS],
-      { env: { RUN402_API_BASE: DEAD_API_BASE }, allowFail: true, label: "gitvault recover (torn: missing referenced WAL pack)" },
+      ["repos", "recover", tornDir2, "--out", tornOut2, "--repo", repoId, ...WALLET_ARGS],
+      { env: { RUN402_API_BASE: DEAD_API_BASE }, allowFail: true, label: "repos recover (torn: missing referenced WAL pack)" },
     );
     console.log(`  exit code: ${tornRecover2.code}`);
     console.log(`  recovered_generation: ${tornRecover2.json?.recovered_generation}`);
@@ -423,7 +451,7 @@ async function main() {
       );
     } else {
       findings.push({
-        msg: "gitvault recover (torn WAL) produced no parseable JSON — see stdout/stderr above",
+        msg: "repos recover (torn WAL) produced no parseable JSON — see stdout/stderr above",
         evidence: { stdout: tornRecover2.stdout, stderr: tornRecover2.stderr, code: tornRecover2.code },
       });
       FAIL++;
