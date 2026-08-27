@@ -193,12 +193,13 @@ describe("get_gitvault_status", () => {
   });
 
   it("is truthful when no vault is allocated", async () => {
-    statusBehavior = async () => ({ ...STATUS, repo_id: null, vault: null, pins: { highest_authenticated: null, highest_materialized: null }, next_actions: [{ action: "allocate the project's vault", command: "run402 gitvault init" }] });
+    statusBehavior = async () => ({ ...STATUS, repo_id: null, vault: null, pins: { highest_authenticated: null, highest_materialized: null }, next_actions: [{ action: "allocate the project's vault", command: "run402 repos create --project <id>" }] });
     const out = textOf(await handleGetGitvaultStatus({ project_id: "prj_demo" }));
     assert.match(out, /No vault is allocated for project prj_demo\./);
     // The allocation verb, not `run402 init` — that one scaffolds the git
-    // remote and allocates nothing (dogfood #1, finding A).
-    assert.match(out, /run402 gitvault init/);
+    // remote and allocates nothing (dogfood #1, finding A). Repo-surface-
+    // consolidation renamed the allocation verb itself to `repos create`.
+    assert.match(out, /run402 repos create/);
     assert.ok(out.includes(GITVAULT_TERMINAL_LOSS_STATEMENT), "a vault-less project still gets the statement");
   });
 

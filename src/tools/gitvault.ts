@@ -1,8 +1,11 @@
 /**
- * gitvault MCP tools — `get_gitvault_status`, `list_gitvault_heads`,
- * `verify_gitvault`.
+ * `repos` MCP tools (repo-surface-consolidation D10 — one noun across every
+ * agent surface) — `repos_view`, `repos_list_heads`, `repos_fsck`. Same
+ * handlers and schemas as before the rename; only the registered tool NAME
+ * and the descriptions/next_actions they teach changed, from `gitvault …`
+ * spellings to `repos …` ones.
  *
- * READ-ONLY BY DESIGN. The vault's mutating verbs are deliberately CLI-only:
+ * READ-ONLY BY DESIGN. The repo family's mutating verbs are deliberately CLI-only:
  *
  *   - `push` / `init` write an IMMUTABLE generation. There is no undo for a
  *     head that was signed and admitted, so the operation wants a human-visible

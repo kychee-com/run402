@@ -62,7 +62,7 @@ const DOC_SURFACES = {
   "llms.txt": read("../../llms.txt"),
 } as const;
 
-const GITVAULT_TOOLS = ["get_gitvault_status", "list_gitvault_heads", "verify_gitvault"] as const;
+const GITVAULT_TOOLS = ["repos_view", "repos_list_heads", "repos_fsck"] as const;
 
 /**
  * Pull the description literal a `server.tool(...)` registration carries. It is
@@ -245,30 +245,30 @@ describe("gitvault copy — the doc surfaces state the claims", () => {
 });
 
 describe("gitvault copy — the approved claims, byte-for-byte", () => {
-  it("get_gitvault_status states the confidentiality claim", () => {
+  it("repos_view states the confidentiality claim", () => {
     assert.ok(
-      DESCRIPTIONS.get_gitvault_status.includes(CLAIM_CONFIDENTIALITY),
+      DESCRIPTIONS.repos_view.includes(CLAIM_CONFIDENTIALITY),
       "the confidentiality claim must appear verbatim, including the deployment-artifact custody sentence that scopes it",
     );
   });
 
-  it("get_gitvault_status states the activation claim", () => {
+  it("repos_view states the activation claim", () => {
     assert.ok(
-      DESCRIPTIONS.get_gitvault_status.includes(CLAIM_ACTIVATION),
+      DESCRIPTIONS.repos_view.includes(CLAIM_ACTIVATION),
       "the tool reports gitvault_policy and pending overrides, so it must say that an audited override exists",
     );
   });
 
-  it("get_gitvault_status states the terminal-loss sentence", () => {
+  it("repos_view states the terminal-loss sentence", () => {
     assert.ok(
-      DESCRIPTIONS.get_gitvault_status.includes(TERMINAL_LOSS),
+      DESCRIPTIONS.repos_view.includes(TERMINAL_LOSS),
       "the terminal-loss sentence is a reviewed product commitment and is stated verbatim, not summarised",
     );
   });
 
-  it("verify_gitvault states the retention claim", () => {
+  it("repos_fsck states the retention claim", () => {
     assert.ok(
-      DESCRIPTIONS.verify_gitvault.includes(CLAIM_RETENTION),
+      DESCRIPTIONS.repos_fsck.includes(CLAIM_RETENTION),
       "verification proves the chain; retention is the thing it cannot prove, so the claim belongs here",
     );
   });
