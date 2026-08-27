@@ -445,6 +445,14 @@ async function main(argv) {
     }
     const refs = state.refs ?? {};
     for (const ref of Object.keys(refs).sort()) out(`${refs[ref]} ${ref}`);
+    // A snapshot-only vault holds protocol refs but no branch heads, so a
+    // plain `git clone` prints "cloned an empty repository" with no hint the
+    // history exists (blind-acceptance finding, 2026-08-28). Say where it is.
+    const refNames = Object.keys(refs);
+    if (refNames.length > 0 && !refNames.some((r) => r.startsWith("refs/heads/"))) {
+      note(`this vault has no branch heads yet — its history lives on ${refNames.sort()[0]}`);
+      note(`fetch it with: git fetch <remote> '+${refNames.sort()[0]}:${refNames.sort()[0]}' && git checkout -b restored ${refNames.sort()[0]}`);
+    }
     const head = state.head_target;
     // A symref is only advertised when its target is actually present:
     // pointing HEAD at a ref that does not exist is what an empty repository

@@ -609,6 +609,21 @@ describe("run402 repos snapshot — thin passthrough to gitvault.push", () => {
     assert.equal(payload.generation, "0000000000000001");
   });
 
+  it("a snapshot-only publish (no branch heads) carries the restore_snapshot_ref next_action (blind-acceptance finding)", async () => {
+    impl.push = async () => ({
+      generation: "0000000000000001", form: "wal", refs: { "refs/run402/deploys/latest": "c".repeat(40) },
+      head_target: { kind: "detached", oid: "c".repeat(40) }, objects: [], object_count: 1,
+      encrypted_bytes: "10", raw_bytes: "8", gitvault_commit: "c".repeat(40), gitvault_commit_line: "line",
+      snapshot: { kind: "head", oid: "c".repeat(40), captured_digest: "d" },
+      mirror_push: { outcome: "skipped" }, reconcile_recipients: { outcome: "noop" },
+    });
+    const payload = await ok("snapshot", ["--project", PROJECT]);
+    const na = (payload.next_actions ?? []).find((n) => n.type === "restore_snapshot_ref");
+    assert.ok(na, "restore_snapshot_ref next_action present");
+    assert.match(na.command, /refs\/run402\/deploys\/latest/);
+    assert.ok(stderr.some((l) => l.includes("plain clone looks empty")));
+  });
+
   it("--dry-run previews via planPush and publishes nothing", async () => {
     const payload = await ok("snapshot", ["--project", PROJECT, "--dry-run"]);
     assert.ok(calls.find((c) => c.method === "gitvault.planPush"));

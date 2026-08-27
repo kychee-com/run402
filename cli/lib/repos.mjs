@@ -1253,8 +1253,27 @@ async function snapshot(args) {
     }
     const result = await sdk.gitvault.push(opts);
     if (manifestOutPath != null) writeManifestOut(manifestOutPath, result);
-    printJson(sdk, summarizeSnapshotPayload(result, { verbose, manifestPath: manifestOutPath }));
+    // Snapshot-only vault (no branch head published): a plain `git clone`
+    // of this vault prints "cloned an empty repository" with no hint the
+    // snapshot exists (blind-acceptance finding, 2026-08-28). Name the
+    // restore path in the result itself.
+    const resultRefNames = Object.keys(result.refs ?? {});
+    const snapshotOnly = resultRefNames.length > 0 && !resultRefNames.some((r) => r.startsWith("refs/heads/"));
+    const payload = summarizeSnapshotPayload(result, { verbose, manifestPath: manifestOutPath });
+    if (snapshotOnly) {
+      const snapRef = resultRefNames.sort()[0];
+      payload.next_actions = [
+        ...(payload.next_actions ?? []),
+        {
+          type: "restore_snapshot_ref",
+          command: `git fetch <remote> '+${snapRef}:${snapRef}' && git checkout -b restored ${snapRef}`,
+          why: `This vault has no branch heads — a plain \`git clone\` will report an empty repository. The snapshot history lives on ${snapRef}; \`git push\` a branch to make plain clones work.`,
+        },
+      ];
+    }
+    printJson(sdk, payload);
     console.error(`published generation ${result.generation} (${result.form})`);
+    if (snapshotOnly) console.error(`note: no branch heads in this vault — a plain clone looks empty; snapshot history is on ${resultRefNames.sort()[0]} (see next_actions)`);
     if (result.mirror_push?.outcome === "pushed") {
       console.error(`mirror: pushed generation ${result.generation} (${result.mirror_push.summary?.objects_copied ?? 0} object(s) copied)`);
     } else if (result.mirror_push?.outcome === "failed") {
