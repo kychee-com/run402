@@ -563,6 +563,98 @@ describe("gitvault status — the terminal-loss statement is normative copy", ()
   });
 });
 
+/**
+ * `access()`. The gateway's `envelope-recipients` read carries
+ * server-authoritative `desired[]` + `desired_state_version` — these tests
+ * pin both the current-gateway shape (real envelope_state/stale_access) and
+ * the honest fallback against an older gateway that has not shipped
+ * `desired[]` yet.
+ */
+describe("gitvault access() — envelope_state + stale_access from desired[]", () => {
+  const REPO = VAULT_RECORD.repo_id;
+  const ORG = VAULT_RECORD.org_id;
+
+  function routeAccess(directoryKeys: unknown[], coverageBody: Record<string, unknown>) {
+    return (call: Call) => {
+      const url = new URL(call.url);
+      if (url.pathname === `/gitvault/v1/vaults/${REPO}`) return { body: VAULT_RECORD };
+      if (url.pathname === `/orgs/v1/${ORG}/encryption-keys`) return { body: { org_id: ORG, keys: directoryKeys } };
+      if (url.pathname === `/gitvault/v1/vaults/${REPO}/envelope-recipients`) return { body: coverageBody };
+      throw new Error(`unexpected request in access() test: ${call.url}`);
+    };
+  }
+
+  it("reports real per-recipient envelope_state and stale_access when the gateway ships desired[]", async () => {
+    const { sdk } = sdkWith(
+      routeAccess(
+        [
+          { principal_id: "prn_alice", display_name: "Alice", ek_fingerprint: "ek_alice" },
+          { principal_id: "prn_bob", display_name: "Bob", ek_fingerprint: "ek_bob" },
+        ],
+        {
+          vault_id: REPO,
+          // ek_orphan is covered but explained by NEITHER the directory NOR desired[] — genuinely unmatched.
+          recipient_fingerprints: ["ek_alice", "ek_charlie", "ek_orphan"],
+          desired: [
+            { principal_id: "prn_alice", display_name: "Alice", status: "active", ek_fingerprint: "ek_alice", public_key: "pk_a", suite: "x25519-hkdf-sha256", covered: true },
+            { principal_id: "prn_bob", display_name: "Bob", status: "active", ek_fingerprint: "ek_bob", public_key: "pk_b", suite: "x25519-hkdf-sha256", covered: false },
+            // Removed from membership (no longer in the directory) but still covered — the real, un-revoked access gap.
+            { principal_id: "prn_charlie", display_name: "Charlie", status: "pending_removal", ek_fingerprint: "ek_charlie", public_key: "pk_c", suite: "x25519-hkdf-sha256", covered: true },
+          ],
+          desired_state_version: 7,
+        },
+      ),
+    );
+
+    const result = await sdk.gitvault.access({ repo_id: REPO });
+
+    assert.equal(result.envelope_state_available, true);
+    assert.equal(result.history_scope_available, false);
+
+    const alice = result.recipients.find((r) => r.principal_id === "prn_alice")!;
+    assert.equal(alice.covered, true);
+    assert.equal(alice.envelope_state, "converged");
+    const bob = result.recipients.find((r) => r.principal_id === "prn_bob")!;
+    assert.equal(bob.covered, false);
+    assert.equal(bob.envelope_state, "pending");
+
+    assert.deepEqual(result.stale_access, [{ principal_id: "prn_charlie", display_name: "Charlie", fingerprint: "ek_charlie" }]);
+
+    // ek_charlie is explained by stale_access, not unmatched; ek_orphan is genuinely unexplained.
+    assert.deepEqual(result.unmatched_covered_fingerprints, ["ek_orphan"]);
+
+    assert.match(result.gap, /history_scope/);
+    assert.match(result.gap, /stale_access/);
+    assert.doesNotMatch(result.gap, /did not report desired-recipient state/);
+  });
+
+  it("falls back honestly — null envelope_state, no stale_access — against an older gateway with no desired[]", async () => {
+    const { sdk } = sdkWith(
+      routeAccess(
+        [{ principal_id: "prn_alice", display_name: "Alice", ek_fingerprint: "ek_alice" }],
+        { vault_id: REPO, recipient_fingerprints: ["ek_alice", "ek_orphan"] },
+      ),
+    );
+
+    const result = await sdk.gitvault.access({ repo_id: REPO });
+
+    assert.equal(result.envelope_state_available, false);
+    assert.equal(result.history_scope_available, false);
+    assert.equal(result.recipients[0]!.envelope_state, null);
+    assert.deepEqual(result.stale_access, []);
+    assert.deepEqual(result.unmatched_covered_fingerprints, ["ek_orphan"]);
+    assert.match(result.gap, /did not report desired-recipient state/);
+    assert.match(result.gap, /history_scope/);
+  });
+
+  it("never wraps a key — access() issues only GET requests", async () => {
+    const { sdk, calls } = sdkWith(routeAccess([], { vault_id: REPO, recipient_fingerprints: [], desired: [], desired_state_version: 0 }));
+    await sdk.gitvault.access({ repo_id: REPO });
+    assert.ok(calls.length > 0);
+    for (const c of calls) assert.equal(c.method, "GET");
+  });
+});
+
 describe("listByOrg follows the keyset cursor (never a silent page one)", () => {
   it("aggregates every page and returns has_more:false at the end", async () => {
     const { sdk, calls } = sdkWith((call) => {

@@ -696,10 +696,42 @@ export interface GitvaultOrgEncryptionKeyDirectory {
   keys: GitvaultOrgEncryptionKeyEntry[];
 }
 
+/**
+ * One row of the vault's org-level, membership-driven DESIRED-recipient
+ * state. `status` is the server's own honest accounting of what membership
+ * currently wants, NOT a claim about whether access was actually revoked:
+ * `"pending_removal"` means membership removed this principal but gitvault
+ * protocol v0 has no epoch-rotation mechanism yet to un-wrap their existing
+ * `key_envelope`, so `covered: true` on a `pending_removal` row is a REAL
+ * continuing-access fact, not stale data.
+ */
+export interface GitvaultDesiredRecipientEntry {
+  principal_id: string;
+  display_name: string | null;
+  status: "active" | "pending_removal";
+  /** `null` when this principal is desired but has not published an encryption key yet. */
+  ek_fingerprint: string | null;
+  public_key: string | null;
+  suite: string | null;
+  /** `true` when `ek_fingerprint` currently has a `key_envelope` on this vault. */
+  covered: boolean;
+}
+
 /** `GET /gitvault/v1/vaults/:vault_id/envelope-recipients` — {@link GitvaultTransport.listEnvelopeRecipients}'s result. */
 export interface GitvaultEnvelopeRecipientsResponse {
   vault_id: string;
   recipient_fingerprints: string[];
+  /**
+   * The org's desired-recipient state, cross-referenced against this
+   * vault's coverage — see {@link GitvaultDesiredRecipientEntry}. OPTIONAL:
+   * absent (not empty) on an older gateway that predates this field —
+   * callers MUST distinguish "field absent" (older gateway, state genuinely
+   * unknown) from "field present and empty" (org has no desired recipients)
+   * rather than treating both as "no data."
+   */
+  desired?: GitvaultDesiredRecipientEntry[];
+  /** The desired-recipient substrate's own monotonic version, for cheap client-side diffing. Present iff `desired` is present. */
+  desired_state_version?: number;
 }
 
 /** `GET /gitvault/v1/vaults/:vault_id` — the shape `reads.ts:getVaultRecord` returns. */

@@ -1951,7 +1951,7 @@ setPolicy(repoId, { gitvault_policy, reason? }): Promise<{ gitvault_policy, gitv
 completeOverride(repoId, { operation_id, capture_receipt }): Promise<{ operation_id, advisory_cleared, generation, head_sha256 }>
 acquireMaintenanceLease(request): Promise<GitvaultMaintenanceLease>
 listByOrg(orgId): Promise<GitvaultOrgVaultsListing>                 // repo-surface-consolidation task 2.4: every vault the org owns, one round trip — `repos list`'s bulk read, FROZEN response shape
-access(opts?): Promise<GitvaultAccessResult>                        // repo-surface-consolidation D5/D10: READ-ONLY recipients + coverage + (Node-only, best-effort) this machine's local TOFU pins; never wraps a key. Reports envelope_state_available/history_scope_available: false with an honest `gap` string until gitvault-human-envelopes ships server-authoritative desired-recipient state
+access(opts?): Promise<GitvaultAccessResult>                        // repo-surface-consolidation D5/D10: READ-ONLY recipients + coverage + per-recipient envelope_state (converged/pending/pending_removal, from the gateway's desired-recipient-state substrate) + stale_access (removed members not yet revoked) + (Node-only, best-effort) this machine's local TOFU pins; never wraps a key. envelope_state_available is `true` against a gateway that ships desired[]; history_scope_available stays `false` — gitvault v0 pins one fixed epoch, so there is no per-epoch scope to report until gitvault-human-envelopes' epoch-rotation work lands. Honest `gap` string always explains exactly what's missing.
 ```
 
 Write side (Node only — `@run402/sdk/node`; every one of these takes `{ repo_dir?, repo_id?, project_id? }`):

@@ -223,7 +223,7 @@ mock.module("./cli/lib/sdk.mjs", {
         access: async (target) => {
           calls.push({ method: "gitvault.access", target });
           return (impl.access ?? (async () => ({
-            repo_id: REPO, org_id: ORG, recipients: [], unmatched_covered_fingerprints: [],
+            repo_id: REPO, org_id: ORG, recipients: [], unmatched_covered_fingerprints: [], stale_access: [],
             envelope_state_available: false, history_scope_available: false, gap: "GAP STATEMENT",
           })))(target);
         },
@@ -680,6 +680,19 @@ describe("run402 repos access — read-only; repair refuses until epoch rotation
     assert.equal(payload.recipients.length, 1);
     assert.equal(payload.envelope_state_available, false);
     assert.equal(calls.find((c) => c.method === "gitvault.reconcileEnvelopeRecipients"), undefined, "access must never wrap a key");
+  });
+
+  it("summarizes stale_access on stderr when the gateway ships desired-recipient state", async () => {
+    impl.access = async () => ({
+      repo_id: REPO, org_id: ORG,
+      recipients: [{ principal_id: "prn_1", display_name: "Alice", fingerprint: "ek_abc", covered: true, envelope_state: "converged", tofu_pin: null }],
+      unmatched_covered_fingerprints: [],
+      stale_access: [{ principal_id: "prn_2", display_name: "Charlie", fingerprint: "ek_charlie" }],
+      envelope_state_available: true, history_scope_available: false, gap: "GAP STATEMENT",
+    });
+    const payload = await ok("access", ["--project", PROJECT]);
+    assert.equal(payload.stale_access.length, 1);
+    assert.ok(stderr.some((line) => line.includes("Charlie") && line.includes("STILL decrypt")), "must call out a removed member who still has access");
   });
 
   it("access repair refuses cleanly, pointing at `repos access`", async () => {

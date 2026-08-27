@@ -159,11 +159,17 @@ Subcommands:
            safe_to_auto_execute:false as ADDITIVE fields.
   access   READ-ONLY: the org's directory of encryption-key-holding members,
            which of the vault's current envelope-recipient fingerprints are
-           covered, and (best-effort, this machine only) each principal's
-           local TOFU pin. Reports an HONEST gap rather than inventing:
-           per-recipient envelope_state (converged/pending) and
-           history_scope are not yet exposed by the gateway — that lands
-           with gitvault-human-envelopes' epoch-rotation work.
+           covered, per-recipient envelope_state (converged/pending/
+           pending_removal, from the gateway's desired-recipient-state
+           substrate), and (best-effort, this machine only) each principal's
+           local TOFU pin. stale_access names removed members whose access
+           was NOT actually revoked — pending_removal is honest bookkeeping,
+           not enforcement, until epoch rotation ships. Reports an HONEST
+           remaining gap rather than inventing: history_scope (which epochs
+           each recipient can read) has no substrate to report — gitvault
+           protocol v0 pins a single fixed epoch, so there is no per-epoch
+           scope yet; that lands with gitvault-human-envelopes' epoch-
+           rotation work, in fold under adversarial review.
   access repair
            NOT YET AVAILABLE — gated on the epoch-rotation mechanism above
            landing. \`reconcile\`, the workaround it replaces, is REMOVED:
@@ -1303,7 +1309,11 @@ async function accessRead(args) {
     await spillIfLarge(result.repo_id, "access", result);
     console.error(`${result.recipients.length} directory recipient(s), ${result.recipients.filter((r) => r.covered).length} covered on this repo.`);
     if (result.unmatched_covered_fingerprints.length > 0) {
-      console.error(`${result.unmatched_covered_fingerprints.length} covering fingerprint(s) match no directory entry (orphaned/external): ${result.unmatched_covered_fingerprints.join(", ")}`);
+      console.error(`${result.unmatched_covered_fingerprints.length} covering fingerprint(s) match no directory entry or desired-state row (orphaned/external): ${result.unmatched_covered_fingerprints.join(", ")}`);
+    }
+    if (Array.isArray(result.stale_access) && result.stale_access.length > 0) {
+      const names = result.stale_access.map((s) => s.display_name ?? s.principal_id).join(", ");
+      console.error(`${result.stale_access.length} removed member(s) STILL decrypt this vault (not yet revocable — no epoch rotation in v0): ${names}`);
     }
     console.error(result.gap);
   } catch (err) {

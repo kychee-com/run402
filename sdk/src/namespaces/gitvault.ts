@@ -39,6 +39,7 @@ import {
 } from "./gitvault.crypto.js";
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultRecoveryReceipt } from "./gitvault.types.js";
 import type {
+  GitvaultEnvelopeRecipientsResponse,
   GitvaultMaintenanceLease,
   GitvaultMaintenanceLeaseRequest,
   GitvaultTransport,
@@ -383,17 +384,33 @@ export interface GitvaultFsckResult {
 }
 
 /**
- * `repos access`'s result — a READ over
- * whatever the live gateway surface exposes today. Two gaps are stated
- * honestly rather than invented: the gateway does not yet report a
- * per-recipient `envelope_state` (converged/pending) or `history_scope` —
- * that is server-authoritative desired-recipient-state work owned by
- * `gitvault-human-envelopes` and has not shipped. `access`
- * reports what the read surface HAS: the org's directory of encryption-key-
- * holding members, which of the vault's current envelope-recipient
- * fingerprints match a directory entry, and (Node-only, best-effort) this
- * machine's own local TOFU pin for each principal, when it has ever wrapped
- * one.
+ * `repos access`'s result — a READ over whatever the live gateway surface
+ * exposes today. The gateway's `envelope-recipients` read reports
+ * server-authoritative, membership-driven desired-recipient state
+ * (`desired[]` + `desired_state_version`), so per-recipient `envelope_state`
+ * (`converged` when the desired key is wrapped on this vault, `pending` when
+ * it is not, `pending_removal` when membership removal has not yet been
+ * enforced) is real. `envelope_state_available` reflects this at RUNTIME —
+ * it is `false` only against an older gateway that has not shipped
+ * `desired[]` yet (a rolling deploy window, or a pinned older `apiBase`),
+ * never a hardcoded claim.
+ *
+ * ONE gap remains genuine and gateway-independent: `history_scope` (which
+ * epochs each recipient can read) has no substrate to report, because
+ * gitvault protocol v0 pins a single fixed epoch for a vault's entire
+ * lifetime — there is no per-epoch scope to have. `stale_access` below is
+ * the closest observable proxy for the same underlying limitation: a
+ * `pending_removal` recipient whose fingerprint is STILL covered still
+ * decrypts every commit (past AND future) under that one epoch, because
+ * epoch rotation — the mechanism that would actually revoke them — is
+ * mid-fold in `gitvault-human-envelopes` under adversarial protocol review.
+ *
+ * `access` reports what the read surface HAS: the org's directory of
+ * encryption-key-holding members, which of the vault's current
+ * envelope-recipient fingerprints match a directory entry, the
+ * server-reported desired state per recipient when available, and
+ * (Node-only, best-effort) this machine's own local TOFU pin for each
+ * principal, when it has ever wrapped one.
  */
 export interface GitvaultAccessRecipient {
   principal_id: string;
@@ -402,20 +419,39 @@ export interface GitvaultAccessRecipient {
   fingerprint: string;
   /** `true` when this fingerprint has a `key_envelope` on the vault today. */
   covered: boolean;
+  /**
+   * The server's desired-recipient state for this principal, cross-referenced
+   * against `covered`: `"converged"` (desired + covered), `"pending"`
+   * (desired, not yet wrapped), `"pending_removal"` (membership removed
+   * them but this vault has not been re-keyed away from them — see
+   * `stale_access`), or `null` when the gateway did not report desired-state
+   * for this principal (older gateway, or the directory and desired-state
+   * reads disagree, which should not happen but is reported honestly rather
+   * than papered over).
+   */
+  envelope_state: "converged" | "pending" | "pending_removal" | null;
   /** THIS machine's own local trust-on-first-use record for this principal, or `null` if this machine never wrapped them. Never a server-side fact. */
   tofu_pin: { fingerprint: string; matches_directory: boolean } | null;
+}
+/** A principal whose membership was removed (desired state `pending_removal`) but who STILL holds a covering `key_envelope` on this vault — real, continuing access that removal did not revoke, because gitvault v0 has no epoch-rotation mechanism yet. See {@link GitvaultAccessResult}'s doc comment. */
+export interface GitvaultStaleAccessEntry {
+  principal_id: string;
+  display_name: string | null;
+  fingerprint: string;
 }
 export interface GitvaultAccessResult {
   repo_id: string;
   org_id: string | null;
   recipients: GitvaultAccessRecipient[];
-  /** Vault-covering fingerprints (from the server) that match no known org-directory entry — orphaned, revoked, or an external recipient outside this org. */
+  /** Vault-covering fingerprints (from the server) that match neither a directory entry nor a desired-state row — genuinely orphaned, revoked outside this org's membership model, or external. Excludes fingerprints already explained by `stale_access`. */
   unmatched_covered_fingerprints: string[];
-  /** Always `false` today — see this type's own doc comment for why. */
-  envelope_state_available: false;
-  /** Always `false` today — see this type's own doc comment for why. */
+  /** Removed members who still decrypt this vault — see {@link GitvaultStaleAccessEntry}. Always `[]` when `envelope_state_available` is `false` (no desired-state substrate to compute it from). */
+  stale_access: GitvaultStaleAccessEntry[];
+  /** `true` when the gateway reported desired-recipient state (`desired[]`) for this read, making `recipients[].envelope_state` and `stale_access` real rather than absent. `false` only against an older gateway. */
+  envelope_state_available: boolean;
+  /** Always `false` — see this type's own doc comment for why this is a protocol-level absence, not a missing gateway feature. */
   history_scope_available: false;
-  /** The honest, human-readable statement of the gap above. Read it before assuming `covered: true` means "converged." */
+  /** The honest, human-readable statement of the gap above. Read it before assuming `covered: true` means "converged," and before assuming `pending_removal` means access was actually revoked. */
   gap: string;
 }
 
@@ -1794,9 +1830,19 @@ export class Gitvault {
       orgId
         ? this.#client.request<{ org_id: string; keys: Array<{ principal_id: string; display_name: string | null; ek_fingerprint: string }> }>(`/orgs/v1/${encodeURIComponent(orgId)}/encryption-keys`, { context: "reading the org encryption-key directory" })
         : Promise.resolve({ org_id: "", keys: [] }),
-      this.#client.request<{ vault_id: string; recipient_fingerprints: string[] }>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/envelope-recipients`, { context: "reading the gitvault envelope recipients" }),
+      this.#client.request<GitvaultEnvelopeRecipientsResponse>(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/envelope-recipients`, { context: "reading the gitvault envelope recipients" }),
     ]);
     const covered = new Set(coverage.recipient_fingerprints);
+
+    // `desired` is OPTIONAL on the wire (see GitvaultEnvelopeRecipientsResponse):
+    // absent means an older gateway that predates this field — genuinely
+    // unknown, not "no desired recipients." Distinguish "absent" from
+    // "present and empty" via the array itself, not a boolean flag, so a
+    // null/undefined check is the single source of truth for both this
+    // method and any future caller of the same wire type.
+    const desiredList = coverage.desired ?? null;
+    const envelopeStateAvailable = desiredList !== null;
+    const desiredByPrincipal = new Map(desiredList?.map((d) => [d.principal_id, d] as const) ?? []);
 
     // Node-only, best-effort: THIS machine's own local TOFU pins. Never
     // fails the whole read — a browser/worker caller, or a machine that has
@@ -1812,30 +1858,58 @@ export class Gitvault {
 
     const recipients: GitvaultAccessResult["recipients"] = directory.keys.map((k) => {
       const pinned = pins[k.principal_id];
+      const desired = desiredByPrincipal.get(k.principal_id) ?? null;
+      const envelopeState: GitvaultAccessRecipient["envelope_state"] =
+        desired == null ? null : desired.status === "pending_removal" ? "pending_removal" : covered.has(k.ek_fingerprint) ? "converged" : "pending";
       return {
         principal_id: k.principal_id,
         display_name: k.display_name,
         fingerprint: k.ek_fingerprint,
         covered: covered.has(k.ek_fingerprint),
+        envelope_state: envelopeState,
         tofu_pin: pinned !== undefined ? { fingerprint: pinned, matches_directory: pinned === k.ek_fingerprint } : null,
       };
     });
     const directoryFingerprints = new Set(directory.keys.map((k) => k.ek_fingerprint));
-    const unmatched = coverage.recipient_fingerprints.filter((fp) => !directoryFingerprints.has(fp));
+
+    // Removed members (desired status pending_removal) whose fingerprint is
+    // STILL covered: real, continuing access that membership removal did not
+    // revoke, because gitvault v0 has no epoch-rotation mechanism yet. See
+    // GitvaultAccessResult's doc comment.
+    const staleAccess: GitvaultAccessResult["stale_access"] = (desiredList ?? [])
+      .filter((d) => d.status === "pending_removal" && d.ek_fingerprint != null && covered.has(d.ek_fingerprint))
+      .map((d) => ({ principal_id: d.principal_id, display_name: d.display_name, fingerprint: d.ek_fingerprint as string }));
+    const staleAccessFingerprints = new Set(staleAccess.map((s) => s.fingerprint));
+
+    // Genuinely unexplained: covering fingerprints that match neither a
+    // current directory entry NOR a desired-state row (already broken out
+    // above as stale_access) — orphaned, externally revoked, or a recipient
+    // outside this org's membership model entirely.
+    const unmatched = coverage.recipient_fingerprints.filter((fp) => !directoryFingerprints.has(fp) && !staleAccessFingerprints.has(fp));
+
+    const gap = envelopeStateAvailable
+      ? "history_scope (which epochs each recipient can read) is not available: gitvault protocol v0 pins a single fixed epoch for a " +
+        "vault's entire lifetime, so there is no per-epoch scope to report — that lands with the epoch-rotation protocol revision " +
+        "gitvault-human-envelopes is mid-fold on, under adversarial review. envelope_state per recipient IS available today, from the " +
+        `gateway's desired-recipient-state substrate (desired_state_version ${String(coverage.desired_state_version ?? "unknown")}): ` +
+        "\"converged\" means desired and covered, \"pending\" means desired but not yet wrapped, \"pending_removal\" means membership " +
+        "removed them but this vault has not been re-keyed away from them. pending_removal does NOT mean revoked — with covered:true " +
+        "they still decrypt this vault's entire history, past and future, until epoch rotation ships; see stale_access for exactly who."
+      : "the gateway did not report desired-recipient state (desired[]) for this vault_id — likely an older gateway than this SDK " +
+        "expects, so per-recipient envelope_state and stale_access are unavailable. history_scope is unavailable regardless: gitvault " +
+        "protocol v0 pins a single fixed epoch, so there is no per-epoch scope to report. This reports what the read surface has today: " +
+        "the org's directory of encryption-key-holding members, which of the vault's current envelope-recipient fingerprints match a " +
+        "directory entry (covered), and this machine's own local TOFU pin per principal when it has ever wrapped one (tofu_pin) — never a server-side fact.";
 
     return {
       repo_id: repoId,
       org_id: orgId,
       recipients,
       unmatched_covered_fingerprints: unmatched,
-      envelope_state_available: false,
+      stale_access: staleAccess,
+      envelope_state_available: envelopeStateAvailable,
       history_scope_available: false,
-      gap:
-        "the gateway does not yet expose per-recipient envelope_state (converged/pending) or history_scope — " +
-        "that is server-authoritative desired-recipient-state work owned by gitvault-human-envelopes and has not shipped. " +
-        "This reports what the read surface has today: the org's directory of encryption-key-holding members, which of " +
-        "the vault's current envelope-recipient fingerprints match a directory entry (covered), and this machine's own " +
-        "local TOFU pin per principal when it has ever wrapped one (tofu_pin) — never a server-side fact.",
+      gap,
     };
   }
 
