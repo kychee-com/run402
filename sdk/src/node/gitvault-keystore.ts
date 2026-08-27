@@ -93,10 +93,22 @@ export interface GitvaultRepoFile {
   repo_id: string;
   org_id: string;
   project_id: string;
-  /** Raw 32-byte K_repo, lowercase hex. */
+  /** Raw 32-byte secret for {@link GitvaultRepoFile.epoch} (`K_repo`/`K_1` pre-rotation, `K_e` after one), lowercase hex. */
   k_repo_hex: string;
-  /** The current epoch (V0: always `0000000000000001`). */
+  /** The current epoch — `0000000000000001` until this vault's first rotation (D194, rev 42); advances on every rotation this principal drove or opened its own envelope for. */
   epoch: string;
+  /**
+   * D194/D202, rev 42: every symmetric epoch key this principal has EVER
+   * locally held, keyed by 16-hex epoch — the substrate `checkFreshEpochKeyAgainstPriorKeys`
+   * (D195's inequality obligation) and the full-history-on-join branch (a)
+   * (`FULL_VIA_EPOCH_KEYS`) both need. `epoch` -> `k_repo_hex` above is
+   * ALWAYS mirrored here too (an entry for the current epoch always
+   * exists), so this map alone is sufficient for both purposes — a reader
+   * never needs to special-case "the current one lives elsewhere."
+   * Absent/`null` for a pre-rotation vault (equivalent to the single
+   * `{[epoch]: k_repo_hex}` entry).
+   */
+  epoch_keys?: Record<string, string> | null;
   /** Trust pin: the admitted genesis stored-bytes hash. */
   genesis_sha256: string;
   /** `highest_authenticated` (§6.4): chain-verified; a listing below it is `GENERATION_REGRESSION`. `null` until the first head is authenticated. */
@@ -141,7 +153,8 @@ export type GitvaultAuditEvent =
   | "lock_released"
   | "lock_stale_reclaimed"
   | "transition_assessed"
-  | "journal_stage";
+  | "journal_stage"
+  | "epoch_rotation_recorded";
 
 /** A permission-audit finding (never fatal by default; surfaced to doctor). */
 export interface GitvaultPermissionFinding {
@@ -439,12 +452,32 @@ export class GitvaultKeystore {
   }
 
   /** Update the dual pins / last ref transaction without touching key material. */
-  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins">>): GitvaultRepoFile {
+  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys">>): GitvaultRepoFile {
     return this.withRepoLock(repoId, () => {
       const existing = this.readRepo(repoId);
       if (!existing) fail("GITVAULT_REPO_STATE_MISSING", `no repo file for ${repoId}`, "updating gitvault repo file", { repo_id: repoId });
       const full: GitvaultRepoFile = { ...existing, ...patch, updated_at: formatGitvaultTimestamp(this.now()) };
       writeFileAtomic0600(this.repoPath(repoId), JSON.stringify(full, null, 2));
+      return full;
+    });
+  }
+
+  /**
+   * Record a COMMITTED epoch rotation (D194, rev 42): advances the local
+   * "current" pointer (`epoch` + `k_repo_hex`) to the new epoch's key AND
+   * appends it to `epoch_keys` (never overwriting a prior entry — every key
+   * this principal has ever held stays locally available for historical
+   * decrypt / the D195 prior-key-inequality check on the NEXT rotation).
+   * Audited distinctly from an ordinary `updateRepo` patch.
+   */
+  recordEpochRotation(repoId: string, input: { new_epoch: string; new_k_repo_hex: string }): GitvaultRepoFile {
+    return this.withRepoLock(repoId, () => {
+      const existing = this.readRepo(repoId);
+      if (!existing) fail("GITVAULT_REPO_STATE_MISSING", `no repo file for ${repoId}`, "recording gitvault epoch rotation", { repo_id: repoId });
+      const epochKeys = { ...(existing.epoch_keys ?? {}), [existing.epoch]: existing.k_repo_hex, [input.new_epoch]: input.new_k_repo_hex };
+      const full: GitvaultRepoFile = { ...existing, epoch: input.new_epoch, k_repo_hex: input.new_k_repo_hex, epoch_keys: epochKeys, updated_at: formatGitvaultTimestamp(this.now()) };
+      writeFileAtomic0600(this.repoPath(repoId), JSON.stringify(full, null, 2));
+      this.audit("epoch_rotation_recorded", repoId, { new_epoch: input.new_epoch, known_epoch_count: Object.keys(epochKeys).length });
       return full;
     });
   }

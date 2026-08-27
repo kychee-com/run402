@@ -227,6 +227,28 @@ mock.module("./cli/lib/sdk.mjs", {
             envelope_state_available: false, history_scope_available: false, gap: "GAP STATEMENT",
           })))(target);
         },
+        rotateEpoch: async (input) => {
+          calls.push({ method: "gitvault.rotateEpoch", input });
+          return (impl.rotateEpoch ?? (async () => ({
+            outcome: "admitted", generation: "0000000000000002", head_sha256: "aa".repeat(32), new_epoch: "0000000000000002",
+            rotation_id: "bb".repeat(32), reason: input.reason, included: [{ principal_id: "prn_1", ek_fingerprint: "ek_" + "aa".repeat(16) }],
+            excluded_keyless_principal_ids: [], excluded_unconfirmed_principal_ids: [], admission_record_sha256: "cc".repeat(32),
+            capture_receipt: null, self_check: "passed",
+          })))(input);
+        },
+        rotateEpochForKeyRevocation: async (principalId, input) => {
+          calls.push({ method: "gitvault.rotateEpochForKeyRevocation", principalId, input });
+          return (impl.rotateEpochForKeyRevocation ?? (async () => ({
+            outcome: "admitted", generation: "0000000000000002", head_sha256: "aa".repeat(32), new_epoch: "0000000000000002",
+            rotation_id: "bb".repeat(32), reason: "recipient_key_revoked", included: [],
+            excluded_keyless_principal_ids: [], excluded_unconfirmed_principal_ids: [], admission_record_sha256: "cc".repeat(32),
+            capture_receipt: null, self_check: "not_a_recipient",
+          })))(principalId, input);
+        },
+        declareEpochSecretExposed: async (repoId) => {
+          calls.push({ method: "gitvault.declareEpochSecretExposed", repoId });
+          return (impl.declareEpochSecretExposed ?? (async () => ({ epoch_secret_exposure_version: "1" })))(repoId);
+        },
         recover: async (input) => {
           calls.push({ method: "gitvault.recover", input });
           return (impl.recover ?? (async () => ({
@@ -695,7 +717,7 @@ describe("run402 repos gc — absorbs compact + prune, never described as exactl
   });
 });
 
-describe("run402 repos access — read-only; repair refuses until epoch rotation ships (design D5/D10)", () => {
+describe("run402 repos access — read-only; repair/revoke-key/declare-exposure drive real epoch rotation (D193-D203, rev 42)", () => {
   it("reads recipients + coverage, never mutates", async () => {
     impl.access = async () => ({
       repo_id: REPO, org_id: ORG,
@@ -736,10 +758,39 @@ describe("run402 repos access — read-only; repair refuses until epoch rotation
     assert.ok(stderr.some((line) => line.includes("Charlie") && line.includes("STILL decrypt")), "must call out a removed member who still has access");
   });
 
-  it("access repair refuses cleanly, pointing at `repos access`", async () => {
+  it("access repair refuses cleanly, naming the missing rotation counters, when the two flags are omitted", async () => {
     const envelope = await expectFailure("access", ["repair", "--project", PROJECT]);
-    assert.equal(envelope.code, "ACCESS_REPAIR_NOT_AVAILABLE");
-    assert.ok(envelope.next_actions.find((a) => a.type === "access_repair_pending"));
+    assert.equal(envelope.code, "ROTATION_COUNTERS_REQUIRED");
+    assert.ok(envelope.next_actions.some((a) => a.command === "run402 repos access revoke-key <principal_id>"));
+  });
+
+  it("access repair drives gitvault.rotateEpoch with reason:elective_rekey when the two counter flags are supplied", async () => {
+    const payload = await ok("access", ["repair", "--project", PROJECT, "--recipient-state-version", "3", "--recipient-revocation-version", "1"]);
+    assert.equal(payload.outcome, "admitted");
+    const call = calls.find((c) => c.method === "gitvault.rotateEpoch");
+    assert.equal(call.input.reason, "elective_rekey");
+    assert.equal(call.input.recipient_state_version, "3");
+    assert.equal(call.input.recipient_revocation_version, "1");
+  });
+
+  it("access revoke-key <principal_id> drives gitvault.rotateEpochForKeyRevocation — no flags needed", async () => {
+    const payload = await ok("access", ["revoke-key", "prn_compromised", "--project", PROJECT]);
+    assert.equal(payload.outcome, "admitted");
+    const call = calls.find((c) => c.method === "gitvault.rotateEpochForKeyRevocation");
+    assert.equal(call.principalId, "prn_compromised");
+  });
+
+  it("access revoke-key requires the principal_id positional", async () => {
+    const envelope = await expectFailure("access", ["revoke-key", "--project", PROJECT]);
+    assert.equal(envelope.code, "BAD_USAGE");
+  });
+
+  it("access declare-exposure drives gitvault.declareEpochSecretExposed and names the follow-up rotation is not automatic", async () => {
+    const payload = await ok("access", ["declare-exposure", "--project", PROJECT]);
+    assert.equal(payload.epoch_secret_exposure_version, "1");
+    assert.ok(stderr.some((line) => line.includes("DOES NOT ROTATE")));
+    const call = calls.find((c) => c.method === "gitvault.declareEpochSecretExposed");
+    assert.equal(call.repoId, REPO);
   });
 });
 

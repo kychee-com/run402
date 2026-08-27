@@ -74,7 +74,9 @@ Maintenance:
   run402 repos fsck   [--project <id>] [--repo <repo_id>] [--mirror] [--budget <n>] [--no-write]
   run402 repos gc     [--project <id>] [--repo <repo_id>] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
   run402 repos access [--project <id>] [--repo <repo_id>]
-  run402 repos access repair [--project <id>] [--repo <repo_id>]
+  run402 repos access repair [--project <id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
+  run402 repos access revoke-key <principal_id> [--project <id>] [--repo <repo_id>]
+  run402 repos access declare-exposure [--project <id>] [--repo <repo_id>]
   run402 repos policy <required|grandfathered> [--project <id>] [--repo <repo_id>] [--reason <why>]
 
 Subcommands:
@@ -163,20 +165,35 @@ Subcommands:
            pending_removal, from the gateway's desired-recipient-state
            substrate), and (best-effort, this machine only) each principal's
            local TOFU pin. stale_access names removed members whose access
-           was NOT actually revoked — pending_removal is honest bookkeeping,
-           not enforcement, until epoch rotation ships. Reports an HONEST
-           remaining gap rather than inventing: history_scope (which epochs
-           each recipient can read) has no substrate to report — gitvault
-           protocol v0 pins a single fixed epoch, so there is no per-epoch
-           scope yet; that lands with gitvault-human-envelopes' epoch-
-           rotation work, in fold under adversarial review.
+           has NOT yet been rotated away — pending_removal is honest
+           bookkeeping, not enforcement, until \`access repair\`/\`revoke-key\`
+           actually rotates. history_scope (which epochs each recipient can
+           read) is not reported by this read — see the \`gap\` field.
   access repair
-           NOT YET AVAILABLE — gated on the epoch-rotation mechanism above
-           landing. \`reconcile\`, the workaround it replaces, is REMOVED:
-           it never wrapped a key correctly-scoped to "from
-           here forward," and a temporary mechanism does not get a
-           permanent verb. This refuses cleanly and points at \`repos
-           access\` for what IS available today.
+           Epoch rotation (D193-D203, rev 42) with reason:"elective_rekey" —
+           re-keys this vault's CURRENT epoch away from every stale_access
+           principal at once, and clears a pre-existing vault's one-time
+           migration requirement. \`reconcile\`, the workaround this
+           replaces, is REMOVED (it never wrapped a key correctly-scoped to
+           "from here forward" — this does). Needs
+           --recipient-state-version and --recipient-revocation-version:
+           the gateway exposes no read route for these two counters outside
+           \`revoke-key\`'s own response, so this verb needs them supplied
+           explicitly today — refuses cleanly, naming exactly this, when
+           omitted. Owner + step-up.
+  access revoke-key <principal_id>
+           The ONE fully self-contained rotation entry point: declares
+           reason:"recipient_key_revoked" for one principal and rotates off
+           that declaration's OWN returned counters — no flags needed.
+           Owner + step-up. The rekey remedy for "this specific principal's
+           key should no longer be trusted."
+  access declare-exposure
+           Declares reason:"epoch_secret_exposed" for THIS vault
+           (vault-scoped, not org-wide) — the rekey remedy for a leaked
+           K_repo/K_e. The declaration itself lands immediately; the
+           follow-up rotation it authorizes is not auto-run (same counter
+           gap as \`access repair\`) — this prints exactly what to do next.
+           Owner + step-up.
   policy   Set the activation policy — \`required\` (a deploy must present a
            vaulted capture) or \`grandfathered\` (it need not). Owner +
            step-up, audited. \`grandfathered\` is the documented way out of a
@@ -195,7 +212,15 @@ Options:
   --idempotency-key <key>
                     create: re-running with the same key resolves to the
                     same project instead of creating a second one — new
-                    projects only (default: derived from the name)
+                    projects only (default: derived from the name).
+                    access repair/revoke-key: the rotation attempt's OWN
+                    client_idempotency_key (32-hex) — default: a fresh
+                    CSPRNG value each call, never resumed across processes.
+  --recipient-state-version <n>
+  --recipient-revocation-version <n>
+                    access repair: the D194 frozen watermark pair this
+                    rotation attempt is fenced against. Required — see
+                    \`run402 repos access repair --help\` for why.
   --human           view: a short summary on stdout instead of the JSON dump.
                     Rejected together with --json.
   --force           delete: proceed even though the repo holds generations
@@ -1336,21 +1361,122 @@ async function accessRead(args) {
   }
 }
 
+const ROTATION_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--recipient-state-version", "--recipient-revocation-version", "--idempotency-key"];
+
+/**
+ * `run402 repos access repair` (D193-D203, rev 42) — a general re-key of
+ * this vault's CURRENT epoch, dropping every principal in `stale_access`
+ * (`pending_removal`, still covered) and clearing a pre-existing vault's
+ * one-time migration requirement. Drives `rotateEpoch({reason:"elective_rekey"})`.
+ *
+ * `--recipient-state-version`/`--recipient-revocation-version` are the D194
+ * frozen watermarks this attempt must be fenced against. They are NOT
+ * discovered automatically here: the live gateway exposes NO general read
+ * route for `internal.gitvault_recipient_state_counters` outside the
+ * `key-revocation` declare route's own response (see
+ * `GitvaultVault.rotateEpoch`'s doc comment, `sdk/src/node/gitvault-
+ * publication.ts`, for the confirmed source-level finding). Until that
+ * route ships, this verb needs the pair supplied explicitly — refusing
+ * cleanly and naming exactly this when they are omitted, rather than
+ * guessing and either failing opaquely or (worse) never converging.
+ */
 async function accessRepair(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
-  requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos access repair", missing: "" });
-  fail({
-    code: "ACCESS_REPAIR_NOT_AVAILABLE",
-    message: "`run402 repos access repair` is not available yet — it is gated on gitvault-human-envelopes' real epoch-rotation work landing.",
-    hint: "Use `run402 repos access` to see what the read surface reports today. Repair is a NAMED, deliberate action for genuine drift once the mechanism ships — never a routine workaround (the `reconcile` verb it replaces was removed for exactly that reason).",
-    next_actions: [nextAction("access_repair_pending", { command: "run402 repos access", why: "See recipients, coverage, and this machine's own TOFU pins today; repair lands once epoch rotation ships." })],
+  assertKnownFlags(a, [...ROTATION_VALUE_FLAGS, "--help", "-h"], ROTATION_VALUE_FLAGS);
+  requirePositionalCount(a, ROTATION_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos access repair", missing: "" });
+  const recipientStateVersion = flagValue(a, "--recipient-state-version");
+  const recipientRevocationVersion = flagValue(a, "--recipient-revocation-version");
+  if (recipientStateVersion == null || recipientRevocationVersion == null) {
+    fail({
+      code: "ROTATION_COUNTERS_REQUIRED",
+      message: "`run402 repos access repair` needs --recipient-state-version and --recipient-revocation-version — the gateway does not yet expose a read route for these two counters outside the key-revocation declare route.",
+      hint: "If you know a specific principal whose key should be revoked, use `run402 repos access revoke-key <principal_id>` instead — it is fully self-contained (no flags needed). `access repair` is the general re-key for clearing stale_access / a first-ever migration and needs these two values from platform staff or direct DB access until a gateway read route ships.",
+      next_actions: [nextAction("edit_request", { command: "run402 repos access revoke-key <principal_id>", why: "the ONE fully self-contained rotation entry point today — no counters needed" })],
+    });
+  }
+  const target = await vaultTarget(a);
+  try {
+    const result = await getSdk().gitvault.rotateEpoch({
+      ...target,
+      reason: "elective_rekey",
+      recipient_state_version: recipientStateVersion,
+      recipient_revocation_version: recipientRevocationVersion,
+      ...(flagValue(a, "--idempotency-key") != null ? { client_idempotency_key: flagValue(a, "--idempotency-key") } : {}),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    await spillIfLarge(result.rotation_id, "access-repair", result);
+    console.error(`rotated to epoch ${result.new_epoch} at generation ${result.generation}: ${result.included.length} recipient(s) included, ${result.excluded_keyless_principal_ids.length} keyless, ${result.excluded_unconfirmed_principal_ids.length} unconfirmed.`);
+    console.error(`self_check: ${result.self_check}${result.self_check === "not_a_recipient" ? " (this machine's own principal is not itself a vault recipient — nothing to self-verify)" : " (this machine's own opened envelope reproduced the committed epoch key)"}.`);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/**
+ * `run402 repos access revoke-key <principal_id>` (D199) — the ONE fully
+ * self-contained rotation entry point: declares
+ * `reason:"recipient_key_revoked"` for `principal_id` (owner + step-up)
+ * and drives the rotation off that declaration's OWN returned counters.
+ * No flags needed — this is the reason value with a real, working
+ * gateway-side counter read.
+ */
+async function accessRevokeKey(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--idempotency-key", "--help", "-h"], [...COMMON_VALUE_FLAGS, "--idempotency-key"]);
+  const [principalId] = requirePositionalCount(a, [...COMMON_VALUE_FLAGS, "--idempotency-key"], {
+    min: 1, max: 1, command: "run402 repos access revoke-key <principal_id>",
+    missing: "Missing <principal_id>. This is the principal whose current key should no longer be trusted — the next rotation excludes them from the new epoch.",
   });
+  const target = await vaultTarget(a);
+  try {
+    const result = await getSdk().gitvault.rotateEpochForKeyRevocation(principalId, {
+      ...target,
+      ...(flagValue(a, "--idempotency-key") != null ? { client_idempotency_key: flagValue(a, "--idempotency-key") } : {}),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    await spillIfLarge(result.rotation_id, "access-revoke-key", result);
+    console.error(`declared ${principalId}'s key revoked and rotated to epoch ${result.new_epoch} at generation ${result.generation}: ${result.included.length} recipient(s) included going forward.`);
+    console.error(`self_check: ${result.self_check}.`);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
+/**
+ * `run402 repos access declare-exposure` (D199) — declares
+ * `reason:"epoch_secret_exposed"` admissible for THIS vault (owner +
+ * step-up), vault-scoped (one vault's leaked key is not evidence any
+ * sibling vault is compromised). The DECLARATION itself is real and
+ * self-contained; the FOLLOW-UP rotation it authorizes is NOT auto-run
+ * here, because — same confirmed gap as `access repair` — the D194
+ * counters it must be fenced against have no client-visible read for this
+ * reason value either. This is the rekey remedy the exposed-key incident
+ * needs: declare here, then rotate (via `--recipient-state-version`/
+ * `--recipient-revocation-version` once known, e.g. from platform staff).
+ */
+async function accessDeclareExposure(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--help", "-h"], COMMON_VALUE_FLAGS);
+  requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos access declare-exposure", missing: "" });
+  const target = await vaultTarget(a);
+  try {
+    const sdk = getSdk();
+    const repoId = target.repo_id ?? (await sdk.gitvault.forProject(target.project_id)).repo_id;
+    const result = await sdk.gitvault.declareEpochSecretExposed(repoId);
+    console.log(JSON.stringify(result, null, 2));
+    console.error(`declared epoch_secret_exposed for ${repoId} (epoch_secret_exposure_version now ${result.epoch_secret_exposure_version}).`);
+    console.error("THIS DECLARATION DOES NOT ROTATE THE VAULT BY ITSELF — the next ordinary push now refuses EPOCH_ROTATION_REQUIRED until a rotate_epoch with reason:\"epoch_secret_exposed\" commits.");
+    console.error("submit that rotation via r.gitvault.rotateEpoch({repo_id, reason: \"epoch_secret_exposed\", recipient_state_version, recipient_revocation_version}) once you have the two counter values (no CLI shortcut exists for this reason yet — see `run402 repos access repair --help`).");
+  } catch (err) {
+    reportSdkError(err);
+  }
 }
 
 async function access(args) {
   const a = normalizeArgv(args);
   if (a[0] === "repair") return accessRepair(a.slice(1));
+  if (a[0] === "revoke-key") return accessRevokeKey(a.slice(1));
+  if (a[0] === "declare-exposure") return accessDeclareExposure(a.slice(1));
   return accessRead(a);
 }
 

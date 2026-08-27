@@ -28,17 +28,21 @@ import {
   fromBase64url,
   generateSigningKeypair,
   isCanonicalBase64url,
+  jcs,
   newGitvaultId,
+  newHex32,
   parseGitvaultStrict,
   sha256Hex,
   signGitvaultObject,
+  verifyGitvaultObject,
   vkFingerprint,
 } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultActivationToken, GitvaultAllocation, GitvaultCaptureReceipt, GitvaultHead, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultRetentionCutoff } from "../namespaces/gitvault.types.js";
 import type { GitvaultAdmitGenesisRequest, GitvaultAdmitGenesisResult, GitvaultAllocateRequest, GitvaultObjectReceipt, GitvaultPutObjectRequest } from "./gitvault-creation-journal.js";
 import { createGitvault } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
-import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord } from "./gitvault-publication.js";
+import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultDesiredRecipientEntry, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord } from "./gitvault-publication.js";
+import type { GitvaultRecipientConfirmationReceipt, GitvaultRotationAttemptDescriptor } from "../namespaces/gitvault.types.js";
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
 import { GitvaultVault, generationToBigInt, bigIntToGeneration, gitvaultPaths } from "./gitvault-publication.js";
 import { hardenedGit } from "./gitvault-snapshot.js";
@@ -91,6 +95,32 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   readonly repoOwners = new Map<string, { orgId: string; projectId: string }>();
   /** `repo_id -> {orgId, projectId}` from `allocate()`, promoted into the maps above once `uploadObjects` proves the repo has real content. */
   readonly pendingOwners = new Map<string, { orgId: string; projectId: string }>();
+  /** `repo_id -> creator_signing_pubkey` (raw base64url) — what `createRotationAttempt` verifies a descriptor's signature against (the SAME writer-key model `admitHead`'s own signature checks would need, modelled once here since a rotation attempt is signed BEFORE any head). */
+  readonly signingPubkeyByRepo = new Map<string, string>();
+
+  // ── epoch rotation (D193-D203, rev 42) ──
+  /** `org_id -> desired-recipient rows`. Tests set this directly. `undefined` (never queried) models an older gateway with no `desired[]` field at all. */
+  readonly desiredRecipients = new Map<string, GitvaultDesiredRecipientEntry[]>();
+  /** `org_id -> desired_state_version`. */
+  readonly desiredStateVersions = new Map<string, number>();
+  /** `org_id -> {state, revocation}` — D194's org-scoped watermark pair (`internal.gitvault_recipient_state_counters`). Lazily initialized at 0/0, mirroring the real gateway's `INSERT ... ON CONFLICT DO UPDATE` upsert-lock. */
+  readonly recipientStateCounters = new Map<string, { state: bigint; revocation: bigint }>();
+  /** `repo_id -> the LAST discharged recipient_revocation_version` (advances only on a COMMITTED rotate_epoch, to the value the winning attempt was fenced against — never re-read "current" at commit, D194). */
+  readonly dischargedRevocationVersion = new Map<string, bigint>();
+  /** `repo_id -> {version, clearedThrough}` — D199's vault-scoped exposure watermark. */
+  readonly epochSecretExposure = new Map<string, { version: bigint; clearedThrough: bigint }>();
+  /** `repo_id -> migration_rotation_required` (D193). Defaults `false` — a fixture-created vault is born under this fold's evidence discipline, same as a real rev-42+ genesis. */
+  readonly migrationRotationRequired = new Map<string, boolean>();
+  /** `${repo_id}:${rotation_id} -> the descriptor's stored bytes` — the create-only CAS `createRotationAttempt` writes to BEFORE any envelope upload (D195). */
+  readonly rotationAttempts = new Map<string, { bytes: Uint8Array; descriptor: GitvaultRotationAttemptDescriptor }>();
+  /** `repo_id -> the currently-effective pin manifest's {version, sha256}`. Absent = the zero-value sentinel (no manifest ever admitted). */
+  readonly effectivePinManifest = new Map<string, { version: string; sha256: string }>();
+
+  private counters(orgId: string): { state: bigint; revocation: bigint } {
+    let c = this.recipientStateCounters.get(orgId);
+    if (!c) { c = { state: 0n, revocation: 0n }; this.recipientStateCounters.set(orgId, c); }
+    return c;
+  }
   // ── fault knobs ──
   /** Tamper every Nth receipt's hash (1-based index into the upload order); null = honest. */
   tamperReceiptAt: number | null = null;
@@ -177,6 +207,7 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       // or not, does not yet mean the client holds K_repo locally; only a
       // completed creation (this fixture's proxy: objects uploaded) does.
       this.pendingOwners.set(a.repo_id, { orgId, projectId });
+      this.signingPubkeyByRepo.set(a.repo_id, signingPubkey);
       this.allocations.set(req.client_creation_id, a);
     }
     return a;
@@ -265,7 +296,36 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     this.calls.push(`admit:${req.generation}`);
     if (this.competitor) { const c = this.competitor; this.competitor = null; await c(req.generation); }
     const head = parseGitvaultStrict(new TextDecoder().decode(req.stored_bytes)) as GitvaultHead;
-    if (head.transition !== null) throw err("TRANSITION_NOT_ACTIVE", "V0 admission rejects every non-null transition");
+    if (head.transition !== null && head.transition.kind !== "rotate_epoch") throw err("TRANSITION_NOT_ACTIVE", "V0 admission rejects every non-null, non-rotate_epoch transition");
+    const owner = this.repoOwners.get(req.repo_id) ?? this.pendingOwners.get(req.repo_id);
+    const orgId = owner?.orgId ?? "org_memory";
+    if (head.transition === null) {
+      // D193: every ORDINARY admission on a flagged vault refuses, mirroring
+      // the real gateway's three-way OR gate.
+      const c = this.counters(orgId);
+      const migrationRequired = this.migrationRotationRequired.get(req.repo_id) === true;
+      const dischargedThrough = this.dischargedRevocationVersion.get(req.repo_id) ?? 0n;
+      const revocationOutstanding = c.revocation > dischargedThrough;
+      const exposure = this.epochSecretExposure.get(req.repo_id) ?? { version: 0n, clearedThrough: 0n };
+      const exposureOutstanding = exposure.version > exposure.clearedThrough;
+      if (migrationRequired || revocationOutstanding || exposureOutstanding) {
+        throw err("EPOCH_ROTATION_REQUIRED", "this vault requires a rotate_epoch admission before an ordinary push is admissible", { migration_required: migrationRequired, revocation_outstanding: revocationOutstanding, exposure_outstanding: exposureOutstanding });
+      }
+    } else {
+      // rotate_epoch: fenced re-derivation of the SAME facts createRotationAttempt already bound (D194/D195 self-consistency, simplified for this fixture — the real gateway's full H-partition bijection check (D196) lives server-side and is NOT re-implemented here; this models the fields a client-side test can meaningfully exercise: descriptor existence, bound-field agreement, and the frozen-counter comparison).
+      const payloadObj = JSON.parse(new TextDecoder().decode(fromBase64url(head.transition.payload))) as Record<string, unknown>;
+      const rotationId = String(payloadObj.rotation_id);
+      const attempt = this.rotationAttempts.get(`${req.repo_id}:${rotationId}`);
+      if (!attempt) throw err("ROTATION_ID_MISMATCH", "no rotation_attempt_descriptor exists for the declared rotation_id");
+      const d = attempt.descriptor;
+      if (payloadObj.recipient_state_version !== d.recipient_state_version || payloadObj.recipient_revocation_version !== d.recipient_revocation_version || payloadObj.pin_manifest_sha256 !== d.pin_manifest_sha256 || payloadObj.target_partition_digest !== d.target_partition_digest) {
+        throw err("RECIPIENT_SET_MISMATCH", "the rotate_epoch payload's bound fields disagree with the referenced rotation_attempt_descriptor");
+      }
+      const c = this.counters(orgId);
+      if (BigInt(String(d.recipient_state_version)) !== c.state || BigInt(String(d.recipient_revocation_version)) !== c.revocation) {
+        throw err("RECIPIENT_SET_MISMATCH", "desired-recipient state has advanced since this rotation attempt was created; rebuild and resubmit");
+      }
+    }
     const newest = this.newestGeneration(req.repo_id);
     const expected = bigIntToGeneration(generationToBigInt(newest) + 1n);
     if (req.generation !== expected || head.generation !== expected) {
@@ -278,6 +338,16 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       if (!this.objects.has(this.key(req.repo_id, path))) throw err("GITVAULT_RECEIPT_UNKNOWN", `receipted object ${id} was never finalized`);
     }
     if (head.checkpoint && !this.objects.has(this.key(req.repo_id, gitvaultPaths.claimSet(head.checkpoint.claim_set.object_id)))) throw err("GITVAULT_RECEIPT_UNKNOWN", "claim set never finalized");
+    if (head.transition?.kind === "rotate_epoch") {
+      // D194's discharge-at-commit: EXACTLY the frozen value the winning
+      // attempt was fenced against — never a value re-read at commit time.
+      const payloadObj = JSON.parse(new TextDecoder().decode(fromBase64url(head.transition.payload))) as Record<string, unknown>;
+      this.dischargedRevocationVersion.set(req.repo_id, BigInt(String(payloadObj.recipient_revocation_version)));
+      this.migrationRotationRequired.set(req.repo_id, false);
+      const exposure = this.epochSecretExposure.get(req.repo_id);
+      if (exposure) exposure.clearedThrough = exposure.version;
+      if (head.pin_manifest) this.effectivePinManifest.set(req.repo_id, { version: head.pin_manifest.pin_manifest_version, sha256: head.pin_manifest.stored_bytes_sha256 });
+    }
     const stored = this.tamperReadback ? new TextEncoder().encode(new TextDecoder().decode(req.stored_bytes) + " ") : req.stored_bytes;
     this.objects.set(this.key(req.repo_id, gitvaultPaths.head(req.generation)), stored);
     const record = new TextEncoder().encode(JSON.stringify({ admission: req.generation, admitted_sha256: req.stored_bytes_sha256 }));
@@ -351,7 +421,16 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     return { org_id, keys: this.orgEncryptionKeys.get(org_id) ?? [] };
   }
 
-  /** Derives the covering fingerprints from `envelopes/<epoch>/<fp>` objects actually stored for this repo — the SAME source the real gateway route (`listVaultEnvelopeFingerprints`) reads from. */
+  /**
+   * Derives the covering fingerprints from `envelopes/<epoch>/<fp>` (genesis/
+   * ADD-workaround) AND `envelopes/<epoch>/<rotation_id>/<fp>` (D195,
+   * rotation-attempt) objects actually stored for this repo — the SAME
+   * source the real gateway route (`listVaultEnvelopeFingerprints`) reads
+   * from. Additively carries `desired[]`/`desired_state_version` (D5, then
+   * D194's H-partition input) when a test has configured them for this
+   * vault's org — absent (not empty) otherwise, matching the real gateway's
+   * older-gateway-compat contract.
+   */
   async listEnvelopeRecipients({ repo_id }: { repo_id: string }): Promise<GitvaultEnvelopeRecipientsResponse> {
     this.calls.push("envelope-recipients");
     const prefix = this.key(repo_id, "envelopes/");
@@ -359,9 +438,18 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     for (const k of this.objects.keys()) {
       if (!k.startsWith(prefix)) continue;
       const parts = k.slice(prefix.length).split("/");
-      if (parts.length === 2 && parts[1]) fingerprints.add(parts[1]);
+      if (parts.length === 2 && parts[1]) fingerprints.add(parts[1]); // envelopes/<epoch>/<fp>
+      if (parts.length === 3 && parts[2]) fingerprints.add(parts[2]); // envelopes/<epoch>/<rotation_id>/<fp>
     }
-    return { vault_id: repo_id, recipient_fingerprints: [...fingerprints].sort() };
+    const owner = this.repoOwners.get(repo_id) ?? this.pendingOwners.get(repo_id);
+    const orgId = owner?.orgId ?? "org_memory";
+    const desired = this.desiredRecipients.get(orgId);
+    return {
+      vault_id: repo_id,
+      recipient_fingerprints: [...fingerprints].sort(),
+      ...(desired ? { desired } : {}),
+      ...(this.desiredStateVersions.has(orgId) ? { desired_state_version: this.desiredStateVersions.get(orgId) } : {}),
+    };
   }
 
   async getVaultRecord({ repo_id }: { repo_id: string }): Promise<GitvaultVaultRecord> {
@@ -526,6 +614,69 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   async getPruneIntent({ prune_intent_object_id }: { repo_id: string; prune_intent_object_id: string }): Promise<GitvaultPruneIntentRecord | null> {
     this.calls.push("prune-read");
     return this.pruneIntents.get(prune_intent_object_id)?.record ?? null;
+  }
+
+  // ── epoch rotation (D193-D203, rev 42, §9.2) ──
+
+  /** `POST …/rotation-attempts` (D195) — writer-signature check, then the create-only CAS by content-derived `rotation_id`. */
+  async createRotationAttempt({ repo_id, descriptor }: { repo_id: string; descriptor: GitvaultRotationAttemptDescriptor }): Promise<{ rotation_id: string; descriptor: GitvaultRotationAttemptDescriptor; deduplicated: boolean }> {
+    this.calls.push("rotation-attempt-create");
+    const writerPub = this.signingPubkeyByRepo.get(repo_id);
+    if (!writerPub || !verifyGitvaultObject(descriptor as never, writerPub)) throw err("GITVAULT_ACCESS_DENIED", "Not authorized for this vault");
+    const { signature: _sig, ...rest } = descriptor as unknown as Record<string, unknown>;
+    const rotationId = sha256Hex(jcs(rest));
+    const key = `${repo_id}:${rotationId}`;
+    const bytes = new TextEncoder().encode(JSON.stringify(descriptor));
+    const existing = this.rotationAttempts.get(key);
+    if (existing) {
+      const same = sha256Hex(existing.bytes) === sha256Hex(bytes);
+      if (!same) throw err("ATTEMPT_DESCRIPTOR_CONFLICT", "the declared rotation_id already names a descriptor with different bytes");
+      return { rotation_id: rotationId, descriptor: existing.descriptor, deduplicated: true };
+    }
+    this.rotationAttempts.set(key, { bytes, descriptor });
+    return { rotation_id: rotationId, descriptor, deduplicated: false };
+  }
+
+  async confirmRecipient({ repo_id, principal_id, new_fingerprint }: { repo_id: string; principal_id: string; new_fingerprint: string }): Promise<GitvaultRecipientConfirmationReceipt> {
+    this.calls.push("confirm");
+    const manifest = this.effectivePinManifest.get(repo_id);
+    return signGitvaultObject({
+      format: GITVAULT_FORMAT, object_kind: "recipient_confirmation_receipt" as const, object_id: `rcr_${newHex32()}`, repo_id,
+      purpose: "first_pin" as const, principal_id, new_fingerprint, base_pin_manifest_sha256: manifest?.sha256 ?? "0".repeat(64),
+      recipient_state_version: "0", issued_at: formatGitvaultTimestamp(), service_key_id: "sk_test-1",
+    }, this.service.seed) as GitvaultRecipientConfirmationReceipt;
+  }
+
+  async repinRecipient({ repo_id, principal_id, old_ek_fingerprint, new_fingerprint }: { repo_id: string; principal_id: string; old_ek_fingerprint: string; new_fingerprint: string }): Promise<GitvaultRecipientConfirmationReceipt> {
+    this.calls.push("repin");
+    const manifest = this.effectivePinManifest.get(repo_id);
+    return signGitvaultObject({
+      format: GITVAULT_FORMAT, object_kind: "recipient_confirmation_receipt" as const, object_id: `rcr_${newHex32()}`, repo_id,
+      purpose: "repin" as const, principal_id, new_fingerprint, old_ek_fingerprint, base_pin_manifest_sha256: manifest?.sha256 ?? "0".repeat(64),
+      recipient_state_version: "0", issued_at: formatGitvaultTimestamp(), service_key_id: "sk_test-1",
+    }, this.service.seed) as GitvaultRecipientConfirmationReceipt;
+  }
+
+  async declareRecipientKeyRevoked({ repo_id }: { repo_id: string; principal_id: string }): Promise<{ recipient_state_version: string; recipient_revocation_version: string }> {
+    this.calls.push("declare-key-revoked");
+    const owner = this.repoOwners.get(repo_id) ?? this.pendingOwners.get(repo_id);
+    const c = this.counters(owner?.orgId ?? "org_memory");
+    c.state += 1n;
+    c.revocation += 1n;
+    return { recipient_state_version: c.state.toString(), recipient_revocation_version: c.revocation.toString() };
+  }
+
+  async declareEpochSecretExposed({ repo_id }: { repo_id: string }): Promise<{ epoch_secret_exposure_version: string }> {
+    this.calls.push("declare-exposure");
+    let e = this.epochSecretExposure.get(repo_id);
+    if (!e) { e = { version: 0n, clearedThrough: 0n }; this.epochSecretExposure.set(repo_id, e); }
+    e.version += 1n;
+    return { epoch_secret_exposure_version: e.version.toString() };
+  }
+
+  async declareWriterAuthorityUnavailable({ repo_id: _repo_id }: { repo_id: string }): Promise<{ declared_at: string; declared_by: string | null }> {
+    this.calls.push("declare-writer-unavailable");
+    return { declared_at: formatGitvaultTimestamp(), declared_by: null };
   }
 }
 

@@ -30,7 +30,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { LocalError } from "../errors.js";
+import { LocalError, isRun402Error } from "../errors.js";
 import {
   GITVAULT_DURABILITY_STATEMENT,
   GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
@@ -38,7 +38,7 @@ import {
   GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
   GITVAULT_TERMINAL_LOSS_STATEMENT,
 } from "./gitvault.crypto.js";
-import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultRecoveryReceipt } from "./gitvault.types.js";
+import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
   GitvaultEnvelopeRecipientsResponse,
   GitvaultMaintenanceLease,
@@ -486,6 +486,8 @@ export interface GitvaultAccessResult {
   history_scope_available: false;
   /** The honest, human-readable statement of the gap above. Read it before assuming `covered: true` means "converged," and before assuming `pending_removal` means access was actually revoked. */
   gap: string;
+  /** Present only when `stale_access` is nonempty — the exact owner-driven remedy (D193-D203, rev 42): `repos access repair` for a general re-key, `repos access revoke-key <principal_id>` for one targeted principal. */
+  next_actions?: { action: string; why: string }[];
 }
 
 /**
@@ -709,6 +711,62 @@ export class Gitvault {
    * instrument for heartbeat/release. Never log it, never cache it, never place
    * it in an agent-surface result store.
    */
+  // ── epoch rotation ceremonies + declarations (D193-D203, rev 42) ──────────
+  //
+  // Five isomorphic, no-local-key-material API calls (owner + step-up,
+  // `gitvault.rotate`) — same "direct #client.request" shape as `setPolicy`/
+  // `completeOverride` above. The actual ROTATION (sampling K_e, sealing
+  // envelopes, submitting the head) needs the Node-only keystore + crypto
+  // core and lives on `GitvaultVault` (`sdk/src/node/gitvault-publication.ts`);
+  // see {@link rotateEpoch} / {@link rotateEpochForKeyRevocation} below.
+
+  /** `POST …/recipients/:principal_id/confirm` (D197) — first-seen pin confirmation. */
+  async confirmRecipient(repoId: string, principalId: string, newFingerprint: string): Promise<GitvaultRecipientConfirmationReceipt> {
+    return this.#client.request(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/recipients/${encodeURIComponent(principalId)}/confirm`, {
+      method: "POST", body: { new_fingerprint: newFingerprint }, context: "confirming a gitvault recipient's first pin",
+    });
+  }
+
+  /** `POST …/recipients/:principal_id/repin` (D197) — re-pin ceremony. */
+  async repinRecipient(repoId: string, principalId: string, input: { old_ek_fingerprint: string; new_fingerprint: string }): Promise<GitvaultRecipientConfirmationReceipt> {
+    return this.#client.request(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/recipients/${encodeURIComponent(principalId)}/repin`, {
+      method: "POST", body: input, context: "re-pinning a gitvault recipient",
+    });
+  }
+
+  /**
+   * `POST …/recipients/:principal_id/key-revocation` (D199) — declares
+   * `reason:"recipient_key_revoked"` admissible for the NEXT rotation this
+   * org's vaults submit; org-scoped, advances the same watermark a member
+   * removal does. Returns the D194 counters — the ONE client-visible read of
+   * them, which is why {@link rotateEpochForKeyRevocation} exists as the
+   * fully self-contained entry point.
+   */
+  async declareRecipientKeyRevoked(repoId: string, principalId: string): Promise<{ recipient_state_version: string; recipient_revocation_version: string }> {
+    return this.#client.request(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/recipients/${encodeURIComponent(principalId)}/key-revocation`, {
+      method: "POST", body: {}, context: "declaring a gitvault recipient key revoked",
+    });
+  }
+
+  /**
+   * `POST …/epoch-secret-exposure` (D199) — declares `reason:"epoch_secret_exposed"`
+   * admissible for THIS vault (deliberately vault-scoped, not org-wide — one
+   * vault's leaked `K_repo`/`K_e` is not evidence any sibling vault is
+   * compromised). This is the rekey remedy for a leaked/exposed vault key:
+   * declare exposure here, then drive a `rotate_epoch` with
+   * `reason:"epoch_secret_exposed"` (the required counters must be supplied
+   * from a source other than this call — see {@link rotateEpoch}'s doc
+   * comment on the confirmed gap in what the gateway exposes today).
+   */
+  async declareEpochSecretExposed(repoId: string): Promise<{ epoch_secret_exposure_version: string }> {
+    return this.#client.request(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/epoch-secret-exposure`, { method: "POST", body: {}, context: "declaring a gitvault epoch secret exposed" });
+  }
+
+  /** `POST …/writer-authority/declare-unavailable` (D202) — an explicit, audited fact that the writer signing key is gone. */
+  async declareWriterAuthorityUnavailable(repoId: string): Promise<{ declared_at: string; declared_by: string | null }> {
+    return this.#client.request(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/writer-authority/declare-unavailable`, { method: "POST", body: {}, context: "declaring gitvault writer authority unavailable" });
+  }
+
   async acquireMaintenanceLease(request: GitvaultMaintenanceLeaseRequest): Promise<GitvaultMaintenanceLease> {
     const { repo_id, ...body } = request;
     return this.#client.request<GitvaultMaintenanceLease>(`/gitvault/v1/vaults/${encodeURIComponent(repo_id)}/maintenance-leases`, {
@@ -1346,7 +1404,7 @@ export class Gitvault {
       protocol_refs: "allow",
       ...(options.checkpoint ? { checkpoint: true } : {}),
     };
-    const result = await handle.vault.push(push);
+    const result = await handle.vault.push(push).catch((e) => { throw this.#enrichEpochRotationRequired(e, handle.repo_id); });
     // Capture-time dual-push hook: fires only when a
     // mirror is configured; NEVER throws, NEVER alters the vault outcome
     // above (already returned/committed) — a mirror failure is a named
@@ -1361,6 +1419,44 @@ export class Gitvault {
   }
 
   /** Best-effort dual-push: catches EVERYTHING, including the lazy module import itself, so a mirror problem can never surface as a `push()` throw. */
+  /**
+   * `EPOCH_ROTATION_REQUIRED` (D193) is left THROWN — never swallowed into a
+   * silent auto-rotation — because this call site cannot legally decide the
+   * two D194 counters (`recipient_state_version`/`recipient_revocation_version`)
+   * a rotation attempt must be fenced against: no shipped gateway route
+   * exposes them for `reason:"member_removed"`/`"elective_rekey"`/
+   * `"epoch_secret_exposed"` (verified against the live gateway route
+   * source — see `GitvaultVault.rotateEpoch`'s own doc comment). Submitting
+   * a GUESSED pair would either fail loudly (`RECIPIENT_SET_MISMATCH`, the
+   * honest outcome) or — worse — never be reachable at all for a fresh
+   * counter row. Rather than let a caller decode `details.migration_required`/
+   * `revocation_outstanding`/`exposure_outstanding` themselves, this
+   * decorates the SAME thrown error with the exact next command for each
+   * cause (`repos access repair` / `repos access revoke-key` / `repos
+   * access declare-exposure`) so "the next push" surfaces its own remedy
+   * instead of an opaque 409 — "wire into the natural path" without
+   * pretending a blind retry could ever succeed.
+   */
+  #enrichEpochRotationRequired(e: unknown, repoId: string): unknown {
+    if (!isRun402Error(e) || (e as { code?: string }).code !== "EPOCH_ROTATION_REQUIRED") return e;
+    // Mirrors `epochRotationRequiredNextActions` in
+    // `../node/gitvault-deploy.ts` byte-for-byte (same three causes, same
+    // three commands) — kept as a small standalone copy rather than a
+    // shared import so this namespace-level module (isomorphic — Deno/Bun/V8
+    // isolates, no Node-only imports) never has to pull in the Node-only
+    // deploy module just to decode three booleans. Update BOTH on drift.
+    const details = (e as { details?: { migration_required?: boolean; revocation_outstanding?: boolean; exposure_outstanding?: boolean } }).details ?? {};
+    const nextActions: { action: string; why: string }[] = [];
+    if (details.migration_required) nextActions.push({ action: "run402 repos access repair", why: "this vault predates rev-42 epoch rotation and must complete one first-ever rotation (owner + step-up)" });
+    if (details.revocation_outstanding) nextActions.push({ action: "run402 repos access revoke-key <principal_id>", why: "an org membership removal or key revocation is outstanding for this vault (owner + step-up)" });
+    if (details.exposure_outstanding) nextActions.push({ action: "run402 repos access declare-exposure", why: "this vault's own epoch secret has been declared exposed (owner + step-up)" });
+    return new LocalError(
+      `this vault requires a rotate_epoch admission before an ordinary push is admissible (repo_id ${repoId})`,
+      "pushing to gitvault",
+      { code: "EPOCH_ROTATION_REQUIRED", details, next_actions: nextActions.length > 0 ? nextActions : undefined, cause: e },
+    );
+  }
+
   async #tryMirrorPush(repoId: string, keystore: GitvaultKeystore): Promise<GitvaultMirrorPushResult> {
     try {
       const { mirrorPushForGeneration } = await this.#mirror();
@@ -1879,6 +1975,54 @@ export class Gitvault {
   }
 
   /**
+   * Drive one epoch rotation (D193-D203, rev 42) — the client half of
+   * epoch rotation: sample a fresh `K_e`, compute the H-partition from live
+   * desired-recipient state + the effective pin manifest, seal one
+   * `key_envelope` per included recipient, submit the create-only
+   * `rotation_attempt_descriptor`, submit the `rotate_epoch` head, verify
+   * this principal's own envelope opens to the committed key (when it is
+   * itself a recipient), and advance the local keystore's epoch pointer.
+   * See {@link import("../node/gitvault-publication.js").GitvaultVault.
+   * rotateEpoch}'s own doc comment for the full obligations and — load-
+   * bearing — the confirmed gap in what the gateway exposes for
+   * `recipient_state_version`/`recipient_revocation_version` outside the
+   * `recipient_key_revoked` reason.
+   */
+  async rotateEpoch(
+    options: GitvaultVaultHandleOptions & { reason: GitvaultRotationReason; recipient_state_version: string; recipient_revocation_version: string; client_idempotency_key?: string },
+  ): Promise<import("../node/gitvault-publication.js").GitvaultRotationResult> {
+    const handle = await this.open(options);
+    return handle.vault.rotateEpoch(options);
+  }
+
+  /**
+   * The ONE fully self-contained rotation entry point: declares
+   * `reason:"recipient_key_revoked"` for `principalId` (owner + step-up)
+   * and drives the rotation from that call's OWN returned counters — no
+   * external counter source needed. The rekey remedy for the exact witness
+   * task 5.0 records: a specific member's key is compromised/should no
+   * longer be trusted.
+   */
+  async rotateEpochForKeyRevocation(principalId: string, options: GitvaultVaultHandleOptions & { client_idempotency_key?: string } = {}): Promise<import("../node/gitvault-publication.js").GitvaultRotationResult> {
+    const handle = await this.open(options);
+    return handle.vault.rotateEpochForKeyRevocation(principalId, options);
+  }
+
+  /**
+   * Publish a receipted `recipient_pin_manifest` update (D197) — the
+   * publication half of the `/confirm`/`/repin` ceremonies above. Call
+   * after {@link confirmRecipient}/{@link repinRecipient} returns a receipt;
+   * this is `gitvault.writer`-sufficient (the owner-gated half already
+   * happened at the ceremony route).
+   */
+  async publishPinManifestUpdate(
+    input: { principal_id: string; ek_fingerprint: string; receipt: GitvaultRecipientConfirmationReceipt } & GitvaultVaultHandleOptions,
+  ): Promise<import("../node/gitvault-publication.js").GitvaultPublishResult> {
+    const handle = await this.open(input);
+    return handle.vault.publishPinManifestUpdate({ principal_id: input.principal_id, ek_fingerprint: input.ek_fingerprint, confirmed_by: "operator_confirmation", receipt: input.receipt });
+  }
+
+  /**
    * `repos access` (repo-surface-consolidation D5/D10) — a READ-ONLY report
    * of who can open this vault, composed from whatever the live gateway
    * surface exposes today. Never wraps, never mutates a `key_envelope` —
@@ -1969,13 +2113,14 @@ export class Gitvault {
     const unmatched = thisKeystore ? unmatchedRaw.filter((fp) => fp !== thisKeystore.fingerprint) : unmatchedRaw;
 
     const gap = envelopeStateAvailable
-      ? "history_scope (which epochs each recipient can read) is not available: gitvault protocol v0 pins a single fixed epoch for a " +
-        "vault's entire lifetime, so there is no per-epoch scope to report — that lands with the epoch-rotation protocol revision " +
-        "gitvault-human-envelopes is mid-fold on, under adversarial review. envelope_state per recipient IS available today, from the " +
+      ? "history_scope (which epochs each recipient can read) is not available: this read has no per-epoch view, only the vault's " +
+        "CURRENT coverage — a recipient covered here may still be excluded from a PAST epoch's key (forward revocation is exactly what " +
+        "an epoch rotation buys). envelope_state per recipient IS available today, from the " +
         `gateway's desired-recipient-state substrate (desired_state_version ${String(coverage.desired_state_version ?? "unknown")}): ` +
         "\"converged\" means desired and covered, \"pending\" means desired but not yet wrapped, \"pending_removal\" means membership " +
-        "removed them but this vault has not been re-keyed away from them. pending_removal does NOT mean revoked — with covered:true " +
-        "they still decrypt this vault's entire history, past and future, until epoch rotation ships; see stale_access for exactly who."
+        "removed them but this vault has not yet completed a rotation away from them. pending_removal does NOT mean revoked — with " +
+        "covered:true they still decrypt this vault until an owner runs `repos access repair` (or, for a targeted key, `repos access " +
+        "revoke-key`); see stale_access for exactly who, and next_actions for the exact command."
       : "the gateway did not report desired-recipient state (desired[]) for this vault_id — likely an older gateway than this SDK " +
         "expects, so per-recipient envelope_state and stale_access are unavailable. history_scope is unavailable regardless: gitvault " +
         "protocol v0 pins a single fixed epoch, so there is no per-epoch scope to report. This reports what the read surface has today: " +
@@ -1992,6 +2137,14 @@ export class Gitvault {
       envelope_state_available: envelopeStateAvailable,
       history_scope_available: false,
       gap,
+      ...(staleAccess.length > 0
+        ? {
+            next_actions: [
+              { action: "run402 repos access repair", why: "re-key this vault's current epoch away from every principal in stale_access at once (owner + step-up)" },
+              { action: "run402 repos access revoke-key <principal_id>", why: "target exactly one stale_access principal for revocation-triggered rotation (owner + step-up)" },
+            ],
+          }
+        : {}),
     };
   }
 

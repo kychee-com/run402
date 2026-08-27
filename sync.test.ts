@@ -830,11 +830,12 @@ const SURFACE: Capability[] = [
   // wrapped member got the vault's ENTIRE history under one fixed epoch,
   // never real epoch rotation). Composes the org encryption-key directory +
   // the vault's covered envelope-recipient fingerprints + (best-effort,
-  // Node-only) this machine's local TOFU pins — never wraps a key. Reports
-  // an honest gap: per-recipient envelope_state/history_scope are not yet
-  // exposed by the gateway (gated on gitvault-human-envelopes' epoch
-  // rotation). `access repair` (same CLI verb, a sub-path, no capability row
-  // of its own) is NOT YET AVAILABLE and refuses cleanly until that lands.
+  // Node-only) this machine's local TOFU pins — never wraps a key.
+  // `access repair`/`revoke-key`/`declare-exposure` (D193-D203, rev 42 —
+  // real epoch rotation, closing the gap this row's own `gap` field named)
+  // share this SAME `repos:access` CLI dispatch, like `errors.get`/
+  // `errors.watch` share `errors` — see SDK_ONLY_METHODS below for their
+  // SDK methods.
   { id: "repos_access", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET /gitvault/v1/vaults/:vault_id/envelope-recipients", mcp: null, cli: "repos:access", openclaw: "repos:access" },
   // `r402s-recover`: offline, NO server call at all (design D4), the same
   // "(local)" shape as `expand_result` below. Name UNCHANGED per D10 —
@@ -1554,6 +1555,31 @@ describe("SDK surface alignment", () => {
       "_applyEngine.waitEdgeCoherent",
       // CI token exchange is intentionally credential-helper-only in v1.
       "ci.exchangeToken",
+      // ─── Epoch rotation (D193-D203, rev 42) ─────────────────────────────
+      // confirmRecipient/repinRecipient issue the D197 confirmation receipt
+      // a pin-manifest publish cites — owner+step-up ceremonies with no
+      // standalone CLI/MCP surface today (a future `repos access confirm`/
+      // `repin` CLI verb is the natural home; out of this change's scope).
+      "gitvault.confirmRecipient",
+      "gitvault.repinRecipient",
+      // The PUBLICATION half of the ceremonies above (gitvault.writer-
+      // sufficient — the owner-gated half already happened at /confirm or
+      // /repin). Composable primitive; no dedicated verb yet.
+      "gitvault.publishPinManifestUpdate",
+      // D202's explicit, audited "the writer signing key is gone" fact.
+      // Owner+step-up declaration with no dedicated CLI verb yet.
+      "gitvault.declareWriterAuthorityUnavailable",
+      // rotateEpoch/rotateEpochForKeyRevocation/declareEpochSecretExposed/
+      // declareRecipientKeyRevoked share the ONE `repos:access` CLI
+      // dispatch (`access repair`/`revoke-key`/`declare-exposure` sub-verbs)
+      // — same "shares the parent command, no row of its own" pattern as
+      // `errors.get`/`errors.watch` above. declareRecipientKeyRevoked is
+      // additionally an internal step `rotateEpochForKeyRevocation` composes
+      // (declare, then rotate off the declaration's own returned counters).
+      "gitvault.rotateEpoch",
+      "gitvault.rotateEpochForKeyRevocation",
+      "gitvault.declareEpochSecretExposed",
+      "gitvault.declareRecipientKeyRevoked",
       // ─── Project events feed — org-wide union ──────────────────────────
       // Shares the `events` CLI command (--org) and the list_project_events
       // MCP tool (org_id param); no dedicated verb/tool of its own.

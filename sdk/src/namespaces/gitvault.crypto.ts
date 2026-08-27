@@ -44,6 +44,7 @@ import type {
   GitvaultEncryptedObjectKind,
   GitvaultEncryptionKeypair,
   GitvaultEnvelopeAad,
+  GitvaultFormat,
   GitvaultFrameAad,
   GitvaultKeyEnvelope,
   GitvaultKeyEnvelopeReceipt,
@@ -54,6 +55,7 @@ import type {
   GitvaultSignedObject,
   GitvaultSigningKeypair,
   GitvaultStrictParseReason,
+  GitvaultSuite,
   GitvaultVaultGenesis,
 } from "./gitvault.types.js";
 
@@ -330,6 +332,16 @@ function withoutSignature<T extends { signature?: unknown }>(object: T): Omit<T,
   return rest;
 }
 
+/**
+ * Exported so the rotation producer (D195) can build the SAME
+ * signature-stripped shape `rotation_id`'s own derivation needs
+ * (`sha256(JCS(descriptor minus signature))`) without reaching into this
+ * module's private helper twice under two different names.
+ */
+export function gitvaultWithoutSignature<T extends { signature?: unknown }>(object: T): Omit<T, "signature"> {
+  return withoutSignature(object);
+}
+
 /** Signature preimage = `"r402s/v0/" + object_kind + "\n" + JCS(object without its single top-level signature)`. */
 export function signaturePreimage(objectKind: GitvaultObjectKind, objectWithoutSignature: Record<string, unknown>): Uint8Array {
   if ("signature" in objectWithoutSignature) {
@@ -441,7 +453,18 @@ export function digestKeyInfo(repoId: string, epoch: string, label: GitvaultDige
 }
 
 export function deriveDigestKey(kRepo: Uint8Array, repoId: string, epoch: string, label: GitvaultDigestLabel): Uint8Array {
-  return hkdf(sha256, kRepo, undefined, digestKeyInfo(repoId, epoch, label), 32);
+  return deriveDigestKeyFrom(kRepo, repoId, epoch, label);
+}
+
+/**
+ * The general form `deriveDigestKey` is a fixed-`ikm=K_repo` specialization
+ * of (D195/D198/D200, rev 42): every rev-42 rotation label is keyed by the
+ * SAMPLED epoch key (`K_e` for a rotation, `K_1` for genesis) instead of
+ * `K_repo` — "the value being committed IS the key being distributed"
+ * (protocol-v0.md S1). Same HKDF info construction either way.
+ */
+export function deriveDigestKeyFrom(ikm: Uint8Array, repoId: string, epoch: string, label: GitvaultDigestLabel): Uint8Array {
+  return hkdf(sha256, ikm, undefined, digestKeyInfo(repoId, epoch, label), 32);
 }
 
 /** Commitment = HMAC-SHA-256(K_digest(label), JCS(content)), lowercase hex. */
@@ -601,8 +624,20 @@ export function envelopeInfo(recipientPublicKeyRaw: Uint8Array, createdBy: strin
   return concatBytes(lp(GITVAULT_ENVELOPE_INFO_LABEL), lp(GITVAULT_SUITE), lp(sha256Hex(recipientPublicKeyRaw)), lp(createdBy));
 }
 
-/** HPKE AAD (D188): JCS of exactly `{repo_id, epoch, recipient_kind:"principal", recipient_fingerprint}`. */
-export function envelopeAad(repoId: string, epoch: string, recipientFingerprint: string): GitvaultEnvelopeAad {
+/**
+ * HPKE AAD (D188, discriminated by `rotation_id` presence — D203, rev 42):
+ * `rotation_id` ABSENT (genesis / ADD-workaround envelope) -> the rev-41
+ * four-field form, BYTE-IDENTICAL to every existing golden HPKE digest;
+ * `rotation_id` PRESENT (a rotation-attempt envelope) -> the new five-field
+ * form. Field ORDER in the returned object does not matter (JCS sorts
+ * object members), but `rotation_id` must never be included as an explicit
+ * `null` — the two shapes are genuinely different objects, not one object
+ * with an optional-null member (protocol-v0.md S2).
+ */
+export function envelopeAad(repoId: string, epoch: string, recipientFingerprint: string, rotationId?: string | null): GitvaultEnvelopeAad {
+  if (rotationId) {
+    return { repo_id: repoId, epoch, rotation_id: rotationId, recipient_kind: "principal", recipient_fingerprint: recipientFingerprint };
+  }
   return { repo_id: repoId, epoch, recipient_kind: "principal", recipient_fingerprint: recipientFingerprint };
 }
 
@@ -646,7 +681,7 @@ export async function hpkeOpen(input: GitvaultHpkeOpenInput): Promise<Uint8Array
 }
 
 export interface GitvaultSealKeyEnvelopeInput {
-  /** The raw 32-byte K_repo — the ENTIRE plaintext. */
+  /** The raw 32-byte secret being distributed — `K_repo`/`K_1` at genesis, `K_e` for a rotation. */
   k_repo: Uint8Array;
   repo_id: string;
   epoch: string;
@@ -655,6 +690,13 @@ export interface GitvaultSealKeyEnvelopeInput {
   /** The creator's signing keypair; its `vk_` fingerprint becomes `created_by`. */
   signer: GitvaultSigningKeypair;
   created_at: string;
+  /**
+   * PRESENT for a rotation-attempt envelope (D195/D196, rev 42): widens the
+   * path to `(repo_id, epoch, rotation_id, recipient_fingerprint)` and the
+   * HPKE AAD to the five-field form. ABSENT/omitted for a genesis/ADD-
+   * workaround envelope — byte-identical to rev 41.
+   */
+  rotation_id?: string | null;
   /** Vector determinism only. */
   ikm_e?: Uint8Array;
 }
@@ -665,10 +707,11 @@ export async function sealKeyEnvelope(input: GitvaultSealKeyEnvelopeInput): Prom
   if (!isValidGitvaultTimestamp(input.created_at)) fail("GITVAULT_BAD_TIMESTAMP", "created_at is not an RFC 3339 UTC ms timestamp", "sealing r402s/v0 key envelope");
   const createdBy = vkFingerprint(input.signer.public_key);
   const recipientFingerprint = ekFingerprint(input.recipient_public_key);
+  const rotationId = input.rotation_id ?? null;
   const { enc, ct } = await hpkeSeal({
     recipient_public_key: input.recipient_public_key,
     info: envelopeInfo(input.recipient_public_key, createdBy),
-    aad: jcs(envelopeAad(input.repo_id, input.epoch, recipientFingerprint)),
+    aad: jcs(envelopeAad(input.repo_id, input.epoch, recipientFingerprint, rotationId)),
     plaintext: input.k_repo,
     ikm_e: input.ikm_e,
   });
@@ -684,6 +727,7 @@ export async function sealKeyEnvelope(input: GitvaultSealKeyEnvelopeInput): Prom
     ct: toBase64url(ct),
     created_by: createdBy,
     created_at: input.created_at,
+    ...(rotationId ? { rotation_id: rotationId } : {}),
   };
   const envelope = signGitvaultObject(unsigned, input.signer.seed) as GitvaultKeyEnvelope;
   const bytes = storedBytes(envelope as unknown as GitvaultSignedObject);
@@ -693,7 +737,14 @@ export async function sealKeyEnvelope(input: GitvaultSealKeyEnvelopeInput): Prom
     stored_bytes: bytes,
     stored_bytes_sha256: hash,
     size_bytes: String(bytes.length),
-    receipt: { object_kind: "key_envelope", epoch: input.epoch, recipient_fingerprint: recipientFingerprint, stored_bytes_sha256: hash, size_bytes: String(bytes.length) },
+    receipt: {
+      object_kind: "key_envelope",
+      epoch: input.epoch,
+      recipient_fingerprint: recipientFingerprint,
+      stored_bytes_sha256: hash,
+      size_bytes: String(bytes.length),
+      ...(rotationId ? { rotation_id: rotationId } : {}),
+    },
   };
 }
 
@@ -708,7 +759,9 @@ export interface GitvaultOpenKeyEnvelopeInput {
 /**
  * Open a `key_envelope`: exact-scalar checks → signature (strict, domain
  * `key_envelope`) → path identity (recipient fingerprint = ours) → HPKE open
- * with the D188 info/AAD. Returns the raw 32-byte K_repo.
+ * with the D188 info/AAD (widened to the five-field form when the envelope
+ * itself carries `rotation_id` — D195/D203). Returns the raw 32-byte secret
+ * (`K_repo`/`K_1` at genesis, `K_e` for a rotation).
  */
 export async function openKeyEnvelope(input: GitvaultOpenKeyEnvelopeInput): Promise<Uint8Array> {
   const env = input.envelope;
@@ -724,7 +777,7 @@ export async function openKeyEnvelope(input: GitvaultOpenKeyEnvelopeInput): Prom
     recipient_private_key: input.recipient.private_key,
     enc: fromBase64url(env.enc, "enc"),
     info: envelopeInfo(input.recipient.public_key, env.created_by),
-    aad: jcs(envelopeAad(env.repo_id, env.epoch, env.recipient_fingerprint)),
+    aad: jcs(envelopeAad(env.repo_id, env.epoch, env.recipient_fingerprint, env.rotation_id ?? null)),
     ct: fromBase64url(env.ct, "ct"),
   });
   if (kRepo.length !== 32) fail("GITVAULT_HPKE_OPEN_FAILED", "opened plaintext is not a 32-byte K_repo", "opening r402s/v0 key envelope");
@@ -893,6 +946,254 @@ export function checkAllocation(
   if (!isValidGitvaultTimestamp(allocation.issued_at) || !isValidGitvaultTimestamp(allocation.created_at)) problems.push("timestamp");
   if (servicePublicKey !== undefined && !verifyGitvaultObject(allocation as unknown as GitvaultSignedObject, servicePublicKey)) problems.push("signature");
   return problems;
+}
+
+// ─── Epoch rotation (D193-D203, rev 42, change gitvault-human-envelopes) ───
+//
+// Pure, isomorphic math shared by the producer (Node-only, gitvault-
+// publication.ts's `rotateEpoch`, which has the live desired-recipient
+// state + local keystore this module cannot see) and by vector generation.
+// Every formula here MIRRORS the gateway's own pure functions in
+// `packages/gateway/src/services/gitvault/epoch-rotation.ts` byte-for-byte
+// (same field order is irrelevant — JCS sorts — but the SAME field SET and
+// the SAME preimage construction is load-bearing: a drift here would build
+// a descriptor/payload the gateway's own re-derivation refuses).
+
+/** 16-hex epochs compare/increment as unsigned integers (chain.ts's `nextGeneration`, mirrored). */
+export function epochValue(hex16: string): bigint {
+  return BigInt("0x" + hex16);
+}
+
+export function nextEpoch(hex16: string): string {
+  return (epochValue(hex16) + 1n).toString(16).padStart(16, "0");
+}
+
+function sortedDistinct(xs: readonly string[]): string[] {
+  return [...new Set(xs)].sort();
+}
+
+export interface GitvaultIncludedPair {
+  principal_id: string;
+  ek_fingerprint: string;
+}
+
+/**
+ * D196: `target_partition_digest = SHA-256(JCS({recipient_state_version,
+ * recipient_revocation_version, pin_manifest_version, pin_manifest_sha256,
+ * included: [sorted {principal_id, ek_fingerprint}], excluded_keyless_principal_ids:
+ * [sorted], excluded_unconfirmed_principal_ids: [sorted]}))`. The producer
+ * calls this ONCE to build the value it embeds in both the descriptor
+ * (D195) and the payload (D196); the gateway recomputes the SAME formula
+ * twice server-side and refuses on any disagreement — so a bug here is a
+ * `RECIPIENT_SET_MISMATCH` at admission time, not a silent forgery.
+ */
+export function computeTargetPartitionDigest(input: {
+  recipient_state_version: string;
+  recipient_revocation_version: string;
+  pin_manifest_version: string;
+  pin_manifest_sha256: string;
+  included: readonly GitvaultIncludedPair[];
+  excluded_keyless_principal_ids: readonly string[];
+  excluded_unconfirmed_principal_ids: readonly string[];
+}): string {
+  const includedSorted = [...input.included].sort((a, b) => (a.principal_id < b.principal_id ? -1 : a.principal_id > b.principal_id ? 1 : 0));
+  const body = {
+    recipient_state_version: input.recipient_state_version,
+    recipient_revocation_version: input.recipient_revocation_version,
+    pin_manifest_version: input.pin_manifest_version,
+    pin_manifest_sha256: input.pin_manifest_sha256,
+    included: includedSorted.map((p) => ({ principal_id: p.principal_id, ek_fingerprint: p.ek_fingerprint })),
+    excluded_keyless_principal_ids: sortedDistinct(input.excluded_keyless_principal_ids),
+    excluded_unconfirmed_principal_ids: sortedDistinct(input.excluded_unconfirmed_principal_ids),
+  };
+  return sha256Hex(jcs(body));
+}
+
+/**
+ * D195: `rotation_id = lowerhex(SHA-256(JCS(the complete descriptor object,
+ * MINUS signature)))` — the full 64-hex digest, computed over the descriptor
+ * INCLUDING `attempt_key_commitment` (a field ON the descriptor). Callers
+ * pass the SIGNED descriptor (or the unsigned one — the signature member is
+ * stripped either way, matching the gateway's `computeRotationId`).
+ */
+export function computeRotationId(descriptor: Record<string, unknown> & { signature?: unknown }): string {
+  return sha256Hex(jcs(gitvaultWithoutSignature(descriptor)));
+}
+
+/**
+ * D195's `attempt_key_commitment` preimage: the descriptor's OWN fields
+ * minus `attempt_key_commitment` itself (and minus `signature`, which does
+ * not exist yet at this point in the build) — `rotation_id` is never a
+ * member of the descriptor object at all (it is the object's derived path
+ * key), so there is nothing to additionally strip for it. Noncircular by
+ * construction: `attempt_key_commitment` must exist before `rotation_id`
+ * can be computed FROM the complete descriptor.
+ */
+export function attemptKeyCommitmentPreimage(descriptorFields: {
+  format: GitvaultFormat;
+  object_kind: "rotation_attempt_descriptor";
+  suite: GitvaultSuite;
+  repo_id: string;
+  base_head_sha256: string;
+  new_epoch: string;
+  recipient_state_version: string;
+  recipient_revocation_version: string;
+  pin_manifest_sha256: string;
+  target_partition_digest: string;
+  client_idempotency_key: string;
+  writer_key_id: string;
+}): Record<string, unknown> {
+  return { ...descriptorFields };
+}
+
+/**
+ * D195/§1's `"epoch_rotation_attempt"` commitment: `HMAC-SHA-256(K_digest(
+ * "epoch_rotation_attempt", repo_id, new_epoch), JCS(the descriptor's own
+ * fields minus attempt_key_commitment), ikm=K_e)` — keyed by the SAMPLED
+ * epoch key being distributed, not `K_repo` (D195/D200/§1: "every one keyed
+ * by the SAMPLED epoch key... since the value being committed IS the key
+ * being distributed"). `K_digest`'s own `epoch` parameter is `new_epoch`
+ * (this rotation's OWN epoch) — the natural, and only internally-consistent,
+ * reading of §1's generic formula for a value that is a property of the new
+ * epoch's key; there is no gateway-side computation of this value to cross-
+ * check against (the gateway never sees `K_e`), so this is the SDK's own
+ * considered wire-shape decision, stated here rather than guessed silently.
+ */
+export function attemptKeyCommitment(kE: Uint8Array, repoId: string, newEpoch: string, descriptorFields: Parameters<typeof attemptKeyCommitmentPreimage>[0]): string {
+  const kDigest = deriveDigestKeyFrom(kE, repoId, newEpoch, "epoch_rotation_attempt");
+  return keyedCommitment(kDigest, attemptKeyCommitmentPreimage(descriptorFields));
+}
+
+/**
+ * D200/§1's `"epoch_rotation"` commitment: `HMAC-SHA-256(K_digest(
+ * "epoch_rotation", repo_id, new_epoch), JCS({rotation_id, fingerprints:
+ * [sorted pairwise-distinct]}), ikm=K_e)`. Proves a PER-RECIPIENT self-check
+ * only (D200's narrowed claim) — never global set-coherence. A recipient
+ * who opens their own envelope recovers `K_e` + `epoch` (== `new_epoch`)
+ * directly from the envelope itself, so they can recompute this independent
+ * of the descriptor/payload — confirming `new_epoch` is the right `K_digest`
+ * epoch parameter (the same value both the producer and every recipient
+ * arrive at without coordination).
+ */
+export function epochRotationKeyCommitment(kE: Uint8Array, repoId: string, newEpoch: string, rotationId: string, fingerprints: readonly string[]): string {
+  const kDigest = deriveDigestKeyFrom(kE, repoId, newEpoch, "epoch_rotation");
+  return keyedCommitment(kDigest, { rotation_id: rotationId, fingerprints: sortedDistinct(fingerprints) });
+}
+
+/**
+ * D198's genesis-specific `"vault_genesis_epoch_key"` commitment — the same
+ * per-recipient-self-check discipline applied to an N-recipient genesis,
+ * with its own noncircular preimage (no `rotation_id` exists at generation
+ * zero). Not built by this SDK's genesis path today (single-recipient
+ * genesis only); exported for vector generation / future N-recipient
+ * genesis support.
+ */
+export function genesisEpochKeyCommitment(k1: Uint8Array, repoId: string, fingerprints: readonly string[]): string {
+  const kDigest = deriveDigestKeyFrom(k1, repoId, GITVAULT_GENESIS_EPOCH, "vault_genesis_epoch_key");
+  return keyedCommitment(kDigest, { repo_id: repoId, generation: GITVAULT_GENESIS_GENERATION, epoch: GITVAULT_GENESIS_EPOCH, fingerprints: sortedDistinct(fingerprints) });
+}
+
+/**
+ * D195's producer obligation the round-3 review's own decisive witness
+ * forces: "a producer that cannot prove it is resuming its OWN prior
+ * in-flight attempt... MUST mint a fresh `client_idempotency_key`... before
+ * uploading any envelope." The corollary — and what actually PREVENTS the
+ * complementary-path mosaic client-side, before the descriptor's create-only
+ * CAS even gets a chance to catch it server-side — is that a fresh K_e must
+ * never equal any epoch key this client has ever locally held (constant-time
+ * comparison; a match is evidence of a broken CSPRNG or a reused seed, not a
+ * legitimate resume, since a genuine resume reuses the SAME
+ * client_idempotency_key AND therefore builds the identical descriptor, not
+ * merely the same K_e in isolation).
+ */
+export function checkFreshEpochKeyAgainstPriorKeys(kE: Uint8Array, priorKeys: Iterable<Uint8Array>): void {
+  if (kE.length !== 32) fail("GITVAULT_BAD_KEY", "a freshly sampled K_e must be 32 bytes", "sampling a fresh epoch key");
+  const fresh = bytesToHex(kE);
+  for (const prior of priorKeys) {
+    if (bytesToHex(prior) === fresh) {
+      fail("GITVAULT_EPOCH_KEY_NOT_FRESH", "the freshly sampled K_e equals a prior epoch key already held locally — refusing to seal under it", "sampling a fresh epoch key");
+    }
+  }
+}
+
+export type GitvaultHPartitionVerdict = { ok: true } | { ok: false; detail: string };
+
+/**
+ * D196's pair-level bijection, mirrored client-side as a PRE-SUBMIT
+ * self-check (the gateway's own recomputation under its live desired-state
+ * lock remains the authoritative check — this exists so a client-side
+ * partition bug surfaces as a clear local error instead of a round trip
+ * that ends in `RECIPIENT_SET_MISMATCH`).
+ */
+export function checkHPartition(input: {
+  desiredPrincipalIds: ReadonlySet<string>;
+  keyedPrincipalIds: ReadonlySet<string>;
+  pinnedFingerprintOf: ReadonlyMap<string, string>;
+  included: readonly GitvaultIncludedPair[];
+  excludedKeylessPrincipalIds: readonly string[];
+  excludedUnconfirmedPrincipalIds: readonly string[];
+}): GitvaultHPartitionVerdict {
+  const includedIds = input.included.map((p) => p.principal_id);
+  const includedFps = input.included.map((p) => p.ek_fingerprint);
+  if (new Set(includedIds).size !== includedIds.length) return { ok: false, detail: "envelopes[].principal_id are not pairwise-distinct" };
+  if (new Set(includedFps).size !== includedFps.length) return { ok: false, detail: "envelopes[].envelope.recipient_fingerprint are not pairwise-distinct" };
+  if (new Set(input.excludedKeylessPrincipalIds).size !== input.excludedKeylessPrincipalIds.length) return { ok: false, detail: "excluded_keyless_principal_ids are not pairwise-distinct" };
+  if (new Set(input.excludedUnconfirmedPrincipalIds).size !== input.excludedUnconfirmedPrincipalIds.length) return { ok: false, detail: "excluded_unconfirmed_principal_ids are not pairwise-distinct" };
+
+  const partition = new Map<string, "included" | "keyless" | "unconfirmed">();
+  for (const id of includedIds) {
+    if (partition.has(id)) return { ok: false, detail: `principal ${id} appears more than once across the partition` };
+    partition.set(id, "included");
+  }
+  for (const id of input.excludedKeylessPrincipalIds) {
+    if (partition.has(id)) return { ok: false, detail: `principal ${id} appears more than once across the partition` };
+    partition.set(id, "keyless");
+  }
+  for (const id of input.excludedUnconfirmedPrincipalIds) {
+    if (partition.has(id)) return { ok: false, detail: `principal ${id} appears more than once across the partition` };
+    partition.set(id, "unconfirmed");
+  }
+  if (partition.size !== input.desiredPrincipalIds.size) return { ok: false, detail: `partition covers ${partition.size} principals; H has ${input.desiredPrincipalIds.size}` };
+  for (const id of partition.keys()) if (!input.desiredPrincipalIds.has(id)) return { ok: false, detail: `principal ${id} is not in the current desired-recipient set H` };
+  for (const id of input.desiredPrincipalIds) if (!partition.has(id)) return { ok: false, detail: `principal ${id} in H is named by neither envelopes[] nor either exclusion array` };
+
+  for (const pair of input.included) {
+    if (!input.keyedPrincipalIds.has(pair.principal_id)) return { ok: false, detail: `included principal ${pair.principal_id} has no enrolled key` };
+    const pinned = input.pinnedFingerprintOf.get(pair.principal_id);
+    if (pinned === undefined) return { ok: false, detail: `included principal ${pair.principal_id} has no live pin-manifest entry` };
+    if (pinned !== pair.ek_fingerprint) return { ok: false, detail: `included principal ${pair.principal_id}'s envelope fingerprint does not match the effective pin manifest's binding` };
+  }
+  for (const id of input.excludedKeylessPrincipalIds) {
+    if (input.keyedPrincipalIds.has(id)) return { ok: false, detail: `excluded-keyless principal ${id} actually has an enrolled key` };
+  }
+  for (const id of input.excludedUnconfirmedPrincipalIds) {
+    if (!input.keyedPrincipalIds.has(id)) return { ok: false, detail: `excluded-unconfirmed principal ${id} is keyless, not unconfirmed` };
+    if (input.pinnedFingerprintOf.has(id)) return { ok: false, detail: `excluded-unconfirmed principal ${id} actually has a live pin-manifest entry` };
+  }
+  return { ok: true };
+}
+
+/** D197's full-map conservation rule: `next_map = prior_map + receipt-authorized additions/replacements`, deletion-by-omission forbidden. */
+export function checkPinManifestConservation(prior: readonly { principal_id: string }[], next: readonly { principal_id: string }[]): GitvaultHPartitionVerdict {
+  const nextIds = new Set(next.map((p) => p.principal_id));
+  for (const p of prior) {
+    if (!nextIds.has(p.principal_id)) return { ok: false, detail: `principal ${p.principal_id} present in the predecessor manifest is missing from the successor — deletion by omission is forbidden in V0` };
+  }
+  const seen = new Set<string>();
+  for (const p of next) {
+    if (seen.has(p.principal_id)) return { ok: false, detail: `principal ${p.principal_id} appears more than once in the manifest` };
+    seen.add(p.principal_id);
+  }
+  return { ok: true };
+}
+
+/** The synthetic ledger id a path-addressed `key_envelope` gets — mirrors the gateway's `keyEnvelopeLedgerId` exactly (drift here breaks receipt pairing at upload finalize). */
+export function keyEnvelopeLedgerId(epoch: string, fingerprint: string, rotationId: string | null): string {
+  return rotationId ? `key_envelope:${epoch}:${rotationId}:${fingerprint}` : `key_envelope:${epoch}:${fingerprint}`;
+}
+
+export function pinManifestLedgerId(pinManifestVersion: string): string {
+  return `recipient_pin_manifest:${pinManifestVersion}`;
 }
 
 export { bytesToHex, hexToBytes };

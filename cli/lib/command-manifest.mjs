@@ -280,10 +280,13 @@ export const COMMAND_MANIFEST = [
   { path: ["repos", "mirror"], positionals: [p("destination", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads/writes mirror destination config beside the keystore and may move real bytes into a customer-owned bucket" },
   { path: ["repos", "fsck"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain and materializes the ref map against the keystore's local pins" },
   { path: ["repos", "gc"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "publishes a checkpoint under a maintenance lease and materializes the live vault head to enumerate retention roots" },
-  // `access repair` is a nested sub-verb literal — two manifest entries,
-  // one dispatched `run("access", ...)` case in repos.mjs.
+  // `access repair`/`revoke-key`/`declare-exposure` are nested sub-verb
+  // literals — one manifest entry each, all dispatched through the ONE
+  // `run("access", ...)` case in repos.mjs.
   { path: ["repos", "access"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the live org encryption-key directory + vault envelope recipients" },
-  { path: ["repos", "access", "repair"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "always refuses — gated on gitvault-human-envelopes' epoch-rotation work, not shipped yet" },
+  { path: ["repos", "access", "repair"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--recipient-state-version", "0", "--recipient-revocation-version", "0"], runStyle: "sub", skipBehavioral: "owner+step-up-gated epoch rotation (D193-D203, rev 42) — samples a fresh epoch key and re-seals a live vault's recipients" },
+  { path: ["repos", "access", "revoke-key"], positionals: [p("principal_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["prin_00000000000000000000000000000000"], runStyle: "sub", skipBehavioral: "owner+step-up-gated: declares a recipient's key revoked (org-scoped watermark) and drives a real epoch rotation off it" },
+  { path: ["repos", "access", "declare-exposure"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "owner+step-up-gated: declares this vault's epoch secret exposed, forcing every subsequent ordinary push to refuse until a rotation lands" },
   { path: ["repos", "recover"], positionals: [p("source")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket", "--out", "__SCRATCH_DIR__/recover-out"], runStyle: "sub", skipBehavioral: "materializes a git repository from a mirror source, offline, with no server call" },
   { path: ["errors"], positionals: [p("fingerprint_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
 

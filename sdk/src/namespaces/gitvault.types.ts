@@ -47,7 +47,10 @@ export type GitvaultObjectKind =
   | "maintenance_cycle_terminal"
   | "maintenance_cycle_issuance"
   | "maintenance_completion_cut"
-  | "service_key_registry";
+  | "service_key_registry"
+  | "rotation_attempt_descriptor"
+  | "recipient_pin_manifest"
+  | "recipient_confirmation_receipt";
 
 /** Kinds whose stored bytes are an AEAD frame (protocol §2 framing), keyed by `k_obj`. */
 export type GitvaultEncryptedObjectKind =
@@ -57,8 +60,20 @@ export type GitvaultEncryptedObjectKind =
   | "checkpoint_manifest"
   | "checkpoint_pack";
 
-/** The five `K_digest` labels of protocol §1 (keyed-digest derivation). */
-export type GitvaultDigestLabel = "refmap" | "rootset" | "objectset" | "snapshot_oid" | "gcrootset";
+/**
+ * The `K_digest` labels of protocol §1 (keyed-digest derivation) — the
+ * original five, keyed by `K_repo`, plus the three rev-42 labels (D195/D198/
+ * D200) keyed by the SAMPLED epoch key (`K_e`/`K_1`) instead.
+ */
+export type GitvaultDigestLabel =
+  | "refmap"
+  | "rootset"
+  | "objectset"
+  | "snapshot_oid"
+  | "gcrootset"
+  | "epoch_rotation"
+  | "epoch_rotation_attempt"
+  | "vault_genesis_epoch_key";
 
 /** `key_envelope` (schema `key_envelope.json`) — path-addressed by `(repo_id, epoch, recipient_fingerprint)`; no `object_id`. */
 export interface GitvaultKeyEnvelope {
@@ -80,11 +95,20 @@ export interface GitvaultKeyEnvelope {
   created_by: string;
   /** RFC 3339 UTC ms `Z`. */
   created_at: string;
+  /**
+   * D195/D203, rev 42: schema-optional, ADDED to `properties` (pure
+   * widening — every existing envelope, which never set this field, stays
+   * valid unamended). PRESENT-non-null for a rotation-attempt envelope
+   * (widens the storage path to `(repo_id, epoch, rotation_id,
+   * recipient_fingerprint)` and the HPKE AAD to the five-field form);
+   * ABSENT — never explicit `null` — for a genesis/ADD-workaround envelope.
+   */
+  rotation_id?: string;
   /** Ed25519, base64url (86 chars), domain `key_envelope`. */
   signature: string;
 }
 
-/** The envelope receipt embedded in `vault_genesis.envelopes[]` (`common.json#/$defs/receipt_key_envelope`). */
+/** The envelope receipt embedded in `vault_genesis.envelopes[]` / `rotate_epoch_payload.envelopes[]` (`common.json#/$defs/receipt_key_envelope`). */
 export interface GitvaultKeyEnvelopeReceipt {
   object_kind: "key_envelope";
   epoch: string;
@@ -93,6 +117,14 @@ export interface GitvaultKeyEnvelopeReceipt {
   stored_bytes_sha256: string;
   /** Decimal string — the stored bytes' length. */
   size_bytes: string;
+  /** D195, rev 42 — see {@link GitvaultKeyEnvelope.rotation_id}. */
+  rotation_id?: string;
+}
+
+/** One `{principal_id, envelope}` pair in `rotate_epoch_payload.envelopes[]` / an N-recipient `vault_genesis.envelopes[]` (D196, rev 42). */
+export interface GitvaultRotationEnvelopePair {
+  principal_id: string;
+  envelope: GitvaultKeyEnvelopeReceipt;
 }
 
 /** `vault_genesis` (schema `vault_genesis.json`) — generation 0, epoch pinned to `0000000000000001`. */
@@ -112,10 +144,27 @@ export interface GitvaultVaultGenesis {
   creator_signing_pubkey: string;
   /** X25519 raw pubkey, base64url (43 chars). */
   creator_encryption_pubkey: string;
-  /** Exactly one envelope in V0 (the creator's). */
+  /**
+   * Exactly one envelope in the shape THIS SDK still builds (single-recipient
+   * genesis, byte-identical to rev 41). D198 (rev 42) widens the SCHEMA to
+   * `minItems:1..MAX_EPOCH_ROTATION_ENVELOPES` with each item a
+   * `{principal_id, envelope}` pair for a genesis admitted under rev-42+
+   * code — reading a pre-existing bare-shape genesis stays supported
+   * (protocol-v0.md's grandfathering paragraph on §4.2); this SDK does not
+   * yet BUILD an N-recipient genesis (a separate, un-scoped follow-up), so
+   * this field stays typed as the bare receipt array here.
+   */
   envelopes: GitvaultKeyEnvelopeReceipt[];
   /** `vk_` fingerprint of `creator_signing_pubkey`. */
   writer_key_id: string;
+  /**
+   * D198, rev 42: the genesis's own initial `recipient_pin_manifest`,
+   * claimed atomically in the same admission — required whenever
+   * `envelopes` carries more than the creator's own. Absent on every
+   * existing rev-41 genesis and on the single-recipient shape this SDK
+   * still builds.
+   */
+  pin_manifest?: GitvaultPinManifestReceipt;
   created_at: string;
   signature: string;
 }
@@ -462,7 +511,13 @@ export interface GitvaultHead {
   generation: string;
   /** Stored-bytes hash of the predecessor (genesis for generation 1). */
   prev_sha256: string;
-  epoch: "0000000000000001";
+  /**
+   * D194, rev 42: widened from the `"0000000000000001"` const to `hex16` —
+   * equals the predecessor's `epoch` UNLESS this head admits a `rotate_epoch`
+   * transition, in which case it equals `nextEpoch(predecessor.epoch)`
+   * (increment-by-one, no skip).
+   */
+  epoch: string;
   wal_entries: GitvaultWalPackReceipt[];
   ref_state: GitvaultRefStateReceipt;
   retention_roots: GitvaultRetentionRootsReceipt;
@@ -471,9 +526,23 @@ export interface GitvaultHead {
   capture_binding: GitvaultCaptureBinding | null;
   repair: GitvaultRepairDescriptor | null;
   transition: GitvaultTransitionEnvelope | null;
+  /**
+   * D197, rev 42: schema-optional, present ONLY on a head that publishes an
+   * updated `recipient_pin_manifest` (an addition or a receipted change).
+   * Absent on every existing rev-41 head and most rev-42+ heads too.
+   */
+  pin_manifest?: GitvaultPinManifestReceipt;
   writer_key_id: string;
   created_at: string;
   signature: string;
+}
+
+/** `common.json#/$defs/receipt_pin_manifest` — carried on `head.pin_manifest` / `vault_genesis.pin_manifest` (D197, rev 42). */
+export interface GitvaultPinManifestReceipt {
+  object_kind: "recipient_pin_manifest";
+  pin_manifest_version: string;
+  stored_bytes_sha256: string;
+  size_bytes: string;
 }
 
 /** Any signed `r402s/v0` object: a JSON object carrying `object_kind` + a single top-level `signature`. */
@@ -494,13 +563,16 @@ export interface GitvaultFrameAad {
   suite_id: "01";
 }
 
-/** The AAD of a `key_envelope` HPKE seal (protocol §2 / D188): exactly the four path-identity members. */
-export interface GitvaultEnvelopeAad {
-  repo_id: string;
-  epoch: string;
-  recipient_kind: "principal";
-  recipient_fingerprint: string;
-}
+/**
+ * The AAD of a `key_envelope` HPKE seal (protocol §2 / D188). Discriminated
+ * by `rotation_id` presence (D203, rev 42): the rev-41 four-field form when
+ * absent (genesis/ADD-workaround), the five-field form when present (a
+ * rotation-attempt envelope) — two genuinely different object shapes, never
+ * one shape with an optional-null member.
+ */
+export type GitvaultEnvelopeAad =
+  | { repo_id: string; epoch: string; recipient_kind: "principal"; recipient_fingerprint: string }
+  | { repo_id: string; epoch: string; rotation_id: string; recipient_kind: "principal"; recipient_fingerprint: string };
 
 /** Result of sealing an AEAD frame — everything a finalization receipt is compared against. */
 export interface GitvaultSealedFrame {
@@ -547,3 +619,119 @@ export type GitvaultStrictParseReason =
   | "duplicate-member"
   | "invalid-json"
   | "noncanonical-encoding";
+
+// ─── Epoch rotation (D193-D203, rev 42, change gitvault-human-envelopes) ───
+
+/** The four `rotate_epoch_payload.reason` values (D199) — three urgent + one elective. */
+export type GitvaultRotationReason = "member_removed" | "recipient_key_revoked" | "epoch_secret_exposed" | "elective_rekey";
+
+/**
+ * `rotation_attempt_descriptor` (schema `rotation_attempt_descriptor.json`,
+ * D195) — writer-signed, create-only, path-addressed at
+ * `rotation-attempts/<rotation_id>.json`; `rotation_id` is NOT a field on the
+ * object itself, it is `lowerhex(SHA-256(JCS(this object minus signature)))`
+ * — the object's own path key, derived AFTER every field below (including
+ * `attempt_key_commitment`) is fixed.
+ */
+export interface GitvaultRotationAttemptDescriptor {
+  format: GitvaultFormat;
+  object_kind: "rotation_attempt_descriptor";
+  suite: GitvaultSuite;
+  repo_id: string;
+  base_head_sha256: string;
+  new_epoch: string;
+  /** Decimal-string uint64 — D194's frozen watermark. */
+  recipient_state_version: string;
+  /** Decimal-string uint64 — D194's frozen org-wide revocation watermark. */
+  recipient_revocation_version: string;
+  pin_manifest_sha256: string;
+  target_partition_digest: string;
+  /** 32-hex CSPRNG — client resume identity (D195). */
+  client_idempotency_key: string;
+  /** `HMAC-SHA-256(K_digest("epoch_rotation_attempt"), JCS(this object's own fields minus this field), ikm=K_e)`. */
+  attempt_key_commitment: string;
+  writer_key_id: string;
+  signature: string;
+}
+
+/**
+ * `rotate_epoch_payload` (schema `rotate_epoch_payload.json`, D193-D203) —
+ * the JCS bytes carried (base64url-encoded, hash-pinned) inside
+ * `head.transition.payload` when `transition.kind == "rotate_epoch"`.
+ */
+export interface GitvaultRotateEpochPayload {
+  new_epoch: string;
+  /** The full 64-hex digest of the referenced `rotation_attempt_descriptor`'s stored bytes. */
+  rotation_id: string;
+  reason: GitvaultRotationReason;
+  recipient_state_version: string;
+  recipient_revocation_version: string;
+  pin_manifest_sha256: string;
+  target_partition_digest: string;
+  /** `HMAC-SHA-256(K_digest("epoch_rotation"), JCS({rotation_id, fingerprints:[sorted]}), ikm=K_e)` — a per-recipient self-check only (D200). */
+  epoch_key_commitment: string;
+  excluded_keyless_principal_ids: string[];
+  excluded_unconfirmed_principal_ids: string[];
+  /** Reserved, always `null` in this revision (D197). */
+  recipient_authority_attestation: null;
+  envelopes: GitvaultRotationEnvelopePair[];
+}
+
+/** One `recipient_pin_manifest.pins[]` entry (D197). */
+export interface GitvaultRecipientPinManifestEntry {
+  principal_id: string;
+  ek_fingerprint: string;
+  pinned_at: string;
+  confirmed_by: "creator_self_key" | "operator_confirmation";
+  /** REQUIRED-null iff `confirmed_by === "creator_self_key"`; REQUIRED-non-null otherwise. */
+  confirmation_receipt_sha256: string | null;
+}
+
+/**
+ * `recipient_pin_manifest` (schema `recipient_pin_manifest.json`, D197) —
+ * plaintext-structured (pins are public data, never HPKE-sealed),
+ * writer-signed, version-addressed at
+ * `recipient-pins/<pin_manifest_version>.json`, chain-referenced only via
+ * `head.pin_manifest` / `vault_genesis.pin_manifest`.
+ */
+export interface GitvaultRecipientPinManifest {
+  format: GitvaultFormat;
+  object_kind: "recipient_pin_manifest";
+  suite: GitvaultSuite;
+  repo_id: string;
+  /** Monotonic hex16 — exactly the predecessor's version + 1, or exactly `1` if none. */
+  pin_manifest_version: string;
+  /** The predecessor's stored-bytes sha256, or the 64-`0` zero-value sentinel when `pin_manifest_version == 1`. */
+  base_pin_manifest_sha256: string;
+  pins: GitvaultRecipientPinManifestEntry[];
+  writer_key_id: string;
+  signature: string;
+}
+
+/** The `recipient_pin_manifest`'s zero-value sentinel `base_pin_manifest_sha256` when no predecessor manifest exists (D197). */
+export const GITVAULT_ZERO_SHA256_SENTINEL = "0".repeat(64);
+
+/**
+ * `recipient_confirmation_receipt` (schema `recipient_confirmation_receipt.json`,
+ * D197, `rcr_`) — control-plane-signed, immutable, ID-addressed at
+ * `recipient-confirmations/<rcr_id>.json`, obtained BEFORE the `/confirm` or
+ * `/repin` ceremony it authorizes. Single-use: consumed by admission of the
+ * `recipient_pin_manifest` entry that cites its stored-bytes hash.
+ */
+export interface GitvaultRecipientConfirmationReceipt {
+  format: GitvaultFormat;
+  object_kind: "recipient_confirmation_receipt";
+  /** `rcr_` + 32 lowercase hex. */
+  object_id: string;
+  repo_id: string;
+  purpose: "first_pin" | "repin";
+  principal_id: string;
+  new_fingerprint: string;
+  /** REQUIRED-present iff `purpose === "repin"`; REQUIRED-absent iff `purpose === "first_pin"`. */
+  old_ek_fingerprint?: string;
+  base_pin_manifest_sha256: string;
+  recipient_state_version: string;
+  issued_at: string;
+  service_key_id: string;
+  signature: string;
+}

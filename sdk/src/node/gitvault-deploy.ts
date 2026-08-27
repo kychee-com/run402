@@ -265,6 +265,24 @@ function code(e: unknown): string | undefined {
 }
 
 /**
+ * D193's `EPOCH_ROTATION_REQUIRED` names WHICH of three independent causes
+ * is outstanding via boolean flags (`migration_required` /
+ * `revocation_outstanding` / `exposure_outstanding` — any subset, never
+ * mutually exclusive); this decodes them into the exact `repos access`
+ * command that remedies each one. Shared with the namespace-level `push()`
+ * enrichment (`gitvault.ts#enrichEpochRotationRequired`) — same three
+ * causes, same three commands, one place either could drift from.
+ */
+export function epochRotationRequiredNextActions(e: unknown): { action: string; why: string }[] {
+  const details = isRun402Error(e) ? ((e as { details?: { migration_required?: boolean; revocation_outstanding?: boolean; exposure_outstanding?: boolean } }).details ?? {}) : {};
+  const out: { action: string; why: string }[] = [];
+  if (details.migration_required) out.push({ action: "run402 repos access repair", why: "this vault predates rev-42 epoch rotation and must complete one first-ever rotation (owner + step-up)" });
+  if (details.revocation_outstanding) out.push({ action: "run402 repos access revoke-key <principal_id>", why: "an org membership removal or key revocation is outstanding for this vault (owner + step-up)" });
+  if (details.exposure_outstanding) out.push({ action: "run402 repos access declare-exposure", why: "this vault's own epoch secret has been declared exposed (owner + step-up)" });
+  return out;
+}
+
+/**
  * The correspondence refusal. CLIENT-LOCAL by decision (design open question,
  * resolved 2026-08-23): the moved tree is detected before any plan is
  * committed, so this code never crosses the wire and is deliberately absent
@@ -424,6 +442,14 @@ export async function runGitvaultDeploy(options: GitvaultDeployOptions): Promise
       next_actions: [
         { action: "retry the deploy (the vault push is retried; the previous release keeps serving)" },
         { action: "deploy with allow_unvaulted to activate without a vaulted capture (journaled, completed later)", requires: "gitvault.override_unvaulted" },
+        // D193, rev 42: the push refused because this vault requires a
+        // rotate_epoch admission first — name the exact owner-driven remedy
+        // (never attempted automatically here: the two D194 counters a
+        // rotation must be fenced against have no client-visible read for
+        // ANY of the three causes below, so a blind retry inside the deploy
+        // lane would only ever fail — see GitvaultVault.rotateEpoch's doc
+        // comment for the confirmed gateway gap).
+        ...(code(pushError) === "EPOCH_ROTATION_REQUIRED" ? epochRotationRequiredNextActions(pushError) : []),
       ],
     };
   }
