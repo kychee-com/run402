@@ -255,52 +255,38 @@ export const COMMAND_MANIFEST = [
   { path: ["claims", "list"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["claims", "release"], positionals: [p("claim_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["clm_1"], runStyle: "sub" },
 
-  // ── gitvault (host-blind encrypted Git remote) ───────────────────────────
-  // Every verb needs a real principal keystore, an allocated vault, and (for
-  // all but `status`) a local git working tree, so the gate runs structural
-  // checks only — an in-process behavioral run would either no-op against the
+  // ── gitvault — RETIRED (repo-surface-consolidation, design D7) ──────────
+  // No manifest entries: `cli/lib/gitvault.mjs`'s dispatcher retired, and
+  // every `gitvault <verb>` now answers a structural COMMAND_MOVED (or, for
+  // `push`/`reconcile`, COMMAND_REMOVED) redirect that dispatches nothing —
+  // see RESERVED_SUBCOMMANDS below, and "gitvault" in SKIPPED_FAMILIES.
+
+  // ── repos (repo-surface-consolidation — the consolidated 12-verb family) ─
+  // Every verb needs a real principal keystore and, for most, an allocated
+  // repo and a local git working tree, so the gate runs structural checks
+  // only — an in-process behavioral run would either no-op against the
   // universal `{}` fetch mock or touch the gate's own checkout.
-  { path: ["gitvault", "init"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "allocates a vault: mints key material on this machine and runs the six-stage creation journal" },
-  { path: ["gitvault", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the local principal keystore and the live vault record" },
-  { path: ["gitvault", "snapshot"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
-  // D5 (repo-first-onramp task 2.5): `push` is a deprecation-warning alias
-  // for `snapshot`, retained for exactly one release — same structural
-  // shape, same skip reason, so it stays covered by this gate too.
-  { path: ["gitvault", "push"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "deprecated alias for `snapshot` — captures the cwd git working tree and publishes a signed head" },
-  { path: ["gitvault", "policy"], positionals: [p("gitvault_policy")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["required"], runStyle: "sub", skipBehavioral: "owner + step-up mutation of the live project's activation policy" },
-  { path: ["gitvault", "compact"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "takes a maintenance lease and builds a checkpoint from the local repository" },
-  { path: ["gitvault", "prune"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "materializes the live vault head to enumerate retention roots" },
-  { path: ["gitvault", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain against the keystore's authenticated pin" },
-  { path: ["gitvault", "reconcile"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the live org encryption-key directory + vault envelope recipients, and may publish new key_envelope objects" },
-
-  // ── gitvault mirror (gitvault-mirror-and-recover) ────────────────────────
-  // The customer-owned ciphertext mirror — client-side only, never a server
-  // call except `sync` (lists the live vault's objects) and `status`/`verify`
-  // (a keyless read against the mirror + one live vault-record read). All
-  // five need a real keystore + (for anything but `remove`) a configured
-  // mirror destination, so — same as the gitvault family above — the gate
-  // runs structural checks only.
-  { path: ["gitvault", "mirror", "set"], positionals: [p("destination")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket"], runStyle: "sub", skipBehavioral: "writes mirror destination config beside the keystore (client-side only)" },
-  { path: ["gitvault", "mirror", "remove"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "removes mirror destination config beside the keystore (client-side only)" },
-  { path: ["gitvault", "mirror", "status"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the configured mirror + the live vault record's newest_generation" },
-  { path: ["gitvault", "mirror", "sync"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "lists the live vault's stored objects and reconciles them against the configured mirror" },
-  { path: ["gitvault", "mirror", "verify"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "keyless discovery + chain verification against the configured mirror; touches no key material" },
-
-  // ── gitvault recover (gitvault-mirror-and-recover, design D4) ────────────
-  // `r402s-recover`: offline, no server call at all — reads only from the
-  // mirror source named on the command line. Not project-scoped (the source
-  // URL, not the active project, addresses the vault to recover).
-  { path: ["gitvault", "recover"], positionals: [p("source")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket", "--out", "__SCRATCH_DIR__/recover-out"], runStyle: "sub", skipBehavioral: "materializes a git repository from a mirror source, offline, with no server call" },
-
-  // ── repos (vault-only porcelain, repo-first-onramp D8, task 2.6) ────────
-  // `create` writes real git state into cwd and allocates a vault; `list`
-  // and `delete` read/mutate the live gitvault record — same structural-
-  // checks-only rationale as the gitvault family just above.
-  { path: ["repos", "create"], positionals: [p("name")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "provisions a project, allocates a vault, and scaffolds a real git remote into cwd" },
-  { path: ["repos", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "cross-references live projects against their live gitvault status, one call per project" },
-  { path: ["repos", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [], runStyle: "sub", skipBehavioral: "irreversibly deletes a project after reading its live vault generation count" },
-  // repo-first-onramp task 4.2 (design D6): explicit address-form name claim.
-  { path: ["repos", "name"], positionals: [p("name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "claims a per-org-unique repo name against a live project" },
+  { path: ["repos", "create"], positionals: [p("name", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "provisions a project, allocates a repo, and scaffolds a real git remote into cwd" },
+  { path: ["repos", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the live bulk vaults-by-org route, or falls back to a live per-project walk" },
+  { path: ["repos", "view"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the local principal keystore and the live repo record" },
+  // repo-surface-consolidation D2 (`gh repo rename`): absorbs the old
+  // `repos name` — same claim/rename, `--repo`/`--project` addressing added.
+  { path: ["repos", "rename"], positionals: [p("new_name")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["my-notes"], runStyle: "sub", skipBehavioral: "claims a per-org-unique repo name against a live project" },
+  { path: ["repos", "delete"], positionals: [], projectScoped: true, legacyPositionalProject: true, minimalArgs: [], runStyle: "sub", skipBehavioral: "irreversibly deletes a project after reading its live non-repo-resource state and vault generation count (design D9)" },
+  { path: ["repos", "snapshot"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "captures the cwd git working tree and publishes a signed head" },
+  { path: ["repos", "policy"], positionals: [p("repos_policy")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["required"], runStyle: "sub", skipBehavioral: "owner + step-up mutation of the live project's activation policy" },
+  // design D4 — ONE flag-driven verb; `<destination>` is a real attribute
+  // (not a sub-verb literal like the old `mirror set/remove/...`), so this
+  // stays a single manifest entry.
+  { path: ["repos", "mirror"], positionals: [p("destination", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads/writes mirror destination config beside the keystore and may move real bytes into a customer-owned bucket" },
+  { path: ["repos", "fsck"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "walks the live head chain and materializes the ref map against the keystore's local pins" },
+  { path: ["repos", "gc"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "publishes a checkpoint under a maintenance lease and materializes the live vault head to enumerate retention roots" },
+  // `access repair` is a nested sub-verb literal (same shape the old
+  // `gitvault mirror set/remove/...` used) — two manifest entries, one
+  // dispatched `run("access", ...)` case in repos.mjs, matching precedent.
+  { path: ["repos", "access"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the live org encryption-key directory + vault envelope recipients" },
+  { path: ["repos", "access", "repair"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "always refuses — gated on gitvault-human-envelopes' epoch-rotation work, not shipped yet" },
+  { path: ["repos", "recover"], positionals: [p("source")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket", "--out", "__SCRATCH_DIR__/recover-out"], runStyle: "sub", skipBehavioral: "materializes a git repository from a mirror source, offline, with no server call" },
   { path: ["errors"], positionals: [p("fingerprint_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
 
   // ── jobs ─────────────────────────────────────────────────────────────────
@@ -475,6 +461,15 @@ export const SKIPPED_FAMILIES = {
   // Split into `deliveries` / `contacts` / `subscriptions`; every subcommand
   // answers COMMAND_REMOVED naming its successor.
   "notifications": "reserved group; split by legible-cli-surface",
+  // repo-surface-consolidation D7: the dispatcher retired. Every
+  // `gitvault <verb>` answers COMMAND_MOVED/COMMAND_REMOVED (see
+  // RESERVED_SUBCOMMANDS below for the per-verb list) — the family stays
+  // dispatched in cli.mjs (so the redirect fires instead of UNKNOWN_COMMAND)
+  // but has zero manifest entries, since a redirect dispatches nothing.
+  "gitvault": "retired; every subcommand answers COMMAND_MOVED/COMMAND_REMOVED naming its `repos`/git successor",
+  // `repo` singular resolves identically to `repos` (design D1) — same
+  // module, same case block in cli.mjs, so it needs no manifest of its own.
+  "repo": "alias for `repos`, resolves identically (design D1)",
 };
 
 /**
@@ -500,4 +495,20 @@ export const RESERVED_SUBCOMMANDS = {
   "rooms:get": "moved to `messages get` — the verb acts on a message",
   "rooms:ack": "moved to `messages ack` — the verb acts on a message",
   "escalations:contacts": "merged into `contacts` — the ladder and Telegram channels are one question",
+  // repo-surface-consolidation D7: every `gitvault <verb>` spelling. Nine
+  // answer COMMAND_MOVED naming their `repos` successor; `push` and
+  // `reconcile` answer COMMAND_REMOVED (no equivalent successor for either —
+  // `push`'s one-release alias window is over, `reconcile` was a workaround
+  // with no permanent replacement, only a read at `repos access`).
+  "gitvault:init": "moved to `repos create --project <id>`",
+  "gitvault:status": "moved to `repos view`",
+  "gitvault:snapshot": "moved to `repos snapshot`",
+  "gitvault:policy": "moved to `repos policy`",
+  "gitvault:compact": "moved to `repos gc`",
+  "gitvault:prune": "moved to `repos gc`",
+  "gitvault:verify": "moved to `repos fsck`",
+  "gitvault:mirror": "moved to `repos mirror`",
+  "gitvault:recover": "moved to `repos recover`",
+  "gitvault:push": "removed — its one-release deprecation-alias window is over; `git push` / `repos snapshot`",
+  "gitvault:reconcile": "removed — a workaround with no permanent successor; read `repos access` instead",
 };

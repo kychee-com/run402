@@ -160,8 +160,18 @@ const MATRIX = {
   events: { shared: [], specific: [] },
   rooms: { shared: [], specific: [] },
   claims: { shared: [], specific: [] },
-  // Every gitvault subcommand falls back to the module-level help.
-  gitvault: { shared: ["status", "push", "compact", "prune", "verify"], specific: [] },
+  // `gitvault` is RETIRED (repo-surface-consolidation, design D7): every
+  // subcommand answers COMMAND_MOVED/COMMAND_REMOVED (exit 1), not help
+  // text — empty shared/specific (same shape as doctor/logs/dev below) so
+  // only the bare `gitvault --help` (the tombstone module help, still exit
+  // 0) is swept here. Per-subcommand COMMAND_MOVED/COMMAND_REMOVED behavior
+  // is covered in cli-gitvault-retired.test.mjs.
+  gitvault: { shared: [], specific: [] },
+  // Every `repos` subcommand falls back to the module-level help (no
+  // per-subcommand help text — same shape the old `repos` porcelain had,
+  // which is why this family was never in MATRIX before repo-surface-
+  // consolidation either).
+  repos: { shared: ["create", "list", "view", "rename", "delete", "snapshot", "policy", "mirror", "fsck", "gc", "access", "recover"], specific: [] },
   errors: { shared: [], specific: [] },
   // doctor and logs are flag-based commands (no subcommands): --help must
   // short-circuit at the top of run() before any check runs or getSdk() call.

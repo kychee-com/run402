@@ -118,6 +118,11 @@ describe("SKILL.md (root, MCP-based)", () => {
       // gitvault …` shell commands (mutating verbs are CLI-only, so even
       // the MCP-facing skill has to teach them as shell commands).
       { pattern: /\brun402 gitvault push --/, reason: "`gitvault push` was renamed to `gitvault snapshot` (design D5); `push` is a one-release deprecation alias, not the taught spelling" },
+      // repo-surface-consolidation D7: `gitvault` retired from the CLI —
+      // every old spelling is banned as a TAUGHT usage example (the
+      // retirement notice itself, e.g. "run402 gitvault <verb> is RETIRED",
+      // is fine; these patterns require a real verb, not the placeholder).
+      { pattern: /\brun402 gitvault (init|status|snapshot|policy|compact|prune|verify|mirror|recover|reconcile)\b/, reason: "`run402 gitvault <verb>` is RETIRED (repo-surface-consolidation D7) — teach `run402 repos <verb>` instead" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {
@@ -211,16 +216,23 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       "run402 ci revoke",
       "run402 assets put",
       "run402 tier set",
-      // repo-first-onramp: D5's rename (task 2.5) and the vault-only
-      // porcelain (task 2.6) — both CLI/OpenClaw-only surfaces.
-      "run402 gitvault snapshot",
-      // gitvault-human-envelopes task 4.1: the ADD-path envelope-recipient
-      // reconcile verb — best-effort at `run402 deploy` (primary) and
-      // `run402 gitvault push`/`snapshot`, standalone here.
-      "run402 gitvault reconcile",
+      // repo-surface-consolidation: the consolidated 12-verb `repos` family
+      // — CLI/OpenClaw-only surfaces (create/rename/delete/snapshot/policy/
+      // mirror/gc are mutating; view/list/fsck/access are read-only but
+      // still have no MCP tool for this family beyond the three renamed
+      // read-only ones).
       "run402 repos create",
       "run402 repos list",
+      "run402 repos view",
+      "run402 repos rename",
       "run402 repos delete",
+      "run402 repos snapshot",
+      "run402 repos fsck",
+      "run402 repos gc",
+      "run402 repos access",
+      "run402 repos mirror",
+      "run402 repos recover",
+      "run402 repos policy",
     ];
     for (const verb of verbs) {
       it(`references CLI verb: ${verb}`, () => {
@@ -246,6 +258,10 @@ describe("openclaw/SKILL.md (CLI-based)", () => {
       // would be teaching it as the way to invoke it) — this pattern only
       // catches the OLD usage-example shape reappearing.
       { pattern: /\brun402 gitvault push --/, reason: "`gitvault push` was renamed to `gitvault snapshot` (design D5); `push` is a one-release deprecation alias, not the taught spelling" },
+      // repo-surface-consolidation D7: `gitvault` retired from the CLI —
+      // the OpenClaw skill (CLI-verb-only by construction) must never teach
+      // an old spelling as a usage example again.
+      { pattern: /\brun402 gitvault (init|status|snapshot|policy|compact|prune|verify|mirror|recover|reconcile)\b/, reason: "`run402 gitvault <verb>` is RETIRED (repo-surface-consolidation D7) — teach `run402 repos <verb>` instead" },
     ];
     for (const { pattern, reason } of banned) {
       it(`does not contain: ${pattern.source}`, () => {

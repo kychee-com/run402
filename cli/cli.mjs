@@ -32,7 +32,7 @@ SET UP — get an agent funded and entitled
 BUILD & SHIP — the app and everything it serves
   up          Provision/link/deploy the current app with SDK orchestration
   projects    Manage projects (provision, list, get, sql, delete)
-  repos       Vault-only hosted encrypted repos, zero deploy ceremony (create, list, delete)
+  repos       Host-blind encrypted git repos: create/view/list, snapshot/mirror/recover, fsck/gc/access/policy (repo aliases repos)
   deploy      Unified deploy operations (requires active tier)
   apply       Alias for deploy apply; supports --rehearse for migration rehearsal
   functions   Manage serverless functions (deploy, invoke, logs, list, delete)
@@ -84,7 +84,7 @@ PLATFORM — everything else, and the things still finding a home
   transfer    Two-party project transfer (init, preview, list, accept, cancel)
   cloud       Cloud portability archive export (archives create/download/status)
   archives    Inspect and verify portable project archives locally
-  gitvault    Host-blind encrypted Git remote (init/status/push/policy/compact/prune/verify/mirror/recover)
+  gitvault    RETIRED — moved to repos (repo-surface-consolidation); every spelling answers COMMAND_MOVED/COMMAND_REMOVED
   buzz        Buzz human/community/agent control-plane workflows
   apps        Browse and manage the app marketplace
   ai          AI translation and moderation tools
@@ -223,6 +223,14 @@ switch (cmd) {
     break;
   }
   case "repos": {
+    const { run } = await import("./lib/repos.mjs");
+    await run(sub, rest);
+    break;
+  }
+  // `repo` singular resolves identically to `repos` (design D1 — agents type
+  // what `gh repo` already taught them). Its own case block, not a
+  // fall-through, so cli-conventions-gate's per-line family scanner sees it.
+  case "repo": {
     const { run } = await import("./lib/repos.mjs");
     await run(sub, rest);
     break;
