@@ -313,22 +313,24 @@ jobs:
           publish_idempotent run402
 
       - name: Publish @run402/sdk to npm
+        # DIAGNOSTIC (temporary, part of the same one-off skip as the two
+        # steps above): three attempts have now failed with `$out` captured
+        # as completely empty (no npm output at all reaching the CI log,
+        # despite a non-zero exit), so the idempotent/transient grep checks
+        # never had anything to match against. Streaming stdout/stderr
+        # DIRECTLY (no `$(...)` capture) to find out what npm is actually
+        # saying. --loglevel=verbose for maximum detail.
         if: ${{ !inputs.dry_run }}
         run: |
           publish_idempotent() {
-            local label="$1"; local attempt=0 out
+            local label="$1"; local attempt=0
             while [ "$attempt" -lt 3 ]; do
               attempt=$((attempt + 1))
-              if out=$( (cd sdk && npm publish --access public --provenance) 2>&1); then
-                echo "$out"; echo "[$label] published (attempt $attempt)"; return 0
+              if (cd sdk && npm publish --access public --provenance --loglevel=verbose); then
+                echo "[$label] published (attempt $attempt)"; return 0
               fi
-              echo "$out"
-              if echo "$out" | grep -qiE "cannot publish over|previously published|EPUBLISHCONFLICT"; then
-                echo "[$label] already published at this version — idempotent skip."; return 0
-              fi
-              if echo "$out" | grep -qiE "TLOG_CREATE_ENTRY_ERROR|rekor\.sigstore\.dev|tlog entry|ETIMEDOUT|ECONNRESET|socket hang up|aborted"; then
-                echo "[$label] transient provenance/network error — retry $attempt/3"; sleep 10; continue
-              fi
+              local rc=$?
+              echo "[$label] npm publish exited $rc (see streamed output above)."
               echo "[$label] non-retryable publish error."; return 1
             done
             echo "[$label] exhausted retries."; return 1
