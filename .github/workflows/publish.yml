@@ -155,6 +155,12 @@ jobs:
           echo "old=$CUR" >> "$GITHUB_OUTPUT"
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
 
+      - name: Regenerate cli/gitvault-surface.json (surface_version tracks cli/package.json)
+        # The surface file embeds the CLI version; without this, a bump ships
+        # tarballs carrying the OLD surface_version and leaves main red on
+        # test.yml's `build-gitvault-surface.mjs --check` gate.
+        run: node scripts/build-gitvault-surface.mjs
+
       - name: Sync lockfile to reflect new versions
         run: npm install --package-lock-only
 
@@ -341,7 +347,8 @@ jobs:
               }
             "
             npm install --package-lock-only >/dev/null
-            git add package.json cli/package.json sdk/package.json package-lock.json
+            node scripts/build-gitvault-surface.mjs >/dev/null
+            git add package.json cli/package.json sdk/package.json package-lock.json cli/gitvault-surface.json
             if git diff --cached --quiet; then
               echo "main is already at v$NEW — nothing to commit."
               break
@@ -352,7 +359,7 @@ jobs:
               break
             fi
             if [ "$attempt" -eq 5 ]; then
-              echo "::error::Could not push the v$NEW bump to main after 5 attempts. All three packages ARE published; main needs a manual commit-back (set package.json + cli/package.json + sdk/package.json to $NEW + npm install --package-lock-only)."
+              echo "::error::Could not push the v$NEW bump to main after 5 attempts. All three packages ARE published; main needs a manual commit-back (set package.json + cli/package.json + sdk/package.json to $NEW + npm install --package-lock-only + node scripts/build-gitvault-surface.mjs)."
               exit 1
             fi
             echo "Push rejected (main advanced); rebuilding on fresh main and retrying ($attempt/5)…"
