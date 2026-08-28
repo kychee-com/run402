@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { jcs, sha256Hex } from "../namespaces/gitvault.crypto.js";
-import { gitvaultPaths } from "./gitvault-publication.js";
+import { gitvaultPaths, gitvaultRetainedRefName } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { hardenedGit } from "./gitvault-snapshot.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
@@ -36,6 +36,13 @@ import { adjudicateAbsences, discoverAndVerifyChain, recoverGitvaultMirror, veri
 
 function scratchDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
+}
+
+/** A root, unrelated commit — never an ancestor of anything else built this way (no `-p` parent). Mirrors `gitvault-publication.test.ts`'s own helper of the same name. */
+async function orphanCommit(dir: string, label: string): Promise<string> {
+  const blob = await git(dir, ["hash-object", "-w", "-t", "blob", "--stdin"], `${label}\n`);
+  const tree = await git(dir, ["mktree"], `100644 blob ${blob}\t${label}.txt\n`);
+  return git(dir, ["commit-tree", tree, "-m", `orphan ${label}`]);
 }
 
 /**
@@ -468,6 +475,42 @@ describe("gitvault recovery engine (task 3.6)", () => {
     assert.ok(named, "the missing object must be NAMED in the report, never silently dropped");
     assert.equal(named!.adjudication, "unexplained_absence");
     assert.equal(result.refs["refs/heads/main"], c1, "recovered at the fallback generation, not the (unmaterializable) newest one");
+
+    rmSync(mirrorRoot, { recursive: true, force: true });
+    rmSync(outDir, { recursive: true, force: true });
+  });
+
+  // clone-installs-retained-refs (D2) extended to recover: the SAME
+  // refs/r402/retain/* bookkeeping `restoreObjectsInto` (clone/fetch) and
+  // `fsck` install must also land for a disaster-drill `repos recover`, so a
+  // freshly recovered bare repo's `git fsck` is silent for a retained,
+  // branch-unreachable tip rather than reporting it dangling.
+  it("recoverGitvaultMirror installs a retained ref for a branch-unreachable, force-displaced tip; git fsck is silent", async () => {
+    const f = await makeVault();
+    const c1 = await commitFile(f.repoDir, "a.txt", "a\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    // An unrelated (orphan) commit force-displaces c1 off main — c1 becomes a
+    // retention root that is present in the mirrored objects but reachable
+    // from no canonical ref, exactly the case a disaster-drill recovery must
+    // still reference locally.
+    const c2 = await orphanCommit(f.repoDir, "unrelated");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: true }] } });
+
+    const mirrorRoot = scratchDir("run402-mirror-retain-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    await seedBackend(backend, transportEntries(f.transport, f.repoId));
+
+    const outDir = scratchDir("run402-recovered-retain-");
+    const result = await recoverGitvaultMirror({ backend, out_dir: outDir, keystore: f.keystore });
+
+    assert.equal(result.mode, "recovered");
+    assert.equal(result.refs["refs/heads/main"], c2);
+    const retainRef = gitvaultRetainedRefName(c1);
+    assert.deepEqual(result.retained_refs, { written: [retainRef], deleted: [], retained_count: 1, warning: null });
+    assert.equal((await git(outDir, ["rev-parse", retainRef])).trim(), c1);
+
+    const fsckOut = await git(outDir, ["fsck", "--full"]);
+    assert.doesNotMatch(fsckOut, /dangling commit/);
 
     rmSync(mirrorRoot, { recursive: true, force: true });
     rmSync(outDir, { recursive: true, force: true });

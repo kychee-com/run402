@@ -1819,6 +1819,11 @@ function formatRecoverHuman(result, outDir) {
     lines.push(`DATA LOSS DETECTED: ${result.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences.`);
   }
   lines.push(`Layout: ${result.layout}` + (result.layout === "bare" ? " (no working files — not a failed recovery)" : ""));
+  if (result.retained_refs?.warning) {
+    lines.push(`refs/r402/retain: ${result.retained_refs.warning}`);
+  } else if (result.retained_refs) {
+    lines.push(`refs/r402/retain: ${result.retained_refs.retained_count} retained tip(s) referenced (+${result.retained_refs.written.length} -${result.retained_refs.deleted.length} this run).`);
+  }
   return lines.join("\n");
 }
 
@@ -1867,6 +1872,14 @@ async function recover(args) {
     if (result.layout === "bare") {
       console.error(`layout: bare (no working files in ${outDir} — this is not a failed recovery)`);
       for (const n of result.next_actions ?? []) console.error(`next: ${n.action} — ${n.command}`);
+    }
+    // clone-installs-retained-refs D3: a bookkeeping failure degrades to
+    // exactly one stderr note here — recovery's own result already landed
+    // above.
+    if (result.retained_refs?.warning) {
+      console.error(`repos recover: ${result.retained_refs.warning}`);
+    } else if (result.retained_refs) {
+      console.error(`refs/r402/retain: +${result.retained_refs.written.length} -${result.retained_refs.deleted.length} (${result.retained_refs.retained_count} retained tip(s) total).`);
     }
     printMirrorHonesty(result);
     printVerboseStats(a, sdk);

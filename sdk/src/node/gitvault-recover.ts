@@ -49,7 +49,8 @@ import type {
   GitvaultSignedObject,
   GitvaultVaultGenesis,
 } from "../namespaces/gitvault.types.js";
-import { assertNoTransition, checkChainLink, checkClaimSetEquality, gitvaultPaths, nextGeneration } from "./gitvault-publication.js";
+import { assertNoTransition, checkChainLink, checkClaimSetEquality, gitvaultPaths, nextGeneration, reconcileRetainedTipRefs } from "./gitvault-publication.js";
+import type { GitvaultRetainedRefsReconcileResult } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { hardenedGit, hasObject } from "./gitvault-snapshot.js";
 import type { GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
@@ -346,6 +347,15 @@ export interface GitvaultRecoverResult extends GitvaultRecoveryReport {
   refs: Record<string, string>;
   head_target: { kind: "symref"; ref: string } | { kind: "detached"; oid: string };
   /**
+   * clone-installs-retained-refs (D2): the same `refs/r402/retain/<oid>`
+   * bookkeeping `restoreObjectsInto` (clone/fetch) and `fsck` install, applied
+   * here so a recovered bare repo's `git fsck` is silent too — a disaster
+   * drill should never see dangling-commit noise for tips this recovery
+   * itself just proved are retained. D3: a bookkeeping failure degrades to a
+   * `warning` on this field; recovery itself never fails on it.
+   */
+  retained_refs: GitvaultRetainedRefsReconcileResult;
+  /**
    * `out_dir` is a BARE repository (`git init --bare`) — objects/refs/HEAD
    * directly in `out_dir`, no working files. This is deliberate and matches
    * every other on-disk gitvault layout; it is named explicitly here (rather
@@ -511,6 +521,15 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
   const fsck = await hardenedGit(options.out_dir, ["fsck", "--no-dangling", "--full", "--strict"], { okStatuses: [1, 2] });
   if (fsck.status !== 0) fail("CHECKPOINT_INCOMPLETE", `fsck reports missing connectivity after restore: ${fsck.stderr.slice(0, 500)}`, "materializing gitvault recovery");
 
+  // clone-installs-retained-refs (D2): every retained tip this recovery just
+  // proved connective above is now present in the bare repo — install/
+  // reconcile its refs/r402/retain/* ref so a disaster-drill `git fsck`
+  // reports nothing dangling. Runs AFTER fsck (and thus after coverage
+  // verification) so a reconcile never references an object the restore
+  // itself failed to land — same ordering `restoreObjectsInto` (clone/fetch)
+  // uses.
+  const retained_refs = await reconcileRetainedTipRefs(options.out_dir, { refs: refState.refs, roots: roots.roots, head_target: refState.head_target });
+
   // ── recompute the three keyed commitments against the covering manifest (§4.7) ──
   if (manifest) {
     const kDigestRefmap = deriveDigestKey(kRepo, repoId, GITVAULT_GENESIS_EPOCH, "refmap");
@@ -535,6 +554,7 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
     validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
     keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
     mode: "recovered", out_dir: options.out_dir, refs: refState.refs, head_target: refState.head_target,
+    retained_refs,
     layout: "bare",
     next_actions: [
       { action: "the recovered repository is bare (no working files) — clone it to get a working tree", command: `git clone ${options.out_dir} ${options.out_dir}-worktree` },
