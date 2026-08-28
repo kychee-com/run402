@@ -24,6 +24,12 @@ jobs:
       # match what docs-site/src/content regenerates. Pure Node — no docs-site
       # install needed. Fails the PR if content was edited without regenerating.
       - run: node scripts/build-agent-flat-docs.mjs --check
+      # Single-source gate: the committed cli/gitvault-surface.json (verbs,
+      # retired spellings, capability ledger) must match what
+      # command-manifest.mjs + gitvault-capabilities.mjs regenerate — the
+      # file run402-private's page-truth gate resolves against the
+      # published package (openspec/changes/gitvault-page-truth-gate).
+      - run: node scripts/build-gitvault-surface.mjs --check
       # Quote the globs so Node handles expansion natively. Node's --test
       # glob matching recurses into nested dirs AND matches depth-0 files,
       # so it works regardless of the shell's globstar support. (Earlier

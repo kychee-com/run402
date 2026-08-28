@@ -1855,6 +1855,11 @@ const SHIM_SOURCES = [
   "cli/lib/gitvault.mjs",
   "cli/lib/gitvault-scaffold.mjs",
   "cli/lib/gitvault-target.mjs",
+  // Pure data ledger (openspec/changes/gitvault-page-truth-gate design D1) —
+  // no imports, no gateway calls, nothing for FORBIDDEN_SHIM_IMPORTS/CALLS
+  // to catch. Listed here only to satisfy SHIM_DISCOVERY_DIRS' name-based
+  // sweep; it is not a request/response shim.
+  "cli/lib/gitvault-capabilities.mjs",
   "cli/git-remote-run402.mjs",
   "openclaw/scripts/gitvault.mjs",
   "src/tools/gitvault.ts",

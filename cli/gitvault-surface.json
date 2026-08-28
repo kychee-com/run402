@@ -1,0 +1,74 @@
+{
+  "surface_version": "4.45.1",
+  "verbs": [
+    "repos create",
+    "repos list",
+    "repos view",
+    "repos rename",
+    "repos delete",
+    "repos snapshot",
+    "repos policy",
+    "repos mirror",
+    "repos fsck",
+    "repos gc",
+    "repos access",
+    "repos access repair",
+    "repos access revoke-key",
+    "repos access declare-exposure",
+    "repos recover"
+  ],
+  "retired_spellings": [
+    {
+      "spelling": "gitvault init",
+      "successor": "moved to `repos create --project <id>`"
+    },
+    {
+      "spelling": "gitvault status",
+      "successor": "moved to `repos view`"
+    },
+    {
+      "spelling": "gitvault snapshot",
+      "successor": "moved to `repos snapshot`"
+    },
+    {
+      "spelling": "gitvault policy",
+      "successor": "moved to `repos policy`"
+    },
+    {
+      "spelling": "gitvault compact",
+      "successor": "moved to `repos gc`"
+    },
+    {
+      "spelling": "gitvault prune",
+      "successor": "moved to `repos gc`"
+    },
+    {
+      "spelling": "gitvault verify",
+      "successor": "moved to `repos fsck`"
+    },
+    {
+      "spelling": "gitvault mirror",
+      "successor": "moved to `repos mirror`"
+    },
+    {
+      "spelling": "gitvault recover",
+      "successor": "moved to `repos recover`"
+    },
+    {
+      "spelling": "gitvault push",
+      "successor": "removed — its one-release deprecation-alias window is over; `git push` / `repos snapshot`"
+    },
+    {
+      "spelling": "gitvault reconcile",
+      "successor": "removed — a workaround with no permanent successor; read `repos access` instead"
+    }
+  ],
+  "capabilities": {
+    "revocation_live": true,
+    "human_envelope_add_live": true,
+    "mirror_live": true,
+    "recover_live": true,
+    "allocation": "create_immediate",
+    "snapshot_dirty_default": "refuse"
+  }
+}
