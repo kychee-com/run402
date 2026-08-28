@@ -295,6 +295,20 @@ export async function handleVerifyGitvault(args: { project_id?: string; repo_id?
         `Newest head: generation ${state.head.generation}, epoch ${state.head.epoch}${state.head.checkpoint ? ", checkpoint-bearing" : ""}.`,
       );
     }
+    // D193-D203, rev 42: this tool proves the chain STRUCTURALLY — an
+    // admitted `rotate_epoch` transition is verified keylessly and never
+    // stops it — but never opens a rotation's own key envelope, so it makes
+    // no claim about whether the newest generation is actually DECRYPTABLE.
+    // `run402 repos fsck` is the decrypt-validating half (Request 1) and
+    // reports `chain_verified_to_generation` vs `decryptable_to_generation`
+    // when they differ.
+    const rotations = state.rotations ?? [];
+    if (rotations.length > 0) {
+      lines.push(
+        "",
+        `${rotations.length} epoch rotation(s) verified structurally in this chain (newest: epoch ${rotations[rotations.length - 1]!.epoch} at generation ${rotations[rotations.length - 1]!.generation}). This tool never opens a rotation's key envelope — it proves the chain, not decrypt capability; run \`run402 repos fsck\` for the decryptable-generation split.`,
+      );
+    }
     lines.push("", KEYSTORE_QUALIFIED_DURABILITY);
     return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (err) {

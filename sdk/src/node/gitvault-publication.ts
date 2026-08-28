@@ -67,9 +67,11 @@ import {
   nextEpoch,
   objectsetContent,
   openBindingPreimage,
+  openEpochRotationForRecipient,
   openFrame,
   openKeyEnvelope,
   parseGitvaultStrict,
+  parseRotateEpochPayload,
   pinManifestLedgerId,
   randomBytes,
   sealFrame,
@@ -604,6 +606,13 @@ export interface GitvaultChainLinkInput {
   /** The registered writer public key (V0: the genesis creator key). */
   writer_public_key: Uint8Array | string;
   writer_key_id: string;
+  /**
+   * The predecessor's own `epoch` (D194, rev 42) — `GITVAULT_GENESIS_EPOCH`
+   * for generation 1's predecessor (genesis). Drives the D193 epoch-
+   * continuity check below; pure and keyless (no envelope is ever opened
+   * here — only the head's own `epoch` FIELD is checked).
+   */
+  prev_epoch: string;
 }
 
 /** Verify one link: bytes hash to the listing, strict parse, generation, prev linkage, epoch pin, repo, writer signature. */
@@ -615,7 +624,23 @@ export function checkChainLink(input: GitvaultChainLinkInput): void {
   if (h.repo_id !== input.repo_id) fail("CHAIN_BROKEN", `head ${input.expected_generation}: repo_id ${h.repo_id} ≠ ${input.repo_id}`, "verifying head chain");
   if (h.generation !== input.expected_generation) fail("CHAIN_BROKEN", `head generation ${h.generation} ≠ expected ${input.expected_generation} (generation must equal newest+1)`, "verifying head chain", { got: h.generation, expected: input.expected_generation });
   if (h.prev_sha256 !== input.prev_sha256) fail("CHAIN_BROKEN", `head ${h.generation}: prev_sha256 does not name the predecessor's stored bytes`, "verifying head chain", { prev_sha256: h.prev_sha256, expected: input.prev_sha256 });
-  if (h.epoch !== GITVAULT_GENESIS_EPOCH) fail("CHAIN_BROKEN", `head ${h.generation}: epoch ${h.epoch} breaks the V0 pin`, "verifying head chain");
+  // D194, rev 42 (relaxed by D193): epoch continuity — a head's `epoch`
+  // equals its predecessor's UNLESS THIS head admits a `rotate_epoch`
+  // transition, in which case it equals `nextEpoch(predecessor.epoch)`
+  // exactly (increment-by-one, no skip). Pure and keyless: this checks only
+  // the head's own signed `epoch` FIELD against the predecessor's, never
+  // opens any envelope — decrypting under the resulting epoch is a separate,
+  // keyed step (`GitvaultVault`'s rotation-envelope open, `openEpochRotationForRecipient`).
+  const isRotation = h.transition !== null && h.transition.kind === "rotate_epoch";
+  const permittedEpoch = isRotation ? nextEpoch(input.prev_epoch) : input.prev_epoch;
+  if (h.epoch !== permittedEpoch) {
+    fail(
+      "CHAIN_BROKEN",
+      `head ${h.generation}: epoch ${h.epoch} does not match the expected ${permittedEpoch} (${isRotation ? "post-rotation increment of the predecessor's epoch" : "predecessor continuity — only an admitted rotate_epoch transition may advance the epoch"})`,
+      "verifying head chain",
+      { generation: h.generation, got: h.epoch, expected: permittedEpoch, prev_epoch: input.prev_epoch, is_rotation: isRotation },
+    );
+  }
   if (h.writer_key_id !== input.writer_key_id) fail("CHAIN_BROKEN", `head ${h.generation}: writer_key_id ${h.writer_key_id} is not the registered writer`, "verifying head chain");
   if (!verifyGitvaultObject(h as unknown as GitvaultSignedObject, input.writer_public_key)) fail("CHAIN_BROKEN", `head ${h.generation}: signature does not verify under the registered writer key`, "verifying head chain");
   if ((h.checkpoint === null) !== (h.checkpoint_purpose === null)) fail("CHAIN_BROKEN", `head ${h.generation}: checkpoint/checkpoint_purpose must be null together`, "verifying head chain");
@@ -626,11 +651,21 @@ export function checkChainLink(input: GitvaultChainLinkInput): void {
 
 /**
  * The transition fail-closed rule: a V0 client that encounters an ADMITTED
- * non-null transition stops advancing — read-only at the materialized pin,
- * no publish past it, `UPGRADE_REQUIRED`. Unknown kinds are a parse reject.
+ * transition kind it cannot validate stops advancing — read-only at the
+ * materialized pin, no publish past it, `UPGRADE_REQUIRED`. Unknown kinds
+ * are a parse reject.
+ *
+ * `rotate_epoch` is EXEMPT from this rule as of rev 42 (D193: "epoch
+ * rotation is ACTIVATED") — `checkChainLink`'s own D194 epoch-continuity
+ * check already validates its structural admissibility, and
+ * {@link parseRotateEpochPayload} / the caller's own envelope-open step
+ * (`GitvaultVault.verifyToNewest`) handle it fully. The other three kinds
+ * (`add_envelope`, `add_writer_key`, `transfer_binding`) remain genuinely
+ * unactivated and stay fail-closed exactly as before.
  */
 export function assertNoTransition(head: GitvaultHead): void {
   if (head.transition === null) return;
+  if (head.transition.kind === "rotate_epoch") return;
   const kinds = ["add_envelope", "rotate_epoch", "add_writer_key", "transfer_binding"];
   if (!kinds.includes(head.transition.kind)) fail("CHAIN_BROKEN", `head ${head.generation}: unknown transition kind ${String(head.transition.kind)} (closed enum)`, "verifying head chain");
   fail("UPGRADE_REQUIRED", `head ${head.generation} carries an admitted "${head.transition.kind}" transition this client cannot validate; staying read-only at the materialized pin and refusing to publish past it`, "verifying head chain", { generation: head.generation, kind: head.transition.kind }, [{ action: "upgrade the client; the vault stays readable at the materialized pin" }]);
@@ -1334,12 +1369,54 @@ export interface GitvaultCutoffOptions {
   effectiveAdmittedAt?: (droppedAtGeneration: string) => string | null;
 }
 
+/** One admitted `rotate_epoch` transition {@link GitvaultVault.verifyToNewest} walked over, KEYLESS (structural only — no envelope opened yet). */
+export interface GitvaultEncounteredRotation {
+  /** The rotate_epoch head's own generation. */
+  generation: string;
+  /** == `payload.new_epoch` == the head's own `epoch`. */
+  epoch: string;
+  payload: GitvaultRotateEpochPayload;
+}
+
+/** Named detail for a reader's own `GITVAULT_EPOCH_NOT_OPENABLE` / decrypt stop point (Part C: `repos fsck`'s honest `chain_verified_to` vs `decryptable_to` split). */
+export interface GitvaultEpochDecryptFailure {
+  generation: string;
+  epoch: string;
+  rotation_id: string | null;
+  code: string;
+  message: string;
+}
+
+/**
+ * The result of an OPT-IN decrypt-validation pass over the walked chain
+ * (`verifyToNewest({decryptValidate: true})`) — never present on an ordinary
+ * keyless chain verify. `decryptable_to_generation` is the newest generation
+ * whose own `ref_state`/`retention_roots` this call actually decrypted
+ * (opening every `rotate_epoch` envelope needed along the way); it EQUALS
+ * the outer state's `generation` on success and can fall short of it in
+ * `strict: false` (tolerant) mode, in which case `failure` names exactly
+ * where and why (never a bare, undifferentiated AEAD failure).
+ */
+export interface GitvaultDecryptValidationResult {
+  decryptable_to_generation: string;
+  /** The newest successfully-decrypted `ref_state`/`retention_roots`, or `null` if none this call reached (generation zero, or the very first head failed). */
+  ref_state: GitvaultRefState | null;
+  retention_roots: GitvaultRetentionRoots | null;
+  /** Every locally-known epoch key at the end of this call, hex-encoded — seeded from the keystore's persisted `epoch_keys` plus every rotation this call itself opened. */
+  epoch_keys_hex: Record<string, string>;
+  failure: GitvaultEpochDecryptFailure | null;
+}
+
 export interface GitvaultVerifiedState {
   generation: string;
   head_sha256: string;
   /** `null` at generation zero. */
   head: GitvaultHead | null;
   genesis: GitvaultVaultGenesis;
+  /** Every admitted `rotate_epoch` transition walked THIS call, oldest first — keyless (Part A's structural half; D202's join predicate needs only this). */
+  rotations: GitvaultEncounteredRotation[];
+  /** Present iff `decryptValidate` was requested. */
+  decrypt: GitvaultDecryptValidationResult | null;
 }
 
 export interface GitvaultMaterializedState extends GitvaultVerifiedState {
@@ -1348,6 +1425,8 @@ export interface GitvaultMaterializedState extends GitvaultVerifiedState {
   refs: GitvaultRefMap;
   roots: GitvaultRetentionRoot[];
   head_target: GitvaultHeadTarget;
+  /** Every locally-known epoch key after this call, hex-encoded, keyed by epoch — `restoreObjectsInto` needs every epoch spanned by the covered generations, not just the newest. */
+  epoch_keys_hex: Record<string, string>;
 }
 
 /** One directory entry {@link GitvaultVault.reconcileEnvelopeRecipients} wrapped a fresh `key_envelope` for. */
@@ -1616,9 +1695,33 @@ export class GitvaultVault {
    * retry restarts from the ORIGINAL pin rather than resuming — the honest
    * consequence of asking for a no-write audit and then walking off the end
    * of one call's budget.
+   *
+   * The chain walk itself (`checkChainLink`, `assertNoTransition`, collecting
+   * `rotations[]`) is ALWAYS keyless — an admitted `rotate_epoch` transition
+   * never stops it (D193, rev 42), so `generation`/`head` here are the
+   * genuinely chain-verified newest, independent of whether this principal
+   * can decrypt anything past a rotation it cannot open.
+   *
+   * `options.decryptValidate` (default `false`, Part C — `repos fsck`'s
+   * decrypt-validation pass): additionally opens every `rotate_epoch`
+   * envelope needed and decrypts each walked generation's OWN
+   * `ref_state`/`retention_roots` as it goes — the "main object" restoration
+   * needs per generation — persisting newly-opened epoch keys via
+   * `keystore.recordEpochRotation` exactly like an ordinary rotation
+   * producer/consumer would, and counting each decrypt attempt as an EXTRA
+   * unit against the same `this.budget` (decryption is the expensive step).
+   * `options.strict` (default `true`) throws immediately, fail-closed, on the
+   * first `GITVAULT_EPOCH_NOT_OPENABLE` / AEAD failure it hits — the ordinary
+   * `materialize()` read path's behavior. `strict: false` (fsck's tolerant
+   * mode) instead records `decrypt.failure` and stops attempting further
+   * decrypts while the pure chain walk keeps going — this is exactly what
+   * makes `chain_verified_to` (this call's `generation`) and `decryptable_to`
+   * (`decrypt.decryptable_to_generation`) able to differ honestly.
    */
-  async verifyToNewest(options: { persist?: boolean } = {}): Promise<GitvaultVerifiedState> {
+  async verifyToNewest(options: { persist?: boolean; decryptValidate?: boolean; strict?: boolean } = {}): Promise<GitvaultVerifiedState> {
     const persist = options.persist ?? true;
+    const decryptValidate = options.decryptValidate ?? false;
+    const strict = options.strict ?? true;
     const { genesis, sha256: genesisSha } = await this.genesis();
     const writerKey = genesis.creator_signing_pubkey;
     const writerKeyId = genesis.writer_key_id;
@@ -1626,15 +1729,105 @@ export class GitvaultVault {
     let pin: GitvaultHeadPin = repo.verified_prefix ?? repo.head_pin ?? { generation: GITVAULT_GENESIS_GENERATION, head_sha256: genesisSha, pinned_at: formatGitvaultTimestamp(this.now()) };
     let lastHead: GitvaultHead | null = pin.generation === GITVAULT_GENESIS_GENERATION ? null : await this.readHead(pin.generation, pin.head_sha256);
     const anchor = pin.generation;
+    let prevEpoch = lastHead?.epoch ?? GITVAULT_GENESIS_EPOCH;
     let progress: GitvaultListingProgress = { after_generation: anchor, last_generation: anchor, delivered: 0 };
     let request: GitvaultHeadsListingRequest = { after_generation: anchor, limit: String(GITVAULT_MAX_HEADS_PER_LISTING_PAGE) };
     let verified = 0;
+    const rotations: GitvaultEncounteredRotation[] = [];
+
+    // ── decrypt-validation state (opt-in) ──
+    const identity = decryptValidate ? this.keystore.readIdentity() : null;
+    const ownKeypair = identity ? this.keystore.encryptionKeypair(identity) : null;
+    const epochKeys: Record<string, string> = { ...(repo.epoch_keys ?? { [repo.epoch]: repo.k_repo_hex }) };
+    let decryptPin: GitvaultHeadPin | null = repo.materialized_pin ?? null;
+    let decryptedRefState: GitvaultRefState | null = null;
+    let decryptedRoots: GitvaultRetentionRoots | null = null;
+    let decryptFailure: GitvaultEpochDecryptFailure | null = null;
+    let decryptFailureError: unknown = null;
+    const persistMaterializedIfAny = (): void => {
+      if (persist && decryptValidate && decryptPin) this.keystore.updateRepo(this.repoId, { materialized_pin: decryptPin });
+    };
+
+    /**
+     * Open (if needed) `headPin`'s own rotation envelope and decrypt its
+     * `ref_state`/`retention_roots`. Shared by the per-head inline call below
+     * AND the post-loop catch-up call: a call with NOTHING new to walk (this
+     * repo's chain-verified pin is already at the newest generation) never
+     * enters the loop body at all, so the newest head's own decrypt still
+     * needs to run once, using whatever `epoch_keys` the keystore already
+     * persisted from an EARLIER call's rotation-envelope open.
+     *
+     * NEVER throws — a decrypt failure is recorded on the enclosing
+     * `decryptFailure`/`decryptFailureError` and this returns `false`. This
+     * is deliberate: chain verification (this call's OWN `generation`/
+     * `head_pin`, "highest_authenticated") is independent of decrypt
+     * capability and must walk the FULL chain regardless — exactly the
+     * existing "authenticated-but-undecryptable ⇒ CHAIN_UNUSABLE, read-only
+     * at the materialized pin" split this file's own header already
+     * documents. `strict` is enforced ONCE, at the very end of
+     * `verifyToNewest`, after the complete chain walk has run.
+     */
+    const tryDecrypt = async (head: GitvaultHead, headPin: GitvaultHeadPin, pendingRotations: readonly GitvaultEncounteredRotation[]): Promise<boolean> => {
+      verified += 1; // decryption is the expensive step — counted separately against the same budget
+      // Tracks whichever rotation is currently being opened — the failure
+      // report below names THAT rotation's own generation/epoch/rotation_id,
+      // never `head`'s (which, in the backward catch-up call, can be a much
+      // LATER, ordinary-push generation entirely unrelated to which epoch
+      // actually failed to open).
+      let current: { generation: string; epoch: string; rotation_id: string | null } = { generation: head.generation, epoch: head.epoch, rotation_id: null };
+      try {
+        for (const rot of pendingRotations) {
+          if (epochKeys[rot.epoch]) continue;
+          current = { generation: rot.generation, epoch: rot.epoch, rotation_id: rot.payload.rotation_id };
+          if (!identity || !ownKeypair) {
+            fail(
+              "GITVAULT_EPOCH_NOT_OPENABLE",
+              `no local gitvault identity — cannot open epoch ${rot.epoch} (rotation ${rot.payload.rotation_id})`,
+              "opening an epoch-rotation key envelope",
+              { epoch: rot.epoch, rotation_id: rot.payload.rotation_id },
+            );
+          }
+          const ownFingerprint = ekFingerprint(ownKeypair.public_key);
+          const kE = await openEpochRotationForRecipient({
+            repo_id: this.repoId,
+            payload: rot.payload,
+            own_fingerprint: ownFingerprint,
+            own_encryption_keypair: ownKeypair,
+            writer_signing_public_key: writerKey,
+            get_envelope_bytes: (path) => this.transport.getObject({ repo_id: this.repoId, path }),
+            envelope_path: (epoch, fp, rotationId) => gitvaultPaths.envelope(epoch, fp, rotationId),
+          });
+          epochKeys[rot.epoch] = bytesToHex(kE);
+          if (persist) this.keystore.recordEpochRotation(this.repoId, { new_epoch: rot.epoch, new_k_repo_hex: bytesToHex(kE) });
+        }
+        current = { generation: head.generation, epoch: head.epoch, rotation_id: null };
+        const kRepoHex = epochKeys[head.epoch];
+        if (!kRepoHex) {
+          fail("GITVAULT_EPOCH_NOT_OPENABLE", `no locally known key for epoch ${head.epoch} at generation ${head.generation}`, "materializing gitvault head", { epoch: head.epoch, generation: head.generation });
+        }
+        const kRepo = hexToBytes(kRepoHex);
+        const refState = await this.openCarrier<GitvaultRefState>("ref_state", head.ref_state, gitvaultPaths.refState(head.ref_state.object_id), writerKey, { epoch: head.epoch, k_repo: kRepo });
+        const roots = await this.openCarrier<GitvaultRetentionRoots>("retention_roots", head.retention_roots, gitvaultPaths.retentionRoots(head.retention_roots.object_id), writerKey, { epoch: head.epoch, k_repo: kRepo });
+        if (refState.generation !== head.generation || roots.generation !== head.generation) fail("CHAIN_UNUSABLE", "carrier generation does not match the head", "materializing gitvault head");
+        decryptedRefState = refState;
+        decryptedRoots = roots;
+        decryptPin = { ...headPin };
+        return true;
+      } catch (e) {
+        const code = isRun402Error(e) && e.code ? e.code : "GITVAULT_EPOCH_NOT_OPENABLE";
+        decryptFailure = { generation: current.generation, epoch: current.epoch, rotation_id: current.rotation_id, code, message: e instanceof Error ? e.message : String(e) };
+        decryptFailureError = e;
+        return false;
+      }
+    };
+
     for (;;) {
       const page = await this.transport.listHeads({ repo_id: this.repoId, ...request });
       progress = verifyHeadsListingPage(page, request, progress, this.repoId);
       for (const entry of page.heads) {
         if (verified >= this.budget) {
           if (persist) this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
+          persistMaterializedIfAny();
           fail(
             "VERIFICATION_BUDGET_EXCEEDED",
             persist
@@ -1648,26 +1841,111 @@ export class GitvaultVault {
         const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(entry.generation) });
         if (!bytes) fail("CHAIN_BROKEN", `listed head ${entry.generation} is absent from storage`, "verifying gitvault chain", { generation: entry.generation });
         const head = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
-        checkChainLink({ head, stored_bytes: bytes, listed_sha256: entry.stored_bytes_sha256, expected_generation: nextGeneration(pin.generation), prev_sha256: pin.head_sha256, repo_id: this.repoId, writer_public_key: writerKey, writer_key_id: writerKeyId });
+        checkChainLink({ head, stored_bytes: bytes, listed_sha256: entry.stored_bytes_sha256, expected_generation: nextGeneration(pin.generation), prev_sha256: pin.head_sha256, repo_id: this.repoId, writer_public_key: writerKey, writer_key_id: writerKeyId, prev_epoch: prevEpoch });
         try {
           assertNoTransition(head);
         } catch (e) {
           // fail closed: pin stays BELOW the transition head; the verified prefix is cleared (this is the final state, not a budget pause)
           if (persist) this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
+          persistMaterializedIfAny();
           throw e;
         }
+        const isRotation = head.transition !== null && head.transition.kind === "rotate_epoch";
+        let rotationPayload: GitvaultRotateEpochPayload | null = null;
+        if (isRotation) {
+          // Pure/keyless (Part A's structural half — D202's join predicate
+          // needs only this): parses + self-checks the payload, but never
+          // opens an envelope. Collected regardless of decryptValidate so a
+          // later `materialize()` call over an already-chain-verified prefix
+          // can still resolve the epoch keys it needs.
+          rotationPayload = parseRotateEpochPayload(head);
+          rotations.push({ generation: head.generation, epoch: head.epoch, payload: rotationPayload });
+        }
+        prevEpoch = head.epoch;
         pin = { generation: head.generation, head_sha256: entry.stored_bytes_sha256, pinned_at: formatGitvaultTimestamp(this.now()) };
         lastHead = head;
         verified += 1;
+
+        // The chain walk ALWAYS continues below regardless of decrypt
+        // outcome (`tryDecrypt` never throws) — `!decryptFailure` just stops
+        // WASTING further decrypt attempts once one has failed, since every
+        // later generation shares the same unopenable epoch until (if ever)
+        // a LATER rotation this principal CAN open supersedes it.
+        if (decryptValidate && !decryptFailure) await tryDecrypt(head, pin, rotationPayload ? [{ generation: head.generation, epoch: head.epoch, payload: rotationPayload }] : []);
       }
       // verified prefix persists per page (resumable) — skipped entirely in no-write mode
       if (persist) this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
+      persistMaterializedIfAny();
       const next = nextListingRequest(request, page);
       if (!next) break;
       request = next;
     }
+    // Catch-up: a call with NOTHING new to walk (this repo's chain-verified
+    // pin was already at `pin`/`lastHead` — e.g. an EARLIER, decrypt-blind
+    // `verifyToNewest({})` call already advanced `head_pin` to the newest,
+    // and THIS is the first decrypt-validating call) never entered the loop
+    // body above at all, so any `rotate_epoch` transitions between the
+    // newest and the highest epoch this call's `epochKeys` seed already
+    // covers were NEVER collected — walk BACKWARD via `prev_sha256` (the
+    // same re-read `chainFrom` uses) to find every one of them, stopping the
+    // INSTANT a generation's own epoch is already a known key (nothing
+    // earlier can matter: every generation before it decrypts under a key
+    // already held). Never a silent gap — this is exactly the mechanism
+    // that makes a vault readable end to end even when chain verification
+    // and decrypt-validation happened in genuinely SEPARATE calls.
+    if (decryptValidate && !decryptFailure && lastHead && !decryptedRefState) {
+      const backwardRotations: GitvaultEncounteredRotation[] = [];
+      let cur: GitvaultHead | null = lastHead;
+      let curPin: GitvaultHeadPin = pin;
+      while (cur && !epochKeys[cur.epoch]) {
+        if (cur.transition !== null && cur.transition.kind === "rotate_epoch") {
+          const payload = parseRotateEpochPayload(cur);
+          backwardRotations.unshift({ generation: cur.generation, epoch: cur.epoch, payload });
+          if (!rotations.some((r) => r.generation === cur!.generation)) rotations.push({ generation: cur.generation, epoch: cur.epoch, payload });
+        }
+        if (cur.generation === "0000000000000001") { cur = null; break; }
+        const prevGen = bigIntToGeneration(generationToBigInt(cur.generation) - 1n);
+        const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(prevGen) });
+        if (!bytes || sha256Hex(bytes) !== cur.prev_sha256) fail("CHAIN_BROKEN", `head ${prevGen} does not match the chain during epoch-key catch-up`, "materializing gitvault head", { generation: prevGen });
+        cur = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
+        curPin = { generation: prevGen, head_sha256: bytes ? sha256Hex(bytes) : curPin.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) };
+      }
+      rotations.sort((a, b) => (a.generation < b.generation ? -1 : a.generation > b.generation ? 1 : 0));
+      // `cur` (non-null, non-lastHead) is the BOUNDARY generation whose own
+      // epoch this call already holds a key for — establish `decryptPin`
+      // THERE first (this always succeeds: its epoch is, by the loop's own
+      // stop condition, already in `epochKeys`), so `refs`/`head_target`
+      // reflect a REAL decrypted generation even when every pending rotation
+      // toward `lastHead` then fails. Without this, a keystore that has
+      // never once materialized (no `materialized_pin` yet) reports
+      // `decryptable_to_generation: genesis` on an epoch-open failure, even
+      // though generations well before the failing rotation were genuinely
+      // decryptable all along.
+      if (cur && cur.generation !== lastHead.generation) await tryDecrypt(cur, curPin, []);
+      if (!decryptFailure) await tryDecrypt(lastHead, pin, backwardRotations);
+    }
     if (persist) this.keystore.updateRepo(this.repoId, { head_pin: pin, verified_prefix: null });
-    return { generation: pin.generation, head_sha256: pin.head_sha256, head: lastHead, genesis };
+    persistMaterializedIfAny();
+    // `strict` (materialize()'s ordinary, fail-closed read path) is enforced
+    // HERE, once, after the full keyless chain walk has already run to
+    // completion — never mid-walk (see `tryDecrypt`'s own doc comment).
+    if (strict && decryptValidate && decryptFailure) throw decryptFailureError;
+    return {
+      generation: pin.generation,
+      head_sha256: pin.head_sha256,
+      head: lastHead,
+      genesis,
+      rotations,
+      decrypt: decryptValidate
+        ? {
+            decryptable_to_generation: decryptPin?.generation ?? GITVAULT_GENESIS_GENERATION,
+            ref_state: decryptedRefState,
+            retention_roots: decryptedRoots,
+            epoch_keys_hex: epochKeys,
+            failure: decryptFailure,
+          }
+        : null,
+    };
   }
 
   private async readHead(generation: string, expectedSha256: string): Promise<GitvaultHead> {
@@ -1683,13 +1961,29 @@ export class GitvaultVault {
     return parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
   }
 
-  /** Decrypt one encrypted carrier object by its receipt; any failure is `CHAIN_UNUSABLE`. */
-  private async openCarrier<T extends { object_kind: string; signature: string }>(kind: "ref_state" | "retention_roots" | "checkpoint_manifest", receipt: { object_id: string; ciphertext_sha256: string }, path: string, writerKey: string): Promise<T> {
+  /**
+   * Decrypt one encrypted carrier object by its receipt; any failure is
+   * `CHAIN_UNUSABLE`. `keyOverride` supplies the exact `(epoch, k_repo)` this
+   * carrier was sealed under — REQUIRED for any generation that is not
+   * necessarily under `this.epoch()`/`this.kRepo()` (this principal's
+   * CURRENT pointer), which is exactly the case across an epoch rotation;
+   * omitted call sites (checkpoint/prune paths untouched by this fold) keep
+   * the prior CURRENT-pointer behavior unchanged.
+   */
+  private async openCarrier<T extends { object_kind: string; signature: string }>(
+    kind: "ref_state" | "retention_roots" | "checkpoint_manifest",
+    receipt: { object_id: string; ciphertext_sha256: string },
+    path: string,
+    writerKey: string,
+    keyOverride?: { epoch: string; k_repo: Uint8Array },
+  ): Promise<T> {
+    const epoch = keyOverride?.epoch ?? this.epoch();
+    const kRepo = keyOverride?.k_repo ?? this.kRepo();
     const frame = await this.transport.getObject({ repo_id: this.repoId, path });
     if (!frame) fail("CHAIN_UNUSABLE", `${kind} ${receipt.object_id} is absent from storage`, "materializing gitvault head", { object_id: receipt.object_id }, [{ action: "stay read-only at the materialized pin; run the repair path" }]);
     let plaintext: Uint8Array;
     try {
-      plaintext = openFrame({ k_obj: deriveObjectKey(this.kRepo(), this.repoId, this.epoch(), kind, receipt.object_id), repo_id: this.repoId, object_kind: kind, object_id: receipt.object_id, epoch: this.epoch(), frame, expected_ciphertext_sha256: receipt.ciphertext_sha256 });
+      plaintext = openFrame({ k_obj: deriveObjectKey(kRepo, this.repoId, epoch, kind, receipt.object_id), repo_id: this.repoId, object_kind: kind, object_id: receipt.object_id, epoch, frame, expected_ciphertext_sha256: receipt.ciphertext_sha256 });
     } catch (e) {
       fail("CHAIN_UNUSABLE", `${kind} ${receipt.object_id} cannot be opened: ${(e as Error).message}`, "materializing gitvault head", { object_id: receipt.object_id }, [{ action: "stay read-only at the materialized pin; run the repair path" }]);
     }
@@ -1706,20 +2000,30 @@ export class GitvaultVault {
    * {@link verifyToNewest} and gates this method's OWN `materialized_pin`
    * write the same way — `repos fsck --no-write` computes and returns the
    * real ref map and generation without moving either local pin.
+   *
+   * Runs `verifyToNewest({..., decryptValidate: true, strict: true})`
+   * internally (Part A: an ordinary read across an admitted `rotate_epoch`
+   * transition now opens the rotation's own envelope and decrypts under the
+   * NEW epoch, chaining through multiple sequential rotations; a keystore
+   * with no envelope for a new epoch fails CLOSED with
+   * `GITVAULT_EPOCH_NOT_OPENABLE`, never a bare `GITVAULT_AEAD_AUTH_FAILURE`)
+   * — `strict: true` means this call throws exactly where the OLD
+   * (pre-fix) `materialize()` silently produced a wrong `k_obj` instead.
    */
   async materialize(options: { persist?: boolean } = {}): Promise<GitvaultMaterializedState> {
     const persist = options.persist ?? true;
-    const state = await this.verifyToNewest({ persist });
-    const writerKey = state.genesis.creator_signing_pubkey;
+    const state = await this.verifyToNewest({ persist, decryptValidate: true, strict: true });
     if (!state.head) {
       if (persist) this.keystore.updateRepo(this.repoId, { materialized_pin: { generation: state.generation, head_sha256: state.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) } });
-      return { ...state, ref_state: null, retention_roots: null, refs: {}, roots: [], head_target: { kind: "symref", ref: "refs/heads/main" } };
+      return { ...state, ref_state: null, retention_roots: null, refs: {}, roots: [], head_target: { kind: "symref", ref: "refs/heads/main" }, epoch_keys_hex: state.decrypt?.epoch_keys_hex ?? {} };
     }
-    const refState = await this.openCarrier<GitvaultRefState>("ref_state", state.head.ref_state, gitvaultPaths.refState(state.head.ref_state.object_id), writerKey);
-    const roots = await this.openCarrier<GitvaultRetentionRoots>("retention_roots", state.head.retention_roots, gitvaultPaths.retentionRoots(state.head.retention_roots.object_id), writerKey);
+    // `strict: true` guarantees `state.decrypt` is non-null with no failure
+    // and `decryptable_to_generation === state.generation` — it throws
+    // otherwise, so these are never null/mismatched here.
+    const refState = state.decrypt!.ref_state!;
+    const roots = state.decrypt!.retention_roots!;
     if (refState.generation !== state.generation || roots.generation !== state.generation) fail("CHAIN_UNUSABLE", "carrier generation does not match the head", "materializing gitvault head");
-    if (persist) this.keystore.updateRepo(this.repoId, { materialized_pin: { generation: state.generation, head_sha256: state.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) } });
-    return { ...state, ref_state: refState, retention_roots: roots, refs: { ...refState.refs }, roots: roots.roots.map((r) => ({ ...r })), head_target: refState.head_target };
+    return { ...state, ref_state: refState, retention_roots: roots, refs: { ...refState.refs }, roots: roots.roots.map((r) => ({ ...r })), head_target: refState.head_target, epoch_keys_hex: state.decrypt!.epoch_keys_hex };
   }
 
   // ── envelope recipients (gitvault-human-envelopes task 4.1, the ADD-path workaround) ──
@@ -3058,18 +3362,31 @@ export class GitvaultVault {
       if (!bytes || sha256Hex(bytes) !== cur.prev_sha256) fail("CHAIN_BROKEN", `head ${prevGen} does not match the chain during restore`, "restoring gitvault objects");
       cur = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
     }
+    // Every object below is decrypted under ITS OWN carrying head's `epoch`
+    // (D194) — a covered span crossing a rotation mixes epochs, so this
+    // NEVER falls back to `this.kRepo()`/`this.epoch()` (this principal's
+    // CURRENT pointer, which is the NEWEST epoch, not necessarily every
+    // historical one a restore spans). `newest.epoch_keys_hex` is the full
+    // map `materialize()` just resolved (throwing `GITVAULT_EPOCH_NOT_OPENABLE`
+    // fail-closed if any needed epoch could not be opened), so every lookup
+    // below is guaranteed present.
+    const kRepoForEpoch = (epoch: string): Uint8Array => {
+      const hex = newest.epoch_keys_hex[epoch];
+      if (!hex) fail("GITVAULT_EPOCH_NOT_OPENABLE", `no locally known key for epoch ${epoch} while restoring objects`, "restoring gitvault objects", { epoch });
+      return hexToBytes(hex);
+    };
     const first = heads[0]!;
     if (first.checkpoint) {
       const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(first.checkpoint.claim_set.object_id) });
       if (!claimBytes || sha256Hex(claimBytes) !== first.checkpoint.claim_set.stored_bytes_sha256) fail("CHECKPOINT_INCOMPLETE", "claim set absent or altered", "restoring gitvault objects");
       const claimSet = parseGitvaultStrict(new TextDecoder().decode(claimBytes)) as GitvaultCheckpointClaimSet;
       if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) fail("CHECKPOINT_INCOMPLETE", "claim set signature fails", "restoring gitvault objects");
-      const manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), writerKey);
+      const manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), writerKey, { epoch: first.epoch, k_repo: kRepoForEpoch(first.epoch) });
       checkClaimSetEquality(claimSet, manifest, first.checkpoint.covers_through_generation);
       for (const p of manifest.packs) {
         const frame = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.checkpointPack(p.object_id) });
         if (!frame) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} absent`, "restoring gitvault objects");
-        const plain = openFrame({ k_obj: deriveObjectKey(this.kRepo(), this.repoId, this.epoch(), "checkpoint_pack", p.object_id), repo_id: this.repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: this.epoch(), frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
+        const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(first.epoch), this.repoId, first.epoch, "checkpoint_pack", p.object_id), repo_id: this.repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: first.epoch, frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
         if (sha256Hex(plain) !== p.plaintext_sha256 || String(plain.length) !== p.plaintext_size_bytes) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} plaintext mismatch`, "restoring gitvault objects");
         await hardenedGit(targetRepoDir, ["index-pack", "--stdin", "--strict"], { input: plain });
       }
@@ -3078,7 +3395,7 @@ export class GitvaultVault {
       for (const w of h.wal_entries) {
         const frame = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.wal(w.object_id) });
         if (!frame) fail("CHAIN_UNUSABLE", `WAL pack ${w.object_id} absent`, "restoring gitvault objects");
-        const plain = openFrame({ k_obj: deriveObjectKey(this.kRepo(), this.repoId, this.epoch(), "wal_pack", w.object_id), repo_id: this.repoId, object_kind: "wal_pack", object_id: w.object_id, epoch: this.epoch(), frame, expected_ciphertext_sha256: w.ciphertext_sha256 });
+        const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(h.epoch), this.repoId, h.epoch, "wal_pack", w.object_id), repo_id: this.repoId, object_kind: "wal_pack", object_id: w.object_id, epoch: h.epoch, frame, expected_ciphertext_sha256: w.ciphertext_sha256 });
         await hardenedGit(targetRepoDir, ["index-pack", "--stdin", "--strict"], { input: plain });
       }
     }

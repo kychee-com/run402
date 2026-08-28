@@ -394,12 +394,33 @@ export interface GitvaultFsckResult {
   /** `false` under `--no-write` (`write: false`) — nothing local was persisted, regardless of what was computed. */
   write: boolean;
   verified_from_generation: string | null;
+  /**
+   * Alias for `chain_verified_to_generation` below (kept for back-compat —
+   * every existing caller reads this field). Chain/signature verification
+   * ALWAYS reaches this generation, independent of decrypt capability
+   * (D193, rev 42: an admitted `rotate_epoch` transition is keylessly
+   * structural, never a stopping point for chain verification).
+   */
   verified_to_generation: string;
+  /** Same value as `verified_to_generation` — the honest name for what this field actually measures (Request 1's split). */
+  chain_verified_to_generation: string;
+  /**
+   * The newest generation this call could actually DECRYPT — restoration's
+   * real ceiling. Equals `chain_verified_to_generation` on a healthy vault;
+   * falls short of it when an admitted `rotate_epoch` transition's own
+   * envelope could not be opened by this keystore (`epoch_decrypt_failure`
+   * names exactly which epoch/rotation and why — never a bare, undifferentiated
+   * `GITVAULT_AEAD_AUTH_FAILURE`). `refs`/`head_target`/`pin_after.highest_materialized`
+   * below all reflect THIS generation, not the chain-verified one, when they differ.
+   */
+  decryptable_to_generation: string;
+  /** Non-null iff `decryptable_to_generation` fell short of `chain_verified_to_generation` — the named epoch boundary (Request 1). */
+  epoch_decrypt_failure: import("../node/gitvault-publication.js").GitvaultEpochDecryptFailure | null;
   /** `true` only when `write` was true AND a pin actually moved. */
   local_state_changed: boolean;
   pin_before: { highest_authenticated: string | null; highest_materialized: string | null };
   pin_after: { highest_authenticated: string | null; highest_materialized: string | null };
-  /** The real, computed ref map — present even under `--no-write` (computing is not the same as persisting). */
+  /** The real, computed ref map, AS OF `decryptable_to_generation` — present even under `--no-write` (computing is not the same as persisting). */
   refs: GitvaultRefMap;
   head_target: GitvaultHeadTarget | null;
   /** Present only when `--mirror` was requested. Proves validity, never freshness — see its own honesty statements. */
@@ -1909,13 +1930,28 @@ export class Gitvault {
    * calls it.
    *
    * `options.write` (default `true`) is the inverse of the CLI's
-   * `--no-write`: `false` still walks and decrypts everything (the returned
-   * `refs`/`verified_to_generation` are real, computed answers, not
-   * estimates) but persists neither pin — a genuine audit mode, not a
-   * simulation. `options.mirror` additionally runs the keyless mirror
-   * verification ({@link mirrorVerify}) and folds its report in; that half
-   * proves the mirror's validity, never its freshness (its own honesty
-   * statements ride the result unchanged).
+   * `--no-write`: `false` still walks, verifies, and decrypt-validates
+   * everything (the returned `refs`/`chain_verified_to_generation`/
+   * `decryptable_to_generation` are real, computed answers, not estimates)
+   * but persists neither pin — a genuine audit mode, not a simulation.
+   * `options.mirror` additionally runs the keyless mirror verification
+   * ({@link mirrorVerify}) and folds its report in; that half proves the
+   * mirror's validity, never its freshness (its own honesty statements ride
+   * the result unchanged).
+   *
+   * **Request 1 (decrypt-validation, D193-D203 rev 42).** `fsck` walks the
+   * chain in TOLERANT decrypt-validation mode
+   * (`verifyToNewest({decryptValidate: true, strict: false})`) rather than
+   * the ordinary fail-closed `materialize()` — chain/signature verification
+   * ALWAYS reaches the true newest generation regardless of decrypt
+   * capability (an admitted `rotate_epoch` is keylessly structural), and a
+   * generation this call cannot actually DECRYPT is never again reported as
+   * bare "verified": `chain_verified_to_generation` and
+   * `decryptable_to_generation` are reported separately and can genuinely
+   * differ — the incident-shape truth ("chain verified to 10, decryptable
+   * to 7, `GITVAULT_EPOCH_NOT_OPENABLE` at epoch 2/rotation …") is exactly
+   * what this split makes representable. `refs`/`head_target`/
+   * `pin_after.highest_materialized` all reflect `decryptable_to_generation`.
    */
   async fsck(options: GitvaultVaultHandleOptions & { write?: boolean; mirror?: boolean } = {}): Promise<GitvaultFsckResult> {
     const before = await this.status(options);
@@ -1931,12 +1967,18 @@ export class Gitvault {
     }
     const write = options.write ?? true;
     const handle = await this.open({ ...options, repo_id: repoId });
-    const state = await handle.vault.materialize({ persist: write });
+    const state = await handle.vault.verifyToNewest({ persist: write, decryptValidate: true, strict: false });
     const mirror = options.mirror ? await this.mirrorVerify({ ...options, repo_id: repoId }) : null;
+
+    const decrypt = state.decrypt!; // decryptValidate: true always populates this
+    const decryptableToGeneration = decrypt.decryptable_to_generation;
+    const refs = decrypt.ref_state ? { ...decrypt.ref_state.refs } : {};
+    const roots = decrypt.retention_roots ? decrypt.retention_roots.roots.map((r) => ({ ...r })) : [];
+    const headTarget = decrypt.ref_state?.head_target ?? null;
 
     const pinBefore = { highest_authenticated: before.pins.highest_authenticated, highest_materialized: before.pins.highest_materialized };
     const pinAfter = write
-      ? { highest_authenticated: state.generation, highest_materialized: state.generation }
+      ? { highest_authenticated: state.generation, highest_materialized: decryptableToGeneration }
       : pinBefore;
     const localStateChanged = write && (pinBefore.highest_authenticated !== pinAfter.highest_authenticated || pinBefore.highest_materialized !== pinAfter.highest_materialized);
 
@@ -1946,11 +1988,13 @@ export class Gitvault {
     // `write: false` stays a genuine audit mode — nothing local is persisted,
     // refs included — and no `repo_dir` (or one that is not itself a git
     // repository — fsck addresses a vault by repo_id/project_id alone as
-    // often as by a checkout) is an ordinary, silent no-op.
+    // often as by a checkout) is an ordinary, silent no-op. Reconciled AS OF
+    // `decryptableToGeneration` — the retained-refs bookkeeping is only ever
+    // meaningful for state this call actually decrypted.
     let retainedRefs: import("../node/gitvault-publication.js").GitvaultRetainedRefsReconcileResult | null = null;
     if (write && options.repo_dir) {
       const { reconcileRetainedTipRefs } = await this.#publication();
-      retainedRefs = await reconcileRetainedTipRefs(options.repo_dir, { refs: state.refs, roots: state.roots, head_target: state.head_target });
+      retainedRefs = await reconcileRetainedTipRefs(options.repo_dir, { refs, roots, head_target: headTarget ?? { kind: "symref", ref: "refs/heads/main" } });
     }
 
     return {
@@ -1958,11 +2002,14 @@ export class Gitvault {
       write,
       verified_from_generation: pinBefore.highest_authenticated,
       verified_to_generation: state.generation,
+      chain_verified_to_generation: state.generation,
+      decryptable_to_generation: decryptableToGeneration,
+      epoch_decrypt_failure: decrypt.failure,
       local_state_changed: localStateChanged,
       pin_before: pinBefore,
       pin_after: pinAfter,
-      refs: { ...state.refs },
-      head_target: state.head_target,
+      refs,
+      head_target: headTarget,
       mirror,
       retained_refs: retainedRefs,
     };

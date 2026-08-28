@@ -394,17 +394,30 @@ vectors("§6.4 pins + transitions — vector classes `chain` (005) and `transiti
     checkGenerationRegression(v.inputs.pinned_generation, v.inputs.pinned_generation); // equal is not a regression
   });
 
-  it("an ADMITTED non-null transition fails a V0 client CLOSED with UPGRADE_REQUIRED; an unknown kind is a closed-enum reject", () => {
+  it("an ADMITTED non-null transition fails a V0 client CLOSED with UPGRADE_REQUIRED; an unknown kind is a closed-enum reject — EXCEPT rotate_epoch, ACTIVATED at rev 42 (D193) after this frozen vector set was authored", () => {
     for (const v of byClass("transition-fail-closed")) {
       mark(v);
       if (v.id === "transition-007") {
-        // the vector is the rule itself, stated over a kind rather than an object
-        throwsCode(() => assertNoTransition({ generation: "0000000000000002", transition: { kind: v.inputs.admitted_head_transition_kind, payload_format: "base64url-jcs", payload: "e30", payload_sha256: "0".repeat(64) } } as unknown as GitvaultHead), "UPGRADE_REQUIRED", v.description);
+        // the vector is the rule itself, stated over a kind rather than an
+        // object. This frozen vector set predates D193's rev-42 activation
+        // of `rotate_epoch` — its OWN kind is the one exception this test
+        // carves out (protocol-v0.md §4.3/D193): every other kind's
+        // fail-closed assertion is unchanged and still exercised verbatim.
+        const rotationHead = { generation: "0000000000000002", transition: { kind: v.inputs.admitted_head_transition_kind, payload_format: "base64url-jcs", payload: "e30", payload_sha256: "0".repeat(64) } } as unknown as GitvaultHead;
+        if (v.inputs.admitted_head_transition_kind === "rotate_epoch") {
+          assertNoTransition(rotationHead); // no throw — D193 activation
+        } else {
+          throwsCode(() => assertNoTransition(rotationHead), "UPGRADE_REQUIRED", v.description);
+        }
         continue;
       }
       const head = v.inputs.object as GitvaultHead;
       if (head.transition === null) {
         assertNoTransition(head); // transition:null is the only V0-admissible value
+        continue;
+      }
+      if (head.transition.kind === "rotate_epoch") {
+        assertNoTransition(head); // D193, rev 42: no longer fail-closed — this vector predates activation
         continue;
       }
       const expected = v.reject_reason === "schema" ? "CHAIN_BROKEN" : "UPGRADE_REQUIRED";

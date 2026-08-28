@@ -97,6 +97,10 @@ const VERIFIED = {
     writer_key_id: "vk_abc",
     created_at: "2026-08-01T00:00:00Z",
   },
+  // D193-D203, rev 42: every admitted rotate_epoch transition
+  // verifyToNewest walked this call, oldest first — empty on this
+  // healthy, single-epoch fixture.
+  rotations: [] as unknown[],
 };
 
 let calls: Array<{ method: string; args: unknown[] }> = [];

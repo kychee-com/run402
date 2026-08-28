@@ -50,6 +50,7 @@ import type {
   GitvaultKeyEnvelopeReceipt,
   GitvaultObjectKind,
   GitvaultRecoveryReceipt,
+  GitvaultRotateEpochPayload,
   GitvaultSealedFrame,
   GitvaultSealedKeyEnvelope,
   GitvaultSignedObject,
@@ -782,6 +783,103 @@ export async function openKeyEnvelope(input: GitvaultOpenKeyEnvelopeInput): Prom
   });
   if (kRepo.length !== 32) fail("GITVAULT_HPKE_OPEN_FAILED", "opened plaintext is not a 32-byte K_repo", "opening r402s/v0 key envelope");
   return kRepo;
+}
+
+// ─── Epoch rotation — reader side (D193-D203, rev 42) ───────────────────────
+
+/**
+ * Decode + validate one head's `transition.payload` as a `rotate_epoch_payload`
+ * (D193-D203, rev 42): base64url-jcs decode, `payload_sha256` self-check,
+ * strict JSON parse, and the payload's OWN `new_epoch` agreeing with the
+ * carrying head's `epoch` field (a second, independent check over the SIGNED
+ * payload bytes — separate from {@link checkChainLink}'s epoch-continuity
+ * check on the head's wire `epoch` field itself, protocol-v0.md S4.3). Pure
+ * and keyless: this never opens an envelope, so every reader can call it
+ * (including the fully keyless chain walk) before any key material is needed.
+ */
+export function parseRotateEpochPayload(head: { generation: string; epoch: string; transition: { kind: string; payload_format: string; payload: string; payload_sha256: string } | null }): GitvaultRotateEpochPayload {
+  const t = head.transition;
+  if (!t || t.kind !== "rotate_epoch") fail("GITVAULT_NOT_A_ROTATION", `head ${head.generation} does not carry a rotate_epoch transition`, "parsing rotate_epoch_payload");
+  if (t.payload_format !== "base64url-jcs") fail("CHAIN_BROKEN", `head ${head.generation}: unsupported transition payload_format "${t.payload_format}"`, "parsing rotate_epoch_payload");
+  let raw: Uint8Array;
+  try {
+    raw = fromBase64url(t.payload, "transition.payload");
+  } catch {
+    fail("CHAIN_BROKEN", `head ${head.generation}: transition.payload is not canonical base64url`, "parsing rotate_epoch_payload");
+  }
+  if (sha256Hex(raw) !== t.payload_sha256) fail("CHAIN_BROKEN", `head ${head.generation}: transition.payload_sha256 does not match the payload bytes`, "parsing rotate_epoch_payload");
+  let payload: GitvaultRotateEpochPayload;
+  try {
+    payload = parseGitvaultStrict(new TextDecoder().decode(raw)) as GitvaultRotateEpochPayload;
+  } catch {
+    fail("CHAIN_BROKEN", `head ${head.generation}: transition.payload is not strict-parseable r402s/v0 JSON`, "parsing rotate_epoch_payload");
+  }
+  if (payload.new_epoch !== head.epoch) {
+    fail("CHAIN_BROKEN", `head ${head.generation}: rotate_epoch_payload.new_epoch (${payload.new_epoch}) does not equal the carrying head's own epoch (${head.epoch})`, "parsing rotate_epoch_payload");
+  }
+  if (!GITVAULT_SHA256_RE.test(payload.rotation_id)) fail("CHAIN_BROKEN", `head ${head.generation}: rotate_epoch_payload.rotation_id is not a 64-hex digest`, "parsing rotate_epoch_payload");
+  if (!Array.isArray(payload.envelopes)) fail("CHAIN_BROKEN", `head ${head.generation}: rotate_epoch_payload.envelopes is not an array`, "parsing rotate_epoch_payload");
+  return payload;
+}
+
+/**
+ * Open ONE `rotate_epoch` transition's own `key_envelope` for
+ * `own_fingerprint` and return the derived `K_e`, after verifying it
+ * reproduces the payload's `epoch_key_commitment` (D200's per-recipient
+ * self-check — never a global set-coherence proof, §14ao/§2). Fails CLOSED
+ * with `GITVAULT_EPOCH_NOT_OPENABLE` — never a bare `GITVAULT_AEAD_AUTH_FAILURE`
+ * — either when this recipient is not among the rotation's `envelopes[]` at
+ * all, or when the addressed envelope's stored bytes are absent or altered.
+ *
+ * Transport-agnostic by design (`get_envelope_bytes` + `envelope_path`
+ * callbacks): this is the ONE place a reader opens a rotation envelope, and
+ * both the live publication read path (`GitvaultVault.verifyToNewest`, over
+ * the gateway transport) and the offline mirror recovery path
+ * (`recoverGitvaultMirror`, over a `GitvaultMirrorBackend`) call it —
+ * differing only in HOW they fetch bytes, never in the open/verify logic.
+ */
+export async function openEpochRotationForRecipient(input: {
+  repo_id: string;
+  payload: GitvaultRotateEpochPayload;
+  own_fingerprint: string;
+  own_encryption_keypair: GitvaultEncryptionKeypair;
+  writer_signing_public_key: Uint8Array | string;
+  get_envelope_bytes: (path: string) => Promise<Uint8Array | null | undefined>;
+  envelope_path: (epoch: string, recipient_fingerprint: string, rotation_id: string) => string;
+}): Promise<Uint8Array> {
+  const { repo_id, payload, own_fingerprint, own_encryption_keypair, writer_signing_public_key, get_envelope_bytes, envelope_path } = input;
+  const pair = payload.envelopes.find((p) => p.envelope.recipient_fingerprint === own_fingerprint);
+  if (!pair) {
+    fail(
+      "GITVAULT_EPOCH_NOT_OPENABLE",
+      `this keystore (fingerprint ${own_fingerprint}) is not among epoch ${payload.new_epoch}'s included recipients (rotation ${payload.rotation_id}) — the vault rotated past an epoch this identity was never given a key for`,
+      "opening an epoch-rotation key envelope",
+      { epoch: payload.new_epoch, rotation_id: payload.rotation_id, recipient_fingerprint: own_fingerprint, reason: "not_included" },
+    );
+  }
+  const path = envelope_path(payload.new_epoch, own_fingerprint, payload.rotation_id);
+  const bytes = await get_envelope_bytes(path);
+  if (!bytes || sha256Hex(bytes) !== pair.envelope.stored_bytes_sha256) {
+    fail(
+      "GITVAULT_EPOCH_NOT_OPENABLE",
+      `the rotation-attempt key_envelope for epoch ${payload.new_epoch} (rotation ${payload.rotation_id}) is absent or altered — this keystore (fingerprint ${own_fingerprint}) cannot open this epoch`,
+      "opening an epoch-rotation key envelope",
+      { epoch: payload.new_epoch, rotation_id: payload.rotation_id, recipient_fingerprint: own_fingerprint, reason: "envelope_absent_or_altered" },
+    );
+  }
+  const envelope = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultKeyEnvelope;
+  const kE = await openKeyEnvelope({ envelope, recipient: own_encryption_keypair, signer_public_key: writer_signing_public_key });
+  const includedFingerprints = payload.envelopes.map((p) => p.envelope.recipient_fingerprint);
+  const recomputed = epochRotationKeyCommitment(kE, repo_id, payload.new_epoch, payload.rotation_id, includedFingerprints);
+  if (recomputed !== payload.epoch_key_commitment) {
+    fail(
+      "EPOCH_KEY_COMMITMENT_MISMATCH",
+      `this keystore's own opened epoch key for epoch ${payload.new_epoch} (rotation ${payload.rotation_id}) does not reproduce the signed epoch_key_commitment — client-local diagnostic (protocol-v0.md S2/D200), never sent as an admission refusal`,
+      "opening an epoch-rotation key envelope",
+      { epoch: payload.new_epoch, rotation_id: payload.rotation_id, recipient_fingerprint: own_fingerprint },
+    );
+  }
+  return kE;
 }
 
 // ─── Genesis + recovery receipt ──────────────────────────────────────────────

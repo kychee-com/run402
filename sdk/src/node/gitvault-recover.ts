@@ -19,23 +19,27 @@
  */
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { LocalError } from "../errors.js";
+import { LocalError, isRun402Error } from "../errors.js";
 import {
   GITVAULT_GENESIS_EPOCH,
   GITVAULT_GENESIS_GENERATION,
   GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
   GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
+  bytesToHex,
   checkGenesisKeyBindings,
   checkRecoveryReceipt,
   deriveDigestKey,
   deriveObjectKey,
+  ekFingerprint,
   generateEncryptionKeypair,
   hexToBytes,
   keyedCommitment,
   objectsetContent,
+  openEpochRotationForRecipient,
   openFrame,
   openKeyEnvelope,
   parseGitvaultStrict,
+  parseRotateEpochPayload,
   verifyGitvaultObject,
 } from "../namespaces/gitvault.crypto.js";
 import type {
@@ -50,8 +54,8 @@ import type {
   GitvaultVaultGenesis,
 } from "../namespaces/gitvault.types.js";
 import { assertNoTransition, checkChainLink, checkClaimSetEquality, gitvaultPaths, nextGeneration, reconcileRetainedTipRefs } from "./gitvault-publication.js";
-import type { GitvaultRetainedRefsReconcileResult } from "./gitvault-publication.js";
-import { GitvaultKeystore } from "./gitvault-keystore.js";
+import type { GitvaultEncounteredRotation, GitvaultEpochDecryptFailure, GitvaultRetainedRefsReconcileResult } from "./gitvault-publication.js";
+import { GitvaultKeystore, type GitvaultIdentityFile } from "./gitvault-keystore.js";
 import { hardenedGit, hasObject } from "./gitvault-snapshot.js";
 import type { GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
 
@@ -89,6 +93,13 @@ export interface GitvaultDiscoveryResult {
   newest_head_sha256: string;
   /** Non-null when the walk stopped because a head FAILED verification (a broken chain, not merely "nothing further is mirrored"). Recovery falls back to `newest_generation` either way — this field is what distinguishes an honest fallback from a quiet one. */
   chain_break: GitvaultChainBreak | null;
+  /**
+   * Every admitted `rotate_epoch` transition this KEYLESS chain walk saw,
+   * oldest first (D193, rev 42 — `checkChainLink`/`assertNoTransition` admit
+   * it structurally without ever opening an envelope; recovery's keyed
+   * decrypt step, below, is the only place a rotation's envelope is opened).
+   */
+  rotations: GitvaultEncounteredRotation[];
 }
 
 export interface GitvaultDiscoverOptions {
@@ -142,7 +153,9 @@ export async function discoverAndVerifyChain(options: GitvaultDiscoverOptions): 
   const chain: GitvaultChainEntry[] = [];
   let prevHash = genesisSha;
   let prevGen: string = GITVAULT_GENESIS_GENERATION;
+  let prevEpoch: string = GITVAULT_GENESIS_EPOCH;
   let chainBreak: GitvaultChainBreak | null = null;
+  const rotations: GitvaultEncounteredRotation[] = [];
   for (;;) {
     const nextGen = nextGeneration(prevGen);
     const bytes = await backend.get(gitvaultPaths.head(nextGen));
@@ -152,13 +165,21 @@ export async function discoverAndVerifyChain(options: GitvaultDiscoverOptions): 
       head = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
       checkChainLink({
         head, stored_bytes: bytes, listed_sha256: sha256Hex(bytes), expected_generation: nextGen, prev_sha256: prevHash,
-        repo_id: genesis.repo_id, writer_public_key: genesis.creator_signing_pubkey, writer_key_id: genesis.writer_key_id,
+        repo_id: genesis.repo_id, writer_public_key: genesis.creator_signing_pubkey, writer_key_id: genesis.writer_key_id, prev_epoch: prevEpoch,
       });
+      // D193, rev 42: `rotate_epoch` is a NO-THROW pass here — the keyless
+      // chain walk continues right through it (`checkChainLink`'s own D194
+      // epoch-continuity check already validated it structurally); the other
+      // three transition kinds remain the genuine fail-closed stop.
       assertNoTransition(head);
+      if (head.transition !== null && head.transition.kind === "rotate_epoch") {
+        rotations.push({ generation: head.generation, epoch: head.epoch, payload: parseRotateEpochPayload(head) });
+      }
     } catch (e) {
       chainBreak = { generation: nextGen, reason: e instanceof Error ? e.message : String(e) };
       break;
     }
+    prevEpoch = head.epoch;
     const headSha = sha256Hex(bytes);
     chain.push({ generation: nextGen, head, head_sha256: headSha });
     prevHash = headSha;
@@ -167,7 +188,7 @@ export async function discoverAndVerifyChain(options: GitvaultDiscoverOptions): 
 
   return {
     repo_id: genesis.repo_id, genesis, genesis_sha256: genesisSha, pin_trust: pinTrust, chain,
-    newest_generation: prevGen, newest_head_sha256: prevHash, chain_break: chainBreak,
+    newest_generation: prevGen, newest_head_sha256: prevHash, chain_break: chainBreak, rotations,
   };
 }
 
@@ -273,10 +294,33 @@ export interface GitvaultRecoveryReport {
   repo_id: string;
   genesis_sha256: string;
   pin_trust: "receipt" | "unauthenticated_salvage";
-  /** The generation recovery actually landed on — may be BELOW the chain's newest fully-verified generation when generation fallback fired. */
+  /**
+   * The generation recovery actually landed on — may be BELOW
+   * `chain_verified_to_generation` when either absence fallback (keyless or
+   * keyed) OR — Request 4, D193-D203 rev 42 — an epoch this keystore cannot
+   * open (`epoch_decrypt_failure`, non-null) capped it first, whichever is
+   * more restrictive.
+   */
   recovered_generation: string;
+  /**
+   * The newest generation the PURELY STRUCTURAL chain walk verified,
+   * independent of any key material — this is `discoverAndVerifyChain`'s
+   * own `newest_generation`, restated here under fsck's own vocabulary so a
+   * caller can see, honestly, how far signature verification reached versus
+   * how far `recovered_generation` actually materialized.
+   */
+  chain_verified_to_generation: string;
   /** Non-null iff the chain walk itself broke (see {@link GitvaultDiscoveryResult.chain_break}). */
   chain_break: GitvaultChainBreak | null;
+  /**
+   * Non-null iff an admitted `rotate_epoch` transition capped
+   * `recovered_generation` below `chain_verified_to_generation` because this
+   * keystore holds no envelope for the new epoch (or the envelope is absent/
+   * altered on this mirror) — Request 4's named epoch boundary, never a bare
+   * generic absence. Always `null` on {@link GitvaultVerifyReport} (mode
+   * `keyless_verify` never opens a key).
+   */
+  epoch_decrypt_failure: GitvaultEpochDecryptFailure | null;
   /** Every absence encountered while resolving closures, across every generation tried, oldest attempt first. */
   absences: GitvaultAbsenceAdjudication[];
   /** True iff any absence was `unexplained_absence` — the loud, un-missable flag; never buried in a nested field. */
@@ -310,7 +354,8 @@ export async function verifyGitvaultMirror(backend: GitvaultMirrorBackend, optio
   }
   return {
     repo_id: discovery.repo_id, genesis_sha256: discovery.genesis_sha256, pin_trust: discovery.pin_trust,
-    recovered_generation: generation, chain_break: discovery.chain_break, absences,
+    recovered_generation: generation, chain_verified_to_generation: discovery.newest_generation, chain_break: discovery.chain_break,
+    epoch_decrypt_failure: null, absences,
     data_loss_detected: absences.some((a) => a.adjudication === "unexplained_absence"),
     validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
     keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
@@ -318,10 +363,19 @@ export async function verifyGitvaultMirror(backend: GitvaultMirrorBackend, optio
   };
 }
 
-/** Try `discovery.newest_generation`, then fall back one generation at a time on `unexplained_absence`, recording every adjudication along the way (never a silent skip — task 3.2). */
-async function resolveWithFallback(backend: GitvaultMirrorBackend, discovery: GitvaultDiscoveryResult, options: { requireMaterializable: boolean }): Promise<{ generation: string; absences: GitvaultAbsenceAdjudication[] }> {
+/**
+ * Try `options.start_generation` (default `discovery.newest_generation`),
+ * then fall back one generation at a time on `unexplained_absence`,
+ * recording every adjudication along the way (never a silent skip — task
+ * 3.2). Request 4 (D193-D203, rev 42): the KEYED recovery path caps
+ * `start_generation` at the epoch-decrypt boundary BEFORE calling this —
+ * an unopenable epoch is adjudicated as its OWN named cause (`epoch_decrypt_failure`
+ * on the report), never folded into this function's generic absence
+ * vocabulary.
+ */
+async function resolveWithFallback(backend: GitvaultMirrorBackend, discovery: GitvaultDiscoveryResult, options: { requireMaterializable: boolean; start_generation?: string }): Promise<{ generation: string; absences: GitvaultAbsenceAdjudication[] }> {
   const allAbsences: GitvaultAbsenceAdjudication[] = [];
-  let gen = discovery.newest_generation;
+  let gen = options.start_generation ?? discovery.newest_generation;
   for (;;) {
     if (gen === GITVAULT_GENESIS_GENERATION) return { generation: gen, absences: allAbsences };
     const required = await closureForGeneration(backend, discovery.chain, gen);
@@ -375,8 +429,8 @@ export interface GitvaultRecoverOptions {
   keystore?: GitvaultKeystore;
 }
 
-/** Open the recipient's key envelope for this genesis and decrypt K_repo — the ONE step in this whole file that touches key material. */
-async function resolveKRepo(backend: GitvaultMirrorBackend, genesis: GitvaultVaultGenesis, keystore: GitvaultKeystore): Promise<Uint8Array> {
+/** Open the recipient's genesis key envelope and decrypt `K_1` — the FIRST step in this file that touches key material (a genesis's own envelope, `rotation_id` absent — D203). */
+async function resolveGenesisEpochKey(backend: GitvaultMirrorBackend, genesis: GitvaultVaultGenesis, keystore: GitvaultKeystore): Promise<Uint8Array> {
   const identity = keystore.readIdentity();
   if (!identity?.encryption_private_key_hex) {
     fail("VAULT_UNRECOVERABLE", "no encryption key in this keystore — recovery can verify and adjudicate but cannot decrypt or materialize anything", "materializing gitvault recovery", undefined, [
@@ -425,10 +479,95 @@ async function resolveKRepo(backend: GitvaultMirrorBackend, genesis: GitvaultVau
   return openKeyEnvelope({ envelope, recipient: kp, signer_public_key: genesis.creator_signing_pubkey });
 }
 
-async function openCarrier<T>(backend: GitvaultMirrorBackend, kRepo: Uint8Array, repoId: string, kind: "ref_state" | "retention_roots" | "checkpoint_manifest", objectId: string, ciphertextSha256: string, key: string): Promise<T> {
+/** The mirror's own `key-envelopes/<epoch>/<rotation_id>/<fingerprint>.env` wire key (protocol §3) — a rotation-attempt envelope's path, distinct from a genesis/ADD envelope's `key-envelopes/<epoch>/<fingerprint>.env`. */
+/**
+ * Parameter order MUST match {@link openEpochRotationForRecipient}'s own
+ * `envelope_path` field type — `(epoch, recipient_fingerprint, rotation_id)`
+ * — exactly, not the storage path's OWN left-to-right key-segment order
+ * (`key-envelopes/<epoch>/<rotation_id>/<fingerprint>.env`, protocol §3).
+ * Getting this backwards type-checks fine (it is a positional function
+ * type, so TypeScript cannot catch the swap) but silently resolves every
+ * rotation envelope to the WRONG mirror key — caught by
+ * `gitvault-epoch-reader.test.ts`'s own offline-recovery test, which is
+ * exactly why the parameter names spell it out here too.
+ */
+function mirrorRotationEnvelopePath(epoch: string, recipientFingerprint: string, rotationId: string): string {
+  return `key-envelopes/${epoch}/${rotationId}/${recipientFingerprint}.env`;
+}
+
+/**
+ * Traverse every admitted `rotate_epoch` transition {@link discoverAndVerifyChain}
+ * saw, opening THIS keystore's own rotation-attempt envelope for each new
+ * epoch from the mirror (recipient-only rule: only this keystore's own
+ * envelopes are ever present on a mirror synced under the recipient-only
+ * read gate — see {@link resolveGenesisEpochKey}'s own comment on the
+ * genesis case). NEVER throws: a rotation this keystore cannot open stops
+ * traversal and is recorded as `failure` — the caller decides what that
+ * means for `recovered_generation` (Request 4's honest fallback, named at
+ * the epoch boundary rather than folded into a generic absence).
+ */
+async function resolveRotationEpochKeys(
+  backend: GitvaultMirrorBackend,
+  genesis: GitvaultVaultGenesis,
+  rotations: readonly GitvaultEncounteredRotation[],
+  identity: GitvaultIdentityFile,
+): Promise<{ epoch_keys_hex: Record<string, string>; failure: GitvaultEpochDecryptFailure | null }> {
+  const epochKeys: Record<string, string> = {};
+  if (!identity.encryption_private_key_hex) return { epoch_keys_hex: epochKeys, failure: null };
+  const ownKeypair = generateEncryptionKeypair(hexToBytes(identity.encryption_private_key_hex));
+  const ownFingerprint = identity.encryption_fingerprint;
+  for (const rot of rotations) {
+    try {
+      const kE = await openEpochRotationForRecipient({
+        repo_id: genesis.repo_id,
+        payload: rot.payload,
+        own_fingerprint: ownFingerprint,
+        own_encryption_keypair: ownKeypair,
+        writer_signing_public_key: genesis.creator_signing_pubkey,
+        get_envelope_bytes: (path) => backend.get(path),
+        envelope_path: mirrorRotationEnvelopePath,
+      });
+      epochKeys[rot.epoch] = bytesToHex(kE);
+    } catch (e) {
+      const code = isRun402Error(e) && e.code ? e.code : "GITVAULT_EPOCH_NOT_OPENABLE";
+      return { epoch_keys_hex: epochKeys, failure: { generation: rot.generation, epoch: rot.epoch, rotation_id: rot.payload.rotation_id, code, message: e instanceof Error ? e.message : String(e) } };
+    }
+  }
+  return { epoch_keys_hex: epochKeys, failure: null };
+}
+
+/**
+ * Pure (Request 4): given every locally-openable epoch key, compute the
+ * newest generation this keystore can actually DECRYPT — the last
+ * generation before the first rotation whose epoch is missing from
+ * `epochKeysHex`, or `newestGeneration` if every rotation opened. Mirrors
+ * the live publication read path's identical boundary computation
+ * (`GitvaultVault.materialize`) so both surfaces report the same concept
+ * under the same name.
+ */
+function computeDecryptableBoundaryGeneration(
+  rotations: readonly GitvaultEncounteredRotation[],
+  epochKeysHex: Record<string, string>,
+  newestGeneration: string,
+): { generation: string; failure: GitvaultEpochDecryptFailure | null } {
+  let boundary = rotations.length > 0 ? generationMinusOne(rotations[0]!.generation) : newestGeneration;
+  for (let i = 0; i < rotations.length; i++) {
+    const rot = rotations[i]!;
+    if (!epochKeysHex[rot.epoch]) {
+      return {
+        generation: boundary,
+        failure: { generation: rot.generation, epoch: rot.epoch, rotation_id: rot.payload.rotation_id, code: "GITVAULT_EPOCH_NOT_OPENABLE", message: `epoch ${rot.epoch} (rotation ${rot.payload.rotation_id}) could not be opened by this keystore — recovery caps at the last generation under the prior, openable epoch` },
+      };
+    }
+    boundary = i + 1 < rotations.length ? generationMinusOne(rotations[i + 1]!.generation) : newestGeneration;
+  }
+  return { generation: boundary, failure: null };
+}
+
+async function openCarrier<T>(backend: GitvaultMirrorBackend, kRepo: Uint8Array, repoId: string, epoch: string, kind: "ref_state" | "retention_roots" | "checkpoint_manifest", objectId: string, ciphertextSha256: string, key: string): Promise<T> {
   const frame = await backend.get(key);
   if (!frame) fail("CHAIN_UNUSABLE", `${kind} ${objectId} is absent from the mirror`, "materializing gitvault recovery", { object_id: objectId });
-  const plaintext = openFrame({ k_obj: deriveObjectKey(kRepo, repoId, GITVAULT_GENESIS_EPOCH, kind, objectId), repo_id: repoId, object_kind: kind, object_id: objectId, epoch: GITVAULT_GENESIS_EPOCH, frame, expected_ciphertext_sha256: ciphertextSha256 });
+  const plaintext = openFrame({ k_obj: deriveObjectKey(kRepo, repoId, epoch, kind, objectId), repo_id: repoId, object_kind: kind, object_id: objectId, epoch, frame, expected_ciphertext_sha256: ciphertextSha256 });
   return parseGitvaultStrict(new TextDecoder().decode(plaintext)) as T;
 }
 
@@ -459,16 +598,49 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
   const { backend } = options;
   const keystore = options.keystore ?? GitvaultKeystore.open();
   const discovery = await discoverAndVerifyChain({ backend, ...(options.recovery_receipt ? { recovery_receipt: options.recovery_receipt } : {}), keystore });
-  const { generation, absences } = await resolveWithFallback(backend, discovery, { requireMaterializable: true });
-  if (generation === GITVAULT_GENESIS_GENERATION) {
-    fail("CHECKPOINT_INCOMPLETE", "no generation could be fully materialized — every generation back to genesis has an unexplained missing object", "materializing gitvault recovery", { absences });
-  }
-  const kRepo = await resolveKRepo(backend, discovery.genesis, keystore);
-  const entry = discovery.chain.find((e) => e.generation === generation)!;
   const repoId = discovery.repo_id;
 
-  const refState = await openCarrier<GitvaultRefState>(backend, kRepo, repoId, "ref_state", entry.head.ref_state.object_id, entry.head.ref_state.ciphertext_sha256, gitvaultPaths.refState(entry.head.ref_state.object_id));
-  const roots = await openCarrier<GitvaultRetentionRoots>(backend, kRepo, repoId, "retention_roots", entry.head.retention_roots.object_id, entry.head.retention_roots.ciphertext_sha256, gitvaultPaths.retentionRoots(entry.head.retention_roots.object_id));
+  // ── Request 4 (D193-D203, rev 42): resolve every locally-openable epoch
+  // key, then cap the materializable range at the DECRYPT boundary BEFORE
+  // running the (keyless) absence fallback — an unopenable epoch is its OWN
+  // named cause, never folded into the generic "unexplained_absence"
+  // vocabulary `resolveWithFallback` already owns for missing bytes.
+  const identity = keystore.readIdentity();
+  if (!identity?.encryption_private_key_hex) {
+    fail("VAULT_UNRECOVERABLE", "no encryption key in this keystore — recovery can verify and adjudicate but cannot decrypt or materialize anything", "materializing gitvault recovery", undefined, [
+      { action: "restore the principal keystore (identity.json) from backup, then re-run recover" },
+      { action: "run `run402 repos fsck --mirror` for the verify-only outcome" },
+    ]);
+  }
+  const k1 = await resolveGenesisEpochKey(backend, discovery.genesis, keystore);
+  const rotationKeys = await resolveRotationEpochKeys(backend, discovery.genesis, discovery.rotations, identity);
+  const epochKeysHex: Record<string, string> = { [GITVAULT_GENESIS_EPOCH]: bytesToHex(k1), ...rotationKeys.epoch_keys_hex };
+  const decryptBoundary = computeDecryptableBoundaryGeneration(discovery.rotations, epochKeysHex, discovery.newest_generation);
+  // The two possible epoch-decrypt failure sources (an unopenable rotation
+  // envelope, or the boundary walk simply never reaching one) agree by
+  // construction — `resolveRotationEpochKeys` stops at the SAME rotation
+  // `computeDecryptableBoundaryGeneration` would independently name; prefer
+  // whichever is non-null (both name the identical rotation when both fire).
+  const epochDecryptFailure = decryptBoundary.failure ?? rotationKeys.failure;
+  const startGeneration = decryptBoundary.generation < discovery.newest_generation ? decryptBoundary.generation : discovery.newest_generation;
+
+  const { generation, absences } = await resolveWithFallback(backend, discovery, { requireMaterializable: true, start_generation: startGeneration });
+  if (generation === GITVAULT_GENESIS_GENERATION) {
+    fail(
+      "CHECKPOINT_INCOMPLETE",
+      epochDecryptFailure && startGeneration === GITVAULT_GENESIS_GENERATION
+        ? `no generation could be materialized — epoch ${epochDecryptFailure.epoch} (rotation ${epochDecryptFailure.rotation_id}) could not be opened by this keystore and the vault's history begins there`
+        : "no generation could be fully materialized — every generation back to genesis has an unexplained missing object",
+      "materializing gitvault recovery",
+      { absences, epoch_decrypt_failure: epochDecryptFailure },
+    );
+  }
+  const entry = discovery.chain.find((e) => e.generation === generation)!;
+  const epoch = entry.head.epoch;
+  const kRepo = hexToBytes(epochKeysHex[epoch]!); // guaranteed present — `generation` never exceeds `decryptBoundary.generation`
+
+  const refState = await openCarrier<GitvaultRefState>(backend, kRepo, repoId, epoch, "ref_state", entry.head.ref_state.object_id, entry.head.ref_state.ciphertext_sha256, gitvaultPaths.refState(entry.head.ref_state.object_id));
+  const roots = await openCarrier<GitvaultRetentionRoots>(backend, kRepo, repoId, epoch, "retention_roots", entry.head.retention_roots.object_id, entry.head.retention_roots.ciphertext_sha256, gitvaultPaths.retentionRoots(entry.head.retention_roots.object_id));
 
   // ── restore into scratch: newest checkpoint's packs, then every later WAL pack ──
   const chainUpTo = discovery.chain.filter((e) => e.generation <= generation);
@@ -480,17 +652,24 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
   await hardenedGit(options.out_dir, ["init", "-q", "--bare", "--object-format=sha1", "."]);
   let manifest: GitvaultCheckpointManifest | null = null;
   const first = heads[0]!;
+  // Every object below is decrypted under ITS OWN carrying head's `epoch`
+  // (D194) — a covered span crossing a rotation mixes epochs, exactly like
+  // the live publication read path's `restoreObjectsInto`. `epochKeysHex`
+  // is guaranteed to cover every epoch from genesis through `epoch`
+  // (`decryptBoundary` capped `generation` at the last generation with a
+  // fully-resolved epoch key).
+  const kRepoForEpoch = (e: string): Uint8Array => hexToBytes(epochKeysHex[e]!);
   if (first.head.checkpoint) {
     const claimBytes = await backend.get(gitvaultPaths.claimSet(first.head.checkpoint.claim_set.object_id));
     if (!claimBytes) fail("CHECKPOINT_INCOMPLETE", "checkpoint claim set absent from the mirror", "materializing gitvault recovery");
     const claimSet = parseGitvaultStrict(new TextDecoder().decode(claimBytes)) as GitvaultCheckpointClaimSet;
     if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, discovery.genesis.creator_signing_pubkey)) fail("CHECKPOINT_INCOMPLETE", "checkpoint claim set signature fails", "materializing gitvault recovery");
-    manifest = await openCarrier<GitvaultCheckpointManifest>(backend, kRepo, repoId, "checkpoint_manifest", claimSet.manifest_receipt.object_id, claimSet.manifest_receipt.ciphertext_sha256, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id));
+    manifest = await openCarrier<GitvaultCheckpointManifest>(backend, kRepoForEpoch(first.head.epoch), repoId, first.head.epoch, "checkpoint_manifest", claimSet.manifest_receipt.object_id, claimSet.manifest_receipt.ciphertext_sha256, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id));
     checkClaimSetEquality(claimSet, manifest, first.head.checkpoint.covers_through_generation);
     for (const p of manifest.packs) {
       const frame = await backend.get(gitvaultPaths.checkpointPack(p.object_id));
       if (!frame) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} absent`, "materializing gitvault recovery");
-      const plain = openFrame({ k_obj: deriveObjectKey(kRepo, repoId, GITVAULT_GENESIS_EPOCH, "checkpoint_pack", p.object_id), repo_id: repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: GITVAULT_GENESIS_EPOCH, frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
+      const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(first.head.epoch), repoId, first.head.epoch, "checkpoint_pack", p.object_id), repo_id: repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: first.head.epoch, frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
       if (sha256Hex(plain) !== p.plaintext_sha256 || String(plain.length) !== p.plaintext_size_bytes) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} plaintext mismatch`, "materializing gitvault recovery");
       await hardenedGit(options.out_dir, ["index-pack", "--stdin", "--strict"], { input: plain });
     }
@@ -499,7 +678,7 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
     for (const w of h.head.wal_entries) {
       const frame = await backend.get(gitvaultPaths.wal(w.object_id));
       if (!frame) fail("CHAIN_UNUSABLE", `WAL pack ${w.object_id} absent`, "materializing gitvault recovery", { object_id: w.object_id });
-      const plain = openFrame({ k_obj: deriveObjectKey(kRepo, repoId, GITVAULT_GENESIS_EPOCH, "wal_pack", w.object_id), repo_id: repoId, object_kind: "wal_pack", object_id: w.object_id, epoch: GITVAULT_GENESIS_EPOCH, frame, expected_ciphertext_sha256: w.ciphertext_sha256 });
+      const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(h.head.epoch), repoId, h.head.epoch, "wal_pack", w.object_id), repo_id: repoId, object_kind: "wal_pack", object_id: w.object_id, epoch: h.head.epoch, frame, expected_ciphertext_sha256: w.ciphertext_sha256 });
       await hardenedGit(options.out_dir, ["index-pack", "--stdin", "--strict"], { input: plain });
     }
   }
@@ -531,10 +710,14 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
   const retained_refs = await reconcileRetainedTipRefs(options.out_dir, { refs: refState.refs, roots: roots.roots, head_target: refState.head_target });
 
   // ── recompute the three keyed commitments against the covering manifest (§4.7) ──
+  // Keyed under the CHECKPOINT-bearing head's OWN epoch (`first.head.epoch`)
+  // — the commitments are checkpoint-build-time artifacts, sealed under
+  // whatever epoch was current when the checkpoint was minted, which can
+  // differ from the (later) target generation's own epoch across a rotation.
   if (manifest) {
-    const kDigestRefmap = deriveDigestKey(kRepo, repoId, GITVAULT_GENESIS_EPOCH, "refmap");
-    const kDigestRootset = deriveDigestKey(kRepo, repoId, GITVAULT_GENESIS_EPOCH, "rootset");
-    const kDigestObjectset = deriveDigestKey(kRepo, repoId, GITVAULT_GENESIS_EPOCH, "objectset");
+    const kDigestRefmap = deriveDigestKey(kRepoForEpoch(first.head.epoch), repoId, first.head.epoch, "refmap");
+    const kDigestRootset = deriveDigestKey(kRepoForEpoch(first.head.epoch), repoId, first.head.epoch, "rootset");
+    const kDigestObjectset = deriveDigestKey(kRepoForEpoch(first.head.epoch), repoId, first.head.epoch, "objectset");
     const { signature: _s1, ...refStateContent } = refState;
     const { signature: _s2, ...rootsContent } = roots;
     const refmapOk = keyedCommitment(kDigestRefmap, refStateContent) === manifest.ref_state_hmac;
@@ -549,7 +732,9 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
 
   return {
     repo_id: repoId, genesis_sha256: discovery.genesis_sha256, pin_trust: discovery.pin_trust,
-    recovered_generation: generation, chain_break: discovery.chain_break, absences,
+    recovered_generation: generation, chain_verified_to_generation: discovery.newest_generation, chain_break: discovery.chain_break,
+    epoch_decrypt_failure: generation === decryptBoundary.generation ? epochDecryptFailure : null,
+    absences,
     data_loss_detected: absences.some((a) => a.adjudication === "unexplained_absence"),
     validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
     keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,

@@ -1447,6 +1447,18 @@ function formatFsckHuman(result, mirrorRequested) {
         ? `Verified through generation ${result.verified_to_generation} — local pin advanced from ${result.pin_before.highest_authenticated ?? "genesis"} to ${result.pin_after.highest_authenticated}.`
         : `Verified through generation ${result.verified_to_generation} — already at the newest verified generation.`,
   );
+  // Request 1 (D193-D203, rev 42): chain-verified and decryptable can
+  // genuinely differ across an epoch rotation this keystore cannot open —
+  // never silently report "verified" for a generation restoration cannot
+  // decrypt.
+  if (result.decryptable_to_generation !== result.chain_verified_to_generation) {
+    lines.push(
+      `WARNING: chain verified to generation ${result.chain_verified_to_generation}, but only decryptable through ${result.decryptable_to_generation}` +
+        (result.epoch_decrypt_failure
+          ? ` — epoch ${result.epoch_decrypt_failure.epoch} (rotation ${result.epoch_decrypt_failure.rotation_id ?? "n/a"}) could not be opened by this keystore: ${result.epoch_decrypt_failure.code}.`
+          : "."),
+    );
+  }
   if (mirrorRequested && result.mirror) {
     lines.push(
       `Mirror: recoverable generation ${result.mirror.recovered_generation}` +
@@ -1493,6 +1505,15 @@ async function fsck(args) {
       console.error(`verified through generation ${result.verified_to_generation} — local pin advanced from ${result.pin_before.highest_authenticated ?? "genesis"} to ${result.pin_after.highest_authenticated}.`);
     } else {
       console.error(`verified through generation ${result.verified_to_generation} — already at the newest verified generation, nothing changed.`);
+    }
+    // Request 1: surface the chain-verified vs decryptable split whenever it differs — the incident's own honesty gap (fsck claiming "verified" for content restoration cannot decrypt).
+    if (result.decryptable_to_generation !== result.chain_verified_to_generation) {
+      console.error(
+        `WARNING: chain verified to generation ${result.chain_verified_to_generation}, but only decryptable through ${result.decryptable_to_generation}` +
+          (result.epoch_decrypt_failure
+            ? ` — epoch ${result.epoch_decrypt_failure.epoch} (rotation ${result.epoch_decrypt_failure.rotation_id ?? "n/a"}) could not be opened by this keystore: ${result.epoch_decrypt_failure.code}.`
+            : "."),
+      );
     }
     // clone-installs-retained-refs D3: a bookkeeping failure degrades to
     // exactly one stderr note here — fsck's own result already landed above.
