@@ -255,23 +255,17 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
   });
 
   /**
-   * Local pin-manifest cache (D197 read-side gap, confirmed live 2026-08-27
-   * against `src_c78d2f710a8f49d22f9c66faf2a915cd`): the gateway's real
-   * `POST …/object-reads` route does not yet accept `recipient_pin_manifest`
-   * reads — its null-idScalar branch is still hardcoded to `key_envelope`'s
-   * `{epoch, recipient_fingerprint}` shape, so EVERY read of a published pin
-   * manifest 400s `VALIDATION_FAILED "epoch must be 16 hex"` (pinned in
-   * `gitvault-wire-shapes.test.ts`, which shows the request THIS SDK sends
-   * is protocol-correct — the gateway's read validation is what's stale).
-   * `loadEffectivePinManifest` calls that read on EVERY `rotateEpoch` once
-   * ANY manifest has ever been admitted — this in-memory fake transport
-   * has no such bug, so it never caught the gap: a same-keystore
-   * publish-then-rotate sequence passed here while failing live. The fix
-   * (`GitvaultRepoFile.known_pin_manifest`) caches the manifest a keystore
-   * itself just built+admitted so it never needs to re-fetch its OWN bytes;
-   * this test pins BOTH halves — the cache hit skips the network call, and
-   * a cache MISS still falls through to it unchanged (never a blanket
-   * bypass of verification for a manifest this keystore did not author).
+   * Local pin-manifest cache (`GitvaultRepoFile.known_pin_manifest`):
+   * `loadEffectivePinManifest` re-reads the predecessor manifest on EVERY
+   * `rotateEpoch` once ANY manifest has ever been admitted, and a manifest
+   * this keystore itself just built+admitted needs no re-fetch of its OWN
+   * bytes — the cache saves that round trip. (It originally also routed
+   * around a since-fixed gateway bug that 400'd every
+   * `recipient_pin_manifest` object-read; the request shape stays pinned in
+   * `gitvault-wire-shapes.test.ts`.) This test pins BOTH halves — the cache
+   * hit skips the network call, and a cache MISS still falls through to it
+   * unchanged (never a blanket bypass of verification for a manifest this
+   * keystore did not author).
    */
   it("local pin-manifest cache: a manifest this keystore just published is read back locally (no network round trip); a cache miss still falls through to the network path unchanged", async () => {
     const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-rotate-cache-"));

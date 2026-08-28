@@ -1042,20 +1042,19 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     } catch (e) {
       if (isRun402Error(e) && (e as { status?: number }).status === 404) return null;
       if (isRun402Error(e) && (e as { code?: string }).code === "RESOURCE_NOT_FOUND") return null;
-      // A known live gateway gap (confirmed 2026-08-27 against
-      // src_c78d2f710a8f49d22f9c66faf2a915cd): `POST …/object-reads`
-      // validates every null-idScalar (path-addressed) object_kind against
-      // key_envelope's `{epoch, recipient_fingerprint}` shape, never having
-      // been generalized for the SECOND path-addressed kind D197 shipped —
-      // `recipient_pin_manifest`'s real `{pin_manifest_version}` fields —
-      // so a genuine read always 400s `"epoch must be 16 hex"`. This is a
-      // read-back of a manifest neither uploaded nor cached by THIS
-      // keystore (a cache hit in `readPinManifestObject` never reaches
-      // here at all) — re-thrown with an attribution that names the gap
-      // instead of leaving a caller to read this as a client validation bug.
-      if (ref.read.object_kind === "recipient_pin_manifest" && isRun402Error(e) && (e as { code?: string }).code === "VALIDATION_FAILED") {
+      // The gateway accepts `{object_kind: "recipient_pin_manifest",
+      // pin_manifest_version}` reads (fixed 2026-08-28; before that its
+      // null-idScalar validation was hardcoded to key_envelope's
+      // `{epoch, recipient_fingerprint}` shape and 400'd every such read
+      // with "epoch must be 16 hex"). A VALIDATION_FAILED here therefore
+      // indicates a genuinely malformed request and propagates as-is —
+      // EXCEPT the pre-fix epoch-shape complaint, which a fixed gateway can
+      // never emit for this kind: that signature can only mean an unfixed
+      // (older/staging) gateway behind RUN402_API_BASE, so name it rather
+      // than letting it read as a client validation bug.
+      if (ref.read.object_kind === "recipient_pin_manifest" && isRun402Error(e) && (e as { code?: string }).code === "VALIDATION_FAILED" && /epoch must be 16 hex/.test((e as Error).message ?? "")) {
         throw new LocalError(
-          `the gateway's object-reads route does not yet accept recipient_pin_manifest reads by pin_manifest_version (its null-idScalar branch is still hardcoded to key_envelope's epoch/recipient_fingerprint shape) — this vault's pin manifest at ${path} cannot be read back over the network by a keystore that did not itself just publish it`,
+          `this gateway predates the 2026-08-28 fix that made object-reads accept recipient_pin_manifest reads by pin_manifest_version (its null-idScalar branch rejected them with key_envelope's epoch-shape complaint) — this vault's pin manifest at ${path} cannot be read back over the network from it by a keystore that did not itself just publish the manifest`,
           "reading gitvault object",
           { code: "GITVAULT_PIN_MANIFEST_READ_UNSUPPORTED", details: { path, pin_manifest_version: ref.read.pin_manifest_version }, cause: e },
         );
@@ -2504,20 +2503,15 @@ export class GitvaultVault {
    * manifest — e.g. one another principal/machine published) falls through
    * to the unchanged network path below.
    *
-   * **Known gap this happens to route around, not fix:** the gateway's
-   * `POST …/object-reads` route does not yet recognize `recipient_pin_manifest`
-   * as a readable `object_kind` at all (`services/gitvault/reads.ts`
-   * `validateReadRequest`'s null-`idScalar` branch is still hardcoded to
-   * `key_envelope`'s `{epoch, recipient_fingerprint}` shape — the ONE other
-   * path-addressed kind, `recipient_pin_manifest`, was never folded in when
-   * D197 shipped it with its own `{pin_manifest_version}` `pathFields`).
-   * Confirmed live 2026-08-27 against `src_c78d2f710a8f49d22f9c66faf2a915cd`:
-   * every read attempt fails `400 VALIDATION_FAILED "objects[0]: epoch must
-   * be 16 hex"`. This cache unblocks the SAME keystore re-reading its OWN
-   * just-published manifest (this ceremony's actual need) but does nothing
-   * for a genuinely fresh keystore/machine reading an EXISTING manifest for
-   * the first time (§4.11's "fresh client... SEEDS its local pin file from
-   * it" onboarding path) — that still needs the gateway fix.
+   * History: this cache originally also routed around a gateway gap —
+   * `POST …/object-reads` rejected every `recipient_pin_manifest` read
+   * (its null-`idScalar` validation was hardcoded to `key_envelope`'s
+   * `{epoch, recipient_fingerprint}` shape, never generalized when D197
+   * shipped the second path-addressed kind), so the network fallback below
+   * always 400'd. That gateway bug is fixed (deployed and live-verified
+   * 2026-08-28): the network path works for any keystore, including
+   * §4.11's fresh-client "SEEDS its local pin file from it" onboarding.
+   * The cache stays purely as the round-trip saver described above.
    */
   private async readPinManifestObject(receipt: GitvaultPinManifestReceipt): Promise<{ pinManifestVersion: string; pinManifestSha256: string; pinnedFingerprintOf: Map<string, string> }> {
     const known = this.repoFile().known_pin_manifest;
