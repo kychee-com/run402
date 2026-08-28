@@ -253,19 +253,7 @@ jobs:
       #     already landed;
       #   - fails loudly on any other error.
       - name: Publish run402-mcp to npm
-        # TEMPORARILY force-skipped for ONE run: run402-mcp@4.48.0 and
-        # run402@4.48.0 already landed successfully (verified on the
-        # registry with provenance); @run402/sdk@4.48.0 did not — the
-        # v4.48.0 lockstep publish run (33153541879) reported
-        # "[@run402/sdk] published (attempt 1)" but the version never
-        # appeared on the registry, and the bump=none retry (33154055403)
-        # then failed HERE with a non-retryable error whose `npm publish`
-        # output was empty in the CI log (so the idempotent "already
-        # published" skip never matched) — never reaching the @run402/sdk
-        # step at all. This one-off skip lets that run reach @run402/sdk
-        # without re-attempting the two already-published packages. Revert
-        # this and the next step's identical change immediately after.
-        if: false
+        if: ${{ !inputs.dry_run }}
         run: |
           publish_idempotent() {
             local label="$1"; local attempt=0 out
@@ -288,9 +276,7 @@ jobs:
           publish_idempotent run402-mcp
 
       - name: Publish run402 to npm
-        # TEMPORARILY force-skipped for ONE run — see the identical note on
-        # "Publish run402-mcp to npm" above. run402@4.48.0 already landed.
-        if: false
+        if: ${{ !inputs.dry_run }}
         run: |
           publish_idempotent() {
             local label="$1"; local attempt=0 out
@@ -381,20 +367,14 @@ jobs:
           done
 
       - name: Tag and push
-        # TEMPORARILY force-skipped for ONE run — see the note on "Publish
-        # run402-mcp to npm" above. v4.48.0's tag and release already exist
-        # (from the run that published run402-mcp/run402 correctly); this
-        # run only needs to land the stranded @run402/sdk publish, and
-        # re-creating an existing tag would just fail this step for no
-        # reason.
-        if: false
+        if: ${{ !inputs.dry_run }}
         run: |
           set -euo pipefail
           git tag "v${{ steps.bump.outputs.new }}"
           git push origin "v${{ steps.bump.outputs.new }}"
 
       - name: Create GitHub release
-        if: false
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.bump.outputs.new }}
