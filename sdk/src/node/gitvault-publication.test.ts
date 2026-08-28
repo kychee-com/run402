@@ -44,6 +44,7 @@ import {
   nextGeneration,
   nextListingRequest,
   openBindingDigest,
+  readGitvaultRestoreMarker,
   reconcileRetainedTipRefs,
   validateHeadsListingRequest,
   verifyHeadsListingPage,
@@ -555,6 +556,50 @@ describe("§6.2 push — the complete publication path", () => {
     assert.deepEqual(r.refs, { "refs/heads/main": c2, "refs/heads/other": c1 }, "the winner's ref survives the retry — never a silent revert");
   });
 
+  it("design D1: a supplied base skips push's own materialize entirely on a clean first attempt", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    // The SAME snapshot a `list` call would have produced and handed to `push` (one materialize, shared).
+    const base = await f.vault.materialize();
+
+    const { GitvaultOpCounter, countingGitvaultTransport } = await import("./gitvault-transport-counter.test-helper.js");
+    const counter = new GitvaultOpCounter();
+    const counted = new GitvaultVault({ keystore: f.keystore, transport: countingGitvaultTransport(f.transport, counter), repo_id: f.repoId, repo_dir: f.repoDir });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    const published = await counted.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] }, base });
+    assert.equal(published.conflicts_retried, 0);
+    // No generation-read (genesis/readHead), no listHeads, no carrier batch —
+    // a clean first attempt with a supplied base does none of materialize's
+    // own work; only the upload + admit + readback a publish needs.
+    const kinds = counter.byKind();
+    assert.equal(kinds["generation-read"] ?? 0, 1, `only the post-admit readback — never readHead's own live pin check, since materialize itself never ran: ${JSON.stringify(kinds)}`);
+    assert.equal(kinds["listHeads"] ?? 0, 0, `no listHeads call: ${JSON.stringify(kinds)}`);
+    assert.ok(!("object-reads-batch(presign)" in kinds), `no carrier batch fetch: ${JSON.stringify(kinds)}`);
+  });
+
+  it("design D1: a conflict on a supplied (now-stale) base still re-materializes from storage and retries cleanly — never a local expected_old mismatch", async (t) => {
+    t.after(cleanup);
+    const f = await open();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    // The base a `list` call observed BEFORE a concurrent publisher lands.
+    const staleBase = await f.vault.materialize();
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    const other = new GitvaultVault({ keystore: f.keystore, transport: f.transport, repo_id: f.repoId, repo_dir: f.repoDir });
+    f.transport.competitor = async () => {
+      await other.push({ transaction: { updates: [{ ref: "refs/heads/feature", expected_old_oid: null, new_oid: c1, force: false }] } });
+    };
+    // The transaction's expected_old_oid is derived from the SAME staleBase
+    // (exactly what the remote helper does — one shared snapshot for both) —
+    // so there is no LOCAL mismatch to raise; a race can only surface as the
+    // CAS conflict-retry loop already handles, one clean conflict.
+    const published = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: staleBase.refs["refs/heads/main"] ?? null, new_oid: c2, force: false }] }, base: staleBase });
+    assert.equal(published.conflicts_retried, 1, "the stale base cost exactly one conflict, re-verified from storage — not a refused local mismatch");
+    assert.deepEqual(published.refs, { "refs/heads/main": c2, "refs/heads/feature": c1 });
+  });
+
   it("a transaction whose expected-old no longer matches the winner surfaces, it does not silently rebase", async (t) => {
     t.after(cleanup);
     const f = await open();
@@ -846,6 +891,198 @@ describe("§4.3 repair + restore", () => {
     const restored = await f.vault.restoreObjectsInto(target);
     assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
     assert.equal(await hasObject(target, c1), true);
+    assert.equal(await hasObject(target, c2), true);
+  });
+});
+
+// ─── local object cache (gitvault-client-round-trips design D3) ──────────────
+
+describe("local immutable-object cache — re-verified on every use", () => {
+  it("a tampered cached head is discarded and refetched — the refetch is verified exactly as a cold read", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    await git(f.repoDir, ["checkout", "-q", "-b", "feature"]);
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    const g2 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/feature", expected_old_oid: null, new_oid: c2, force: false }] } });
+    const c3 = await commitFile(f.repoDir, "c.txt", "c\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/feature", expected_old_oid: c2, new_oid: c3, force: false }] } });
+
+    // A first restore's downward walk fetches AND caches generation 2's
+    // head (readCachedHeadBytes writes on every network hit, regardless of
+    // caller) on its way from generation 3 down to genesis.
+    const targetA = mkdtempSync(join(tmpdir(), "run402-gitvault-cache-tamper-a-"));
+    t.after(() => rmSync(targetA, { recursive: true, force: true }));
+    mkdirSync(targetA, { recursive: true });
+    await git(targetA, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(targetA);
+
+    // Tamper the LOCAL cache entry for generation 2 directly — bytes that
+    // no longer hash to anything the chain would accept.
+    f.keystore.writeCachedHead(f.repoId, g2.generation, "00".repeat(32), new TextEncoder().encode("tampered"));
+
+    // A second, INDEPENDENT restore (fresh target, no marker) re-walks the
+    // SAME wholesale range — its downward walk hits the tampered cache
+    // entry for generation 2, must discard it (the recomputed hash does not
+    // match the chain-verified expectation), and fetch it from the network
+    // instead — landing the CORRECT final state, not a corrupted one.
+    const targetB = mkdtempSync(join(tmpdir(), "run402-gitvault-cache-tamper-b-"));
+    t.after(() => rmSync(targetB, { recursive: true, force: true }));
+    mkdirSync(targetB, { recursive: true });
+    await git(targetB, ["init", "-q", "--bare", "."]);
+    const restored = await f.vault.restoreObjectsInto(targetB);
+    assert.deepEqual(restored.refs, { "refs/heads/main": c1, "refs/heads/feature": c3 });
+    assert.equal(await hasObject(targetB, c1), true);
+    assert.equal(await hasObject(targetB, c2), true);
+    assert.equal(await hasObject(targetB, c3), true);
+
+    // The cache now holds the CORRECT bytes again (refetch re-verified and re-cached), not the tampered ones.
+    const healed = f.keystore.readCachedHead(f.repoId, g2.generation);
+    assert.notEqual(healed?.sha256, "00".repeat(32));
+  });
+
+  it("a cold cache (nothing ever cached) degrades to plain network reads with no user-visible failure", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    // A SEPARATE vault instance sharing the same keystore/repo but never
+    // having warmed anything itself — its very first read is a cold cache.
+    const fresh = new GitvaultVault({ keystore: f.keystore, transport: f.transport, repo_id: f.repoId, repo_dir: f.repoDir });
+    const state = await fresh.materialize();
+    assert.deepEqual(state.refs, { "refs/heads/main": c1 });
+  });
+});
+
+// ─── incremental restore (gitvault-client-round-trips design D5) ─────────────
+
+describe("restoreObjectsInto — incremental above restored_through", () => {
+  it("a one-generation pull replays only the new generation's pack, and advances the marker", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const g1 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-restore-incr-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+
+    const first = await f.vault.restoreObjectsInto(target);
+    assert.deepEqual(first.refs, { "refs/heads/main": c1 });
+    const markerAfterFirst = await readGitvaultRestoreMarker(target);
+    assert.deepEqual(markerAfterFirst, { generation: g1.generation, head_sha256: g1.head_sha256 });
+
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    const g2 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    const callsBefore = f.transport.calls.length;
+    const second = await f.vault.restoreObjectsInto(target);
+    assert.deepEqual(second.refs, { "refs/heads/main": c2 });
+    assert.equal(await hasObject(target, c2), true);
+    // The batched WAL-pack read (design D2's restore pack set) names exactly
+    // ONE object — generation 2's own pack — never generation 1's (already
+    // applied and covered by the marker).
+    const newCalls = f.transport.calls.slice(callsBefore);
+    const walPathsFetched = newCalls.filter((c) => c.startsWith("get-batch:")).flatMap((c) => c.split(":")[2]?.split(",").filter((p) => p.startsWith("wal/")) ?? []);
+    assert.equal(walPathsFetched.length, 1, `expected exactly one WAL pack fetched, saw: ${JSON.stringify(newCalls)}`);
+    const markerAfterSecond = await readGitvaultRestoreMarker(target);
+    assert.deepEqual(markerAfterSecond, { generation: g2.generation, head_sha256: g2.head_sha256 });
+  });
+
+  it("a fetch that is already up to date makes no pack read, and only the mandatory pin-verification head read", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-restore-uptodate-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target);
+
+    f.transport.calls.length = 0;
+    const again = await f.vault.restoreObjectsInto(target);
+    assert.deepEqual(again.refs, { "refs/heads/main": c1 });
+    // No pack read at all — the marker fast path skips the walk entirely.
+    assert.equal(f.transport.calls.filter((c) => c.startsWith("get-batch:")).length, 0, "no batched pack/carrier read for an up-to-date target");
+    // Exactly ONE head read: `readHead`'s pin-verification, which stays
+    // ALWAYS live by design (it exists to detect server-side loss/rollback —
+    // see readCachedHeadBytes's doc comment) — never traded away for the
+    // round-trip win.
+    assert.equal(f.transport.calls.filter((c) => c.startsWith("get:head/")).length, 1, "the pin's own head is still re-verified live");
+  });
+
+  it("a repair landing above the marker forces the wholesale path, and still restores the correct state", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const g1 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-restore-repair-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target); // marker now at generation 2, plain WAL
+
+    // A repair based on generation 1 supersedes generation 2 and lands a
+    // checkpoint-bearing head ABOVE the marker — exactly the shape design D5
+    // says must force wholesale.
+    const repaired = await f.vault.repair({ base_generation: g1.generation, reason: "unusable_ref_state" });
+    assert.equal(repaired.form, "checkpoint");
+
+    const second = await f.vault.restoreObjectsInto(target);
+    // Ground truth: what a completely fresh (wholesale, no marker at all) restore produces.
+    const fresh = mkdtempSync(join(tmpdir(), "run402-gitvault-restore-fresh-"));
+    t.after(() => rmSync(fresh, { recursive: true, force: true }));
+    mkdirSync(fresh, { recursive: true });
+    await git(fresh, ["init", "-q", "--bare", "."]);
+    const wholesale = await f.vault.restoreObjectsInto(fresh);
+    assert.deepEqual(second.refs, wholesale.refs);
+    assert.deepEqual(second.refs, { "refs/heads/main": c1 });
+    assert.equal(await hasObject(target, c1), true);
+    const markerAfter = await readGitvaultRestoreMarker(target);
+    assert.deepEqual(markerAfter, { generation: repaired.generation, head_sha256: repaired.head_sha256 });
+  });
+
+  it("an interrupted restore leaves the marker unadvanced, and the next fetch heals", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-restore-interrupt-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target); // marker at generation 1
+
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    // Simulate a crash mid-restore: the generation-2 WAL pack batch read
+    // fails exactly once, then behaves normally.
+    const originalGetObjects = f.transport.getObjects.bind(f.transport);
+    let failNext = true;
+    f.transport.getObjects = async (req: { repo_id: string; paths: string[] }) => {
+      if (failNext && req.paths.some((p) => p.startsWith("wal/"))) {
+        failNext = false;
+        throw new Error("simulated network interruption");
+      }
+      return originalGetObjects(req);
+    };
+    await assert.rejects(f.vault.restoreObjectsInto(target), /simulated network interruption/);
+    f.transport.getObjects = originalGetObjects;
+
+    // The marker is UNCHANGED from before the failed attempt (still
+    // generation 1, the only successful restore so far) — the failure was
+    // never reported as landed.
+    const markerAfterFailure = await readGitvaultRestoreMarker(target);
+    assert.equal(markerAfterFailure!.generation, "0000000000000001");
+    const healed = await f.vault.restoreObjectsInto(target);
+    assert.deepEqual(healed.refs, { "refs/heads/main": c2 });
     assert.equal(await hasObject(target, c2), true);
   });
 });

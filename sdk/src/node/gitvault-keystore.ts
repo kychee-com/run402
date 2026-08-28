@@ -214,6 +214,18 @@ const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 const DIR_MODE = 0o700;
 const FILE_MODE = 0o600;
 
+/** The local object cache's recency window (design D3: "genesis + newest N=8 heads + newest carriers"). */
+export const GITVAULT_OBJECT_CACHE_WINDOW = 8;
+
+/** Bare hex16 generation comparison for cache eviction — deliberately NOT `generationToBigInt` (gitvault-publication.ts), which this lower-level module must not import (publication already imports FROM here). Malformed input sorts as "evict" rather than throwing: a corrupt cache entry should never block eviction of everything else. */
+function genToBigInt(generation: string): bigint {
+  try {
+    return /^[0-9a-f]{16}$/.test(generation) ? BigInt(`0x${generation}`) : -1n;
+  } catch {
+    return -1n;
+  }
+}
+
 /** Default keystore root: `<active profile config dir>/gitvault`. */
 export function getGitvaultKeystoreRoot(): string {
   return join(getConfigDir(), "gitvault");
@@ -479,6 +491,121 @@ export class GitvaultKeystore {
       writeFileAtomic0600(this.repoPath(repoId), JSON.stringify(full, null, 2));
       return full;
     });
+  }
+
+  // ── local immutable-object cache (gitvault-client-round-trips design D3) ──
+  //
+  // `<rootDir>/<repo_id>/objects/` — beside the repo file above, NOT inside
+  // it: genesis bytes, admitted head bytes, and carrier (ref_state /
+  // retention_roots) ciphertext this principal has already fetched and
+  // verified once. Holds ONLY ciphertext and signed public objects — never
+  // decrypted plaintext, key material, or key envelopes. This class stores
+  // and retrieves bytes alongside the sha256 they were verified against; it
+  // does not itself re-verify anything — every caller (`GitvaultVault`)
+  // re-checks a cache hit against the SAME pin/receipt it would check
+  // network bytes against before trusting it, so a stale or tampered entry
+  // can only ever be discarded and refetched, never silently trusted. A
+  // missing or corrupt cache file reads back as `null` (a plain cache miss),
+  // never a thrown error — the cache is a pure accelerator, and its absence
+  // degrades to exactly today's network-fetch behavior.
+
+  private objectsRepoDir(repoId: string): string {
+    if (!GITVAULT_SRC_RE.test(repoId)) fail("GITVAULT_BAD_REPO_ID", `not a src_ id: ${repoId}`, "resolving gitvault object cache path");
+    return join(this.rootDir, repoId, "objects");
+  }
+  private objectsGenesisPath(repoId: string): string { return join(this.objectsRepoDir(repoId), "genesis.json"); }
+  private objectsHeadsDir(repoId: string): string { return join(this.objectsRepoDir(repoId), "heads"); }
+  private objectsCarriersDir(repoId: string): string { return join(this.objectsRepoDir(repoId), "carriers"); }
+  private objectsHeadPath(repoId: string, generation: string): string { return join(this.objectsHeadsDir(repoId), `${generation}.json`); }
+  private objectsCarrierPath(repoId: string, objectId: string): string { return join(this.objectsCarriersDir(repoId), `${objectId}.json`); }
+
+  private readCachedFile(path: string): Record<string, unknown> | null {
+    const text = readFileNoFollow(path);
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      return typeof parsed === "object" && parsed !== null ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  private writeCachedFile(path: string, data: Record<string, unknown>): void {
+    writeFileAtomic0600(path, JSON.stringify(data));
+  }
+  private decodeCachedBytes(data: Record<string, unknown> | null): { sha256: string; bytes: Uint8Array } | null {
+    if (!data || typeof data.sha256 !== "string" || typeof data.bytes_base64 !== "string") return null;
+    try {
+      return { sha256: data.sha256, bytes: new Uint8Array(Buffer.from(data.bytes_base64, "base64")) };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Genesis is one small object per vault, immutable forever — cached and never evicted. */
+  readCachedGenesis(repoId: string): { sha256: string; bytes: Uint8Array } | null {
+    return this.decodeCachedBytes(this.readCachedFile(this.objectsGenesisPath(repoId)));
+  }
+  writeCachedGenesis(repoId: string, sha256: string, bytes: Uint8Array): void {
+    this.writeCachedFile(this.objectsGenesisPath(repoId), { sha256, bytes_base64: Buffer.from(bytes).toString("base64") });
+  }
+
+  readCachedHead(repoId: string, generation: string): { sha256: string; bytes: Uint8Array } | null {
+    return this.decodeCachedBytes(this.readCachedFile(this.objectsHeadPath(repoId, generation)));
+  }
+  /** Writes the head, then evicts anything more than {@link GITVAULT_OBJECT_CACHE_WINDOW} generations behind it. */
+  writeCachedHead(repoId: string, generation: string, sha256: string, bytes: Uint8Array): void {
+    this.writeCachedFile(this.objectsHeadPath(repoId, generation), { sha256, bytes_base64: Buffer.from(bytes).toString("base64") });
+    this.evictObjectCache(repoId, generation);
+  }
+
+  readCachedCarrier(repoId: string, objectId: string): { sha256: string; bytes: Uint8Array; generation: string } | null {
+    const data = this.readCachedFile(this.objectsCarrierPath(repoId, objectId));
+    const decoded = this.decodeCachedBytes(data);
+    if (!decoded || typeof data?.generation !== "string") return null;
+    return { ...decoded, generation: data.generation };
+  }
+  /** Writes the carrier (keyed by `object_id`, tagged with the generation that referenced it), then sweeps the window. */
+  writeCachedCarrier(repoId: string, objectId: string, generation: string, sha256: string, bytes: Uint8Array): void {
+    this.writeCachedFile(this.objectsCarrierPath(repoId, objectId), { sha256, bytes_base64: Buffer.from(bytes).toString("base64"), generation });
+    this.evictObjectCache(repoId, generation);
+  }
+
+  /**
+   * Drop heads and carriers more than {@link GITVAULT_OBJECT_CACHE_WINDOW}
+   * generations behind `latestGeneration` — genesis is exempt (kept
+   * forever). Runs inline on every cache write; also callable directly
+   * (`sweepObjectCache`, wired into `repos gc`) as a periodic backstop that
+   * catches any orphan a crashed write might have left behind. Best-effort:
+   * an unlink failure (e.g. already gone) is silently ignored, matching the
+   * cache's own "a miss just refetches" posture.
+   */
+  private evictObjectCache(repoId: string, latestGeneration: string): void {
+    const cutoff = genToBigInt(latestGeneration) - BigInt(GITVAULT_OBJECT_CACHE_WINDOW - 1);
+    const pruneDir = (dir: string, generationOf: (entry: string) => string | null) => {
+      if (!existsSync(dir)) return;
+      for (const entry of readdirSync(dir)) {
+        if (!entry.endsWith(".json")) continue;
+        const gen = generationOf(entry);
+        if (gen === null || genToBigInt(gen) < cutoff) {
+          try { unlinkSync(join(dir, entry)); } catch { /* already gone — fine */ }
+        }
+      }
+    };
+    pruneDir(this.objectsHeadsDir(repoId), (entry) => {
+      const gen = entry.slice(0, -".json".length);
+      return /^[0-9a-f]{16}$/.test(gen) ? gen : null;
+    });
+    pruneDir(this.objectsCarriersDir(repoId), (entry) => {
+      const data = this.readCachedFile(join(this.objectsCarriersDir(repoId), entry));
+      return typeof data?.generation === "string" ? data.generation : null;
+    });
+  }
+
+  /** The `repos gc`-time sweep (task 4.2): re-applies the SAME eviction window as an inline write would, for every repo this keystore holds. Safe to call on a repo with no cache directory at all (a no-op). */
+  sweepObjectCache(repoId: string): void {
+    const repo = this.readRepo(repoId);
+    const newest = repo?.materialized_pin?.generation ?? repo?.head_pin?.generation ?? null;
+    if (newest) this.evictObjectCache(repoId, newest);
   }
 
   /**

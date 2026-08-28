@@ -103,6 +103,7 @@ import type {
   GitvaultRecipientConfirmationReceipt,
   GitvaultRecipientPinManifestEntry,
   GitvaultRefState,
+  GitvaultRefStateReceipt,
   GitvaultRefTransaction,
   GitvaultRefUpdate,
   GitvaultRepairDescriptor,
@@ -835,6 +836,19 @@ export interface GitvaultMaintenanceLease {
 }
 
 export interface GitvaultTransport extends GitvaultCreationTransport {
+  /**
+   * Read N independent carrier objects (ref_state, retention_roots, WAL/
+   * checkpoint packs — anything `object-reads`-addressed, never a
+   * generation-addressed head/admission) in ONE presigned batch (gitvault-
+   * client-round-trips design D2): one `object-reads` POST naming every
+   * path, then the resulting GETs issued with bounded concurrency. Order in
+   * the result array matches `paths`; a missing object is `null` at its
+   * index, the same "absent" reading {@link GitvaultCreationTransport.getObject}
+   * gives for one object. Callers that need exactly one object still use
+   * {@link GitvaultCreationTransport.getObject} — this is for the plural
+   * case only, so a single-object caller never pays a batch's overhead.
+   */
+  getObjects(request: { repo_id: string; paths: string[] }): Promise<Array<Uint8Array | null>>;
   listHeads(request: GitvaultHeadsListingRequest & { repo_id: string }): Promise<GitvaultHeadsListingPage>;
   /** Session → create-only presigned PUTs (`If-None-Match: *`) → finalize; receipts in request order. */
   uploadObjects(request: { repo_id: string; objects: GitvaultUploadObject[]; resource_binding?: GitvaultResourceBinding }): Promise<GitvaultUploadReceipt[]>;
@@ -1025,6 +1039,34 @@ function b64(bytes: Uint8Array): string { return Buffer.from(bytes).toString("ba
 function b64u(bytes: Uint8Array): string { return Buffer.from(bytes).toString("base64url"); }
 
 /**
+ * Independent reads/PUTs within one gitvault step run at this concurrency
+ * (design D2) — "browser-era origin etiquette", well within what S3/the
+ * gateway tolerate, and it keeps in-flight memory bounded by ~6×frame size.
+ * Chain-ordered steps (the head-chain walk, admission, readback) never call
+ * this — they stay strictly sequential.
+ */
+export const GITVAULT_TRANSPORT_CONCURRENCY = 6;
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight at once, preserving
+ * result order regardless of completion order. A plain worker-pool: `limit`
+ * workers each pull the next unclaimed index until the queue is empty.
+ */
+export async function mapBounded<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]!, i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(0, Math.min(limit, items.length)) }, () => worker()));
+  return results;
+}
+
+/**
  * The `fetch`-backed transport over the SDK kernel. Presigned PUTs carry
  * `If-None-Match: *` (create-only — the bucket policy demands it) and the
  * FULL_OBJECT SHA-256 checksum header.
@@ -1104,6 +1146,42 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     return new Uint8Array(await r.arrayBuffer());
   }
 
+  /**
+   * Presign + fetch N independent objects (gitvault-client-round-trips
+   * design D2): ONE `object-reads` POST naming every path, then the GETs
+   * with bounded concurrency ({@link GITVAULT_TRANSPORT_CONCURRENCY}).
+   * Every path must be `object-reads`-addressed (a "carrier": ref_state,
+   * retention_roots, a WAL/checkpoint pack, …) — a generation-addressed
+   * head/admission path has no place in a batch built for materialize/
+   * restore's carrier and pack reads, so it fails closed rather than
+   * silently costing an extra round trip through `getGenerationBytes`.
+   */
+  async function getObjectsBytes(repoId: string, paths: string[]): Promise<Array<Uint8Array | null>> {
+    if (paths.length === 0) return [];
+    const refs = paths.map((path) => {
+      const ref = gitvaultWireRefForPath(path);
+      if (!ref || ref.kind !== "object") fail("GITVAULT_OBJECT_READ_FAILED", `${path} is not a batch-readable carrier object`, "reading gitvault objects", { path });
+      return ref.read;
+    });
+    let presigned: ObjectReadsResponse;
+    try {
+      presigned = await client.request<ObjectReadsResponse>(`${base(repoId)}/object-reads`, { method: "POST", body: { objects: refs }, context: "resolving gitvault objects" });
+    } catch (e) {
+      if (isRun402Error(e) && (e as { status?: number }).status === 404) return paths.map(() => null);
+      if (isRun402Error(e) && (e as { code?: string }).code === "RESOURCE_NOT_FOUND") return paths.map(() => null);
+      throw e;
+    }
+    const byLedgerId = new Map(presigned.reads.map((r) => [gitvaultLedgerId(r), r]));
+    const targets = refs.map((r) => byLedgerId.get(gitvaultLedgerId(r)) ?? null);
+    return mapBounded(targets, GITVAULT_TRANSPORT_CONCURRENCY, async (target, i) => {
+      if (!target) return null;
+      const r = await client.fetch(target.url, { method: "GET" });
+      if (r.status === 404) return null;
+      if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${paths[i]}`, "reading gitvault object", { path: paths[i], status: r.status });
+      return new Uint8Array(await r.arrayBuffer());
+    });
+  }
+
   async function upload(repoId: string, objects: GitvaultUploadObject[], resourceBinding?: GitvaultResourceBinding): Promise<GitvaultUploadReceipt[]> {
     if (objects.length === 0) return [];
     // The manifest is closed-key: `path` is client-local and MUST NOT ride the
@@ -1116,8 +1194,9 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       context: "opening gitvault upload session",
     });
     const issued = new Map(session.objects.map((u) => [gitvaultLedgerId(u), u]));
-    for (let i = 0; i < objects.length; i++) {
-      const o = objects[i]!;
+    // Independent create-only PUTs within one session (design D2) — bounded
+    // concurrency, same limit as the batched object reads below.
+    await mapBounded(objects, GITVAULT_TRANSPORT_CONCURRENCY, async (o, i) => {
       const id = gitvaultLedgerId(entries[i]!);
       const target = issued.get(id);
       if (!target) fail("GITVAULT_UPLOAD_SESSION_INVALID", `the session issued no upload for ${id}`, "uploading gitvault objects", { object_id: id, path: o.path });
@@ -1136,10 +1215,10 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
         // create-only: the key exists — legal only if it is byte-identical (read-and-compare)
         const existing = await getObjectBytes(repoId, o.path);
         if (!existing || sha256Hex(existing) !== o.sha256) fail("GITVAULT_OBJECT_EXISTS_DIFFERENT", `${o.path} already exists with different bytes`, "uploading gitvault objects", { path: o.path });
-        continue;
+        return;
       }
       if (!r.ok) fail("GITVAULT_UPLOAD_FAILED", `presigned PUT failed (HTTP ${r.status}) for ${o.path}`, "uploading gitvault objects", { path: o.path, status: r.status });
-    }
+    });
     const fin = await client.request<FinalizeResponse>(`${base(repoId)}/upload-sessions/${encodeURIComponent(session.upload_session_id)}/finalize`, { method: "POST", body: {}, context: "finalizing gitvault upload session" });
     const receipts = new Map(fin.receipts.map((r) => [gitvaultLedgerId(r), r]));
     return objects.map((o, i) => {
@@ -1167,7 +1246,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     }
   }
 
-  return {
+  const transport: GitvaultTransport = {
     // ── creation (5.3) ──
     async allocate(request: GitvaultAllocateRequest): Promise<GitvaultAllocation> {
       // The route wraps the signed allocation object under `allocation` and
@@ -1181,6 +1260,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       return { stored_bytes_sha256: r!.sha256, size_bytes: r!.size_bytes };
     },
     getObject: ({ repo_id, path }) => getObjectBytes(repo_id, path),
+    getObjects: ({ repo_id, paths }) => getObjectsBytes(repo_id, paths),
     async admitGenesis(request: GitvaultAdmitGenesisRequest): Promise<GitvaultAdmitGenesisResult> {
       try {
         const r = await admit(request.repo_id, GITVAULT_GENESIS_GENERATION, request.stored_bytes, request.stored_bytes_sha256, { allocation_generation: request.allocation_generation });
@@ -1311,6 +1391,71 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       }
     },
   };
+  return process.env.RUN402_GITVAULT_TRACE === "1" ? traceGitvaultTransport(transport) : transport;
+}
+
+/**
+ * `RUN402_GITVAULT_TRACE=1` (design D7) — one stderr line per real
+ * transport operation (op kind, a path/object-count shape when the request
+ * carries one, byte count when the result carries one, duration) plus a
+ * session summary at process exit (total ops, total time spent in this
+ * transport, wall-clock since the transport was created). Debug-only:
+ * stderr only — never stdout, so it can never contaminate the
+ * `git-remote-run402` protocol stream, the same discipline the helper's
+ * own `note()` follows — and not a canonical surface: it is NOT what the
+ * client-surface spec's counted budgets measure (that is
+ * `GitvaultOpCounter`, a test-only instrument over the SAME operation
+ * shapes). The client-side env var carries no gateway env-registry policy.
+ */
+function traceGitvaultTransport(inner: GitvaultTransport): GitvaultTransport {
+  let opCount = 0;
+  let totalMs = 0;
+  const sessionStart = Date.now();
+  process.on("exit", () => {
+    if (opCount === 0) return;
+    process.stderr.write(`gitvault-trace: session summary — ${opCount} op(s), ${totalMs.toFixed(1)}ms in transport, ${Date.now() - sessionStart}ms wall-clock\n`);
+  });
+  const describeRequest = (arg: unknown): string => {
+    if (!arg || typeof arg !== "object") return "";
+    const a = arg as { path?: unknown; paths?: unknown; objects?: unknown; generation?: unknown; repo_id?: unknown };
+    if (typeof a.path === "string") return ` path=${a.path}`;
+    if (Array.isArray(a.paths)) return ` paths=${a.paths.length}`;
+    if (Array.isArray(a.objects)) return ` objects=${a.objects.length}`;
+    if (typeof a.generation === "string") return ` gen=${a.generation}`;
+    if (typeof a.repo_id === "string") return ` repo=${a.repo_id}`;
+    return "";
+  };
+  const describeResult = (result: unknown): string => {
+    if (result instanceof Uint8Array) return ` bytes=${result.length}`;
+    if (Array.isArray(result)) {
+      const total = result.reduce((sum: number, v: unknown) => sum + (v instanceof Uint8Array ? v.length : 0), 0);
+      return total > 0 ? ` bytes=${total}` : "";
+    }
+    return "";
+  };
+  return new Proxy(inner, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function" || typeof prop !== "string") return value;
+      return async (...args: unknown[]) => {
+        const start = Date.now();
+        try {
+          const result = await Reflect.apply(value, target, args);
+          const elapsed = Date.now() - start;
+          opCount += 1;
+          totalMs += elapsed;
+          process.stderr.write(`gitvault-trace: ${prop}${describeRequest(args[0])}${describeResult(result)} ${elapsed}ms\n`);
+          return result;
+        } catch (e) {
+          const elapsed = Date.now() - start;
+          opCount += 1;
+          totalMs += elapsed;
+          process.stderr.write(`gitvault-trace: ${prop}${describeRequest(args[0])} FAILED ${elapsed}ms\n`);
+          throw e;
+        }
+      };
+    },
+  });
 }
 
 // ─── Storage paths (§3) ──────────────────────────────────────────────────────
@@ -1341,6 +1486,47 @@ export const gitvaultPaths = {
   /** `recipient-pins/<pin_manifest_version>.json` (D197, rev 42) — version-addressed, plaintext-structured, writer-signed. */
   pinManifest: (pinManifestVersion: string) => `recipient-pins/${pinManifestVersion}.json`,
 } as const;
+
+// ─── Incremental restore marker (gitvault-client-round-trips design D5) ──────
+//
+// `restored_through` — the newest generation whose WAL packs this TARGET
+// DIRECTORY has fully applied — is local git state, same store as the
+// id-pin (`git config --local`), scoped to the directory `restoreObjectsInto`
+// actually wrote into (never `process.cwd()`, and never scoped to `repo_id`:
+// a re-pointed remote's marker simply fails its `head_sha256` comparison and
+// falls back to wholesale, safely, since that comparison is a content hash).
+
+const GITVAULT_RESTORE_MARKER_GENERATION_KEY = "r402.restoredThrough";
+const GITVAULT_RESTORE_MARKER_SHA256_KEY = "r402.restoredThroughSha256";
+
+export interface GitvaultRestoreMarker {
+  generation: string;
+  head_sha256: string;
+}
+
+async function readLocalGitConfigValue(dir: string, key: string): Promise<string | null> {
+  try {
+    const out = (await hardenedGit(dir, ["config", "--local", "--get", key])).text().trim();
+    return out.length > 0 ? out : null;
+  } catch {
+    // Absent key or not a repository at all — either way, "nothing marked" is the correct read.
+    return null;
+  }
+}
+
+/** Read this target directory's `restored_through` marker, or `null` when nothing was ever restored into it. */
+export async function readGitvaultRestoreMarker(targetRepoDir: string): Promise<GitvaultRestoreMarker | null> {
+  const generation = await readLocalGitConfigValue(targetRepoDir, GITVAULT_RESTORE_MARKER_GENERATION_KEY);
+  const head_sha256 = await readLocalGitConfigValue(targetRepoDir, GITVAULT_RESTORE_MARKER_SHA256_KEY);
+  if (!generation || !head_sha256) return null;
+  return { generation, head_sha256 };
+}
+
+/** Advance the marker — called only after a restore's coverage verification succeeds. */
+async function writeGitvaultRestoreMarker(targetRepoDir: string, generation: string, headSha256: string): Promise<void> {
+  await hardenedGit(targetRepoDir, ["config", "--local", GITVAULT_RESTORE_MARKER_GENERATION_KEY, generation]);
+  await hardenedGit(targetRepoDir, ["config", "--local", GITVAULT_RESTORE_MARKER_SHA256_KEY, headSha256]);
+}
 
 // ─── The vault ───────────────────────────────────────────────────────────────
 
@@ -1471,6 +1657,18 @@ export interface GitvaultPushOptions {
   cutoff?: GitvaultCutoffOptions;
   /** Built lazily at head-sign time — the deploy lane may still be computing the plan digest. */
   capture_binding?: GitvaultCaptureBinding | (() => Promise<GitvaultCaptureBinding | null> | GitvaultCaptureBinding | null);
+  /**
+   * A caller-supplied base (gitvault-client-round-trips design D1) — used
+   * VERBATIM for the first attempt instead of calling {@link GitvaultVault.materialize}
+   * again. Only meaningful for a base the caller JUST materialized from this
+   * same vault instance (e.g. one `list → push` protocol exchange sharing
+   * one snapshot for both `expected_old` derivation and the push itself) —
+   * supplying a stale base is always SAFE (admission is CAS on generation;
+   * a stale base only makes a conflict more likely, never an incorrect
+   * admission), just not the round-trip win. A conflict retry re-materializes
+   * from storage exactly as when no base is supplied at all.
+   */
+  base?: GitvaultMaterializedState;
 }
 
 export interface GitvaultPublishResult {
@@ -1671,7 +1869,15 @@ export class GitvaultVault {
   async genesis(): Promise<{ genesis: GitvaultVaultGenesis; sha256: string }> {
     if (this.genesisCache) return this.genesisCache;
     const repo = this.repoFile();
-    const bytes = await this.transport.getGenesis({ repo_id: this.repoId });
+    // Design D3: genesis is one small, immutable object per vault — cached
+    // forever beside the keystore's per-repo state, re-verified against the
+    // pinned `genesis_sha256` on every use exactly like a network read.
+    const cached = this.keystore.readCachedGenesis(this.repoId);
+    let bytes: Uint8Array | null = cached && sha256Hex(cached.bytes) === repo.genesis_sha256 ? cached.bytes : null;
+    if (!bytes) {
+      bytes = await this.transport.getGenesis({ repo_id: this.repoId });
+      if (bytes && sha256Hex(bytes) === repo.genesis_sha256) this.keystore.writeCachedGenesis(this.repoId, repo.genesis_sha256, bytes);
+    }
     if (!bytes) fail("CHAIN_BROKEN", "the vault has no admitted genesis", "reading gitvault genesis", { repo_id: this.repoId });
     const sha256 = sha256Hex(bytes);
     if (sha256 !== repo.genesis_sha256) fail("VAULT_CREATION_CONFLICT", `the admitted genesis (${sha256}) is not the pinned one (${repo.genesis_sha256}); refusing a substituted vault`, "reading gitvault genesis", { admitted: sha256, pinned: repo.genesis_sha256 });
@@ -1806,8 +2012,10 @@ export class GitvaultVault {
           fail("GITVAULT_EPOCH_NOT_OPENABLE", `no locally known key for epoch ${head.epoch} at generation ${head.generation}`, "materializing gitvault head", { epoch: head.epoch, generation: head.generation });
         }
         const kRepo = hexToBytes(kRepoHex);
-        const refState = await this.openCarrier<GitvaultRefState>("ref_state", head.ref_state, gitvaultPaths.refState(head.ref_state.object_id), writerKey, { epoch: head.epoch, k_repo: kRepo });
-        const roots = await this.openCarrier<GitvaultRetentionRoots>("retention_roots", head.retention_roots, gitvaultPaths.retentionRoots(head.retention_roots.object_id), writerKey, { epoch: head.epoch, k_repo: kRepo });
+        // Design D2: ref_state + retention_roots both ride `head`, so one
+        // batched presign (or a cache hit) serves both instead of two
+        // independent presign-then-GET round trips.
+        const { refState, roots } = await this.openMaterializeCarriers(head.ref_state, gitvaultPaths.refState(head.ref_state.object_id), head.retention_roots, gitvaultPaths.retentionRoots(head.retention_roots.object_id), writerKey, { epoch: head.epoch, k_repo: kRepo });
         if (refState.generation !== head.generation || roots.generation !== head.generation) fail("CHAIN_UNUSABLE", "carrier generation does not match the head", "materializing gitvault head");
         decryptedRefState = refState;
         decryptedRoots = roots;
@@ -1838,7 +2046,7 @@ export class GitvaultVault {
             [{ action: persist ? "resume verification from the persisted verified prefix" : "re-run without --no-write to persist and resume incrementally, or re-run this same audit call again from the start" }],
           );
         }
-        const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(entry.generation) });
+        const bytes = await this.readCachedHeadBytes(entry.generation, entry.stored_bytes_sha256);
         if (!bytes) fail("CHAIN_BROKEN", `listed head ${entry.generation} is absent from storage`, "verifying gitvault chain", { generation: entry.generation });
         const head = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
         checkChainLink({ head, stored_bytes: bytes, listed_sha256: entry.stored_bytes_sha256, expected_generation: nextGeneration(pin.generation), prev_sha256: pin.head_sha256, repo_id: this.repoId, writer_public_key: writerKey, writer_key_id: writerKeyId, prev_epoch: prevEpoch });
@@ -1905,7 +2113,11 @@ export class GitvaultVault {
         }
         if (cur.generation === "0000000000000001") { cur = null; break; }
         const prevGen = bigIntToGeneration(generationToBigInt(cur.generation) - 1n);
-        const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(prevGen) });
+        // Design D3: this downward walk is rooted in `lastHead`, itself just
+        // chain-verified above (or trusted from an earlier call's own
+        // verification) — the same "freshness already established" argument
+        // {@link readCachedHeadBytes} documents, so a cache hit is safe here too.
+        const bytes = await this.readCachedHeadBytes(prevGen, cur.prev_sha256);
         if (!bytes || sha256Hex(bytes) !== cur.prev_sha256) fail("CHAIN_BROKEN", `head ${prevGen} does not match the chain during epoch-key catch-up`, "materializing gitvault head", { generation: prevGen });
         cur = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
         curPin = { generation: prevGen, head_sha256: bytes ? sha256Hex(bytes) : curPin.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) };
@@ -1948,6 +2160,40 @@ export class GitvaultVault {
     };
   }
 
+  /**
+   * Read one NEWLY-LISTED head's raw bytes, trying the local cache first
+   * (design D3), re-verified against `expectedSha256` — the SAME check
+   * network bytes get. Safe to cache-serve ONLY because a caller here
+   * always supplies a hash a FRESH `listHeads` call just reported as
+   * current — the cache never substitutes for that freshness check, it just
+   * avoids re-downloading bytes a live listing already vouched for. A cache
+   * miss or a hash mismatch (never trusted, always falls through) fetches
+   * from the network and, on a match, refreshes the cache entry. Returns
+   * whatever the network returned on a final miss too (including `null`) —
+   * callers keep their own existing absent/mismatch handling unchanged.
+   *
+   * Deliberately NOT used by {@link readHead}: that call verifies the
+   * PINNED generation is STILL held by the server, with no fresh listing
+   * involved — its entire purpose is detecting server-side loss/rollback,
+   * which a cache read can never observe. That call always goes live.
+   */
+  private async readCachedHeadBytes(generation: string, expectedSha256: string): Promise<Uint8Array | null> {
+    const cached = this.keystore.readCachedHead(this.repoId, generation);
+    if (cached && sha256Hex(cached.bytes) === expectedSha256) return cached.bytes;
+    const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(generation) });
+    if (bytes && sha256Hex(bytes) === expectedSha256) this.keystore.writeCachedHead(this.repoId, generation, expectedSha256, bytes);
+    return bytes;
+  }
+
+  /**
+   * Confirm the server STILL holds the pinned generation, unchanged —
+   * ALWAYS a live network read (see {@link readCachedHeadBytes}'s doc
+   * comment for why this specific check is not cacheable: it exists to
+   * detect server-side loss, which a cache can never observe). A
+   * successful read still WARMS the cache afterward — later reads of this
+   * SAME generation via the chain walk or restore benefit from it; only
+   * THIS call's own read is exempt.
+   */
   private async readHead(generation: string, expectedSha256: string): Promise<GitvaultHead> {
     const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(generation) });
     // Absent ⇒ the vault no longer holds a generation this client authenticated: a ROLLBACK, not a
@@ -1958,28 +2204,32 @@ export class GitvaultVault {
       ]);
     }
     if (sha256Hex(bytes) !== expectedSha256) fail("CHAIN_BROKEN", `pinned head ${generation} no longer hashes to the pin`, "reading pinned gitvault head", { generation });
+    this.keystore.writeCachedHead(this.repoId, generation, expectedSha256, bytes);
     return parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
   }
 
   /**
-   * Decrypt one encrypted carrier object by its receipt; any failure is
-   * `CHAIN_UNUSABLE`. `keyOverride` supplies the exact `(epoch, k_repo)` this
-   * carrier was sealed under — REQUIRED for any generation that is not
-   * necessarily under `this.epoch()`/`this.kRepo()` (this principal's
-   * CURRENT pointer), which is exactly the case across an epoch rotation;
-   * omitted call sites (checkpoint/prune paths untouched by this fold) keep
-   * the prior CURRENT-pointer behavior unchanged.
+   * Decrypt + verify one carrier's already-fetched ciphertext frame; any
+   * failure is `CHAIN_UNUSABLE`. Split out of {@link openCarrier} so a
+   * caller that fetched the frame itself (a cache hit, or one leg of a
+   * batched read) can reuse the same decode + identity/signature checks.
+   *
+   * `keyOverride` supplies the exact `(epoch, k_repo)` this carrier was
+   * sealed under — REQUIRED for any generation that is not necessarily
+   * under `this.epoch()`/`this.kRepo()` (this principal's CURRENT
+   * pointer), which is exactly the case across an epoch rotation; omitted
+   * call sites (checkpoint/prune paths untouched by this fold) keep the
+   * prior CURRENT-pointer behavior unchanged.
    */
-  private async openCarrier<T extends { object_kind: string; signature: string }>(
+  private decodeCarrierFrame<T extends { object_kind: string; signature: string }>(
     kind: "ref_state" | "retention_roots" | "checkpoint_manifest",
     receipt: { object_id: string; ciphertext_sha256: string },
-    path: string,
+    frame: Uint8Array | null,
     writerKey: string,
     keyOverride?: { epoch: string; k_repo: Uint8Array },
-  ): Promise<T> {
+  ): T {
     const epoch = keyOverride?.epoch ?? this.epoch();
     const kRepo = keyOverride?.k_repo ?? this.kRepo();
-    const frame = await this.transport.getObject({ repo_id: this.repoId, path });
     if (!frame) fail("CHAIN_UNUSABLE", `${kind} ${receipt.object_id} is absent from storage`, "materializing gitvault head", { object_id: receipt.object_id }, [{ action: "stay read-only at the materialized pin; run the repair path" }]);
     let plaintext: Uint8Array;
     try {
@@ -1992,6 +2242,59 @@ export class GitvaultVault {
       fail("CHAIN_UNUSABLE", `${kind} ${receipt.object_id} plaintext fails its identity/signature checks`, "materializing gitvault head", { object_id: receipt.object_id });
     }
     return object;
+  }
+
+  /**
+   * Fetch (network) + decrypt one carrier object by its receipt; any
+   * failure is `CHAIN_UNUSABLE`. Design D3: `ref_state`/`retention_roots`
+   * ciphertext is cached beside the keystore's per-repo state, re-verified
+   * against `receipt.ciphertext_sha256` on every use — a hit skips the
+   * network read entirely. `checkpoint_manifest` is never cached (outside
+   * D3's table). The cache write derives its generation tag from the
+   * DECODED object's own `generation` field, so no caller needs to thread
+   * one through by hand.
+   */
+  private async openCarrier<T extends { object_kind: string; signature: string; generation?: string }>(kind: "ref_state" | "retention_roots" | "checkpoint_manifest", receipt: { object_id: string; ciphertext_sha256: string }, path: string, writerKey: string, keyOverride?: { epoch: string; k_repo: Uint8Array }): Promise<T> {
+    const cacheable = kind === "ref_state" || kind === "retention_roots";
+    const cached = cacheable ? this.keystore.readCachedCarrier(this.repoId, receipt.object_id) : null;
+    const cacheHit = cached && sha256Hex(cached.bytes) === receipt.ciphertext_sha256;
+    const frame = cacheHit ? cached.bytes : await this.transport.getObject({ repo_id: this.repoId, path });
+    const object = this.decodeCarrierFrame<T>(kind, receipt, frame, writerKey, keyOverride);
+    if (cacheable && !cacheHit && frame && typeof object.generation === "string") {
+      this.keystore.writeCachedCarrier(this.repoId, receipt.object_id, object.generation, receipt.ciphertext_sha256, frame);
+    }
+    return object;
+  }
+
+  /**
+   * `materialize`'s ref_state + retention_roots read, batched (design D2):
+   * cache-check both first, then ONE `getObjects` call (one presigned batch
+   * + concurrent GETs) for whichever missed, instead of two independent
+   * presign-then-GET round trips. Falls through to zero network calls when
+   * both are cache-warm. `keyOverride` is the epoch/k_repo the CARRYING
+   * HEAD sealed both carriers under (D194) — both always share one head, so
+   * one override serves both, unlike the WAL/checkpoint pack loops in
+   * {@link restoreObjectsInto} which span many heads and many epochs.
+   */
+  private async openMaterializeCarriers(refStateReceipt: GitvaultRefStateReceipt, refStatePath: string, rootsReceipt: GitvaultRetentionRootsReceipt, rootsPath: string, writerKey: string, keyOverride?: { epoch: string; k_repo: Uint8Array }): Promise<{ refState: GitvaultRefState; roots: GitvaultRetentionRoots }> {
+    const cachedRefState = this.keystore.readCachedCarrier(this.repoId, refStateReceipt.object_id);
+    const cachedRoots = this.keystore.readCachedCarrier(this.repoId, rootsReceipt.object_id);
+    const refStateHit = Boolean(cachedRefState && sha256Hex(cachedRefState.bytes) === refStateReceipt.ciphertext_sha256);
+    const rootsHit = Boolean(cachedRoots && sha256Hex(cachedRoots.bytes) === rootsReceipt.ciphertext_sha256);
+
+    const missingPaths: string[] = [];
+    if (!refStateHit) missingPaths.push(refStatePath);
+    if (!rootsHit) missingPaths.push(rootsPath);
+    const fetched = missingPaths.length > 0 ? await this.transport.getObjects({ repo_id: this.repoId, paths: missingPaths }) : [];
+    let next = 0;
+    const refStateFrame = refStateHit ? cachedRefState!.bytes : (fetched[next++] ?? null);
+    const rootsFrame = rootsHit ? cachedRoots!.bytes : (fetched[next++] ?? null);
+
+    const refState = this.decodeCarrierFrame<GitvaultRefState>("ref_state", refStateReceipt, refStateFrame, writerKey, keyOverride);
+    const roots = this.decodeCarrierFrame<GitvaultRetentionRoots>("retention_roots", rootsReceipt, rootsFrame, writerKey, keyOverride);
+    if (!refStateHit && refStateFrame) this.keystore.writeCachedCarrier(this.repoId, refStateReceipt.object_id, refState.generation, refStateReceipt.ciphertext_sha256, refStateFrame);
+    if (!rootsHit && rootsFrame) this.keystore.writeCachedCarrier(this.repoId, rootsReceipt.object_id, roots.generation, rootsReceipt.ciphertext_sha256, rootsFrame);
+    return { refState, roots };
   }
 
   /**
@@ -2019,7 +2322,10 @@ export class GitvaultVault {
     }
     // `strict: true` guarantees `state.decrypt` is non-null with no failure
     // and `decryptable_to_generation === state.generation` — it throws
-    // otherwise, so these are never null/mismatched here.
+    // otherwise, so these are never null/mismatched here. `verifyToNewest`'s
+    // own `tryDecrypt` is what actually fetches these now (design D2/D3's
+    // batching + caching moved there with it — see its doc comment) —
+    // `openMaterializeCarriers` no longer has a caller from here.
     const refState = state.decrypt!.ref_state!;
     const roots = state.decrypt!.retention_roots!;
     if (refState.generation !== state.generation || roots.generation !== state.generation) fail("CHAIN_UNUSABLE", "carrier generation does not match the head", "materializing gitvault head");
@@ -2596,11 +2902,18 @@ export class GitvaultVault {
     return { outcome: "admitted", generation, head, head_sha256: admitted.head_sha256, admission_record_sha256: admitted.admission_record_sha256, capture_receipt: admitted.capture_receipt, form, refs: input.refs };
   }
 
-  /** The complete push: verify → materialize → evaluate → pack → upload → head → admit (409: re-apply to the winner, retry) → read back → advance pins. */
+  /**
+   * The complete push: verify → materialize → evaluate → pack → upload → head → admit (409: re-apply to the winner, retry) → read back → advance pins.
+   *
+   * `options.base` (design D1), when supplied, is used VERBATIM for the
+   * first attempt instead of a fresh {@link materialize} call — a conflict
+   * retry always re-materializes from storage, exactly as when no base is
+   * supplied.
+   */
   async push(options: GitvaultPushOptions): Promise<GitvaultPublishResult> {
     let conflicts = 0;
+    let base = options.base ?? (await this.materialize());
     for (;;) {
-      const base = await this.materialize();
       const evaluation = await evaluateRefTransaction(base.refs, options.transaction, { isAncestor: (a, d) => isAncestor(this.git(), a, d), protocol_refs: options.protocol_refs });
       const published = await this.publishGeneration({
         base, refs: evaluation.refs, dropped: evaluation.dropped, head_target: options.head_target ?? base.head_target,
@@ -2609,7 +2922,8 @@ export class GitvaultVault {
       if (published.outcome === "conflict") {
         conflicts += 1;
         if (conflicts > this.retries) fail("HEAD_CAS_CONFLICT", `admission lost ${conflicts} races at generation ${published.generation}; giving up`, "publishing gitvault head", { generation: published.generation, winner: published.winner }, [{ action: "verify the attached winner from storage, rebase, retry" }]);
-        continue; // the loop re-verifies from storage (the winner), re-applies the transaction to the winner's map, retries
+        base = await this.materialize(); // re-verify from storage (the winner) before re-applying the transaction
+        continue;
       }
       // `push()` never sets `dry_run`, so this outcome is unreachable here —
       // narrows `published` to `"admitted"` for the return below.
@@ -2639,7 +2953,11 @@ export class GitvaultVault {
    * that case instead of calling this method).
    */
   async planPush(options: GitvaultPushOptions): Promise<GitvaultPushPlan> {
-    const base = await this.materialize();
+    // Design D1: a caller-supplied base reports against the CALLER's own
+    // observed snapshot instead of materializing a fresh one — same
+    // verbatim-first-attempt contract as `push`, minus the retry loop
+    // (a dry run never re-materializes; there is nothing to retry against).
+    const base = options.base ?? (await this.materialize());
     const evaluation = await evaluateRefTransaction(base.refs, options.transaction, { isAncestor: (a, d) => isAncestor(this.git(), a, d), protocol_refs: options.protocol_refs });
     const headTarget = options.head_target ?? base.head_target;
     const published = await this.publishGeneration({
@@ -2754,10 +3072,18 @@ export class GitvaultVault {
     const hash = sha256Hex(bytes);
     const result = await this.transport.admitHead({ repo_id: this.repoId, generation: head.generation, stored_bytes: bytes, stored_bytes_sha256: hash });
     if (result.outcome === "conflict") return result;
+    // Post-admit readback is a spec-mandated verification obligation, never
+    // a cache lookup — it exists to prove the SERVER stored what was sent,
+    // which only a genuine network read can answer.
     const back = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(head.generation) });
     if (!back || sha256Hex(back) !== hash) {
       fail("GITVAULT_HEAD_READBACK_MISMATCH", `the admitted head at generation ${head.generation} read back ${back ? sha256Hex(back) : "absent"} ≠ ${hash}; the push is NOT reported as landed and no pin advances`, "reading back admitted head", { generation: head.generation, expected: hash, observed: back ? sha256Hex(back) : null });
     }
+    // Design D3: the readback just network-confirmed these exact bytes —
+    // warm the cache with them so the NEXT operation (this session's own
+    // `materialize` retry, or a later invocation) can skip re-fetching this
+    // generation's head entirely.
+    this.keystore.writeCachedHead(this.repoId, head.generation, hash, back);
     const pin: GitvaultHeadPin = { generation: head.generation, head_sha256: hash, pinned_at: formatGitvaultTimestamp(this.now()) };
     this.keystore.updateRepo(this.repoId, { head_pin: pin, materialized_pin: pin, verified_prefix: null });
     return { outcome: "admitted", head_sha256: hash, admission_record_sha256: result.admission_record_sha256, capture_receipt: result.capture_receipt };
@@ -3342,6 +3668,20 @@ export class GitvaultVault {
    * Pull the newest checkpoint (if any) and every later WAL pack into
    * `targetRepoDir` (an initialized repository), then verify every canonical
    * ref + the HEAD target resolves. Returns the materialized refs.
+   *
+   * Design D5 (gitvault-client-round-trips): incremental above the local
+   * `restored_through` marker (this target directory's own local git
+   * config, read/written by {@link readGitvaultRestoreMarker}/{@link
+   * writeGitvaultRestoreMarker}) — replaying only the WAL packs of
+   * generations above it — WHEN the walk from newest back to the marker is
+   * plain WAL the entire way. The moment that walk crosses a
+   * checkpoint-bearing, repair, or transition head (checked BEFORE
+   * including a head, so the marker-boundary and wholesale-boundary checks
+   * share one pass), this falls back to the ORIGINAL wholesale walk below —
+   * re-fetching any head already visited during the aborted attempt is a
+   * cache hit (design D3), never a second network round trip. Coverage
+   * verification and retained-refs reconciliation run UNCHANGED on both
+   * paths; the marker only advances after they both succeed.
    */
   async restoreObjectsInto(targetRepoDir: string): Promise<{ refs: GitvaultRefMap; head_target: GitvaultHeadTarget; generation: string; retained_refs: GitvaultRetainedRefsReconcileResult }> {
     const newest = await this.materialize();
@@ -3350,15 +3690,50 @@ export class GitvaultVault {
       return { refs: {}, head_target: newest.head_target, generation: newest.generation, retained_refs };
     }
     const writerKey = newest.genesis.creator_signing_pubkey;
-    // walk back to the newest checkpoint-bearing head
+
+    const marker = await readGitvaultRestoreMarker(targetRepoDir);
+    // Already up to date locally: no pack fetch, not even a walk — only the
+    // (entirely local) coverage + retained-refs bookkeeping below runs.
+    if (marker && marker.generation === newest.generation && marker.head_sha256 === newest.head_sha256) {
+      for (const t of GitvaultVault.coverageTips(newest.refs, newest.roots, newest.head_target)) {
+        if (!(await hasObject(targetRepoDir, t))) fail("CHAIN_UNUSABLE", `covered tip ${t} does not resolve after restore`, "restoring gitvault objects", { oid: t });
+      }
+      const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: newest.refs, roots: newest.roots, head_target: newest.head_target });
+      return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
+    }
+
+    // Walk back from newest, trying for an INCREMENTAL boundary at the
+    // marker (a pure local prev_sha256 comparison — no fetch needed to
+    // CONFIRM the boundary itself); abandon incremental the moment a
+    // non-plain-WAL head would have to be included, and restart as the
+    // ORIGINAL wholesale walk (stopping at the newest checkpoint, or
+    // genesis) — every head visited in the aborted attempt is a D3 cache
+    // hit on this restart, so abandoning costs no extra round trip.
     const heads: GitvaultHead[] = [];
     let cur: GitvaultHead | null = newest.head;
+    let incremental = marker !== null;
     while (cur) {
+      // `cur` disqualifies incremental (checked BEFORE including it): abort
+      // and restart as the wholesale walk. Re-visiting heads already fetched
+      // this attempt costs nothing (D3 cache hits).
+      if (incremental && (cur.checkpoint !== null || cur.transition !== null)) {
+        incremental = false;
+        heads.length = 0;
+        cur = newest.head;
+        continue;
+      }
       heads.unshift(cur);
-      if (cur.checkpoint) break;
-      if (cur.generation === "0000000000000001") break;
+      if (!incremental && cur.checkpoint) break; // wholesale stop: the newest checkpoint-bearing head
+      if (cur.generation === "0000000000000001") break; // genesis — a hard stop either way
+      // Before fetching `cur`'s predecessor, check whether the marker
+      // already names it — a pure LOCAL comparison against bytes this
+      // client already applied last time, no network round trip.
       const prevGen = bigIntToGeneration(generationToBigInt(cur.generation) - 1n);
-      const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(prevGen) });
+      if (incremental && cur.prev_sha256 === marker!.head_sha256 && prevGen === marker!.generation) {
+        cur = null; // the predecessor is the marker's own head — already applied; `heads` already holds everything above it
+        break;
+      }
+      const bytes = await this.readCachedHeadBytes(prevGen, cur.prev_sha256);
       if (!bytes || sha256Hex(bytes) !== cur.prev_sha256) fail("CHAIN_BROKEN", `head ${prevGen} does not match the chain during restore`, "restoring gitvault objects");
       cur = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
     }
@@ -3383,21 +3758,37 @@ export class GitvaultVault {
       if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) fail("CHECKPOINT_INCOMPLETE", "claim set signature fails", "restoring gitvault objects");
       const manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), writerKey, { epoch: first.epoch, k_repo: kRepoForEpoch(first.epoch) });
       checkClaimSetEquality(claimSet, manifest, first.checkpoint.covers_through_generation);
-      for (const p of manifest.packs) {
-        const frame = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.checkpointPack(p.object_id) });
+      // Design D2: every checkpoint pack is independent — one batched
+      // presign for all of them, THEN applied via index-pack strictly in
+      // manifest order (the fetch is concurrent; the local git write is
+      // not, and does not need to be).
+      const frames = await this.transport.getObjects({ repo_id: this.repoId, paths: manifest.packs.map((p) => gitvaultPaths.checkpointPack(p.object_id)) });
+      for (let i = 0; i < manifest.packs.length; i++) {
+        const p = manifest.packs[i]!;
+        const frame = frames[i] ?? null;
         if (!frame) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} absent`, "restoring gitvault objects");
         const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(first.epoch), this.repoId, first.epoch, "checkpoint_pack", p.object_id), repo_id: this.repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: first.epoch, frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
         if (sha256Hex(plain) !== p.plaintext_sha256 || String(plain.length) !== p.plaintext_size_bytes) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} plaintext mismatch`, "restoring gitvault objects");
         await hardenedGit(targetRepoDir, ["index-pack", "--stdin", "--strict"], { input: plain });
       }
     }
-    for (const h of heads) {
-      for (const w of h.wal_entries) {
-        const frame = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.wal(w.object_id) });
-        if (!frame) fail("CHAIN_UNUSABLE", `WAL pack ${w.object_id} absent`, "restoring gitvault objects");
-        const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(h.epoch), this.repoId, h.epoch, "wal_pack", w.object_id), repo_id: this.repoId, object_kind: "wal_pack", object_id: w.object_id, epoch: h.epoch, frame, expected_ciphertext_sha256: w.ciphertext_sha256 });
-        await hardenedGit(targetRepoDir, ["index-pack", "--stdin", "--strict"], { input: plain });
-      }
+    // Design D2: every WAL pack across every head in this restore's range is
+    // independent — one batched presign for the whole set (this is the
+    // "restore pack set" the design's own D2 prose names alongside
+    // materialize's carriers), fetched concurrently, then applied via
+    // index-pack in the SAME chain order the wholesale path always used
+    // (git's pack application is sequential; the network fetch need not be).
+    // Each entry decrypts under its OWN carrying head's epoch (D194) — the
+    // flattened list keeps that pairing so a rotation-spanning restore never
+    // reuses one head's epoch for another's pack.
+    const walEntries = heads.flatMap((h) => h.wal_entries.map((w) => ({ w, epoch: h.epoch })));
+    const walFrames = await this.transport.getObjects({ repo_id: this.repoId, paths: walEntries.map(({ w }) => gitvaultPaths.wal(w.object_id)) });
+    for (let i = 0; i < walEntries.length; i++) {
+      const { w, epoch } = walEntries[i]!;
+      const frame = walFrames[i] ?? null;
+      if (!frame) fail("CHAIN_UNUSABLE", `WAL pack ${w.object_id} absent`, "restoring gitvault objects");
+      const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(epoch), this.repoId, epoch, "wal_pack", w.object_id), repo_id: this.repoId, object_kind: "wal_pack", object_id: w.object_id, epoch, frame, expected_ciphertext_sha256: w.ciphertext_sha256 });
+      await hardenedGit(targetRepoDir, ["index-pack", "--stdin", "--strict"], { input: plain });
     }
     // the §4.7 coverage set — canonical refs ∪ unexpired roots ∪ the HEAD target — must all resolve.
     for (const t of GitvaultVault.coverageTips(newest.refs, newest.roots, newest.head_target)) {
@@ -3408,6 +3799,12 @@ export class GitvaultVault {
     // ref so `git fsck` is silent. Runs AFTER coverage verification so a
     // reconcile never references an object the restore itself failed to land.
     const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: newest.refs, roots: newest.roots, head_target: newest.head_target });
+    // Design D5: the marker advances ONLY here — after coverage verification
+    // and the retained-refs reconcile both succeeded. An interrupted restore
+    // (a crash or throw anywhere above) leaves the marker unadvanced, so the
+    // next fetch simply repeats this same range; applying an already-applied
+    // WAL pack again is the existing, already-safe wholesale behavior.
+    await writeGitvaultRestoreMarker(targetRepoDir, newest.generation, newest.head_sha256);
     return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
   }
 }

@@ -65,7 +65,7 @@ describe("gitvaultRemoteUrlForRepo / parseGitvaultRemoteUrl round-trip", () => {
 // ─── resolveGitvaultAddress — id-form ──────────────────────────────────────
 
 describe("resolveGitvaultAddress — id-form", () => {
-  it("resolves via findVaultByProject and pins NOTHING (id-form needs no pin)", async () => {
+  it("resolves via findVaultByProject and pins repo_id (design D4 — no resolved_from, id-form has no slug pair)", async () => {
     const transport = new GitvaultMemoryTransport();
     // A REAL, fully-created vault (not a bare allocate) — findVaultByProject
     // only resolves once the fixture's objects actually exist, matching D2's
@@ -83,7 +83,78 @@ describe("resolveGitvaultAddress — id-form", () => {
     assert.equal(resolution.via, "resolved");
     assert.equal(resolution.repo_id, allocation.repo_id);
     assert.equal(resolution.address, null);
-    // id-form pins nothing — a second call re-resolves over the network, not from a pin.
+    // gitvault-client-round-trips design D4: the first successful id-form
+    // resolution pins repo_id too — no `resolved_from` (id-form has no
+    // org-slug/name pair to record diagnostically).
+    assert.deepEqual(await readPinnedGitvaultRepo(repoDir), { repo_id: allocation.repo_id, resolved_from: null });
+  });
+
+  it("a second id-form resolution follows the pin — never calls findVaultByProject again", async () => {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    const allocation = await createGitvault({ keystore, transport, org_id: "org_1", project_id: "prj_1" });
+    const repoDir = await makeRepo(root);
+    const address = { org_id: "11111111-1111-4111-8111-111111111111", project_id: "prj_1" };
+
+    const first = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(first.via, "resolved");
+    const callsBeforeSecond = transport.calls.filter((c) => c === "find-vault").length;
+    assert.ok(callsBeforeSecond > 0, "sanity: the first call really did resolve over the network");
+
+    const second = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(second.via, "pin");
+    assert.equal(second.repo_id, allocation.repo_id);
+    assert.equal(second.form, "id");
+    // Proves the pin path never called findVaultByProject a second time — only getVaultRecord.
+    assert.equal(transport.calls.filter((c) => c === "find-vault").length, callsBeforeSecond);
+  });
+
+  it("a stale id-form pin (repo_id no longer resolves) clears and re-resolves once", async () => {
+    const inner = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    const allocation = await createGitvault({ keystore, transport: inner, org_id: "org_1", project_id: "prj_1" });
+    const repoDir = await makeRepo(root);
+    const address = { org_id: "11111111-1111-4111-8111-111111111111", project_id: "prj_1" };
+    await pinGitvaultRepo(repoDir, allocation.repo_id);
+    assert.notEqual(await readPinnedGitvaultRepo(repoDir), null);
+
+    // The fixture's own getVaultRecord/findVaultByProject never model "the
+    // vault is genuinely gone" (they always return a best-effort record) —
+    // a thin wrapper simulates the purge honestly: BOTH the pin-check's
+    // getVaultRecord AND the id-form fallback's findVaultByProject 404,
+    // exactly what a deleted/purged vault looks like from either route.
+    let getVaultRecordCalls = 0;
+    let findVaultByProjectCalls = 0;
+    const transport = new Proxy(inner, {
+      get(target, prop, receiver) {
+        if (prop === "getVaultRecord") {
+          return async (req: { repo_id: string }) => {
+            getVaultRecordCalls += 1;
+            if (req.repo_id === allocation.repo_id) throw new LocalError("no such vault", "reading the gitvault record", { code: "RESOURCE_NOT_FOUND" });
+            return target.getVaultRecord(req);
+          };
+        }
+        if (prop === "findVaultByProject") {
+          return async (req: { project_id: string }) => {
+            findVaultByProjectCalls += 1;
+            throw new LocalError(`no gitvault for ${req.project_id}`, "resolving the project's gitvault", { code: "RESOURCE_NOT_FOUND" });
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    await assert.rejects(
+      resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir }),
+      (e: unknown) => {
+        assert.ok(e instanceof LocalError);
+        assert.equal((e as LocalError).code, "RESOURCE_NOT_FOUND");
+        return true;
+      },
+    );
+    assert.equal(getVaultRecordCalls, 1, "the pin was checked exactly once before being cleared");
+    assert.equal(findVaultByProjectCalls, 1, "cleared the pin and re-resolved via findVaultByProject exactly once before failing");
+    // The stale pin was cleared, not left dangling.
     assert.equal(await readPinnedGitvaultRepo(repoDir), null);
   });
 });
@@ -149,17 +220,12 @@ describe("resolveGitvaultAddress — slug-form id-pinning", () => {
     assert.equal(transport.calls.filter((c) => c === "find-vault-by-repo").length, callsBeforeSecond);
   });
 
-  it("id-form never pins, even when passed a repo_dir", async () => {
-    const transport = new GitvaultMemoryTransport();
+  it("pinGitvaultRepo omits resolvedFrom for an id-form pin — reads back as resolved_from: null", async () => {
     const repoDir = await makeRepo(root);
-    const { createGitvault } = await import("./gitvault-creation-journal.js");
-    await createGitvault({ keystore, transport, org_id: "org_1", project_id: "prj_1" });
-    await resolveGitvaultAddress({
-      keystore, transport,
-      address: { org_id: "11111111-1111-4111-8111-111111111111", project_id: "prj_1" },
-      repo_dir: repoDir,
-    });
     assert.equal(await readPinnedGitvaultRepo(repoDir), null);
+    await pinGitvaultRepo(repoDir, "src_deadbeef"); // no third argument — the id-form shape
+    const pinned = await readPinnedGitvaultRepo(repoDir);
+    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: null });
   });
 
   it("pinGitvaultRepo / readPinnedGitvaultRepo round-trip directly", async () => {

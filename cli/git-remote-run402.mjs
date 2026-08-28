@@ -104,7 +104,7 @@ import { pathToFileURL } from "node:url";
 import { getSdk } from "./lib/sdk.mjs";
 import { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } from "./lib/wallet-context.mjs";
 import { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } from "#sdk";
-import { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo } from "#sdk/node";
+import { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo } from "#sdk/node";
 
 const out = (line) => process.stdout.write(`${line}\n`);
 /** Every helper response block is terminated by a blank line. */
@@ -350,6 +350,26 @@ async function main(argv) {
     return resolvedRepo.repo_dir;
   }
 
+  /**
+   * One materialize per push session (gitvault-client-round-trips design
+   * D1). Git guarantees `list` precedes `push` in the same helper process,
+   * so a `list` that resolves an EXISTING vault against a real repository
+   * stashes its vault instance + materialized base here; `runPush` reuses
+   * BOTH — skipping its own `openOrCreateVault` + `materialize()` entirely
+   * — instead of materializing the same state a second and third time.
+   * `null` whenever there is nothing safe to share: `list` never ran, ran
+   * repo-free (a bare `git ls-remote`), or found an UNALLOCATED vault
+   * (first-push-allocates keeps its own unchanged flow — design D7's own
+   * "base-sharing subtlety" risk note). Reuse also requires the SAME
+   * resolved repository AND the same resolved wallet as `push` is about to
+   * use — in ordinary usage (`push` run from inside the repo it targets)
+   * these always match `list`'s own resolution; the check just makes a
+   * mismatch (an unusual `git -C otherdir push`) fail safe into `push`'s
+   * original, unshared flow rather than reuse a snapshot read under a
+   * different identity.
+   */
+  let sharedListSession = null;
+
   /** This repository's own HEAD branch (`refs/heads/<name>`), or `null` when detached, unborn, or unreadable — never a failure by itself. */
   async function localHeadBranchRef(repoDir) {
     try {
@@ -377,15 +397,17 @@ async function main(argv) {
 
   /**
    * Open the vault lazily — `capabilities` and `option` must never touch the
-   * network. Dispatches on the address form (design D6): id-form is
-   * BYTE-IDENTICAL to before (`gitvault.open` with `{org_id, project_id}`);
-   * slug-form resolves (and, on the first successful resolution, PINS
-   * `repo_id` in local git state — task 4.5) through
-   * `gitvault.resolveOrCreateAddress` with `allow_create: false` — a read
-   * never allocates, same discipline the id-form path already had.
+   * network. Both address forms resolve (and, on the first successful
+   * resolution, PIN `repo_id` in local git state — task 4.5 for slug-form,
+   * gitvault-client-round-trips design D4 widening the same mechanism to
+   * id-form) through `gitvault.resolveOrCreateAddress` with
+   * `allow_create: false` — a read never allocates, and `allow_create` is
+   * meaningless for id-form's own dispatch anyway (it never creates,
+   * pinned or not). A repo-free call (`repoDir` undefined — `list` outside
+   * any checkout) resolves exactly as it always has, just with nothing to
+   * pin.
    */
   const openVault = async (repoDir) => {
-    if (addressForm === "id") return (await getSdk().gitvault.open(repoDir ? { ...target, repo_dir: repoDir } : target)).vault;
     const result = await getSdk().gitvault.resolveOrCreateAddress({ address, allow_create: false, ...(repoDir ? { repo_dir: repoDir } : {}) });
     return result.handle.vault;
   };
@@ -397,15 +419,36 @@ async function main(argv) {
    * `list`/`fetch` stay pure reads and never create anything (see
    * `runList`'s own not-found handling below).
    *
+   * Id-form (gitvault-client-round-trips design D4): a PINNED repo_id means
+   * this checkout has already resolved (or pushed to) this vault before, so
+   * there is nothing left to allocate — the read-only, pin-aware
+   * `resolveOrCreateAddress` path (same one `openVault` uses) is enough,
+   * and cheaper than re-running the allocation-capable flow on every push.
+   * With NO pin yet, this is unchanged: `gitvault.openOrCreate` runs its
+   * six-stage creation journal when the vault does not exist, exactly as
+   * before — and, on success, PINS the resolved id for every later push on
+   * this checkout (this is the "first successful resolution" the pin exists
+   * for; `resolveOrCreateAddress`'s own pin-on-resolve only covers
+   * slug-form, since id-form's OWN allocation path — this one — never
+   * routes through it).
+   *
    * Prints the one-shot recovery receipt and the keystore path to stderr the
    * moment allocation happens, per the client-surface spec: an agent reads
    * stderr, and the receipt is worth exactly as many copies as get kept.
    */
   async function openOrCreateVault(repoDir) {
+    if (addressForm === "id" && repoDir) {
+      const pinned = await readPinnedGitvaultRepo(repoDir);
+      if (pinned) {
+        const result = await getSdk().gitvault.resolveOrCreateAddress({ address, repo_dir: repoDir, allow_create: false });
+        return result.handle.vault;
+      }
+    }
     const result =
       addressForm === "id"
         ? await getSdk().gitvault.openOrCreate({ ...target, repo_dir: repoDir })
         : await getSdk().gitvault.resolveOrCreateAddress({ address, repo_dir: repoDir, allow_create: true });
+    if (addressForm === "id" && repoDir) await pinGitvaultRepo(repoDir, result.handle.repo_id);
     if (!result.found && result.created) {
       note("");
       note(`vault ${result.handle.repo_id} allocated (genesis ${result.created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
@@ -424,11 +467,26 @@ async function main(argv) {
   async function runList() {
     // `list` needs no repository (a repository-free `git ls-remote` outside
     // any checkout must keep working) — the binding walk falls back to cwd,
-    // same as `capabilities`/`option`'s repository-free tier.
+    // same as `capabilities`/`option`'s repository-free tier. Wallet
+    // resolution is UNCHANGED (still cwd-based, never repoDir-based) — only
+    // the vault-open call below additionally threads a repository when one
+    // resolves, purely so a later `push` in this same session can reuse the
+    // resulting vault instance (design D1); the repo-free ls-remote case is
+    // unaffected (`repoDir` just stays `null`).
     applyWalletForDir(process.cwd());
+    let repoDir = null;
+    try {
+      repoDir = await requireRepo();
+    } catch {
+      // Not resolvable as a repository (e.g. `git ls-remote` outside any
+      // checkout) — `list` still works, and there is nothing for `push` to
+      // share later in that case.
+    }
+    let vault;
     let state;
     try {
-      state = await (await openVault()).materialize();
+      vault = await openVault(repoDir ?? undefined);
+      state = await vault.materialize();
     } catch (err) {
       // An unallocated vault is not an error here: `list` is the read half of
       // the protocol dance and must never create anything on its own (D2
@@ -436,13 +494,15 @@ async function main(argv) {
       // exactly what a fresh repository looks like to git, and `push` still
       // runs `list` first either way — this is what lets a first push land in
       // one command instead of `list` failing the whole exchange before
-      // `push` ever gets a turn.
+      // `push` ever gets a turn. Nothing to share with `push` either
+      // (design D7): an unallocated vault has no base to reuse.
       if (isVaultNotFound(err)) {
         endBlock();
         return;
       }
       throw err;
     }
+    if (repoDir) sharedListSession = { repoDir, walletName: resolvedWallet?.name ?? null, vault, base: state };
     const refs = state.refs ?? {};
     for (const ref of Object.keys(refs).sort()) out(`${refs[ref]} ${ref}`);
     // A snapshot-only vault holds protocol refs but no branch heads, so a
@@ -569,8 +629,18 @@ async function main(argv) {
         return 0;
       }
 
-      const vault = await openOrCreateVault(repoDir);
-      const base = await vault.materialize();
+      // Design D1: reuse `list`'s vault + materialized base for this push's
+      // FIRST admission attempt when it resolved the SAME repository under
+      // the SAME wallet — skips `openOrCreateVault` and `materialize()`
+      // entirely instead of resolving/materializing the vault a second and
+      // third time in one `list → push` exchange. A conflict retry inside
+      // `vault.push` re-materializes from storage exactly as it always has;
+      // only the FIRST attempt's base changes here. Any mismatch (no prior
+      // `list`, an unallocated vault `list` had nothing to share for, or a
+      // different repository/wallet) falls back to the original flow.
+      const shared = sharedListSession && sharedListSession.repoDir === repoDir && sharedListSession.walletName === (resolvedWallet?.name ?? null) ? sharedListSession : null;
+      const vault = shared ? shared.vault : await openOrCreateVault(repoDir);
+      const base = shared ? shared.base : await vault.materialize();
       const updates = [];
       for (const spec of allowed) {
         const expectedOld = base.refs?.[spec.dst] ?? null;
@@ -601,6 +671,7 @@ async function main(argv) {
       // forward unchanged — a healthy HEAD is never moved.
       const published = await vault.push({
         transaction: { updates },
+        base,
         ...(headFix.head_target ? { head_target: headFix.head_target } : {}),
       });
       if (verbosity >= 1) note(`published generation ${published.generation} (${published.form})`);

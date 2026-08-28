@@ -288,3 +288,69 @@ describe("createGitvaultHttpTransport — the mint's envelope is unwrapped, neve
     assert.equal((got as unknown as { receipt: unknown }).receipt, issued.receipt);
   });
 });
+
+// ─── RUN402_GITVAULT_TRACE=1 (design D7) ──────────────────────────────────────
+
+describe("createGitvaultHttpTransport — RUN402_GITVAULT_TRACE debug trace", () => {
+  const REPO = `r402s_${"a".repeat(32)}`;
+
+  function fakeVaultRecordClient(): Parameters<typeof createGitvaultHttpTransport>[0] {
+    return {
+      apiBase: "https://api.example.test",
+      async request<T>(): Promise<T> {
+        return { repo_id: REPO, project_id: "prj_1", org_id: "org_1" } as unknown as T;
+      },
+    } as unknown as Parameters<typeof createGitvaultHttpTransport>[0];
+  }
+
+  it("is silent by default — no RUN402_GITVAULT_TRACE, no stderr writes", async (t) => {
+    const original = process.env.RUN402_GITVAULT_TRACE;
+    delete process.env.RUN402_GITVAULT_TRACE;
+    t.after(() => { if (original === undefined) delete process.env.RUN402_GITVAULT_TRACE; else process.env.RUN402_GITVAULT_TRACE = original; });
+
+    const writes: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: unknown) => { writes.push(String(chunk)); return true; }) as typeof process.stderr.write;
+    t.after(() => { process.stderr.write = originalWrite; });
+
+    const transport = createGitvaultHttpTransport(fakeVaultRecordClient());
+    await transport.getVaultRecord({ repo_id: REPO });
+    assert.deepEqual(writes.filter((w) => w.includes("gitvault-trace")), []);
+  });
+
+  it("RUN402_GITVAULT_TRACE=1 prints one stderr line per operation, naming the op kind", async (t) => {
+    const original = process.env.RUN402_GITVAULT_TRACE;
+    process.env.RUN402_GITVAULT_TRACE = "1";
+    t.after(() => { if (original === undefined) delete process.env.RUN402_GITVAULT_TRACE; else process.env.RUN402_GITVAULT_TRACE = original; });
+
+    const writes: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: unknown) => { writes.push(String(chunk)); return true; }) as typeof process.stderr.write;
+    t.after(() => { process.stderr.write = originalWrite; });
+
+    const transport = createGitvaultHttpTransport(fakeVaultRecordClient());
+    await transport.getVaultRecord({ repo_id: REPO });
+    const traceLines = writes.filter((w) => w.includes("gitvault-trace"));
+    assert.equal(traceLines.length, 1, `expected exactly one trace line, saw: ${JSON.stringify(writes)}`);
+    assert.match(traceLines[0]!, /gitvault-trace: getVaultRecord/);
+    assert.match(traceLines[0]!, /\d+ms/, "reports a duration");
+  });
+
+  it("never writes to stdout — only stderr, matching the remote helper's own note() discipline", async (t) => {
+    const original = process.env.RUN402_GITVAULT_TRACE;
+    process.env.RUN402_GITVAULT_TRACE = "1";
+    t.after(() => { if (original === undefined) delete process.env.RUN402_GITVAULT_TRACE; else process.env.RUN402_GITVAULT_TRACE = original; });
+
+    const stdoutWrites: string[] = [];
+    const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: unknown) => { stdoutWrites.push(String(chunk)); return true; }) as typeof process.stdout.write;
+    t.after(() => { process.stdout.write = originalStdoutWrite; });
+    const originalStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    t.after(() => { process.stderr.write = originalStderrWrite; });
+
+    const transport = createGitvaultHttpTransport(fakeVaultRecordClient());
+    await transport.getVaultRecord({ repo_id: REPO });
+    assert.deepEqual(stdoutWrites, []);
+  });
+});

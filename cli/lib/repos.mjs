@@ -1558,6 +1558,14 @@ async function gc(args) {
     fail({ code: "BAD_USAGE", message: "--intent-core / --verifier-receipt only apply with --submit.", hint: "Add --submit, or drop the flags to plan." });
   }
   const target = await vaultTarget(a);
+  // gitvault-client-round-trips design D3 (task 4.2): re-apply the local
+  // object cache's eviction window as a periodic backstop. Best-effort —
+  // a sweep failure must never block the actual gc plan/submit.
+  try {
+    await sdk.gitvault.sweepObjectCache(target);
+  } catch {
+    // never let cache housekeeping fail a real gc operation
+  }
 
   try {
     if (submitting) {

@@ -220,6 +220,11 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     this.calls.push(`get:${path}`);
     return this.objects.get(this.key(repo_id, path)) ?? null;
   }
+  /** Batched sibling (design D2) — logs one `get-batch:<n>:<paths…>` call, matching the real transport's one-presign-POST shape, then resolves each path exactly as {@link getObject} would. */
+  async getObjects({ repo_id, paths }: { repo_id: string; paths: string[] }): Promise<Array<Uint8Array | null>> {
+    this.calls.push(`get-batch:${paths.length}:${paths.join(",")}`);
+    return paths.map((path) => this.objects.get(this.key(repo_id, path)) ?? null);
+  }
   async admitGenesis(req: GitvaultAdmitGenesisRequest): Promise<GitvaultAdmitGenesisResult> {
     const k = this.key(req.repo_id, gitvaultPaths.head(GITVAULT_GENESIS_GENERATION));
     const existing = this.objects.get(k);

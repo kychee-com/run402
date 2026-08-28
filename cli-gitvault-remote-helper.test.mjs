@@ -423,12 +423,15 @@ function vaultRecordFixture(overrides = {}) {
   };
 }
 
-/** A gateway stub whose `?repo=` read ALREADY resolves — the "found, no creation needed" fixture. */
+/** A gateway stub whose `?repo=` AND `?project_id=` reads ALREADY resolve — the "found, no creation needed" fixture for both address forms. */
 function withResolvableRepoGateway(handler) {
   const calls = [];
   const server = createServer((req, res) => {
     calls.push({ method: req.method, url: req.url });
-    if (req.method === "GET" && req.url === `/gitvault/v1/vaults?repo=${encodeURIComponent(SLUG_ADDRESS)}`) {
+    if (
+      (req.method === "GET" && req.url === `/gitvault/v1/vaults?repo=${encodeURIComponent(SLUG_ADDRESS)}`) ||
+      (req.method === "GET" && req.url === `/gitvault/v1/vaults?project_id=${encodeURIComponent("prj_test")}`)
+    ) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(vaultRecordFixture()));
       return;
@@ -525,6 +528,61 @@ describe("git-remote-run402 — D6 slug-form id-pinning (task 4.5)", () => {
       assert.match(r.stderr, /KEYSTORE_MISSING/, `${r.stdout}\n---\n${r.stderr}`);
       const repoCalls = calls.filter((c) => c.method === "GET" && c.url.startsWith("/gitvault/v1/vaults?repo=")).length;
       assert.equal(repoCalls, 1, "list resolved the address over the network exactly once");
+    });
+  });
+});
+
+describe("git-remote-run402 — D4 id-form id-pinning (gitvault-client-round-trips)", () => {
+  // Same shape as the slug-form pin tests above, mirrored for id-form: a
+  // resolvable id-form address pins on first use, and a second push/list
+  // on the same checkout follows the pin — no second `?project_id=` read.
+  it("a resolvable id-form remote pins repo_id on first push, and a SECOND push never re-resolves the address", async () => {
+    await withResolvableRepoGateway(async (apiBase, calls) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "run402-gvh-d4-pin-")));
+      try {
+        const target = makeRepo(root, { commit: true });
+        const gitDir = realpathSync(join(target, ".git"));
+        assert.equal(readPinnedRepoId(target), null, "nothing pinned yet");
+
+        const first = await runHelperAsync({
+          cwd: target,
+          env: { GIT_DIR: gitDir, RUN402_API_BASE: apiBase },
+          stdin: "capabilities\n\npush refs/heads/main:refs/heads/main\n\n",
+          address: ADDRESS,
+        });
+        assert.match(first.stdout, /KEYSTORE_MISSING/, `expected the push to reach the (later, identity-dependent) KEYSTORE_MISSING wall, not fail resolution itself: ${first.stdout}\n---\n${first.stderr}`);
+        assert.equal(readPinnedRepoId(target), "src_00000000000000000000000000000001", "the pin survives even though the push itself did not complete");
+        const projectCallsAfterFirst = calls.filter((c) => c.method === "GET" && c.url.startsWith("/gitvault/v1/vaults?project_id=")).length;
+        assert.equal(projectCallsAfterFirst, 1, "exactly one address resolution for the first push");
+
+        // A SECOND push on the SAME checkout: the pin short-circuits address
+        // resolution entirely — no further `?project_id=` read.
+        const second = await runHelperAsync({
+          cwd: target,
+          env: { GIT_DIR: gitDir, RUN402_API_BASE: apiBase },
+          stdin: "capabilities\n\npush refs/heads/main:refs/heads/main\n\n",
+          address: ADDRESS,
+        });
+        assert.match(second.stdout, /KEYSTORE_MISSING/, `${second.stdout}\n---\n${second.stderr}`);
+        const projectCallsAfterSecond = calls.filter((c) => c.method === "GET" && c.url.startsWith("/gitvault/v1/vaults?project_id=")).length;
+        assert.equal(projectCallsAfterSecond, projectCallsAfterFirst, "the pin must be followed, never re-resolved");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("list against an id-form remote resolves it cleanly — no repository, so nothing to pin, and no crash beyond the expected typed refusal", async () => {
+    await withResolvableRepoGateway(async (apiBase, calls) => {
+      const r = await runHelperAsync({
+        cwd: mkdtempSync(join(tmpdir(), "run402-gvh-d4-list-")),
+        env: { GIT_DIR: undefined, RUN402_API_BASE: apiBase },
+        stdin: "capabilities\n\nlist for-push\n\n",
+        address: ADDRESS,
+      });
+      assert.match(r.stderr, /KEYSTORE_MISSING/, `${r.stdout}\n---\n${r.stderr}`);
+      const projectCalls = calls.filter((c) => c.method === "GET" && c.url.startsWith("/gitvault/v1/vaults?project_id=")).length;
+      assert.equal(projectCalls, 1, "list resolved the address over the network exactly once");
     });
   });
 });

@@ -1580,6 +1580,10 @@ describe("SDK surface alignment", () => {
       "gitvault.rotateEpochForKeyRevocation",
       "gitvault.declareEpochSecretExposed",
       "gitvault.declareRecipientKeyRevoked",
+      // gitvault-client-round-trips design D3 (task 4.2): the local
+      // object-cache eviction sweep `repos gc` calls as a best-effort side
+      // effect — purely local housekeeping, no dedicated CLI verb/MCP tool.
+      "gitvault.sweepObjectCache",
       // ─── Project events feed — org-wide union ──────────────────────────
       // Shares the `events` CLI command (--org) and the list_project_events
       // MCP tool (org_id param); no dedicated verb/tool of its own.

@@ -890,12 +890,15 @@ export class Gitvault {
 
   /**
    * Resolve a parsed remote address to an OPEN handle, pinning `repo_id` in
-   * local git state on the first successful slug-form resolution, and —
-   * when `allow_create` is set and resolution misses —
-   * push-to-create it. This is what the remote helper and
-   * `gitvault snapshot` drive for a `run402::<org-slug>/<name>` remote; an
-   * id-form remote resolves through here too (no pin, since it needs none)
-   * so a caller need not branch on the address's form itself.
+   * local git state on the first successful resolution of EITHER form
+   * (gitvault-client-round-trips design D4 widens the original slug-form-only
+   * pin to id-form too — an id-form address needs no pin to survive a
+   * rename, but the resolution round trip it skips is the same either way),
+   * and — when `allow_create` is set and resolution misses — push-to-create
+   * it. This is what the remote helper and `gitvault snapshot` drive for a
+   * `run402::<org>/<name>` remote, whichever form it names, so a caller need
+   * not branch on the address's form itself. A pinned id/address that no
+   * longer resolves (404) clears the pin and re-resolves once.
    *
    * `SLUG_RELEASED` is NEVER auto-followed — it rethrows unchanged; read it
    * with {@link gitvaultSlugReleasedInfo} for the successor slug and cooldown.
@@ -2427,6 +2430,21 @@ export class Gitvault {
     }
     const backend = openGitvaultMirrorBackend(destination, repoId, options.credential);
     return recoverGitvaultMirror({ backend, out_dir: options.out_dir, keystore, ...(options.recovery_receipt ? { recovery_receipt: options.recovery_receipt } : {}) });
+  }
+
+  /**
+   * Re-apply the local immutable-object cache's eviction window (design D3,
+   * task 4.2) for one vault — a periodic backstop wired into `run402 repos
+   * gc`, catching any orphaned cache file a crashed write might have left
+   * behind. Purely local: no network call beyond resolving `repo_id` when
+   * only `project_id` was supplied. Idempotent and safe to call on a repo
+   * with no cache directory at all (a no-op).
+   */
+  async sweepObjectCache(options: GitvaultVaultHandleOptions): Promise<void> {
+    const [{ GitvaultKeystore }] = await Promise.all([this.#keystore()]);
+    const repoId = await this.#resolveRepoId(options);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    keystore.sweepObjectCache(repoId);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────

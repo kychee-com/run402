@@ -67,10 +67,36 @@ export async function readPinnedGitvaultRepo(repoDir: string): Promise<GitvaultP
   return { repo_id: repoId, resolved_from: resolvedFrom };
 }
 
-/** Pin `repo_id` (and the address it was resolved from) into this checkout's LOCAL git config. */
-export async function pinGitvaultRepo(repoDir: string, repoId: string, resolvedFrom: { org_slug: string; repo_name: string }): Promise<void> {
+/**
+ * Pin `repo_id` into this checkout's LOCAL git config — and, when resolved
+ * from a slug-form address, the address it was resolved from (diagnostic
+ * only). `resolvedFrom` is omitted for an id-form pin (gitvault-client-
+ * round-trips design D4): an id-form address has no org-slug/name pair to
+ * record, and — per {@link resolveGitvaultAddress}'s own doc comment — the
+ * design's instruction is that pinning "only resolves names"; id-form is
+ * already rename-proof, so this pin exists purely to skip the resolution
+ * ROUND TRIP, not to survive a rename.
+ */
+export async function pinGitvaultRepo(repoDir: string, repoId: string, resolvedFrom?: { org_slug: string; repo_name: string }): Promise<void> {
   await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_REPO_ID, repoId]);
-  await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ADDRESS, `${resolvedFrom.org_slug}/${resolvedFrom.repo_name}`]);
+  if (resolvedFrom) await hardenedGit(repoDir, ["config", "--local", CONFIG_KEY_ADDRESS, `${resolvedFrom.org_slug}/${resolvedFrom.repo_name}`]);
+}
+
+/** Clear a pin this checkout no longer trusts (design D4: a pinned id that 404s). Tolerates an absent key — `git config --unset` on a key that was never set is not a failure here. */
+async function clearPinnedGitvaultRepo(repoDir: string): Promise<void> {
+  for (const key of [CONFIG_KEY_REPO_ID, CONFIG_KEY_ADDRESS]) {
+    try {
+      await hardenedGit(repoDir, ["config", "--local", "--unset", key]);
+    } catch {
+      // already absent — nothing to clear
+    }
+  }
+}
+
+/** `RESOURCE_NOT_FOUND` (or a bare 404) — the "this pin no longer resolves" signal, never any other failure. */
+function isPinStale(e: unknown): boolean {
+  const err = e as { status?: number; code?: string } | null;
+  return Boolean(err && (err.status === 404 || err.code === "RESOURCE_NOT_FOUND" || err.code === "ROUTE_NOT_FOUND"));
 }
 
 export interface GitvaultAddressResolution {
@@ -103,24 +129,43 @@ export interface ResolveGitvaultAddressOptions {
 
 /**
  * Resolve a parsed remote address to `{repo_id, project_id, org_id}`,
- * pinning `repo_id` in local git state on the first successful SLUG-form
- * resolution (task 4.5), and — when `allow_create` is set and resolution
- * misses — push-to-create it (task 4.4/4.5, design D6).
+ * pinning `repo_id` in local git state on the first successful resolution —
+ * of EITHER form (gitvault-client-round-trips design D4 widens the
+ * pre-existing slug-form pin, task 4.5, to id-form too) — and, when
+ * `allow_create` is set and resolution misses, push-to-create it (task
+ * 4.4/4.5, design D6). A pinned id that no longer resolves (404) clears the
+ * pin and re-resolves ONCE through the ordinary form-dispatch path below,
+ * rather than failing on a stale local pointer.
  */
 export async function resolveGitvaultAddress(options: ResolveGitvaultAddressOptions): Promise<GitvaultAddressResolution> {
   if (options.repo_dir) {
     const pinned = await readPinnedGitvaultRepo(options.repo_dir);
     if (pinned) {
-      const record = await options.transport.getVaultRecord({ repo_id: pinned.repo_id });
-      return { repo_id: record.repo_id, project_id: record.project_id, org_id: record.org_id, form: "slug", via: "pin", address: pinned.resolved_from, created: null };
+      try {
+        const record = await options.transport.getVaultRecord({ repo_id: pinned.repo_id });
+        // `form` describes what THIS call was asked to resolve, not how the
+        // pin originally came to exist (`resolved_from` alone can't tell —
+        // it is `null` for both an id-form pin and a pin that predates the
+        // field/was written by hand).
+        return { repo_id: record.repo_id, project_id: record.project_id, org_id: record.org_id, form: gitvaultRemoteAddressForm(options.address), via: "pin", address: pinned.resolved_from, created: null };
+      } catch (e) {
+        if (!isPinStale(e)) throw e;
+        await clearPinnedGitvaultRepo(options.repo_dir);
+        // fall through to an ordinary (non-pinned) resolution, below
+      }
     }
   }
 
   const form = gitvaultRemoteAddressForm(options.address);
   if (form === "id") {
-    // Id-form is already rename-proof (a project id never changes) — no pin,
-    // per the design's own instruction ("pin only resolves names").
     const record: GitvaultVaultRecord = await options.transport.findVaultByProject({ project_id: options.address.project_id });
+    // Design D4: an id-form address is already rename-proof (a project id
+    // never changes), so this pin exists purely to skip the RESOLUTION
+    // round trip on every later invocation — never to survive a rename, per
+    // the design's own "pin only resolves names" framing for WHY a pin is
+    // needed at all; id-form gets one anyway because the round trip itself
+    // is the cost this change removes.
+    if (options.repo_dir) await pinGitvaultRepo(options.repo_dir, record.repo_id);
     return { repo_id: record.repo_id, project_id: record.project_id, org_id: record.org_id, form: "id", via: "resolved", address: null, created: null };
   }
 
