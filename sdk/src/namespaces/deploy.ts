@@ -4928,10 +4928,21 @@ async function uploadInlineCas(
  * `/apply/v1/plans*` use SIWX, which the kernel's getAuth provides
  * automatically — only the apikey-gated paths need this helper.
  *
- * Returns an empty object when the credentials provider doesn't know the
- * project (the request will then go out without an apikey and the gateway
- * will reject with 401 — matches the failure mode for unconfigured
- * projects in any of today's other apikey-auth tools).
+ * COLD-RESTART RECOVERY (gitvault-deploy-lane 6.5a, the #624 class one layer
+ * in): when the local credential cache has no entry for the project — the
+ * returning-agent case, where the wallet survives but the once-issued project
+ * keys did not — this helper mints a SHORT-LIVED anon token via
+ * `POST /projects/v1/:project_id/tokens` (the route the platform built as
+ * exactly this recovery path; the gateway's own 401 envelope names it as the
+ * `mint_token` next_action) and uses it as the apikey, memoized in-process
+ * until shortly before it expires. A wallet-holding agent on a fresh machine
+ * deploys with zero extra commands; nothing durable is written anywhere.
+ *
+ * The mint is attempted only on a cache miss and never retried within a
+ * process on failure; a client that cannot mint (no signer, no authority)
+ * falls through to the pre-existing behavior — the request goes out without
+ * an apikey and the gateway rejects with 401, whose envelope names the
+ * recovery.
  */
 async function apikeyHeaders(
   client: Client,
@@ -4943,8 +4954,60 @@ async function apikeyHeaders(
   // kernel explicitly forbids — so stand down and let the bearer carry it.
   if (isCiClient(client) || isDelegateClient(client)) return {};
   const project = await client.getProject(projectId);
-  if (!project) return {};
-  return { apikey: project.anon_key };
+  if (project?.anon_key) return { apikey: project.anon_key };
+  const minted = await mintedAnonToken(client, projectId);
+  return minted ? { apikey: minted } : {};
+}
+
+/**
+ * Per-client, per-project memo of short-lived minted anon tokens (plus a
+ * one-shot "minting failed, don't hammer" marker). Held only in process
+ * memory — a short-lived token must never land in a durable cache.
+ */
+const mintedTokenMemo = new WeakMap<
+  Client,
+  Map<string, { token: string; expiresAtMs: number } | { failed: true }>
+>();
+
+/** Refresh margin: stop using a minted token this long before it expires. */
+const MINTED_TOKEN_REFRESH_MARGIN_MS = 30_000;
+
+async function mintedAnonToken(client: Client, projectId: string): Promise<string | null> {
+  let perProject = mintedTokenMemo.get(client);
+  if (!perProject) {
+    perProject = new Map();
+    mintedTokenMemo.set(client, perProject);
+  }
+  const memo = perProject.get(projectId);
+  if (memo) {
+    if ("failed" in memo) return null;
+    if (Date.now() < memo.expiresAtMs - MINTED_TOKEN_REFRESH_MARGIN_MS) return memo.token;
+  }
+  try {
+    const issued = await client.request<{ secret?: string; expires_in?: number }>(
+      `/projects/v1/${encodeURIComponent(projectId)}/tokens`,
+      {
+        method: "POST",
+        // Least authority: the apikey-gated deploy legs need exactly what the
+        // anon key carries, never the service key's power.
+        body: { kind: "anon" },
+        context: "minting a short-lived anon token for deploy (local project keys not cached)",
+      },
+    );
+    if (!issued?.secret) {
+      perProject.set(projectId, { failed: true });
+      return null;
+    }
+    const ttlMs = (typeof issued.expires_in === "number" && issued.expires_in > 0 ? issued.expires_in : 300) * 1000;
+    perProject.set(projectId, { token: issued.secret, expiresAtMs: Date.now() + ttlMs });
+    return issued.secret;
+  } catch {
+    // No signer, no authority, or the route is unavailable: fall through to
+    // the pre-existing no-apikey behavior. Marked so one deploy's many
+    // apikey-gated legs don't each re-attempt a doomed mint.
+    perProject.set(projectId, { failed: true });
+    return null;
+  }
 }
 
 function isCiClient(client: Client): boolean {

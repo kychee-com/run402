@@ -3979,6 +3979,97 @@ describe("Deploy.status", () => {
   });
 });
 
+describe("cold-restart apikey recovery — auto-minted anon token (gitvault-deploy-lane 6.5a)", () => {
+  const OP = "/apply/v1/operations/op_cold";
+  const MINT = "/projects/v1/prj_cold/tokens";
+  const snapshot = { operation_id: "op_cold", plan_id: "plan_1", status: "ready", phase: "ready" } as OperationSnapshot;
+
+  function coldCreds(): CredentialsProvider {
+    // The returning-agent shape: a live signer, no local project keys.
+    return { getAuth: async () => null, getProject: async () => null };
+  }
+
+  it("cache miss: mints a short-lived ANON token once and uses it as the apikey", async () => {
+    const w = makeWiring(coldCreds());
+    w.setHandler((req) => {
+      if (req.path === MINT) {
+        assert.equal(req.method, "POST");
+        assert.deepEqual(req.body, { kind: "anon" }, "least authority: the deploy legs need the anon key's power, never the service key's");
+        return { secret: "tok_minted", expires_in: 300 };
+      }
+      if (req.path === OP) {
+        assert.equal(req.headers?.apikey, "tok_minted", "the minted token rides the apikey header");
+        return snapshot;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    assert.deepEqual(await deploy.status("op_cold", { project: "prj_cold" }), snapshot);
+    assert.equal(countRequests(w, MINT), 1);
+  });
+
+  it("the minted token is memoized: a second call issues no second mint", async () => {
+    const w = makeWiring(coldCreds());
+    w.setHandler((req) => {
+      if (req.path === MINT) return { secret: "tok_minted", expires_in: 300 };
+      if (req.path === OP) return snapshot;
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    await deploy.status("op_cold", { project: "prj_cold" });
+    await deploy.status("op_cold", { project: "prj_cold" });
+    assert.equal(countRequests(w, MINT), 1, "one mint serves the whole process while unexpired");
+    assert.equal(countRequests(w, OP), 2);
+  });
+
+  it("a failed mint falls through to the pre-existing no-apikey behavior, and is not re-attempted", async () => {
+    const w = makeWiring(coldCreds());
+    w.setHandler((req) => {
+      if (req.path === MINT) {
+        throw new ApiError("API error (HTTP 403)", 403, { code: "PROJECT_PERMISSION_DENIED" }, "minting project token");
+      }
+      if (req.path === OP) {
+        assert.equal(req.headers?.apikey, undefined, "no apikey on a failed mint — the gateway's own 401 names the recovery");
+        return snapshot;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    await deploy.status("op_cold", { project: "prj_cold" });
+    await deploy.status("op_cold", { project: "prj_cold" });
+    assert.equal(countRequests(w, MINT), 1, "a doomed mint is attempted once, never hammered");
+  });
+
+  it("a cached anon key wins: no mint request is ever issued", async () => {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === OP) {
+        assert.equal(req.headers?.apikey, "ak");
+        return snapshot;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    await deploy.status("op_cold", { project: "prj_cold" });
+    assert.equal(countRequests(w, MINT), 0);
+  });
+
+  it("a cache entry with an EMPTY anon key counts as a miss and recovers via the mint", async () => {
+    const w = makeWiring({ getAuth: async () => null, getProject: async () => ({ anon_key: "", service_key: "sk" }) });
+    w.setHandler((req) => {
+      if (req.path === MINT) return { secret: "tok_minted", expires_in: 300 };
+      if (req.path === OP) {
+        assert.equal(req.headers?.apikey, "tok_minted");
+        return snapshot;
+      }
+      throw new Error(`unexpected ${req.path}`);
+    });
+    const deploy = new Deploy(w.client);
+    await deploy.status("op_cold", { project: "prj_cold" });
+    assert.equal(countRequests(w, MINT), 1);
+  });
+});
+
 describe("Deploy.apply (gateway error translation)", () => {
   it("preserves operation_id and plan_id from the gateway error body (#127)", async () => {
     // Regression for GH-127: when the gateway returns a structured deploy

@@ -5,7 +5,8 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -172,12 +173,135 @@ describe("credentials project-keys", () => {
     assert.equal(namedStatus.configured, false);
     assert.equal(namedStatus.profile, "kychon");
 
-    const namedServiceKeyDomain = run(["--wallet", "kychon", "domains", "list", "--project", PROJECT_ID, "--auth", "service-key"]);
-    assert.notEqual(namedServiceKeyDomain.status, 0);
-    const err = errEnvelope(namedServiceKeyDomain);
+    // A credential-required operation under the OTHER profile reports the
+    // structured local-credential miss with per-profile provenance.
+    // (Was `domains list --auth service-key` until 133d0fba retired that
+    // flag with the ProjectDomain surface; export is the surviving
+    // credential-required local operation.)
+    const namedExport = run(["--wallet", "kychon", "credentials", "project-keys", "export", "--project", PROJECT_ID, "--reveal"]);
+    assert.notEqual(namedExport.status, 0);
+    const err = errEnvelope(namedExport);
     assert.equal(err.code, "PROJECT_CREDENTIAL_NOT_FOUND");
     assert.equal(err.details.project_id, PROJECT_ID);
     assert.equal(err.details.source, "local_cache");
     assert.equal(err.details.profile, "kychon");
+  });
+});
+
+
+describe("credentials issue --import (the cold-restart re-key path, gitvault-deploy-lane 6.5a)", () => {
+  // A throwaway key for the offline SIWX signer — never a real wallet.
+  const TEST_PRIVATE_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
+
+  function importWallet() {
+    const r = run(["wallets", "import", "issuer", "--key", "-"], { input: TEST_PRIVATE_KEY });
+    assert.equal(r.status, 0, r.stderr);
+  }
+
+  // spawnSync would block the event loop and deadlock against the in-process
+  // stub gateway below — the child's HTTP request would never be answered.
+  function runAsync(args, { env = {} } = {}) {
+    const base = {
+      ...process.env,
+      RUN402_CONFIG_DIR: configDir,
+      RUN402_API_BASE: API,
+      RUN402_WALLET_LABEL_SYNC: "0",
+    };
+    delete base.RUN402_WALLET;
+    delete base.RUN402_PROFILE;
+    return new Promise((resolve) => {
+      const child = spawn(process.execPath, [CLI, ...args], { env: { ...base, ...env } });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (c) => { stdout += c; });
+      child.stderr.on("data", (c) => { stderr += c; });
+      const timer = setTimeout(() => child.kill("SIGKILL"), 15_000);
+      child.on("close", (status) => {
+        clearTimeout(timer);
+        resolve({ status, stdout, stderr });
+      });
+    });
+  }
+
+  it("anon-first with no cached entry refuses BEFORE minting — a show-once secret is never burned on a usage error", () => {
+    const result = run([
+      "credentials", "issue",
+      "--kind", "anon", "--name", "web", "--project", PROJECT_ID, "--import",
+    ]);
+    assert.notEqual(result.status, 0);
+    const envelope = errEnvelope(result);
+    assert.equal(envelope.code, "BAD_USAGE");
+    assert.match(envelope.message, /no service key is cached/);
+    assert.match(String(envelope.hint), /--kind service/);
+  });
+
+  it("mints against the gateway and writes the secret through to the local cache in one command", async () => {
+    importWallet();
+    const calls = [];
+    const server = createServer((req, res) => {
+      const call = { method: req.method, url: req.url, body: "" };
+      calls.push(call);
+      req.on("data", (chunk) => { call.body += chunk; });
+      req.on("end", () => {
+        if (req.method === "POST" && req.url === `/projects/v1/${PROJECT_ID}/credentials`) {
+          res.writeHead(201, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            credential_id: "cred_1",
+            kind: "service",
+            name: "primary",
+            secret: "svc_minted_by_stub",
+            created_at: new Date().toISOString(),
+          }));
+          return;
+        }
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ code: "NOT_FOUND", message: `no stub for ${req.method} ${req.url}` }));
+      });
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const api = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const result = await runAsync([
+        "credentials", "issue",
+        "--kind", "service", "--name", "primary", "--project", PROJECT_ID, "--import",
+      ], { env: { RUN402_API_BASE: api, RUN402_WALLET: "issuer" } });
+      assert.equal(result.status, 0, result.stderr);
+      const out = jsonOut(result);
+      assert.equal(out.secret, "svc_minted_by_stub", "the show-once secret still prints");
+      assert.equal(out.imported_to_local_cache, true);
+
+      // The cache now answers, redacted, with the import provenance —
+      // under the SAME wallet profile the issue ran as (cache is per-profile).
+      const status = run(["credentials", "project-keys", "status", "--project", PROJECT_ID], { env: { RUN402_WALLET: "issuer" } });
+      assert.equal(status.status, 0, status.stderr);
+      const st = jsonOut(status);
+      assert.equal(st.has_service_key, true);
+      assert.ok(!status.stdout.includes("svc_minted_by_stub"), "status never prints the secret");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("without --import nothing is cached — the pre-existing behavior is untouched", async () => {
+    importWallet();
+    const server = createServer((req, res) => {
+      res.writeHead(201, { "content-type": "application/json" });
+      res.end(JSON.stringify({ credential_id: "cred_2", kind: "service", name: "n", secret: "svc_plain" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const api = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const result = await runAsync([
+        "credentials", "issue",
+        "--kind", "service", "--name", "n", "--project", PROJECT_ID,
+      ], { env: { RUN402_API_BASE: api, RUN402_WALLET: "issuer" } });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(jsonOut(result).imported_to_local_cache, undefined);
+      const status = run(["credentials", "project-keys", "status", "--project", PROJECT_ID], { env: { RUN402_WALLET: "issuer" } });
+      const st = jsonOut(status);
+      assert.equal(st.configured, false, "no cache entry was written without --import");
+    } finally {
+      server.close();
+    }
   });
 });

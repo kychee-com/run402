@@ -26,8 +26,10 @@ Usage:
   run402 credentials <subcommand> [args...]
 
 Project credentials (on the gateway — named, revocable, rotatable):
-  issue --kind <anon|service> --name <name> [--project <id>] [--expires <iso8601>]
+  issue --kind <anon|service> --name <name> [--project <id>] [--expires <iso8601>] [--import]
                                 Mint one. The secret is printed ONCE.
+                                --import also writes it into this machine's
+                                local key cache (the cold-restart re-key path).
   list [--project <id>] [--include-revoked]
                                 List credentials (metadata only, never secrets)
   status [--project <id>]       Are you still on the retiring legacy key?
@@ -87,7 +89,7 @@ const SUB_HELP = {
   issue: `run402 credentials issue — mint a named project credential
 
 Usage:
-  run402 credentials issue --kind <anon|service> --name <name> [--project <id>]
+  run402 credentials issue --kind <anon|service> --name <name> [--project <id>] [--import]
                            [--expires <iso8601>]
 
 --kind    "anon" is the tenant-facing key; "service" is the privileged one.
@@ -95,6 +97,11 @@ Usage:
           returns 409 CREDENTIAL_NAME_TAKEN — that collision is the idempotency
           story, so a retried create never mints a second credential by accident.
 --expires Optional; must be in the future and within one year.
+--import  Also write the minted secret into this machine's local key cache
+          (what deploys and data-plane commands read) — the cold-restart
+          re-key path in ONE step instead of issue-then-project-keys-import.
+          A first --kind anon --import on a machine with no cached entry
+          still needs a service key first, same as project-keys import.
 
 The secret is printed ONCE, on stdout, inside the JSON. Pipe it:
   run402 credentials issue --kind service --name ci | jq -r .secret
@@ -407,7 +414,8 @@ const ISSUE_VALUE_FLAGS = ["--project", "--kind", "--name", "--expires"];
 
 async function issue(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...ISSUE_VALUE_FLAGS, "--help", "-h"], ISSUE_VALUE_FLAGS);
+  assertKnownFlags(a, [...ISSUE_VALUE_FLAGS, "--import", "--help", "-h"], ISSUE_VALUE_FLAGS);
+  const importToCache = a.includes("--import");
   const kind = flagValue(a, "--kind");
   const name = flagValue(a, "--name");
   const expiresAt = flagValue(a, "--expires");
@@ -415,7 +423,7 @@ async function issue(args) {
   requirePositionalCount(rest, ISSUE_VALUE_FLAGS, {
     min: 0,
     max: 0,
-    command: "run402 credentials issue --kind <anon|service> --name <name> [--project <id>]",
+    command: "run402 credentials issue --kind <anon|service> --name <name> [--project <id>] [--import]",
     missing: "",
   });
   if (kind !== "anon" && kind !== "service") {
@@ -432,8 +440,39 @@ async function issue(args) {
       hint: "The name identifies this credential in 'list' and is how you rotate it later, e.g. --name ci-deploy",
     });
   }
+  // Validate the --import precondition BEFORE minting: refusing after the
+  // mint would burn a show-once secret on a usage error.
+  const existing = importToCache ? getProject(projectId) : undefined;
+  if (importToCache && kind === "anon" && !existing?.service_key) {
+    fail({
+      code: "BAD_USAGE",
+      message: `--import for an anon key writes the whole cache entry, and no service key is cached for ${projectId} yet.`,
+      hint: "Run 'run402 credentials issue --kind service --name <name> --import' first (same rule as project-keys import).",
+      details: { project_id: projectId },
+    });
+  }
   try {
-    emitIssued(await getSdk().credentials.issue(projectId, { kind, name, expiresAt: expiresAt || undefined }));
+    const res = await getSdk().credentials.issue(projectId, { kind, name, expiresAt: expiresAt || undefined });
+    if (importToCache && res?.secret) {
+      // The cold-restart re-key path (gitvault-deploy-lane 6.5a): the minted
+      // secret goes straight into the local cache the deploy and data-plane
+      // commands read, so a fresh machine re-keys in one command per kind
+      // instead of the four-command issue-then-project-keys-import dance.
+      // The secret never rides argv; it came back on the mint response.
+      saveProject(projectId, {
+        anon_key: kind === "anon" ? res.secret : existing?.anon_key ?? "",
+        service_key: kind === "service" ? res.secret : existing?.service_key ?? "",
+        site_url: existing?.site_url,
+        deployed_at: existing?.deployed_at,
+        last_deployment_id: existing?.last_deployment_id,
+        org_id: existing?.org_id,
+        source: "credentials_issue_import",
+        cached_at: new Date().toISOString(),
+      });
+      emitIssued({ ...res, imported_to_local_cache: true });
+      return;
+    }
+    emitIssued(res);
   } catch (err) {
     reportSdkError(err);
   }
