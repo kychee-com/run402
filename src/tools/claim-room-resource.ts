@@ -31,13 +31,14 @@ export async function handleClaimRoomResource(args: {
   }
   const room = addr.room;
   try {
-    const created = await withPresenceRetry(room, (presenceId) =>
+    const created = await withPresenceRetry(room, (presenceId, sessionKey) =>
       getSdk().rooms.createClaim(room.orgId, room.roomKey, {
         resource: args.resource,
         mode: args.mode ?? "exclusive",
         ...(args.ttl_seconds !== undefined ? { ttlSeconds: args.ttl_seconds } : {}),
         ...(args.note !== undefined ? { note: args.note } : {}),
         ...(presenceId !== undefined ? { presenceId } : {}),
+        sessionKey,
       }));
     return { content: [{ type: "text", text: JSON.stringify(created, null, 2) }] };
   } catch (err) {

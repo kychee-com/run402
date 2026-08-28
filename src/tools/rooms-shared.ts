@@ -18,6 +18,7 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { findBindingKey } from "../../core/dist/binding-file.js";
 import { getActiveOrgId } from "../../core/dist/profile-state.js";
+import { getSessionKey } from "../harness-context.js";
 
 export interface RoomAddressArgs {
   project_id?: string;
@@ -165,16 +166,28 @@ export function forgetPresence(room: ResolvedRoom): void {
   presenceByRoom.delete(roomKeyOf(room));
 }
 
-/** Retry-once on PRESENCE_EXPIRED: drop the cached session presence, REGISTER
- *  a replacement (asking for the same name — it suffixes honestly), and retry
- *  with it. Registration is explicit because a bare call cannot mean "me". */
+/**
+ * Retry-once on PRESENCE_EXPIRED: drop the cached session presence, REGISTER
+ * a replacement (asking for the same name — it suffixes honestly), and retry
+ * with it. Registration is explicit because a bare call cannot mean "me".
+ *
+ * Every call also carries this SERVER PROCESS's resolved session identity
+ * (see `../harness-context.js`) alongside any cached `presence_id` — the
+ * gateway tries the session identity first, so a presence whose TTL lapsed
+ * BETWEEN tool calls (or across a server restart, which starts with an empty
+ * in-memory presence cache) revives under its own name via that path rather
+ * than 410ing. The retry below is now reached only when no resolvable
+ * session identity exists, or the presence aged past the 90-day retention
+ * sweep — not on an ordinary period of the server sitting idle.
+ */
 export async function withPresenceRetry<T>(
   room: ResolvedRoom,
-  call: (presenceId: string | undefined) => Promise<T>,
+  call: (presenceId: string | undefined, sessionKey: string) => Promise<T>,
 ): Promise<T> {
   const presenceId = cachedPresenceId(room);
+  const sessionKey = getSessionKey().key;
   try {
-    return await call(presenceId);
+    return await call(presenceId, sessionKey);
   } catch (err) {
     const code = (err as { body?: { code?: string }; code?: string })?.body?.code
       ?? (err as { code?: string })?.code;
@@ -183,9 +196,10 @@ export async function withPresenceRetry<T>(
       const requestedName = requestedNameByRoom.get(roomKeyOf(room));
       const replacement = await getSdk().rooms.registerPresence(room.orgId, room.roomKey, {
         ...(requestedName ? { requestedName } : {}),
+        sessionKey,
       });
       rememberPresence(room, replacement, requestedName);
-      return call(replacement?.presence_id);
+      return call(replacement?.presence_id, sessionKey);
     }
     throw err;
   }

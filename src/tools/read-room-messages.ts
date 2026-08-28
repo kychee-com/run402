@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { resolveRoomArgs, cachedPresenceId } from "./rooms-shared.js";
+import { getSessionKey } from "../harness-context.js";
 
 export const readRoomMessagesSchema = {
   project_id: z.string().optional().describe("Project whose default room to read. Omit when passing org_id + room_key."),
@@ -44,6 +45,7 @@ export async function handleReadRoomMessages(args: {
       ...(args.thread_id !== undefined ? { threadId: args.thread_id } : {}),
       ...(args.unread ? { addressedTo: "me" as const, unread: true } : {}),
       ...(presenceId !== undefined ? { presenceId } : {}),
+      sessionKey: getSessionKey().key,
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
     });
     return { content: [{ type: "text", text: JSON.stringify(page, null, 2) }] };

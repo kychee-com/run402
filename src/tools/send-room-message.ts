@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { resolveRoomArgs, rememberPresence, withPresenceRetry } from "./rooms-shared.js";
+import { resolveTaskLabel } from "../harness-context.js";
 
 export const sendRoomMessageSchema = {
   project_id: z.string().optional().describe("Project whose default room to send in. Omit when passing org_id + room_key."),
@@ -14,8 +15,8 @@ export const sendRoomMessageSchema = {
   importance: z.enum(["normal", "high"]).optional().describe("high floats to the top of unread reads."),
   ack_required: z.boolean().optional().describe("Ask the to[] recipients to acknowledge (their ack state is visible on the message)."),
   idempotency_key: z.string().optional().describe("Safe-retry key: a replay returns the ORIGINAL message with deduplicated: true — never a double-post."),
-  requested_name: z.string().optional().describe("If this send auto-registers your presence (first coordination call), choose your name."),
-  task: z.string().optional().describe("If this send auto-registers, what this session is working on."),
+  requested_name: z.string().optional().describe("If this send auto-registers your presence (first coordination call), choose your name. On a taken name, a task-derived name is tried first (Opus + task \"mpp triage\" -> Opus-mpp-triage) before falling to a bare ordinal."),
+  task: z.string().optional().describe("What this session is working on. Omit to best-effort auto-source it from your harness's own thread title (RUN402_NO_TASK_FROM_TITLE=1 opts out)."),
 };
 
 type McpResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
@@ -41,7 +42,8 @@ export async function handleSendRoomMessage(args: {
   }
   const room = addr.room;
   try {
-    const result = await withPresenceRetry(room, (presenceId) =>
+    const { task } = await resolveTaskLabel({ explicitTask: args.task });
+    const result = await withPresenceRetry(room, (presenceId, sessionKey) =>
       getSdk().rooms.sendMessage(room.orgId, room.roomKey, {
         body: args.body,
         ...(args.to !== undefined ? { to: args.to } : {}),
@@ -51,8 +53,9 @@ export async function handleSendRoomMessage(args: {
         ...(args.ack_required !== undefined ? { ackRequired: args.ack_required } : {}),
         ...(args.idempotency_key !== undefined ? { idempotencyKey: args.idempotency_key } : {}),
         ...(presenceId !== undefined ? { presenceId } : {}),
+        sessionKey,
         ...(args.requested_name !== undefined ? { requestedName: args.requested_name } : {}),
-        ...(args.task !== undefined ? { task: args.task } : {}),
+        ...(task !== null ? { task } : {}),
       }));
     rememberPresence(room, (result as { sender_presence?: unknown }).sender_presence);
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };

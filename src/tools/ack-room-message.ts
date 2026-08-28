@@ -25,9 +25,10 @@ export async function handleAckRoomMessage(args: {
   }
   const room = addr.room;
   try {
-    const result = await withPresenceRetry(room, (presenceId) =>
+    const result = await withPresenceRetry(room, (presenceId, sessionKey) =>
       getSdk().rooms.ackMessage(room.orgId, room.roomKey, args.message_id, {
         ...(presenceId !== undefined ? { presenceId } : {}),
+        sessionKey,
       }));
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   } catch (err) {
