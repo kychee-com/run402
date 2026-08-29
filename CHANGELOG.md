@@ -15,9 +15,14 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
   verification and decryption stay strictly ordered.
   `restoreObjectsInto`'s backward head walk (the fresh-`git clone` path on
   a standing profile) overlaps its predecessor reads the same way — every
-  path derives locally from the generation sequence. A G-generation cold
-  catch-up previously paid ~G strictly-serial head reads plus ~G sequenced
-  per-head carrier presigns. Failure fidelity is pinned by tests: an entry
+  path derives locally from the generation sequence, in geometrically
+  growing windows (16 → 64 → 256 → page cap) so an unknown checkpoint
+  floor cannot over-fetch a page for a walk that stops early — and a
+  wholesale restore now RECORDS the coverage its stop proves (the newest
+  checkpoint-bearing head, or genesis), so the next walk's window is
+  exact. A G-generation cold catch-up previously paid ~G strictly-serial
+  head reads plus ~G sequenced per-head carrier presigns. Failure
+  fidelity is pinned by tests: an entry
   the prefetch cannot produce (absent, hash-mismatch, a lying read, a
   prefetch that fails outright) stays unserved and the ordered walk's own
   reads reproduce the exact unbatched envelopes — a transient lying read

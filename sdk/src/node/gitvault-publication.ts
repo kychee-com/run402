@@ -4302,6 +4302,14 @@ export class GitvaultVault {
     // conditions are unchanged, and a wrong estimate costs at most one
     // window of concurrent GETs, never correctness.
     let prefetchFloor: bigint | null = null;
+    // The window GROWS geometrically (16 → 64 → 256 → page cap) because the
+    // walk's true stop (the newest checkpoint-bearing head) is only
+    // discovered by walking: when the floor estimate is genesis (coverage
+    // never learned), a page-sized first window over-fetches everything
+    // below a nearby checkpoint. Measured live before this schedule: 66
+    // heads fetched for a walk that stopped after 31. A known floor
+    // (marker/coverage) still bounds every window exactly.
+    let nextWindow = 16n;
     const prefetchBackwardWindow = async (hi: bigint): Promise<void> => {
       let lo = 1n;
       if (incremental && marker) lo = generationToBigInt(marker.generation) + 1n;
@@ -4312,9 +4320,12 @@ export class GitvaultVault {
           if (k > lo) lo = k;
         }
       }
-      const capLo = hi - BigInt(GITVAULT_MAX_HEADS_PER_LISTING_PAGE) + 1n;
+      const capLo = hi - nextWindow + 1n;
       if (capLo > lo) lo = capLo;
       if (lo < 1n) lo = 1n;
+      nextWindow = nextWindow * 4n;
+      const pageCap = BigInt(GITVAULT_MAX_HEADS_PER_LISTING_PAGE);
+      if (nextWindow > pageCap) nextWindow = pageCap;
       prefetchFloor = lo;
       if (hi - lo < 1n) return; // 0 or 1 path — a single read costs the same
       const gens: string[] = [];
@@ -4352,6 +4363,23 @@ export class GitvaultVault {
       const bytes = await this.readCachedHeadBytes(prevGen, cur.prev_sha256);
       if (!bytes || sha256Hex(bytes) !== cur.prev_sha256) fail("CHAIN_BROKEN", `head ${prevGen} does not match the chain during restore`, "restoring gitvault objects");
       cur = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
+    }
+    // gitvault-clone-scaling (P3): a WHOLESALE walk just stopped at the
+    // newest checkpoint-bearing head, or proved there is none back to
+    // genesis — that is first-hand checkpoint coverage, and recording it is
+    // what makes the NEXT walk's backward window exact instead of a
+    // genesis-floored guess. Monotonic: never regress a newer coverage an
+    // earlier walk or admit already recorded. (The incremental path stops
+    // at the marker, learns nothing, and skips — `learned` stays null.)
+    {
+      const stop = heads[0]!;
+      const learned = stop.checkpoint ? stop.checkpoint.covers_through_generation : !incremental && stop.generation === "0000000000000001" ? GITVAULT_GENESIS_GENERATION : null;
+      if (learned !== null) {
+        const known = this.repoFile().checkpoint_covers_through ?? null;
+        if (known === null || !/^[0-9a-f]{16}$/.test(known) || generationToBigInt(learned) > generationToBigInt(known)) {
+          this.keystore.updateRepo(this.repoId, { checkpoint_covers_through: learned });
+        }
+      }
     }
     // Every object below is decrypted under ITS OWN carrying head's `epoch`
     // (D194) — a covered span crossing a rotation mixes epochs, so this

@@ -1391,3 +1391,33 @@ describe("gitvault-clone-scaling — the batched page walk keeps unbatched failu
     assert.equal(f.keystore.readRepo(f.repoId)!.checkpoint_covers_through, r5.generation);
   });
 });
+
+describe("gitvault-clone-scaling — the restore walk's stop is first-hand coverage", () => {
+  it("a wholesale restore stopping at a checkpoint head records its coverage, so the next walk's window is exact", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/b1", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const chk = await f.vault.push({ checkpoint: true, transaction: { updates: [{ ref: "refs/heads/b2", expected_old_oid: null, new_oid: c1, force: false }] } });
+    assert.equal(chk.form, "checkpoint");
+
+    // A second cold principal (keys, no pins, no coverage) restores into a
+    // fresh bare target: its backward walk stops AT the checkpoint head and
+    // learns that head's covers_through — no listing walk involved.
+    const repo = f.keystore.readRepo(f.repoId)!;
+    const ks2 = GitvaultKeystore.open({ rootDir: join(f.root, "ks-restorer") });
+    ks2.ensureIdentity();
+    ks2.saveRepo({
+      repo_id: f.repoId, org_id: repo.org_id, project_id: repo.project_id,
+      k_repo_hex: repo.k_repo_hex, epoch: repo.epoch, genesis_sha256: repo.genesis_sha256,
+      head_pin: null, last_ref_transaction: null, provenance: "restored_from_envelope",
+    });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-coverage-restore-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    await git(target, ["init", "-q", "--bare", "."]);
+    const restorer = GitvaultVault.open({ keystore: ks2, transport: f.transport, repo_id: f.repoId, repo_dir: null });
+    await restorer.restoreObjectsInto(target);
+    assert.equal(ks2.readRepo(f.repoId)!.checkpoint_covers_through, chk.head.checkpoint!.covers_through_generation);
+  });
+});
