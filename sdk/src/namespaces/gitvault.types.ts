@@ -50,7 +50,8 @@ export type GitvaultObjectKind =
   | "service_key_registry"
   | "rotation_attempt_descriptor"
   | "recipient_pin_manifest"
-  | "recipient_confirmation_receipt";
+  | "recipient_confirmation_receipt"
+  | "recipient_open_receipt";
 
 /** Kinds whose stored bytes are an AEAD frame (protocol §2 framing), keyed by `k_obj`. */
 export type GitvaultEncryptedObjectKind =
@@ -655,7 +656,57 @@ export interface GitvaultRotationAttemptDescriptor {
 }
 
 /**
- * `rotate_epoch_payload` (schema `rotate_epoch_payload.json`, D193-D203) —
+ * `rotate_epoch_payload.self_open_attestation` (D209, rev 44, NEW field) —
+ * the rotating client's claim that it round-tripped its OWN new-epoch
+ * `key_envelope` through the REAL reader entry point
+ * ({@link import("./gitvault.crypto.js").openEpochRotationForRecipient})
+ * BEFORE submitting. The two generation fields are `fsck`'s OWN
+ * `chain_verified_to_generation` / `decryptable_to_generation` split,
+ * verbatim (hex16 generations) — one honest number, two consumers, never a
+ * parallel notion.
+ *
+ * Gateway-checked biconditional: `outcome === "opened"` IFF the ADMITTING
+ * principal has an included `{principal_id, envelope}` pair in `envelopes[]`
+ * — on `"opened"`, `opened_fingerprint` / `decryptable_to_generation` /
+ * `reader_entrypoint` are ALL REQUIRED-present; on `"writer_not_recipient"`
+ * they are ALL REQUIRED-absent (the object schema keeps them optional so
+ * both branches parse — the semantic constraint enforces the IFF). On both
+ * branches `chain_verified_to_generation` MUST equal the predecessor
+ * generation (the admitted head's own generation minus one).
+ *
+ * THE DECRYPTION CLAIM ITSELF IS HONEST-CLIENT EVIDENCE, NOT
+ * SERVER-VERIFIABLE — the gateway verifies only the structural consistency
+ * above; the server never holds a recipient private key. Same evidentiary
+ * class as D200's `epoch_key_commitment` per-recipient self-check.
+ */
+export interface GitvaultEpochRotationSelfOpen {
+  /**
+   * `"opened"` — the writer is itself an included recipient and opened its
+   * own new-epoch envelope through the reader entry point.
+   * `"writer_not_recipient"` — the admitting principal has no included pair
+   * in `envelopes[]` (the normal agent/CI-writer case); no self round-trip
+   * is possible, and D210's recipient proof-of-open receipts are the
+   * closure for post-rotation readability on this branch.
+   */
+  outcome: "opened" | "writer_not_recipient";
+  chain_verified_to_generation: string;
+  /** REQUIRED-present iff `outcome === "opened"`; REQUIRED-absent iff `outcome === "writer_not_recipient"`. */
+  decryptable_to_generation?: string;
+  /** REQUIRED-present iff `outcome === "opened"`; REQUIRED-absent iff `outcome === "writer_not_recipient"`. */
+  opened_fingerprint?: string;
+  /**
+   * REQUIRED-present iff `outcome === "opened"`; REQUIRED-absent iff
+   * `outcome === "writer_not_recipient"`. Audit provenance, never an
+   * authorization input — names the client implementation + reader entry
+   * point that produced the evidence (e.g.
+   * `"run402@4.49.0/openEpochRotationForRecipient"`). Plain string by
+   * design (`principal_id` precedent) — no wire grammar is promised for it.
+   */
+  reader_entrypoint?: string;
+}
+
+/**
+ * `rotate_epoch_payload` (schema `rotate_epoch_payload.json`, D193-D210) —
  * the JCS bytes carried (base64url-encoded, hash-pinned) inside
  * `head.transition.payload` when `transition.kind == "rotate_epoch"`.
  */
@@ -675,6 +726,16 @@ export interface GitvaultRotateEpochPayload {
   /** Reserved, always `null` in this revision (D197). */
   recipient_authority_attestation: null;
   envelopes: GitvaultRotationEnvelopePair[];
+  /**
+   * D209 (rev 44, NEW field). SCHEMA-OPTIONAL for exactly the historical-
+   * parse reason (a pre-rev-44 committed rotation payload structurally
+   * cannot carry it); SEMANTICALLY REQUIRED on every admission at or after
+   * this fold's own activation fence — an admission that omits it refuses
+   * `EPOCH_ROTATION_SELF_OPEN_UNPROVEN`. This SDK's own {@link
+   * import("../node/gitvault-publication.js").GitvaultVault.rotateEpoch}
+   * always populates it on every submitted rotation.
+   */
+  self_open_attestation?: GitvaultEpochRotationSelfOpen;
 }
 
 /** One `recipient_pin_manifest.pins[]` entry (D197). */
@@ -731,6 +792,42 @@ export interface GitvaultRecipientConfirmationReceipt {
   old_ek_fingerprint?: string;
   base_pin_manifest_sha256: string;
   recipient_state_version: string;
+  issued_at: string;
+  service_key_id: string;
+  signature: string;
+}
+
+/**
+ * `recipient_open_receipt` (schema `recipient_open_receipt.json`, D210, rev
+ * 44, `ror_`) — the EVIDENCE mirror of {@link GitvaultRecipientConfirmationReceipt}'s
+ * authorization class: minted AFTER the fact it records (a recipient's own
+ * proof that it opened its envelope through the real reader path), never
+ * consumed, never superseded, and never read by admission. The two
+ * generation fields are `fsck`'s OWN `chain_verified_to_generation` /
+ * `decryptable_to_generation` split, carried verbatim — one honest number,
+ * two consumers (D209's `self_open_attestation` is the other). Minted by
+ * `POST …/recipients/:principal_id/proof-of-open` (`source:
+ * "recipient_submission"`) or self-minted by the gateway at a `rotate_epoch`
+ * COMMIT from the admission's own verified D209 attestation (`source:
+ * "rotation_admission"`). Idempotent on `(repo_id, principal_id,
+ * ek_fingerprint, decryptable_to_generation)` — an exact-tuple replay
+ * returns this SAME object.
+ */
+export interface GitvaultOpenReceipt {
+  format: GitvaultFormat;
+  object_kind: "recipient_open_receipt";
+  /** `ror_` + 32 lowercase hex. */
+  object_id: string;
+  repo_id: string;
+  principal_id: string;
+  ek_fingerprint: string;
+  /** fsck's own `chain_verified_to_generation`, verbatim (hex16). */
+  chain_verified_to_generation: string;
+  /** fsck's own `decryptable_to_generation`, verbatim (hex16). Always `<=` `chain_verified_to_generation`. */
+  decryptable_to_generation: string;
+  /** Audit provenance, never an authorization input — names the client implementation + entry point that produced this evidence. */
+  reader_entrypoint: string;
+  source: "recipient_submission" | "rotation_admission";
   issued_at: string;
   service_key_id: string;
   signature: string;

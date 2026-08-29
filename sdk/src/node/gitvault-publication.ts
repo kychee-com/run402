@@ -95,10 +95,12 @@ import type {
   GitvaultCheckpointManifestPack,
   GitvaultCheckpointPackReceipt,
   GitvaultDigestLabel,
+  GitvaultEpochRotationSelfOpen,
   GitvaultHead,
   GitvaultHeadTarget,
   GitvaultHeadsListingPage,
   GitvaultHeadsListingRequest,
+  GitvaultOpenReceipt,
   GitvaultPinManifestReceipt,
   GitvaultRecipientConfirmationReceipt,
   GitvaultRecipientPinManifestEntry,
@@ -161,6 +163,36 @@ const LIMIT_RE = /^([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|1000)$/;
 
 function fail(code: string, message: string, context: string, details?: unknown, nextActions?: unknown[]): never {
   throw new LocalError(message, context, { code, details, ...(nextActions ? { next_actions: nextActions } : {}) });
+}
+
+// ─── Reader-provenance strings (D209/D210) ───────────────────────────────────
+
+/**
+ * Resolved once from this package's own `package.json` — mirrors
+ * `node/index.ts`'s `readSdkPackageVersion`, duplicated locally rather than
+ * imported to avoid a dependency edge from this file (imported by the
+ * cross-runtime `namespaces/gitvault.ts` via a dynamic `import()`, task
+ * 5.0's public crypto surface) back onto the Node CLI/SDK entry module.
+ */
+const GITVAULT_SDK_PACKAGE_VERSION: string = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
+/**
+ * `run402@<version>/<entrypoint>` — the audit-provenance string named on
+ * `self_open_attestation.reader_entrypoint` (D209) and
+ * `recipient_open_receipt.reader_entrypoint` (D210): "names the client
+ * implementation + entry point that produced the evidence." Never an
+ * authorization input; no wire grammar is promised for it (protocol-v0.md
+ * §4.14, `rotate_epoch_payload.json`'s own field `$comment`).
+ */
+export function gitvaultReaderEntrypoint(entrypoint: string): string {
+  return `run402@${GITVAULT_SDK_PACKAGE_VERSION}/${entrypoint}`;
 }
 
 // ─── Generations ─────────────────────────────────────────────────────────────
@@ -921,6 +953,28 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
   declareEpochSecretExposed(request: { repo_id: string }): Promise<{ epoch_secret_exposure_version: string }>;
   /** `POST …/writer-authority/declare-unavailable` (D202) — an explicit, audited fact that the writer signing key is gone; owner + step-up. */
   declareWriterAuthorityUnavailable(request: { repo_id: string }): Promise<{ declared_at: string; declared_by: string | null }>;
+  /**
+   * `POST …/recipients/:principal_id/proof-of-open` (D210, rev 44, §9.2) —
+   * submit fsck's OWN `chain_verified_to_generation` /
+   * `decryptable_to_generation` evidence VERBATIM, plus the `ek_fingerprint`
+   * of the envelope this identity actually opened. Self-match only: the
+   * gateway requires `principal_id` to equal the AUTHENTICATED caller,
+   * never overridable — a mismatch is the ordinary 403
+   * `GITVAULT_ACCESS_DENIED`, not a `proof-of-open`-specific error.
+   * Idempotent on `(repo_id, principal_id, ek_fingerprint,
+   * decryptable_to_generation)`: `deduplicated: true` means the gateway
+   * returned the tuple's EXISTING receipt (HTTP `200`) rather than minting
+   * a fresh one (HTTP `201`) — both are the tuple's one committed winner,
+   * never a partial/pretend re-insert.
+   */
+  submitOpenProof(request: {
+    repo_id: string;
+    principal_id: string;
+    ek_fingerprint: string;
+    chain_verified_to_generation: string;
+    decryptable_to_generation: string;
+    reader_entrypoint: string;
+  }): Promise<{ receipt: GitvaultOpenReceipt; deduplicated: boolean }>;
 }
 
 /**
@@ -1330,6 +1384,18 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       client.request<{ epoch_secret_exposure_version: string }>(`${base(repo_id)}/epoch-secret-exposure`, { method: "POST", body: {}, context: "declaring a gitvault epoch secret exposed" }),
     declareWriterAuthorityUnavailable: ({ repo_id }) =>
       client.request<{ declared_at: string; declared_by: string | null }>(`${base(repo_id)}/writer-authority/declare-unavailable`, { method: "POST", body: {}, context: "declaring gitvault writer authority unavailable" }),
+    async submitOpenProof({ repo_id, principal_id, ek_fingerprint, chain_verified_to_generation, decryptable_to_generation, reader_entrypoint }) {
+      // requestWithResponse (not request) — the gateway's own status code is
+      // the ONLY signal distinguishing a fresh mint (201) from an idempotent
+      // replay of the tuple's already-committed winner (200); the receipt
+      // BODY is identical either way (routes/gitvault.ts:
+      // `res.status(inserted ? 201 : 200).json(receipt)`).
+      const res = await client.requestWithResponse<GitvaultOpenReceipt>(
+        `${base(repo_id)}/recipients/${encodeURIComponent(principal_id)}/proof-of-open`,
+        { method: "POST", body: { ek_fingerprint, chain_verified_to_generation, decryptable_to_generation, reader_entrypoint }, context: "submitting a gitvault proof-of-open receipt" },
+      );
+      return { receipt: res.body, deduplicated: res.status === 200 };
+    },
     acquireMaintenanceLease: ({ repo_id, base_head_sha256, current_checkpoint_hash, r1_size_bytes, r2_cap_size_bytes, p_before_c1_size_bytes, p_before_c2_size_bytes }) =>
       client.request<GitvaultMaintenanceLease>(`${base(repo_id)}/maintenance-leases`, {
         method: "POST",
@@ -1698,19 +1764,25 @@ export interface GitvaultRotationResult {
   capture_receipt: GitvaultCaptureReceipt | null;
   /**
    * `"passed"` — this principal is itself an included recipient and its own
-   * opened envelope reproduced the committed `K_e` + `epoch_key_commitment`
-   * (D200's per-recipient self-check; a failure THROWS rather than
-   * returning here — there is no `"failed"` value). `"not_a_recipient"` —
-   * this principal (the vault's writer) is not itself in `included` (e.g.
-   * it was excluded, or holds no local encryption key) — there is nothing
-   * for this machine to self-check. This is NOT a confidentiality gap: the
-   * writer sampled `kE` itself (it never needs a `key_envelope` to learn its
-   * own secret) and `keystore.recordEpochRotation` below advances the LOCAL
-   * pointer unconditionally, regardless of `self_check` — an agent/CI writer
-   * that is deliberately never a directory envelope recipient (design D1 of
-   * `services/gitvault/desired-recipients.ts`: "agents hold their own vault
-   * keys in their CLI keystore") keeps read/write access to its own vault
-   * through every rotation it itself drives, with or without an envelope.
+   * new-epoch envelope opened (via {@link import("../namespaces/gitvault.crypto.js").openEpochRotationForRecipient},
+   * the real reader entry point) to reproduce the sealed `K_e` +
+   * `epoch_key_commitment` — the SAME round-trip that fed
+   * `payload.self_open_attestation` (D209), run BEFORE this head was ever
+   * submitted; a failure THROWS rather than returning here — there is no
+   * `"failed"` value, and the head is never even built when it happens.
+   * `"not_a_recipient"` — this principal (the vault's writer) is not itself
+   * in `included` (e.g. it was excluded, or holds no local encryption key)
+   * — there is nothing for this machine to self-check, and
+   * `payload.self_open_attestation.outcome` is `"writer_not_recipient"`.
+   * This is NOT a confidentiality gap: the writer sampled `kE` itself (it
+   * never needs a `key_envelope` to learn its own secret) and
+   * `keystore.recordEpochRotation` below advances the LOCAL pointer
+   * unconditionally once admission succeeds, regardless of `self_check` —
+   * an agent/CI writer that is deliberately never a directory envelope
+   * recipient (design D1 of `services/gitvault/desired-recipients.ts`:
+   * "agents hold their own vault keys in their CLI keystore") keeps
+   * read/write access to its own vault through every rotation it itself
+   * drives, with or without an envelope.
    */
   self_check: "passed" | "not_a_recipient";
   /**
@@ -3336,6 +3408,11 @@ export class GitvaultVault {
       const repo = this.repoFile();
       const currentEpoch = base.head?.epoch ?? this.epoch();
       const newEpoch = nextEpoch(currentEpoch);
+      // Computed here (rather than where it was historically built, just
+      // before the head is signed) because D209's self_open_attestation
+      // needs to name THIS attempt's own admitted generation as
+      // decryptable_to_generation before the head itself is built.
+      const generation = nextGeneration(base.generation);
 
       // D195's producer obligation: a fresh K_e, checked against EVERY prior
       // epoch key this principal has ever locally held.
@@ -3461,13 +3538,78 @@ export class GitvaultVault {
       sealedReceipts.sort((a, b) => (a.principal_id < b.principal_id ? -1 : a.principal_id > b.principal_id ? 1 : 0));
 
       const epochKeyCommitmentValue = epochRotationKeyCommitment(kE, this.repoId, newEpoch, rotationId, included.map((p) => p.ek_fingerprint));
-      const payload: GitvaultRotateEpochPayload = {
+      const payloadBase: GitvaultRotateEpochPayload = {
         new_epoch: newEpoch, rotation_id: rotationId, reason: options.reason,
         recipient_state_version: options.recipient_state_version, recipient_revocation_version: options.recipient_revocation_version,
         pin_manifest_sha256: pinManifest.pinManifestSha256, target_partition_digest: targetPartitionDigest,
         epoch_key_commitment: epochKeyCommitmentValue, excluded_keyless_principal_ids: excludedKeyless, excluded_unconfirmed_principal_ids: excludedUnconfirmed,
         recipient_authority_attestation: null, envelopes: sealedReceipts,
       };
+
+      // D209 (rev 44) — round-trip THIS principal's own new-epoch
+      // key_envelope through the REAL reader entry point
+      // (openEpochRotationForRecipient — the exact unit fsck/verifyToNewest
+      // use to open a rotation) BEFORE submitting, and bake the result into
+      // the payload as `self_open_attestation`. A rev-44 gateway refuses
+      // EPOCH_ROTATION_SELF_OPEN_UNPROVEN on any rotate_epoch admission
+      // that omits this or whose claim disagrees with its own
+      // server-computed writer-in-envelopes biconditional — this call site
+      // is the fix for the exact gap the 2026-08-28 drill found (production
+      // clients could not READ a rotated vault because the reader had never
+      // implemented rotation traversal, while the write side was green on
+      // its own tests). This SUPERSEDES the old post-commit self-check
+      // below (which called openKeyEnvelope directly, bypassing the
+      // membership lookup, the envelope_path callback derivation, and the
+      // reader's own error framing) — moving the round-trip BEFORE
+      // admission means a genuine failure aborts this call before anything
+      // is ever submitted to the gateway, rather than leaving a broken
+      // rotation committed server-side that even its own writer cannot
+      // read back. A round-trip failure THROWS
+      // (openEpochRotationForRecipient's own error framing — e.g.
+      // GITVAULT_EPOCH_NOT_OPENABLE / EPOCH_KEY_COMMITMENT_MISMATCH — never
+      // a bare AEAD failure); this call never emits a false attestation.
+      const identity = this.keystore.readIdentity();
+      const ownKeypair = identity ? this.keystore.encryptionKeypair(identity) : null;
+      const ownFingerprint = ownKeypair ? ekFingerprint(ownKeypair.public_key) : null;
+      const ownIncluded = ownFingerprint ? included.find((p) => p.ek_fingerprint === ownFingerprint) : undefined;
+      let selfOpenAttestation: GitvaultEpochRotationSelfOpen;
+      let selfCheck: GitvaultRotationResult["self_check"] = "not_a_recipient";
+      if (ownFingerprint && ownKeypair && ownIncluded) {
+        await openEpochRotationForRecipient({
+          repo_id: this.repoId,
+          payload: payloadBase,
+          own_fingerprint: ownFingerprint,
+          own_encryption_keypair: ownKeypair,
+          writer_signing_public_key: this.signingKeypair().public_key,
+          get_envelope_bytes: (path) => this.transport.getObject({ repo_id: this.repoId, path }),
+          envelope_path: (epoch, fp, rid) => gitvaultPaths.envelope(epoch, fp, rid),
+        });
+        // openEpochRotationForRecipient already recomputes epoch_key_commitment
+        // from the opened plaintext and compares it to payloadBase's own
+        // (HMAC-derived from kE) — an HMAC collision across different keys
+        // is cryptographically infeasible, so its own pass IS the proof
+        // that the opened secret equals kE. No separate byte comparison
+        // needed here (unlike the old post-commit check, which duplicated
+        // this logic by hand instead of trusting the real entry point).
+        selfOpenAttestation = {
+          outcome: "opened",
+          chain_verified_to_generation: base.generation,
+          decryptable_to_generation: generation,
+          opened_fingerprint: ownFingerprint,
+          reader_entrypoint: gitvaultReaderEntrypoint("openEpochRotationForRecipient"),
+        };
+        selfCheck = "passed";
+      } else {
+        // The normal agent/CI-writer case (D209's "writer_not_recipient"
+        // branch): the admitting principal has no included pair in
+        // envelopes[] (no local encryption identity at all, or one whose
+        // fingerprint is not among `included`), so no self round-trip is
+        // possible. This is NOT a confidentiality gap — the writer sampled
+        // kE itself — and D210's recipient proof-of-open receipts are the
+        // closure for post-rotation readability on this branch.
+        selfOpenAttestation = { outcome: "writer_not_recipient", chain_verified_to_generation: base.generation };
+      }
+      const payload: GitvaultRotateEpochPayload = { ...payloadBase, self_open_attestation: selfOpenAttestation };
       const payloadBytes = jcs(payload);
       const transition: GitvaultTransitionEnvelope = { kind: "rotate_epoch", payload_format: "base64url-jcs", payload: toBase64url(payloadBytes), payload_sha256: sha256Hex(payloadBytes) };
 
@@ -3488,7 +3630,9 @@ export class GitvaultVault {
         : null;
 
       // The new epoch's ref_state/retention_roots — CARRIED FORWARD unchanged, sealed under kE.
-      const generation = nextGeneration(base.generation);
+      // (`generation` itself was computed earlier, at the top of this loop
+      // — D209's self_open_attestation needed to name it as
+      // decryptable_to_generation before the head was even built.)
       const refState = this.buildRefState(generation, base.refs, base.head_target, { k_repo: kE, epoch: newEpoch });
       const rootsObj = this.buildRetentionRoots(generation, base.roots, null, { k_repo: kE, epoch: newEpoch });
       const uploads = [refState.upload, rootsObj.upload];
@@ -3514,40 +3658,13 @@ export class GitvaultVault {
         continue;
       }
 
-      // D200's post-commit self-check: verify THIS principal's own envelope
-      // (when it is itself a recipient) opens to exactly the committed K_e
-      // and reproduces epoch_key_commitment — a per-recipient proof only,
-      // never a global set-coherence claim.
-      let selfCheck: GitvaultRotationResult["self_check"] = "not_a_recipient";
-      const identity = this.keystore.readIdentity();
-      const ownKeypair = identity ? this.keystore.encryptionKeypair(identity) : null;
-      if (identity && ownKeypair) {
-        const ownFingerprint = ekFingerprint(ownKeypair.public_key);
-        const own = included.find((p) => p.ek_fingerprint === ownFingerprint);
-        const ownPair = own ? sealedReceipts.find((r) => r.principal_id === own.principal_id) : undefined;
-        if (own && ownPair) {
-          const envelopeBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.envelope(newEpoch, own.ek_fingerprint, rotationId) });
-          if (!envelopeBytes || sha256Hex(envelopeBytes) !== ownPair.envelope.stored_bytes_sha256) {
-            fail("GITVAULT_RECEIPT_MISMATCH", "this principal's own rotation-attempt envelope is absent or altered after commit", "verifying the committed epoch key", { rotation_id: rotationId });
-          }
-          const envelopeObj = parseGitvaultStrict(new TextDecoder().decode(envelopeBytes)) as Parameters<typeof openKeyEnvelope>[0]["envelope"];
-          // Verification key: this producer's OWN signing key — only the
-          // vault's single registered writer key can sign a rotate_epoch
-          // head/descriptor at all (v0 single-writer model), so a rotation
-          // this call itself drove was necessarily signed by `this.signingKeypair()`.
-          const recoveredKe = await openKeyEnvelope({ envelope: envelopeObj, recipient: ownKeypair, signer_public_key: this.signingKeypair().public_key });
-          if (bytesToHex(recoveredKe) !== bytesToHex(kE)) {
-            fail("GITVAULT_EPOCH_ROTATION_SELF_CHECK_FAILED", "this principal's own opened envelope does not recover the K_e it sealed — refusing to advance the local epoch pointer", "verifying the committed epoch key");
-          }
-          const recomputed = epochRotationKeyCommitment(recoveredKe, this.repoId, newEpoch, rotationId, included.map((p) => p.ek_fingerprint));
-          if (recomputed !== epochKeyCommitmentValue) {
-            fail("GITVAULT_EPOCH_ROTATION_SELF_CHECK_FAILED", "epoch_key_commitment does not reproduce from this principal's own opened K_e", "verifying the committed epoch key");
-          }
-          selfCheck = "passed";
-        }
-      }
-
-      // Advance the local pointer only after the self-check (when applicable) confirms this principal genuinely holds the committed K_e.
+      // The pre-submission D209 round-trip above already confirmed (when
+      // applicable — `selfCheck === "passed"`) that this principal's own
+      // opened envelope recovers exactly the K_e it sealed and reproduces
+      // epoch_key_commitment, through the real reader entry point. A
+      // genuine self-check failure would have thrown BEFORE this head was
+      // ever built or submitted, so the local pointer advances
+      // unconditionally here.
       this.keystore.recordEpochRotation(this.repoId, { new_epoch: newEpoch, new_k_repo_hex: bytesToHex(kE) });
       // Same local-cache short-circuit as publishPinManifestUpdate's own
       // success path (see readPinManifestObject's doc comment) — the fold

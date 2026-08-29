@@ -174,6 +174,12 @@ Subcommands:
            normal writing mode, so a budget-exceeded run resumes). \`--mirror\`
            additionally runs the keyless mirror integrity probe — it proves
            the mirror's VALIDITY, never its FRESHNESS, and says so.
+           In write mode (not \`--no-write\`), when this keystore holds a
+           local encryption identity, fsck ALSO submits its own
+           chain-verified/decryptable generations as a proof-of-open receipt
+           (\`recipient_open_receipt\`, D210) — best-effort: it never changes
+           fsck's own verdict, and its outcome rides the result's
+           \`open_proof\` block (also surfaced on \`--human\`).
            \`--human\` renders a short summary instead of JSON.
   gc       \`git gc\`'s own two halves — checkpoint publication (compact) and
            prune planning — in one verb, NOT described as "exactly git gc":
@@ -1437,6 +1443,21 @@ async function mirror(args) {
 
 // ─── fsck (verify the head chain + materialize refs) ──────────────────
 
+/**
+ * D210 (rev 44): one line describing `fsck`'s best-effort proof-of-open
+ * submission outcome — never blank, so a reader always knows whether
+ * `open_proof` is silence (audit mode / no local identity) or a real
+ * attempt (submitted, or a caught failure). Shared by `--human` and the
+ * default JSON-mode stderr summary.
+ */
+function formatOpenProofLine(openProof) {
+  if (!openProof || !openProof.attempted) return null;
+  if (openProof.submitted) {
+    return `proof-of-open: ${openProof.deduplicated ? "already on file" : "submitted"} (${openProof.receipt.object_id}, decryptable through ${openProof.receipt.decryptable_to_generation}).`;
+  }
+  return `proof-of-open: not submitted — ${openProof.error.code}: ${openProof.error.message}`;
+}
+
 /** `repos fsck --human`: the same verdict the stderr lines already carry, condensed into one block. */
 function formatFsckHuman(result, mirrorRequested) {
   const lines = [`Repo: ${result.repo_id}`];
@@ -1471,6 +1492,8 @@ function formatFsckHuman(result, mirrorRequested) {
   } else if (result.retained_refs) {
     lines.push(`refs/r402/retain: ${result.retained_refs.retained_count} retained tip(s) referenced (+${result.retained_refs.written.length} -${result.retained_refs.deleted.length} this run).`);
   }
+  const openProofLine = formatOpenProofLine(result.open_proof);
+  if (openProofLine) lines.push(openProofLine);
   return lines.join("\n");
 }
 
@@ -1522,6 +1545,12 @@ async function fsck(args) {
     } else if (result.retained_refs && (result.retained_refs.written.length > 0 || result.retained_refs.deleted.length > 0)) {
       console.error(`refs/r402/retain: +${result.retained_refs.written.length} -${result.retained_refs.deleted.length} (${result.retained_refs.retained_count} retained tip(s) total).`);
     }
+    // D210 (rev 44): the best-effort proof-of-open submission's own outcome
+    // — informational only, printed regardless of whether it succeeded (a
+    // failure here is exactly as uninteresting to this command's own exit
+    // status as a mirror probe's failure would be).
+    const openProofLine = formatOpenProofLine(result.open_proof);
+    if (openProofLine) console.error(openProofLine);
     if (mirrorRequested && result.mirror) {
       console.error(`mirror: recoverable generation ${result.mirror.recovered_generation}${result.mirror.chain_break ? ` (chain break at ${result.mirror.chain_break.generation}: ${result.mirror.chain_break.reason})` : ""}.`);
       if (result.mirror.data_loss_detected) {

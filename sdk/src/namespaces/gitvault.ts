@@ -38,7 +38,7 @@ import {
   GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
   GITVAULT_TERMINAL_LOSS_STATEMENT,
 } from "./gitvault.crypto.js";
-import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
+import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
   GitvaultEnvelopeRecipientsResponse,
   GitvaultMaintenanceLease,
@@ -434,6 +434,108 @@ export interface GitvaultFsckResult {
    * never a warning).
    */
   retained_refs: import("../node/gitvault-publication.js").GitvaultRetainedRefsReconcileResult | null;
+  /**
+   * D210 (rev 44) — best-effort submission of THIS call's OWN
+   * `chain_verified_to_generation`/`decryptable_to_generation` as
+   * recipient-attested proof-of-open evidence (`POST
+   * …/recipients/:principal_id/proof-of-open`), the SDK/CLI follow-up
+   * D210's own decision log names ("an `fsck --attest-open`-class
+   * submitter"). Automatic in WRITE mode when this keystore holds a local
+   * encryption identity; `{attempted: false, ...}` under `--no-write` (a
+   * genuine audit mode creates no server-side state) or when there is no
+   * local identity to submit evidence for. This NEVER changes `fsck`'s own
+   * verdict above — a submission failure (principal resolution, network,
+   * `OPEN_PROOF_MISMATCH`) is recorded in `error` and nothing else; a
+   * `recipient_open_receipt` is EVIDENCE, never authorization (§4.14).
+   */
+  open_proof: GitvaultOpenProofOutcome;
+}
+
+/** {@link GitvaultFsckResult.open_proof} — the outcome of `fsck`'s best-effort D210 proof-of-open submission. */
+export interface GitvaultOpenProofOutcome {
+  /** `false` iff this call decided LOCALLY there was nothing to submit (write:false, or no local encryption identity) — no network call was made. */
+  attempted: boolean;
+  /** `true` iff the gateway accepted the submission (200 or 201) — `receipt`/`deduplicated` are populated. */
+  submitted: boolean;
+  /** `true` — the gateway returned the tuple's EXISTING receipt (200, an idempotent replay). `false` — a fresh receipt was minted (201). `null` when `submitted` is `false`. */
+  deduplicated: boolean | null;
+  /** The `recipient_open_receipt` the gateway returned, present iff `submitted`. */
+  receipt: GitvaultOpenReceipt | null;
+  /** Present iff `attempted` and NOT `submitted` — why the gateway (or principal resolution before it) refused. */
+  error: { code: string; message: string } | null;
+}
+
+/**
+ * D210 (rev 44) — the decision function behind `fsck`'s best-effort
+ * proof-of-open submission, factored out of {@link Gitvault}'s private
+ * `#submitFsckOpenProof` so it is directly unit-testable with injected
+ * (fake) `resolvePrincipalId`/`submit` dependencies, independent of a real
+ * HTTP-backed vault. `fsck()` itself supplies the REAL dependencies (`GET
+ * /agent/v1/whoami`, {@link Gitvault.submitProofOfOpen}) — this function
+ * contains no HTTP/transport code of its own.
+ *
+ * Gating (all LOCAL, no network call made when either holds):
+ *   - `write === false` — a genuine audit mode; submitting a receipt is a
+ *     real server-side mutation (idempotent or not), so it never fires.
+ *   - `ekFingerprint === null` — no local encryption identity to submit
+ *     evidence FOR.
+ *
+ * Otherwise: resolve `principal_id` (`resolvePrincipalId`), then submit
+ * `evidence` VERBATIM — `chain_verified_to_generation`/
+ * `decryptable_to_generation` pass through completely unchanged from the
+ * caller, never recomputed or rounded here.
+ *
+ * FAILURE CONTAINMENT (the load-bearing property): this function NEVER
+ * throws. Every failure — `resolvePrincipalId` resolving `null`,
+ * `resolvePrincipalId`/`readerEntrypoint`/`submit` throwing for any reason
+ * (network, `OPEN_PROOF_MISMATCH`, anything) — is caught and reported in
+ * the returned outcome's `error`; the caller's own already-computed result
+ * (`fsck`'s verdict) is never touched by this function's own failure.
+ */
+export async function computeOpenProofOutcome(input: {
+  write: boolean;
+  ekFingerprint: string | null;
+  evidence: { chain_verified_to_generation: string; decryptable_to_generation: string };
+  resolvePrincipalId: () => Promise<string | null>;
+  readerEntrypoint: () => Promise<string>;
+  submit: (
+    principalId: string,
+    ekFingerprint: string,
+    evidence: { chain_verified_to_generation: string; decryptable_to_generation: string; reader_entrypoint: string },
+  ) => Promise<{ receipt: GitvaultOpenReceipt; deduplicated: boolean }>;
+}): Promise<GitvaultOpenProofOutcome> {
+  if (!input.write) return { attempted: false, submitted: false, deduplicated: null, receipt: null, error: null };
+  if (!input.ekFingerprint) return { attempted: false, submitted: false, deduplicated: null, receipt: null, error: null };
+  try {
+    const principalId = await input.resolvePrincipalId();
+    if (!principalId) {
+      return {
+        attempted: true,
+        submitted: false,
+        deduplicated: null,
+        receipt: null,
+        error: {
+          code: "GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED",
+          message: "GET /agent/v1/whoami returned no resolvable principal for this credential (delegate bearers are not accepted by whoami) — submit via r.gitvault.submitProofOfOpen(repoId, principalId, evidence) directly instead",
+        },
+      };
+    }
+    const readerEntrypoint = await input.readerEntrypoint();
+    const out = await input.submit(principalId, input.ekFingerprint, {
+      chain_verified_to_generation: input.evidence.chain_verified_to_generation,
+      decryptable_to_generation: input.evidence.decryptable_to_generation,
+      reader_entrypoint: readerEntrypoint,
+    });
+    return { attempted: true, submitted: true, deduplicated: out.deduplicated, receipt: out.receipt, error: null };
+  } catch (e) {
+    return {
+      attempted: true,
+      submitted: false,
+      deduplicated: null,
+      receipt: null,
+      error: { code: isRun402Error(e) && e.code ? e.code : "UNKNOWN", message: e instanceof Error ? e.message : String(e) },
+    };
+  }
 }
 
 /**
@@ -795,6 +897,36 @@ export class Gitvault {
   /** `POST …/writer-authority/declare-unavailable` (D202) — an explicit, audited fact that the writer signing key is gone. */
   async declareWriterAuthorityUnavailable(repoId: string): Promise<{ declared_at: string; declared_by: string | null }> {
     return this.#client.request(`/gitvault/v1/vaults/${encodeURIComponent(repoId)}/writer-authority/declare-unavailable`, { method: "POST", body: {}, context: "declaring gitvault writer authority unavailable" });
+  }
+
+  /**
+   * `POST …/recipients/:principal_id/proof-of-open` (D210, rev 44) — submit
+   * `fsck`'s OWN `chain_verified_to_generation`/`decryptable_to_generation`
+   * evidence VERBATIM as proof that `principalId` can open this vault under
+   * its current epoch. `fsck()` itself calls this automatically (in write
+   * mode, when a local encryption identity exists) — call it directly only
+   * for a manual/explicit submission (e.g. resubmitting after fixing a
+   * local keystore issue, or from a caller that already resolved its own
+   * `principal_id` and does not want the extra `whoami` round trip
+   * `fsck()`'s own auto-submission pays).
+   *
+   * Self-match only: the gateway requires `principalId` to equal the
+   * AUTHENTICATED caller, never overridable by any credential class — a
+   * mismatch is the ordinary 403 `GITVAULT_ACCESS_DENIED`. Idempotent on
+   * `(repo_id, principal_id, ek_fingerprint, decryptable_to_generation)` —
+   * `deduplicated: true` means the gateway returned the tuple's EXISTING
+   * receipt (HTTP 200) rather than minting a fresh one (HTTP 201).
+   */
+  async submitProofOfOpen(
+    repoId: string,
+    principalId: string,
+    evidence: { ek_fingerprint: string; chain_verified_to_generation: string; decryptable_to_generation: string; reader_entrypoint: string },
+  ): Promise<{ receipt: GitvaultOpenReceipt; deduplicated: boolean }> {
+    const res = await this.#client.requestWithResponse<GitvaultOpenReceipt>(
+      `/gitvault/v1/vaults/${encodeURIComponent(repoId)}/recipients/${encodeURIComponent(principalId)}/proof-of-open`,
+      { method: "POST", body: evidence, context: "submitting a gitvault proof-of-open receipt" },
+    );
+    return { receipt: res.body, deduplicated: res.status === 200 };
   }
 
   async acquireMaintenanceLease(request: GitvaultMaintenanceLeaseRequest): Promise<GitvaultMaintenanceLease> {
@@ -2000,6 +2132,14 @@ export class Gitvault {
       retainedRefs = await reconcileRetainedTipRefs(options.repo_dir, { refs, roots, head_target: headTarget ?? { kind: "symref", ref: "refs/heads/main" } });
     }
 
+    // D210 (rev 44): best-effort proof-of-open submission — see
+    // #submitFsckOpenProof's own doc comment for the write/audit-mode
+    // gating and why a failure here never touches anything above.
+    const openProof = await this.#submitFsckOpenProof(write, repoId, handle, {
+      chain_verified_to_generation: state.generation,
+      decryptable_to_generation: decryptableToGeneration,
+    });
+
     return {
       repo_id: repoId,
       write,
@@ -2015,7 +2155,45 @@ export class Gitvault {
       head_target: headTarget,
       mirror,
       retained_refs: retainedRefs,
+      open_proof: openProof,
     };
+  }
+
+  /**
+   * D210 (rev 44) — `fsck`'s own best-effort proof-of-open submission. Thin
+   * wrapper over {@link computeOpenProofOutcome} (the testable decision
+   * function) supplying THIS instance's real `whoami`/`submit`
+   * dependencies. See that function's own doc comment for the full
+   * write/audit-mode gating and failure-containment contract.
+   */
+  async #submitFsckOpenProof(
+    write: boolean,
+    repoId: string,
+    handle: GitvaultHandle,
+    evidence: { chain_verified_to_generation: string; decryptable_to_generation: string },
+  ): Promise<GitvaultOpenProofOutcome> {
+    return computeOpenProofOutcome({
+      write,
+      ekFingerprint: handle.keystore.readIdentity()?.encryption_fingerprint ?? null,
+      evidence,
+      resolvePrincipalId: async () => {
+        const who = await this.#client.request<{ principal: { id: string } | null }>("/agent/v1/whoami", {
+          context: "resolving this principal's identity for a gitvault proof-of-open submission",
+        });
+        return who.principal?.id ?? null;
+      },
+      readerEntrypoint: async () => {
+        const { gitvaultReaderEntrypoint } = await this.#publication();
+        return gitvaultReaderEntrypoint("fsck");
+      },
+      submit: (principalId, ekFingerprint, ev) =>
+        this.submitProofOfOpen(repoId, principalId, {
+          ek_fingerprint: ekFingerprint,
+          chain_verified_to_generation: ev.chain_verified_to_generation,
+          decryptable_to_generation: ev.decryptable_to_generation,
+          reader_entrypoint: ev.reader_entrypoint,
+        }),
+    });
   }
 
   /**

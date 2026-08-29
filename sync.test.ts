@@ -1569,6 +1569,18 @@ describe("SDK surface alignment", () => {
       // D202's explicit, audited "the writer signing key is gone" fact.
       // Owner+step-up declaration with no dedicated CLI verb yet.
       "gitvault.declareWriterAuthorityUnavailable",
+      // D210 (rev 44): the recipient proof-of-open submission wire call.
+      // `repos fsck` (JSON + `--human`) is the actual consumer-facing
+      // surface — it calls this automatically in write mode and surfaces
+      // the outcome as `open_proof`, no new flag needed. This method is the
+      // manual/explicit escape hatch (resubmitting after fixing a local
+      // keystore issue, or a delegate-authenticated caller that already
+      // resolved its own principal_id some other way, since GET
+      // /agent/v1/whoami — fsck's own auto-resolution path — does not
+      // accept a delegate bearer); no dedicated CLI verb/MCP tool of its
+      // own, same "composable primitive" pattern as confirmRecipient/
+      // repinRecipient/publishPinManifestUpdate above.
+      "gitvault.submitProofOfOpen",
       // rotateEpoch/rotateEpochForKeyRevocation/declareEpochSecretExposed/
       // declareRecipientKeyRevoked share the ONE `repos:access` CLI
       // dispatch (`access repair`/`revoke-key`/`declare-exposure` sub-verbs)

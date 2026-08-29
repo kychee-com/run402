@@ -42,7 +42,7 @@ import type { GitvaultAdmitGenesisRequest, GitvaultAdmitGenesisResult, GitvaultA
 import { createGitvault } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultDesiredRecipientEntry, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord } from "./gitvault-publication.js";
-import type { GitvaultRecipientConfirmationReceipt, GitvaultRotationAttemptDescriptor } from "../namespaces/gitvault.types.js";
+import type { GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRotationAttemptDescriptor } from "../namespaces/gitvault.types.js";
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
 import { GitvaultVault, generationToBigInt, bigIntToGeneration, gitvaultPaths } from "./gitvault-publication.js";
 import { hardenedGit } from "./gitvault-snapshot.js";
@@ -690,6 +690,56 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
   async declareWriterAuthorityUnavailable({ repo_id: _repo_id }: { repo_id: string }): Promise<{ declared_at: string; declared_by: string | null }> {
     this.calls.push("declare-writer-unavailable");
     return { declared_at: formatGitvaultTimestamp(), declared_by: null };
+  }
+
+  /** `ror_` receipts already minted, keyed by the D206/D210 idempotency tuple `repo_id|principal_id|ek_fingerprint|decryptable_to_generation`. */
+  readonly openReceipts = new Map<string, GitvaultOpenReceipt>();
+
+  /**
+   * D210 (rev 44) — models the SAME checks `services/gitvault/open-receipts.ts`'s
+   * `submitOpenProof` runs server-side: `decryptable_to_generation <=` the
+   * newest COMMITTED generation, `chain_verified_to_generation >=
+   * decryptable_to_generation` (both fixed-width hex16, so a plain string
+   * compare orders them correctly), and `ek_fingerprint` names a live
+   * `key_envelope` object on the vault (genesis-shaped `envelopes/<epoch>/<fp>`
+   * OR rotation-shaped `envelopes/<epoch>/<rotation_id>/<fp>` — both end
+   * with `/<fp>`). Idempotent on the full tuple, mirroring D206's
+   * `(xmax = 0)` linearization: an exact-tuple replay returns the ORIGINAL
+   * receipt with `deduplicated: true`.
+   */
+  async submitOpenProof({
+    repo_id, principal_id, ek_fingerprint, chain_verified_to_generation, decryptable_to_generation, reader_entrypoint,
+  }: {
+    repo_id: string; principal_id: string; ek_fingerprint: string; chain_verified_to_generation: string; decryptable_to_generation: string; reader_entrypoint: string;
+  }): Promise<{ receipt: GitvaultOpenReceipt; deduplicated: boolean }> {
+    this.calls.push("submit-open-proof");
+    const tupleKey = `${repo_id}|${principal_id}|${ek_fingerprint}|${decryptable_to_generation}`;
+    const existing = this.openReceipts.get(tupleKey);
+    if (existing) return { receipt: existing, deduplicated: true };
+    if (chain_verified_to_generation < decryptable_to_generation) {
+      throw err("OPEN_PROOF_MISMATCH", "chain_verified_to_generation is below decryptable_to_generation — fsck can never report that ordering");
+    }
+    // this.newestGeneration is the SAME helper admitHead's own generation-CAS
+    // check uses — genesis (head/0000000000000000) always counts, so this
+    // never reports "no committed generation" the way a bare key-scan default
+    // could; a fresh repo's floor is genesis, not absence.
+    const newestGeneration = this.newestGeneration(repo_id);
+    if (decryptable_to_generation > newestGeneration) {
+      throw err("OPEN_PROOF_MISMATCH", "decryptable_to_generation exceeds the vault's newest committed generation");
+    }
+    const envelopePrefix = `${repo_id}/envelopes/`;
+    const envelopeSuffix = `/${ek_fingerprint}`;
+    const hasLiveEnvelope = [...this.objects.keys()].some((k) => k.startsWith(envelopePrefix) && k.endsWith(envelopeSuffix));
+    if (!hasLiveEnvelope) {
+      throw err("OPEN_PROOF_MISMATCH", "ek_fingerprint names no live key_envelope on this vault");
+    }
+    const receipt = signGitvaultObject({
+      format: GITVAULT_FORMAT, object_kind: "recipient_open_receipt" as const, object_id: `ror_${newHex32()}`, repo_id,
+      principal_id, ek_fingerprint, chain_verified_to_generation, decryptable_to_generation, reader_entrypoint,
+      source: "recipient_submission" as const, issued_at: formatGitvaultTimestamp(), service_key_id: "sk_test-1",
+    }, this.service.seed) as GitvaultOpenReceipt;
+    this.openReceipts.set(tupleKey, receipt);
+    return { receipt, deduplicated: false };
   }
 }
 

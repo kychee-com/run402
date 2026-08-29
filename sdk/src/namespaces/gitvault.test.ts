@@ -16,7 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Run402 } from "../index.js";
-import { gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
+import { computeOpenProofOutcome, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
+import type { GitvaultOpenReceipt } from "./gitvault.types.js";
 import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT } from "./gitvault.crypto.js";
 import { hardenedGit } from "../node/gitvault-snapshot.js";
 import { pinGitvaultRepo } from "../node/gitvault-address.js";
@@ -722,5 +723,183 @@ describe("listByOrg follows the keyset cursor (never a silent page one)", () => 
     const out = await sdk.gitvault.listByOrg("57035b1e-ec41-4ce6-a7a5-a5b2560efdd7");
     assert.equal(out.vaults.length, 0);
     assert.equal(calls.length, 1);
+  });
+});
+
+/**
+ * D210 (rev 44) — the CLI/SDK follow-up "an `fsck --attest-open`-class
+ * submitter" the decision log names. Two layers, matching the file's own
+ * stated split (protocol replay lives elsewhere; this is the SEAM):
+ *
+ *  1. `Gitvault.submitProofOfOpen` — the wire call itself (exact body sent,
+ *     200-vs-201 status mapped to `deduplicated`).
+ *  2. `computeOpenProofOutcome` — `fsck`'s auto-submission DECISION logic,
+ *     factored out specifically so it is testable with injected
+ *     dependencies rather than requiring a full HTTP-mocked chain-walking
+ *     vault (`fsck()` itself has no dedicated seam test here for exactly
+ *     that reason — its `verifyToNewest` machinery is covered end-to-end
+ *     against the REAL `GitvaultMemoryTransport` fixture in
+ *     `gitvault-epoch-reader.test.ts`/`gitvault-rotate.test.ts`; what this
+ *     file owns is the auto-submission WIRING `fsck()` layers on top).
+ */
+describe("gitvault D210 proof-of-open submission (rev 44)", () => {
+  it("Gitvault.submitProofOfOpen POSTs the evidence VERBATIM to the self-match route and reports deduplicated:false on a fresh 201 mint", async () => {
+    const { sdk, calls } = sdkWith((call) => {
+      return {
+        status: 201,
+        body: {
+          format: "r402s/v0", object_kind: "recipient_open_receipt", object_id: "ror_" + "a".repeat(32),
+          repo_id: "src_test", principal_id: "prn_alice", ek_fingerprint: "ek_alice",
+          chain_verified_to_generation: "0000000000000002", decryptable_to_generation: "0000000000000003",
+          reader_entrypoint: "run402@1.0.0/fsck", source: "recipient_submission",
+          issued_at: "2026-08-28T12:00:00.000Z", service_key_id: "sk_test-1", signature: "AA",
+        },
+      };
+    });
+    const out = await sdk.gitvault.submitProofOfOpen("src_test", "prn_alice", {
+      ek_fingerprint: "ek_alice",
+      chain_verified_to_generation: "0000000000000002",
+      decryptable_to_generation: "0000000000000003",
+      reader_entrypoint: "run402@1.0.0/fsck",
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.method, "POST");
+    assert.match(calls[0]!.url, /\/gitvault\/v1\/vaults\/src_test\/recipients\/prn_alice\/proof-of-open$/);
+    assert.deepEqual(calls[0]!.body, {
+      ek_fingerprint: "ek_alice",
+      chain_verified_to_generation: "0000000000000002",
+      decryptable_to_generation: "0000000000000003",
+      reader_entrypoint: "run402@1.0.0/fsck",
+    });
+    assert.equal(out.deduplicated, false);
+    assert.equal(out.receipt.decryptable_to_generation, "0000000000000003");
+  });
+
+  it("a 200 response (the D206 idempotent-replay shape) reports deduplicated:true", async () => {
+    const { sdk } = sdkWith(() => ({
+      status: 200,
+      body: {
+        format: "r402s/v0", object_kind: "recipient_open_receipt", object_id: "ror_" + "b".repeat(32),
+        repo_id: "src_test", principal_id: "prn_alice", ek_fingerprint: "ek_alice",
+        chain_verified_to_generation: "0000000000000002", decryptable_to_generation: "0000000000000003",
+        reader_entrypoint: "run402@1.0.0/fsck", source: "recipient_submission",
+        issued_at: "2026-08-28T12:00:00.000Z", service_key_id: "sk_test-1", signature: "AA",
+      },
+    }));
+    const out = await sdk.gitvault.submitProofOfOpen("src_test", "prn_alice", {
+      ek_fingerprint: "ek_alice", chain_verified_to_generation: "0000000000000002", decryptable_to_generation: "0000000000000003", reader_entrypoint: "run402@1.0.0/fsck",
+    });
+    assert.equal(out.deduplicated, true, "the gateway returned the tuple's EXISTING receipt, not a fresh mint");
+  });
+});
+
+describe("computeOpenProofOutcome — fsck's D210 auto-submission decision logic (rev 44)", () => {
+  const evidence = { chain_verified_to_generation: "0000000000000002", decryptable_to_generation: "0000000000000003" };
+  const stubReceipt = { object_id: "ror_" + "c".repeat(32) } as unknown as GitvaultOpenReceipt;
+
+  it("write:false (a genuine audit mode) never calls resolvePrincipalId or submit — no network side effect from --no-write", async () => {
+    let resolveCalled = false;
+    let submitCalled = false;
+    const out = await computeOpenProofOutcome({
+      write: false,
+      ekFingerprint: "ek_alice",
+      evidence,
+      resolvePrincipalId: async () => { resolveCalled = true; return "prn_alice"; },
+      readerEntrypoint: async () => "run402@1.0.0/fsck",
+      submit: async () => { submitCalled = true; return { receipt: stubReceipt, deduplicated: false }; },
+    });
+    assert.deepEqual(out, { attempted: false, submitted: false, deduplicated: null, receipt: null, error: null });
+    assert.equal(resolveCalled, false);
+    assert.equal(submitCalled, false);
+  });
+
+  it("no local encryption identity — the same silent, network-free skip as write:false", async () => {
+    let called = false;
+    const out = await computeOpenProofOutcome({
+      write: true,
+      ekFingerprint: null,
+      evidence,
+      resolvePrincipalId: async () => { called = true; return "prn_alice"; },
+      readerEntrypoint: async () => "run402@1.0.0/fsck",
+      submit: async () => { called = true; return { receipt: stubReceipt, deduplicated: false }; },
+    });
+    assert.deepEqual(out, { attempted: false, submitted: false, deduplicated: null, receipt: null, error: null });
+    assert.equal(called, false);
+  });
+
+  it("principal resolution returning null (e.g. a delegate-authenticated caller GET /agent/v1/whoami cannot resolve) is REPORTED, never thrown, and submit is never called", async () => {
+    let submitCalled = false;
+    const out = await computeOpenProofOutcome({
+      write: true,
+      ekFingerprint: "ek_alice",
+      evidence,
+      resolvePrincipalId: async () => null,
+      readerEntrypoint: async () => "run402@1.0.0/fsck",
+      submit: async () => { submitCalled = true; return { receipt: stubReceipt, deduplicated: false }; },
+    });
+    assert.equal(out.attempted, true);
+    assert.equal(out.submitted, false);
+    assert.equal(out.deduplicated, null);
+    assert.equal(out.receipt, null);
+    assert.equal(out.error?.code, "GITVAULT_PROOF_OF_OPEN_PRINCIPAL_UNRESOLVED");
+    assert.equal(submitCalled, false);
+  });
+
+  it("submit throwing (e.g. the gateway's own OPEN_PROOF_MISMATCH) is CAUGHT and reported — never thrown through, never changing fsck's own already-computed verdict", async () => {
+    class FakeRun402Error extends Error {
+      readonly isRun402Error = true as const;
+      readonly code = "OPEN_PROOF_MISMATCH";
+    }
+    const out = await computeOpenProofOutcome({
+      write: true,
+      ekFingerprint: "ek_alice",
+      evidence,
+      resolvePrincipalId: async () => "prn_alice",
+      readerEntrypoint: async () => "run402@1.0.0/fsck",
+      submit: async () => { throw new FakeRun402Error("decryptable_to_generation exceeds the vault's newest committed generation"); },
+    });
+    assert.equal(out.attempted, true);
+    assert.equal(out.submitted, false);
+    assert.equal(out.error?.code, "OPEN_PROOF_MISMATCH");
+  });
+
+  it("a resolvePrincipalId THROW (e.g. a network failure resolving whoami) is caught identically — the failure mode is uniform regardless of WHICH step failed", async () => {
+    const out = await computeOpenProofOutcome({
+      write: true,
+      ekFingerprint: "ek_alice",
+      evidence,
+      resolvePrincipalId: async () => { throw new Error("network unreachable"); },
+      readerEntrypoint: async () => "run402@1.0.0/fsck",
+      submit: async () => { throw new Error("must not be reached"); },
+    });
+    assert.equal(out.attempted, true);
+    assert.equal(out.submitted, false);
+    assert.equal(out.error?.code, "UNKNOWN", "a plain Error (not a Run402Error) has no .code — falls back honestly rather than fabricating one");
+    assert.match(out.error!.message, /network unreachable/);
+  });
+
+  it("the happy path submits fsck's OWN evidence VERBATIM — exact principal_id/ek_fingerprint/chain_verified_to_generation/decryptable_to_generation/reader_entrypoint reach submit() unchanged", async () => {
+    let seen: { principalId: string; ekFingerprint: string; evidence: unknown } | null = null;
+    const out = await computeOpenProofOutcome({
+      write: true,
+      ekFingerprint: "ek_alice",
+      evidence,
+      resolvePrincipalId: async () => "prn_alice",
+      readerEntrypoint: async () => "run402@1.0.0/fsck",
+      submit: async (principalId, ekFingerprint, ev) => {
+        seen = { principalId, ekFingerprint, evidence: ev };
+        return { receipt: stubReceipt, deduplicated: true };
+      },
+    });
+    assert.deepEqual(seen, {
+      principalId: "prn_alice",
+      ekFingerprint: "ek_alice",
+      evidence: { chain_verified_to_generation: "0000000000000002", decryptable_to_generation: "0000000000000003", reader_entrypoint: "run402@1.0.0/fsck" },
+    });
+    assert.equal(out.attempted, true);
+    assert.equal(out.submitted, true);
+    assert.equal(out.deduplicated, true);
+    assert.equal(out.receipt, stubReceipt);
+    assert.equal(out.error, null);
   });
 });

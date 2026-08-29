@@ -37,10 +37,13 @@ import {
   generateSigningKeypair,
   nextEpoch,
   openKeyEnvelope,
+  parseGitvaultStrict,
+  parseRotateEpochPayload,
   randomBytes,
   signGitvaultObject,
   vkFingerprint,
 } from "../namespaces/gitvault.crypto.js";
+import type { GitvaultHead } from "../namespaces/gitvault.types.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { GitvaultMemoryTransport, commitFile, makeVault } from "./gitvault-memory-transport.test.js";
 import { GitvaultVault, gitvaultPaths } from "./gitvault-publication.js";
@@ -522,6 +525,140 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
         vault.publishPinManifestUpdate({ principal_id: "principal_2", ek_fingerprint: p2Ek, confirmed_by: "operator_confirmation", receipt: receipt2 }),
         (e: unknown) => (e as { code?: string }).code === "EPOCH_ROTATION_REQUIRED",
       );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+/** Read back an admitted `rotate_epoch` head's own transition payload — the exact bytes that were signed and submitted. */
+async function readAdmittedRotatePayload(transport: GitvaultMemoryTransport, repoId: string, generation: string) {
+  const bytes = await transport.getObject({ repo_id: repoId, path: gitvaultPaths.head(generation) });
+  assert.ok(bytes, `head ${generation} must be stored`);
+  const head = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
+  return parseRotateEpochPayload(head);
+}
+
+/**
+ * D209 (rev 44) — the round-5 closing brief's named client follow-up: every
+ * `rotate_epoch` this SDK submits carries `self_open_attestation`, computed
+ * by round-tripping THIS principal's own new-epoch `key_envelope` through
+ * the REAL reader entry point (`openEpochRotationForRecipient`) BEFORE
+ * submission — never a bare post-commit check reproducing the same logic by
+ * hand. A rev-44 gateway refuses `EPOCH_ROTATION_SELF_OPEN_UNPROVEN` on any
+ * admission missing this or whose claim disagrees with the server's own
+ * writer-in-envelopes biconditional; these tests pin the CLIENT half —
+ * exactly what gets baked into the signed payload before it ever reaches
+ * the wire.
+ */
+describe("epoch rotation — D209 self_open_attestation (rev 44)", () => {
+  it("'opened' branch: the writer is itself an included recipient — the admitted payload's self_open_attestation names its own fingerprint, the predecessor generation, and the admitted head's own generation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-self-open-opened-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownEk = ekFingerprint((vault.keystore.encryptionKeypair(identity)!).public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Creator", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from((vault.keystore.encryptionKeypair(identity)!).public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+      await bootstrapPin(vault, "principal_1", ownEk);
+
+      const result = await vault.rotateEpochForKeyRevocation("principal_1");
+      assert.equal(result.outcome, "admitted");
+      assert.equal(result.self_check, "passed");
+
+      const payload = await readAdmittedRotatePayload(transport, vault.repoId, result.generation);
+      assert.ok(payload.self_open_attestation, "self_open_attestation must ride the admitted payload — a rev-44 gateway refuses its absence");
+      const attestation = payload.self_open_attestation!;
+      assert.equal(attestation.outcome, "opened");
+      assert.equal(attestation.chain_verified_to_generation, "0000000000000001", "the PREDECESSOR generation — this is generation 2's rotation, predecessor is 1");
+      assert.equal(attestation.decryptable_to_generation, result.generation, "the admitted head's OWN generation");
+      assert.equal(attestation.opened_fingerprint, ownEk, "this principal's own included pair's recipient_fingerprint");
+      assert.ok(attestation.reader_entrypoint, "audit provenance must be present on the 'opened' branch");
+      assert.match(attestation.reader_entrypoint!, /^run402@.+\/openEpochRotationForRecipient$/, "names the REAL reader entry point (D209's own named fix — not openKeyEnvelope, not a synthesized string)");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("'writer_not_recipient' branch: the writer holds no included envelope — attestation carries ONLY outcome + chain_verified_to_generation, no opened_fingerprint/decryptable_to_generation/reader_entrypoint", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-self-open-writer-not-recipient-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      // The desired-recipient set names ONLY a principal whose encryption
+      // keypair is NOT the vault's own writer identity — the normal agent/
+      // CI-writer shape (D1 of services/gitvault/desired-recipients.ts:
+      // "agents hold their own vault keys in their CLI keystore").
+      const other = generateEncryptionKeypair();
+      const otherEk = ekFingerprint(other.public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_other", display_name: "Other", status: "active", ek_fingerprint: otherEk, public_key: Buffer.from(other.public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+      await bootstrapPin(vault, "principal_other", otherEk);
+
+      const result = await vault.rotateEpochForKeyRevocation("principal_other");
+      assert.equal(result.outcome, "admitted");
+      assert.equal(result.self_check, "not_a_recipient", "the writer's own identity has no included pair — nothing for this machine to self-check");
+      assert.equal(result.included.length, 1);
+      assert.equal(result.included[0]!.principal_id, "principal_other");
+
+      const payload = await readAdmittedRotatePayload(transport, vault.repoId, result.generation);
+      assert.ok(payload.self_open_attestation);
+      const attestation = payload.self_open_attestation!;
+      assert.equal(attestation.outcome, "writer_not_recipient");
+      assert.equal(attestation.chain_verified_to_generation, "0000000000000001");
+      assert.equal(attestation.decryptable_to_generation, undefined, "REQUIRED-absent on this branch (schema: present IFF outcome === 'opened')");
+      assert.equal(attestation.opened_fingerprint, undefined);
+      assert.equal(attestation.reader_entrypoint, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a round-trip failure (this principal's own committed envelope cannot be opened) aborts CLIENT-SIDE, before anything is submitted — never a false attestation, never a partially-committed rotation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-self-open-abort-"));
+    try {
+      const { transport, vault } = await makeVault(dir);
+      const orgId = (await vault.transport.getVaultRecord({ repo_id: vault.repoId })).org_id;
+      const identity = vault.keystore.ensureIdentity();
+      const ownEk = ekFingerprint((vault.keystore.encryptionKeypair(identity)!).public_key);
+      transport.desiredRecipients.set(orgId, [
+        { principal_id: "principal_1", display_name: "Creator", status: "active", ek_fingerprint: ownEk, public_key: Buffer.from((vault.keystore.encryptionKeypair(identity)!).public_key).toString("base64url"), suite: "r402s-1", covered: false },
+      ]);
+      await bootstrapPin(vault, "principal_1", ownEk);
+
+      assert.equal(transport.newestGeneration(vault.repoId), "0000000000000001", "sanity: bootstrapPin's pin-manifest publish is itself an ordinary admitted head");
+
+      // Corrupt the NEXT read of this attempt's own new-epoch envelope — the
+      // exact call openEpochRotationForRecipient's get_envelope_bytes
+      // callback makes, BEFORE the head is ever built or submitted. This
+      // models "the committed/uploaded envelope bytes are absent or
+      // altered" — the honest failure openEpochRotationForRecipient itself
+      // detects via its own stored_bytes_sha256 comparison, never a bare
+      // AEAD auth failure.
+      const realGetObject = transport.getObject.bind(transport);
+      let corrupted = false;
+      transport.getObject = async (req: { repo_id: string; path: string }) => {
+        const bytes = await realGetObject(req);
+        if (bytes && !corrupted && req.path.startsWith("envelopes/0000000000000002/")) {
+          corrupted = true;
+          return new Uint8Array([...bytes, 0]); // any byte change fails the stored_bytes_sha256 check
+        }
+        return bytes;
+      };
+
+      await assert.rejects(
+        vault.rotateEpochForKeyRevocation("principal_1"),
+        (e: unknown) => (e as { code?: string }).code === "GITVAULT_EPOCH_NOT_OPENABLE",
+      );
+      assert.equal(corrupted, true, "sanity: the corrupting read actually fired");
+
+      // Nothing was ever submitted to the gateway: no new head, generation
+      // unchanged. A pre-D209 client ran this exact check AFTER admit() —
+      // this proves the fix moved it strictly before.
+      assert.equal(transport.newestGeneration(vault.repoId), "0000000000000001", "no rotate_epoch head was admitted — the round-trip failure aborted before submission");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
