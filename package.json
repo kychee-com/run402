@@ -1,6 +1,6 @@
 {
   "name": "run402-mcp",
-  "version": "4.49.0",
+  "version": "4.50.0",
   "packageManager": "npm@11.19.0",
   "mcpName": "com.run402/mcp",
   "description": "MCP server for Run402 — full-stack backend infrastructure for AI agents: Postgres, auth, storage, serverless functions and atomic deploys. Paid with x402/MPP. Includes $0.03 image generation.",
