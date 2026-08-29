@@ -2168,6 +2168,9 @@ export async function run(sub, args) {
     console.log(HELP);
     process.exit(0);
   }
+  // gitvault-connection-amortization (bench P5): overlap the API dial with
+  // the verb's local work — fire-and-forget, silent on every failure.
+  void import("#sdk/node").then((m) => m.prewarmGitvaultConnection()).catch(() => {});
   switch (sub) {
     case "create": {
       await create(argv);

@@ -104,7 +104,7 @@ import { pathToFileURL } from "node:url";
 import { getSdk } from "./lib/sdk.mjs";
 import { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } from "./lib/wallet-context.mjs";
 import { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } from "#sdk";
-import { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo } from "#sdk/node";
+import { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo, prewarmGitvaultConnection } from "#sdk/node";
 
 const out = (line) => process.stdout.write(`${line}\n`);
 /** Every helper response block is terminated by a blank line. */
@@ -315,6 +315,10 @@ export function chooseGitvaultHeadTargetForPush({ baseHeadTarget, baseRefs, upda
 }
 
 async function main(argv) {
+  // gitvault-connection-amortization (bench P5): start dialing the API
+  // origin while git runs its capabilities/option/list exchange with us —
+  // fire-and-forget, silent on failure, zero budget/stats footprint.
+  prewarmGitvaultConnection();
   const address = resolveRemoteAddress(argv);
   if (!address) {
     note(`could not read a run402 remote address from ${JSON.stringify(argv.join(" "))} — expected run402::<org_id>/<project_id>`);

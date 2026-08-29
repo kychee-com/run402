@@ -4,6 +4,17 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **gitvault: verb startup now overlaps connection setup with local work (gitvault-connection-amortization, bench P5).**
+  `git-remote-run402` and the `repos` dispatcher fire a fire-and-forget
+  prewarm at boot — an unauthenticated `GET /health` on the same connection
+  pool the verb's requests use, plus a deferred local signer warmup — so
+  DNS/TCP/TLS and the first-sign curve-table build run concurrently with
+  git's protocol exchange and keystore reads instead of riding the verb's
+  first read (the 4.53.0 retest measured that first-op premium at
+  ~650–700 ms). Never awaited, silent on every failure (an unreachable
+  gateway surfaces exactly once, from the verb itself), and invisible to
+  the counted transport budgets, `sdk.stats()`, and `RUN402_TRACE`.
+
 - **gitvault: pinned-address resolution is now fully offline — one round trip removed from every `git push`/`fetch`/`repos` verb (gitvault-force-spelling-and-pin-fold).**
   The local pin gains the resolved project/org ids (`r402.projectId` /
   `r402.orgId` beside `r402.repoId`), so a pinned checkout resolves with ZERO
