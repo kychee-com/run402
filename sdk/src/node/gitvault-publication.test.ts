@@ -1331,21 +1331,27 @@ describe("gitvault-clone-scaling — the batched page walk keeps unbatched failu
     await rejectsCode(cold.materialize(), "CHAIN_BROKEN");
   });
 
-  it("a batch that LIES about one head (bytes ≠ the listing's hash) self-heals: the entry stays uncached and the ordered walk's own read succeeds", async (t) => {
+  it("a prefetch that LIES about one head (bytes ≠ the listing's hash) self-heals: the entry stays unserved and the ordered walk's own read succeeds", async (t) => {
     const f = await coldFixture();
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    // Lie exactly ONCE, on the FIRST read of generation 2's head — the
+    // prefetch's own concurrent single. The walkPrefetch insert sha-checks
+    // against the listing and drops it; the ordered loop's later honest
+    // re-read succeeds. (Heads ride direct getObject reads, never the
+    // carrier-only getObjects batch — this is the per-path lying-read
+    // shape that can actually occur on the wire.)
     const lyingPath = gitvaultPaths.head("0000000000000002");
+    let lied = false;
     const lying = new Proxy(f.transport, {
       get(target, prop, receiver) {
-        if (prop === "getObjects") {
-          return async (req: { repo_id: string; paths: string[] }) => {
-            const real = await target.getObjects(req);
-            return real.map((bytes, i) => {
-              if (req.paths[i] !== lyingPath || !bytes) return bytes;
-              const corrupt = new Uint8Array(bytes);
-              corrupt[0] = corrupt[0]! ^ 0xff;
-              return corrupt;
-            });
+        if (prop === "getObject") {
+          return async (req: { repo_id: string; path: string }) => {
+            const bytes = await target.getObject(req);
+            if (req.path !== lyingPath || !bytes || lied) return bytes;
+            lied = true;
+            const corrupt = new Uint8Array(bytes);
+            corrupt[0] = corrupt[0]! ^ 0xff;
+            return corrupt;
           };
         }
         const value = Reflect.get(target, prop, receiver);
@@ -1355,9 +1361,10 @@ describe("gitvault-clone-scaling — the batched page walk keeps unbatched failu
     const cold = GitvaultVault.open({ keystore: f.coldKeystore, transport: lying, repo_id: f.repoId, repo_dir: null });
     f.transport.calls.length = 0;
     const m = await cold.materialize();
+    assert.equal(lied, true, "the lie was actually served to the prefetch");
     assert.deepEqual(Object.keys(m.refs).sort(), ["refs/heads/b1", "refs/heads/b2", "refs/heads/main"]);
     assert.ok(
-      f.transport.calls.some((c) => c === `get:${lyingPath}`),
+      f.transport.calls.filter((c) => c === `get:${lyingPath}`).length >= 2,
       `the ordered loop re-read the lied-about head itself — calls: ${f.transport.calls.filter((c) => c.startsWith("get:")).join(", ")}`,
     );
   });

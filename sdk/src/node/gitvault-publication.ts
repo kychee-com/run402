@@ -2043,11 +2043,12 @@ export class GitvaultVault {
   private readonly now: () => Date;
   private readonly budget: number;
   /**
-   * gitvault-clone-scaling (bench P2): the CURRENT listing page's batched
-   * bytes — head bytes and carrier frames, keyed by storage path — filled
-   * by `verifyToNewest`'s per-page prefetch and consulted by
-   * {@link readCachedHeadBytes} / {@link openMaterializeCarriers} before
-   * they pay a network read. Transient (REPLACED each page, so memory is
+   * gitvault-clone-scaling (bench P2): the CURRENT walk window's prefetched
+   * bytes — head bytes (bounded-concurrent direct reads) and carrier frames
+   * (one batched getObjects), keyed by storage path — filled by
+   * `verifyToNewest`'s per-page prefetch and `restoreObjectsInto`'s
+   * backward-window prefetch, consulted by {@link readCachedHeadBytes} /
+   * {@link openMaterializeCarriers} before they pay a network read. Transient (REPLACED each page, so memory is
    * bounded by one listing page) and UNTRUSTED: every consumer sha-checks
    * an entry against the exact value it would check network bytes against
    * (the listing's `stored_bytes_sha256`, a receipt's `ciphertext_sha256`),
@@ -2118,6 +2119,28 @@ export class GitvaultVault {
    */
   private checkpointStalenessNow(newestGeneration: string): GitvaultCheckpointStaleness {
     return gitvaultCheckpointStaleness({ newest_generation: newestGeneration, covers_through_generation: this.repoFile().checkpoint_covers_through ?? null });
+  }
+
+  /**
+   * gitvault-clone-scaling (bench P2): bounded-concurrent direct reads of
+   * many generation-addressed head paths. Heads deliberately do NOT ride
+   * `getObjects` — the `object-reads` presign batch is CARRIER-ONLY by wire
+   * design (see `getObjectsBytes`'s fail-closed doc comment; the live probe
+   * that caught this recorded `getObjects paths=67 FAILED 1ms` followed by
+   * 25 serial singles) — so head bytes parallelize as the SAME direct GETs
+   * the ordered walk itself would issue, just early and overlapped. A
+   * per-path failure resolves `null` (the walk's own read owns that
+   * failure and its envelope); results are raw and UNTRUSTED — callers
+   * sha-check before use, per `walkPrefetch`'s contract.
+   */
+  private async prefetchHeadsConcurrent(paths: string[]): Promise<Map<string, Uint8Array>> {
+    const map = new Map<string, Uint8Array>();
+    const fetched = await mapBounded(paths, GITVAULT_TRANSPORT_CONCURRENCY, (path) => this.transport.getObject({ repo_id: this.repoId, path }).catch(() => null));
+    for (let i = 0; i < paths.length; i++) {
+      const b = fetched[i];
+      if (b) map.set(paths[i]!, b);
+    }
+    return map;
   }
 
   private git(): string {
@@ -2440,20 +2463,22 @@ export class GitvaultVault {
       // gitvault-clone-scaling (bench P2): the page just verified names every
       // entry's generation + stored_bytes_sha256, and the BYTES reads are
       // independent — verification (and decryption) order is a LOCAL
-      // obligation. Two batched getObjects per page (the same D2 machinery
-      // the restore pack fetches ride), bounded by the remaining
-      // verification budget, replace this page's per-head serial reads:
-      // first the cache-missing HEAD bytes, then — the same split one level
-      // deeper — the ref_state/retention_roots FRAMES each decrypt-validated
-      // head will open (their paths + expected ciphertext hashes parse out
-      // of the head bytes just fetched; parsing is local CPU). Results land
-      // in the transient `walkPrefetch` map (NOT the keystore cache — its
-      // eviction window is smaller than a page; see the field's doc).
-      // Failure fidelity: only a hash-matching result is kept — an absent,
-      // mismatched, or unparseable entry (or a batch that fails outright)
-      // leaves its slot empty, and the ordered loop's own per-head reads
-      // reproduce the exact unbatched envelopes. Single-miss sets skip the
-      // batch (one direct read costs the same).
+      // obligation. Bounded by the remaining verification budget, this
+      // page's per-head SERIAL reads are replaced by: the cache-missing
+      // HEAD bytes as bounded-CONCURRENT direct reads (heads cannot ride
+      // the object-reads presign batch — it is carrier-only by wire design;
+      // see prefetchHeadsConcurrent), then — the same split one level
+      // deeper — ONE batched getObjects for the ref_state/retention_roots
+      // FRAMES each decrypt-validated head will open (their paths +
+      // expected ciphertext hashes parse out of the head bytes just
+      // fetched; parsing is local CPU). Results land in the transient
+      // `walkPrefetch` map (NOT the keystore cache — its eviction window is
+      // smaller than a page; see the field's doc). Failure fidelity: only a
+      // hash-matching result is kept — an absent, mismatched, or
+      // unparseable entry (or a prefetch that fails outright) leaves its
+      // slot empty, and the ordered loop's own per-head reads reproduce the
+      // exact unbatched envelopes. Single-miss sets skip their prefetch
+      // (one direct read costs the same).
       {
         const prefetch = new Map<string, Uint8Array>();
         this.walkPrefetch = prefetch;
@@ -2465,11 +2490,11 @@ export class GitvaultVault {
           };
           const missingHeads = wanted.filter((e) => cachedHeadIfMatching(e) === null);
           if (missingHeads.length > 1) {
-            const fetched = await this.transport.getObjects({ repo_id: this.repoId, paths: missingHeads.map((e) => gitvaultPaths.head(e.generation)) });
-            for (let i = 0; i < missingHeads.length; i++) {
-              const e = missingHeads[i]!;
-              const bytes = fetched[i] ?? null;
-              if (bytes && sha256Hex(bytes) === e.stored_bytes_sha256) prefetch.set(gitvaultPaths.head(e.generation), bytes);
+            const fetched = await this.prefetchHeadsConcurrent(missingHeads.map((e) => gitvaultPaths.head(e.generation)));
+            for (const e of missingHeads) {
+              const path = gitvaultPaths.head(e.generation);
+              const bytes = fetched.get(path) ?? null;
+              if (bytes && sha256Hex(bytes) === e.stored_bytes_sha256) prefetch.set(path, bytes);
             }
           }
           if (decryptValidate && wanted.length > 1) {
@@ -4295,15 +4320,9 @@ export class GitvaultVault {
       const gens: string[] = [];
       for (let g = hi; g >= lo; g--) gens.push(bigIntToGeneration(g));
       try {
-        const fetched = await this.transport.getObjects({ repo_id: this.repoId, paths: gens.map((g) => gitvaultPaths.head(g)) });
-        const map = new Map<string, Uint8Array>();
-        for (let i = 0; i < gens.length; i++) {
-          const b = fetched[i];
-          if (b) map.set(gitvaultPaths.head(gens[i]!), b);
-        }
-        this.walkPrefetch = map;
+        this.walkPrefetch = await this.prefetchHeadsConcurrent(gens.map((g) => gitvaultPaths.head(g)));
       } catch {
-        // Fidelity: an outright batch failure leaves the map alone — the
+        // Fidelity: an outright prefetch failure leaves the map alone — the
         // walk's own per-head reads take over with their own envelopes.
       }
     };

@@ -35,11 +35,42 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitvaultVault } from "./gitvault-publication.js";
+import { GITVAULT_TRANSPORT_CONCURRENCY, GitvaultVault } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
 import { GitvaultOpCounter, assertOpBudget, countingGitvaultTransport } from "./gitvault-transport-counter.test-helper.js";
+
+/**
+ * gitvault-clone-scaling: an overlap gauge on `getObject` — the honest
+ * instrument for the catch-up contract, which is stated in SEQUENCED DEPTH.
+ * The op counter cannot see concurrency (six overlapped GETs count 6 either
+ * way); this proxy records the maximum number of simultaneously in-flight
+ * head reads, with a 2ms delay so genuinely-concurrent calls provably pile
+ * up. Head bytes CANNOT batch through `getObjects` — the object-reads
+ * presign is carrier-only by wire design — so concurrency of the direct
+ * reads IS the mechanism under test.
+ */
+function gaugedTransport(inner: ReturnType<typeof countingGitvaultTransport>): { transport: ReturnType<typeof countingGitvaultTransport>; gauge: { max: number } } {
+  const state = { inflight: 0, max: 0 };
+  const transport = new Proxy(inner, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop !== "getObject" || typeof value !== "function") return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      return async (...args: unknown[]) => {
+        state.inflight += 1;
+        state.max = Math.max(state.max, state.inflight);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 2));
+          return await Reflect.apply(value as (...a: unknown[]) => unknown, target, args);
+        } finally {
+          state.inflight -= 1;
+        }
+      };
+    },
+  });
+  return { transport, gauge: state };
+}
 
 /** A vault handle bound to the SAME keystore/repo (so it shares local pins and the D3 object cache) as `f.vault`, but whose network calls are counted. */
 function countedVaultFor(f: Awaited<ReturnType<typeof makeVault>>, counter: GitvaultOpCounter): GitvaultVault {
@@ -191,27 +222,24 @@ describe("gitvault chain catch-up budget (gitvault-clone-scaling)", () => {
       head_pin: null, last_ref_transaction: null, provenance: "restored_from_envelope",
     });
     const counter = new GitvaultOpCounter();
-    const cold = GitvaultVault.open({ keystore: coldKeystore, transport: countingGitvaultTransport(f.transport, counter), repo_id: f.repoId, repo_dir: null });
+    const { transport, gauge } = gaugedTransport(countingGitvaultTransport(f.transport, counter));
+    const cold = GitvaultVault.open({ keystore: coldKeystore, transport, repo_id: f.repoId, repo_dir: null });
     const m = await cold.materialize();
     assert.equal(Object.keys(m.refs).length, 251, "the walk really covered all 251 generations");
 
     const byKind = counter.byKind();
-    // The page-bounded contract, in this counter's own units: ⌈251/1000⌉ = 1
-    // listing page → TWO batched presigns (head bytes, then the carrier
-    // frames their decrypts open — batch GETs are concurrent, so they grow
-    // the op COUNT with G but never the sequenced round-trip depth), and
-    // per-head SINGLE reads must not scale with G. The pre-P2 walk paid
-    // ~251 sequenced single head reads PLUS ~251 sequenced per-head carrier
-    // presigns (this exact fixture measured 243 generation-reads and 252
-    // batch presigns against the head-only prefetch draft — the keystore
-    // object cache's eviction window is smaller than a page, which is why
-    // the prefetch carries a transient map instead).
-    assert.equal(byKind["object-reads-batch(presign)"] ?? 0, 2, `two batched presigns per page (heads, carriers) — breakdown: ${JSON.stringify(byKind)}`);
-    assert.equal(byKind["object-reads-batch(get)"] ?? 0, 251 + 2 * 251, "every cache-missing head and carrier frame rides a batch");
-    assert.ok((byKind["generation-read"] ?? 0) <= 4, `per-head single reads must stay O(1), got ${byKind["generation-read"] ?? 0} — breakdown: ${JSON.stringify(byKind)}`);
+    // The page-bounded contract: ⌈251/1000⌉ = 1 listing page → head bytes as
+    // OVERLAPPED direct reads (the object-reads presign is carrier-only by
+    // wire design, so heads cannot batch — the gauge below is the depth
+    // instrument), plus ONE batched carrier-frame presign. The pre-P2 walk
+    // paid ~251 STRICTLY SEQUENTIAL head reads plus ~251 sequenced per-head
+    // carrier presigns; op COUNT stays ~3·G either way — depth is what
+    // changed.
+    assert.equal(byKind["object-reads-batch(presign)"] ?? 0, 1, `one batched carrier presign per page — breakdown: ${JSON.stringify(byKind)}`);
+    assert.equal(byKind["object-reads-batch(get)"] ?? 0, 2 * 251, "every carrier frame rides the one batch");
+    assert.ok((byKind["generation-read"] ?? 0) <= 255, `each head read exactly once — breakdown: ${JSON.stringify(byKind)}`);
     assert.ok((byKind["listHeads"] ?? 0) <= 2, `listing reads are page-bounded — breakdown: ${JSON.stringify(byKind)}`);
-    // Total stays 3·G + a small constant with exactly two sequenced batch
-    // phases — never the pre-P2 serial per-head shape.
+    assert.ok(gauge.max >= 4, `head reads must overlap (bounded concurrency ${GITVAULT_TRANSPORT_CONCURRENCY}), observed max in-flight ${gauge.max}`);
     assertOpBudget(counter, 3 * 251 + 15, "cold 251-generation catch-up");
   });
 
@@ -225,12 +253,13 @@ describe("gitvault chain catch-up budget (gitvault-clone-scaling)", () => {
     t.after(() => rmSync(target, { recursive: true, force: true }));
     await git(target, ["init", "-q", "--bare", "."]);
     const counter = new GitvaultOpCounter();
-    const vault = countedVaultFor(f, counter);
+    const { transport, gauge } = gaugedTransport(countingGitvaultTransport(f.transport, counter));
+    const vault = GitvaultVault.open({ keystore: f.keystore, transport, repo_id: f.repoId, repo_dir: f.repoDir });
     const restored = await vault.restoreObjectsInto(target);
     assert.equal(Object.keys(restored.refs).length, 251, "the restore really spans all 251 generations");
 
     const byKind = counter.byKind();
-    assert.ok((byKind["generation-read"] ?? 0) <= 6, `backward-walk single head reads must stay O(1), got ${byKind["generation-read"] ?? 0} — breakdown: ${JSON.stringify(byKind)}`);
-    assert.ok((byKind["object-reads-batch(presign)"] ?? 0) <= 6, `page-window batches only (backward heads + WAL frames + newest carriers) — breakdown: ${JSON.stringify(byKind)}`);
+    assert.ok(gauge.max >= 4, `backward-walk head reads must overlap (bounded concurrency ${GITVAULT_TRANSPORT_CONCURRENCY}), observed max in-flight ${gauge.max}`);
+    assert.ok((byKind["object-reads-batch(presign)"] ?? 0) <= 6, `carrier/WAL batches only — breakdown: ${JSON.stringify(byKind)}`);
   });
 });

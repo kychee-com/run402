@@ -4,21 +4,24 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
-- **gitvault: cold-clone chain verification is page-batched — sequenced round trips per listing page drop from ~3·G to 3 (gitvault-clone-scaling, bench P2).**
-  `verifyToNewest` now batch-fetches each verified listing page's
-  cache-missing head bytes AND the ref_state/retention_roots frames their
-  decrypts open — two `getObjects` batches per page (concurrent GETs)
-  through a transient per-page map, while chain verification and decryption
-  stay strictly ordered. `restoreObjectsInto`'s backward head walk (the
-  fresh-`git clone` path on a standing profile) batches the same way: every
-  predecessor path is derivable locally, so page-sized windows of head
-  bytes fetch concurrently while the hash chain is checked in order. A
-  G-generation cold catch-up previously paid ~G sequenced single head reads
-  plus ~G sequenced per-head carrier presigns; both walks now pay a couple
-  of batch phases per 1000-entry page. Failure fidelity is pinned by tests:
-  an entry a batch cannot produce (absent, hash-mismatch, a lying batch, a
-  batch that fails outright) stays uncached and the ordered walk's own
-  per-head reads reproduce the exact unbatched envelopes.
+- **gitvault: cold-clone chain walks overlap their reads — sequenced round-trip depth per listing page drops from ~3·G to ~G/6 + 2 (gitvault-clone-scaling, bench P2).**
+  `verifyToNewest` now prefetches each verified listing page's
+  cache-missing head bytes as bounded-concurrent direct reads (heads
+  cannot ride the `object-reads` presign batch — that route is
+  carrier-only by wire design, a truth the live probe surfaced as
+  `getObjects paths=67 FAILED 1ms`) and fetches the
+  ref_state/retention_roots frames their decrypts open in ONE `getObjects`
+  batch per page, all through a transient per-page map while chain
+  verification and decryption stay strictly ordered.
+  `restoreObjectsInto`'s backward head walk (the fresh-`git clone` path on
+  a standing profile) overlaps its predecessor reads the same way — every
+  path derives locally from the generation sequence. A G-generation cold
+  catch-up previously paid ~G strictly-serial head reads plus ~G sequenced
+  per-head carrier presigns. Failure fidelity is pinned by tests: an entry
+  the prefetch cannot produce (absent, hash-mismatch, a lying read, a
+  prefetch that fails outright) stays unserved and the ordered walk's own
+  reads reproduce the exact unbatched envelopes — a transient lying read
+  self-heals.
 
 - **gitvault: checkpoint staleness is computed client-side and advised, never gated (gitvault-clone-scaling, bench P3).**
   The keystore learns checkpoint coverage first-hand — from a
