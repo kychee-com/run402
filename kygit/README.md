@@ -3,10 +3,14 @@
 The encrypted Git remote's command — [kygit.com](https://kygit.com).
 
 ```
-npm i -g kygit
+npm i -g @kychee/kygit
 kygit create              # provision the vault, scaffold the remote
 git push origin main      # encrypted on your machine, published as a signed head
 ```
+
+(The package is scoped because npm's typosquat guard reserves the bare
+name — it is one letter from `degit`. The command you get is still
+`kygit`.)
 
 **Run402 cannot decrypt your gitvault or repository history.** The full,
 graded claims — including every limit — live at

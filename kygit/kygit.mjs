@@ -32,7 +32,7 @@ const requireFromHere = createRequire(import.meta.url);
 
 export const RESOLVE_FAIL_MESSAGE =
   "kygit: cannot resolve its run402 engine — the install is incomplete.\n" +
-  "  Fix: npm i -g kygit   (reinstalls the run402 dependency)\n" +
+  "  Fix: npm i -g @kychee/kygit   (reinstalls the run402 dependency)\n" +
   "  Or install the canonical CLI directly: npm i -g run402";
 
 /** Resolves the installed run402 package: its dir, package.json, surface, and CLI entry. */

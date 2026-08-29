@@ -1,4 +1,8 @@
-# Publish `kygit` to npm via Trusted Publisher OIDC.
+# Publish `@kychee/kygit` to npm via Trusted Publisher OIDC.
+#
+# SCOPED, not bare: npm's typosquat guard permanently refuses the unscoped
+# name `kygit` (one letter from `degit`), discovered at the 0.1.0 bootstrap
+# publish on 2026-08-30. The BINARY is still `kygit`.
 #
 # Triggered manually via `gh workflow run publish-kygit.yml -f bump=<patch|minor|major>`.
 # Openspec: kygit-cli-shim (kychee-com/run402-private). The package is a thin
@@ -6,8 +10,8 @@
 # the tarball is one .mjs + README.
 #
 # BOOTSTRAP (astro precedent): npm requires a package to EXIST before a
-# Trusted Publisher can be configured, so v0.1.0 is published manually once
-# (`cd kygit && npm publish`, OTP), then the Trusted Publisher is configured
+# Trusted Publisher can be configured. DONE 2026-08-30: @kychee/kygit@0.1.0
+# published manually (web-auth OTP); next, the Trusted Publisher is configured
 # on npmjs for `kygit` (org kychee-com, repo run402, this workflow file).
 # From 0.1.1+ this workflow is the entire process. Until the Trusted
 # Publisher exists, run with dry_run=true to prove the pipeline.
@@ -102,7 +106,7 @@ jobs:
           rm -rf "$SMOKE" && mkdir "$SMOKE"
           (cd kygit && npm pack --pack-destination "$SMOKE")
           mkdir "$SMOKE/extract"
-          tar xzf "$SMOKE/kygit-$NEW.tgz" -C "$SMOKE/extract"
+          tar xzf "$SMOKE/kychee-kygit-$NEW.tgz" -C "$SMOKE/extract"
           test -f "$SMOKE/extract/package/kygit.mjs" || (echo "Missing kygit.mjs" && exit 1)
           test -f "$SMOKE/extract/package/README.md" || (echo "Missing README" && exit 1)
           # Scratch install resolves the real published run402 dependency,

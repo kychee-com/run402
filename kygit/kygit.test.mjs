@@ -141,7 +141,7 @@ describe("help / version / resolution", () => {
         },
       }),
     );
-    assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g kygit/);
+    assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g @kychee\/kygit/);
     assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g run402/);
   });
 

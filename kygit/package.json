@@ -1,5 +1,5 @@
 {
-  "name": "kygit",
+  "name": "@kychee/kygit",
   "version": "0.1.0",
   "description": "KyGit — the encrypted Git remote's command. A thin brand door over `run402 repos`: every kygit command IS a run402 command.",
   "type": "module",
