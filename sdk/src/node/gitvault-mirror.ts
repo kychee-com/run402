@@ -92,6 +92,7 @@ import {
   GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
   GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
 } from "../namespaces/gitvault.crypto.js";
+import { fetchGitvaultObjectBytes } from "./gitvault-edge-fetch.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { formatMirrorDestination, readMirrorConfig, type GitvaultMirrorConfig } from "./gitvault-mirror-config.js";
 import { openGitvaultMirrorBackend, resolveMirrorCredentials, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
@@ -214,7 +215,11 @@ export async function readGitvaultObjectBytes(client: Client, repoId: string, en
     return new Uint8Array(await r.arrayBuffer());
   }
   const read = objectReadRequestForEntry(entry);
-  let presigned: { reads: Array<{ url: string }> };
+  // `edge_url` (gitvault-read-edge-cache design D5) is the same optional,
+  // same-bytes CDN companion `gitvault-publication.ts`'s object-reads
+  // consumers get — see `fetchGitvaultObjectBytes` (`gitvault-edge-fetch.ts`)
+  // for the prefer-edge/silent-fallback policy shared across both.
+  let presigned: { reads: Array<{ url: string; edge_url?: string }> };
   try {
     presigned = await client.request(`${base}/object-reads`, { method: "POST", body: { objects: [read] }, context: "resolving gitvault mirror source object" });
   } catch (e) {
@@ -223,7 +228,7 @@ export async function readGitvaultObjectBytes(client: Client, repoId: string, en
   }
   const target = presigned.reads[0];
   if (!target) return null;
-  const r = await client.fetch(target.url, { method: "GET" });
+  const r = await fetchGitvaultObjectBytes(client, target);
   if (r.status === 404) return null;
   if (!r.ok) fail("GITVAULT_MIRROR_READ_FAILED", `${entry.key} GET failed (HTTP ${r.status})`, "reading gitvault mirror source object", { key: entry.key, status: r.status });
   return new Uint8Array(await r.arrayBuffer());

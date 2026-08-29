@@ -11,7 +11,7 @@
  * torn-mirror property is about WRITE ORDER on the destination, not about
  * how the bytes were fetched — see `gitvault-mirror.ts`'s own module doc).
  */
-import { describe, it } from "node:test";
+import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,6 +32,7 @@ import {
   readGitvaultObjectBytes,
   type GitvaultObjectEntry,
 } from "./gitvault-mirror.js";
+import { _resetGitvaultEdgeFetchStateForTest } from "./gitvault-edge-fetch.js";
 import { adjudicateAbsences, discoverAndVerifyChain, recoverGitvaultMirror, verifyGitvaultMirror } from "./gitvault-recover.js";
 
 function scratchDir(prefix: string): string {
@@ -247,6 +248,64 @@ describe("gitvault mirror/recover key-shape conformance (protocol §3)", () => {
     // an admission record mislabeled as a head (at any generation, including genesis)
     await assert.rejects(readGitvaultObjectBytes(fakeClient, repoId, { key: `admissions/${GENESIS_GEN}`, object_kind: "vault_genesis", sha256: "", size_bytes: "1" }), isKeyUnrecognized);
     await assert.rejects(readGitvaultObjectBytes(fakeClient, repoId, { key: "admissions/0000000000000005", object_kind: "head", sha256: "", size_bytes: "1" }), isKeyUnrecognized);
+  });
+});
+
+// ─── gitvault-read-edge-cache design D5: edge_url wiring in the mirror path ──
+//
+// The mirror/recover reader (`readGitvaultObjectBytes`) reimplements its own
+// `object-reads` call site rather than depending on `gitvault-publication.ts`
+// (see `gitvault-mirror.ts`'s own header comment on why) — but for a
+// non-generation-addressed (object-reads) entry it still routes its GET
+// through the SAME `fetchGitvaultObjectBytes` (`gitvault-edge-fetch.ts`) the
+// live-push path uses, sharing its process-wide fallback state. Only the
+// wiring is pinned here — every preference/fallback/stickiness scenario is
+// unit-tested directly against `fetchGitvaultObjectBytes` itself in
+// `gitvault-edge-fetch.test.ts`.
+describe("gitvault mirror reader — edge_url from object-reads reaches a non-generation-addressed read (gitvault-read-edge-cache design D5)", () => {
+  const WAL_ID = `wal_${"7".repeat(32)}`;
+
+  beforeEach(() => {
+    _resetGitvaultEdgeFetchStateForTest();
+  });
+
+  it("prefers `edge_url` over `url` when the object-reads response carries one", async () => {
+    const repoId = `src_${"5".repeat(32)}`;
+    const fakeClient = {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request() {
+        return { reads: [{ url: "https://origin.example/wal", edge_url: "https://edge.example/wal" }] };
+      },
+      async fetch(input: string | URL | Request) {
+        const url = String(input);
+        if (url === "https://edge.example/wal") return new Response(new Uint8Array([1, 2]), { status: 200 });
+        throw new Error(`must not fetch url when edge_url succeeds: ${url}`);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const bytes = await readGitvaultObjectBytes(fakeClient, repoId, { key: `wal/${WAL_ID}.pack.enc`, object_kind: "wal_pack", sha256: "", size_bytes: "1" });
+    assert.deepEqual([...bytes!], [1, 2]);
+  });
+
+  it("falls back to `url` when the object-reads response carries no `edge_url` — byte-identical to before this change", async () => {
+    const repoId = `src_${"6".repeat(32)}`;
+    const fakeClient = {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request() {
+        return { reads: [{ url: "https://origin.example/wal2" }] };
+      },
+      async fetch(input: string | URL | Request) {
+        assert.equal(String(input), "https://origin.example/wal2");
+        return new Response(new Uint8Array([3, 4]), { status: 200 });
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const bytes = await readGitvaultObjectBytes(fakeClient, repoId, { key: `wal/${WAL_ID}.pack.enc`, object_kind: "wal_pack", sha256: "", size_bytes: "1" });
+    assert.deepEqual([...bytes!], [3, 4]);
   });
 });
 

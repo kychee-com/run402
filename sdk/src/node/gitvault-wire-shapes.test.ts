@@ -17,12 +17,14 @@
  * path-addressing.
  */
 
-import { describe, it } from "node:test";
+import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { createGitvaultHttpTransport, gitvaultLedgerId, gitvaultManifestEntry, gitvaultPaths, gitvaultWireRefForPath } from "./gitvault-publication.js";
 import type { GitvaultUploadObject } from "./gitvault-publication.js";
 import { checkActivationTokenBinding } from "./gitvault-deploy.js";
+import { _resetGitvaultEdgeFetchStateForTest } from "./gitvault-edge-fetch.js";
+import { toBase64url } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultActivationToken } from "../namespaces/gitvault.types.js";
 
 const WAL = `wal_${"1".repeat(32)}`;
@@ -352,5 +354,159 @@ describe("createGitvaultHttpTransport — RUN402_GITVAULT_TRACE debug trace", ()
     const transport = createGitvaultHttpTransport(fakeVaultRecordClient());
     await transport.getVaultRecord({ repo_id: REPO });
     assert.deepEqual(stdoutWrites, []);
+  });
+});
+
+// ─── gitvault-read-edge-cache design D5: edge_url wiring through the real routes ──
+
+/**
+ * `fetchGitvaultObjectBytes` (`gitvault-edge-fetch.ts`) itself is unit-tested
+ * against a bare `{fetch}` fake in `gitvault-edge-fetch.test.ts` — every
+ * preference/fallback/stickiness scenario lives there. What THIS describe
+ * pins is the wiring on top of it: that `getObject`/`getObjects`/`getState`
+ * actually extract `edge_url` from the wire responses they parse
+ * (`object-reads`'s per-read entries, `state`'s presigned carrier arm) and
+ * hand it to the shared helper, rather than a plain `client.fetch(url, …)`
+ * that happens to ignore the new field.
+ */
+describe("createGitvaultHttpTransport — edge_url from the wire response reaches every read (gitvault-read-edge-cache design D5)", () => {
+  const REPO = `r402s_${"a".repeat(32)}`;
+  const WAL_ID = `wal_${"9".repeat(32)}`;
+  const REFS_ID = `refs_${"8".repeat(32)}`;
+
+  beforeEach(() => {
+    _resetGitvaultEdgeFetchStateForTest();
+  });
+
+  function fakeClient(opts: { requestResponses: Record<string, unknown>; fetchHandlers: Record<string, () => Response> }): {
+    client: Parameters<typeof createGitvaultHttpTransport>[0];
+    fetchCalls: string[];
+  } {
+    const fetchCalls: string[] = [];
+    const client = {
+      apiBase: "https://api.example.test",
+      async request<T>(path: string): Promise<T> {
+        if (!(path in opts.requestResponses)) throw new Error(`unexpected request: ${path}`);
+        return opts.requestResponses[path] as T;
+      },
+      async fetch(input: string | URL | Request) {
+        const url = String(input);
+        fetchCalls.push(url);
+        const handler = opts.fetchHandlers[url];
+        if (!handler) throw new Error(`unexpected fetch: ${url}`);
+        return handler();
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    return { client, fetchCalls };
+  }
+
+  it("getObject prefers the object-reads response's `edge_url` over its `url`", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://origin.example/wal", edge_url: "https://edge.example/wal", stored_bytes_sha256: "x", size_bytes: "1" }],
+        },
+      },
+      fetchHandlers: {
+        "https://edge.example/wal": () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+        "https://origin.example/wal": () => { throw new Error("must not fetch url when edge_url succeeds"); },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const bytes = await transport.getObject({ repo_id: REPO, path });
+    assert.deepEqual([...bytes!], [1, 2, 3]);
+    assert.deepEqual(fetchCalls, ["https://edge.example/wal"]);
+  });
+
+  it("getObject falls back to `url` when the response carries no `edge_url` — byte-identical to before this change", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://origin.example/wal", stored_bytes_sha256: "x", size_bytes: "1" }],
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/wal": () => new Response(new Uint8Array([4, 5]), { status: 200 }),
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const bytes = await transport.getObject({ repo_id: REPO, path });
+    assert.deepEqual([...bytes!], [4, 5]);
+    assert.deepEqual(fetchCalls, ["https://origin.example/wal"]);
+  });
+
+  it("getObjects (batch) prefers each target's own `edge_url` independently", async () => {
+    const walPath = gitvaultPaths.wal(WAL_ID);
+    const refsPath = gitvaultPaths.refState(REFS_ID);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [
+            { object_kind: "wal_pack", object_id: WAL_ID, url: "https://origin.example/wal", edge_url: "https://edge.example/wal", stored_bytes_sha256: "x", size_bytes: "1" },
+            { object_kind: "ref_state", object_id: REFS_ID, url: "https://origin.example/refs", stored_bytes_sha256: "y", size_bytes: "1" },
+          ],
+        },
+      },
+      fetchHandlers: {
+        "https://edge.example/wal": () => new Response(new Uint8Array([1]), { status: 200 }),
+        "https://origin.example/refs": () => new Response(new Uint8Array([2]), { status: 200 }),
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const [wal, refs] = await transport.getObjects({ repo_id: REPO, paths: [walPath, refsPath] });
+    assert.deepEqual([...wal!], [1], "the entry WITH edge_url went to the edge");
+    assert.deepEqual([...refs!], [2], "the entry with NO edge_url went straight to url");
+    assert.deepEqual([...fetchCalls].sort(), ["https://edge.example/wal", "https://origin.example/refs"]);
+  });
+
+  it("getState prefers the presigned carrier's `edge_url` over its `presigned_url`", async () => {
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000001",
+          head: { stored_bytes: toBase64url(new Uint8Array([9])), stored_bytes_sha256: "h" },
+          carriers: {
+            ref_state: { presigned_url: "https://origin.example/ref_state", edge_url: "https://edge.example/ref_state", expires_at: "2026-08-29T00:00:00.000Z" },
+            retention_roots: { inline: toBase64url(new Uint8Array([7])) },
+          },
+        },
+      },
+      fetchHandlers: {
+        "https://edge.example/ref_state": () => new Response(new Uint8Array([3]), { status: 200 }),
+        "https://origin.example/ref_state": () => { throw new Error("must not fetch presigned_url when edge_url succeeds"); },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO });
+    assert.deepEqual([...state.carriers!.ref_state!], [3], "the presigned carrier arm preferred edge_url");
+    assert.deepEqual([...state.carriers!.retention_roots!], [7], "the inline carrier arm is untouched by any of this");
+    assert.deepEqual(fetchCalls, ["https://edge.example/ref_state"]);
+  });
+
+  it("getState falls back to `presigned_url` when the carrier has no `edge_url` — byte-identical to before this change", async () => {
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000001",
+          head: { stored_bytes: toBase64url(new Uint8Array([9])), stored_bytes_sha256: "h" },
+          carriers: {
+            ref_state: { presigned_url: "https://origin.example/ref_state", expires_at: "2026-08-29T00:00:00.000Z" },
+            retention_roots: { inline: toBase64url(new Uint8Array([7])) },
+          },
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/ref_state": () => new Response(new Uint8Array([3]), { status: 200 }),
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO });
+    assert.deepEqual([...state.carriers!.ref_state!], [3]);
+    assert.deepEqual(fetchCalls, ["https://origin.example/ref_state"]);
   });
 });

@@ -39,6 +39,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalError, isRun402Error } from "../errors.js";
 import type { Client } from "../kernel.js";
+import { fetchGitvaultObjectBytes } from "./gitvault-edge-fetch.js";
 import {
   GITVAULT_FORMAT,
   GITVAULT_GENESIS_EPOCH,
@@ -1156,10 +1157,25 @@ interface FinalizeResponse {
   receipts: Array<GitvaultObjectReadRequest & { stored_bytes_sha256?: string; ciphertext_sha256?: string; size_bytes: string }>;
 }
 interface ObjectReadsResponse {
-  reads: Array<GitvaultObjectReadRequest & { url: string; stored_bytes_sha256: string; size_bytes: string }>;
+  /**
+   * `edge_url` (gitvault-read-edge-cache design D5) names the SAME bytes as
+   * `url`, for the five immutable-ciphertext kinds eligible for edge
+   * caching — ABSENT (never `null`) when the platform's edge is
+   * unconfigured or this read's kind is ineligible. See
+   * `fetchGitvaultObjectBytes` (`gitvault-edge-fetch.ts`) for the
+   * prefer-edge/silent-fallback policy; this type never implies a
+   * verification difference between the two arms.
+   */
+  reads: Array<GitvaultObjectReadRequest & { url: string; edge_url?: string; stored_bytes_sha256: string; size_bytes: string }>;
 }
-/** `GET …/state` wire shape (gitvault-composite-state-read design D1) — before the client resolves the two carrier arms to bytes. */
-type VaultStateCarrierWire = { inline: string } | { presigned_url: string; expires_at: string };
+/**
+ * `GET …/state` wire shape (gitvault-composite-state-read design D1) —
+ * before the client resolves the two carrier arms to bytes. `edge_url` on
+ * the presigned arm is the same optional, same-bytes CDN companion as
+ * `ObjectReadsResponse.reads[].edge_url` (gitvault-read-edge-cache design
+ * D5) — absent when the platform's edge is unconfigured.
+ */
+type VaultStateCarrierWire = { inline: string } | { presigned_url: string; edge_url?: string; expires_at: string };
 interface VaultStateResponse {
   vault: GitvaultVaultRecord;
   newest_generation: string | null;
@@ -1272,7 +1288,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     }
     const target = presigned.reads[0];
     if (!target) return null;
-    const r = await client.fetch(target.url, { method: "GET" });
+    const r = await fetchGitvaultObjectBytes(client, target);
     if (r.status === 404) return null;
     if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${path}`, "reading gitvault object", { path, status: r.status });
     return new Uint8Array(await r.arrayBuffer());
@@ -1307,17 +1323,17 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     const targets = refs.map((r) => byLedgerId.get(gitvaultLedgerId(r)) ?? null);
     return mapBounded(targets, GITVAULT_TRANSPORT_CONCURRENCY, async (target, i) => {
       if (!target) return null;
-      const r = await client.fetch(target.url, { method: "GET" });
+      const r = await fetchGitvaultObjectBytes(client, target);
       if (r.status === 404) return null;
       if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${paths[i]}`, "reading gitvault object", { path: paths[i], status: r.status });
       return new Uint8Array(await r.arrayBuffer());
     });
   }
 
-  /** Resolve ONE `GET …/state` carrier arm to raw bytes — inline decode, or a plain GET on the presigned URL, `null` on a 404 (mirrors {@link getObjectBytes}'s absent reading; both arms indistinguishable after this). */
+  /** Resolve ONE `GET …/state` carrier arm to raw bytes — inline decode, or a plain GET on the presigned URL (preferring its `edge_url` companion, gitvault-read-edge-cache design D5), `null` on a 404 (mirrors {@link getObjectBytes}'s absent reading; both arms indistinguishable after this). */
   async function resolveVaultStateCarrier(carrier: VaultStateCarrierWire): Promise<Uint8Array | null> {
     if ("inline" in carrier) return fromBase64url(carrier.inline, "carriers.inline");
-    const r = await client.fetch(carrier.presigned_url, { method: "GET" });
+    const r = await fetchGitvaultObjectBytes(client, { url: carrier.presigned_url, edge_url: carrier.edge_url });
     if (r.status === 404) return null;
     if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `vault-state carrier GET failed (HTTP ${r.status})`, "reading the gitvault vault state", { status: r.status });
     return new Uint8Array(await r.arrayBuffer());
