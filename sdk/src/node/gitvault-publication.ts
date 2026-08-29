@@ -98,6 +98,7 @@ import type {
   GitvaultEpochRotationSelfOpen,
   GitvaultHead,
   GitvaultHeadTarget,
+  GitvaultHeadsListingEntry,
   GitvaultHeadsListingPage,
   GitvaultHeadsListingRequest,
   GitvaultOpenReceipt,
@@ -803,6 +804,38 @@ export function gitvaultManifestEntry(object: GitvaultUploadObject): GitvaultObj
   return entry;
 }
 
+// ─── Inline upload (gitvault-composite-state-read design D2) ─────────────────
+
+/** Mirrors the gateway's `GITVAULT_INLINE_UPLOAD_MAX_OBJECT_BYTES` (`services/gitvault/upload-sessions.ts`). */
+export const GITVAULT_INLINE_UPLOAD_MAX_OBJECT_BYTES = 262_144;
+/** Mirrors the gateway's `GITVAULT_INLINE_UPLOAD_MAX_REQUEST_BYTES`. */
+export const GITVAULT_INLINE_UPLOAD_MAX_REQUEST_BYTES = 1_048_576;
+
+/**
+ * The client-side mirror of the gateway's `isInlineUploadRequest` + per-object/
+ * per-request cap check: every object must fit under the PER-OBJECT cap AND
+ * the batch's total under the PER-REQUEST cap, or the whole batch takes the
+ * presigned session+PUT+finalize shape — no per-object mixing, matching the
+ * server's `VALIDATION_FAILED` refusal on a mixed request. An empty batch is
+ * never "inline" (nothing to send either way; `upload()`'s own early return
+ * already short-circuits before this is consulted, and `putObject` always
+ * wraps exactly one object so it never hits this branch).
+ *
+ * Takes the narrowest shape that satisfies every call site (`GitvaultUploadObject[]`
+ * for `uploadObjects`, a single `{bytes}`-shaped array for `putObject`) so
+ * neither caller needs to fabricate unrelated fields just to ask the
+ * question.
+ */
+export function gitvaultInlineUploadEligible(objects: readonly { bytes: Uint8Array }[]): boolean {
+  if (objects.length === 0) return false;
+  let total = 0;
+  for (const o of objects) {
+    if (o.bytes.length > GITVAULT_INLINE_UPLOAD_MAX_OBJECT_BYTES) return false;
+    total += o.bytes.length;
+  }
+  return total <= GITVAULT_INLINE_UPLOAD_MAX_REQUEST_BYTES;
+}
+
 /**
  * The stable key both sides agree on, used to pair receipts back to
  * requests — MIRRORS the gateway's `keyEnvelopeLedgerId`/`pinManifestLedgerId`
@@ -890,6 +923,28 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
   submitOverrideCompletion(request: { repo_id: string; operation_id: string; capture_receipt: GitvaultCaptureReceipt }): Promise<{ cleared: boolean }>;
   /** The vault record — policy, allocation generation, storage + maintenance state (§9.2). */
   getVaultRecord(request: { repo_id: string }): Promise<GitvaultVaultRecord>;
+  /**
+   * `GET …/state` (gitvault-composite-state-read design D1) — the pin-current
+   * fast path: the vault record, the newest generation, its head's exact
+   * stored bytes, and both carriers (`ref_state`/`retention_roots`) resolved
+   * to raw bytes here (inline decoded, or fetched from the presigned URL —
+   * both arms are indistinguishable to the caller after this returns, and
+   * NEITHER is verified by this call). `head`/`carriers` are `null` together
+   * for a freshly allocated vault with no admitted generation yet (mirrors
+   * `newest_generation: null`); a carrier can independently be `null` when
+   * its stored bytes are absent (the same "absent" reading {@link
+   * GitvaultCreationTransport.getObject} gives for one object — the caller
+   * treats it identically, never a route-level distinction).
+   *
+   * {@link GitvaultVault} verifies every field here EXACTLY as it does
+   * walking the paginated listing — chain link from the caller's own pin,
+   * carrier hashes against the head's own embedded receipts, and the writer
+   * signature. This route bundles bytes; it never becomes the verifier. A
+   * caller more than one generation behind its own pin ignores `head`/
+   * `carriers` and falls back to {@link listHeads} — that decision lives in
+   * the vault, never here.
+   */
+  getState(request: { repo_id: string }): Promise<GitvaultVaultState>;
   /** Resolve a project's vault without local state (the cold-restart entry point). */
   findVaultByProject(request: { project_id: string }): Promise<GitvaultVaultRecord>;
   /**
@@ -1073,6 +1128,21 @@ export interface GitvaultVaultRecord {
   created_at: string | null;
 }
 
+/**
+ * {@link GitvaultTransport.getState}'s result — the SAME bytes the per-object
+ * routes serve, resolved to raw `Uint8Array` here (never verified here; see
+ * that method's own doc comment). `head`/`carriers` are `null` together for
+ * a freshly allocated vault (mirrors `newest_generation: null`); a `carriers`
+ * field can independently be `null` when that carrier's stored bytes are
+ * absent from the backing store.
+ */
+export interface GitvaultVaultState {
+  vault: GitvaultVaultRecord;
+  newest_generation: string | null;
+  head: { stored_bytes: Uint8Array; stored_bytes_sha256: string } | null;
+  carriers: { ref_state: Uint8Array | null; retention_roots: Uint8Array | null } | null;
+}
+
 export interface GitvaultHttpTransportOptions {
   /** Wire shape: every vault-scoped route is `/gitvault/v1/vaults/:vault_id/...`; `vault_id` is the `repo_id` unless a mapping is supplied (D185). */
   vaultIdFor?: (repoId: string) => string;
@@ -1087,6 +1157,14 @@ interface FinalizeResponse {
 }
 interface ObjectReadsResponse {
   reads: Array<GitvaultObjectReadRequest & { url: string; stored_bytes_sha256: string; size_bytes: string }>;
+}
+/** `GET …/state` wire shape (gitvault-composite-state-read design D1) — before the client resolves the two carrier arms to bytes. */
+type VaultStateCarrierWire = { inline: string } | { presigned_url: string; expires_at: string };
+interface VaultStateResponse {
+  vault: GitvaultVaultRecord;
+  newest_generation: string | null;
+  head: { stored_bytes: string; stored_bytes_sha256: string } | null;
+  carriers: { ref_state: VaultStateCarrierWire; retention_roots: VaultStateCarrierWire } | null;
 }
 
 function b64(bytes: Uint8Array): string { return Buffer.from(bytes).toString("base64"); }
@@ -1236,12 +1314,60 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     });
   }
 
+  /** Resolve ONE `GET …/state` carrier arm to raw bytes — inline decode, or a plain GET on the presigned URL, `null` on a 404 (mirrors {@link getObjectBytes}'s absent reading; both arms indistinguishable after this). */
+  async function resolveVaultStateCarrier(carrier: VaultStateCarrierWire): Promise<Uint8Array | null> {
+    if ("inline" in carrier) return fromBase64url(carrier.inline, "carriers.inline");
+    const r = await client.fetch(carrier.presigned_url, { method: "GET" });
+    if (r.status === 404) return null;
+    if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `vault-state carrier GET failed (HTTP ${r.status})`, "reading the gitvault vault state", { status: r.status });
+    return new Uint8Array(await r.arrayBuffer());
+  }
+
+  /**
+   * `GET …/state` (design D1): one JSON body carrying the vault record, the
+   * newest generation, its head's exact stored bytes, and both carriers —
+   * resolved to raw bytes here, verified nowhere here (see the interface's
+   * own doc comment on {@link GitvaultTransport.getState}).
+   */
+  async function getVaultStateOut(repoId: string): Promise<GitvaultVaultState> {
+    const raw = await client.request<VaultStateResponse>(`${base(repoId)}/state`, { context: "reading the gitvault vault state" });
+    const head = raw.head ? { stored_bytes: fromBase64url(raw.head.stored_bytes, "head.stored_bytes"), stored_bytes_sha256: raw.head.stored_bytes_sha256 } : null;
+    const carriers = raw.carriers
+      ? { ref_state: await resolveVaultStateCarrier(raw.carriers.ref_state), retention_roots: await resolveVaultStateCarrier(raw.carriers.retention_roots) }
+      : null;
+    return { vault: raw.vault, newest_generation: raw.newest_generation, head, carriers };
+  }
+
+  /** Pair a `finalize`-shaped response's receipts back onto `objects` by ledger id — shared by the inline and presigned upload paths so neither forks the other's receipt-compare logic. */
+  function receiptsFromFinalize(objects: GitvaultUploadObject[], entries: Array<GitvaultObjectReadRequest & { sha256: string; size_bytes: string; base_generation?: string }>, fin: FinalizeResponse): GitvaultUploadReceipt[] {
+    const receipts = new Map(fin.receipts.map((r) => [gitvaultLedgerId(r), r]));
+    return objects.map((o, i) => {
+      const id = gitvaultLedgerId(entries[i]!);
+      const r = receipts.get(id);
+      if (!r) fail("GITVAULT_RECEIPT_MISSING", `finalize returned no receipt for ${id}`, "finalizing gitvault upload session", { object_id: id, path: o.path });
+      return { path: o.path, object_id: o.object_id, sha256: r.ciphertext_sha256 ?? r.stored_bytes_sha256 ?? "", size_bytes: r.size_bytes };
+    });
+  }
+
   async function upload(repoId: string, objects: GitvaultUploadObject[], resourceBinding?: GitvaultResourceBinding): Promise<GitvaultUploadReceipt[]> {
     if (objects.length === 0) return [];
     // The manifest is closed-key: `path` is client-local and MUST NOT ride the
     // wire — the control plane derives the bucket key itself and refuses an
     // entry carrying an unexpected member.
     const entries = objects.map((o) => gitvaultManifestEntry(o));
+    if (gitvaultInlineUploadEligible(objects)) {
+      // gitvault-composite-state-read design D2: every object fits under the
+      // caps — one POST, bytes verified + written server-side, and the
+      // response IS the finalize response (no session, no PUTs, no separate
+      // finalize call). Same closed-key manifest as the presigned path, plus
+      // each entry's own bytes.
+      const fin = await client.request<FinalizeResponse>(`${base(repoId)}/upload-sessions`, {
+        method: "POST",
+        body: { objects: entries.map((entry, i) => ({ ...entry, bytes: b64u(objects[i]!.bytes) })), ...(resourceBinding ? { resource_binding: resourceBinding } : {}) },
+        context: "uploading gitvault objects inline",
+      });
+      return receiptsFromFinalize(objects, entries, fin);
+    }
     const session = await client.request<UploadSessionResponse>(`${base(repoId)}/upload-sessions`, {
       method: "POST",
       body: { objects: entries, ...(resourceBinding ? { resource_binding: resourceBinding } : {}) },
@@ -1274,13 +1400,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       if (!r.ok) fail("GITVAULT_UPLOAD_FAILED", `presigned PUT failed (HTTP ${r.status}) for ${o.path}`, "uploading gitvault objects", { path: o.path, status: r.status });
     });
     const fin = await client.request<FinalizeResponse>(`${base(repoId)}/upload-sessions/${encodeURIComponent(session.upload_session_id)}/finalize`, { method: "POST", body: {}, context: "finalizing gitvault upload session" });
-    const receipts = new Map(fin.receipts.map((r) => [gitvaultLedgerId(r), r]));
-    return objects.map((o, i) => {
-      const id = gitvaultLedgerId(entries[i]!);
-      const r = receipts.get(id);
-      if (!r) fail("GITVAULT_RECEIPT_MISSING", `finalize returned no receipt for ${id}`, "finalizing gitvault upload session", { object_id: id, path: o.path });
-      return { path: o.path, object_id: o.object_id, sha256: r.ciphertext_sha256 ?? r.stored_bytes_sha256 ?? "", size_bytes: r.size_bytes };
-    });
+    return receiptsFromFinalize(objects, entries, fin);
   }
 
   async function admit(repoId: string, generation: string, bytes: Uint8Array, hash: string, extra: Record<string, unknown> = {}): Promise<GitvaultAdmitHeadResult> {
@@ -1361,6 +1481,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       return { cleared: r.advisory_cleared ?? r.cleared ?? false };
     },
     getVaultRecord: ({ repo_id }) => client.request<GitvaultVaultRecord>(base(repo_id), { context: "reading the gitvault record" }),
+    getState: ({ repo_id }) => getVaultStateOut(repo_id),
     findVaultByProject: ({ project_id }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?project_id=${encodeURIComponent(project_id)}`, { context: "resolving the project's gitvault" }),
     findVaultByRepo: ({ org_slug, repo_name }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?repo=${encodeURIComponent(`${org_slug}/${repo_name}`)}`, { context: "resolving the gitvault by repo address" }),
     listOrgEncryptionKeys: ({ org_id }) => client.request<GitvaultOrgEncryptionKeyDirectory>(`/orgs/v1/${encodeURIComponent(org_id)}/encryption-keys`, { context: "reading the org encryption-key directory" }),
@@ -1961,6 +2082,124 @@ export class GitvaultVault {
   // ── §6.3/6.4 discovery + verification ──
 
   /**
+   * gitvault-composite-state-read design D1 — the pin-current fast path
+   * `verifyToNewest` tries FIRST: one `GET …/state` in place of BOTH the
+   * live "server still holds the pin" read {@link readHead} would otherwise
+   * perform AND, when eligible, the `listHeads` walk that would follow it.
+   *
+   * `null` means ineligible — the caller falls straight through to the
+   * UNCHANGED `readHead` + `listHeads` flow, so a `null` here never weakens
+   * verification, it only declines the shortcut:
+   *   - the vault is genuinely more than one generation ahead of `pin`
+   *     (the listing-walk shape this change does not touch, per design D1:
+   *     "a client whose pin is >1 behind newest_generation falls back to
+   *     the existing paginated listing + per-head walk");
+   *   - OR (one-generation-ahead only) the D194 epoch-continuity check the
+   *     ONE new head needs `pin`'s own `.epoch` for, and this call declines
+   *     to fetch `pin`'s own head bytes over the network — the entire point
+   *     of the shortcut — so it needs a LOCAL source for that epoch: either
+   *     `pin` is genesis (a fixed, known epoch), or `pin`'s own head bytes
+   *     are already cache-warm (from an earlier call, or from `admit()`'s
+   *     own post-push cache write). A cold cache here is not a correctness
+   *     problem, only a missed optimization.
+   *
+   * On a non-`null` return, `entries` is exactly what ONE real `listHeads`
+   * page's `heads[]` would have been for this pin (0 items when the pin is
+   * already current, 1 when it is exactly one generation behind — chain
+   * link, gaplessness, and signature all still verified by the UNCHANGED
+   * per-entry loop body {@link verifyToNewest} feeds them through), and
+   * `pinnedHead` is `lastHead`'s INITIAL value: the real, verified head at
+   * `pin.generation` when nothing new needs walking (so it is also the
+   * FINAL value — the loop never runs), or a throwaway placeholder when one
+   * new head is coming (the loop overwrites `lastHead` before anything else
+   * ever reads it again — see `verifyToNewest`'s own `prevEpoch` line,
+   * which is the ONLY thing that reads `lastHead`'s pre-loop value).
+   *
+   * Every byte this method reads from `getState` is cache-WARMED (head +
+   * both carriers, keyed exactly as {@link readCachedHeadBytes}/
+   * {@link openCarrier} already key their own writes) but NEVER trusted
+   * here — every reader downstream re-verifies a cache hit against the hash
+   * it would check network bytes against before using it (this file's own
+   * established cache discipline; see `GitvaultKeystore`'s class doc
+   * comment). A wrong or absent byte this method wrote is therefore just a
+   * cache MISS on the next read, never a verification bypass.
+   */
+  private async tryStateFastPath(pin: GitvaultHeadPin): Promise<{ entries: GitvaultHeadsListingEntry[]; pinnedHead: GitvaultHead | null; prevEpoch: string } | null> {
+    const state = await this.transport.getState({ repo_id: this.repoId });
+    // §6.4: the vault's newest generation may never fall below the
+    // authenticated pin — checked here regardless of eligibility below, so
+    // a regressed vault is caught exactly as loudly as it always was, even
+    // when the walk that would otherwise discover it is about to be skipped.
+    checkGenerationRegression(state.newest_generation ?? GITVAULT_GENESIS_GENERATION, pin.generation);
+    // The gateway's own admission ledger advances `newest_generation` to the
+    // GENESIS generation (0) the moment genesis itself is admitted — a vault
+    // between "genesis admitted" and "first ordinary push" reports its own
+    // generation as newest, `null` only for the narrower window before that
+    // (kept here defensively; `state.head`/`state.carriers` are non-null
+    // whenever `newest_generation` is non-null on the real route). EITHER
+    // way, "no ORDINARY head yet" is the same case this file has always
+    // treated specially: genesis is a DIFFERENT stored-object shape
+    // (`vault_genesis` — no `ref_state`/`retention_roots`, {@link
+    // GitvaultVault.genesis} owns verifying it via its OWN cache), so this
+    // path must never parse `state.head` as a {@link GitvaultHead} when it
+    // is actually genesis's bytes.
+    const noOrdinaryHeadYet = state.newest_generation === null || state.newest_generation === GITVAULT_GENESIS_GENERATION;
+    const pinBig = generationToBigInt(pin.generation);
+    const newestBig = noOrdinaryHeadYet ? 0n : generationToBigInt(state.newest_generation!);
+    const diff = newestBig - pinBig; // ≥ 0n, guaranteed by the regression check above (which treats `null`/genesis identically to this)
+
+    if (diff === 0n) {
+      if (noOrdinaryHeadYet) return { entries: [], pinnedHead: null, prevEpoch: GITVAULT_GENESIS_EPOCH }; // matches today's `lastHead = null` for a genesis-only vault
+      if (!state.head) fail("CHAIN_BROKEN", "the vault state reports an admitted generation but carries no head bytes", "verifying gitvault chain", { generation: state.newest_generation });
+      const sha = sha256Hex(state.head.stored_bytes);
+      if (sha !== pin.head_sha256) fail("CHAIN_BROKEN", `pinned head ${pin.generation} no longer hashes to the pin`, "reading pinned gitvault head", { generation: pin.generation });
+      this.keystore.writeCachedHead(this.repoId, pin.generation, sha, state.head.stored_bytes);
+      const head = parseGitvaultStrict(new TextDecoder().decode(state.head.stored_bytes)) as GitvaultHead;
+      if (state.carriers) this.warmStateCarrierCache(pin.generation, head, state.carriers);
+      return { entries: [], pinnedHead: head, prevEpoch: head.epoch };
+    }
+
+    if (diff === 1n) {
+      let prevEpoch: string;
+      if (pin.generation === GITVAULT_GENESIS_GENERATION) {
+        prevEpoch = GITVAULT_GENESIS_EPOCH;
+      } else {
+        const cached = this.keystore.readCachedHead(this.repoId, pin.generation);
+        if (!cached || sha256Hex(cached.bytes) !== pin.head_sha256) return null; // cold cache — decline the shortcut, never weaken it
+        prevEpoch = (parseGitvaultStrict(new TextDecoder().decode(cached.bytes)) as GitvaultHead).epoch;
+      }
+      if (!state.head) fail("CHAIN_BROKEN", "the vault state reports a newer generation but carries no head bytes", "verifying gitvault chain", { generation: state.newest_generation });
+      const newestGeneration = state.newest_generation!;
+      const shaOfBytes = sha256Hex(state.head.stored_bytes);
+      if (shaOfBytes !== state.head.stored_bytes_sha256) fail("CHAIN_BROKEN", `head ${newestGeneration}: stored bytes hash does not match its own declared hash`, "verifying head chain", { generation: newestGeneration });
+      this.keystore.writeCachedHead(this.repoId, newestGeneration, shaOfBytes, state.head.stored_bytes);
+      const head = parseGitvaultStrict(new TextDecoder().decode(state.head.stored_bytes)) as GitvaultHead;
+      if (state.carriers) this.warmStateCarrierCache(newestGeneration, head, state.carriers);
+      // `pinnedHead` is a throwaway — see this method's own doc comment: the
+      // ONE loop iteration below overwrites `lastHead` before anything but
+      // `prevEpoch` (already resolved above) ever reads it again.
+      return { entries: [{ generation: newestGeneration, stored_bytes_sha256: shaOfBytes }], pinnedHead: null, prevEpoch };
+    }
+
+    return null; // more than one generation behind — the existing listHeads walk owns this
+  }
+
+  /**
+   * Warm the D3 carrier cache from a `GET …/state` response's two carriers,
+   * keyed by the SAME `(object_id, ciphertext_sha256)` the carrying head's
+   * own receipts name — a BLIND write (see {@link tryStateFastPath}'s doc
+   * comment: every reader re-verifies a cache hit before trusting it, so
+   * this is safe by construction). Skips a `null` carrier (absent stored
+   * bytes) entirely rather than caching an absence — the existing
+   * `openCarrier`/`decodeCarrierFrame` machinery already has its own
+   * "frame absent" handling (`CHAIN_UNUSABLE`) via a genuine cache miss.
+   */
+  private warmStateCarrierCache(generation: string, head: GitvaultHead, carriers: { ref_state: Uint8Array | null; retention_roots: Uint8Array | null }): void {
+    if (carriers.ref_state) this.keystore.writeCachedCarrier(this.repoId, head.ref_state.object_id, generation, head.ref_state.ciphertext_sha256, carriers.ref_state);
+    if (carriers.retention_roots) this.keystore.writeCachedCarrier(this.repoId, head.retention_roots.object_id, generation, head.retention_roots.ciphertext_sha256, carriers.retention_roots);
+  }
+
+  /**
    * List from the authenticated pin and verify every link upward. Persists
    * the verified prefix after each page, so a `VERIFICATION_BUDGET_EXCEEDED`
    * continues rather than restarts. Returns the newest verified state.
@@ -2005,13 +2244,26 @@ export class GitvaultVault {
     const writerKeyId = genesis.writer_key_id;
     const repo = this.repoFile();
     let pin: GitvaultHeadPin = repo.verified_prefix ?? repo.head_pin ?? { generation: GITVAULT_GENESIS_GENERATION, head_sha256: genesisSha, pinned_at: formatGitvaultTimestamp(this.now()) };
-    let lastHead: GitvaultHead | null = pin.generation === GITVAULT_GENESIS_GENERATION ? null : await this.readHead(pin.generation, pin.head_sha256);
+    // gitvault-composite-state-read design D1: try the pin-current fast path
+    // FIRST — see {@link tryStateFastPath}'s own doc comment. `null` means
+    // ineligible (genuinely more than one generation behind, or the pin's
+    // own epoch could not be resolved without the network read this path
+    // exists to avoid) — the caller falls straight through to the UNCHANGED
+    // readHead + listHeads flow below, byte-identical to before this change.
+    const fastPath = await this.tryStateFastPath(pin);
+    let lastHead: GitvaultHead | null = fastPath ? fastPath.pinnedHead : pin.generation === GITVAULT_GENESIS_GENERATION ? null : await this.readHead(pin.generation, pin.head_sha256);
     const anchor = pin.generation;
-    let prevEpoch = lastHead?.epoch ?? GITVAULT_GENESIS_EPOCH;
+    let prevEpoch = fastPath ? fastPath.prevEpoch : (lastHead?.epoch ?? GITVAULT_GENESIS_EPOCH);
     let progress: GitvaultListingProgress = { after_generation: anchor, last_generation: anchor, delivered: 0 };
     let request: GitvaultHeadsListingRequest = { after_generation: anchor, limit: String(GITVAULT_MAX_HEADS_PER_LISTING_PAGE) };
     let verified = 0;
     const rotations: GitvaultEncounteredRotation[] = [];
+    // Consumed by (at most) the FIRST for(;;) iteration below — a listHeads
+    // page this call never had to ask the network for, because the state
+    // read above already proved it (0 entries: pin already current; 1 entry:
+    // exactly the ONE new head, chain-linked from `pin` the SAME way a real
+    // listHeads page's entry would be).
+    let syntheticEntries: GitvaultHeadsListingEntry[] | null = fastPath ? fastPath.entries : null;
 
     // ── decrypt-validation state (opt-in) ──
     const identity = decryptValidate ? this.keystore.readIdentity() : null;
@@ -2102,7 +2354,15 @@ export class GitvaultVault {
     };
 
     for (;;) {
-      const page = await this.transport.listHeads({ repo_id: this.repoId, ...request });
+      // The synthetic page (0 or 1 entries) is only ever valid for the FIRST
+      // iteration — `has_more: false` guarantees `nextListingRequest` ends
+      // the loop right after it is consumed, so clearing it here is purely
+      // defensive (a real second iteration can never see it non-null).
+      const page: GitvaultHeadsListingPage =
+        syntheticEntries !== null
+          ? { format: GITVAULT_FORMAT, repo_id: this.repoId, after_generation: request.after_generation, heads: syntheticEntries, has_more: false, next_cursor: null, total: null }
+          : await this.transport.listHeads({ repo_id: this.repoId, ...request });
+      syntheticEntries = null;
       progress = verifyHeadsListingPage(page, request, progress, this.repoId);
       for (const entry of page.heads) {
         if (verified >= this.budget) {

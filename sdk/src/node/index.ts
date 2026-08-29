@@ -384,6 +384,8 @@ export type {
   ParsedGitConfigEntry,
 } from "./gitvault-snapshot.js";
 export {
+  GITVAULT_INLINE_UPLOAD_MAX_OBJECT_BYTES,
+  GITVAULT_INLINE_UPLOAD_MAX_REQUEST_BYTES,
   GITVAULT_MAX_CANONICAL_REFS,
   GITVAULT_MAX_CHECKPOINT_PACKS,
   GITVAULT_MAX_CHECKPOINT_TOTAL_STORED_BYTES,
@@ -415,6 +417,7 @@ export {
   evaluateRefTransaction,
   evolveRetentionRoots,
   generationToBigInt,
+  gitvaultInlineUploadEligible,
   gitvaultPaths,
   gitvaultRetainedRefName,
   isRootEligibleForRemoval,
@@ -444,6 +447,7 @@ export type {
   GitvaultObjectReadRequest,
   GitvaultResourceBinding,
   GitvaultVaultRecord,
+  GitvaultVaultState,
   GitvaultWireRef,
   GitvaultMaterializedState,
   GitvaultOpenBindingRecord,

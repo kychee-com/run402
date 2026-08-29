@@ -41,7 +41,7 @@ import type { GitvaultActivationToken, GitvaultAllocation, GitvaultCaptureReceip
 import type { GitvaultAdmitGenesisRequest, GitvaultAdmitGenesisResult, GitvaultAllocateRequest, GitvaultObjectReceipt, GitvaultPutObjectRequest } from "./gitvault-creation-journal.js";
 import { createGitvault } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
-import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultDesiredRecipientEntry, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord } from "./gitvault-publication.js";
+import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultDesiredRecipientEntry, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord, GitvaultVaultState } from "./gitvault-publication.js";
 import type { GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRotationAttemptDescriptor } from "../namespaces/gitvault.types.js";
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
 import { GitvaultVault, generationToBigInt, bigIntToGeneration, gitvaultPaths } from "./gitvault-publication.js";
@@ -467,7 +467,14 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
 
   async getVaultRecord({ repo_id }: { repo_id: string }): Promise<GitvaultVaultRecord> {
     this.calls.push("vault-record");
-    const generations = [...this.objects.keys()].filter((k) => k.startsWith(`${repo_id}|head/`)).map((k) => k.slice(`${repo_id}|head/`.length)).sort();
+    // `key()` joins with `/`, never `|` (see the `findVaultByProject` comment
+    // above this class about the same class of bug) — this filter used the
+    // wrong separator and so `generations` (hence `newest_generation`) was
+    // ALWAYS empty/null from this method regardless of admitted history;
+    // harmless while nothing read `newest_generation` off an unpatched
+    // record, but `getState` (gitvault-composite-state-read task 4.4) needs
+    // it correct.
+    const generations = [...this.objects.keys()].filter((k) => k.startsWith(this.key(repo_id, "head/"))).map((k) => k.slice(this.key(repo_id, "head/").length)).sort();
     // The REAL owner, when this fixture created the repo via `allocate()` —
     // matters once a single transport instance holds more than one repo
     // (D6 push-to-create tests); falls back to the historical single-vault
@@ -484,6 +491,63 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       maintenance: { lease: null, open_cycle: null, pending_repair_attempt_id: null },
       warnings: [], created_at: null,
       ...this.vaultRecord,
+    };
+  }
+
+  /**
+   * `GET …/state` (gitvault-composite-state-read task 4.4) — the pin-current
+   * fast path, modelled directly over this fixture's own storage: the newest
+   * generation's head bytes plus its two carriers, verbatim from `this.objects`
+   * (which already holds ciphertext exactly as the real bucket would). Always
+   * the "inline" arm — this fixture has no presigned-URL concept and the
+   * counted-budget tests never exercise oversize carriers (see the test-
+   * helper's own doc comment: `getState` costs the Proxy's default 1 op
+   * regardless of arm, so nothing here needs to model the URL arm to keep
+   * those tests honest).
+   *
+   * `newest_generation` here can be the GENESIS generation itself, not just
+   * `null` — this fixture's own `admitGenesis` stores genesis at the SAME
+   * `head/<generation>` path an ordinary head uses, so a vault between
+   * "genesis admitted" and "first ordinary push" reports its own generation
+   * as newest. Genesis is a DIFFERENT stored-object shape (`vault_genesis` —
+   * no `ref_state`/`retention_roots`), so that case is treated identically
+   * to `null` (no ordinary head yet) rather than parsed as a head.
+   */
+  async getState({ repo_id }: { repo_id: string }): Promise<GitvaultVaultState> {
+    this.calls.push("state");
+    const vault = await this.getVaultRecord({ repo_id });
+    if (vault.newest_generation === null || vault.newest_generation === GITVAULT_GENESIS_GENERATION) {
+      return { vault, newest_generation: vault.newest_generation, head: null, carriers: null };
+    }
+    const headBytes = this.objects.get(this.key(repo_id, gitvaultPaths.head(vault.newest_generation)));
+    if (!headBytes) throw err("CHAIN_BROKEN", `no stored bytes for generation ${vault.newest_generation}`);
+    // LENIENT `JSON.parse` here, mirroring the REAL gateway's `getVaultState`
+    // (`services/gitvault/reads.ts`): it locates the head's OWN
+    // ref_state/retention_roots receipts with a plain parse, never
+    // `parseGitvaultStrict`'s canonical-form check — the client is the sole
+    // strict verifier, downstream of this call. Using the strict parser here
+    // would make a byte-tampered head throw `GITVAULT_STRICT_PARSE` from
+    // INSIDE the transport, before the SDK's own hash-check-before-parse
+    // ordering ({@link GitvaultVault.tryStateFastPath}) ever gets a chance to
+    // report the CORRECT `CHAIN_BROKEN`.
+    let headJson: { ref_state?: { object_id?: unknown }; retention_roots?: { object_id?: unknown } };
+    try {
+      headJson = JSON.parse(new TextDecoder().decode(headBytes)) as typeof headJson;
+    } catch {
+      throw err("CHAIN_BROKEN", "the newest head's stored bytes are not valid JSON");
+    }
+    const refStateId = headJson.ref_state?.object_id;
+    const retentionRootsId = headJson.retention_roots?.object_id;
+    if (typeof refStateId !== "string" || typeof retentionRootsId !== "string") {
+      throw err("CHAIN_BROKEN", "the newest head carries no ref_state/retention_roots receipt");
+    }
+    const refState = this.objects.get(this.key(repo_id, gitvaultPaths.refState(refStateId))) ?? null;
+    const retentionRoots = this.objects.get(this.key(repo_id, gitvaultPaths.retentionRoots(retentionRootsId))) ?? null;
+    return {
+      vault,
+      newest_generation: vault.newest_generation,
+      head: { stored_bytes: headBytes, stored_bytes_sha256: sha256Hex(headBytes) },
+      carriers: { ref_state: refState, retention_roots: retentionRoots },
     };
   }
 

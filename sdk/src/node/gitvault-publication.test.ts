@@ -991,7 +991,7 @@ describe("restoreObjectsInto — incremental above restored_through", () => {
     assert.deepEqual(markerAfterSecond, { generation: g2.generation, head_sha256: g2.head_sha256 });
   });
 
-  it("a fetch that is already up to date makes no pack read, and only the mandatory pin-verification head read", async (t) => {
+  it("a fetch that is already up to date makes no pack read, and only ONE state read (gitvault-composite-state-read D1)", async (t) => {
     const f = await makeVault();
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
@@ -1007,11 +1007,18 @@ describe("restoreObjectsInto — incremental above restored_through", () => {
     assert.deepEqual(again.refs, { "refs/heads/main": c1 });
     // No pack read at all — the marker fast path skips the walk entirely.
     assert.equal(f.transport.calls.filter((c) => c.startsWith("get-batch:")).length, 0, "no batched pack/carrier read for an up-to-date target");
-    // Exactly ONE head read: `readHead`'s pin-verification, which stays
-    // ALWAYS live by design (it exists to detect server-side loss/rollback —
-    // see readCachedHeadBytes's doc comment) — never traded away for the
-    // round-trip win.
-    assert.equal(f.transport.calls.filter((c) => c.startsWith("get:head/")).length, 1, "the pin's own head is still re-verified live");
+    // Pre-gitvault-composite-state-read, the "server still holds the pin"
+    // liveness check was a DEDICATED `get:head/<generation>` call
+    // (`readHead`) on every `verifyToNewest`. Design D1 folds that check
+    // into the SAME `GET …/state` read the pin-current fast path already
+    // needs: the state response's own head bytes serve as the live
+    // confirmation (hash-checked against the pin — see
+    // `GitvaultVault.tryStateFastPath`), so a dedicated head read is no
+    // longer issued for this case, and a fresh regression is still caught
+    // exactly as loudly (see the CHAIN_BROKEN/GENERATION_REGRESSION tests
+    // above and below, unaffected by this fold).
+    assert.equal(f.transport.calls.filter((c) => c.startsWith("get:head/")).length, 0, "no dedicated pin-verification head read — folded into the state read");
+    assert.equal(f.transport.calls.filter((c) => c === "state").length, 1, "exactly one state read serves both the pin-verification and pin-current checks");
   });
 
   it("a repair landing above the marker forces the wholesale path, and still restores the correct state", async (t) => {

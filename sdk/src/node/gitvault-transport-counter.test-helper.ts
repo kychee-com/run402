@@ -17,10 +17,23 @@
  *   - `getObjects` (design D2's plural sibling) for N objects — `1 + N`:
  *     one batched presign POST, then N GETs (concurrent, but concurrency
  *     changes wall-clock, never the op COUNT this file measures).
- *   - `uploadObjects`/`putObject` for N objects — `2 + N` when N > 0 (a
- *     session POST, N create-only PUTs, a finalize POST) — `putObject`
- *     always wraps exactly one object; zero objects costs nothing (the real
- *     transport's own early return).
+ *   - `uploadObjects`/`putObject` for N objects (N > 0) — `1` when every
+ *     object fits the gitvault-composite-state-read design D2 inline caps
+ *     ({@link gitvaultInlineUploadEligible} — the SAME predicate
+ *     `createGitvaultHttpTransport`'s `upload()` consults, so this file
+ *     never re-derives or drifts from the real transport's own choice),
+ *     else `2 + N` (a session POST, N create-only PUTs, a finalize POST) —
+ *     `putObject` always wraps exactly one object; zero objects costs
+ *     nothing (the real transport's own early return).
+ *   - `getState` (design D1) — the Proxy default below (1), which is exact
+ *     for every scenario this counter is exercised against: the counted-
+ *     budget tests' carriers are always test-scale (well under the
+ *     per-carrier inline cap), so the real transport's `getState` never
+ *     takes more than the one `GET …/state` request. A carrier over that
+ *     cap costs the real transport ONE MORE request per oversize carrier
+ *     (a presigned-URL GET) that this file does not model — the design's
+ *     own budget headroom ("carriers over the inline cap: +2") covers
+ *     exactly that gap without needing a special case here.
  *   - every OTHER method — exactly one real HTTP request, so it costs 1.
  *     A Proxy default handles these automatically, so a transport method
  *     added later is counted correctly with no edit here.
@@ -30,8 +43,9 @@
  * transport too) — it never touches storage or crypto itself, only counts.
  */
 
-import { gitvaultWireRefForPath } from "./gitvault-publication.js";
-import type { GitvaultTransport } from "./gitvault-publication.js";
+import { gitvaultInlineUploadEligible, gitvaultWireRefForPath } from "./gitvault-publication.js";
+import type { GitvaultTransport, GitvaultUploadObject } from "./gitvault-publication.js";
+import type { GitvaultPutObjectRequest } from "./gitvault-creation-journal.js";
 
 /** One counted unit, tagged by kind — `ops.length` is the total; group by kind for a breakdown. */
 export class GitvaultOpCounter {
@@ -95,20 +109,28 @@ export function countingGitvaultTransport(inner: GitvaultTransport, counter: Git
         };
       }
       if (prop === "uploadObjects") {
-        return async (req: { repo_id: string; objects: unknown[]; resource_binding?: unknown }) => {
+        return async (req: { repo_id: string; objects: GitvaultUploadObject[]; resource_binding?: unknown }) => {
           if (req.objects.length > 0) {
-            counter.count("upload-session", 1);
-            counter.count("upload-put", req.objects.length);
-            counter.count("upload-finalize", 1);
+            if (gitvaultInlineUploadEligible(req.objects)) counter.count("upload-inline", 1);
+            else {
+              counter.count("upload-session", 1);
+              counter.count("upload-put", req.objects.length);
+              counter.count("upload-finalize", 1);
+            }
           }
           return Reflect.apply(value, target, [req]);
         };
       }
       if (prop === "putObject") {
-        return async (req: unknown) => {
-          counter.count("upload-session", 1);
-          counter.count("upload-put", 1);
-          counter.count("upload-finalize", 1);
+        return async (req: GitvaultPutObjectRequest) => {
+          // `putObject` always wraps exactly one object — same eligibility
+          // predicate, applied to that one object's bytes.
+          if (gitvaultInlineUploadEligible([{ bytes: req.bytes }])) counter.count("upload-inline", 1);
+          else {
+            counter.count("upload-session", 1);
+            counter.count("upload-put", 1);
+            counter.count("upload-finalize", 1);
+          }
           return Reflect.apply(value, target, [req]);
         };
       }
