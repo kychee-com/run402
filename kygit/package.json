@@ -1,0 +1,40 @@
+{
+  "name": "kygit",
+  "version": "0.1.0",
+  "description": "KyGit — the encrypted Git remote's command. A thin brand door over `run402 repos`: every kygit command IS a run402 command.",
+  "type": "module",
+  "bin": {
+    "kygit": "kygit.mjs"
+  },
+  "files": [
+    "kygit.mjs",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test kygit.test.mjs"
+  },
+  "dependencies": {
+    "run402": "^4.54.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kychee-com/run402.git",
+    "directory": "kygit"
+  },
+  "homepage": "https://kygit.com",
+  "bugs": "https://github.com/kychee-com/run402/issues",
+  "keywords": [
+    "git",
+    "encrypted",
+    "host-blind",
+    "kygit",
+    "gitvault",
+    "run402",
+    "backup",
+    "second-remote"
+  ],
+  "license": "MIT"
+}

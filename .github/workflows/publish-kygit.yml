@@ -1,0 +1,201 @@
+# Publish `kygit` to npm via Trusted Publisher OIDC.
+#
+# Triggered manually via `gh workflow run publish-kygit.yml -f bump=<patch|minor|major>`.
+# Openspec: kygit-cli-shim (kychee-com/run402-private). The package is a thin
+# brand door over `run402 repos` (see kygit/README.md) — it has no build step;
+# the tarball is one .mjs + README.
+#
+# BOOTSTRAP (astro precedent): npm requires a package to EXIST before a
+# Trusted Publisher can be configured, so v0.1.0 is published manually once
+# (`cd kygit && npm publish`, OTP), then the Trusted Publisher is configured
+# on npmjs for `kygit` (org kychee-com, repo run402, this workflow file).
+# From 0.1.1+ this workflow is the entire process. Until the Trusted
+# Publisher exists, run with dry_run=true to prove the pipeline.
+#
+# WHY OIDC / id-token / contents — see publish-astro.yml; identical scheme.
+
+name: Publish kygit
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump kind'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Dry run (test + tarball smoke only; no publish, no commit, no tag)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-kygit
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Bump, smoke, publish, tag
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          # npm 11.5.1+ (Node 24) is required for the OIDC trusted-publisher
+          # token exchange — see publish-astro.yml for the full rationale.
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify npm has OIDC publish support
+        run: |
+          NPM_VER=$(npm --version)
+          echo "npm version: $NPM_VER"
+          node -e "const [a,b,c] = process.argv[1].split('.').map(Number); if (a < 11 || (a === 11 && b < 5) || (a === 11 && b === 5 && c < 1)) { console.error('npm '+process.argv[1]+' lacks OIDC trusted-publisher exchange (needs 11.5.1+)'); process.exit(1); }" "$NPM_VER"
+
+      - name: Configure git for commit + push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run kygit tests
+        run: npm test --workspace=kygit
+
+      - name: Bump version
+        id: bump
+        run: |
+          set -euo pipefail
+          cd kygit
+          CUR=$(node -p "require('./package.json').version")
+          npm version "${{ inputs.bump }}" --no-git-tag-version >/dev/null
+          NEW=$(node -p "require('./package.json').version")
+          echo "Bumping kygit: $CUR → $NEW"
+          echo "old=$CUR" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Sync lockfile to reflect new version
+        run: npm install --package-lock-only
+
+      - name: Tarball smoke test
+        run: |
+          set -euo pipefail
+          NEW="${{ steps.bump.outputs.new }}"
+          SMOKE=/tmp/smoke-kygit
+          rm -rf "$SMOKE" && mkdir "$SMOKE"
+          (cd kygit && npm pack --pack-destination "$SMOKE")
+          mkdir "$SMOKE/extract"
+          tar xzf "$SMOKE/kygit-$NEW.tgz" -C "$SMOKE/extract"
+          test -f "$SMOKE/extract/package/kygit.mjs" || (echo "Missing kygit.mjs" && exit 1)
+          test -f "$SMOKE/extract/package/README.md" || (echo "Missing README" && exit 1)
+          # Scratch install resolves the real published run402 dependency,
+          # then the binary must answer --version naming BOTH packages and
+          # refuse an out-of-scope verb naming the canonical spelling.
+          (cd "$SMOKE/extract/package" && npm install --omit=dev)
+          VOUT=$(cd "$SMOKE/extract/package" && node kygit.mjs --version)
+          echo "$VOUT"
+          echo "$VOUT" | grep -q "kygit $NEW" || (echo "--version missing shim version" && exit 1)
+          echo "$VOUT" | grep -q "run402 " || (echo "--version missing run402 version" && exit 1)
+          ROUT=$(cd "$SMOKE/extract/package" && node kygit.mjs deploy 2>&1 || true)
+          echo "$ROUT" | grep -q "run402 deploy" || (echo "refusal did not name the canonical spelling" && exit 1)
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        run: |
+          publish_idempotent() {
+            local label="$1"; local attempt=0 out
+            while [ "$attempt" -lt 3 ]; do
+              attempt=$((attempt + 1))
+              if out=$( (cd kygit && npm publish --access public --provenance) 2>&1); then
+                echo "$out"; echo "[$label] published (attempt $attempt)"; return 0
+              fi
+              echo "$out"
+              if echo "$out" | grep -qiE "cannot publish over|previously published|EPUBLISHCONFLICT"; then
+                echo "[$label] already published at this version — idempotent skip."; return 0
+              fi
+              if echo "$out" | grep -qiE "TLOG_CREATE_ENTRY_ERROR|rekor\.sigstore\.dev|tlog entry|ETIMEDOUT|ECONNRESET|socket hang up|aborted"; then
+                echo "[$label] transient provenance/network error — retry $attempt/3"; sleep 10; continue
+              fi
+              echo "[$label] non-retryable publish error."; return 1
+            done
+            echo "[$label] exhausted retries."; return 1
+          }
+          publish_idempotent "kygit"
+
+      - name: Commit version bump (rebase-safe — retries against a moving main)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          NEW="${{ steps.bump.outputs.new }}"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            node -e "
+              const fs = require('fs');
+              const path = 'kygit/package.json';
+              const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+              pkg.version = '$NEW';
+              fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+            "
+            npm install --package-lock-only >/dev/null
+            git add kygit/package.json package-lock.json
+            if git diff --cached --quiet; then
+              echo "main is already at kygit v$NEW — nothing to commit."
+              break
+            fi
+            git commit -m "chore(kygit): bump kygit to v$NEW"
+            if git push origin HEAD:main; then
+              echo "Pushed kygit v$NEW bump on attempt $attempt."
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::Could not push the kygit v$NEW bump to main after 5 attempts. kygit IS published; main needs a manual commit-back (set kygit/package.json to $NEW + npm install --package-lock-only)."
+              exit 1
+            fi
+            echo "Push rejected (main advanced); rebuilding on fresh main and retrying ($attempt/5)…"
+            sleep "$((attempt * 2))"
+          done
+
+      - name: Tag and push
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.bump.outputs.new }}-kygit"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists on origin — idempotent skip."
+            exit 0
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.bump.outputs.new }}-kygit"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release $TAG already exists — idempotent skip."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "kygit v${{ steps.bump.outputs.new }}" \
+            --notes "Thin brand door over \`run402 repos\` — see kygit/README.md. Every kygit command IS a run402 command; the verb table is derived at runtime from the installed run402's gitvault-surface.json."

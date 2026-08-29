@@ -21,7 +21,8 @@
   "workspaces": [
     "cli",
     "sdk",
-    "astro"
+    "astro",
+    "kygit"
   ],
   "scripts": {
     "build:core": "rm -rf core/dist && tsc -p core/tsconfig.json",

@@ -103,3 +103,21 @@ jobs:
         run: npm test --workspace=astro
       - name: Build @run402/astro
         run: npm run build --workspace=astro
+
+  # `kygit` is the KyGit brand door over `run402 repos` (openspec:
+  # kygit-cli-shim, kychee-com/run402-private) — no build step; its verb
+  # table is derived at runtime from the workspace-sibling run402's own
+  # gitvault-surface.json, so these tests also assert that resolution.
+  kygit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - name: Test kygit
+        run: npm test --workspace=kygit
