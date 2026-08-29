@@ -1294,4 +1294,170 @@ export function pinManifestLedgerId(pinManifestVersion: string): string {
   return `recipient_pin_manifest:${pinManifestVersion}`;
 }
 
+// ─── Source-access wrapper custody — WrapperV1 / `swrap2` (DECRYPT SIDE) ─────
+//
+// gitvault-recovery-custody: a human member's X25519 private scalar is RANDOM
+// and persisted only as sealed wrappers — each an XChaCha20-Poly1305 AEAD
+// encryption of the 32-byte scalar under a KEK derived from a credential
+// secret, bound to a canonical JCS context. This SDK implements only the
+// OPEN path plus recovery-code normalization: sealing, PRF assertions, and
+// enrollment ceremonies live in the console (browser WebAuthn); the offline
+// tool `r402s-recover` opens `recovery_code` wrappers with no server.
+//
+// Every constant below is pinned byte-for-byte against the canonical module
+// (private repo `apps/git/public/lib/r402s-crypto.js`, "Source-access wrapper
+// custody" section, and gitvault-recovery-custody/design.md D1 addendum). If
+// they ever disagree, both are wrong and need reconciling together. The prior
+// `swrap1_` format never protected a real member key and is NOT decodable —
+// it fails by name.
+//
+//   context = UTF-8("r402s/v0/source-wrapper-context/v2\n")
+//           ‖ UTF-8(JCS({aead, credential_subject, encryption_key_id, format,
+//                        kdf, kind, member_public_key_sha256, principal_id,
+//                        rp_id, suite, wrapper_id}))
+//   KEK  = HKDF-SHA256(ikm, salt = per-wrapper kdf_salt(32),
+//                      info = UTF-8(<per-kind label>) ‖ context, L = 32)
+//   blob = "swrap2_" + b64url(kdf_salt(32) ‖ nonce(24) ‖ ct‖tag); aad = context.
+//
+//   SOURCE recovery code v2 ("SRC1"): 160-bit Crockford-base32 core (32
+//   chars, alphabet "0123456789ABCDEFGHJKMNPQRSTVWXYZ" — no I/L/O/U) plus
+//   ONE check character alphabet[(Σ char values) mod 32]; the CORE's UTF-8
+//   bytes are the ikm. Decrypt-only: the code never authenticates and never
+//   satisfies step-up.
+
+const SOURCE_WRAP_CONTEXT_PREFIX = "r402s/v0/source-wrapper-context/v2\n";
+const SOURCE_WRAP_PRF_KEK_LABEL = "r402s/v0/source-wrapper-prf-kek/v2\n";
+const SOURCE_WRAP_RC_KEK_LABEL = "r402s/v0/source-wrapper-recovery-code-kek/v2\n";
+export const SOURCE_WRAP_BLOB_PREFIX = "swrap2_";
+export const SOURCE_RC_DISPLAY_PREFIX = "SRC1";
+const SOURCE_RC_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford base32 — no I/L/O/U
+
+export type SourceWrapperKind = "webauthn_prf" | "recovery_code";
+
+export interface SourceWrapperContextFields {
+  /** The seal-time ceremony host (`location.hostname` of the sealing page — `console.run402.com` for every wrapper sealed today). */
+  rp_id: string;
+  principal_id: string;
+  encryption_key_id: string;
+  wrapper_id: string;
+  kind: SourceWrapperKind;
+  /** WebAuthn `public_subject` for `webauthn_prf` wrappers; always null in the JCS for `recovery_code`. */
+  credential_subject: string | null;
+  /** The raw 32-byte member public key — the context binds its FULL SHA-256, never the truncated `ek_` fingerprint. */
+  member_public_key: Uint8Array;
+}
+
+/** The pinned canonical context for one wrapper — BOTH the KEK HKDF-info suffix AND the AEAD AAD. */
+export function buildSourceWrapperContext(fields: SourceWrapperContextFields): Uint8Array {
+  if (fields.kind !== "webauthn_prf" && fields.kind !== "recovery_code") {
+    fail("WRAPPER_FORMAT_UNSUPPORTED", `unknown wrapper kind: ${String(fields.kind)}`, "building source-wrapper context");
+  }
+  if (!(fields.member_public_key instanceof Uint8Array) || fields.member_public_key.length !== 32) {
+    fail("WRAPPER_FORMAT_UNSUPPORTED", "member_public_key must be the raw 32-byte member public key", "building source-wrapper context");
+  }
+  return concatBytes(
+    utf8ToBytes(SOURCE_WRAP_CONTEXT_PREFIX),
+    utf8ToBytes(canonicalize({
+      aead: "xchacha20poly1305",
+      credential_subject: fields.kind === "webauthn_prf" ? String(fields.credential_subject) : null,
+      encryption_key_id: String(fields.encryption_key_id),
+      format: "swrap2",
+      kdf: "hkdf-sha256",
+      kind: fields.kind,
+      member_public_key_sha256: bytesToHex(sha256(fields.member_public_key)),
+      principal_id: String(fields.principal_id),
+      rp_id: String(fields.rp_id),
+      suite: GITVAULT_SUITE,
+      wrapper_id: String(fields.wrapper_id),
+    })),
+  );
+}
+
+function sourceWrapKek(kind: SourceWrapperKind, ikm: Uint8Array, kdfSalt: Uint8Array, context: Uint8Array): Uint8Array {
+  const label = kind === "webauthn_prf" ? SOURCE_WRAP_PRF_KEK_LABEL : SOURCE_WRAP_RC_KEK_LABEL;
+  return hkdf(sha256, ikm, kdfSalt, concatBytes(utf8ToBytes(label), context), 32);
+}
+
+/**
+ * Open a `swrap2_...` wrapper blob back into the 32-byte member scalar.
+ * `ikm` is the UTF-8 bytes of the normalized code CORE (`recovery_code`) or
+ * the raw PRF output (`webauthn_prf` — only ever exercised by browser
+ * surfaces; offline recovery refuses raw PRF as an input by policy, at the
+ * recover layer). A failed AEAD is `WRAPPER_DID_NOT_OPEN` — the truthful
+ * cause-neutral error: wrong code, corrupt blob, and wrong context (rp_id
+ * included) are indistinguishable here. The caller MUST compare the derived
+ * FULL public key against the published one before trusting the scalar.
+ */
+export function openSourceWrapper(input: { kind: SourceWrapperKind; ikm: Uint8Array; blob: string; context: Uint8Array }): Uint8Array {
+  const { kind, ikm, blob, context } = input;
+  if (typeof blob !== "string" || !blob.startsWith(SOURCE_WRAP_BLOB_PREFIX)) {
+    fail("WRAPPER_FORMAT_UNSUPPORTED", "not a source-access wrapper blob (expected swrap2_ prefix)", "opening source-access wrapper");
+  }
+  let raw: Uint8Array;
+  try {
+    raw = base64urlnopad.decode(blob.slice(SOURCE_WRAP_BLOB_PREFIX.length));
+  } catch {
+    fail("WRAPPER_FORMAT_UNSUPPORTED", "malformed source-access wrapper blob (not canonical base64url)", "opening source-access wrapper");
+  }
+  if (raw.length < 32 + 24 + 16 + 32) fail("WRAPPER_FORMAT_UNSUPPORTED", "malformed source-access wrapper blob (too short)", "opening source-access wrapper");
+  const kdfSalt = raw.subarray(0, 32);
+  const nonce = raw.subarray(32, 56);
+  const ctWithTag = raw.subarray(56);
+  const kek = sourceWrapKek(kind, ikm, kdfSalt, context);
+  let scalar: Uint8Array;
+  try {
+    scalar = xchacha20poly1305(kek, nonce, context).decrypt(ctWithTag);
+  } catch {
+    fail(
+      "WRAPPER_DID_NOT_OPEN",
+      "The wrapper did not open — wrong code/credential, a corrupt stored blob, or mismatched wrapper metadata (rp_id included).",
+      "opening source-access wrapper",
+    );
+  }
+  if (scalar.length !== 32) fail("WRAPPER_DID_NOT_OPEN", "source-access wrapper did not contain a 32-byte scalar", "opening source-access wrapper");
+  return scalar;
+}
+
+function sourceRcCheckChar(core: string): string {
+  let sum = 0;
+  for (const ch of core) sum += SOURCE_RC_ALPHABET.indexOf(ch);
+  return SOURCE_RC_ALPHABET[sum % 32]!;
+}
+
+/**
+ * Pinned normalization (ONE canonical accepted form): uppercase; strip every
+ * char outside [0-9A-Z]; map I→1, L→1, O→0; drop a leading "SRC1" when the
+ * result is 37 chars; require exactly 33 chars; validate the check character
+ * (`RECOVERY_CODE_CHECKSUM_INVALID` — a local typo, caught before any KEK
+ * derivation or wrapper read). Returns the 32-char CORE (the KEK ikm).
+ */
+export function normalizeSourceRecoveryCode(input: string): string {
+  if (typeof input !== "string") fail("RECOVERY_CODE_CHECKSUM_INVALID", "recovery code must be a string", "normalizing source recovery code");
+  let stripped = input.toUpperCase().replace(/[^0-9A-Z]/g, "").replace(/I/g, "1").replace(/L/g, "1").replace(/O/g, "0");
+  if (stripped.length === 37 && stripped.startsWith(SOURCE_RC_DISPLAY_PREFIX)) {
+    stripped = stripped.slice(SOURCE_RC_DISPLAY_PREFIX.length);
+  }
+  if (stripped.length !== 33) {
+    fail(
+      "RECOVERY_CODE_CHECKSUM_INVALID",
+      `recovery code must be 33 characters after normalization — the 32-char code plus its final check character (got ${stripped.length})`,
+      "normalizing source recovery code",
+    );
+  }
+  for (const ch of stripped) {
+    if (!SOURCE_RC_ALPHABET.includes(ch)) {
+      fail("RECOVERY_CODE_CHECKSUM_INVALID", `recovery code contains an invalid character: ${ch}`, "normalizing source recovery code");
+    }
+  }
+  const core = stripped.slice(0, 32);
+  if (sourceRcCheckChar(core) !== stripped[32]) {
+    fail(
+      "RECOVERY_CODE_CHECKSUM_INVALID",
+      "That code has a typo — its check character doesn't match. Compare against your saved copy (0/O and 1/I/L are interchangeable; dashes and case don't matter).",
+      "normalizing source recovery code",
+    );
+  }
+  return core;
+}
+
 export { bytesToHex, hexToBytes };

@@ -51,6 +51,7 @@ const DOCTOR_CHECK_NAMES = [
   "tier",
   "operator_health",
   "runtime_staleness",
+  "recovery_posture",
   "gitvault",
   "source_scan",
 ];
@@ -132,6 +133,12 @@ Checks performed:
   - Function runtime staleness: deployed functions running an older platform
     runtime than the current gateway build (refresh with 'run402 functions
     rebuild --all'; re-bundles from your stored source, no source change)
+  - Recovery posture: per vault-owning org, whether a human owner has a
+    working control-plane login and whether any member holds a working
+    source-access key (wrapper custody), plus a legacy-custody warning —
+    the org's disaster backstops if the agent machine dies. Evidence
+    levels: "configured" is what the platform verified, never proof an
+    off-platform passkey or saved code still exists.
   - gitvault: the active project's vault — activation policy, whether THIS
     machine can produce the capture a 'required' policy demands, open
     unvaulted-override journals, and where the keystore lives (back it up:
@@ -406,12 +413,13 @@ export async function run(sub, args = []) {
   }
 
   // 6. Operator health snapshot (v1.55 + v1.56 verification attempt detail).
-  // Both checks below ride the SAME operator-status read (runtime_staleness
-  // reuses the response operator_health already pulled), so the whole block
-  // is gated on wanting EITHER — --only runtime_staleness alone still needs
-  // this read, but --only-ing neither skips it entirely, same "don't do the work of a
-  // check nobody asked for" discipline the rest of --only follows.
-  if (wanted("operator_health") || wanted("runtime_staleness")) try {
+  // The checks below all ride the SAME operator-status read (runtime_staleness
+  // and recovery_posture reuse the response operator_health already pulled),
+  // so the whole block is gated on wanting ANY — --only runtime_staleness
+  // alone still needs this read, but --only-ing none skips it entirely, same
+  // "don't do the work of a check nobody asked for" discipline the rest of
+  // --only follows.
+  if (wanted("operator_health") || wanted("runtime_staleness") || wanted("recovery_posture")) try {
     const sdk = getSdk();
     const status = await sdk.admin.getOperatorStatus();
     const gaps = [];
@@ -502,6 +510,53 @@ export async function run(sub, args = []) {
         });
       }
     }
+
+    // 6c. Org recovery posture (gitvault-recovery-custody). One entry per
+    // vault-owning org the caller can see; rides the same operator-status
+    // read. Evidence levels, not guarantees: "configured" names what the
+    // platform VERIFIED — it can never observe whether an off-platform
+    // passkey or saved code still exists. The two headline facts mirror the
+    // feed events org_recovery_posture_degraded/_recovered; each gap line
+    // carries its remedy (Anticipatory), same shape as the reachability gaps
+    // above.
+    if (wanted("recovery_posture")) {
+      const posture = status.recovery_posture;
+      if (!Array.isArray(posture)) {
+        // Gateway older than gitvault-recovery-custody doesn't surface it.
+        checks.push({
+          name: "recovery_posture",
+          status: "skipped",
+          ...(verbose && { hint: "operator status has no 'recovery_posture' block; requires a gitvault-recovery-custody gateway." }),
+        });
+      } else if (posture.length === 0) {
+        // No vault-owning org in the caller's view — nothing to lose, nothing to advise.
+        checks.push({ name: "recovery_posture", status: "ok", value: { orgs: [] } });
+      } else {
+        const gaps = [];
+        for (const org of posture) {
+          const label = `org ${org.org_id} (${org.vault_count} vault${org.vault_count === 1 ? "" : "s"})`;
+          if (org.control_plane_configured === false) {
+            gaps.push(`${label}: no human owner with a working control-plane login — if this org's agent machine dies, nobody can sign in to recover it. Invite a backup human (run402 org invite create ${org.org_id} --email <their-email> --role owner) and have them complete login at console.run402.com.`);
+          }
+          if (org.source_backup_configured === false) {
+            gaps.push(`${label}: no human member holds a working source-access key — vault history has no member-side decryption backup. Have a member complete source enrollment at console.run402.com/account → Source access.`);
+          }
+          if (org.custody_legacy_present === true) {
+            gaps.push(`${label}: a member key is still on single-credential legacy custody (one passkey, no recovery code — losing that one credential loses source access). Re-enroll at console.run402.com/account to move to wrapper custody with a recovery code.`);
+          }
+        }
+        checks.push(
+          gaps.length > 0
+            ? {
+                name: "recovery_posture",
+                status: "warning",
+                value: { orgs: posture, gaps },
+                hint: "These are the org's disaster-recovery backstops — the same facts arrive as org_recovery_posture_degraded/_recovered feed events. After enrolling, export the recovery bundle (run402 source-access export) and store it separately from the code.",
+              }
+            : { name: "recovery_posture", status: "ok", value: { orgs: posture } },
+        );
+      }
+    }
   } catch (err) {
     // Operator status endpoint may not be reachable if the operator-binding
     // substrate isn't deployed yet on the target API. Don't fail the whole
@@ -515,6 +570,11 @@ export async function run(sub, args = []) {
     });
     if (wanted("runtime_staleness")) checks.push({
       name: "runtime_staleness",
+      status: "skipped",
+      message: describeCheckFailure("operator status check", err),
+    });
+    if (wanted("recovery_posture")) checks.push({
+      name: "recovery_posture",
       status: "skipped",
       message: describeCheckFailure("operator status check", err),
     });

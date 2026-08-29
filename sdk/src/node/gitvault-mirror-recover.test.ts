@@ -885,3 +885,174 @@ function keyForRead(read: Record<string, string>): string {
   if (read.object_kind === "checkpoint_claim_set") return gitvaultPaths.claimSet(id);
   throw new Error(`unhandled object_kind ${read.object_kind}`);
 }
+
+// ─── gitvault-recovery-custody — the human-member path (bundle + code) ────────
+//
+// A member under wrapper custody holds NO keystore: their scalar exists only
+// as sealed swrap2 wrappers. These tests build a REAL vault, seal the
+// creator's own encryption scalar into a recovery_code wrapper (test-local
+// seal — the SDK deliberately ships open-only; the golden fixture in
+// `gitvault-member-bundle.test.ts` proves this seal shape matches the
+// console's canonical one byte-for-byte), drop the exported bundle into the
+// mirror as the `member-recovery-bundles/` sidecar, and recover with a BARE
+// keystore + the recovery-receipt pin + the code — the offline-recovery
+// spec's "Human recovery from bundle plus recovery code, no server".
+
+describe("gitvault recovery — member bundle + source recovery code (gitvault-recovery-custody)", () => {
+  const MEMBER_CODE_DISPLAY = "SRC1-E21A-Z619-AK42-T962-5H61-XNEV-089A-27QC-Q";
+  const MEMBER_CODE_CORE = "E21AZ619AK42T9625H61XNEV089A27QC";
+
+  /** Test-local swrap2 seal — the exact inverse of the SDK's open path (kdf_salt(32) ‖ nonce(24) ‖ ct‖tag under the same context/labels). */
+  async function sealForTest(scalarHex: string, context: Uint8Array): Promise<string> {
+    const { hkdf } = await import("@noble/hashes/hkdf.js");
+    const { sha256 } = await import("@noble/hashes/sha2.js");
+    const { xchacha20poly1305 } = await import("@noble/ciphers/chacha.js");
+    const { utf8ToBytes, concatBytes } = await import("@noble/hashes/utils.js");
+    const { hexToBytes, toBase64url, randomBytes } = await import("../namespaces/gitvault.crypto.js");
+    const kdfSalt = randomBytes(32);
+    const nonce = randomBytes(24);
+    const label = "r402s/v0/source-wrapper-recovery-code-kek/v2\n";
+    const kek = hkdf(sha256, utf8ToBytes(MEMBER_CODE_CORE), kdfSalt, concatBytes(utf8ToBytes(label), context), 32);
+    const ct = xchacha20poly1305(kek, nonce, context).encrypt(hexToBytes(scalarHex));
+    return "swrap2_" + toBase64url(concatBytes(kdfSalt, nonce, ct));
+  }
+
+  async function memberBundleFor(keystore: GitvaultKeystore, rpId = "console.run402.com"): Promise<Record<string, unknown>> {
+    const { buildSourceWrapperContext, fromBase64url, sha256Hex: hex } = await import("../namespaces/gitvault.crypto.js");
+    const { utf8ToBytes } = await import("@noble/hashes/utils.js");
+    const identity = keystore.readIdentity()!;
+    const wrapperId = "cc33cc33-3333-4333-8333-333333333333";
+    const encryptionKeyId = "bb22bb22-2222-4222-8222-222222222222";
+    const principalId = "aa11aa11-1111-4111-8111-111111111111";
+    const context = buildSourceWrapperContext({
+      rp_id: rpId, principal_id: principalId, encryption_key_id: encryptionKeyId, wrapper_id: wrapperId,
+      kind: "recovery_code", credential_subject: null, member_public_key: fromBase64url(identity.encryption_pubkey),
+    });
+    const blob = await sealForTest(identity.encryption_private_key_hex!, context);
+    return {
+      format: "r402s-member-recovery-bundle/v1",
+      exported_at: "2026-08-29T00:00:00.000Z",
+      principal_id: principalId,
+      encryption_key_id: encryptionKeyId,
+      ek_fingerprint: identity.encryption_fingerprint,
+      public_key: identity.encryption_pubkey,
+      suite: "r402s-1",
+      custody_scheme: "wrapped_random_v1",
+      wrappers: [{
+        wrapper_id: wrapperId, kind: "recovery_code", format_version: "swrap2", credential_subject: null,
+        wrapper_ciphertext: blob, blob_sha256: hex(utf8ToBytes(blob)), created_at: "2026-08-29T00:00:00.000Z",
+      }],
+      rp_id: rpId,
+    };
+  }
+
+  it("full recovery from mirror sidecar + code + receipt pin, no keystore identity — same repository a keystore recovery yields", async () => {
+    const f = await makeVault();
+    const c1 = await commitFile(f.repoDir, "a.txt", "member a\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+
+    const mirrorRoot = scratchDir("run402-mirror-member-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    await seedBackend(backend, transportEntries(f.transport, f.repoId));
+    const bundle = await memberBundleFor(f.keystore);
+    await backend.putCreateOnly("member-recovery-bundles/member.json", new TextEncoder().encode(JSON.stringify(bundle)));
+
+    const receipt = f.keystore.readRecoveryReceipt(f.repoId);
+    assert.ok(receipt);
+    const bareKeystore = new GitvaultKeystore({ rootDir: scratchDir("run402-bare-member-ks-") });
+    assert.equal(bareKeystore.readIdentity(), null, "sanity: the member path must not lean on a keystore identity");
+
+    const outDir = scratchDir("run402-recovered-member-");
+    const result = await recoverGitvaultMirror({
+      backend, out_dir: outDir, keystore: bareKeystore, recovery_receipt: receipt!,
+      source_recovery_code: MEMBER_CODE_DISPLAY, // display form — normalization runs inside
+    });
+    assert.equal(result.mode, "recovered");
+    assert.equal(result.pin_trust, "receipt");
+    assert.equal(result.refs["refs/heads/main"], c1);
+    assert.ok(result.member_recovery, "a bundle recovery must say it was one");
+    assert.equal(result.member_recovery!.bundle_key, "member-recovery-bundles/member.json");
+    assert.equal(result.member_recovery!.ek_fingerprint, f.keystore.readIdentity()!.encryption_fingerprint);
+    const head = (await git(outDir, ["rev-parse", "HEAD"])).trim();
+    assert.equal(head, c1);
+
+    rmSync(mirrorRoot, { recursive: true, force: true });
+    rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it("code alone is truthfully insufficient: no bundle anywhere → RECOVERY_BUNDLE_MISSING names the absent input", async () => {
+    const f = await makeVault();
+    const c1 = await commitFile(f.repoDir, "a.txt", "a\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const mirrorRoot = scratchDir("run402-mirror-code-only-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    await seedBackend(backend, transportEntries(f.transport, f.repoId)); // NO sidecar
+    const receipt = f.keystore.readRecoveryReceipt(f.repoId)!;
+    const bareKeystore = new GitvaultKeystore({ rootDir: scratchDir("run402-bare-code-only-ks-") });
+    await assert.rejects(
+      recoverGitvaultMirror({ backend, out_dir: scratchDir("run402-recover-code-only-"), keystore: bareKeystore, recovery_receipt: receipt, source_recovery_code: MEMBER_CODE_DISPLAY }),
+      (e: unknown) => (e as { code?: string }).code === "RECOVERY_BUNDLE_MISSING",
+    );
+    rmSync(mirrorRoot, { recursive: true, force: true });
+  });
+
+  it("substituted mirror still refused for human holders: bundle + code never override the recovery-receipt pin", async () => {
+    const f = await makeVault();
+    const c1 = await commitFile(f.repoDir, "a.txt", "a\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const other = await makeVault();
+    const foreignReceipt = other.keystore.readRecoveryReceipt(other.repoId)!;
+
+    const mirrorRoot = scratchDir("run402-mirror-substituted-member-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    await seedBackend(backend, transportEntries(f.transport, f.repoId));
+    const bundle = await memberBundleFor(f.keystore);
+    await backend.putCreateOnly("member-recovery-bundles/member.json", new TextEncoder().encode(JSON.stringify(bundle)));
+
+    const bareKeystore = new GitvaultKeystore({ rootDir: scratchDir("run402-bare-substituted-ks-") });
+    await assert.rejects(
+      recoverGitvaultMirror({ backend, out_dir: scratchDir("run402-recover-substituted-"), keystore: bareKeystore, recovery_receipt: foreignReceipt, source_recovery_code: MEMBER_CODE_DISPLAY }),
+      (e: unknown) => (e as { code?: string }).code === "VAULT_CREATION_CONFLICT",
+    );
+    rmSync(mirrorRoot, { recursive: true, force: true });
+  });
+
+  it("a bundle without its code refuses by name (the bundle is ciphertext)", async () => {
+    const f = await makeVault();
+    const c1 = await commitFile(f.repoDir, "a.txt", "a\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const mirrorRoot = scratchDir("run402-mirror-bundle-no-code-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    await seedBackend(backend, transportEntries(f.transport, f.repoId));
+    const bundle = await memberBundleFor(f.keystore);
+    await assert.rejects(
+      recoverGitvaultMirror({
+        backend, out_dir: scratchDir("run402-recover-bundle-no-code-"),
+        keystore: new GitvaultKeystore({ rootDir: scratchDir("run402-bare-no-code-ks-") }),
+        recovery_receipt: f.keystore.readRecoveryReceipt(f.repoId)!,
+        member_bundle: bundle as never,
+      }),
+      (e: unknown) => (e as { code?: string }).code === "SOURCE_RECOVERY_CODE_REQUIRED",
+    );
+    rmSync(mirrorRoot, { recursive: true, force: true });
+  });
+
+  it("keyless verify reports the sidecar as an unverified availability hint", async () => {
+    const f = await makeVault();
+    const c1 = await commitFile(f.repoDir, "a.txt", "a\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const mirrorRoot = scratchDir("run402-mirror-hints-");
+    const backend = new DirectoryMirrorBackend(mirrorRoot);
+    await seedBackend(backend, transportEntries(f.transport, f.repoId));
+    const bundle = await memberBundleFor(f.keystore);
+    await backend.putCreateOnly("member-recovery-bundles/member.json", new TextEncoder().encode(JSON.stringify(bundle)));
+
+    const report = await verifyGitvaultMirror(backend, { recovery_receipt: f.keystore.readRecoveryReceipt(f.repoId)! });
+    assert.equal(report.mode, "keyless_verify");
+    assert.equal(report.member_recovery_bundles.length, 1);
+    assert.equal(report.member_recovery_bundles[0]!.key, "member-recovery-bundles/member.json");
+    assert.equal(report.member_recovery_bundles[0]!.ek_fingerprint, f.keystore.readIdentity()!.encryption_fingerprint);
+    assert.ok(!("bundle" in report.member_recovery_bundles[0]!), "the keyless report carries identity hints, never the ciphertext bundle itself");
+    rmSync(mirrorRoot, { recursive: true, force: true });
+  });
+});

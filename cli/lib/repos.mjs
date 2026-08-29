@@ -65,7 +65,8 @@ Then plain git, forever:
 Occasional:
   run402 repos snapshot [--project <id>] [--repo <repo_id>] [--message <text>] [--checkpoint] [--dry-run] [--allow-dirty] [--manifest-out <path>]
   run402 repos mirror   [<destination>] [--off] [--backfill] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--project <id>] [--repo <repo_id>]
-  run402 repos recover  <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--human]
+  run402 repos recover  <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]
+                        [--bundle <file>] [--code <SRC1-…>] [--receipt <file>] [--rp-id <host>] [--human]
 
 Lifecycle:
   run402 repos rename <new_name> [--repo <repo_id> | --project <project_id>]
@@ -164,6 +165,15 @@ Subcommands:
            mirror's validity, never freshness — read both honesty statements
            before relying on the result. \`--human\` renders a short summary
            instead of JSON.
+           A human member under wrapper custody (no keystore) recovers with
+           their exported recovery bundle + source recovery code:
+           \`--bundle <file>\` (omit to use the mirror's own
+           member-recovery-bundles/ sidecar) + \`--code\` (prompted, hidden,
+           when omitted) + \`--receipt <pin.json>\` (the vault's one-shot
+           recovery receipt — key material never substitutes for the trust
+           anchor). A raw WebAuthn PRF output is NOT a supported input; a
+           code with no exported bundle refuses by name (a server-side
+           wrapper row that was never exported is not offline backup).
   fsck     Walks the head chain AND materializes
            the ref map, advancing BOTH
            local trust pins — reported EXPLICITLY as local_state_changed +
@@ -291,6 +301,19 @@ Options:
   --region <r>      mirror / recover: AWS region for an s3:// destination
   --endpoint <url>  mirror / recover: an S3-compatible endpoint override
   --out <dir>       recover: where to materialize the recovered repository
+  --bundle <file>   recover: an exported r402s-member-recovery-bundle/v1 (from
+                    \`run402 source-access export\` or the console's download).
+                    Omit to use the mirror's member-recovery-bundles/ sidecar.
+  --code <SRC1-…>   recover: the source recovery code that opens the bundle.
+                    Prefer omitting it — with --bundle set it is prompted with
+                    hidden input, so it never lands in shell history.
+  --receipt <file>  recover: the vault's recovery-receipt pin as JSON (the
+                    one-shot receipt from repo creation). Required for trusted
+                    recovery when no keystore holds it — without any pin the
+                    result is labeled unauthenticated_salvage.
+  --rp-id <host>    recover: the seal-time ceremony host bound into the
+                    wrapper context (default: the bundle's own rp_id, then
+                    console.run402.com — where every wrapper is sealed today)
   --budget <n>      fsck: heads walked in this call (write mode persists the
                     verified prefix, so a budget-exceeded run resumes; a
                     --no-write run does not, since nothing was persisted)
@@ -340,6 +363,7 @@ Examples:
   run402 repos gc
   run402 repos access --human
   run402 repos recover s3://acme-vault-mirror --out ./restored --human
+  run402 repos recover ./mirror-copy --out ./restored --receipt ./recovery-receipt.json --bundle ./run402-source-recovery-bundle.json
   run402 repos delete --project prj_xyz --force
 `;
 
@@ -1556,6 +1580,19 @@ async function fsck(args) {
       if (result.mirror.data_loss_detected) {
         console.error(`DATA LOSS DETECTED: ${result.mirror.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences.`);
       }
+      // gitvault-recovery-custody: member recovery-bundle sidecars, reported
+      // as UNVERIFIED availability hints — nothing about them is chain-
+      // authenticated; they only say bundle + source recovery code can
+      // recover this mirror with no server.
+      if (Array.isArray(result.mirror.member_recovery_bundles) && result.mirror.member_recovery_bundles.length > 0) {
+        for (const b of result.mirror.member_recovery_bundles) {
+          console.error(
+            b.parse_error
+              ? `member recovery bundle (unverified hint): ${b.key} — does not parse (${b.parse_error})`
+              : `member recovery bundle (unverified hint): ${b.key} — ${b.ek_fingerprint} [${b.wrapper_kinds.join(", ")}]; recover with \`run402 repos recover <source> --receipt <pin.json>\` + the source recovery code`,
+          );
+        }
+      }
       printMirrorHonesty(result.mirror);
     }
     printVerboseStats(a, sdk);
@@ -1876,6 +1913,9 @@ function formatRecoverHuman(result, outDir) {
   if (result.data_loss_detected) {
     lines.push(`DATA LOSS DETECTED: ${result.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences.`);
   }
+  if (result.member_recovery) {
+    lines.push(`Decrypted via member recovery bundle${result.member_recovery.bundle_key ? ` ${result.member_recovery.bundle_key}` : ""} + source recovery code (no keystore).`);
+  }
   lines.push(`Layout: ${result.layout}` + (result.layout === "bare" ? " (no working files — not a failed recovery)" : ""));
   if (result.retained_refs?.warning) {
     lines.push(`refs/r402/retain: ${result.retained_refs.warning}`);
@@ -1885,9 +1925,40 @@ function formatRecoverHuman(result, outDir) {
   return lines.join("\n");
 }
 
+/**
+ * Read the source recovery code without echoing it (TTY) — a recovery code
+ * is long-lived key material; it must never land in shell history (prefer
+ * the prompt over `--code <value>`) and never echo into a scrollback.
+ * Non-TTY stdin (piped) reads one line verbatim.
+ */
+async function promptSourceRecoveryCode() {
+  const { stdin, stderr } = process;
+  if (!stdin.isTTY) {
+    const chunks = [];
+    for await (const c of stdin) {
+      chunks.push(c);
+      const s = Buffer.concat(chunks).toString("utf8");
+      if (s.includes("\n")) return s.slice(0, s.indexOf("\n")).trim();
+    }
+    return Buffer.concat(chunks).toString("utf8").trim();
+  }
+  const { createInterface } = await import("node:readline");
+  stderr.write("Source recovery code (SRC1-…, input hidden): ");
+  return await new Promise((resolve) => {
+    const rl = createInterface({ input: stdin, terminal: true });
+    // Mute the echo: readline in terminal mode writes through _writeToOutput.
+    rl._writeToOutput = () => {};
+    rl.question("", (answer) => {
+      rl.close();
+      stderr.write("\n");
+      resolve(answer.trim());
+    });
+  });
+}
+
 async function recover(args) {
   const a = normalizeArgv(args);
-  const valueFlags = ["--out", "--repo", "--profile", "--region", "--endpoint"];
+  const valueFlags = ["--out", "--repo", "--profile", "--region", "--endpoint", "--bundle", "--code", "--receipt", "--rp-id"];
   assertKnownFlags(a, [...valueFlags, "--ambient", "--human", "-v", "--verbose", "--help", "-h"], valueFlags);
   const [source] = requirePositionalCount(a, valueFlags, {
     min: 1, max: 1, command: "run402 repos recover <source> --out <dir>",
@@ -1906,6 +1977,18 @@ async function recover(args) {
   const repoId = flagValue(a, "--repo");
   const region = flagValue(a, "--region");
   const endpoint = flagValue(a, "--endpoint");
+  // gitvault-recovery-custody — the human-member path: --bundle (the exported
+  // r402s-member-recovery-bundle/v1; omit to use the mirror's own
+  // member-recovery-bundles/ sidecar) + the source recovery code. --receipt
+  // supplies the recovery-receipt pin when no keystore holds one (a member
+  // has no keystore); --rp-id overrides the seal-time ceremony host.
+  const bundlePath = flagValue(a, "--bundle");
+  const receiptPath = flagValue(a, "--receipt");
+  const rpId = flagValue(a, "--rp-id");
+  let code = flagValue(a, "--code");
+  const memberBundle = bundlePath != null ? readJsonFile("--bundle", bundlePath) : undefined;
+  const recoveryReceipt = receiptPath != null ? readJsonFile("--receipt", receiptPath) : undefined;
+  if (memberBundle !== undefined && code == null) code = await promptSourceRecoveryCode();
   try {
     const result = await sdk.gitvault.recover({
       source, out_dir: outDir,
@@ -1913,6 +1996,10 @@ async function recover(args) {
       ...(credential ? { credential } : {}),
       ...(region != null ? { region } : {}),
       ...(endpoint != null ? { endpoint } : {}),
+      ...(memberBundle !== undefined ? { member_bundle: memberBundle } : {}),
+      ...(code != null ? { source_recovery_code: code } : {}),
+      ...(recoveryReceipt !== undefined ? { recovery_receipt: recoveryReceipt } : {}),
+      ...(rpId != null ? { rp_id: rpId } : {}),
     });
     if (human) {
       console.log(formatRecoverHuman(result, outDir));
@@ -1924,6 +2011,9 @@ async function recover(args) {
     printJson(sdk, result);
     await spillIfLarge(result.repo_id, "recover", result);
     console.error(`recovered generation ${result.recovered_generation} for ${result.repo_id} into ${outDir}` + (result.chain_break ? ` (chain break at ${result.chain_break.generation} — fell back to the newest fully-verified generation)` : "") + ".");
+    if (result.member_recovery) {
+      console.error(`decrypted via member recovery bundle${result.member_recovery.bundle_key ? ` ${result.member_recovery.bundle_key}` : ""} (wrapper ${result.member_recovery.wrapper_id}, ${result.member_recovery.ek_fingerprint}) + source recovery code — no keystore involved.`);
+    }
     if (result.data_loss_detected) {
       console.error(`DATA LOSS DETECTED: ${result.absences.filter((x) => x.adjudication === "unexplained_absence").length} object(s) are unexplained absences — see "absences" in the result above.`);
     }

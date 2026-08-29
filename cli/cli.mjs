@@ -68,6 +68,7 @@ AUTHORITY — who may act, and with what credential
   auth        Manage project user authentication (magic link, passwords, settings)
   ci          Link GitHub Actions OIDC deploy bindings
   operator    Operator (human/email) session — login, then overview across your wallets
+  source-access Your gitvault member-key wrappers (status) + recovery bundle (export)
 
 DELIVER — reach a human when something happens
   deliveries     Did a notification actually land (list, get)
@@ -435,6 +436,11 @@ switch (cmd) {
   }
   case "operator": {
     const { run } = await import("./lib/operator.mjs");
+    await run(sub, rest);
+    break;
+  }
+  case "source-access": {
+    const { run } = await import("./lib/source-access.mjs");
     await run(sub, rest);
     break;
   }

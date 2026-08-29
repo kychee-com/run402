@@ -392,6 +392,8 @@ export const COMMAND_MANIFEST = [
   { path: ["agent", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["agent", "verify-email"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["agent", "passkey"], positionals: [p("action")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["enroll"] },
+  { path: ["source-access", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the caller's live source-access wrapper set from the gateway" },
+  { path: ["source-access", "export"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--out", "-"], runStyle: "sub", skipBehavioral: "exports the live member recovery bundle (stamps recovery-posture export evidence server-side)" },
   { path: ["operator", "login"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], skipBehavioral: "opens a browser / loopback listener" },
   { path: ["operator", "logout"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["operator", "overview"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },

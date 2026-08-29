@@ -356,6 +356,81 @@ export class OperatorSession {
       { method: "DELETE", ...authFor({ token }), context: "revoking control-plane authenticator" },
     );
   }
+
+  // ── source-access custody (gitvault-recovery-custody; bearer) ──
+
+  /**
+   * My own source-access key + wrapper set, ciphertext included
+   * (`GET /agent/v1/source-access/wrappers`) — the states/scheme read behind
+   * `run402 source-access status`. Principal-scoped structurally: only the
+   * caller's own wrappers ever come back. Enrollment/activation/revocation
+   * are console ceremonies (WebAuthn); this SDK surface is read-only.
+   */
+  async sourceAccessWrappers(opts: SessionTokenOpts = {}): Promise<SourceAccessWrappersResult> {
+    return this.client.request<SourceAccessWrappersResult>("/agent/v1/source-access/wrappers", {
+      ...authFor(opts),
+      context: "reading source-access wrappers",
+    });
+  }
+
+  /**
+   * Export my versioned member recovery bundle
+   * (`GET /agent/v1/source-access/recovery-bundle`, format
+   * `r402s-member-recovery-bundle/v1`) — key identity + every ACTIVE wrapper
+   * ciphertext. A server-side wrapper row alone is NOT offline backup; this
+   * bundle kept in the member's own storage (separately from the source
+   * recovery code) is what `r402s-recover` opens with no run402 server. The
+   * gateway stamps the export as recovery-posture evidence.
+   */
+  async sourceAccessRecoveryBundle(opts: SessionTokenOpts = {}): Promise<SourceAccessRecoveryBundleResult> {
+    return this.client.request<SourceAccessRecoveryBundleResult>("/agent/v1/source-access/recovery-bundle", {
+      ...authFor(opts),
+      context: "exporting source-access recovery bundle",
+    });
+  }
+}
+
+/** One wrapper row as `GET /agent/v1/source-access/wrappers` returns it. */
+export interface SourceAccessWrapper {
+  wrapper_id: string;
+  encryption_key_id: string;
+  kind: "webauthn_prf" | "recovery_code";
+  state: "pending" | "active" | "revoked";
+  format_version: string;
+  credential_subject: string | null;
+  wrapper_ciphertext: string;
+  blob_sha256: string;
+  created_at: string;
+  activated_at: string | null;
+}
+
+export interface SourceAccessWrappersResult {
+  principal_id: string;
+  /** Null when the principal has never enrolled a source-access key. */
+  encryption_key: {
+    encryption_key_id: string;
+    ek_fingerprint: string;
+    public_key: string;
+    suite: string;
+    custody_scheme: string;
+    state: string;
+    created_at: string;
+  } | null;
+  wrappers: SourceAccessWrapper[];
+}
+
+/** `r402s-member-recovery-bundle/v1` exactly as the gateway returns it (see the node-side `GitvaultMemberRecoveryBundle` for the recover-input twin). */
+export interface SourceAccessRecoveryBundleResult {
+  format: "r402s-member-recovery-bundle/v1";
+  exported_at: string;
+  principal_id: string;
+  encryption_key_id: string;
+  ek_fingerprint: string;
+  public_key: string;
+  suite: string;
+  custody_scheme: string;
+  wrappers: Array<Omit<SourceAccessWrapper, "encryption_key_id" | "state" | "activated_at">>;
+  note: string;
 }
 
 /**

@@ -54,6 +54,7 @@ import type { GitvaultSnapshot } from "../node/gitvault-snapshot.js";
 import type { GitvaultMirrorConfig, GitvaultMirrorCredential, GitvaultMirrorDestination } from "../node/gitvault-mirror-config.js";
 import type { GitvaultMirrorPushResult, GitvaultMirrorSyncSummary } from "../node/gitvault-mirror.js";
 import type { GitvaultRecoverResult, GitvaultVerifyReport } from "../node/gitvault-recover.js";
+import type { GitvaultMemberRecoveryBundle } from "../node/gitvault-member-bundle.js";
 
 // The Node modules are loaded lazily and only ever through these helpers, so
 // the isomorphic entry point stays free of `node:` imports.
@@ -2649,8 +2650,15 @@ export class Gitvault {
    * is `s3://<bucket>[/<prefix>]` or a local directory; when it names more
    * than one mirrored vault, pass `repo_id` explicitly. Recovery proves
    * validity, never freshness (both honesty statements ride every result).
+   *
+   * gitvault-recovery-custody: a human member with no keystore recovers with
+   * `member_bundle` (the exported `r402s-member-recovery-bundle/v1`, or the
+   * mirror's own `member-recovery-bundles/` sidecar when omitted) +
+   * `source_recovery_code`; a raw WebAuthn PRF output is NOT a supported
+   * input. The recovery-receipt pin stays the trust anchor either way —
+   * pass `recovery_receipt` when there is no keystore holding one.
    */
-  async recover(options: { source: string; out_dir: string; repo_id?: string; credential?: GitvaultMirrorCredential; region?: string; endpoint?: string; recovery_receipt?: GitvaultRecoveryReceipt; keystore_root?: string }): Promise<GitvaultRecoverResult> {
+  async recover(options: { source: string; out_dir: string; repo_id?: string; credential?: GitvaultMirrorCredential; region?: string; endpoint?: string; recovery_receipt?: GitvaultRecoveryReceipt; keystore_root?: string; member_bundle?: GitvaultMemberRecoveryBundle; source_recovery_code?: string; rp_id?: string }): Promise<GitvaultRecoverResult> {
     const [{ GitvaultKeystore }, { parseMirrorDestinationUrl }, { openGitvaultMirrorBackend, discoverMirroredRepoIds }, { recoverGitvaultMirror }] = await Promise.all([
       this.#keystore(), this.#mirrorConfig(), this.#mirrorBackend(), this.#recovery(),
     ]);
@@ -2664,7 +2672,13 @@ export class Gitvault {
       repoId = found[0]!;
     }
     const backend = openGitvaultMirrorBackend(destination, repoId, options.credential);
-    return recoverGitvaultMirror({ backend, out_dir: options.out_dir, keystore, ...(options.recovery_receipt ? { recovery_receipt: options.recovery_receipt } : {}) });
+    return recoverGitvaultMirror({
+      backend, out_dir: options.out_dir, keystore,
+      ...(options.recovery_receipt ? { recovery_receipt: options.recovery_receipt } : {}),
+      ...(options.member_bundle ? { member_bundle: options.member_bundle } : {}),
+      ...(options.source_recovery_code != null ? { source_recovery_code: options.source_recovery_code } : {}),
+      ...(options.rp_id != null ? { rp_id: options.rp_id } : {}),
+    });
   }
 
   /**

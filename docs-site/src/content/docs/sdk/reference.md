@@ -1482,6 +1482,8 @@ operator.session.stepUpOptions({ token?, opClass? }) / stepUpVerify({ token?, re
   // satisfy a StepUpRequiredError (amr passkey), then retry the gated write
 operator.session.issueRecoveryCodes({ token? })                           // one-time codes (shown once)
 operator.session.listAuthenticators({ token? }) / revokeAuthenticator({ token?, id })
+operator.session.sourceAccessWrappers({ token? }): Promise<SourceAccessWrappersResult>            // gitvault-recovery-custody: my source-access key + wrapper set (kinds, states, custody scheme; ciphertext included — always only my own)
+operator.session.sourceAccessRecoveryBundle({ token? }): Promise<SourceAccessRecoveryBundleResult> // export the r402s-member-recovery-bundle/v1 (key identity + ACTIVE wrapper ciphertexts) — with the source recovery code it recovers vaults offline (r.gitvault.recover member_bundle); the gateway stamps the export as posture evidence
 ```
 
 Carry a minted session as the whole SDK's credential with `controlPlaneSessionCredentials({ token | getToken })` — `r.orgs.*` / `r.org(id).*` / `r.admin.transfers.*` then act as that principal (it carries no project keys, so DB/project-key ops still need the wallet/keystore):
@@ -1972,6 +1974,14 @@ restore({ target_dir, ... }): Promise<{ refs, generation }>             // the c
 scaffoldRemote({ repo_dir, org_id, project_id, remote_name?, remote_url? }): Promise<GitvaultScaffoldRemoteResult>  // { name, url, created_repository, already_present, existing_url, reason } — D1: claims `origin` when free, falls back to `run402` when taken, never touches an existing remote either way
 open(opts?): Promise<GitvaultHandle>                                    // the raw protocol object, for ref transactions or repair
 drainOverrides(opts?): Promise<GitvaultOverrideDrainReport>
+recover({ source, out_dir, repo_id?, credential?, region?, endpoint?, recovery_receipt?, member_bundle?, source_recovery_code?, rp_id? }): Promise<GitvaultRecoverResult>
+  // `r402s-recover`: rebuild a BARE git repository from a mirrored prefix, NO SERVER INVOLVED. Default decrypt identity is the keystore;
+  // gitvault-recovery-custody adds the human-member path — member_bundle (the exported r402s-member-recovery-bundle/v1; omitted, the
+  // mirror's own member-recovery-bundles/ sidecars are tried) + source_recovery_code. A raw WebAuthn PRF output is NOT a supported input;
+  // a code with no exported bundle refuses RECOVERY_BUNDLE_MISSING. recovery_receipt stays the trust anchor for every holder kind (pass
+  // it explicitly when no keystore holds one; without any pin the result is labeled unauthenticated_salvage). A bundle-decrypted result
+  // carries member_recovery { bundle_key, wrapper_id, rp_id_used, ek_fingerprint }; keyless mirrorVerify/fsck({mirror:true}) reports
+  // sidecars as UNVERIFIED availability hints in member_recovery_bundles[].
 ```
 
 **D6 — named addressing (repo-first-onramp task 4).** `parseGitvaultRemoteUrl` already splits `run402::<a>/<b>`; `gitvaultRemoteAddressForm(address): "id" | "slug"` discriminates the two forms — id-form requires the org half to be a UUID AND the name half to be `prj_`-prefixed (real orgs/projects always satisfy both at once), anything else is slug-form. `gitvaultRemoteUrlForRepo(orgSlug, repoName)` builds the slug-form address string. `gitvaultSlugReleasedInfo(err): { successor_slug, released_at, cooldown_until } | null` extracts a `SLUG_RELEASED` refusal's typed detail — never auto-follow it. All four are pure, isomorphic exports of `gitvault.ts`.

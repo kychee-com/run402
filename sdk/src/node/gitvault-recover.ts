@@ -56,6 +56,13 @@ import type {
 import { assertNoTransition, checkChainLink, checkClaimSetEquality, gitvaultPaths, nextGeneration, reconcileRetainedTipRefs } from "./gitvault-publication.js";
 import type { GitvaultEncounteredRotation, GitvaultEpochDecryptFailure, GitvaultRetainedRefsReconcileResult } from "./gitvault-publication.js";
 import { GitvaultKeystore, type GitvaultIdentityFile } from "./gitvault-keystore.js";
+import {
+  discoverMemberBundles,
+  parseMemberRecoveryBundle,
+  unwrapMemberRecoveryBundle,
+  type GitvaultMemberBundleHint,
+  type GitvaultMemberRecoveryBundle,
+} from "./gitvault-member-bundle.js";
 import { hardenedGit, hasObject } from "./gitvault-snapshot.js";
 import type { GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
 
@@ -335,6 +342,14 @@ export interface GitvaultVerifyReport extends GitvaultRecoveryReport {
   mode: "keyless_verify";
   /** Object kinds present + confirmed reachable for the recovered generation, counted (never bytes, never plaintext). */
   inventory: Record<string, number>;
+  /**
+   * Member recovery-bundle sidecars found under `member-recovery-bundles/` in
+   * this prefix — UNVERIFIED availability hints (gitvault-recovery-custody):
+   * nothing about them is authenticated by the chain; they only tell a human
+   * holder "a bundle travels with this mirror, so bundle + source recovery
+   * code can recover it with no server." Empty when the prefix carries none.
+   */
+  member_recovery_bundles: GitvaultMemberBundleHint[];
 }
 
 /**
@@ -352,6 +367,11 @@ export async function verifyGitvaultMirror(backend: GitvaultMirrorBackend, optio
     const required = await closureForGeneration(backend, discovery.chain, generation);
     for (const r of required) inventory[r.kind] = (inventory[r.kind] ?? 0) + 1;
   }
+  // Member recovery-bundle sidecars — reported keylessly as UNVERIFIED
+  // availability hints (the bundle itself never becomes part of the chain
+  // verdict; the parsed blobs are not carried on the report, only identity
+  // hints — a keyless report should never embed ciphertext).
+  const memberBundles = (await discoverMemberBundles(backend)).map(({ bundle: _b, ...hint }) => hint);
   return {
     repo_id: discovery.repo_id, genesis_sha256: discovery.genesis_sha256, pin_trust: discovery.pin_trust,
     recovered_generation: generation, chain_verified_to_generation: discovery.newest_generation, chain_break: discovery.chain_break,
@@ -360,6 +380,7 @@ export async function verifyGitvaultMirror(backend: GitvaultMirrorBackend, optio
     validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
     keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
     mode: "keyless_verify", inventory,
+    member_recovery_bundles: memberBundles,
   };
 }
 
@@ -401,6 +422,15 @@ export interface GitvaultRecoverResult extends GitvaultRecoveryReport {
   refs: Record<string, string>;
   head_target: { kind: "symref"; ref: string } | { kind: "detached"; oid: string };
   /**
+   * Non-null iff this recovery decrypted via the human-member path (a member
+   * recovery bundle opened with the source recovery code) rather than a
+   * keystore — names WHICH bundle sidecar (`bundle_key`, null when supplied
+   * directly), which wrapper opened, and the rp_id the context was built
+   * with. Faithful: a keystore recovery and a bundle recovery produce the
+   * same repository, but the caller can always tell which happened.
+   */
+  member_recovery: { bundle_key: string | null; wrapper_id: string; rp_id_used: string; ek_fingerprint: string } | null;
+  /**
    * clone-installs-retained-refs (D2): the same `refs/r402/retain/<oid>`
    * bookkeeping `restoreObjectsInto` (clone/fetch) and `fsck` install, applied
    * here so a recovered bare repo's `git fsck` is silent too — a disaster
@@ -427,13 +457,30 @@ export interface GitvaultRecoverOptions {
   out_dir: string;
   recovery_receipt?: GitvaultRecoveryReceipt;
   keystore?: GitvaultKeystore;
+  /**
+   * gitvault-recovery-custody — the human-member path: a member recovery
+   * bundle (exported wrapper ciphertexts + key identity) opened with
+   * `source_recovery_code` substitutes for the keystore's encryption
+   * identity. When `source_recovery_code` is supplied WITHOUT a bundle, the
+   * mirror's own `member-recovery-bundles/` sidecars are tried; none found
+   * is the truthful `RECOVERY_BUNDLE_MISSING` refusal (a server-side
+   * wrapper row that was never exported is not an offline backup). The
+   * recovery-receipt pin is still required for trusted recovery — key
+   * material never substitutes for the trust anchor.
+   */
+  member_bundle?: GitvaultMemberRecoveryBundle;
+  source_recovery_code?: string;
+  /** Seal-time ceremony host for the wrapper context; default = bundle's own `rp_id`, then `console.run402.com`. */
+  rp_id?: string;
 }
 
+/** The two identity fields recovery actually decrypts with — a keystore's `identity.json` or a member bundle opened by the source recovery code both project onto this. */
+export type GitvaultRecoveryIdentity = Pick<GitvaultIdentityFile, "encryption_private_key_hex" | "encryption_fingerprint">;
+
 /** Open the recipient's genesis key envelope and decrypt `K_1` — the FIRST step in this file that touches key material (a genesis's own envelope, `rotation_id` absent — D203). */
-async function resolveGenesisEpochKey(backend: GitvaultMirrorBackend, genesis: GitvaultVaultGenesis, keystore: GitvaultKeystore): Promise<Uint8Array> {
-  const identity = keystore.readIdentity();
-  if (!identity?.encryption_private_key_hex) {
-    fail("VAULT_UNRECOVERABLE", "no encryption key in this keystore — recovery can verify and adjudicate but cannot decrypt or materialize anything", "materializing gitvault recovery", undefined, [
+async function resolveGenesisEpochKey(backend: GitvaultMirrorBackend, genesis: GitvaultVaultGenesis, identity: GitvaultRecoveryIdentity): Promise<Uint8Array> {
+  if (!identity.encryption_private_key_hex) {
+    fail("VAULT_UNRECOVERABLE", "no encryption key available — recovery can verify and adjudicate but cannot decrypt or materialize anything", "materializing gitvault recovery", undefined, [
       { action: "restore the principal keystore (identity.json) from backup, then re-run recover" },
       { action: "run `run402 repos fsck --mirror` for the verify-only outcome" },
     ]);
@@ -510,7 +557,7 @@ async function resolveRotationEpochKeys(
   backend: GitvaultMirrorBackend,
   genesis: GitvaultVaultGenesis,
   rotations: readonly GitvaultEncounteredRotation[],
-  identity: GitvaultIdentityFile,
+  identity: GitvaultRecoveryIdentity,
 ): Promise<{ epoch_keys_hex: Record<string, string>; failure: GitvaultEpochDecryptFailure | null }> {
   const epochKeys: Record<string, string> = {};
   if (!identity.encryption_private_key_hex) return { epoch_keys_hex: epochKeys, failure: null };
@@ -605,14 +652,71 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
   // running the (keyless) absence fallback — an unopenable epoch is its OWN
   // named cause, never folded into the generic "unexplained_absence"
   // vocabulary `resolveWithFallback` already owns for missing bytes.
-  const identity = keystore.readIdentity();
-  if (!identity?.encryption_private_key_hex) {
-    fail("VAULT_UNRECOVERABLE", "no encryption key in this keystore — recovery can verify and adjudicate but cannot decrypt or materialize anything", "materializing gitvault recovery", undefined, [
-      { action: "restore the principal keystore (identity.json) from backup, then re-run recover" },
-      { action: "run `run402 repos fsck --mirror` for the verify-only outcome" },
-    ]);
+  //
+  // gitvault-recovery-custody: the decrypt identity comes from EITHER the
+  // keystore (the original path) OR a member recovery bundle opened with the
+  // source recovery code (the human-member path, no keystore involved). A
+  // code with no bundle — explicit or discovered in the mirror's own
+  // `member-recovery-bundles/` sidecars — is the truthful refusal by name:
+  // a server-side wrapper row that was never exported is not offline backup.
+  let identity: GitvaultRecoveryIdentity;
+  let memberRecovery: GitvaultRecoverResult["member_recovery"] = null;
+  if (options.source_recovery_code != null || options.member_bundle != null) {
+    if (options.source_recovery_code == null) {
+      fail("SOURCE_RECOVERY_CODE_REQUIRED", "a member recovery bundle was supplied without its source recovery code — the bundle is ciphertext; the code is what opens it", "materializing gitvault recovery", undefined, [
+        { action: "re-run with the source recovery code (SRC1-…) you saved at enrollment" },
+      ]);
+    }
+    const code = options.source_recovery_code;
+    if (options.member_bundle) {
+      // Re-validate even the typed input — the CLI hands over whatever JSON the
+      // file held, and a malformed bundle should refuse by name, not TypeError.
+      const suppliedBundle = parseMemberRecoveryBundle(options.member_bundle);
+      const member = unwrapMemberRecoveryBundle({ bundle: suppliedBundle, source_recovery_code: code, ...(options.rp_id ? { rp_id: options.rp_id } : {}) });
+      identity = { encryption_private_key_hex: member.private_key_hex, encryption_fingerprint: member.fingerprint };
+      memberRecovery = { bundle_key: null, wrapper_id: member.wrapper_id, rp_id_used: member.rp_id_used, ek_fingerprint: member.fingerprint };
+    } else {
+      const discovered = (await discoverMemberBundles(backend)).filter((b) => b.bundle != null);
+      if (discovered.length === 0) {
+        fail(
+          "RECOVERY_BUNDLE_MISSING",
+          "a source recovery code was supplied but no member recovery bundle is available — none was passed and this mirror carries no member-recovery-bundles/ sidecar. The code alone cannot recover anything: export the bundle (console.run402.com/account → Download recovery bundle, or `run402 source-access export`) and keep it with the mirror.",
+          "materializing gitvault recovery",
+          undefined,
+          [{ action: "re-run with --bundle <exported-bundle.json>" }],
+        );
+      }
+      // Try each discovered bundle — the AEAD authenticates, so a foreign
+      // member's bundle simply fails to open and the loop moves on.
+      let opened: { member: ReturnType<typeof unwrapMemberRecoveryBundle>; bundle_key: string } | null = null;
+      let lastErr: unknown = null;
+      for (const d of discovered) {
+        try {
+          opened = { member: unwrapMemberRecoveryBundle({ bundle: d.bundle!, source_recovery_code: code, ...(options.rp_id ? { rp_id: options.rp_id } : {}) }), bundle_key: d.key };
+          break;
+        } catch (e) {
+          if (isRun402Error(e) && e.code === "RECOVERY_CODE_CHECKSUM_INVALID") throw e; // a local typo is the same typo for every bundle
+          lastErr = e;
+        }
+      }
+      if (!opened) {
+        fail("WRAPPER_DID_NOT_OPEN", `this mirror carries ${discovered.length} member recovery-bundle sidecar(s) but the supplied code opened none of them — a wrong code, or a bundle belonging to a different member`, "materializing gitvault recovery", { tried: discovered.map((d) => d.key), cause: lastErr instanceof Error ? lastErr.message : String(lastErr) });
+      }
+      identity = { encryption_private_key_hex: opened.member.private_key_hex, encryption_fingerprint: opened.member.fingerprint };
+      memberRecovery = { bundle_key: opened.bundle_key, wrapper_id: opened.member.wrapper_id, rp_id_used: opened.member.rp_id_used, ek_fingerprint: opened.member.fingerprint };
+    }
+  } else {
+    const stored = keystore.readIdentity();
+    if (!stored?.encryption_private_key_hex) {
+      fail("VAULT_UNRECOVERABLE", "no encryption key in this keystore — recovery can verify and adjudicate but cannot decrypt or materialize anything", "materializing gitvault recovery", undefined, [
+        { action: "restore the principal keystore (identity.json) from backup, then re-run recover" },
+        { action: "a human member under wrapper custody: re-run with --bundle <exported-bundle.json> + the source recovery code" },
+        { action: "run `run402 repos fsck --mirror` for the verify-only outcome" },
+      ]);
+    }
+    identity = stored;
   }
-  const k1 = await resolveGenesisEpochKey(backend, discovery.genesis, keystore);
+  const k1 = await resolveGenesisEpochKey(backend, discovery.genesis, identity);
   const rotationKeys = await resolveRotationEpochKeys(backend, discovery.genesis, discovery.rotations, identity);
   const epochKeysHex: Record<string, string> = { [GITVAULT_GENESIS_EPOCH]: bytesToHex(k1), ...rotationKeys.epoch_keys_hex };
   const decryptBoundary = computeDecryptableBoundaryGeneration(discovery.rotations, epochKeysHex, discovery.newest_generation);
@@ -739,6 +843,7 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
     validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
     keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
     mode: "recovered", out_dir: options.out_dir, refs: refState.refs, head_target: refState.head_target,
+    member_recovery: memberRecovery,
     retained_refs,
     layout: "bare",
     next_actions: [

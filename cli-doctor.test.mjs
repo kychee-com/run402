@@ -354,3 +354,107 @@ describe("run402 doctor --only <check> — scoped checks (kychee-com/run402#566)
     assert.match(help, /source_scan/);
   });
 });
+
+describe("run402 doctor — recovery_posture (gitvault-recovery-custody)", () => {
+  /** Temporarily answer operator/status with a specific recovery_posture payload (or none). */
+  function withOperatorStatus(body, fn) {
+    const prior = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = typeof input === "string" ? input : String(input?.url ?? input);
+      if (url.includes("/agent/v1/operator/status")) return json(body);
+      return prior(input);
+    };
+    return fn().finally(() => { globalThis.fetch = prior; });
+  }
+
+  const BASE_STATUS = {
+    operator_contact: { email_status: "verified", passkey_status: "verified" },
+    operator_reachability: { reachable: true, verified_recipient_count: 1, sources: [], skipped_last_90d: 0 },
+    skipped_notifications: [],
+    critical_items: [],
+    runtime: { stale_function_count: 0, stale_functions: [] },
+  };
+
+  async function runOnlyPosture() {
+    captureStart();
+    try {
+      await run("--only", ["recovery_posture"]);
+    } catch {
+      // process.exit(N) throws — tolerated
+    } finally {
+      captureStop();
+    }
+    const report = JSON.parse(stdout.join("\n"));
+    assert.deepEqual(report.checks.map((c) => c.name), ["recovery_posture"]);
+    return report.checks[0];
+  }
+
+  it("degraded posture renders each gap with its remedy (Anticipatory), one line per fact per org", async () => {
+    const check = await withOperatorStatus({
+      ...BASE_STATUS,
+      recovery_posture: [{
+        org_id: "org-1111", vault_count: 2,
+        control_plane_configured: false,
+        source_wrapper_configured: false,
+        source_backup_configured: false,
+        custody_legacy_present: false,
+        human_owner_with_login_count: 0, source_custodian_count: 0, wrapper_backed_custodian_count: 0,
+        state_generation: 3,
+      }],
+    }, runOnlyPosture);
+    assert.equal(check.status, "warning");
+    assert.equal(check.value.gaps.length, 2);
+    assert.match(check.value.gaps[0], /org org-1111 \(2 vaults\): no human owner with a working control-plane login/);
+    assert.match(check.value.gaps[0], /run402 org invite create org-1111/);
+    assert.match(check.value.gaps[1], /no human member holds a working source-access key/);
+    assert.match(check.value.gaps[1], /console\.run402\.com\/account/);
+    assert.equal(check.value.orgs[0].state_generation, 3);
+  });
+
+  it("legacy custody warns even when source backup exists (a single-credential key is a standing risk)", async () => {
+    const check = await withOperatorStatus({
+      ...BASE_STATUS,
+      recovery_posture: [{
+        org_id: "org-2222", vault_count: 1,
+        control_plane_configured: true,
+        source_wrapper_configured: false,
+        source_backup_configured: true,
+        custody_legacy_present: true,
+        human_owner_with_login_count: 1, source_custodian_count: 1, wrapper_backed_custodian_count: 0,
+        state_generation: 1,
+      }],
+    }, runOnlyPosture);
+    assert.equal(check.status, "warning");
+    assert.equal(check.value.gaps.length, 1);
+    assert.match(check.value.gaps[0], /legacy custody/);
+    assert.match(check.value.gaps[0], /recovery code/);
+  });
+
+  it("healthy posture is ok and still carries the org facts", async () => {
+    const check = await withOperatorStatus({
+      ...BASE_STATUS,
+      recovery_posture: [{
+        org_id: "org-3333", vault_count: 1,
+        control_plane_configured: true,
+        source_wrapper_configured: true,
+        source_backup_configured: true,
+        custody_legacy_present: false,
+        human_owner_with_login_count: 1, source_custodian_count: 1, wrapper_backed_custodian_count: 1,
+        state_generation: 4,
+      }],
+    }, runOnlyPosture);
+    assert.equal(check.status, "ok");
+    assert.equal(check.value.orgs.length, 1);
+  });
+
+  it("no vault-owning org is ok with an empty orgs list (nothing to lose, nothing to advise)", async () => {
+    const check = await withOperatorStatus({ ...BASE_STATUS, recovery_posture: [] }, runOnlyPosture);
+    assert.equal(check.status, "ok");
+    assert.deepEqual(check.value.orgs, []);
+  });
+
+  it("a gateway without the block reports skipped, never a doctor failure", async () => {
+    const check = await withOperatorStatus(BASE_STATUS, runOnlyPosture);
+    assert.equal(check.status, "skipped");
+  });
+});

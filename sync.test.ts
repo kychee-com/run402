@@ -85,7 +85,7 @@ function readCommandSource(filePath: string): string | null {
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -125,7 +125,7 @@ function parseCliCommands(): string[] {
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
   const reserved = reservedSubcommands();
-  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos"]) {
+  for (const mod of ["admin", "allowance", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "apps", "email", "feedback", "agent", "operator", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "org", "identity", "buzz", "grants", "delegates", "deliveries", "contacts", "subscriptions", "webhook-secret", "cloud", "archives", "core", "rooms", "messages", "claims", "escalations", "gitvault", "repos", "source-access"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       if (reserved.has(`${mod}:${sub}`)) continue;
       cmds.push(`${mod}:${sub}`);
@@ -842,6 +842,17 @@ const SURFACE: Capability[] = [
   // `restore` collides with `git restore`'s different meaning (D2 rule 4).
   { id: "repos_recover", endpoint: "(local)", mcp: null, cli: "repos:recover", openclaw: "repos:recover" },
 
+  // ── source-access (gitvault-recovery-custody) — member key custody, read side ──
+  // Enrollment/activation/revocation are BROWSER ceremonies (WebAuthn at
+  // console.run402.com/account) so they have no CLI/MCP spelling at all;
+  // what the CLI carries is the read pair a member (or their agent, on the
+  // human's control-plane session) needs: wrapper states, and the recovery
+  // bundle export that makes the source recovery code work offline. CLI-only
+  // — the bundle is half of a recovery credential; same
+  // "mutating-verbs-are-CLI-only"-adjacent caution the repos family applies.
+  { id: "source_access_status", endpoint: "GET /agent/v1/source-access/wrappers", mcp: null, cli: "source-access:status", openclaw: "source-access:status" },
+  { id: "source_access_export", endpoint: "GET /agent/v1/source-access/recovery-bundle", mcp: null, cli: "source-access:export", openclaw: "source-access:export" },
+
   // ── the lossy-surface expander ──────────────────────────────────────────
   // MCP truncates; agent-response-design requires the full result to stay
   // reachable under a `ref` with `shown`/`total`. This is that affordance.
@@ -912,6 +923,8 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   repos_gc: null,
   repos_access: "gitvault.access",
   repos_recover: "gitvault.recover",
+  source_access_status: "operator.session.sourceAccessWrappers",
+  source_access_export: "operator.session.sourceAccessRecoveryBundle",
   // The result store is MCP-local plumbing, not a gateway capability.
   expand_result: null,
 
