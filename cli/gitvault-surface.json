@@ -15,7 +15,8 @@
     "repos access repair",
     "repos access revoke-key",
     "repos access declare-exposure",
-    "repos recover"
+    "repos recover",
+    "repos recovery-bundle"
   ],
   "retired_spellings": [
     {

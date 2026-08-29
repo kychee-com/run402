@@ -261,7 +261,7 @@ export const COMMAND_MANIFEST = [
   // COMMAND_REMOVED) redirect that dispatches nothing — see
   // RESERVED_SUBCOMMANDS below, and "gitvault" in SKIPPED_FAMILIES.
 
-  // ── repos (the consolidated 12-verb family) ─
+  // ── repos (the consolidated 13-verb family) ─
   // Every verb needs a real principal keystore and, for most, an allocated
   // repo and a local git working tree, so the gate runs structural checks
   // only — an in-process behavioral run would either no-op against the
@@ -288,6 +288,9 @@ export const COMMAND_MANIFEST = [
   { path: ["repos", "access", "revoke-key"], positionals: [p("principal_id")], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["prin_00000000000000000000000000000000"], runStyle: "sub", skipBehavioral: "owner+step-up-gated: declares a recipient's key revoked (org-scoped watermark) and drives a real epoch rotation off it" },
   { path: ["repos", "access", "declare-exposure"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "owner+step-up-gated: declares this vault's epoch secret exposed, forcing every subsequent ordinary push to refuse until a rotation lands" },
   { path: ["repos", "recover"], positionals: [p("source")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["s3://example-mirror-bucket", "--out", "__SCRATCH_DIR__/recover-out"], runStyle: "sub", skipBehavioral: "materializes a git repository from a mirror source, offline, with no server call" },
+  // Principal-scoped (one bundle covers every vault you can read), so no
+  // --project — deliberately unlike its eleven vault-scoped siblings.
+  { path: ["repos", "recovery-bundle"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--out", "-"], runStyle: "sub", skipBehavioral: "exports the caller's live member recovery bundle (stamps recovery-posture export evidence server-side)" },
   { path: ["errors"], positionals: [p("fingerprint_id", { required: false })], projectScoped: true, legacyPositionalProject: false, minimalArgs: [], runStyle: "merged" },
 
   // ── jobs ─────────────────────────────────────────────────────────────────
@@ -392,8 +395,6 @@ export const COMMAND_MANIFEST = [
   { path: ["agent", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["agent", "verify-email"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["agent", "passkey"], positionals: [p("action")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["enroll"] },
-  { path: ["source-access", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub", skipBehavioral: "reads the caller's live source-access wrapper set from the gateway" },
-  { path: ["source-access", "export"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--out", "-"], runStyle: "sub", skipBehavioral: "exports the live member recovery bundle (stamps recovery-posture export evidence server-side)" },
   { path: ["operator", "login"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], skipBehavioral: "opens a browser / loopback listener" },
   { path: ["operator", "logout"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["operator", "overview"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
@@ -470,6 +471,11 @@ export const SKIPPED_FAMILIES = {
   // of UNKNOWN_COMMAND) but has zero manifest entries, since a redirect
   // dispatches nothing.
   "gitvault": "retired; every subcommand answers COMMAND_MOVED/COMMAND_REMOVED naming its `repos`/git successor",
+  // Shipped in exactly one release (v4.54.0, live for hours) before the
+  // one-noun review caught it: a gateway route namespace is not a CLI noun.
+  // Both verbs answer COMMAND_MOVED into the repos family for one release,
+  // then the spelling is reserved and answers nothing.
+  "source-access": "retired same-day; `export` -> `repos recovery-bundle`, `status` -> `repos access` (member_custody block)",
   // `repo` singular resolves identically to `repos` — same
   // module, same case block in cli.mjs, so it needs no manifest of its own.
   "repo": "alias for `repos`, resolves identically (design D1)",
@@ -488,6 +494,8 @@ export const SKIPPED_FAMILIES = {
  * which the family list cannot express.
  */
 export const RESERVED_SUBCOMMANDS = {
+  "source-access:export": "moved to `repos recovery-bundle` — the artifact `repos recover --bundle` consumes belongs to the repos family",
+  "source-access:status": "moved to `repos access` — your own wrapper custody rides its member_custody block; the org advisory is `doctor --only recovery_posture`",
   "rooms:who": "renamed to `rooms join` — an interrogative must not name a write",
   "rooms:send": "moved to `messages send` — the verb acts on a message",
   // The routes and SDK methods for room list/get exist (agent-room-lifecycle);

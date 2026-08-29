@@ -680,7 +680,7 @@ export async function recoverGitvaultMirror(options: GitvaultRecoverOptions): Pr
       if (discovered.length === 0) {
         fail(
           "RECOVERY_BUNDLE_MISSING",
-          "a source recovery code was supplied but no member recovery bundle is available — none was passed and this mirror carries no member-recovery-bundles/ sidecar. The code alone cannot recover anything: export the bundle (console.run402.com/account → Download recovery bundle, or `run402 source-access export`) and keep it with the mirror.",
+          "a source recovery code was supplied but no member recovery bundle is available — none was passed and this mirror carries no member-recovery-bundles/ sidecar. The code alone cannot recover anything: export the bundle (console.run402.com/account → Download recovery bundle, or `run402 repos recovery-bundle`) and keep it with the mirror.",
           "materializing gitvault recovery",
           undefined,
           [{ action: "re-run with --bundle <exported-bundle.json>" }],

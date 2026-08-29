@@ -836,22 +836,24 @@ const SURFACE: Capability[] = [
   // share this SAME `repos:access` CLI dispatch, like `errors.get`/
   // `errors.watch` share `errors` — see SDK_ONLY_METHODS below for their
   // SDK methods.
-  { id: "repos_access", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET /gitvault/v1/vaults/:vault_id/envelope-recipients", mcp: null, cli: "repos:access", openclaw: "repos:access" },
+  { id: "repos_access", endpoint: "GET /orgs/v1/:org_id/encryption-keys + GET /gitvault/v1/vaults/:vault_id/envelope-recipients (+ GET /agent/v1/source-access/wrappers for the caller's own member_custody block, control-plane session only)", mcp: null, cli: "repos:access", openclaw: "repos:access" },
   // `r402s-recover`: offline, NO server call at all (design D4), the same
   // "(local)" shape as `expand_result` below. Name UNCHANGED per D10 —
   // `restore` collides with `git restore`'s different meaning (D2 rule 4).
   { id: "repos_recover", endpoint: "(local)", mcp: null, cli: "repos:recover", openclaw: "repos:recover" },
 
-  // ── source-access (gitvault-recovery-custody) — member key custody, read side ──
+  // ── recovery-bundle (gitvault-recovery-custody) — member key custody, read side ──
   // Enrollment/activation/revocation are BROWSER ceremonies (WebAuthn at
   // console.run402.com/account) so they have no CLI/MCP spelling at all;
-  // what the CLI carries is the read pair a member (or their agent, on the
-  // human's control-plane session) needs: wrapper states, and the recovery
-  // bundle export that makes the source recovery code work offline. CLI-only
+  // what the CLI carries is the export that makes the source recovery code
+  // work offline — the artifact `repos recover --bundle` consumes, so it
+  // lives in the repos family (the short-lived `source-access` family from
+  // v4.54.0 answered COMMAND_MOVED here the same day: a gateway route
+  // namespace is not a CLI noun). The wrapper-states read has no verb of
+  // its own — it rides `repos access` as its member_custody block. CLI-only
   // — the bundle is half of a recovery credential; same
   // "mutating-verbs-are-CLI-only"-adjacent caution the repos family applies.
-  { id: "source_access_status", endpoint: "GET /agent/v1/source-access/wrappers", mcp: null, cli: "source-access:status", openclaw: "source-access:status" },
-  { id: "source_access_export", endpoint: "GET /agent/v1/source-access/recovery-bundle", mcp: null, cli: "source-access:export", openclaw: "source-access:export" },
+  { id: "repos_recovery_bundle", endpoint: "GET /agent/v1/source-access/recovery-bundle", mcp: null, cli: "repos:recovery-bundle", openclaw: "repos:recovery-bundle" },
 
   // ── the lossy-surface expander ──────────────────────────────────────────
   // MCP truncates; agent-response-design requires the full result to stay
@@ -923,8 +925,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   repos_gc: null,
   repos_access: "gitvault.access",
   repos_recover: "gitvault.recover",
-  source_access_status: "operator.session.sourceAccessWrappers",
-  source_access_export: "operator.session.sourceAccessRecoveryBundle",
+  repos_recovery_bundle: "operator.session.sourceAccessRecoveryBundle",
   // The result store is MCP-local plumbing, not a gateway capability.
   expand_result: null,
 
@@ -1522,6 +1523,10 @@ describe("SDK surface alignment", () => {
       // `claim_wallet_org` capability maps to the submit step, and the Node
       // convenience `claimWalletOrg` composes challenge + sign + submit.
       "operator.claimWalletOrg.challenge",
+      // gitvault-recovery-custody: the wrapper-states read has no verb of
+      // its own — `repos access` composes it into its member_custody block
+      // (the capability row maps to gitvault.access, the primary read).
+      "operator.session.sourceAccessWrappers",
       // Deprecated alias of admin.sendFeedback, kept so code written against
       // the old name keeps COMPILING. It posts to the new /feedback/v1 path,
       // so it is not a second capability - it is the same one, spelled the

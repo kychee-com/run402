@@ -551,7 +551,7 @@ export async function run(sub, args = []) {
                 name: "recovery_posture",
                 status: "warning",
                 value: { orgs: posture, gaps },
-                hint: "These are the org's disaster-recovery backstops — the same facts arrive as org_recovery_posture_degraded/_recovered feed events. After enrolling, export the recovery bundle (run402 source-access export) and store it separately from the code.",
+                hint: "These are the org's disaster-recovery backstops — the same facts arrive as org_recovery_posture_degraded/_recovered feed events. After enrolling, export the recovery bundle (run402 repos recovery-bundle) and store it separately from the code.",
               }
             : { name: "recovery_posture", status: "ok", value: { orgs: posture } },
         );

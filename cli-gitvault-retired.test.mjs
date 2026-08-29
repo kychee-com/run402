@@ -26,6 +26,7 @@ import { before, after, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { COMMAND_MANIFEST, RESERVED_SUBCOMMANDS } from "./cli/lib/command-manifest.mjs";
 import { run } from "./cli/lib/gitvault.mjs";
+import { run as runSourceAccess } from "./cli/lib/source-access.mjs";
 
 const originalLog = console.log;
 const originalError = console.error;
@@ -173,6 +174,10 @@ describe("naming-law conventions gate (task 5.1) — mechanically, from COMMAND_
     "stash", "gc", "fsck", "prune", "repack", "blame", "show", "config",
     "submodule", "worktree", "bisect", "grep", "archive", "clean", "describe",
     "reflog", "verify-commit", "verify-tag", "notes", "sparse-checkout",
+    // `git bundle` packs repo OBJECTS into an offline file — added here when
+    // the recovery-bundle verb was named, precisely so a future bare
+    // `repos bundle` (key material, a different meaning) trips rule 4.
+    "bundle",
   ]);
 
   // Every `repos` verb that ALSO happens to be a real git verb name, with
@@ -189,12 +194,23 @@ describe("naming-law conventions gate (task 5.1) — mechanically, from COMMAND_
   // has no git/gh analog, which is exactly WHY the design considered (and
   // the external review rejected) reusing `restore` for it — see D2 rule 4
   // and D10's recorded resolution, checked explicitly below.
-  const NO_ANALOG_VERBS = new Set(["snapshot", "policy", "mirror", "access", "recover"]);
+  //
+  // `recovery-bundle` (gitvault-recovery-custody, 2026-08-29): exports the
+  // member recovery bundle `recover --bundle` consumes. The reviewed naming
+  // deliberation, recorded: bare `bundle` was REJECTED — `git bundle` is a
+  // real git verb packing repo OBJECTS for offline transfer, and ours would
+  // carry KEY MATERIAL under the same word (the exact rule-4 collision that
+  // rejected `restore`); `export` was REJECTED as misleading — every prior
+  // (git fast-export, the portable-archive family) teaches "export = get my
+  // repo/project contents out", and getting a key bundle instead is a
+  // trust-surprise. The hyphenated compound has no git/gh analog and names
+  // exactly what it produces, next to the verb that consumes it.
+  const NO_ANALOG_VERBS = new Set(["snapshot", "policy", "mirror", "access", "recover", "recovery-bundle"]);
 
-  it("the repos verb set is exactly the twelve the design specifies (create/list/view/rename/delete/snapshot/policy/mirror/fsck/gc/access/recover)", () => {
+  it("the repos verb set is exactly the thirteen the design specifies (create/list/view/rename/delete/snapshot/policy/mirror/fsck/gc/access/recover/recovery-bundle)", () => {
     assert.deepEqual(
       REPOS_VERBS,
-      ["access", "create", "delete", "fsck", "gc", "list", "mirror", "policy", "recover", "rename", "snapshot", "view"],
+      ["access", "create", "delete", "fsck", "gc", "list", "mirror", "policy", "recover", "recovery-bundle", "rename", "snapshot", "view"],
     );
   });
 
@@ -225,9 +241,70 @@ describe("naming-law conventions gate (task 5.1) — mechanically, from COMMAND_
     assert.equal(REPOS_VERBS.includes("restore"), false, "the external review rejected `restore` for the recovery verb because `git restore` already means something else (D2 rule 4) — `repos recover` is the kept name (design D10)");
   });
 
+  it("`repos` never defines bare `bundle` or `export` — the two collisions the recovery-bundle naming rejected", () => {
+    assert.equal(REPOS_VERBS.includes("bundle"), false, "`git bundle` packs repo OBJECTS for offline transfer; a repos verb of the same name carrying KEY MATERIAL would be exactly the rule-4 reuse the law forbids — `repos recovery-bundle` is the kept name");
+    assert.equal(REPOS_VERBS.includes("export"), false, "every prior (git fast-export, the portable-archive family) teaches export = get my repo/project contents out; a key-bundle answer under that word is a trust-surprise");
+    assert.equal(GIT_VERBS.has("bundle"), true, "git bundle is real — this is exactly why repos never names a verb `bundle`");
+  });
+
   it("`recover` collides with no git or gh verb — `restore` was rejected precisely because IT would have (design D10)", () => {
     assert.equal(GIT_VERBS.has("recover"), false);
     assert.equal(GH_REPO_VERBS.has("recover"), false);
     assert.equal(GIT_VERBS.has("restore"), true, "git restore is real — this is exactly why repos never names a verb `restore`");
+  });
+});
+
+// ─── the source-access tombstone (gitvault-recovery-custody, retired same-day) ─
+//
+// The family shipped in exactly one release (v4.54.0, live for hours) before
+// the one-noun review caught it — a gateway route namespace is not a CLI
+// noun. Same tombstone contract as gitvault above: COMMAND_MOVED for one
+// release, empty stdout, typed next_actions, never re-pointed.
+
+describe("the source-access tombstone — both retired spellings", () => {
+  const RETIRED_SOURCE_ACCESS_SUBS = Object.keys(RESERVED_SUBCOMMANDS)
+    .filter((k) => k.startsWith("source-access:"))
+    .map((k) => k.slice("source-access:".length))
+    .sort();
+
+  async function runSourceAccessAndCaptureFailure(sub) {
+    captureStart();
+    process.exit = (code) => { throw new Error(`process.exit(${code})`); };
+    try {
+      await assert.rejects(() => runSourceAccess(sub, []), /process\.exit/);
+    } finally {
+      captureStop();
+      process.exit = originalExit;
+    }
+    return JSON.parse(stderr.join("\n"));
+  }
+
+  it("both retired spellings are reserved (export + status)", () => {
+    assert.deepEqual(RETIRED_SOURCE_ACCESS_SUBS, ["export", "status"]);
+  });
+
+  const SUCCESSOR = {
+    export: /repos recovery-bundle/,
+    status: /repos access/,
+  };
+
+  for (const sub of ["export", "status"]) {
+    it(`source-access ${sub} — empty stdout, COMMAND_MOVED naming its repos successor`, async () => {
+      const envelope = await runSourceAccessAndCaptureFailure(sub);
+      assert.equal(stdout.length, 0, `source-access ${sub} must print nothing to stdout on a moved spelling`);
+      assert.equal(envelope.status, "error");
+      assert.equal(envelope.code, "COMMAND_MOVED");
+      assert.match(envelope.message, SUCCESSOR[sub]);
+      assert.equal(envelope.details.was, `source-access ${sub}`);
+      assert.ok(Array.isArray(envelope.next_actions) && envelope.next_actions.length > 0);
+      assert.equal(envelope.next_actions[0].type, "use_moved_command");
+      assert.match(envelope.next_actions[0].command, SUCCESSOR[sub]);
+    });
+  }
+
+  it("an unknown source-access spelling says the family itself is retired", async () => {
+    const envelope = await runSourceAccessAndCaptureFailure("enroll");
+    assert.equal(envelope.code, "UNKNOWN_SUBCOMMAND");
+    assert.match(envelope.message, /retired/);
   });
 });

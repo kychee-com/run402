@@ -68,7 +68,6 @@ AUTHORITY — who may act, and with what credential
   auth        Manage project user authentication (magic link, passwords, settings)
   ci          Link GitHub Actions OIDC deploy bindings
   operator    Operator (human/email) session — login, then overview across your wallets
-  source-access Your gitvault member-key wrappers (status) + recovery bundle (export)
 
 DELIVER — reach a human when something happens
   deliveries     Did a notification actually land (list, get)
@@ -86,6 +85,7 @@ PLATFORM — everything else, and the things still finding a home
   cloud       Cloud portability archive export (archives create/download/status)
   archives    Inspect and verify portable project archives locally
   gitvault    RETIRED — moved to repos (repo-surface-consolidation); every spelling answers COMMAND_MOVED/COMMAND_REMOVED
+  source-access RETIRED — moved into repos (recovery-bundle + access); every spelling answers COMMAND_MOVED
   buzz        Buzz human/community/agent control-plane workflows
   apps        Browse and manage the app marketplace
   ai          AI translation and moderation tools

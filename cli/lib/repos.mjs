@@ -1,6 +1,6 @@
 /**
  * `run402 repos` — the consolidated encrypted-repository family. One noun,
- * twelve verbs, each one either a `gh repo` verb, a `git` verb meaning what
+ * thirteen verbs, each one either a `gh repo` verb, a `git` verb meaning what
  * it means in git, or a plain-English verb for an operation with no analog.
  * `repo` singular resolves identically (`cli.mjs` dispatches both spellings
  * here).
@@ -51,7 +51,7 @@ const COMMON_VALUE_FLAGS = ["--project", "--repo"];
 export const HELP = `run402 repos — your source, encrypted before it leaves the machine
 
 Usage:
-  run402 repos <verb> [options] — twelve verbs, tiered by how often you reach for them:
+  run402 repos <verb> [options] — thirteen verbs, tiered by how often you reach for them:
 
 Common:
   run402 repos create [name]  [--org <org_id>] [--dir <path>] [--tier <tier>] [--project <id>]
@@ -67,6 +67,7 @@ Occasional:
   run402 repos mirror   [<destination>] [--off] [--backfill] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--project <id>] [--repo <repo_id>]
   run402 repos recover  <source> --out <dir> [--repo <repo_id>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>]
                         [--bundle <file>] [--code <SRC1-…>] [--receipt <file>] [--rp-id <host>] [--human]
+  run402 repos recovery-bundle [--out <file> | --out -]
 
 Lifecycle:
   run402 repos rename <new_name> [--repo <repo_id> | --project <project_id>]
@@ -174,6 +175,25 @@ Subcommands:
            anchor). A raw WebAuthn PRF output is NOT a supported input; a
            code with no exported bundle refuses by name (a server-side
            wrapper row that was never exported is not offline backup).
+  recovery-bundle
+           Export YOUR member recovery bundle
+           (r402s-member-recovery-bundle/v1): key identity + every ACTIVE
+           wrapper ciphertext — the file \`recover --bundle\` opens with the
+           source recovery code, kept SEPARATELY. A server-side wrapper row
+           alone is NOT offline backup; this export is. Writes
+           run402-source-recovery-bundle-<fingerprint>.json (0600) in the
+           cwd unless \`--out\` says otherwise (\`--out -\` prints only); the
+           full JSON always goes to stdout. Principal-scoped, not
+           repo-scoped (one bundle covers every vault you can read) — auth
+           is your control-plane session (\`run402 operator login
+           --loopback\` first; without one it answers for the active
+           WALLET's agent principal, normally no wrappers, and says so).
+           To make it travel WITH a mirror, copy it to
+           member-recovery-bundles/<name>.json under the mirrored prefix —
+           \`recover\` finds it there automatically. Enrollment/activation/
+           revocation are browser ceremonies: console.run402.com/account.
+           Your own wrapper custody also renders in \`repos access\` (its
+           member_custody block) when a control-plane session is cached.
   fsck     Walks the head chain AND materializes
            the ref map, advancing BOTH
            local trust pins — reported EXPLICITLY as local_state_changed +
@@ -302,7 +322,7 @@ Options:
   --endpoint <url>  mirror / recover: an S3-compatible endpoint override
   --out <dir>       recover: where to materialize the recovered repository
   --bundle <file>   recover: an exported r402s-member-recovery-bundle/v1 (from
-                    \`run402 source-access export\` or the console's download).
+                    \`run402 repos recovery-bundle\` or the console's download).
                     Omit to use the mirror's member-recovery-bundles/ sidecar.
   --code <SRC1-…>   recover: the source recovery code that opens the bundle.
                     Prefer omitting it — with --bundle set it is prompted with
@@ -363,7 +383,8 @@ Examples:
   run402 repos gc
   run402 repos access --human
   run402 repos recover s3://acme-vault-mirror --out ./restored --human
-  run402 repos recover ./mirror-copy --out ./restored --receipt ./recovery-receipt.json --bundle ./run402-source-recovery-bundle.json
+  run402 repos recovery-bundle --out ./bundle.json
+  run402 repos recover ./mirror-copy --out ./restored --receipt ./recovery-receipt.json --bundle ./bundle.json
   run402 repos delete --project prj_xyz --force
 `;
 
@@ -1713,6 +1734,28 @@ function formatAccessHuman(result) {
   return lines.join("\n");
 }
 
+/** One stderr line for the access read's "you" block — your own wrapper custody, or the honest reason it is absent. */
+function printMemberCustodySummary(mc) {
+  if (!mc) return;
+  if (!mc.available) {
+    console.error(`you: (not included — ${mc.reason}) ${mc.hint}`);
+    return;
+  }
+  if (!mc.encryption_key_id) {
+    console.error(`you: ${mc.hint}`);
+    return;
+  }
+  const active = mc.wrappers.filter((w) => w.state === "active");
+  const pending = mc.wrappers.filter((w) => w.state === "pending");
+  console.error(
+    `you: ${mc.ek_fingerprint} (${mc.custody_scheme}, ${mc.state}) — ${active.length} active wrapper(s) [${active.map((w) => w.kind).join(", ") || "none"}]` +
+      (pending.length > 0 ? `, ${pending.length} pending (unfinished enrollment — finish or it expires)` : "") + ".",
+  );
+  if (active.length > 0 && !active.some((w) => w.kind === "recovery_code")) {
+    console.error("you: no recovery_code wrapper — a passkey-only key has no offline/no-server recovery path; add one at console.run402.com/account.");
+  }
+}
+
 async function accessRead(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
@@ -1725,14 +1768,42 @@ async function accessRead(args) {
   const target = await vaultTarget(a);
   try {
     const result = await sdk.gitvault.access(target);
+    // gitvault-recovery-custody — the "you" block: YOUR OWN wrapper custody
+    // (kind/state per wrapper, custody scheme), rendered inside the family's
+    // custody roster read. Principal-scoped, so it needs your control-plane
+    // (human) session; without one it is honestly absent-with-reason rather
+    // than silently missing or misleadingly answered as the agent principal.
+    // Best-effort: an older gateway or a failed read never breaks `access`.
+    const cp = loadLiveControlPlaneSession();
+    if (cp) {
+      try {
+        const mine = await sdk.operator.session.sourceAccessWrappers({ token: cp.control_plane_session_token });
+        result.member_custody = mine.encryption_key
+          ? {
+              available: true,
+              encryption_key_id: mine.encryption_key.encryption_key_id,
+              ek_fingerprint: mine.encryption_key.ek_fingerprint,
+              custody_scheme: mine.encryption_key.custody_scheme,
+              state: mine.encryption_key.state,
+              wrappers: mine.wrappers.map((w) => ({ wrapper_id: w.wrapper_id, kind: w.kind, state: w.state, created_at: w.created_at, activated_at: w.activated_at })),
+            }
+          : { available: true, encryption_key_id: null, hint: "no source-access key enrolled — enroll at console.run402.com/account → Source access." };
+      } catch (e) {
+        result.member_custody = { available: false, reason: e?.code ?? "read_failed", hint: "your own wrapper custody could not be read (older gateway, or the session lacks it)." };
+      }
+    } else {
+      result.member_custody = { available: false, reason: "no_control_plane_session", hint: "run 'run402 operator login --loopback' to include your own wrapper custody here." };
+    }
     if (human) {
       console.log(formatAccessHuman(result));
+      printMemberCustodySummary(result.member_custody);
       printVerboseStats(a, sdk);
       return;
     }
     printJson(sdk, result);
     await spillIfLarge(result.repo_id, "access", result);
     console.error(`${result.recipients.length} directory recipient(s), ${result.recipients.filter((r) => r.covered).length} covered on this repo.`);
+    printMemberCustodySummary(result.member_custody);
     if (result.this_keystore) {
       console.error(`1 covering fingerprint is this machine's own keystore (the vault's writing principal, not in the org directory): ${result.this_keystore.fingerprint}`);
     }
@@ -2036,6 +2107,59 @@ async function recover(args) {
   }
 }
 
+// ─── recovery-bundle (gitvault-recovery-custody — the export half of `recover`) ─
+
+/**
+ * `run402 repos recovery-bundle` — export YOUR member recovery bundle
+ * (`r402s-member-recovery-bundle/v1`): key identity + every ACTIVE wrapper
+ * ciphertext. Together with the source recovery code — kept SEPARATELY —
+ * it is what `repos recover --bundle` opens with no run402 server; a
+ * server-side wrapper row alone is NOT offline backup, this export is.
+ *
+ * Principal-scoped, not repo-scoped (one bundle covers every vault you are
+ * a recipient of) — which is why the auth is your control-plane (human)
+ * session (`run402 operator login --loopback`), not the wallet. Without a
+ * session the request falls back to the active WALLET's agent principal,
+ * which normally holds no wrappers — truthful, with a stderr note saying so.
+ * Enrollment/activation/revocation are browser ceremonies at
+ * console.run402.com/account → Source access; this verb is read-only.
+ */
+function sourceAccessTokenOpts(commandLabel) {
+  const cp = loadLiveControlPlaneSession();
+  if (!cp) {
+    console.error(
+      `no control-plane (human) session — ${commandLabel} will answer for the active WALLET's agent principal, which normally holds no wrappers. Run 'run402 operator login --loopback' to act as yourself.`,
+    );
+    return {};
+  }
+  return { token: cp.control_plane_session_token };
+}
+
+async function recoveryBundle(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, ["--out", "--json", "--help", "-h", "-v", "--verbose"], ["--out"]);
+  requirePositionalCount(a, ["--out"], { min: 0, max: 0, command: "run402 repos recovery-bundle", missing: "" });
+  const out = flagValue(a, "--out");
+  const sdk = getSdk();
+  try {
+    const bundle = await sdk.operator.session.sourceAccessRecoveryBundle(sourceAccessTokenOpts("recovery-bundle"));
+    // Full JSON to stdout regardless — the pipe contract is sacred; the file
+    // is the keep-a-copy convenience (0600 — the bundle is ciphertext the
+    // platform cannot open, but it is still half of a recovery credential).
+    console.log(JSON.stringify({ ...bundle, stats: sdkStats(sdk) }, null, 2));
+    if (out !== "-") {
+      const path = out ?? `run402-source-recovery-bundle-${(bundle.ek_fingerprint || "key").slice(0, 11)}.json`;
+      writeFileSync(path, JSON.stringify(bundle, null, 2) + "\n", { mode: 0o600 });
+      console.error(`bundle written to ${path} (0600).`);
+    }
+    console.error("keep this bundle SEPARATELY from your source recovery code — together they are equivalent to your member private key.");
+    console.error("to make it travel with a vault mirror: copy it to member-recovery-bundles/<name>.json under the mirrored prefix; `run402 repos recover` finds it there.");
+    printVerboseStats(a, sdk);
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 // ─── dispatch ───────────────────────────────────────────────────────────────
 
 export async function run(sub, args) {
@@ -2091,6 +2215,10 @@ export async function run(sub, args) {
     }
     case "recover": {
       await recover(argv);
+      break;
+    }
+    case "recovery-bundle": {
+      await recoveryBundle(argv);
       break;
     }
     default:
