@@ -10,6 +10,11 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, symlinkSync, rmSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   planInvocation,
   liveTails,
@@ -143,6 +148,30 @@ describe("help / version / resolution", () => {
     );
     assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g @kychee\/kygit/);
     assert.match(RESOLVE_FAIL_MESSAGE, /npm i -g run402/);
+  });
+
+  it("runs main() when invoked through a bin-style SYMLINK (the 0.1.0 regression)", () => {
+    // npm installs bins as symlinks; a main-guard that compares the symlink
+    // path to import.meta.url makes every installed invocation a silent
+    // no-op with exit 0. Invoke through a symlink and demand real output.
+    const dir = mkdtempSync(join(tmpdir(), "kygit-symlink-"));
+    try {
+      const link = join(dir, "kygit");
+      symlinkSync(realpathSync(fileURLToPath(new URL("./kygit.mjs", import.meta.url))), link);
+      const out = execFileSync(process.execPath, [link, "--version"], { encoding: "utf8" });
+      assert.match(out, /^kygit \d+\.\d+\.\d+ \(run402 /);
+      let refused = null;
+      try {
+        execFileSync(process.execPath, [link, "deploy"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      } catch (e) {
+        refused = { code: e.status, err: String(e.stderr) };
+      }
+      assert.ok(refused, "deploy must refuse, not exit 0 silently");
+      assert.equal(refused.code, 1);
+      assert.match(refused.err, /run402 deploy/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("resolves the REAL workspace sibling (parity is by construction)", () => {

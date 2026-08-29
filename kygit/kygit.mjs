@@ -23,7 +23,7 @@
  * No git-remote-kygit, no `kygit::` scheme, ever (design D4).
  */
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -176,6 +176,20 @@ async function main() {
   });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Guard so tests can import without executing — but npm installs the bin as
+// a SYMLINK (node_modules/.bin/kygit -> kygit.mjs), while import.meta.url is
+// the REAL path, so the comparison must realpath argv[1] or every installed
+// invocation is a silent no-op (the 0.1.0 bug, caught by the cold-install
+// smoke on 2026-08-30).
+function invokedDirectly() {
+  if (!process.argv[1]) return false;
+  try {
+    return pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url;
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   await main();
 }
