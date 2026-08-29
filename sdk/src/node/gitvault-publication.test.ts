@@ -53,6 +53,7 @@ import {
 } from "./gitvault-publication.js";
 import { GITVAULT_DEPLOY_REF, hasObject } from "./gitvault-snapshot.js";
 import { commitFile, git, makeVault, type VaultFixture } from "./gitvault-memory-transport.test.js";
+import { GitvaultKeystore } from "./gitvault-keystore.js";
 
 // ─── Vector loading (same contract as the crypto suite) ──────────────────────
 
@@ -1289,5 +1290,97 @@ vectors("vector coverage tally", () => {
     summary.chain = "1/5 (chain-001..004 are the crypto suite's)";
     // eslint-disable-next-line no-console
     console.log(`gitvault publication vectors rev ${vectorFile!["x-r402s-revision"]}: ${JSON.stringify(summary)}`);
+  });
+});
+
+// ─── gitvault-clone-scaling: page-batched walk fidelity + checkpoint staleness ─
+
+describe("gitvault-clone-scaling — the batched page walk keeps unbatched failure fidelity", () => {
+  /** A vault with 3 generations (main + two ref-only branches) and a COLD second keystore — the clone shape, and enough heads that the page prefetch engages (single-miss pages skip it). */
+  const coldFixture = async () => {
+    const f = await makeVault();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/b1", expected_old_oid: null, new_oid: c1, force: false }] } });
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/b2", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const repo = f.keystore.readRepo(f.repoId)!;
+    const coldKeystore = GitvaultKeystore.open({ rootDir: join(f.root, "ks-cold") });
+    coldKeystore.ensureIdentity();
+    coldKeystore.saveRepo({
+      repo_id: f.repoId, org_id: repo.org_id, project_id: repo.project_id,
+      k_repo_hex: repo.k_repo_hex, epoch: repo.epoch, genesis_sha256: repo.genesis_sha256,
+      head_pin: null, last_ref_transaction: null, provenance: "restored_from_envelope",
+    });
+    return { ...f, coldKeystore };
+  };
+
+  it("a head whose stored bytes were substituted fails CHAIN_BROKEN through the batch, exactly as unbatched", async (t) => {
+    const f = await coldFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    // Parse-valid tamper (flip one signature character) so the failure
+    // lands in checkChainLink — the ordered walk's own envelope — rather
+    // than strict-parse. The listing recomputes the tampered hash, so the
+    // batch dutifully caches these bytes and the LOOP is what rejects them,
+    // byte-identically to the unbatched walk.
+    const key = `${f.repoId}/${gitvaultPaths.head("0000000000000002")}`;
+    const text = new TextDecoder().decode(f.transport.objects.get(key)!);
+    const sig = /"signature":"([A-Za-z0-9_-]+)"/.exec(text)!;
+    const flipped = (sig[1]![0] === "A" ? "B" : "A") + sig[1]!.slice(1);
+    f.transport.objects.set(key, new TextEncoder().encode(text.replace(sig[1]!, flipped)));
+    const cold = GitvaultVault.open({ keystore: f.coldKeystore, transport: f.transport, repo_id: f.repoId, repo_dir: null });
+    await rejectsCode(cold.materialize(), "CHAIN_BROKEN");
+  });
+
+  it("a batch that LIES about one head (bytes ≠ the listing's hash) self-heals: the entry stays uncached and the ordered walk's own read succeeds", async (t) => {
+    const f = await coldFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const lyingPath = gitvaultPaths.head("0000000000000002");
+    const lying = new Proxy(f.transport, {
+      get(target, prop, receiver) {
+        if (prop === "getObjects") {
+          return async (req: { repo_id: string; paths: string[] }) => {
+            const real = await target.getObjects(req);
+            return real.map((bytes, i) => {
+              if (req.paths[i] !== lyingPath || !bytes) return bytes;
+              const corrupt = new Uint8Array(bytes);
+              corrupt[0] = corrupt[0]! ^ 0xff;
+              return corrupt;
+            });
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const cold = GitvaultVault.open({ keystore: f.coldKeystore, transport: lying, repo_id: f.repoId, repo_dir: null });
+    f.transport.calls.length = 0;
+    const m = await cold.materialize();
+    assert.deepEqual(Object.keys(m.refs).sort(), ["refs/heads/b1", "refs/heads/b2", "refs/heads/main"]);
+    assert.ok(
+      f.transport.calls.some((c) => c === `get:${lyingPath}`),
+      `the ordered loop re-read the lied-about head itself — calls: ${f.transport.calls.filter((c) => c.startsWith("get:")).join(", ")}`,
+    );
+  });
+
+  it("a completed genesis-anchored walk persists genesis checkpoint coverage; push results carry the staleness; a checkpoint push resets it", async (t) => {
+    const f = await coldFixture();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    // The cold walk saw no checkpoint but anchored at genesis — that IS
+    // proof of coverage, and the keystore learns it.
+    const cold = GitvaultVault.open({ keystore: f.coldKeystore, transport: f.transport, repo_id: f.repoId, repo_dir: null });
+    await cold.materialize();
+    assert.equal(f.coldKeystore.readRepo(f.repoId)!.checkpoint_covers_through, "0000000000000000");
+
+    // WAL pushes climb the staleness against that coverage…
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    const r4 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/b3", expected_old_oid: null, new_oid: c1, force: false }] } });
+    assert.equal(r4.form, "wal");
+    assert.deepEqual(r4.checkpoint_staleness, { generations_since_checkpoint: 4, advised: false });
+
+    // …and a checkpoint-form push is fresh first-hand coverage: staleness 0.
+    const r5 = await f.vault.push({ checkpoint: true, transaction: { updates: [{ ref: "refs/heads/b4", expected_old_oid: null, new_oid: c1, force: false }] } });
+    assert.equal(r5.form, "checkpoint");
+    assert.deepEqual(r5.checkpoint_staleness, { generations_since_checkpoint: 0, advised: false });
+    assert.equal(f.keystore.readRepo(f.repoId)!.checkpoint_covers_through, r5.generation);
   });
 });

@@ -85,6 +85,7 @@ import {
   verifyGitvaultObject,
 } from "../namespaces/gitvault.crypto.js";
 import { GITVAULT_ZERO_SHA256_SENTINEL } from "../namespaces/gitvault.types.js";
+import { gitvaultCheckpointStaleness, type GitvaultCheckpointStaleness } from "../namespaces/gitvault.js";
 import type {
   GitvaultActivationToken,
   GitvaultAllocation,
@@ -1899,6 +1900,13 @@ export interface GitvaultPublishResult {
   form: "wal" | "checkpoint";
   conflicts_retried: number;
   refs: GitvaultRefMap;
+  /**
+   * gitvault-clone-scaling (P3): generations-since-checkpoint against the
+   * coverage this checkout has locally learned (`{0, false}` when unknown
+   * — see the keystore field's doc). Advisory data only; consumers echo,
+   * never gate.
+   */
+  checkpoint_staleness: GitvaultCheckpointStaleness;
 }
 
 /** {@link GitvaultVault.rotateEpoch}'s result (D193-D203, rev 42). */
@@ -2034,6 +2042,22 @@ export class GitvaultVault {
   readonly repoDir: string | null;
   private readonly now: () => Date;
   private readonly budget: number;
+  /**
+   * gitvault-clone-scaling (bench P2): the CURRENT listing page's batched
+   * bytes — head bytes and carrier frames, keyed by storage path — filled
+   * by `verifyToNewest`'s per-page prefetch and consulted by
+   * {@link readCachedHeadBytes} / {@link openMaterializeCarriers} before
+   * they pay a network read. Transient (REPLACED each page, so memory is
+   * bounded by one listing page) and UNTRUSTED: every consumer sha-checks
+   * an entry against the exact value it would check network bytes against
+   * (the listing's `stored_bytes_sha256`, a receipt's `ciphertext_sha256`),
+   * the same discipline as the keystore object cache — a wrong or stale
+   * entry is a MISS, never a verification bypass. Deliberately NOT the
+   * keystore cache: that cache's eviction window is a handful of newest
+   * generations by design, so routing a whole page through it would evict
+   * the very bytes the ordered walk is about to read.
+   */
+  private walkPrefetch: Map<string, Uint8Array> | null = null;
   private readonly retries: number;
   private readonly servicePublicKey: Uint8Array | string | null;
   private genesisCache: { genesis: GitvaultVaultGenesis; sha256: string } | null = null;
@@ -2083,6 +2107,18 @@ export class GitvaultVault {
 
   private kRepo(): Uint8Array { return hexToBytes(this.repoFile().k_repo_hex); }
   private epoch(): string { return this.repoFile().epoch; }
+
+  /**
+   * gitvault-clone-scaling (P3): staleness of the newest checkpoint coverage
+   * this checkout has locally learned, measured at `newestGeneration`. Reads
+   * the keystore AFTER the caller's own persist (a checkpoint-form push has
+   * already recorded its fresh coverage by the time its result is built), so
+   * a compacting push reports itself current. Pure + never-throwing by way of
+   * the helper; unknown coverage reads as `{0, advised: false}` — silent.
+   */
+  private checkpointStalenessNow(newestGeneration: string): GitvaultCheckpointStaleness {
+    return gitvaultCheckpointStaleness({ newest_generation: newestGeneration, covers_through_generation: this.repoFile().checkpoint_covers_through ?? null });
+  }
 
   private git(): string {
     if (!this.repoDir) fail("GITVAULT_REPO_DIR_REQUIRED", "this operation needs the local git repository (repo_dir)", "gitvault publication");
@@ -2289,6 +2325,12 @@ export class GitvaultVault {
     let request: GitvaultHeadsListingRequest = { after_generation: anchor, limit: String(GITVAULT_MAX_HEADS_PER_LISTING_PAGE) };
     let verified = 0;
     const rotations: GitvaultEncounteredRotation[] = [];
+    // gitvault-clone-scaling (P3): coverage this walk LEARNS. A checkpoint
+    // head names it outright; a walk anchored at GENESIS that completes
+    // without seeing one proves coverage = genesis. A partial (non-genesis)
+    // walk that sees none proves nothing and persists nothing.
+    let walkCheckpointCoverage: string | null = null;
+    const walkedFromGenesis = anchor === GITVAULT_GENESIS_GENERATION;
     // Consumed by (at most) the FIRST for(;;) iteration below — a listHeads
     // page this call never had to ask the network for, because the state
     // read above already proved it (0 entries: pin already current; 1 entry:
@@ -2395,6 +2437,76 @@ export class GitvaultVault {
           : await this.transport.listHeads({ repo_id: this.repoId, ...request });
       syntheticEntries = null;
       progress = verifyHeadsListingPage(page, request, progress, this.repoId);
+      // gitvault-clone-scaling (bench P2): the page just verified names every
+      // entry's generation + stored_bytes_sha256, and the BYTES reads are
+      // independent — verification (and decryption) order is a LOCAL
+      // obligation. Two batched getObjects per page (the same D2 machinery
+      // the restore pack fetches ride), bounded by the remaining
+      // verification budget, replace this page's per-head serial reads:
+      // first the cache-missing HEAD bytes, then — the same split one level
+      // deeper — the ref_state/retention_roots FRAMES each decrypt-validated
+      // head will open (their paths + expected ciphertext hashes parse out
+      // of the head bytes just fetched; parsing is local CPU). Results land
+      // in the transient `walkPrefetch` map (NOT the keystore cache — its
+      // eviction window is smaller than a page; see the field's doc).
+      // Failure fidelity: only a hash-matching result is kept — an absent,
+      // mismatched, or unparseable entry (or a batch that fails outright)
+      // leaves its slot empty, and the ordered loop's own per-head reads
+      // reproduce the exact unbatched envelopes. Single-miss sets skip the
+      // batch (one direct read costs the same).
+      {
+        const prefetch = new Map<string, Uint8Array>();
+        this.walkPrefetch = prefetch;
+        try {
+          const wanted = page.heads.slice(0, Math.max(0, this.budget - verified));
+          const cachedHeadIfMatching = (e: GitvaultHeadsListingEntry): Uint8Array | null => {
+            const cached = this.keystore.readCachedHead(this.repoId, e.generation);
+            return cached && sha256Hex(cached.bytes) === e.stored_bytes_sha256 ? cached.bytes : null;
+          };
+          const missingHeads = wanted.filter((e) => cachedHeadIfMatching(e) === null);
+          if (missingHeads.length > 1) {
+            const fetched = await this.transport.getObjects({ repo_id: this.repoId, paths: missingHeads.map((e) => gitvaultPaths.head(e.generation)) });
+            for (let i = 0; i < missingHeads.length; i++) {
+              const e = missingHeads[i]!;
+              const bytes = fetched[i] ?? null;
+              if (bytes && sha256Hex(bytes) === e.stored_bytes_sha256) prefetch.set(gitvaultPaths.head(e.generation), bytes);
+            }
+          }
+          if (decryptValidate && wanted.length > 1) {
+            const carriers: Array<{ path: string; sha: string }> = [];
+            for (const e of wanted) {
+              const headBytes = prefetch.get(gitvaultPaths.head(e.generation)) ?? cachedHeadIfMatching(e);
+              if (!headBytes) continue;
+              let parsed: GitvaultHead;
+              try {
+                parsed = parseGitvaultStrict(new TextDecoder().decode(headBytes)) as GitvaultHead;
+              } catch {
+                continue; // the ordered loop's checkChainLink owns rejecting it
+              }
+              for (const w of [
+                { receipt: parsed.ref_state, path: gitvaultPaths.refState(parsed.ref_state.object_id) },
+                { receipt: parsed.retention_roots, path: gitvaultPaths.retentionRoots(parsed.retention_roots.object_id) },
+              ]) {
+                const cached = this.keystore.readCachedCarrier(this.repoId, w.receipt.object_id);
+                if (cached && sha256Hex(cached.bytes) === w.receipt.ciphertext_sha256) continue;
+                carriers.push({ path: w.path, sha: w.receipt.ciphertext_sha256 });
+              }
+            }
+            if (carriers.length > 1) {
+              const fetched = await this.transport.getObjects({ repo_id: this.repoId, paths: carriers.map((c) => c.path) });
+              for (let i = 0; i < carriers.length; i++) {
+                const bytes = fetched[i] ?? null;
+                if (bytes && sha256Hex(bytes) === carriers[i]!.sha) prefetch.set(carriers[i]!.path, bytes);
+              }
+            }
+          }
+        } catch {
+          // A batch that fails OUTRIGHT (network, not a per-slot null) must
+          // not introduce a failure mode the unbatched walk never had — the
+          // ordered loop below re-reads what it needs itself and fails (or
+          // succeeds, if the fault was transient) with its own envelopes.
+        }
+      }
       for (const entry of page.heads) {
         if (verified >= this.budget) {
           if (persist) this.keystore.updateRepo(this.repoId, { verified_prefix: pin });
@@ -2435,6 +2547,7 @@ export class GitvaultVault {
         prevEpoch = head.epoch;
         pin = { generation: head.generation, head_sha256: entry.stored_bytes_sha256, pinned_at: formatGitvaultTimestamp(this.now()) };
         lastHead = head;
+        if (head.checkpoint) walkCheckpointCoverage = head.checkpoint.covers_through_generation;
         verified += 1;
 
         // The chain walk ALWAYS continues below regardless of decrypt
@@ -2450,6 +2563,14 @@ export class GitvaultVault {
       const next = nextListingRequest(request, page);
       if (!next) break;
       request = next;
+    }
+    // P3: reaching here means the walk COMPLETED (a budget pause throws
+    // above) — persist whatever coverage it proved. A genesis-anchored walk
+    // is authoritative for its whole history, so no checkpoint seen means
+    // coverage = genesis, honestly.
+    if (persist) {
+      const learned = walkCheckpointCoverage ?? (walkedFromGenesis ? GITVAULT_GENESIS_GENERATION : null);
+      if (learned !== null) this.keystore.updateRepo(this.repoId, { checkpoint_covers_through: learned });
     }
     // Catch-up: a call with NOTHING new to walk (this repo's chain-verified
     // pin was already at `pin`/`lastHead` — e.g. an EARLIER, decrypt-blind
@@ -2543,7 +2664,16 @@ export class GitvaultVault {
   private async readCachedHeadBytes(generation: string, expectedSha256: string): Promise<Uint8Array | null> {
     const cached = this.keystore.readCachedHead(this.repoId, generation);
     if (cached && sha256Hex(cached.bytes) === expectedSha256) return cached.bytes;
-    const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.head(generation) });
+    // gitvault-clone-scaling (P2): a page-prefetched head serves exactly as
+    // a network fetch would — sha-checked here against the SAME expected
+    // value, then cache-warmed. A miss/mismatch falls through to the read.
+    const path = gitvaultPaths.head(generation);
+    const prefetched = this.walkPrefetch?.get(path);
+    if (prefetched && sha256Hex(prefetched) === expectedSha256) {
+      this.keystore.writeCachedHead(this.repoId, generation, expectedSha256, prefetched);
+      return prefetched;
+    }
+    const bytes = await this.transport.getObject({ repo_id: this.repoId, path });
     if (bytes && sha256Hex(bytes) === expectedSha256) this.keystore.writeCachedHead(this.repoId, generation, expectedSha256, bytes);
     return bytes;
   }
@@ -2644,14 +2774,21 @@ export class GitvaultVault {
     const cachedRoots = this.keystore.readCachedCarrier(this.repoId, rootsReceipt.object_id);
     const refStateHit = Boolean(cachedRefState && sha256Hex(cachedRefState.bytes) === refStateReceipt.ciphertext_sha256);
     const rootsHit = Boolean(cachedRoots && sha256Hex(cachedRoots.bytes) === rootsReceipt.ciphertext_sha256);
+    // gitvault-clone-scaling (P2): a page-prefetched frame serves exactly as
+    // a fetched one — sha-checked against the receipt's ciphertext hash; a
+    // miss/mismatch falls through to the batched network read below.
+    const preRefState = !refStateHit ? (this.walkPrefetch?.get(refStatePath) ?? null) : null;
+    const refStatePre = preRefState && sha256Hex(preRefState) === refStateReceipt.ciphertext_sha256 ? preRefState : null;
+    const preRoots = !rootsHit ? (this.walkPrefetch?.get(rootsPath) ?? null) : null;
+    const rootsPre = preRoots && sha256Hex(preRoots) === rootsReceipt.ciphertext_sha256 ? preRoots : null;
 
     const missingPaths: string[] = [];
-    if (!refStateHit) missingPaths.push(refStatePath);
-    if (!rootsHit) missingPaths.push(rootsPath);
+    if (!refStateHit && !refStatePre) missingPaths.push(refStatePath);
+    if (!rootsHit && !rootsPre) missingPaths.push(rootsPath);
     const fetched = missingPaths.length > 0 ? await this.transport.getObjects({ repo_id: this.repoId, paths: missingPaths }) : [];
     let next = 0;
-    const refStateFrame = refStateHit ? cachedRefState!.bytes : (fetched[next++] ?? null);
-    const rootsFrame = rootsHit ? cachedRoots!.bytes : (fetched[next++] ?? null);
+    const refStateFrame = refStateHit ? cachedRefState!.bytes : (refStatePre ?? fetched[next++] ?? null);
+    const rootsFrame = rootsHit ? cachedRoots!.bytes : (rootsPre ?? fetched[next++] ?? null);
 
     const refState = this.decodeCarrierFrame<GitvaultRefState>("ref_state", refStateReceipt, refStateFrame, writerKey, keyOverride);
     const roots = this.decodeCarrierFrame<GitvaultRetentionRoots>("retention_roots", rootsReceipt, rootsFrame, writerKey, keyOverride);
@@ -3292,7 +3429,7 @@ export class GitvaultVault {
       // narrows `published` to `"admitted"` for the return below.
       if (published.outcome === "dry_run") fail("GIT_COMMAND_FAILED", "internal: push() received a dry-run result it never requested", "publishing gitvault head");
       this.keystore.updateRepo(this.repoId, { last_ref_transaction: { generation: published.generation, transaction: options.transaction, at: formatGitvaultTimestamp(this.now()) } });
-      return { generation: published.generation, head_sha256: published.head_sha256, head: published.head, admission_record_sha256: published.admission_record_sha256, capture_receipt: published.capture_receipt, form: published.form, conflicts_retried: conflicts, refs: published.refs };
+      return { generation: published.generation, head_sha256: published.head_sha256, head: published.head, admission_record_sha256: published.admission_record_sha256, capture_receipt: published.capture_receipt, form: published.form, conflicts_retried: conflicts, refs: published.refs, checkpoint_staleness: this.checkpointStalenessNow(published.generation) };
     }
   }
 
@@ -3381,7 +3518,7 @@ export class GitvaultVault {
       // `publishCheckpoint` never sets `dry_run`, so this outcome is
       // unreachable here — narrows `published` to `"admitted"` below.
       if (published.outcome === "dry_run") fail("GIT_COMMAND_FAILED", "internal: publishCheckpoint() received a dry-run result it never requested", "publishing gitvault checkpoint");
-      return { generation: published.generation, head_sha256: published.head_sha256, head: published.head, admission_record_sha256: published.admission_record_sha256, capture_receipt: published.capture_receipt, form: published.form, conflicts_retried: conflicts, refs: published.refs };
+      return { generation: published.generation, head_sha256: published.head_sha256, head: published.head, admission_record_sha256: published.admission_record_sha256, capture_receipt: published.capture_receipt, form: published.form, conflicts_retried: conflicts, refs: published.refs, checkpoint_staleness: this.checkpointStalenessNow(published.generation) };
     }
   }
 
@@ -3448,7 +3585,14 @@ export class GitvaultVault {
     // generation's head entirely.
     this.keystore.writeCachedHead(this.repoId, head.generation, hash, back);
     const pin: GitvaultHeadPin = { generation: head.generation, head_sha256: hash, pinned_at: formatGitvaultTimestamp(this.now()) };
-    this.keystore.updateRepo(this.repoId, { head_pin: pin, materialized_pin: pin, verified_prefix: null });
+    this.keystore.updateRepo(this.repoId, {
+      head_pin: pin,
+      materialized_pin: pin,
+      verified_prefix: null,
+      // gitvault-clone-scaling (P3): a checkpoint-form head IS fresh
+      // coverage this checkout just learned first-hand.
+      ...(head.checkpoint ? { checkpoint_covers_through: head.checkpoint.covers_through_generation } : {}),
+    });
     return { outcome: "admitted", head_sha256: hash, admission_record_sha256: result.admission_record_sha256, capture_receipt: result.capture_receipt };
   }
 
@@ -3623,7 +3767,7 @@ export class GitvaultVault {
       // predecessor manifest back to compute confirmed() (D196) — resolves
       // it locally instead of a network object-reads round trip.
       this.keystore.updateRepo(this.repoId, { known_pin_manifest: { pin_manifest_version: nextVersion, stored_bytes_sha256: manifestSha, pins } });
-      return { generation, head_sha256: admitted.head_sha256, head, admission_record_sha256: admitted.admission_record_sha256, capture_receipt: admitted.capture_receipt, form: "wal", conflicts_retried: conflicts, refs: base.refs };
+      return { generation, head_sha256: admitted.head_sha256, head, admission_record_sha256: admitted.admission_record_sha256, capture_receipt: admitted.capture_receipt, form: "wal", conflicts_retried: conflicts, refs: base.refs, checkpoint_staleness: this.checkpointStalenessNow(generation) };
     }
   }
 
@@ -4048,7 +4192,7 @@ export class GitvaultVault {
     });
     const admitted = await this.admit(head);
     if (admitted.outcome === "conflict") fail("HEAD_CAS_CONFLICT", "a different head was admitted while the repair was being prepared", "publishing repair head", { winner: admitted.winner }, [{ action: "verify the attached winner from storage, rebase, retry" }]);
-    return { generation: repairGen, head_sha256: admitted.head_sha256, head, admission_record_sha256: admitted.admission_record_sha256, capture_receipt: null, form: "checkpoint", conflicts_retried: 0, refs: repairedRefs };
+    return { generation: repairGen, head_sha256: admitted.head_sha256, head, admission_record_sha256: admitted.admission_record_sha256, capture_receipt: null, form: "checkpoint", conflicts_retried: 0, refs: repairedRefs, checkpoint_staleness: this.checkpointStalenessNow(repairGen) };
   }
 
   /** Heads `base..newest` (already chain-verified by `verifyToNewest`) re-read + hash-checked from storage. */
@@ -4120,6 +4264,49 @@ export class GitvaultVault {
     const heads: GitvaultHead[] = [];
     let cur: GitvaultHead | null = newest.head;
     let incremental = marker !== null;
+    // gitvault-clone-scaling (bench P2): the backward walk's head PATHS are
+    // all derivable up front (generation N−1, N−2, …) — only each head's
+    // expected hash arrives chain-sequentially. Same fetch-concurrent /
+    // verify-ordered split as the forward walk: page-sized windows of
+    // predecessor head bytes batch into the transient `walkPrefetch` map
+    // (use-time sha-checked by `readCachedHeadBytes`; a miss, mismatch, or
+    // failed batch falls back to that read's own single fetch), refilled as
+    // the walk descends past the window floor. The floor ESTIMATE — the
+    // marker on the incremental path, else locally learned checkpoint
+    // coverage, else genesis — only bounds over-fetch; the walk's own stop
+    // conditions are unchanged, and a wrong estimate costs at most one
+    // window of concurrent GETs, never correctness.
+    let prefetchFloor: bigint | null = null;
+    const prefetchBackwardWindow = async (hi: bigint): Promise<void> => {
+      let lo = 1n;
+      if (incremental && marker) lo = generationToBigInt(marker.generation) + 1n;
+      else {
+        const known = this.repoFile().checkpoint_covers_through;
+        if (known && /^[0-9a-f]{16}$/.test(known)) {
+          const k = generationToBigInt(known);
+          if (k > lo) lo = k;
+        }
+      }
+      const capLo = hi - BigInt(GITVAULT_MAX_HEADS_PER_LISTING_PAGE) + 1n;
+      if (capLo > lo) lo = capLo;
+      if (lo < 1n) lo = 1n;
+      prefetchFloor = lo;
+      if (hi - lo < 1n) return; // 0 or 1 path — a single read costs the same
+      const gens: string[] = [];
+      for (let g = hi; g >= lo; g--) gens.push(bigIntToGeneration(g));
+      try {
+        const fetched = await this.transport.getObjects({ repo_id: this.repoId, paths: gens.map((g) => gitvaultPaths.head(g)) });
+        const map = new Map<string, Uint8Array>();
+        for (let i = 0; i < gens.length; i++) {
+          const b = fetched[i];
+          if (b) map.set(gitvaultPaths.head(gens[i]!), b);
+        }
+        this.walkPrefetch = map;
+      } catch {
+        // Fidelity: an outright batch failure leaves the map alone — the
+        // walk's own per-head reads take over with their own envelopes.
+      }
+    };
     while (cur) {
       // `cur` disqualifies incremental (checked BEFORE including it): abort
       // and restart as the wholesale walk. Re-visiting heads already fetched
@@ -4136,11 +4323,13 @@ export class GitvaultVault {
       // Before fetching `cur`'s predecessor, check whether the marker
       // already names it — a pure LOCAL comparison against bytes this
       // client already applied last time, no network round trip.
-      const prevGen = bigIntToGeneration(generationToBigInt(cur.generation) - 1n);
+      const prevBig = generationToBigInt(cur.generation) - 1n;
+      const prevGen = bigIntToGeneration(prevBig);
       if (incremental && cur.prev_sha256 === marker!.head_sha256 && prevGen === marker!.generation) {
         cur = null; // the predecessor is the marker's own head — already applied; `heads` already holds everything above it
         break;
       }
+      if (prefetchFloor === null || prevBig < prefetchFloor) await prefetchBackwardWindow(prevBig);
       const bytes = await this.readCachedHeadBytes(prevGen, cur.prev_sha256);
       if (!bytes || sha256Hex(bytes) !== cur.prev_sha256) fail("CHAIN_BROKEN", `head ${prevGen} does not match the chain during restore`, "restoring gitvault objects");
       cur = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;

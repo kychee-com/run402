@@ -2764,6 +2764,43 @@ export const GITVAULT_LOSS_WARNING_THRESHOLDS = {
   days_since_genesis: 14,
 } as const;
 
+/**
+ * gitvault-clone-scaling (bench P3): generations-since-checkpoint at or
+ * above this advises `run402 repos gc`. Same one-place-to-tune convention
+ * as {@link GITVAULT_LOSS_WARNING_THRESHOLDS}; an advisory, never a gate.
+ */
+export const GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS = 25;
+
+/** {@link gitvaultCheckpointStaleness}'s result. */
+export interface GitvaultCheckpointStaleness {
+  generations_since_checkpoint: number;
+  advised: boolean;
+}
+
+/**
+ * Pure staleness computation over two 16-hex generations. TOTAL: garbage
+ * or unknown coverage (`null`) yields `{0, advised: false}` — advisory
+ * call sites must never be able to break a verb, so unparseable input is
+ * silence, not an error. Coverage `null` means "this checkout has not
+ * locally learned the vault's checkpoint coverage" (see the keystore's
+ * `checkpoint_covers_through` doc), which is deliberately indistinguishable
+ * from fresh here.
+ */
+export function gitvaultCheckpointStaleness(input: { newest_generation: string; covers_through_generation: string | null }): GitvaultCheckpointStaleness {
+  try {
+    if (input.covers_through_generation === null) return { generations_since_checkpoint: 0, advised: false };
+    if (!/^[0-9a-f]{16}$/.test(input.newest_generation) || !/^[0-9a-f]{16}$/.test(input.covers_through_generation)) {
+      return { generations_since_checkpoint: 0, advised: false };
+    }
+    const newest = BigInt(`0x${input.newest_generation}`);
+    const covered = BigInt(`0x${input.covers_through_generation}`);
+    const since = newest > covered ? Number(newest - covered) : 0;
+    return { generations_since_checkpoint: since, advised: since >= GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS };
+  } catch {
+    return { generations_since_checkpoint: 0, advised: false };
+  }
+}
+
 /** Which composite metric(s) crossed their D7 threshold, if any. */
 export interface GitvaultLossWarningTrip {
   generations: boolean;

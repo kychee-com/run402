@@ -29,13 +29,14 @@
  * would overfit to that fixture limitation.
  */
 
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitvaultVault } from "./gitvault-publication.js";
+import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
 import { GitvaultOpCounter, assertOpBudget, countingGitvaultTransport } from "./gitvault-transport-counter.test-helper.js";
@@ -159,5 +160,77 @@ describe("gitvault round-trip budgets (client-surface spec's counted contract)",
     const restored = await vault.restoreObjectsInto(target);
     assert.deepEqual(restored.refs, { "refs/heads/main": c1 });
     assertOpBudget(counter, 2, "up-to-date fetch");
+  });
+});
+
+// ─── gitvault-clone-scaling (bench P2): the catch-up walk is page-bounded ────
+
+describe("gitvault chain catch-up budget (gitvault-clone-scaling)", () => {
+  /** One shared 251-generation vault (main + 250 ref-only branches — empty object deltas, so generation count is the ONLY thing growing). Built once; both scenarios below read it without mutating vault state. */
+  let f: Awaited<ReturnType<typeof makeVault>>;
+  before(async () => {
+    f = await makeVault();
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    for (let i = 1; i <= 250; i++) {
+      const ref = `refs/heads/b${String(i).padStart(3, "0")}`;
+      await f.vault.push({ transaction: { updates: [{ ref, expected_old_oid: null, new_oid: c1, force: false }] } });
+    }
+  });
+  after(() => rmSync(f.root, { recursive: true, force: true }));
+
+  it("a 251-generation cold-cache catch-up batches each page's head bytes and carrier frames: singles do not scale with G", async () => {
+    // A cold checkout: the repo keys without any pin or cached heads — the
+    // clone shape (same seeding the epoch-reader fixture uses).
+    const repo = f.keystore.readRepo(f.repoId)!;
+    const coldKeystore = GitvaultKeystore.open({ rootDir: join(f.root, "ks-cold") });
+    coldKeystore.ensureIdentity();
+    coldKeystore.saveRepo({
+      repo_id: f.repoId, org_id: repo.org_id, project_id: repo.project_id,
+      k_repo_hex: repo.k_repo_hex, epoch: repo.epoch, genesis_sha256: repo.genesis_sha256,
+      head_pin: null, last_ref_transaction: null, provenance: "restored_from_envelope",
+    });
+    const counter = new GitvaultOpCounter();
+    const cold = GitvaultVault.open({ keystore: coldKeystore, transport: countingGitvaultTransport(f.transport, counter), repo_id: f.repoId, repo_dir: null });
+    const m = await cold.materialize();
+    assert.equal(Object.keys(m.refs).length, 251, "the walk really covered all 251 generations");
+
+    const byKind = counter.byKind();
+    // The page-bounded contract, in this counter's own units: ⌈251/1000⌉ = 1
+    // listing page → TWO batched presigns (head bytes, then the carrier
+    // frames their decrypts open — batch GETs are concurrent, so they grow
+    // the op COUNT with G but never the sequenced round-trip depth), and
+    // per-head SINGLE reads must not scale with G. The pre-P2 walk paid
+    // ~251 sequenced single head reads PLUS ~251 sequenced per-head carrier
+    // presigns (this exact fixture measured 243 generation-reads and 252
+    // batch presigns against the head-only prefetch draft — the keystore
+    // object cache's eviction window is smaller than a page, which is why
+    // the prefetch carries a transient map instead).
+    assert.equal(byKind["object-reads-batch(presign)"] ?? 0, 2, `two batched presigns per page (heads, carriers) — breakdown: ${JSON.stringify(byKind)}`);
+    assert.equal(byKind["object-reads-batch(get)"] ?? 0, 251 + 2 * 251, "every cache-missing head and carrier frame rides a batch");
+    assert.ok((byKind["generation-read"] ?? 0) <= 4, `per-head single reads must stay O(1), got ${byKind["generation-read"] ?? 0} — breakdown: ${JSON.stringify(byKind)}`);
+    assert.ok((byKind["listHeads"] ?? 0) <= 2, `listing reads are page-bounded — breakdown: ${JSON.stringify(byKind)}`);
+    // Total stays 3·G + a small constant with exactly two sequenced batch
+    // phases — never the pre-P2 serial per-head shape.
+    assertOpBudget(counter, 3 * 251 + 15, "cold 251-generation catch-up");
+  });
+
+  it("a fresh-target restore batches the backward head walk the same way: singles do not scale with G", async (t) => {
+    // The OTHER cold-clone shape: the keystore is current (pin at newest),
+    // the TARGET repository is empty — `git clone` with a standing profile.
+    // restoreObjectsInto's backward walk derives every predecessor path
+    // locally, so its bytes batch in page windows while hash-chaining stays
+    // strictly ordered.
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-coldclone-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    await git(target, ["init", "-q", "--bare", "."]);
+    const counter = new GitvaultOpCounter();
+    const vault = countedVaultFor(f, counter);
+    const restored = await vault.restoreObjectsInto(target);
+    assert.equal(Object.keys(restored.refs).length, 251, "the restore really spans all 251 generations");
+
+    const byKind = counter.byKind();
+    assert.ok((byKind["generation-read"] ?? 0) <= 6, `backward-walk single head reads must stay O(1), got ${byKind["generation-read"] ?? 0} — breakdown: ${JSON.stringify(byKind)}`);
+    assert.ok((byKind["object-reads-batch(presign)"] ?? 0) <= 6, `page-window batches only (backward heads + WAL frames + newest carriers) — breakdown: ${JSON.stringify(byKind)}`);
   });
 });

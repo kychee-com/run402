@@ -1311,6 +1311,18 @@ async function snapshot(args) {
     const resultRefNames = Object.keys(result.refs ?? {});
     const snapshotOnly = resultRefNames.length > 0 && !resultRefNames.some((r) => r.startsWith("refs/heads/"));
     const payload = summarizeSnapshotPayload(result, { verbose, manifestPath: manifestOutPath });
+    // gitvault-clone-scaling (P3): advisory only — the SDK computed the
+    // staleness from locally-learned coverage; this entry never gates.
+    if (result.checkpoint_staleness?.advised) {
+      payload.next_actions = [
+        ...(payload.next_actions ?? []),
+        {
+          type: "compact_advised",
+          command: "run402 repos gc",
+          why: `${result.checkpoint_staleness.generations_since_checkpoint} generations since the last checkpoint — cold clones re-verify each one; compaction folds them into one checkpoint.`,
+        },
+      ];
+    }
     if (snapshotOnly) {
       const snapRef = resultRefNames.sort()[0];
       payload.next_actions = [

@@ -1022,3 +1022,30 @@ describe("run402 repos recover — kept, D10 confirms the name", () => {
     assert.equal(envelope.code, "BAD_USAGE");
   });
 });
+
+describe("run402 repos snapshot — compact_advised next_action (gitvault-clone-scaling P3)", () => {
+  it("an advised staleness on the publish result surfaces as a compact_advised next_action naming repos gc", async () => {
+    impl.push = async () => ({
+      generation: "000000000000001b", form: "wal", refs: { "refs/heads/main": "c".repeat(40) },
+      checkpoint_staleness: { generations_since_checkpoint: 27, advised: true },
+      snapshot: { kind: "head", oid: "c".repeat(40), captured_digest: "d" },
+      mirror_push: { outcome: "skipped" }, reconcile_recipients: { outcome: "noop" },
+    });
+    const payload = await ok("snapshot", ["--project", PROJECT]);
+    const na = (payload.next_actions ?? []).find((n) => n.type === "compact_advised");
+    assert.ok(na, "compact_advised next_action present");
+    assert.equal(na.command, "run402 repos gc");
+    assert.match(na.why, /27 generations/);
+  });
+
+  it("under-threshold (or unknown) staleness adds nothing — the advisory never fires quietly wrong", async () => {
+    impl.push = async () => ({
+      generation: "0000000000000002", form: "wal", refs: { "refs/heads/main": "c".repeat(40) },
+      checkpoint_staleness: { generations_since_checkpoint: 2, advised: false },
+      snapshot: { kind: "head", oid: "c".repeat(40), captured_digest: "d" },
+      mirror_push: { outcome: "skipped" }, reconcile_recipients: { outcome: "noop" },
+    });
+    const payload = await ok("snapshot", ["--project", PROJECT]);
+    assert.equal((payload.next_actions ?? []).find((n) => n.type === "compact_advised"), undefined);
+  });
+});

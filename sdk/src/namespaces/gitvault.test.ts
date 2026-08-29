@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Run402 } from "../index.js";
-import { computeOpenProofOutcome, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
+import { GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS, computeOpenProofOutcome, gitvaultCheckpointStaleness, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
 import type { GitvaultOpenReceipt } from "./gitvault.types.js";
 import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT } from "./gitvault.crypto.js";
 import { hardenedGit } from "../node/gitvault-snapshot.js";
@@ -901,5 +901,42 @@ describe("computeOpenProofOutcome — fsck's D210 auto-submission decision logic
     assert.equal(out.deduplicated, true);
     assert.equal(out.receipt, stubReceipt);
     assert.equal(out.error, null);
+  });
+});
+
+// ─── gitvault-clone-scaling (P3): checkpoint-staleness helper ────────────────
+
+describe("gitvaultCheckpointStaleness — pure, never-throwing, threshold in one place", () => {
+  const staleness = (newest: string, covered: string | null) =>
+    gitvaultCheckpointStaleness({ newest_generation: newest, covers_through_generation: covered });
+
+  it("unknown coverage is silent — {0, advised: false}, never a guess", () => {
+    assert.deepEqual(staleness("00000000000000ff", null), { generations_since_checkpoint: 0, advised: false });
+  });
+
+  it("coverage at the newest generation reads current", () => {
+    assert.deepEqual(staleness("0000000000000020", "0000000000000020"), { generations_since_checkpoint: 0, advised: false });
+  });
+
+  it("the threshold boundary is >= (24 quiet, 25 advises) — the one constant to tune", () => {
+    assert.equal(GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS, 25);
+    // covered=1, newest=25 → 24 since; newest=26 → 25 since.
+    assert.deepEqual(staleness("0000000000000019", "0000000000000001"), { generations_since_checkpoint: 24, advised: false });
+    assert.deepEqual(staleness("000000000000001a", "0000000000000001"), { generations_since_checkpoint: 25, advised: true });
+  });
+
+  it("genesis coverage (a WAL-only vault whose walk anchored at genesis) counts from zero", () => {
+    // newest = 0x19 = 25 generations past the genesis sentinel.
+    assert.deepEqual(staleness("0000000000000019", "0000000000000000"), { generations_since_checkpoint: 25, advised: true });
+  });
+
+  it("coverage AHEAD of newest clamps to zero (a stale local newest never advises)", () => {
+    assert.deepEqual(staleness("0000000000000005", "0000000000000009"), { generations_since_checkpoint: 0, advised: false });
+  });
+
+  it("malformed generations on either side are silent, not a throw", () => {
+    assert.deepEqual(staleness("not-hex", "0000000000000001"), { generations_since_checkpoint: 0, advised: false });
+    assert.deepEqual(staleness("0000000000000005", "xyz"), { generations_since_checkpoint: 0, advised: false });
+    assert.deepEqual(staleness("", ""), { generations_since_checkpoint: 0, advised: false });
   });
 });

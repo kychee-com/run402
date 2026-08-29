@@ -4,6 +4,35 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **gitvault: cold-clone chain verification is page-batched — sequenced round trips per listing page drop from ~3·G to 3 (gitvault-clone-scaling, bench P2).**
+  `verifyToNewest` now batch-fetches each verified listing page's
+  cache-missing head bytes AND the ref_state/retention_roots frames their
+  decrypts open — two `getObjects` batches per page (concurrent GETs)
+  through a transient per-page map, while chain verification and decryption
+  stay strictly ordered. `restoreObjectsInto`'s backward head walk (the
+  fresh-`git clone` path on a standing profile) batches the same way: every
+  predecessor path is derivable locally, so page-sized windows of head
+  bytes fetch concurrently while the hash chain is checked in order. A
+  G-generation cold catch-up previously paid ~G sequenced single head reads
+  plus ~G sequenced per-head carrier presigns; both walks now pay a couple
+  of batch phases per 1000-entry page. Failure fidelity is pinned by tests:
+  an entry a batch cannot produce (absent, hash-mismatch, a lying batch, a
+  batch that fails outright) stays uncached and the ordered walk's own
+  per-head reads reproduce the exact unbatched envelopes.
+
+- **gitvault: checkpoint staleness is computed client-side and advised, never gated (gitvault-clone-scaling, bench P3).**
+  The keystore learns checkpoint coverage first-hand — from a
+  checkpoint-form head it admits (push `--checkpoint`, gc, repair) or from a
+  completed persisting walk that observed one (a genesis-anchored walk
+  proves genesis coverage) — and every publish result now carries
+  `checkpoint_staleness: { generations_since_checkpoint, advised }`
+  (threshold `GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS = 25`, beside the
+  loss-warning thresholds). Over the threshold, a successful `git push`
+  prints one stderr note naming the count and `run402 repos gc`, and
+  `repos snapshot` carries a `compact_advised` `next_actions[]` entry.
+  Unknown coverage reads `{0, advised: false}` — silent, never a guess —
+  and nothing anywhere blocks, delays, or auto-runs compaction.
+
 - **gitvault: verb startup now overlaps connection setup with local work (gitvault-connection-amortization, bench P5).**
   `git-remote-run402` and the `repos` dispatcher fire a fire-and-forget
   prewarm at boot — an unauthenticated `GET /health` on the same connection

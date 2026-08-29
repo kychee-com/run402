@@ -118,6 +118,16 @@ export interface GitvaultRepoFile {
   /** The verified-prefix watermark of a budget-interrupted verification (§9.3 — resumable). Absent/`null` when none is pending. */
   verified_prefix?: GitvaultHeadPin | null;
   /**
+   * gitvault-clone-scaling (bench P3): the newest checkpoint coverage this
+   * checkout has LOCALLY learned — from pushing a checkpoint-form head,
+   * walking past a checkpoint head, a genesis-anchored walk that saw none
+   * (proving coverage = genesis), or a restore's checkpoint apply. Feeds
+   * the checkpoint-staleness advisory ONLY; absent/`null` means coverage
+   * is unknown on this checkout and the advisory stays silent — it is
+   * never protocol state and never consulted by verification or restore.
+   */
+  checkpoint_covers_through?: string | null;
+  /**
    * TOFU pins for {@link GitvaultVault.reconcileEnvelopeRecipients}
    * (gitvault-human-envelopes design D4 point 3): `principal_id ->` the
    * `ek_` fingerprint this repo last wrapped a `key_envelope` for (or
@@ -483,7 +493,7 @@ export class GitvaultKeystore {
   }
 
   /** Update the dual pins / last ref transaction without touching key material. */
-  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys" | "known_pin_manifest">>): GitvaultRepoFile {
+  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys" | "known_pin_manifest" | "checkpoint_covers_through">>): GitvaultRepoFile {
     return this.withRepoLock(repoId, () => {
       const existing = this.readRepo(repoId);
       if (!existing) fail("GITVAULT_REPO_STATE_MISSING", `no repo file for ${repoId}`, "updating gitvault repo file", { repo_id: repoId });

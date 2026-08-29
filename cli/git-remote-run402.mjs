@@ -697,6 +697,12 @@ async function main(argv) {
         ...(headFix.head_target ? { head_target: headFix.head_target } : {}),
       });
       if (verbosity >= 1) note(`published generation ${published.generation} (${published.form})`);
+      // gitvault-clone-scaling (P3): advisory only — never blocks, never
+      // auto-runs compaction, and never fires on a failed push (this line is
+      // unreachable from the catch). Unknown coverage reads as not-advised.
+      if (published.checkpoint_staleness?.advised) {
+        note(`${published.checkpoint_staleness.generations_since_checkpoint} generations since the last checkpoint — cold clones re-verify each one; run402 repos gc compacts them`);
+      }
       for (const spec of allowed) out(`ok ${spec.dst}`);
     } catch (err) {
       // The transaction is atomic, so a failure failed every ref in it. Report
