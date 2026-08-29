@@ -1690,6 +1690,12 @@ describe("SDK surface alignment", () => {
       "gitvault.forRepo",
       "gitvault.resolveAddress",
       "gitvault.resolveOrCreateAddress",
+      // gitvault-force-spelling-and-pin-fold: `recoverStalePin` is the
+      // stale-pin heal `git-remote-run402`'s list path and `push`'s address
+      // branch compose internally when an offline-pinned vault turns out to
+      // be gone — recovery machinery, not a verb, same family as
+      // `resolveOrCreateAddress` above.
+      "gitvault.recoverStalePin",
       // kychee-com/run402#565: `planPush` is the real dry-run preview behind
       // `run402 repos snapshot --dry-run` (`repos_snapshot`'s OWN verb, a
       // flag-selected mode, not a second verb) and `git-remote-run402`'s

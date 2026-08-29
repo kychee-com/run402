@@ -4,6 +4,32 @@ All notable changes to `@run402/sdk`, `run402` (CLI), and `run402-mcp`. Versions
 
 ## Unreleased
 
+- **gitvault: pinned-address resolution is now fully offline — one round trip removed from every `git push`/`fetch`/`repos` verb (gitvault-force-spelling-and-pin-fold).**
+  The local pin gains the resolved project/org ids (`r402.projectId` /
+  `r402.orgId` beside `r402.repoId`), so a pinned checkout resolves with ZERO
+  network operations — the standing per-invocation `getVaultRecord`
+  validation read (measured median 797 ms against production, cold TLS
+  included) is gone. A legacy pin self-upgrades through one final validation
+  read. Stale pins heal at first use: when the vault behind a pin was deleted
+  and the project re-allocated, the verb's first read fails, the client
+  clears the pin, re-resolves once, and retries — a same-vault answer
+  restores the pin and surfaces the original refusal unchanged. The counted
+  transport budgets tighten to push ≤ 6 / one-generation fetch ≤ 4 /
+  up-to-date fetch ≤ 2, now measured across every session a verb spawns,
+  address resolution included. Measured against production: up-to-date
+  `git fetch` at GitHub parity; small push within ~10% of GitHub.
+
+- **gitvault: the non-fast-forward refusal now names the force spelling that works.**
+  `git push --force-with-lease` cannot cross git's remote-helper boundary
+  (the lease never reaches the helper; the update arrives non-force), so it
+  is refused as an ordinary non-fast-forward — previously with no hint.
+  The `REF_EXPECTED_OLD_MISMATCH` refusal now carries a
+  `git push --force` next_action explaining that this remote enforces
+  expected-old server-side (force-with-lease safety comes built in), and
+  `git-remote-run402` echoes the same guidance on stderr beside git's
+  `! [remote rejected]` line. A pure expected-old mismatch (a raced push,
+  not a rewrite) deliberately carries no force hint.
+
 - **BREAKING: `run402 gitvault <verb>` is RETIRED — one noun, `repos`, twelve verbs (repo-surface-consolidation).**
   The 19-command `gitvault`/`repos` sprawl collapses to one noun and twelve
   verbs, each one either a `gh repo` verb, a `git` verb meaning what it means

@@ -295,7 +295,22 @@ export async function evaluateRefTransaction(current: GitvaultRefMap, transactio
     if (!ff) dropped.push({ ref: u.ref, oid: cur, reason: "force_displaced" });
   }
   if (failures.length > 0) {
-    fail("REF_EXPECTED_OLD_MISMATCH", `${failures.length} update(s) refused: ${failures.map((f) => `${f.ref} (${f.reason})`).join(", ")}`, "evaluating ref transaction", { failures }, [{ action: "refetch, reapply the transaction to the winner's map, retry" }]);
+    const nextActions: unknown[] = [{ action: "refetch, reapply the transaction to the winner's map, retry" }];
+    // The force-with-lease inversion (gitvault-force-spelling-and-pin-fold):
+    // git's remote-helper protocol carries force only as a `+` refspec
+    // prefix, which `--force-with-lease` never sets — the lease cannot cross
+    // the helper boundary, so a rebased tip arrives as a NON-force update
+    // and lands here as `non_fast_forward`. Plain `--force` through this
+    // helper is with-lease-safe by construction (expected-old is mandatory
+    // and CASed against the freshly materialized base), so the refusal
+    // names the spelling that works.
+    if (failures.some((f) => f.reason === "non_fast_forward")) {
+      nextActions.push({
+        action: "git push --force",
+        why: "history was rewritten; this remote enforces expected-old server-side, so --force here carries force-with-lease safety — --force-with-lease itself cannot cross git's remote-helper boundary and arrives as a non-force push",
+      });
+    }
+    fail("REF_EXPECTED_OLD_MISMATCH", `${failures.length} update(s) refused: ${failures.map((f) => `${f.ref} (${f.reason})`).join(", ")}`, "evaluating ref transaction", { failures }, nextActions);
   }
   assertRefMapCardinality(next);
   return { refs: next, dropped };

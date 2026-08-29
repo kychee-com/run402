@@ -123,6 +123,26 @@ describe("§6.1 ref transactions", () => {
     await rejectsCode(evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(7), new_oid: OID(2), force: false }] }, ff), "REF_EXPECTED_OLD_MISMATCH");
   });
 
+  it("a non-fast-forward refusal names the working force spelling; a bare expected-old mismatch does not (gitvault-force-spelling-and-pin-fold)", async () => {
+    const cur: GitvaultRefMap = { "refs/heads/main": OID(1) };
+    const forceHintOf = (e: unknown): { action?: string; why?: string } | undefined => {
+      const actions = ((e as { body?: { next_actions?: { action?: string; why?: string }[] } }).body?.next_actions ?? []);
+      return actions.find((a) => a.action === "git push --force");
+    };
+    // The `--force-with-lease` shape: git ran its lease locally and handed the
+    // helper a NON-force update for a rebased (non-FF) tip.
+    const nonFf = await evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(1), new_oid: OID(2), force: false }] }, notFf).then(() => null, (e: unknown) => e);
+    assert.ok(nonFf, "sanity: the non-FF update was refused");
+    const hint = forceHintOf(nonFf);
+    assert.ok(hint, "the refusal carries the git push --force next_action");
+    assert.match(hint!.why ?? "", /force-with-lease/, "the why explains the with-lease safety and the helper-boundary limitation");
+    // A pure expected-old mismatch (a raced push, not a rewrite) carries NO
+    // force hint — suggesting force there would be exactly the wrong advice.
+    const raced = await evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(7), new_oid: OID(2), force: false }] }, ff).then(() => null, (e: unknown) => e);
+    assert.ok(raced, "sanity: the mismatched update was refused");
+    assert.equal(forceHintOf(raced), undefined);
+  });
+
   it("force is force-WITH-LEASE: it skips ancestry but still needs expected-old, and the displaced tip is dropped", async () => {
     const cur: GitvaultRefMap = { "refs/heads/main": OID(1) };
     const forced = await evaluateRefTransaction(cur, { updates: [{ ref: "refs/heads/main", expected_old_oid: OID(1), new_oid: OID(2), force: true }] }, notFf);

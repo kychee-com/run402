@@ -17,7 +17,7 @@ import { gitvaultRemoteAddressForm, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo,
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { findResumablePushToCreateJournal, listIncompleteGitvaultJournals, readGitvaultJournal } from "./gitvault-creation-journal.js";
 import { GitvaultMemoryTransport, makeRepo } from "./gitvault-memory-transport.test.js";
-import { pinGitvaultRepo, readPinnedGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
+import { pinGitvaultRepo, readPinnedGitvaultRepo, recoverStaleGitvaultPin, resolveGitvaultAddress } from "./gitvault-address.js";
 import { pushToCreateGitvault } from "./gitvault-push-to-create.js";
 
 let root: string;
@@ -85,8 +85,10 @@ describe("resolveGitvaultAddress — id-form", () => {
     assert.equal(resolution.address, null);
     // gitvault-client-round-trips design D4: the first successful id-form
     // resolution pins repo_id too — no `resolved_from` (id-form has no
-    // org-slug/name pair to record diagnostically).
-    assert.deepEqual(await readPinnedGitvaultRepo(repoDir), { repo_id: allocation.repo_id, resolved_from: null });
+    // org-slug/name pair to record diagnostically). Since the pin fold, it
+    // also records the resolved ids so later resolutions are OFFLINE.
+    assert.deepEqual(await readPinnedGitvaultRepo(repoDir), { repo_id: allocation.repo_id, resolved_from: null, project_id: resolution.project_id, org_id: resolution.org_id });
+    assert.ok(resolution.project_id && resolution.org_id, "the record's ids ride into the pin");
   });
 
   it("a second id-form resolution follows the pin — never calls findVaultByProject again", async () => {
@@ -98,15 +100,44 @@ describe("resolveGitvaultAddress — id-form", () => {
 
     const first = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
     assert.equal(first.via, "resolved");
-    const callsBeforeSecond = transport.calls.filter((c) => c === "find-vault").length;
-    assert.ok(callsBeforeSecond > 0, "sanity: the first call really did resolve over the network");
+    assert.equal(first.offline, false);
+    const callsBeforeSecond = transport.calls.length;
+    assert.ok(transport.calls.filter((c) => c === "find-vault").length > 0, "sanity: the first call really did resolve over the network");
 
     const second = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
     assert.equal(second.via, "pin");
     assert.equal(second.repo_id, allocation.repo_id);
     assert.equal(second.form, "id");
-    // Proves the pin path never called findVaultByProject a second time — only getVaultRecord.
-    assert.equal(transport.calls.filter((c) => c === "find-vault").length, callsBeforeSecond);
+    // The pin fold: an id-carrying pin resolves fully OFFLINE — not one
+    // transport call of any kind (the pre-fold behavior substituted a
+    // per-invocation getVaultRecord validation read; that read is gone).
+    assert.equal(second.offline, true);
+    assert.equal(second.project_id, first.project_id);
+    assert.equal(second.org_id, first.org_id);
+    assert.equal(transport.calls.length, callsBeforeSecond, "an id-carrying pin makes ZERO transport calls");
+  });
+
+  it("a legacy id-less pin self-upgrades through exactly one validation read, then goes offline", async () => {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    const allocation = await createGitvault({ keystore, transport, org_id: "org_1", project_id: "prj_1" });
+    const repoDir = await makeRepo(root);
+    const address = { org_id: "11111111-1111-4111-8111-111111111111", project_id: "prj_1" };
+    // The pre-fold pin shape: repo_id only, no ids.
+    await pinGitvaultRepo(repoDir, allocation.repo_id);
+
+    const upgraded = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(upgraded.via, "pin");
+    assert.equal(upgraded.offline, false);
+    assert.equal(transport.calls.filter((c) => c === "vault-record").length, 1, "one validation read, which also fetches the ids");
+    const pinned = await readPinnedGitvaultRepo(repoDir);
+    assert.equal(pinned?.project_id, upgraded.project_id);
+    assert.equal(pinned?.org_id, upgraded.org_id);
+
+    const callsBeforeThird = transport.calls.length;
+    const third = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(third.offline, true);
+    assert.equal(transport.calls.length, callsBeforeThird, "the rewritten pin is offline from then on");
   });
 
   it("a stale id-form pin (repo_id no longer resolves) clears and re-resolves once", async () => {
@@ -216,7 +247,9 @@ describe("resolveGitvaultAddress — slug-form id-pinning", () => {
     assert.equal(second.project_id, first.project_id);
     assert.equal(second.org_id, first.org_id);
     // Proves the pin path never called findVaultByRepo (which would have
-    // failed against the deleted repoNames entry) — only getVaultRecord.
+    // failed against the deleted repoNames entry) — and, since the pin
+    // fold, no other transport call either: the id-carrying pin is offline.
+    assert.equal(second.offline, true);
     assert.equal(transport.calls.filter((c) => c === "find-vault-by-repo").length, callsBeforeSecond);
   });
 
@@ -225,7 +258,7 @@ describe("resolveGitvaultAddress — slug-form id-pinning", () => {
     assert.equal(await readPinnedGitvaultRepo(repoDir), null);
     await pinGitvaultRepo(repoDir, "src_deadbeef"); // no third argument — the id-form shape
     const pinned = await readPinnedGitvaultRepo(repoDir);
-    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: null });
+    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: null, project_id: null, org_id: null });
   });
 
   it("pinGitvaultRepo / readPinnedGitvaultRepo round-trip directly", async () => {
@@ -233,7 +266,14 @@ describe("resolveGitvaultAddress — slug-form id-pinning", () => {
     assert.equal(await readPinnedGitvaultRepo(repoDir), null);
     await pinGitvaultRepo(repoDir, "src_deadbeef", { org_slug: "acme", repo_name: "widgets" });
     const pinned = await readPinnedGitvaultRepo(repoDir);
-    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: { org_slug: "acme", repo_name: "widgets" } });
+    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: { org_slug: "acme", repo_name: "widgets" }, project_id: null, org_id: null });
+  });
+
+  it("pinGitvaultRepo round-trips the resolved ids (the offline-pin schema)", async () => {
+    const repoDir = await makeRepo(root);
+    await pinGitvaultRepo(repoDir, "src_deadbeef", { org_slug: "acme", repo_name: "widgets" }, { project_id: "prj_1", org_id: "org_1" });
+    const pinned = await readPinnedGitvaultRepo(repoDir);
+    assert.deepEqual(pinned, { repo_id: "src_deadbeef", resolved_from: { org_slug: "acme", repo_name: "widgets" }, project_id: "prj_1", org_id: "org_1" });
   });
 });
 
@@ -354,5 +394,82 @@ describe("resolveGitvaultAddress — push-to-create pins on creation too", () =>
     assert.ok(receivedReceipt, "onVaultCreated fired with the one-shot recovery receipt");
     const pinned = await readPinnedGitvaultRepo(repoDir);
     assert.equal(pinned?.repo_id, resolution.repo_id);
+  });
+});
+
+// ─── recoverStaleGitvaultPin (gitvault-force-spelling-and-pin-fold) ────────
+
+describe("recoverStaleGitvaultPin — stale-pin discovery moved to first use", () => {
+  /** An id-carrying pin for a REAL vault, plus the address that resolves it. */
+  async function pinnedFixture() {
+    const transport = new GitvaultMemoryTransport();
+    const { createGitvault } = await import("./gitvault-creation-journal.js");
+    const allocation = await createGitvault({ keystore, transport, org_id: "org_1", project_id: "prj_1" });
+    const repoDir = await makeRepo(root);
+    const address = { org_id: "11111111-1111-4111-8111-111111111111", project_id: "prj_1" };
+    const first = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    const resolution = await resolveGitvaultAddress({ keystore, transport, address, repo_dir: repoDir });
+    assert.equal(resolution.offline, true, "sanity: the fixture's second resolution is the offline-pin shape");
+    return { transport, allocation, repoDir, address, first, resolution };
+  }
+
+  it("a vault-absent failure under an offline pin re-resolves to the NEW vault and rewrites the pin", async () => {
+    const f = await pinnedFixture();
+    // The project has been re-allocated a NEW vault (delete + recreate):
+    // resolution by project id now answers a different repo.
+    const transport = new Proxy(f.transport, {
+      get(target, prop, receiver) {
+        if (prop === "findVaultByProject") {
+          return async () => ({ ...(await target.getVaultRecord({ repo_id: f.allocation.repo_id })), repo_id: "src_recreated" });
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const fresh = await recoverStaleGitvaultPin({
+      keystore, transport, address: f.address, repo_dir: f.repoDir,
+      resolution: f.resolution,
+      error: new LocalError("denied", "materializing", { code: "GITVAULT_ACCESS_DENIED" }),
+    });
+    assert.ok(fresh, "a different repo_id is a recovery");
+    assert.equal(fresh!.repo_id, "src_recreated");
+    const pinned = await readPinnedGitvaultRepo(f.repoDir);
+    assert.equal(pinned?.repo_id, "src_recreated");
+    assert.ok(pinned?.project_id && pinned?.org_id, "the rewritten pin carries ids again");
+  });
+
+  it("re-resolution landing on the SAME repo_id answers null and restores the pin — the refusal is real", async () => {
+    const f = await pinnedFixture();
+    const fresh = await recoverStaleGitvaultPin({
+      keystore, transport: f.transport, address: f.address, repo_dir: f.repoDir,
+      resolution: f.resolution,
+      error: new LocalError("denied", "materializing", { code: "GITVAULT_ACCESS_DENIED" }),
+    });
+    assert.equal(fresh, null);
+    const pinned = await readPinnedGitvaultRepo(f.repoDir);
+    assert.equal(pinned?.repo_id, f.resolution.repo_id, "the pin is restored, not left cleared");
+    assert.ok(pinned?.project_id && pinned?.org_id);
+  });
+
+  it("a non-vault-absent error answers null with zero transport calls and an untouched pin", async () => {
+    const f = await pinnedFixture();
+    const callsBefore = f.transport.calls.length;
+    const fresh = await recoverStaleGitvaultPin({
+      keystore, transport: f.transport, address: f.address, repo_dir: f.repoDir,
+      resolution: f.resolution,
+      error: new LocalError("boom", "materializing", { code: "CHAIN_BROKEN" }),
+    });
+    assert.equal(fresh, null);
+    assert.equal(f.transport.calls.length, callsBefore, "no probe for an error that cannot mean a stale pin");
+    assert.equal((await readPinnedGitvaultRepo(f.repoDir))?.repo_id, f.resolution.repo_id);
+  });
+
+  it("a non-offline resolution answers null immediately — recovery is only armed for offline pins", async () => {
+    const f = await pinnedFixture();
+    const fresh = await recoverStaleGitvaultPin({
+      keystore, transport: f.transport, address: f.address, repo_dir: f.repoDir,
+      resolution: { ...f.resolution, offline: false },
+      error: new LocalError("denied", "materializing", { code: "GITVAULT_ACCESS_DENIED" }),
+    });
+    assert.equal(fresh, null);
   });
 });

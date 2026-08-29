@@ -15,14 +15,18 @@
  * phase table draws between a first push (allocation + first materialize)
  * and a REPEAT one.
  *
- * Budgets tightened per design D3's phase table: push `state 1 → inline-
- * upload 1 → admit 1 → readback 1 = 4` (budget ≤ 7), one-generation pull
- * `state 1 → WAL presign+GET 2 = 3` (budget ≤ 5), up-to-date fetch
- * `state 1 = 1` (budget ≤ 2). Headroom in each budget covers the
- * `GET …/state` carrier URL arm (a carrier over the inline cap) that this
- * fixture's `getState` never takes (see the counting helper's own doc
- * comment) — a genuinely tighter equality assertion would overfit to that
- * fixture limitation.
+ * Budgets tightened per design D3's phase table, then again by
+ * gitvault-force-spelling-and-pin-fold (the resolution fold: an
+ * id-carrying pin resolves OFFLINE, so the budgets now count across every
+ * transport session a verb spawns — address resolution included — and
+ * each network-verb budget dropped by the one folded read): push `state 1
+ * → inline-upload 1 → admit 1 → readback 1 = 4` (budget ≤ 6),
+ * one-generation pull `state 1 → WAL presign+GET 2 = 3` (budget ≤ 4),
+ * up-to-date fetch `state 1 = 1` (budget ≤ 2). Headroom in each budget
+ * covers the `GET …/state` carrier URL arm (a carrier over the inline
+ * cap) that this fixture's `getState` never takes (see the counting
+ * helper's own doc comment) — a genuinely tighter equality assertion
+ * would overfit to that fixture limitation.
  */
 
 import { describe, it } from "node:test";
@@ -32,6 +36,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitvaultVault } from "./gitvault-publication.js";
+import { pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
 import { GitvaultOpCounter, assertOpBudget, countingGitvaultTransport } from "./gitvault-transport-counter.test-helper.js";
 
@@ -41,7 +46,7 @@ function countedVaultFor(f: Awaited<ReturnType<typeof makeVault>>, counter: Gitv
 }
 
 describe("gitvault round-trip budgets (client-surface spec's counted contract)", () => {
-  it("small push: one branch, pin current, allocated vault, WAL form, ≤3 objects — budget 7", async (t) => {
+  it("small push: one branch, pin current, allocated vault, WAL form, ≤3 objects — budget 6", async (t) => {
     const f = await makeVault();
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     // Warm-up push (uncounted): establishes "pin current" — a vault that
@@ -56,7 +61,37 @@ describe("gitvault round-trip budgets (client-surface spec's counted contract)",
     const vault = countedVaultFor(f, counter);
     const published = await vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
     assert.equal(published.form, "wal");
-    assertOpBudget(counter, 7, "small push");
+    assertOpBudget(counter, 6, "small push");
+  });
+
+  it("address resolution on an id-carrying pin adds ZERO operations; a legacy pin adds exactly one (gitvault-force-spelling-and-pin-fold)", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const address = { org_id: "11111111-1111-4111-8111-111111111111", project_id: "prj_1" };
+
+    // Legacy (pre-fold) pin shape — repo_id only: the ONE self-upgrading
+    // validation read, which also rewrites the pin with the resolved ids.
+    await pinGitvaultRepo(f.repoDir, f.repoId);
+    const legacyCounter = new GitvaultOpCounter();
+    const legacy = await resolveGitvaultAddress({ keystore: f.keystore, transport: countingGitvaultTransport(f.transport, legacyCounter), address, repo_dir: f.repoDir });
+    assert.equal(legacy.offline, false);
+    assertOpBudget(legacyCounter, 1, "legacy-pin self-upgrade");
+
+    // The id-carrying pin the upgrade just wrote: resolution is OFFLINE, and
+    // the WHOLE verb — resolution + push — fits the end-to-end budget with
+    // resolution contributing nothing (the spec's "counted across every
+    // transport session a single verb spawns, address resolution included").
+    const counter = new GitvaultOpCounter();
+    const countedTransport = countingGitvaultTransport(f.transport, counter);
+    const resolution = await resolveGitvaultAddress({ keystore: f.keystore, transport: countedTransport, address, repo_dir: f.repoDir });
+    assert.equal(resolution.offline, true);
+    assert.equal(counter.total, 0, "an id-carrying pin resolves with zero transport operations");
+    const c2 = await commitFile(f.repoDir, "r.txt", "r\n");
+    const vault = GitvaultVault.open({ keystore: f.keystore, transport: countedTransport, repo_id: resolution.repo_id, repo_dir: f.repoDir });
+    await vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    assertOpBudget(counter, 6, "end-to-end push (resolution + verb, one counter)");
   });
 
   it("small push with one object above the 256 KiB inline cap: presigned upload path — budget 12", async (t) => {
@@ -87,7 +122,7 @@ describe("gitvault round-trip budgets (client-surface spec's counted contract)",
     assertOpBudget(counter, 12, "small push with an oversize object");
   });
 
-  it("fetch/pull: exactly one new WAL generation above the materialized pin — budget 5", async (t) => {
+  it("fetch/pull: exactly one new WAL generation above the materialized pin — budget 4", async (t) => {
     const f = await makeVault();
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
@@ -105,7 +140,7 @@ describe("gitvault round-trip budgets (client-surface spec's counted contract)",
     const vault = countedVaultFor(f, counter);
     const restored = await vault.restoreObjectsInto(target);
     assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
-    assertOpBudget(counter, 5, "one-generation pull");
+    assertOpBudget(counter, 4, "one-generation pull");
   });
 
   it("fetch: already up to date — budget 2", async (t) => {

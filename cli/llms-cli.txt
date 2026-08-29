@@ -1084,6 +1084,10 @@ Maintenance: repos fsck, repos gc, repos access, repos policy
 
 Every verb above also accepts `-v`/`--verbose` (one stderr summary line of this call's request stats — round trips, wire time, bytes — coexists with `--human`) and always carries a `stats` block in its JSON result. See [Observability](#observability) below.
 
+**After rewriting history (rebase/amend), push with `git push --force` — NOT `--force-with-lease`.** The lease cannot cross git's remote-helper boundary (the helper receives a non-force update and refuses it as non-fast-forward), while plain `--force` through this remote already carries force-with-lease safety: every forced update is compare-and-swapped against the freshly read remote state server-side, so a concurrent push is never silently overwritten. The non-fast-forward refusal itself names this in its `next_actions`.
+
+**Address resolution is offline after first contact.** The first successful resolution of a `run402::…` remote pins the vault id plus its project/org ids in the checkout's local git config; every later `git push`/`fetch` on that checkout resolves with zero extra round trips. If the pinned vault is ever deleted and the project re-allocated a new one, the next verb heals itself: it clears the pin, re-resolves once, and retries.
+
 ```bash
 run402 repos create                            # name inferred from cwd/remote
 run402 repos create my-notes --org org_1a2b3c   # explicit name, new project

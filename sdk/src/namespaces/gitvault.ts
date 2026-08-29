@@ -1069,6 +1069,49 @@ export class Gitvault {
   }
 
   /**
+   * Stale-pin recovery for OFFLINE address resolutions
+   * (gitvault-force-spelling-and-pin-fold): an id-carrying pin resolves with
+   * zero network reads, so a pin gone stale (its vault deleted and the
+   * project re-allocated a new one) surfaces as the VERB's first repo-scoped
+   * read failing rather than as a resolution failure. Call this with that
+   * failure: it answers a fresh opened handle + resolution to retry the verb
+   * against exactly once, or `null` when there is nothing to recover — the
+   * error is not a vault-absent signal, the resolution was not offline, or
+   * re-resolution lands on the SAME `repo_id` (the pin was fine and the
+   * original refusal is real; it is restored, and recovery never widens what
+   * an unauthorized caller learns).
+   */
+  async recoverStalePin(
+    options: GitvaultVaultHandleOptions & {
+      address: GitvaultRemoteAddress;
+      repo_dir: string;
+      resolution: import("../node/gitvault-address.js").GitvaultAddressResolution;
+      error: unknown;
+    },
+  ): Promise<(GitvaultOpenOrCreateResult & { resolution: import("../node/gitvault-address.js").GitvaultAddressResolution }) | null> {
+    const [{ createGitvaultHttpTransport }, { GitvaultKeystore }, { recoverStaleGitvaultPin }] = await Promise.all([this.#publication(), this.#keystore(), this.#address()]);
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const transport = createGitvaultHttpTransport(this.#client);
+    const fresh = await recoverStaleGitvaultPin({
+      keystore,
+      transport,
+      address: options.address,
+      repo_dir: options.repo_dir,
+      resolution: options.resolution,
+      error: options.error,
+    });
+    if (!fresh) return null;
+    const handle = await this.open({ ...options, repo_id: fresh.repo_id });
+    return {
+      handle,
+      found: true,
+      created: null,
+      terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT,
+      resolution: fresh,
+    };
+  }
+
+  /**
    * Create the vault for a project and scaffold the git remote.
    *
    * Runs the six-stage creation journal — `LOCAL_KEYS_PREPARED → ALLOCATED →
@@ -1549,16 +1592,30 @@ export class Gitvault {
     },
   ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string; mirror_push: GitvaultMirrorPushResult; reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult }> {
     const [{ deployRefTransaction }, { captureSnapshot, gitvaultCommitLine }] = await Promise.all([this.#publication(), this.#snapshot()]);
-    const opened = options.address
-      ? await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: true })
-      : await this.openOrCreate(options);
+    const openedByAddress = options.address ? await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: true }) : null;
+    const opened = openedByAddress ?? (await this.openOrCreate(options));
+    const addressResolution = openedByAddress?.resolution ?? null;
     if (!opened.found && opened.created) await options.onVaultCreated?.(opened.created);
-    const handle = opened.handle;
+    let handle = opened.handle;
     const repoDir = options.repo_dir ?? process.cwd();
     const snapshot = await captureSnapshot({ dir: repoDir, ...(options.snapshot ?? {}) });
     const line = gitvaultCommitLine(snapshot);
     options.onCommitLine?.(line);
-    const materialized = await handle.vault.materialize();
+    // An OFFLINE (id-carrying pin) resolution discovers a stale pin on this
+    // first repo-scoped read — recover once and retry against the fresh
+    // vault, per the client-surface id-pinning requirement.
+    let materialized: Awaited<ReturnType<(typeof handle)["vault"]["materialize"]>>;
+    try {
+      materialized = await handle.vault.materialize();
+    } catch (e) {
+      const recovered =
+        options.address && options.repo_dir && addressResolution?.offline
+          ? await this.recoverStalePin({ ...options, address: options.address, repo_dir: options.repo_dir, resolution: addressResolution, error: e })
+          : null;
+      if (!recovered) throw e;
+      handle = recovered.handle;
+      materialized = await handle.vault.materialize();
+    }
     const push: GitvaultPushOptions = {
       transaction: deployRefTransaction(materialized.refs, snapshot.oid),
       head_target: snapshot.head,

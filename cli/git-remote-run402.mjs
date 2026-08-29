@@ -409,7 +409,7 @@ async function main(argv) {
    */
   const openVault = async (repoDir) => {
     const result = await getSdk().gitvault.resolveOrCreateAddress({ address, allow_create: false, ...(repoDir ? { repo_dir: repoDir } : {}) });
-    return result.handle.vault;
+    return { vault: result.handle.vault, resolution: result.resolution };
   };
 
   /**
@@ -448,7 +448,7 @@ async function main(argv) {
       addressForm === "id"
         ? await getSdk().gitvault.openOrCreate({ ...target, repo_dir: repoDir })
         : await getSdk().gitvault.resolveOrCreateAddress({ address, repo_dir: repoDir, allow_create: true });
-    if (addressForm === "id" && repoDir) await pinGitvaultRepo(repoDir, result.handle.repo_id);
+    if (addressForm === "id" && repoDir) await pinGitvaultRepo(repoDir, result.handle.repo_id, undefined, { project_id: target.project_id, org_id: target.org_id });
     if (!result.found && result.created) {
       note("");
       note(`vault ${result.handle.repo_id} allocated (genesis ${result.created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
@@ -485,8 +485,26 @@ async function main(argv) {
     let vault;
     let state;
     try {
-      vault = await openVault(repoDir ?? undefined);
-      state = await vault.materialize();
+      const opened = await openVault(repoDir ?? undefined);
+      vault = opened.vault;
+      try {
+        state = await vault.materialize();
+      } catch (err) {
+        // An OFFLINE (id-carrying pin) resolution discovers a stale pin on
+        // its FIRST repo-scoped read (client-surface spec, id-pinning
+        // requirement): recover once — clear the pin, re-resolve — and retry
+        // only when re-resolution lands on a DIFFERENT vault; a same-id
+        // answer means the pin was fine and the refusal below is real. git
+        // always runs `list` first in a helper session, so this one site
+        // heals the pin for the `fetch`/`push` that follows it.
+        const recovered = repoDir && opened.resolution?.offline
+          ? await getSdk().gitvault.recoverStalePin({ address, repo_dir: repoDir, resolution: opened.resolution, error: err })
+          : null;
+        if (!recovered) throw err;
+        note(`pinned vault ${opened.resolution.repo_id} no longer resolves — re-resolved to ${recovered.resolution.repo_id}, retrying`);
+        vault = recovered.handle.vault;
+        state = await vault.materialize();
+      }
     } catch (err) {
       // An unallocated vault is not an error here: `list` is the read half of
       // the protocol dance and must never create anything on its own (D2
@@ -594,7 +612,7 @@ async function main(argv) {
         // first) — only the sizing is unavailable.
         let vault;
         try {
-          vault = await openVault(repoDir);
+          vault = (await openVault(repoDir)).vault;
         } catch (err) {
           if (!isVaultNotFound(err)) throw err;
           note("dry-run: no vault allocated for this project yet — a real push would allocate one (push-to-create) before publishing; object/byte sizing is not knowable until then");
@@ -680,6 +698,11 @@ async function main(argv) {
       // The transaction is atomic, so a failure failed every ref in it. Report
       // it against each one rather than letting some look like they landed.
       if (err?.code === "GIT_INVOCATION_REPO_UNRESOLVED") repoRefusalNote(err);
+      // Force-spelling truth (gitvault-force-spelling-and-pin-fold): render
+      // the SDK's own `git push --force` next_action beside git's per-ref
+      // rejection — humans read stderr, agents read the structured error.
+      const forceHint = Array.isArray(err?.body?.next_actions) ? err.body.next_actions.find((a) => a?.action === "git push --force") : null;
+      if (forceHint?.why) note(`hint: ${forceHint.action} — ${forceHint.why}`);
       const reason = describeError(err);
       for (const spec of allowed) out(`error ${spec.dst} ${reason}`);
     }
