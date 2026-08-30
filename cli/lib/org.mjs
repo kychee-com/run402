@@ -29,7 +29,7 @@ Usage:
   run402 org list
   run402 org get    <org_id>
   run402 org rename <org_id> --name <display_name>   (or: --clear to remove the label)
-  run402 org payout-wallet <org_id> --wallet <wallet_address>  (or: --clear to remove the explicit default)
+  run402 org payout-wallet <org_id> <wallet_address>  (or: --clear to remove the explicit default)
   run402 org slug   <slug> [--org <org_id>]
   run402 org whoami
   run402 org use     <org_id>
@@ -39,7 +39,7 @@ Usage:
   run402 org unbind
   run402 org audit  <org_id> [--limit N] [--after <cursor>] [--before <cursor>]
   run402 org member list <org_id>
-  run402 org member add  <org_id> --wallet <wallet_address> [--role <role>]
+  run402 org member add  <org_id> <wallet_address> [--role <role>]
   run402 org member role <org_id> --principal <principal_id> --role <role>
   run402 org member rm   <org_id> --principal <principal_id>
   run402 org invite list   <org_id>
@@ -148,7 +148,7 @@ call after a dropped response can never double-bill.
   "payout-wallet": `run402 org payout-wallet — set or clear the tenant route payout wallet
 
 Usage:
-  run402 org payout-wallet <org_id> --wallet <wallet_address>
+  run402 org payout-wallet <org_id> <wallet_address>
   run402 org payout-wallet <org_id> --clear
 
 Legacy (still supported):
@@ -175,7 +175,7 @@ for local wallet/profile state use 'run402 status'.
 
 Usage:
   run402 org member list <org_id>
-  run402 org member add  <org_id> --wallet <wallet_address> [--role <role>]
+  run402 org member add  <org_id> <wallet_address> [--role <role>]
   run402 org member role <org_id> --principal <principal_id> --role <role>
   run402 org member rm   <org_id> --principal <principal_id>
 
@@ -418,15 +418,15 @@ async function rename(args) {
 
 async function payoutWallet(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, ["--wallet", "--clear", "--help", "-h"], ["--wallet"]);
+  assertKnownFlags(a, ["--address", "--clear", "--help", "-h"], ["--address"]);
   const clear = a.includes("--clear");
-  const walletFlag = flagValue(a, "--wallet");
+  const walletFlag = flagValue(a, "--address");
   const single = clear || walletFlag !== null;
-  const positionals = requirePositionalCount(a, ["--wallet"], {
+  const positionals = requirePositionalCount(a, ["--address"], {
     min: single ? 1 : 2,
     max: single ? 1 : 2,
-    command: "run402 org payout-wallet <org_id> --wallet <wallet_address>",
-    missing: single ? "Missing <org_id>." : "Missing <org_id> and/or <wallet_address> (use --wallet, or pass --clear).",
+    command: "run402 org payout-wallet <org_id> --address <wallet_address>",
+    missing: single ? "Missing <org_id>." : "Missing <org_id> and/or <wallet_address> (use --address, or pass --clear).",
   });
   const org = positionals[0];
   const walletAddress = clear ? null : (walletFlag ?? positionals[1]);
@@ -538,13 +538,13 @@ async function runMember(args) {
 
   if (memberAction === "add") {
     const a = normalizeArgv(rest);
-    assertKnownFlags(a, ["--role", "--wallet", "--help", "-h"], ["--role", "--wallet"]);
+    assertKnownFlags(a, ["--role", "--address", "--help", "-h"], ["--role", "--address"]);
     const role = flagValue(a, "--role");
-    const walletFlag = flagValue(a, "--wallet");
+    const walletFlag = flagValue(a, "--address");
     const count = walletFlag ? 1 : 2;
-    const pos = requirePositionalCount(a, ["--role", "--wallet"], {
-      min: count, max: count, command: "run402 org member add <org_id> --wallet <wallet_address> [--role <role>]",
-      missing: walletFlag ? "Missing <org_id>." : "Missing <org_id> and/or <wallet_address> (use --wallet).",
+    const pos = requirePositionalCount(a, ["--role", "--address"], {
+      min: count, max: count, command: "run402 org member add <org_id> <wallet_address> [--role <role>]",
+      missing: walletFlag ? "Missing <org_id>." : "Missing <org_id> and/or <wallet_address> (positional, or --address).",
     });
     const org = pos[0];
     const wallet = walletFlag ?? pos[1];
