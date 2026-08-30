@@ -35,13 +35,21 @@ export type GitvaultMirrorCredential =
   | { kind: "profile"; profile: string }
   | { kind: "ambient" };
 
-/** `mirrors/<repo_id>.json` — the ONLY thing this file persists: where, and which named credential to resolve at use time. */
+/** `mirrors/<repo_id>.json` — the ONLY thing this file persists: where, which named credential to resolve at use time, and (gitvault-mirror-default) when a write/sync last fully succeeded. */
 export interface GitvaultMirrorConfig {
   version: 1;
   repo_id: string;
   destination: GitvaultMirrorDestination;
   /** Present only for an `s3` destination — a directory destination needs no credential. */
   credential?: GitvaultMirrorCredential;
+  /**
+   * gitvault-mirror-default: when a mirror write or sync last completed with
+   * zero failures against THIS destination — the local fact that clears the
+   * `vault_unmirrored` finding. Stamped by the sync engine, reset when the
+   * destination changes (a success against the old bucket says nothing about
+   * the new one), and never transmitted anywhere (the gateway stays blind).
+   */
+  last_success_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -88,15 +96,36 @@ export function saveMirrorConfig(keystore: GitvaultKeystore, input: { repo_id: s
     fail("GITVAULT_MIRROR_CREDENTIAL_REQUIRED", "an s3 mirror destination needs a credential — pass --profile <name> or --ambient", "configuring gitvault mirror");
   }
   const existing = readMirrorConfig(keystore, input.repo_id);
+  // A recorded success is a fact about ONE destination: carry it across an
+  // idempotent re-save of the same place, reset it when the destination moves
+  // (the vault_unmirrored finding honestly reopens until the new mirror's
+  // first successful write/sync).
+  const sameDestination = existing != null && JSON.stringify(existing.destination) === JSON.stringify(input.destination);
   const full: GitvaultMirrorConfig = {
     version: 1,
     repo_id: input.repo_id,
     destination: input.destination,
     ...(input.credential ? { credential: input.credential } : {}),
+    ...(sameDestination && existing.last_success_at ? { last_success_at: existing.last_success_at } : {}),
     created_at: existing?.created_at ?? now().toISOString(),
     updated_at: now().toISOString(),
   };
   writeFileAtomic0600(mirrorConfigPath(keystore, input.repo_id), JSON.stringify(full, null, 2));
+  return full;
+}
+
+/**
+ * Stamp `last_success_at` after a zero-failure mirror write/sync
+ * (gitvault-mirror-default) — the local, never-transmitted fact that clears
+ * the `vault_unmirrored` finding. A no-op when no config exists (a
+ * test-injected backend can sync without one), or when the config was removed
+ * mid-sync.
+ */
+export function recordMirrorSuccess(keystore: GitvaultKeystore, repoId: string, now: () => Date = () => new Date()): GitvaultMirrorConfig | null {
+  const existing = readMirrorConfig(keystore, repoId);
+  if (!existing) return null;
+  const full: GitvaultMirrorConfig = { ...existing, last_success_at: now().toISOString() };
+  writeFileAtomic0600(mirrorConfigPath(keystore, repoId), JSON.stringify(full, null, 2));
   return full;
 }
 

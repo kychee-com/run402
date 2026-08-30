@@ -94,7 +94,7 @@ import {
 } from "../namespaces/gitvault.crypto.js";
 import { fetchGitvaultObjectBytes } from "./gitvault-edge-fetch.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
-import { formatMirrorDestination, readMirrorConfig, type GitvaultMirrorConfig } from "./gitvault-mirror-config.js";
+import { formatMirrorDestination, readMirrorConfig, recordMirrorSuccess, type GitvaultMirrorConfig } from "./gitvault-mirror-config.js";
 import { openGitvaultMirrorBackend, resolveMirrorCredentials, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
 
 function fail(code: string, message: string, context: string, details?: unknown, nextActions?: unknown[]): never {
@@ -498,6 +498,12 @@ export async function mirrorSync(client: Client, repoId: string, options: Gitvau
       errors.push({ key: result.key, error: result.error ?? "unknown failure" });
     }
   }
+
+  // gitvault-mirror-default: a zero-failure pass is the event that clears the
+  // vault_unmirrored finding — stamp it in the LOCAL config only (the gateway
+  // never learns any of this; recordMirrorSuccess no-ops when there is no
+  // config, e.g. a test-injected backend).
+  if (failed === 0) recordMirrorSuccess(keystore, repoId);
 
   return {
     repo_id: repoId,

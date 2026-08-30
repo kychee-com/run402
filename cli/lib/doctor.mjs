@@ -704,15 +704,19 @@ export async function run(sub, args = []) {
         // doctor-persistent `grandfathered` advisory it owns.
         for (const w of gv.warnings ?? []) gaps.push(`${w.kind}: ${w.message}`);
 
-        // gitvault-mirror-and-recover task 4.3: mirror currency, reported
-        // ALONGSIDE (never in place of) the deploy-related gaps above, and
-        // never blocking `run402 deploy`'s own gate — the vault lane's
-        // outcome is unaffected regardless of mirror state (design D6).
-        // `mirror_currency` mirrors `mirror status`'s own tri-state:
-        // `current` / `stale` / `unknown` (mirror unreachable or vault
-        // unread) only STALE is actionable enough to become a warning; NO
-        // mirror configured is a purely informational, ungated advisory —
-        // most vaults have never opted in, and that is a normal shape.
+        // gitvault-mirror-and-recover task 4.3 + gitvault-mirror-default:
+        // mirror currency, reported ALONGSIDE (never in place of) the
+        // deploy-related gaps above, and never blocking `run402 deploy`'s
+        // own gate — the vault lane's outcome is unaffected regardless of
+        // mirror state (design D6). `mirror_currency` mirrors `mirror
+        // status`'s own tri-state: `current` / `stale` / `unknown` (mirror
+        // unreachable or vault unread). Only STALE is actionable enough to
+        // become a warning gap; a vault with no successful mirror copy yet
+        // carries the SDK-computed `vault_unmirrored` finding — named and
+        // standing (gitvault-mirror-default supersedes the old anonymous
+        // `advisory` string), echoed verbatim, and deliberately NOT pushed
+        // into `gaps`: informational, never blocking, computed client-side
+        // only, cleared by the first successful mirror write or sync.
         if (gv.vault !== null && value.repo_id) {
           try {
             const mirrorStatus = await getSdk().gitvault.mirrorStatus({ repo_id: value.repo_id });
@@ -722,12 +726,12 @@ export async function run(sub, args = []) {
               mirrored_generation: mirrorStatus.mirrored_generation,
               newest_generation: mirrorStatus.newest_generation,
               is_current: mirrorStatus.is_current,
+              last_success_at: mirrorStatus.last_success_at,
+              finding: mirrorStatus.finding,
               validity_not_freshness: mirrorStatus.validity_not_freshness,
               keystore_still_required: mirrorStatus.keystore_still_required,
             };
-            if (!mirrorStatus.configured) {
-              value.gitvault_mirror.advisory = "no ciphertext mirror is configured for this vault — the exit ramp is opt-in; 'run402 repos mirror <destination>' to configure one.";
-            } else if (mirrorStatus.is_current === false) {
+            if (mirrorStatus.is_current === false) {
               gaps.push(`the ciphertext mirror at ${mirrorStatus.destination} is STALE (mirrored generation ${mirrorStatus.mirrored_generation ?? "(none)"}, vault newest ${mirrorStatus.newest_generation ?? "(none)"}) — ${mirrorStatus.closing_command}`);
             }
           } catch {

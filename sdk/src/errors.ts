@@ -701,7 +701,9 @@ export class TransferFreezeError extends Run402Error {
  * name was not claimed). `push_repo`, `verify_refs`, `submit_gc`,
  * `use_moved_command`, and `access_repair_pending` are repo-surface-
  * consolidation's own additions — see `cli/lib/repos.mjs` for where each is
- * emitted.
+ * emitted. `configure_mirror` (gitvault-mirror-default) rides `repos create`'s
+ * result beside the recovery receipt — the customer-owned mirror taught at
+ * vault birth.
  * Tolerates unknown future gateway types via the `(string & {})` fallback.
  */
 export type NextActionType =
@@ -727,7 +729,8 @@ export type NextActionType =
   | "verify_refs"
   | "submit_gc"
   | "use_moved_command"
-  | "access_repair_pending";
+  | "access_repair_pending"
+  | "configure_mirror";
 
 /**
  * A single advisory "what to do next" entry. Mirrors the gateway's

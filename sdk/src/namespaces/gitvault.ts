@@ -37,6 +37,7 @@ import {
   GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
   GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
   GITVAULT_TERMINAL_LOSS_STATEMENT,
+  GITVAULT_UNMIRRORED_FINDING_STATEMENT,
 } from "./gitvault.crypto.js";
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
@@ -422,8 +423,20 @@ export interface GitvaultMirrorStatus {
   is_current: boolean | null;
   /** Present exactly when `is_current === false`. */
   closing_command: string | null;
+  /** gitvault-mirror-default: when a mirror write/sync last completed with zero failures (local config fact — never transmitted). `null` when unconfigured or never succeeded. */
+  last_success_at: string | null;
+  /** gitvault-mirror-default: the standing `vault_unmirrored` finding — informational, never blocking; `null` once a mirror write or sync has succeeded (see {@link gitvaultUnmirroredFinding}). */
+  finding: GitvaultUnmirroredFinding | null;
   validity_not_freshness: typeof GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT;
   keystore_still_required: typeof GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT;
+}
+
+/** gitvault-mirror-default — the named standing finding for a vault with no customer-held mirror copy yet. */
+export interface GitvaultUnmirroredFinding {
+  kind: "vault_unmirrored";
+  message: typeof GITVAULT_UNMIRRORED_FINDING_STATEMENT;
+  /** The one command that moves toward clearing it: configure when unconfigured, backfill when configured-but-never-succeeded. */
+  setup_command: string;
 }
 
 /**
@@ -2754,8 +2767,15 @@ export class Gitvault {
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
     const config = readMirrorConfig(keystore, repoId);
     const base = { repo_id: repoId, validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT, keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT };
+    const lastSuccessAt = config?.last_success_at ?? null;
     if (!config) {
-      return { ...base, configured: false, destination: null, credential_kind: null, mirrored_generation: null, newest_generation: null, is_current: null, closing_command: null };
+      // gitvault-mirror-default: the unconfigured branch stays gateway-blind
+      // by construction — it returns before ANY network call, finding included.
+      return {
+        ...base, configured: false, destination: null, credential_kind: null, mirrored_generation: null, newest_generation: null, is_current: null, closing_command: null,
+        last_success_at: lastSuccessAt,
+        finding: gitvaultUnmirroredFinding({ configured: false, last_success_at: lastSuccessAt, mirrored_generation: null }),
+      };
     }
     let mirroredGeneration: string | null = null;
     try {
@@ -2776,6 +2796,8 @@ export class Gitvault {
       ...base, configured: true, destination: formatMirrorDestination(config.destination), credential_kind: config.credential?.kind ?? null,
       mirrored_generation: mirroredGeneration, newest_generation: newestGeneration, is_current: isCurrent,
       closing_command: isCurrent === false ? "run402 repos mirror --backfill" : null,
+      last_success_at: lastSuccessAt,
+      finding: gitvaultUnmirroredFinding({ configured: true, last_success_at: lastSuccessAt, mirrored_generation: mirroredGeneration }),
     };
   }
 
@@ -3048,6 +3070,30 @@ export function gitvaultKeystoreBackupReminderMessage(trip: GitvaultLossWarningT
     `this vault has accrued real value at risk (${reasons.join(", ")}), but it is covered by ${coveringRecipients} recipients today — not the single-principal case. ` +
     `${GITVAULT_DURABILITY_STATEMENT} Back up this machine's keystore anyway: losing it does not lose the vault, but it does lose YOUR access to it.`
   );
+}
+
+/**
+ * gitvault-mirror-default — the pure `vault_unmirrored` computation, in ONE
+ * place so doctor and `repos view` echo the same finding instead of each
+ * deriving their own (the loss-warning pattern above). Present when no mirror
+ * is configured, OR when one is configured but has no success evidence yet —
+ * either the local `last_success_at` stamp (survives a transiently unreachable
+ * mirror) or a chain-verified `mirrored_generation` read from the mirror
+ * itself (covers mirrors synced before the stamp existed). Informational,
+ * never blocking; every input is client-local or read from the CUSTOMER'S
+ * mirror — nothing here touches the gateway.
+ */
+export function gitvaultUnmirroredFinding(state: {
+  configured: boolean;
+  last_success_at: string | null;
+  mirrored_generation: string | null;
+}): GitvaultUnmirroredFinding | null {
+  if (state.configured && (state.last_success_at !== null || state.mirrored_generation !== null)) return null;
+  return {
+    kind: "vault_unmirrored",
+    message: GITVAULT_UNMIRRORED_FINDING_STATEMENT,
+    setup_command: state.configured ? "run402 repos mirror --backfill" : "run402 repos mirror <destination>",
+  };
 }
 
 /** `run402::<org_id>/<project_id>` — what `git-remote-run402` resolves. */

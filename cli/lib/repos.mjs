@@ -32,7 +32,7 @@ import { resolveOrgId, resolveOwningOrgId } from "./org-context.mjs";
 import { resolveGitvaultTarget } from "./gitvault-target.mjs";
 import { nextAction, claimOrgSlugAction, claimRepoNameAction } from "./next-actions.mjs";
 import { printKeystoreLocation } from "./gitvault.mjs";
-import { gitvaultRemoteUrlForRepo } from "#sdk";
+import { GITVAULT_MIRROR_SETUP_HINT, gitvaultRemoteUrlForRepo } from "#sdk";
 import { sdkStats, printVerboseStats, isVerbose } from "./stats.mjs";
 import {
   normalizeArgv,
@@ -554,7 +554,11 @@ async function formatRepoHuman(s, mirror) {
       : "can decrypt (read-only — no signing key)";
   lines.push(`This machine: ${decryptPart}. Policy: ${s.gitvault_policy ?? "(none)"}`);
 
-  if (mirror?.configured) {
+  // gitvault-mirror-default: the SDK-computed vault_unmirrored finding is
+  // echoed verbatim (never rephrased here) — informational, never blocking.
+  if (mirror?.finding) {
+    lines.push(`Mirror (${mirror.finding.kind}): ${mirror.finding.message} — ${mirror.finding.setup_command}`);
+  } else if (mirror?.configured) {
     const currency = mirror.is_current === true ? "current" : mirror.is_current === false ? "STALE" : "unknown";
     lines.push(`Mirror: ${mirror.destination} (${currency})`);
   }
@@ -679,7 +683,11 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
     ? nextAction("push_repo", { command: `git push -u ${vault.remote.name} HEAD`, why: "Publish the current branch to the encrypted Run402 remote." })
     : null;
   const claimAction = address ? null : orgSlug ? claimRepoNameAction(projectId) : claimOrgSlugAction();
-  const nextActions = [pushAction, claimAction].filter(Boolean);
+  // gitvault-mirror-default: teach the door at birth — the mirror one-liner
+  // rides beside the recovery receipt (the two things worth doing in the
+  // first minute, stated in the first minute).
+  const mirrorAction = nextAction("configure_mirror", { command: "run402 repos mirror <destination>", why: GITVAULT_MIRROR_SETUP_HINT });
+  const nextActions = [pushAction, mirrorAction, claimAction].filter(Boolean);
 
   // Secret-bearing (recovery_receipt): built fresh every call, printed once,
   // and never spilled into any cache path — see spillIfLarge's own doc
@@ -706,6 +714,7 @@ async function printCreateResult({ sdk, projectId, vault, adopted, name, verbose
   else console.error(`no address claimed — run 'run402 repos rename <name> --project ${projectId}' to claim one`);
   if (vault.remote) console.error(`remote '${vault.remote.name}' -> ${vault.remote.url} (${vault.remote.reason})`);
   if (pushAction) console.error(`next: ${pushAction.command}`);
+  console.error(GITVAULT_MIRROR_SETUP_HINT);
   console.error("");
   console.error(vault.terminal_loss_statement);
   await printKeystoreLocation();
@@ -963,6 +972,10 @@ async function view(args) {
       const currency = mirror.is_current === true ? "current" : mirror.is_current === false ? `STALE — ${mirror.closing_command}` : "unknown (mirror unreachable or vault unread)";
       console.error(`mirror ${mirror.destination}: mirrored generation ${mirror.mirrored_generation ?? "(none)"}, vault newest ${mirror.newest_generation ?? "(none)"} — ${currency}`);
     }
+    // gitvault-mirror-default: echoed verbatim from the SDK, exactly like the
+    // vault warnings below — informational, never blocking, and it clears on
+    // the first successful mirror write or sync.
+    if (mirror?.finding) console.error(`finding (${mirror.finding.kind}): ${mirror.finding.message} — ${mirror.finding.setup_command}`);
     for (const w of s.warnings) console.error(`warning (${w.kind}): ${w.message}`);
     for (const n of combinedNextActions) console.error(`next: ${n.why ?? n.action ?? n.type}${n.command ? ` — ${n.command}` : ""}`);
     printVerboseStats(a, sdk);
@@ -1282,6 +1295,9 @@ async function snapshot(args) {
       console.error("");
       console.error(`repo allocated (genesis ${created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
       console.error(JSON.stringify(created.recovery_receipt));
+      // gitvault-mirror-default: lazy allocation is a birth too — the mirror
+      // one-liner rides beside the recovery receipt here as well.
+      console.error(GITVAULT_MIRROR_SETUP_HINT);
       await printKeystoreLocation();
       console.error("");
     },

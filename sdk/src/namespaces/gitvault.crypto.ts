@@ -120,6 +120,38 @@ export const GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT =
 export const GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT =
   "a mirror without the principal keystore (or an equivalent key) recovers nothing — mirroring ciphertext does not create a second key, and the V0 terminal-loss sentence is unchanged" as const;
 
+/**
+ * gitvault-mirror-default — the recommended-default framing, stated the same
+ * way everywhere (the copy gate pins the doc surfaces to it). "Replicated"
+ * describes the platform's storage substrate (S3 multi-AZ redundancy), never
+ * a second run402 service; the customer-owned mirror is the only copy outside
+ * run402's custody, and — per the two honesty statements above — it proves
+ * validity, never freshness, and recovers nothing without the keystore.
+ */
+export const GITVAULT_MIRROR_THREE_COPIES_STATEMENT =
+  "the recommended shape is three copies: your working clone, the platform's replicated vault, and a mirror in storage you own" as const;
+
+/**
+ * gitvault-mirror-default — the `vault_unmirrored` standing finding, worded to
+ * stay true in BOTH pre-clear states (no mirror configured at all, and a
+ * configured mirror with no successful write/sync yet — the finding clears on
+ * the first successful mirror write or sync, never on configuration alone).
+ * Informational, never blocking; computed client-side only, so the gateway
+ * never learns whether a mirror exists.
+ */
+export const GITVAULT_UNMIRRORED_FINDING_STATEMENT =
+  `this vault has no customer-held mirror copy yet — ${GITVAULT_MIRROR_THREE_COPIES_STATEMENT}; until a first mirror write or sync succeeds, the third copy does not exist` as const;
+
+/**
+ * gitvault-mirror-default — the one-liner `repos create` prints beside the
+ * recovery receipt: the two things worth doing in the first minute, stated in
+ * the first minute. Deliberately custody-scoped ("stays in your custody"),
+ * never a recoverability claim — the terminal-loss statement printed beside it
+ * carries the key half.
+ */
+export const GITVAULT_MIRROR_SETUP_HINT =
+  "recommended: 'run402 repos mirror <destination>' (an s3:// bucket or a local directory) starts the customer-owned mirror — every later snapshot dual-pushes to it automatically, and it is the copy that stays in your custody" as const;
+
 const FRAME_NONCE_BYTES = 24;
 const FRAME_HEADER_BYTES = 6 + 1 + FRAME_NONCE_BYTES;
 const AEAD_TAG_BYTES = 16;

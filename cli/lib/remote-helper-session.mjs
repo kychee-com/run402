@@ -483,7 +483,10 @@ async function main(argv) {
       note(`vault ${result.handle.repo_id} allocated (genesis ${result.created.genesis_sha256}) — one-shot recovery receipt, keep many copies:`);
       note(JSON.stringify(result.created.recovery_receipt));
       try {
-        const { getGitvaultKeystoreRoot } = await import("#sdk/node");
+        const { getGitvaultKeystoreRoot, GITVAULT_MIRROR_SETUP_HINT } = await import("#sdk/node");
+        // gitvault-mirror-default: every allocation teaches the mirror door
+        // beside the recovery receipt, lazy push-to-create included.
+        note(GITVAULT_MIRROR_SETUP_HINT);
         note(`keystore: ${getGitvaultKeystoreRoot()} — back this up; whole-machine or whole-keystore loss is terminal for vault history until human envelopes ship`);
       } catch {
         // Never let a diagnostic line fail a push that already allocated successfully.

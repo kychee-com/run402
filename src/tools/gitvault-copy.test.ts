@@ -107,6 +107,19 @@ const KEYSTORE_QUALIFIED_DURABILITY =
 const SCOPED_CONFIDENTIALITY =
   "source payload and repository-history content are ciphertext-only; the substrate retains only enumerated plaintext metadata and holds zero vault keys";
 
+/**
+ * gitvault-mirror-default — the recommended-default vocabulary. The framing
+ * sentence is the ONE way the three-copies shape is stated; the finding prefix
+ * and setup hint are the canonical openings of the two runtime sentences the
+ * SDK owns (`GITVAULT_UNMIRRORED_FINDING_STATEMENT` composes the framing
+ * sentence via a template literal, so only its prefix is a source literal).
+ */
+const MIRROR_THREE_COPIES =
+  "the recommended shape is three copies: your working clone, the platform's replicated vault, and a mirror in storage you own";
+const UNMIRRORED_FINDING_PREFIX = "this vault has no customer-held mirror copy yet";
+const MIRROR_SETUP_HINT =
+  "recommended: 'run402 repos mirror <destination>' (an s3:// bucket or a local directory) starts the customer-owned mirror — every later snapshot dual-pushes to it automatically, and it is the copy that stays in your custody";
+
 /** Verbatim from the protocol's banned-copy list, plus the two forbidden unqualified patterns (D168). */
 const BANNED_PHRASES = [
   "cannot read your source",
@@ -286,6 +299,54 @@ describe("gitvault copy — the approved claims, byte-for-byte", () => {
       "the scoped sentence is the ONLY permitted form of the ciphertext claim",
     );
   });
+});
+
+/**
+ * gitvault-mirror-default — the mirror-as-recommended-default copy. The SDK's
+ * crypto module is the canonical home of the runtime sentences (the CLI prints
+ * them verbatim rather than hardcoding copy, same as the terminal-loss text),
+ * and the CLI reference states the framing so an agent reading the docs is
+ * taught the same door doctor and `repos view` name at runtime.
+ */
+describe("gitvault copy — the mirror recommended-default vocabulary", () => {
+  const CRYPTO_SRC = read("../../sdk/src/namespaces/gitvault.crypto.ts");
+
+  it("the SDK crypto module carries the three-copies framing sentence", () => {
+    assert.ok(
+      CRYPTO_SRC.includes(MIRROR_THREE_COPIES),
+      "GITVAULT_MIRROR_THREE_COPIES_STATEMENT is the one approved framing of the three-copies shape — do not reword it",
+    );
+  });
+
+  it("the SDK crypto module carries the vault_unmirrored finding opening", () => {
+    assert.ok(
+      CRYPTO_SRC.includes(UNMIRRORED_FINDING_PREFIX),
+      "GITVAULT_UNMIRRORED_FINDING_STATEMENT's opening is worded to stay true in BOTH pre-clear states — do not reword it",
+    );
+  });
+
+  it("the SDK crypto module carries the create-output mirror hint", () => {
+    assert.ok(
+      CRYPTO_SRC.includes(MIRROR_SETUP_HINT),
+      "GITVAULT_MIRROR_SETUP_HINT is custody-scoped on purpose (never a recoverability claim) — do not reword it",
+    );
+  });
+
+  for (const name of ["cli/llms-cli.txt", "docs-site cli/reference.md"] as const) {
+    it(`${name} states the three-copies framing verbatim`, () => {
+      assert.ok(
+        NORMALIZED_DOCS[name].includes(normalize(MIRROR_THREE_COPIES)),
+        "the three-copies framing is the approved recommended-default sentence — state it verbatim, never paraphrased",
+      );
+    });
+
+    it(`${name} names the vault_unmirrored finding`, () => {
+      assert.ok(
+        NORMALIZED_DOCS[name].includes("vault_unmirrored"),
+        "the standing finding is part of the documented contract — the reference must name it",
+      );
+    });
+  }
 });
 
 /**
