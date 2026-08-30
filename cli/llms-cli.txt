@@ -1207,6 +1207,7 @@ Wallet authenticates; org owns projects. Authorization = org role (`owner > admi
 - `run402 org member add <org> <wallet> [--role <role>]` — add a member BY WALLET (a new wallet is provisioned as a `human` principal); `--role` defaults to `developer`.
 - `run402 org member role <org> <principal_id> <role>` — change a member's role.
 - `run402 org member rm <org> <principal_id>` — revoke a member.
+- `run402 org member revoke-key <org> --principal <principal_id> [--reason <why>]` — owner + step-up: revoke the member's current gitvault encryption key (gitvault-agent-envelopes). The rotation path for a member whose keystore was lost or rebuilt — `GITVAULT_KEY_ROTATION_REQUIRED` points here; the member's next gitvault operation then enrolls its current keystore key afresh and any key-holder's next operation wraps each vault to it. Audited + mandatory security notification.
 - `run402 org invite list <org>` — pending email invites.
 - `run402 org invite create <org> <email> [--role <role>] [--ttl-hours N]` — invite a person by email; `--role` defaults to `developer`. The invite is **claimed automatically** when the recipient first signs in via that verified email (`run402 operator login --loopback`, or any hosted email/OAuth login) — it then surfaces as an active membership in the login output and `org member list`. There's no invitee-side "accept" step. Owner/admin invites only claim once the recipient has enrolled a passkey; lower roles claim on any login.
 - `run402 org invite rm <org> <principal_id>` — revoke a pending invite.

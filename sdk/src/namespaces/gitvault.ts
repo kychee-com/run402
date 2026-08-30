@@ -161,6 +161,10 @@ export interface GitvaultStatus {
   project_id: string | null;
   /** The control plane's view. `null` when no vault is allocated for the project. */
   vault: GitvaultVaultRecord | null;
+  /** gitvault-agent-envelopes D5: what this KEY-HOLDER's session-start fulfilment did (`null` on a machine that holds no K_repo, or `reconcile: "forbidden"`). */
+  reconcile_recipients?: GitvaultSessionReconcileResult | null;
+  /** gitvault-agent-envelopes D3: what the enroll-if-absent step did for this keystore's key (`null` when it did not run). */
+  enrollment?: GitvaultEnrollmentOutcome | null;
   keystore: {
     present: boolean;
     /** The principal's Ed25519 signing fingerprint, or `null` when identity is absent. */
@@ -991,6 +995,10 @@ export interface GitvaultStaleAccessEntry {
 export interface GitvaultAccessResult {
   repo_id: string;
   org_id: string | null;
+  /** gitvault-agent-envelopes D5: this KEY-HOLDER's session-start fulfilment outcome (`null` when this machine holds no K_repo for the vault, or `reconcile: "forbidden"`). */
+  reconcile_recipients?: GitvaultSessionReconcileResult | null;
+  /** gitvault-agent-envelopes D3: the enroll-if-absent step's outcome (`null` when it did not run). */
+  enrollment?: GitvaultEnrollmentOutcome | null;
   recipients: GitvaultAccessRecipient[];
   /** Vault-covering fingerprints (from the server) that match neither a directory entry nor a desired-state row — genuinely orphaned, revoked outside this org's membership model, or external. Excludes fingerprints already explained by `stale_access` AND by `this_keystore`. */
   unmatched_covered_fingerprints: string[];
@@ -2105,6 +2113,23 @@ export class Gitvault {
       warnings.push({ kind: "refs_unavailable", message: "this machine does not hold K_repo for the vault, so its ref map cannot be decrypted here" });
     }
 
+    // gitvault-agent-envelopes D3/D5: a KEY-HOLDER's ordinary read is a
+    // session start — enroll this keystore's key if absent and fulfil every
+    // pending desired recipient once per process (best-effort, reported,
+    // never folded into the observation above). `status` on a machine that
+    // holds no K_repo has nothing to fulfil and stays a pure read.
+    let reconcileRecipients: GitvaultSessionReconcileResult | null = null;
+    let enrollment: GitvaultEnrollmentOutcome | null = null;
+    if (repoId && holdsRepoKey && options.reconcile !== "forbidden") {
+      try {
+        const handle = await this.open({ ...options, repo_id: repoId });
+        reconcileRecipients = handle.reconcile_recipients;
+        enrollment = handle.enrollment;
+      } catch (e) {
+        warnings.push({ kind: "reconcile_unavailable", message: `the session-start envelope fulfilment could not run: ${e instanceof Error ? e.message : String(e)}` });
+      }
+    }
+
     const nextActions: GitvaultStatus["next_actions"] = [];
     // `run402 init` scaffolds the git remote and deliberately allocates
     // nothing; pointing at it here sent users to a command that silently did
@@ -2117,6 +2142,8 @@ export class Gitvault {
       repo_id: repoId,
       project_id: options.project_id ?? record?.project_id ?? null,
       vault: record,
+      reconcile_recipients: reconcileRecipients,
+      enrollment,
       keystore: {
         present: keystorePresent,
         identity_fingerprint: identityFingerprint,
@@ -3710,6 +3737,28 @@ export class Gitvault {
     const record = await this.get(repoId).catch(() => null);
     const orgId = record?.org_id ?? null;
 
+    // gitvault-agent-envelopes D3/D5: `access` is one of the ordinary reads a
+    // KEY-HOLDER's session starts with — enroll this keystore's key if absent
+    // and fulfil every pending desired recipient once per process, BEFORE the
+    // roster below is read, so the roster reflects the fulfilment. Reported,
+    // never folded into the roster; a machine holding no K_repo stays a pure
+    // read.
+    let reconcileRecipients: GitvaultSessionReconcileResult | null = null;
+    let enrollment: GitvaultEnrollmentOutcome | null = null;
+    if (options.reconcile !== "forbidden") {
+      try {
+        const { GitvaultKeystore } = await this.#keystore();
+        const probe = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+        if (probe.readRepo(repoId)) {
+          const handle = await this.open({ ...options, repo_id: repoId });
+          reconcileRecipients = handle.reconcile_recipients;
+          enrollment = handle.enrollment;
+        }
+      } catch {
+        // best-effort — the roster read below is the verb's own result
+      }
+    }
+
     const [directory, coverage] = await Promise.all([
       orgId
         ? this.#client.request<{ org_id: string; keys: Array<{ principal_id: string; display_name: string | null; ek_fingerprint: string }> }>(`/orgs/v1/${encodeURIComponent(orgId)}/encryption-keys`, { context: "reading the org encryption-key directory" })
@@ -3836,6 +3885,8 @@ export class Gitvault {
     return {
       repo_id: repoId,
       org_id: orgId,
+      reconcile_recipients: reconcileRecipients,
+      enrollment,
       recipients,
       unmatched_covered_fingerprints: unmatched,
       this_keystore: thisKeystore,

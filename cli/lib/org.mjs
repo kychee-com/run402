@@ -42,6 +42,7 @@ Usage:
   run402 org member add  <org_id> <wallet_address> [--role <role>]
   run402 org member role <org_id> --principal <principal_id> --role <role>
   run402 org member rm   <org_id> --principal <principal_id>
+  run402 org member revoke-key <org_id> --principal <principal_id> [--reason <why>]   (owner + step-up; revokes the member's gitvault encryption key — its next gitvault operation enrolls afresh)
   run402 org invite list   <org_id>
   run402 org invite create <org_id> --email <email> [--role <role>] [--ttl-hours N]
   run402 org invite rm     <org_id> --principal <principal_id>
@@ -178,6 +179,7 @@ Usage:
   run402 org member add  <org_id> <wallet_address> [--role <role>]
   run402 org member role <org_id> --principal <principal_id> --role <role>
   run402 org member rm   <org_id> --principal <principal_id>
+  run402 org member revoke-key <org_id> --principal <principal_id> [--reason <why>]   (owner + step-up; revokes the member's gitvault encryption key — its next gitvault operation enrolls afresh)
 
 Roles: ${ROLE_LIST} (add defaults to developer). Mutations require an active owner.
 Demoting/removing the org's only active owner fails with 409 LAST_OWNER.
@@ -551,6 +553,30 @@ async function runMember(args) {
     try {
       const res = await getSdk().org(org).members.add({ wallet, role: role || undefined });
       console.log(JSON.stringify(res, null, 2));
+    } catch (err) {
+      reportSdkError(err);
+    }
+    return;
+  }
+
+  if (memberAction === "revoke-key") {
+    // gitvault-agent-envelopes D3: owner + step-up revokes a member's current
+    // gitvault encryption key — the ONLY rotation path for a member that shares
+    // an org with another custodian (a lost/rebuilt keystore fails
+    // GITVAULT_KEY_ROTATION_REQUIRED and points here). Adapter only.
+    const a = normalizeArgv(rest);
+    assertKnownFlags(a, ["--principal", "--reason", "--help", "-h"], ["--principal", "--reason"]);
+    const principalFlag = flagValue(a, "--principal");
+    const reason = flagValue(a, "--reason");
+    const count = principalFlag ? 1 : 2;
+    const pos = requirePositionalCount(a, ["--principal", "--reason"], {
+      min: count, max: count, command: "run402 org member revoke-key <org_id> --principal <principal_id> [--reason <why>]",
+      missing: principalFlag ? "Missing <org_id>." : "Missing <org_id> and/or <principal_id> (--principal).",
+    });
+    const org = pos[0];
+    const principalId = principalFlag ?? pos[1];
+    try {
+      console.log(JSON.stringify(await getSdk().org(org).members.revokeEncryptionKey(principalId, reason ? { reason } : {}), null, 2));
     } catch (err) {
       reportSdkError(err);
     }

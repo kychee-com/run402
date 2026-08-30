@@ -24,6 +24,7 @@ import type {
   CreateOrgInput,
   MemberMutationResult,
   MemberRevokeResult,
+  MemberRevokeEncryptionKeyResult,
   OrgDetail,
   OrgInvite,
   OrgInviteRevokeResult,
@@ -101,6 +102,24 @@ export class OrgMembers {
     return this.client.request<MemberRevokeResult>(
       `/orgs/v1/${encodeURIComponent(this.orgId)}/members/${encodeURIComponent(principalId)}`,
       { method: "DELETE", context: "revoking org member" },
+    );
+  }
+
+  /**
+   * gitvault-agent-envelopes D3 — an OWNER revokes a member's current gitvault
+   * encryption key (`DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key`,
+   * owner + step-up). The independent-credential rotation path: a member whose
+   * keystore was lost or rebuilt cannot self-rotate (the asking credential is
+   * the one a thief would hold); after this, the member's next gitvault
+   * operation enrolls its current keystore key afresh and a key-holder's next
+   * operation wraps each vault to it. Audited, org-feed row + mandatory
+   * security notification (`gitvault_encryption_key_revoked`).
+   */
+  async revokeEncryptionKey(principalId: string, input: { reason?: string } = {}): Promise<MemberRevokeEncryptionKeyResult> {
+    if (!principalId) throw new LocalError("org members.revokeEncryptionKey requires a principalId", "revoking a member's encryption key");
+    return this.client.request<MemberRevokeEncryptionKeyResult>(
+      `/orgs/v1/${encodeURIComponent(this.orgId)}/members/${encodeURIComponent(principalId)}/encryption-key`,
+      { method: "DELETE", body: input.reason ? { reason: input.reason } : undefined, context: "revoking a member's encryption key" },
     );
   }
 }
