@@ -1451,11 +1451,7 @@ export class Gitvault {
   async #ensureEnrolled(keystore: GitvaultKeystore): Promise<GitvaultEnrollmentOutcome> {
     const memo = ENROLLED_KEYSTORES.get(keystore.rootDir);
     if (memo) return memo;
-    // Never MINT an identity here — that stays with vault creation (the
-    // six-stage journal). A keystore with no identity reaches the ordinary
-    // KEYSTORE_MISSING wall unchanged; there is nothing to enroll.
-    const identity = keystore.readIdentity();
-    if (!identity) return { outcome: "skipped_no_identity", ek_fingerprint: null };
+    let identity = keystore.readIdentity();
     let whoami: { principal: { id: string; type: string } | null; encryption_key: { encryption_key_id: string; ek_fingerprint: string; custody_scheme: string; state: string } | null };
     try {
       whoami = await this.#client.request("/agent/v1/whoami", { context: "resolving the enrolling principal" });
@@ -1463,13 +1459,37 @@ export class Gitvault {
       // An older gateway, a credential whoami refuses, or a transport fault:
       // enrollment is best-effort on the way IN — the verb itself still runs
       // (and a cold open will say `GITVAULT_ENVELOPE_PENDING` honestly if it
-      // needed an envelope this principal never enrolled for).
-      return { outcome: "skipped_error", ek_fingerprint: identity.encryption_fingerprint, error: e instanceof Error ? e.message : String(e) };
+      // needed an envelope this principal never enrolled for). A keystore
+      // with no identity reaches the ordinary KEYSTORE_MISSING wall unchanged.
+      return { outcome: identity ? "skipped_error" : "skipped_no_identity", ek_fingerprint: identity?.encryption_fingerprint ?? null, error: e instanceof Error ? e.message : String(e) };
     }
     if (!whoami.principal) {
-      return { outcome: "skipped_no_principal", ek_fingerprint: identity.encryption_fingerprint };
+      return { outcome: "skipped_no_principal", ek_fingerprint: identity?.encryption_fingerprint ?? null };
     }
     const current = whoami.encryption_key ?? null;
+    // A member joining from a FRESH machine has no keystore identity yet.
+    // Mint one only now — a real gateway confirmed an enrollable principal
+    // with no published key, so this identity is about to become that
+    // principal's key. (Vault creation mints its own via the six-stage
+    // journal; nothing else ever mints.) A principal that already HAS a
+    // published key but no local identity lost its keystore — that is the
+    // rotation case below, never a fresh mint.
+    if (!identity && !current) identity = keystore.ensureIdentity();
+    if (!identity) {
+      throw new LocalError(
+        `this principal has a published encryption key (${current!.ek_fingerprint}) but this keystore holds no identity — the keystore that enrolled it is not this one; rotation is never automatic`,
+        "enrolling the keystore encryption key",
+        {
+          code: "GITVAULT_KEY_ROTATION_REQUIRED",
+          details: { current_ek_fingerprint: current!.ek_fingerprint, current_state: current!.state, local_ek_fingerprint: null, keystore_root: keystore.rootDir },
+          next_actions: [
+            { type: "edit_request", why: "restore the keystore backup that holds the current key (~/.config/run402/gitvault or the wallet profile's gitvault dir)" },
+            { type: "edit_request", why: "have an org owner revoke the stale key: DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key (owner + step-up); your next gitvault operation then enrolls a fresh key" },
+            { type: "edit_request", why: "if this principal is the sole custody-eligible member of every org it belongs to: POST /agent/v1/whoami/encryption-key with replace_current: true" },
+          ],
+        },
+      );
+    }
     if (current && current.ek_fingerprint !== identity.encryption_fingerprint) {
       throw new LocalError(
         `this principal's published encryption key (${current.ek_fingerprint}) is not this keystore's key (${identity.encryption_fingerprint}); rotation is never automatic`,
