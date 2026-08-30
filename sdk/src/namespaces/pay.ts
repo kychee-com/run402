@@ -357,6 +357,20 @@ export function isPaymentBuyerError(error: unknown): error is PaymentBuyerError 
   );
 }
 
+/**
+ * Duck-typed Response check: the buyer's transport may hand back npm
+ * undici's Response (gitvault-owned-dispatcher), which is not an instance
+ * of the GLOBAL Response class even though it satisfies the same contract.
+ */
+function isResponseLike(value: unknown): value is Response {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { status?: unknown }).status === "number" &&
+    typeof (value as { headers?: unknown }).headers === "object"
+  );
+}
+
 export function isPaymentPolicyError(
   error: unknown,
 ): error is PaymentPolicyError {
@@ -364,7 +378,7 @@ export function isPaymentPolicyError(
     isPaymentBuyerError(error) &&
       (error as { code?: unknown }).code ===
         "MERCHANT_RECEIPT_UNAVAILABLE" &&
-      (error as { response?: unknown }).response instanceof Response &&
+      isResponseLike((error as { response?: unknown }).response) &&
       typeof (error as { result?: unknown }).result === "object",
   );
 }

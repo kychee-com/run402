@@ -29,6 +29,7 @@ import {
 } from "../../core-dist/config.js";
 import { Run402, type PayExecutor, type Run402Options } from "../index.js";
 import { installNodeGitvaultAeadBackend, installNodeGitvaultHashBackend } from "./gitvault-native-crypto.js";
+import { sdkFetch } from "./http-dispatcher.js";
 
 // gitvault-native-bulk-crypto (design D1): the bulk frame AEAD is sync and
 // isomorphic, so Node's faster OpenSSL implementation of the SAME construction
@@ -164,7 +165,10 @@ export function run402(opts: NodeRun402Options = {}): NodeRun402 {
     fetch:
       opts.fetch ??
       (opts.disablePaidFetch
-        ? globalThis.fetch.bind(globalThis)
+        ? // The owned dispatcher (gitvault-owned-dispatcher): single
+          // multiplexed API connection + persisted TLS resumption; defers to
+          // an overridden globalThis.fetch so test seams keep working.
+          sdkFetch
         : lazyPaidFetch!),
     payExecutor: opts.payExecutor ?? lazyPaidFetch?.pay,
     clientMetadata: nodeClientMetadata(opts),

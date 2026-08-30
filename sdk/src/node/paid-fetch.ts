@@ -60,6 +60,8 @@ import {
   type PaymentAttemptStore,
 } from "./payment-attempts.js";
 
+import { sdkFetch } from "./http-dispatcher.js";
+
 type FetchFn = typeof globalThis.fetch;
 type RpcFailureReason = "timeout" | "rate_limited" | "network" | "rpc_error";
 
@@ -739,9 +741,10 @@ function createLazyPaidFetchFrom(setup: () => Promise<FetchFn | null>): FetchFn 
       await initializing;
     }
 
-    // Read `globalThis.fetch` fresh each call so test suites that override it
+    // `sdkFetch` defers to `globalThis.fetch` whenever a test has replaced
+    // it (captured-original comparison), so suites that override the global
     // after the SDK is constructed still see their mocks.
-    if (!cached) return globalThis.fetch(input, init);
+    if (!cached) return sdkFetch(input, init);
     try {
       return await cached(input, init);
     } catch (err) {
@@ -779,8 +782,8 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
 
   const lazy = async (input: Parameters<FetchFn>[0], init?: Parameters<FetchFn>[1]) => {
     await initialize();
-    // Read `globalThis.fetch` fresh each call so test suites that override
-    // it after the SDK is constructed still see their mocks.
+    // `sdkFetch` (used below) defers to an overridden `globalThis.fetch`,
+    // preserving the test seam this comment used to guard.
     if (cached) {
       if (refreshBeforeNextCall) {
         await cached.refreshBalances();
@@ -795,7 +798,7 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
         throw err;
       }
     }
-    return globalThis.fetch(input, init);
+    return sdkFetch(input, init);
   };
 
   return Object.assign(lazy as FetchFn, {
@@ -810,7 +813,7 @@ export function createLazyPaidFetch(options: PaidFetchOptions = {}): LazyPaidFet
       const configured = await initialize();
       if (configured?.pay) return configured.pay(url, init, payOptions);
 
-      const response = await globalThis.fetch(url, init);
+      const response = await sdkFetch(url, init);
       if (response.status !== 402) {
         return {
           response,
@@ -1893,7 +1896,7 @@ export function createTrackedX402Fetch(
   const now = opts.now ?? (() => new Date().toISOString());
   const baseFetch: FetchFn = async (input, init) => {
     const context = storage.getStore();
-    if (!context) return (opts.fetch ?? globalThis.fetch)(input, init);
+    if (!context) return (opts.fetch ?? sdkFetch)(input, init);
 
     const paymentBearing = hasPaymentAuthorization(input, init);
     if (paymentBearing) {
@@ -1918,7 +1921,7 @@ export function createTrackedX402Fetch(
       // From this line onward a thrown transport error has an unknown outcome.
       context.providerStarted = true;
     }
-    const response = await (opts.fetch ?? globalThis.fetch)(nextInput, nextInit);
+    const response = await (opts.fetch ?? sdkFetch)(nextInput, nextInit);
 
     if (!paymentBearing && response.status === 402) {
       context.phase = "challenge_received";
