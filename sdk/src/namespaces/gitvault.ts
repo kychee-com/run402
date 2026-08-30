@@ -60,6 +60,15 @@ import type { NextAction } from "../errors.js";
  */
 const SESSION_RECONCILED = new Set<string>();
 const ENROLLED_KEYSTORES = new Map<string, GitvaultEnrollmentOutcome>();
+/** The cold open's own verdicts — surfaced from `open()`; anything else leaves the handle lazy (see `open`). */
+const COLD_OPEN_VERDICTS = new Set([
+  "GITVAULT_ENVELOPE_PENDING",
+  "GITVAULT_ENVELOPE_ALTERED",
+  "GITVAULT_ENVELOPE_NOT_FOR_RECIPIENT",
+  "GITVAULT_SIGNATURE_INVALID",
+  "VAULT_CREATION_CONFLICT",
+  "VAULT_UNRECOVERABLE",
+]);
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
   GitvaultCompactionGrant,
@@ -504,9 +513,10 @@ export interface GitvaultSessionReconcileResult {
 
 /** The enroll-if-absent step's outcome (gitvault-agent-envelopes D3). Never a rotation. */
 export interface GitvaultEnrollmentOutcome {
-  /** `already_active`: the directory holds this keystore's key. `enrolled`: published + possession-proven in this call. `activated_pending`: an earlier unfinished publish was completed. `skipped_no_principal`: whoami resolved no enrolling principal (e.g. a service key). */
-  outcome: "already_active" | "enrolled" | "activated_pending" | "skipped_no_principal";
+  /** `already_active`: the directory holds this keystore's key. `enrolled`: published + possession-proven in this call. `activated_pending`: an earlier unfinished publish was completed. `skipped_no_identity`: no local keystore identity (nothing to enroll — vault creation mints one). `skipped_no_principal`: whoami resolved no enrolling principal (e.g. a service key). `skipped_error`: whoami/publish/activate failed (older gateway, transport) — the verb still ran; `error` says why. */
+  outcome: "already_active" | "enrolled" | "activated_pending" | "skipped_no_identity" | "skipped_no_principal" | "skipped_error";
   ek_fingerprint: string | null;
+  error?: string;
 }
 
 /** {@link Gitvault.push}'s best-effort envelope-recipient reconcile outcome, reported beside (never folded into) the vault result — same non-blocking contract as {@link GitvaultMirrorPushResult}. */
@@ -1373,8 +1383,20 @@ export class Gitvault {
       ...(options.service_public_key !== undefined ? { service_public_key: options.service_public_key } : {}),
     });
     // D4: a cold keystore restores from its own envelope (or fails
-    // GITVAULT_ENVELOPE_PENDING with the exact next actions).
-    const restored = await vault.ensureRepoState();
+    // GITVAULT_ENVELOPE_PENDING with the exact next actions). Only the cold
+    // open's own VERDICTS surface here; a vault the transport cannot even
+    // describe (no genesis yet, an older gateway, a network fault) leaves the
+    // handle lazy so the verb fails exactly where and how it always did
+    // (`GITVAULT_REPO_STATE_MISSING` at first use), and a slug/id pin written
+    // by the caller after open() still lands.
+    let restored: import("../node/gitvault-publication.js").GitvaultColdOpenResult | null = null;
+    try {
+      restored = await vault.ensureRepoState();
+    } catch (e) {
+      const code = isRun402Error(e) ? (e as { code?: string }).code : undefined;
+      if (code && COLD_OPEN_VERDICTS.has(code)) throw e;
+      restored = null;
+    }
     // D5: a key-holder fulfils pending recipients once per process per vault.
     // A just-restored keystore holds K_repo too, but it just LEARNED it from
     // someone else's wrap — it is not the party that owes fulfilment on this
@@ -1429,10 +1451,23 @@ export class Gitvault {
   async #ensureEnrolled(keystore: GitvaultKeystore): Promise<GitvaultEnrollmentOutcome> {
     const memo = ENROLLED_KEYSTORES.get(keystore.rootDir);
     if (memo) return memo;
-    const identity = keystore.ensureIdentity();
-    const whoami = await this.#client.request<{ principal: { id: string; type: string } | null; encryption_key: { encryption_key_id: string; ek_fingerprint: string; custody_scheme: string; state: string } | null }>("/agent/v1/whoami", { context: "resolving the enrolling principal" });
+    // Never MINT an identity here — that stays with vault creation (the
+    // six-stage journal). A keystore with no identity reaches the ordinary
+    // KEYSTORE_MISSING wall unchanged; there is nothing to enroll.
+    const identity = keystore.readIdentity();
+    if (!identity) return { outcome: "skipped_no_identity", ek_fingerprint: null };
+    let whoami: { principal: { id: string; type: string } | null; encryption_key: { encryption_key_id: string; ek_fingerprint: string; custody_scheme: string; state: string } | null };
+    try {
+      whoami = await this.#client.request("/agent/v1/whoami", { context: "resolving the enrolling principal" });
+    } catch (e) {
+      // An older gateway, a credential whoami refuses, or a transport fault:
+      // enrollment is best-effort on the way IN — the verb itself still runs
+      // (and a cold open will say `GITVAULT_ENVELOPE_PENDING` honestly if it
+      // needed an envelope this principal never enrolled for).
+      return { outcome: "skipped_error", ek_fingerprint: identity.encryption_fingerprint, error: e instanceof Error ? e.message : String(e) };
+    }
     if (!whoami.principal) {
-      return { outcome: "skipped_no_principal", ek_fingerprint: null };
+      return { outcome: "skipped_no_principal", ek_fingerprint: identity.encryption_fingerprint };
     }
     const current = whoami.encryption_key ?? null;
     if (current && current.ek_fingerprint !== identity.encryption_fingerprint) {
@@ -1459,26 +1494,34 @@ export class Gitvault {
     if (!keypair) {
       throw new LocalError("the keystore identity has no X25519 private key — it cannot enroll or open envelopes", "enrolling the keystore encryption key", { code: "VAULT_UNRECOVERABLE", details: { statement: GITVAULT_TERMINAL_LOSS_STATEMENT } });
     }
-    const published = await this.#client.request<{ encryption_key_id: string; ek_fingerprint: string; state: string; activation: { challenge_id: string; epk: string; expires_at: string } | null }>(
-      "/agent/v1/whoami/encryption-key",
-      { method: "POST", body: { public_key: identity.encryption_pubkey, ek_fingerprint: identity.encryption_fingerprint, custody_scheme: "keystore_v1" }, context: "publishing the keystore encryption key" },
-    );
-    if (published.state !== "active") {
-      if (!published.activation) {
-        throw new LocalError("the gateway published the key as pending without an activation challenge", "enrolling the keystore encryption key", { code: "KEY_NOT_PENDING", details: { state: published.state } });
+    try {
+      const published = await this.#client.request<{ encryption_key_id: string; ek_fingerprint: string; state: string; activation: { challenge_id: string; epk: string; expires_at: string } | null }>(
+        "/agent/v1/whoami/encryption-key",
+        { method: "POST", body: { public_key: identity.encryption_pubkey, ek_fingerprint: identity.encryption_fingerprint, custody_scheme: "keystore_v1" }, context: "publishing the keystore encryption key" },
+      );
+      if (published.state !== "active") {
+        if (!published.activation) {
+          throw new LocalError("the gateway published the key as pending without an activation challenge", "enrolling the keystore encryption key", { code: "KEY_NOT_PENDING", details: { state: published.state } });
+        }
+        const proof = computeKeystorePossessionProof({
+          private_key: keypair.private_key,
+          epk_b64u: published.activation.epk,
+          challenge_id: published.activation.challenge_id,
+          encryption_key_id: published.encryption_key_id,
+          public_key_b64u: identity.encryption_pubkey,
+        });
+        await this.#client.request("/agent/v1/whoami/encryption-key/activate", {
+          method: "POST",
+          body: { challenge_id: published.activation.challenge_id, proof },
+          context: "proving possession of the keystore encryption key",
+        });
       }
-      const proof = computeKeystorePossessionProof({
-        private_key: keypair.private_key,
-        epk_b64u: published.activation.epk,
-        challenge_id: published.activation.challenge_id,
-        encryption_key_id: published.encryption_key_id,
-        public_key_b64u: identity.encryption_pubkey,
-      });
-      await this.#client.request("/agent/v1/whoami/encryption-key/activate", {
-        method: "POST",
-        body: { challenge_id: published.activation.challenge_id, proof },
-        context: "proving possession of the keystore encryption key",
-      });
+    } catch (e) {
+      // The ONE refusal that must surface is a rotation (the gateway saw a
+      // different current key than whoami just reported — a race with a
+      // concurrent publish); everything else stays best-effort.
+      if (isRun402Error(e) && (e as { code?: string }).code === "KEY_ROTATION_REQUIRED") throw e;
+      return { outcome: "skipped_error", ek_fingerprint: identity.encryption_fingerprint, error: e instanceof Error ? e.message : String(e) };
     }
     const out: GitvaultEnrollmentOutcome = { outcome: current ? "activated_pending" : "enrolled", ek_fingerprint: identity.encryption_fingerprint };
     ENROLLED_KEYSTORES.set(keystore.rootDir, out);
