@@ -17,6 +17,9 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
+      # The build script is unix-shell (rm -rf / cp -R); npm on Windows runs
+      # scripts under cmd. Git Bash ships on the runner — use it.
+      - run: npm config set script-shell "C:\\Program Files\\Git\\bin\\bash.exe"
       - run: npm run build
       - run: node --test cli-gitvault-daemon.test.mjs
 
