@@ -95,6 +95,7 @@ Maintenance:
   run402 repos access repair [--project <id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
   run402 repos access revoke-key <principal_id> [--project <id>] [--repo <repo_id>]
   run402 repos access declare-exposure [--project <id>] [--repo <repo_id>]
+  run402 repos access repin   [--project <id>] [--repo <repo_id>] --principal <principal_id> --fingerprint <ek_fingerprint>
   run402 repos policy <required|grandfathered> [--project <id>] [--repo <repo_id>] [--reason <why>]
   run402 repos policy auto-gc [<generations>|off]   (local, per-checkout — no --project/--repo)
 
@@ -2545,6 +2546,33 @@ async function accessRevokeKey(args) {
  * excluded from THIS rotation's own envelope set (D196) and becomes
  * eligible starting at the NEXT rotation.
  */
+/**
+ * `repos access repin --principal <id> --fingerprint <ek_…>` — a KEY-HOLDER
+ * explicitly accepts a recipient's CHANGED key (gitvault-agent-envelopes D3).
+ * The session-start reconcile refuses `pinned_key_mismatch` and never
+ * bypasses it, not even after an owner's revoke — acceptance names the new
+ * fingerprint (the out-of-band verification point) and moves the local pin.
+ * Adapter only: `sdk.gitvault.acceptRecipientKeyChange`.
+ */
+async function accessRepin(args) {
+  const a = normalizeArgv(args);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--principal", "--fingerprint", "--help", "-h"], [...COMMON_VALUE_FLAGS, "--principal", "--fingerprint"]);
+  requirePositionalCount(a, [...COMMON_VALUE_FLAGS, "--principal", "--fingerprint"], { min: 0, max: 0, command: "run402 repos access repin --principal <principal_id> --fingerprint <ek_fingerprint>", missing: "" });
+  const principalId = flagValue(a, "--principal");
+  const fingerprint = flagValue(a, "--fingerprint");
+  if (!principalId || !fingerprint) {
+    fail({ code: "BAD_USAGE", message: "repin needs --principal <principal_id> and --fingerprint <ek_fingerprint> (read the fingerprint back with the recipient — it is public data).", hint: "run402 repos access repin --principal <principal_id> --fingerprint <ek_fingerprint>" });
+  }
+  const sdk = getSdk();
+  const target = await vaultTarget(a);
+  try {
+    const result = await sdk.gitvault.acceptRecipientKeyChange({ ...target, principal_id: principalId, new_fingerprint: fingerprint });
+    console.log(JSON.stringify({ ...result, next_actions: [{ type: "retry", command: "run402 repos view", why: "the next ordinary gitvault operation on this machine wraps the vault to the accepted key" }] }, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function accessDeclareExposure(args) {
   const a = normalizeArgv(args);
   assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
@@ -2570,6 +2598,7 @@ async function access(args) {
   if (a[0] === "repair") return accessRepair(a.slice(1));
   if (a[0] === "revoke-key") return accessRevokeKey(a.slice(1));
   if (a[0] === "declare-exposure") return accessDeclareExposure(a.slice(1));
+  if (a[0] === "repin") return accessRepin(a.slice(1));
   return accessRead(a);
 }
 

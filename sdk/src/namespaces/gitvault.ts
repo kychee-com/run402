@@ -1281,6 +1281,50 @@ export class Gitvault {
   }
 
   /**
+   * gitvault-agent-envelopes D3 — a KEY-HOLDER explicitly accepts a recipient's
+   * CHANGED key. The session-start reconcile refuses to wrap under a
+   * fingerprint that differs from this keystore's TOFU pin
+   * (`pinned_key_mismatch`) — that refusal is the substitution defence and
+   * is never bypassed automatically, not even after an owner's revoke: from
+   * this machine's view an owner-driven re-key and a platform substitution
+   * look identical, and the audit event is not proof against the platform.
+   * Acceptance is a deliberate act naming the new fingerprint (the
+   * out-of-band verification point — read it back with the recipient over any
+   * channel; it is public data): this records the D197 re-pin receipt with the
+   * gateway AND moves the local pin, so the next reconcile wraps. Refuses when
+   * `new_fingerprint` is not what the org directory currently serves for the
+   * principal (a stale or mistyped fingerprint never pins).
+   */
+  async acceptRecipientKeyChange(options: GitvaultVaultHandleOptions & { principal_id: string; new_fingerprint: string }): Promise<{ repo_id: string; principal_id: string; old_fingerprint: string | null; new_fingerprint: string; receipt: GitvaultRecipientConfirmationReceipt | null }> {
+    const repoId = await this.#resolveRepoId(options);
+    const { GitvaultKeystore } = await this.#keystore();
+    const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const repo = keystore.readRepo(repoId);
+    if (!repo) throw new LocalError("this keystore holds no repo state for the vault — only a key-holder can accept a recipient's key change", "accepting a recipient key change", { code: "GITVAULT_REPO_STATE_MISSING", details: { repo_id: repoId } });
+    const record = await this.get(repoId);
+    const directory = await this.#client.request<{ keys: Array<{ principal_id: string; ek_fingerprint: string }> }>(`/orgs/v1/${encodeURIComponent(record.org_id)}/encryption-keys`, { context: "reading the org encryption-key directory" });
+    const served = directory.keys.find((k) => k.principal_id === options.principal_id)?.ek_fingerprint ?? null;
+    if (served !== options.new_fingerprint) {
+      throw new LocalError(
+        `the org directory currently serves ${served ?? "no key"} for principal ${options.principal_id}, not ${options.new_fingerprint} — refusing to pin a fingerprint the directory does not vouch for`,
+        "accepting a recipient key change",
+        { code: "PIN_CHANGE_UNCONFIRMED", details: { repo_id: repoId, principal_id: options.principal_id, directory_fingerprint: served, requested_fingerprint: options.new_fingerprint } },
+      );
+    }
+    const pins = { ...(repo.envelope_recipient_pins ?? {}) };
+    const old = pins[options.principal_id] ?? null;
+    let receipt: GitvaultRecipientConfirmationReceipt | null = null;
+    if (old && old !== options.new_fingerprint) {
+      receipt = await this.repinRecipient(repoId, options.principal_id, { old_ek_fingerprint: old, new_fingerprint: options.new_fingerprint }).catch(() => null);
+    } else if (!old) {
+      receipt = await this.confirmRecipient(repoId, options.principal_id, options.new_fingerprint).catch(() => null);
+    }
+    pins[options.principal_id] = options.new_fingerprint;
+    keystore.updateRepo(repoId, { envelope_recipient_pins: pins });
+    return { repo_id: repoId, principal_id: options.principal_id, old_fingerprint: old, new_fingerprint: options.new_fingerprint, receipt };
+  }
+
+  /**
    * `POST …/recipients/:principal_id/key-revocation` (D199) — declares
    * `reason:"recipient_key_revoked"` admissible for the NEXT rotation this
    * org's vaults submit; org-scoped, advances the same watermark a member
