@@ -210,7 +210,14 @@ mock.module("./cli/lib/sdk.mjs", {
         },
         compact: async (target) => {
           calls.push({ method: "gitvault.compact", target });
-          return (impl.compact ?? (async () => ({ generation: "0000000000000001", head_sha256: "aa", form: "checkpoint", maintenance_lease_id: null, cutoff_bound: true, covered_refs: 1, covered_roots: 0 })))(target);
+          return (impl.compact ?? (async () => ({
+            generation: "0000000000000001", head_sha256: "aa", form: "checkpoint", maintenance_lease_id: null, cutoff_bound: true, covered_refs: 1, covered_roots: 0,
+            headroom: { pool_used_bytes: 100, pool_limit_bytes: 1000, vault_source_bytes: 50, projected_transient_bytes: 150, ok: true, overridden: false },
+          })))(target);
+        },
+        compactHeadroom: async (target) => {
+          calls.push({ method: "gitvault.compactHeadroom", target });
+          return (impl.compactHeadroom ?? (async () => ({ pool_used_bytes: 100, pool_limit_bytes: 1000, vault_source_bytes: 50, projected_transient_bytes: 150, ok: true, overridden: false })))(target);
         },
         prune: async (opts) => {
           calls.push({ method: "gitvault.prune", opts });
@@ -896,6 +903,50 @@ describe("run402 repos gc — absorbs compact + prune, never described as exactl
     assert.ok(pruneCall.opts.submit.core);
     assert.ok(pruneCall.opts.submit.verifier_receipt);
     assert.equal(payload.phase, "submitted");
+  });
+});
+
+describe("run402 repos gc — transient-storage headroom disclosure (gitvault-compaction-headroom-preflight)", () => {
+  it("carries the headroom block on the planning half, even when everything fits", async () => {
+    const payload = await ok("gc", ["--project", PROJECT]);
+    assert.deepEqual(payload.headroom, {
+      pool_used_bytes: 100, pool_limit_bytes: 1000, vault_source_bytes: 50, projected_transient_bytes: 150, ok: true, overridden: false,
+    });
+  });
+
+  it("--force-headroom reaches the SDK as ignoreHeadroom, and is absent without the flag", async () => {
+    await ok("gc", ["--project", PROJECT, "--force-headroom"]);
+    assert.equal(calls.find((c) => c.method === "gitvault.compact").target.ignoreHeadroom, true);
+    calls.length = 0;
+    await ok("gc", ["--project", PROJECT]);
+    assert.equal(calls.find((c) => c.method === "gitvault.compact").target.ignoreHeadroom, undefined);
+  });
+
+  it("discloses headroom on the --submit half too, where no compaction runs", async () => {
+    const { writeFileSync } = await import("node:fs");
+    const corePath = join(scratch, "core-headroom.json");
+    const receiptPath = join(scratch, "receipt-headroom.json");
+    writeFileSync(corePath, JSON.stringify({ nonce: "n" }));
+    writeFileSync(receiptPath, JSON.stringify({ verifier: "r402s-verify" }));
+    impl.prune = async () => ({
+      candidates: [], eligible_count: 0, retained_count: 0, object_candidates: [], deferred_object_count: 0,
+      blocked_reason: null, intent_core: null, intent_core_sha256: null, attestation: null,
+      submitted: true, intent: { id: "int_1" }, confirmation: null, note: "submitted",
+    });
+    const payload = await ok("gc", ["--project", PROJECT, "--submit", "--intent-core", corePath, "--verifier-receipt", receiptPath]);
+    assert.equal(calls.find((c) => c.method === "gitvault.compact"), undefined, "still must not compact during --submit");
+    assert.ok(calls.find((c) => c.method === "gitvault.compactHeadroom"), "submit reads headroom standalone");
+    assert.equal(payload.headroom.pool_limit_bytes, 1000);
+  });
+
+  it("an unanswerable headroom read never fails the gc itself", async () => {
+    impl.compact = async () => ({
+      generation: "0000000000000001", head_sha256: "aa", form: "checkpoint", maintenance_lease_id: null,
+      cutoff_bound: true, covered_refs: 1, covered_roots: 0, headroom: null,
+    });
+    const payload = await ok("gc", ["--project", PROJECT]);
+    assert.equal(payload.headroom, null);
+    assert.equal(payload.phase, "planned");
   });
 });
 

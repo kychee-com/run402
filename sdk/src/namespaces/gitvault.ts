@@ -93,6 +93,11 @@ async function nodeOnly<T>(load: () => Promise<T>, verb: string): Promise<T> {
   }
 }
 
+/** Byte counts in the refusal text read as MiB — the unit an operator's tier is quoted in. */
+function mib(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 // ─── Public result shapes (snake_case on the wire, per docs/style.md) ─────────
 
 /** What `r.gitvault.status()` reports. Never carries key material. */
@@ -243,6 +248,42 @@ export interface GitvaultCompactResult {
   cutoff_bound: boolean;
   covered_refs: number;
   covered_roots: number;
+  /**
+   * What the transient-storage preflight saw
+   * (gitvault-compaction-headroom-preflight). `null` when the preflight could
+   * not be answered — see {@link GitvaultCompactHeadroom} for why an
+   * unanswerable check never blocks maintenance.
+   */
+  headroom: GitvaultCompactHeadroom | null;
+}
+
+/**
+ * Compaction's transient pooled-storage arithmetic.
+ *
+ * Compaction publishes a checkpoint pack roughly the size of the vault's live
+ * content while every superseded object stays stored until prune completes —
+ * a transient footprint of roughly TWICE `source_bytes`, counted against the
+ * ORG's pooled tier storage. The client used to say nothing about this, so an
+ * org near its cap paid the full encrypt+upload cost and then took a
+ * mid-flight quota refusal naming a quota rather than the mechanism.
+ *
+ * This is advisory-grade by construction: it can only refuse EARLIER and more
+ * legibly than the platform's own storage-quota enforcement, never admit
+ * something that enforcement would refuse.
+ */
+export interface GitvaultCompactHeadroom {
+  /** Pooled storage the org is already using, across every project it owns. */
+  pool_used_bytes: number;
+  /** The org's pooled tier storage limit. */
+  pool_limit_bytes: number;
+  /** The vault's billed `source_bytes` — the checkpoint-size proxy (design D1). */
+  vault_source_bytes: number;
+  /** `pool_used_bytes + vault_source_bytes`. */
+  projected_transient_bytes: number;
+  /** `false` when the projection exceeds the limit. */
+  ok: boolean;
+  /** `true` when the caller passed the override and a `false` `ok` was proceeded past anyway. */
+  overridden: boolean;
 }
 
 /**
@@ -1775,6 +1816,102 @@ export class Gitvault {
   }
 
   /**
+   * Compaction's transient-storage preflight
+   * (gitvault-compaction-headroom-preflight, design D1/D2).
+   *
+   * Three postures, in order of information quality:
+   *   1. the check answers "won't fit" → typed refusal, before any upload;
+   *   2. the caller passed the override → proceed, marked `overridden`;
+   *   3. the check CANNOT be answered → proceed after one stderr note.
+   *
+   * (3) is deliberate: failing closed on ignorance would make compaction's
+   * availability depend on an ADVISORY read, which is wrong for a maintenance
+   * verb whose refusals must come from the authority that owns the quota.
+   *
+   * The size proxy is the vault's billed `source_bytes` (D1). The true
+   * checkpoint-pack size is unknowable before packing, but it is bounded above
+   * by — and usually near — the vault's live content. Deliberately
+   * conservative when history exceeds live content; the override exists
+   * precisely because a proxy can overestimate.
+   */
+  /**
+   * Read compaction's transient-storage arithmetic WITHOUT compacting — the
+   * same figures `compact` preflights on, with none of its policy. `repos gc`
+   * uses it to disclose headroom on the `--submit` half, where no compaction
+   * runs but the numbers are just as worth showing. `null` when the pooled
+   * figures cannot be read.
+   */
+  async compactHeadroom(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultCompactHeadroom | null> {
+    // Deliberately resolves the repo id rather than `open()`ing: this is two
+    // control-plane reads and arithmetic, so it needs no keystore, no
+    // transport, and no Node runtime.
+    return this.#readCompactHeadroom(await this.#resolveRepoId(options));
+  }
+
+  /** The arithmetic, with no policy: the block, or `null` when unanswerable. */
+  async #readCompactHeadroom(repoId: string): Promise<GitvaultCompactHeadroom | null> {
+    let poolUsed: number;
+    let poolLimit: number;
+    let sourceBytes: number;
+    try {
+      const [record, tier] = await Promise.all([
+        this.get(repoId),
+        this.#client.request<{ pool_usage?: { total_storage_bytes?: number; storage_bytes_limit?: number } }>("/tiers/v1/status", {
+          context: "reading pooled tier storage for the compaction headroom preflight",
+        }),
+      ]);
+      poolUsed = Number(tier.pool_usage?.total_storage_bytes);
+      poolLimit = Number(tier.pool_usage?.storage_bytes_limit);
+      sourceBytes = Number(record.storage?.source_bytes ?? "0");
+      if (!Number.isFinite(poolUsed) || !Number.isFinite(poolLimit) || !Number.isFinite(sourceBytes) || poolLimit <= 0) {
+        throw new Error("tier status carried no usable pooled-storage figures");
+      }
+    } catch (e) {
+      // Posture (3). One note, on stderr, never a throw.
+      const why = e instanceof Error ? e.message : String(e);
+      globalThis.console?.error?.(`run402: could not check compaction storage headroom (${why}); proceeding — the platform's storage quota remains authoritative.`);
+      return null;
+    }
+
+    const projected = poolUsed + sourceBytes;
+    return {
+      pool_used_bytes: poolUsed,
+      pool_limit_bytes: poolLimit,
+      vault_source_bytes: sourceBytes,
+      projected_transient_bytes: projected,
+      ok: projected <= poolLimit,
+      overridden: false,
+    };
+  }
+
+  /** The reader plus compaction's policy (refuse / override / proceed). */
+  async #compactHeadroomPreflight(repoId: string, ignore: boolean): Promise<GitvaultCompactHeadroom | null> {
+    const headroom = await this.#readCompactHeadroom(repoId);
+    if (headroom === null) return null;
+    const { pool_used_bytes: poolUsed, pool_limit_bytes: poolLimit, vault_source_bytes: sourceBytes, projected_transient_bytes: projected, ok } = headroom;
+    if (!ok && !ignore) {
+      throw new LocalError(
+        `compaction needs about ${mib(sourceBytes)} of transient headroom and the org's pooled storage has ${mib(Math.max(poolLimit - poolUsed, 0))} free ` +
+          `(${mib(poolUsed)} used of ${mib(poolLimit)}; projected ${mib(projected)}). Compaction transiently holds BOTH the new checkpoint and the ` +
+          `not-yet-pruned history — roughly 2x source_bytes — until a prune completes. Free storage, raise the tier, or re-run with --force-headroom ` +
+          `(the platform's own quota enforcement stays authoritative either way).`,
+        "preflighting gitvault compaction storage headroom",
+        {
+          code: "GITVAULT_COMPACT_INSUFFICIENT_HEADROOM",
+          details: {
+            pool_used_bytes: poolUsed,
+            pool_limit_bytes: poolLimit,
+            vault_source_bytes: sourceBytes,
+            projected_transient_bytes: projected,
+            override: "--force-headroom",
+          },
+        },
+      );
+    }
+    return { ...headroom, overridden: !ok && ignore };
+  }
+
+  /**
    * Publish a checkpoint covering the canonical refs, every root unexpired at
    * the cutoff, and the `HEAD` target — under a maintenance lease so a
    * concurrent cycle cannot race it.
@@ -1797,9 +1934,22 @@ export class Gitvault {
        */
       r1_size_bytes?: string;
       r2_cap_size_bytes?: string;
+      /**
+       * Proceed even when the transient-storage preflight says the org's
+       * pooled tier storage cannot hold both the new checkpoint and the
+       * not-yet-pruned history. The platform's own quota enforcement remains
+       * the authority either way — this only skips the earlier, more legible
+       * refusal. CLI: `--force-headroom`.
+       */
+      ignoreHeadroom?: boolean;
     } = {},
   ): Promise<GitvaultCompactResult> {
     const handle = await this.open(options);
+
+    // BEFORE any checkpoint is built or uploaded (that ordering is the whole
+    // point — see GitvaultCompactHeadroom).
+    const headroom = await this.#compactHeadroomPreflight(handle.repo_id, options.ignoreHeadroom === true);
+
     const base = await handle.vault.materialize();
 
     let lease: GitvaultMaintenanceLease | null = null;
@@ -1834,6 +1984,7 @@ export class Gitvault {
         cutoff_bound: cutoffBound,
         covered_refs: Object.keys(published.refs).length,
         covered_roots: base.roots.length,
+        headroom,
       };
     } finally {
       if (lease) {

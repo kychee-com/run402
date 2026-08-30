@@ -75,7 +75,7 @@ Lifecycle:
 
 Maintenance:
   run402 repos fsck   [--project <id>] [--repo <repo_id>] [--mirror] [--budget <n>] [--no-write] [--human]
-  run402 repos gc     [--project <id>] [--repo <repo_id>] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
+  run402 repos gc     [--project <id>] [--repo <repo_id>] [--force-headroom] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
   run402 repos access [--project <id>] [--repo <repo_id>] [--human]
   run402 repos access repair [--project <id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
   run402 repos access revoke-key <principal_id> [--project <id>] [--repo <repo_id>]
@@ -350,6 +350,13 @@ Options:
                     gc: r402s-verify's verifier_receipt over that same core.
   --wait            gc: poll the submitted intent until the control-plane-
                     signed completion appears, instead of returning immediately
+  --force-headroom  gc: compact even when the storage preflight says the org's
+                    pooled tier storage cannot hold the transient footprint.
+                    Compaction holds BOTH the new checkpoint and the
+                    not-yet-pruned history until a prune completes -- roughly
+                    2x source_bytes -- so an org near its cap can otherwise be
+                    refused mid-upload. The platform's own quota enforcement
+                    stays authoritative either way.
   --reason <why>    policy: why the policy is changing — recorded in the
                     audit event. REQUIRED for \`grandfathered\`.
   -v, --verbose     Print one stderr summary line of this call's request
@@ -1638,9 +1645,29 @@ async function fsck(args) {
 
 const GC_VALUE_FLAGS = [...COMMON_VALUE_FLAGS, "--intent-core", "--verifier-receipt"];
 
+/**
+ * One line of headroom disclosure. Printed whether or not things fit: an
+ * operator deciding when to compact wants the numbers in the passing case too
+ * (gitvault-compaction-headroom-preflight D4).
+ */
+function printHeadroomNote(headroom) {
+  if (!headroom) return;
+  const mib = (n) => `${(n / (1024 * 1024)).toFixed(1)} MiB`;
+  const verdict = headroom.overridden
+    ? "OVER the pooled cap — proceeding because --force-headroom was passed; the platform's own quota stays authoritative"
+    : headroom.ok
+      ? "fits"
+      : "does NOT fit";
+  console.error(
+    `storage headroom: ${mib(headroom.pool_used_bytes)} used of ${mib(headroom.pool_limit_bytes)} pooled; ` +
+    `compaction transiently adds about ${mib(headroom.vault_source_bytes)} (it holds both the new checkpoint and the ` +
+    `not-yet-pruned history until a prune completes) — projected ${mib(headroom.projected_transient_bytes)}, ${verdict}.`,
+  );
+}
+
 async function gc(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...GC_VALUE_FLAGS, "--submit", "--wait", "-v", "--verbose", "--help", "-h"], GC_VALUE_FLAGS);
+  assertKnownFlags(a, [...GC_VALUE_FLAGS, "--submit", "--wait", "--force-headroom", "-v", "--verbose", "--help", "-h"], GC_VALUE_FLAGS);
   requirePositionalCount(a, GC_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos gc", missing: "" });
   const sdk = getSdk();
   const submitting = a.includes("--submit");
@@ -1671,7 +1698,11 @@ async function gc(args) {
       const opts = { ...target, submit: { core: readJsonFile("--intent-core", corePath), verifier_receipt: readJsonFile("--verifier-receipt", receiptPath) } };
       if (a.includes("--wait")) opts.submit.wait = {};
       const prune = await sdk.gitvault.prune(opts);
-      const out = { phase: "submitted", prune };
+      // No compaction runs on this half, so the figures come from the
+      // standalone read — disclosed anyway, because "how close is this org to
+      // its pooled cap" is exactly as worth knowing while reclaiming storage.
+      const headroom = await sdk.gitvault.compactHeadroom(target).catch(() => null);
+      const out = { phase: "submitted", prune, headroom };
       printJson(sdk, out);
       if (prune.confirmation?.outcome) {
         console.error(
@@ -1683,11 +1714,12 @@ async function gc(args) {
         console.error("submitted — no completion yet. Nothing is deleted until the control-plane-signed completion says so; re-run with --wait or poll the intent.");
       }
       console.error(prune.note);
+      printHeadroomNote(headroom);
       printVerboseStats(a, sdk);
       return;
     }
 
-    const checkpoint = await sdk.gitvault.compact(target);
+    const checkpoint = await sdk.gitvault.compact({ ...target, ...(a.includes("--force-headroom") ? { ignoreHeadroom: true } : {}) });
     const prune = await sdk.gitvault.prune(target);
     const nextActions = [];
     if (!prune.blocked_reason && prune.object_candidates.length > 0) {
@@ -1703,9 +1735,10 @@ async function gc(args) {
         destructive: true,
       });
     }
-    const out = { phase: "planned", checkpoint, prune, next_actions: nextActions };
+    const out = { phase: "planned", checkpoint, prune, headroom: checkpoint.headroom ?? null, next_actions: nextActions };
     printJson(sdk, out);
     console.error(`checkpoint published at generation ${checkpoint.generation}: ${checkpoint.covered_refs} ref(s), ${checkpoint.covered_roots} retention root(s).`);
+    printHeadroomNote(checkpoint.headroom);
     if (!checkpoint.cutoff_bound) {
       console.error("no retention-cutoff ticket was obtained, so roots were RETAINED — expiry is permissive. The checkpoint published, but no expired root left the map.");
     }

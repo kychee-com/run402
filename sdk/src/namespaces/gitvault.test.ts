@@ -204,6 +204,91 @@ describe("gitvault control-plane reads", () => {
   });
 });
 
+describe("gitvault compaction headroom preflight (gitvault-compaction-headroom-preflight)", () => {
+  /**
+   * `pool_usage` figures are what `GET /tiers/v1/status` actually returns —
+   * the preflight reads exactly these two fields plus the vault record's
+   * billed `source_bytes`, so this fixture is also the pin against tier-status
+   * shape drift (design D2's mitigation).
+   */
+  function tierStatus(used: number, limit: number): Record<string, unknown> {
+    return { tier: "prototype", active: true, pool_usage: { projects: 1, total_api_calls: 0, total_storage_bytes: used, api_calls_limit: 500_000, storage_bytes_limit: limit } };
+  }
+
+  function route(record: Record<string, unknown>, tier: { status?: number; body: unknown }) {
+    return (call: Call): { status?: number; body: unknown } => {
+      if (call.url.includes("/tiers/v1/status")) return tier;
+      return { body: record };
+    };
+  }
+
+  const REPO = VAULT_RECORD.repo_id;
+  const withSource = (bytes: string): Record<string, unknown> => ({ ...VAULT_RECORD, storage: { ...VAULT_RECORD.storage, source_bytes: bytes } });
+
+  it("reports the arithmetic when the projection fits", async () => {
+    const { sdk } = sdkWith(route(withSource("50"), { body: tierStatus(100, 1000) }));
+    assert.deepEqual(await sdk.gitvault.compactHeadroom({ repo_id: REPO }), {
+      pool_used_bytes: 100,
+      pool_limit_bytes: 1000,
+      vault_source_bytes: 50,
+      projected_transient_bytes: 150,
+      ok: true,
+      overridden: false,
+    });
+  });
+
+  it("reports ok:false — without throwing — when the standalone read is asked", async () => {
+    // The READ is not the policy: `compactHeadroom` never refuses, it reports.
+    // Only `compact` turns a false verdict into a refusal.
+    const { sdk } = sdkWith(route(withSource("500"), { body: tierStatus(900, 1000) }));
+    const headroom = await sdk.gitvault.compactHeadroom({ repo_id: REPO });
+    assert.equal(headroom?.ok, false);
+    assert.equal(headroom?.projected_transient_bytes, 1400);
+  });
+
+  it("the boundary is inclusive — exactly filling the pool still fits", async () => {
+    const { sdk } = sdkWith(route(withSource("100"), { body: tierStatus(900, 1000) }));
+    assert.equal((await sdk.gitvault.compactHeadroom({ repo_id: REPO }))?.ok, true);
+  });
+
+  it("returns null when the tier-status read fails, rather than guessing (D2 posture 3)", async () => {
+    const { sdk } = sdkWith(route(withSource("50"), { status: 500, body: { error: "nope" } }));
+    assert.equal(await sdk.gitvault.compactHeadroom({ repo_id: REPO }), null);
+  });
+
+  it("returns null when tier status carries no usable pooled figures (shape drift)", async () => {
+    for (const body of [{}, { pool_usage: {} }, { pool_usage: { total_storage_bytes: 1, storage_bytes_limit: 0 } }]) {
+      const { sdk } = sdkWith(route(withSource("50"), { body }));
+      assert.equal(await sdk.gitvault.compactHeadroom({ repo_id: REPO }), null, JSON.stringify(body));
+    }
+  });
+
+  it("refuses a compaction that will not fit BEFORE any upload, naming the arithmetic and the override", async () => {
+    const { sdk, calls } = sdkWith(route(withSource("200000000"), { body: tierStatus(134_000_000, 250 * 1024 * 1024) }));
+    let thrown: unknown;
+    try {
+      await sdk.gitvault.compact({ repo_id: REPO });
+    } catch (e) {
+      thrown = e;
+    }
+    const err = thrown as { code?: string; message?: string; details?: Record<string, number | string> };
+    assert.equal(err?.code, "GITVAULT_COMPACT_INSUFFICIENT_HEADROOM");
+    assert.equal(err.details?.pool_used_bytes, 134_000_000);
+    assert.equal(err.details?.pool_limit_bytes, 250 * 1024 * 1024);
+    assert.equal(err.details?.vault_source_bytes, 200_000_000);
+    assert.equal(err.details?.projected_transient_bytes, 334_000_000);
+    assert.equal(err.details?.override, "--force-headroom");
+    // The mechanism, not just a quota number — that is the whole point.
+    assert.match(String(err.message), /both the new checkpoint and the/i);
+    assert.match(String(err.message), /--force-headroom/);
+    // Nothing was published: only the two preflight reads went out. A
+    // maintenance lease or an upload session here would mean the refusal
+    // arrived after the cost, which is the bug this change exists to fix.
+    assert.equal(calls.filter((c) => c.method !== "GET").length, 0, `unexpected writes: ${JSON.stringify(calls.filter((c) => c.method !== "GET"))}`);
+    assert.equal(calls.some((c) => c.url.includes("maintenance-leases")), false);
+  });
+});
+
 describe("gitvault owner writes", () => {
   it("setPolicy() PATCHes the policy route and carries the reason", async () => {
     const { sdk, calls } = sdkWith(() => ({ body: { gitvault_policy: "grandfathered", gitvault_policy_version: "2", changed: true, warnings: [] } }));
