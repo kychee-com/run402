@@ -19,14 +19,17 @@ import { randomBytes } from "node:crypto";
 
 import {
   _gitvaultAeadBackend,
+  _gitvaultHashBackend,
   _setGitvaultAeadBackend,
+  _setGitvaultHashBackend,
   deriveObjectKey,
   frameAad,
   openFrame,
   openFrameWithAad,
   sealFrame,
+  sha256Hex,
 } from "../namespaces/gitvault.crypto.js";
-import { installNodeGitvaultAeadBackend, nodeGitvaultAeadBackend } from "./gitvault-native-crypto.js";
+import { installNodeGitvaultAeadBackend, installNodeGitvaultHashBackend, nodeGitvaultAeadBackend, nodeGitvaultHashBackend } from "./gitvault-native-crypto.js";
 import { loadGitvaultVectors, OPTOUT_SKIP_MESSAGE, type GitvaultVector } from "./gitvault-vectors.test-helper.js";
 import { LocalError } from "../errors.js";
 
@@ -236,5 +239,111 @@ describe("gitvault native bulk crypto — tampering fails identically (3.3, D4)"
     // refusal, so take one byte off instead — that reaches the AEAD.
     const truncated = sealed.frame.subarray(0, sealed.frame.length - 1);
     withNative(() => assertLocalCode(() => openFrame({ ...base, k_obj: kObj, frame: truncated }), "GITVAULT_AEAD_AUTH_FAILURE", "native/truncated"));
+  });
+});
+
+/** Run `fn` with the native HASH backend installed, always restoring the default. */
+function withNativeHash(fn: () => void): void {
+  _setGitvaultHashBackend(nodeGitvaultHashBackend);
+  try {
+    fn();
+  } finally {
+    _setGitvaultHashBackend(null);
+  }
+}
+
+describe("gitvault native hash — registration + probe (gitvault-native-hash D3)", () => {
+  after(() => _setGitvaultHashBackend(null));
+
+  it("installs after the live probe, and the slot agrees with the verdict", () => {
+    _setGitvaultHashBackend(null);
+    const installed = installNodeGitvaultHashBackend();
+    assert.equal(_gitvaultHashBackend() !== null, installed);
+    _setGitvaultHashBackend(null);
+    assert.equal(_gitvaultHashBackend(), null, "installing null must restore the @noble default");
+  });
+
+  it("a backend that fails the probe registers NOTHING", () => {
+    _setGitvaultHashBackend(null);
+    const lying = { sha256: () => new Uint8Array(32) };
+    assert.equal(installNodeGitvaultHashBackend(lying), false);
+    assert.equal(_gitvaultHashBackend(), null, "a failed probe must leave the default in place");
+    const throwing = {
+      sha256: () => {
+        throw new Error("boom");
+      },
+    };
+    assert.equal(installNodeGitvaultHashBackend(throwing), false);
+    assert.equal(_gitvaultHashBackend(), null);
+  });
+
+  it("the ISOMORPHIC entry registers no hash backend", async () => {
+    _setGitvaultHashBackend(null);
+    await import("../index.js");
+    assert.equal(_gitvaultHashBackend(), null, "the isomorphic entry must never register a hash backend");
+  });
+});
+
+describe("gitvault native hash — byte-identical digests (gitvault-native-hash 3.1/3.2)", () => {
+  after(() => {
+    _setGitvaultHashBackend(null);
+    _setGitvaultAeadBackend(null);
+  });
+
+  it("both backends agree with each other across sizes including multi-MB", () => {
+    for (const size of [0, 1, 15, 63, 64, 65, 1023, 65_536, 3 * 1024 * 1024]) {
+      const bytes = new Uint8Array(randomBytes(size));
+      _setGitvaultHashBackend(null);
+      const noble = sha256Hex(bytes);
+      let native = "";
+      withNativeHash(() => {
+        native = sha256Hex(bytes);
+      });
+      assert.equal(native, noble, `size ${size}`);
+    }
+  });
+
+  it("replays the frozen aead-frame vector's recorded hashes under both hash backends", { skip: vectorSet ? false : OPTOUT_SKIP_MESSAGE }, () => {
+    const seed = aeadVectors.find((v) => v.id === "aead-001");
+    assert.ok(seed, "the aead-001 seal vector must be present");
+    const kRepo = hexToBytes(seed.inputs.K_repo_hex as string);
+    const kObj = deriveObjectKey(kRepo, seed.inputs.repo_id, seed.inputs.epoch, seed.inputs.object_kind, seed.inputs.object_id);
+    const seal = (): string => {
+      const sealed = sealFrame({
+        k_obj: kObj,
+        repo_id: seed.inputs.repo_id,
+        object_kind: seed.inputs.object_kind,
+        object_id: seed.inputs.object_id,
+        epoch: seed.inputs.epoch,
+        plaintext: hexToBytes(seed.inputs.plaintext_hex as string),
+        nonce: hexToBytes(seed.inputs.nonce_hex as string),
+      });
+      return sealed.ciphertext_sha256;
+    };
+    _setGitvaultHashBackend(null);
+    assert.equal(seal(), seed.expected.ciphertext_sha256, "@noble hash vs the frozen vector");
+    withNativeHash(() => assert.equal(seal(), seed.expected.ciphertext_sha256, "native hash vs the frozen vector"));
+  });
+
+  it("a frame sealed under the native hash opens under the default, and the reverse (multi-MB)", () => {
+    const kObj = new Uint8Array(randomBytes(32));
+    const base = {
+      repo_id: "src_" + "0".repeat(32),
+      object_kind: "wal_pack",
+      object_id: "0".repeat(16),
+      epoch: "0".repeat(16),
+    } as const;
+    const plaintext = new Uint8Array(randomBytes(2 * 1024 * 1024));
+
+    _setGitvaultHashBackend(null);
+    const sealedDefault = sealFrame({ ...base, k_obj: kObj, plaintext });
+    withNativeHash(() => {
+      const opened = openFrame({ ...base, k_obj: kObj, frame: sealedDefault.frame, expected_ciphertext_sha256: sealedDefault.ciphertext_sha256 });
+      assert.deepEqual(opened, plaintext, "sealed default, opened native");
+      const sealedNative = sealFrame({ ...base, k_obj: kObj, plaintext });
+      _setGitvaultHashBackend(null);
+      const openedBack = openFrame({ ...base, k_obj: kObj, frame: sealedNative.frame, expected_ciphertext_sha256: sealedNative.ciphertext_sha256 });
+      assert.deepEqual(openedBack, plaintext, "sealed native, opened default");
+    });
   });
 });

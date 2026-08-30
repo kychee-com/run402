@@ -202,7 +202,39 @@ export function lpOpt(value: string | null): Uint8Array {
   return value === null ? new Uint8Array([0]) : concatBytes(new Uint8Array([1]), lp(value));
 }
 
+/**
+ * The protocol-hash seam (gitvault-native-hash) — the second narrow slot
+ * beside the bulk-AEAD one below, same doctrine: the core owns a slot and the
+ * Node entry fills it (capability is INJECTED at the entry point, never
+ * sniffed in the core), and with nothing registered the `@noble/hashes` path
+ * runs byte-for-byte as before. `sha256Hex` is the single chokepoint every
+ * protocol hash flows through — frame receipt hashes, plaintext pack checks,
+ * stored-bytes preimages, fingerprints, ledger ids — so this one dispatch
+ * converts them all. `hkdf`/`hmac` deliberately stay on `@noble`: they
+ * consume the hash CONSTRUCTOR, not the digest, and are small-input.
+ */
+export interface GitvaultHashBackend {
+  /** SHA-256 digest — 32 bytes, byte-identical to `@noble/hashes`'. */
+  sha256(bytes: Uint8Array): Uint8Array;
+}
+
+let hashBackend: GitvaultHashBackend | null = null;
+
+/**
+ * SDK-INTERNAL (underscore-exported so the byte-equality suite can swap
+ * backends). Installing `null` restores the `@noble` default.
+ */
+export function _setGitvaultHashBackend(backend: GitvaultHashBackend | null): void {
+  hashBackend = backend;
+}
+
+/** SDK-INTERNAL: which hash backend is live. The isomorphic-entry test asserts `null`. */
+export function _gitvaultHashBackend(): GitvaultHashBackend | null {
+  return hashBackend;
+}
+
 export function sha256Hex(bytes: Uint8Array): string {
+  if (hashBackend) return bytesToHex(hashBackend.sha256(bytes));
   return bytesToHex(sha256(bytes));
 }
 

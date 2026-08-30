@@ -5,6 +5,16 @@
  */
 
 import { readFileSync } from "node:fs";
+import * as nodeModule from "node:module";
+
+// gitvault-startup-amortization (D2): on-disk V8 compile cache for the
+// lazily-imported subcommand graphs. Feature-guarded (Node 22.8+) and
+// try/caught — absence or an unwritable cache dir degrade silently.
+try {
+  nodeModule.enableCompileCache?.();
+} catch {
+  /* silent by contract */
+}
 
 const rawArgv = process.argv.slice(2);
 

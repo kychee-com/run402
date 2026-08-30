@@ -932,6 +932,20 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
    */
   getObjects(request: { repo_id: string; paths: string[] }): Promise<Array<Uint8Array | null>>;
   /**
+   * OPTIONAL per-object settlement over the SAME batch shape as
+   * {@link getObjects} (gitvault-pipelined-restore D2): one presign POST,
+   * the same bounded-concurrency GETs — counted ops identical — but the
+   * result is one promise PER path, each settling when its own object's
+   * bytes land, so a consumer can decrypt/verify/apply object i while later
+   * objects are still downloading. Order and absence semantics match
+   * `getObjects` (index-aligned; `null` for absent). Every returned promise
+   * is pre-marked handled, so an abandoned tail after a mid-batch failure
+   * never surfaces as an unhandled rejection. A transport without this
+   * method degrades to the `getObjects` barrier — pipelining is a
+   * wall-clock property, never a correctness dependency.
+   */
+  getObjectsSettled?(request: { repo_id: string; paths: string[] }): Promise<Array<Promise<Uint8Array | null>>>;
+  /**
    * Read the EXACT stored bytes of many generation-addressed heads in ONE
    * POST (`…/head-reads`, gitvault-batched-head-reads).
    *
@@ -1341,6 +1355,19 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
    */
   async function getObjectsBytes(repoId: string, paths: string[]): Promise<Array<Uint8Array | null>> {
     if (paths.length === 0) return [];
+    const targets = await presignObjectBatch(repoId, paths);
+    if (!targets) return paths.map(() => null);
+    return mapBounded(targets, GITVAULT_TRANSPORT_CONCURRENCY, async (target, i) => {
+      if (!target) return null;
+      const r = await fetchGitvaultObjectBytes(client, target);
+      if (r.status === 404) return null;
+      if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${paths[i]}`, "reading gitvault object", { path: paths[i], status: r.status });
+      return new Uint8Array(await r.arrayBuffer());
+    });
+  }
+
+  /** The shared presign step of the batched read: ONE `object-reads` POST; `null` means the not-found shapes `getObjects` maps to an all-absent result. */
+  async function presignObjectBatch(repoId: string, paths: string[]): Promise<Array<ObjectReadsResponse["reads"][number] | null> | null> {
     const refs = paths.map((path) => {
       const ref = gitvaultWireRefForPath(path);
       if (!ref || ref.kind !== "object") fail("GITVAULT_OBJECT_READ_FAILED", `${path} is not a batch-readable carrier object`, "reading gitvault objects", { path });
@@ -1350,19 +1377,62 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     try {
       presigned = await client.request<ObjectReadsResponse>(`${base(repoId)}/object-reads`, { method: "POST", body: { objects: refs }, context: "resolving gitvault objects" });
     } catch (e) {
-      if (isRun402Error(e) && (e as { status?: number }).status === 404) return paths.map(() => null);
-      if (isRun402Error(e) && (e as { code?: string }).code === "RESOURCE_NOT_FOUND") return paths.map(() => null);
+      if (isRun402Error(e) && (e as { status?: number }).status === 404) return null;
+      if (isRun402Error(e) && (e as { code?: string }).code === "RESOURCE_NOT_FOUND") return null;
       throw e;
     }
     const byLedgerId = new Map(presigned.reads.map((r) => [gitvaultLedgerId(r), r]));
-    const targets = refs.map((r) => byLedgerId.get(gitvaultLedgerId(r)) ?? null);
-    return mapBounded(targets, GITVAULT_TRANSPORT_CONCURRENCY, async (target, i) => {
-      if (!target) return null;
-      const r = await fetchGitvaultObjectBytes(client, target);
-      if (r.status === 404) return null;
-      if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${paths[i]}`, "reading gitvault object", { path: paths[i], status: r.status });
-      return new Uint8Array(await r.arrayBuffer());
+    return refs.map((r) => byLedgerId.get(gitvaultLedgerId(r)) ?? null);
+  }
+
+  /**
+   * Per-object settlement over the same batch (gitvault-pipelined-restore
+   * D2): identical presign + bounded GETs, but each index's promise settles
+   * when ITS bytes land. Failure semantics per index match `getObjects`'s
+   * per-element behavior (absent → null, a failed GET → the same
+   * GITVAULT_OBJECT_READ_FAILED); every promise is pre-marked handled so an
+   * abandoned tail never becomes an unhandled rejection.
+   */
+  async function getObjectsSettledBytes(repoId: string, paths: string[]): Promise<Array<Promise<Uint8Array | null>>> {
+    if (paths.length === 0) return [];
+    const targets = await presignObjectBatch(repoId, paths);
+    if (!targets) return paths.map(() => Promise.resolve<Uint8Array | null>(null));
+    const deferreds = targets.map(() => {
+      let resolve!: (v: Uint8Array | null) => void;
+      let reject!: (e: unknown) => void;
+      const promise = new Promise<Uint8Array | null>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      void promise.catch(() => {});
+      return { promise, resolve, reject };
     });
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const i = next;
+        next += 1;
+        if (i >= targets.length) return;
+        try {
+          const target = targets[i];
+          if (!target) {
+            deferreds[i]!.resolve(null);
+            continue;
+          }
+          const r = await fetchGitvaultObjectBytes(client, target);
+          if (r.status === 404) {
+            deferreds[i]!.resolve(null);
+            continue;
+          }
+          if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${paths[i]}`, "reading gitvault object", { path: paths[i], status: r.status });
+          deferreds[i]!.resolve(new Uint8Array(await r.arrayBuffer()));
+        } catch (e) {
+          deferreds[i]!.reject(e);
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(GITVAULT_TRANSPORT_CONCURRENCY, targets.length) }, () => worker()));
+    return deferreds.map((d) => d.promise);
   }
 
   /**
@@ -1537,6 +1607,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     },
     getObject: ({ repo_id, path }) => getObjectBytes(repo_id, path),
     getObjects: ({ repo_id, paths }) => getObjectsBytes(repo_id, paths),
+    getObjectsSettled: ({ repo_id, paths }) => getObjectsSettledBytes(repo_id, paths),
     getHeads: ({ repo_id, generations }) => getHeadsBytes(repo_id, generations),
     async admitGenesis(request: GitvaultAdmitGenesisRequest): Promise<GitvaultAdmitGenesisResult> {
       try {
@@ -4499,6 +4570,32 @@ export class GitvaultVault {
       return hexToBytes(hex);
     };
     const first = heads[0]!;
+    // gitvault-pipelined-restore: per-object settlement when the transport
+    // offers it, the `getObjects` barrier otherwise — pipelining is a
+    // wall-clock property, never a correctness dependency, so a transport
+    // without the method reproduces today's serial-after-barrier behavior
+    // exactly (each per-index promise settles when the whole batch does).
+    const settled = async (paths: string[]): Promise<Array<Promise<Uint8Array | null>>> => {
+      if (this.transport.getObjectsSettled) return this.transport.getObjectsSettled({ repo_id: this.repoId, paths });
+      const all = this.transport.getObjects({ repo_id: this.repoId, paths });
+      const perIndex = paths.map((_, i) => all.then((frames) => frames[i] ?? null));
+      // Mark every derived promise handled — the consumer awaits them in
+      // order and stops at the first failure, abandoning the tail.
+      for (const p of perIndex) void p.catch(() => {});
+      return perIndex;
+    };
+    // gitvault-pipelined-restore D3: the WAL entry list derives from the
+    // already-verified head walk, so its batched download is INITIATED here —
+    // before the checkpoint branch — and its (small, many) objects land while
+    // the checkpoint downloads, decrypts, and indexes. APPLICATION of WAL
+    // packs still begins only after the checkpoint class completes, in the
+    // same chain order as always. Each entry decrypts under its OWN carrying
+    // head's epoch (D194) — the flattened list keeps that pairing so a
+    // rotation-spanning restore never reuses one head's epoch for another's
+    // pack.
+    const walEntries = heads.flatMap((h) => h.wal_entries.map((w) => ({ w, epoch: h.epoch })));
+    const walFramesP = settled(walEntries.map(({ w }) => gitvaultPaths.wal(w.object_id)));
+    void walFramesP.catch(() => {});
     if (first.checkpoint) {
       const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(first.checkpoint.claim_set.object_id) });
       if (!claimBytes || sha256Hex(claimBytes) !== first.checkpoint.claim_set.stored_bytes_sha256) fail("CHECKPOINT_INCOMPLETE", "claim set absent or altered", "restoring gitvault objects");
@@ -4506,14 +4603,16 @@ export class GitvaultVault {
       if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) fail("CHECKPOINT_INCOMPLETE", "claim set signature fails", "restoring gitvault objects");
       const manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), writerKey, { epoch: first.epoch, k_repo: kRepoForEpoch(first.epoch) });
       checkClaimSetEquality(claimSet, manifest, first.checkpoint.covers_through_generation);
-      // Design D2: every checkpoint pack is independent — one batched
-      // presign for all of them, THEN applied via index-pack strictly in
-      // manifest order (the fetch is concurrent; the local git write is
-      // not, and does not need to be).
-      const frames = await this.transport.getObjects({ repo_id: this.repoId, paths: manifest.packs.map((p) => gitvaultPaths.checkpointPack(p.object_id)) });
+      // Design D2 + gitvault-pipelined-restore D1: every checkpoint pack is
+      // independent — one batched presign for all of them, applied via
+      // index-pack strictly in manifest order, PIPELINED: apply(i) awaits
+      // bytes(i), so decrypt/verify/index of an early pack overlaps the
+      // later packs' downloads. Per-pack verification (AEAD open + plaintext
+      // hash) still completes before any byte reaches git.
+      const frames = await settled(manifest.packs.map((p) => gitvaultPaths.checkpointPack(p.object_id)));
       for (let i = 0; i < manifest.packs.length; i++) {
         const p = manifest.packs[i]!;
-        const frame = frames[i] ?? null;
+        const frame = (await frames[i]!) ?? null;
         if (!frame) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} absent`, "restoring gitvault objects");
         const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(first.epoch), this.repoId, first.epoch, "checkpoint_pack", p.object_id), repo_id: this.repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: first.epoch, frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
         if (sha256Hex(plain) !== p.plaintext_sha256 || String(plain.length) !== p.plaintext_size_bytes) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} plaintext mismatch`, "restoring gitvault objects");
@@ -4521,19 +4620,14 @@ export class GitvaultVault {
       }
     }
     // Design D2: every WAL pack across every head in this restore's range is
-    // independent — one batched presign for the whole set (this is the
-    // "restore pack set" the design's own D2 prose names alongside
-    // materialize's carriers), fetched concurrently, then applied via
-    // index-pack in the SAME chain order the wholesale path always used
-    // (git's pack application is sequential; the network fetch need not be).
-    // Each entry decrypts under its OWN carrying head's epoch (D194) — the
-    // flattened list keeps that pairing so a rotation-spanning restore never
-    // reuses one head's epoch for another's pack.
-    const walEntries = heads.flatMap((h) => h.wal_entries.map((w) => ({ w, epoch: h.epoch })));
-    const walFrames = await this.transport.getObjects({ repo_id: this.repoId, paths: walEntries.map(({ w }) => gitvaultPaths.wal(w.object_id)) });
+    // independent — one batched presign for the whole set (initiated above,
+    // before the checkpoint branch), applied via index-pack in the SAME
+    // chain order the wholesale path always used, pipelined the same way:
+    // apply(i) awaits bytes(i) while later packs finish downloading.
+    const walFrames = await walFramesP;
     for (let i = 0; i < walEntries.length; i++) {
       const { w, epoch } = walEntries[i]!;
-      const frame = walFrames[i] ?? null;
+      const frame = (await walFrames[i]!) ?? null;
       if (!frame) fail("CHAIN_UNUSABLE", `WAL pack ${w.object_id} absent`, "restoring gitvault objects");
       const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(epoch), this.repoId, epoch, "wal_pack", w.object_id), repo_id: this.repoId, object_kind: "wal_pack", object_id: w.object_id, epoch, frame, expected_ciphertext_sha256: w.ciphertext_sha256 });
       await hardenedGit(targetRepoDir, ["index-pack", "--stdin", "--strict"], { input: plain });

@@ -101,10 +101,43 @@
 import { realpathSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
-import { getSdk } from "./lib/sdk.mjs";
-import { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } from "./lib/wallet-context.mjs";
-import { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } from "#sdk";
-import { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo, prewarmGitvaultConnection } from "#sdk/node";
+import * as nodeModule from "node:module";
+// A DEEP import of the ONE sanctioned prewarm module (~17 ms of graph, vs
+// ~60 ms for the `#sdk/node` barrel) — never the barrel, whose evaluation is
+// exactly what the prewarm must race. All HTTP still goes through the SDK:
+// this file calls the SDK's own prewarm, it does not fetch.
+import { prewarmGitvaultConnection } from "./sdk/dist/node/gitvault-prewarm.js";
+
+// gitvault-startup-amortization (D2): on-disk V8 compile cache for every
+// module loaded from here on — the SDK graph below is the payload. Feature-
+// guarded (the API landed in Node 22.8; engines allow >=22) and try/caught
+// (a read-only install dir degrades silently to today's behavior).
+try {
+  nodeModule.enableCompileCache?.();
+} catch {
+  /* silent by contract */
+}
+
+// gitvault-startup-amortization (D1/D3): fire the connection prewarm BEFORE
+// the SDK module graph evaluates, so DNS+TCP+TLS (and the deferred signer
+// warmup) race module load instead of trailing it — fire-and-forget, silent
+// on failure, zero budget/stats footprint, exactly the shipped contract.
+prewarmGitvaultConnection();
+
+// The heavy graphs now load CONCURRENTLY with the in-flight handshake
+// (dynamic imports started together, awaited together). Everything below
+// this block is byte-identical to the static-import layout it replaced.
+const [
+  { getSdk },
+  { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError },
+  { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl },
+  { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo },
+] = await Promise.all([
+  import("./lib/sdk.mjs"),
+  import("./lib/wallet-context.mjs"),
+  import("#sdk"),
+  import("#sdk/node"),
+]);
 
 const out = (line) => process.stdout.write(`${line}\n`);
 /** Every helper response block is terminated by a blank line. */
@@ -315,10 +348,10 @@ export function chooseGitvaultHeadTargetForPush({ baseHeadTarget, baseRefs, upda
 }
 
 async function main(argv) {
-  // gitvault-connection-amortization (bench P5): start dialing the API
-  // origin while git runs its capabilities/option/list exchange with us —
-  // fire-and-forget, silent on failure, zero budget/stats footprint.
-  prewarmGitvaultConnection();
+  // gitvault-connection-amortization (bench P5) note: the prewarm now fires
+  // at the module TOP, before the SDK graph loads (gitvault-startup-
+  // amortization D1) — connection dial and signer warmup both race module
+  // evaluation instead of starting here.
   const address = resolveRemoteAddress(argv);
   if (!address) {
     note(`could not read a run402 remote address from ${JSON.stringify(argv.join(" "))} — expected run402::<org_id>/<project_id>`);

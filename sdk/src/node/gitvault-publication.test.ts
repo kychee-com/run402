@@ -1428,3 +1428,112 @@ describe("gitvault-clone-scaling — the restore walk's stop is first-hand cover
     assert.equal(ks2.readRepo(f.repoId)!.checkpoint_covers_through, chk.head.checkpoint!.covers_through_generation);
   });
 });
+
+// ─── pipelined restore (gitvault-pipelined-restore) ──────────────────────────
+
+describe("pipelined restore — per-object settlement (gitvault-pipelined-restore 3.1)", () => {
+  /**
+   * Wrap a transport with a `getObjectsSettled` that settles the per-index
+   * promises in REVERSE arrival order — the adversarial delivery shape. The
+   * consumer must still apply in order and land the identical final state.
+   */
+  function outOfOrderSettled(inner: VaultFixture["transport"], corruptIndex: number | null = null): VaultFixture["transport"] {
+    const wrapped = Object.create(inner) as VaultFixture["transport"] & {
+      getObjectsSettled?: (req: { repo_id: string; paths: string[] }) => Promise<Array<Promise<Uint8Array | null>>>;
+    };
+    wrapped.getObjectsSettled = async (req) => {
+      const frames = await inner.getObjects(req);
+      const deferreds = frames.map(() => {
+        let resolve!: (v: Uint8Array | null) => void;
+        const promise = new Promise<Uint8Array | null>((res) => {
+          resolve = res;
+        });
+        void promise.catch(() => {});
+        return { promise, resolve };
+      });
+      // Deliver LAST-first, asynchronously, so an in-order consumer must
+      // genuinely wait on index 0 while later indexes are already settled.
+      void (async () => {
+        for (let i = frames.length - 1; i >= 0; i--) {
+          await new Promise((r) => setTimeout(r, 1));
+          let bytes = frames[i] ?? null;
+          if (bytes && i === corruptIndex) {
+            bytes = new Uint8Array(bytes);
+            bytes[bytes.length - 1]! ^= 0xff;
+          }
+          deferreds[i]!.resolve(bytes);
+        }
+      })();
+      return deferreds.map((d) => d.promise);
+    };
+    return wrapped;
+  }
+
+  it("applies in order and lands the identical state when objects settle out of order", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] }, checkpoint: true });
+    const c2 = await commitFile(f.repoDir, "p1.txt", "p1\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    const c3 = await commitFile(f.repoDir, "p2.txt", "p2\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c2, new_oid: c3, force: false }] } });
+
+    const piped = new GitvaultVault({ keystore: f.keystore, transport: outOfOrderSettled(f.transport), repo_id: f.repoId, repo_dir: f.repoDir });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-piped-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    const restored = await piped.restoreObjectsInto(target);
+    assert.deepEqual(restored.refs, { "refs/heads/main": c3 });
+    for (const oid of [c1, c2, c3]) assert.equal(await hasObject(target, oid), true, oid);
+  });
+
+  it("a corrupted middle pack fails with the SAME envelope as the barrier path", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "q1.txt", "q1\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    const c3 = await commitFile(f.repoDir, "q2.txt", "q2\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c2, new_oid: c3, force: false }] } });
+
+    // Barrier reference: corrupt WAL pack index 1 through plain getObjects.
+    const corruptBarrier = Object.create(f.transport) as VaultFixture["transport"];
+    corruptBarrier.getObjects = async (req) => {
+      const frames = await f.transport.getObjects(req);
+      if (frames[1]) {
+        const b = new Uint8Array(frames[1]);
+        b[b.length - 1]! ^= 0xff;
+        frames[1] = b;
+      }
+      return frames;
+    };
+    const barrierVault = new GitvaultVault({ keystore: f.keystore, transport: corruptBarrier, repo_id: f.repoId, repo_dir: f.repoDir });
+    const targetA = mkdtempSync(join(tmpdir(), "run402-gitvault-piped-corrupt-a-"));
+    t.after(() => rmSync(targetA, { recursive: true, force: true }));
+    mkdirSync(targetA, { recursive: true });
+    await git(targetA, ["init", "-q", "--bare", "."]);
+    let barrierCode = "";
+    try {
+      await barrierVault.restoreObjectsInto(targetA);
+    } catch (e) {
+      barrierCode = (e as { code?: string }).code ?? "";
+    }
+    assert.ok(barrierCode, "the barrier path must refuse the corrupted pack");
+
+    const pipedVault = new GitvaultVault({ keystore: f.keystore, transport: outOfOrderSettled(f.transport, 1), repo_id: f.repoId, repo_dir: f.repoDir });
+    const targetB = mkdtempSync(join(tmpdir(), "run402-gitvault-piped-corrupt-b-"));
+    t.after(() => rmSync(targetB, { recursive: true, force: true }));
+    mkdirSync(targetB, { recursive: true });
+    await git(targetB, ["init", "-q", "--bare", "."]);
+    let pipedCode = "";
+    try {
+      await pipedVault.restoreObjectsInto(targetB);
+    } catch (e) {
+      pipedCode = (e as { code?: string }).code ?? "";
+    }
+    assert.equal(pipedCode, barrierCode, "pipelined and barrier corruption envelopes must match");
+  });
+});

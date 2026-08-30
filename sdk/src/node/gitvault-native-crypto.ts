@@ -28,9 +28,9 @@
  * just slower. `open` returns `null` on tag failure; the core renders the
  * SAME `GITVAULT_AEAD_AUTH_FAILURE` it always did.
  */
-import { createCipheriv, createDecipheriv, getCiphers } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, getCiphers } from "node:crypto";
 import { hchacha } from "@noble/ciphers/chacha.js";
-import { _setGitvaultAeadBackend, type GitvaultAeadBackend } from "../namespaces/gitvault.crypto.js";
+import { _setGitvaultAeadBackend, _setGitvaultHashBackend, type GitvaultAeadBackend, type GitvaultHashBackend } from "../namespaces/gitvault.crypto.js";
 
 const NODE_CIPHER = "chacha20-poly1305";
 const TAG_BYTES = 16;
@@ -125,6 +125,49 @@ export function installNodeGitvaultAeadBackend(): boolean {
     const opened = nodeGitvaultAeadBackend.open(new Uint8Array(32), new Uint8Array(24), new Uint8Array([1]), probe);
     if (!opened || opened.length !== 2 || opened[0] !== 2 || opened[1] !== 3) return false;
     _setGitvaultAeadBackend(nodeGitvaultAeadBackend);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The Node-native protocol-hash backend (gitvault-native-hash). Same seam
+ * pattern, second slot: `sha256Hex` is the chokepoint every protocol hash
+ * flows through, and on the receipt-verified open/seal paths it hashes whole
+ * multi-megabyte frames on pure-JS `@noble/hashes` — the measured leftover
+ * after the AEAD moved to OpenSSL. `createHash` is sync (the gitvault crypto
+ * surface is sync public API), byte-compatible, and already hashes packs in
+ * `gitvault-recover.ts`/`gitvault-mirror.ts`.
+ */
+export const nodeGitvaultHashBackend: GitvaultHashBackend = {
+  sha256(bytes) {
+    // A digest Buffer can live in Node's shared pool — respect its offset.
+    const d = createHash("sha256").update(bytes).digest();
+    return new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+  },
+};
+
+/**
+ * SHA-256 of the empty input — the fixed probe vector. A build whose
+ * `createHash` does not reproduce it must not become the protocol hash.
+ */
+const SHA256_EMPTY_HEX = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+/**
+ * Install the native hash backend after a live probe (gitvault-native-hash
+ * design D3): a backend that does not reproduce the known digest — or throws —
+ * registers nothing and the `@noble` default keeps serving. The `backend`
+ * parameter exists only so the byte-equality suite can drive the refusing
+ * branch; production callers pass nothing.
+ */
+export function installNodeGitvaultHashBackend(backend: GitvaultHashBackend = nodeGitvaultHashBackend): boolean {
+  try {
+    const probe = backend.sha256(new Uint8Array(0));
+    let hex = "";
+    for (const b of probe) hex += b.toString(16).padStart(2, "0");
+    if (hex !== SHA256_EMPTY_HEX) return false;
+    _setGitvaultHashBackend(backend);
     return true;
   } catch {
     return false;
