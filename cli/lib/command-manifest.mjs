@@ -15,6 +15,15 @@
  *   projectScoped          command operates on a project and accepts
  *                          `--project <id>` (precedence: --project > legacy
  *                          leading prj_ positional > active project)
+ *   orgScoped              command acts ON an organization and resolves it
+ *                          through the ONE shared chain (cli-org-context):
+ *                          an optional leading <org_id> positional, else
+ *                          --org, else RUN402_ORG, else the .run402.json
+ *                          binding, else `org use`. The gate drives every
+ *                          such entry through --org AND RUN402_ORG with no
+ *                          positional and fails on any "Missing <org_id>".
+ *                          Any entry with an `org_id` positional MUST be
+ *                          orgScoped and that positional MUST be optional.
  *   legacyPositionalProject  still accepts the legacy leading `prj_...`
  *                          positional project selector (compat, no warning)
  *   minimalArgs            args (beyond path) that satisfy LOCAL validation
@@ -40,6 +49,14 @@
 
 const p = (name, { required = true, variadic = false } = {}) => ({ name, required, variadic });
 
+/**
+ * The org id the gate uses for every orgScoped entry — a well-formed UUID so
+ * the shared resolver accepts it from any rung (positional, --org, RUN402_ORG).
+ * The behavioral org-scope gate strips it from minimalArgs and re-supplies the
+ * org through each rung in turn.
+ */
+export const GATE_ORG = "11111111-2222-3333-4444-555555555555";
+
 export const COMMAND_MANIFEST = [
   // ── external agent identity links ────────────────────────────────────────
   { path: ["identity", "link", "nostr", "begin"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--pubkey", "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa", "--visibility", "public"], skipBehavioral: "requires a live wallet and gateway challenge" },
@@ -50,16 +67,16 @@ export const COMMAND_MANIFEST = [
 
   // ── Buzz community ↔ Run402 control plane ───────────────────────────────
   { path: ["buzz", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], skipBehavioral: "requires live principal authentication" },
-  { path: ["buzz", "adopt", "offer"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "org_11111111111111111111111111111111", "--identity-link", "idlnk_11111111111111111111111111111111"], skipBehavioral: "requires eligible sole agent owner, live Buzz identity, and offer-capable gateway" },
-  { path: ["buzz", "adopt", "direct"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "org_11111111111111111111111111111111", "--identity-link", "idlnk_11111111111111111111111111111111"], skipBehavioral: "advanced compatibility flow requiring eligible sole agent owner and live Buzz identity" },
-  { path: ["buzz", "install"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "org_11111111111111111111111111111111", "--community", "buzz:community:relay.example", "--authority", "11".repeat(32)], skipBehavioral: "requires owner step-up and a compatible live Buzz relay" },
+  { path: ["buzz", "adopt", "offer"], positionals: [], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: ["--identity-link", "idlnk_11111111111111111111111111111111"], skipBehavioral: "requires eligible sole agent owner, live Buzz identity, and offer-capable gateway" },
+  { path: ["buzz", "adopt", "direct"], positionals: [], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: ["--identity-link", "idlnk_11111111111111111111111111111111"], skipBehavioral: "advanced compatibility flow requiring eligible sole agent owner and live Buzz identity" },
+  { path: ["buzz", "install"], positionals: [], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: ["--community", "buzz:community:relay.example", "--authority", "11".repeat(32)], skipBehavioral: "requires owner step-up and a compatible live Buzz relay" },
   { path: ["buzz", "enroll"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--installation", "buzzci_11111111111111111111111111111111", "--identity-link", "idlnk_11111111111111111111111111111111", "--grants-file", "__FIXTURE_FILE__", "--expires-at", "2026-08-01T00:00:00.000Z"], skipBehavioral: "requires live relay membership evidence and a grant fixture" },
   { path: ["buzz", "approve"], positionals: [p("buzz_agent_enrollment_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzae_11111111111111111111111111111111", "--grants-file", "__FIXTURE_FILE__", "--descriptor-revision", "1", "--policy-revision", "1"], skipBehavioral: "requires owner step-up and a live pending enrollment" },
   { path: ["buzz", "deny"], positionals: [p("buzz_agent_enrollment_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzae_11111111111111111111111111111111"], skipBehavioral: "requires owner step-up and a live pending enrollment" },
   { path: ["buzz", "revoke"], positionals: [p("buzz_agent_enrollment_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzae_11111111111111111111111111111111"], skipBehavioral: "requires a live enrollment" },
   // Project-event routing into a Buzz channel (add-buzz-project-event-routing).
   // org ids on this surface are BARE dashed UUIDs, never org_-prefixed.
-  { path: ["buzz", "notifications", "configure"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "11111111-1111-4111-8111-111111111111", "--installation", "buzzci_11111111111111111111111111111111", "--name", "deploys", "--channel", "22222222-2222-4222-8222-222222222222"], skipBehavioral: "requires live owner authentication and an active Buzz installation (and its repeatable --project scope flag is reserved by the gate)" },
+  { path: ["buzz", "notifications", "configure"], positionals: [], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: ["--installation", "buzzci_11111111111111111111111111111111", "--name", "deploys", "--channel", "22222222-2222-4222-8222-222222222222"], skipBehavioral: "requires live owner authentication and an active Buzz installation (and its repeatable --project scope flag is reserved by the gate)" },
   { path: ["buzz", "notifications", "status"], positionals: [p("buzz_project_event_route_id", { required: false })], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "11111111-1111-4111-8111-111111111111"], skipBehavioral: "requires live owner authentication" },
   { path: ["buzz", "notifications", "test"], positionals: [p("buzz_project_event_route_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzper_11111111111111111111111111111111"], skipBehavioral: "requires live owner authentication and a live route" },
   { path: ["buzz", "notifications", "deliveries"], positionals: [p("buzz_project_event_route_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["buzzper_11111111111111111111111111111111"], skipBehavioral: "requires live owner authentication and a live route" },
@@ -194,28 +211,28 @@ export const COMMAND_MANIFEST = [
   // ── org ──────────────────────────────────────────────────────────────────
   { path: ["org", "create"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["org", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "get"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
-  { path: ["org", "rename"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--name", "Gate"] },
-  { path: ["org", "payout-wallet"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "0x1111111111111111111111111111111111111111"] },
+  { path: ["org", "get"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["org", "rename"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--name", "Gate"] },
+  { path: ["org", "payout-wallet"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "0x1111111111111111111111111111111111111111"] },
   // `--org` (not a positional org_id
   // like rename/payout-wallet above) goes through resolveOrg's SHAPE
   // validation (a real UUID) — "org_gate1" fails that locally, so this needs
   // the same UUID-shaped fixture `org use` below already established.
   { path: ["org", "slug"], positionals: [p("slug")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["acme", "--org", "11111111-2222-3333-4444-555555555555"] },
   { path: ["org", "whoami"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "audit"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
+  { path: ["org", "audit"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
   { path: ["org", "use"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["11111111-2222-3333-4444-555555555555"] },
   { path: ["org", "current"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["org", "clear"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["org", "bind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "11111111-2222-3333-4444-555555555555"] },
   { path: ["org", "unbind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
-  { path: ["org", "member", "list"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
-  { path: ["org", "member", "add"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "0x1111111111111111111111111111111111111111"] },
-  { path: ["org", "member", "role"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--principal", "prn_gate1", "--role", "viewer"] },
-  { path: ["org", "member", "rm"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--principal", "prn_gate1"] },
-  { path: ["org", "invite", "list"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
-  { path: ["org", "invite", "create"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--email", "gate@example.com"] },
-  { path: ["org", "invite", "rm"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--principal", "prn_gate1"] },
+  { path: ["org", "member", "list"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["org", "member", "add"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "0x1111111111111111111111111111111111111111"] },
+  { path: ["org", "member", "role"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1", "--role", "viewer"] },
+  { path: ["org", "member", "rm"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1"] },
+  { path: ["org", "invite", "list"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG] },
+  { path: ["org", "invite", "create"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--email", "gate@example.com"] },
+  { path: ["org", "invite", "rm"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--principal", "prn_gate1"] },
 
   // ── grants ───────────────────────────────────────────────────────────────
   { path: ["grants", "create"], positionals: [p("wallet")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["0x1111111111111111111111111111111111111111", "--capability", "deploy"] },
@@ -424,9 +441,9 @@ export const COMMAND_MANIFEST = [
 
   // ── billing ──────────────────────────────────────────────────────────────
   { path: ["billing", "create-email"], positionals: [p("email")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
-  { path: ["billing", "link-wallet"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "0x1111111111111111111111111111111111111111"] },
+  { path: ["billing", "link-wallet"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "0x1111111111111111111111111111111111111111"] },
   { path: ["billing", "checkout"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--product", "email-pack"] },
-  { path: ["billing", "auto-recharge"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--state", "on"] },
+  { path: ["billing", "auto-recharge"], positionals: [p("org_id", { required: false })], projectScoped: false, orgScoped: true, legacyPositionalProject: false, minimalArgs: [GATE_ORG, "--state", "on"] },
   { path: ["billing", "balance"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
   { path: ["billing", "history"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
 

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { getSdk } from "./sdk.mjs";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
+import { resolveOrgId } from "./org-context.mjs";
 import {
   assertKnownFlags,
   failUnknownSubcommand,
@@ -130,7 +131,8 @@ async function adopt(args) {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--org"], ["--org"]);
     requirePositionalCount(a, ["--org"], { min: 0, max: 0, command: "run402 buzz adopt list --org <org_id>" });
-    return invoke(() => getSdk().buzz.humanAdoptions.list(requiredFlag(a, "--org")));
+    const orgId = await resolveOrgId(a, { cmd: "buzz" });
+    return invoke(() => getSdk().buzz.humanAdoptions.list(orgId));
   }
   if (operation === "show") {
     const a = normalizeArgv(rest);
@@ -143,9 +145,10 @@ async function adopt(args) {
   const a = normalizeArgv(directArgs);
   const values = ["--org", "--identity-link", "--idempotency-key"];
   assertKnownFlags(a, values, values);
-  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt direct --org <org_id> --identity-link <idlnk_id>" });
+  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt direct [--org <org_id>] --identity-link <idlnk_id>" });
+  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
   return invoke(() => getSdk({ authMode: "wallet" }).buzz.adopt({
-    organizationId: requiredFlag(a, "--org"),
+    organizationId,
     identityLinkId: requiredFlag(a, "--identity-link"),
     idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
   }));
@@ -169,8 +172,9 @@ async function adoptionOffer(args) {
   const a = normalizeArgv(args);
   const values = ["--org", "--identity-link", "--deployment-context-file", "--idempotency-key"];
   assertKnownFlags(a, values, values);
-  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt offer --org <org_id> --identity-link <idlnk_id>" });
+  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt offer [--org <org_id>] --identity-link <idlnk_id>" });
   const deploymentPath = flagValue(a, "--deployment-context-file");
+  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
   return invoke(async () => {
     const client = getSdk({ authMode: "wallet" });
     const status = await client.buzz.status();
@@ -183,7 +187,7 @@ async function adoptionOffer(args) {
       });
     }
     return client.buzz.offerAdoption({
-      organizationId: requiredFlag(a, "--org"),
+      organizationId,
       identityLinkId: requiredFlag(a, "--identity-link"),
       deploymentContext: deploymentPath ? readJsonFile(deploymentPath, "--deployment-context-file") : undefined,
       idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
@@ -227,7 +231,8 @@ async function install(args) {
     const a = normalizeArgv(rest);
     assertKnownFlags(a, ["--org"], ["--org"]);
     requirePositionalCount(a, ["--org"], { min: 0, max: 0, command: "run402 buzz install list --org <org_id>" });
-    return invoke(() => getSdk().buzz.communityInstallations.list(requiredFlag(a, "--org")));
+    const orgId = await resolveOrgId(a, { cmd: "buzz" });
+    return invoke(() => getSdk().buzz.communityInstallations.list(orgId));
   }
   if (operation === "discover") {
     const a = normalizeArgv(rest);
@@ -247,10 +252,11 @@ async function install(args) {
   const a = normalizeArgv(args);
   const values = ["--org", "--community", "--authority", "--policy-file", "--idempotency-key"];
   assertKnownFlags(a, values, values);
-  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz install --org <org_id> --community <subject> --authority <hex>" });
+  requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz install [--org <org_id>] --community <subject> --authority <hex>" });
   const policyFile = flagValue(a, "--policy-file");
+  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
   return invoke(() => getSdk().buzz.install({
-    organizationId: requiredFlag(a, "--org"),
+    organizationId,
     buzzCommunitySubject: requiredFlag(a, "--community"),
     buzzCommunityAuthoritySubject: requiredFlag(a, "--authority"),
     enrollmentPolicy: policyFile ? readJsonFile(policyFile, "--policy-file") : undefined,

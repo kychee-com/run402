@@ -39,7 +39,7 @@
  *   different organization than the caller named).
  */
 import { getSdk } from "./sdk.mjs";
-import { flagValue } from "./argparse.mjs";
+import { flagValue, positionalArgs } from "./argparse.mjs";
 import { findBindingKey } from "./wallet-context.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { nextAction } from "./next-actions.mjs";
@@ -288,6 +288,87 @@ export async function resolveOrg(input = {}, opts = {}) {
 export async function resolveOrgId(a, opts = {}) {
   const resolved = await resolveOrg(a, opts);
   return resolved ? resolved.orgId : null;
+}
+
+/**
+ * The org-scoped POSITIONAL contract (cli-org-context, "One Resolver Serves
+ * Every Org-Scoped Command").
+ *
+ * `<org_id>` is optional sugar on every verb that acts on an organization —
+ * `org get`, `org member add`, `billing link-wallet`, … A leading positional
+ * that IS an org id (a UUID) addresses that org; anything else is the verb's
+ * own next positional (a wallet, an email, a principal) and the org comes from
+ * the shared chain: `--org`, then `RUN402_ORG`, then the `.run402.json`
+ * binding, then `org use`. So inside a bound checkout the two-agent case reads
+ * `run402 org member add 0xB… --role developer` with nothing else to know.
+ *
+ * Naming the org twice with different values (positional AND `--org`) is
+ * `AMBIGUOUS_ORG`, never a silent pick — the same refusal the env-vs-binding
+ * pair gets. A non-org first positional with no chain answer fails
+ * `ORG_REQUIRED` and NAMES the rejected value, so `org get foo` says why `foo`
+ * did not count rather than reporting a bare "no organization".
+ *
+ * Returns the org id with provenance plus the REMAINING positionals; bound
+ * those with {@link requireRest} using the verb's own usage line. Enforced
+ * mechanically: every `orgScoped` entry in the command manifest is driven
+ * through this shape by `cli-conventions-gate.test.mjs`.
+ *
+ * @param {string[]} a          normalized argv
+ * @param {string[]} valueFlags flags that take a value (must include "--org")
+ * @param {object}   [opts]     forwarded to {@link resolveOrg} (cmd, env, cwd)
+ */
+export async function takeOrgPositional(a, valueFlags = [], opts = {}) {
+  const positionals = positionalArgs(a, valueFlags);
+  const first = positionals[0];
+  if (typeof first === "string" && ORG_ID_RE.test(first)) {
+    const flag = trimmed(flagValue(a, "--org"));
+    if (flag && flag.toLowerCase() !== first.toLowerCase()) {
+      fail({
+        code: "AMBIGUOUS_ORG",
+        message: `Ambiguous organization: positional ${first} but --org ${flag}.`,
+        hint: "Name the organization once — as the leading <org_id> positional or as --org <org_id>, not both.",
+        details: {
+          candidates: [
+            { org_id: first, source: "positional", source_detail: "<org_id>" },
+            { org_id: flag, source: "flag", source_detail: "--org" },
+          ],
+        },
+      });
+    }
+    return { orgId: first, rest: positionals.slice(1), source: "positional", sourceDetail: "<org_id>" };
+  }
+  const resolved = await resolveOrg(a, { ...opts, optional: true });
+  if (resolved) return { orgId: resolved.orgId, rest: positionals, source: resolved.source, sourceDetail: resolved.sourceDetail };
+  fail({
+    code: "ORG_REQUIRED",
+    message: typeof first === "string"
+      ? `No organization specified and no current organization set (${JSON.stringify(first)} is not an org_id — an org_id is a UUID).`
+      : "No organization specified and no current organization set.",
+    hint: `Pass --org <org_id> (or a leading <org_id> positional), set ${ORG_ENV}, bind this directory in .run402.json, or run: run402 org use <org_id>`,
+    ...(typeof first === "string" ? { details: { rejected_positional: first } } : {}),
+    next_actions: orgRequiredActions(),
+  });
+  return null; // unreachable — fail() exits
+}
+
+/**
+ * Bound the positionals LEFT after {@link takeOrgPositional} took the org —
+ * the same `BAD_USAGE` shapes `requirePositionalCount` emits, on an array the
+ * caller already holds.
+ */
+export function requireRest(rest, opts = {}) {
+  const { min = 0, max = min, command = "command", missing = "Missing required argument." } = opts;
+  if (rest.length < min) {
+    fail({ code: "BAD_USAGE", message: missing, hint: command });
+  }
+  if (rest.length > max) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Unexpected argument for ${command}: ${rest[max]}`,
+      hint: `Use \`${command}\`.`,
+    });
+  }
+  return rest;
 }
 
 /** Validate an org id supplied by a human, naming the origin. Throws via fail(). */

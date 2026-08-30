@@ -92,7 +92,7 @@ describe("run402 buzz CLI", () => {
     try {
       await run("adopt", [
         "offer",
-        "--org", `org_${"2".repeat(32)}`,
+        "--org", "22222222-2222-4222-8222-222222222222",
         "--identity-link", `idlnk_${"3".repeat(32)}`,
         "--deployment-context-file", contextPath,
         "--idempotency-key", "offer-after-demo-1",

@@ -25,7 +25,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { COMMAND_MANIFEST, SKIPPED_FAMILIES } from "./cli/lib/command-manifest.mjs";
+import { COMMAND_MANIFEST, SKIPPED_FAMILIES, GATE_ORG } from "./cli/lib/command-manifest.mjs";
 
 const API = "https://test-api.run402.com";
 const tempDir = mkdtempSync(join(tmpdir(), "run402-conventions-"));
@@ -256,6 +256,27 @@ describe("command manifest invariants", () => {
       if (entry.runStyle !== undefined) {
         assert.ok(["sub", "flat", "merged", "deployV2"].includes(entry.runStyle), `${id}: unknown runStyle`);
       }
+      if (entry.orgScoped !== undefined) {
+        assert.equal(typeof entry.orgScoped, "boolean", `${id}: orgScoped must be boolean`);
+      }
+      // cli-org-context, "One Resolver Serves Every Org-Scoped Command": a
+      // verb that takes an org_id positional acts ON that org, so it is
+      // orgScoped and the positional is optional sugar over the shared chain.
+      // The platform-admin family is the one deliberate exception — an admin
+      // targets a TENANT org it is never "in", so no chain rung can supply it
+      // and the positional stays required (and explicit).
+      // `org use <org_id>` is the chain's own WRITER (it sets the selection
+      // the chain later reads), not a verb acting on an org — it keeps its
+      // required positional too.
+      const orgPositional = entry.positionals.find((pos) => pos.name === "org_id");
+      const chainWriter = entry.path[0] === "org" && entry.path[1] === "use";
+      if (orgPositional && entry.path[0] !== "admin" && !chainWriter) {
+        assert.ok(entry.orgScoped, `${id}: takes an org_id positional — declare orgScoped: true and resolve it through takeOrgPositional`);
+        assert.equal(orgPositional.required, false, `${id}: the org_id positional is optional sugar over the org chain — declare { required: false }`);
+      }
+      if (entry.orgScoped) {
+        assert.ok(entry.minimalArgs.every((a) => a !== "--org"), `${id}: minimalArgs must not hardcode --org (the gate injects it)`);
+      }
     }
   });
 
@@ -337,6 +358,67 @@ describe("--json is accepted by every non-projectScoped command", () => {
         !rejection,
         `${id} rejected --json: ${rejection?.line}`,
       );
+    });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// C2. Behavioral org-chain acceptance for orgScoped commands (cli-org-context)
+//
+// Every orgScoped command is driven WITHOUT its org positional through two
+// rungs of the shared chain — the --org flag and RUN402_ORG — and must not
+// come back with "Missing <org_id>", ORG_REQUIRED, a rejected --org, or a
+// positional-confusion BAD_USAGE. This is what makes the two-agent case read
+// `run402 org member add 0xB… --role developer` inside a bound checkout, and
+// what stops a verb from re-growing its own "<org_id> is required" rule.
+// ───────────────────────────────────────────────────────────────────────────
+
+function findOrgDemand(lines) {
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+    let obj;
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (obj.code === "ORG_REQUIRED" || obj.code === "BAD_ORG_ID" || obj.code === "AMBIGUOUS_ORG") return { obj, line };
+    if ((obj.code === "BAD_USAGE" || obj.code === "BAD_FLAG") && /org_id|--org/i.test(String(obj.message ?? ""))) return { obj, line };
+  }
+  return null;
+}
+
+describe("every orgScoped command resolves its organization through the shared chain", () => {
+  for (const entry of COMMAND_MANIFEST.filter((e) => e.orgScoped)) {
+    const id = commandId(entry);
+    if (entry.skipBehavioral) {
+      it(`${id} (structural only — ${entry.skipBehavioral})`, () => {});
+      continue;
+    }
+    const sansOrg = { ...entry, minimalArgs: entry.minimalArgs.filter((a) => a !== GATE_ORG) };
+    it(`${id} accepts --org with no org positional`, async () => {
+      const { stderr: errLines } = await runToleratingFailures(sansOrg, ["--org", GATE_ORG]);
+      const confused = findPositionalConfusion(errLines);
+      assert.ok(!confused, `${id} misread its positionals once the org moved to --org: ${confused?.line}`);
+      const rejection = findFlagRejection(errLines, ["--org"]);
+      assert.ok(!rejection, `${id} rejected --org: ${rejection?.line}`);
+      const demand = findOrgDemand(errLines);
+      assert.ok(!demand, `${id} still demands the org outside the shared chain: ${demand?.line}`);
+    });
+    it(`${id} resolves RUN402_ORG with no flag and no org positional`, async () => {
+      const prior = process.env.RUN402_ORG;
+      process.env.RUN402_ORG = GATE_ORG;
+      let errLines;
+      try {
+        ({ stderr: errLines } = await runToleratingFailures(sansOrg, []));
+      } finally {
+        if (prior === undefined) delete process.env.RUN402_ORG; else process.env.RUN402_ORG = prior;
+      }
+      const confused = findPositionalConfusion(errLines);
+      assert.ok(!confused, `${id} misread its positionals once the org came from the environment: ${confused?.line}`);
+      const demand = findOrgDemand(errLines);
+      assert.ok(!demand, `${id} ignores RUN402_ORG — it is not on the shared chain: ${demand?.line}`);
     });
   }
 });

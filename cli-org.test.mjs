@@ -19,7 +19,7 @@ process.env.RUN402_API_BASE = API;
 
 // `resolveOrg`'s `--org` path validates shape (a real UUID) — unlike
 // `rename`'s bare positional passthrough, which never validates, so a
-// short "org_abc" fixture works there but not for `slug`.
+// short "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" fixture works there but not for `slug`.
 const SLUG_ORG_ID = "11111111-2222-3333-4444-555555555555";
 const TEST_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const TEST_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -73,9 +73,9 @@ async function mockFetch(input, init) {
       lease_expires_at: LEASE_EXPIRES_AT,
     }, 201));
   }
-  if (url.endsWith("/orgs/v1/org_abc") && method === "GET") {
+  if (url.endsWith("/orgs/v1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") && method === "GET") {
     return Promise.resolve(json({
-      org_id: "org_abc",
+      org_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       display_name: "Kychee",
       tier: "prototype",
       lease_started_at: LEASE_STARTED_AT,
@@ -83,9 +83,9 @@ async function mockFetch(input, init) {
       role: "owner",
     }));
   }
-  if (url.endsWith("/orgs/v1/org_abc") && method === "PATCH") {
+  if (url.endsWith("/orgs/v1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") && method === "PATCH") {
     return Promise.resolve(json({
-      org_id: "org_abc",
+      org_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       display_name: body?.display_name ?? null,
       tier: "prototype",
       lease_started_at: LEASE_STARTED_AT,
@@ -100,9 +100,9 @@ async function mockFetch(input, init) {
       created: body?.slug === "acme",
     }, body?.slug === "acme" ? 201 : 200));
   }
-  if (url.endsWith("/orgs/v1/org_abc/payout-wallet") && method === "PATCH") {
+  if (url.endsWith("/orgs/v1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/payout-wallet") && method === "PATCH") {
     return Promise.resolve(json({
-      org_id: "org_abc",
+      org_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       default_payout_wallet: body?.wallet_address ?? null,
       active_wallet_count: 1,
       recovery: { status: body?.wallet_address ? "ready" : "required" },
@@ -202,33 +202,33 @@ describe("run402 org", () => {
   });
 
   it("members GETs the members route", async () => {
-    capture(); await runOrg("member", ["list", "org_1"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/org_1/members`);
+    capture(); await runOrg("member", ["list", "11111111-1111-4111-8111-111111111111"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/11111111-1111-4111-8111-111111111111/members`);
     assert.equal(lastCall().method, "GET");
   });
 
   it("add-member POSTs { wallet } and omits role by default", async () => {
-    capture(); await runOrg("member", ["add", "org_1", TEST_ADDRESS]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/org_1/members`);
+    capture(); await runOrg("member", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/11111111-1111-4111-8111-111111111111/members`);
     assert.equal(lastCall().method, "POST");
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS });
   });
 
   it("add-member maps --role into the body", async () => {
-    capture(); await runOrg("member", ["add", "org_1", TEST_ADDRESS, "--role", "admin"]); uncapture();
+    capture(); await runOrg("member", ["add", "11111111-1111-4111-8111-111111111111", TEST_ADDRESS, "--role", "admin"]); uncapture();
     assert.deepEqual(lastCall().body, { wallet: TEST_ADDRESS, role: "admin" });
   });
 
   it("set-role PATCHes .../members/:principal with positional order (org, principal, role)", async () => {
-    capture(); await runOrg("member", ["role", "org_1", "prn_2", "owner"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/org_1/members/prn_2`);
+    capture(); await runOrg("member", ["role", "11111111-1111-4111-8111-111111111111", "prn_2", "owner"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/11111111-1111-4111-8111-111111111111/members/prn_2`);
     assert.equal(lastCall().method, "PATCH");
     assert.deepEqual(lastCall().body, { role: "owner" });
   });
 
   it("remove-member DELETEs .../members/:principal", async () => {
-    capture(); await runOrg("member", ["rm", "org_1", "prn_2"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/org_1/members/prn_2`);
+    capture(); await runOrg("member", ["rm", "11111111-1111-4111-8111-111111111111", "prn_2"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/11111111-1111-4111-8111-111111111111/members/prn_2`);
     assert.equal(lastCall().method, "DELETE");
   });
 
@@ -250,22 +250,22 @@ describe("run402 org", () => {
   });
 
   it("get GETs /orgs/v1/:org and surfaces the caller role", async () => {
-    capture(); await runOrg("get", ["org_abc"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/org_abc`);
+    capture(); await runOrg("get", ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`);
     assert.equal(lastCall().method, "GET");
     assert.match(stdout.join("\n"), /"role": "owner"/);
     assert.match(stdout.join("\n"), /"lease_started_at": "2026-06-19T12:00:00.000Z"/);
   });
 
   it("rename sets a new label", async () => {
-    capture(); await runOrg("rename", ["org_abc", "New Name"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/org_abc`);
+    capture(); await runOrg("rename", ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "New Name"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`);
     assert.equal(lastCall().method, "PATCH");
     assert.deepEqual(lastCall().body, { display_name: "New Name" });
   });
 
   it("rename --clear PATCHes display_name: null", async () => {
-    capture(); await runOrg("rename", ["org_abc", "--clear"]); uncapture();
+    capture(); await runOrg("rename", ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "--clear"]); uncapture();
     assert.deepEqual(lastCall().body, { display_name: null });
   });
 
@@ -286,16 +286,16 @@ describe("run402 org", () => {
   });
 
   it("payout-wallet PATCHes wallet_address", async () => {
-    capture(); await runOrg("payout-wallet", ["org_abc", TEST_ADDRESS]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/org_abc/payout-wallet`);
+    capture(); await runOrg("payout-wallet", ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", TEST_ADDRESS]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/payout-wallet`);
     assert.equal(lastCall().method, "PATCH");
     assert.deepEqual(lastCall().body, { wallet_address: TEST_ADDRESS });
     assert.match(stdout.join("\n"), /"default_payout_wallet":/);
   });
 
   it("payout-wallet --clear PATCHes wallet_address null", async () => {
-    capture(); await runOrg("payout-wallet", ["org_abc", "--clear"]); uncapture();
-    assert.equal(lastCall().url, `${API}/orgs/v1/org_abc/payout-wallet`);
+    capture(); await runOrg("payout-wallet", ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "--clear"]); uncapture();
+    assert.equal(lastCall().url, `${API}/orgs/v1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/payout-wallet`);
     assert.equal(lastCall().method, "PATCH");
     assert.deepEqual(lastCall().body, { wallet_address: null });
   });
@@ -303,10 +303,10 @@ describe("run402 org", () => {
 
 describe("run402 provision --org", () => {
   it("threads org_id into POST /projects/v1", async () => {
-    capture(); await runProjects("provision", ["--org", "org_abc"]); uncapture();
+    capture(); await runProjects("provision", ["--org", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]); uncapture();
     const post = calls.find((c) => c.url === `${API}/projects/v1` && c.method === "POST");
     assert.ok(post, "should POST /projects/v1");
-    assert.equal(post.body.org_id, "org_abc");
+    assert.equal(post.body.org_id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
   });
 
   it("tenant-payments forwards filters to the redacted tenant payment listing route", async () => {

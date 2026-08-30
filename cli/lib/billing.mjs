@@ -1,6 +1,7 @@
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
+import { takeOrgPositional, requireRest } from "./org-context.mjs";
 
 const HELP = `run402 billing — Email organizations and org checkouts
 
@@ -9,9 +10,9 @@ Usage:
 
 Subcommands:
   create-email <email>                     Create an email organization
-  link-wallet <org_id> <wallet_address>    Link a wallet to an email organization
+  link-wallet [<org_id>] <wallet_address>  Link a wallet to an email organization
   checkout <identifier> --product <p>      Create an org checkout
-  auto-recharge <org_id> <on|off> [--threshold <n>]
+  auto-recharge [<org_id>] <on|off> [--threshold <n>]
   balance <identifier>                     Balance by organization id (UUID), wallet (0x...), or email
   history <identifier> [--limit <n>]       Ledger history by organization id (UUID), wallet, or email
 
@@ -47,7 +48,7 @@ Examples:
   "auto-recharge": `run402 billing auto-recharge — Toggle email-pack auto-recharge
 
 Usage:
-  run402 billing auto-recharge <org_id> <on|off> [--threshold <n>]
+  run402 billing auto-recharge [<org_id>] <on|off> [--threshold <n>]
 
 Arguments:
   <org_id>        Organization ID
@@ -114,7 +115,7 @@ Examples:
   "link-wallet": `run402 billing link-wallet — Link a wallet to an email organization
 
 Usage:
-  run402 billing link-wallet <org_id> <wallet_address>
+  run402 billing link-wallet [<org_id>] <wallet_address>
 
 Arguments:
   <org_id>        Organization ID (e.g. org_abc123)
@@ -232,22 +233,16 @@ async function createEmail(args) {
 
 async function linkWallet(args) {
   const parsedArgs = normalizeArgv(args);
-  assertKnownFlags(parsedArgs, ["--address", "--help", "-h"], ["--address"]);
+  assertKnownFlags(parsedArgs, ["--org", "--address", "--help", "-h"], ["--org", "--address"]);
   const walletFlag = flagValue(parsedArgs, "--address");
-  const positionals = positionalArgs(parsedArgs, ["--address"]);
-  const organizationId = positionals[0];
-  const wallet = walletFlag ?? positionals[1];
-  const max = walletFlag ? 1 : 2;
-  if (positionals.length > max) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing link-wallet: ${positionals[max]}` });
-  }
-  if (!organizationId || !wallet) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <org_id> and/or <wallet_address>.",
-      hint: "run402 billing link-wallet <org_id> <wallet_address>",
-    });
-  }
+  const { orgId: organizationId, rest } = await takeOrgPositional(parsedArgs, ["--org", "--address"], { cmd: "billing" });
+  const count = walletFlag ? 0 : 1;
+  requireRest(rest, {
+    min: count, max: count,
+    command: "run402 billing link-wallet [<org_id>] <wallet_address>",
+    missing: "Missing <wallet_address> (positional, or --address).",
+  });
+  const wallet = walletFlag ?? rest[0];
   try {
     const data = await getSdk().billing.linkWallet(organizationId, wallet);
     const output = {
@@ -264,27 +259,30 @@ async function linkWallet(args) {
 
 async function autoRecharge(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--threshold", "--state"];
+  const valueFlags = ["--org", "--threshold", "--state"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const stateFlag = flagValue(parsedArgs, "--state");
-  const positionals = positionalArgs(parsedArgs, valueFlags);
-  const organizationId = positionals[0];
-  const state = stateFlag ?? positionals[1];
-  const max = stateFlag ? 1 : 2;
-  if (positionals.length > max) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for billing auto-recharge: ${positionals[max]}` });
-  }
-  if (!organizationId || !state || !["on", "off"].includes(state)) {
-    fail({
-      code: "BAD_USAGE",
-      message: "Missing <org_id> and/or <on|off>.",
-      hint: "run402 billing auto-recharge <org_id> --state <on|off> [--threshold <n>]",
-    });
-  }
+  // Local validation FIRST — a malformed --threshold is refused before any org
+  // resolution (which may cost a network hop via --project).
   const thresholdStr = flagValue(parsedArgs, "--threshold");
   const threshold = parsedArgs.includes("--threshold")
     ? parseIntegerFlag("--threshold", thresholdStr, { min: 0 })
     : undefined;
+  const { orgId: organizationId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
+  const count = stateFlag ? 0 : 1;
+  requireRest(rest, {
+    min: count, max: count,
+    command: "run402 billing auto-recharge [<org_id>] --state <on|off> [--threshold <n>]",
+    missing: "Missing <on|off> (positional, or --state).",
+  });
+  const state = stateFlag ?? rest[0];
+  if (!["on", "off"].includes(state)) {
+    fail({
+      code: "BAD_USAGE",
+      message: `Expected on|off, got ${JSON.stringify(state)}.`,
+      hint: "run402 billing auto-recharge [<org_id>] --state <on|off> [--threshold <n>]",
+    });
+  }
   try {
     await getSdk().billing.setAutoRecharge({
       organizationId: organizationId,
