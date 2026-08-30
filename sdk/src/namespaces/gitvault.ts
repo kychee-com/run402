@@ -30,7 +30,7 @@
  */
 
 import type { Client } from "../kernel.js";
-import { LocalError, isRun402Error } from "../errors.js";
+import { LocalError, isRun402Error , isNetworkError } from "../errors.js";
 import {
   GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT,
   GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT,
@@ -59,16 +59,7 @@ import type { NextAction } from "../errors.js";
  * (a `git push` runs several verbs) reconciles and enrolls once.
  */
 const SESSION_RECONCILED = new Set<string>();
-const ENROLLED_KEYSTORES = new Map<string, GitvaultEnrollmentOutcome>();
 /** The cold open's own verdicts — surfaced from `open()`; anything else leaves the handle lazy (see `open`). */
-const COLD_OPEN_VERDICTS = new Set([
-  "GITVAULT_ENVELOPE_PENDING",
-  "GITVAULT_ENVELOPE_ALTERED",
-  "GITVAULT_ENVELOPE_NOT_FOR_RECIPIENT",
-  "GITVAULT_SIGNATURE_INVALID",
-  "VAULT_CREATION_CONFLICT",
-  "VAULT_UNRECOVERABLE",
-]);
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
   GitvaultCompactionGrant,
@@ -508,7 +499,7 @@ export interface GitvaultHandle {
 /** The session-start reconcile's outcome (gitvault-agent-envelopes D5). */
 export interface GitvaultSessionReconcileResult {
   attempted: boolean;
-  outcome: "reconciled" | "skipped_error" | "deferred_by_local_policy" | "forbidden";
+  outcome: "reconciled" | "skipped_error" | "deferred_by_local_policy" | "forbidden" | "custody_unverified";
   result?: GitvaultReconcileEnvelopeRecipientsResult;
   /** `deferred_by_local_policy` only: desired recipients this vault does not yet cover (best-effort; `null` when the read failed). */
   pending_count?: number | null;
@@ -517,8 +508,8 @@ export interface GitvaultSessionReconcileResult {
 
 /** The enroll-if-absent step's outcome (gitvault-agent-envelopes D3). Never a rotation. */
 export interface GitvaultEnrollmentOutcome {
-  /** `already_active`: the directory holds this keystore's key. `enrolled`: published + possession-proven in this call. `activated_pending`: an earlier unfinished publish was completed. `skipped_no_identity`: no local keystore identity (nothing to enroll — vault creation mints one). `skipped_no_principal`: whoami resolved no enrolling principal (e.g. a service key). `skipped_error`: whoami/publish/activate failed (older gateway, transport) — the verb still ran; `error` says why. */
-  outcome: "already_active" | "enrolled" | "activated_pending" | "skipped_no_identity" | "skipped_no_principal" | "skipped_error";
+  /** `already_active`: the directory holds this keystore's key. `enrolled`: published + possession-proven in this call. `activated_pending`: an earlier unfinished publish was completed. `skipped_no_identity`: no local keystore identity (nothing to enroll — vault creation mints one). `skipped_no_principal`: whoami resolved no enrolling principal (e.g. a service key). `skipped_not_enrollable`: the principal's type is not custody-eligible (ci/system) — no identity is minted. `skipped_error`: whoami/publish/activate failed (older gateway, transport) — the verb still ran, but custody continuity is UNVERIFIED, so no automatic reconcile follows; `error` says why. */
+  outcome: "already_active" | "enrolled" | "activated_pending" | "skipped_no_identity" | "skipped_no_principal" | "skipped_not_enrollable" | "skipped_error";
   ek_fingerprint: string | null;
   error?: string;
 }
@@ -1435,19 +1426,30 @@ export class Gitvault {
       ...(options.service_public_key !== undefined ? { service_public_key: options.service_public_key } : {}),
     });
     // D4: a cold keystore restores from its own envelope (or fails
-    // GITVAULT_ENVELOPE_PENDING with the exact next actions). Only the cold
-    // open's own VERDICTS surface here; a vault the transport cannot even
-    // describe (no genesis yet, an older gateway, a network fault) leaves the
-    // handle lazy so the verb fails exactly where and how it always did
-    // (`GITVAULT_REPO_STATE_MISSING` at first use), and a slug/id pin written
-    // by the caller after open() still lands.
+    // GITVAULT_ENVELOPE_PENDING with the exact next actions). The lazy
+    // fallback is an ALLOWLIST of typed transport/absence states, not a
+    // denylist of known verdicts (consult round 2 §5): a network fault, an
+    // older gateway missing the route (404/501), or a vault with no admitted
+    // genesis yet (CHAIN_BROKEN — not born, nothing to restore or disclose)
+    // leave the handle lazy so the verb fails exactly where it always did
+    // (`GITVAULT_REPO_STATE_MISSING` at first use). EVERYTHING else —
+    // integrity failures, parse failures, programming errors — propagates.
+    // A keystore with NO identity has nothing to restore and nothing that
+    // could be disclosed — stay lazy and let the verb hit the ordinary
+    // KEYSTORE_MISSING wall (with its cross-profile hint) exactly where it
+    // always did, AFTER the caller's own address-pin writes.
     let restored: import("../node/gitvault-publication.js").GitvaultColdOpenResult | null = null;
     try {
-      restored = await vault.ensureRepoState();
+      restored = keystore.readIdentity() ? await vault.ensureRepoState() : null;
     } catch (e) {
       const code = isRun402Error(e) ? (e as { code?: string }).code : undefined;
-      if (code && COLD_OPEN_VERDICTS.has(code)) throw e;
-      restored = null;
+      const status = isRun402Error(e) ? ((e as { status?: number | null }).status ?? null) : null;
+      const transportAbsence = isNetworkError(e) || status === 404 || status === 501;
+      if (code === "CHAIN_BROKEN" || transportAbsence) {
+        restored = null;
+      } else {
+        throw e;
+      }
     }
     // D5: a key-holder fulfils pending recipients once per process per vault.
     // A just-restored keystore holds K_repo too, but it just LEARNED it from
@@ -1455,11 +1457,22 @@ export class Gitvault {
     // open, and wrapping from a first-contact restore before verifying the
     // chain would be premature; the next open in this process does it.
     const policy = options.reconcile ?? "auto";
+    // Consult round 2 §4: reconcile WRAPS K_repo — a disclosure — so it runs
+    // only when this open VERIFIED custody continuity against the gateway
+    // (whoami answered and the current key is this keystore's). A transport
+    // fault or unresolved principal is never fail-open into a wrap.
+    const custodyVerified = enrollment.outcome === "already_active" || enrollment.outcome === "enrolled" || enrollment.outcome === "activated_pending";
+    // Scoped to what was actually verified: keystore + vault + the exact
+    // fingerprint whose continuity this open proved. Marked ONLY after a
+    // successful reconcile — a transient failure stays retryable, and a
+    // `deferred` policy never consumes the marker.
+    const sessionKey = `${keystore.rootDir}|${repoId}|${enrollment.ek_fingerprint ?? "none"}`;
     let reconcileRecipients: GitvaultSessionReconcileResult | null = null;
     if (policy === "forbidden") {
       reconcileRecipients = { attempted: false, outcome: "forbidden" };
-    } else if (!restored && !SESSION_RECONCILED.has(`${keystore.rootDir}|${repoId}`)) {
-      SESSION_RECONCILED.add(`${keystore.rootDir}|${repoId}`);
+    } else if (!restored && !custodyVerified) {
+      reconcileRecipients = { attempted: false, outcome: "custody_unverified", ...(enrollment.error !== undefined ? { error: enrollment.error } : {}) };
+    } else if (!restored && !SESSION_RECONCILED.has(sessionKey)) {
       if (policy === "deferred") {
         let pendingCount: number | null = null;
         try {
@@ -1474,6 +1487,7 @@ export class Gitvault {
         try {
           const result = await vault.reconcileEnvelopeRecipients();
           reconcileRecipients = { attempted: true, outcome: "reconciled", result };
+          SESSION_RECONCILED.add(sessionKey);
         } catch (e) {
           reconcileRecipients = { attempted: true, outcome: "skipped_error", error: e instanceof Error ? e.message : String(e) };
         }
@@ -1483,9 +1497,11 @@ export class Gitvault {
   }
 
   /**
-   * gitvault-agent-envelopes D3 — enroll-if-absent, memoized per keystore
-   * per process. Reads `GET /agent/v1/whoami` (the gateway folds the
-   * principal's current key metadata in), then:
+   * gitvault-agent-envelopes D3 — enroll-if-absent, checked FRESH on every
+   * open (consult round 2 §4: memoizing this decision let a long-lived
+   * process keep trusting a key an owner had since revoked). Reads
+   * `GET /agent/v1/whoami` (the gateway folds the principal's current key
+   * metadata in), then:
    *   - no current key → publish the keystore's X25519 key as
    *     `custody_scheme: keystore_v1`, answer the ECDH possession challenge,
    *     activate;
@@ -1501,8 +1517,6 @@ export class Gitvault {
    * skips enrollment — reads keep working; nothing pretends to be enrolled.
    */
   async #ensureEnrolled(keystore: GitvaultKeystore): Promise<GitvaultEnrollmentOutcome> {
-    const memo = ENROLLED_KEYSTORES.get(keystore.rootDir);
-    if (memo) return memo;
     let identity = keystore.readIdentity();
     let whoami: { principal: { id: string; type: string } | null; encryption_key: { encryption_key_id: string; ek_fingerprint: string; custody_scheme: string; state: string } | null };
     try {
@@ -1517,6 +1531,19 @@ export class Gitvault {
     }
     if (!whoami.principal) {
       return { outcome: "skipped_no_principal", ek_fingerprint: identity?.encryption_fingerprint ?? null };
+    }
+    if (whoami.principal.type !== "human" && whoami.principal.type !== "agent") {
+      // Only custody-eligible principal types enroll (consult round 2 §4):
+      // the gateway would refuse the publish anyway, but by then an orphan
+      // identity would already exist on disk.
+      return { outcome: "skipped_not_enrollable", ek_fingerprint: identity?.encryption_fingerprint ?? null };
+    }
+    if (identity?.enrolled_principal_id && identity.enrolled_principal_id !== whoami.principal.id) {
+      throw new LocalError(
+        `this keystore identity enrolled as principal ${identity.enrolled_principal_id}, but the active credential resolves to ${whoami.principal.id} — refusing cross-profile reuse of a custody identity`,
+        "enrolling the keystore encryption key",
+        { code: "GITVAULT_IDENTITY_PROFILE_MISMATCH", details: { enrolled_principal_id: identity.enrolled_principal_id, principal_id: whoami.principal.id, keystore_root: keystore.rootDir } },
+      );
     }
     const current = whoami.encryption_key ?? null;
     // A member joining from a FRESH machine has no keystore identity yet.
@@ -1558,9 +1585,8 @@ export class Gitvault {
       );
     }
     if (current && current.state === "active") {
-      const out: GitvaultEnrollmentOutcome = { outcome: "already_active", ek_fingerprint: current.ek_fingerprint };
-      ENROLLED_KEYSTORES.set(keystore.rootDir, out);
-      return out;
+      keystore.bindIdentityPrincipal(whoami.principal.id);
+      return { outcome: "already_active", ek_fingerprint: current.ek_fingerprint };
     }
     const keypair = keystore.encryptionKeypair(identity);
     if (!keypair) {
@@ -1595,9 +1621,8 @@ export class Gitvault {
       if (isRun402Error(e) && (e as { code?: string }).code === "KEY_ROTATION_REQUIRED") throw e;
       return { outcome: "skipped_error", ek_fingerprint: identity.encryption_fingerprint, error: e instanceof Error ? e.message : String(e) };
     }
-    const out: GitvaultEnrollmentOutcome = { outcome: current ? "activated_pending" : "enrolled", ek_fingerprint: identity.encryption_fingerprint };
-    ENROLLED_KEYSTORES.set(keystore.rootDir, out);
-    return out;
+    keystore.bindIdentityPrincipal(whoami.principal.id);
+    return { outcome: current ? "activated_pending" : "enrolled", ek_fingerprint: identity.encryption_fingerprint };
   }
 
   /**

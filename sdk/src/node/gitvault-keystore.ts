@@ -78,6 +78,14 @@ export interface GitvaultIdentityFile {
   encryption_pubkey: string;
   /** `ek_` fingerprint. */
   encryption_fingerprint: string;
+  /**
+   * The control-plane principal this identity ENROLLED as (consult round 2
+   * §9e) — persisted after the first successful authenticated enrollment so a
+   * later run under a DIFFERENT profile fails loudly instead of silently
+   * reusing another principal's custody identity. Absent on identities that
+   * have never enrolled.
+   */
+  enrolled_principal_id?: string;
   created_at: string;
 }
 
@@ -228,6 +236,7 @@ export interface GitvaultAuditEntry {
 export type GitvaultAuditEvent =
   | "keystore_opened"
   | "identity_created"
+  | "identity_principal_bound"
   | "repo_saved"
   | "repo_restored_from_envelope"
   | "recovery_receipt_stored"
@@ -494,6 +503,21 @@ export class GitvaultKeystore {
     writeFileAtomic0600(this.identityPath, JSON.stringify(identity, null, 2));
     this.audit("identity_created", undefined, { signing_fingerprint: identity.signing_fingerprint, encryption_fingerprint: identity.encryption_fingerprint });
     return identity;
+  }
+
+  /**
+   * Record (idempotently) which principal this identity enrolled as. A
+   * DIFFERENT already-recorded principal is refused — a deliberate migration
+   * deletes/replaces the identity, it never silently rebinds.
+   */
+  bindIdentityPrincipal(principalId: string): void {
+    const identity = this.requireIdentity();
+    if (identity.enrolled_principal_id === principalId) return;
+    if (identity.enrolled_principal_id) {
+      fail("GITVAULT_IDENTITY_PROFILE_MISMATCH", `this keystore identity enrolled as principal ${identity.enrolled_principal_id}, not ${principalId} — refusing cross-profile reuse`, "binding gitvault identity", { enrolled_principal_id: identity.enrolled_principal_id, principal_id: principalId });
+    }
+    writeFileAtomic0600(this.identityPath, JSON.stringify({ ...identity, enrolled_principal_id: principalId }, null, 2));
+    this.audit("identity_principal_bound", undefined, { principal_id: principalId });
   }
 
   /** The signing keypair, or `null` when the signing seed is lost (read-only principal). */

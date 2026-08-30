@@ -2421,6 +2421,15 @@ export interface GitvaultVaultOptions {
   conflict_retries?: number;
   /** The signing service key resolved through the registry — when supplied, control-plane-signed messages (cutoff tickets) are signature-checked. */
   service_public_key?: Uint8Array | string;
+  /**
+   * Consult round 2 §5: an ordinary open REFUSES a cold restore whose genesis
+   * the control plane cannot attest (no signed allocation on the vault
+   * record) — a data-path that cannot forge the allocation could otherwise
+   * simply omit it and hand the client a fabricated vault. Only the explicit
+   * recovery flow sets this, and the result still says
+   * `unauthenticated_salvage`.
+   */
+  allow_unauthenticated_salvage?: boolean;
 }
 
 /** How a checkpoint-bearing head binds a `retention_cutoff` ticket and expires roots (§4.5a / §4.5). */
@@ -2514,7 +2523,7 @@ export interface GitvaultReconcileEnvelopeRecipientsWrapped {
 }
 
 /** Why {@link GitvaultVault.reconcileEnvelopeRecipients} did NOT wrap a directory entry it otherwise would have. */
-export type GitvaultReconcileEnvelopeRecipientsSkipReason = "missing_public_key" | "invalid_public_key" | "pinned_key_mismatch" | "race_winner_unverified";
+export type GitvaultReconcileEnvelopeRecipientsSkipReason = "missing_public_key" | "invalid_public_key" | "pinned_key_mismatch";
 
 export interface GitvaultReconcileEnvelopeRecipientsSkipped {
   principal_id: string;
@@ -2754,6 +2763,7 @@ export class GitvaultVault {
   private stateRestorePlan: GitvaultVaultRestorePlan | null = null;
   private readonly retries: number;
   private readonly servicePublicKey: Uint8Array | string | null;
+  private readonly allowUnauthenticatedSalvage: boolean;
   private genesisCache: { genesis: GitvaultVaultGenesis; sha256: string } | null = null;
   /**
    * gitvault-byo-primary-bucket task 3.2 — this vault's resolved BYO write
@@ -2775,6 +2785,7 @@ export class GitvaultVault {
     this.budget = options.verification_budget ?? GITVAULT_VERIFICATION_BUDGET_HEADS;
     this.retries = options.conflict_retries ?? GITVAULT_PUSH_CONFLICT_RETRIES;
     this.servicePublicKey = options.service_public_key ?? null;
+    this.allowUnauthenticatedSalvage = options.allow_unauthenticated_salvage ?? false;
   }
 
   static open(options: GitvaultVaultOptions): GitvaultVault {
@@ -2855,6 +2866,9 @@ export class GitvaultVault {
     const genesisBytes = await this.transport.getGenesis({ repo_id: this.repoId });
     if (!genesisBytes) fail("CHAIN_BROKEN", "the vault has no admitted genesis", "opening gitvault vault", { repo_id: this.repoId });
     const genesis = parseGitvaultStrict(new TextDecoder().decode(genesisBytes)) as GitvaultVaultGenesis;
+    if (genesis.epoch !== GITVAULT_GENESIS_EPOCH) {
+      fail("VAULT_CREATION_CONFLICT", `the served genesis declares epoch ${genesis.epoch}, not the genesis epoch`, "opening gitvault vault", { repo_id: this.repoId, epoch: genesis.epoch });
+    }
     if (genesis.repo_id !== this.repoId) {
       fail("VAULT_CREATION_CONFLICT", `the served genesis names repo ${genesis.repo_id}, not ${this.repoId}`, "opening gitvault vault", { repo_id: this.repoId, served: genesis.repo_id });
     }
@@ -2865,6 +2879,18 @@ export class GitvaultVault {
     let allocationAttested = false;
     const record = await this.transport.getVaultRecord({ repo_id: this.repoId });
     const allocation = record.allocation ?? null;
+    if (!allocation && !this.allowUnauthenticatedSalvage) {
+      // Consult round 2 §5: an absent allocation on an ordinary open is not a
+      // downgrade to salvage — it is a refusal. A malicious or broken serving
+      // path that cannot forge the SIGNED allocation must not get a vault
+      // opened by simply omitting it.
+      fail(
+        "GITVAULT_ALLOCATION_UNATTESTED",
+        "the control plane returned no signed allocation record for this vault — refusing an unattested cold restore (recovery flows may opt into explicit unauthenticated salvage)",
+        "opening gitvault vault",
+        { repo_id: this.repoId },
+      );
+    }
     if (allocation) {
       const genesisEk = ekFingerprint(fromBase64url(genesis.creator_encryption_pubkey, "genesis.creator_encryption_pubkey"));
       const genesisVk = vkFingerprint(fromBase64url(genesis.creator_signing_pubkey, "genesis.creator_signing_pubkey"));
@@ -4047,16 +4073,25 @@ export class GitvaultVault {
           if (winnerBytes) {
             try {
               const winner = parseGitvaultStrict(new TextDecoder().decode(winnerBytes)) as GitvaultKeyEnvelope;
-              const writerKey = (await this.genesis()).genesis.creator_signing_pubkey;
+              const g = (await this.genesis()).genesis;
               winnerOk = winner.repo_id === this.repoId && winner.epoch === epoch && winner.recipient_fingerprint === entry.ek_fingerprint
-                && verifyGitvaultObject(winner as unknown as GitvaultSignedObject, writerKey);
+                && winner.created_by === g.writer_key_id
+                && verifyGitvaultObject(winner as unknown as GitvaultSignedObject, g.creator_signing_pubkey);
             } catch {
               winnerOk = false;
             }
           }
           if (!winnerOk) {
-            skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "race_winner_unverified", details: { path: winnerPath } });
-            continue;
+            // Consult round 2 §7: a conflicting IMMUTABLE object whose stored
+            // winner does not verify is evidence of tampering, equivocation,
+            // or broken object identity — categorically different from a
+            // stale recipient. FATAL, never an ordinary skip.
+            fail(
+              "GITVAULT_ENVELOPE_ALTERED",
+              `a conflicting key_envelope already stored at ${winnerPath} does not verify as this vault's writer-signed envelope for this recipient — refusing to treat the conflict as a benign race`,
+              "reconciling gitvault envelope recipients",
+              { repo_id: this.repoId, path: winnerPath, epoch, recipient_fingerprint: entry.ek_fingerprint },
+            );
           }
           alreadyCovered.push(entry.ek_fingerprint);
         } else {

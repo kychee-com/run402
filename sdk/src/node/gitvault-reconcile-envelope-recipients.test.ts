@@ -201,7 +201,7 @@ describe("GitvaultVault.reconcileEnvelopeRecipients — gitvault-human-envelopes
     assert.deepEqual(v.keystore.readRepo(v.repoId)!.envelope_recipient_pins, { principal_b: bFp });
   });
 
-  it("a race whose winner cannot be verified is SKIPPED (race_winner_unverified) — never recorded as coverage, never pinned", async () => {
+  it("a race whose winner cannot be verified is FATAL (GITVAULT_ENVELOPE_ALTERED) — a conflicting immutable object that does not verify is tampering evidence, never a benign skip (consult round 2 §7)", async () => {
     const v = await makeVault();
     const b = generateEncryptionKeypair();
     const bFp = ekFingerprint(b.public_key);
@@ -214,11 +214,10 @@ describe("GitvaultVault.reconcileEnvelopeRecipients — gitvault-human-envelopes
     // The competing object is garbage (a malformed or wrong-vault envelope).
     v.transport.objects.set(`${v.repoId}/${gitvaultPaths.envelope(GITVAULT_GENESIS_EPOCH, bFp)}`, new TextEncoder().encode(JSON.stringify({ raced: true })));
 
-    const result = await v.vault.reconcileEnvelopeRecipients();
-    assert.deepEqual(result.wrapped, []);
-    assert.deepEqual(result.already_covered, []);
-    assert.equal(result.skipped.length, 1);
-    assert.equal(result.skipped[0]!.reason, "race_winner_unverified");
+    await assert.rejects(
+      () => v.vault.reconcileEnvelopeRecipients(),
+      (e: unknown) => (e as { code?: string }).code === "GITVAULT_ENVELOPE_ALTERED",
+    );
     assert.deepEqual(v.keystore.readRepo(v.repoId)!.envelope_recipient_pins ?? {}, {});
   });
 
