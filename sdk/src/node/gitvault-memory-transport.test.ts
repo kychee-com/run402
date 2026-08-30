@@ -519,6 +519,9 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
       newest_generation: generations.at(-1) ?? null, genesis_admitted_at: null, latest_effective_admitted_at: null,
       admitted_generations: String(generations.length), gc_epoch: "0", repair_version: "0", repair_fence_state: "none",
       storage: { source_bytes: "0", open_session_reserved_bytes: "0", objects: {} },
+      // gitvault-agent-envelopes: the signed allocation rides the record, as the
+      // live route wraps it — the cold open anchors genesis to its fingerprints.
+      allocation: [...this.allocations.values()].find((x) => x.repo_id === repo_id) ?? null,
       maintenance: { lease: null, open_cycle: null, pending_repair_attempt_id: null },
       warnings: [], created_at: null,
       ...this.vaultRecord,

@@ -41,6 +41,7 @@ import {
   checkGenesisKeyBindings,
   checkRecoveryReceipt,
   ekFingerprint,
+  fromBase64url,
   formatGitvaultTimestamp,
   generateEncryptionKeypair,
   generateSigningKeypair,
@@ -926,7 +927,21 @@ export class GitvaultKeystore {
     if (!verifyGitvaultObject(genesis as unknown as GitvaultSignedObject, genesis.creator_signing_pubkey)) {
       fail("GITVAULT_SIGNATURE_INVALID", "vault_genesis signature does not verify", "restoring gitvault repo state", { repo_id: genesis.repo_id });
     }
-    const bindings = checkGenesisKeyBindings(genesis, envelope);
+    // The creator's OWN genesis envelope is bound to genesis byte-for-byte
+    // (hash + size + recipient). Any OTHER recipient's envelope (a member
+    // wrapped post-genesis — gitvault-agent-envelopes D4's cold open) is
+    // not in genesis at all: for it, check genesis's own structural bindings
+    // plus the envelope's addressing (this vault, this epoch, written under
+    // the registered writer key); `openKeyEnvelope` then verifies the
+    // writer's signature over it before anything is opened.
+    const creatorEk = ekFingerprint(fromBase64url(genesis.creator_encryption_pubkey, "creator_encryption_pubkey"));
+    const isCreatorEnvelope = envelope.recipient_fingerprint === creatorEk;
+    const bindings = isCreatorEnvelope ? checkGenesisKeyBindings(genesis, envelope) : checkGenesisKeyBindings(genesis);
+    if (!isCreatorEnvelope) {
+      if (envelope.repo_id !== genesis.repo_id) bindings.push("stored_envelope_repo_id");
+      if (envelope.epoch !== genesis.epoch) bindings.push("stored_envelope_epoch");
+      if (envelope.created_by !== genesis.writer_key_id) bindings.push("stored_envelope_created_by");
+    }
     if (bindings.length > 0) {
       fail("VAULT_CREATION_CONFLICT", "genesis key bindings do not hold for the stored envelope", "restoring gitvault repo state", { repo_id: genesis.repo_id, problems: bindings });
     }
