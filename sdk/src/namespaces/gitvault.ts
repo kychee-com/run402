@@ -1850,6 +1850,12 @@ export class Gitvault {
 
   /** The arithmetic, with no policy: the block, or `null` when unanswerable. */
   async #readCompactHeadroom(repoId: string): Promise<GitvaultCompactHeadroom | null> {
+    /** Posture (3): one note, on stderr, and `null` — never a throw. */
+    const unanswerable = (why: string): null => {
+      globalThis.console?.error?.(`run402: could not check compaction storage headroom (${why}); proceeding — the platform's storage quota remains authoritative.`);
+      return null;
+    };
+
     let poolUsed: number;
     let poolLimit: number;
     let sourceBytes: number;
@@ -1863,14 +1869,13 @@ export class Gitvault {
       poolUsed = Number(tier.pool_usage?.total_storage_bytes);
       poolLimit = Number(tier.pool_usage?.storage_bytes_limit);
       sourceBytes = Number(record.storage?.source_bytes ?? "0");
-      if (!Number.isFinite(poolUsed) || !Number.isFinite(poolLimit) || !Number.isFinite(sourceBytes) || poolLimit <= 0) {
-        throw new Error("tier status carried no usable pooled-storage figures");
-      }
     } catch (e) {
-      // Posture (3). One note, on stderr, never a throw.
-      const why = e instanceof Error ? e.message : String(e);
-      globalThis.console?.error?.(`run402: could not check compaction storage headroom (${why}); proceeding — the platform's storage quota remains authoritative.`);
-      return null;
+      return unanswerable(e instanceof Error ? e.message : String(e));
+    }
+    // Shape drift in the tier-status response reads the same as an unreadable
+    // one — an advisory that cannot be computed must not be guessed at.
+    if (!Number.isFinite(poolUsed) || !Number.isFinite(poolLimit) || !Number.isFinite(sourceBytes) || poolLimit <= 0) {
+      return unanswerable("tier status carried no usable pooled-storage figures");
     }
 
     const projected = poolUsed + sourceBytes;

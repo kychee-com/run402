@@ -51,11 +51,29 @@ import { GitvaultOpCounter, assertOpBudget, countingGitvaultTransport } from "./
  * presign is carrier-only by wire design — so concurrency of the direct
  * reads IS the mechanism under test.
  */
-function gaugedTransport(inner: ReturnType<typeof countingGitvaultTransport>): { transport: ReturnType<typeof countingGitvaultTransport>; gauge: { max: number } } {
+/**
+ * The DEPTH instrument: wraps `getObject` so concurrent singles are visible
+ * as in-flight count, not merely as an op total.
+ *
+ * It also reports `head-reads` UNSUPPORTED by default
+ * (gitvault-batched-head-reads task 4.3), which is the only way the overlap
+ * assertions keep their teeth: with the batch route available, a page's head
+ * bytes ride ONE POST and no singles overlap at all — correct, and exactly
+ * what the batch-path tests below assert instead. Pinning the gauge to the
+ * fallback keeps the pre-batch shape (an older gateway) under test rather
+ * than silently untested.
+ */
+function gaugedTransport(
+  inner: ReturnType<typeof countingGitvaultTransport>,
+  opts: { headReads?: "unsupported" | "passthrough" } = {},
+): { transport: ReturnType<typeof countingGitvaultTransport>; gauge: { max: number } } {
   const state = { inflight: 0, max: 0 };
   const transport = new Proxy(inner, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
+      if (prop === "getHeads" && (opts.headReads ?? "unsupported") === "unsupported") {
+        return async () => null;
+      }
       if (prop !== "getObject" || typeof value !== "function") return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
       return async (...args: unknown[]) => {
         state.inflight += 1;
@@ -210,7 +228,7 @@ describe("gitvault chain catch-up budget (gitvault-clone-scaling)", () => {
   });
   after(() => rmSync(f.root, { recursive: true, force: true }));
 
-  it("a 251-generation cold-cache catch-up batches each page's head bytes and carrier frames: singles do not scale with G", async () => {
+  it("on a gateway WITHOUT head-reads, a 251-generation cold-cache catch-up overlaps its head singles: depth does not scale with G", async () => {
     // A cold checkout: the repo keys without any pin or cached heads — the
     // clone shape (same seeding the epoch-reader fixture uses).
     const repo = f.keystore.readRepo(f.repoId)!;
@@ -243,7 +261,7 @@ describe("gitvault chain catch-up budget (gitvault-clone-scaling)", () => {
     assertOpBudget(counter, 3 * 251 + 15, "cold 251-generation catch-up");
   });
 
-  it("a fresh-target restore batches the backward head walk the same way: singles do not scale with G", async (t) => {
+  it("on a gateway WITHOUT head-reads, a fresh-target restore overlaps its backward head singles the same way", async (t) => {
     // The OTHER cold-clone shape: the keystore is current (pin at newest),
     // the TARGET repository is empty — `git clone` with a standing profile.
     // restoreObjectsInto's backward walk derives every predecessor path
@@ -261,5 +279,61 @@ describe("gitvault chain catch-up budget (gitvault-clone-scaling)", () => {
     const byKind = counter.byKind();
     assert.ok(gauge.max >= 4, `backward-walk head reads must overlap (bounded concurrency ${GITVAULT_TRANSPORT_CONCURRENCY}), observed max in-flight ${gauge.max}`);
     assert.ok((byKind["object-reads-batch(presign)"] ?? 0) <= 6, `carrier/WAL batches only — breakdown: ${JSON.stringify(byKind)}`);
+  });
+
+  it("on a gateway WITH head-reads, the same catch-up rides ONE batch per page instead of G singles", async () => {
+    const repo = f.keystore.readRepo(f.repoId)!;
+    const coldKeystore = GitvaultKeystore.open({ rootDir: join(f.root, "ks-cold-batched") });
+    coldKeystore.ensureIdentity();
+    coldKeystore.saveRepo({
+      repo_id: f.repoId, org_id: repo.org_id, project_id: repo.project_id,
+      k_repo_hex: repo.k_repo_hex, epoch: repo.epoch, genesis_sha256: repo.genesis_sha256,
+      head_pin: null, last_ref_transaction: null, provenance: "restored_from_envelope",
+    });
+    const counter = new GitvaultOpCounter();
+    const cold = GitvaultVault.open({ keystore: coldKeystore, transport: countingGitvaultTransport(f.transport, counter), repo_id: f.repoId, repo_dir: null });
+    const m = await cold.materialize();
+    assert.equal(Object.keys(m.refs).length, 251, "the walk really covered all 251 generations");
+
+    const byKind = counter.byKind();
+    // THE POINT: head bytes stop scaling with G entirely. ⌈251/1000⌉ = one
+    // listing page, so one `head-reads` POST carries every cache-missing head
+    // in it, and the per-generation singles that used to dominate collapse to
+    // the handful the ordered walk still owns (a prefetch entry that fails
+    // its sha check falls back to its own read — by design).
+    assert.ok((byKind["getHeads"] ?? 0) <= 3, `head bytes ride one batch per page — breakdown: ${JSON.stringify(byKind)}`);
+    assert.ok((byKind["generation-read"] ?? 0) <= 10, `per-generation head singles must not scale with G — breakdown: ${JSON.stringify(byKind)}`);
+    assert.equal(byKind["object-reads-batch(presign)"] ?? 0, 1, "one batched carrier presign per page, unchanged");
+    // Same verification obligations, far fewer round trips: every carrier
+    // frame still rides its batch and every head is still chain-verified.
+    assert.equal(byKind["object-reads-batch(get)"] ?? 0, 2 * 251, "every carrier frame rides the one batch");
+    assertOpBudget(counter, 2 * 251 + 20, "cold 251-generation catch-up, batched heads");
+  });
+
+  it("a corrupted batch is not trusted: a lying head-reads answer degrades to the walk's own read, same result", async () => {
+    const repo = f.keystore.readRepo(f.repoId)!;
+    const coldKeystore = GitvaultKeystore.open({ rootDir: join(f.root, "ks-cold-lying") });
+    coldKeystore.ensureIdentity();
+    coldKeystore.saveRepo({
+      repo_id: f.repoId, org_id: repo.org_id, project_id: repo.project_id,
+      k_repo_hex: repo.k_repo_hex, epoch: repo.epoch, genesis_sha256: repo.genesis_sha256,
+      head_pin: null, last_ref_transaction: null, provenance: "restored_from_envelope",
+    });
+    // Every batched head comes back as plausible-looking garbage. Nothing
+    // downstream may trust it: the prefetch is sha-checked against the
+    // listing's own `stored_bytes_sha256`, so the walk must reproduce the
+    // unbatched answer exactly.
+    const lying = new Proxy(f.transport, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (prop === "getHeads") {
+          return async ({ generations }: { generations: string[] }) => generations.map(() => new TextEncoder().encode("{\"not\":\"a head\"}"));
+        }
+        return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    }) as typeof f.transport;
+    const cold = GitvaultVault.open({ keystore: coldKeystore, transport: lying, repo_id: f.repoId, repo_dir: null });
+    const m = await cold.materialize();
+    assert.equal(Object.keys(m.refs).length, 251, "the walk still covered all 251 generations, from its own reads");
   });
 });

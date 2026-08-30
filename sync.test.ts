@@ -1527,6 +1527,13 @@ describe("SDK surface alignment", () => {
       // its own — `repos access` composes it into its member_custody block
       // (the capability row maps to gitvault.access, the primary read).
       "operator.session.sourceAccessWrappers",
+      // gitvault-compaction-headroom-preflight: the same arithmetic
+      // `gitvault.compact` preflights on, with none of its policy. It has no
+      // verb of its own — `repos gc` composes it into its `headroom` block on
+      // the --submit half, where no compaction runs (the capability row maps
+      // to gitvault.compact, which carries the block itself on the planning
+      // half).
+      "gitvault.compactHeadroom",
       // Deprecated alias of admin.sendFeedback, kept so code written against
       // the old name keeps COMPILING. It posts to the new /feedback/v1 path,
       // so it is not a second capability - it is the same one, spelled the

@@ -225,6 +225,27 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     this.calls.push(`get-batch:${paths.length}:${paths.join(",")}`);
     return paths.map((path) => this.objects.get(this.key(repo_id, path)) ?? null);
   }
+  /**
+   * `POST …/head-reads` (gitvault-batched-head-reads) — ONE logged call
+   * carrying a whole page's head bytes, mirroring the route's all-or-nothing
+   * contract: a single absent generation resolves the WHOLE batch to `null`
+   * (the caller's "unsupported, fall back" signal) rather than a hole the
+   * walk would misread as absence.
+   */
+  async getHeads({ repo_id, generations }: { repo_id: string; generations: string[] }): Promise<Uint8Array[] | null> {
+    if (this.headReadsUnsupported) return null;
+    this.calls.push(`head-reads:${generations.length}:${generations.join(",")}`);
+    const out: Uint8Array[] = [];
+    for (const g of generations) {
+      const bytes = this.objects.get(this.key(repo_id, gitvaultPaths.head(g)));
+      if (!bytes) return null;
+      out.push(bytes);
+    }
+    return out;
+  }
+  /** Set by a fixture that wants the pre-batch fallback path under test. */
+  headReadsUnsupported = false;
+
   async admitGenesis(req: GitvaultAdmitGenesisRequest): Promise<GitvaultAdmitGenesisResult> {
     const k = this.key(req.repo_id, gitvaultPaths.head(GITVAULT_GENESIS_GENERATION));
     const existing = this.objects.get(k);

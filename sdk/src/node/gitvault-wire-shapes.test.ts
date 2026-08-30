@@ -25,6 +25,7 @@ import type { GitvaultUploadObject } from "./gitvault-publication.js";
 import { checkActivationTokenBinding } from "./gitvault-deploy.js";
 import { _resetGitvaultEdgeFetchStateForTest } from "./gitvault-edge-fetch.js";
 import { toBase64url } from "../namespaces/gitvault.crypto.js";
+import { ApiError } from "../errors.js";
 import type { GitvaultActivationToken } from "../namespaces/gitvault.types.js";
 
 const WAL = `wal_${"1".repeat(32)}`;
@@ -198,6 +199,91 @@ describe("gitvaultLedgerId — the key both sides pair receipts on", () => {
  *
  * `allocate` has the same envelope shape and is unwrapped the same way.
  */
+describe("createGitvaultHttpTransport — head-reads is a POST batch whose bytes stay untrusted (gitvault-batched-head-reads)", () => {
+  const REPO = `r402s_${"e".repeat(32)}`;
+  const G = (n: number): string => BigInt(n).toString(16).padStart(16, "0");
+  const b64u = (s: string): string => toBase64url(new TextEncoder().encode(s));
+
+  interface WireCall { path: string; method?: string; body?: unknown }
+
+  function transportOver(handler: (call: WireCall) => unknown): { transport: ReturnType<typeof createGitvaultHttpTransport>; calls: WireCall[] } {
+    const calls: WireCall[] = [];
+    const client = {
+      apiBase: "https://api.example.test",
+      async request<T>(path: string, opts: { method?: string; body?: unknown }): Promise<T> {
+        const call = { path, method: opts.method, body: opts.body };
+        calls.push(call);
+        return handler(call) as T;
+      },
+    } as unknown as Parameters<typeof createGitvaultHttpTransport>[0];
+    return { transport: createGitvaultHttpTransport(client), calls };
+  }
+
+  it("POSTs `{generations}` to …/head-reads and returns the decoded bytes in request order", async () => {
+    const { transport, calls } = transportOver(() => ({
+      format: "r402s/v0",
+      repo_id: REPO,
+      heads: [
+        { generation: G(1), stored_bytes: b64u("one"), stored_bytes_sha256: "a".repeat(64) },
+        { generation: G(2), stored_bytes: b64u("two"), stored_bytes_sha256: "b".repeat(64) },
+      ],
+    }));
+    const got = await transport.getHeads({ repo_id: REPO, generations: [G(1), G(2)] });
+    assert.deepEqual(calls, [{ path: `/gitvault/v1/vaults/${REPO}/head-reads`, method: "POST", body: { generations: [G(1), G(2)] } }]);
+    assert.deepEqual(got?.map((b) => new TextDecoder().decode(b)), ["one", "two"]);
+  });
+
+  it("costs nothing for an empty request — no round trip at all", async () => {
+    const { transport, calls } = transportOver(() => ({ heads: [] }));
+    assert.deepEqual(await transport.getHeads({ repo_id: REPO, generations: [] }), []);
+    assert.deepEqual(calls, []);
+  });
+
+  it("reads a short, reordered, or malformed page as UNSUPPORTED — never as a partial answer", async () => {
+    // A hole here would reach the walk as "this head is absent", which is a
+    // very different claim from "the batch could not serve me". The route is
+    // all-or-nothing; anything less falls back.
+    for (const body of [
+      { heads: [{ generation: G(1), stored_bytes: b64u("one") }] }, // short
+      { heads: [{ generation: G(9), stored_bytes: b64u("x") }, { generation: G(8), stored_bytes: b64u("y") }] }, // wrong generations
+      { heads: [{ generation: G(1) }, { generation: G(2) }] }, // no bytes
+      {}, // no heads member at all
+    ]) {
+      const { transport } = transportOver(() => body);
+      assert.equal(await transport.getHeads({ repo_id: REPO, generations: [G(1), G(2)] }), null, JSON.stringify(body));
+    }
+  });
+
+  it("reads any failure as UNSUPPORTED, and remembers only a route-absent 404", async () => {
+    // Real `ApiError`s: the memo turns on `isRun402Error` + `status`, so a
+    // hand-rolled lookalike would test the fixture instead of the code.
+    const notFound = new ApiError("no such route", 404, {}, "reading gitvault heads in a batch");
+    const serverError = new ApiError("boom", 500, {}, "reading gitvault heads in a batch");
+
+    // A transient failure falls back for THIS call only — the next call still probes.
+    let thrown: unknown = serverError;
+    const transient = transportOver(() => {
+      throw thrown;
+    });
+    assert.equal(await transient.transport.getHeads({ repo_id: REPO, generations: [G(1)] }), null);
+    thrown = serverError;
+    assert.equal(await transient.transport.getHeads({ repo_id: REPO, generations: [G(1)] }), null);
+    assert.equal(transient.calls.length, 2, "a transient failure must not disable the route");
+
+    // A 404 is what an older gateway says about a route it never shipped, so
+    // the verdict sticks for this transport's lifetime — one probe, not one
+    // per window.
+    let raise: unknown = notFound;
+    const absent = transportOver(() => {
+      throw raise;
+    });
+    assert.equal(await absent.transport.getHeads({ repo_id: REPO, generations: [G(1)] }), null);
+    raise = null;
+    assert.equal(await absent.transport.getHeads({ repo_id: REPO, generations: [G(2)] }), null);
+    assert.equal(absent.calls.length, 1, "the unsupported verdict is remembered, so no second probe goes out");
+  });
+});
+
 describe("createGitvaultHttpTransport — the mint's envelope is unwrapped, never passed on as the token", () => {
   const REPO = `r402s_${"a".repeat(32)}`;
   const OP = "op_wire_shapes";

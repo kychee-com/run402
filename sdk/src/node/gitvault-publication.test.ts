@@ -1340,6 +1340,13 @@ describe("gitvault-clone-scaling — the batched page walk keeps unbatched failu
     // re-read succeeds. (Heads ride direct getObject reads, never the
     // carrier-only getObjects batch — this is the per-path lying-read
     // shape that can actually occur on the wire.)
+    //
+    // Pinned to the pre-`head-reads` FALLBACK path
+    // (gitvault-batched-head-reads): on a gateway serving the batch, the
+    // prefetch never issues these singles at all, so the lie would never
+    // fire and the assertion below would pass vacuously. The batch path's
+    // own lying case is covered in `gitvault-round-trip-budgets.test.ts`.
+    f.transport.headReadsUnsupported = true;
     const lyingPath = gitvaultPaths.head("0000000000000002");
     let lied = false;
     const lying = new Proxy(f.transport, {

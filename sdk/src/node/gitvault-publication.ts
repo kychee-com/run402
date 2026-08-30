@@ -931,6 +931,25 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
    * case only, so a single-object caller never pays a batch's overhead.
    */
   getObjects(request: { repo_id: string; paths: string[] }): Promise<Array<Uint8Array | null>>;
+  /**
+   * Read the EXACT stored bytes of many generation-addressed heads in ONE
+   * POST (`…/head-reads`, gitvault-batched-head-reads).
+   *
+   * Heads are the one hot read that cannot ride {@link getObjects}: that
+   * batch is carrier-only by wire design and fails closed on a
+   * generation-addressed path, so a cold chain walk otherwise pays ~G/6
+   * sequenced waves of full round trips for bytes that are ~1.2 KB each.
+   *
+   * `generations` must be STRICTLY ASCENDING; the route is all-or-nothing, so
+   * the result is either one `Uint8Array` per requested generation in request
+   * order, or `null` meaning UNSUPPORTED — an older gateway, a refusal, a
+   * network fault, anything. `null` is never "absent bytes": it is the
+   * caller's signal to fall back to per-generation reads, which produce the
+   * per-item nulls and the real failure envelopes. Bytes are raw and
+   * UNTRUSTED exactly as a per-generation read's are — this batch changes
+   * transport, never trust.
+   */
+  getHeads(request: { repo_id: string; generations: string[] }): Promise<Uint8Array[] | null>;
   listHeads(request: GitvaultHeadsListingRequest & { repo_id: string }): Promise<GitvaultHeadsListingPage>;
   /** Session → create-only presigned PUTs (`If-None-Match: *`) → finalize; receipts in request order. */
   uploadObjects(request: { repo_id: string; objects: GitvaultUploadObject[]; resource_binding?: GitvaultResourceBinding }): Promise<GitvaultUploadReceipt[]>;
@@ -1346,6 +1365,57 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     });
   }
 
+  /**
+   * `POST …/head-reads` — many generation-addressed heads' EXACT stored bytes
+   * in ONE round trip (gitvault-batched-head-reads task 4.1).
+   *
+   * `null` means UNSUPPORTED, and it is deliberately the answer to EVERY
+   * failure shape: a 404 from a gateway that predates the route, a refusal, a
+   * malformed body, a network fault. The caller's fallback (per-generation
+   * reads) reproduces the unbatched behaviour byte-for-byte including its
+   * failure envelopes, so there is nothing to gain from distinguishing them
+   * here — and one thing to lose, since a batch that reported a real absence
+   * as data would let a partial page reach a consumer that expects
+   * all-or-nothing.
+   *
+   * The unsupported verdict is REMEMBERED for this transport's lifetime, so a
+   * client talking to an older gateway pays the probe once rather than once
+   * per window. It is never remembered in the other direction: a route that
+   * worked is simply used again.
+   */
+  let headReadsUnsupported = false;
+  async function getHeadsBytes(repoId: string, generations: string[]): Promise<Uint8Array[] | null> {
+    if (generations.length === 0) return [];
+    if (headReadsUnsupported) return null;
+    try {
+      const res = await client.request<{ heads?: Array<{ generation?: string; stored_bytes?: string }> }>(`${base(repoId)}/head-reads`, {
+        method: "POST",
+        body: { generations },
+        context: "reading gitvault heads in a batch",
+      });
+      const byGeneration = new Map<string, string>();
+      for (const h of res.heads ?? []) {
+        if (typeof h?.generation === "string" && typeof h.stored_bytes === "string") byGeneration.set(h.generation, h.stored_bytes);
+      }
+      const out: Uint8Array[] = [];
+      for (const g of generations) {
+        const encoded = byGeneration.get(g);
+        // A short or reordered page is a contract violation, not a partial
+        // answer — fall back rather than hand the walk a hole it would read
+        // as "absent".
+        if (encoded === undefined) return null;
+        out.push(fromBase64url(encoded, "heads[].stored_bytes"));
+      }
+      return out;
+    } catch (e) {
+      // A 404 is the shape an older gateway gives for a route it has never
+      // heard of, so it is the one worth remembering; every other failure
+      // (a refusal, a transient fault) falls back for THIS call only.
+      if (isRun402Error(e) && (e as { status?: number }).status === 404) headReadsUnsupported = true;
+      return null;
+    }
+  }
+
   /** Resolve ONE `GET …/state` carrier arm to raw bytes — inline decode, or a plain GET on the presigned URL (preferring its `edge_url` companion, gitvault-read-edge-cache design D5), `null` on a 404 (mirrors {@link getObjectBytes}'s absent reading; both arms indistinguishable after this). */
   async function resolveVaultStateCarrier(carrier: VaultStateCarrierWire): Promise<Uint8Array | null> {
     if ("inline" in carrier) return fromBase64url(carrier.inline, "carriers.inline");
@@ -1467,6 +1537,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     },
     getObject: ({ repo_id, path }) => getObjectBytes(repo_id, path),
     getObjects: ({ repo_id, paths }) => getObjectsBytes(repo_id, paths),
+    getHeads: ({ repo_id, generations }) => getHeadsBytes(repo_id, generations),
     async admitGenesis(request: GitvaultAdmitGenesisRequest): Promise<GitvaultAdmitGenesisResult> {
       try {
         const r = await admit(request.repo_id, GITVAULT_GENESIS_GENERATION, request.stored_bytes, request.stored_bytes_sha256, { allocation_generation: request.allocation_generation });
@@ -2122,19 +2193,52 @@ export class GitvaultVault {
   }
 
   /**
-   * gitvault-clone-scaling (bench P2): bounded-concurrent direct reads of
-   * many generation-addressed head paths. Heads deliberately do NOT ride
-   * `getObjects` — the `object-reads` presign batch is CARRIER-ONLY by wire
-   * design (see `getObjectsBytes`'s fail-closed doc comment; the live probe
-   * that caught this recorded `getObjects paths=67 FAILED 1ms` followed by
-   * 25 serial singles) — so head bytes parallelize as the SAME direct GETs
-   * the ordered walk itself would issue, just early and overlapped. A
-   * per-path failure resolves `null` (the walk's own read owns that
-   * failure and its envelope); results are raw and UNTRUSTED — callers
-   * sha-check before use, per `walkPrefetch`'s contract.
+   * Fetch many generation-addressed heads' bytes ahead of the ordered walk,
+   * keyed by head path.
+   *
+   * BATCH-FIRST (gitvault-batched-head-reads task 4.2): one
+   * `POST …/head-reads` carries a whole page's bytes. Heads deliberately do
+   * NOT ride `getObjects` — the `object-reads` presign batch is CARRIER-ONLY
+   * by wire design (see `getObjectsBytes`'s fail-closed doc comment; the live
+   * probe that caught this recorded `getObjects paths=67 FAILED 1ms` followed
+   * by 25 serial singles), which is exactly why the batch route had to be its
+   * own thing.
+   *
+   * FALLBACK (the shipped gitvault-clone-scaling P2 shape): on ANY
+   * unsupported answer — an older gateway, a refusal, a fault — head bytes
+   * parallelize as the SAME direct GETs the ordered walk itself would issue,
+   * just early and overlapped at {@link GITVAULT_TRANSPORT_CONCURRENCY}. The
+   * transport remembers a route-absent verdict, so the probe is paid once per
+   * client, not once per window.
+   *
+   * Either way a per-head failure simply leaves that slot EMPTY — the walk's
+   * own read owns that failure and its envelope — and results are raw and
+   * UNTRUSTED: callers sha-check before use, per `walkPrefetch`'s contract.
+   * That is what keeps this a transport change and never a trust change.
    */
-  private async prefetchHeadsConcurrent(paths: string[]): Promise<Map<string, Uint8Array>> {
+  private async prefetchHeadsConcurrent(generations: string[]): Promise<Map<string, Uint8Array>> {
     const map = new Map<string, Uint8Array>();
+    if (generations.length === 0) return map;
+
+    // The route's grammar is strictly ascending; the backward-window call site
+    // asks in DESCENDING order, so sort for the wire and reassemble by
+    // generation rather than by position.
+    const ascending = [...new Set(generations)].sort();
+    // `getHeads` post-dates the transport interface, so a caller-supplied
+    // transport built against an earlier SDK simply has no such method —
+    // indistinguishable, here, from a gateway that lacks the route.
+    const batched = typeof this.transport.getHeads === "function"
+      ? await this.transport.getHeads({ repo_id: this.repoId, generations: ascending }).catch(() => null)
+      : null;
+    if (batched && batched.length === ascending.length) {
+      for (let i = 0; i < ascending.length; i++) {
+        const b = batched[i];
+        if (b) map.set(gitvaultPaths.head(ascending[i]!), b);
+      }
+      return map;
+    }
+
+    const paths = generations.map((g) => gitvaultPaths.head(g));
     const fetched = await mapBounded(paths, GITVAULT_TRANSPORT_CONCURRENCY, (path) => this.transport.getObject({ repo_id: this.repoId, path }).catch(() => null));
     for (let i = 0; i < paths.length; i++) {
       const b = fetched[i];
@@ -2490,7 +2594,7 @@ export class GitvaultVault {
           };
           const missingHeads = wanted.filter((e) => cachedHeadIfMatching(e) === null);
           if (missingHeads.length > 1) {
-            const fetched = await this.prefetchHeadsConcurrent(missingHeads.map((e) => gitvaultPaths.head(e.generation)));
+            const fetched = await this.prefetchHeadsConcurrent(missingHeads.map((e) => e.generation));
             for (const e of missingHeads) {
               const path = gitvaultPaths.head(e.generation);
               const bytes = fetched.get(path) ?? null;
@@ -4331,7 +4435,7 @@ export class GitvaultVault {
       const gens: string[] = [];
       for (let g = hi; g >= lo; g--) gens.push(bigIntToGeneration(g));
       try {
-        this.walkPrefetch = await this.prefetchHeadsConcurrent(gens.map((g) => gitvaultPaths.head(g)));
+        this.walkPrefetch = await this.prefetchHeadsConcurrent(gens);
       } catch {
         // Fidelity: an outright prefetch failure leaves the map alone — the
         // walk's own per-head reads take over with their own envelopes.
