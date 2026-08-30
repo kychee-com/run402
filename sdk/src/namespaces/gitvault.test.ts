@@ -1104,7 +1104,14 @@ describe("gitvault access() — envelope_state + stale_access from desired[]", (
 
       const result = await sdk.gitvault.access({ repo_id: REPO, keystore_root: root });
 
-      assert.deepEqual(result.this_keystore, { fingerprint: ownFingerprint, covered: true });
+      // gitvault-agent-envelopes: this_keystore is reported for every principal
+      // type, with enrollment state (whoami is not routed by this fake gateway,
+      // so publish_state is honestly `unknown`, never a guess).
+      assert.equal(result.this_keystore?.fingerprint, ownFingerprint);
+      assert.equal(result.this_keystore?.covered_on_this_vault, true);
+      assert.equal(result.this_keystore?.covered, true);
+      assert.equal(result.this_keystore?.enrolled, false);
+      assert.equal(result.this_keystore?.publish_state, "unknown");
       assert.deepEqual(result.unmatched_covered_fingerprints, ["ek_truly_orphan"]);
     } finally {
       rmSync(root, { recursive: true, force: true });

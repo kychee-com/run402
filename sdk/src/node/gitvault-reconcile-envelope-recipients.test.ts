@@ -19,9 +19,12 @@ import {
   GITVAULT_GENESIS_EPOCH,
   bytesToHex,
   ekFingerprint,
+  formatGitvaultTimestamp,
   generateEncryptionKeypair,
+  hexToBytes,
   openKeyEnvelope,
   parseGitvaultStrict,
+  sealKeyEnvelope,
   toBase64url,
 } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultKeyEnvelope } from "../namespaces/gitvault.types.js";
@@ -168,7 +171,7 @@ describe("GitvaultVault.reconcileEnvelopeRecipients — gitvault-human-envelopes
     assert.equal(v.transport.calls.filter((c) => c.startsWith("upload:")).length, uploadsBefore + 1);
   });
 
-  it("treats a concurrent writer's DIFFERENT valid wrap of the same recipient as a benign race, not a failure (HPKE seal is randomized, so two legitimate wraps never byte-match)", async () => {
+  it("treats a concurrent writer's DIFFERENT valid wrap of the same recipient as a benign race ONLY after verifying the winner (gitvault-agent-envelopes, consult 7.6)", async () => {
     const v = await makeVault();
     const b = generateEncryptionKeypair();
     const bFp = ekFingerprint(b.public_key);
@@ -177,21 +180,46 @@ describe("GitvaultVault.reconcileEnvelopeRecipients — gitvault-human-envelopes
     // reports B as missing, but a CONCURRENT writer's own valid wrap for B
     // has already landed at the exact envelope path by the time THIS
     // call's own PUT gets there — modeled by under-reporting coverage while
-    // a competing object already sits in the bucket.
+    // a competing, GENUINE envelope (sealed under this vault's own K_repo by
+    // its registered writer) already sits in the bucket.
     const realListEnvelopeRecipients = v.transport.listEnvelopeRecipients.bind(v.transport);
     v.transport.listEnvelopeRecipients = async (req: { repo_id: string }) => {
       const real = await realListEnvelopeRecipients(req);
       return { ...real, recipient_fingerprints: real.recipient_fingerprints.filter((fp) => fp !== bFp) };
     };
-    v.transport.objects.set(`${v.repoId}/${gitvaultPaths.envelope(GITVAULT_GENESIS_EPOCH, bFp)}`, new TextEncoder().encode(JSON.stringify({ raced: true })));
+    const repo = v.keystore.readRepo(v.repoId)!;
+    const signer = v.keystore.signingKeypair(v.keystore.readIdentity()!)!;
+    const winner = await sealKeyEnvelope({ k_repo: hexToBytes(repo.k_repo_hex), repo_id: v.repoId, epoch: GITVAULT_GENESIS_EPOCH, recipient_public_key: b.public_key, signer, created_at: formatGitvaultTimestamp(new Date()) });
+    v.transport.objects.set(`${v.repoId}/${gitvaultPaths.envelope(GITVAULT_GENESIS_EPOCH, bFp)}`, winner.stored_bytes);
 
     const result = await v.vault.reconcileEnvelopeRecipients();
     assert.deepEqual(result.wrapped, []);
     assert.ok(result.already_covered.includes(bFp));
     assert.deepEqual(result.skipped, []);
-    // The pin still records — the recipient IS genuinely covered now, just
-    // not by bytes this call produced.
+    // The pin records — the recipient IS genuinely covered now, just not by
+    // bytes this call produced, and the winner was read back and verified.
     assert.deepEqual(v.keystore.readRepo(v.repoId)!.envelope_recipient_pins, { principal_b: bFp });
+  });
+
+  it("a race whose winner cannot be verified is SKIPPED (race_winner_unverified) — never recorded as coverage, never pinned", async () => {
+    const v = await makeVault();
+    const b = generateEncryptionKeypair();
+    const bFp = ekFingerprint(b.public_key);
+    v.transport.orgEncryptionKeys.set("org_1", [principalEntry({ principal_id: "principal_b", ek_fingerprint: bFp, public_key: toBase64url(b.public_key) })]);
+    const realListEnvelopeRecipients = v.transport.listEnvelopeRecipients.bind(v.transport);
+    v.transport.listEnvelopeRecipients = async (req: { repo_id: string }) => {
+      const real = await realListEnvelopeRecipients(req);
+      return { ...real, recipient_fingerprints: real.recipient_fingerprints.filter((fp) => fp !== bFp) };
+    };
+    // The competing object is garbage (a malformed or wrong-vault envelope).
+    v.transport.objects.set(`${v.repoId}/${gitvaultPaths.envelope(GITVAULT_GENESIS_EPOCH, bFp)}`, new TextEncoder().encode(JSON.stringify({ raced: true })));
+
+    const result = await v.vault.reconcileEnvelopeRecipients();
+    assert.deepEqual(result.wrapped, []);
+    assert.deepEqual(result.already_covered, []);
+    assert.equal(result.skipped.length, 1);
+    assert.equal(result.skipped[0]!.reason, "race_winner_unverified");
+    assert.deepEqual(v.keystore.readRepo(v.repoId)!.envelope_recipient_pins ?? {}, {});
   });
 
   it("GITVAULT_READ_ONLY when this principal holds no local signing key — refused before any network read", async () => {
