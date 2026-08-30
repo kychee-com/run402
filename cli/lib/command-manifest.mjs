@@ -196,7 +196,7 @@ export const COMMAND_MANIFEST = [
   { path: ["org", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["org", "get"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
   { path: ["org", "rename"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--name", "Gate"] },
-  { path: ["org", "payout-wallet"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--wallet", "0x1111111111111111111111111111111111111111"] },
+  { path: ["org", "payout-wallet"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "0x1111111111111111111111111111111111111111"] },
   // `--org` (not a positional org_id
   // like rename/payout-wallet above) goes through resolveOrg's SHAPE
   // validation (a real UUID) — "org_gate1" fails that locally, so this needs
@@ -210,7 +210,7 @@ export const COMMAND_MANIFEST = [
   { path: ["org", "bind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["--org", "11111111-2222-3333-4444-555555555555"] },
   { path: ["org", "unbind"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["org", "member", "list"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
-  { path: ["org", "member", "add"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--wallet", "0x1111111111111111111111111111111111111111"] },
+  { path: ["org", "member", "add"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "0x1111111111111111111111111111111111111111"] },
   { path: ["org", "member", "role"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--principal", "prn_gate1", "--role", "viewer"] },
   { path: ["org", "member", "rm"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1", "--principal", "prn_gate1"] },
   { path: ["org", "invite", "list"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["org_gate1"] },
@@ -424,7 +424,7 @@ export const COMMAND_MANIFEST = [
 
   // ── billing ──────────────────────────────────────────────────────────────
   { path: ["billing", "create-email"], positionals: [p("email")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },
-  { path: ["billing", "link-wallet"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--wallet", "0x1111111111111111111111111111111111111111"] },
+  { path: ["billing", "link-wallet"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "0x1111111111111111111111111111111111111111"] },
   { path: ["billing", "checkout"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--product", "email-pack"] },
   { path: ["billing", "auto-recharge"], positionals: [p("org_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["00000000-0000-4000-8000-000000000001", "--state", "on"] },
   { path: ["billing", "balance"], positionals: [p("identifier")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["gate@example.com"] },

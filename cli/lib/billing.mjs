@@ -232,9 +232,9 @@ async function createEmail(args) {
 
 async function linkWallet(args) {
   const parsedArgs = normalizeArgv(args);
-  assertKnownFlags(parsedArgs, ["--wallet", "--help", "-h"], ["--wallet"]);
-  const walletFlag = flagValue(parsedArgs, "--wallet");
-  const positionals = positionalArgs(parsedArgs, ["--wallet"]);
+  assertKnownFlags(parsedArgs, ["--address", "--help", "-h"], ["--address"]);
+  const walletFlag = flagValue(parsedArgs, "--address");
+  const positionals = positionalArgs(parsedArgs, ["--address"]);
   const organizationId = positionals[0];
   const wallet = walletFlag ?? positionals[1];
   const max = walletFlag ? 1 : 2;
@@ -245,7 +245,7 @@ async function linkWallet(args) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <org_id> and/or <wallet_address>.",
-      hint: "run402 billing link-wallet <org_id> --wallet <wallet_address>",
+      hint: "run402 billing link-wallet <org_id> <wallet_address>",
     });
   }
   try {
