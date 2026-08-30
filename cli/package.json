@@ -1,7 +1,7 @@
 {
   "name": "run402",
-  "version": "4.58.0",
-  "description": "CLI for Run402 \u2014 full-stack backend infrastructure for AI agents: Postgres, auth, storage, serverless functions and atomic deploys. Paid with x402/MPP. Includes $0.03 image generation.",
+  "version": "4.59.0",
+  "description": "CLI for Run402 — full-stack backend infrastructure for AI agents: Postgres, auth, storage, serverless functions and atomic deploys. Paid with x402/MPP. Includes $0.03 image generation.",
   "type": "module",
   "bin": {
     "run402": "cli.mjs",
