@@ -76,6 +76,7 @@ Lifecycle:
 Maintenance:
   run402 repos fsck   [--project <id>] [--repo <repo_id>] [--mirror] [--budget <n>] [--no-write] [--human]
   run402 repos gc     [--project <id>] [--repo <repo_id>] [--force-headroom] [--submit --intent-core <path> --verifier-receipt <path> [--wait]]
+  run402 repos daemon <status|stop>   The resident helper engine (gitvault-persistent-helper) — inspect or retire it; nothing requires either
   run402 repos access [--project <id>] [--repo <repo_id>] [--human]
   run402 repos access repair [--project <id>] [--repo <repo_id>] --recipient-state-version <n> --recipient-revocation-version <n>
   run402 repos access revoke-key <principal_id> [--project <id>] [--repo <repo_id>]
@@ -2207,6 +2208,77 @@ async function recoveryBundle(args) {
 
 // ─── dispatch ───────────────────────────────────────────────────────────────
 
+/**
+ * `run402 repos daemon <status|stop>` — the resident helper engine
+ * (gitvault-persistent-helper D4). Purely local: a bounded socket probe,
+ * never the network. `status` reports `{running:false}` when no daemon
+ * answers (not an error — the daemon is an accelerator, never a
+ * dependency); `stop` is idempotent the same way.
+ */
+async function daemonCmd(argv) {
+  const args = normalizeArgv(argv);
+  if (hasHelp(args)) {
+    process.stdout.write("Usage: run402 repos daemon <status|stop>\n");
+    return;
+  }
+  const sub = args[0];
+  if (sub !== "status" && sub !== "stop") {
+    fail({ code: "BAD_USAGE", message: "run402 repos daemon requires <status|stop>", hint: "Run `run402 repos daemon --help` for usage." });
+  }
+  // Lazy imports: this must stay reachable with zero heavy-graph cost, and
+  // repos.mjs is already inside several config-mock test graphs.
+  const { daemonSocketPath } = await import("./daemon-path.mjs");
+  const { connect: netConnect } = await import("node:net");
+  const result = await new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => {
+      if (!settled) {
+        settled = true;
+        resolve(v);
+      }
+    };
+    let socket;
+    try {
+      socket = netConnect(daemonSocketPath());
+    } catch {
+      return done(null);
+    }
+    const timer = setTimeout(() => {
+      socket.destroy();
+      done(null);
+    }, 1000);
+    let data = "";
+    socket.on("data", (c) => {
+      data += c.toString("utf8");
+      const nl = data.indexOf("\n");
+      if (nl !== -1) {
+        clearTimeout(timer);
+        try {
+          done(JSON.parse(data.slice(0, nl)));
+        } catch {
+          done(null);
+        }
+        socket.end();
+      }
+    });
+    socket.once("error", () => {
+      clearTimeout(timer);
+      done(null);
+    });
+    socket.once("connect", () => socket.write(`${JSON.stringify({ t: sub === "stop" ? "stop" : "status" })}\n`));
+  });
+  if (sub === "status") {
+    if (!result || result.t !== "status") {
+      process.stdout.write(`${JSON.stringify({ running: false })}\n`);
+    } else {
+      const { t: _t, ...rest } = result;
+      process.stdout.write(`${JSON.stringify({ running: true, ...rest })}\n`);
+    }
+  } else {
+    process.stdout.write(`${JSON.stringify({ stopped: Boolean(result && result.t === "stopping") })}\n`);
+  }
+}
+
 export async function run(sub, args) {
   const argv = Array.isArray(args) ? args : [];
   if (!sub || hasHelp([sub, ...argv])) {
@@ -2255,6 +2327,10 @@ export async function run(sub, args) {
     }
     case "gc": {
       await gc(argv);
+      break;
+    }
+    case "daemon": {
+      await daemonCmd(argv);
       break;
     }
     case "access": {

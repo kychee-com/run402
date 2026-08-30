@@ -35,7 +35,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes } from "./cli/git-remote-run402.mjs";
+import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes } from "./cli/lib/remote-helper-session.mjs";
 
 const HELPER = fileURLToPath(new URL("./cli/git-remote-run402.mjs", import.meta.url));
 /** A closed port: any network attempt fails loudly and unmistakably. */
@@ -96,6 +96,11 @@ function runHelper({ cwd, env = {}, stdin }) {
       ...process.env,
       RUN402_API_BASE: DEAD_API,
       RUN402_CONFIG_DIR: env.RUN402_CONFIG_DIR ?? mkdtempSync(join(tmpdir(), "run402-gvh-cfg-")),
+      // In-process host, deterministically: every call here uses a FRESH
+      // config dir, so daemon-by-default would spawn one daemon per call.
+      // Daemon-host equivalence for these same protocol shapes lives in
+      // cli-gitvault-daemon.test.mjs (gitvault-persistent-helper 3.1).
+      RUN402_DAEMON: "0",
       ...env,
     },
   });
@@ -226,6 +231,7 @@ function runHelperAsync({ cwd, env = {}, stdin, address = ADDRESS }) {
       env: {
         ...process.env,
         RUN402_CONFIG_DIR: env.RUN402_CONFIG_DIR ?? mkdtempSync(join(tmpdir(), "run402-gvh-cfg-")),
+        RUN402_DAEMON: "0", // in-process host — see runHelper's note
         ...env,
       },
     });
@@ -1037,6 +1043,7 @@ describe("entrypoint guard survives symlinked invocation (the npm bin shape)", (
           ...process.env,
           RUN402_API_BASE: DEAD_API,
           RUN402_CONFIG_DIR: mkdtempSync(join(tmpdir(), "run402-gvh-cfg-")),
+          RUN402_DAEMON: "0", // in-process host — see runHelper's note
         },
       });
       assert.match(result.stdout, /fetch\n/, `symlinked helper emitted no capabilities — the 4.39.0 silent-no-op regression is back. stdout=${JSON.stringify(result.stdout)} stderr=${JSON.stringify(result.stderr)}`);

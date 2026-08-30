@@ -602,6 +602,50 @@ export async function run(sub, args = []) {
   // all of that (the resolver's own top tier), same as every other gitvault
   // verb's `--project`.
   if (wanted("gitvault")) {
+    // gitvault-persistent-helper: a bounded LOCAL probe of the resident
+    // helper engine — {running:false} is a fine answer, never a finding
+    // (the daemon is an accelerator, not a dependency).
+    const daemonInfo = await (async () => {
+      try {
+        const { daemonSocketPath } = await import("./daemon-path.mjs");
+        const { connect: netConnect } = await import("node:net");
+        return await new Promise((resolve) => {
+          let settled = false;
+          const done = (v) => {
+            if (!settled) {
+              settled = true;
+              resolve(v);
+            }
+          };
+          const socket = netConnect(daemonSocketPath());
+          const timer = setTimeout(() => {
+            socket.destroy();
+            done({ running: false });
+          }, 500);
+          let data = "";
+          socket.on("data", (c) => {
+            data += c.toString("utf8");
+            const nl = data.indexOf("\n");
+            if (nl === -1) return;
+            clearTimeout(timer);
+            try {
+              const { t: _t, ...rest } = JSON.parse(data.slice(0, nl));
+              done({ running: true, ...rest });
+            } catch {
+              done({ running: false });
+            }
+            socket.end();
+          });
+          socket.once("error", () => {
+            clearTimeout(timer);
+            done({ running: false });
+          });
+          socket.once("connect", () => socket.write('{"t":"status"}\n'));
+        });
+      } catch {
+        return { running: false };
+      }
+    })();
     const target = await resolveGitvaultTarget({ repoDir: process.cwd(), explicitProjectId: projectOverride ?? undefined });
     const projectId = target.project_id ?? null;
     const repoId = target.repo_id ?? null;
@@ -633,6 +677,7 @@ export async function run(sub, args = []) {
           // already proved a second covering recipient, so the hint switches
           // to the durability sentence instead of the terminal-loss claim.
           covering_recipients: gv.covering_recipients ?? null,
+          daemon: daemonInfo,
         };
         const gaps = [];
         // The one that actually breaks the next deploy: the project demands a

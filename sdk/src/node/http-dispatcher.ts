@@ -137,7 +137,11 @@ export function sdkDispatcher(): Dispatcher {
       if (apiOrigin && store && o === apiOrigin && o.startsWith("https:")) {
         // ONE connection: requests queue on the connecting socket (never a
         // second dial) and multiplex over h2 where the origin negotiates it.
-        return new Client(origin, { ...opts, allowH2: true, connect: apiConnector(store) });
+        // Keep-alive sits just under the ALB's 60 s idle timeout — the
+        // undici default (~4 s) silently re-dialed between a RESIDENT
+        // daemon's sessions, observed as ~340 ms median first-op wire where
+        // a genuinely warm socket serves at ~150 ms.
+        return new Client(origin, { ...opts, allowH2: true, keepAliveTimeout: 55_000, keepAliveMaxTimeout: 55_000, connect: apiConnector(store) });
       }
       return new Pool(origin, opts);
     },

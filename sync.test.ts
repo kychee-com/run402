@@ -825,6 +825,10 @@ const SURFACE: Capability[] = [
   // only with both two-phase-protocol receipts (§7.3) — there is still no
   // purge verb.
   { id: "repos_gc",     endpoint: "POST /gitvault/v1/vaults/:vault_id/maintenance-leases + POST .../prune-intents", mcp: null, cli: "repos:gc", openclaw: "repos:gc" },
+  // gitvault-persistent-helper: the resident engine's inspect/retire verb —
+  // a bounded LOCAL socket probe, no gateway endpoint, no MCP surface (the
+  // daemon accelerates the git remote helper; MCP tools never spawn it).
+  { id: "repos_daemon", endpoint: "(local)", mcp: null, cli: "repos:daemon", openclaw: "repos:daemon" },
   // Design D5/D7/D10: READ-ONLY successor to the removed `reconcile`
   // workaround (its own help text called itself a workaround — a newly-
   // wrapped member got the vault's ENTIRE history under one fixed epoch,
@@ -923,6 +927,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // `gc` composes checkpoint publication (compact) and prune planning/submit
   // — same compound-flow shape as `mirror` above; see SDK_ONLY_METHODS.
   repos_gc: null,
+  repos_daemon: null, // local socket probe only (gitvault-persistent-helper) — no SDK capability
   repos_access: "gitvault.access",
   repos_recover: "gitvault.recover",
   repos_recovery_bundle: "operator.session.sourceAccessRecoveryBundle",
@@ -1908,6 +1913,13 @@ const SHIM_SOURCES = [
   // sweep; it is not a request/response shim.
   "cli/lib/gitvault-capabilities.mjs",
   "cli/git-remote-run402.mjs",
+  // gitvault-persistent-helper: the resident engine + its process entry.
+  // Shims by the gate's definition (protocol-adjacent, must never grow
+  // their own crypto/HTTP/git behavior) — the daemon FORWARDS sessions
+  // into the SDK-backed session module, it implements nothing.
+  "cli/lib/remote-helper-session.mjs",
+  "cli/lib/gitvault-daemon.mjs",
+  "cli/lib/gitvault-daemon-run.mjs",
   "openclaw/scripts/gitvault.mjs",
   "src/tools/gitvault.ts",
 ];

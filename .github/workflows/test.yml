@@ -6,6 +6,20 @@ on:
     branches: [main]
 
 jobs:
+  # gitvault-persistent-helper task 3.2: the resident engine's Windows
+  # named-pipe transport, exercised on a real Windows runner — the daemon
+  # suite covers lifecycle, equivalence, fallback, and the thin-path gate.
+  daemon-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm run build
+      - run: node --test cli-gitvault-daemon.test.mjs
+
   test:
     runs-on: ubuntu-latest
     strategy:
