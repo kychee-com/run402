@@ -907,7 +907,17 @@ export class GitvaultKeystore {
     envelope: GitvaultKeyEnvelope;
     /** A surviving receipt (on disk or supplied) authenticates the genesis; without one the restore is labeled unauthenticated salvage. */
     recovery_receipt?: GitvaultRecoveryReceipt | null;
-  }): Promise<{ repo: GitvaultRepoFile; trust: "receipt" | "unauthenticated_salvage" }> {
+    /**
+     * gitvault-agent-envelopes D4: the caller verified genesis's creator
+     * fingerprints against the control plane's SIGNED allocation record. That
+     * is platform-attested consistency, NOT independent authentication — the
+     * platform serves both sides of the comparison — so it labels the restore
+     * `platform_attested`, never `receipt`. `continuity` says whether this
+     * keystore had already pinned this genesis (a later open) or is seeing it
+     * for the first time.
+     */
+    allocation_attested?: boolean;
+  }): Promise<{ repo: GitvaultRepoFile; trust: "receipt" | "platform_attested" | "unauthenticated_salvage"; continuity: "first_seen" | "pinned"; independently_verified: boolean }> {
     const identity = this.readIdentity();
     if (!identity) fail("VAULT_UNRECOVERABLE", GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, "restoring gitvault repo state", { statement: GITVAULT_TERMINAL_LOSS_STATEMENT });
     const recipient = this.encryptionKeypair(identity);
@@ -921,8 +931,17 @@ export class GitvaultKeystore {
       fail("VAULT_CREATION_CONFLICT", "genesis key bindings do not hold for the stored envelope", "restoring gitvault repo state", { repo_id: genesis.repo_id, problems: bindings });
     }
     const genesisSha = storedBytesSha256(genesis as unknown as GitvaultSignedObject);
+    // First-open pin (agent-envelopes D4): a genesis this keystore already
+    // pinned for this repo_id — in a surviving repo file or the cached genesis
+    // — must be the SAME genesis; a different one is a substituted vault.
+    const priorRepo = this.readRepo(genesis.repo_id);
+    const priorPin = priorRepo?.genesis_sha256 ?? this.readCachedGenesis(genesis.repo_id)?.sha256 ?? null;
+    if (priorPin && priorPin !== genesisSha) {
+      fail("VAULT_CREATION_CONFLICT", `the admitted genesis (${genesisSha}) is not the one this keystore pinned (${priorPin}); refusing a substituted vault`, "restoring gitvault repo state", { repo_id: genesis.repo_id, admitted: genesisSha, pinned: priorPin });
+    }
+    const continuity: "first_seen" | "pinned" = priorPin ? "pinned" : "first_seen";
     const receipt = input.recovery_receipt ?? this.readRecoveryReceipt(genesis.repo_id);
-    let trust: "receipt" | "unauthenticated_salvage" = "unauthenticated_salvage";
+    let trust: "receipt" | "platform_attested" | "unauthenticated_salvage" = input.allocation_attested ? "platform_attested" : "unauthenticated_salvage";
     if (receipt) {
       const problems = checkRecoveryReceipt(receipt, genesis);
       if (problems.length > 0) {
@@ -945,8 +964,8 @@ export class GitvaultKeystore {
       last_ref_transaction: null,
       provenance: "restored_from_envelope",
     });
-    this.audit("repo_restored_from_envelope", genesis.repo_id, { trust });
-    return { repo, trust };
+    this.audit("repo_restored_from_envelope", genesis.repo_id, { trust, continuity });
+    return { repo, trust, continuity, independently_verified: trust === "receipt" };
   }
 
   /** Identity fingerprints for display/doctor (never key material). */

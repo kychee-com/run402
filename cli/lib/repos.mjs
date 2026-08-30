@@ -407,6 +407,10 @@ Options:
                     verified prefix, so a budget-exceeded run resumes; a
                     --no-write run does not, since nothing was persisted)
   --mirror          fsck: also run the keyless mirror integrity probe
+  --no-reconcile    view/access: defer the session-start envelope fulfilment
+                    (a key-holder normally wraps every pending member on its
+                    first ordinary read); reported as deferred_by_local_policy,
+                    never as coverage. fsck/recover never wrap regardless.
   --no-write        fsck: audit mode — compute and report the real answer,
                     persist neither local trust pin
   --submit          gc: submit the planned prune intent. Requires
@@ -1066,7 +1070,7 @@ async function list(args) {
 
 async function view(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "--no-reconcile", "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
   requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos view", missing: "" });
   const human = a.includes("--human");
   if (human && a.includes("--json")) {
@@ -1077,7 +1081,7 @@ async function view(args) {
   try {
     // Design D3: `view` NEVER passes `refs: true` — it is side-effect-free
     // by construction, not by convention. Materialization belongs to `fsck`.
-    const s = await sdk.gitvault.status(target);
+    const s = await sdk.gitvault.status({ ...target, ...(a.includes("--no-reconcile") ? { reconcile: "deferred" } : {}) });
     const isByo = s.vault?.storage_profile === "byo";
     let mirror = null;
     if (s.repo_id) {
@@ -2355,7 +2359,7 @@ function printMemberCustodySummary(mc) {
 
 async function accessRead(args) {
   const a = normalizeArgv(args);
-  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
+  assertKnownFlags(a, [...COMMON_VALUE_FLAGS, "--human", "--no-reconcile", "-v", "--verbose", "--help", "-h"], COMMON_VALUE_FLAGS);
   requirePositionalCount(a, COMMON_VALUE_FLAGS, { min: 0, max: 0, command: "run402 repos access", missing: "" });
   const human = a.includes("--human");
   if (human && a.includes("--json")) {
@@ -2364,7 +2368,7 @@ async function accessRead(args) {
   const sdk = getSdk();
   const target = await vaultTarget(a);
   try {
-    const result = await sdk.gitvault.access(target);
+    const result = await sdk.gitvault.access({ ...target, ...(a.includes("--no-reconcile") ? { reconcile: "deferred" } : {}) });
     // gitvault-recovery-custody — the "you" block: YOUR OWN wrapper custody
     // (kind/state per wrapper, custody scheme), rendered inside the family's
     // custody roster read. Principal-scoped, so it needs your control-plane

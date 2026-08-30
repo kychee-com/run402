@@ -1699,3 +1699,33 @@ export function normalizeSourceRecoveryCode(input: string): string {
 }
 
 export { bytesToHex, hexToBytes };
+
+// ── gitvault-agent-envelopes: keystore-key possession proof ──────────────────
+
+/**
+ * The client half of the gateway's ECDH key-confirmation challenge for a
+ * `keystore_v1` enrollment (`POST /agent/v1/whoami/encryption-key` →
+ * `activation.{challenge_id, epk}`; `POST …/encryption-key/activate`
+ * `{challenge_id, proof}`). The server minted an ephemeral X25519 pair,
+ * computed HMAC-SHA256(ECDH(esk, our public key), message) and stored only
+ * its SHA-256; a holder of the keystore's private scalar reproduces the HMAC
+ * from `epk`. Byte-identical to the gateway's `keyPossessionMessage` /
+ * `mintKeyPossessionChallenge` (services/principal-encryption-keys.ts) —
+ * the prefix + JCS message are pinned here so the two lineages cannot drift.
+ * Client convention, not r402s/v0 wire protocol.
+ */
+export const GITVAULT_KEYSTORE_POSSESSION_PREFIX = "r402s/v0/keystore-key-possession/v1\n";
+
+export function computeKeystorePossessionProof(input: {
+  private_key: Uint8Array;
+  epk_b64u: string;
+  challenge_id: string;
+  encryption_key_id: string;
+  public_key_b64u: string;
+}): string {
+  const shared = x25519.getSharedSecret(input.private_key, fromBase64url(input.epk_b64u, "activation.epk"));
+  // Sorted-key JSON.stringify IS RFC 8785 here: three plain string fields.
+  const jcs = JSON.stringify({ challenge_id: input.challenge_id, encryption_key_id: input.encryption_key_id, public_key: input.public_key_b64u });
+  const message = concatBytes(utf8ToBytes(GITVAULT_KEYSTORE_POSSESSION_PREFIX), utf8ToBytes(jcs));
+  return toBase64url(hmac(sha256, shared, message));
+}

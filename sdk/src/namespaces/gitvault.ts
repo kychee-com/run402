@@ -42,6 +42,7 @@ import {
   GITVAULT_TERMINAL_LOSS_STATEMENT,
   GITVAULT_UNMIRRORED_FINDING_STATEMENT,
   bytesToHex,
+  computeKeystorePossessionProof,
   hexToBytes,
   parseGitvaultStrict,
   randomBytes,
@@ -50,6 +51,15 @@ import {
   toBase64url,
 } from "./gitvault.crypto.js";
 import type { NextAction } from "../errors.js";
+
+/**
+ * gitvault-agent-envelopes — per-process memo for the session-start
+ * fulfilment (`<keystore root>|<repo_id>`) and the enroll-if-absent step
+ * (`<keystore root>`), so a process that opens the same vault many times
+ * (a `git push` runs several verbs) reconciles and enrolls once.
+ */
+const SESSION_RECONCILED = new Set<string>();
+const ENROLLED_KEYSTORES = new Map<string, GitvaultEnrollmentOutcome>();
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
   GitvaultCompactionGrant,
@@ -434,6 +444,18 @@ export interface GitvaultVaultHandleOptions {
   repo_id?: string;
   /** Resolve `repo_id` from the project (the cold-restart entry point). */
   project_id?: string;
+  /**
+   * gitvault-agent-envelopes D5 — the session-start envelope fulfilment a
+   * KEY-HOLDING client runs on its first ordinary gitvault operation in a
+   * process (read verbs included), so a pending member is covered the next
+   * time ANY key-holder does anything. `"auto"` (default): run once per
+   * process per vault, best-effort, reported on the handle. `"deferred"`
+   * (`--no-reconcile`): skip, report `deferred_by_local_policy` with the
+   * pending count — never pretends coverage. `"forbidden"`: forensic and
+   * offline operations (`fsck`, `--no-write`, `recover`) — investigating a
+   * suspicious pending recipient must not complete the disclosure.
+   */
+  reconcile?: "auto" | "deferred" | "forbidden";
   /** The local git working tree. Defaults to `process.cwd()`. */
   repo_dir?: string;
   /** Keystore root override (defaults to `~/.config/run402/gitvault`; `~/.config/run402/profiles/<wallet>/gitvault` under a named wallet). */
@@ -451,6 +473,40 @@ export interface GitvaultHandle {
   transport: GitvaultTransport;
   /** The full protocol object — every verb below is built on it. */
   vault: import("../node/gitvault-publication.js").GitvaultVault;
+  /**
+   * gitvault-agent-envelopes D4: non-null when this open restored the repo
+   * file from the keystore's OWN envelope (a cold keystore joining a vault it
+   * is a recipient of). Carries the honest trust tier — `platform_attested`
+   * is not end-to-end authentication.
+   */
+  restored: import("../node/gitvault-publication.js").GitvaultColdOpenResult | null;
+  /**
+   * gitvault-agent-envelopes D5: the session-start fulfilment outcome for a
+   * key-holding client (`null` when this open did not run one — a restored
+   * keystore has nothing to wrap yet, `reconcile: "forbidden"`, or a later
+   * open in the same process). Reported beside the verb's own result, never
+   * folded into it.
+   */
+  reconcile_recipients: GitvaultSessionReconcileResult | null;
+  /** gitvault-agent-envelopes D3: what the enroll-if-absent step did for this keystore's key on this open. */
+  enrollment: GitvaultEnrollmentOutcome;
+}
+
+/** The session-start reconcile's outcome (gitvault-agent-envelopes D5). */
+export interface GitvaultSessionReconcileResult {
+  attempted: boolean;
+  outcome: "reconciled" | "skipped_error" | "deferred_by_local_policy" | "forbidden";
+  result?: GitvaultReconcileEnvelopeRecipientsResult;
+  /** `deferred_by_local_policy` only: desired recipients this vault does not yet cover (best-effort; `null` when the read failed). */
+  pending_count?: number | null;
+  error?: string;
+}
+
+/** The enroll-if-absent step's outcome (gitvault-agent-envelopes D3). Never a rotation. */
+export interface GitvaultEnrollmentOutcome {
+  /** `already_active`: the directory holds this keystore's key. `enrolled`: published + possession-proven in this call. `activated_pending`: an earlier unfinished publish was completed. `skipped_no_principal`: whoami resolved no enrolling principal (e.g. a service key). */
+  outcome: "already_active" | "enrolled" | "activated_pending" | "skipped_no_principal";
+  ek_fingerprint: string | null;
 }
 
 /** {@link Gitvault.push}'s best-effort envelope-recipient reconcile outcome, reported beside (never folded into) the vault result — same non-blocking contract as {@link GitvaultMirrorPushResult}. */
@@ -937,7 +993,17 @@ export interface GitvaultAccessResult {
    * keys). `null` when no local match was found (including non-Node
    * callers, or a machine that never held this identity).
    */
-  this_keystore: { fingerprint: string; covered: true } | null;
+  this_keystore: {
+    fingerprint: string;
+    /** `true` iff the directory holds this keystore's key as ACTIVE (gitvault-agent-envelopes: agents enroll too). */
+    enrolled: boolean;
+    /** `absent` = no published key (the next gitvault operation enrolls); `pending` = published, possession unproven; `rotation_required` = the principal's published key is a DIFFERENT key; `unknown` = whoami unavailable. */
+    publish_state: "active" | "pending" | "absent" | "rotation_required" | "unknown";
+    covered_on_this_vault: boolean;
+    /** @deprecated alias of `covered_on_this_vault`. */
+    covered: boolean;
+    next_actions?: Array<{ action: string; why: string }>;
+  } | null;
   /** Removed members who still decrypt this vault — see {@link GitvaultStaleAccessEntry}. Always `[]` when `envelope_state_available` is `false` (no desired-state substrate to compute it from). */
   stale_access: GitvaultStaleAccessEntry[];
   /** `true` when the gateway reported desired-recipient state (`desired[]`) for this read, making `recipients[].envelope_state` and `stale_access` real rather than absent. `false` only against an older gateway. */
@@ -1294,6 +1360,10 @@ export class Gitvault {
     const transport = createGitvaultHttpTransport(this.#client, {
       onObjectStoreOriginObserved: (rid, origins) => keystore.recordObjectStoreOrigins(rid, origins),
     });
+    // gitvault-agent-envelopes D3: enroll the keystore's key if this principal
+    // has none (publish + possession proof, one round trip each); a differing
+    // current key REFUSES here — rotation is never automatic.
+    const enrollment = await this.#ensureEnrolled(keystore);
     const vault = new GitvaultVault({
       keystore,
       transport,
@@ -1302,7 +1372,117 @@ export class Gitvault {
       ...(options.verification_budget !== undefined ? { verification_budget: options.verification_budget } : {}),
       ...(options.service_public_key !== undefined ? { service_public_key: options.service_public_key } : {}),
     });
-    return { repo_id: repoId, keystore, transport, vault };
+    // D4: a cold keystore restores from its own envelope (or fails
+    // GITVAULT_ENVELOPE_PENDING with the exact next actions).
+    const restored = await vault.ensureRepoState();
+    // D5: a key-holder fulfils pending recipients once per process per vault.
+    // A just-restored keystore holds K_repo too, but it just LEARNED it from
+    // someone else's wrap — it is not the party that owes fulfilment on this
+    // open, and wrapping from a first-contact restore before verifying the
+    // chain would be premature; the next open in this process does it.
+    const policy = options.reconcile ?? "auto";
+    let reconcileRecipients: GitvaultSessionReconcileResult | null = null;
+    if (policy === "forbidden") {
+      reconcileRecipients = { attempted: false, outcome: "forbidden" };
+    } else if (!restored && !SESSION_RECONCILED.has(`${keystore.rootDir}|${repoId}`)) {
+      SESSION_RECONCILED.add(`${keystore.rootDir}|${repoId}`);
+      if (policy === "deferred") {
+        let pendingCount: number | null = null;
+        try {
+          const coverage = await transport.listEnvelopeRecipients({ repo_id: repoId });
+          const covered = new Set(coverage.recipient_fingerprints);
+          pendingCount = coverage.desired ? coverage.desired.filter((d) => d.status === "active" && d.ek_fingerprint && !covered.has(d.ek_fingerprint)).length : null;
+        } catch {
+          pendingCount = null;
+        }
+        reconcileRecipients = { attempted: false, outcome: "deferred_by_local_policy", pending_count: pendingCount };
+      } else {
+        try {
+          const result = await vault.reconcileEnvelopeRecipients();
+          reconcileRecipients = { attempted: true, outcome: "reconciled", result };
+        } catch (e) {
+          reconcileRecipients = { attempted: true, outcome: "skipped_error", error: e instanceof Error ? e.message : String(e) };
+        }
+      }
+    }
+    return { repo_id: repoId, keystore, transport, vault, restored, reconcile_recipients: reconcileRecipients, enrollment };
+  }
+
+  /**
+   * gitvault-agent-envelopes D3 — enroll-if-absent, memoized per keystore
+   * per process. Reads `GET /agent/v1/whoami` (the gateway folds the
+   * principal's current key metadata in), then:
+   *   - no current key → publish the keystore's X25519 key as
+   *     `custody_scheme: keystore_v1`, answer the ECDH possession challenge,
+   *     activate;
+   *   - current key = this keystore's key, still `pending` → finish the
+   *     activation (a crashed earlier enrollment);
+   *   - current key = this keystore's key, `active` → no-op;
+   *   - current key ≠ this keystore's key → `GITVAULT_KEY_ROTATION_REQUIRED`.
+   *     Never published as a rotation: a stolen wallet key must not silently
+   *     replace a member's decryption identity. The remedies are the
+   *     gateway's — restore the keystore backup; an org owner revokes the
+   *     stale key; or, for a sole-member principal, `replace_current`.
+   * A credential that resolves to no enrolling principal (a service key)
+   * skips enrollment — reads keep working; nothing pretends to be enrolled.
+   */
+  async #ensureEnrolled(keystore: GitvaultKeystore): Promise<GitvaultEnrollmentOutcome> {
+    const memo = ENROLLED_KEYSTORES.get(keystore.rootDir);
+    if (memo) return memo;
+    const identity = keystore.ensureIdentity();
+    const whoami = await this.#client.request<{ principal: { id: string; type: string } | null; encryption_key: { encryption_key_id: string; ek_fingerprint: string; custody_scheme: string; state: string } | null }>("/agent/v1/whoami", { context: "resolving the enrolling principal" });
+    if (!whoami.principal) {
+      return { outcome: "skipped_no_principal", ek_fingerprint: null };
+    }
+    const current = whoami.encryption_key ?? null;
+    if (current && current.ek_fingerprint !== identity.encryption_fingerprint) {
+      throw new LocalError(
+        `this principal's published encryption key (${current.ek_fingerprint}) is not this keystore's key (${identity.encryption_fingerprint}); rotation is never automatic`,
+        "enrolling the keystore encryption key",
+        {
+          code: "GITVAULT_KEY_ROTATION_REQUIRED",
+          details: { current_ek_fingerprint: current.ek_fingerprint, current_state: current.state, local_ek_fingerprint: identity.encryption_fingerprint, keystore_root: keystore.rootDir },
+          next_actions: [
+            { type: "edit_request", why: "restore the keystore backup that holds the current key (~/.config/run402/gitvault or the wallet profile's gitvault dir)" },
+            { type: "edit_request", why: "have an org owner revoke the stale key: DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key (owner + step-up); your next gitvault operation then enrolls this key" },
+            { type: "edit_request", why: "if this principal is the sole custody-eligible member of every org it belongs to: POST /agent/v1/whoami/encryption-key with replace_current: true" },
+          ],
+        },
+      );
+    }
+    if (current && current.state === "active") {
+      const out: GitvaultEnrollmentOutcome = { outcome: "already_active", ek_fingerprint: current.ek_fingerprint };
+      ENROLLED_KEYSTORES.set(keystore.rootDir, out);
+      return out;
+    }
+    const keypair = keystore.encryptionKeypair(identity);
+    if (!keypair) {
+      throw new LocalError("the keystore identity has no X25519 private key — it cannot enroll or open envelopes", "enrolling the keystore encryption key", { code: "VAULT_UNRECOVERABLE", details: { statement: GITVAULT_TERMINAL_LOSS_STATEMENT } });
+    }
+    const published = await this.#client.request<{ encryption_key_id: string; ek_fingerprint: string; state: string; activation: { challenge_id: string; epk: string; expires_at: string } | null }>(
+      "/agent/v1/whoami/encryption-key",
+      { method: "POST", body: { public_key: identity.encryption_pubkey, ek_fingerprint: identity.encryption_fingerprint, custody_scheme: "keystore_v1" }, context: "publishing the keystore encryption key" },
+    );
+    if (published.state !== "active") {
+      if (!published.activation) {
+        throw new LocalError("the gateway published the key as pending without an activation challenge", "enrolling the keystore encryption key", { code: "KEY_NOT_PENDING", details: { state: published.state } });
+      }
+      const proof = computeKeystorePossessionProof({
+        private_key: keypair.private_key,
+        epk_b64u: published.activation.epk,
+        challenge_id: published.activation.challenge_id,
+        encryption_key_id: published.encryption_key_id,
+        public_key_b64u: identity.encryption_pubkey,
+      });
+      await this.#client.request("/agent/v1/whoami/encryption-key/activate", {
+        method: "POST",
+        body: { challenge_id: published.activation.challenge_id, proof },
+        context: "proving possession of the keystore encryption key",
+      });
+    }
+    const out: GitvaultEnrollmentOutcome = { outcome: current ? "activated_pending" : "enrolled", ek_fingerprint: identity.encryption_fingerprint };
+    ENROLLED_KEYSTORES.set(keystore.rootDir, out);
+    return out;
   }
 
   /**
@@ -3209,7 +3389,10 @@ export class Gitvault {
       );
     }
     const write = options.write ?? true;
-    const handle = await this.open({ ...options, repo_id: repoId });
+    // gitvault-agent-envelopes D5: fsck is observational — it never wraps an
+    // envelope, in write mode or not. Investigating a suspicious pending
+    // recipient must not complete the disclosure being investigated.
+    const handle = await this.open({ ...options, repo_id: repoId, reconcile: "forbidden" });
     const state = await handle.vault.verifyToNewest({ persist: write, decryptValidate: true, strict: false });
     const mirror = options.mirror ? await this.mirrorVerify({ ...options, repo_id: repoId }) : null;
 
@@ -3536,7 +3719,40 @@ export class Gitvault {
     // not orphaned/external, it is provably this machine, so it is broken
     // out into `this_keystore` instead of left to read as a misconfiguration.
     const unmatchedRaw = coverage.recipient_fingerprints.filter((fp) => !directoryFingerprints.has(fp) && !staleAccessFingerprints.has(fp));
-    const thisKeystore: GitvaultAccessResult["this_keystore"] = ownFingerprint !== null && unmatchedRaw.includes(ownFingerprint) ? { fingerprint: ownFingerprint, covered: true } : null;
+    // gitvault-agent-envelopes: THIS machine's keystore is reported for every
+    // principal type — enrolled or not, covered or not — never `null` for a
+    // real keystore (only when there is no local identity at all). The
+    // directory now lists agent keys too, so "own fingerprint in the
+    // directory" is the enrolled case; an unenrolled creator's genesis
+    // envelope still shows as covered-but-unenrolled.
+    let publishState: "active" | "pending" | "absent" | "rotation_required" | "unknown" = "unknown";
+    if (ownFingerprint !== null) {
+      try {
+        const who = await this.#client.request<{ encryption_key: { ek_fingerprint: string; state: string } | null }>("/agent/v1/whoami", { context: "reading this keystore's enrollment state" });
+        const key = who.encryption_key ?? null;
+        publishState = !key ? "absent" : key.ek_fingerprint !== ownFingerprint ? "rotation_required" : key.state === "active" ? "active" : "pending";
+      } catch {
+        publishState = "unknown";
+      }
+    }
+    const thisKeystore: GitvaultAccessResult["this_keystore"] = ownFingerprint !== null
+      ? {
+          fingerprint: ownFingerprint,
+          enrolled: publishState === "active",
+          publish_state: publishState,
+          covered_on_this_vault: covered.has(ownFingerprint),
+          covered: covered.has(ownFingerprint),
+          ...(!covered.has(ownFingerprint) && publishState === "active"
+            ? { next_actions: [
+                { action: "run402 repos access", why: "poll — covered_on_this_vault flips true once a key-holder has wrapped this vault to your key" },
+                { action: "ask a key-holder to run any gitvault operation (run402 repos view / git push)", why: "a key-holding client wraps every pending desired recipient on its next operation" },
+              ] }
+            : {}),
+          ...(publishState === "rotation_required"
+            ? { next_actions: [{ action: "restore the keystore backup, or have an org owner revoke the stale key (DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key)", why: "this keystore's key differs from the principal's published key; rotation is never automatic" }] }
+            : {}),
+        }
+      : null;
     const unmatched = thisKeystore ? unmatchedRaw.filter((fp) => fp !== thisKeystore.fingerprint) : unmatchedRaw;
 
     const gap = envelopeStateAvailable

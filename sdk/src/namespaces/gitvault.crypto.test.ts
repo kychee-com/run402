@@ -632,3 +632,33 @@ vectors("gitvault vectors — coverage tally", () => {
 
 // Keep the unused-import linter honest for helpers only used in some branches.
 void ed25519PublicKey;
+
+// ── gitvault-agent-envelopes: keystore possession proof (client half) ────────
+import { computeKeystorePossessionProof, GITVAULT_KEYSTORE_POSSESSION_PREFIX } from "./gitvault.crypto.js";
+import { x25519 as _x25519 } from "@noble/curves/ed25519.js";
+import { hmac as _hmac } from "@noble/hashes/hmac.js";
+import { sha256 as _sha256 } from "@noble/hashes/sha2.js";
+import { utf8ToBytes as _utf8, concatBytes as _concat } from "@noble/hashes/utils.js";
+
+describe("computeKeystorePossessionProof (gitvault-agent-envelopes D2)", () => {
+  it("reproduces the gateway's HMAC(ECDH(esk, pk), prefix + JCS) exactly, and a different scalar cannot", () => {
+    // The gateway side, inline: mint an ephemeral pair, derive the shared
+    // secret against the keystore's PUBLIC key, HMAC the pinned message.
+    const memberPriv = new Uint8Array(32).map((_, i) => (i * 13 + 5) & 0xff);
+    const memberPub = _x25519.getPublicKey(memberPriv);
+    const esk = new Uint8Array(32).map((_, i) => (i * 7 + 1) & 0xff);
+    const epk = _x25519.getPublicKey(esk);
+    const pubB64u = Buffer.from(memberPub).toString("base64url");
+    const epkB64u = Buffer.from(epk).toString("base64url");
+    const challengeId = "11111111-2222-4333-8444-555555555555";
+    const keyId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const jcs = JSON.stringify({ challenge_id: challengeId, encryption_key_id: keyId, public_key: pubB64u });
+    const expected = _hmac(_sha256, _x25519.getSharedSecret(esk, memberPub), _concat(_utf8(GITVAULT_KEYSTORE_POSSESSION_PREFIX), _utf8(jcs)));
+    const proof = computeKeystorePossessionProof({ private_key: memberPriv, epk_b64u: epkB64u, challenge_id: challengeId, encryption_key_id: keyId, public_key_b64u: pubB64u });
+    assert.equal(proof, Buffer.from(expected).toString("base64url"));
+    // Prefix pinned verbatim with the gateway's `KEY_POSSESSION_PREFIX`.
+    assert.equal(GITVAULT_KEYSTORE_POSSESSION_PREFIX, "r402s/v0/keystore-key-possession/v1\n");
+    const other = computeKeystorePossessionProof({ private_key: new Uint8Array(32).fill(9), epk_b64u: epkB64u, challenge_id: challengeId, encryption_key_id: keyId, public_key_b64u: pubB64u });
+    assert.notEqual(other, proof);
+  });
+});

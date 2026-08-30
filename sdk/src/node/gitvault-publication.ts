@@ -58,6 +58,9 @@ import {
   deriveDigestKey,
   deriveObjectKey,
   ekFingerprint,
+  vkFingerprint,
+  GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT,
+  GITVAULT_TERMINAL_LOSS_STATEMENT,
   epochRotationKeyCommitment,
   formatGitvaultTimestamp,
   fromBase64url,
@@ -129,6 +132,7 @@ import type {
   GitvaultSigningKeypair,
   GitvaultTransitionEnvelope,
   GitvaultVaultGenesis,
+  GitvaultKeyEnvelope,
   GitvaultWalPackReceipt,
 } from "../namespaces/gitvault.types.js";
 import type {
@@ -1300,6 +1304,20 @@ export interface GitvaultVaultRecord {
   };
   warnings: { kind: string; message: string }[];
   created_at: string | null;
+  /**
+   * The control plane's SIGNED allocation record for the vault (present on
+   * gateways that wrap it into the vault read; `null`/absent otherwise).
+   * gitvault-agent-envelopes D4: a cold open compares genesis's creator
+   * fingerprints against these — platform-attested consistency, never
+   * independent authentication (the platform serves both sides).
+   */
+  allocation?: {
+    creator_signing_fingerprint: string;
+    creator_encryption_fingerprint: string;
+    status?: string;
+    service_key_id?: string;
+    [key: string]: unknown;
+  } | null;
 }
 
 /**
@@ -2370,6 +2388,27 @@ export async function writeGitvaultAutoGcThreshold(targetRepoDir: string, genera
 
 // ─── The vault ───────────────────────────────────────────────────────────────
 
+/**
+ * {@link GitvaultVault.ensureRepoState}'s report when a cold keystore was
+ * restored from its own envelope (gitvault-agent-envelopes D4). `trust` is
+ * `receipt` only when a creator-held recovery receipt pinned genesis;
+ * `platform_attested` means the control plane's signed allocation matched —
+ * consistency the platform itself vouches for, so `independently_verified`
+ * is `false` there and this label must never be read as end-to-end
+ * authentication. `continuity` is `pinned` when this keystore had already
+ * seen this genesis (a later open), `first_seen` on the first.
+ */
+export interface GitvaultColdOpenResult {
+  repo_id: string;
+  org_id: string;
+  provenance: "restored_from_envelope";
+  trust: "receipt" | "platform_attested" | "unauthenticated_salvage";
+  continuity: "first_seen" | "pinned";
+  independently_verified: boolean;
+  epoch: string;
+  recipient_fingerprint: string;
+}
+
 export interface GitvaultVaultOptions {
   keystore: GitvaultKeystore;
   transport: GitvaultTransport;
@@ -2475,7 +2514,7 @@ export interface GitvaultReconcileEnvelopeRecipientsWrapped {
 }
 
 /** Why {@link GitvaultVault.reconcileEnvelopeRecipients} did NOT wrap a directory entry it otherwise would have. */
-export type GitvaultReconcileEnvelopeRecipientsSkipReason = "missing_public_key" | "invalid_public_key" | "pinned_key_mismatch";
+export type GitvaultReconcileEnvelopeRecipientsSkipReason = "missing_public_key" | "invalid_public_key" | "pinned_key_mismatch" | "race_winner_unverified";
 
 export interface GitvaultReconcileEnvelopeRecipientsSkipped {
   principal_id: string;
@@ -2768,6 +2807,151 @@ export class GitvaultVault {
       );
     }
     return repo;
+  }
+
+  /**
+   * gitvault-agent-envelopes D4 — the COLD OPEN. A keystore that holds an
+   * identity but no repo file for this vault (a member joining from a fresh
+   * machine, or a creator whose repo file was lost) restores `K_repo` from
+   * its OWN `key_envelope` instead of dying `GITVAULT_REPO_STATE_MISSING`:
+   *
+   *   1. genesis (the writer-key source) is fetched and signature-verified;
+   *   2. its creator fingerprints are compared against the control plane's
+   *      SIGNED allocation record — `platform_attested`, never `receipt`
+   *      (the platform serves both sides of that comparison; a substituted
+   *      genesis needs a substituted allocation, which the org's owners can
+   *      see — TOFU + audit, human-envelopes D4's tier);
+   *   3. the envelope-recipients read says whether THIS fingerprint is
+   *      covered — if not, `GITVAULT_ENVELOPE_PENDING` names the key-holders
+   *      who can fulfil and the exact next actions (never a terminal error:
+   *      the desired state already records this member; any key-holder's
+   *      next gitvault operation wraps);
+   *   4. the base envelope is fetched, opened, and the repo file written
+   *      `restored_from_envelope` with the genesis hash PINNED (a later open
+   *      seeing a different genesis for this repo_id refuses
+   *      `VAULT_CREATION_CONFLICT`).
+   *
+   * Rotation epochs are NOT opened here — `verifyToNewest` walks them and
+   * opens each rotation-scoped envelope this identity is included in, exactly
+   * as it does for every other reader (`openEpochRotationForRecipient`).
+   *
+   * Returns `null` when the repo file already existed (nothing restored).
+   */
+  async ensureRepoState(): Promise<GitvaultColdOpenResult | null> {
+    if (this.keystore.readRepo(this.repoId)) return null;
+    const identity = this.keystore.readIdentity();
+    if (!identity) {
+      fail("KEYSTORE_MISSING", "no gitvault identity in the keystore", "opening gitvault vault", undefined, [
+        { action: "restore ~/.config/run402/gitvault from backup or accept vault loss" },
+        ...crossProfileGitvaultHint(this.repoId),
+      ]);
+    }
+    const ownKeypair = this.keystore.encryptionKeypair(identity);
+    if (!ownKeypair) {
+      fail("VAULT_UNRECOVERABLE", GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, "opening gitvault vault", { statement: GITVAULT_TERMINAL_LOSS_STATEMENT, repo_id: this.repoId });
+    }
+    const ownFingerprint = identity.encryption_fingerprint;
+
+    const genesisBytes = await this.transport.getGenesis({ repo_id: this.repoId });
+    if (!genesisBytes) fail("CHAIN_BROKEN", "the vault has no admitted genesis", "opening gitvault vault", { repo_id: this.repoId });
+    const genesis = parseGitvaultStrict(new TextDecoder().decode(genesisBytes)) as GitvaultVaultGenesis;
+    if (genesis.repo_id !== this.repoId) {
+      fail("VAULT_CREATION_CONFLICT", `the served genesis names repo ${genesis.repo_id}, not ${this.repoId}`, "opening gitvault vault", { repo_id: this.repoId, served: genesis.repo_id });
+    }
+
+    // Platform-attested creator anchor. The allocation is optional on the
+    // wire (older gateways) — absent means the restore is unauthenticated
+    // salvage, and the result says so.
+    let allocationAttested = false;
+    const record = await this.transport.getVaultRecord({ repo_id: this.repoId });
+    const allocation = record.allocation ?? null;
+    if (allocation) {
+      const genesisEk = ekFingerprint(fromBase64url(genesis.creator_encryption_pubkey, "genesis.creator_encryption_pubkey"));
+      const genesisVk = vkFingerprint(fromBase64url(genesis.creator_signing_pubkey, "genesis.creator_signing_pubkey"));
+      if (genesisEk !== allocation.creator_encryption_fingerprint || genesisVk !== allocation.creator_signing_fingerprint) {
+        fail(
+          "VAULT_CREATION_CONFLICT",
+          "the served genesis's creator keys do not match the control plane's signed allocation record for this vault — refusing a substituted genesis",
+          "opening gitvault vault",
+          { repo_id: this.repoId, genesis_creator_encryption_fingerprint: genesisEk, allocation_creator_encryption_fingerprint: allocation.creator_encryption_fingerprint, genesis_creator_signing_fingerprint: genesisVk, allocation_creator_signing_fingerprint: allocation.creator_signing_fingerprint },
+        );
+      }
+      allocationAttested = true;
+    }
+
+    const coverage = await this.transport.listEnvelopeRecipients({ repo_id: this.repoId });
+    if (!coverage.recipient_fingerprints.includes(ownFingerprint)) {
+      // Who can fulfil: every current directory recipient that IS covered
+      // (they hold K_repo), named by principal id — best-effort, the read may
+      // 403 for a caller whose membership is still propagating.
+      let keyHolders: Array<{ principal_id: string; display_name: string | null; ek_fingerprint: string }> = [];
+      try {
+        const directory = await this.transport.listOrgEncryptionKeys({ org_id: genesis.org_id });
+        keyHolders = directory.keys
+          .filter((k) => coverage.recipient_fingerprints.includes(k.ek_fingerprint))
+          .map((k) => ({ principal_id: k.principal_id, display_name: k.display_name ?? null, ek_fingerprint: k.ek_fingerprint }));
+      } catch {
+        // best-effort — the refusal is complete without the roster
+      }
+      const desired = coverage.desired?.find((d) => d.ek_fingerprint === ownFingerprint) ?? null;
+      fail(
+        "GITVAULT_ENVELOPE_PENDING",
+        `this keystore (fingerprint ${ownFingerprint}) is not yet a recipient on vault ${this.repoId} — no key_envelope has been wrapped for it; a key-holder's next gitvault operation fulfils the org's desired state`,
+        "opening gitvault vault",
+        {
+          repo_id: this.repoId,
+          org_id: genesis.org_id,
+          own_fingerprint: ownFingerprint,
+          desired_state: desired ? desired.status : (coverage.desired ? "not_desired" : "unknown"),
+          key_holders: keyHolders,
+          covering_recipient_count: coverage.recipient_fingerprints.length,
+        },
+        [
+          { action: "run402 repos access", why: "poll — this_keystore.covered_on_this_vault flips true once a key-holder has wrapped this vault to your key" },
+          { action: "ask a key-holder to run any gitvault operation (run402 repos view / git push)", why: "a key-holding client wraps every pending desired recipient on its next operation; nothing else is required of them" },
+        ],
+      );
+    }
+
+    const envelopeBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.envelope(genesis.epoch, ownFingerprint) });
+    if (!envelopeBytes) {
+      fail(
+        "GITVAULT_EPOCH_NOT_OPENABLE",
+        `the envelope-recipients read lists this keystore (fingerprint ${ownFingerprint}) as covered, but its base key_envelope could not be retrieved — a server-side or network problem, not a problem with your key; retry`,
+        "opening gitvault vault",
+        { repo_id: this.repoId, epoch: genesis.epoch, recipient_fingerprint: ownFingerprint, reason: "envelope_fetch_failed" },
+      );
+    }
+    const envelope = parseGitvaultStrict(new TextDecoder().decode(envelopeBytes)) as GitvaultKeyEnvelope;
+    if (envelope.repo_id !== this.repoId || envelope.epoch !== genesis.epoch || envelope.recipient_fingerprint !== ownFingerprint) {
+      fail(
+        "GITVAULT_ENVELOPE_ALTERED",
+        "the retrieved base key_envelope does not address this vault, epoch, and recipient — refusing to open it",
+        "opening gitvault vault",
+        { repo_id: this.repoId, epoch: genesis.epoch, recipient_fingerprint: ownFingerprint, envelope: { repo_id: envelope.repo_id, epoch: envelope.epoch, recipient_fingerprint: envelope.recipient_fingerprint } },
+      );
+    }
+    const restored = await this.keystore.restoreRepoFromEnvelope({ genesis, envelope, allocation_attested: allocationAttested });
+    this.keystore.writeCachedGenesis(this.repoId, restored.repo.genesis_sha256, genesisBytes);
+    this.genesisCache = { genesis, sha256: restored.repo.genesis_sha256 };
+    return {
+      repo_id: this.repoId,
+      org_id: genesis.org_id,
+      provenance: "restored_from_envelope",
+      trust: restored.trust,
+      continuity: restored.continuity,
+      independently_verified: restored.independently_verified,
+      epoch: envelope.epoch,
+      recipient_fingerprint: ownFingerprint,
+    };
+  }
+
+  /** {@link open}, but a missing repo file triggers {@link ensureRepoState} first. */
+  static async openOrRestore(options: GitvaultVaultOptions): Promise<{ vault: GitvaultVault; restored: GitvaultColdOpenResult | null }> {
+    const v = new GitvaultVault(options);
+    const restored = await v.ensureRepoState();
+    v.repoFile();
+    return { vault: v, restored };
   }
 
   private kRepo(): Uint8Array { return hexToBytes(this.repoFile().k_repo_hex); }
@@ -3852,6 +4036,28 @@ export class GitvaultVault {
         // recipient is now genuinely covered. Treat exactly that code as a
         // benign race, not a failure; anything else propagates.
         if (isRun402Error(e) && (e as { code?: string }).code === "GITVAULT_OBJECT_EXISTS_DIFFERENT") {
+          // gitvault-agent-envelopes (consult 7.6): a benign race is only
+          // benign once the WINNING envelope has been read back and verified
+          // — same repo, same epoch, this recipient, signed by the vault's
+          // registered writer. Anything else is recorded as skipped, never as
+          // coverage, and never pinned.
+          const winnerPath = gitvaultPaths.envelope(epoch, sealed.receipt.recipient_fingerprint);
+          const winnerBytes = await this.transport.getObject({ repo_id: this.repoId, path: winnerPath }).catch(() => null);
+          let winnerOk = false;
+          if (winnerBytes) {
+            try {
+              const winner = parseGitvaultStrict(new TextDecoder().decode(winnerBytes)) as GitvaultKeyEnvelope;
+              const writerKey = (await this.genesis()).genesis.creator_signing_pubkey;
+              winnerOk = winner.repo_id === this.repoId && winner.epoch === epoch && winner.recipient_fingerprint === entry.ek_fingerprint
+                && verifyGitvaultObject(winner as unknown as GitvaultSignedObject, writerKey);
+            } catch {
+              winnerOk = false;
+            }
+          }
+          if (!winnerOk) {
+            skipped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint, reason: "race_winner_unverified", details: { path: winnerPath } });
+            continue;
+          }
           alreadyCovered.push(entry.ek_fingerprint);
         } else {
           throw e;

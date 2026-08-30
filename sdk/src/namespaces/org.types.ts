@@ -195,6 +195,15 @@ export interface MemberMutationResult {
   status: string;
   principal_id: string;
   role: OrgRole;
+  /**
+   * gitvault-agent-envelopes D6 — the new member's vault-custody state,
+   * folded in so the caller never has to ask: `enrolled_pending_wrap` (an
+   * active key; a key-holder's next gitvault operation wraps each vault),
+   * `not_enrolled` (the MEMBER's next gitvault operation enrolls its
+   * keystore key), `not_applicable` (`ci`).
+   */
+  envelope?: { state: "enrolled_pending_wrap" | "not_enrolled" | "not_applicable"; ek_fingerprint: string | null };
+  next_actions?: Array<{ type: string; method?: string; path?: string; why?: string }>;
   [key: string]: unknown;
 }
 
