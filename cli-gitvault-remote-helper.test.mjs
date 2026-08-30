@@ -78,7 +78,11 @@ function objectInventory(repoDir) {
     for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const rel = prefix ? `${prefix}/${e.name}` : e.name;
       if (e.isDirectory()) walk(join(dir, e.name), rel);
-      else out.push(rel);
+      // Transient lock files (git auto-maintenance's maintenance.lock, pack
+      // locks) are not objects and race the two snapshots — observed as a
+      // CI-only flake where `maintenance.lock` sat in one inventory and not
+      // the other.
+      else if (!e.name.endsWith(".lock")) out.push(rel);
     }
   };
   walk(objects, "");
