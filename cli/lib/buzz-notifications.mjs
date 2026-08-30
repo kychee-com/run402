@@ -7,6 +7,7 @@
  */
 import { getSdk } from "./sdk.mjs";
 import { fail, reportSdkError } from "./sdk-errors.mjs";
+import { resolveOrgId } from "./org-context.mjs";
 import {
   normalizeArgv,
   hasHelp,
@@ -129,7 +130,7 @@ async function configure(args) {
   const eventTypes = flagValues(a, "--event-type");
   const eventClasses = flagValues(a, "--event-class");
   try {
-    const created = await getSdk().buzz.notifications.createRoute(requiredFlag(a, "--org"), {
+    const created = await getSdk().buzz.notifications.createRoute(await resolveOrgId(a, { cmd: "buzz" }), {
       installationId: requiredFlag(a, "--installation"),
       routeName: requiredFlag(a, "--name"),
       buzzChannelId: requiredFlag(a, "--channel"),
@@ -161,7 +162,7 @@ async function status(args) {
       out(await sdk.buzz.notifications.get(positionals[0]));
       return;
     }
-    const routes = await sdk.buzz.notifications.list(requiredFlag(a, "--org"));
+    const routes = await sdk.buzz.notifications.list(await resolveOrgId(a, { cmd: "buzz" }));
     out({ buzz_project_event_routes: routes });
   } catch (err) {
     reportSdkError(err);
