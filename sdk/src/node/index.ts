@@ -28,6 +28,14 @@ import {
   getApiTargetKind,
 } from "../../core-dist/config.js";
 import { Run402, type PayExecutor, type Run402Options } from "../index.js";
+import { installNodeGitvaultAeadBackend } from "./gitvault-native-crypto.js";
+
+// gitvault-native-bulk-crypto (design D1): the bulk frame AEAD is sync and
+// isomorphic, so Node's faster OpenSSL implementation of the SAME construction
+// can only be INSTALLED at the entry point, never sniffed from the core. A
+// build whose OpenSSL lacks the cipher keeps the `@noble/ciphers` default —
+// correct, just slower — so this is deliberately not asserted.
+installNodeGitvaultAeadBackend();
 import type { CredentialsProvider } from "../credentials.js";
 import { LocalError } from "../errors.js";
 import type { Client, Run402ClientMetadata } from "../kernel.js";

@@ -524,6 +524,69 @@ export function frameAad(repoId: string, objectKind: GitvaultEncryptedObjectKind
   return { repo_id: repoId, object_kind: objectKind, object_id: objectId, epoch, suite: GITVAULT_SUITE, magic: GITVAULT_FRAME_MAGIC, suite_id: GITVAULT_FRAME_SUITE_ID };
 }
 
+/**
+ * The bulk-AEAD seam (gitvault-native-bulk-crypto, design D1/D3).
+ *
+ * `sealFrame`/`openFrame`/`openFrameWithAad` are the BULK path — every WAL
+ * pack, checkpoint pack, `ref_state` and `retention_roots` frame runs through
+ * them — and they are SYNC and ISOMORPHIC, so a faster runtime-specific
+ * implementation can be neither statically imported (the core must load
+ * outside Node) nor lazily awaited (the signatures are sync). So the core owns
+ * a slot and the Node entry fills it, exactly as that entry already layers on
+ * the keystore and allowance: capability is INJECTED at the entry point, never
+ * sniffed in the core.
+ *
+ * The contract is narrow on purpose (D3): the FRAME primitives only. Envelope
+ * scalar unwrap, HPKE, HKDF, HMAC, signing and hashing keep their current
+ * implementations — they are microseconds, and a small seam is a small review
+ * surface. With nothing registered (every non-Node runtime, and the
+ * independent `r402s-verify` lineage, which deliberately registers nothing so
+ * it stays a SECOND implementation of the wire format) the `@noble/ciphers`
+ * path below runs byte-for-byte as before.
+ */
+export interface GitvaultAeadBackend {
+  /** XChaCha20-Poly1305 seal → `ct‖tag`, byte-identical to `@noble`'s. */
+  seal(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array;
+  /** Open `ct‖tag`; `null` on authentication failure — never a throw of its own shape (D4). */
+  open(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, ciphertextAndTag: Uint8Array): Uint8Array | null;
+}
+
+let aeadBackend: GitvaultAeadBackend | null = null;
+
+/**
+ * SDK-INTERNAL (underscore-exported so the byte-equality suite can swap
+ * backends). Installing `null` restores the `@noble` default — which is what
+ * every runtime without a registration already has.
+ */
+export function _setGitvaultAeadBackend(backend: GitvaultAeadBackend | null): void {
+  aeadBackend = backend;
+}
+
+/** SDK-INTERNAL: which backend is live. The verifier-lineage test asserts `null`. */
+export function _gitvaultAeadBackend(): GitvaultAeadBackend | null {
+  return aeadBackend;
+}
+
+function aeadSeal(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array {
+  if (aeadBackend) return aeadBackend.seal(key32, nonce24, aad, plaintext);
+  return xchacha20poly1305(key32, nonce24, aad).encrypt(plaintext);
+}
+
+/**
+ * Returns the plaintext, or `null` for ANY failure the caller must render as
+ * `GITVAULT_AEAD_AUTH_FAILURE` (D4). A backend that throws is treated as an
+ * auth failure rather than surfacing a second error shape from the same input
+ * space — the native path is an optimization, never a new failure mode.
+ */
+function aeadOpen(key32: Uint8Array, nonce24: Uint8Array, aad: Uint8Array, ctAndTag: Uint8Array): Uint8Array | null {
+  try {
+    if (aeadBackend) return aeadBackend.open(key32, nonce24, aad, ctAndTag);
+    return xchacha20poly1305(key32, nonce24, aad).decrypt(ctAndTag);
+  } catch {
+    return null;
+  }
+}
+
 export interface GitvaultSealFrameInput {
   /** The per-object key — derive with {@link deriveObjectKey}. */
   k_obj: Uint8Array;
@@ -549,7 +612,7 @@ export function sealFrame(input: GitvaultSealFrameInput): GitvaultSealedFrame {
   const nonce = input.nonce ?? randomBytes(FRAME_NONCE_BYTES);
   if (nonce.length !== FRAME_NONCE_BYTES) fail("GITVAULT_BAD_NONCE", "frame nonce must be 24 bytes", "sealing r402s/v0 frame");
   const aad = jcs(frameAad(input.repo_id, input.object_kind, input.object_id, input.epoch));
-  const ct = xchacha20poly1305(input.k_obj, nonce, aad).encrypt(input.plaintext);
+  const ct = aeadSeal(input.k_obj, nonce, aad, input.plaintext);
   const frame = concatBytes(utf8ToBytes(GITVAULT_FRAME_MAGIC), new Uint8Array([GITVAULT_FRAME_SUITE_BYTE]), nonce, ct);
   return { frame, ciphertext_sha256: sha256Hex(frame), size_bytes: String(frame.length), nonce_hex: bytesToHex(nonce) };
 }
@@ -597,11 +660,11 @@ export function openFrameWithAad(kObj: Uint8Array, frame: Uint8Array, aad: Uint8
   }
   const nonce = frame.subarray(7, FRAME_HEADER_BYTES);
   const ct = frame.subarray(FRAME_HEADER_BYTES);
-  try {
-    return xchacha20poly1305(kObj, nonce, aad).decrypt(ct);
-  } catch {
+  const opened = aeadOpen(kObj, nonce, aad, ct);
+  if (opened === null) {
     fail("GITVAULT_AEAD_AUTH_FAILURE", "frame failed AEAD authentication", "opening r402s/v0 frame", { object_id: objectId });
   }
+  return opened;
 }
 
 // ─── HPKE (named implementation: @hpke/core + @hpke/chacha20poly1305) ───────
