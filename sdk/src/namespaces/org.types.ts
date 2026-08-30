@@ -207,6 +207,15 @@ export interface MemberMutationResult {
   [key: string]: unknown;
 }
 
+/** Result of {@link OrgMembers.revokeEncryptionKey} — `status: "revoked"` with the revoked `ek_fingerprint`, or `"no_key"` when the member had no current key. */
+export interface MemberRevokeEncryptionKeyResult {
+  status: "revoked" | "no_key";
+  principal_id: string;
+  ek_fingerprint: string | null;
+  next_actions?: Array<{ type: string; method?: string; path?: string; why?: string }>;
+  [key: string]: unknown;
+}
+
 /** Result of {@link OrgMembers.revoke} (`{ status:"revoked", principal_id }`). */
 export interface MemberRevokeResult {
   status: string;
