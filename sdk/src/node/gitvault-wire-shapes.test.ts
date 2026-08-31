@@ -747,6 +747,111 @@ describe("createGitvaultHttpTransport — edge_url from the wire response reache
     assert.deepEqual([...state.delta!.packs[0]!.bytes], [...packBytes]);
   });
 
+  it("getState sends `restore=1` on the wire and decodes `restore_plan` — inline packs consumed, url-only packs fetched (gitvault-restore-recipe)", async () => {
+    const h1 = new Uint8Array([1, 1]);
+    const h2 = new Uint8Array([2, 2]);
+    const inlinePack = new Uint8Array([9, 9, 9]);
+    const urlPack = new Uint8Array([5, 5]);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state?restore=1`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000002",
+          head: { stored_bytes: toBase64url(h2), stored_bytes_sha256: "h2" },
+          carriers: { ref_state: { inline: toBase64url(new Uint8Array([8])) }, retention_roots: { inline: toBase64url(new Uint8Array([7])) } },
+          restore_plan: {
+            boundary_generation: "0000000000000000",
+            heads: [
+              { generation: "0000000000000001", stored_bytes: toBase64url(h1), stored_bytes_sha256: "h1" },
+              { generation: "0000000000000002", stored_bytes: toBase64url(h2), stored_bytes_sha256: "h2" },
+            ],
+            checkpoint: null,
+            packs: [
+              { object_kind: "wal_pack", object_id: "wal_inline", url: "https://origin.example/never", inline: toBase64url(inlinePack), stored_bytes_sha256: sha256Hex(inlinePack), size_bytes: "3" },
+              { object_kind: "wal_pack", object_id: "wal_url", url: "https://origin.example/urlpack", stored_bytes_sha256: sha256Hex(urlPack), size_bytes: "2" },
+            ],
+          },
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/urlpack": () => new Response(urlPack, { status: 200 }),
+        "https://origin.example/never": () => { throw new Error("must not fetch url when a self-consistent inline is present"); },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO, restore: true });
+    assert.ok(state.restore_plan, "a restore=1 request answered with restore_plan must surface it");
+    assert.equal(state.restore_plan!.boundary_generation, "0000000000000000");
+    assert.deepEqual(state.restore_plan!.heads.map((h) => h.generation), ["0000000000000001", "0000000000000002"]);
+    assert.deepEqual([...state.restore_plan!.heads[0]!.stored_bytes], [...h1]);
+    assert.equal(state.restore_plan!.checkpoint, null, "genesis-fallback boundary carries no checkpoint");
+    const byId = new Map(state.restore_plan!.packs.map((p) => [p.object_id, p]));
+    assert.deepEqual([...byId.get("wal_inline")!.bytes!], [...inlinePack], "self-consistent inline is consumed with no network fetch");
+    assert.deepEqual([...byId.get("wal_url")!.bytes!], [...urlPack], "a pack with no inline falls back to its own url");
+    assert.deepEqual(fetchCalls, ["https://origin.example/urlpack"], "the inline pack never dialed the object store");
+  });
+
+  it("getState combines `since` and `restore` on the wire — orthogonal query params (gitvault-restore-recipe design D2)", async () => {
+    const { client } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state?since=0000000000000001&restore=1`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000001",
+          head: { stored_bytes: toBase64url(new Uint8Array([9])), stored_bytes_sha256: "h" },
+          carriers: { ref_state: { inline: toBase64url(new Uint8Array([8])) }, retention_roots: { inline: toBase64url(new Uint8Array([7])) } },
+        },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO, since: "0000000000000001", restore: true });
+    assert.equal(state.delta, undefined);
+    assert.equal(state.restore_plan, undefined);
+  });
+
+  it("getState without `restore` sends no `restore` query param and tolerates a restore_plan-less response — byte-identical to before this change", async () => {
+    const { client } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000001",
+          head: { stored_bytes: toBase64url(new Uint8Array([9])), stored_bytes_sha256: "h" },
+          carriers: { ref_state: { inline: toBase64url(new Uint8Array([8])) }, retention_roots: { inline: toBase64url(new Uint8Array([7])) } },
+        },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO });
+    assert.equal(state.restore_plan, undefined, "restore not requested, no restore_plan");
+  });
+
+  it("getState drops the whole restore_plan on a structurally malformed head — never a partial/pretend plan (gitvault-restore-recipe)", async () => {
+    // Decode-time forgiveness mirrors the `delta` arm exactly: this layer
+    // only rejects STRUCTURAL malformation (a missing/wrong-typed field);
+    // hash/chain/signature verification is `GitvaultVault`'s own job,
+    // against the DECODED plan, not this transport's.
+    const h1 = new Uint8Array([1, 1]);
+    const { client } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state?restore=1`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000001",
+          head: { stored_bytes: toBase64url(h1), stored_bytes_sha256: "h1" },
+          carriers: { ref_state: { inline: toBase64url(new Uint8Array([8])) }, retention_roots: { inline: toBase64url(new Uint8Array([7])) } },
+          restore_plan: {
+            boundary_generation: "0000000000000000",
+            // `generation` is missing entirely — fails the structural filter.
+            heads: [{ stored_bytes: toBase64url(h1), stored_bytes_sha256: "h1" }],
+            checkpoint: null,
+            packs: [],
+          },
+        },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO, restore: true });
+    assert.equal(state.restore_plan, undefined, "a structurally malformed head disqualifies the whole plan, at decode time already");
+  });
+
   it("getState without `since` sends no query and tolerates a delta-less response — byte-identical to before this change", async () => {
     const { client } = fakeClient({
       requestResponses: {

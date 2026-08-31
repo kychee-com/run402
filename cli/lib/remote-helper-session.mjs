@@ -652,7 +652,14 @@ async function main(argv, { onBackgroundWork } = {}) {
         fetchMarker = null;
       }
     }
-    const materializeOpts = fetchMarker ? { deltaSince: fetchMarker.generation } : {};
+    // gitvault-restore-recipe design D2/D6: a marker-absent fetch target is,
+    // by construction, the WHOLESALE restore shape (a fresh `git clone`, or
+    // a target that never completed a restore) — declare restore intent
+    // here so a capable gateway's plan rides THIS state read, reused by
+    // `fetch` below via `sharedListSession` (never a second round trip). A
+    // repo-free `list` (bare `git ls-remote`) has no target to restore into
+    // at all, so neither `since` nor `restore` is sent — same gate as today.
+    const materializeOpts = fetchMarker ? { deltaSince: fetchMarker.generation } : repoDir ? { restore: true } : {};
     let opened;
     try {
       opened = await openVault(repoDir ?? undefined);

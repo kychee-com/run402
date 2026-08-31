@@ -1055,8 +1055,21 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
    * `delta` is never an error. Delta bytes are UNTRUSTED exactly like every
    * other stored byte: consumers hash-check before use, and a failed check
    * is a plain miss that the ordinary reads absorb.
+   *
+   * `restore` (gitvault-restore-recipe design D2), ORTHOGONAL to `since` —
+   * declares restore intent. A gateway that recognizes it AND can locate a
+   * checkpoint boundary within its own bound MAY answer with `restore_plan`
+   * (the heads from that boundary to newest, the boundary checkpoint's
+   * claim set + manifest, and every pack the span references) — and MAY
+   * ignore it entirely (older gateway, no locatable boundary, a transition
+   * inside the span); absence of `restore_plan` is never an error. Plan
+   * bytes are UNTRUSTED exactly like `delta`'s: {@link GitvaultVault}
+   * re-derives the full backward chain-link, claim-set signature,
+   * cross-equality, per-pack receipt-hash, and AEAD-open obligations before
+   * using anything here, and falls back to the ordinary backward walk on
+   * any failure.
    */
-  getState(request: { repo_id: string; since?: string }): Promise<GitvaultVaultState>;
+  getState(request: { repo_id: string; since?: string; restore?: boolean }): Promise<GitvaultVaultState>;
   /** Resolve a project's vault without local state (the cold-restart entry point). */
   findVaultByProject(request: { project_id: string }): Promise<GitvaultVaultRecord>;
   /**
@@ -1287,6 +1300,35 @@ export interface GitvaultVaultState {
   carriers: { ref_state: Uint8Array | null; retention_roots: Uint8Array | null } | null;
   /** Present only when the gateway answered a `since` request with a qualifying span (gitvault-delta-fetch); absent otherwise, including on every older gateway. */
   delta?: GitvaultVaultStateDelta | null;
+  /** Present only when the caller declared `restore: true` AND the gateway located a qualifying checkpoint boundary (gitvault-restore-recipe); absent otherwise, including on every older gateway. */
+  restore_plan?: GitvaultVaultRestorePlan | null;
+}
+
+/**
+ * The state read's restore recipe (gitvault-restore-recipe design D1-D5):
+ * the heads from the newest checkpoint boundary through the caller's own
+ * newest generation (ascending, boundary-first — ONE entry when the
+ * boundary IS the newest head), that boundary's checkpoint claim set +
+ * manifest (`null` exactly when `boundary_generation` is the genesis
+ * sentinel — no checkpoint exists in the whole bounded chain), and every
+ * checkpoint + WAL pack the span references. Heads and checkpoint bytes are
+ * pure base64url decodes (the gateway sends them inline ALWAYS — design
+ * D4); `packs[].bytes` is ALREADY resolved here exactly as `object-reads`
+ * resolves its own entries (db8d745c's `resolveObjectReadTarget` — a
+ * self-consistency-gated `inline` decode, falling back to the entry's own
+ * `url`/`edge_url` on a lying, absent, or over-cap `inline`), `null` when
+ * neither arm produced bytes (an absent object, a failed GET). UNTRUSTED
+ * THROUGHOUT: nothing here is verified by this decode — {@link
+ * GitvaultVault} re-derives the full chain-link/signature/cross-equality/
+ * receipt-hash/AEAD-open obligations before consuming anything, matching
+ * one for one by `(object_kind, object_id)`, and falls back to the ordinary
+ * backward walk byte-identically on any failure.
+ */
+export interface GitvaultVaultRestorePlan {
+  boundary_generation: string;
+  heads: Array<{ generation: string; stored_bytes: Uint8Array; stored_bytes_sha256: string }>;
+  checkpoint: { claim_set: { object_id: string; stored_bytes: Uint8Array }; manifest: { object_id: string; stored_bytes: Uint8Array } } | null;
+  packs: Array<{ object_kind: string; object_id: string; bytes: Uint8Array | null }>;
 }
 
 /**
@@ -1415,6 +1457,21 @@ interface VaultStateResponse {
   delta?: {
     heads: Array<{ generation: string; stored_bytes: string; stored_bytes_sha256: string }>;
     packs: Array<{ object_kind?: string; object_id: string; inline?: string; presigned_url?: string; expires_at?: string; edge_url?: string }>;
+  } | null;
+  /**
+   * gitvault-restore-recipe: present only when the caller sent `restore=1`
+   * AND the gateway located a qualifying checkpoint boundary. `heads`/
+   * checkpoint bytes ride inline ALWAYS (design D4); `packs[]` is the exact
+   * `ObjectReadOut` wire shape `object-reads` returns (`url`, NOT
+   * `presigned_url` — unlike `delta.packs[]`'s own, differently-named field
+   * — plus the optional `inline`/`edge_url` companions) this client already
+   * resolves via {@link resolveObjectReadTarget}.
+   */
+  restore_plan?: {
+    boundary_generation: string;
+    heads: Array<{ generation: string; stored_bytes: string; stored_bytes_sha256: string }>;
+    checkpoint: { claim_set: { object_id: string; stored_bytes: string }; manifest: { object_id: string; stored_bytes: string } } | null;
+    packs: Array<{ object_kind?: string; object_id: string; inline?: string; url?: string; edge_url?: string; expires_at?: string; stored_bytes_sha256?: string; size_bytes?: string }>;
   } | null;
 }
 
@@ -1716,8 +1773,11 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
    * resolved to raw bytes here, verified nowhere here (see the interface's
    * own doc comment on {@link GitvaultTransport.getState}).
    */
-  async function getVaultStateOut(repoId: string, since?: string): Promise<GitvaultVaultState> {
-    const raw = await client.request<VaultStateResponse>(`${base(repoId)}/state${since ? `?since=${encodeURIComponent(since)}` : ""}`, { context: "reading the gitvault vault state" });
+  async function getVaultStateOut(repoId: string, since?: string, restore?: boolean): Promise<GitvaultVaultState> {
+    const qs: string[] = [];
+    if (since) qs.push(`since=${encodeURIComponent(since)}`);
+    if (restore) qs.push("restore=1");
+    const raw = await client.request<VaultStateResponse>(`${base(repoId)}/state${qs.length > 0 ? `?${qs.join("&")}` : ""}`, { context: "reading the gitvault vault state" });
     const head = raw.head ? { stored_bytes: fromBase64url(raw.head.stored_bytes, "head.stored_bytes"), stored_bytes_sha256: raw.head.stored_bytes_sha256 } : null;
     const carriers = raw.carriers
       ? { ref_state: await resolveVaultStateCarrier(repoId, raw.carriers.ref_state), retention_roots: await resolveVaultStateCarrier(repoId, raw.carriers.retention_roots) }
@@ -1739,7 +1799,58 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
         delta = null;
       }
     }
-    return { vault: raw.vault, newest_generation: raw.newest_generation, head, carriers, ...(delta ? { delta } : {}) };
+    // Restore-plan decode (gitvault-restore-recipe design D1-D5): the SAME
+    // forgiving posture as `delta` above — ANY structural or resolution
+    // anomaly drops the whole plan, never throws, so a hiccup fetching one
+    // above-cap pack never fails the state read itself (head/carriers/delta
+    // already succeeded by the time this runs). Heads and checkpoint bytes
+    // are a pure base64url decode (the gateway sends them inline ALWAYS —
+    // design D4, no network here); packs reuse `resolveObjectReadTarget`
+    // verbatim (db8d745c) — the SAME self-consistency-gated inline decode
+    // with url/edge_url fallback every `object-reads` consumer gets — under
+    // bounded concurrency, so an all-inline plan costs this call NOTHING
+    // beyond the one `GET …/state` already in flight, and an above-cap plan
+    // pays exactly one GET per uncapped pack (the presign already happened
+    // server-side assembling the plan; no client-side `object-reads` POST).
+    // Decoding is its own function (never throwing `Error` — the public-SDK
+    // plain-`Error` contract — `null`/early-return is the disqualification
+    // signal instead) wrapped in one try/catch for the genuine exceptions
+    // `fromBase64url`/`resolveObjectReadTarget` can still raise.
+    const decodeRestorePlan = async (): Promise<GitvaultVaultRestorePlan | null> => {
+      if (!raw.restore_plan || !Array.isArray(raw.restore_plan.heads) || !Array.isArray(raw.restore_plan.packs)) return null;
+      try {
+        const rp = raw.restore_plan;
+        const heads = rp.heads
+          .filter((h) => typeof h?.generation === "string" && typeof h.stored_bytes === "string" && typeof h.stored_bytes_sha256 === "string")
+          .map((h) => ({ generation: h.generation, stored_bytes: fromBase64url(h.stored_bytes, "restore_plan.heads[].stored_bytes"), stored_bytes_sha256: h.stored_bytes_sha256 }));
+        if (heads.length !== rp.heads.length) return null; // a malformed head entry disqualifies the whole plan
+        const checkpoint = rp.checkpoint
+          ? {
+              claim_set: { object_id: rp.checkpoint.claim_set.object_id, stored_bytes: fromBase64url(rp.checkpoint.claim_set.stored_bytes, "restore_plan.checkpoint.claim_set.stored_bytes") },
+              manifest: { object_id: rp.checkpoint.manifest.object_id, stored_bytes: fromBase64url(rp.checkpoint.manifest.stored_bytes, "restore_plan.checkpoint.manifest.stored_bytes") },
+            }
+          : null;
+        const packEntries = rp.packs.filter((pk): pk is (typeof rp.packs)[number] & { object_kind: string; object_id: string } => typeof pk?.object_kind === "string" && typeof pk.object_id === "string");
+        if (packEntries.length !== rp.packs.length) return null; // a malformed pack entry disqualifies the whole plan
+        const resolved = await mapBounded(packEntries, GITVAULT_TRANSPORT_CONCURRENCY, async (pk) => {
+          const target = { object_kind: pk.object_kind, object_id: pk.object_id, url: pk.url ?? "", edge_url: pk.edge_url, inline: pk.inline, stored_bytes_sha256: pk.stored_bytes_sha256 ?? "", size_bytes: pk.size_bytes ?? "0", expires_at: pk.expires_at ?? "" };
+          // Self-consistency only (the same gate `inline` gets everywhere
+          // else) — real verification against the head/manifest's OWN
+          // receipt happens later, in `GitvaultVault`, before any byte is
+          // trusted. A pack the gateway declined to presign (`url` absent,
+          // `inline` absent) is `null` here and falls back to the ordinary
+          // object-reads fetch by (object_kind, object_id) in the caller.
+          if (!target.url && target.inline === undefined) return null;
+          return resolveObjectReadTarget(repoId, target, pk.stored_bytes_sha256, `restore_plan:${pk.object_kind}:${pk.object_id}`);
+        });
+        const packs = packEntries.map((pk, i) => ({ object_kind: pk.object_kind, object_id: pk.object_id, bytes: resolved[i] ?? null }));
+        return { boundary_generation: rp.boundary_generation, heads, checkpoint, packs };
+      } catch {
+        return null;
+      }
+    };
+    const restorePlan = await decodeRestorePlan();
+    return { vault: raw.vault, newest_generation: raw.newest_generation, head, carriers, ...(delta ? { delta } : {}), ...(restorePlan ? { restore_plan: restorePlan } : {}) };
   }
 
   /** Pair a `finalize`-shaped response's receipts back onto `objects` by ledger id — shared by the inline and presigned upload paths so neither forks the other's receipt-compare logic. */
@@ -1941,7 +2052,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       return { cleared: r.advisory_cleared ?? r.cleared ?? false };
     },
     getVaultRecord: ({ repo_id }) => client.request<GitvaultVaultRecord>(base(repo_id), { context: "reading the gitvault record" }),
-    getState: ({ repo_id, since }) => getVaultStateOut(repo_id, since),
+    getState: ({ repo_id, since, restore }) => getVaultStateOut(repo_id, since, restore),
     openCompactionGrant: ({ repo_id }) => client.request<GitvaultCompactionGrant>(`${base(repo_id)}/compaction-grant`, { method: "POST", context: "opening the gitvault compaction headroom grant" }),
     closeCompactionGrant: async ({ repo_id }) => {
       const r = await client.request<{ closed?: boolean }>(`${base(repo_id)}/compaction-grant`, { method: "DELETE", context: "closing the gitvault compaction headroom grant" });
@@ -2560,6 +2671,18 @@ export class GitvaultVault {
    * consumed and cleared by the next restore).
    */
   private stateDeltaPacks: Map<string, Uint8Array> | null = null;
+  /**
+   * The state read's restore plan (gitvault-restore-recipe design D1-D5),
+   * stashed RAW — never verified at stash time, unlike `stateDeltaPacks`
+   * (whose heads self-check before entering the shared keystore cache): a
+   * plan's heads/checkpoint/packs are only ever verified by {@link
+   * restoreObjectsInto}'s own full obligation set, and a partially-checked
+   * plan sitting here would be a foot-gun for a future caller that forgot
+   * the difference. Consumed and cleared exactly once, by the next
+   * `restoreObjectsInto` call (either its own materialize, or a dedicated
+   * plan-only read it issues when the incremental walk it started aborts).
+   */
+  private stateRestorePlan: GitvaultVaultRestorePlan | null = null;
   private readonly retries: number;
   private readonly servicePublicKey: Uint8Array | string | null;
   private genesisCache: { genesis: GitvaultVaultGenesis; sha256: string } | null = null;
@@ -2758,7 +2881,7 @@ export class GitvaultVault {
    * comment). A wrong or absent byte this method wrote is therefore just a
    * cache MISS on the next read, never a verification bypass.
    */
-  private async tryStateFastPath(pin: GitvaultHeadPin, deltaSince?: string): Promise<{ entries: GitvaultHeadsListingEntry[]; pinnedHead: GitvaultHead | null; prevEpoch: string } | null> {
+  private async tryStateFastPath(pin: GitvaultHeadPin, deltaSince?: string, restore?: boolean): Promise<{ entries: GitvaultHeadsListingEntry[]; pinnedHead: GitvaultHead | null; prevEpoch: string } | null> {
     // gitvault-delta-fetch: carry the caller's MATERIALIZED position as
     // `since` — a capable gateway answers small spans with the heads +
     // inline WAL packs in this same response; every other gateway/span
@@ -2768,7 +2891,15 @@ export class GitvaultVault {
     // keystore, so pin-as-since would report "current" for a standing clone
     // that is generations behind — exactly the multi-checkout shape the
     // bench runs.
-    const state = await this.transport.getState({ repo_id: this.repoId, since: deltaSince ?? pin.generation });
+    //
+    // `restore` (gitvault-restore-recipe design D2/D6) rides the SAME state
+    // read — never a second round trip — so the caller (`restoreObjectsInto`,
+    // via `materialize`/`verifyToNewest`) declares it only on the wholesale
+    // shape (see that method's own doc comment). This call declining the
+    // shortcut entirely (more than one generation behind `pin`) also means
+    // no plan is ever requested on this attempt — the listing-walk path that
+    // owns catch-up already has its own batched primitives.
+    const state = await this.transport.getState({ repo_id: this.repoId, since: deltaSince ?? pin.generation, restore });
     // §6.4: the vault's newest generation may never fall below the
     // authenticated pin — checked here regardless of eligibility below, so
     // a regressed vault is caught exactly as loudly as it always was, even
@@ -2787,6 +2918,12 @@ export class GitvaultVault {
     // path must never parse `state.head` as a {@link GitvaultHead} when it
     // is actually genesis's bytes.
     if (state.delta) this.consumeStateDelta(state.delta);
+    // gitvault-restore-recipe: stashed RAW (never verified here — see the
+    // field's own doc comment); a genesis-only response (below) still runs
+    // this line first, but `assembleVaultRestorePlan` never fires server-side
+    // before an ordinary head exists, so `state.restore_plan` is simply
+    // absent in that window — nothing to stash either way.
+    if (state.restore_plan) this.stateRestorePlan = state.restore_plan;
     const noOrdinaryHeadYet = state.newest_generation === null || state.newest_generation === GITVAULT_GENESIS_GENERATION;
     const pinBig = generationToBigInt(pin.generation);
     const newestBig = noOrdinaryHeadYet ? 0n : generationToBigInt(state.newest_generation!);
@@ -2898,7 +3035,7 @@ export class GitvaultVault {
    * makes `chain_verified_to` (this call's `generation`) and `decryptable_to`
    * (`decrypt.decryptable_to_generation`) able to differ honestly.
    */
-  async verifyToNewest(options: { persist?: boolean; decryptValidate?: boolean; strict?: boolean; deltaSince?: string } = {}): Promise<GitvaultVerifiedState> {
+  async verifyToNewest(options: { persist?: boolean; decryptValidate?: boolean; strict?: boolean; deltaSince?: string; restore?: boolean } = {}): Promise<GitvaultVerifiedState> {
     const persist = options.persist ?? true;
     const decryptValidate = options.decryptValidate ?? false;
     const strict = options.strict ?? true;
@@ -2913,7 +3050,10 @@ export class GitvaultVault {
     // own epoch could not be resolved without the network read this path
     // exists to avoid) — the caller falls straight through to the UNCHANGED
     // readHead + listHeads flow below, byte-identical to before this change.
-    const fastPath = await this.tryStateFastPath(pin, options.deltaSince);
+    // `options.restore` (gitvault-restore-recipe) rides along unchanged —
+    // declined exactly when the fast path itself is declined, so a caller
+    // more than one generation behind never gets (or needs) a plan here.
+    const fastPath = await this.tryStateFastPath(pin, options.deltaSince, options.restore);
     let lastHead: GitvaultHead | null = fastPath ? fastPath.pinnedHead : pin.generation === GITVAULT_GENESIS_GENERATION ? null : await this.readHead(pin.generation, pin.head_sha256);
     const anchor = pin.generation;
     let prevEpoch = fastPath ? fastPath.prevEpoch : (lastHead?.epoch ?? GITVAULT_GENESIS_EPOCH);
@@ -3418,9 +3558,9 @@ export class GitvaultVault {
    * — `strict: true` means this call throws exactly where the OLD
    * (pre-fix) `materialize()` silently produced a wrong `k_obj` instead.
    */
-  async materialize(options: { persist?: boolean; deltaSince?: string } = {}): Promise<GitvaultMaterializedState> {
+  async materialize(options: { persist?: boolean; deltaSince?: string; restore?: boolean } = {}): Promise<GitvaultMaterializedState> {
     const persist = options.persist ?? true;
-    const state = await this.verifyToNewest({ persist, decryptValidate: true, strict: true, deltaSince: options.deltaSince });
+    const state = await this.verifyToNewest({ persist, decryptValidate: true, strict: true, deltaSince: options.deltaSince, restore: options.restore });
     if (!state.head) {
       if (persist) this.keystore.updateRepo(this.repoId, { materialized_pin: { generation: state.generation, head_sha256: state.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) } });
       return { ...state, ref_state: null, retention_roots: null, refs: {}, roots: [], head_target: { kind: "symref", ref: "refs/heads/main" }, epoch_keys_hex: state.decrypt?.epoch_keys_hex ?? {} };
@@ -4886,7 +5026,16 @@ export class GitvaultVault {
     const marker = await readGitvaultRestoreMarker(targetRepoDir);
     const markerMatches = (a: GitvaultRestoreMarker | null, b: GitvaultRestoreMarker | null): boolean =>
       a === null ? b === null : b !== null && a.generation === b.generation && a.head_sha256 === b.head_sha256;
-    const newest = reuse && markerMatches(reuse.marker, marker) ? reuse.state : await this.materialize({ ...(marker ? { deltaSince: marker.generation } : {}) });
+    // gitvault-restore-recipe design D2/D6: a marker-absent materialize is,
+    // by construction, the wholesale shape (a fresh target has nothing to
+    // replay incrementally) — declare restore intent here so a capable
+    // gateway's plan rides THIS read rather than a second one. Mirrors the
+    // remote-helper session's own `list`-phase decision (`runList` in
+    // `cli/lib/remote-helper-session.mjs`); this branch only fires when
+    // `reuse` was absent or mismatched (no prior `list` in this session, or
+    // a direct SDK caller), so the PRIMARY clone path never pays for this —
+    // it rides the reused state instead.
+    const newest = reuse && markerMatches(reuse.marker, marker) ? reuse.state : await this.materialize({ ...(marker ? { deltaSince: marker.generation } : { restore: true }) });
     if (!newest.head) {
       const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: {}, roots: [], head_target: newest.head_target });
       return { refs: {}, head_target: newest.head_target, generation: newest.generation, retained_refs };
@@ -4903,6 +5052,17 @@ export class GitvaultVault {
       }
       const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: newest.refs, roots: newest.roots, head_target: newest.head_target });
       return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
+    }
+
+    // gitvault-restore-recipe (design D1-D6): consume a plan that already
+    // rode this method's OWN materialize() (the `restore: true` request
+    // above, or the reused list-phase read) BEFORE paying for the backward
+    // walk below at all. `tryConsumeRestorePlan` verifies from scratch and
+    // returns `null` on absence or ANY failure — the walk below is the
+    // unconditional fallback, byte-identical to before this change.
+    {
+      const applied = await this.tryConsumeRestorePlan(targetRepoDir, newest, writerKey);
+      if (applied) return applied;
     }
 
     // Walk back from newest, trying for an INCREMENTAL boundary at the
@@ -4971,6 +5131,24 @@ export class GitvaultVault {
         incremental = false;
         heads.length = 0;
         cur = newest.head;
+        // gitvault-restore-recipe (design D1/D2, task 2.1's named fallback
+        // shape): the marker WAS present when this method's own materialize()
+        // ran, so `restore` was never declared and no plan rode that read —
+        // fetch one now, dedicated, before falling through to the ordinary
+        // wholesale walk. Best-effort: an older gateway, a network fault, a
+        // disqualification, or a verification failure all just continue the
+        // loop exactly as before this change; nothing here can make the
+        // restore fail that would otherwise have succeeded.
+        if (!this.stateRestorePlan) {
+          try {
+            const resp = await this.transport.getState({ repo_id: this.repoId, restore: true });
+            if (resp.restore_plan) this.stateRestorePlan = resp.restore_plan;
+          } catch {
+            // fall through to the wholesale walk
+          }
+        }
+        const applied = await this.tryConsumeRestorePlan(targetRepoDir, newest, writerKey);
+        if (applied) return applied;
         continue;
       }
       heads.unshift(cur);
@@ -4990,6 +5168,41 @@ export class GitvaultVault {
       if (!bytes || sha256Hex(bytes) !== cur.prev_sha256) fail("CHAIN_BROKEN", `head ${prevGen} does not match the chain during restore`, "restoring gitvault objects");
       cur = parseGitvaultStrict(new TextDecoder().decode(bytes)) as GitvaultHead;
     }
+    return this.applyRestoreHeads(targetRepoDir, heads, incremental, newest, writerKey, null, null);
+  }
+
+  /**
+   * The shared restore tail (gitvault-restore-recipe): apply `heads`'
+   * checkpoint (if any) + WAL packs into `targetRepoDir`, verify §4.7
+   * coverage, reconcile retained refs, and advance the marker — IDENTICALLY
+   * whether `heads` came from {@link restoreObjectsInto}'s own backward walk
+   * or a verified restore plan ({@link tryConsumeRestorePlan}). `incremental`
+   * only affects the checkpoint-coverage LEARNING step (an incremental walk
+   * stops at the marker and learns nothing; a plan-derived call always
+   * passes `false` — a plan is the wholesale shape by construction).
+   *
+   * `precheckedCheckpoint`, when non-null, is a claim set + manifest the
+   * caller ALREADY verified (signature, cross-equality — {@link
+   * verifyRestorePlan}) — skips the network fetch + re-verify this method
+   * would otherwise run for `heads[0].checkpoint`. `planPacks`, when
+   * non-null, is a map of pack bytes the caller already has (untrusted —
+   * only used when its OWN hash matches the carrying head's/manifest's
+   * receipt, exactly `stateDeltaPacks`'s discipline), keyed
+   * `${object_kind}:${object_id}` so it covers BOTH WAL and checkpoint
+   * packs (`stateDeltaPacks` never carries checkpoint packs — a delta span
+   * never crosses a checkpoint boundary). Both are `null` on the ordinary
+   * walk path, in which case every line below is byte-identical to the
+   * pre-gitvault-restore-recipe shape.
+   */
+  private async applyRestoreHeads(
+    targetRepoDir: string,
+    heads: GitvaultHead[],
+    incremental: boolean,
+    newest: GitvaultMaterializedState,
+    writerKey: string,
+    precheckedCheckpoint: { claimSet: GitvaultCheckpointClaimSet; manifest: GitvaultCheckpointManifest } | null,
+    planPacks: Map<string, Uint8Array> | null,
+  ): Promise<{ refs: GitvaultRefMap; head_target: GitvaultHeadTarget; generation: string; retained_refs: GitvaultRetainedRefsReconcileResult }> {
     // gitvault-clone-scaling (P3): a WHOLESALE walk just stopped at the
     // newest checkpoint-bearing head, or proved there is none back to
     // genesis — that is first-hand checkpoint coverage, and recording it is
@@ -5015,11 +5228,7 @@ export class GitvaultVault {
     // map `materialize()` just resolved (throwing `GITVAULT_EPOCH_NOT_OPENABLE`
     // fail-closed if any needed epoch could not be opened), so every lookup
     // below is guaranteed present.
-    const kRepoForEpoch = (epoch: string): Uint8Array => {
-      const hex = newest.epoch_keys_hex[epoch];
-      if (!hex) fail("GITVAULT_EPOCH_NOT_OPENABLE", `no locally known key for epoch ${epoch} while restoring objects`, "restoring gitvault objects", { epoch });
-      return hexToBytes(hex);
-    };
+    const kRepoForEpoch = (epoch: string): Uint8Array => this.epochKeyFor(newest, epoch);
     const first = heads[0]!;
     // gitvault-pipelined-restore: per-object settlement when the transport
     // offers it, the `getObjects` barrier otherwise — pipelining is a
@@ -5056,13 +5265,25 @@ export class GitvaultVault {
     // skip the network ENTIRELY — but only after hashing to their carrying
     // head's receipt (a lying delta is a plain miss; the ordinary fetch
     // below reproduces the unbatched behavior for that slot). The buffer is
-    // consumed exactly once.
+    // consumed exactly once. gitvault-restore-recipe extends the SAME
+    // short-circuit to `planPacks` (a verified plan's own pack bytes) —
+    // checked SECOND so a delta hit never gets shadowed by a plan hit for
+    // the same slot (the two never coexist in practice, per `getState`'s
+    // mutual-exclusivity between `since` and `restore` on one call, but
+    // checking order stays deterministic either way).
     const deltaPacks = this.stateDeltaPacks;
     this.stateDeltaPacks = null;
     const deltaCovered = new Map<number, Uint8Array>();
     if (deltaPacks) {
       walEntries.forEach(({ w }, i) => {
         const bytes = deltaPacks.get(w.object_id);
+        if (bytes && sha256Hex(bytes) === w.ciphertext_sha256) deltaCovered.set(i, bytes);
+      });
+    }
+    if (planPacks) {
+      walEntries.forEach(({ w }, i) => {
+        if (deltaCovered.has(i)) return;
+        const bytes = planPacks.get(`wal_pack:${w.object_id}`);
         if (bytes && sha256Hex(bytes) === w.ciphertext_sha256) deltaCovered.set(i, bytes);
       });
     }
@@ -5073,22 +5294,42 @@ export class GitvaultVault {
     })();
     void walFramesP.catch(() => {});
     if (first.checkpoint) {
-      const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(first.checkpoint.claim_set.object_id), expected_sha256: first.checkpoint.claim_set.stored_bytes_sha256 });
-      if (!claimBytes || sha256Hex(claimBytes) !== first.checkpoint.claim_set.stored_bytes_sha256) fail("CHECKPOINT_INCOMPLETE", "claim set absent or altered", "restoring gitvault objects");
-      const claimSet = parseGitvaultStrict(new TextDecoder().decode(claimBytes)) as GitvaultCheckpointClaimSet;
-      if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) fail("CHECKPOINT_INCOMPLETE", "claim set signature fails", "restoring gitvault objects");
-      const manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), writerKey, { epoch: first.epoch, k_repo: kRepoForEpoch(first.epoch) });
-      checkClaimSetEquality(claimSet, manifest, first.checkpoint.covers_through_generation);
+      let claimSet: GitvaultCheckpointClaimSet;
+      let manifest: GitvaultCheckpointManifest;
+      if (precheckedCheckpoint) {
+        // gitvault-restore-recipe: already fetched + verified (signature,
+        // cross-equality) by `verifyRestorePlan` against the plan's own
+        // inline bytes — no network read, no re-verify.
+        ({ claimSet, manifest } = precheckedCheckpoint);
+      } else {
+        const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(first.checkpoint.claim_set.object_id), expected_sha256: first.checkpoint.claim_set.stored_bytes_sha256 });
+        if (!claimBytes || sha256Hex(claimBytes) !== first.checkpoint.claim_set.stored_bytes_sha256) fail("CHECKPOINT_INCOMPLETE", "claim set absent or altered", "restoring gitvault objects");
+        claimSet = parseGitvaultStrict(new TextDecoder().decode(claimBytes)) as GitvaultCheckpointClaimSet;
+        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) fail("CHECKPOINT_INCOMPLETE", "claim set signature fails", "restoring gitvault objects");
+        manifest = await this.openCarrier<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, gitvaultPaths.checkpointManifest(claimSet.manifest_receipt.object_id), writerKey, { epoch: first.epoch, k_repo: kRepoForEpoch(first.epoch) });
+        checkClaimSetEquality(claimSet, manifest, first.checkpoint.covers_through_generation);
+      }
       // Design D2 + gitvault-pipelined-restore D1: every checkpoint pack is
       // independent — one batched presign for all of them, applied via
       // index-pack strictly in manifest order, PIPELINED: apply(i) awaits
       // bytes(i), so decrypt/verify/index of an early pack overlaps the
       // later packs' downloads. Per-pack verification (AEAD open + plaintext
-      // hash) still completes before any byte reaches git.
-      const frames = await settled(manifest.packs.map((p) => gitvaultPaths.checkpointPack(p.object_id)), manifest.packs.map((p) => p.ciphertext_sha256));
+      // hash) still completes before any byte reaches git. gitvault-restore-
+      // recipe: a `planPacks` hit skips the fetch for that index entirely —
+      // the SAME short-circuit the WAL loop above runs, extended to the
+      // checkpoint class (never carried by `stateDeltaPacks`).
+      const checkpointCovered = new Map<number, Uint8Array>();
+      if (planPacks) {
+        manifest.packs.forEach((p, i) => {
+          const bytes = planPacks.get(`checkpoint_pack:${p.object_id}`);
+          if (bytes && sha256Hex(bytes) === p.ciphertext_sha256) checkpointCovered.set(i, bytes);
+        });
+      }
+      const uncoveredCk = manifest.packs.map((_, i) => i).filter((i) => !checkpointCovered.has(i));
+      const ckFrames = uncoveredCk.length > 0 ? await settled(uncoveredCk.map((i) => gitvaultPaths.checkpointPack(manifest.packs[i]!.object_id)), uncoveredCk.map((i) => manifest.packs[i]!.ciphertext_sha256)) : [];
       for (let i = 0; i < manifest.packs.length; i++) {
         const p = manifest.packs[i]!;
-        const frame = (await frames[i]!) ?? null;
+        const frame = checkpointCovered.has(i) ? checkpointCovered.get(i)! : ((await ckFrames[uncoveredCk.indexOf(i)]!) ?? null);
         if (!frame) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} absent`, "restoring gitvault objects");
         const plain = openFrame({ k_obj: deriveObjectKey(kRepoForEpoch(first.epoch), this.repoId, first.epoch, "checkpoint_pack", p.object_id), repo_id: this.repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: first.epoch, frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
         if (sha256Hex(plain) !== p.plaintext_sha256 || String(plain.length) !== p.plaintext_size_bytes) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} plaintext mismatch`, "restoring gitvault objects");
@@ -5131,6 +5372,143 @@ export class GitvaultVault {
     // WAL pack again is the existing, already-safe wholesale behavior.
     await writeGitvaultRestoreMarker(targetRepoDir, newest.generation, newest.head_sha256);
     return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
+  }
+
+  /**
+   * `newest.epoch_keys_hex[epoch]`, decoded — the D194 per-carrying-head key
+   * lookup shared by {@link applyRestoreHeads} and {@link verifyRestorePlan}.
+   * `newest.epoch_keys_hex` is the FULL map `materialize()` resolved
+   * (throwing `GITVAULT_EPOCH_NOT_OPENABLE` fail-closed if any needed epoch
+   * could not be opened), so every lookup through this helper is guaranteed
+   * present.
+   */
+  private epochKeyFor(newest: GitvaultMaterializedState, epoch: string): Uint8Array {
+    const hex = newest.epoch_keys_hex[epoch];
+    if (!hex) fail("GITVAULT_EPOCH_NOT_OPENABLE", `no locally known key for epoch ${epoch} while restoring objects`, "restoring gitvault objects", { epoch });
+    return hexToBytes(hex);
+  }
+
+  /**
+   * Verify a restore plan's heads (self-consistency + backward chain-link +
+   * cross-check against the caller's own already-verified `newest`, plus
+   * genesis/boundary linkage) and, when the boundary carries a checkpoint,
+   * its claim set + manifest (signature, cross-equality) — the SAME
+   * obligations {@link applyRestoreHeads}'s ordinary path runs, against
+   * plan-supplied bytes instead of network-fetched ones (design D5: "the
+   * plan is transport, never trust"). Returns `null` on ANY failure — a
+   * self-inconsistent head, a broken link, a wrong newest, a bad signature,
+   * a cross-equality mismatch, anything the reused `decodeCarrierFrame`/
+   * `checkClaimSetEquality` reject — rather than throwing, so the caller's
+   * fallback to the ordinary walk is unconditional and silent, mirroring
+   * `assembleVaultStateDelta`'s own disqualification posture server-side.
+   *
+   * Heads that verify their OWN chain link (Stage A) are cache-warmed into
+   * {@link walkPrefetch} BEFORE Stage B (the checkpoint) runs, so a
+   * checkpoint failure still leaves the fallback walk with every head this
+   * call already proved — the D3 cache-hit discipline, extended to a failed
+   * plan.
+   */
+  private async verifyRestorePlan(
+    plan: GitvaultVaultRestorePlan,
+    newest: GitvaultMaterializedState,
+    writerKey: string,
+  ): Promise<{ heads: GitvaultHead[]; checkpoint: { claimSet: GitvaultCheckpointClaimSet; manifest: GitvaultCheckpointManifest } | null } | null> {
+    // Every disqualification below is a plain `return null` — never `throw
+    // new Error(...)` (the public-SDK plain-`Error` contract) — so a manual
+    // `for` loop replaces `plan.heads.map(...)`: a `.map()` callback can only
+    // fail its OWN element, never abort the whole computation, and this
+    // function's contract is "any bad element disqualifies the WHOLE plan."
+    // The try/catch below still stands, to catch the genuine exceptions
+    // `parseGitvaultStrict`/`decodeCarrierFrame`/`checkClaimSetEquality`/
+    // `verifyGitvaultObject` can raise (a `fail()`-thrown `Run402Error`, or a
+    // strict-parse rejection) — those are real errors, just ones this method
+    // treats as "the plan didn't verify" rather than propagating.
+    try {
+      if (plan.heads.length === 0) return null;
+      const parsed: { generation: string; bytes: Uint8Array; head: GitvaultHead }[] = [];
+      for (const h of plan.heads) {
+        if (sha256Hex(h.stored_bytes) !== h.stored_bytes_sha256) return null; // self-hash mismatch
+        const head = parseGitvaultStrict(new TextDecoder().decode(h.stored_bytes)) as GitvaultHead;
+        if (head.generation !== h.generation) return null; // generation mismatch
+        parsed.push({ generation: h.generation, bytes: h.stored_bytes, head });
+      }
+      for (let i = 1; i < parsed.length; i++) {
+        if (generationToBigInt(parsed[i]!.generation) !== generationToBigInt(parsed[i - 1]!.generation) + 1n) return null; // span not contiguous
+      }
+      const last = parsed[parsed.length - 1]!;
+      if (last.generation !== newest.generation || sha256Hex(last.bytes) !== newest.head_sha256) return null; // does not match the caller's own verified newest
+      // Backward chain-link, newest to boundary — the SAME hash-equality
+      // check `applyRestoreHeads`'s own backward walk runs (no signature
+      // re-check here: the chain was already fully verified FORWARD by
+      // `materialize()`/`verifyToNewest()` before this ever runs — see that
+      // method's own doc comment on why its backward walk is a hash-only
+      // re-confirmation, not a re-verification).
+      for (let i = parsed.length - 1; i >= 1; i--) {
+        if (parsed[i]!.head.prev_sha256 !== sha256Hex(parsed[i - 1]!.bytes)) return null; // chain link broken
+      }
+      const first = parsed[0]!;
+      if (plan.boundary_generation === GITVAULT_GENESIS_GENERATION) {
+        if (first.generation !== "0000000000000001") return null; // genesis boundary mismatch
+        const { sha256: genesisSha } = await this.genesis();
+        if (first.head.prev_sha256 !== genesisSha) return null; // generation 1 does not link to genesis
+      } else {
+        if (first.generation !== plan.boundary_generation || !first.head.checkpoint) return null; // boundary does not carry a checkpoint
+      }
+
+      // Stage A verified — cache-warm every plan head regardless of Stage B's
+      // outcome below (D3: a failed plan still costs the fallback nothing it
+      // already proved).
+      if (!this.walkPrefetch) this.walkPrefetch = new Map();
+      for (const p of parsed) this.walkPrefetch.set(gitvaultPaths.head(p.generation), p.bytes);
+
+      let checkpoint: { claimSet: GitvaultCheckpointClaimSet; manifest: GitvaultCheckpointManifest } | null = null;
+      if (first.head.checkpoint) {
+        if (!plan.checkpoint) return null; // boundary head carries a checkpoint but the plan carries none
+        const claimReceipt = first.head.checkpoint.claim_set;
+        if (plan.checkpoint.claim_set.object_id !== claimReceipt.object_id) return null; // claim set id mismatch
+        if (sha256Hex(plan.checkpoint.claim_set.stored_bytes) !== claimReceipt.stored_bytes_sha256) return null; // claim set hash mismatch
+        const claimSet = parseGitvaultStrict(new TextDecoder().decode(plan.checkpoint.claim_set.stored_bytes)) as GitvaultCheckpointClaimSet;
+        if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) return null; // claim set signature fails
+        if (claimSet.manifest_receipt.object_id !== plan.checkpoint.manifest.object_id) return null; // manifest id mismatch
+        // Reuses `decodeCarrierFrame` verbatim — ciphertext hash, AEAD open,
+        // and identity/signature checks all run exactly as they would for a
+        // network-fetched manifest frame; the only difference is where the
+        // ciphertext bytes came from.
+        const manifest = this.decodeCarrierFrame<GitvaultCheckpointManifest>("checkpoint_manifest", claimSet.manifest_receipt, plan.checkpoint.manifest.stored_bytes, writerKey, { epoch: first.head.epoch, k_repo: this.epochKeyFor(newest, first.head.epoch) });
+        checkClaimSetEquality(claimSet, manifest, first.head.checkpoint.covers_through_generation);
+        checkpoint = { claimSet, manifest };
+      }
+      return { heads: parsed.map((p) => p.head), checkpoint };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Consume a stashed restore plan (gitvault-restore-recipe design D1-D6):
+   * verify it ({@link verifyRestorePlan}) and, on success, apply it via the
+   * SAME shared tail the backward walk uses ({@link applyRestoreHeads}) —
+   * `null` on absence or ANY verification failure, the caller's cue to run
+   * (or continue) the ordinary walk. Clears `this.stateRestorePlan`
+   * unconditionally: a plan is single-use whether it verified or not (a
+   * failed plan's USABLE heads already rode into `walkPrefetch` inside
+   * `verifyRestorePlan` itself).
+   */
+  private async tryConsumeRestorePlan(
+    targetRepoDir: string,
+    newest: GitvaultMaterializedState,
+    writerKey: string,
+  ): Promise<{ refs: GitvaultRefMap; head_target: GitvaultHeadTarget; generation: string; retained_refs: GitvaultRetainedRefsReconcileResult } | null> {
+    const plan = this.stateRestorePlan;
+    this.stateRestorePlan = null;
+    if (!plan) return null;
+    const verified = await this.verifyRestorePlan(plan, newest, writerKey);
+    if (!verified) return null;
+    const planPacks = new Map<string, Uint8Array>();
+    for (const p of plan.packs) {
+      if (p.bytes) planPacks.set(`${p.object_kind}:${p.object_id}`, p.bytes);
+    }
+    return this.applyRestoreHeads(targetRepoDir, verified.heads, false, newest, writerKey, verified.checkpoint, planPacks);
   }
 
   // ── compaction headroom grant (gitvault-checkpoint-cadence design D3) ──

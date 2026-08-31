@@ -35,11 +35,13 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GITVAULT_TRANSPORT_CONCURRENCY, GitvaultVault, readGitvaultRestoreMarker } from "./gitvault-publication.js";
+import { GITVAULT_TRANSPORT_CONCURRENCY, GitvaultVault, gitvaultPaths, readGitvaultRestoreMarker } from "./gitvault-publication.js";
+import type { GitvaultTransport } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
 import { commitFile, git, makeVault } from "./gitvault-memory-transport.test.js";
 import { GitvaultOpCounter, assertOpBudget, countingGitvaultTransport } from "./gitvault-transport-counter.test-helper.js";
+import { GITVAULT_GENESIS_GENERATION, sha256Hex } from "../namespaces/gitvault.crypto.js";
 
 /**
  * gitvault-clone-scaling: an overlap gauge on `getObject` — the honest
@@ -288,6 +290,159 @@ describe("gitvault round-trip budgets (client-surface spec's counted contract)",
     const restored = await vault.restoreObjectsInto(target);
     assert.deepEqual(restored.refs, { "refs/heads/main": c1 });
     assertOpBudget(counter, 2, "up-to-date fetch");
+  });
+});
+
+// ─── gitvault-restore-recipe: the clone/wholesale-restore row (task 2.3) ─────
+
+describe("gitvault-restore-recipe: the clone row (client-surface spec's counted contract)", () => {
+  /**
+   * Build a genesis-fallback restore plan straight from the fixture's own
+   * (uncounted) storage — heads `1..newest` plus every WAL pack they
+   * reference — exactly the shape a real gateway's `assembleVaultRestorePlan`
+   * would assemble server-side for a checkpoint-free chain. `bytes` on
+   * every pack entry mirrors an ALL-INLINE plan response (the client-side
+   * decode a real `createGitvaultHttpTransport` would have already resolved
+   * `inline` bytes into — see `getVaultStateOut`'s restore_plan decode).
+   */
+  async function buildGenesisFallbackPlan(transport: GitvaultTransport, repoId: string, newestGeneration: string) {
+    const newestBig = BigInt(`0x${newestGeneration}`);
+    const gens: string[] = [];
+    for (let v = 1n; v <= newestBig; v++) gens.push(v.toString(16).padStart(16, "0"));
+    const headBytesList = await Promise.all(gens.map((g) => transport.getObject({ repo_id: repoId, path: gitvaultPaths.head(g) })));
+    const heads = gens.map((g, i) => {
+      const bytes = headBytesList[i]!;
+      return { generation: g, stored_bytes: bytes, stored_bytes_sha256: sha256Hex(bytes) };
+    });
+    const walIds: string[] = [];
+    const seen = new Set<string>();
+    for (const bytes of headBytesList) {
+      const json = JSON.parse(new TextDecoder().decode(bytes!)) as { wal_entries: Array<{ object_id: string }> };
+      for (const e of json.wal_entries) {
+        if (!seen.has(e.object_id)) {
+          seen.add(e.object_id);
+          walIds.push(e.object_id);
+        }
+      }
+    }
+    const packBytesList = walIds.length > 0 ? await transport.getObjects({ repo_id: repoId, paths: walIds.map((id) => gitvaultPaths.wal(id)) }) : [];
+    const packs = walIds.map((id, i) => ({ object_kind: "wal_pack", object_id: id, bytes: packBytesList[i] ?? null }));
+    return { boundary_generation: GITVAULT_GENESIS_GENERATION, heads, checkpoint: null, packs };
+  }
+
+  /**
+   * Wrap `inner` so `getState({restore: true})` additionally answers with
+   * `plan()` — modelling a capable gateway's response. The injection runs
+   * AFTER the real (uncounted, in-memory) `getState` call completes, so the
+   * counting wrapper sees exactly the ONE `getState` op a real HTTP
+   * transport would cost for an all-inline plan — no separate presign, no
+   * extra round trip (the gateway already presigned/inlined everything
+   * server-side building the plan).
+   */
+  function planServingTransport(inner: GitvaultTransport, plan: () => Awaited<ReturnType<typeof buildGenesisFallbackPlan>> | null): GitvaultTransport {
+    return new Proxy(inner, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (prop !== "getState") return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+        return async (req: { repo_id: string; since?: string; restore?: boolean }) => {
+          const state = await (value as (...a: unknown[]) => Promise<Awaited<ReturnType<GitvaultTransport["getState"]>>>).call(target, req);
+          if (!req.restore) return state;
+          const p = plan();
+          return p ? { ...state, restore_plan: p } : state;
+        };
+      },
+    });
+  }
+
+  it("a fresh-target clone with a qualifying all-inline plan completes in ≤3 counted ops, zero pack fetches", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    const c3 = await commitFile(f.repoDir, "c.txt", "c\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c2, new_oid: c3, force: false }] } });
+
+    const record = await f.transport.getVaultRecord({ repo_id: f.repoId });
+    const plan = await buildGenesisFallbackPlan(f.transport, f.repoId, record.newest_generation!);
+
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-clone-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+
+    const counter = new GitvaultOpCounter();
+    const countedTransport = countingGitvaultTransport(planServingTransport(f.transport, () => plan), counter);
+    // Address resolution (design D6): a fresh clone target carries no
+    // git-config pin, so the SAME online project lookup `resolveGitvaultAddress`
+    // would fall through to — one real transport op, counted like any other.
+    const resolved = await countedTransport.findVaultByProject({ project_id: "proj_1" });
+    const vault = GitvaultVault.open({ keystore: f.keystore, transport: countedTransport, repo_id: resolved.repo_id });
+
+    // list → fetch, exactly the remote-helper session's shape (`runList`
+    // sends `restore: true` on a marker-absent materialize; `runFetch`
+    // reuses that response instead of a second read).
+    const marker = await readGitvaultRestoreMarker(target);
+    assert.equal(marker, null, "a genuinely fresh target has no restore marker");
+    const listState = await vault.materialize({ restore: true });
+    const restored = await vault.restoreObjectsInto(target, { marker, state: listState });
+
+    assert.deepEqual(restored.refs, { "refs/heads/main": c3 });
+    const byKind = counter.byKind();
+    assert.equal(byKind["object-reads-batch(get)"] ?? 0, 0, "an all-inline plan fetches zero pack bytes");
+    assert.equal(byKind["object-read(presign+get)"] ?? 0, 0, "an all-inline plan fetches zero pack bytes");
+    assert.equal(byKind.getObjects ?? 0, 0, "an all-inline plan never calls getObjects for WAL/checkpoint packs");
+    assertOpBudget(counter, 3, "fresh-target clone with a qualifying all-inline plan");
+  });
+
+  it("a lying restore plan falls back to the ordinary walk — same restored result, no extra counted ops over today's walk", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    const c3 = await commitFile(f.repoDir, "c.txt", "c\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c2, new_oid: c3, force: false }] } });
+
+    const record = await f.transport.getVaultRecord({ repo_id: f.repoId });
+    const goodPlan = await buildGenesisFallbackPlan(f.transport, f.repoId, record.newest_generation!);
+    // Corrupt the boundary head's self-declared hash — fails `verifyRestorePlan`'s
+    // very first check (self-hash mismatch), so the WHOLE plan is discarded
+    // (never a partial application), and the caller falls all the way back
+    // to today's backward walk.
+    const lyingPlan = { ...goodPlan, heads: [{ ...goodPlan.heads[0]!, stored_bytes_sha256: "0".repeat(64) }, ...goodPlan.heads.slice(1)] };
+
+    // Baseline: the SAME clone with NO plan-serving wrapper at all — today's
+    // walk, unchanged by this feature's existence.
+    const baselineTarget = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-clone-baseline-"));
+    t.after(() => rmSync(baselineTarget, { recursive: true, force: true }));
+    mkdirSync(baselineTarget, { recursive: true });
+    await git(baselineTarget, ["init", "-q", "--bare", "."]);
+    const baselineCounter = new GitvaultOpCounter();
+    const baselineTransport = countingGitvaultTransport(f.transport, baselineCounter);
+    const baselineVault = GitvaultVault.open({ keystore: f.keystore, transport: baselineTransport, repo_id: f.repoId });
+    const baselineMarker = await readGitvaultRestoreMarker(baselineTarget);
+    const baselineListState = await baselineVault.materialize({ restore: true });
+    const baselineRestored = await baselineVault.restoreObjectsInto(baselineTarget, { marker: baselineMarker, state: baselineListState });
+
+    // Lying-plan run: a fresh target + fresh counter, wrapped to serve the
+    // corrupted plan.
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-clone-lying-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    const counter = new GitvaultOpCounter();
+    const countedTransport = countingGitvaultTransport(planServingTransport(f.transport, () => lyingPlan), counter);
+    const vault = GitvaultVault.open({ keystore: f.keystore, transport: countedTransport, repo_id: f.repoId });
+    const marker = await readGitvaultRestoreMarker(target);
+    const listState = await vault.materialize({ restore: true });
+    const restored = await vault.restoreObjectsInto(target, { marker, state: listState });
+
+    assert.deepEqual(restored.refs, baselineRestored.refs, "the lying plan lands the identical result as today's walk");
+    assert.deepEqual(restored.refs, { "refs/heads/main": c3 });
+    assert.equal(counter.total, baselineCounter.total, "a lying plan costs no extra counted ops over today's walk shape");
   });
 });
 
