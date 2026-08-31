@@ -22,7 +22,7 @@
  * objects are already capped well under S3's 5 GiB single-PUT limit by the
  * protocol's own object-size bounds (§4.6/§4.7).
  */
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -37,6 +37,22 @@ function fail(code: string, message: string, context: string, details?: unknown,
 
 export interface GitvaultMirrorObjectMeta {
   size_bytes: string;
+}
+
+/**
+ * gitvault-byo-primary-bucket task 3.1 — allocation-time bucket probe
+ * (design D6): does this destination honor create-only `if-none-match`
+ * writes, is bucket versioning off, and is a write actually permitted? Every
+ * property is checked independently so a refusal names EXACTLY which one
+ * failed, never a bundled "something is wrong". `detail` carries the
+ * underlying HTTP/network fact for the property that failed — never a
+ * credential, never bytes.
+ */
+export interface GitvaultBucketProbeResult {
+  write_permitted: boolean;
+  create_only_honored: boolean;
+  versioning_off: boolean;
+  detail?: string;
 }
 
 /**
@@ -62,6 +78,18 @@ export interface GitvaultMirrorBackend {
   putCreateOnly(key: string, bytes: Uint8Array): Promise<{ created: boolean }>;
   /** Every key under `prefix` (default: every key in the mirror), sorted. */
   list(prefix?: string): Promise<string[]>;
+  /**
+   * gitvault-byo-primary-bucket task 3.1 — the allocation-time bucket-policy
+   * probe (design D6): create-only `if-none-match` honored, versioning off,
+   * write permitted. Never throws on a failed property — it REPORTS the
+   * three independent facts; the caller ({@link probeGitvaultByoDestination}
+   * in `gitvault-byo-probe.js`) decides whether to refuse and names which
+   * property failed. A backend implementation MAY throw for a genuinely
+   * unexpected transport failure (network/DNS) rather than reporting a
+   * property as false — the caller treats a thrown probe identically to a
+   * failed one.
+   */
+  probeWritePolicy(): Promise<GitvaultBucketProbeResult>;
 }
 
 // ─── Directory backend ────────────────────────────────────────────────────────
@@ -143,6 +171,25 @@ export class DirectoryMirrorBackend implements GitvaultMirrorBackend {
     };
     walk(this.root, "");
     return out.filter((k) => k.startsWith(prefix)).sort();
+  }
+
+  /**
+   * A local (or network-mounted) directory trivially satisfies every
+   * property: there is no versioning concept, and create-only is REAL
+   * create-only (see the class doc). `write_permitted` is still actually
+   * EXERCISED (not assumed) — a read-only mount or missing permission fails
+   * it honestly rather than reporting a directory backend as always-write.
+   */
+  async probeWritePolicy(): Promise<GitvaultBucketProbeResult> {
+    const key = `_byo-probe/${randomBytes(16).toString("hex")}`;
+    try {
+      const first = await this.putCreateOnly(key, new TextEncoder().encode("gitvault-byo-primary-bucket allocation probe"));
+      if (!first.created) return { write_permitted: false, create_only_honored: false, versioning_off: true, detail: "probe key already existed (unexpected — a fresh random key collided)" };
+      const second = await this.putCreateOnly(key, new TextEncoder().encode("gitvault-byo-primary-bucket allocation probe — second write"));
+      return { write_permitted: true, create_only_honored: !second.created, versioning_off: true };
+    } catch (e) {
+      return { write_permitted: false, create_only_honored: false, versioning_off: true, detail: e instanceof Error ? e.message : String(e) };
+    }
   }
 }
 
@@ -354,6 +401,76 @@ export class S3MirrorBackend implements GitvaultMirrorBackend {
     }
     return out.sort();
   }
+
+  /**
+   * gitvault-byo-primary-bucket task 3.1 (design D6). Deliberately does NOT
+   * reuse {@link putCreateOnly}'s own read-and-compare fallback for a bucket
+   * that rejects the `if-none-match` header (400/501): that fallback is a
+   * best-effort DEGRADATION for ordinary writes, and the whole point of the
+   * probe is to report the STRICT signal — does this bucket actually
+   * enforce atomic create-only writes — so a bucket that cannot even
+   * understand the condition is correctly reported as NOT honoring it,
+   * never silently upgraded to "fine, we'll compare after the fact".
+   *
+   * Runs two independent PUTs at the SAME probe key (create-only, `p1` then
+   * `p2` bytes): the first proves `write_permitted`; the second, at the
+   * SAME key, proves `create_only_honored` — a bucket that lets the second
+   * PUT succeed is silently overwriting, exactly the hazard §3's
+   * "versioning disabled + mandatory if-none-match" profile exists to rule
+   * out. `versioning_off` is a SEPARATE bucket-level `GET ?versioning` call
+   * — a bucket whose versioning state cannot even be READ (e.g. missing
+   * `s3:GetBucketVersioning`) is conservatively reported as NOT off, per the
+   * fail-closed doctrine (D6): "no vault half-exists" beats "probably fine".
+   * "Suspended" versioning is treated as compliant — the hazard the profile
+   * guards against (a create-only PUT silently becoming a new object
+   * version instead of a real conflict) applies only to `Enabled`.
+   */
+  async probeWritePolicy(): Promise<GitvaultBucketProbeResult> {
+    const key = `_byo-probe/${randomBytes(16).toString("hex")}`;
+    const creds = this.creds();
+    let writePermitted = false;
+    let createOnlyHonored = false;
+    let detail: string | undefined;
+    try {
+      const first = await s3Request({
+        method: "PUT", bucket: this.bucket, region: this.region, endpoint: this.endpoint, key: this.fullKey(key), credentials: creds,
+        body: new TextEncoder().encode("gitvault-byo-primary-bucket allocation probe"),
+        extraHeaders: { "if-none-match": "*" },
+      });
+      if (!first.ok) {
+        detail = `probe PUT failed (HTTP ${first.status})`;
+      } else {
+        writePermitted = true;
+        const second = await s3Request({
+          method: "PUT", bucket: this.bucket, region: this.region, endpoint: this.endpoint, key: this.fullKey(key), credentials: creds,
+          body: new TextEncoder().encode("gitvault-byo-primary-bucket allocation probe — second write"),
+          extraHeaders: { "if-none-match": "*" },
+        });
+        // 412/409: the condition was evaluated and correctly refused the
+        // overwrite — honored. Anything else (2xx overwrote it; 400/501 the
+        // bucket did not understand the condition at all) is NOT honored.
+        createOnlyHonored = second.status === 412 || second.status === 409;
+        if (!createOnlyHonored) detail = second.ok ? "a second create-only PUT to the same key succeeded — this bucket does not enforce if-none-match" : `the condition was not understood (HTTP ${second.status})`;
+      }
+    } catch (e) {
+      detail = e instanceof Error ? e.message : String(e);
+    }
+    const versioning = await this.probeVersioningOff(creds);
+    const combinedDetail = [detail, versioning.detail].filter(Boolean).join("; ") || undefined;
+    return { write_permitted: writePermitted, create_only_honored: createOnlyHonored, versioning_off: versioning.off, ...(combinedDetail ? { detail: combinedDetail } : {}) };
+  }
+
+  private async probeVersioningOff(creds: Sigv4Credentials): Promise<{ off: boolean; detail?: string }> {
+    try {
+      const r = await s3Request({ method: "GET", bucket: this.bucket, region: this.region, endpoint: this.endpoint, key: "", query: { versioning: "" }, credentials: creds });
+      if (!r.ok) return { off: false, detail: `bucket versioning could not be read (HTTP ${r.status}) — cannot confirm it is disabled` };
+      const xml = await r.text();
+      const enabled = /<Status>\s*Enabled\s*<\/Status>/.test(xml);
+      return enabled ? { off: false, detail: "bucket versioning is Enabled" } : { off: true };
+    } catch (e) {
+      return { off: false, detail: `bucket versioning could not be read: ${e instanceof Error ? e.message : String(e)} — cannot confirm it is disabled` };
+    }
+  }
 }
 
 function decodeXmlEntities(s: string): string {
@@ -382,6 +499,24 @@ export function openGitvaultMirrorBackend(destination: GitvaultMirrorDestination
 }
 
 /**
+ * gitvault-byo-primary-bucket task 3.1 — open a backend at the DESTINATION
+ * ROOT, with no `source/<repo_id>` scoping. Two callers need this shape,
+ * both because `repo_id` is not (yet) in scope: the allocation-time probe
+ * (a fresh destination has no repo_id until allocation MINTS one — the
+ * probe writes/reads a `_byo-probe/<random>` key at the destination's own
+ * root, never colliding with any vault's `source/<repo_id>/` prefix), and
+ * BYO payload writes (task 3.2), whose server-issued `key` already carries
+ * the full `source/<repo_id>/...` path — this is the SAME opener
+ * {@link discoverMirroredRepoIds} already used inline for mirror discovery,
+ * factored out here so it has one implementation instead of two.
+ */
+export function openGitvaultDestinationBackend(destination: GitvaultMirrorDestination, credential?: GitvaultMirrorCredential): GitvaultMirrorBackend {
+  if (destination.kind === "directory") return new DirectoryMirrorBackend(destination.path);
+  if (!credential) fail("GITVAULT_MIRROR_CREDENTIAL_REQUIRED", "an s3 destination needs a credential", "opening gitvault destination backend");
+  return new S3MirrorBackend(destination.bucket, destination.prefix, destination.region, credential, destination.endpoint);
+}
+
+/**
  * List every `repo_id` mirrored under a destination's root (`source/<repo_id>/…`),
  * WITHOUT repo-scoping the backend first — the discovery step `recover
  * <source>` needs before it can even open the repo-scoped backend {@link
@@ -389,12 +524,7 @@ export function openGitvaultMirrorBackend(destination: GitvaultMirrorDestination
  * destination URL (no `--repo`) names.
  */
 export async function discoverMirroredRepoIds(destination: GitvaultMirrorDestination, credential?: GitvaultMirrorCredential): Promise<string[]> {
-  const root: GitvaultMirrorBackend = destination.kind === "directory"
-    ? new DirectoryMirrorBackend(destination.path)
-    : (() => {
-        if (!credential) fail("GITVAULT_MIRROR_CREDENTIAL_REQUIRED", "an s3 mirror destination needs a credential", "discovering mirrored gitvault repos");
-        return new S3MirrorBackend(destination.bucket, destination.prefix, destination.region, credential, destination.endpoint);
-      })();
+  const root = openGitvaultDestinationBackend(destination, credential);
   const keys = await root.list("source/");
   const ids = new Set<string>();
   for (const key of keys) {

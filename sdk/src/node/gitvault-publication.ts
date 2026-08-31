@@ -40,6 +40,8 @@ import { join } from "node:path";
 import { LocalError, isRun402Error } from "../errors.js";
 import type { Client } from "../kernel.js";
 import { fetchGitvaultObjectBytes } from "./gitvault-edge-fetch.js";
+import { openGitvaultDestinationBackend } from "./gitvault-mirror-backend.js";
+import type { GitvaultMirrorCredential, GitvaultMirrorDestination } from "./gitvault-mirror-config.js";
 import {
   GITVAULT_FORMAT,
   GITVAULT_GENESIS_EPOCH,
@@ -985,8 +987,27 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
    */
   getHeads(request: { repo_id: string; generations: string[] }): Promise<Uint8Array[] | null>;
   listHeads(request: GitvaultHeadsListingRequest & { repo_id: string }): Promise<GitvaultHeadsListingPage>;
-  /** Session → create-only presigned PUTs (`If-None-Match: *`) → finalize; receipts in request order. */
-  uploadObjects(request: { repo_id: string; objects: GitvaultUploadObject[]; resource_binding?: GitvaultResourceBinding }): Promise<GitvaultUploadReceipt[]>;
+  /**
+   * Session → create-only presigned PUTs (`If-None-Match: *`) → finalize;
+   * receipts in request order.
+   *
+   * gitvault-byo-primary-bucket task 3.2 — `byo`, when present, marks this
+   * vault as `storage_profile: "byo"` and names where the CLIENT itself
+   * writes payload-kind objects directly (never through run402's own
+   * bucket): the inline-upload fast path is skipped entirely (a BYO vault
+   * refuses inline bytes-in-body — the transport shape itself would route
+   * payload bytes through run402), every session object with `put: null`
+   * is written by THIS caller straight to `byo.destination` with
+   * `byo.credential` (resolved at use time, never transmitted), and
+   * finalize carries the resulting per-object attestations. Omitted (the
+   * default) is byte-identical to today.
+   */
+  uploadObjects(request: {
+    repo_id: string;
+    objects: GitvaultUploadObject[];
+    resource_binding?: GitvaultResourceBinding;
+    byo?: { destination: GitvaultMirrorDestination; credential?: GitvaultMirrorCredential };
+  }): Promise<GitvaultUploadReceipt[]>;
   admitHead(request: GitvaultAdmitHeadRequest): Promise<GitvaultAdmitHeadResult>;
   requestRetentionCutoff(request: { repo_id: string; base_head_sha256: string }): Promise<GitvaultRetentionCutoffIssued>;
   exchangeActivationToken(request: { repo_id: string; operation_id: string; capture_receipt: GitvaultCaptureReceipt }): Promise<GitvaultActivationToken>;
@@ -1218,6 +1239,16 @@ export interface GitvaultVaultRecord {
   gc_epoch: string;
   repair_version: string;
   repair_fence_state: string;
+  /**
+   * gitvault-byo-primary-bucket task 3.1/3.5 (protocol-v0.md rev 46 §9.2,
+   * D220). Absent-or-`"managed"` is BYTE-IDENTICAL to every vault allocated
+   * before this fold. `byo_destination` is the destination's ADDRESS ONLY
+   * (never credential material) and is non-null iff `storage_profile ===
+   * "byo"`. Chosen at allocation only in v1 — no route flips it on an
+   * existing vault.
+   */
+  storage_profile?: "managed" | "byo";
+  byo_destination?: string | null;
   storage: { source_bytes: string; open_session_reserved_bytes: string; objects: Record<string, string> };
   maintenance: {
     lease: { maintenance_lease_id: string; base_head_sha256: string; reservation_size_bytes: string; expires_at: string | null; hard_deadline_at: string | null } | null;
@@ -1265,10 +1296,25 @@ export interface GitvaultHttpTransportOptions {
 
 interface UploadSessionResponse {
   upload_session_id: string;
-  objects: Array<GitvaultObjectReadRequest & { put: { url: string; headers?: Record<string, string> } }>;
+  /**
+   * gitvault-byo-primary-bucket task 3.2 — `put` is `null` for a BYO
+   * vault's payload objects (the platform mints no presigned staging URL
+   * into its own bucket for these); `key` is present ONLY alongside a
+   * `null` `put` and names the FULL relative-to-`byo_destination` key the
+   * client must create-only PUT to, matching the customer bucket's own
+   * `source/<repo_id>/...` layout — see the module doc's BYO write path.
+   */
+  objects: Array<GitvaultObjectReadRequest & { put: { url: string; headers?: Record<string, string> } | null; key?: string }>;
 }
 interface FinalizeResponse {
-  receipts: Array<GitvaultObjectReadRequest & { stored_bytes_sha256?: string; ciphertext_sha256?: string; size_bytes: string }>;
+  receipts: Array<GitvaultObjectReadRequest & { stored_bytes_sha256?: string; ciphertext_sha256?: string; size_bytes: string; storage_verification?: "gateway" | "client_attested" }>;
+}
+/** gitvault-byo-primary-bucket task 3.2 (D219) — one client-submitted per-object attestation, echoed back from the session's OWN declared manifest values (never re-derived from the write). */
+interface ByoUploadAttestation {
+  key: string;
+  sha256: string;
+  size_bytes: string;
+  create_only_result: "created";
 }
 interface ObjectReadsResponse {
   /**
@@ -1608,13 +1654,24 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     });
   }
 
-  async function upload(repoId: string, objects: GitvaultUploadObject[], resourceBinding?: GitvaultResourceBinding): Promise<GitvaultUploadReceipt[]> {
+  async function upload(
+    repoId: string,
+    objects: GitvaultUploadObject[],
+    resourceBinding?: GitvaultResourceBinding,
+    byo?: { destination: GitvaultMirrorDestination; credential?: GitvaultMirrorCredential },
+  ): Promise<GitvaultUploadReceipt[]> {
     if (objects.length === 0) return [];
     // The manifest is closed-key: `path` is client-local and MUST NOT ride the
     // wire — the control plane derives the bucket key itself and refuses an
     // entry carrying an unexpected member.
     const entries = objects.map((o) => gitvaultManifestEntry(o));
-    if (gitvaultInlineUploadEligible(objects)) {
+    // gitvault-byo-primary-bucket task 3.2: the inline (bytes-in-body) fast
+    // path is NEVER used for a BYO vault, even when the payload is small
+    // enough to be eligible — that transport writes bytes into run402's own
+    // bucket, exactly what the credential model forbids (the gateway
+    // refuses it too, VALIDATION_FAILED, so skipping it here is purely a
+    // wasted-round-trip avoidance, not a correctness dependency).
+    if (!byo && gitvaultInlineUploadEligible(objects)) {
       // gitvault-composite-state-read design D2: every object fits under the
       // caps — one POST, bytes verified + written server-side, and the
       // response IS the finalize response (no session, no PUTs, no separate
@@ -1633,12 +1690,49 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       context: "opening gitvault upload session",
     });
     const issued = new Map(session.objects.map((u) => [gitvaultLedgerId(u), u]));
+    // gitvault-byo-primary-bucket task 3.2 — one backend, opened ONCE, for
+    // every BYO payload object this session names; `null` `put` never
+    // appears in the session response unless `byo` was supplied (the
+    // gateway only mints `put: null` for a vault whose storage_profile is
+    // "byo", which is exactly when THIS caller must have supplied `byo`
+    // too — see the resolution in `GitvaultVault.uploadAll`).
+    const byoBackend = byo ? openGitvaultDestinationBackend(byo.destination, byo.credential) : null;
+    const byoAttestations: ByoUploadAttestation[] = [];
     // Independent create-only PUTs within one session (design D2) — bounded
     // concurrency, same limit as the batched object reads below.
     await mapBounded(objects, GITVAULT_TRANSPORT_CONCURRENCY, async (o, i) => {
       const id = gitvaultLedgerId(entries[i]!);
       const target = issued.get(id);
       if (!target) fail("GITVAULT_UPLOAD_SESSION_INVALID", `the session issued no upload for ${id}`, "uploading gitvault objects", { object_id: id, path: o.path });
+      if (target.put === null) {
+        // BYO payload object (task 2.2's GITVAULT_BYO_PAYLOAD_KINDS
+        // partition, mirrored client-side by the server's own `put: null` +
+        // `key` shape) — the client writes DIRECTLY to its own bucket. No
+        // request to run402 ever carries a customer-bucket credential; no
+        // request to run402 ever carries these bytes either.
+        if (!byoBackend || !target.key) {
+          fail("GITVAULT_BYO_BUCKET_WRITE_REFUSED", `the session named ${o.path} as a BYO-written object but no BYO write target was resolved`, "uploading gitvault objects", { path: o.path, object_id: id });
+        }
+        let put: { created: boolean };
+        try {
+          put = await byoBackend.putCreateOnly(target.key, o.bytes);
+        } catch (e) {
+          fail("GITVAULT_BYO_BUCKET_WRITE_REFUSED", `writing ${o.path} to the BYO destination failed: ${e instanceof Error ? e.message : String(e)}`, "uploading gitvault objects", { path: o.path, key: target.key });
+        }
+        if (!put.created) {
+          // create-only: the key already exists — legal ONLY if it is
+          // byte-identical (an idempotent retry of THIS SAME write; a
+          // permanent object id is never legitimately reused for
+          // different bytes — matches the managed presigned-PUT read-and-
+          // compare branch below, and the gateway's own attestation rule).
+          const existing = await byoBackend.get(target.key);
+          if (!existing || sha256Hex(existing) !== o.sha256) {
+            fail("GITVAULT_BYO_BUCKET_WRITE_REFUSED", `${o.path} already exists in the BYO destination with different bytes`, "uploading gitvault objects", { path: o.path, key: target.key });
+          }
+        }
+        byoAttestations.push({ key: target.key, sha256: o.sha256, size_bytes: o.size_bytes, create_only_result: "created" });
+        return;
+      }
       // `If-None-Match: *` (create-only) and the FULL_OBJECT `x-amz-checksum-sha256`
       // are SIGNED INTO the presigned URL, so they must go out exactly as the
       // server issued them — a dropped or altered header is a signature
@@ -1658,7 +1752,13 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       }
       if (!r.ok) fail("GITVAULT_UPLOAD_FAILED", `presigned PUT failed (HTTP ${r.status}) for ${o.path}`, "uploading gitvault objects", { path: o.path, status: r.status });
     });
-    const fin = await client.request<FinalizeResponse>(`${base(repoId)}/upload-sessions/${encodeURIComponent(session.upload_session_id)}/finalize`, { method: "POST", body: {}, context: "finalizing gitvault upload session" });
+    const fin = await client.request<FinalizeResponse>(`${base(repoId)}/upload-sessions/${encodeURIComponent(session.upload_session_id)}/finalize`, {
+      method: "POST",
+      // Only a BYO session ever carries attestations — an ordinary managed
+      // session's finalize body stays `{}`, byte-identical to today.
+      body: byo ? { attestations: byoAttestations } : {},
+      context: "finalizing gitvault upload session",
+    });
     return receiptsFromFinalize(objects, entries, fin);
   }
 
@@ -1689,7 +1789,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       return res.allocation ?? (res as GitvaultAllocation);
     },
     async putObject(request: GitvaultPutObjectRequest): Promise<GitvaultObjectReceipt> {
-      const [r] = await upload(request.repo_id, [{ path: request.path, object_kind: "key_envelope", object_id: null, bytes: request.bytes, sha256: request.expected_sha256, size_bytes: request.expected_size_bytes }]);
+      const [r] = await upload(request.repo_id, [{ path: request.path, object_kind: "key_envelope", object_id: null, bytes: request.bytes, sha256: request.expected_sha256, size_bytes: request.expected_size_bytes }], undefined, request.byo);
       return { stored_bytes_sha256: r!.sha256, size_bytes: r!.size_bytes };
     },
     getObject: ({ repo_id, path }) => getObjectBytes(repo_id, path),
@@ -1714,7 +1814,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       if (request.cursor !== undefined) qs.set("cursor", request.cursor);
       return client.request<GitvaultHeadsListingPage>(`${base(request.repo_id)}/heads?${qs.toString()}`, { context: "listing gitvault heads" });
     },
-    uploadObjects: ({ repo_id, objects, resource_binding }) => upload(repo_id, objects, resource_binding),
+    uploadObjects: ({ repo_id, objects, resource_binding, byo }) => upload(repo_id, objects, resource_binding, byo),
     admitHead: (r) => admit(r.repo_id, r.generation, r.stored_bytes, r.stored_bytes_sha256),
     // Both routes SHIPPED (`routes/gitvault-admission.ts`). `retention-cutoffs`
     // answers `{ticket, receipt, next_actions}`, which IS
@@ -2364,6 +2464,16 @@ export class GitvaultVault {
   private readonly retries: number;
   private readonly servicePublicKey: Uint8Array | string | null;
   private genesisCache: { genesis: GitvaultVaultGenesis; sha256: string } | null = null;
+  /**
+   * gitvault-byo-primary-bucket task 3.2 — this vault's resolved BYO write
+   * target, cached after the first resolution (storage_profile/
+   * byo_destination are immutable-at-allocation in v1, so a single
+   * read-once-per-instance is safe). `undefined` = not yet resolved;
+   * `null` = this machine has no LOCAL BYO write config for this repo
+   * (either an ordinary managed vault, or a BYO vault this machine has not
+   * been configured to write — see {@link resolveByoWriteTarget}).
+   */
+  private byoResolution: { destination: import("./gitvault-mirror-config.js").GitvaultMirrorDestination; credential?: import("./gitvault-mirror-config.js").GitvaultMirrorCredential } | null | undefined = undefined;
 
   constructor(options: GitvaultVaultOptions) {
     this.keystore = options.keystore;
@@ -3325,12 +3435,14 @@ export class GitvaultVault {
         created_at: formatGitvaultTimestamp(this.now()),
       });
       try {
+        const byo = await this.resolveByoWriteTarget();
         await this.transport.putObject({
           repo_id: this.repoId,
           path: gitvaultPaths.envelope(epoch, sealed.receipt.recipient_fingerprint),
           bytes: sealed.stored_bytes,
           expected_sha256: sealed.stored_bytes_sha256,
           expected_size_bytes: sealed.size_bytes,
+          ...(byo ? { byo } : {}),
         });
         wrapped.push({ principal_id: entry.principal_id, ek_fingerprint: entry.ek_fingerprint });
       } catch (e) {
@@ -3685,8 +3797,27 @@ export class GitvaultVault {
 
   // ── upload with receipt-compare ──
 
+  /**
+   * gitvault-byo-primary-bucket task 3.2 — resolve (once, cached) this
+   * machine's local BYO write config for THIS vault. `null` when none is
+   * configured locally — either because this is an ordinary managed vault
+   * (the common case; deliberately never confirmed with a network call, so
+   * a managed vault's push pays zero extra round trips), or because this
+   * machine has not been configured to write a BYO vault it nonetheless
+   * belongs to (surfaced downstream as `GITVAULT_BYO_BUCKET_WRITE_REFUSED`
+   * when the session actually names a `put: null` object with no target).
+   */
+  private async resolveByoWriteTarget(): Promise<{ destination: import("./gitvault-mirror-config.js").GitvaultMirrorDestination; credential?: import("./gitvault-mirror-config.js").GitvaultMirrorCredential } | null> {
+    if (this.byoResolution !== undefined) return this.byoResolution;
+    const { readByoConfig } = await import("./gitvault-byo-config.js");
+    const local = readByoConfig(this.keystore, this.repoId);
+    this.byoResolution = local ? { destination: local.destination, ...(local.credential ? { credential: local.credential } : {}) } : null;
+    return this.byoResolution;
+  }
+
   private async uploadAll(objects: GitvaultUploadObject[]): Promise<void> {
-    const receipts = await this.transport.uploadObjects({ repo_id: this.repoId, objects });
+    const byo = await this.resolveByoWriteTarget();
+    const receipts = await this.transport.uploadObjects({ repo_id: this.repoId, objects, ...(byo ? { byo } : {}) });
     if (receipts.length !== objects.length) fail("GITVAULT_RECEIPT_MISMATCH", `${receipts.length} receipts for ${objects.length} objects`, "comparing finalization receipts");
     const mismatches = objects.filter((o, i) => receipts[i]!.path !== o.path || receipts[i]!.sha256 !== o.sha256 || receipts[i]!.size_bytes !== o.size_bytes);
     if (mismatches.length > 0) {

@@ -96,6 +96,7 @@ import { fetchGitvaultObjectBytes } from "./gitvault-edge-fetch.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { formatMirrorDestination, readMirrorConfig, recordMirrorSuccess, type GitvaultMirrorConfig } from "./gitvault-mirror-config.js";
 import { openGitvaultMirrorBackend, resolveMirrorCredentials, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
+import { readByoConfig } from "./gitvault-byo-config.js";
 
 function fail(code: string, message: string, context: string, details?: unknown, nextActions?: unknown[]): never {
   throw new LocalError(message, context, { code, details, ...(nextActions ? { next_actions: nextActions } : {}) });
@@ -573,4 +574,175 @@ export async function mirrorPushForGeneration(client: Client, repoId: string, op
   } catch (e) {
     return { attempted: true, outcome: "failed", error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// ─── BYO chain-copy dual-write (gitvault-byo-primary-bucket task 3.3) ─────────
+
+/**
+ * The SAME seven payload kinds the gateway's `GITVAULT_BYO_PAYLOAD_KINDS`
+ * names (`services/gitvault/upload-sessions.ts`) — client-written directly
+ * to the BYO destination at push time (task 3.2), so the chain-copy below
+ * MUST skip them (re-copying them here would try to READ them back from
+ * run402, which never held them for a BYO vault, and would 404). Every
+ * OTHER listed kind — the two generation-addressed chain kinds
+ * (`head`/`vault_genesis`, `admission_record`) AND the remaining
+ * chain-adjacent uploadable/gateway-only kinds (`maintenance_stage_*`,
+ * `verifier_receipt`, `retention_cutoff`, `prune_intent`/`prune_completion`,
+ * `maintenance_cycle_*`) — stays run402-authoritative on EVERY vault
+ * regardless of storage_profile (design D1/D9) and is exactly what this
+ * dual-write copies, so the customer bucket alone becomes a complete
+ * `r402s-recover` source.
+ */
+const GITVAULT_BYO_PAYLOAD_OBJECT_KINDS: ReadonlySet<string> = new Set([
+  "wal_pack",
+  "ref_state",
+  "retention_roots",
+  "checkpoint_manifest",
+  "checkpoint_pack",
+  "checkpoint_claim_set",
+  "key_envelope",
+]);
+
+function openByoBackendFromConfig(keystore: GitvaultKeystore, repoId: string): GitvaultMirrorBackend {
+  const config = readByoConfig(keystore, repoId);
+  if (!config) fail("GITVAULT_BYO_NOT_CONFIGURED", `no local BYO write config for ${repoId}`, "opening the gitvault BYO destination", { repo_id: repoId }, [{ action: "run402 repos create --byo <destination> allocated this vault; this machine needs the same destination + credential configured locally to write or dual-push its chain" }]);
+  if (config.destination.kind === "s3" && config.credential) {
+    // Fail fast on a missing/misconfigured credential BEFORE any network
+    // call, same discipline as `openBackendFromConfig` above.
+    resolveMirrorCredentials(config.credential);
+  }
+  return openGitvaultMirrorBackend(config.destination, repoId, config.credential);
+}
+
+/**
+ * `plan.objects`, restricted to the chain-adjacent (NEVER payload) kinds —
+ * the write half of task 3.3. Combined with `plan.admissionsAndHeads`
+ * (already chain-only by construction — see {@link planMirrorWrite}), this
+ * is the FULL signed-chain set a BYO vault's dual-write copies.
+ */
+function chainOnlyEntries(entries: readonly GitvaultObjectEntry[]): GitvaultObjectEntry[] {
+  const plan = planMirrorWrite(entries);
+  return [...plan.objects.filter((e) => !GITVAULT_BYO_PAYLOAD_OBJECT_KINDS.has(e.object_kind)), ...plan.admissionsAndHeads];
+}
+
+/**
+ * `run402 repos create --byo`'s every-push dual-write (task 3.3, design
+ * D1): list the vault's stored objects, restrict to the signed CHAIN
+ * (never the payload kinds, which THIS SAME push already wrote directly to
+ * the destination — task 3.2), diff against the destination by key+size,
+ * fetch (from run402 — the chain stays run402-authoritative) and
+ * hash-verify what's missing, write it in admission order. Resumable and
+ * idempotent, reusing the SAME `reconcileOne` copy primitive and
+ * admission-order discipline the opt-in mirror uses — one implementation,
+ * not a second ordering to prove.
+ */
+export async function byoChainCopySync(client: Client, repoId: string, options: GitvaultMirrorSyncOptions = {}): Promise<GitvaultMirrorSyncSummary> {
+  const keystore = options.keystore ?? GitvaultKeystore.open();
+  const backend = options.backend ?? openByoBackendFromConfig(keystore, repoId);
+  const destination = options.backend ? backend.describe() : formatMirrorDestination(readByoConfig(keystore, repoId)!.destination);
+
+  const ownFingerprint = localEncryptionFingerprint(keystore);
+  const entries = await listGitvaultObjectsAll(client, repoId);
+  const ordered = chainOnlyEntries(entries);
+
+  let copied = 0;
+  let already = 0;
+  let skippedForeign = 0;
+  let failed = 0;
+  let bytesCopied = 0n;
+  const errors: Array<{ key: string; error: string }> = [];
+  const skippedForeignKeys: string[] = [];
+  for (const entry of ordered) {
+    const result = await reconcileOne(client, repoId, backend, entry, ownFingerprint);
+    if (result.outcome === "copied") {
+      copied += 1;
+      bytesCopied += BigInt(entry.size_bytes);
+    } else if (result.outcome === "already_present") {
+      already += 1;
+    } else if (result.outcome === "skipped_foreign_recipient") {
+      skippedForeign += 1;
+      skippedForeignKeys.push(result.key);
+    } else {
+      failed += 1;
+      errors.push({ key: result.key, error: result.error ?? "unknown failure" });
+    }
+  }
+
+  return {
+    repo_id: repoId,
+    destination,
+    objects_listed: ordered.length,
+    objects_copied: copied,
+    objects_already_present: already,
+    objects_skipped_foreign_recipient: skippedForeign,
+    skipped_foreign_recipient_keys: skippedForeignKeys,
+    objects_failed: failed,
+    bytes_copied: bytesCopied.toString(),
+    errors,
+    validity_not_freshness: GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
+    keystore_still_required: GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
+  };
+}
+
+/**
+ * Fires after an ordinary vault push produces a new generation, mirroring
+ * {@link mirrorPushForGeneration}'s exact contract (NEVER throws, NEVER
+ * alters the caller's push outcome — the chain-copy is reported BESIDE it).
+ * Gated on a LOCAL BYO write config existing for this repo — a managed
+ * vault (the common case) pays zero extra network calls, `skipped_no_byo`.
+ */
+export async function byoChainCopyPushForGeneration(client: Client, repoId: string, options: GitvaultMirrorSyncOptions = {}): Promise<GitvaultMirrorPushResult> {
+  let keystore: GitvaultKeystore;
+  try {
+    keystore = options.keystore ?? GitvaultKeystore.open();
+    if (!options.backend && !readByoConfig(keystore, repoId)) {
+      return { attempted: false, outcome: "skipped_no_mirror" };
+    }
+  } catch (e) {
+    return { attempted: false, outcome: "skipped_no_mirror", error: e instanceof Error ? e.message : String(e) };
+  }
+  try {
+    const summary = await byoChainCopySync(client, repoId, { ...options, keystore });
+    return { attempted: true, outcome: summary.objects_failed > 0 ? "failed" : "pushed", summary };
+  } catch (e) {
+    return { attempted: true, outcome: "failed", error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ─── BYO absence adjudication (gitvault-byo-primary-bucket task 3.3, read half) ─
+
+export interface GitvaultByoMissingObject {
+  key: string;
+  object_kind: string;
+}
+
+export interface GitvaultByoPresenceReport {
+  repo_id: string;
+  destination: string;
+  checked: number;
+  missing: GitvaultByoMissingObject[];
+}
+
+/**
+ * Adjudicates the BYO destination against run402's signed chain (task 3.3's
+ * read half, D6): HEAD-checks (cheap, no data transfer) every object the
+ * vault's OWN listing names — payload AND chain alike, since for a BYO
+ * vault the destination is supposed to hold BOTH (payload via task 3.2's
+ * direct write, chain via this file's dual-write above) — against the
+ * destination, by key + size. Never throws on an absence; it REPORTS every
+ * missing object by name so the caller (`repos fsck`) can refuse with
+ * `GITVAULT_BYO_OBJECT_MISSING` naming exactly what the chain says should
+ * exist and does not.
+ */
+export async function verifyByoObjectsPresent(client: Client, repoId: string, options: GitvaultMirrorSyncOptions = {}): Promise<GitvaultByoPresenceReport> {
+  const keystore = options.keystore ?? GitvaultKeystore.open();
+  const backend = options.backend ?? openByoBackendFromConfig(keystore, repoId);
+  const destination = options.backend ? backend.describe() : formatMirrorDestination(readByoConfig(keystore, repoId)!.destination);
+  const entries = await listGitvaultObjectsAll(client, repoId);
+  const missing: GitvaultByoMissingObject[] = [];
+  for (const entry of entries) {
+    const existing = await backend.head(entry.key);
+    if (!existing || existing.size_bytes !== entry.size_bytes) missing.push({ key: entry.key, object_kind: entry.object_kind });
+  }
+  return { repo_id: repoId, destination, checked: entries.length, missing };
 }

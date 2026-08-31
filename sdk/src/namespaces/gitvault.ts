@@ -32,6 +32,8 @@
 import type { Client } from "../kernel.js";
 import { LocalError, isRun402Error } from "../errors.js";
 import {
+  GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT,
+  GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT,
   GITVAULT_DEGRADED_READ_STATEMENT,
   GITVAULT_DURABILITY_STATEMENT,
   GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
@@ -75,6 +77,8 @@ type MirrorConfigModule = typeof import("../node/gitvault-mirror-config.js");
 type MirrorBackendModule = typeof import("../node/gitvault-mirror-backend.js");
 type RecoverModule = typeof import("../node/gitvault-recover.js");
 type DegradedReadModule = typeof import("../node/gitvault-degraded-read.js");
+type ByoConfigModule = typeof import("../node/gitvault-byo-config.js");
+type ByoProbeModule = typeof import("../node/gitvault-byo-probe.js");
 
 /** A keystore path, or `null` when there is no id to derive it from (or it is malformed). */
 function safePath(derive: () => string, repoId: string | null): string | null {
@@ -241,6 +245,15 @@ export interface GitvaultInitResult {
   remote: GitvaultScaffoldRemoteResult | null;
   deduplicated: boolean;
   terminal_loss_statement: typeof GITVAULT_TERMINAL_LOSS_STATEMENT;
+  /**
+   * gitvault-byo-primary-bucket task 3.1/3.5 — the AUTHORITATIVE profile
+   * (read back from the vault record, never assumed from what `init`'s
+   * `byo` option requested). `"managed"` when `byo` was omitted, OR when it
+   * was requested but this project's vault already existed as a managed
+   * one under a different creation attempt.
+   */
+  storage_profile: "managed" | "byo";
+  byo_destination: string | null;
 }
 
 export interface GitvaultCompactResult {
@@ -445,10 +458,18 @@ export interface GitvaultMirrorStatus {
   keystore_still_required: typeof GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT;
 }
 
-/** gitvault-mirror-default — the named standing finding for a vault with no customer-held mirror copy yet. */
+/**
+ * gitvault-mirror-default — the named standing finding for a vault with no
+ * customer-held mirror copy yet. gitvault-byo-primary-bucket task 3.5
+ * widens `message` to the BYO remedy wording ({@link
+ * GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT}) for a BYO vault — it applies
+ * there too (D7): a single-bucket BYO vault has exactly as few copies as an
+ * unmirrored managed one, and the remedy names a SECOND customer-held
+ * location the same way.
+ */
 export interface GitvaultUnmirroredFinding {
   kind: "vault_unmirrored";
-  message: typeof GITVAULT_UNMIRRORED_FINDING_STATEMENT;
+  message: typeof GITVAULT_UNMIRRORED_FINDING_STATEMENT | typeof GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT;
   /** The one command that moves toward clearing it: configure when unconfigured, backfill when configured-but-never-succeeded. */
   setup_command: string;
 }
@@ -712,6 +733,8 @@ export interface GitvaultOrgVaultSummary {
   source_bytes: string;
   genesis_admitted_at: string | null;
   created_at: string;
+  /** gitvault-byo-primary-bucket task 3.5 — absent-or-`"managed"` is byte-identical to today. */
+  storage_profile?: "managed" | "byo";
 }
 export interface GitvaultOrgVaultsListing {
   vaults: GitvaultOrgVaultSummary[];
@@ -1204,16 +1227,41 @@ export class Gitvault {
     remote_name?: string;
     remote_url?: string;
     service_public_key?: Uint8Array | string;
+    /**
+     * gitvault-byo-primary-bucket task 3.1/3.2/3.5 — request a BYO vault.
+     * Same raw-string shape `mirrorSet` already takes (`destination_url` +
+     * `credential` + `region`/`endpoint`), so a CLI edge stays a thin
+     * adapter — no destination parsing lives outside the SDK. Omitted (the
+     * default) is byte-identical to today. This method RUNS the
+     * allocation-time bucket probe (D6) itself, BEFORE any allocation
+     * request — a failed probe throws `GITVAULT_BYO_BUCKET_PROBE_FAILED`
+     * and nothing is created.
+     */
+    byo?: { destination_url: string; credential?: import("../node/gitvault-mirror-config.js").GitvaultMirrorCredential; region?: string; endpoint?: string };
   }): Promise<GitvaultInitResult> {
     const [{ createGitvaultHttpTransport }, { GitvaultKeystore }, { createGitvault }] = await Promise.all([this.#publication(), this.#keystore(), this.#creation()]);
+    const { parseMirrorDestinationUrl, formatMirrorDestination } = await this.#mirrorConfig();
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
+    const transport = createGitvaultHttpTransport(this.#client);
+    let byoWriteTarget: { destination: import("../node/gitvault-mirror-config.js").GitvaultMirrorDestination; credential?: import("../node/gitvault-mirror-config.js").GitvaultMirrorCredential } | undefined;
+    let byoDestinationAddress: string | undefined;
+    if (options.byo) {
+      const destination = parseMirrorDestinationUrl(options.byo.destination_url, { region: options.byo.region, endpoint: options.byo.endpoint });
+      byoWriteTarget = { destination, ...(options.byo.credential ? { credential: options.byo.credential } : {}) };
+      byoDestinationAddress = formatMirrorDestination(destination);
+      // gitvault-byo-primary-bucket task 3.1 (design D6) — probe BEFORE any
+      // allocation request; a failed probe throws and nothing is created.
+      const { probeGitvaultByoDestination } = await this.#byoProbe();
+      await probeGitvaultByoDestination(destination, options.byo.credential);
+    }
     const created: GitvaultCreationResult = await createGitvault({
       keystore,
-      transport: createGitvaultHttpTransport(this.#client),
+      transport,
       org_id: options.org_id,
       project_id: options.project_id,
       ...(options.client_creation_id !== undefined ? { client_creation_id: options.client_creation_id } : {}),
       ...(options.service_public_key !== undefined ? { service_public_key: options.service_public_key } : {}),
+      ...(byoWriteTarget ? { storage_profile: "byo" as const, byo_destination: byoDestinationAddress!, byo_write_target: byoWriteTarget } : {}),
     });
 
     let remote: GitvaultInitResult["remote"] = null;
@@ -1227,6 +1275,32 @@ export class Gitvault {
       });
     }
 
+    // gitvault-byo-primary-bucket task 3.1/3.5 — read back the AUTHORITATIVE
+    // storage_profile from the vault record rather than trusting what THIS
+    // call requested: an idempotent replay against a pre-existing vault
+    // (a different client_creation_id, a different machine) can legitimately
+    // resolve to a vault whose real profile disagrees with what was just
+    // asked for (`allocateVault`'s own doc comment: "a replay reads the
+    // EXISTING row's profile, never re-derives it"). Only when the SERVER
+    // confirms "byo" is the local write-credential config actually saved —
+    // never speculatively, and never when it disagrees.
+    let storageProfile: "managed" | "byo" = "managed";
+    let byoDestination: string | null = null;
+    if (byoWriteTarget) {
+      const record = await transport.getVaultRecord({ repo_id: created.repo_id });
+      storageProfile = record.storage_profile ?? "managed";
+      byoDestination = record.byo_destination ?? null;
+      if (storageProfile === "byo") {
+        const { saveByoConfig } = await this.#byoConfig();
+        saveByoConfig(keystore, { repo_id: created.repo_id, destination: byoWriteTarget.destination, ...(byoWriteTarget.credential ? { credential: byoWriteTarget.credential } : {}) });
+      }
+      // storageProfile !== "byo" here means this project's vault already
+      // existed as a MANAGED vault under a different creation attempt —
+      // nothing is saved locally, and the result below reports the TRUE
+      // profile so the caller can tell the user honestly rather than
+      // silently writing a bogus BYO config for a managed vault.
+    }
+
     return {
       repo_id: created.repo_id,
       project_id: options.project_id,
@@ -1235,6 +1309,8 @@ export class Gitvault {
       remote,
       deduplicated: created.how === "reconciled",
       terminal_loss_statement: GITVAULT_TERMINAL_LOSS_STATEMENT,
+      storage_profile: storageProfile,
+      byo_destination: byoDestination,
     };
   }
 
@@ -1659,7 +1735,7 @@ export class Gitvault {
       onCommitLine?: (line: string) => void;
       checkpoint?: boolean;
     },
-  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string; mirror_push: GitvaultMirrorPushResult; reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult }> {
+  ): Promise<GitvaultPublishResult & { snapshot: GitvaultSnapshot; gitvault_commit: string; gitvault_commit_line: string; mirror_push: GitvaultMirrorPushResult; byo_chain_copy: GitvaultMirrorPushResult; reconcile_recipients: GitvaultReconcileEnvelopeRecipientsPushResult }> {
     const [{ deployRefTransaction }, { captureSnapshot, gitvaultCommitLine }] = await Promise.all([this.#publication(), this.#snapshot()]);
     const openedByAddress = options.address ? await this.resolveOrCreateAddress({ ...options, address: options.address, allow_create: true }) : null;
     const opened = openedByAddress ?? (await this.openOrCreate(options));
@@ -1701,12 +1777,16 @@ export class Gitvault {
     // above (already returned/committed) — a mirror failure is a named
     // pending finding reported BESIDE the vault result, on its own field.
     const mirrorPush = await this.#tryMirrorPush(handle.repo_id, handle.keystore);
+    // gitvault-byo-primary-bucket task 3.3 — the SAME non-blocking contract,
+    // fired right beside the mirror hook (skipped_no_mirror with no network
+    // call for any managed vault or any machine with no local BYO config).
+    const byoChainCopy = await this.#tryByoChainCopyPush(handle.repo_id, handle.keystore);
     // Deploy-time reconcile hook: fires on every successful push,
     // best-effort — a reconcile failure (including a read-only principal
     // with no signing key) is reported BESIDE the vault result, never a
     // `push()` throw, same non-blocking contract as the mirror hook above.
     const reconcileRecipients = await this.#tryReconcileEnvelopeRecipients(handle.vault);
-    return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line, mirror_push: mirrorPush, reconcile_recipients: reconcileRecipients };
+    return { ...result, snapshot, gitvault_commit: snapshot.oid, gitvault_commit_line: line, mirror_push: mirrorPush, byo_chain_copy: byoChainCopy, reconcile_recipients: reconcileRecipients };
   }
 
   /** Best-effort dual-push: catches EVERYTHING, including the lazy module import itself, so a mirror problem can never surface as a `push()` throw. */
@@ -1752,6 +1832,23 @@ export class Gitvault {
     try {
       const { mirrorPushForGeneration } = await this.#mirror();
       return await mirrorPushForGeneration(this.#client, repoId, { keystore });
+    } catch (e) {
+      return { attempted: false, outcome: "skipped_no_mirror", error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /**
+   * gitvault-byo-primary-bucket task 3.3 — the chain's every-push dual-write
+   * into a BYO vault's own destination, mirroring {@link #tryMirrorPush}'s
+   * exact contract byte-for-byte (best-effort, catches EVERYTHING, never
+   * throws, never alters the vault outcome already committed above — a
+   * chain-copy failure is a named pending finding reported BESIDE the vault
+   * result on its own field, never a `push()`/`deploy()` throw).
+   */
+  async #tryByoChainCopyPush(repoId: string, keystore: GitvaultKeystore): Promise<GitvaultMirrorPushResult> {
+    try {
+      const { byoChainCopyPushForGeneration } = await this.#mirror();
+      return await byoChainCopyPushForGeneration(this.#client, repoId, { keystore });
     } catch (e) {
       return { attempted: false, outcome: "skipped_no_mirror", error: e instanceof Error ? e.message : String(e) };
     }
@@ -2878,7 +2975,7 @@ export class Gitvault {
    */
   async deploy(
     options: Omit<GitvaultDeployOptions, "vault"> & GitvaultVaultHandleOptions,
-  ): Promise<GitvaultDeployResult & { mirror_push?: GitvaultMirrorPushResult; reconcile_recipients?: GitvaultReconcileEnvelopeRecipientsPushResult }> {
+  ): Promise<GitvaultDeployResult & { mirror_push?: GitvaultMirrorPushResult; byo_chain_copy?: GitvaultMirrorPushResult; reconcile_recipients?: GitvaultReconcileEnvelopeRecipientsPushResult }> {
     const { runGitvaultDeploy } = await this.#deploy();
     const handle = await this.open(options);
     const result = await runGitvaultDeploy({ ...options, vault: handle.vault, repo_dir: options.repo_dir ?? process.cwd() });
@@ -2887,11 +2984,18 @@ export class Gitvault {
     // failure in a log line that assumed ordering. Extracted to a standalone
     // function so the outcome-gating is unit-testable with fake thunks,
     // without standing up a live vault — see gitvault-deploy-hooks.test.ts.
-    return attachGitvaultDeployHooks(
+    const hooked = await attachGitvaultDeployHooks(
       result,
       () => this.#tryMirrorPush(handle.repo_id, handle.keystore),
       () => this.#tryReconcileEnvelopeRecipients(handle.vault),
     );
+    // gitvault-byo-primary-bucket task 3.3 — composed AFTER, not inside,
+    // `attachGitvaultDeployHooks` (kept untouched so its own unit-tested
+    // outcome-gating contract stays byte-for-byte): the SAME "did this
+    // deploy actually land a generation" gate `mirror_push`'s presence
+    // already encodes, so no new outcome-inspection logic here.
+    if (hooked.mirror_push === undefined) return hooked;
+    return { ...hooked, byo_chain_copy: await this.#tryByoChainCopyPush(handle.repo_id, handle.keystore) };
   }
 
   /**
@@ -2984,7 +3088,7 @@ export class Gitvault {
    * read of the vault record), and — when they disagree — the closing
    * command. Both honesty statements (design D8) ride every response.
    */
-  async mirrorStatus(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultMirrorStatus> {
+  async mirrorStatus(options: GitvaultVaultHandleOptions & { is_byo?: boolean } = {}): Promise<GitvaultMirrorStatus> {
     const [{ GitvaultKeystore }, { readMirrorConfig, formatMirrorDestination }, { openGitvaultMirrorBackend }, { verifyGitvaultMirror }] = await Promise.all([
       this.#keystore(), this.#mirrorConfig(), this.#mirrorBackend(), this.#recovery(),
     ]);
@@ -2996,10 +3100,14 @@ export class Gitvault {
     if (!config) {
       // gitvault-mirror-default: the unconfigured branch stays gateway-blind
       // by construction — it returns before ANY network call, finding included.
+      // `options.is_byo` is a caller-supplied hint (gitvault-byo-primary-bucket
+      // task 3.5) — NEVER derived here, which is what keeps this branch
+      // network-call-free; `repos view` already has `storage_profile` from
+      // its own `status()` read and passes it in.
       return {
         ...base, configured: false, destination: null, credential_kind: null, mirrored_generation: null, newest_generation: null, is_current: null, closing_command: null,
         last_success_at: lastSuccessAt,
-        finding: gitvaultUnmirroredFinding({ configured: false, last_success_at: lastSuccessAt, mirrored_generation: null }),
+        finding: gitvaultUnmirroredFinding({ configured: false, last_success_at: lastSuccessAt, mirrored_generation: null, is_byo: options.is_byo }),
       };
     }
     let mirroredGeneration: string | null = null;
@@ -3022,7 +3130,7 @@ export class Gitvault {
       mirrored_generation: mirroredGeneration, newest_generation: newestGeneration, is_current: isCurrent,
       closing_command: isCurrent === false ? "run402 repos mirror --backfill" : null,
       last_success_at: lastSuccessAt,
-      finding: gitvaultUnmirroredFinding({ configured: true, last_success_at: lastSuccessAt, mirrored_generation: mirroredGeneration }),
+      finding: gitvaultUnmirroredFinding({ configured: true, last_success_at: lastSuccessAt, mirrored_generation: mirroredGeneration, is_byo: options.is_byo }),
     };
   }
 
@@ -3145,6 +3253,12 @@ export class Gitvault {
   }
   #degradedRead(): Promise<DegradedReadModule> {
     return nodeOnly(() => import("../node/gitvault-degraded-read.js"), "list");
+  }
+  #byoConfig(): Promise<ByoConfigModule> {
+    return nodeOnly(() => import("../node/gitvault-byo-config.js"), "init");
+  }
+  #byoProbe(): Promise<ByoProbeModule> {
+    return nodeOnly(() => import("../node/gitvault-byo-probe.js"), "init");
   }
 }
 
@@ -3315,11 +3429,13 @@ export function gitvaultUnmirroredFinding(state: {
   configured: boolean;
   last_success_at: string | null;
   mirrored_generation: string | null;
+  /** gitvault-byo-primary-bucket task 3.5 — when true, `message` uses the BYO remedy wording (a SECOND customer-held location) instead of the plain unmirrored statement. */
+  is_byo?: boolean;
 }): GitvaultUnmirroredFinding | null {
   if (state.configured && (state.last_success_at !== null || state.mirrored_generation !== null)) return null;
   return {
     kind: "vault_unmirrored",
-    message: GITVAULT_UNMIRRORED_FINDING_STATEMENT,
+    message: state.is_byo ? GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT : GITVAULT_UNMIRRORED_FINDING_STATEMENT,
     setup_command: state.configured ? "run402 repos mirror --backfill" : "run402 repos mirror <destination>",
   };
 }

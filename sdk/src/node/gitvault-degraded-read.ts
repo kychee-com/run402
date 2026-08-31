@@ -33,6 +33,7 @@
 import { isRun402Error } from "../errors.js";
 import { GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT } from "../namespaces/gitvault.crypto.js";
 import type { GitvaultHeadTarget } from "../namespaces/gitvault.types.js";
+import { readByoConfig } from "./gitvault-byo-config.js";
 import type { GitvaultKeystore } from "./gitvault-keystore.js";
 import { formatMirrorDestination, readMirrorConfig } from "./gitvault-mirror-config.js";
 import { openGitvaultMirrorBackend, type GitvaultMirrorBackend } from "./gitvault-mirror-backend.js";
@@ -83,8 +84,8 @@ function gitvaultReadErrorStatus(e: { status: number | null; details?: unknown }
 
 /** `s3://bucket/prefix` or a directory path — never a credential, same redaction `mirrorStatus` already prints. */
 export interface GitvaultDegradedReadSource {
-  /** Later: `"byo"` once the BYO substrate ships (see {@link resolveDegradedReadSource}'s doc comment) — mirror-only today. */
-  kind: "mirror";
+  /** `"byo"` when this vault's own primary destination served the fallback (gitvault-byo-primary-bucket task 3.4); `"mirror"` for the opt-in customer mirror — see {@link resolveDegradedReadSource}'s precedence. */
+  kind: "mirror" | "byo";
   destination: string;
   credential_kind: "profile" | "ambient" | null;
 }
@@ -105,28 +106,32 @@ interface ResolvedDegradedReadSource extends GitvaultDegradedReadSource {
 }
 
 /**
- * The small seam design D4 calls out, so the later BYO half of this same
- * change slots in without touching any caller here: which client-side
- * destination a degraded read should serve from, for one vault.
+ * The small seam design D4 calls out: which client-side destination a
+ * degraded read should serve from, for one vault.
  *
- * Today this has exactly ONE branch — the vault's configured mirror —
- * because no BYO substrate exists yet: `storage_profile` / `byo_destination`
- * land on the vault record in an EARLIER phase of this same change
- * (gitvault-byo-primary-bucket tasks 1.2/2.1/3.1-3.3), and nothing in this
- * repo reads them yet because nothing writes them yet either. When they
- * ship, this function's ONE job is to prefer a vault's own BYO destination
- * over its mirror; every caller of {@link tryGitvaultDegradedRead} stays
- * unchanged — that is the whole point of factoring the choice out here
- * instead of inlining "read the mirror config" at each call site.
+ * Precedence (gitvault-byo-primary-bucket task 3.4): the opt-in customer
+ * MIRROR wins when BOTH a mirror and a BYO write config are configured
+ * locally on THIS machine. A BYO vault's own primary destination is
+ * ALWAYS a complete `r402s-recover` source on its own (task 3.3's whole
+ * point), so this is not a completeness question — it keeps the
+ * PRE-EXISTING, already-shipped mirror substrate's behavior byte-identical
+ * (a machine that already has a working mirror configured for degraded
+ * reads keeps using it) rather than silently switching sources the moment
+ * a BYO local config also exists. The BYO branch is the fallback: read
+ * ONLY when no mirror is configured — no network call either way, purely
+ * local file reads, matching this function's own "never touches the
+ * network" contract.
  */
 export function resolveDegradedReadSource(keystore: GitvaultKeystore, repoId: string): ResolvedDegradedReadSource | null {
-  // BYO branch (stub — implement here when the substrate ships):
-  //   const vault = ...read the vault record's storage_profile/byo_destination...
-  //   if (vault?.storage_profile === "byo") return { kind: "byo", backend: openGitvaultByoBackend(...), ... };
   const config = readMirrorConfig(keystore, repoId);
-  if (!config) return null;
-  const backend = openGitvaultMirrorBackend(config.destination, repoId, config.credential);
-  return { kind: "mirror", backend, destination: formatMirrorDestination(config.destination), credential_kind: config.credential?.kind ?? null };
+  if (config) {
+    const backend = openGitvaultMirrorBackend(config.destination, repoId, config.credential);
+    return { kind: "mirror", backend, destination: formatMirrorDestination(config.destination), credential_kind: config.credential?.kind ?? null };
+  }
+  const byo = readByoConfig(keystore, repoId);
+  if (!byo) return null;
+  const backend = openGitvaultMirrorBackend(byo.destination, repoId, byo.credential);
+  return { kind: "byo", backend, destination: formatMirrorDestination(byo.destination), credential_kind: byo.credential?.kind ?? null };
 }
 
 export interface GitvaultDegradedReadLive {

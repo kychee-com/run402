@@ -129,6 +129,10 @@ export interface GitvaultCreationJournal {
   project_id: string | null;
   /** Set only for a push-to-create journal (task 4.5); `null` otherwise. */
   push_to_create: GitvaultPushToCreateAddress | null;
+  /** gitvault-byo-primary-bucket task 3.1 — `"byo"` when this journal requested a BYO vault at open time; `null` (managed, byte-identical to today) otherwise. Set once at open, never changes across the journal's life (mirrors `push_to_create`'s own resumability-key discipline). */
+  storage_profile: "byo" | null;
+  /** Set iff `storage_profile === "byo"`; `null` otherwise. */
+  byo_destination: string | null;
   creator_signing_fingerprint: string;
   creator_encryption_fingerprint: string;
   created_at: string;
@@ -184,6 +188,9 @@ export type GitvaultAllocateRequest =
       creator_signing_pubkey: string;
       /** Raw X25519 public key, canonical base64url (43 chars, decodes to 32 bytes). */
       creator_encryption_pubkey: string;
+      /** gitvault-byo-primary-bucket task 3.1/3.5 — omitted/absent is byte-identical to today ("managed"). Present only to request a BYO vault; `byo_destination` is the address only, never credential material (D2). */
+      storage_profile?: "byo";
+      byo_destination?: string;
     }
   | {
       /**
@@ -198,6 +205,8 @@ export type GitvaultAllocateRequest =
       repo_name: string;
       creator_signing_pubkey: string;
       creator_encryption_pubkey: string;
+      storage_profile?: "byo";
+      byo_destination?: string;
     };
 
 export interface GitvaultPutObjectRequest {
@@ -207,6 +216,8 @@ export interface GitvaultPutObjectRequest {
   /** What the client expects the server to acknowledge — the server's receipt is compared against it. */
   expected_sha256: string;
   expected_size_bytes: string;
+  /** gitvault-byo-primary-bucket task 3.2 — present iff this vault is `storage_profile: "byo"`; the object is written directly to `byo.destination` (never run402's own bucket). Omitted is byte-identical to today. */
+  byo?: { destination: import("./gitvault-mirror-config.js").GitvaultMirrorDestination; credential?: import("./gitvault-mirror-config.js").GitvaultMirrorCredential };
 }
 
 export interface GitvaultObjectReceipt {
@@ -262,6 +273,32 @@ export interface GitvaultCreationOptions {
   push_to_create?: GitvaultPushToCreateAddress;
   /** Resume an existing journal, or pin the idempotency key (tests). Fresh CSPRNG when omitted. */
   client_creation_id?: string;
+  /**
+   * gitvault-byo-primary-bucket task 3.1/3.5 — request a BYO vault at
+   * allocation. Omitted (the default) is byte-identical to today. The
+   * caller MUST have already run the allocation-time bucket probe
+   * ({@link ../node/gitvault-byo-probe.js probeGitvaultByoDestination})
+   * against `byo_destination` BEFORE reaching here — this option only
+   * threads the already-validated request through; it does not probe.
+   */
+  storage_profile?: "byo";
+  /** Required iff `storage_profile === "byo"` — the destination ADDRESS only (never credential material, D2). */
+  byo_destination?: string;
+  /**
+   * gitvault-byo-primary-bucket task 3.1/3.2 — the LOCAL write target that
+   * drives the genesis `key_envelope`'s own PUT (the one object every
+   * vault creates, and the one this class's own `run()` writes directly,
+   * bypassing `GitvaultVault.uploadAll`'s resolver since no `GitvaultVault`
+   * exists yet at creation time). Deliberately NOT persisted into the
+   * journal file (unlike `storage_profile`/`byo_destination` above) — a
+   * credential name is a local, per-invocation fact the caller resupplies
+   * on every call, exactly like `service_public_key` already is. Required
+   * when `storage_profile === "byo"` and this call needs to reach
+   * OBJECTS_PREPARED/OBJECTS_FINALIZED; a resume that omits it fails
+   * closed at the object-PUT step rather than silently writing to
+   * run402's own bucket.
+   */
+  byo_write_target?: { destination: import("./gitvault-mirror-config.js").GitvaultMirrorDestination; credential?: import("./gitvault-mirror-config.js").GitvaultMirrorCredential };
   /** Clock injection. */
   now?: () => Date;
   /** Optional pinned service public key for allocation-signature verification (5.4 supplies it from the registry). */
@@ -413,9 +450,16 @@ export class GitvaultCreation {
       // compares its OWN address (`push_to_create` never changes across a
       // journal's life, unlike `org_id`/`project_id`, which start null there
       // and get pinned from the allocation response).
-      const mismatch = usingPushToCreate
+      const mismatch = (usingPushToCreate
         ? existing.push_to_create === null || existing.push_to_create.org_slug !== options.push_to_create!.org_slug || existing.push_to_create.repo_name !== options.push_to_create!.repo_name
-        : existing.push_to_create !== null || existing.org_id !== options.org_id || existing.project_id !== options.project_id;
+        : existing.push_to_create !== null || existing.org_id !== options.org_id || existing.project_id !== options.project_id)
+        // gitvault-byo-primary-bucket task 3.1: a resumed journal's own
+        // storage_profile/byo_destination are the RESUMABILITY KEY, exactly
+        // like push_to_create's address above — a resume that silently
+        // changed which bucket it was asking for would be worse than
+        // refusing and starting a fresh attempt.
+        || existing.storage_profile !== (options.storage_profile ?? null)
+        || existing.byo_destination !== (options.byo_destination ?? null);
       if (mismatch) {
         fail("VAULT_CREATION_CONFLICT", "journal belongs to a different org/project (or addressing form)", "resuming gitvault creation", { client_creation_id: id });
       }
@@ -432,6 +476,8 @@ export class GitvaultCreation {
       org_id: usingPushToCreate ? null : options.org_id!,
       project_id: usingPushToCreate ? null : options.project_id!,
       push_to_create: options.push_to_create ?? null,
+      storage_profile: options.storage_profile ?? null,
+      byo_destination: options.byo_destination ?? null,
       creator_signing_fingerprint: identity.signing_fingerprint,
       creator_encryption_fingerprint: identity.encryption_fingerprint,
       created_at: at,
@@ -557,6 +603,12 @@ export class GitvaultCreation {
     if (this.journal.stage === "LOCAL_KEYS_PREPARED") {
       // PUBKEYS on the request; the returned record carries the fingerprints
       // the gateway derives from them. See GitvaultAllocateRequest.
+      // gitvault-byo-primary-bucket task 3.1: the journal's own
+      // storage_profile/byo_destination are the pinned request — set once
+      // at open, resumability-checked above — never re-derived from a
+      // fresh call's options (a resume never re-decides what it is asking
+      // for).
+      const byoFields = this.journal.storage_profile === "byo" ? { storage_profile: "byo" as const, byo_destination: this.journal.byo_destination! } : {};
       const request: GitvaultAllocateRequest = this.journal.push_to_create
         ? {
             client_creation_id: this.journal.client_creation_id,
@@ -564,6 +616,7 @@ export class GitvaultCreation {
             repo_name: this.journal.push_to_create.repo_name,
             creator_signing_pubkey: identity.signing_pubkey,
             creator_encryption_pubkey: identity.encryption_pubkey,
+            ...byoFields,
           }
         : {
             client_creation_id: this.journal.client_creation_id,
@@ -571,6 +624,7 @@ export class GitvaultCreation {
             project_id: this.journal.project_id!,
             creator_signing_pubkey: identity.signing_pubkey,
             creator_encryption_pubkey: identity.encryption_pubkey,
+            ...byoFields,
           };
       let allocation: GitvaultAllocation;
       try {
@@ -657,7 +711,21 @@ export class GitvaultCreation {
           object.finalized = true;
           continue;
         }
-        const receipt = await this.transport.putObject({ repo_id: repoId, path: object.path, bytes, expected_sha256: object.stored_bytes_sha256, expected_size_bytes: object.size_bytes });
+        const receipt = await this.transport.putObject({
+          repo_id: repoId,
+          path: object.path,
+          bytes,
+          expected_sha256: object.stored_bytes_sha256,
+          expected_size_bytes: object.size_bytes,
+          // gitvault-byo-primary-bucket task 3.1/3.2: the genesis
+          // key_envelope is a payload object — for a BYO vault it is
+          // written directly to the customer's own destination, never
+          // run402's bucket. `byo_write_target` is in-memory-only
+          // (`GitvaultCreationOptions`'s own doc comment) — a resume that
+          // omits it fails closed downstream in `upload()` rather than
+          // silently defaulting to the managed path.
+          ...(this.journal.storage_profile === "byo" && this.options.byo_write_target ? { byo: this.options.byo_write_target } : {}),
+        });
         if (receipt.stored_bytes_sha256 !== object.stored_bytes_sha256 || receipt.size_bytes !== object.size_bytes) {
           this.refuse("VAULT_CREATION_CONFLICT", "the server's finalization receipt does not match the local manifest", { path: object.path, receipt });
         }
