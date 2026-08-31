@@ -68,6 +68,7 @@
     "revocation_live": true,
     "human_envelope_add_live": true,
     "mirror_live": true,
+    "byo_live": true,
     "recover_live": true,
     "allocation": "create_immediate",
     "snapshot_dirty_default": "refuse"

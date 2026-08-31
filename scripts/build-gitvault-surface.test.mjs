@@ -53,6 +53,7 @@ describe("cli/gitvault-surface.json", () => {
     const { surface } = buildGitvaultSurface();
     assert.deepEqual(Object.keys(surface.capabilities).sort(), [
       "allocation",
+      "byo_live",
       "human_envelope_add_live",
       "mirror_live",
       "recover_live",

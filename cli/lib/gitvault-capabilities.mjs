@@ -28,6 +28,14 @@ export const GITVAULT_CAPABILITIES = {
   // `repos mirror` reads/writes a mirror destination beside the keystore and
   // moves real bytes into a customer-owned bucket.
   mirror_live: true,
+  // `repos create --byo <s3://bucket/prefix>` allocates a
+  // `storage_profile: "byo"` vault whose payload ciphertext is written by
+  // the client straight to the customer's own bucket (create-only probe
+  // fail-closed before allocation; chain-copy dual-write; attested finalize
+  // with `storage_verification: "client_attested"`; degraded reads from the
+  // destination; fsck absence check) — shipped end to end in the same
+  // change that flips this flag (gitvault-byo-primary-bucket, Phase 3).
+  byo_live: true,
   // `repos recover` materializes a git repository from a mirror source,
   // offline, with no server call.
   recover_live: true,
