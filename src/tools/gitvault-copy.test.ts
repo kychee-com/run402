@@ -129,6 +129,19 @@ const MIRROR_SETUP_HINT =
 const DEGRADED_READ_STATEMENT =
   "run402 is unreachable — this read is served from your mirror; it proves validity, not freshness; a later push still requires the gateway";
 
+/**
+ * gitvault-byo-primary-bucket (task 1.4) — the three BYO copy sentences.
+ * INERT as of this fold: nothing emits them yet (Phase 2/3 wire the
+ * allocation/doctor/`repos view` surfaces). Pinned here anyway, same as
+ * every other canonical constant in this gate, so the wording is locked
+ * BEFORE it ships rather than reviewed after.
+ */
+const BYO_HEADLINE = "your source ciphertext never touches our infrastructure — not even encrypted";
+const BYO_NO_PAYLOAD_COPY =
+  "run402 holds no payload copy of a BYO vault — only the small signed chain; your primary bucket is the sole copy of your source until you add a second customer-held location";
+const BYO_UNMIRRORED_REMEDY =
+  "add a second customer-held location: 'run402 repos mirror <destination>' works unchanged against a different destination — for a BYO vault this is your only additional copy, since run402 holds no payload copy of its own";
+
 /** Verbatim from the protocol's banned-copy list, plus the two forbidden unqualified patterns (D168). */
 const BANNED_PHRASES = [
   "cannot read your source",
@@ -380,6 +393,85 @@ describe("gitvault copy — the degraded-read mechanism sentence", () => {
       SDK_NAMESPACE_SRC.includes("GITVAULT_DEGRADED_READ_STATEMENT"),
       "gitvaultDegradedReadNote (sdk/src/namespaces/gitvault.ts) must print the canonical constant, not a paraphrase",
     );
+  });
+});
+
+/**
+ * gitvault-byo-primary-bucket (task 1.4) — the three BYO copy sentences.
+ * Phase 1 protocol-coordination only: these constants are INERT (nothing
+ * emits them yet — allocation, doctor, and `repos view` rendering are
+ * Phase 2/3), so this block pins the wording in the SDK crypto module ahead
+ * of the surfaces that will print it, same discipline as the mirror and
+ * degraded-read blocks above. The headline statement is additionally
+ * checked for structural BYO-only scoping: it must never appear bare in any
+ * agent-facing or doc surface without "byo" nearby, so an accidental
+ * copy-paste into managed-vault copy — where the sentence is FALSE — fails
+ * this gate rather than shipping silently.
+ */
+describe("gitvault copy — the BYO primary-bucket vocabulary (Phase 1, inert)", () => {
+  const CRYPTO_SRC = read("../../sdk/src/namespaces/gitvault.crypto.ts");
+
+  it("the SDK crypto module carries the rung-3 headline statement verbatim", () => {
+    assert.ok(
+      CRYPTO_SRC.includes(BYO_HEADLINE),
+      "GITVAULT_BYO_HEADLINE_STATEMENT is the one approved wording of the rung-3 headline — do not reword it",
+    );
+  });
+
+  it("the headline statement's own doc comment states it must never be a blanket claim", () => {
+    const commentWindow = CRYPTO_SRC.slice(
+      Math.max(0, CRYPTO_SRC.indexOf(BYO_HEADLINE) - 1500),
+      CRYPTO_SRC.indexOf(BYO_HEADLINE),
+    );
+    assert.ok(
+      /never|only|storage_profile.*byo/i.test(commentWindow) && commentWindow.toLowerCase().includes("managed"),
+      "GITVAULT_BYO_HEADLINE_STATEMENT's doc comment must name that it is FALSE for a managed vault and scope it to storage_profile:\"byo\" only",
+    );
+  });
+
+  it("the SDK crypto module carries the no-payload-copy disclosure verbatim", () => {
+    assert.ok(
+      CRYPTO_SRC.includes(BYO_NO_PAYLOAD_COPY),
+      "GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT is the one approved wording of the allocation-time disclosure — do not reword it",
+    );
+  });
+
+  it("the SDK crypto module carries the BYO vault_unmirrored remedy verbatim", () => {
+    assert.ok(
+      CRYPTO_SRC.includes(BYO_UNMIRRORED_REMEDY),
+      "GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT is the one approved wording of the BYO remedy — do not reword it",
+    );
+  });
+
+  it("the headline statement never appears bare (unscoped to BYO) in any agent-facing or doc surface", () => {
+    // Nothing emits it yet (Phase 2/3), so this is a forward guard: the day a
+    // surface starts printing it, this test forces "byo" to ride along in the
+    // same neighborhood rather than letting the sentence drift into a
+    // blanket claim about every gitvault vault.
+    const WINDOW = 200;
+    const surfaces: Array<[string, string]> = [["CORPUS", CORPUS], ...Object.entries(NORMALIZED_DOCS)];
+    for (const [name, text] of surfaces) {
+      const idx = text.indexOf(BYO_HEADLINE);
+      if (idx === -1) continue;
+      const nearby = text.slice(Math.max(0, idx - WINDOW), idx + BYO_HEADLINE.length + WINDOW).toLowerCase();
+      assert.ok(
+        nearby.includes("byo"),
+        `${name} prints the rung-3 headline without "byo" nearby — this sentence is FALSE for a managed vault and must never appear as a blanket claim`,
+      );
+    }
+  });
+
+  it("banned-phrase scan stays green with the BYO constants present", () => {
+    for (const phrase of BANNED_PHRASES) {
+      assert.equal(CRYPTO_SRC.toLowerCase().includes(phrase.toLowerCase()), false, `gitvault.crypto.ts contains banned phrase "${phrase}"`);
+    }
+  });
+
+  it("machine-loss scan stays green with the BYO constants present", () => {
+    const MACHINE_LOSS = /\b(lost|lose|losing|loss of)\b[^.]{0,80}\b(machine|laptop|keystore)\b|\b(machine|whole-machine|laptop)[- ]loss\b/i;
+    for (const statement of [BYO_HEADLINE, BYO_NO_PAYLOAD_COPY, BYO_UNMIRRORED_REMEDY]) {
+      assert.equal(MACHINE_LOSS.test(statement), false, `"${statement}" unexpectedly matches the machine-loss pattern`);
+    }
   });
 });
 

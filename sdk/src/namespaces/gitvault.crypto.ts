@@ -168,6 +168,52 @@ export const GITVAULT_UNMIRRORED_FINDING_STATEMENT =
 export const GITVAULT_MIRROR_SETUP_HINT =
   "recommended: 'run402 repos mirror <destination>' (an s3:// bucket or a local directory) starts the customer-owned mirror — every later snapshot dual-pushes to it automatically, and it is the copy that stays in your custody" as const;
 
+/**
+ * gitvault-byo-primary-bucket (proposal, the ratified D + chain-copy rung-3
+ * headline; design D10 — verified from network topology once the client's
+ * BYO write path ships, not by this sentence alone). Structurally scoped to
+ * `storage_profile:"byo"` ONLY — the sentence is FALSE for a managed vault
+ * (payload ciphertext IS client-written to run402's own bucket there), so
+ * every caller MUST gate it behind a BYO-profile check before printing it
+ * and MUST NEVER use it as a blanket claim describing gitvault in general.
+ * INERT as of this fold (Phase 1, protocol coordination only) — nothing
+ * emits it yet; Phase 2/3 wire the allocation/doctor/`repos view` surfaces
+ * that print it once `storage_profile:"byo"` is a real, allocatable vault
+ * state. Never paraphrase — the wording is a reviewed product commitment.
+ */
+export const GITVAULT_BYO_HEADLINE_STATEMENT =
+  "your source ciphertext never touches our infrastructure — not even encrypted" as const;
+
+/**
+ * gitvault-byo-primary-bucket (design D7) — the allocation-time no-payload-copy
+ * disclosure a BYO `repos create` prints, unconditionally and independent of
+ * mirror status: unlike a managed vault (where the platform's own bucket is
+ * an extra copy beside the customer's clone), a BYO vault's primary bucket is
+ * the ONLY payload copy from the moment it is allocated — run402 holds the
+ * small signed chain only, never the payload. Distinct from
+ * {@link GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT} below, which is about a
+ * missing SECOND customer-held copy on top of this primary one. INERT as of
+ * this fold — Phase 2/3 wire the surfaces that print it. Never paraphrase.
+ */
+export const GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT =
+  "run402 holds no payload copy of a BYO vault — only the small signed chain; your primary bucket is the sole copy of your source until you add a second customer-held location" as const;
+
+/**
+ * gitvault-byo-primary-bucket (design D7) — the BYO variant of the
+ * `vault_unmirrored` finding's remedy (gitvault-mirror-default): for a
+ * managed vault the remedy is an ADDITIONAL mirror beside the platform's own
+ * replicated copy ({@link GITVAULT_MIRROR_SETUP_HINT}); for a BYO vault the
+ * platform holds no payload copy to fall back on
+ * ({@link GITVAULT_BYO_NO_PAYLOAD_COPY_STATEMENT}), so the remedy names a
+ * SECOND customer-held location as the only additional copy available — the
+ * ordinary `repos mirror` machinery works unchanged against a different
+ * destination (design D7). The `vault_unmirrored` finding itself still
+ * applies to BYO vaults; only this remedy half is BYO-specific. INERT as of
+ * this fold — Phase 2/3 wire the surfaces that print it. Never paraphrase.
+ */
+export const GITVAULT_BYO_UNMIRRORED_REMEDY_STATEMENT =
+  "add a second customer-held location: 'run402 repos mirror <destination>' works unchanged against a different destination — for a BYO vault this is your only additional copy, since run402 holds no payload copy of its own" as const;
+
 const FRAME_NONCE_BYTES = 24;
 const FRAME_HEADER_BYTES = 6 + 1 + FRAME_NONCE_BYTES;
 const AEAD_TAG_BYTES = 16;
