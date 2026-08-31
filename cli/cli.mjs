@@ -526,18 +526,23 @@ switch (cmd) {
     // cli-conventions gate keeps them in lockstep), so no second list.
     const { COMMAND_MANIFEST, SKIPPED_FAMILIES } = await import("./lib/command-manifest.mjs");
     const { closestWord } = await import("./lib/argparse.mjs");
+    const { describeRejectedValue } = await import("./core-dist/redact.js");
     const families = new Set([
       ...COMMAND_MANIFEST.map((entry) => entry.path[0]),
       ...Object.keys(SKIPPED_FAMILIES),
     ]);
     const closest = typeof cmd === "string" ? closestWord(cmd, [...families]) : null;
+    // `cmd` is the first bare positional — could be anything a script passes
+    // by mistake (kychee-com/run402-private#640 is the demonstrated risk for
+    // this shape of value), so it must not be echoed verbatim.
+    const shownCmd = describeRejectedValue(cmd);
     fail({
       code: "UNKNOWN_COMMAND",
       message: closest
-        ? `Unknown command: ${cmd}. Did you mean ${closest}?`
-        : `Unknown command: ${cmd}`,
+        ? `Unknown command: ${shownCmd}. Did you mean ${closest}?`
+        : `Unknown command: ${shownCmd}`,
       hint: "Run `run402 --help` for the command list.",
-      details: { command: cmd, closest: closest ? [closest] : [] },
+      details: { command: shownCmd, closest: closest ? [closest] : [] },
     });
   }
 }

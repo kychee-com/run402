@@ -4,6 +4,7 @@ import { resolveProjectId } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail, parseFlagJson } from "./sdk-errors.mjs";
 import { assertKnownFlags, flagValue, normalizeArgv, parseIntegerFlag, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
+import { describeRejectedValue } from "../core-dist/redact.js";
 
 // Extension → content-type for `--attach <path>` without an explicit `:type`.
 const ATTACH_EXT_CONTENT_TYPES = {
@@ -365,11 +366,14 @@ function mailboxIdFromSelector(envelope, selector, flag) {
   if (/^mbx_/.test(selector)) return selector;
   const hit = (envelope.mailboxes ?? []).find((m) => m.mailbox_id === selector || m.slug === selector);
   if (!hit) {
+    // A selector that matches nothing is a value we know nothing about — see
+    // core-dist/redact.js's doc comment (kychee-com/run402-private#640) —
+    // so it must not be echoed verbatim.
     fail({
       code: "MAILBOX_NOT_FOUND",
-      message: `No mailbox matching ${JSON.stringify(selector)} for ${flag}.`,
+      message: `No mailbox matching ${JSON.stringify(describeRejectedValue(selector))} for ${flag}.`,
       details: {
-        selector,
+        selector: describeRejectedValue(selector),
         flag,
         candidates: (envelope.mailboxes ?? []).map(summarizeMailboxForDefaults),
       },

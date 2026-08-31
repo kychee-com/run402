@@ -18,6 +18,7 @@ import { getSdk } from "../sdk.js";
 import { mapSdkError } from "../errors.js";
 import { findBindingKey } from "../../core/dist/binding-file.js";
 import { getActiveOrgId } from "../../core/dist/profile-state.js";
+import { describeRejectedValue } from "../../core/dist/redact.js";
 import { getSessionKey } from "../harness-context.js";
 
 export interface RoomAddressArgs {
@@ -71,7 +72,11 @@ function resolveAmbientRoom(cwd: string, env: NodeJS.ProcessEnv): RoomAddressRes
   if (envRoom) {
     const slash = envRoom.indexOf("/");
     if (slash <= 0 || slash === envRoom.length - 1) {
-      return { ok: false, error: `${ROOM_ENV} must be "<org_id>/<room_key>" — got ${JSON.stringify(envRoom)}.` };
+      // A malformed env value is a value we know nothing about — see
+      // core/dist/redact.js's doc comment (kychee-com/run402-private#640):
+      // it must not be echoed raw, since the same class of mistake that put
+      // a private key into RUN402_WALLET can put one into RUN402_ROOM.
+      return { ok: false, error: `${ROOM_ENV} must be "<org_id>/<room_key>" — got ${JSON.stringify(describeRejectedValue(envRoom))}.` };
     }
     return { ok: true, room: { orgId: envRoom.slice(0, slash), roomKey: envRoom.slice(slash + 1) } };
   }
@@ -89,9 +94,14 @@ function resolveAmbientRoom(cwd: string, env: NodeJS.ProcessEnv): RoomAddressRes
   // worth stopping on — the CLI stops here too, and for the same reason. A
   // binding outranking the PROFILE stays silent; that is what a binding is for.
   if (envOrg && bindingOrg && envOrg !== bindingOrg.value) {
+    // envOrg is unvalidated here (this resolver does no org-id shape check —
+    // see the module doc comment on why it's a deliberately separate, minimal
+    // implementation), so it must be redacted the same way a rejected value
+    // would be. bindingOrg.value comes from a committed .run402.json, which
+    // by convention never holds a secret.
     return {
       ok: false,
-      error: `Ambiguous organization: ${ORG_ENV}=${envOrg} but ${bindingOrg.file} binds ${bindingOrg.value}. `
+      error: `Ambiguous organization: ${ORG_ENV}=${describeRejectedValue(envOrg)} but ${bindingOrg.file} binds ${bindingOrg.value}. `
         + "Pass org_id + room_key on this call, unset the variable, or edit the binding file.",
     };
   }

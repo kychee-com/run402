@@ -33,6 +33,7 @@ import {
   DEFAULT_PROFILE,
   isValidProfileName,
 } from "./config.js";
+import { describeRejectedValue } from "./redact.js";
 
 export interface BaseConfig {
   active_wallet?: string;
@@ -192,7 +193,10 @@ export function removeProfile(name: string): void {
  */
 export function renameProfile(oldName: string, newName: string): void {
   if (!isValidProfileName(newName)) {
-    throw new Error(`Invalid wallet name ${JSON.stringify(newName)}.`);
+    // See describeRejectedValue()'s doc comment (kychee-com/run402-private#640):
+    // a rejected value may be a secret pasted into a name field, so it is
+    // never safe to echo verbatim here.
+    throw new Error(`Invalid wallet name ${JSON.stringify(describeRejectedValue(newName))}.`);
   }
   if (newName === oldName) return;
   const dest = join(getProfilesDir(), newName);

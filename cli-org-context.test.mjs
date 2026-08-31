@@ -228,6 +228,28 @@ describe("resolveOrg — failure and validation", () => {
     assert.equal(envelope.code, "BAD_ORG_ID");
     assert.match(envelope.details.origin, /badbinding\/\.run402\.json$/);
   });
+
+  // Same class of mistake as kychee-com/run402-private#640 (a private key
+  // pasted into RUN402_WALLET): --org / RUN402_ORG take an org_id, and a
+  // rejected value must never be echoed, whatever it turns out to be.
+  it("never echoes a secret-shaped --org value", async () => {
+    const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars
+    const envelope = await expectFailure(() =>
+      orgCtx.resolveOrg({ org: privateKey }, { cwd: bareDir, env: {} }),
+    );
+    assert.equal(envelope.code, "BAD_ORG_ID");
+    const serialized = JSON.stringify(envelope);
+    assert.ok(!serialized.includes(privateKey));
+    assert.ok(!serialized.includes("22a3f0"));
+  });
+
+  it("still shows a short malformed org id in full", async () => {
+    const envelope = await expectFailure(() =>
+      orgCtx.resolveOrg({ org: "not-a-uuid" }, { cwd: bareDir, env: {} }),
+    );
+    assert.equal(envelope.details.org_id, "not-a-uuid");
+    assert.match(envelope.message, /not-a-uuid/);
+  });
 });
 
 describe("selection is per wallet profile", () => {

@@ -31,6 +31,7 @@ import {
   setDefaultWallet,
 } from "../core-dist/profiles.js";
 import { readAllowance, saveAllowance } from "../core-dist/allowance.js";
+import { describeRejectedValue } from "../core-dist/redact.js";
 import { getSdk } from "./sdk.mjs";
 import { readBindingFile, updateBindingFile } from "./wallet-context.mjs";
 
@@ -71,15 +72,19 @@ function out(obj) {
   console.log(JSON.stringify(obj, null, 2));
 }
 
+// See core-dist/redact.js's doc comment (kychee-com/run402-private#640): a
+// value that fails this check may be a secret pasted into a name argument
+// by mistake, so it must never be echoed verbatim — describeRejectedValue()
+// still shows a short/plain typo in full.
 function requireName(name, what = "wallet name") {
   if (!name) fail({ code: "BAD_USAGE", message: `Missing ${what}.`, hint: "run402 wallets --help" });
   if (name === DEFAULT) return name;
   if (!isValidProfileName(name)) {
     fail({
       code: "BAD_WALLET_NAME",
-      message: `Invalid ${what} ${JSON.stringify(name)}.`,
+      message: `Invalid ${what} ${JSON.stringify(describeRejectedValue(name))}.`,
       hint: "Names must match /^[a-z0-9][a-z0-9_-]{0,63}$/ (lowercase letters, digits, '_' and '-').",
-      details: { name },
+      details: { name: describeRejectedValue(name) },
     });
   }
   return name;
@@ -169,7 +174,10 @@ async function cmdNew(args) {
 function cmdUse(args) {
   const name = requireName(args.find((a) => a && !a.startsWith("-")));
   if (name !== DEFAULT && !profileExists(name)) {
-    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${name}'.`, hint: "run402 wallets list", details: { name } });
+    // `name` already passed requireName's charset check, but a bare (no
+    // "0x") 64-hex private key satisfies that charset too — describeRejectedValue()
+    // is the backstop against echoing it here (kychee-com/run402-private#640).
+    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${describeRejectedValue(name)}'.`, hint: "run402 wallets list", details: { name: describeRejectedValue(name) } });
   }
   setDefaultWallet(name);
   out({ local_label: name, active: true });
@@ -184,7 +192,7 @@ async function cmdRename(args) {
     fail({ code: "BAD_WALLET_NAME", message: "Cannot rename a wallet to the reserved name 'default'.", details: { name: newName } });
   }
   if (!profileExists(oldName)) {
-    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${oldName}'.`, hint: "run402 wallets list", details: { name: oldName } });
+    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${describeRejectedValue(oldName)}'.`, hint: "run402 wallets list", details: { name: describeRejectedValue(oldName) } });
   }
   try {
     renameProfile(oldName, newName);
@@ -277,7 +285,7 @@ function cmdRm(args) {
     fail({ code: "WALLET_PROTECTED", message: "Refusing to remove the reserved 'default' wallet.", details: { name } });
   }
   if (!profileExists(name)) {
-    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${name}'.`, hint: "run402 wallets list", details: { name } });
+    fail({ code: "WALLET_NOT_FOUND", message: `No local wallet named '${describeRejectedValue(name)}'.`, hint: "run402 wallets list", details: { name: describeRejectedValue(name) } });
   }
   if (!args.includes("--yes")) {
     fail({

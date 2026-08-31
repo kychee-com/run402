@@ -31,6 +31,7 @@ import { resolveOrg } from "./org-context.mjs";
 import { findBindingKey } from "./wallet-context.mjs";
 import { nextAction } from "./next-actions.mjs";
 import { resolveSessionKey } from "./harness-context.mjs";
+import { describeRejectedValue } from "../core-dist/redact.js";
 
 export const ROOM_ENV = "RUN402_ROOM";
 export const PRESENCE_ENV = "RUN402_PRESENCE_ID";
@@ -58,10 +59,12 @@ export async function resolveRoom({ org, room, project } = {}) {
   if (envRoom) {
     const slash = envRoom.indexOf("/");
     if (slash <= 0 || slash === envRoom.length - 1) {
+      // Same class as kychee-com/run402-private#640: a malformed RUN402_ROOM
+      // is a value we know nothing about, so it must not be echoed raw.
       fail({
         code: "BAD_USAGE",
         message: `${ROOM_ENV} must be "<org_id>/<room_key>".`,
-        details: { value: envRoom },
+        details: { value: describeRejectedValue(envRoom) },
       });
     }
     return {

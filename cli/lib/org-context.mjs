@@ -43,6 +43,7 @@ import { flagValue } from "./argparse.mjs";
 import { findBindingKey } from "./wallet-context.mjs";
 import { fail } from "./sdk-errors.mjs";
 import { nextAction } from "./next-actions.mjs";
+import { describeRejectedValue } from "../core-dist/redact.js";
 import {
   getActiveOrgId as coreGetActiveOrgId,
   setActiveOrgId as coreSetActiveOrgId,
@@ -66,14 +67,19 @@ const trimmed = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
 /**
  * Shape-validate an organization id supplied by a local source. Membership is
  * NEVER checked here — only that the value could be an org id at all.
+ *
+ * A rejected value is a value we know nothing about — see
+ * core-dist/redact.js's doc comment (kychee-com/run402-private#640): the
+ * same class of mistake that put a private key into RUN402_WALLET can put
+ * one into RUN402_ORG / --org, so this must never echo the raw value.
  */
 function assertOrgIdShape(orgId, origin) {
   if (ORG_ID_RE.test(orgId)) return orgId;
   fail({
     code: "BAD_ORG_ID",
-    message: `Invalid organization id ${JSON.stringify(orgId)} (from ${origin}).`,
+    message: `Invalid organization id ${JSON.stringify(describeRejectedValue(orgId))} (from ${origin}).`,
     hint: "An org_id is a UUID. Run 'run402 org list' to see the organizations you belong to.",
-    details: { org_id: orgId, origin },
+    details: { org_id: describeRejectedValue(orgId), origin },
     next_actions: [listOrgsAction()],
   });
 }

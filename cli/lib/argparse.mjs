@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { fail } from "./sdk-errors.mjs";
 import { resolveProjectId } from "./config.mjs";
 import { COMMAND_MANIFEST } from "./command-manifest.mjs";
+import { describeRejectedValue } from "../core-dist/redact.js";
 
 export function normalizeArgv(argv = []) {
   const out = [];
@@ -140,12 +141,15 @@ export function validateEvmAddress(value, fieldName = "address") {
   }
 }
 
+// A rejected positional could be anything the caller typed or piped in — see
+// core-dist/redact.js's doc comment (kychee-com/run402-private#640) — so it
+// is never safe to echo verbatim.
 export function failBadProjectId(value) {
   fail({
     code: "BAD_PROJECT_ID",
-    message: `Argument '${value}' is not a project id. Project IDs must start with 'prj_'.`,
+    message: `Argument '${describeRejectedValue(value)}' is not a project id. Project IDs must start with 'prj_'.`,
     hint: "Omit the project id to use the active project, or pass the full prj_... id.",
-    details: { value, expected_prefix: "prj_" },
+    details: { value: describeRejectedValue(value), expected_prefix: "prj_" },
   });
 }
 
@@ -433,16 +437,22 @@ export function knownSubcommands(family) {
 export function failUnknownSubcommand(family, sub, { hint, label, extraSubcommands = [], next_actions } = {}) {
   const displayLabel = label ?? family;
   const known = [...new Set([...knownSubcommands(family), ...extraSubcommands])].sort();
+  // closestWord() itself never echoes — it only ever returns one of the
+  // known, safe `known` candidates — but `sub` is an arbitrary positional
+  // (could be anything piped or mistyped in; kychee-com/run402-private#640
+  // is the demonstrated risk), so the ECHO of `sub` below still needs
+  // redaction even though the matching runs on the raw value.
   const closest = typeof sub === "string" ? closestWord(sub, known) : null;
+  const shownSub = describeRejectedValue(sub);
   fail({
     code: "UNKNOWN_SUBCOMMAND",
     message: closest
-      ? `Unknown ${displayLabel} subcommand: ${sub}. Did you mean ${closest}?`
-      : `Unknown ${displayLabel} subcommand: ${sub}`,
+      ? `Unknown ${displayLabel} subcommand: ${shownSub}. Did you mean ${closest}?`
+      : `Unknown ${displayLabel} subcommand: ${shownSub}`,
     hint: hint ?? `Run \`run402 ${displayLabel} --help\` for usage.`,
     details: {
       command: displayLabel,
-      subcommand: sub,
+      subcommand: shownSub,
       closest: closest ? [closest] : [],
       known_subcommands: known,
     },

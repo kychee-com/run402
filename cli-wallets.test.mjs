@@ -80,6 +80,97 @@ describe("wallets — lifecycle", () => {
   });
 });
 
+// kychee-com/run402-private#640: a live Base-mainnet private key was pasted
+// into RUN402_WALLET (which takes a wallet NAME, not a key), failed name
+// validation, and was printed verbatim — full private key, in full — to a
+// terminal, a log, and a session transcript. These reproduce the exact
+// incident shape against the real CLI subprocess (not just the in-process
+// resolver) and assert the secret is absent from BOTH stdout and stderr,
+// not just from a parsed field of the error envelope.
+describe("wallets — never echo a rejected secret-shaped value", () => {
+  const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars, the exact shape of #640
+  const bareHexKey = "22a3f0".repeat(10) + "aabb"; // 64 lowercase-hex chars, no 0x — passes the name CHARSET
+
+  function assertSecretAbsent(result, secret) {
+    const combined = `${result.stdout}\n${result.stderr}`;
+    assert.ok(!combined.includes(secret), `output must not contain the secret:\n${combined}`);
+    // Also check for any 12-char substring run of the secret, not just the
+    // whole thing — a partial echo (a "prefix" style message) would still
+    // be a leak of key material.
+    for (let i = 0; i + 12 <= secret.length; i += 6) {
+      const chunk = secret.slice(i, i + 12);
+      assert.ok(!combined.includes(chunk), `output must not contain a substring of the secret (${chunk}):\n${combined}`);
+    }
+  }
+
+  it("RUN402_WALLET=<private key> (the exact incident reproduction)", () => {
+    const result = run(["wallets", "list"], { env: { RUN402_WALLET: privateKey } });
+    assert.notEqual(result.status, 0);
+    assert.equal(errEnvelope(result).code, "BAD_WALLET_NAME");
+    assertSecretAbsent(result, privateKey);
+  });
+
+  it("RUN402_WALLET=<private key> with a directory binding present (the conflict path, checked BEFORE format validation)", () => {
+    // A checkout following this repo's own fleet-coordination convention
+    // (AGENTS.md: `run402 wallets bind`) has a .run402.json binding — the
+    // WALLET_SELECTION_CONFLICT check fires on that before the name ever
+    // reaches the BAD_WALLET_NAME format check, so it needs its own redaction.
+    // `wallets` itself is conflict-EXEMPT (it must keep working while
+    // ambiguous), so use an unrelated command to actually hit the check —
+    // it fires before dispatch, so the command never actually runs.
+    writeFileSync(join(workDir, ".run402.json"), JSON.stringify({ wallet: "client-a" }));
+    const result = run(["status"], { env: { RUN402_WALLET: privateKey } });
+    assert.notEqual(result.status, 0);
+    assert.equal(errEnvelope(result).code, "WALLET_SELECTION_CONFLICT");
+    assertSecretAbsent(result, privateKey);
+  });
+
+  it("--wallet <private key>", () => {
+    const result = run(["--wallet", privateKey, "wallets", "list"]);
+    assert.notEqual(result.status, 0);
+    assert.equal(errEnvelope(result).code, "BAD_WALLET_NAME");
+    assertSecretAbsent(result, privateKey);
+  });
+
+  it("wallets new <private key>", () => {
+    const result = run(["wallets", "new", privateKey]);
+    assert.notEqual(result.status, 0);
+    assert.equal(errEnvelope(result).code, "BAD_WALLET_NAME");
+    assertSecretAbsent(result, privateKey);
+  });
+
+  it("wallets use <private key>", () => {
+    const result = run(["wallets", "use", privateKey]);
+    assert.notEqual(result.status, 0);
+    assert.equal(errEnvelope(result).code, "BAD_WALLET_NAME");
+    assertSecretAbsent(result, privateKey);
+  });
+
+  it("wallets rename <existing> --to <private key>", () => {
+    run(["wallets", "new", "kychon"]);
+    const result = run(["wallets", "rename", "kychon", "--to", privateKey]);
+    assert.notEqual(result.status, 0);
+    assert.equal(errEnvelope(result).code, "BAD_WALLET_NAME");
+    assertSecretAbsent(result, privateKey);
+  });
+
+  it("wallets use <bare 64-hex key, no 0x prefix> (passes the name charset, still redacted)", () => {
+    const result = run(["wallets", "use", bareHexKey]);
+    assert.notEqual(result.status, 0);
+    assert.equal(errEnvelope(result).code, "WALLET_NOT_FOUND");
+    assertSecretAbsent(result, bareHexKey);
+  });
+
+  it("a normal short typo is still shown in full (redaction does not break usability)", () => {
+    const result = run(["wallets", "use", "Kychon"]); // uppercase — fails the lowercase-only rule
+    assert.notEqual(result.status, 0);
+    const envelope = errEnvelope(result);
+    assert.equal(envelope.code, "BAD_WALLET_NAME");
+    assert.match(envelope.message, /Kychon/);
+    assert.equal(envelope.details.name, "Kychon");
+  });
+});
+
 describe("wallets — selection precedence", () => {
   beforeEach(() => {
     run(["wallets", "new", "kychon"]);
