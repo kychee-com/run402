@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { jcs, sha256Hex } from "../namespaces/gitvault.crypto.js";
+import { jcs, sha256Hex, toBase64url } from "../namespaces/gitvault.crypto.js";
 import { gitvaultPaths, gitvaultRetainedRefName } from "./gitvault-publication.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 import { hardenedGit } from "./gitvault-snapshot.js";
@@ -306,6 +306,83 @@ describe("gitvault mirror reader — edge_url from object-reads reaches a non-ge
 
     const bytes = await readGitvaultObjectBytes(fakeClient, repoId, { key: `wal/${WAL_ID}.pack.enc`, object_kind: "wal_pack", sha256: "", size_bytes: "1" });
     assert.deepEqual([...bytes!], [3, 4]);
+  });
+});
+
+// ─── gitvault-small-object-inline: `inline` wiring in the mirror path ────────
+//
+// Same principle as the edge_url describe block above: the mirror reader
+// reimplements its own `object-reads` consumption rather than depending on
+// `gitvault-publication.ts` (this module's own header comment explains why),
+// so the `inline` consumption + per-slot fallback rule is duplicated here
+// too. Unlike the live-push transport, `entry.sha256` (the listing's own
+// declared hash) is ALWAYS known at this call site, so verification here is
+// unconditional rather than an optional expectation.
+describe("gitvault mirror reader — inline object-reads bytes (gitvault-small-object-inline)", () => {
+  const WAL_ID = `wal_${"6".repeat(32)}`;
+
+  beforeEach(() => {
+    _resetGitvaultEdgeFetchStateForTest();
+  });
+
+  it("consumes `inline` when it hashes to the listing's own sha256 — no GET at all", async () => {
+    const repoId = `src_${"1".repeat(32)}`;
+    const bytes = new Uint8Array([1, 2, 3]);
+    const fakeClient = {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request() {
+        return { reads: [{ url: "https://origin.example/inline-wal", inline: toBase64url(bytes) }] };
+      },
+      async fetch(input: string | URL | Request) {
+        throw new Error(`must not fetch when inline hashes to the listed sha256: ${String(input)}`);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const result = await readGitvaultObjectBytes(fakeClient, repoId, { key: `wal/${WAL_ID}.pack.enc`, object_kind: "wal_pack", sha256: sha256Hex(bytes), size_bytes: "3" });
+    assert.deepEqual([...result!], [...bytes]);
+  });
+
+  it("falls back to `url` when `inline` does not hash to the listing's own sha256 — a plain miss, byte-identical to the no-inline path", async () => {
+    const repoId = `src_${"2".repeat(32)}`;
+    const lying = new Uint8Array([0, 0]);
+    const real = new Uint8Array([9, 8, 7]);
+    const fakeClient = {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request() {
+        return { reads: [{ url: "https://origin.example/fallback-wal", inline: toBase64url(lying) }] };
+      },
+      async fetch(input: string | URL | Request) {
+        assert.equal(String(input), "https://origin.example/fallback-wal");
+        return new Response(real, { status: 200 });
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const result = await readGitvaultObjectBytes(fakeClient, repoId, { key: `wal/${WAL_ID}.pack.enc`, object_kind: "wal_pack", sha256: sha256Hex(real), size_bytes: "3" });
+    assert.deepEqual([...result!], [...real]);
+  });
+
+  it("an entry with no `inline` at all is untouched — byte-identical to before this change", async () => {
+    const repoId = `src_${"3".repeat(32)}`;
+    const bytes = new Uint8Array([4, 5]);
+    const fakeClient = {
+      apiBase: "https://fake.test",
+      credentials: { getAuth: async () => ({}) },
+      async request() {
+        return { reads: [{ url: "https://origin.example/plain-wal" }] };
+      },
+      async fetch(input: string | URL | Request) {
+        assert.equal(String(input), "https://origin.example/plain-wal");
+        return new Response(bytes, { status: 200 });
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const result = await readGitvaultObjectBytes(fakeClient, repoId, { key: `wal/${WAL_ID}.pack.enc`, object_kind: "wal_pack", sha256: sha256Hex(bytes), size_bytes: "2" });
+    assert.deepEqual([...result!], [...bytes]);
   });
 });
 

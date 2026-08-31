@@ -24,9 +24,10 @@ import { createGitvaultHttpTransport, gitvaultLedgerId, gitvaultManifestEntry, g
 import type { GitvaultUploadObject } from "./gitvault-publication.js";
 import { checkActivationTokenBinding } from "./gitvault-deploy.js";
 import { _resetGitvaultEdgeFetchStateForTest } from "./gitvault-edge-fetch.js";
-import { toBase64url } from "../namespaces/gitvault.crypto.js";
+import { toBase64url, sha256Hex } from "../namespaces/gitvault.crypto.js";
 import { ApiError } from "../errors.js";
 import type { GitvaultActivationToken } from "../namespaces/gitvault.types.js";
+import { GitvaultOpCounter, countingGitvaultTransport } from "./gitvault-transport-counter.test-helper.js";
 
 const WAL = `wal_${"1".repeat(32)}`;
 const REFS = `refs_${"2".repeat(32)}`;
@@ -783,5 +784,229 @@ describe("createGitvaultHttpTransport — edge_url from the wire response reache
     const state = await transport.getState({ repo_id: REPO });
     assert.deepEqual([...state.carriers!.ref_state!], [3]);
     assert.deepEqual(fetchCalls, ["https://origin.example/ref_state"]);
+  });
+});
+
+// ─── gitvault-small-object-inline design D1/D2/D3: `inline` on object-reads ──
+//
+// `inline` sits beside `url`/`edge_url` on the SAME wire response the
+// edge_url describe block above already pins — these tests pin the new
+// member and the client's consumption of it: use `inline` when present and
+// (no expectation, or the expectation matches), else fall through to the
+// unchanged `url`/`edge_url` fetch exactly as if `inline` had been absent.
+describe("createGitvaultHttpTransport — inline object-reads bytes (gitvault-small-object-inline)", () => {
+  const REPO = `r402s_${"b".repeat(32)}`;
+  const CCS_ID = `ccs_${"9".repeat(32)}`;
+  const WAL_ID = `wal_${"8".repeat(32)}`;
+  const REFS_ID = `refs_${"7".repeat(32)}`;
+
+  beforeEach(() => {
+    _resetGitvaultEdgeFetchStateForTest();
+  });
+
+  function fakeClient(opts: { requestResponses: Record<string, unknown>; fetchHandlers: Record<string, () => Response> }): {
+    client: Parameters<typeof createGitvaultHttpTransport>[0];
+    fetchCalls: string[];
+  } {
+    const fetchCalls: string[] = [];
+    const client = {
+      apiBase: "https://api.example.test",
+      async request<T>(path: string): Promise<T> {
+        if (!(path in opts.requestResponses)) throw new Error(`unexpected request: ${path}`);
+        return opts.requestResponses[path] as T;
+      },
+      async fetch(input: string | URL | Request) {
+        const url = String(input);
+        fetchCalls.push(url);
+        const handler = opts.fetchHandlers[url];
+        if (!handler) throw new Error(`unexpected fetch: ${url}`);
+        return handler();
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    return { client, fetchCalls };
+  }
+
+  it("getObject consumes `inline` with no expectation supplied — no GET at all, an entry without inline is untouched", async () => {
+    const claimPath = gitvaultPaths.claimSet(CCS_ID);
+    const claimBytes = new Uint8Array([1, 2, 3, 4]);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [{ object_kind: "checkpoint_claim_set", object_id: CCS_ID, url: "https://origin.example/claim", inline: toBase64url(claimBytes), stored_bytes_sha256: sha256Hex(claimBytes), size_bytes: "4" }],
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/claim": () => { throw new Error("must not fetch url when inline is present and unverified"); },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const bytes = await transport.getObject({ repo_id: REPO, path: claimPath });
+    assert.deepEqual([...bytes!], [...claimBytes]);
+    assert.deepEqual(fetchCalls, [], "no object-store GET for a qualifying inline entry");
+  });
+
+  it("getObject verifies `inline` against `expected_sha256` when supplied — a match still costs zero GETs", async () => {
+    const claimPath = gitvaultPaths.claimSet(CCS_ID);
+    const claimBytes = new Uint8Array([5, 6, 7]);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [{ object_kind: "checkpoint_claim_set", object_id: CCS_ID, url: "https://origin.example/claim2", inline: toBase64url(claimBytes), stored_bytes_sha256: sha256Hex(claimBytes), size_bytes: "3" }],
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/claim2": () => { throw new Error("must not fetch url when inline hashes to the expectation"); },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const bytes = await transport.getObject({ repo_id: REPO, path: claimPath, expected_sha256: sha256Hex(claimBytes) });
+    assert.deepEqual([...bytes!], [...claimBytes]);
+    assert.deepEqual(fetchCalls, []);
+  });
+
+  it("getObject falls back to `url` when `inline` does not hash to `expected_sha256` — a plain miss for this slot, byte-identical outcome to the URL-only path", async () => {
+    const claimPath = gitvaultPaths.claimSet(CCS_ID);
+    const lyingInline = new Uint8Array([0, 0, 0]);
+    const realBytes = new Uint8Array([9, 9, 9]);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [{ object_kind: "checkpoint_claim_set", object_id: CCS_ID, url: "https://origin.example/claim3", inline: toBase64url(lyingInline), stored_bytes_sha256: sha256Hex(realBytes), size_bytes: "3" }],
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/claim3": () => new Response(realBytes, { status: 200 }),
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const bytes = await transport.getObject({ repo_id: REPO, path: claimPath, expected_sha256: sha256Hex(realBytes) });
+    assert.deepEqual([...bytes!], [...realBytes], "the lying inline is discarded; the entry's own url serves the real bytes");
+    assert.deepEqual(fetchCalls, ["https://origin.example/claim3"]);
+  });
+
+  it("getObjects (batch) resolves inline per slot: a valid inline needs no GET, a lying inline falls back, an inline-less entry is untouched", async () => {
+    const walPath = gitvaultPaths.wal(WAL_ID);
+    const refsPath = gitvaultPaths.refState(REFS_ID);
+    const claimPath = gitvaultPaths.claimSet(CCS_ID);
+    const walBytes = new Uint8Array([1]);
+    const lyingRefsInline = new Uint8Array([0]);
+    const realRefsBytes = new Uint8Array([2]);
+    const claimBytes = new Uint8Array([3]);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [
+            { object_kind: "wal_pack", object_id: WAL_ID, url: "https://origin.example/wal-inline", inline: toBase64url(walBytes), stored_bytes_sha256: sha256Hex(walBytes), size_bytes: "1" },
+            { object_kind: "ref_state", object_id: REFS_ID, url: "https://origin.example/refs-fallback", inline: toBase64url(lyingRefsInline), stored_bytes_sha256: sha256Hex(realRefsBytes), size_bytes: "1" },
+            { object_kind: "checkpoint_claim_set", object_id: CCS_ID, url: "https://origin.example/claim-no-inline", stored_bytes_sha256: sha256Hex(claimBytes), size_bytes: "1" },
+          ],
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/wal-inline": () => { throw new Error("must not fetch — wal entry's inline was valid"); },
+        "https://origin.example/refs-fallback": () => new Response(realRefsBytes, { status: 200 }),
+        "https://origin.example/claim-no-inline": () => new Response(claimBytes, { status: 200 }),
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const [wal, refs, claim] = await transport.getObjects({
+      repo_id: REPO,
+      paths: [walPath, refsPath, claimPath],
+      expected: [sha256Hex(walBytes), sha256Hex(realRefsBytes), sha256Hex(claimBytes)],
+    });
+    assert.deepEqual([...wal!], [...walBytes], "valid inline consumed directly");
+    assert.deepEqual([...refs!], [...realRefsBytes], "lying inline discarded; url fetch serves the real bytes");
+    assert.deepEqual([...claim!], [...claimBytes], "no inline offered; behaves exactly as before this change");
+    assert.deepEqual([...fetchCalls].sort(), ["https://origin.example/claim-no-inline", "https://origin.example/refs-fallback"], "only the two non-inline-served slots ever reach the object store");
+  });
+
+  it("getObjectsSettled resolves inline per slot with the same fidelity as getObjects", async () => {
+    const walPath = gitvaultPaths.wal(WAL_ID);
+    const refsPath = gitvaultPaths.refState(REFS_ID);
+    const walBytes = new Uint8Array([4]);
+    const lyingRefsInline = new Uint8Array([0]);
+    const realRefsBytes = new Uint8Array([5]);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [
+            { object_kind: "wal_pack", object_id: WAL_ID, url: "https://origin.example/wal-settled-inline", inline: toBase64url(walBytes), stored_bytes_sha256: sha256Hex(walBytes), size_bytes: "1" },
+            { object_kind: "ref_state", object_id: REFS_ID, url: "https://origin.example/refs-settled-fallback", inline: toBase64url(lyingRefsInline), stored_bytes_sha256: sha256Hex(realRefsBytes), size_bytes: "1" },
+          ],
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/wal-settled-inline": () => { throw new Error("must not fetch — wal entry's inline was valid"); },
+        "https://origin.example/refs-settled-fallback": () => new Response(realRefsBytes, { status: 200 }),
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const settled = await transport.getObjectsSettled!({
+      repo_id: REPO,
+      paths: [walPath, refsPath],
+      expected: [sha256Hex(walBytes), sha256Hex(realRefsBytes)],
+    });
+    const [wal, refs] = await Promise.all(settled);
+    assert.deepEqual([...wal!], [...walBytes]);
+    assert.deepEqual([...refs!], [...realRefsBytes]);
+    assert.deepEqual(fetchCalls, ["https://origin.example/refs-settled-fallback"]);
+  });
+
+  it("an entry with no `inline` at all behaves byte-identically to before this change (older-gateway shape)", async () => {
+    const walPath = gitvaultPaths.wal(WAL_ID);
+    const walBytes = new Uint8Array([6, 7]);
+    const { client, fetchCalls } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://origin.example/wal-plain", stored_bytes_sha256: sha256Hex(walBytes), size_bytes: "2" }],
+        },
+      },
+      fetchHandlers: {
+        "https://origin.example/wal-plain": () => new Response(walBytes, { status: 200 }),
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const bytes = await transport.getObject({ repo_id: REPO, path: walPath, expected_sha256: sha256Hex(walBytes) });
+    assert.deepEqual([...bytes!], [...walBytes]);
+    assert.deepEqual(fetchCalls, ["https://origin.example/wal-plain"]);
+  });
+
+  it("counted transport-operation budgets are structurally unchanged by a gateway that inlines (design D4)", async () => {
+    const walPath = gitvaultPaths.wal(WAL_ID);
+    const walBytes = new Uint8Array([8]);
+
+    // Scenario A: an older gateway — no `inline` on the wire at all.
+    const notInlining = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://origin.example/wal-a", stored_bytes_sha256: sha256Hex(walBytes), size_bytes: "1" }],
+        },
+      },
+      fetchHandlers: { "https://origin.example/wal-a": () => new Response(walBytes, { status: 200 }) },
+    });
+    const counterA = new GitvaultOpCounter();
+    const transportA = countingGitvaultTransport(createGitvaultHttpTransport(notInlining.client), counterA);
+    await transportA.getObject({ repo_id: REPO, path: walPath, expected_sha256: sha256Hex(walBytes) });
+
+    // Scenario B: a gateway that inlines the SAME object — no fetch at all,
+    // but the COUNTED operation (one object-reads presign, carrier-kind) is
+    // the same "1 counted read" regardless of whether it cost a wire GET.
+    const inlining = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://origin.example/wal-b", inline: toBase64url(walBytes), stored_bytes_sha256: sha256Hex(walBytes), size_bytes: "1" }],
+        },
+      },
+      fetchHandlers: { "https://origin.example/wal-b": () => { throw new Error("must not fetch — inline satisfied this read"); } },
+    });
+    const counterB = new GitvaultOpCounter();
+    const transportB = countingGitvaultTransport(createGitvaultHttpTransport(inlining.client), counterB);
+    await transportB.getObject({ repo_id: REPO, path: walPath, expected_sha256: sha256Hex(walBytes) });
+
+    assert.equal(counterA.total, counterB.total, `counted ops must match: A=${JSON.stringify(counterA.byKind())} B=${JSON.stringify(counterB.byKind())}`);
+    assert.deepEqual(counterA.byKind(), counterB.byKind());
+    assert.deepEqual(notInlining.fetchCalls, ["https://origin.example/wal-a"], "the non-inlining gateway costs a real GET");
+    assert.deepEqual(inlining.fetchCalls, [], "the inlining gateway costs none — wall-clock differs, the counted op does not");
   });
 });

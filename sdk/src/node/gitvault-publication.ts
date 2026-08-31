@@ -951,8 +951,19 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
    * gives for one object. Callers that need exactly one object still use
    * {@link GitvaultCreationTransport.getObject} — this is for the plural
    * case only, so a single-object caller never pays a batch's overhead.
+   *
+   * `expected` (gitvault-small-object-inline design D3), when supplied, is
+   * INDEX-ALIGNED with `paths`: `expected[i]`, if present, is the sha256 hex
+   * the caller will itself check `paths[i]`'s bytes against. An
+   * `object-reads`-backed implementation MAY use it to verify a
+   * gateway-supplied `inline` reply before trusting it, falling back to
+   * that slot's ordinary fetch on a mismatch — client-internal plumbing,
+   * never a new verification obligation (every real caller already
+   * hash-checks its bytes before use) and never required: an absent array,
+   * or an absent element within it, is byte-identical to before that
+   * change.
    */
-  getObjects(request: { repo_id: string; paths: string[] }): Promise<Array<Uint8Array | null>>;
+  getObjects(request: { repo_id: string; paths: string[]; expected?: Array<string | undefined> }): Promise<Array<Uint8Array | null>>;
   /**
    * OPTIONAL per-object settlement over the SAME batch shape as
    * {@link getObjects} (gitvault-pipelined-restore D2): one presign POST,
@@ -960,13 +971,15 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
    * result is one promise PER path, each settling when its own object's
    * bytes land, so a consumer can decrypt/verify/apply object i while later
    * objects are still downloading. Order and absence semantics match
-   * `getObjects` (index-aligned; `null` for absent). Every returned promise
-   * is pre-marked handled, so an abandoned tail after a mid-batch failure
-   * never surfaces as an unhandled rejection. A transport without this
-   * method degrades to the `getObjects` barrier — pipelining is a
-   * wall-clock property, never a correctness dependency.
+   * `getObjects` (index-aligned; `null` for absent), including `expected`
+   * (gitvault-small-object-inline design D3 — see {@link getObjects}'s doc
+   * comment). Every returned promise is pre-marked handled, so an abandoned
+   * tail after a mid-batch failure never surfaces as an unhandled
+   * rejection. A transport without this method degrades to the
+   * `getObjects` barrier — pipelining is a wall-clock property, never a
+   * correctness dependency.
    */
-  getObjectsSettled?(request: { repo_id: string; paths: string[] }): Promise<Array<Promise<Uint8Array | null>>>;
+  getObjectsSettled?(request: { repo_id: string; paths: string[]; expected?: Array<string | undefined> }): Promise<Array<Promise<Uint8Array | null>>>;
   /**
    * Read the EXACT stored bytes of many generation-addressed heads in ONE
    * POST (`…/head-reads`, gitvault-batched-head-reads).
@@ -1325,8 +1338,19 @@ interface ObjectReadsResponse {
    * `fetchGitvaultObjectBytes` (`gitvault-edge-fetch.ts`) for the
    * prefer-edge/silent-fallback policy; this type never implies a
    * verification difference between the two arms.
+   *
+   * `inline` (gitvault-small-object-inline design D1/D2) is the object's
+   * EXACT stored bytes, base64url, present only when the gateway judged the
+   * object small enough (a per-object cap) and the response's total inline
+   * budget was not yet spent — `url`/`edge_url` remain present and
+   * authoritative on EVERY entry regardless, so a client that ignores this
+   * field is byte-identical to before this change. See
+   * {@link resolveObjectReadTarget} for consumption: an entry's `inline`
+   * is used only when it hashes to whatever the caller expected (or the
+   * caller supplied no expectation), never re-verified by this type or by
+   * the server that sent it.
    */
-  reads: Array<GitvaultObjectReadRequest & { url: string; edge_url?: string; stored_bytes_sha256: string; size_bytes: string }>;
+  reads: Array<GitvaultObjectReadRequest & { url: string; edge_url?: string; inline?: string; stored_bytes_sha256: string; size_bytes: string }>;
 }
 /**
  * `GET …/state` wire shape (gitvault-composite-state-read design D1) —
@@ -1420,8 +1444,32 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     return new Uint8Array(await r.arrayBuffer());
   }
 
+  /**
+   * Resolve ONE `object-reads` presign target to bytes (gitvault-small-
+   * object-inline design D3): consume `inline` when present and EITHER no
+   * `expectedSha256` was supplied OR the decoded bytes hash to it, else
+   * fall through to the ordinary `url`/`edge_url` fetch exactly as before
+   * this change. A lying `inline` is therefore a PLAIN MISS for this one
+   * slot — the fetch below reproduces the URL-only result and failure
+   * envelope byte-for-byte, never a special error. A caller that supplies
+   * no expectation cannot detect a lying `inline` at all, but that is no
+   * new exposure: `inline` is the SAME stored bytes, to the SAME
+   * authorized caller, the entry's own `url` would have served — nothing
+   * here becomes a new source of truth (design D5).
+   */
+  async function resolveObjectReadTarget(target: ObjectReadsResponse["reads"][number], expectedSha256: string | undefined, path: string): Promise<Uint8Array | null> {
+    if (target.inline !== undefined) {
+      const bytes = fromBase64url(target.inline, "reads[].inline");
+      if (expectedSha256 === undefined || sha256Hex(bytes) === expectedSha256) return bytes;
+    }
+    const r = await fetchGitvaultObjectBytes(client, target);
+    if (r.status === 404) return null;
+    if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${path}`, "reading gitvault object", { path, status: r.status });
+    return new Uint8Array(await r.arrayBuffer());
+  }
+
   /** Presign + fetch one object by its ledger identity (`POST …/object-reads`). */
-  async function getObjectBytes(repoId: string, path: string): Promise<Uint8Array | null> {
+  async function getObjectBytes(repoId: string, path: string, expectedSha256?: string): Promise<Uint8Array | null> {
     const ref = gitvaultWireRefForPath(path);
     if (!ref) fail("GITVAULT_OBJECT_READ_FAILED", `${path} has no control-plane wire identity; it is not a readable vault object`, "reading gitvault object", { path });
     if (ref.kind === "head") return getGenerationBytes(repoId, "heads", ref.generation);
@@ -1453,10 +1501,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     }
     const target = presigned.reads[0];
     if (!target) return null;
-    const r = await fetchGitvaultObjectBytes(client, target);
-    if (r.status === 404) return null;
-    if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${path}`, "reading gitvault object", { path, status: r.status });
-    return new Uint8Array(await r.arrayBuffer());
+    return resolveObjectReadTarget(target, expectedSha256, path);
   }
 
   /**
@@ -1469,16 +1514,13 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
    * restore's carrier and pack reads, so it fails closed rather than
    * silently costing an extra round trip through `getGenerationBytes`.
    */
-  async function getObjectsBytes(repoId: string, paths: string[]): Promise<Array<Uint8Array | null>> {
+  async function getObjectsBytes(repoId: string, paths: string[], expected?: Array<string | undefined>): Promise<Array<Uint8Array | null>> {
     if (paths.length === 0) return [];
     const targets = await presignObjectBatch(repoId, paths);
     if (!targets) return paths.map(() => null);
     return mapBounded(targets, GITVAULT_TRANSPORT_CONCURRENCY, async (target, i) => {
       if (!target) return null;
-      const r = await fetchGitvaultObjectBytes(client, target);
-      if (r.status === 404) return null;
-      if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${paths[i]}`, "reading gitvault object", { path: paths[i], status: r.status });
-      return new Uint8Array(await r.arrayBuffer());
+      return resolveObjectReadTarget(target, expected?.[i], paths[i]!);
     });
   }
 
@@ -1506,10 +1548,12 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
    * D2): identical presign + bounded GETs, but each index's promise settles
    * when ITS bytes land. Failure semantics per index match `getObjects`'s
    * per-element behavior (absent → null, a failed GET → the same
-   * GITVAULT_OBJECT_READ_FAILED); every promise is pre-marked handled so an
-   * abandoned tail never becomes an unhandled rejection.
+   * GITVAULT_OBJECT_READ_FAILED), including `expected` (gitvault-small-
+   * object-inline design D3 — see {@link GitvaultTransport.getObjects}'s
+   * doc comment); every promise is pre-marked handled so an abandoned tail
+   * never becomes an unhandled rejection.
    */
-  async function getObjectsSettledBytes(repoId: string, paths: string[]): Promise<Array<Promise<Uint8Array | null>>> {
+  async function getObjectsSettledBytes(repoId: string, paths: string[], expected?: Array<string | undefined>): Promise<Array<Promise<Uint8Array | null>>> {
     if (paths.length === 0) return [];
     const targets = await presignObjectBatch(repoId, paths);
     if (!targets) return paths.map(() => Promise.resolve<Uint8Array | null>(null));
@@ -1535,13 +1579,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
             deferreds[i]!.resolve(null);
             continue;
           }
-          const r = await fetchGitvaultObjectBytes(client, target);
-          if (r.status === 404) {
-            deferreds[i]!.resolve(null);
-            continue;
-          }
-          if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${paths[i]}`, "reading gitvault object", { path: paths[i], status: r.status });
-          deferreds[i]!.resolve(new Uint8Array(await r.arrayBuffer()));
+          deferreds[i]!.resolve(await resolveObjectReadTarget(target, expected?.[i], paths[i]!));
         } catch (e) {
           deferreds[i]!.reject(e);
         }
@@ -1792,9 +1830,9 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       const [r] = await upload(request.repo_id, [{ path: request.path, object_kind: "key_envelope", object_id: null, bytes: request.bytes, sha256: request.expected_sha256, size_bytes: request.expected_size_bytes }], undefined, request.byo);
       return { stored_bytes_sha256: r!.sha256, size_bytes: r!.size_bytes };
     },
-    getObject: ({ repo_id, path }) => getObjectBytes(repo_id, path),
-    getObjects: ({ repo_id, paths }) => getObjectsBytes(repo_id, paths),
-    getObjectsSettled: ({ repo_id, paths }) => getObjectsSettledBytes(repo_id, paths),
+    getObject: ({ repo_id, path, expected_sha256 }) => getObjectBytes(repo_id, path, expected_sha256),
+    getObjects: ({ repo_id, paths, expected }) => getObjectsBytes(repo_id, paths, expected),
+    getObjectsSettled: ({ repo_id, paths, expected }) => getObjectsSettledBytes(repo_id, paths, expected),
     getHeads: ({ repo_id, generations }) => getHeadsBytes(repo_id, generations),
     async admitGenesis(request: GitvaultAdmitGenesisRequest): Promise<GitvaultAdmitGenesisResult> {
       try {
@@ -2992,7 +3030,7 @@ export class GitvaultVault {
               }
             }
             if (carriers.length > 1) {
-              const fetched = await this.transport.getObjects({ repo_id: this.repoId, paths: carriers.map((c) => c.path) });
+              const fetched = await this.transport.getObjects({ repo_id: this.repoId, paths: carriers.map((c) => c.path), expected: carriers.map((c) => c.sha) });
               for (let i = 0; i < carriers.length; i++) {
                 const bytes = fetched[i] ?? null;
                 if (bytes && sha256Hex(bytes) === carriers[i]!.sha) prefetch.set(carriers[i]!.path, bytes);
@@ -3250,7 +3288,7 @@ export class GitvaultVault {
     const cacheable = kind === "ref_state" || kind === "retention_roots";
     const cached = cacheable ? this.keystore.readCachedCarrier(this.repoId, receipt.object_id) : null;
     const cacheHit = cached && sha256Hex(cached.bytes) === receipt.ciphertext_sha256;
-    const frame = cacheHit ? cached.bytes : await this.transport.getObject({ repo_id: this.repoId, path });
+    const frame = cacheHit ? cached.bytes : await this.transport.getObject({ repo_id: this.repoId, path, expected_sha256: receipt.ciphertext_sha256 });
     const object = this.decodeCarrierFrame<T>(kind, receipt, frame, writerKey, keyOverride);
     if (cacheable && !cacheHit && frame && typeof object.generation === "string") {
       this.keystore.writeCachedCarrier(this.repoId, receipt.object_id, object.generation, receipt.ciphertext_sha256, frame);
@@ -3282,9 +3320,16 @@ export class GitvaultVault {
     const rootsPre = preRoots && sha256Hex(preRoots) === rootsReceipt.ciphertext_sha256 ? preRoots : null;
 
     const missingPaths: string[] = [];
-    if (!refStateHit && !refStatePre) missingPaths.push(refStatePath);
-    if (!rootsHit && !rootsPre) missingPaths.push(rootsPath);
-    const fetched = missingPaths.length > 0 ? await this.transport.getObjects({ repo_id: this.repoId, paths: missingPaths }) : [];
+    const missingExpected: string[] = [];
+    if (!refStateHit && !refStatePre) {
+      missingPaths.push(refStatePath);
+      missingExpected.push(refStateReceipt.ciphertext_sha256);
+    }
+    if (!rootsHit && !rootsPre) {
+      missingPaths.push(rootsPath);
+      missingExpected.push(rootsReceipt.ciphertext_sha256);
+    }
+    const fetched = missingPaths.length > 0 ? await this.transport.getObjects({ repo_id: this.repoId, paths: missingPaths, expected: missingExpected }) : [];
     let next = 0;
     const refStateFrame = refStateHit ? cachedRefState!.bytes : (refStatePre ?? fetched[next++] ?? null);
     const rootsFrame = rootsHit ? cachedRoots!.bytes : (rootsPre ?? fetched[next++] ?? null);
@@ -3707,7 +3752,7 @@ export class GitvaultVault {
     if (!block) fail("CHECKPOINT_INCOMPLETE", `head ${head.generation} carries no checkpoint to verify`, "verifying a stored checkpoint", { generation: head.generation });
     const { genesis } = await this.genesis();
     const writerKey = genesis.creator_signing_pubkey;
-    const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(block.claim_set.object_id) });
+    const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(block.claim_set.object_id), expected_sha256: block.claim_set.stored_bytes_sha256 });
     if (!claimBytes || sha256Hex(claimBytes) !== block.claim_set.stored_bytes_sha256) {
       fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${block.claim_set.object_id} is absent or does not match the head's receipt`, "verifying a stored checkpoint", { object_id: block.claim_set.object_id });
     }
@@ -3722,7 +3767,7 @@ export class GitvaultVault {
     try {
       await hardenedGit(scratch, ["init", "-q", "--bare", "--object-format=sha1", "."]);
       for (const p of manifest.packs) {
-        const frame = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.checkpointPack(p.object_id) });
+        const frame = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.checkpointPack(p.object_id), expected_sha256: p.ciphertext_sha256 });
         if (!frame) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} is absent from storage`, "verifying a stored checkpoint", { object_id: p.object_id });
         const plain = openFrame({ k_obj: deriveObjectKey(this.kRepo(), this.repoId, this.epoch(), "checkpoint_pack", p.object_id), repo_id: this.repoId, object_kind: "checkpoint_pack", object_id: p.object_id, epoch: this.epoch(), frame, expected_ciphertext_sha256: p.ciphertext_sha256 });
         if (sha256Hex(plain) !== p.plaintext_sha256 || String(plain.length) !== p.plaintext_size_bytes) fail("CHECKPOINT_INCOMPLETE", `checkpoint pack ${p.object_id} plaintext mismatch`, "verifying a stored checkpoint", { object_id: p.object_id });
@@ -3781,7 +3826,7 @@ export class GitvaultVault {
         // Plaintext-structured and stored-bytes-receipted: no decryption, but
         // the hash and the owner signature are still checked before a single
         // pack receipt inside it is believed.
-        const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(block.claim_set.object_id) });
+        const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(block.claim_set.object_id), expected_sha256: block.claim_set.stored_bytes_sha256 });
         if (!bytes || sha256Hex(bytes) !== block.claim_set.stored_bytes_sha256) {
           fail("CHECKPOINT_INCOMPLETE", `checkpoint claim set ${block.claim_set.object_id} (generation ${gen}) is absent or altered`, "walking the gitvault chain", { generation: gen, object_id: block.claim_set.object_id });
         }
@@ -4175,7 +4220,7 @@ export class GitvaultVault {
     if (known && known.pin_manifest_version === receipt.pin_manifest_version && known.stored_bytes_sha256 === receipt.stored_bytes_sha256) {
       return { pinManifestVersion: known.pin_manifest_version, pinManifestSha256: known.stored_bytes_sha256, pinnedFingerprintOf: new Map(known.pins.map((p) => [p.principal_id, p.ek_fingerprint] as const)) };
     }
-    const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.pinManifest(receipt.pin_manifest_version) });
+    const bytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.pinManifest(receipt.pin_manifest_version), expected_sha256: receipt.stored_bytes_sha256 });
     if (!bytes || sha256Hex(bytes) !== receipt.stored_bytes_sha256) {
       fail("GITVAULT_RECEIPT_MISMATCH", `recipient_pin_manifest ${receipt.pin_manifest_version} is absent or does not match its receipted hash`, "resolving the effective recipient pin manifest", { pin_manifest_version: receipt.pin_manifest_version });
     }
@@ -4920,9 +4965,16 @@ export class GitvaultVault {
     // wall-clock property, never a correctness dependency, so a transport
     // without the method reproduces today's serial-after-barrier behavior
     // exactly (each per-index promise settles when the whole batch does).
-    const settled = async (paths: string[]): Promise<Array<Promise<Uint8Array | null>>> => {
-      if (this.transport.getObjectsSettled) return this.transport.getObjectsSettled({ repo_id: this.repoId, paths });
-      const all = this.transport.getObjects({ repo_id: this.repoId, paths });
+    //
+    // `expected` (gitvault-small-object-inline design D3) is index-aligned
+    // with `paths` — every caller below already knows each object's
+    // receipted ciphertext hash BEFORE fetching it, so it rides along here
+    // to let an `object-reads`-backed transport verify (and, on a lying
+    // reply, discard) an `inline` bytes offer per slot. Not required: an
+    // omitted `expected` is byte-identical to before this change.
+    const settled = async (paths: string[], expected?: Array<string | undefined>): Promise<Array<Promise<Uint8Array | null>>> => {
+      if (this.transport.getObjectsSettled) return this.transport.getObjectsSettled({ repo_id: this.repoId, paths, expected });
+      const all = this.transport.getObjects({ repo_id: this.repoId, paths, expected });
       const perIndex = paths.map((_, i) => all.then((frames) => frames[i] ?? null));
       // Mark every derived promise handled — the consumer awaits them in
       // order and stops at the first failure, abandoning the tail.
@@ -4955,12 +5007,12 @@ export class GitvaultVault {
     }
     const uncovered = walEntries.map((_, i) => i).filter((i) => !deltaCovered.has(i));
     const walFramesP = (async (): Promise<Array<Promise<Uint8Array | null>>> => {
-      const fetched = uncovered.length > 0 ? await settled(uncovered.map((i) => gitvaultPaths.wal(walEntries[i]!.w.object_id))) : [];
+      const fetched = uncovered.length > 0 ? await settled(uncovered.map((i) => gitvaultPaths.wal(walEntries[i]!.w.object_id)), uncovered.map((i) => walEntries[i]!.w.ciphertext_sha256)) : [];
       return walEntries.map((_, i) => (deltaCovered.has(i) ? Promise.resolve<Uint8Array | null>(deltaCovered.get(i)!) : fetched[uncovered.indexOf(i)]!));
     })();
     void walFramesP.catch(() => {});
     if (first.checkpoint) {
-      const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(first.checkpoint.claim_set.object_id) });
+      const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(first.checkpoint.claim_set.object_id), expected_sha256: first.checkpoint.claim_set.stored_bytes_sha256 });
       if (!claimBytes || sha256Hex(claimBytes) !== first.checkpoint.claim_set.stored_bytes_sha256) fail("CHECKPOINT_INCOMPLETE", "claim set absent or altered", "restoring gitvault objects");
       const claimSet = parseGitvaultStrict(new TextDecoder().decode(claimBytes)) as GitvaultCheckpointClaimSet;
       if (!verifyGitvaultObject(claimSet as unknown as GitvaultSignedObject, writerKey)) fail("CHECKPOINT_INCOMPLETE", "claim set signature fails", "restoring gitvault objects");
@@ -4972,7 +5024,7 @@ export class GitvaultVault {
       // bytes(i), so decrypt/verify/index of an early pack overlaps the
       // later packs' downloads. Per-pack verification (AEAD open + plaintext
       // hash) still completes before any byte reaches git.
-      const frames = await settled(manifest.packs.map((p) => gitvaultPaths.checkpointPack(p.object_id)));
+      const frames = await settled(manifest.packs.map((p) => gitvaultPaths.checkpointPack(p.object_id)), manifest.packs.map((p) => p.ciphertext_sha256));
       for (let i = 0; i < manifest.packs.length; i++) {
         const p = manifest.packs[i]!;
         const frame = (await frames[i]!) ?? null;

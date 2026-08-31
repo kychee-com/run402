@@ -91,6 +91,7 @@ import {
   GITVAULT_GENESIS_GENERATION,
   GITVAULT_MIRROR_KEYSTORE_STILL_REQUIRED_STATEMENT,
   GITVAULT_MIRROR_VALIDITY_NOT_FRESHNESS_STATEMENT,
+  fromBase64url,
 } from "../namespaces/gitvault.crypto.js";
 import { fetchGitvaultObjectBytes } from "./gitvault-edge-fetch.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
@@ -220,7 +221,17 @@ export async function readGitvaultObjectBytes(client: Client, repoId: string, en
   // same-bytes CDN companion `gitvault-publication.ts`'s object-reads
   // consumers get — see `fetchGitvaultObjectBytes` (`gitvault-edge-fetch.ts`)
   // for the prefer-edge/silent-fallback policy shared across both.
-  let presigned: { reads: Array<{ url: string; edge_url?: string }> };
+  //
+  // `inline` (gitvault-small-object-inline design D1/D2) is the same
+  // optional, same-bytes small-object offer those consumers get too — see
+  // `gitvault-publication.ts`'s `resolveObjectReadTarget` for the sibling
+  // logic, DUPLICATED here (not imported) for the reason this module's own
+  // header names: this reader must have no dependency on the live-push
+  // module. `entry.sha256` is always known here (the listing supplies it
+  // for every entry), so unlike the live-push path this consumption is
+  // unconditional rather than optional-expectation — a lying `inline` is
+  // still just a plain miss for this one read.
+  let presigned: { reads: Array<{ url: string; edge_url?: string; inline?: string }> };
   try {
     presigned = await client.request(`${base}/object-reads`, { method: "POST", body: { objects: [read] }, context: "resolving gitvault mirror source object" });
   } catch (e) {
@@ -229,6 +240,10 @@ export async function readGitvaultObjectBytes(client: Client, repoId: string, en
   }
   const target = presigned.reads[0];
   if (!target) return null;
+  if (target.inline !== undefined) {
+    const bytes = fromBase64url(target.inline, "reads[].inline");
+    if (sha256Hex(bytes) === entry.sha256) return bytes;
+  }
   const r = await fetchGitvaultObjectBytes(client, target);
   if (r.status === 404) return null;
   if (!r.ok) fail("GITVAULT_MIRROR_READ_FAILED", `${entry.key} GET failed (HTTP ${r.status})`, "reading gitvault mirror source object", { key: entry.key, status: r.status });

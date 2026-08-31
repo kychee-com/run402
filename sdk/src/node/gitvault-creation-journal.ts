@@ -248,8 +248,18 @@ export interface GitvaultCreationTransport {
   allocate(request: GitvaultAllocateRequest): Promise<GitvaultAllocation>;
   /** Create-only PUT; on a pre-existing object the server MAY return its receipt instead of overwriting. */
   putObject(request: GitvaultPutObjectRequest): Promise<GitvaultObjectReceipt>;
-  /** Read an object back (`null` when absent) — the read-and-compare primitive. */
-  getObject(request: { repo_id: string; path: string }): Promise<Uint8Array | null>;
+  /**
+   * Read an object back (`null` when absent) — the read-and-compare primitive.
+   *
+   * `expected_sha256` (gitvault-small-object-inline design D3) is OPTIONAL,
+   * client-internal plumbing: an `object-reads`-backed implementation MAY
+   * use it to verify a gateway-supplied `inline` reply before trusting it,
+   * falling back to the ordinary fetch on a mismatch — never a NEW
+   * verification obligation, since every real caller already hash-checks
+   * the returned bytes itself before use. Omitted, this is byte-identical
+   * to before that change.
+   */
+  getObject(request: { repo_id: string; path: string; expected_sha256?: string }): Promise<Uint8Array | null>;
   /** Generation-zero admission (the §5A machine at generation zero). */
   admitGenesis(request: GitvaultAdmitGenesisRequest): Promise<GitvaultAdmitGenesisResult>;
   /** Read the admitted genesis bytes back (`null` when none). */
