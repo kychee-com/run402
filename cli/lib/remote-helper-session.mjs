@@ -115,6 +115,7 @@
  */
 
 import { createInterface } from "node:readline";
+import { statSync } from "node:fs";
 
 // The heavy graphs load as ONE top-level await batch — in the in-process
 // host this races the thin bin's already-fired prewarm; in the daemon host
@@ -123,10 +124,65 @@ const sdkModP = import("./sdk.mjs");
 const walletModP = import("./wallet-context.mjs");
 const isoModP = import("#sdk");
 const nodeModP = import("#sdk/node");
+const configModP = import("./config.mjs");
 const { getSdk } = await sdkModP;
 const { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } = await walletModP;
 const { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl } = await isoModP;
 const { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo, readGitvaultRestoreMarker, readGitvaultAutoGcThreshold } = await nodeModP;
+const { allowanceFile, projectCredentialsFile, profileStateFile } = await configModP;
+
+/**
+ * Per-session SDK construction cache (gitvault-first-op-premium task 2.2).
+ *
+ * `getSdk()` builds a fresh Node SDK instance on every call — cheap for a
+ * traditional one-process-per-invocation CLI, but this module is ALSO the
+ * resident daemon's per-session engine, where every forwarded session calls
+ * it fresh exactly once (via `openVault`). Measured: constructing a NEW SDK
+ * instance re-probes the paid-fetch buyer's rail selection (two live RPC
+ * calls, `sepolia.base.org` + `mainnet.base.org`, ~150-300ms combined) on
+ * its own first authenticated request — a cost a genuinely resident process
+ * should pay ONCE, not once per session. This is the dominant share of the
+ * measured "first transport op" premium a resident daemon was built to
+ * eliminate and, before this cache, did not.
+ *
+ * Keyed on the resolved wallet + the env that governs config resolution
+ * (`RUN402_CONFIG_DIR`/`RUN402_API_BASE` — the exact two vars `getSdk`'s own
+ * doc comment calls out as reasons a fresh instance mattered for tests that
+ * mutate them between calls in one process) and INVALIDATED on the mtime of
+ * the three files whose bytes actually determine signer/credential material
+ * (allowance, project-credentials keystore, profile state) — a wallet
+ * rotation, `run402 init`, or any other on-disk change is picked up on the
+ * very next call, no daemon restart required. A file that does not exist
+ * yet (fresh wallet, no allowance) signs into the key as `null`, so its
+ * LATER appearance also busts the cache. The in-process fallback host calls
+ * this at most once per process anyway, so it degrades to exactly today's
+ * behavior there — this only changes anything for the daemon.
+ */
+let cachedSdk = null; // { key, sdk }
+
+function mtimeOf(path) {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+function sdkCacheKey() {
+  const wallet = process.env.RUN402_WALLET ?? "";
+  const configDir = process.env.RUN402_CONFIG_DIR ?? "";
+  const apiBase = process.env.RUN402_API_BASE ?? "";
+  const files = [mtimeOf(allowanceFile()), mtimeOf(projectCredentialsFile()), mtimeOf(profileStateFile())];
+  return `${wallet} ${configDir} ${apiBase} ${files.join(",")}`;
+}
+
+export function getCachedSdk() {
+  const key = sdkCacheKey();
+  if (cachedSdk && cachedSdk.key === key) return cachedSdk.sdk;
+  const sdk = getSdk();
+  cachedSdk = { key, sdk };
+  return sdk;
+}
 
 /** The session's input stream — injected per session (daemon: the socket's forwarded stdin). */
 let sessionStdin = process.stdin;
@@ -450,7 +506,7 @@ async function main(argv, { onBackgroundWork } = {}) {
    * pin.
    */
   const openVault = async (repoDir) => {
-    const result = await getSdk().gitvault.resolveOrCreateAddress({ address, allow_create: false, ...(repoDir ? { repo_dir: repoDir } : {}) });
+    const result = await getCachedSdk().gitvault.resolveOrCreateAddress({ address, allow_create: false, ...(repoDir ? { repo_dir: repoDir } : {}) });
     return { vault: result.handle.vault, resolution: result.resolution };
   };
 
@@ -482,14 +538,14 @@ async function main(argv, { onBackgroundWork } = {}) {
     if (addressForm === "id" && repoDir) {
       const pinned = await readPinnedGitvaultRepo(repoDir);
       if (pinned) {
-        const result = await getSdk().gitvault.resolveOrCreateAddress({ address, repo_dir: repoDir, allow_create: false });
+        const result = await getCachedSdk().gitvault.resolveOrCreateAddress({ address, repo_dir: repoDir, allow_create: false });
         return result.handle.vault;
       }
     }
     const result =
       addressForm === "id"
-        ? await getSdk().gitvault.openOrCreate({ ...target, repo_dir: repoDir })
-        : await getSdk().gitvault.resolveOrCreateAddress({ address, repo_dir: repoDir, allow_create: true });
+        ? await getCachedSdk().gitvault.openOrCreate({ ...target, repo_dir: repoDir })
+        : await getCachedSdk().gitvault.resolveOrCreateAddress({ address, repo_dir: repoDir, allow_create: true });
     if (addressForm === "id" && repoDir) await pinGitvaultRepo(repoDir, result.handle.repo_id, undefined, { project_id: target.project_id, org_id: target.org_id });
     if (!result.found && result.created) {
       note("");
@@ -556,7 +612,7 @@ async function main(argv, { onBackgroundWork } = {}) {
         // always runs `list` first in a helper session, so this one site
         // heals the pin for the `fetch`/`push` that follows it.
         const recovered = repoDir && opened.resolution?.offline
-          ? await getSdk().gitvault.recoverStalePin({ address, repo_dir: repoDir, resolution: opened.resolution, error: err })
+          ? await getCachedSdk().gitvault.recoverStalePin({ address, repo_dir: repoDir, resolution: opened.resolution, error: err })
           : null;
         if (!recovered) throw err;
         note(`pinned vault ${opened.resolution.repo_id} no longer resolves — re-resolved to ${recovered.resolution.repo_id}, retrying`);
@@ -630,7 +686,7 @@ async function main(argv, { onBackgroundWork } = {}) {
     const shared = sharedListSession && sharedListSession.repoDir === repoDir && sharedListSession.walletName === (resolvedWallet?.name ?? null) ? sharedListSession : null;
     const restored = shared
       ? await shared.vault.restoreObjectsInto(repoDir, { marker: shared.fetchMarker, state: shared.fetchState })
-      : await getSdk().gitvault.restore({ ...target, repo_dir: repoDir, target_dir: repoDir });
+      : await getCachedSdk().gitvault.restore({ ...target, repo_dir: repoDir, target_dir: repoDir });
     if (verbosity >= 1) note(`restored generation ${restored.generation}`);
     // clone-installs-retained-refs D3: a bookkeeping failure here degrades to
     // exactly today's (pre-change) behavior — one stderr note, fetch still
@@ -686,7 +742,7 @@ async function main(argv, { onBackgroundWork } = {}) {
     if (!shouldRunAutoGc(threshold, generationsSinceCheckpoint)) return;
 
     const runCycle = async () => {
-      const sdk = getSdk();
+      const sdk = getCachedSdk();
       const checkpoint = await sdk.gitvault.compact({ ...target });
       const prune = await sdk.gitvault.prune(target); // PLAN only — never `submit`; see compact()'s own grant-close doc comment for why prune needs no headroom of its own
       return { checkpoint, prune };

@@ -98,6 +98,10 @@ function apiConnector(store: TicketStore): buildConnector.connector {
       callback(err, socket);
     };
     try {
+      apiDialCount += 1;
+      if (process.env.RUN402_GITVAULT_TRACE === "1") {
+        process.stderr.write(`gitvault-trace: dispatcher-dial #${apiDialCount} ${options.servername ?? options.hostname}\n`);
+      }
       const socket = tlsConnect({
         host: options.host ?? options.hostname,
         port: options.port ? Number(options.port) : 443,
@@ -117,6 +121,25 @@ function apiConnector(store: TicketStore): buildConnector.connector {
 
 /** Test-only export of the store (the class itself is not public API). */
 export { TicketStore as _TicketStoreForTests };
+
+/**
+ * Dial-vs-reused attribution (gitvault-first-op-premium task 1.1). Every
+ * real TCP dial to the API origin increments this — `apiConnector` is the
+ * ONLY place undici opens a fresh socket for that origin, so a count that
+ * climbs faster than "once per process" proves a connection is dying and
+ * being re-dialed rather than genuinely reused across daemon sessions.
+ * Cheap (an integer increment) and always counted; the stderr line is
+ * gated on `RUN402_GITVAULT_TRACE=1` like every other transport trace.
+ */
+let apiDialCount = 0;
+/** Test/diagnostic-only: the number of real dials to the API origin this process has made. */
+export function _apiDialCount(): number {
+  return apiDialCount;
+}
+/** Test-only: reset the dial counter alongside the dispatcher singleton. */
+export function _resetApiDialCount(): void {
+  apiDialCount = 0;
+}
 
 let agentSingleton: Agent | null = null;
 

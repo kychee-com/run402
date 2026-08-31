@@ -71,3 +71,17 @@ describe("sdkFetch — test-override deference (design D4)", () => {
     assert.equal(res.status, 200);
   });
 });
+
+/**
+ * gitvault-first-op-premium task 1.1 — H1 attribution note. A live probe
+ * (recorded in openspec/changes/gitvault-first-op-premium/tasks.md — three
+ * consecutive daemon-forwarded sessions against the real gateway, dial count
+ * read via `_apiDialCount()`) found the owned dispatcher's API-origin
+ * connection was ALREADY reused correctly: exactly one dial total, zero
+ * re-dials across sessions. H1 was not convicted, so no lifecycle fix
+ * landed here. `_apiDialCount`/`_resetApiDialCount` stay exported as the
+ * diagnostic the live probe used, for the next time this needs re-checking —
+ * a synthetic-TLS unit harness for it was tried and dropped (undici's H2
+ * client + a self-signed local server interacted in ways not worth the
+ * debugging time for a hypothesis this change did not convict).
+ */

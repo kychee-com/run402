@@ -53,7 +53,7 @@ export async function runDaemon() {
   // Load the heavy module ONCE — this is the entire point of residency.
   // Its top-level await pulls the SDK graph; the prewarm dials the API
   // origin so the first forwarded session rides a warm h2 connection.
-  const { prewarmGitvaultConnection } = await import("../sdk/dist/node/gitvault-prewarm.js");
+  const { prewarmGitvaultConnection, kickGitvaultConnection } = await import("../sdk/dist/node/gitvault-prewarm.js");
   prewarmGitvaultConnection();
   const { runHelperSession } = await import("./remote-helper-session.mjs");
 
@@ -169,10 +169,26 @@ export async function runDaemon() {
             socket.end();
             return;
           }
+          // gitvault-first-op-premium (design point: pre-connect on session
+          // accept). Git's own helper handshake (capabilities/list stdin
+          // exchange) buys ~100-200ms of free overlap before the SESSION's
+          // first real transport op — kick the owned dispatcher's connection
+          // right now, before env/cwd swap even, so a dead/never-dialed
+          // socket redials NOW instead of on the verb's critical path. The
+          // NARROW half only (`kickGitvaultConnection`), never the full
+          // `prewarmGitvaultConnection` — that also (re)warms the signer +
+          // paid-fetch buyer stack, which this daemon already warmed ONCE at
+          // boot; re-running it per session was measured to cost an EXTRA
+          // ~150-300ms/session (two live Base RPC probes a gitvault session
+          // never needs) for zero benefit. Fire-and-forget by contract
+          // (never throws, never awaited, never delays a session).
+          const acceptedAt = Date.now();
+          kickGitvaultConnection();
           busy = true;
           sessionsServed += 1;
           const stdin = new PassThrough();
           const restoreEnv = applySessionEnv(msg.env ?? {});
+          const envReadyAt = Date.now();
           const prevCwd = process.cwd();
           let restoreCwd = () => {};
           try {
@@ -213,6 +229,17 @@ export async function runDaemon() {
           };
           session = { stdin, restoreEnv, restoreCwd, restoreWrites, backgroundWork: null };
           send({ t: "ready" });
+          // gitvault-first-op-premium task 1.1: phase stamps for attribution
+          // (session accept -> env ready -> first transport call, the last
+          // covered by the existing RUN402_GITVAULT_TRACE per-op lines).
+          // Emitted AFTER write-redirection so they ride the socket to the
+          // client and land in the SAME trace stream the bench harness
+          // already captures — gated on the session's own env, exactly like
+          // every other gitvault-trace line.
+          if (process.env.RUN402_GITVAULT_TRACE === "1") {
+            process.stderr.write(`gitvault-trace: daemon session-accept ${sessionsServed} at ${acceptedAt}\n`);
+            process.stderr.write(`gitvault-trace: daemon env-ready ${sessionsServed} +${envReadyAt - acceptedAt}ms\n`);
+          }
           // gitvault-checkpoint-cadence design D2: a push's auto-gc cycle
           // (if triggered) hands its ALREADY-STARTED promise here instead
           // of being awaited inline — `runHelperSession` itself still
