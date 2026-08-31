@@ -340,6 +340,94 @@ describe("createGitvaultHttpTransport — compaction headroom grant open/close (
   });
 });
 
+/**
+ * `submitPruneIntent` is deliberately NOT `client.request` — the gateway
+ * strict-parses + signature-verifies the exact bytes sent, so it goes out
+ * over `client.fetch` directly. That means its error handling hand-rolls its
+ * own envelope parsing instead of inheriting `client.request`'s (which
+ * already reads the gateway's FLAT envelope correctly). kychee-com/run402#578
+ * fix 1: the hand-rolled parser read `envelope.error.code`/`.message`/
+ * `.details` — as if the envelope were `{error: {code, message, details}}` —
+ * but the real gateway envelope (`buildErrorEnvelope` in the gateway) is
+ * FLAT: `code`, `message`, `details`, `trace_id` all ride at the TOP level,
+ * and `error` is a human-readable STRING alias for `message`. Every real
+ * refusal therefore collapsed to the opaque `GITVAULT_PRUNE_SUBMIT_FAILED
+ * {details: null}` fallback.
+ */
+describe("createGitvaultHttpTransport — submitPruneIntent surfaces the gateway's refusal verbatim (kychee-com/run402#578 fix 1)", () => {
+  const REPO = `r402s_${"c".repeat(32)}`;
+
+  function transportOverRawFetch(status: number, body: unknown): { transport: ReturnType<typeof createGitvaultHttpTransport> } {
+    const client = {
+      apiBase: "https://api.example.test",
+      credentials: { async getAuth() { return { authorization: "Bearer test" }; } },
+      async fetch(_url: string, _init: unknown) {
+        return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+      },
+    } as unknown as Parameters<typeof createGitvaultHttpTransport>[0];
+    return { transport: createGitvaultHttpTransport(client) };
+  }
+
+  it("rides the gateway's FLAT envelope through verbatim — code, message, details, trace_id — never the opaque fallback", async () => {
+    // Shaped exactly like the real 90-day-retention-floor refusal
+    // (`services/gitvault/prune.ts`: `GitvaultRefusal("UPGRADE_REQUIRED", "a
+    // candidate is not retention-eligible against the bound cutoff ticket",
+    // {ineligible: [...]})`) after it crosses `buildErrorEnvelope`.
+    const gatewayBody = {
+      error: "a candidate is not retention-eligible against the bound cutoff ticket",
+      message: "a candidate is not retention-eligible against the bound cutoff ticket",
+      code: "UPGRADE_REQUIRED",
+      category: "client_compatibility",
+      retryable: false,
+      trace_id: "trc_f886ab16aaaaaaaaaaaaaaaaaaaaaaaa",
+      details: { ineligible: [{ object_id: `wal_${"1".repeat(32)}`, lifecycle_state: "active" }] },
+      next_actions: [{ type: "edit_request", why: "narrow the delete set to eligible candidates" }],
+    };
+    const { transport } = transportOverRawFetch(409, gatewayBody);
+    await assert.rejects(
+      transport.submitPruneIntent({ repo_id: REPO, intent_bytes: new TextEncoder().encode("{}") }),
+      (e: unknown) => {
+        const err = e as { code?: string; message?: string; details?: Record<string, unknown> };
+        assert.equal(err.code, "UPGRADE_REQUIRED");
+        assert.notEqual(err.code, "GITVAULT_PRUNE_SUBMIT_FAILED");
+        assert.equal(err.message, gatewayBody.message);
+        assert.deepEqual(err.details?.ineligible, gatewayBody.details.ineligible);
+        assert.equal(err.details?.http_status, 409);
+        assert.equal(err.details?.trace_id, gatewayBody.trace_id);
+        return true;
+      },
+    );
+  });
+
+  it("falls back to the opaque GITVAULT_PRUNE_SUBMIT_FAILED only when the body carries no usable code/message at all", async () => {
+    const { transport } = transportOverRawFetch(500, { some: "unrelated shape" });
+    await assert.rejects(
+      transport.submitPruneIntent({ repo_id: REPO, intent_bytes: new TextEncoder().encode("{}") }),
+      (e: unknown) => {
+        const err = e as { code?: string; message?: string; details?: Record<string, unknown> };
+        assert.equal(err.code, "GITVAULT_PRUNE_SUBMIT_FAILED");
+        assert.match(err.message ?? "", /HTTP 500/);
+        assert.equal(err.details?.http_status, 500);
+        return true;
+      },
+    );
+  });
+
+  it("reads the string `error` field as the message when `message` is absent", async () => {
+    const { transport } = transportOverRawFetch(409, { error: "receipt-id reuse", code: "VALIDATION_FAILED", details: { reused_object_ids: [`vr_${"2".repeat(32)}`] } });
+    await assert.rejects(
+      transport.submitPruneIntent({ repo_id: REPO, intent_bytes: new TextEncoder().encode("{}") }),
+      (e: unknown) => {
+        const err = e as { code?: string; message?: string; details?: Record<string, unknown> };
+        assert.equal(err.code, "VALIDATION_FAILED");
+        assert.equal(err.message, "receipt-id reuse");
+        assert.deepEqual(err.details?.reused_object_ids, [`vr_${"2".repeat(32)}`]);
+        return true;
+      },
+    );
+  });
+});
+
 describe("createGitvaultHttpTransport — the mint's envelope is unwrapped, never passed on as the token", () => {
   const REPO = `r402s_${"a".repeat(32)}`;
   const OP = "op_wire_shapes";

@@ -1822,12 +1822,40 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
         parsed = null;
       }
       if (!r.ok) {
-        const envelope = parsed as { error?: { code?: string; message?: string; details?: unknown } } | null;
+        // kychee-com/run402#578 fix 1: the gateway's error envelope is FLAT
+        // (docs/style.md §Errors — `buildErrorEnvelope` in the gateway) —
+        // `code`, `message`, `details`, `trace_id`, and `next_actions` all
+        // ride at the TOP level, never nested under an `error` object (that
+        // key is a human-readable STRING alias for `message`, kept only for
+        // legacy consumers). Reading `envelope.error.code` here — as if the
+        // envelope were `{error: {code, message, details}}` — always missed,
+        // so EVERY refusal (receipt-id reuse, the retention floor,
+        // GC_EPOCH_STALE, …) collapsed to the same opaque
+        // `GITVAULT_PRUNE_SUBMIT_FAILED {details: null}`. Read the real
+        // shape so the gateway's own refusal rides through verbatim; this
+        // wrapper only adds the HTTP status, never replaces content.
+        const envelope = parsed as
+          | { code?: string; message?: string; error?: string; details?: unknown; trace_id?: string; next_actions?: unknown[] }
+          | null;
+        // Spread the gateway's own `details` verbatim (its keys survive
+        // untouched — `ineligible`, `expires_at`, whatever the refusal
+        // carries) and add `http_status`/`trace_id` alongside as this
+        // wrapper's own context, never replacing what the gateway sent.
+        const gatewayDetails = envelope?.details;
+        const details: Record<string, unknown> =
+          gatewayDetails && typeof gatewayDetails === "object" && !Array.isArray(gatewayDetails)
+            ? { ...(gatewayDetails as Record<string, unknown>) }
+            : gatewayDetails !== undefined
+              ? { gateway_details: gatewayDetails }
+              : {};
+        details.http_status = r.status;
+        if (envelope?.trace_id) details.trace_id = envelope.trace_id;
         fail(
-          envelope?.error?.code ?? "GITVAULT_PRUNE_SUBMIT_FAILED",
-          envelope?.error?.message ?? `prune intent submission failed (HTTP ${r.status})`,
+          envelope?.code ?? "GITVAULT_PRUNE_SUBMIT_FAILED",
+          envelope?.message ?? (typeof envelope?.error === "string" ? envelope.error : undefined) ?? `prune intent submission failed (HTTP ${r.status})`,
           "submitting the gitvault prune intent",
-          { status: r.status, details: envelope?.error?.details ?? null },
+          details,
+          Array.isArray(envelope?.next_actions) ? envelope.next_actions : undefined,
         );
       }
       const body = (parsed ?? {}) as GitvaultPruneIntentRecord & { stored?: boolean };

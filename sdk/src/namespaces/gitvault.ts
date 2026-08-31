@@ -1972,6 +1972,41 @@ export class Gitvault {
   }
 
   /**
+   * Open this vault's compaction headroom grant, shared by `compact()` and
+   * `prune({ submit })` (kychee-com/run402#578 fix 3) — both write ceremony
+   * objects into the vault and both need the same single-flight-per-vault
+   * headroom slot. Four outcomes:
+   *   - opened: the grant is returned, carrying `effective_pool_limit_bytes`.
+   *   - 409 `GITVAULT_COMPACTION_GRANT_ACTIVE`: another maintenance op (this
+   *     process, another process, auto-gc, or a manual `repos gc`) already
+   *     holds this project's one-at-a-time grant — refuse rather than race
+   *     it, surfaced as the identical single-flight-conflict `LocalError`
+   *     every caller of this helper throws.
+   *   - 404/absent route (an older gateway): proceed ungranted exactly as
+   *     before this grant existed — returns `null`.
+   *   - any OTHER failure (network, 5xx): also proceeds ungranted — a grant
+   *     that could not be confirmed open must never be ASSUMED open, and
+   *     failing the whole caller because an ancillary raise-the-limit call
+   *     errored would make routine maintenance depend on an availability
+   *     property narrower than the caller itself needs.
+   */
+  async #openMaintenanceGrantOrConflict(handle: GitvaultHandle, context: string): Promise<GitvaultCompactionGrant | null> {
+    try {
+      return await handle.vault.openCompactionGrant();
+    } catch (e) {
+      if (this.#isCompactionGrantActive(e)) {
+        throw new LocalError(
+          `another compaction is already in progress for this vault (its headroom grant expires ${(e as { details?: { expires_at?: string } }).details?.expires_at ?? "soon"}) — refusing to race it.`,
+          context,
+          { code: "GITVAULT_COMPACTION_IN_PROGRESS", details: { expires_at: (e as { details?: { expires_at?: string } }).details?.expires_at ?? null } },
+        );
+      }
+      // 404/absent-route or any other failure: proceed ungranted.
+      return null;
+    }
+  }
+
+  /**
    * Publish a checkpoint covering the canonical refs, every root unexpired at
    * the cutoff, and the `HEAD` target — under a maintenance lease so a
    * concurrent cycle cannot race it.
@@ -2009,35 +2044,9 @@ export class Gitvault {
     // gitvault-checkpoint-cadence design D3: open the compaction headroom
     // grant BEFORE the preflight (which needs its raised limit) and before
     // any checkpoint is built or uploaded — same ordering rule as the
-    // preflight itself. Three outcomes:
-    //   - opened: `grant` carries `effective_pool_limit_bytes`, threaded
-    //     into the preflight below.
-    //   - 409 GITVAULT_COMPACTION_GRANT_ACTIVE: another compaction (this
-    //     process, another process, auto-gc or manual `repos gc`) already
-    //     holds this project's one-at-a-time grant — refuse rather than
-    //     race it. This is this change's single-flight-per-vault guarantee;
-    //     it applies to every `compact()` caller, not just auto-gc.
-    //   - 404/absent route (an older gateway): proceed exactly as before
-    //     this change existed — `grant` stays `null`, no raised limit.
-    //   - any OTHER failure (network, 5xx): also proceeds without a grant
-    //     — a grant that could not be confirmed open must never be
-    //     ASSUMED open, and failing the whole compaction because an
-    //     ancillary raise-the-limit call errored would make routine
-    //     maintenance depend on an availability property narrower than
-    //     compaction itself needs.
-    let grant: GitvaultCompactionGrant | null = null;
-    try {
-      grant = await handle.vault.openCompactionGrant();
-    } catch (e) {
-      if (this.#isCompactionGrantActive(e)) {
-        throw new LocalError(
-          `another compaction is already in progress for this vault (its headroom grant expires ${(e as { details?: { expires_at?: string } }).details?.expires_at ?? "soon"}) — refusing to race it.`,
-          "opening the gitvault compaction headroom grant",
-          { code: "GITVAULT_COMPACTION_IN_PROGRESS", details: { expires_at: (e as { details?: { expires_at?: string } }).details?.expires_at ?? null } },
-        );
-      }
-      // 404/absent-route or any other failure: proceed ungranted.
-    }
+    // preflight itself. Outcomes are documented on
+    // {@link GitvaultNamespace.#openMaintenanceGrantOrConflict}.
+    const grant = await this.#openMaintenanceGrantOrConflict(handle, "opening the gitvault compaction headroom grant");
 
     // Everything from here on is bracketed by the grant's own lifetime —
     // including the preflight's OWN possible throw (`GITVAULT_COMPACT_
@@ -2296,8 +2305,23 @@ export class Gitvault {
       handle.vault.signer(),
     );
     const intent = prune.buildPruneIntent(core, [ours, options.submit.verifier_receipt], handle.vault.signer());
-    await this.#uploadVerifierReceipts(handle, pub, [ours, options.submit.verifier_receipt]);
-    let stored = await handle.vault.transport.submitPruneIntent({ repo_id: handle.repo_id, intent_bytes: prune.pruneIntentBytes(intent) });
+
+    // kychee-com/run402#578 fix 3: the submission writes ~8 KB of ceremony
+    // objects (both verifier receipts + the intent) into the vault — on a
+    // vault that is over-quota BECAUSE it just compacted, that write is
+    // refused QUOTA_EXCEEDED, so the deletion's own paperwork is blocked by
+    // the storage the deletion would free. Bracket the upload+submit with
+    // the SAME compaction headroom grant `compact()` uses (design D3, via
+    // the shared `#openMaintenanceGrantOrConflict`) — opened before the
+    // upload, closed in a `finally` regardless of outcome.
+    const grant = await this.#openMaintenanceGrantOrConflict(handle, "opening the gitvault compaction headroom grant for prune submission");
+    let stored: import("../node/gitvault-prune.js").GitvaultPruneIntentRecord & { stored: boolean };
+    try {
+      await this.#uploadVerifierReceipts(handle, pub, [ours, options.submit.verifier_receipt]);
+      stored = await handle.vault.transport.submitPruneIntent({ repo_id: handle.repo_id, intent_bytes: prune.pruneIntentBytes(intent) });
+    } finally {
+      if (grant) await handle.vault.closeCompactionGrant().catch(() => undefined);
+    }
     let intentRecord: import("../node/gitvault-prune.js").GitvaultPruneIntentRecord | null = stored;
     const wait = options.submit.wait;
     if (wait) {
@@ -2339,7 +2363,59 @@ export class Gitvault {
         size_bytes: String(bytes.length),
       };
     });
-    await handle.vault.transport.uploadObjects({ repo_id: handle.repo_id, objects });
+    try {
+      await handle.vault.transport.uploadObjects({ repo_id: handle.repo_id, objects });
+    } catch (e) {
+      // kychee-com/run402#578 fix 2: receipt object ids are DETERMINISTIC —
+      // the same core + the same signer produce the same id on every retry —
+      // and Ed25519 signing is deterministic too, so the SAME id can only
+      // mean the SAME bytes when nothing about the receipt's content
+      // changed. Ids are never reusable server-side (correct, the ledger's
+      // rule) — but that means ANY failed submit AFTER this upload landed
+      // (a later validation refusal, a network blip, a crash) burns both
+      // ids for every future retry, with no recovery but a full re-plan
+      // (new core, new nonce, new r402s-verify run). Recover instead: for
+      // each id the gateway names as reused, read the STORED object back
+      // and compare its bytes to ours — same bytes means already-uploaded,
+      // different bytes means the id is genuinely burned.
+      const reused = this.#reusedObjectIds(e);
+      if (reused === null) throw e;
+      const remaining: typeof objects = [];
+      for (const o of objects) {
+        if (!reused.includes(o.object_id)) {
+          remaining.push(o);
+          continue;
+        }
+        const existing = await handle.vault.transport.getObject({ repo_id: handle.repo_id, path: o.path });
+        const existingSha256 = existing ? sha256Hex(existing) : null;
+        if (existing && existingSha256 === o.sha256) continue; // identical bytes already landed — nothing to do
+        throw new LocalError(
+          existing
+            ? `verifier receipt ${o.object_id} already exists in the vault with DIFFERENT bytes than this attempt's (stored sha256 ${existingSha256}, this attempt's sha256 ${o.sha256}) — the object id is burned and cannot be reused; re-plan the prune (new core, new nonce, new r402s-verify run).`
+            : `verifier receipt ${o.object_id} was refused as an already-used id, but its stored bytes could not be read back to confirm they match — re-plan the prune.`,
+          "uploading gitvault verifier receipts",
+          { code: "GITVAULT_RECEIPT_ID_REUSED_DIFFERENT", details: { object_id: o.object_id, existing_sha256: existingSha256, this_attempt_sha256: o.sha256 } },
+        );
+      }
+      // Every reused id was confirmed identical to ours; anything NOT
+      // reused (a genuinely new upload, or the other side of a partial
+      // race) still needs to land.
+      if (remaining.length > 0) await handle.vault.transport.uploadObjects({ repo_id: handle.repo_id, objects: remaining });
+    }
+  }
+
+  /**
+   * `VALIDATION_FAILED` with `details.reused_object_ids`
+   * (`services/gitvault/upload-sessions.ts`: "an object id in the manifest is
+   * already used") — object ids a prior attempt already landed. `null` for
+   * any other failure, so the caller rethrows it untouched.
+   */
+  #reusedObjectIds(e: unknown): string[] | null {
+    if (!isRun402Error(e) || e.code !== "VALIDATION_FAILED") return null;
+    const details = e.details;
+    if (!details || typeof details !== "object" || Array.isArray(details)) return null;
+    const ids = (details as { reused_object_ids?: unknown }).reused_object_ids;
+    return Array.isArray(ids) && ids.every((id) => typeof id === "string") ? (ids as string[]) : null;
   }
 
   /** Did every retention root that LEFT the map leave legally? A `false` here is honest, not fatal. */
