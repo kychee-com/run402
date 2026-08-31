@@ -57,7 +57,7 @@ import type { GitvaultCreationResult } from "../node/gitvault-creation-journal.j
 import type { GitvaultKeystore } from "../node/gitvault-keystore.js";
 import type { GitvaultSnapshot } from "../node/gitvault-snapshot.js";
 import type { GitvaultMirrorConfig, GitvaultMirrorCredential, GitvaultMirrorDestination } from "../node/gitvault-mirror-config.js";
-import type { GitvaultMirrorPushResult, GitvaultMirrorSyncSummary } from "../node/gitvault-mirror.js";
+import type { GitvaultByoMissingObject, GitvaultByoPresenceReport, GitvaultMirrorPushResult, GitvaultMirrorSyncSummary } from "../node/gitvault-mirror.js";
 import type { GitvaultRecoverResult, GitvaultVerifyReport } from "../node/gitvault-recover.js";
 import type { GitvaultMemberRecoveryBundle } from "../node/gitvault-member-bundle.js";
 import type { GitvaultDegradedReadLive, GitvaultDegradedReadOutcome, GitvaultDegradedReadSource } from "../node/gitvault-degraded-read.js";
@@ -475,6 +475,49 @@ export interface GitvaultUnmirroredFinding {
 }
 
 /**
+ * gitvault-byo-primary-bucket task 3.3 — the number of `{key, object_kind}`
+ * entries `GITVAULT_BYO_OBJECT_MISSING`'s `details.missing` lists before
+ * truncating (`details.missing_count` always carries the true total, and
+ * `details.missing_truncated` says whether the list above was cut). A
+ * chain-referenced object list can be arbitrarily large; an error envelope
+ * is not the place to reproduce it whole. Matches the platform's existing
+ * `sample_keys`-class cap (asset-sync's plan response, `PLATFORM_INCIDENT_
+ * FANOUT_CAP`) rather than inventing a new number.
+ */
+export const GITVAULT_BYO_OBJECT_MISSING_LIST_CAP = 50;
+
+/**
+ * gitvault-byo-primary-bucket task 3.3 (design D6) — `repos fsck`'s wiring of
+ * the shipped {@link import("../node/gitvault-mirror.js").verifyByoObjectsPresent}
+ * read-half primitive. Present on {@link GitvaultFsckResult.byo_presence}
+ * ONLY for a `storage_profile: "byo"` vault — `undefined` (the key absent
+ * from JSON entirely) for a managed vault, so a managed vault's `fsck`
+ * output is byte-identical to before this task.
+ *
+ * `verified: true` NEVER coexists with a missing object: a nonzero absence
+ * throws `GITVAULT_BYO_OBJECT_MISSING` instead of returning here (see
+ * {@link Gitvault.fsck}'s own doc comment) — this shape only ever reports
+ * the two honest non-failure outcomes, "checked, all present" and "could
+ * not check".
+ */
+export interface GitvaultFsckByoPresence {
+  /**
+   * `true` iff this call actually HEAD-checked the destination (local BYO
+   * write credentials were configured on this machine). `false` means "not
+   * checked" — see `not_checked_reason` — which is deliberately NOT a
+   * failure: a BYO vault a returning agent has no local credentials for
+   * must never break its ordinary `fsck`.
+   */
+  verified: boolean;
+  /** The BYO destination's address, from the vault record. Populated even when `verified` is `false` — a BYO vault always names its destination; it is the CREDENTIAL to reach it that may be missing on this machine. */
+  destination: string | null;
+  /** Objects HEAD-checked against the destination. `0` when `verified` is `false`. */
+  checked_count: number;
+  /** Present only when `verified` is `false` — why this call could not verify presence. Never blank: silence must never be mistaken for a clean verdict. */
+  not_checked_reason: string | null;
+}
+
+/**
  * `repos fsck`'s result. Explicit pin fields make a local mutation visible rather than
  * implicit — the external review's clause-5 requirement for any verb that
  * may advance local trust state.
@@ -539,6 +582,16 @@ export interface GitvaultFsckResult {
    * `recipient_open_receipt` is EVIDENCE, never authorization (§4.14).
    */
   open_proof: GitvaultOpenProofOutcome;
+  /**
+   * gitvault-byo-primary-bucket task 3.3 — see {@link GitvaultFsckByoPresence}.
+   * Absent entirely (not `null`) for a `storage_profile: "managed"` vault, so
+   * `JSON.stringify` drops the key and a managed vault's `fsck` output stays
+   * byte-identical to before this task existed. A `verified: true` result
+   * with objects missing is never returned here — see the interface's own
+   * doc comment for why that case throws `GITVAULT_BYO_OBJECT_MISSING`
+   * instead.
+   */
+  byo_presence?: GitvaultFsckByoPresence;
 }
 
 /** {@link GitvaultFsckResult.open_proof} — the outcome of `fsck`'s best-effort D210 proof-of-open submission. */
@@ -626,6 +679,91 @@ export async function computeOpenProofOutcome(input: {
       error: { code: isRun402Error(e) && e.code ? e.code : "UNKNOWN", message: e instanceof Error ? e.message : String(e) },
     };
   }
+}
+
+/**
+ * gitvault-byo-primary-bucket task 3.3 (design D6) — the decision function
+ * behind `fsck`'s BYO presence check, factored out of {@link Gitvault}'s
+ * private `#checkByoPresence` the same way {@link computeOpenProofOutcome}
+ * is factored out of `#submitFsckOpenProof`, so it is directly unit-testable
+ * with an injected (fake) `hasLocalConfig`/`verifyPresence`, independent of
+ * a real keystore or HTTP client. `#checkByoPresence` supplies the REAL
+ * dependencies (`readByoConfig` against the real keystore,
+ * `verifyByoObjectsPresent` against the real client) — this function
+ * contains no filesystem/HTTP code of its own.
+ *
+ * Runs AUTOMATICALLY for a `storage_profile: "byo"` vault — never behind a
+ * new flag, so a returning agent's ordinary `fsck` catches a
+ * silently-emptied bucket without having to know to ask for it. Returns
+ * `undefined` for a managed vault (`vault?.storage_profile !== "byo"` is
+ * the FIRST check, before `hasLocalConfig`/`verifyPresence` are ever
+ * called) — a managed vault pays zero extra network/filesystem work and
+ * this task changes nothing about it (design D6/D9).
+ *
+ * NO local credentials configured (`hasLocalConfig()` returns `false`) is
+ * reported, never thrown — a BYO vault this machine cannot reach is an
+ * honest "not checked", not a failure that should break `fsck` for a
+ * credential-less returning agent (see {@link GitvaultFsckByoPresence}'s
+ * own doc comment). A confirmed absence is the opposite: it THROWS
+ * `GITVAULT_BYO_OBJECT_MISSING` — the same severity class as {@link
+ * Gitvault.mirrorVerify}'s own `GITVAULT_MIRROR_NOT_CONFIGURED` throw when
+ * `--mirror` is requested against an unconfigured vault — this is exactly
+ * the honesty D6 names: "we can tell the customer what SHOULD exist and
+ * does not", stated as a real refusal rather than a silently-embedded
+ * finding. The listed entries are capped at
+ * {@link GITVAULT_BYO_OBJECT_MISSING_LIST_CAP} (a chain-referenced object
+ * list can be arbitrarily large and this is an error envelope, not a
+ * report); `missing_count` always carries the true total regardless of how
+ * many are listed.
+ *
+ * `verifyPresence()` is a pure read (HEAD checks only, via
+ * `verifyByoObjectsPresent`) — this function persists nothing itself, so
+ * it behaves identically whether `fsck` was called with `write: true` or
+ * `write: false`.
+ */
+export async function computeByoPresenceOutcome(input: {
+  repoId: string;
+  vault: { storage_profile?: "managed" | "byo"; byo_destination?: string | null } | null;
+  hasLocalConfig: () => boolean;
+  verifyPresence: () => Promise<GitvaultByoPresenceReport>;
+}): Promise<GitvaultFsckByoPresence | undefined> {
+  if (input.vault?.storage_profile !== "byo") return undefined;
+  const destination = input.vault.byo_destination ?? null;
+  if (!input.hasLocalConfig()) {
+    return {
+      verified: false,
+      destination,
+      checked_count: 0,
+      not_checked_reason:
+        "no local BYO destination credentials are configured for this vault on this machine — presence could not be verified; configure the same destination (`run402 repos create --byo <destination>` again, or the equivalent local BYO config) to enable it",
+    };
+  }
+  const report = await input.verifyPresence();
+  if (report.missing.length > 0) {
+    const missing: GitvaultByoMissingObject[] = report.missing.slice(0, GITVAULT_BYO_OBJECT_MISSING_LIST_CAP);
+    throw new LocalError(
+      `the BYO destination for ${input.repoId} (${report.destination}) is missing ${report.missing.length} object(s) run402's own signed chain says should exist`,
+      "running gitvault fsck",
+      {
+        code: "GITVAULT_BYO_OBJECT_MISSING",
+        details: {
+          repo_id: input.repoId,
+          destination: report.destination,
+          checked_count: report.checked,
+          missing_count: report.missing.length,
+          missing,
+          missing_truncated: report.missing.length > missing.length,
+        },
+        next_actions: [
+          {
+            action: "restore the listed object(s) to the destination bucket from your own backup, or run `run402 repos mirror <destination>` to add a second customer-held copy",
+            why: "run402 holds no payload copy for a BYO vault — it can only tell you what SHOULD exist from the signed chain, never restore it",
+          },
+        ],
+      },
+    );
+  }
+  return { verified: true, destination: report.destination, checked_count: report.checked, not_checked_reason: null };
 }
 
 /**
@@ -2600,6 +2738,14 @@ export class Gitvault {
    * to 7, `GITVAULT_EPOCH_NOT_OPENABLE` at epoch 2/rotation …") is exactly
    * what this split makes representable. `refs`/`head_target`/
    * `pin_after.highest_materialized` all reflect `decryptable_to_generation`.
+   *
+   * **gitvault-byo-primary-bucket task 3.3 (design D6).** For a
+   * `storage_profile: "byo"` vault, `fsck` ALSO adjudicates the customer's
+   * own bucket against run402's signed chain — see {@link
+   * #checkByoPresence} for the full contract (automatic, never a flag;
+   * fails soft with no local credentials; throws
+   * `GITVAULT_BYO_OBJECT_MISSING` on a confirmed absence). A managed vault
+   * is byte-identical to before this task.
    */
   async fsck(options: GitvaultVaultHandleOptions & { write?: boolean; mirror?: boolean } = {}): Promise<GitvaultFsckResult> {
     const before = await this.status(options);
@@ -2653,6 +2799,15 @@ export class Gitvault {
       decryptable_to_generation: decryptableToGeneration,
     });
 
+    // gitvault-byo-primary-bucket task 3.3 (design D6) — LAST, deliberately:
+    // everything above (chain verify + its pin persist, retained-refs
+    // reconcile, open-proof submission) is real, valid work regardless of
+    // what the customer's own bucket holds — the signed chain is run402-
+    // authoritative either way (design D9) — so a missing-object refusal
+    // below must never cost any of it. See `#checkByoPresence`'s own doc
+    // comment for the throw/no-throw split.
+    const byoPresence = await this.#checkByoPresence(before.vault, repoId, handle.keystore);
+
     return {
       repo_id: repoId,
       write,
@@ -2669,6 +2824,7 @@ export class Gitvault {
       mirror,
       retained_refs: retainedRefs,
       open_proof: openProof,
+      ...(byoPresence !== undefined ? { byo_presence: byoPresence } : {}),
     };
   }
 
@@ -2706,6 +2862,29 @@ export class Gitvault {
           decryptable_to_generation: ev.decryptable_to_generation,
           reader_entrypoint: ev.reader_entrypoint,
         }),
+    });
+  }
+
+  /**
+   * gitvault-byo-primary-bucket task 3.3 (design D6) — `repos fsck`'s
+   * wiring of the shipped read-half primitive
+   * {@link import("../node/gitvault-mirror.js").verifyByoObjectsPresent}.
+   * Thin wrapper over {@link computeByoPresenceOutcome} (the testable
+   * decision function, factored out the same way {@link
+   * computeOpenProofOutcome} is factored out of `#submitFsckOpenProof`)
+   * supplying THIS instance's real `hasLocalConfig`/`verifyPresence`
+   * dependencies (`readByoConfig` against the real keystore,
+   * `verifyByoObjectsPresent` against the real HTTP client). See that
+   * function's own doc comment for the full gating/throw contract.
+   */
+  async #checkByoPresence(vault: GitvaultVaultRecord | null, repoId: string, keystore: GitvaultKeystore): Promise<GitvaultFsckByoPresence | undefined> {
+    const { readByoConfig } = await this.#byoConfig();
+    const { verifyByoObjectsPresent } = await this.#mirror();
+    return computeByoPresenceOutcome({
+      repoId,
+      vault,
+      hasLocalConfig: () => readByoConfig(keystore, repoId) !== null,
+      verifyPresence: () => verifyByoObjectsPresent(this.#client, repoId, { keystore }),
     });
   }
 

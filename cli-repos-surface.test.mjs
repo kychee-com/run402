@@ -856,6 +856,75 @@ describe("run402 repos fsck — absorbs verify + mirror verify (design D2/D3)", 
   });
 });
 
+describe("run402 repos fsck — BYO presence check (gitvault-byo-primary-bucket task 3.3)", () => {
+  const BYO_DESTINATION = `s3://acme-bucket/prefix/source/${REPO}`;
+
+  it("a MANAGED vault: no byo_presence key in JSON output, and no BYO line in --human — byte-identical to before this task (the default fixture never sets byo_presence)", async () => {
+    const payload = await ok("fsck", ["--project", PROJECT]);
+    assert.equal(Object.prototype.hasOwnProperty.call(payload, "byo_presence"), false);
+
+    const text = await human("fsck", ["--project", PROJECT, "--human"]);
+    assert.doesNotMatch(text, /BYO storage/);
+  });
+
+  it("a BYO vault with everything present: byo_presence rides in the JSON result, and --human prints the verified line, exit 0", async () => {
+    impl.fsck = async (input) => ({
+      repo_id: REPO, write: input.write ?? true, verified_from_generation: null, verified_to_generation: "0000000000000001",
+      local_state_changed: false, pin_before: { highest_authenticated: "0000000000000001", highest_materialized: "0000000000000001" },
+      pin_after: { highest_authenticated: "0000000000000001", highest_materialized: "0000000000000001" },
+      refs: {}, head_target: null, mirror: null,
+      byo_presence: { verified: true, destination: BYO_DESTINATION, checked_count: 12, not_checked_reason: null },
+    });
+    const payload = await ok("fsck", ["--project", PROJECT]);
+    assert.deepEqual(payload.byo_presence, { verified: true, destination: BYO_DESTINATION, checked_count: 12, not_checked_reason: null });
+
+    const text = await human("fsck", ["--project", PROJECT, "--human"]);
+    assert.match(text, /BYO storage: verified 12 object\(s\) present at s3:\/\/acme-bucket\/prefix\/source\//);
+  });
+
+  it("a BYO vault with no local credentials on this machine: explicit NOT CHECKED, never a failure — exit 0, --human names the reason", async () => {
+    impl.fsck = async (input) => ({
+      repo_id: REPO, write: input.write ?? true, verified_from_generation: null, verified_to_generation: "0000000000000001",
+      local_state_changed: false, pin_before: { highest_authenticated: "0000000000000001", highest_materialized: "0000000000000001" },
+      pin_after: { highest_authenticated: "0000000000000001", highest_materialized: "0000000000000001" },
+      refs: {}, head_target: null, mirror: null,
+      byo_presence: { verified: false, destination: BYO_DESTINATION, checked_count: 0, not_checked_reason: "no local BYO destination credentials are configured for this vault on this machine — presence could not be verified" },
+    });
+    const payload = await ok("fsck", ["--project", PROJECT]);
+    assert.equal(payload.byo_presence.verified, false);
+    assert.match(payload.byo_presence.not_checked_reason, /no local BYO destination credentials/);
+
+    const text = await human("fsck", ["--project", PROJECT, "--human"]);
+    assert.match(text, /BYO storage: NOT CHECKED — no local BYO destination credentials/);
+  });
+
+  it("a BYO vault with a missing object: fsck FAILS (nonzero exit) with the structured GITVAULT_BYO_OBJECT_MISSING finding naming exactly what's absent", async () => {
+    const missing = [{ key: `source/${REPO}/wal/wal_00000001.pack.enc`, object_kind: "wal_pack" }];
+    impl.fsck = async () => {
+      throw Object.assign(new Error(`the BYO destination for ${REPO} (${BYO_DESTINATION}) is missing 1 object(s) run402's own signed chain says should exist`), {
+        isRun402Error: true,
+        name: "LocalError",
+        kind: "local_error",
+        status: null,
+        code: "GITVAULT_BYO_OBJECT_MISSING",
+        details: { repo_id: REPO, destination: BYO_DESTINATION, checked_count: 40, missing_count: 1, missing, missing_truncated: false },
+        body: {
+          code: "GITVAULT_BYO_OBJECT_MISSING",
+          details: { repo_id: REPO, destination: BYO_DESTINATION, checked_count: 40, missing_count: 1, missing, missing_truncated: false },
+        },
+        nextActions: [{ action: "restore the listed object(s) to the destination bucket from your own backup, or run `run402 repos mirror <destination>` to add a second customer-held copy" }],
+      });
+    };
+    const envelope = await expectFailure("fsck", ["--project", PROJECT]);
+    assert.equal(envelope.code, "GITVAULT_BYO_OBJECT_MISSING");
+    assert.equal(envelope.details.repo_id, REPO);
+    assert.equal(envelope.details.destination, BYO_DESTINATION);
+    assert.equal(envelope.details.missing_count, 1);
+    assert.deepEqual(envelope.details.missing, missing);
+    assert.ok(Array.isArray(envelope.next_actions) && envelope.next_actions.length > 0, "names a customer-side remedy");
+  });
+});
+
 describe("run402 repos gc — absorbs compact + prune, never described as exactly git gc (design D2)", () => {
   it("plans by default: compact then prune, no submit", async () => {
     const payload = await ok("gc", ["--project", PROJECT]);

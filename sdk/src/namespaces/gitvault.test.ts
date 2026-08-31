@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Run402 } from "../index.js";
-import { GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS, computeOpenProofOutcome, gitvaultCheckpointStaleness, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
+import { GITVAULT_BYO_OBJECT_MISSING_LIST_CAP, GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS, computeByoPresenceOutcome, computeOpenProofOutcome, gitvaultCheckpointStaleness, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
 import type { GitvaultHandle } from "./gitvault.js";
 import type { GitvaultOpenReceipt, GitvaultSignedObject } from "./gitvault.types.js";
 import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT, sha256Hex, storedBytes } from "./gitvault.crypto.js";
@@ -1301,6 +1301,108 @@ describe("computeOpenProofOutcome — fsck's D210 auto-submission decision logic
     assert.equal(out.deduplicated, true);
     assert.equal(out.receipt, stubReceipt);
     assert.equal(out.error, null);
+  });
+});
+
+// ─── gitvault-byo-primary-bucket task 3.3: fsck's BYO presence check ─────────
+
+describe("computeByoPresenceOutcome — repos fsck's BYO absence-adjudication decision logic (gitvault-byo-primary-bucket task 3.3)", () => {
+  const REPO_ID = "src_" + "7".repeat(32);
+  const DESTINATION = "s3://acme-bucket/prefix/source/" + REPO_ID;
+
+  function missingEntries(n: number): { key: string; object_kind: string }[] {
+    return Array.from({ length: n }, (_, i) => ({ key: `source/${REPO_ID}/wal/wal_${String(i).padStart(4, "0")}.pack.enc`, object_kind: "wal_pack" }));
+  }
+
+  it("a MANAGED vault (storage_profile omitted or 'managed') returns undefined without calling hasLocalConfig or verifyPresence — zero extra local/network work, matching the JSON-output byte-identity constraint", async () => {
+    let hasLocalConfigCalled = false;
+    let verifyPresenceCalled = false;
+    for (const vault of [null, { storage_profile: undefined as const, byo_destination: null }, { storage_profile: "managed" as const, byo_destination: null }]) {
+      const out = await computeByoPresenceOutcome({
+        repoId: REPO_ID,
+        vault,
+        hasLocalConfig: () => { hasLocalConfigCalled = true; return true; },
+        verifyPresence: async () => { verifyPresenceCalled = true; return { repo_id: REPO_ID, destination: DESTINATION, checked: 0, missing: [] }; },
+      });
+      assert.equal(out, undefined);
+    }
+    assert.equal(hasLocalConfigCalled, false);
+    assert.equal(verifyPresenceCalled, false);
+  });
+
+  it("a BYO vault with no local BYO config on this machine reports NOT CHECKED — never throws, and never calls verifyPresence (a credential-less returning agent's ordinary fsck must not break)", async () => {
+    let verifyPresenceCalled = false;
+    const out = await computeByoPresenceOutcome({
+      repoId: REPO_ID,
+      vault: { storage_profile: "byo", byo_destination: DESTINATION },
+      hasLocalConfig: () => false,
+      verifyPresence: async () => { verifyPresenceCalled = true; return { repo_id: REPO_ID, destination: DESTINATION, checked: 0, missing: [] }; },
+    });
+    assert.equal(verifyPresenceCalled, false);
+    assert.ok(out);
+    assert.equal(out!.verified, false);
+    assert.equal(out!.destination, DESTINATION, "the destination is named from the vault record even when this machine cannot reach it");
+    assert.equal(out!.checked_count, 0);
+    assert.match(out!.not_checked_reason!, /no local BYO destination credentials/);
+  });
+
+  it("a BYO vault, checked, with everything present reports verified:true with the count/destination from verifyPresence's OWN report — not re-derived from the vault record", async () => {
+    const out = await computeByoPresenceOutcome({
+      repoId: REPO_ID,
+      vault: { storage_profile: "byo", byo_destination: DESTINATION },
+      hasLocalConfig: () => true,
+      verifyPresence: async () => ({ repo_id: REPO_ID, destination: "s3://acme-bucket/prefix-from-report/source/" + REPO_ID, checked: 12, missing: [] }),
+    });
+    assert.deepEqual(out, {
+      verified: true,
+      destination: "s3://acme-bucket/prefix-from-report/source/" + REPO_ID,
+      checked_count: 12,
+      not_checked_reason: null,
+    });
+  });
+
+  it("a BYO vault with a missing object THROWS GITVAULT_BYO_OBJECT_MISSING naming repo_id/destination/checked_count/missing_count/missing, never a silently-embedded finding", async () => {
+    const missing = missingEntries(3);
+    await assert.rejects(
+      computeByoPresenceOutcome({
+        repoId: REPO_ID,
+        vault: { storage_profile: "byo", byo_destination: DESTINATION },
+        hasLocalConfig: () => true,
+        verifyPresence: async () => ({ repo_id: REPO_ID, destination: DESTINATION, checked: 40, missing }),
+      }),
+      (e: unknown) => {
+        assert.equal((e as { code?: string }).code, "GITVAULT_BYO_OBJECT_MISSING");
+        const details = (e as { details?: Record<string, unknown> }).details!;
+        assert.equal(details.repo_id, REPO_ID);
+        assert.equal(details.destination, DESTINATION);
+        assert.equal(details.checked_count, 40);
+        assert.equal(details.missing_count, 3);
+        assert.equal(details.missing_truncated, false);
+        assert.deepEqual(details.missing, missing);
+        assert.ok(Array.isArray((e as { nextActions?: unknown[] }).nextActions) && (e as { nextActions?: unknown[] }).nextActions!.length > 0, "names a customer-side remedy — D6's own requirement");
+        return true;
+      },
+    );
+  });
+
+  it("a missing-object list beyond the cap is truncated in `missing`, but `missing_count` still names the TRUE total and `missing_truncated` says so", async () => {
+    const total = GITVAULT_BYO_OBJECT_MISSING_LIST_CAP + 7;
+    const missing = missingEntries(total);
+    await assert.rejects(
+      computeByoPresenceOutcome({
+        repoId: REPO_ID,
+        vault: { storage_profile: "byo", byo_destination: DESTINATION },
+        hasLocalConfig: () => true,
+        verifyPresence: async () => ({ repo_id: REPO_ID, destination: DESTINATION, checked: total, missing }),
+      }),
+      (e: unknown) => {
+        const details = (e as { details?: Record<string, unknown> }).details!;
+        assert.equal(details.missing_count, total, "the true count is never lost to truncation");
+        assert.equal((details.missing as unknown[]).length, GITVAULT_BYO_OBJECT_MISSING_LIST_CAP);
+        assert.equal(details.missing_truncated, true);
+        return true;
+      },
+    );
   });
 });
 

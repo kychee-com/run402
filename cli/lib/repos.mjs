@@ -221,6 +221,14 @@ Subcommands:
            normal writing mode, so a budget-exceeded run resumes). \`--mirror\`
            additionally runs the keyless mirror integrity probe — it proves
            the mirror's VALIDITY, never its FRESHNESS, and says so.
+           For a BYO vault (\`repos create --byo\`), fsck ALSO adjudicates
+           the customer's own bucket against run402's signed chain —
+           automatic, no flag needed. No local BYO credentials on this
+           machine reports an explicit NOT CHECKED line, never a failure;
+           a confirmed absence FAILS fsck with GITVAULT_BYO_OBJECT_MISSING
+           naming exactly what's missing. Runs under \`--no-write\` too (a
+           pure HEAD-check read). See the result's \`byo_presence\` block
+           (also on \`--human\`); absent entirely for a managed vault.
            In write mode (not \`--no-write\`), when this keystore holds a
            local encryption identity, fsck ALSO submits its own
            chain-verified/decryptable generations as a proof-of-open receipt
@@ -1673,6 +1681,25 @@ function formatOpenProofLine(openProof) {
   return `proof-of-open: not submitted — ${openProof.error.code}: ${openProof.error.message}`;
 }
 
+/**
+ * gitvault-byo-primary-bucket task 3.3: one line reporting `fsck`'s BYO
+ * presence check — always present for a BYO vault (never blank), absent for
+ * a managed one (`result.byo_presence` is `undefined` there, so this
+ * returns `null` and no line prints — zero output change for managed
+ * vaults). A MISSING-object verdict never reaches here: it throws
+ * `GITVAULT_BYO_OBJECT_MISSING` before `fsck` returns a result at all, so
+ * this line only ever reports the two non-failure outcomes — checked-clean
+ * or explicitly not-checked. Shared by `--human` and the default JSON-mode
+ * stderr summary, same convention as `formatOpenProofLine` above.
+ */
+function formatByoPresenceLine(byoPresence) {
+  if (!byoPresence) return null;
+  if (!byoPresence.verified) {
+    return `BYO storage: NOT CHECKED — ${byoPresence.not_checked_reason}`;
+  }
+  return `BYO storage: verified ${byoPresence.checked_count} object(s) present at ${byoPresence.destination}.`;
+}
+
 /** `repos fsck --human`: the same verdict the stderr lines already carry, condensed into one block. */
 function formatFsckHuman(result, mirrorRequested) {
   const lines = [`Repo: ${result.repo_id}`];
@@ -1709,6 +1736,8 @@ function formatFsckHuman(result, mirrorRequested) {
   }
   const openProofLine = formatOpenProofLine(result.open_proof);
   if (openProofLine) lines.push(openProofLine);
+  const byoPresenceLine = formatByoPresenceLine(result.byo_presence);
+  if (byoPresenceLine) lines.push(byoPresenceLine);
   return lines.join("\n");
 }
 
@@ -1766,6 +1795,14 @@ async function fsck(args) {
     // status as a mirror probe's failure would be).
     const openProofLine = formatOpenProofLine(result.open_proof);
     if (openProofLine) console.error(openProofLine);
+    // gitvault-byo-primary-bucket task 3.3: absent (formats to `null`) for a
+    // managed vault — `result.byo_presence` is `undefined` there, so this
+    // line never prints and JSON-mode output for a managed vault is
+    // unchanged. A missing-object verdict never reaches this line at all —
+    // it throws `GITVAULT_BYO_OBJECT_MISSING` before `fsck` returns, caught
+    // by this function's own `reportSdkError(err)` below.
+    const byoPresenceLine = formatByoPresenceLine(result.byo_presence);
+    if (byoPresenceLine) console.error(byoPresenceLine);
     if (mirrorRequested && result.mirror) {
       console.error(`mirror: recoverable generation ${result.mirror.recovered_generation}${result.mirror.chain_break ? ` (chain break at ${result.mirror.chain_break.generation}: ${result.mirror.chain_break.reason})` : ""}.`);
       if (result.mirror.data_loss_detected) {
