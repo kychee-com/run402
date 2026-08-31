@@ -35,7 +35,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes, shouldRunAutoGc, getCachedSdk } from "./cli/lib/remote-helper-session.mjs";
+import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes, shouldRunAutoGc, buildAutoGcCompactionTarget, getCachedSdk } from "./cli/lib/remote-helper-session.mjs";
 import { allowanceFile } from "./cli/lib/config.mjs";
 
 const HELPER = fileURLToPath(new URL("./cli/git-remote-run402.mjs", import.meta.url));
@@ -1084,6 +1084,27 @@ describe("shouldRunAutoGc — the post-push auto-gc threshold matrix", () => {
   it("a non-finite generations count (unknown coverage) never triggers", () => {
     assert.equal(shouldRunAutoGc(32, NaN), false);
     assert.equal(shouldRunAutoGc(32, undefined), false);
+  });
+});
+
+describe("buildAutoGcCompactionTarget — the repo_dir regression (2026-08-31)", () => {
+  it("threads repo_dir into the compaction target — the SDK never defaults it", () => {
+    // `open()` (sdk/src/namespaces/gitvault.ts) only sets repo_dir on the
+    // vault handle when `options.repo_dir !== undefined` — there is no
+    // process.cwd() fallback inside the SDK. Before this function existed,
+    // the auto-gc cycle called `compact({ ...target })` with no repo_dir at
+    // all, so every real post-push trigger failed GITVAULT_REPO_DIR_REQUIRED
+    // and silently degraded to the advisory — verified live against the
+    // actual gateway (a healthy vault's auto-gc cycle now completes and
+    // publishes a fresh checkpoint) before this test was written.
+    const target = { project_id: "prj_x", org_id: "org_y" };
+    assert.deepEqual(buildAutoGcCompactionTarget(target, "/repo/dir"), { project_id: "prj_x", org_id: "org_y", repo_dir: "/repo/dir" });
+  });
+
+  it("never mutates the caller's target object", () => {
+    const target = { project_id: "prj_x" };
+    buildAutoGcCompactionTarget(target, "/repo/dir");
+    assert.deepEqual(target, { project_id: "prj_x" }, "the original target must be untouched — compact() and prune() each get their own merged copy");
   });
 });
 

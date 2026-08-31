@@ -408,6 +408,23 @@ export function shouldRunAutoGc(threshold, generationsSinceCheckpoint) {
   return Number.isFinite(threshold) && threshold > 0 && Number.isFinite(generationsSinceCheckpoint) && generationsSinceCheckpoint >= threshold;
 }
 
+/**
+ * The auto-gc cycle's `compact()`/`prune()` target — exported standalone,
+ * same reasoning as `shouldRunAutoGc` above, because the merge itself was
+ * the bug: `GitvaultVaultHandleOptions.repo_dir` defaults to
+ * `process.cwd()` only in CALLER convention, never inside the SDK's own
+ * `open()` (which sets it ONLY when `options.repo_dir !== undefined`).
+ * Building the auto-gc target from `{ ...target }` alone — omitting
+ * `repo_dir` — made every real post-push auto-gc cycle fail closed with
+ * `GITVAULT_REPO_DIR_REQUIRED`, silently degrading to the advisory on
+ * EVERY push, live in production shape, until a push-latency guard bench
+ * finally drove the real trigger path (found 2026-08-31; `repos gc`'s CLI
+ * wrapper passes repo_dir explicitly and never hit this).
+ */
+export function buildAutoGcCompactionTarget(target, repoDir) {
+  return { ...target, repo_dir: repoDir };
+}
+
 async function main(argv, { onBackgroundWork } = {}) {
   // gitvault-connection-amortization (bench P5) note: the prewarm now fires
   // at the module TOP, before the SDK graph loads (gitvault-startup-
@@ -741,10 +758,19 @@ async function main(argv, { onBackgroundWork } = {}) {
     }
     if (!shouldRunAutoGc(threshold, generationsSinceCheckpoint)) return;
 
+    // `compact()`/`prune()` never default repo_dir to process.cwd() —
+    // GitvaultVaultHandleOptions's own doc comment describes CALLER
+    // convention, not an SDK fallback (`open()` only sets repo_dir when
+    // `options.repo_dir !== undefined`). Omitting it here made every real
+    // post-push auto-gc cycle fail closed with GITVAULT_REPO_DIR_REQUIRED,
+    // silently degrading to the advisory on every push (found live,
+    // 2026-08-31, via a push-latency guard bench that finally drove the
+    // ACTUAL trigger path instead of a synthetic `repos gc` invocation).
+    const compactionTarget = buildAutoGcCompactionTarget(target, repoDir);
     const runCycle = async () => {
       const sdk = getCachedSdk();
-      const checkpoint = await sdk.gitvault.compact({ ...target });
-      const prune = await sdk.gitvault.prune(target); // PLAN only — never `submit`; see compact()'s own grant-close doc comment for why prune needs no headroom of its own
+      const checkpoint = await sdk.gitvault.compact({ ...compactionTarget });
+      const prune = await sdk.gitvault.prune(compactionTarget); // PLAN only — never `submit`; see compact()'s own grant-close doc comment for why prune needs no headroom of its own
       return { checkpoint, prune };
     };
 
