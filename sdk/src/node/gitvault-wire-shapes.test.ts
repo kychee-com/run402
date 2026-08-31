@@ -284,6 +284,61 @@ describe("createGitvaultHttpTransport — head-reads is a POST batch whose bytes
   });
 });
 
+describe("createGitvaultHttpTransport — compaction headroom grant open/close (gitvault-checkpoint-cadence design D3)", () => {
+  const REPO = `r402s_${"f".repeat(32)}`;
+
+  interface WireCall { path: string; method?: string; body?: unknown }
+
+  function transportOver(handler: (call: WireCall) => unknown): { transport: ReturnType<typeof createGitvaultHttpTransport>; calls: WireCall[] } {
+    const calls: WireCall[] = [];
+    const client = {
+      apiBase: "https://api.example.test",
+      async request<T>(path: string, opts: { method?: string; body?: unknown }): Promise<T> {
+        const call = { path, method: opts.method, body: opts.body };
+        calls.push(call);
+        return handler(call) as T;
+      },
+    } as unknown as Parameters<typeof createGitvaultHttpTransport>[0];
+    return { transport: createGitvaultHttpTransport(client), calls };
+  }
+
+  it("opens with a bare POST …/compaction-grant and returns the grant verbatim", async () => {
+    const grant = { granted_bytes: 1024, expires_at: "2026-01-01T01:00:00.000Z", pool_used_bytes: 10, pool_limit_bytes: 1000, effective_pool_limit_bytes: 1024 + 1000 };
+    const { transport, calls } = transportOver(() => grant);
+    const got = await transport.openCompactionGrant({ repo_id: REPO });
+    assert.deepEqual(calls, [{ path: `/gitvault/v1/vaults/${REPO}/compaction-grant`, method: "POST", body: undefined }]);
+    assert.deepEqual(got, grant);
+  });
+
+  it("closes with a bare DELETE …/compaction-grant and normalizes `closed` to a strict boolean", async () => {
+    const { transport, calls } = transportOver(() => ({ closed: true }));
+    const got = await transport.closeCompactionGrant({ repo_id: REPO });
+    assert.deepEqual(calls, [{ path: `/gitvault/v1/vaults/${REPO}/compaction-grant`, method: "DELETE", body: undefined }]);
+    assert.deepEqual(got, { closed: true });
+  });
+
+  it("a route that omits `closed` (or answers falsily) reports `{closed: false}`, never `undefined`", async () => {
+    for (const body of [{}, { closed: false }, { closed: null }]) {
+      const { transport } = transportOver(() => body);
+      assert.deepEqual(await transport.closeCompactionGrant({ repo_id: REPO }), { closed: false }, JSON.stringify(body));
+    }
+  });
+
+  it("propagates a 409 GITVAULT_COMPACTION_GRANT_ACTIVE / 404 route-absent refusal verbatim — the namespace layer, not the transport, interprets them", async () => {
+    const conflict = { status: 409, code: "GITVAULT_COMPACTION_GRANT_ACTIVE", details: { expires_at: "2026-01-01T00:00:00.000Z" } };
+    const { transport } = transportOver(() => {
+      throw conflict;
+    });
+    await assert.rejects(transport.openCompactionGrant({ repo_id: REPO }), (e: unknown) => (e as { code?: string }).code === "GITVAULT_COMPACTION_GRANT_ACTIVE");
+
+    const missing = { status: 404, code: "ROUTE_NOT_FOUND" };
+    const { transport: t2 } = transportOver(() => {
+      throw missing;
+    });
+    await assert.rejects(t2.openCompactionGrant({ repo_id: REPO }), (e: unknown) => (e as { status?: number }).status === 404);
+  });
+});
+
 describe("createGitvaultHttpTransport — the mint's envelope is unwrapped, never passed on as the token", () => {
   const REPO = `r402s_${"a".repeat(32)}`;
   const OP = "op_wire_shapes";

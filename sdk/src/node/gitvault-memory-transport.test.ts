@@ -41,7 +41,7 @@ import type { GitvaultActivationToken, GitvaultAllocation, GitvaultCaptureReceip
 import type { GitvaultAdmitGenesisRequest, GitvaultAdmitGenesisResult, GitvaultAllocateRequest, GitvaultObjectReceipt, GitvaultPutObjectRequest } from "./gitvault-creation-journal.js";
 import { createGitvault } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
-import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultDesiredRecipientEntry, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord, GitvaultVaultState } from "./gitvault-publication.js";
+import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultCompactionGrant, GitvaultDesiredRecipientEntry, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord, GitvaultVaultState } from "./gitvault-publication.js";
 import type { GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRotationAttemptDescriptor } from "../namespaces/gitvault.types.js";
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
 import { GitvaultVault, generationToBigInt, bigIntToGeneration, gitvaultPaths } from "./gitvault-publication.js";
@@ -662,6 +662,38 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     if (!l || l.holder_token !== holder_token) throw err("MAINTENANCE_LEASE_HELD", "not the holder");
     l.released = true;
     return { maintenance_lease_id, status: "released" };
+  }
+
+  // ── compaction headroom grant (gitvault-checkpoint-cadence design D3) ──
+  /** `repo_id -> the active grant`, at most one live at a time (mirrors the gateway's partial-unique-active-per-project index). */
+  readonly compactionGrants = new Map<string, GitvaultCompactionGrant>();
+  /** Set true to simulate an older gateway that predates this route (404/`ROUTE_NOT_FOUND`). */
+  compactionGrantUnsupported = false;
+  /** The pooled figures a fresh grant reports — tests set this to model a near-quota org. Defaults model plenty of headroom. */
+  compactionGrantPoolFigures: { pool_used_bytes: number; pool_limit_bytes: number } = { pool_used_bytes: 0, pool_limit_bytes: Number.MAX_SAFE_INTEGER };
+  /** The `granted_bytes` a fresh grant reports — tests set this to the vault's modeled `source_bytes`. */
+  compactionGrantBytes = 0;
+
+  async openCompactionGrant({ repo_id }: { repo_id: string }): Promise<GitvaultCompactionGrant> {
+    this.calls.push("compaction-grant-open");
+    if (this.compactionGrantUnsupported) throw err("ROUTE_NOT_FOUND", "compaction-grant is not supported by this gateway");
+    const existing = this.compactionGrants.get(repo_id);
+    if (existing) throw err("GITVAULT_COMPACTION_GRANT_ACTIVE", "a compaction grant is already active for this project", { expires_at: existing.expires_at });
+    const grant: GitvaultCompactionGrant = {
+      granted_bytes: this.compactionGrantBytes,
+      expires_at: "2026-01-01T01:00:00.000Z",
+      pool_used_bytes: this.compactionGrantPoolFigures.pool_used_bytes,
+      pool_limit_bytes: this.compactionGrantPoolFigures.pool_limit_bytes,
+      effective_pool_limit_bytes: this.compactionGrantPoolFigures.pool_limit_bytes + this.compactionGrantBytes,
+    };
+    this.compactionGrants.set(repo_id, grant);
+    return grant;
+  }
+
+  async closeCompactionGrant({ repo_id }: { repo_id: string }): Promise<{ closed: boolean }> {
+    this.calls.push("compaction-grant-close");
+    if (this.compactionGrantUnsupported) throw err("ROUTE_NOT_FOUND", "compaction-grant is not supported by this gateway");
+    return { closed: this.compactionGrants.delete(repo_id) };
   }
 
   // ── prune (§7.3) ──

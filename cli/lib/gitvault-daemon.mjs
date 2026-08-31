@@ -89,7 +89,7 @@ export async function runDaemon() {
     socket.setNoDelay(true);
     armIdle();
     let buf = "";
-    let session = null; // { stdin, restoreEnv, restoreCwd, restoreWrites }
+    let session = null; // { stdin, restoreEnv, restoreCwd, restoreWrites, backgroundWork }
 
     const send = (obj) => {
       try {
@@ -99,22 +99,47 @@ export async function runDaemon() {
       }
     };
 
-    const teardown = () => {
+    /**
+     * gitvault-checkpoint-cadence design D2: `session.backgroundWork` — set
+     * by `onBackgroundWork` below when a push's auto-gc cycle was handed
+     * off — is a promise this daemon keeps itself alive for BEFORE
+     * restoring env/cwd/`busy`, even though the CLIENT already got its
+     * `exit` and the socket is already ending. `session` is cleared and
+     * write-redirection restored immediately and SYNCHRONOUSLY (so a stray
+     * log line from the background cycle lands on the daemon's own
+     * stdout/stderr, never an attempt to write into an already-closing
+     * socket) — only `busy`/env/cwd/idle-arming wait on the promise. This
+     * is what "keep the daemon alive through it" means structurally:
+     * `busy` stays `true` (refusing a new `hello`, and holding off
+     * idle-exit) for the ENTIRE compaction, not just the git protocol
+     * exchange that preceded it — the single-session invariant this
+     * module's whole design rests on would otherwise race a NEW session's
+     * env/cwd swap against the still-running compaction's own SDK calls.
+     * `backgroundWork` itself never rejects (`maybeRunAutoGc` swallows the
+     * cycle's own failure before handing the promise off) — the `catch`
+     * here is belt-and-suspenders, not a real error path.
+     */
+    const teardown = async () => {
       if (!session) return;
       const s = session;
       session = null;
-      busy = false;
       try {
         s.stdin.end();
       } catch {
         /* already ended */
       }
       s.restoreWrites();
+      if (s.backgroundWork) {
+        await s.backgroundWork.catch(() => undefined);
+      }
+      busy = false;
       s.restoreEnv();
       s.restoreCwd();
       armIdle();
     };
-    socket.on("close", teardown);
+    socket.on("close", () => {
+      void teardown();
+    });
     socket.on("error", () => socket.destroy());
 
     socket.on("data", (chunk) => {
@@ -186,18 +211,30 @@ export async function runDaemon() {
             process.stdout.write = realOut;
             process.stderr.write = realErr;
           };
-          session = { stdin, restoreEnv, restoreCwd, restoreWrites };
+          session = { stdin, restoreEnv, restoreCwd, restoreWrites, backgroundWork: null };
           send({ t: "ready" });
-          runHelperSession(Array.isArray(msg.argv) ? msg.argv : [], { stdin })
+          // gitvault-checkpoint-cadence design D2: a push's auto-gc cycle
+          // (if triggered) hands its ALREADY-STARTED promise here instead
+          // of being awaited inline — `runHelperSession` itself still
+          // resolves at push speed, so `exit`/`socket.end()` below reach
+          // the client immediately; `teardown()` is what actually waits on
+          // it (see its own doc comment) before this daemon looks idle or
+          // accepts a new session.
+          runHelperSession(Array.isArray(msg.argv) ? msg.argv : [], {
+            stdin,
+            onBackgroundWork: (promise) => {
+              if (session) session.backgroundWork = promise;
+            },
+          })
             .then((code) => {
-              teardown();
               send({ t: "exit", code });
               socket.end();
+              void teardown();
             })
             .catch(() => {
-              teardown();
               send({ t: "exit", code: 1 });
               socket.end();
+              void teardown();
             });
         } else if (msg.t === "in") {
           session?.stdin.write(Buffer.from(msg.d, "base64"));

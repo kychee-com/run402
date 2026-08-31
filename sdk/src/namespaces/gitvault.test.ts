@@ -281,11 +281,77 @@ describe("gitvault compaction headroom preflight (gitvault-compaction-headroom-p
     // The mechanism, not just a quota number — that is the whole point.
     assert.match(String(err.message), /both the new checkpoint and the/i);
     assert.match(String(err.message), /--force-headroom/);
-    // Nothing was published: only the two preflight reads went out. A
-    // maintenance lease or an upload session here would mean the refusal
-    // arrived after the cost, which is the bug this change exists to fix.
-    assert.equal(calls.filter((c) => c.method !== "GET").length, 0, `unexpected writes: ${JSON.stringify(calls.filter((c) => c.method !== "GET"))}`);
+    // Nothing was published: only the two preflight reads plus the
+    // compaction-grant open+close (gitvault-checkpoint-cadence — `compact()`
+    // now brackets the ENTIRE preflight with the grant, so a refusal still
+    // closes a grant it opened) went out. A maintenance lease or an upload
+    // session here would mean the refusal arrived after the cost, which is
+    // the bug this change exists to fix.
+    const nonGet = calls.filter((c) => c.method !== "GET");
+    assert.deepEqual(
+      nonGet.map((c) => `${c.method} ${new URL(c.url).pathname}`),
+      [`POST /gitvault/v1/vaults/${REPO}/compaction-grant`, `DELETE /gitvault/v1/vaults/${REPO}/compaction-grant`],
+      `unexpected writes: ${JSON.stringify(nonGet)}`,
+    );
     assert.equal(calls.some((c) => c.url.includes("maintenance-leases")), false);
+  });
+});
+
+describe("gitvault compaction headroom grant (gitvault-checkpoint-cadence)", () => {
+  const REPO = VAULT_RECORD.repo_id;
+  const withSource = (bytes: string): Record<string, unknown> => ({ ...VAULT_RECORD, storage: { ...VAULT_RECORD.storage, source_bytes: bytes } });
+  function tierStatus(used: number, limit: number): Record<string, unknown> {
+    return { tier: "prototype", active: true, pool_usage: { projects: 1, total_api_calls: 0, total_storage_bytes: used, api_calls_limit: 500_000, storage_bytes_limit: limit } };
+  }
+
+  it("409 GITVAULT_COMPACTION_GRANT_ACTIVE refuses BEFORE any preflight read — single-flight-per-vault", async () => {
+    const { sdk, calls } = sdkWith((call) => {
+      if (call.url.includes("/compaction-grant")) {
+        return { status: 409, body: { code: "GITVAULT_COMPACTION_GRANT_ACTIVE", message: "active", details: { expires_at: "2026-09-01T00:00:00.000Z" } } };
+      }
+      return { body: withSource("50") };
+    });
+    let thrown: unknown;
+    try {
+      await sdk.gitvault.compact({ repo_id: REPO });
+    } catch (e) {
+      thrown = e;
+    }
+    const err = thrown as { code?: string; details?: { expires_at?: string | null } };
+    assert.equal(err?.code, "GITVAULT_COMPACTION_IN_PROGRESS");
+    assert.equal(err.details?.expires_at, "2026-09-01T00:00:00.000Z");
+    // Refused before the tier-status preflight read even happened — the
+    // grant conflict is the earliest, cheapest signal that another
+    // compaction (this process or another) already owns this vault's cycle.
+    assert.equal(calls.some((c) => c.url.includes("/tiers/v1/status")), false);
+    assert.equal(calls.some((c) => c.url.includes("maintenance-leases")), false);
+    // Nothing to close — the failed open never produced a grant to release.
+    assert.equal(calls.filter((c) => c.url.includes("/compaction-grant")).length, 1);
+  });
+
+  it("an older gateway (404/ROUTE_NOT_FOUND on /compaction-grant) falls back to the plain, un-raised preflight — same refusal as before this change", async () => {
+    const { sdk, calls } = sdkWith((call) => {
+      if (call.url.includes("/compaction-grant")) return { status: 404, body: { code: "ROUTE_NOT_FOUND", message: "no such route" } };
+      if (call.url.includes("/tiers/v1/status")) return { body: tierStatus(134_000_000, 250 * 1024 * 1024) };
+      return { body: withSource("200000000") };
+    });
+    let thrown: unknown;
+    try {
+      await sdk.gitvault.compact({ repo_id: REPO });
+    } catch (e) {
+      thrown = e;
+    }
+    const err = thrown as { code?: string; details?: Record<string, unknown> };
+    // Same refusal, same numbers, as the plain (no-grant) preflight test
+    // above — an absent grant route changes NOTHING about today's behavior.
+    assert.equal(err?.code, "GITVAULT_COMPACT_INSUFFICIENT_HEADROOM");
+    assert.equal(err.details?.pool_limit_bytes, 250 * 1024 * 1024);
+    assert.equal(err.details?.effective_pool_limit_bytes, undefined, "no grant was ever opened, so no effective (raised) limit should appear");
+    // The grant route was tried exactly once (POST, 404) and never a
+    // matching DELETE — there was never anything to close.
+    const grantCalls = calls.filter((c) => c.url.includes("/compaction-grant"));
+    assert.equal(grantCalls.length, 1);
+    assert.equal(grantCalls[0]!.method, "POST");
   });
 });
 

@@ -82,6 +82,7 @@ Maintenance:
   run402 repos access revoke-key <principal_id> [--project <id>] [--repo <repo_id>]
   run402 repos access declare-exposure [--project <id>] [--repo <repo_id>]
   run402 repos policy <required|grandfathered> [--project <id>] [--repo <repo_id>] [--reason <why>]
+  run402 repos policy auto-gc [<generations>|off]   (local, per-checkout — no --project/--repo)
 
 Every verb above also accepts -v/--verbose (a stderr summary line of request
 stats — round trips, wire time, bytes — coexists with --human) and always
@@ -268,6 +269,15 @@ Subcommands:
            step-up, audited. \`grandfathered\` is the documented way out of a
            deploy the vault gate refused, and needs \`--reason\`; returning to
            \`required\` does not. Allocating a repo never sets this.
+  policy auto-gc [<generations>|off]
+           A LOCAL, per-checkout setting (git config, like git's own
+           \`gc.auto\` — no network call, no --project/--repo/--reason): the
+           post-push compaction cadence (gitvault-checkpoint-cadence).
+           Default 32 — after a push, once this many generations have
+           accumulated since the vault's last checkpoint, \`gc\`'s
+           compact+prune-plan cycle runs automatically (one stderr advisory
+           without a resident daemon; silently in the background with one).
+           \`off\` (or \`0\`) disables it. No value prints the current setting.
 
 Options:
   --project <id>    Project whose repo to act on (defaults to the active project)
@@ -1359,20 +1369,84 @@ async function snapshot(args) {
 
 // ─── policy ─────────────────────────────────────────────────────────────────
 
+/**
+ * gitvault-checkpoint-cadence design D1: `auto-gc` is a LOCAL, per-checkout
+ * knob — the same local-git-config mechanism as the restore marker, and the
+ * same shape as git's own `gc.auto` — deliberately NOT a gateway call like
+ * `required`/`grandfathered` above (there is no server-side policy row for
+ * it; the gateway task list for this change never adds one). It rides
+ * `repos policy`'s NAMESPACE only, for the muscle-memory: `run402 repos
+ * policy auto-gc [<generations>|off]`. No value reads the current setting;
+ * `off` is sugar for `0` (disables auto-gc entirely).
+ */
+async function policyAutoGc(rawValue, a) {
+  const { hardenedGit, readGitvaultAutoGcThreshold, writeGitvaultAutoGcThreshold, GITVAULT_AUTO_GC_GENERATIONS_DEFAULT } = await import("#sdk/node");
+  const dir = process.cwd();
+  try {
+    await hardenedGit(dir, ["rev-parse", "--git-dir"]);
+  } catch {
+    fail({
+      code: "BAD_USAGE",
+      message: "run402 repos policy auto-gc must run inside a git checkout.",
+      hint: "cd into the repository this vault is checked out in, then re-run — auto-gc's threshold is per-checkout, like git's own `gc.auto`.",
+    });
+  }
+  const sdk = getSdk();
+  if (rawValue === undefined) {
+    const current = await readGitvaultAutoGcThreshold(dir);
+    printJson(sdk, { auto_gc_generations: current, default: GITVAULT_AUTO_GC_GENERATIONS_DEFAULT });
+    console.error(
+      current === 0
+        ? "auto-gc is disabled for this checkout"
+        : `auto-gc runs after a push once ${current} generation(s) have accumulated since the last checkpoint (default ${GITVAULT_AUTO_GC_GENERATIONS_DEFAULT})`,
+    );
+    printVerboseStats(a, sdk);
+    return;
+  }
+  let generations;
+  if (rawValue === "off") {
+    generations = 0;
+  } else if (/^\d+$/.test(rawValue)) {
+    generations = Number.parseInt(rawValue, 10);
+  } else {
+    fail({
+      code: "BAD_USAGE",
+      message: `Invalid auto-gc value: ${rawValue}.`,
+      hint: "Expected a non-negative integer (generations since checkpoint before auto-gc runs), or `off` to disable.",
+      details: { value: rawValue },
+    });
+  }
+  await writeGitvaultAutoGcThreshold(dir, generations);
+  printJson(sdk, { auto_gc_generations: generations });
+  console.error(
+    generations === 0
+      ? "auto-gc disabled for this checkout"
+      : `auto-gc will run after a push once ${generations} generation(s) have accumulated since the last checkpoint`,
+  );
+  printVerboseStats(a, sdk);
+}
+
 async function policy(args) {
   const a = normalizeArgv(args);
   const valueFlags = [...COMMON_VALUE_FLAGS, "--reason"];
   assertKnownFlags(a, [...valueFlags, "-v", "--verbose", "--help", "-h"], valueFlags);
-  const [requested] = requirePositionalCount(a, valueFlags, {
-    min: 1, max: 1, command: "run402 repos policy <required|grandfathered>",
-    missing: "Missing <policy>. Expected `required` or `grandfathered`.",
+  const positionals = requirePositionalCount(a, valueFlags, {
+    min: 1, max: 2, command: "run402 repos policy <required|grandfathered|auto-gc> [value]",
+    missing: "Missing <policy>. Expected `required`, `grandfathered`, or `auto-gc [<generations>|off]`.",
   });
+  const [requested, secondArg] = positionals;
+  if (requested === "auto-gc") {
+    return policyAutoGc(secondArg, a);
+  }
+  if (secondArg !== undefined) {
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for run402 repos policy ${requested}: ${secondArg}`, hint: "Only `auto-gc` takes a second argument." });
+  }
   if (requested !== "required" && requested !== "grandfathered") {
     fail({
       code: "BAD_USAGE",
       message: `Unknown policy: ${requested}.`,
-      hint: "Expected `required` (a deploy must present a vaulted capture) or `grandfathered` (it need not).",
-      details: { policy: requested, known_policies: ["required", "grandfathered"] },
+      hint: "Expected `required` (a deploy must present a vaulted capture), `grandfathered` (it need not), or `auto-gc [<generations>|off]` (the post-push compaction cadence).",
+      details: { policy: requested, known_policies: ["required", "grandfathered", "auto-gc"] },
     });
   }
   const reason = flagValue(a, "--reason");

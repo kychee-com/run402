@@ -40,6 +40,7 @@ import {
 } from "./gitvault.crypto.js";
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
+  GitvaultCompactionGrant,
   GitvaultEnvelopeRecipientsResponse,
   GitvaultMaintenanceLease,
   GitvaultMaintenanceLeaseRequest,
@@ -274,16 +275,26 @@ export interface GitvaultCompactResult {
 export interface GitvaultCompactHeadroom {
   /** Pooled storage the org is already using, across every project it owns. */
   pool_used_bytes: number;
-  /** The org's pooled tier storage limit. */
+  /** The org's plain, unraised pooled tier storage limit — always the tier's own figure, never the grant-raised one, so a disclosed "used of X pooled" never implies the tier itself grew. */
   pool_limit_bytes: number;
   /** The vault's billed `source_bytes` — the checkpoint-size proxy (design D1). */
   vault_source_bytes: number;
   /** `pool_used_bytes + vault_source_bytes`. */
   projected_transient_bytes: number;
-  /** `false` when the projection exceeds the limit. */
+  /** `false` when the projection exceeds the EFFECTIVE limit (`effective_pool_limit_bytes` when a grant is active, else `pool_limit_bytes`). */
   ok: boolean;
   /** `true` when the caller passed the override and a `false` `ok` was proceeded past anyway. */
   overridden: boolean;
+  /**
+   * gitvault-checkpoint-cadence design D3: `pool_limit_bytes` PLUS an active
+   * compaction grant's `granted_bytes`, when one is active for this cycle —
+   * the limit `ok`/`projected_transient_bytes` are actually computed
+   * against. Equal to `pool_limit_bytes` (and omittable) when no grant is
+   * active.
+   */
+  effective_pool_limit_bytes?: number;
+  /** The grant this compaction opened for itself, when one was opened and is still tracked at disclosure time — `null`/absent otherwise (no grant, an older gateway, or one already closed). */
+  compaction_grant?: { granted_bytes: number; expires_at: string } | null;
 }
 
 /**
@@ -1848,8 +1859,37 @@ export class Gitvault {
     return this.#readCompactHeadroom(await this.#resolveRepoId(options));
   }
 
-  /** The arithmetic, with no policy: the block, or `null` when unanswerable. */
-  async #readCompactHeadroom(repoId: string): Promise<GitvaultCompactHeadroom | null> {
+  /**
+   * Open this vault's compaction headroom grant directly (gitvault-checkpoint-cadence
+   * design D3) — `compact()` already does this internally; this standalone
+   * entry point exists for callers that need to inspect or drive the grant
+   * without also running a full compaction cycle (tests; a future
+   * operator/diagnostic surface). Throws `GITVAULT_COMPACTION_GRANT_ACTIVE`
+   * (409) verbatim when another compaction already holds this project's
+   * grant.
+   */
+  async openCompactionGrant(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultCompactionGrant> {
+    const handle = await this.open(options);
+    return handle.vault.openCompactionGrant();
+  }
+
+  /** Close this vault's compaction headroom grant directly — idempotent; `{closed: false}` when nothing was active. */
+  async closeCompactionGrant(options: GitvaultVaultHandleOptions = {}): Promise<{ closed: boolean }> {
+    const handle = await this.open(options);
+    return handle.vault.closeCompactionGrant();
+  }
+
+  /**
+   * The arithmetic, with no policy: the block, or `null` when unanswerable.
+   *
+   * `effectiveLimitOverride` (gitvault-checkpoint-cadence design D3): when a
+   * compaction grant is active for this cycle, `compact()` passes the
+   * grant's `effective_pool_limit_bytes` here so `ok`/`projected_transient_bytes`
+   * reflect the RAISED limit — `pool_limit_bytes` itself always stays the
+   * tier's own figure (never the raised one), so disclosure never implies
+   * the tier grew.
+   */
+  async #readCompactHeadroom(repoId: string, effectiveLimitOverride?: number): Promise<GitvaultCompactHeadroom | null> {
     /** Posture (3): one note, on stderr, and `null` — never a throw. */
     const unanswerable = (why: string): null => {
       globalThis.console?.error?.(`run402: could not check compaction storage headroom (${why}); proceeding — the platform's storage quota remains authoritative.`);
@@ -1878,26 +1918,29 @@ export class Gitvault {
       return unanswerable("tier status carried no usable pooled-storage figures");
     }
 
+    const effectiveLimit = Number.isFinite(effectiveLimitOverride) && (effectiveLimitOverride as number) > 0 ? (effectiveLimitOverride as number) : poolLimit;
     const projected = poolUsed + sourceBytes;
     return {
       pool_used_bytes: poolUsed,
       pool_limit_bytes: poolLimit,
       vault_source_bytes: sourceBytes,
       projected_transient_bytes: projected,
-      ok: projected <= poolLimit,
+      ok: projected <= effectiveLimit,
       overridden: false,
+      ...(effectiveLimit !== poolLimit ? { effective_pool_limit_bytes: effectiveLimit } : {}),
     };
   }
 
   /** The reader plus compaction's policy (refuse / override / proceed). */
-  async #compactHeadroomPreflight(repoId: string, ignore: boolean): Promise<GitvaultCompactHeadroom | null> {
-    const headroom = await this.#readCompactHeadroom(repoId);
+  async #compactHeadroomPreflight(repoId: string, ignore: boolean, effectiveLimitOverride?: number): Promise<GitvaultCompactHeadroom | null> {
+    const headroom = await this.#readCompactHeadroom(repoId, effectiveLimitOverride);
     if (headroom === null) return null;
-    const { pool_used_bytes: poolUsed, pool_limit_bytes: poolLimit, vault_source_bytes: sourceBytes, projected_transient_bytes: projected, ok } = headroom;
+    const { pool_used_bytes: poolUsed, pool_limit_bytes: poolLimit, vault_source_bytes: sourceBytes, projected_transient_bytes: projected, ok, effective_pool_limit_bytes: effectiveLimit } = headroom;
     if (!ok && !ignore) {
+      const limitForMessage = effectiveLimit ?? poolLimit;
       throw new LocalError(
-        `compaction needs about ${mib(sourceBytes)} of transient headroom and the org's pooled storage has ${mib(Math.max(poolLimit - poolUsed, 0))} free ` +
-          `(${mib(poolUsed)} used of ${mib(poolLimit)}; projected ${mib(projected)}). Compaction transiently holds BOTH the new checkpoint and the ` +
+        `compaction needs about ${mib(sourceBytes)} of transient headroom and the org's pooled storage has ${mib(Math.max(limitForMessage - poolUsed, 0))} free ` +
+          `(${mib(poolUsed)} used of ${mib(limitForMessage)}${effectiveLimit !== undefined ? ` — includes an active compaction grant raising the ${mib(poolLimit)} tier limit` : ""}; projected ${mib(projected)}). Compaction transiently holds BOTH the new checkpoint and the ` +
           `not-yet-pruned history — roughly 2x source_bytes — until a prune completes. Free storage, raise the tier, or re-run with --force-headroom ` +
           `(the platform's own quota enforcement stays authoritative either way).`,
         "preflighting gitvault compaction storage headroom",
@@ -1908,12 +1951,19 @@ export class Gitvault {
             pool_limit_bytes: poolLimit,
             vault_source_bytes: sourceBytes,
             projected_transient_bytes: projected,
+            ...(effectiveLimit !== undefined ? { effective_pool_limit_bytes: effectiveLimit } : {}),
             override: "--force-headroom",
           },
         },
       );
     }
     return { ...headroom, overridden: !ok && ignore };
+  }
+
+  /** A 409 `GITVAULT_COMPACTION_GRANT_ACTIVE` refusal — another compaction already holds this project's grant. */
+  #isCompactionGrantActive(e: unknown): e is { status?: number; code?: string; details?: { expires_at?: string } } {
+    const err = e as { status?: number; code?: string } | null;
+    return Boolean(err && err.code === "GITVAULT_COMPACTION_GRANT_ACTIVE");
   }
 
   /**
@@ -1951,9 +2001,59 @@ export class Gitvault {
   ): Promise<GitvaultCompactResult> {
     const handle = await this.open(options);
 
+    // gitvault-checkpoint-cadence design D3: open the compaction headroom
+    // grant BEFORE the preflight (which needs its raised limit) and before
+    // any checkpoint is built or uploaded — same ordering rule as the
+    // preflight itself. Three outcomes:
+    //   - opened: `grant` carries `effective_pool_limit_bytes`, threaded
+    //     into the preflight below.
+    //   - 409 GITVAULT_COMPACTION_GRANT_ACTIVE: another compaction (this
+    //     process, another process, auto-gc or manual `repos gc`) already
+    //     holds this project's one-at-a-time grant — refuse rather than
+    //     race it. This is this change's single-flight-per-vault guarantee;
+    //     it applies to every `compact()` caller, not just auto-gc.
+    //   - 404/absent route (an older gateway): proceed exactly as before
+    //     this change existed — `grant` stays `null`, no raised limit.
+    //   - any OTHER failure (network, 5xx): also proceeds without a grant
+    //     — a grant that could not be confirmed open must never be
+    //     ASSUMED open, and failing the whole compaction because an
+    //     ancillary raise-the-limit call errored would make routine
+    //     maintenance depend on an availability property narrower than
+    //     compaction itself needs.
+    let grant: GitvaultCompactionGrant | null = null;
+    try {
+      grant = await handle.vault.openCompactionGrant();
+    } catch (e) {
+      if (this.#isCompactionGrantActive(e)) {
+        throw new LocalError(
+          `another compaction is already in progress for this vault (its headroom grant expires ${(e as { details?: { expires_at?: string } }).details?.expires_at ?? "soon"}) — refusing to race it.`,
+          "opening the gitvault compaction headroom grant",
+          { code: "GITVAULT_COMPACTION_IN_PROGRESS", details: { expires_at: (e as { details?: { expires_at?: string } }).details?.expires_at ?? null } },
+        );
+      }
+      // 404/absent-route or any other failure: proceed ungranted.
+    }
+
+    // Everything from here on is bracketed by the grant's own lifetime —
+    // including the preflight's OWN possible throw (`GITVAULT_COMPACT_
+    // INSUFFICIENT_HEADROOM`) — so a refusal still closes a grant this call
+    // opened rather than leaking it until the gateway's hourly sweep.
+    try {
+      return await this.#compactAfterGrant(handle, options, grant);
+    } finally {
+      if (grant) await handle.vault.closeCompactionGrant().catch(() => undefined);
+    }
+  }
+
+  /** The rest of `compact()`, run under an already-opened-or-skipped grant — split out so the grant's `finally` above covers every exit path, including the preflight's own throw. */
+  async #compactAfterGrant(
+    handle: GitvaultHandle,
+    options: { lease?: boolean; r1_size_bytes?: string; r2_cap_size_bytes?: string; ignoreHeadroom?: boolean },
+    grant: GitvaultCompactionGrant | null,
+  ): Promise<GitvaultCompactResult> {
     // BEFORE any checkpoint is built or uploaded (that ordering is the whole
     // point — see GitvaultCompactHeadroom).
-    const headroom = await this.#compactHeadroomPreflight(handle.repo_id, options.ignoreHeadroom === true);
+    const headroom = await this.#compactHeadroomPreflight(handle.repo_id, options.ignoreHeadroom === true, grant?.effective_pool_limit_bytes);
 
     const base = await handle.vault.materialize();
 
@@ -1989,7 +2089,7 @@ export class Gitvault {
         cutoff_bound: cutoffBound,
         covered_refs: Object.keys(published.refs).length,
         covered_roots: base.roots.length,
-        headroom,
+        headroom: headroom && grant ? { ...headroom, compaction_grant: { granted_bytes: grant.granted_bytes, expires_at: grant.expires_at } } : headroom,
       };
     } finally {
       if (lease) {
@@ -1997,6 +2097,11 @@ export class Gitvault {
           .request(`/gitvault/v1/vaults/${encodeURIComponent(handle.repo_id)}/maintenance-leases/${encodeURIComponent(lease.maintenance_lease_id)}`, { method: "DELETE", body: { holder_token: lease.holder_token }, context: "releasing the gitvault maintenance lease" })
           .catch(() => undefined);
       }
+      // The compaction headroom grant (if one was opened) is closed by the
+      // caller — `compact()`'s own `finally`, which wraps this ENTIRE
+      // method so a preflight refusal closes it too. Design D3's rationale
+      // for closing promptly (prune only ever REMOVES objects, so nothing
+      // past the checkpoint publish needs the raised limit) lives there.
     }
   }
 
