@@ -534,7 +534,10 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
    * no `ref_state`/`retention_roots`), so that case is treated identically
    * to `null` (no ordinary head yet) rather than parsed as a head.
    */
-  async getState({ repo_id }: { repo_id: string }): Promise<GitvaultVaultState> {
+  /** gitvault-delta-fetch: set true to simulate a gateway that predates the delta arm. */
+  deltaDisabled = false;
+
+  async getState({ repo_id, since }: { repo_id: string; since?: string }): Promise<GitvaultVaultState> {
     this.calls.push("state");
     const vault = await this.getVaultRecord({ repo_id });
     if (vault.newest_generation === null || vault.newest_generation === GITVAULT_GENESIS_GENERATION) {
@@ -564,11 +567,52 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     }
     const refState = this.objects.get(this.key(repo_id, gitvaultPaths.refState(refStateId))) ?? null;
     const retentionRoots = this.objects.get(this.key(repo_id, gitvaultPaths.retentionRoots(retentionRootsId))) ?? null;
+    // gitvault-delta-fetch: mirror the gateway's delta arm — a qualifying
+    // `since` span (small, no checkpoint/transition heads) rides back as
+    // heads + inline WAL packs; every disqualification just omits `delta`.
+    let delta: GitvaultVaultState["delta"];
+    if (since !== undefined && !this.deltaDisabled && /^[0-9a-f]{16}$/.test(since)) {
+      const sinceBig = BigInt(`0x${since}`);
+      const newestBig = BigInt(`0x${vault.newest_generation}`);
+      const span = newestBig - sinceBig;
+      if (span >= 1n && span <= 4n) {
+        const heads: Array<{ generation: string; stored_bytes: Uint8Array; stored_bytes_sha256: string }> = [];
+        const packs: Array<{ object_id: string; bytes: Uint8Array }> = [];
+        let qualified = true;
+        for (let g = sinceBig + 1n; g <= newestBig; g += 1n) {
+          const generation = g.toString(16).padStart(16, "0");
+          const bytes = this.objects.get(this.key(repo_id, gitvaultPaths.head(generation)));
+          if (!bytes) {
+            qualified = false;
+            break;
+          }
+          let parsed: { checkpoint?: unknown; transition?: unknown; wal_entries?: Array<{ object_id?: unknown }> };
+          try {
+            parsed = JSON.parse(new TextDecoder().decode(bytes)) as typeof parsed;
+          } catch {
+            qualified = false;
+            break;
+          }
+          if (parsed.checkpoint != null || parsed.transition != null) {
+            qualified = false;
+            break;
+          }
+          heads.push({ generation, stored_bytes: bytes, stored_bytes_sha256: sha256Hex(bytes) });
+          for (const w of parsed.wal_entries ?? []) {
+            if (typeof w?.object_id !== "string") continue;
+            const packBytes = this.objects.get(this.key(repo_id, gitvaultPaths.wal(w.object_id)));
+            if (packBytes) packs.push({ object_id: w.object_id, bytes: packBytes });
+          }
+        }
+        if (qualified) delta = { heads, packs };
+      }
+    }
     return {
       vault,
       newest_generation: vault.newest_generation,
       head: { stored_bytes: headBytes, stored_bytes_sha256: sha256Hex(headBytes) },
       carriers: { ref_state: refState, retention_roots: retentionRoots },
+      ...(delta ? { delta } : {}),
     };
   }
 

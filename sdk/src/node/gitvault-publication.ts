@@ -140,7 +140,7 @@ import { crossProfileGitvaultHint } from "./gitvault-profile-scan.js";
 // Type-only: erased at build, so the prune module stays a LEAF (it imports the
 // crypto core and nothing from here) and no runtime import cycle exists.
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
-import { GITVAULT_DEPLOY_REF, hardenedGit, hasObject, isAncestor } from "./gitvault-snapshot.js";
+import { GITVAULT_DEPLOY_REF, hardenedGit, hasObject, hasObjects, isAncestor } from "./gitvault-snapshot.js";
 
 // ─── Constants (constants.json) ──────────────────────────────────────────────
 
@@ -993,8 +993,16 @@ export interface GitvaultTransport extends GitvaultCreationTransport {
    * caller more than one generation behind its own pin ignores `head`/
    * `carriers` and falls back to {@link listHeads} — that decision lives in
    * the vault, never here.
+   *
+   * `since` (gitvault-delta-fetch): the caller's materialized generation.
+   * A gateway that recognizes it MAY answer with a bounded `delta`
+   * (intermediate heads + their WAL packs, inline under caps) — and MAY
+   * ignore it entirely (older gateway, disqualified span); absence of
+   * `delta` is never an error. Delta bytes are UNTRUSTED exactly like every
+   * other stored byte: consumers hash-check before use, and a failed check
+   * is a plain miss that the ordinary reads absorb.
    */
-  getState(request: { repo_id: string }): Promise<GitvaultVaultState>;
+  getState(request: { repo_id: string; since?: string }): Promise<GitvaultVaultState>;
   /** Resolve a project's vault without local state (the cold-restart entry point). */
   findVaultByProject(request: { project_id: string }): Promise<GitvaultVaultRecord>;
   /**
@@ -1191,6 +1199,21 @@ export interface GitvaultVaultState {
   newest_generation: string | null;
   head: { stored_bytes: Uint8Array; stored_bytes_sha256: string } | null;
   carriers: { ref_state: Uint8Array | null; retention_roots: Uint8Array | null } | null;
+  /** Present only when the gateway answered a `since` request with a qualifying span (gitvault-delta-fetch); absent otherwise, including on every older gateway. */
+  delta?: GitvaultVaultStateDelta | null;
+}
+
+/**
+ * The state read's bounded delta (gitvault-delta-fetch): the span's heads in
+ * chain order plus their WAL packs' INLINE bytes. Over-cap packs arrive as
+ * presigned references on the wire and are DROPPED here (v1 consumes inline
+ * only — an uncovered pack simply rides the ordinary batched fetch, so the
+ * reference arm costs nothing to ignore). Untrusted throughout: every
+ * consumer hash-checks before use.
+ */
+export interface GitvaultVaultStateDelta {
+  heads: Array<{ generation: string; stored_bytes: Uint8Array; stored_bytes_sha256: string }>;
+  packs: Array<{ object_id: string; bytes: Uint8Array }>;
 }
 
 export interface GitvaultHttpTransportOptions {
@@ -1230,6 +1253,11 @@ interface VaultStateResponse {
   newest_generation: string | null;
   head: { stored_bytes: string; stored_bytes_sha256: string } | null;
   carriers: { ref_state: VaultStateCarrierWire; retention_roots: VaultStateCarrierWire } | null;
+  /** gitvault-delta-fetch: present only for a qualifying `since` span; packs are inline (`inline`) or presigned refs (ignored by this client version). */
+  delta?: {
+    heads: Array<{ generation: string; stored_bytes: string; stored_bytes_sha256: string }>;
+    packs: Array<{ object_kind?: string; object_id: string; inline?: string; presigned_url?: string; expires_at?: string; edge_url?: string }>;
+  } | null;
 }
 
 function b64(bytes: Uint8Array): string { return Buffer.from(bytes).toString("base64"); }
@@ -1501,13 +1529,30 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
    * resolved to raw bytes here, verified nowhere here (see the interface's
    * own doc comment on {@link GitvaultTransport.getState}).
    */
-  async function getVaultStateOut(repoId: string): Promise<GitvaultVaultState> {
-    const raw = await client.request<VaultStateResponse>(`${base(repoId)}/state`, { context: "reading the gitvault vault state" });
+  async function getVaultStateOut(repoId: string, since?: string): Promise<GitvaultVaultState> {
+    const raw = await client.request<VaultStateResponse>(`${base(repoId)}/state${since ? `?since=${encodeURIComponent(since)}` : ""}`, { context: "reading the gitvault vault state" });
     const head = raw.head ? { stored_bytes: fromBase64url(raw.head.stored_bytes, "head.stored_bytes"), stored_bytes_sha256: raw.head.stored_bytes_sha256 } : null;
     const carriers = raw.carriers
       ? { ref_state: await resolveVaultStateCarrier(raw.carriers.ref_state), retention_roots: await resolveVaultStateCarrier(raw.carriers.retention_roots) }
       : null;
-    return { vault: raw.vault, newest_generation: raw.newest_generation, head, carriers };
+    // Delta decode is deliberately forgiving: a malformed entry is dropped,
+    // never thrown — the delta is an accelerator and the ordinary reads own
+    // every failure mode (gitvault-delta-fetch D2/D4).
+    let delta: GitvaultVaultStateDelta | null = null;
+    if (raw.delta && Array.isArray(raw.delta.heads) && Array.isArray(raw.delta.packs)) {
+      try {
+        const heads = raw.delta.heads
+          .filter((h) => typeof h?.generation === "string" && typeof h.stored_bytes === "string" && typeof h.stored_bytes_sha256 === "string")
+          .map((h) => ({ generation: h.generation, stored_bytes: fromBase64url(h.stored_bytes, "delta.heads[].stored_bytes"), stored_bytes_sha256: h.stored_bytes_sha256 }));
+        const packs = raw.delta.packs
+          .filter((pk) => typeof pk?.object_id === "string" && typeof (pk as { inline?: unknown }).inline === "string")
+          .map((pk) => ({ object_id: pk.object_id, bytes: fromBase64url((pk as { inline: string }).inline, "delta.packs[].inline") }));
+        delta = { heads, packs };
+      } catch {
+        delta = null;
+      }
+    }
+    return { vault: raw.vault, newest_generation: raw.newest_generation, head, carriers, ...(delta ? { delta } : {}) };
   }
 
   /** Pair a `finalize`-shaped response's receipts back onto `objects` by ledger id — shared by the inline and presigned upload paths so neither forks the other's receipt-compare logic. */
@@ -1655,7 +1700,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
       return { cleared: r.advisory_cleared ?? r.cleared ?? false };
     },
     getVaultRecord: ({ repo_id }) => client.request<GitvaultVaultRecord>(base(repo_id), { context: "reading the gitvault record" }),
-    getState: ({ repo_id }) => getVaultStateOut(repo_id),
+    getState: ({ repo_id, since }) => getVaultStateOut(repo_id, since),
     findVaultByProject: ({ project_id }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?project_id=${encodeURIComponent(project_id)}`, { context: "resolving the project's gitvault" }),
     findVaultByRepo: ({ org_slug, repo_name }) => client.request<GitvaultVaultRecord>(`/gitvault/v1/vaults?repo=${encodeURIComponent(`${org_slug}/${repo_name}`)}`, { context: "resolving the gitvault by repo address" }),
     listOrgEncryptionKeys: ({ org_id }) => client.request<GitvaultOrgEncryptionKeyDirectory>(`/orgs/v1/${encodeURIComponent(org_id)}/encryption-keys`, { context: "reading the org encryption-key directory" }),
@@ -2201,6 +2246,14 @@ export class GitvaultVault {
    * the very bytes the ordered walk is about to read.
    */
   private walkPrefetch: Map<string, Uint8Array> | null = null;
+  /**
+   * WAL pack bytes carried by the state read's delta (gitvault-delta-fetch),
+   * keyed by object_id — the walkPrefetch discipline exactly: UNTRUSTED
+   * until a consumer's own hash check passes, a mismatch is a plain miss,
+   * and the buffer is transient (stashed by {@link tryStateFastPath},
+   * consumed and cleared by the next restore).
+   */
+  private stateDeltaPacks: Map<string, Uint8Array> | null = null;
   private readonly retries: number;
   private readonly servicePublicKey: Uint8Array | string | null;
   private genesisCache: { genesis: GitvaultVaultGenesis; sha256: string } | null = null;
@@ -2389,8 +2442,17 @@ export class GitvaultVault {
    * comment). A wrong or absent byte this method wrote is therefore just a
    * cache MISS on the next read, never a verification bypass.
    */
-  private async tryStateFastPath(pin: GitvaultHeadPin): Promise<{ entries: GitvaultHeadsListingEntry[]; pinnedHead: GitvaultHead | null; prevEpoch: string } | null> {
-    const state = await this.transport.getState({ repo_id: this.repoId });
+  private async tryStateFastPath(pin: GitvaultHeadPin, deltaSince?: string): Promise<{ entries: GitvaultHeadsListingEntry[]; pinnedHead: GitvaultHead | null; prevEpoch: string } | null> {
+    // gitvault-delta-fetch: carry the caller's MATERIALIZED position as
+    // `since` — a capable gateway answers small spans with the heads +
+    // inline WAL packs in this same response; every other gateway/span
+    // simply omits `delta`. The RESTORE marker (what this git dir has
+    // actually applied) is the honest position when the caller supplies it:
+    // the chain-trust pin advances on every push from ANY checkout on this
+    // keystore, so pin-as-since would report "current" for a standing clone
+    // that is generations behind — exactly the multi-checkout shape the
+    // bench runs.
+    const state = await this.transport.getState({ repo_id: this.repoId, since: deltaSince ?? pin.generation });
     // §6.4: the vault's newest generation may never fall below the
     // authenticated pin — checked here regardless of eligibility below, so
     // a regressed vault is caught exactly as loudly as it always was, even
@@ -2408,6 +2470,7 @@ export class GitvaultVault {
     // GitvaultVault.genesis} owns verifying it via its OWN cache), so this
     // path must never parse `state.head` as a {@link GitvaultHead} when it
     // is actually genesis's bytes.
+    if (state.delta) this.consumeStateDelta(state.delta);
     const noOrdinaryHeadYet = state.newest_generation === null || state.newest_generation === GITVAULT_GENESIS_GENERATION;
     const pinBig = generationToBigInt(pin.generation);
     const newestBig = noOrdinaryHeadYet ? 0n : generationToBigInt(state.newest_generation!);
@@ -2447,6 +2510,25 @@ export class GitvaultVault {
     }
 
     return null; // more than one generation behind — the existing listHeads walk owns this
+  }
+
+  /**
+   * Absorb a state read's delta (gitvault-delta-fetch): heads blind-warm the
+   * SAME keystore head cache every walk already re-verifies on read (the
+   * established cache discipline — a wrong byte is a miss, never a bypass),
+   * gated only on each entry's self-consistency; packs stash into the
+   * transient {@link stateDeltaPacks} buffer for the next restore, which
+   * hash-checks each against its carrying head's receipt before use.
+   */
+  private consumeStateDelta(delta: GitvaultVaultStateDelta): void {
+    for (const h of delta.heads) {
+      const sha = sha256Hex(h.stored_bytes);
+      if (sha !== h.stored_bytes_sha256) continue; // self-inconsistent — drop, the walk's own read owns it
+      this.keystore.writeCachedHead(this.repoId, h.generation, sha, h.stored_bytes);
+    }
+    if (delta.packs.length > 0) {
+      this.stateDeltaPacks = new Map(delta.packs.map((pk) => [pk.object_id, pk.bytes]));
+    }
   }
 
   /**
@@ -2500,7 +2582,7 @@ export class GitvaultVault {
    * makes `chain_verified_to` (this call's `generation`) and `decryptable_to`
    * (`decrypt.decryptable_to_generation`) able to differ honestly.
    */
-  async verifyToNewest(options: { persist?: boolean; decryptValidate?: boolean; strict?: boolean } = {}): Promise<GitvaultVerifiedState> {
+  async verifyToNewest(options: { persist?: boolean; decryptValidate?: boolean; strict?: boolean; deltaSince?: string } = {}): Promise<GitvaultVerifiedState> {
     const persist = options.persist ?? true;
     const decryptValidate = options.decryptValidate ?? false;
     const strict = options.strict ?? true;
@@ -2515,7 +2597,7 @@ export class GitvaultVault {
     // own epoch could not be resolved without the network read this path
     // exists to avoid) — the caller falls straight through to the UNCHANGED
     // readHead + listHeads flow below, byte-identical to before this change.
-    const fastPath = await this.tryStateFastPath(pin);
+    const fastPath = await this.tryStateFastPath(pin, options.deltaSince);
     let lastHead: GitvaultHead | null = fastPath ? fastPath.pinnedHead : pin.generation === GITVAULT_GENESIS_GENERATION ? null : await this.readHead(pin.generation, pin.head_sha256);
     const anchor = pin.generation;
     let prevEpoch = fastPath ? fastPath.prevEpoch : (lastHead?.epoch ?? GITVAULT_GENESIS_EPOCH);
@@ -3013,9 +3095,9 @@ export class GitvaultVault {
    * — `strict: true` means this call throws exactly where the OLD
    * (pre-fix) `materialize()` silently produced a wrong `k_obj` instead.
    */
-  async materialize(options: { persist?: boolean } = {}): Promise<GitvaultMaterializedState> {
+  async materialize(options: { persist?: boolean; deltaSince?: string } = {}): Promise<GitvaultMaterializedState> {
     const persist = options.persist ?? true;
-    const state = await this.verifyToNewest({ persist, decryptValidate: true, strict: true });
+    const state = await this.verifyToNewest({ persist, decryptValidate: true, strict: true, deltaSince: options.deltaSince });
     if (!state.head) {
       if (persist) this.keystore.updateRepo(this.repoId, { materialized_pin: { generation: state.generation, head_sha256: state.head_sha256, pinned_at: formatGitvaultTimestamp(this.now()) } });
       return { ...state, ref_state: null, retention_roots: null, refs: {}, roots: [], head_target: { kind: "symref", ref: "refs/heads/main" }, epoch_keys_hex: state.decrypt?.epoch_keys_hex ?? {} };
@@ -4436,19 +4518,25 @@ export class GitvaultVault {
    * paths; the marker only advances after they both succeed.
    */
   async restoreObjectsInto(targetRepoDir: string): Promise<{ refs: GitvaultRefMap; head_target: GitvaultHeadTarget; generation: string; retained_refs: GitvaultRetainedRefsReconcileResult }> {
-    const newest = await this.materialize();
+    // gitvault-delta-fetch: the marker is read BEFORE materialize so the
+    // state read can carry THIS git dir's applied position as `since` —
+    // see tryStateFastPath's own comment on why the pin is the wrong
+    // position for a standing clone.
+    const marker = await readGitvaultRestoreMarker(targetRepoDir);
+    const newest = await this.materialize({ ...(marker ? { deltaSince: marker.generation } : {}) });
     if (!newest.head) {
       const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: {}, roots: [], head_target: newest.head_target });
       return { refs: {}, head_target: newest.head_target, generation: newest.generation, retained_refs };
     }
     const writerKey = newest.genesis.creator_signing_pubkey;
 
-    const marker = await readGitvaultRestoreMarker(targetRepoDir);
     // Already up to date locally: no pack fetch, not even a walk — only the
     // (entirely local) coverage + retained-refs bookkeeping below runs.
     if (marker && marker.generation === newest.generation && marker.head_sha256 === newest.head_sha256) {
-      for (const t of GitvaultVault.coverageTips(newest.refs, newest.roots, newest.head_target)) {
-        if (!(await hasObject(targetRepoDir, t))) fail("CHAIN_UNUSABLE", `covered tip ${t} does not resolve after restore`, "restoring gitvault objects", { oid: t });
+      const tips = GitvaultVault.coverageTips(newest.refs, newest.roots, newest.head_target);
+      const present = await hasObjects(targetRepoDir, tips);
+      for (const t of tips) {
+        if (!present.has(t)) fail("CHAIN_UNUSABLE", `covered tip ${t} does not resolve after restore`, "restoring gitvault objects", { oid: t });
       }
       const retained_refs = await reconcileRetainedTipRefs(targetRepoDir, { refs: newest.refs, roots: newest.roots, head_target: newest.head_target });
       return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
@@ -4594,7 +4682,25 @@ export class GitvaultVault {
     // rotation-spanning restore never reuses one head's epoch for another's
     // pack.
     const walEntries = heads.flatMap((h) => h.wal_entries.map((w) => ({ w, epoch: h.epoch })));
-    const walFramesP = settled(walEntries.map(({ w }) => gitvaultPaths.wal(w.object_id)));
+    // gitvault-delta-fetch: packs the state read already delivered inline
+    // skip the network ENTIRELY — but only after hashing to their carrying
+    // head's receipt (a lying delta is a plain miss; the ordinary fetch
+    // below reproduces the unbatched behavior for that slot). The buffer is
+    // consumed exactly once.
+    const deltaPacks = this.stateDeltaPacks;
+    this.stateDeltaPacks = null;
+    const deltaCovered = new Map<number, Uint8Array>();
+    if (deltaPacks) {
+      walEntries.forEach(({ w }, i) => {
+        const bytes = deltaPacks.get(w.object_id);
+        if (bytes && sha256Hex(bytes) === w.ciphertext_sha256) deltaCovered.set(i, bytes);
+      });
+    }
+    const uncovered = walEntries.map((_, i) => i).filter((i) => !deltaCovered.has(i));
+    const walFramesP = (async (): Promise<Array<Promise<Uint8Array | null>>> => {
+      const fetched = uncovered.length > 0 ? await settled(uncovered.map((i) => gitvaultPaths.wal(walEntries[i]!.w.object_id))) : [];
+      return walEntries.map((_, i) => (deltaCovered.has(i) ? Promise.resolve<Uint8Array | null>(deltaCovered.get(i)!) : fetched[uncovered.indexOf(i)]!));
+    })();
     void walFramesP.catch(() => {});
     if (first.checkpoint) {
       const claimBytes = await this.transport.getObject({ repo_id: this.repoId, path: gitvaultPaths.claimSet(first.checkpoint.claim_set.object_id) });
@@ -4633,8 +4739,15 @@ export class GitvaultVault {
       await hardenedGit(targetRepoDir, ["index-pack", "--stdin", "--strict"], { input: plain });
     }
     // the §4.7 coverage set — canonical refs ∪ unexpired roots ∪ the HEAD target — must all resolve.
-    for (const t of GitvaultVault.coverageTips(newest.refs, newest.roots, newest.head_target)) {
-      if (!(await hasObject(targetRepoDir, t))) fail("CHAIN_UNUSABLE", `covered tip ${t} does not resolve after restore`, "restoring gitvault objects", { oid: t });
+    // ONE batched git invocation for the whole set (gitvault-delta-fetch
+    // task 3.1) — identical every-tip-must-resolve semantics, one process
+    // instead of one per tip.
+    {
+      const tips = GitvaultVault.coverageTips(newest.refs, newest.roots, newest.head_target);
+      const present = await hasObjects(targetRepoDir, tips);
+      for (const t of tips) {
+        if (!present.has(t)) fail("CHAIN_UNUSABLE", `covered tip ${t} does not resolve after restore`, "restoring gitvault objects", { oid: t });
+      }
     }
     // clone-installs-retained-refs (D2): every retained tip just restored
     // above is now present locally — install/reconcile its refs/r402/retain/*

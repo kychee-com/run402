@@ -172,7 +172,7 @@ describe("gitvault round-trip budgets (client-surface spec's counted contract)",
     assertOpBudget(counter, 12, "small push with an oversize object");
   });
 
-  it("fetch/pull: exactly one new WAL generation above the materialized pin — budget 4", async (t) => {
+  it("fetch/pull: one new WAL generation, delta-serving gateway — budget 1 (gitvault-delta-fetch)", async (t) => {
     const f = await makeVault();
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
@@ -190,7 +190,29 @@ describe("gitvault round-trip budgets (client-surface spec's counted contract)",
     const vault = countedVaultFor(f, counter);
     const restored = await vault.restoreObjectsInto(target);
     assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
-    assertOpBudget(counter, 4, "one-generation pull");
+    assertOpBudget(counter, 1, "one-generation pull (state-with-delta)");
+  });
+
+  it("fetch/pull: one new WAL generation, NO delta (older gateway) — the fallback budget 4 holds", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    f.transport.deltaDisabled = true;
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-budget-pull-fb-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target);
+
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    const counter = new GitvaultOpCounter();
+    const vault = countedVaultFor(f, counter);
+    const restored = await vault.restoreObjectsInto(target);
+    assert.deepEqual(restored.refs, { "refs/heads/main": c2 });
+    assertOpBudget(counter, 4, "one-generation pull (fallback)");
   });
 
   it("fetch: already up to date — budget 2", async (t) => {

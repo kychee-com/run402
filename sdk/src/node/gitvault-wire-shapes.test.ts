@@ -573,6 +573,51 @@ describe("createGitvaultHttpTransport — edge_url from the wire response reache
     assert.deepEqual(fetchCalls, ["https://edge.example/ref_state"]);
   });
 
+  it("getState carries `since` on the wire and decodes the delta — inline packs only, refs dropped (gitvault-delta-fetch)", async () => {
+    const headBytes = new Uint8Array([9, 9]);
+    const packBytes = new Uint8Array([1, 2, 3]);
+    const { client } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state?since=0000000000000001`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000002",
+          head: { stored_bytes: toBase64url(headBytes), stored_bytes_sha256: "h2" },
+          carriers: { retention_roots: { inline: toBase64url(new Uint8Array([7])) }, ref_state: { inline: toBase64url(new Uint8Array([8])) } },
+          delta: {
+            heads: [{ generation: "0000000000000002", stored_bytes: toBase64url(headBytes), stored_bytes_sha256: "h2" }],
+            packs: [
+              { object_kind: "wal_pack", object_id: "wal_inline", inline: toBase64url(packBytes) },
+              { object_kind: "wal_pack", object_id: "wal_ref", presigned_url: "https://origin.example/big", expires_at: "2026-08-31T00:00:00.000Z" },
+            ],
+          },
+        },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO, since: "0000000000000001" });
+    assert.ok(state.delta, "a delta-bearing response must surface `delta`");
+    assert.deepEqual(state.delta!.heads.map((h) => h.generation), ["0000000000000002"]);
+    assert.deepEqual([...state.delta!.heads[0]!.stored_bytes], [...headBytes]);
+    assert.deepEqual(state.delta!.packs.map((pk) => pk.object_id), ["wal_inline"], "presigned delta refs are dropped — the ordinary fetch owns them");
+    assert.deepEqual([...state.delta!.packs[0]!.bytes], [...packBytes]);
+  });
+
+  it("getState without `since` sends no query and tolerates a delta-less response — byte-identical to before this change", async () => {
+    const { client } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000001",
+          head: { stored_bytes: toBase64url(new Uint8Array([9])), stored_bytes_sha256: "h" },
+          carriers: { ref_state: { inline: toBase64url(new Uint8Array([8])) }, retention_roots: { inline: toBase64url(new Uint8Array([7])) } },
+        },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO });
+    assert.equal(state.delta, undefined, "no since, no delta");
+  });
+
   it("getState falls back to `presigned_url` when the carrier has no `edge_url` — byte-identical to before this change", async () => {
     const { client, fetchCalls } = fakeClient({
       requestResponses: {

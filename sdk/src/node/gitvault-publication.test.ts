@@ -981,6 +981,11 @@ describe("local immutable-object cache — re-verified on every use", () => {
 describe("restoreObjectsInto — incremental above restored_through", () => {
   it("a one-generation pull replays only the new generation's pack, and advances the marker", async (t) => {
     const f = await makeVault();
+    // gitvault-delta-fetch: this test pins the FALLBACK wire mechanism
+    // (per-pack fetch / prefetch self-heal), which the state delta would
+    // legitimately skip — the delta path has its own budget + lying-delta
+    // pins. Disable the delta so the mechanism under test actually runs.
+    f.transport.deltaDisabled = true;
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
     const g1 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
@@ -1078,6 +1083,11 @@ describe("restoreObjectsInto — incremental above restored_through", () => {
 
   it("an interrupted restore leaves the marker unadvanced, and the next fetch heals", async (t) => {
     const f = await makeVault();
+    // gitvault-delta-fetch: this test pins the FALLBACK wire mechanism
+    // (per-pack fetch / prefetch self-heal), which the state delta would
+    // legitimately skip — the delta path has its own budget + lying-delta
+    // pins. Disable the delta so the mechanism under test actually runs.
+    f.transport.deltaDisabled = true;
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
     await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
@@ -1346,7 +1356,10 @@ describe("gitvault-clone-scaling — the batched page walk keeps unbatched failu
     // prefetch never issues these singles at all, so the lie would never
     // fire and the assertion below would pass vacuously. The batch path's
     // own lying case is covered in `gitvault-round-trip-budgets.test.ts`.
+    // Same for the state delta (gitvault-delta-fetch): it would blind-warm
+    // this head's cache before the walk ever issued the lying single.
     f.transport.headReadsUnsupported = true;
+    f.transport.deltaDisabled = true;
     const lyingPath = gitvaultPaths.head("0000000000000002");
     let lied = false;
     const lying = new Proxy(f.transport, {
@@ -1535,5 +1548,46 @@ describe("pipelined restore — per-object settlement (gitvault-pipelined-restor
       pipedCode = (e as { code?: string }).code ?? "";
     }
     assert.equal(pipedCode, barrierCode, "pipelined and barrier corruption envelopes must match");
+  });
+});
+
+// ─── delta-first pull (gitvault-delta-fetch) ─────────────────────────────────
+
+describe("delta-first pull — a lying delta falls back with identical outcomes", () => {
+  it("corrupt delta packs and self-inconsistent delta heads are misses, never applied", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-lying-delta-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target);
+    const c2 = await commitFile(f.repoDir, "lie.txt", "lie\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    // A transport whose delta LIES: every delta pack's bytes corrupted,
+    // every delta head's declared sha broken. Ordinary reads untouched.
+    const lying = Object.create(f.transport) as typeof f.transport;
+    lying.getState = async (req) => {
+      const state = await f.transport.getState(req);
+      if (!state.delta) return state;
+      return {
+        ...state,
+        delta: {
+          heads: state.delta.heads.map((h) => ({ ...h, stored_bytes_sha256: "0".repeat(64) })),
+          packs: state.delta.packs.map((p) => {
+            const bytes = new Uint8Array(p.bytes);
+            bytes[bytes.length - 1]! ^= 0xff;
+            return { ...p, bytes };
+          }),
+        },
+      };
+    };
+    const vault = new GitvaultVault({ keystore: f.keystore, transport: lying, repo_id: f.repoId, repo_dir: f.repoDir });
+    const restored = await vault.restoreObjectsInto(target);
+    assert.deepEqual(restored.refs, { "refs/heads/main": c2 }, "the lying delta must degrade to the ordinary reads, same result");
+    assert.equal(await hasObject(target, c2), true);
   });
 });
