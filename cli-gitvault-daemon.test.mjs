@@ -41,7 +41,11 @@ function runHelper({ configDir, stdin, env = {}, daemon }) {
   return spawnSync(process.execPath, [HELPER, "run402", ADDRESS], {
     input: stdin,
     encoding: "utf-8",
-    timeout: 30_000,
+    // Windows CI gets a wider cap: the in-process arm's cold NTFS + AV disk
+    // load of the SDK graph was measured at 9.3s on a green run and >30s on
+    // a cold runner (run 33414903319) — the cap should catch a genuine hang,
+    // not a slow disk.
+    timeout: process.platform === "win32" ? 120_000 : 30_000,
     env: {
       ...process.env,
       RUN402_API_BASE: DEAD_API,
