@@ -70,6 +70,20 @@ describe("resolveRoomArgs — the ambient chain (#550)", () => {
     const r = await resolveRoomArgs({}, { cwd: dir, env: { RUN402_ROOM: "no-slash" } });
     assert.equal(r.ok, false);
     assert.match((r as { error: string }).error, /<org_id>\/<room_key>/);
+    // Short, plainly-not-a-secret values are still shown in full.
+    assert.match((r as { error: string }).error, /no-slash/);
+  });
+
+  // kychee-com/run402-private#640: RUN402_WALLET took a name field and got a
+  // private key by mistake. RUN402_ROOM is the same shape of risk — a value
+  // that fails this check must never be echoed, however long or key-shaped.
+  it("never echoes a secret-shaped RUN402_ROOM", async () => {
+    const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars, no slash — malformed
+    const r = await resolveRoomArgs({}, { cwd: dir, env: { RUN402_ROOM: privateKey } });
+    assert.equal(r.ok, false);
+    const error = (r as { error: string }).error;
+    assert.ok(!error.includes(privateKey));
+    assert.ok(!error.includes("22a3f0"));
   });
 
   it("a bound checkout reaches its room with no parameters at all", async () => {
@@ -108,6 +122,24 @@ describe("resolveRoomArgs — the ambient chain (#550)", () => {
     const r = await resolveRoomArgs({}, { cwd: dir, env: { RUN402_ORG: ORG_B } });
     assert.equal(r.ok, false);
     assert.match((r as { error: string }).error, /Ambiguous organization/);
+    // A normal (if wrong) org id is still shown in full — that's what makes
+    // the error useful for spotting an actual mismatch.
+    assert.match((r as { error: string }).error, new RegExp(ORG_B));
+  });
+
+  // This resolver does no shape validation on RUN402_ORG (unlike the CLI's
+  // assertOrgIdShape) — it only compares against the binding — so a
+  // secret-shaped env value reaches this echo completely unvalidated. Same
+  // risk class as #640.
+  it("never echoes a secret-shaped RUN402_ORG via the ambiguity path", async () => {
+    bind({ org: ORG_A, room: "run402-dev" });
+    const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars, disagrees with ORG_A
+    const r = await resolveRoomArgs({}, { cwd: dir, env: { RUN402_ORG: privateKey } });
+    assert.equal(r.ok, false);
+    const error = (r as { error: string }).error;
+    assert.match(error, /Ambiguous organization/);
+    assert.ok(!error.includes(privateKey));
+    assert.ok(!error.includes("22a3f0"));
   });
 
   it("naming the room explicitly resolves that ambiguity", async () => {

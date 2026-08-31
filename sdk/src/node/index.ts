@@ -445,6 +445,10 @@ export {
   reconcileRetainedTipRefs,
   validateHeadsListingRequest,
   verifyHeadsListingPage,
+  readGitvaultRestoreMarker,
+  GITVAULT_AUTO_GC_GENERATIONS_DEFAULT,
+  readGitvaultAutoGcThreshold,
+  writeGitvaultAutoGcThreshold,
 } from "./gitvault-publication.js";
 export type {
   GitvaultAdmitHeadRequest,
@@ -472,6 +476,7 @@ export type {
   GitvaultRefMap,
   GitvaultRefTransactionEvaluation,
   GitvaultRefUpdateFailure,
+  GitvaultRestoreMarker,
   GitvaultRetainedRefsReconcileResult,
   GitvaultRetentionCutoffIssued,
   GitvaultTransport,
@@ -479,6 +484,7 @@ export type {
   GitvaultUploadReceipt,
   GitvaultVaultOptions,
   GitvaultVerifiedState,
+  GitvaultCompactionGrant,
 } from "./gitvault-publication.js";
 export {
   GITVAULT_DEPLOY_OUTCOMES,

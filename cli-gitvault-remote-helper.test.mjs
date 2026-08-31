@@ -27,15 +27,16 @@
  * a gateway.
  */
 
-import { describe, it } from "node:test";
+import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes } from "./cli/lib/remote-helper-session.mjs";
+import { R402_PROTECTED_REF_NAMESPACE_REASON, chooseGitvaultHeadTargetForPush, partitionProtectedRefPushes, shouldRunAutoGc, buildAutoGcCompactionTarget, getCachedSdk } from "./cli/lib/remote-helper-session.mjs";
+import { allowanceFile } from "./cli/lib/config.mjs";
 
 const HELPER = fileURLToPath(new URL("./cli/git-remote-run402.mjs", import.meta.url));
 /** A closed port: any network attempt fails loudly and unmistakably. */
@@ -78,7 +79,11 @@ function objectInventory(repoDir) {
     for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const rel = prefix ? `${prefix}/${e.name}` : e.name;
       if (e.isDirectory()) walk(join(dir, e.name), rel);
-      else out.push(rel);
+      // Transient lock files (git auto-maintenance's maintenance.lock, pack
+      // locks) are not objects and race the two snapshots — observed as a
+      // CI-only flake where `maintenance.lock` sat in one inventory and not
+      // the other.
+      else if (!e.name.endsWith(".lock")) out.push(rel);
     }
   };
   walk(objects, "");
@@ -1050,6 +1055,148 @@ describe("entrypoint guard survives symlinked invocation (the npm bin shape)", (
       assert.match(result.stdout, /push\n/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── gitvault-checkpoint-cadence: the pure auto-gc threshold decision ────────
+
+describe("shouldRunAutoGc — the post-push auto-gc threshold matrix", () => {
+  it("below threshold: never triggers", () => {
+    assert.equal(shouldRunAutoGc(32, 0), false);
+    assert.equal(shouldRunAutoGc(32, 1), false);
+    assert.equal(shouldRunAutoGc(32, 31), false);
+  });
+
+  it("at or above threshold: triggers", () => {
+    assert.equal(shouldRunAutoGc(32, 32), true);
+    assert.equal(shouldRunAutoGc(32, 33), true);
+    assert.equal(shouldRunAutoGc(1, 1), true);
+  });
+
+  it("disabled (0, negative, or a non-finite/corrupt threshold) never triggers, however far behind", () => {
+    assert.equal(shouldRunAutoGc(0, 1_000_000), false);
+    assert.equal(shouldRunAutoGc(-1, 1_000_000), false);
+    assert.equal(shouldRunAutoGc(NaN, 1_000_000), false);
+    assert.equal(shouldRunAutoGc(undefined, 1_000_000), false);
+  });
+
+  it("a non-finite generations count (unknown coverage) never triggers", () => {
+    assert.equal(shouldRunAutoGc(32, NaN), false);
+    assert.equal(shouldRunAutoGc(32, undefined), false);
+  });
+});
+
+describe("buildAutoGcCompactionTarget — the repo_dir regression (2026-08-31)", () => {
+  it("threads repo_dir into the compaction target — the SDK never defaults it", () => {
+    // `open()` (sdk/src/namespaces/gitvault.ts) only sets repo_dir on the
+    // vault handle when `options.repo_dir !== undefined` — there is no
+    // process.cwd() fallback inside the SDK. Before this function existed,
+    // the auto-gc cycle called `compact({ ...target })` with no repo_dir at
+    // all, so every real post-push trigger failed GITVAULT_REPO_DIR_REQUIRED
+    // and silently degraded to the advisory — verified live against the
+    // actual gateway (a healthy vault's auto-gc cycle now completes and
+    // publishes a fresh checkpoint) before this test was written.
+    const target = { project_id: "prj_x", org_id: "org_y" };
+    assert.deepEqual(buildAutoGcCompactionTarget(target, "/repo/dir"), { project_id: "prj_x", org_id: "org_y", repo_dir: "/repo/dir" });
+  });
+
+  it("never mutates the caller's target object", () => {
+    const target = { project_id: "prj_x" };
+    buildAutoGcCompactionTarget(target, "/repo/dir");
+    assert.deepEqual(target, { project_id: "prj_x" }, "the original target must be untouched — compact() and prune() each get their own merged copy");
+  });
+});
+
+// ─── gitvault-first-op-premium: the per-session SDK construction cache ──────
+//
+// Attribution (2026-08-31, recorded in openspec/changes/gitvault-first-op-
+// premium/tasks.md): `getSdk()` builds a fresh SDK instance on every call —
+// fine for a traditional one-process-per-invocation CLI, but this module is
+// ALSO the resident daemon's per-session engine, where `openVault` calls it
+// fresh exactly once per forwarded session. A live daemon probe found that a
+// FRESH instance re-probes the paid-fetch buyer's rail selection on its own
+// first authenticated request (two live RPC calls) every single session —
+// ~150-300ms of pure waste a resident process should pay once, not per
+// session. `getCachedSdk` fixes this: same wallet + same env that governs
+// config resolution + unchanged credential-file mtimes -> the SAME instance.
+
+describe("getCachedSdk — per-session SDK construction cache (gitvault-first-op-premium task 2.2)", () => {
+  const configDir = mkdtempSync(join(tmpdir(), "run402-sdk-cache-"));
+  const prevConfigDir = process.env.RUN402_CONFIG_DIR;
+  const prevWallet = process.env.RUN402_WALLET;
+  const prevApiBase = process.env.RUN402_API_BASE;
+
+  after(() => {
+    rmSync(configDir, { recursive: true, force: true });
+    if (prevConfigDir === undefined) delete process.env.RUN402_CONFIG_DIR;
+    else process.env.RUN402_CONFIG_DIR = prevConfigDir;
+    if (prevWallet === undefined) delete process.env.RUN402_WALLET;
+    else process.env.RUN402_WALLET = prevWallet;
+    if (prevApiBase === undefined) delete process.env.RUN402_API_BASE;
+    else process.env.RUN402_API_BASE = prevApiBase;
+  });
+
+  it("reuses the SAME instance across calls when nothing relevant changed", () => {
+    process.env.RUN402_CONFIG_DIR = configDir;
+    process.env.RUN402_API_BASE = "http://127.0.0.1:9";
+    delete process.env.RUN402_WALLET;
+    const a = getCachedSdk();
+    const b = getCachedSdk();
+    assert.equal(a, b, "unchanged env and files — the cached instance is reused, not rebuilt");
+  });
+
+  it("a wallet change busts the cache — a different wallet gets a different instance", () => {
+    process.env.RUN402_CONFIG_DIR = configDir;
+    process.env.RUN402_API_BASE = "http://127.0.0.1:9";
+    process.env.RUN402_WALLET = "profile-a";
+    const a1 = getCachedSdk();
+    const a2 = getCachedSdk();
+    assert.equal(a1, a2, "same wallet, back to back — still cached");
+    process.env.RUN402_WALLET = "profile-b";
+    const b = getCachedSdk();
+    assert.notEqual(a1, b, "a different wallet must never reuse another wallet's cached instance");
+    // Single-slot cache by design (D2.2): a daemon overwhelmingly serves ONE
+    // wallet across its whole life, so remembering only the LAST key keeps
+    // this bounded and leak-free. Switching back to profile-a after visiting
+    // profile-b is a cache MISS again — a fresh instance, not a lost one.
+    process.env.RUN402_WALLET = "profile-a";
+    const a3 = getCachedSdk();
+    assert.notEqual(a3, a1, "switching wallets evicts the single slot — profile-a rebuilds fresh, it is not silently stale");
+  });
+
+  it("an on-disk credential file's mtime changing busts the cache — a wallet rotation is picked up without a daemon restart", () => {
+    process.env.RUN402_CONFIG_DIR = configDir;
+    process.env.RUN402_API_BASE = "http://127.0.0.1:9";
+    process.env.RUN402_WALLET = "profile-mtime";
+    const before = getCachedSdk();
+    assert.equal(getCachedSdk(), before, "sanity: cached before any file exists");
+    const path = allowanceFile();
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, JSON.stringify({ ok: true }));
+    const afterCreate = getCachedSdk();
+    assert.notEqual(afterCreate, before, "the file's FIRST appearance (mtime null -> a number) busts the cache");
+    // A later mtime change (rewrite) busts it again — bump forward to dodge
+    // filesystem mtime-resolution granularity flakiness on a fast test run.
+    const bumped = new Date(Date.now() + 5000);
+    utimesSync(path, bumped, bumped);
+    const afterTouch = getCachedSdk();
+    assert.notEqual(afterTouch, afterCreate, "a later mtime change busts the cache again");
+    assert.equal(getCachedSdk(), afterTouch, "and then it is stable again until the next change");
+  });
+
+  it("a RUN402_CONFIG_DIR change busts the cache too — the exact staleness class getSdk()'s own doc comment names", () => {
+    process.env.RUN402_CONFIG_DIR = configDir;
+    process.env.RUN402_API_BASE = "http://127.0.0.1:9";
+    process.env.RUN402_WALLET = "profile-configdir";
+    const a = getCachedSdk();
+    const otherDir = mkdtempSync(join(tmpdir(), "run402-sdk-cache-other-"));
+    try {
+      process.env.RUN402_CONFIG_DIR = otherDir;
+      const b = getCachedSdk();
+      assert.notEqual(a, b, "a different RUN402_CONFIG_DIR must never reuse another config dir's cached instance");
+    } finally {
+      rmSync(otherDir, { recursive: true, force: true });
     }
   });
 });

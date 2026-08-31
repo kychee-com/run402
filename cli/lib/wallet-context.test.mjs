@@ -27,12 +27,17 @@ afterEach(() => {
 });
 
 // Capture a fail() invocation: fail() does console.error(envelope) + process.exit.
+// `raw` is the exact string handed to console.error — the byte-for-byte
+// stderr line a real invocation would print — for tests that need to prove
+// something is absent from the actual output, not just from the re-parsed
+// object (key order/JSON-escaping could otherwise mask a leak).
 function captureFail(fn) {
   const origExit = process.exit;
   const origErr = console.error;
   let envelope = null;
+  let raw = null;
   let exited = false;
-  console.error = (s) => { try { envelope = JSON.parse(s); } catch { envelope = s; } };
+  console.error = (s) => { raw = s; try { envelope = JSON.parse(s); } catch { envelope = s; } };
   process.exit = () => { exited = true; throw new Error("__EXIT__"); };
   try {
     fn();
@@ -42,7 +47,7 @@ function captureFail(fn) {
     process.exit = origExit;
     console.error = origErr;
   }
-  return { envelope, exited };
+  return { envelope, raw, exited };
 }
 
 function bindingDir(wallet, localWallet) {
@@ -166,11 +171,52 @@ describe("resolveWallet — conflict + validation", () => {
     assert.equal(r.name, "personal"); // env still wins; no error
     rmSync(dir, { recursive: true, force: true });
   });
+
+  // The WALLET_SELECTION_CONFLICT check runs BEFORE assertValidNameCore, so a
+  // secret-shaped RUN402_WALLET reaches it unvalidated whenever a directory
+  // binding also exists — routine for any checkout following this repo's own
+  // fleet-coordination convention (`.run402.json`). This is a stricter variant
+  // of kychee-com/run402-private#640: no BAD_WALLET_NAME format check ever
+  // gets a chance to run first, so the redaction has to happen at this site
+  // too, not just at assertValidNameCore.
+  it("never echoes a secret-shaped RUN402_WALLET via the conflict path", () => {
+    const dir = bindingDir("client-a"); // a real, differently-named binding
+    const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars
+    const { envelope, raw } = captureFail(() =>
+      resolveWallet({ env: { RUN402_WALLET: privateKey }, cwd: dir, cmd: "deploy" }));
+    assert.equal(envelope.code, "WALLET_SELECTION_CONFLICT");
+    assert.ok(!raw.includes(privateKey), "full stderr line must not contain the secret");
+    assert.ok(!raw.includes("22a3f0"), "stderr line must not contain a substring of the secret");
+    rmSync(dir, { recursive: true, force: true });
+  });
   it("rejects an invalid wallet name", () => {
     const dir = mkdtempSync(join(tmpdir(), "nobind-"));
     const { envelope } = captureFail(() =>
       resolveWallet({ env: { RUN402_WALLET: "../evil" }, cwd: dir, cmd: "status" }));
     assert.equal(envelope.code, "BAD_WALLET_NAME");
+    // A short, plainly-a-typo value is still shown in full — that's what
+    // makes the error useful for debugging an actual mistake.
+    assert.match(envelope.message, /\.\.\/evil/);
+    assert.equal(envelope.details.name, "../evil");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // kychee-com/run402-private#640: a live Base-mainnet private key was pasted
+  // into RUN402_WALLET (a NAME field, not a key field), failed this exact
+  // check, and got echoed verbatim into a terminal, a log, and a session
+  // transcript. A value that fails validation is a value the CLI knows
+  // nothing about, and secret-shaped values must never be echoed — no
+  // matter which field of the envelope, or how much of the envelope is
+  // serialized (message, hint, details, or the raw JSON line as printed).
+  it("never echoes a secret-shaped wallet name anywhere in the failure envelope", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nobind-"));
+    const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars — the exact shape of #640
+    const { envelope, raw } = captureFail(() =>
+      resolveWallet({ env: { RUN402_WALLET: privateKey }, cwd: dir, cmd: "status" }));
+    assert.equal(envelope.code, "BAD_WALLET_NAME");
+    assert.ok(!raw.includes(privateKey), "full stderr line must not contain the secret");
+    assert.ok(!raw.includes("22a3f0"), "stderr line must not contain a substring of the secret");
+    assert.ok(!raw.toLowerCase().includes("22a3f022a3f0"), "stderr line must not contain a longer run of the secret");
     rmSync(dir, { recursive: true, force: true });
   });
 });
@@ -189,6 +235,11 @@ describe("enforceWalletExists — fail closed", () => {
       enforceWalletExists({ name: "ghost", source: "binding" }, "deploy"));
     assert.ok(exited);
     assert.equal(envelope.code, "WALLET_NOT_FOUND");
+    // A short, ordinary name is still shown in full and gets an actionable
+    // "create it" suggestion — redaction must not degrade the common case.
+    assert.match(envelope.message, /ghost/);
+    assert.equal(envelope.details.wallet, "ghost");
+    assert.match(envelope.hint, /wallets new ghost/);
   });
   it("wallets + init are exempt (create paths)", () => {
     assert.doesNotThrow(() => enforceWalletExists({ name: "ghost", source: "flag" }, "wallets"));
@@ -198,6 +249,21 @@ describe("enforceWalletExists — fail closed", () => {
     const { envelope } = captureFail(() =>
       enforceWalletExists({ name: "0x" + "a".repeat(40), source: "flag" }, "deploy"));
     assert.match(envelope.hint, /--wallet-address/);
+  });
+
+  // A bare (no "0x" prefix) 64-char lowercase-hex private key satisfies the
+  // wallet-name CHARSET (lowercase letters/digits/'_'/'-'), so it sails past
+  // assertValidNameCore's format check and only fails HERE, on existence —
+  // the second, easy-to-miss half of kychee-com/run402-private#640's blast
+  // radius. It must still never be echoed.
+  it("redacts a bare-hex value that passes the name format check but not existence", () => {
+    const bareKey = "22a3f0".repeat(10) + "aabb"; // 64 lowercase-hex chars
+    assert.match(bareKey, /^[a-z0-9][a-z0-9_-]{0,63}$/); // sanity: really does pass the name regex
+    const { envelope, raw } = captureFail(() =>
+      enforceWalletExists({ name: bareKey, source: "binding" }, "deploy"));
+    assert.equal(envelope.code, "WALLET_NOT_FOUND");
+    assert.ok(!raw.includes(bareKey), "full stderr line must not contain the secret");
+    assert.ok(!raw.includes("22a3f0"), "stderr line must not contain a substring of the secret");
   });
 });
 

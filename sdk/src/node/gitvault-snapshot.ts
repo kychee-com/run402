@@ -909,3 +909,22 @@ export async function hasObject(repoDir: string, oid: string): Promise<boolean> 
   const r = await hardenedGit(repoDir, ["cat-file", "-e", `${oid}^{object}`], { okStatuses: [1, 128] });
   return r.status === 0;
 }
+
+/**
+ * Which of `oids` exist locally — ONE `cat-file --batch-check` process for
+ * the whole set (gitvault-delta-fetch task 3.1), identical per-oid
+ * semantics to {@link hasObject}. `--batch-check` answers `<oid> <type>
+ * <size>` for a present object and `<oid> missing` otherwise, one line per
+ * input line, so presence is exactly "second column is not `missing`".
+ */
+export async function hasObjects(repoDir: string, oids: string[]): Promise<Set<string>> {
+  if (oids.length === 0) return new Set();
+  const input = new TextEncoder().encode(oids.map((o) => `${o}\n`).join(""));
+  const r = await hardenedGit(repoDir, ["cat-file", "--batch-check"], { input, okStatuses: [1, 128] });
+  const present = new Set<string>();
+  for (const line of r.stdout.toString("utf8").split("\n")) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 2 && parts[1] !== "missing" && parts[1] !== "ambiguous") present.add(parts[0]!);
+  }
+  return present;
+}

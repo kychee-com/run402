@@ -141,6 +141,27 @@ describe("top-level command did-you-mean", () => {
     assert.doesNotMatch(parsed.message, /Did you mean/);
     assert.deepEqual(parsed.details.closest, []);
   });
+
+  // kychee-com/run402-private#640: a secret pasted into the wrong CLI slot
+  // must never be echoed. A missing-subcommand mistake (e.g. a script
+  // running `run402 $SOME_SECRET` instead of `run402 <cmd> $SOME_SECRET`)
+  // lands the value here, as the top-level command positional.
+  it("never echoes a secret-shaped value as an unknown command", () => {
+    const spawnEnv = { ...process.env, RUN402_CONFIG_DIR: tempDir };
+    delete spawnEnv.RUN402_WALLET;
+    delete spawnEnv.RUN402_PROFILE;
+    const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars
+    const result = spawnSync(process.execPath, [CLI_PATH, privateKey], {
+      env: spawnEnv,
+      encoding: "utf-8",
+      timeout: 10_000,
+    });
+    assert.equal(result.status, 1);
+    const parsed = JSON.parse(result.stderr);
+    assert.equal(parsed.code, "UNKNOWN_COMMAND");
+    assert.ok(!result.stderr.includes(privateKey));
+    assert.ok(!result.stderr.includes("22a3f0"));
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -165,6 +186,20 @@ describe("subcommand did-you-mean", () => {
       assert.ok(parsed.details.known_subcommands.includes(expected));
     });
   }
+
+  // Same class as the top-level case above (kychee-com/run402-private#640),
+  // one level down: `run402 secrets <secret>` puts the value in the
+  // SUBCOMMAND position instead.
+  it("never echoes a secret-shaped value as an unknown subcommand", async () => {
+    const { run } = await import("./cli/lib/secrets.mjs");
+    const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars
+    await expectExit1(() => run(privateKey, []));
+    const parsed = stderrEnvelope();
+    assert.equal(parsed.code, "UNKNOWN_SUBCOMMAND");
+    const serialized = JSON.stringify(parsed);
+    assert.ok(!serialized.includes(privateKey));
+    assert.ok(!serialized.includes("22a3f0"));
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────

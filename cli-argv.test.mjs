@@ -1394,6 +1394,19 @@ describe("project-id heuristic", () => {
     assert.match(err.message, /proj-001/);
     assert.equal(calls.length, 0);
   });
+
+  // kychee-com/run402-private#640: a secret pasted into the wrong slot must
+  // never be echoed — including a project-id-shaped positional argument.
+  it("never echoes a secret-shaped value rejected as a project id", async () => {
+    const { run } = await import("./cli/lib/projects.mjs");
+    const privateKey = "0x" + "22a3f0".repeat(11); // 66 chars
+    const err = await expectExit1(() => run("sql", [privateKey, "DELETE FROM users"]));
+    assert.equal(err.code, "BAD_PROJECT_ID");
+    const serialized = JSON.stringify(err);
+    assert.ok(!serialized.includes(privateKey));
+    assert.ok(!serialized.includes("22a3f0"));
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issue #393)", () => {

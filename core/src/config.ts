@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { existsSync, renameSync, mkdirSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { describeRejectedValue } from "./redact.js";
 
 export const DEFAULT_API_BASE = "https://api.run402.com";
 
@@ -38,12 +39,12 @@ function validateApiBase(envVar: string, raw: string | undefined, fallback: stri
     u = new URL(raw);
   } catch {
     throw new Error(
-      `${envVar} is not a valid URL: ${JSON.stringify(raw)}. Expected an http(s) URL like https://api.run402.com.`,
+      `${envVar} is not a valid URL: ${JSON.stringify(describeRejectedValue(raw))}. Expected an http(s) URL like https://api.run402.com.`,
     );
   }
   if (u.protocol !== "https:" && u.protocol !== "http:") {
     throw new Error(
-      `${envVar} must use http(s):, got ${u.protocol} (full value: ${JSON.stringify(raw)}).`,
+      `${envVar} must use http(s):, got ${u.protocol} (full value: ${JSON.stringify(describeRejectedValue(raw))}).`,
     );
   }
   return raw;
@@ -103,8 +104,16 @@ export function isValidProfileName(name: string): boolean {
 function assertSafeProfileName(name: string): void {
   if (name === DEFAULT_PROFILE) return;
   if (!isValidProfileName(name)) {
+    // A value that failed this check is a value we know nothing about — the
+    // most likely mistake is a typo, but kychee-com/run402-private#640 was a
+    // Base-mainnet private key pasted into RUN402_WALLET (a NAME field), and
+    // the raw value used to be echoed straight into this message and
+    // wherever it propagated (terminal, logs, session transcripts).
+    // describeRejectedValue() shows short/plain values in full (useful for
+    // an actual typo) and redacts anything long or hex-shaped enough to be
+    // a secret instead of a name.
     throw new Error(
-      `Invalid wallet/profile name ${JSON.stringify(name)}. ` +
+      `Invalid wallet/profile name ${JSON.stringify(describeRejectedValue(name))}. ` +
         "Names must match /^[a-z0-9][a-z0-9_-]{0,63}$/ (lowercase letters, digits, '_' and '-'). " +
         "Check the RUN402_WALLET / RUN402_PROFILE env var.",
     );

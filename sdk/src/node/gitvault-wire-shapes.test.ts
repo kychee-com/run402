@@ -284,6 +284,150 @@ describe("createGitvaultHttpTransport — head-reads is a POST batch whose bytes
   });
 });
 
+describe("createGitvaultHttpTransport — compaction headroom grant open/close (gitvault-checkpoint-cadence design D3)", () => {
+  const REPO = `r402s_${"f".repeat(32)}`;
+
+  interface WireCall { path: string; method?: string; body?: unknown }
+
+  function transportOver(handler: (call: WireCall) => unknown): { transport: ReturnType<typeof createGitvaultHttpTransport>; calls: WireCall[] } {
+    const calls: WireCall[] = [];
+    const client = {
+      apiBase: "https://api.example.test",
+      async request<T>(path: string, opts: { method?: string; body?: unknown }): Promise<T> {
+        const call = { path, method: opts.method, body: opts.body };
+        calls.push(call);
+        return handler(call) as T;
+      },
+    } as unknown as Parameters<typeof createGitvaultHttpTransport>[0];
+    return { transport: createGitvaultHttpTransport(client), calls };
+  }
+
+  it("opens with a bare POST …/compaction-grant and returns the grant verbatim", async () => {
+    // Byte fields are STRINGS on the wire (gateway BIGINT serialization, verified live 2026-08-31).
+    const grant = { granted_bytes: "1024", expires_at: "2026-01-01T01:00:00.000Z", pool_used_bytes: "10", pool_limit_bytes: "1000", effective_pool_limit_bytes: "2024" };
+    const { transport, calls } = transportOver(() => grant);
+    const got = await transport.openCompactionGrant({ repo_id: REPO });
+    assert.deepEqual(calls, [{ path: `/gitvault/v1/vaults/${REPO}/compaction-grant`, method: "POST", body: undefined }]);
+    assert.deepEqual(got, grant);
+  });
+
+  it("closes with a bare DELETE …/compaction-grant and normalizes `closed` to a strict boolean", async () => {
+    const { transport, calls } = transportOver(() => ({ closed: true }));
+    const got = await transport.closeCompactionGrant({ repo_id: REPO });
+    assert.deepEqual(calls, [{ path: `/gitvault/v1/vaults/${REPO}/compaction-grant`, method: "DELETE", body: undefined }]);
+    assert.deepEqual(got, { closed: true });
+  });
+
+  it("a route that omits `closed` (or answers falsily) reports `{closed: false}`, never `undefined`", async () => {
+    for (const body of [{}, { closed: false }, { closed: null }]) {
+      const { transport } = transportOver(() => body);
+      assert.deepEqual(await transport.closeCompactionGrant({ repo_id: REPO }), { closed: false }, JSON.stringify(body));
+    }
+  });
+
+  it("propagates a 409 GITVAULT_COMPACTION_GRANT_ACTIVE / 404 route-absent refusal verbatim — the namespace layer, not the transport, interprets them", async () => {
+    const conflict = { status: 409, code: "GITVAULT_COMPACTION_GRANT_ACTIVE", details: { expires_at: "2026-01-01T00:00:00.000Z" } };
+    const { transport } = transportOver(() => {
+      throw conflict;
+    });
+    await assert.rejects(transport.openCompactionGrant({ repo_id: REPO }), (e: unknown) => (e as { code?: string }).code === "GITVAULT_COMPACTION_GRANT_ACTIVE");
+
+    const missing = { status: 404, code: "ROUTE_NOT_FOUND" };
+    const { transport: t2 } = transportOver(() => {
+      throw missing;
+    });
+    await assert.rejects(t2.openCompactionGrant({ repo_id: REPO }), (e: unknown) => (e as { status?: number }).status === 404);
+  });
+});
+
+/**
+ * `submitPruneIntent` is deliberately NOT `client.request` — the gateway
+ * strict-parses + signature-verifies the exact bytes sent, so it goes out
+ * over `client.fetch` directly. That means its error handling hand-rolls its
+ * own envelope parsing instead of inheriting `client.request`'s (which
+ * already reads the gateway's FLAT envelope correctly). kychee-com/run402#578
+ * fix 1: the hand-rolled parser read `envelope.error.code`/`.message`/
+ * `.details` — as if the envelope were `{error: {code, message, details}}` —
+ * but the real gateway envelope (`buildErrorEnvelope` in the gateway) is
+ * FLAT: `code`, `message`, `details`, `trace_id` all ride at the TOP level,
+ * and `error` is a human-readable STRING alias for `message`. Every real
+ * refusal therefore collapsed to the opaque `GITVAULT_PRUNE_SUBMIT_FAILED
+ * {details: null}` fallback.
+ */
+describe("createGitvaultHttpTransport — submitPruneIntent surfaces the gateway's refusal verbatim (kychee-com/run402#578 fix 1)", () => {
+  const REPO = `r402s_${"c".repeat(32)}`;
+
+  function transportOverRawFetch(status: number, body: unknown): { transport: ReturnType<typeof createGitvaultHttpTransport> } {
+    const client = {
+      apiBase: "https://api.example.test",
+      credentials: { async getAuth() { return { authorization: "Bearer test" }; } },
+      async fetch(_url: string, _init: unknown) {
+        return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+      },
+    } as unknown as Parameters<typeof createGitvaultHttpTransport>[0];
+    return { transport: createGitvaultHttpTransport(client) };
+  }
+
+  it("rides the gateway's FLAT envelope through verbatim — code, message, details, trace_id — never the opaque fallback", async () => {
+    // Shaped exactly like the real 90-day-retention-floor refusal
+    // (`services/gitvault/prune.ts`: `GitvaultRefusal("UPGRADE_REQUIRED", "a
+    // candidate is not retention-eligible against the bound cutoff ticket",
+    // {ineligible: [...]})`) after it crosses `buildErrorEnvelope`.
+    const gatewayBody = {
+      error: "a candidate is not retention-eligible against the bound cutoff ticket",
+      message: "a candidate is not retention-eligible against the bound cutoff ticket",
+      code: "UPGRADE_REQUIRED",
+      category: "client_compatibility",
+      retryable: false,
+      trace_id: "trc_f886ab16aaaaaaaaaaaaaaaaaaaaaaaa",
+      details: { ineligible: [{ object_id: `wal_${"1".repeat(32)}`, lifecycle_state: "active" }] },
+      next_actions: [{ type: "edit_request", why: "narrow the delete set to eligible candidates" }],
+    };
+    const { transport } = transportOverRawFetch(409, gatewayBody);
+    await assert.rejects(
+      transport.submitPruneIntent({ repo_id: REPO, intent_bytes: new TextEncoder().encode("{}") }),
+      (e: unknown) => {
+        const err = e as { code?: string; message?: string; details?: Record<string, unknown> };
+        assert.equal(err.code, "UPGRADE_REQUIRED");
+        assert.notEqual(err.code, "GITVAULT_PRUNE_SUBMIT_FAILED");
+        assert.equal(err.message, gatewayBody.message);
+        assert.deepEqual(err.details?.ineligible, gatewayBody.details.ineligible);
+        assert.equal(err.details?.http_status, 409);
+        assert.equal(err.details?.trace_id, gatewayBody.trace_id);
+        return true;
+      },
+    );
+  });
+
+  it("falls back to the opaque GITVAULT_PRUNE_SUBMIT_FAILED only when the body carries no usable code/message at all", async () => {
+    const { transport } = transportOverRawFetch(500, { some: "unrelated shape" });
+    await assert.rejects(
+      transport.submitPruneIntent({ repo_id: REPO, intent_bytes: new TextEncoder().encode("{}") }),
+      (e: unknown) => {
+        const err = e as { code?: string; message?: string; details?: Record<string, unknown> };
+        assert.equal(err.code, "GITVAULT_PRUNE_SUBMIT_FAILED");
+        assert.match(err.message ?? "", /HTTP 500/);
+        assert.equal(err.details?.http_status, 500);
+        return true;
+      },
+    );
+  });
+
+  it("reads the string `error` field as the message when `message` is absent", async () => {
+    const { transport } = transportOverRawFetch(409, { error: "receipt-id reuse", code: "VALIDATION_FAILED", details: { reused_object_ids: [`vr_${"2".repeat(32)}`] } });
+    await assert.rejects(
+      transport.submitPruneIntent({ repo_id: REPO, intent_bytes: new TextEncoder().encode("{}") }),
+      (e: unknown) => {
+        const err = e as { code?: string; message?: string; details?: Record<string, unknown> };
+        assert.equal(err.code, "VALIDATION_FAILED");
+        assert.equal(err.message, "receipt-id reuse");
+        assert.deepEqual(err.details?.reused_object_ids, [`vr_${"2".repeat(32)}`]);
+        return true;
+      },
+    );
+  });
+});
+
 describe("createGitvaultHttpTransport — the mint's envelope is unwrapped, never passed on as the token", () => {
   const REPO = `r402s_${"a".repeat(32)}`;
   const OP = "op_wire_shapes";
@@ -571,6 +715,51 @@ describe("createGitvaultHttpTransport — edge_url from the wire response reache
     assert.deepEqual([...state.carriers!.ref_state!], [3], "the presigned carrier arm preferred edge_url");
     assert.deepEqual([...state.carriers!.retention_roots!], [7], "the inline carrier arm is untouched by any of this");
     assert.deepEqual(fetchCalls, ["https://edge.example/ref_state"]);
+  });
+
+  it("getState carries `since` on the wire and decodes the delta — inline packs only, refs dropped (gitvault-delta-fetch)", async () => {
+    const headBytes = new Uint8Array([9, 9]);
+    const packBytes = new Uint8Array([1, 2, 3]);
+    const { client } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state?since=0000000000000001`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000002",
+          head: { stored_bytes: toBase64url(headBytes), stored_bytes_sha256: "h2" },
+          carriers: { retention_roots: { inline: toBase64url(new Uint8Array([7])) }, ref_state: { inline: toBase64url(new Uint8Array([8])) } },
+          delta: {
+            heads: [{ generation: "0000000000000002", stored_bytes: toBase64url(headBytes), stored_bytes_sha256: "h2" }],
+            packs: [
+              { object_kind: "wal_pack", object_id: "wal_inline", inline: toBase64url(packBytes) },
+              { object_kind: "wal_pack", object_id: "wal_ref", presigned_url: "https://origin.example/big", expires_at: "2026-08-31T00:00:00.000Z" },
+            ],
+          },
+        },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO, since: "0000000000000001" });
+    assert.ok(state.delta, "a delta-bearing response must surface `delta`");
+    assert.deepEqual(state.delta!.heads.map((h) => h.generation), ["0000000000000002"]);
+    assert.deepEqual([...state.delta!.heads[0]!.stored_bytes], [...headBytes]);
+    assert.deepEqual(state.delta!.packs.map((pk) => pk.object_id), ["wal_inline"], "presigned delta refs are dropped — the ordinary fetch owns them");
+    assert.deepEqual([...state.delta!.packs[0]!.bytes], [...packBytes]);
+  });
+
+  it("getState without `since` sends no query and tolerates a delta-less response — byte-identical to before this change", async () => {
+    const { client } = fakeClient({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000001",
+          head: { stored_bytes: toBase64url(new Uint8Array([9])), stored_bytes_sha256: "h" },
+          carriers: { ref_state: { inline: toBase64url(new Uint8Array([8])) }, retention_roots: { inline: toBase64url(new Uint8Array([7])) } },
+        },
+      },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const state = await transport.getState({ repo_id: REPO });
+    assert.equal(state.delta, undefined, "no since, no delta");
   });
 
   it("getState falls back to `presigned_url` when the carrier has no `edge_url` — byte-identical to before this change", async () => {

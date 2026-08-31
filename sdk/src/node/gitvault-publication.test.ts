@@ -45,13 +45,16 @@ import {
   nextListingRequest,
   openBindingDigest,
   readGitvaultRestoreMarker,
+  GITVAULT_AUTO_GC_GENERATIONS_DEFAULT,
+  readGitvaultAutoGcThreshold,
+  writeGitvaultAutoGcThreshold,
   reconcileRetainedTipRefs,
   validateHeadsListingRequest,
   verifyHeadsListingPage,
   type GitvaultListingProgress,
   type GitvaultRefMap,
 } from "./gitvault-publication.js";
-import { GITVAULT_DEPLOY_REF, hasObject } from "./gitvault-snapshot.js";
+import { GITVAULT_DEPLOY_REF, hardenedGit, hasObject } from "./gitvault-snapshot.js";
 import { commitFile, git, makeVault, type VaultFixture } from "./gitvault-memory-transport.test.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
 
@@ -981,6 +984,11 @@ describe("local immutable-object cache — re-verified on every use", () => {
 describe("restoreObjectsInto — incremental above restored_through", () => {
   it("a one-generation pull replays only the new generation's pack, and advances the marker", async (t) => {
     const f = await makeVault();
+    // gitvault-delta-fetch: this test pins the FALLBACK wire mechanism
+    // (per-pack fetch / prefetch self-heal), which the state delta would
+    // legitimately skip — the delta path has its own budget + lying-delta
+    // pins. Disable the delta so the mechanism under test actually runs.
+    f.transport.deltaDisabled = true;
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
     const g1 = await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
@@ -1078,6 +1086,11 @@ describe("restoreObjectsInto — incremental above restored_through", () => {
 
   it("an interrupted restore leaves the marker unadvanced, and the next fetch heals", async (t) => {
     const f = await makeVault();
+    // gitvault-delta-fetch: this test pins the FALLBACK wire mechanism
+    // (per-pack fetch / prefetch self-heal), which the state delta would
+    // legitimately skip — the delta path has its own budget + lying-delta
+    // pins. Disable the delta so the mechanism under test actually runs.
+    f.transport.deltaDisabled = true;
     t.after(() => rmSync(f.root, { recursive: true, force: true }));
     const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
     await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
@@ -1112,6 +1125,138 @@ describe("restoreObjectsInto — incremental above restored_through", () => {
     const healed = await f.vault.restoreObjectsInto(target);
     assert.deepEqual(healed.refs, { "refs/heads/main": c2 });
     assert.equal(await hasObject(target, c2), true);
+  });
+});
+
+// ─── gitvault-session-state-reuse: the list-phase-state handoff into fetch ───
+
+describe("restoreObjectsInto — session-state reuse (gitvault-session-state-reuse)", () => {
+  it("a matching reuse handoff skips this method's own state read entirely", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-reuse-match-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target); // establish the marker at generation 1
+
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    // Simulate the remote-helper session's LIST phase: read the marker once,
+    // materialize with it as `since` — the SAME call `restoreObjectsInto`
+    // would otherwise make itself.
+    const marker = await readGitvaultRestoreMarker(target);
+    const listState = await f.vault.materialize({ ...(marker ? { deltaSince: marker.generation } : {}) });
+
+    const callsBeforeFetch = f.transport.calls.length;
+    const fetched = await f.vault.restoreObjectsInto(target, { marker, state: listState });
+    const newCalls = f.transport.calls.slice(callsBeforeFetch);
+    assert.equal(newCalls.filter((c) => c === "state").length, 0, `expected NO state read in the fetch phase — the list phase's response was reused; saw: ${JSON.stringify(newCalls)}`);
+    assert.deepEqual(fetched.refs, { "refs/heads/main": c2 });
+    assert.equal(await hasObject(target, c2), true);
+    const markerAfter = await readGitvaultRestoreMarker(target);
+    assert.equal(markerAfter!.generation, listState.generation);
+  });
+
+  it("a marker mismatch (a different, or stale, handoff) falls back to this method's own read — never a wrong result", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-reuse-mismatch-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target); // marker at generation 1
+
+    const c2 = await commitFile(f.repoDir, "b.txt", "b\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    // A stale/foreign handoff — `marker: null` claims "nothing restored yet",
+    // which does NOT match this target's real (generation-1) marker.
+    const staleState = await f.vault.materialize();
+    const callsBeforeFetch = f.transport.calls.length;
+    const fetched = await f.vault.restoreObjectsInto(target, { marker: null, state: staleState });
+    const newCalls = f.transport.calls.slice(callsBeforeFetch);
+    assert.equal(newCalls.filter((c) => c === "state").length, 1, `a mismatched reuse must fall through to its own state read; saw: ${JSON.stringify(newCalls)}`);
+    // Still the CORRECT result — a wrong reuse costs a read, never correctness.
+    assert.deepEqual(fetched.refs, { "refs/heads/main": c2 });
+    assert.equal(await hasObject(target, c2), true);
+  });
+
+  it("with no reuse argument, behavior is byte-identical to before this change (its own state read runs)", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-reuse-absent-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    const callsBefore = f.transport.calls.length;
+    const restored = await f.vault.restoreObjectsInto(target);
+    const newCalls = f.transport.calls.slice(callsBefore);
+    assert.equal(newCalls.filter((c) => c === "state").length, 1);
+    assert.deepEqual(restored.refs, { "refs/heads/main": c1 });
+  });
+});
+
+// ─── gitvault-checkpoint-cadence: the local auto-gc threshold config ─────────
+
+describe("readGitvaultAutoGcThreshold / writeGitvaultAutoGcThreshold (gitvault-checkpoint-cadence design D1)", () => {
+  async function tempRepo(): Promise<string> {
+    const dir = mkdtempSync(join(tmpdir(), "run402-gitvault-auto-gc-cfg-"));
+    await git(dir, ["init", "-q", "-b", "main", "."]);
+    return dir;
+  }
+
+  it("reads the default when unset", async () => {
+    const dir = await tempRepo();
+    try {
+      assert.equal(await readGitvaultAutoGcThreshold(dir), GITVAULT_AUTO_GC_GENERATIONS_DEFAULT);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("round-trips a written value, including 0 (disabled)", async () => {
+    const dir = await tempRepo();
+    try {
+      await writeGitvaultAutoGcThreshold(dir, 10);
+      assert.equal(await readGitvaultAutoGcThreshold(dir), 10);
+      await writeGitvaultAutoGcThreshold(dir, 0);
+      assert.equal(await readGitvaultAutoGcThreshold(dir), 0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a corrupt or non-integer local value fails SAFE to the default, never throws", async () => {
+    const dir = await tempRepo();
+    try {
+      await hardenedGit(dir, ["config", "--local", "r402.autoGcGenerations", "not-a-number"]);
+      assert.equal(await readGitvaultAutoGcThreshold(dir), GITVAULT_AUTO_GC_GENERATIONS_DEFAULT);
+      await hardenedGit(dir, ["config", "--local", "r402.autoGcGenerations", "-5"]);
+      assert.equal(await readGitvaultAutoGcThreshold(dir), GITVAULT_AUTO_GC_GENERATIONS_DEFAULT);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("is scoped to the target directory, never to the vault/repo_id (like the restore marker)", async () => {
+    const dirA = await tempRepo();
+    const dirB = await tempRepo();
+    try {
+      await writeGitvaultAutoGcThreshold(dirA, 5);
+      assert.equal(await readGitvaultAutoGcThreshold(dirA), 5);
+      assert.equal(await readGitvaultAutoGcThreshold(dirB), GITVAULT_AUTO_GC_GENERATIONS_DEFAULT);
+    } finally {
+      rmSync(dirA, { recursive: true, force: true });
+      rmSync(dirB, { recursive: true, force: true });
+    }
   });
 });
 
@@ -1346,7 +1491,10 @@ describe("gitvault-clone-scaling — the batched page walk keeps unbatched failu
     // prefetch never issues these singles at all, so the lie would never
     // fire and the assertion below would pass vacuously. The batch path's
     // own lying case is covered in `gitvault-round-trip-budgets.test.ts`.
+    // Same for the state delta (gitvault-delta-fetch): it would blind-warm
+    // this head's cache before the walk ever issued the lying single.
     f.transport.headReadsUnsupported = true;
+    f.transport.deltaDisabled = true;
     const lyingPath = gitvaultPaths.head("0000000000000002");
     let lied = false;
     const lying = new Proxy(f.transport, {
@@ -1535,5 +1683,46 @@ describe("pipelined restore — per-object settlement (gitvault-pipelined-restor
       pipedCode = (e as { code?: string }).code ?? "";
     }
     assert.equal(pipedCode, barrierCode, "pipelined and barrier corruption envelopes must match");
+  });
+});
+
+// ─── delta-first pull (gitvault-delta-fetch) ─────────────────────────────────
+
+describe("delta-first pull — a lying delta falls back with identical outcomes", () => {
+  it("corrupt delta packs and self-inconsistent delta heads are misses, never applied", async (t) => {
+    const f = await makeVault();
+    t.after(() => rmSync(f.root, { recursive: true, force: true }));
+    const c1 = await git(f.repoDir, ["rev-parse", "HEAD"]);
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    const target = mkdtempSync(join(tmpdir(), "run402-gitvault-lying-delta-"));
+    t.after(() => rmSync(target, { recursive: true, force: true }));
+    mkdirSync(target, { recursive: true });
+    await git(target, ["init", "-q", "--bare", "."]);
+    await f.vault.restoreObjectsInto(target);
+    const c2 = await commitFile(f.repoDir, "lie.txt", "lie\n");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+
+    // A transport whose delta LIES: every delta pack's bytes corrupted,
+    // every delta head's declared sha broken. Ordinary reads untouched.
+    const lying = Object.create(f.transport) as typeof f.transport;
+    lying.getState = async (req) => {
+      const state = await f.transport.getState(req);
+      if (!state.delta) return state;
+      return {
+        ...state,
+        delta: {
+          heads: state.delta.heads.map((h) => ({ ...h, stored_bytes_sha256: "0".repeat(64) })),
+          packs: state.delta.packs.map((p) => {
+            const bytes = new Uint8Array(p.bytes);
+            bytes[bytes.length - 1]! ^= 0xff;
+            return { ...p, bytes };
+          }),
+        },
+      };
+    };
+    const vault = new GitvaultVault({ keystore: f.keystore, transport: lying, repo_id: f.repoId, repo_dir: f.repoDir });
+    const restored = await vault.restoreObjectsInto(target);
+    assert.deepEqual(restored.refs, { "refs/heads/main": c2 }, "the lying delta must degrade to the ordinary reads, same result");
+    assert.equal(await hasObject(target, c2), true);
   });
 });

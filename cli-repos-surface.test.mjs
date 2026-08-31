@@ -904,6 +904,40 @@ describe("run402 repos gc — absorbs compact + prune, never described as exactl
     assert.ok(pruneCall.opts.submit.verifier_receipt);
     assert.equal(payload.phase, "submitted");
   });
+
+  it("surfaces the gateway's own refusal verbatim through the CLI wrapper — not the opaque GITVAULT_PRUNE_SUBMIT_FAILED fallback (kychee-com/run402#578 fix 1)", async () => {
+    const { writeFileSync } = await import("node:fs");
+    const corePath = join(scratch, "core-refusal.json");
+    const receiptPath = join(scratch, "receipt-refusal.json");
+    writeFileSync(corePath, JSON.stringify({ nonce: "n" }));
+    writeFileSync(receiptPath, JSON.stringify({ verifier: "r402s-verify" }));
+    // Shaped exactly like a real LocalError thrown by the fixed
+    // `submitPruneIntent` (sdk/src/node/gitvault-publication.ts): `code` +
+    // `message` are the gateway's own (here, the 90-day retention floor),
+    // `details` carries the gateway's `ineligible` list verbatim plus this
+    // wrapper's own `http_status`/`trace_id` context. `status` stays `null`
+    // (a LocalError, not an HTTP-shaped error) so `reportSdkError` reads it
+    // through the `err.body` branch, exactly as production does.
+    const objectId = `wal_${"1".repeat(32)}`;
+    impl.prune = async () => {
+      throw Object.assign(new Error("a candidate is not retention-eligible against the bound cutoff ticket"), {
+        isRun402Error: true,
+        name: "LocalError",
+        kind: "local_error",
+        status: null,
+        code: "UPGRADE_REQUIRED",
+        details: { ineligible: [{ object_id: objectId, lifecycle_state: "active" }], http_status: 409, trace_id: "trc_f886ab16aaaaaaaaaaaaaaaaaaaaaaaa" },
+        body: { code: "UPGRADE_REQUIRED", details: { ineligible: [{ object_id: objectId, lifecycle_state: "active" }], http_status: 409, trace_id: "trc_f886ab16aaaaaaaaaaaaaaaaaaaaaaaa" } },
+      });
+    };
+    const envelope = await expectFailure("gc", ["--project", PROJECT, "--submit", "--intent-core", corePath, "--verifier-receipt", receiptPath]);
+    assert.equal(envelope.code, "UPGRADE_REQUIRED");
+    assert.notEqual(envelope.code, "GITVAULT_PRUNE_SUBMIT_FAILED");
+    assert.match(envelope.message, /retention-eligible/);
+    assert.ok(envelope.details);
+    assert.deepEqual(envelope.details.ineligible, [{ object_id: objectId, lifecycle_state: "active" }]);
+    assert.equal(envelope.details.http_status, 409);
+  });
 });
 
 describe("run402 repos gc — transient-storage headroom disclosure (gitvault-compaction-headroom-preflight)", () => {

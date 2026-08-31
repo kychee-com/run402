@@ -41,7 +41,7 @@ import type { GitvaultActivationToken, GitvaultAllocation, GitvaultCaptureReceip
 import type { GitvaultAdmitGenesisRequest, GitvaultAdmitGenesisResult, GitvaultAllocateRequest, GitvaultObjectReceipt, GitvaultPutObjectRequest } from "./gitvault-creation-journal.js";
 import { createGitvault } from "./gitvault-creation-journal.js";
 import { GitvaultKeystore } from "./gitvault-keystore.js";
-import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultDesiredRecipientEntry, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord, GitvaultVaultState } from "./gitvault-publication.js";
+import type { GitvaultAdmitHeadRequest, GitvaultAdmitHeadResult, GitvaultCompactionGrant, GitvaultDesiredRecipientEntry, GitvaultEnvelopeRecipientsResponse, GitvaultMaintenanceLease, GitvaultMaintenanceLeaseRequest, GitvaultOrgEncryptionKeyDirectory, GitvaultOrgEncryptionKeyEntry, GitvaultRetentionCutoffIssued, GitvaultTransport, GitvaultUploadObject, GitvaultUploadReceipt, GitvaultVaultRecord, GitvaultVaultState } from "./gitvault-publication.js";
 import type { GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRotationAttemptDescriptor } from "../namespaces/gitvault.types.js";
 import type { GitvaultPruneIntentRecord } from "./gitvault-prune.js";
 import { GitvaultVault, generationToBigInt, bigIntToGeneration, gitvaultPaths } from "./gitvault-publication.js";
@@ -534,7 +534,10 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
    * no `ref_state`/`retention_roots`), so that case is treated identically
    * to `null` (no ordinary head yet) rather than parsed as a head.
    */
-  async getState({ repo_id }: { repo_id: string }): Promise<GitvaultVaultState> {
+  /** gitvault-delta-fetch: set true to simulate a gateway that predates the delta arm. */
+  deltaDisabled = false;
+
+  async getState({ repo_id, since }: { repo_id: string; since?: string }): Promise<GitvaultVaultState> {
     this.calls.push("state");
     const vault = await this.getVaultRecord({ repo_id });
     if (vault.newest_generation === null || vault.newest_generation === GITVAULT_GENESIS_GENERATION) {
@@ -564,11 +567,52 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     }
     const refState = this.objects.get(this.key(repo_id, gitvaultPaths.refState(refStateId))) ?? null;
     const retentionRoots = this.objects.get(this.key(repo_id, gitvaultPaths.retentionRoots(retentionRootsId))) ?? null;
+    // gitvault-delta-fetch: mirror the gateway's delta arm — a qualifying
+    // `since` span (small, no checkpoint/transition heads) rides back as
+    // heads + inline WAL packs; every disqualification just omits `delta`.
+    let delta: GitvaultVaultState["delta"];
+    if (since !== undefined && !this.deltaDisabled && /^[0-9a-f]{16}$/.test(since)) {
+      const sinceBig = BigInt(`0x${since}`);
+      const newestBig = BigInt(`0x${vault.newest_generation}`);
+      const span = newestBig - sinceBig;
+      if (span >= 1n && span <= 4n) {
+        const heads: Array<{ generation: string; stored_bytes: Uint8Array; stored_bytes_sha256: string }> = [];
+        const packs: Array<{ object_id: string; bytes: Uint8Array }> = [];
+        let qualified = true;
+        for (let g = sinceBig + 1n; g <= newestBig; g += 1n) {
+          const generation = g.toString(16).padStart(16, "0");
+          const bytes = this.objects.get(this.key(repo_id, gitvaultPaths.head(generation)));
+          if (!bytes) {
+            qualified = false;
+            break;
+          }
+          let parsed: { checkpoint?: unknown; transition?: unknown; wal_entries?: Array<{ object_id?: unknown }> };
+          try {
+            parsed = JSON.parse(new TextDecoder().decode(bytes)) as typeof parsed;
+          } catch {
+            qualified = false;
+            break;
+          }
+          if (parsed.checkpoint != null || parsed.transition != null) {
+            qualified = false;
+            break;
+          }
+          heads.push({ generation, stored_bytes: bytes, stored_bytes_sha256: sha256Hex(bytes) });
+          for (const w of parsed.wal_entries ?? []) {
+            if (typeof w?.object_id !== "string") continue;
+            const packBytes = this.objects.get(this.key(repo_id, gitvaultPaths.wal(w.object_id)));
+            if (packBytes) packs.push({ object_id: w.object_id, bytes: packBytes });
+          }
+        }
+        if (qualified) delta = { heads, packs };
+      }
+    }
     return {
       vault,
       newest_generation: vault.newest_generation,
       head: { stored_bytes: headBytes, stored_bytes_sha256: sha256Hex(headBytes) },
       carriers: { ref_state: refState, retention_roots: retentionRoots },
+      ...(delta ? { delta } : {}),
     };
   }
 
@@ -618,6 +662,42 @@ export class GitvaultMemoryTransport implements GitvaultTransport {
     if (!l || l.holder_token !== holder_token) throw err("MAINTENANCE_LEASE_HELD", "not the holder");
     l.released = true;
     return { maintenance_lease_id, status: "released" };
+  }
+
+  // ── compaction headroom grant (gitvault-checkpoint-cadence design D3) ──
+  /** `repo_id -> the active grant`, at most one live at a time (mirrors the gateway's partial-unique-active-per-project index). */
+  readonly compactionGrants = new Map<string, GitvaultCompactionGrant>();
+  /** Set true to simulate an older gateway that predates this route (404/`ROUTE_NOT_FOUND`). */
+  compactionGrantUnsupported = false;
+  /** The pooled figures a fresh grant reports — tests set this to model a near-quota org. Defaults model plenty of headroom. */
+  compactionGrantPoolFigures: { pool_used_bytes: number; pool_limit_bytes: number } = { pool_used_bytes: 0, pool_limit_bytes: Number.MAX_SAFE_INTEGER };
+  /** The `granted_bytes` a fresh grant reports — tests set this to the vault's modeled `source_bytes`. */
+  compactionGrantBytes = 0;
+
+  async openCompactionGrant({ repo_id }: { repo_id: string }): Promise<GitvaultCompactionGrant> {
+    this.calls.push("compaction-grant-open");
+    if (this.compactionGrantUnsupported) throw err("ROUTE_NOT_FOUND", "compaction-grant is not supported by this gateway");
+    const existing = this.compactionGrants.get(repo_id);
+    if (existing) throw err("GITVAULT_COMPACTION_GRANT_ACTIVE", "a compaction grant is already active for this project", { expires_at: existing.expires_at });
+    // STRING byte fields, deliberately: the live gateway serializes its
+    // Postgres BIGINTs as strings, and a number-typed mock let the
+    // Number.isFinite(string) bug ship past every unit test (caught only by
+    // the live acceptance run, 2026-08-31). The mock stays wire-faithful.
+    const grant: GitvaultCompactionGrant = {
+      granted_bytes: String(this.compactionGrantBytes),
+      expires_at: "2026-01-01T01:00:00.000Z",
+      pool_used_bytes: String(this.compactionGrantPoolFigures.pool_used_bytes),
+      pool_limit_bytes: String(this.compactionGrantPoolFigures.pool_limit_bytes),
+      effective_pool_limit_bytes: String(this.compactionGrantPoolFigures.pool_limit_bytes + this.compactionGrantBytes),
+    };
+    this.compactionGrants.set(repo_id, grant);
+    return grant;
+  }
+
+  async closeCompactionGrant({ repo_id }: { repo_id: string }): Promise<{ closed: boolean }> {
+    this.calls.push("compaction-grant-close");
+    if (this.compactionGrantUnsupported) throw err("ROUTE_NOT_FOUND", "compaction-grant is not supported by this gateway");
+    return { closed: this.compactionGrants.delete(repo_id) };
   }
 
   // ── prune (§7.3) ──

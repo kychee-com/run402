@@ -42,6 +42,7 @@ import {
 } from "./gitvault.crypto.js";
 import type { GitvaultCaptureReceipt, GitvaultHeadsListingPage, GitvaultHeadsListingRequest, GitvaultHeadTarget, GitvaultOpenReceipt, GitvaultRecipientConfirmationReceipt, GitvaultRecoveryReceipt, GitvaultRotationReason } from "./gitvault.types.js";
 import type {
+  GitvaultCompactionGrant,
   GitvaultEnvelopeRecipientsResponse,
   GitvaultMaintenanceLease,
   GitvaultMaintenanceLeaseRequest,
@@ -278,16 +279,26 @@ export interface GitvaultCompactResult {
 export interface GitvaultCompactHeadroom {
   /** Pooled storage the org is already using, across every project it owns. */
   pool_used_bytes: number;
-  /** The org's pooled tier storage limit. */
+  /** The org's plain, unraised pooled tier storage limit — always the tier's own figure, never the grant-raised one, so a disclosed "used of X pooled" never implies the tier itself grew. */
   pool_limit_bytes: number;
   /** The vault's billed `source_bytes` — the checkpoint-size proxy (design D1). */
   vault_source_bytes: number;
   /** `pool_used_bytes + vault_source_bytes`. */
   projected_transient_bytes: number;
-  /** `false` when the projection exceeds the limit. */
+  /** `false` when the projection exceeds the EFFECTIVE limit (`effective_pool_limit_bytes` when a grant is active, else `pool_limit_bytes`). */
   ok: boolean;
   /** `true` when the caller passed the override and a `false` `ok` was proceeded past anyway. */
   overridden: boolean;
+  /**
+   * gitvault-checkpoint-cadence design D3: `pool_limit_bytes` PLUS an active
+   * compaction grant's `granted_bytes`, when one is active for this cycle —
+   * the limit `ok`/`projected_transient_bytes` are actually computed
+   * against. Equal to `pool_limit_bytes` (and omittable) when no grant is
+   * active.
+   */
+  effective_pool_limit_bytes?: number;
+  /** The grant this compaction opened for itself, when one was opened and is still tracked at disclosure time — `null`/absent otherwise (no grant, an older gateway, or one already closed). */
+  compaction_grant?: { granted_bytes: number; expires_at: string } | null;
 }
 
 /**
@@ -1864,8 +1875,37 @@ export class Gitvault {
     return this.#readCompactHeadroom(await this.#resolveRepoId(options));
   }
 
-  /** The arithmetic, with no policy: the block, or `null` when unanswerable. */
-  async #readCompactHeadroom(repoId: string): Promise<GitvaultCompactHeadroom | null> {
+  /**
+   * Open this vault's compaction headroom grant directly (gitvault-checkpoint-cadence
+   * design D3) — `compact()` already does this internally; this standalone
+   * entry point exists for callers that need to inspect or drive the grant
+   * without also running a full compaction cycle (tests; a future
+   * operator/diagnostic surface). Throws `GITVAULT_COMPACTION_GRANT_ACTIVE`
+   * (409) verbatim when another compaction already holds this project's
+   * grant.
+   */
+  async openCompactionGrant(options: GitvaultVaultHandleOptions = {}): Promise<GitvaultCompactionGrant> {
+    const handle = await this.open(options);
+    return handle.vault.openCompactionGrant();
+  }
+
+  /** Close this vault's compaction headroom grant directly — idempotent; `{closed: false}` when nothing was active. */
+  async closeCompactionGrant(options: GitvaultVaultHandleOptions = {}): Promise<{ closed: boolean }> {
+    const handle = await this.open(options);
+    return handle.vault.closeCompactionGrant();
+  }
+
+  /**
+   * The arithmetic, with no policy: the block, or `null` when unanswerable.
+   *
+   * `effectiveLimitOverride` (gitvault-checkpoint-cadence design D3): when a
+   * compaction grant is active for this cycle, `compact()` passes the
+   * grant's `effective_pool_limit_bytes` here so `ok`/`projected_transient_bytes`
+   * reflect the RAISED limit — `pool_limit_bytes` itself always stays the
+   * tier's own figure (never the raised one), so disclosure never implies
+   * the tier grew.
+   */
+  async #readCompactHeadroom(repoId: string, effectiveLimitOverride?: number | string): Promise<GitvaultCompactHeadroom | null> {
     /** Posture (3): one note, on stderr, and `null` — never a throw. */
     const unanswerable = (why: string): null => {
       globalThis.console?.error?.(`run402: could not check compaction storage headroom (${why}); proceeding — the platform's storage quota remains authoritative.`);
@@ -1894,26 +1934,34 @@ export class Gitvault {
       return unanswerable("tier status carried no usable pooled-storage figures");
     }
 
+    // The grant's byte fields arrive as STRINGS on the wire (gateway BIGINT
+    // serialization, verified live) — coerce BEFORE the finiteness gate, or
+    // `Number.isFinite("472697418")` (false, no coercion) silently discards
+    // an opened grant and the preflight refuses with the unraised limit.
+    const overrideNum = effectiveLimitOverride === undefined ? Number.NaN : Number(effectiveLimitOverride);
+    const effectiveLimit = Number.isFinite(overrideNum) && overrideNum > 0 ? overrideNum : poolLimit;
     const projected = poolUsed + sourceBytes;
     return {
       pool_used_bytes: poolUsed,
       pool_limit_bytes: poolLimit,
       vault_source_bytes: sourceBytes,
       projected_transient_bytes: projected,
-      ok: projected <= poolLimit,
+      ok: projected <= effectiveLimit,
       overridden: false,
+      ...(effectiveLimit !== poolLimit ? { effective_pool_limit_bytes: effectiveLimit } : {}),
     };
   }
 
   /** The reader plus compaction's policy (refuse / override / proceed). */
-  async #compactHeadroomPreflight(repoId: string, ignore: boolean): Promise<GitvaultCompactHeadroom | null> {
-    const headroom = await this.#readCompactHeadroom(repoId);
+  async #compactHeadroomPreflight(repoId: string, ignore: boolean, effectiveLimitOverride?: number | string): Promise<GitvaultCompactHeadroom | null> {
+    const headroom = await this.#readCompactHeadroom(repoId, effectiveLimitOverride);
     if (headroom === null) return null;
-    const { pool_used_bytes: poolUsed, pool_limit_bytes: poolLimit, vault_source_bytes: sourceBytes, projected_transient_bytes: projected, ok } = headroom;
+    const { pool_used_bytes: poolUsed, pool_limit_bytes: poolLimit, vault_source_bytes: sourceBytes, projected_transient_bytes: projected, ok, effective_pool_limit_bytes: effectiveLimit } = headroom;
     if (!ok && !ignore) {
+      const limitForMessage = effectiveLimit ?? poolLimit;
       throw new LocalError(
-        `compaction needs about ${mib(sourceBytes)} of transient headroom and the org's pooled storage has ${mib(Math.max(poolLimit - poolUsed, 0))} free ` +
-          `(${mib(poolUsed)} used of ${mib(poolLimit)}; projected ${mib(projected)}). Compaction transiently holds BOTH the new checkpoint and the ` +
+        `compaction needs about ${mib(sourceBytes)} of transient headroom and the org's pooled storage has ${mib(Math.max(limitForMessage - poolUsed, 0))} free ` +
+          `(${mib(poolUsed)} used of ${mib(limitForMessage)}${effectiveLimit !== undefined ? ` — includes an active compaction grant raising the ${mib(poolLimit)} tier limit` : ""}; projected ${mib(projected)}). Compaction transiently holds BOTH the new checkpoint and the ` +
           `not-yet-pruned history — roughly 2x source_bytes — until a prune completes. Free storage, raise the tier, or re-run with --force-headroom ` +
           `(the platform's own quota enforcement stays authoritative either way).`,
         "preflighting gitvault compaction storage headroom",
@@ -1924,12 +1972,54 @@ export class Gitvault {
             pool_limit_bytes: poolLimit,
             vault_source_bytes: sourceBytes,
             projected_transient_bytes: projected,
+            ...(effectiveLimit !== undefined ? { effective_pool_limit_bytes: effectiveLimit } : {}),
             override: "--force-headroom",
           },
         },
       );
     }
     return { ...headroom, overridden: !ok && ignore };
+  }
+
+  /** A 409 `GITVAULT_COMPACTION_GRANT_ACTIVE` refusal — another compaction already holds this project's grant. */
+  #isCompactionGrantActive(e: unknown): e is { status?: number; code?: string; details?: { expires_at?: string } } {
+    const err = e as { status?: number; code?: string } | null;
+    return Boolean(err && err.code === "GITVAULT_COMPACTION_GRANT_ACTIVE");
+  }
+
+  /**
+   * Open this vault's compaction headroom grant, shared by `compact()` and
+   * `prune({ submit })` (kychee-com/run402#578 fix 3) — both write ceremony
+   * objects into the vault and both need the same single-flight-per-vault
+   * headroom slot. Four outcomes:
+   *   - opened: the grant is returned, carrying `effective_pool_limit_bytes`.
+   *   - 409 `GITVAULT_COMPACTION_GRANT_ACTIVE`: another maintenance op (this
+   *     process, another process, auto-gc, or a manual `repos gc`) already
+   *     holds this project's one-at-a-time grant — refuse rather than race
+   *     it, surfaced as the identical single-flight-conflict `LocalError`
+   *     every caller of this helper throws.
+   *   - 404/absent route (an older gateway): proceed ungranted exactly as
+   *     before this grant existed — returns `null`.
+   *   - any OTHER failure (network, 5xx): also proceeds ungranted — a grant
+   *     that could not be confirmed open must never be ASSUMED open, and
+   *     failing the whole caller because an ancillary raise-the-limit call
+   *     errored would make routine maintenance depend on an availability
+   *     property narrower than the caller itself needs.
+   */
+  async #openMaintenanceGrantOrConflict(handle: GitvaultHandle, context: string): Promise<GitvaultCompactionGrant | null> {
+    try {
+      return await handle.vault.openCompactionGrant();
+    } catch (e) {
+      if (this.#isCompactionGrantActive(e)) {
+        throw new LocalError(
+          `another compaction is already in progress for this vault (its headroom grant expires ${(e as { details?: { expires_at?: string } }).details?.expires_at ?? "soon"}) — refusing to race it.`,
+          context,
+          { code: "GITVAULT_COMPACTION_IN_PROGRESS", details: { expires_at: (e as { details?: { expires_at?: string } }).details?.expires_at ?? null } },
+        );
+      }
+      // 404/absent-route or any other failure: proceed ungranted.
+      return null;
+    }
   }
 
   /**
@@ -1967,9 +2057,33 @@ export class Gitvault {
   ): Promise<GitvaultCompactResult> {
     const handle = await this.open(options);
 
+    // gitvault-checkpoint-cadence design D3: open the compaction headroom
+    // grant BEFORE the preflight (which needs its raised limit) and before
+    // any checkpoint is built or uploaded — same ordering rule as the
+    // preflight itself. Outcomes are documented on
+    // {@link GitvaultNamespace.#openMaintenanceGrantOrConflict}.
+    const grant = await this.#openMaintenanceGrantOrConflict(handle, "opening the gitvault compaction headroom grant");
+
+    // Everything from here on is bracketed by the grant's own lifetime —
+    // including the preflight's OWN possible throw (`GITVAULT_COMPACT_
+    // INSUFFICIENT_HEADROOM`) — so a refusal still closes a grant this call
+    // opened rather than leaking it until the gateway's hourly sweep.
+    try {
+      return await this.#compactAfterGrant(handle, options, grant);
+    } finally {
+      if (grant) await handle.vault.closeCompactionGrant().catch(() => undefined);
+    }
+  }
+
+  /** The rest of `compact()`, run under an already-opened-or-skipped grant — split out so the grant's `finally` above covers every exit path, including the preflight's own throw. */
+  async #compactAfterGrant(
+    handle: GitvaultHandle,
+    options: { lease?: boolean; r1_size_bytes?: string; r2_cap_size_bytes?: string; ignoreHeadroom?: boolean },
+    grant: GitvaultCompactionGrant | null,
+  ): Promise<GitvaultCompactResult> {
     // BEFORE any checkpoint is built or uploaded (that ordering is the whole
     // point — see GitvaultCompactHeadroom).
-    const headroom = await this.#compactHeadroomPreflight(handle.repo_id, options.ignoreHeadroom === true);
+    const headroom = await this.#compactHeadroomPreflight(handle.repo_id, options.ignoreHeadroom === true, grant?.effective_pool_limit_bytes);
 
     const base = await handle.vault.materialize();
 
@@ -2005,7 +2119,7 @@ export class Gitvault {
         cutoff_bound: cutoffBound,
         covered_refs: Object.keys(published.refs).length,
         covered_roots: base.roots.length,
-        headroom,
+        headroom: headroom && grant ? { ...headroom, compaction_grant: { granted_bytes: Number(grant.granted_bytes), expires_at: grant.expires_at } } : headroom,
       };
     } finally {
       if (lease) {
@@ -2013,6 +2127,11 @@ export class Gitvault {
           .request(`/gitvault/v1/vaults/${encodeURIComponent(handle.repo_id)}/maintenance-leases/${encodeURIComponent(lease.maintenance_lease_id)}`, { method: "DELETE", body: { holder_token: lease.holder_token }, context: "releasing the gitvault maintenance lease" })
           .catch(() => undefined);
       }
+      // The compaction headroom grant (if one was opened) is closed by the
+      // caller — `compact()`'s own `finally`, which wraps this ENTIRE
+      // method so a preflight refusal closes it too. Design D3's rationale
+      // for closing promptly (prune only ever REMOVES objects, so nothing
+      // past the checkpoint publish needs the raised limit) lives there.
     }
   }
 
@@ -2202,8 +2321,23 @@ export class Gitvault {
       handle.vault.signer(),
     );
     const intent = prune.buildPruneIntent(core, [ours, options.submit.verifier_receipt], handle.vault.signer());
-    await this.#uploadVerifierReceipts(handle, pub, [ours, options.submit.verifier_receipt]);
-    let stored = await handle.vault.transport.submitPruneIntent({ repo_id: handle.repo_id, intent_bytes: prune.pruneIntentBytes(intent) });
+
+    // kychee-com/run402#578 fix 3: the submission writes ~8 KB of ceremony
+    // objects (both verifier receipts + the intent) into the vault — on a
+    // vault that is over-quota BECAUSE it just compacted, that write is
+    // refused QUOTA_EXCEEDED, so the deletion's own paperwork is blocked by
+    // the storage the deletion would free. Bracket the upload+submit with
+    // the SAME compaction headroom grant `compact()` uses (design D3, via
+    // the shared `#openMaintenanceGrantOrConflict`) — opened before the
+    // upload, closed in a `finally` regardless of outcome.
+    const grant = await this.#openMaintenanceGrantOrConflict(handle, "opening the gitvault compaction headroom grant for prune submission");
+    let stored: import("../node/gitvault-prune.js").GitvaultPruneIntentRecord & { stored: boolean };
+    try {
+      await this.#uploadVerifierReceipts(handle, pub, [ours, options.submit.verifier_receipt]);
+      stored = await handle.vault.transport.submitPruneIntent({ repo_id: handle.repo_id, intent_bytes: prune.pruneIntentBytes(intent) });
+    } finally {
+      if (grant) await handle.vault.closeCompactionGrant().catch(() => undefined);
+    }
     let intentRecord: import("../node/gitvault-prune.js").GitvaultPruneIntentRecord | null = stored;
     const wait = options.submit.wait;
     if (wait) {
@@ -2245,7 +2379,59 @@ export class Gitvault {
         size_bytes: String(bytes.length),
       };
     });
-    await handle.vault.transport.uploadObjects({ repo_id: handle.repo_id, objects });
+    try {
+      await handle.vault.transport.uploadObjects({ repo_id: handle.repo_id, objects });
+    } catch (e) {
+      // kychee-com/run402#578 fix 2: receipt object ids are DETERMINISTIC —
+      // the same core + the same signer produce the same id on every retry —
+      // and Ed25519 signing is deterministic too, so the SAME id can only
+      // mean the SAME bytes when nothing about the receipt's content
+      // changed. Ids are never reusable server-side (correct, the ledger's
+      // rule) — but that means ANY failed submit AFTER this upload landed
+      // (a later validation refusal, a network blip, a crash) burns both
+      // ids for every future retry, with no recovery but a full re-plan
+      // (new core, new nonce, new r402s-verify run). Recover instead: for
+      // each id the gateway names as reused, read the STORED object back
+      // and compare its bytes to ours — same bytes means already-uploaded,
+      // different bytes means the id is genuinely burned.
+      const reused = this.#reusedObjectIds(e);
+      if (reused === null) throw e;
+      const remaining: typeof objects = [];
+      for (const o of objects) {
+        if (!reused.includes(o.object_id)) {
+          remaining.push(o);
+          continue;
+        }
+        const existing = await handle.vault.transport.getObject({ repo_id: handle.repo_id, path: o.path });
+        const existingSha256 = existing ? sha256Hex(existing) : null;
+        if (existing && existingSha256 === o.sha256) continue; // identical bytes already landed — nothing to do
+        throw new LocalError(
+          existing
+            ? `verifier receipt ${o.object_id} already exists in the vault with DIFFERENT bytes than this attempt's (stored sha256 ${existingSha256}, this attempt's sha256 ${o.sha256}) — the object id is burned and cannot be reused; re-plan the prune (new core, new nonce, new r402s-verify run).`
+            : `verifier receipt ${o.object_id} was refused as an already-used id, but its stored bytes could not be read back to confirm they match — re-plan the prune.`,
+          "uploading gitvault verifier receipts",
+          { code: "GITVAULT_RECEIPT_ID_REUSED_DIFFERENT", details: { object_id: o.object_id, existing_sha256: existingSha256, this_attempt_sha256: o.sha256 } },
+        );
+      }
+      // Every reused id was confirmed identical to ours; anything NOT
+      // reused (a genuinely new upload, or the other side of a partial
+      // race) still needs to land.
+      if (remaining.length > 0) await handle.vault.transport.uploadObjects({ repo_id: handle.repo_id, objects: remaining });
+    }
+  }
+
+  /**
+   * `VALIDATION_FAILED` with `details.reused_object_ids`
+   * (`services/gitvault/upload-sessions.ts`: "an object id in the manifest is
+   * already used") — object ids a prior attempt already landed. `null` for
+   * any other failure, so the caller rethrows it untouched.
+   */
+  #reusedObjectIds(e: unknown): string[] | null {
+    if (!isRun402Error(e) || e.code !== "VALIDATION_FAILED") return null;
+    const details = e.details;
+    if (!details || typeof details !== "object" || Array.isArray(details)) return null;
+    const ids = (details as { reused_object_ids?: unknown }).reused_object_ids;
+    return Array.isArray(ids) && ids.every((id) => typeof id === "string") ? (ids as string[]) : null;
   }
 
   /** Did every retention root that LEFT the map leave legally? A `false` here is honest, not fatal. */

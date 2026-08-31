@@ -62,10 +62,19 @@ export const prewarmDeps: {
 };
 
 /**
- * Start the connection + signer prewarm. Returns immediately; nothing to
- * await, nothing thrown, ever.
+ * The connection-dial half alone (gitvault-first-op-premium task 2.1 —
+ * "pre-connect on session accept"). A RESIDENT daemon already ran the full
+ * prewarm (dial + signer + paid-stack) exactly once at boot; re-running
+ * `warmPaidStack` on every forwarded session was measured to cost an EXTRA
+ * ~150-300ms per session (two live Base RPC probes, `sepolia.base.org` +
+ * `mainnet.base.org`, that a gitvault session never actually needs) for no
+ * benefit — the paid-fetch buyer stack only needs loading once per process.
+ * This is the narrow half a session-accept hook should call: kick the owned
+ * dispatcher's connection (so a dead/never-dialed socket redials NOW,
+ * overlapping git's own helper handshake) and nothing else. Same contract as
+ * the full prewarm: fire-and-forget, every failure swallowed, no side effects.
  */
-export function prewarmGitvaultConnection(apiBase?: string): void {
+export function kickGitvaultConnection(apiBase?: string): void {
   try {
     const base = apiBase ?? getApiBase();
     void prewarmDeps
@@ -75,6 +84,16 @@ export function prewarmGitvaultConnection(apiBase?: string): void {
   } catch {
     /* a malformed base or missing fetch must never reach a verb */
   }
+}
+
+/**
+ * Start the connection + signer prewarm. Returns immediately; nothing to
+ * await, nothing thrown, ever. Call this ONCE per process (verb startup, or
+ * daemon boot) — see `kickGitvaultConnection` for the narrower, repeatable
+ * connection-only half a resident daemon should use per forwarded session.
+ */
+export function prewarmGitvaultConnection(apiBase?: string): void {
+  kickGitvaultConnection(apiBase);
   // Deferred so a remote helper's `capabilities` reply is never delayed by
   // the synchronous sign — the warmup only has to land before the verb's
   // first authenticated request, which is several stdin exchanges away.

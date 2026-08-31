@@ -25,6 +25,7 @@ import { fail } from "./sdk-errors.mjs";
 import { isValidProfileName } from "../core-dist/config.js";
 import { getDefaultWallet, profileExists, readMeta, profileDir } from "../core-dist/profiles.js";
 import { readAllowance } from "../core-dist/allowance.js";
+import { describeRejectedValue } from "../core-dist/redact.js";
 // The binding file is a CHECKOUT-LEVEL CONTRACT read by more than one surface,
 // so its reader lives in core — `run402-mcp` ships core/dist but not cli/, and
 // two readers of one file format is exactly the drift worth not having.
@@ -131,13 +132,21 @@ export class WalletSelectionError extends Error {
   }
 }
 
+// A rejected name is a value we know nothing about — the most likely
+// mistake is a typo, but kychee-com/run402-private#640 was a live
+// Base-mainnet private key pasted into RUN402_WALLET (a NAME field, not a
+// key field), and the raw value used to be echoed straight into this error
+// — printed to a terminal, a log, and a session transcript. Route it
+// through describeRejectedValue() so a short/plain typo still shows in
+// full (that's what makes the error useful) while anything long or
+// hex-shaped enough to be a secret is redacted instead.
 function assertValidNameCore(name, origin) {
   if (name === DEFAULT || isValidProfileName(name)) return;
   throw new WalletSelectionError({
     code: "BAD_WALLET_NAME",
-    message: `Invalid wallet name ${JSON.stringify(name)} (from ${origin}).`,
-    hint: "Wallet names must match /^[a-z0-9][a-z0-9_-]{0,63}$/ (lowercase letters, digits, '_' and '-').",
-    details: { name, origin },
+    message: `Invalid wallet name ${JSON.stringify(describeRejectedValue(name))} (from ${origin}).`,
+    hint: "Wallet names must match /^[a-z0-9][a-z0-9_-]{0,63}$/ (lowercase letters, digits, '_' and '-'). If a private key or other secret ended up here, it does not belong in a NAME field — see `run402 wallets import` — and should be treated as compromised.",
+    details: { name: describeRejectedValue(name), origin },
   });
 }
 
@@ -187,11 +196,18 @@ export function resolveWalletCore({ walletFlag, env = {}, cwd = process.cwd(), c
   const binding = findBinding(cwd);
 
   if (envName && binding && envName !== binding.wallet && !CONFLICT_EXEMPT.has(cmd)) {
+    // This conflict check runs BEFORE assertValidNameCore below, so an
+    // unvalidated (possibly secret-shaped — kychee-com/run402-private#640)
+    // RUN402_WALLET reaches here first whenever a directory binding exists
+    // (routine per this repo's own fleet-coordination convention). Redact
+    // the env side the same way the format check would; `binding.wallet`
+    // comes from a committed .run402.json, which by convention never holds
+    // a secret (`wallets bind` validates the name before writing it).
     throw new WalletSelectionError({
       code: "WALLET_SELECTION_CONFLICT",
-      message: `Ambiguous wallet: RUN402_WALLET=${envName} but ${binding.file} selects '${binding.wallet}'.`,
+      message: `Ambiguous wallet: RUN402_WALLET=${describeRejectedValue(envName)} but ${binding.file} selects '${binding.wallet}'.`,
       hint: "Resolve with one of: pass --wallet <name>, unset RUN402_WALLET, or run402 wallets unbind.",
-      details: { env_wallet: envName, binding_wallet: binding.wallet, binding_file: binding.file },
+      details: { env_wallet: describeRejectedValue(envName), binding_wallet: binding.wallet, binding_file: binding.file },
     });
   }
 
@@ -232,14 +248,25 @@ export function enforceWalletExistsCore({ name, source }, cmd) {
   if (name === DEFAULT) return;
   if (EXISTENCE_EXEMPT.has(cmd)) return;
   if (profileExists(name)) return;
+  // `name` already passed the format check (assertValidNameCore), which
+  // constrains it to lowercase/digits/'_'/'-' — but a bare 64-hex private
+  // key with no "0x" prefix satisfies that charset too, so this "not found"
+  // path can still see raw key material. looksLikeAddress() is safe to echo
+  // (an address is public); anything else goes through describeRejectedValue(),
+  // which leaves a short/plain name untouched but redacts anything shaped
+  // like a secret — so only the untouched case gets a "create it" command
+  // that's actually safe (and sensible) to suggest re-typing.
+  const shown = describeRejectedValue(name);
   const hint = looksLikeAddress(name)
     ? `'${name}' looks like an address. For billing use: run402 billing ... --wallet-address ${name}`
-    : `Run 'run402 wallets list' to see wallets, or 'run402 wallets new ${name}' to create it.`;
+    : shown === name
+      ? `Run 'run402 wallets list' to see wallets, or 'run402 wallets new ${name}' to create it.`
+      : "Run 'run402 wallets list' to see wallets. This value was not shown because it looks like a secret rather than a wallet name — if a private key or other credential landed here, treat it as compromised.";
   throw new WalletSelectionError({
     code: "WALLET_NOT_FOUND",
-    message: `No local wallet named '${name}'.`,
+    message: `No local wallet named '${shown}'.`,
     hint,
-    details: { wallet: name, source },
+    details: { wallet: shown, source },
   });
 }
 

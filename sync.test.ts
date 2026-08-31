@@ -1539,6 +1539,14 @@ describe("SDK surface alignment", () => {
       // to gitvault.compact, which carries the block itself on the planning
       // half).
       "gitvault.compactHeadroom",
+      // gitvault-checkpoint-cadence design D3: `compact()` opens/closes the
+      // compaction headroom grant internally (before staging the checkpoint,
+      // closed once it publishes) — these standalone entry points exist for
+      // tests and a future operator/diagnostic surface, not as a verb of
+      // their own; there is no CLI/MCP surface that opens or closes a grant
+      // without also compacting.
+      "gitvault.openCompactionGrant",
+      "gitvault.closeCompactionGrant",
       // Deprecated alias of admin.sendFeedback, kept so code written against
       // the old name keeps COMPILING. It posts to the new /feedback/v1 path,
       // so it is not a second capability - it is the same one, spelled the

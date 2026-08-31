@@ -17,12 +17,16 @@ import { join } from "node:path";
 
 import { Run402 } from "../index.js";
 import { GITVAULT_CHECKPOINT_ADVISORY_GENERATIONS, computeOpenProofOutcome, gitvaultCheckpointStaleness, gitvaultRemoteUrl, gitvaultRemoteUrlForRepo, parseGitvaultRemoteUrl } from "./gitvault.js";
-import type { GitvaultOpenReceipt } from "./gitvault.types.js";
-import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT } from "./gitvault.crypto.js";
+import type { GitvaultHandle } from "./gitvault.js";
+import type { GitvaultOpenReceipt, GitvaultSignedObject } from "./gitvault.types.js";
+import { GITVAULT_TERMINAL_LOSS_DOCTOR_TEXT, GITVAULT_TERMINAL_LOSS_STATEMENT, sha256Hex, storedBytes } from "./gitvault.crypto.js";
 import { hardenedGit } from "../node/gitvault-snapshot.js";
 import { pinGitvaultRepo } from "../node/gitvault-address.js";
 import { GitvaultKeystore } from "../node/gitvault-keystore.js";
 import type { CredentialsProvider } from "../credentials.js";
+import { commitFile, makeVault } from "../node/gitvault-memory-transport.test.js";
+import { gitvaultPaths } from "../node/gitvault-publication.js";
+import { buildVerifierReceipt } from "../node/gitvault-prune.js";
 
 interface Call {
   url: string;
@@ -281,11 +285,322 @@ describe("gitvault compaction headroom preflight (gitvault-compaction-headroom-p
     // The mechanism, not just a quota number — that is the whole point.
     assert.match(String(err.message), /both the new checkpoint and the/i);
     assert.match(String(err.message), /--force-headroom/);
-    // Nothing was published: only the two preflight reads went out. A
-    // maintenance lease or an upload session here would mean the refusal
-    // arrived after the cost, which is the bug this change exists to fix.
-    assert.equal(calls.filter((c) => c.method !== "GET").length, 0, `unexpected writes: ${JSON.stringify(calls.filter((c) => c.method !== "GET"))}`);
+    // Nothing was published: only the two preflight reads plus the
+    // compaction-grant open+close (gitvault-checkpoint-cadence — `compact()`
+    // now brackets the ENTIRE preflight with the grant, so a refusal still
+    // closes a grant it opened) went out. A maintenance lease or an upload
+    // session here would mean the refusal arrived after the cost, which is
+    // the bug this change exists to fix.
+    const nonGet = calls.filter((c) => c.method !== "GET");
+    assert.deepEqual(
+      nonGet.map((c) => `${c.method} ${new URL(c.url).pathname}`),
+      [`POST /gitvault/v1/vaults/${REPO}/compaction-grant`, `DELETE /gitvault/v1/vaults/${REPO}/compaction-grant`],
+      `unexpected writes: ${JSON.stringify(nonGet)}`,
+    );
     assert.equal(calls.some((c) => c.url.includes("maintenance-leases")), false);
+  });
+});
+
+describe("gitvault compaction headroom grant (gitvault-checkpoint-cadence)", () => {
+  const REPO = VAULT_RECORD.repo_id;
+  const withSource = (bytes: string): Record<string, unknown> => ({ ...VAULT_RECORD, storage: { ...VAULT_RECORD.storage, source_bytes: bytes } });
+  function tierStatus(used: number, limit: number): Record<string, unknown> {
+    return { tier: "prototype", active: true, pool_usage: { projects: 1, total_api_calls: 0, total_storage_bytes: used, api_calls_limit: 500_000, storage_bytes_limit: limit } };
+  }
+
+  it("409 GITVAULT_COMPACTION_GRANT_ACTIVE refuses BEFORE any preflight read — single-flight-per-vault", async () => {
+    const { sdk, calls } = sdkWith((call) => {
+      if (call.url.includes("/compaction-grant")) {
+        return { status: 409, body: { code: "GITVAULT_COMPACTION_GRANT_ACTIVE", message: "active", details: { expires_at: "2026-09-01T00:00:00.000Z" } } };
+      }
+      return { body: withSource("50") };
+    });
+    let thrown: unknown;
+    try {
+      await sdk.gitvault.compact({ repo_id: REPO });
+    } catch (e) {
+      thrown = e;
+    }
+    const err = thrown as { code?: string; details?: { expires_at?: string | null } };
+    assert.equal(err?.code, "GITVAULT_COMPACTION_IN_PROGRESS");
+    assert.equal(err.details?.expires_at, "2026-09-01T00:00:00.000Z");
+    // Refused before the tier-status preflight read even happened — the
+    // grant conflict is the earliest, cheapest signal that another
+    // compaction (this process or another) already owns this vault's cycle.
+    assert.equal(calls.some((c) => c.url.includes("/tiers/v1/status")), false);
+    assert.equal(calls.some((c) => c.url.includes("maintenance-leases")), false);
+    // Nothing to close — the failed open never produced a grant to release.
+    assert.equal(calls.filter((c) => c.url.includes("/compaction-grant")).length, 1);
+  });
+
+  it("an older gateway (404/ROUTE_NOT_FOUND on /compaction-grant) falls back to the plain, un-raised preflight — same refusal as before this change", async () => {
+    const { sdk, calls } = sdkWith((call) => {
+      if (call.url.includes("/compaction-grant")) return { status: 404, body: { code: "ROUTE_NOT_FOUND", message: "no such route" } };
+      if (call.url.includes("/tiers/v1/status")) return { body: tierStatus(134_000_000, 250 * 1024 * 1024) };
+      return { body: withSource("200000000") };
+    });
+    let thrown: unknown;
+    try {
+      await sdk.gitvault.compact({ repo_id: REPO });
+    } catch (e) {
+      thrown = e;
+    }
+    const err = thrown as { code?: string; details?: Record<string, unknown> };
+    // Same refusal, same numbers, as the plain (no-grant) preflight test
+    // above — an absent grant route changes NOTHING about today's behavior.
+    assert.equal(err?.code, "GITVAULT_COMPACT_INSUFFICIENT_HEADROOM");
+    assert.equal(err.details?.pool_limit_bytes, 250 * 1024 * 1024);
+    assert.equal(err.details?.effective_pool_limit_bytes, undefined, "no grant was ever opened, so no effective (raised) limit should appear");
+    // The grant route was tried exactly once (POST, 404) and never a
+    // matching DELETE — there was never anything to close.
+    const grantCalls = calls.filter((c) => c.url.includes("/compaction-grant"));
+    assert.equal(grantCalls.length, 1);
+    assert.equal(grantCalls[0]!.method, "POST");
+  });
+
+  it("a grant whose byte fields are WIRE STRINGS relieves an otherwise-refused preflight (the 2026-08-31 live bug)", async () => {
+    // The live gateway serializes its BIGINTs as strings. The original guard
+    // — Number.isFinite(effective_pool_limit_bytes) on the RAW value — is
+    // false for "472697418", so an opened grant was silently discarded and
+    // the preflight refused with the unraised limit. Caught only by the live
+    // acceptance run on the bench vault; this pins the coercion.
+    const { sdk, calls } = sdkWith((call) => {
+      if (call.url.includes("/compaction-grant") && call.method === "POST") {
+        return { body: { granted_bytes: "200000000", expires_at: "2026-09-01T00:00:00.000Z", pool_used_bytes: "134000000", pool_limit_bytes: "262144000", effective_pool_limit_bytes: "462144000" } };
+      }
+      if (call.url.includes("/compaction-grant") && call.method === "DELETE") return { body: { closed: true } };
+      if (call.url.includes("/tiers/v1/status")) return { body: tierStatus(134_000_000, 250 * 1024 * 1024) };
+      return { body: withSource("200000000") };
+    });
+    let thrown: unknown;
+    try {
+      await sdk.gitvault.compact({ repo_id: REPO });
+    } catch (e) {
+      thrown = e;
+    }
+    // The mock cannot carry a full compaction to success — what matters is
+    // that the refusal did NOT fire (the raised limit covered the projected
+    // 334 MB) and the grant was still closed on the way out (the finally).
+    assert.notEqual((thrown as { code?: string } | undefined)?.code, "GITVAULT_COMPACT_INSUFFICIENT_HEADROOM", `preflight refused despite a covering grant: ${String((thrown as Error | undefined)?.message)}`);
+    const grantCalls = calls.filter((c) => c.url.includes("/compaction-grant")).map((c) => c.method);
+    assert.deepEqual(grantCalls, ["POST", "DELETE"], "the grant must be opened once and closed once, whatever happened in between");
+  });
+});
+
+/**
+ * `prune({ submit })` end-to-end (kychee-com/run402#578, fixes 2 + 3).
+ *
+ * `sdk.gitvault.open()` always builds the REAL HTTP transport
+ * (`createGitvaultHttpTransport(this.#client)`) — there is no injection
+ * point for a different `GitvaultTransport`. `open` is a plain (non-`#`)
+ * instance method, so these tests override it on the `sdk.gitvault`
+ * instance to hand back a handle wrapping a REAL vault built on
+ * `GitvaultMemoryTransport` (the same fixture `gitvault-prune.test.ts` uses
+ * at the `GitvaultVault` level) — genuinely correct materialize/chain-walk/
+ * attestation behavior, with zero wire-translation risk, while still
+ * exercising the actual `namespaces/gitvault.ts` `prune()` orchestration
+ * (the receipt-reupload recovery and the compaction-grant bracket both
+ * live there, as private `#` methods unreachable from outside `prune()`
+ * itself).
+ */
+describe("gitvault prune({ submit }) — receipt idempotency + compaction headroom grant (kychee-com/run402#578)", () => {
+  /** Two checkpoint-bearing generations so a real prune plan (candidates + a bound retention_cutoff ticket) exists. */
+  async function preparedPruneFixture(t: { after: (fn: () => void) => void }) {
+    const root = mkdtempSync(join(tmpdir(), "run402-gitvault-prune-submit-"));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const f = await makeVault(root);
+    const c1 = await commitFile(f.repoDir, "a.txt", "one");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: null, new_oid: c1, force: false }] } });
+    await f.vault.publishCheckpoint();
+    const c2 = await commitFile(f.repoDir, "b.txt", "two");
+    await f.vault.push({ transaction: { updates: [{ ref: "refs/heads/main", expected_old_oid: c1, new_oid: c2, force: false }] } });
+    await f.vault.publishCheckpoint();
+
+    const { sdk } = sdkWith(() => ({ body: {} })); // fetch is never reached — open() is overridden below
+    sdk.gitvault.open = async (): Promise<GitvaultHandle> => ({ repo_id: f.repoId, keystore: f.keystore, transport: f.transport, vault: f.vault });
+
+    const planned = await sdk.gitvault.prune({ repo_id: f.repoId });
+    assert.ok(planned.intent_core && planned.attestation, "fixture must produce a real, submittable prune plan");
+    return { f, sdk, planned };
+  }
+
+  /** A `r402s-verify`-shaped receipt over the SAME plan, signed by the vault's own owner key (matches `gitvault-prune.test.ts`'s convention). */
+  function verifierReceiptFor(
+    f: Awaited<ReturnType<typeof makeVault>>,
+    planned: Awaited<ReturnType<typeof preparedPruneFixture>>["planned"],
+    overrides: { object_id?: string; implementation_version?: string } = {},
+  ) {
+    return buildVerifierReceipt(
+      {
+        repo_id: f.repoId,
+        intent_core_sha256: planned.intent_core_sha256!,
+        checkpoint_head_sha256: planned.attestation!.checkpoint_head_sha256,
+        cutoff_ticket_sha256: planned.attestation!.cutoff_ticket_sha256,
+        restored_object_set_hmac: planned.attestation!.restored_object_set_hmac,
+        retention_evolution_ok: true,
+        candidates_outside_roots_ok: true,
+        implementation_id: "r402s-verify",
+        implementation_version: overrides.implementation_version ?? "r402s-verify/0.1.0",
+        ...(overrides.object_id ? { object_id: overrides.object_id } : {}),
+      },
+      f.vault.signer(),
+    );
+  }
+
+  /**
+   * Install the REAL gateway's "an id is never reusable" rule on top of the
+   * fixture, which is otherwise lenient (silent idempotent overwrite) —
+   * matching `services/gitvault/upload-sessions.ts`'s actual
+   * `VALIDATION_FAILED` + `details.reused_object_ids` refusal.
+   */
+  function makeUploadStrictAboutReuse(f: Awaited<ReturnType<typeof makeVault>>) {
+    const real = f.transport.uploadObjects.bind(f.transport);
+    f.transport.uploadObjects = async (req: { repo_id: string; objects: Array<{ path: string; object_id: string | null }> }) => {
+      const reused = req.objects.filter((o) => o.object_id && f.transport.objects.has(`${req.repo_id}/${o.path}`)).map((o) => o.object_id as string);
+      if (reused.length > 0) {
+        throw Object.assign(new Error("an object id in the manifest is already used (ids are never reusable in any state)"), {
+          isRun402Error: true,
+          code: "VALIDATION_FAILED",
+          details: { reused_object_ids: reused },
+        });
+      }
+      return real(req as Parameters<typeof real>[0]);
+    };
+  }
+
+  it("fix 2: a receipt refused as reused, with IDENTICAL stored bytes, is treated as already-uploaded — the submit still completes", async (t) => {
+    const { f, sdk, planned } = await preparedPruneFixture(t);
+    const FIXED_ID = `vr_${"7".repeat(32)}`;
+    const verifierReceipt = verifierReceiptFor(f, planned, { object_id: FIXED_ID });
+
+    // Simulate: a prior attempt already landed this EXACT receipt (a failed
+    // submit after a successful upload — issue #578's core scenario).
+    const bytes = storedBytes(verifierReceipt as unknown as GitvaultSignedObject);
+    await f.transport.uploadObjects({
+      repo_id: f.repoId,
+      objects: [{ path: gitvaultPaths.verifierReceipt(FIXED_ID), object_kind: "verifier_receipt", object_id: FIXED_ID, bytes, sha256: sha256Hex(bytes), size_bytes: String(bytes.length) }],
+    });
+    makeUploadStrictAboutReuse(f);
+
+    const result = await sdk.gitvault.prune({ repo_id: f.repoId, submit: { core: planned.intent_core!, verifier_receipt: verifierReceipt } });
+    assert.equal(result.submitted, true, "a recoverable reused-id refusal must not block the submit");
+    assert.ok(result.intent, "the intent must actually have been submitted");
+  });
+
+  it("fix 2: a reused id whose stored bytes DIFFER is refused by name, with both hashes — never silently proceeds", async (t) => {
+    const { f, sdk, planned } = await preparedPruneFixture(t);
+    const FIXED_ID = `vr_${"8".repeat(32)}`;
+    // A DIFFERENT receipt at the SAME id (differs only in implementation_version,
+    // so both are `restored_and_verified` and buildPruneIntent still accepts
+    // the ACTUALLY-submitted one below) — models a genuinely burned id.
+    const staleReceipt = verifierReceiptFor(f, planned, { object_id: FIXED_ID, implementation_version: "r402s-verify/0.0.1-stale" });
+    const staleBytes = storedBytes(staleReceipt as unknown as GitvaultSignedObject);
+    await f.transport.uploadObjects({
+      repo_id: f.repoId,
+      objects: [{ path: gitvaultPaths.verifierReceipt(FIXED_ID), object_kind: "verifier_receipt", object_id: FIXED_ID, bytes: staleBytes, sha256: sha256Hex(staleBytes), size_bytes: String(staleBytes.length) }],
+    });
+    makeUploadStrictAboutReuse(f);
+
+    const verifierReceipt = verifierReceiptFor(f, planned, { object_id: FIXED_ID });
+    await assert.rejects(
+      sdk.gitvault.prune({ repo_id: f.repoId, submit: { core: planned.intent_core!, verifier_receipt: verifierReceipt } }),
+      (e: unknown) => {
+        const err = e as { code?: string; details?: { object_id?: string; existing_sha256?: string; this_attempt_sha256?: string } };
+        assert.equal(err.code, "GITVAULT_RECEIPT_ID_REUSED_DIFFERENT");
+        assert.equal(err.details?.object_id, FIXED_ID);
+        assert.ok(err.details?.existing_sha256);
+        assert.ok(err.details?.this_attempt_sha256);
+        assert.notEqual(err.details?.existing_sha256, err.details?.this_attempt_sha256);
+        return true;
+      },
+    );
+  });
+
+  it("fix 3: brackets the receipt upload + submit with the compaction headroom grant — opened before, closed after success", async (t) => {
+    const { f, sdk, planned } = await preparedPruneFixture(t);
+    const verifierReceipt = verifierReceiptFor(f, planned);
+    const grantCalls: string[] = [];
+    const realOpen = f.transport.openCompactionGrant.bind(f.transport);
+    const realClose = f.transport.closeCompactionGrant.bind(f.transport);
+    f.transport.openCompactionGrant = async (req: { repo_id: string }) => {
+      grantCalls.push("open");
+      return realOpen(req);
+    };
+    f.transport.closeCompactionGrant = async (req: { repo_id: string }) => {
+      grantCalls.push("close");
+      return realClose(req);
+    };
+
+    const result = await sdk.gitvault.prune({ repo_id: f.repoId, submit: { core: planned.intent_core!, verifier_receipt: verifierReceipt } });
+    assert.equal(result.submitted, true);
+    assert.deepEqual(grantCalls, ["open", "close"]);
+  });
+
+  it("fix 3: closes the grant even when the submit itself fails after the receipts uploaded", async (t) => {
+    const { f, sdk, planned } = await preparedPruneFixture(t);
+    const verifierReceipt = verifierReceiptFor(f, planned);
+    const grantCalls: string[] = [];
+    const realOpen = f.transport.openCompactionGrant.bind(f.transport);
+    const realClose = f.transport.closeCompactionGrant.bind(f.transport);
+    f.transport.openCompactionGrant = async (req: { repo_id: string }) => {
+      grantCalls.push("open");
+      return realOpen(req);
+    };
+    f.transport.closeCompactionGrant = async (req: { repo_id: string }) => {
+      grantCalls.push("close");
+      return realClose(req);
+    };
+    f.transport.submitPruneIntent = async () => {
+      throw new Error("simulated submit failure — e.g. the 90-day retention floor, or a network blip");
+    };
+
+    await assert.rejects(sdk.gitvault.prune({ repo_id: f.repoId, submit: { core: planned.intent_core!, verifier_receipt: verifierReceipt } }));
+    assert.deepEqual(grantCalls, ["open", "close"], "the grant must close in the `finally` even though the submit threw");
+  });
+
+  it("fix 3: a 409 GITVAULT_COMPACTION_GRANT_ACTIVE surfaces as the single-flight conflict BEFORE any receipt upload is attempted", async (t) => {
+    const { f, sdk, planned } = await preparedPruneFixture(t);
+    const verifierReceipt = verifierReceiptFor(f, planned);
+    f.transport.openCompactionGrant = async () => {
+      throw Object.assign(new Error("a compaction grant is already active for this project"), {
+        isRun402Error: true,
+        code: "GITVAULT_COMPACTION_GRANT_ACTIVE",
+        details: { expires_at: "2026-09-01T00:00:00.000Z" },
+      });
+    };
+    let uploadCalled = false;
+    const realUpload = f.transport.uploadObjects.bind(f.transport);
+    f.transport.uploadObjects = async (req: Parameters<typeof realUpload>[0]) => {
+      uploadCalled = true;
+      return realUpload(req);
+    };
+
+    await assert.rejects(
+      sdk.gitvault.prune({ repo_id: f.repoId, submit: { core: planned.intent_core!, verifier_receipt: verifierReceipt } }),
+      (e: unknown) => {
+        assert.equal((e as { code?: string }).code, "GITVAULT_COMPACTION_IN_PROGRESS");
+        return true;
+      },
+    );
+    assert.equal(uploadCalled, false, "the conflicting grant must refuse before any ceremony object is uploaded");
+  });
+
+  it("fix 3: an older gateway (404 on compaction-grant) proceeds ungranted — same as before this fix, and closes nothing", async (t) => {
+    const { f, sdk, planned } = await preparedPruneFixture(t);
+    const verifierReceipt = verifierReceiptFor(f, planned);
+    f.transport.openCompactionGrant = async () => {
+      throw Object.assign(new Error("no such route"), { isRun402Error: true, code: "ROUTE_NOT_FOUND", status: 404 });
+    };
+    let closeCalled = false;
+    const realClose = f.transport.closeCompactionGrant.bind(f.transport);
+    f.transport.closeCompactionGrant = async (req: { repo_id: string }) => {
+      closeCalled = true;
+      return realClose(req);
+    };
+
+    const result = await sdk.gitvault.prune({ repo_id: f.repoId, submit: { core: planned.intent_core!, verifier_receipt: verifierReceipt } });
+    assert.equal(result.submitted, true);
+    assert.equal(closeCalled, false, "nothing to close when the grant was never opened");
   });
 });
 
