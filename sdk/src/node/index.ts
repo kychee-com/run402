@@ -528,7 +528,7 @@ export type { PushToCreateGitvaultOptions, PushToCreateGitvaultResult } from "./
 // orchestrator `Gitvault.resolveOrCreateAddress` delegates to.
 export { readPinnedGitvaultRepo, pinGitvaultRepo, resolveGitvaultAddress } from "./gitvault-address.js";
 export type { GitvaultPinnedRepo, GitvaultAddressResolution, ResolveGitvaultAddressOptions } from "./gitvault-address.js";
-export { prewarmGitvaultConnection } from "./gitvault-prewarm.js";
+export { prewarmGitvaultConnection, predialGitvaultObjectStore } from "./gitvault-prewarm.js";
 // gitvault cross-profile repo-key scan (kychee-com/run402#564) — shared by
 // every keystore-miss enrichment point; see the module doc for why this is
 // a directory/filename read, never key material.

@@ -26,16 +26,34 @@
  *     per-origin pool — the API origin's single multiplexed Client — that
  *     the verb's first request draws from. That non-kernel fetch is
  *     sanctioned here and nowhere else.
+ *
+ * gitvault-object-host-predial adds one sibling, `predialGitvaultObjectStore`
+ * (below): the object-store host(s) a repo's transport has previously
+ * observed, dialed on the SAME owned dispatcher under the SAME guarantees.
+ * It is a separate function (not folded into the two above) because it
+ * needs a `repoId` neither `kickGitvaultConnection` nor
+ * `prewarmGitvaultConnection` has — see their call sites in
+ * `remote-helper-session.mjs` and `gitvault-daemon.mjs` for where that id
+ * comes from cheaply, offline.
  */
 import { getApiBase } from "../../core-dist/config.js";
 import { getAllowanceAuthHeaders } from "../../core-dist/allowance-auth.js";
 import { sdkFetch } from "./http-dispatcher.js";
+import { GitvaultKeystore } from "./gitvault-keystore.js";
 
 /** Injectable for tests. */
 export const prewarmDeps: {
   fetch: typeof globalThis.fetch;
   warmSigner: () => unknown;
   warmPaidStack: () => unknown;
+  /**
+   * gitvault-object-host-predial (task 2.1): this repo's locally-learned
+   * object-store origins, or `[]` for "nothing known" (a first-ever
+   * session, or any read failure — never thrown). Injectable so the dial
+   * loop below is testable without a real keystore on disk; the real
+   * implementation is a plain, synchronous `GitvaultKeystore.readRepo`.
+   */
+  readObjectStoreOrigins: (repoId: string, keystoreRoot?: string) => string[];
 } = {
   // The OWNED dispatcher, deliberately (gitvault-owned-dispatcher D5): the
   // warmed socket must land in the exact pool the verb's first request
@@ -58,6 +76,14 @@ export const prewarmDeps: {
       const rail = (readAllowance() as { rail?: string } | null)?.rail;
       await (rail === "mpp" ? loadMppStack() : loadX402Stack());
     })().catch(() => {});
+  },
+  readObjectStoreOrigins: (repoId, keystoreRoot) => {
+    try {
+      const keystore = new GitvaultKeystore(keystoreRoot !== undefined ? { rootDir: keystoreRoot } : {});
+      return keystore.readRepo(repoId)?.object_store_origins ?? [];
+    } catch {
+      return [];
+    }
   },
 };
 
@@ -109,4 +135,51 @@ export function prewarmGitvaultConnection(apiBase?: string): void {
       /* stack load failure surfaces from the verb's own first request */
     }
   });
+}
+
+/**
+ * gitvault-object-host-predial (design D2/D4, task 2.1): fire-and-forget,
+ * dial-only connection establishment to a repo's PERSISTED object-store
+ * origin(s) — the presigned/edge host(s) an earlier session in this
+ * checkout already fetched objects from (recorded via
+ * `GitvaultKeystore.recordObjectStoreOrigins`). Every guarantee of the
+ * prewarm above applies verbatim: never awaited, every failure (a
+ * malformed origin, a keystore read failure, a dial that never completes)
+ * is swallowed silently, the abort timer is unref'd via
+ * `AbortSignal.timeout`, and the response body is cancelled immediately —
+ * nothing here can hold the process open or touch a counted transport
+ * budget. Rides the SAME owned dispatcher as `kickGitvaultConnection`
+ * (gitvault-owned-dispatcher D5), so a warmed socket lands in the exact
+ * per-origin pool the verb's real object GET draws from.
+ *
+ * A repo with nothing persisted (first-ever session, or a keystore read
+ * failure) predials nothing — there is deliberately no fallback guess and
+ * no network read to learn where to predial (design D4/D6). Dialing an
+ * origin that no longer serves this vault's objects (a bucket migration)
+ * costs one harmless background round trip; the next observed fetch
+ * overwrites the persisted hint.
+ */
+export function predialGitvaultObjectStore(repoId: string, keystoreRoot?: string): void {
+  try {
+    const origins = prewarmDeps.readObjectStoreOrigins(repoId, keystoreRoot);
+    for (const origin of origins) {
+      try {
+        // `new URL(origin)` both validates (throws SYNCHRONOUSLY on a
+        // corrupted persisted string, caught right here — mirrors
+        // `kickGitvaultConnection`'s own `new URL("/health", base)` guard)
+        // and gives `fetch` a well-formed target; a bare origin normalizes
+        // to `<origin>/`, which is exactly what the real object-store host
+        // sees regardless — the dial is the point, not the path.
+        const target = new URL(origin);
+        void prewarmDeps
+          .fetch(target, { signal: AbortSignal.timeout(5000) })
+          .then((r) => void r.body?.cancel().catch(() => {}))
+          .catch(() => {});
+      } catch {
+        /* a malformed persisted origin must never reach a verb */
+      }
+    }
+  } catch {
+    /* the whole predial is best-effort — nothing here can affect a verb */
+  }
 }

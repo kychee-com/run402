@@ -53,9 +53,16 @@ export async function runDaemon() {
   // Load the heavy module ONCE — this is the entire point of residency.
   // Its top-level await pulls the SDK graph; the prewarm dials the API
   // origin so the first forwarded session rides a warm h2 connection.
-  const { prewarmGitvaultConnection, kickGitvaultConnection } = await import("../sdk/dist/node/gitvault-prewarm.js");
+  const { prewarmGitvaultConnection, kickGitvaultConnection, predialGitvaultObjectStore } = await import("../sdk/dist/node/gitvault-prewarm.js");
   prewarmGitvaultConnection();
   const { runHelperSession } = await import("./remote-helper-session.mjs");
+  // gitvault-object-host-predial task 2.2 — narrow, session-scoped imports
+  // (not the whole `#sdk/node` barrel) for the OFFLINE repo resolution the
+  // session-accept predial needs: a local git subprocess (`rev-parse
+  // --absolute-git-dir`) plus a local git-config read, never a network
+  // call (design D6).
+  const { resolveGitInvocationRepo } = await import("../sdk/dist/node/gitvault-snapshot.js");
+  const { readPinnedGitvaultRepo } = await import("../sdk/dist/node/gitvault-address.js");
 
   const socketPath = daemonSocketPath();
   if (process.platform !== "win32") {
@@ -184,6 +191,28 @@ export async function runDaemon() {
           // (never throws, never awaited, never delays a session).
           const acceptedAt = Date.now();
           kickGitvaultConnection();
+          // gitvault-object-host-predial task 2.2 — the addressed repo's
+          // persisted object-store origin(s), predialed on the SAME
+          // pre-connect timing as the API-origin kick above: resolved from
+          // THIS session's OWN `msg.cwd`/`msg.env` (not `process.cwd()`/
+          // `process.env`, which still name the daemon's PRIOR session
+          // until the swap below runs) via the same offline, no-network
+          // mechanism the session module itself uses once it takes over —
+          // `resolveGitInvocationRepo` (a local `git rev-parse
+          // --absolute-git-dir`) then `readPinnedGitvaultRepo` (a local
+          // `git config --local` read). Any resolution failure (no
+          // `GIT_DIR`, not a repository, no pin yet) predials nothing —
+          // never a network read to learn where to predial (design D6),
+          // and never allowed to delay or fail this session's accept.
+          void (async () => {
+            try {
+              const { repo_dir } = await resolveGitInvocationRepo(msg.env ?? {}, msg.cwd);
+              const pinned = await readPinnedGitvaultRepo(repo_dir);
+              if (pinned) predialGitvaultObjectStore(pinned.repo_id);
+            } catch {
+              /* best-effort: must never surface from session accept */
+            }
+          })();
           busy = true;
           sessionsServed += 1;
           const stdin = new PassThrough();

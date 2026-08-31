@@ -787,6 +787,181 @@ describe("createGitvaultHttpTransport — edge_url from the wire response reache
   });
 });
 
+// ─── gitvault-object-host-predial task 1.2: origin observation ──────────────
+//
+// The transport's ONE hook a caller (holding the keystore) wires to persist
+// a predial hint — `onObjectStoreOriginObserved`. These pin exactly when it
+// fires (a COMPLETED fetch, any status), what it never fires for (an
+// `inline`-satisfied read — no URL dialed — and a thrown fetch error), and
+// that the origin it reports is the bare `scheme://host`, never the full
+// presigned URL (path, query, signature included).
+describe("createGitvaultHttpTransport — onObjectStoreOriginObserved (gitvault-object-host-predial task 1.2)", () => {
+  const REPO = `r402s_${"c".repeat(32)}`;
+  const WAL_ID = `wal_${"7".repeat(32)}`;
+  const REFS_ID = `refs_${"6".repeat(32)}`;
+
+  beforeEach(() => {
+    _resetGitvaultEdgeFetchStateForTest();
+  });
+
+  function fakeClientWithFetchStatus(opts: { requestResponses: Record<string, unknown>; fetchHandlers: Record<string, () => Response | Promise<Response>> }): Parameters<typeof createGitvaultHttpTransport>[0] {
+    return {
+      apiBase: "https://api.example.test",
+      async request<T>(path: string): Promise<T> {
+        if (!(path in opts.requestResponses)) throw new Error(`unexpected request: ${path}`);
+        return opts.requestResponses[path] as T;
+      },
+      async fetch(input: string | URL | Request) {
+        const url = String(input);
+        const handler = opts.fetchHandlers[url];
+        if (!handler) throw new Error(`unexpected fetch: ${url}`);
+        return handler();
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+  }
+
+  it("reports the bare origin of `url` — never the full presigned URL (path/query/signature stripped)", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const client = fakeClientWithFetchStatus({
+      requestResponses: { [`/gitvault/v1/vaults/${REPO}/object-reads`]: { reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://bucket.s3.amazonaws.com/source/repo/wal/x?X-Amz-Signature=deadbeef&X-Amz-Expires=900", stored_bytes_sha256: "x", size_bytes: "1" }] } },
+      fetchHandlers: { "https://bucket.s3.amazonaws.com/source/repo/wal/x?X-Amz-Signature=deadbeef&X-Amz-Expires=900": () => new Response(new Uint8Array([1]), { status: 200 }) },
+    });
+    const observed: Array<[string, string[]]> = [];
+    const transport = createGitvaultHttpTransport(client, { onObjectStoreOriginObserved: (repoId, origins) => observed.push([repoId, origins]) });
+    await transport.getObject({ repo_id: REPO, path });
+    assert.deepEqual(observed, [[REPO, ["https://bucket.s3.amazonaws.com"]]]);
+  });
+
+  it("reports BOTH the `url` and `edge_url` origins on a successful edge fetch — the origin not actually dialed is still worth a future predial", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const client = fakeClientWithFetchStatus({
+      requestResponses: { [`/gitvault/v1/vaults/${REPO}/object-reads`]: { reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://bucket.s3.amazonaws.com/x", edge_url: "https://cdn.run402.com/x", stored_bytes_sha256: "x", size_bytes: "1" }] } },
+      fetchHandlers: { "https://cdn.run402.com/x": () => new Response(new Uint8Array([1]), { status: 200 }) },
+    });
+    const observed: Array<[string, string[]]> = [];
+    const transport = createGitvaultHttpTransport(client, { onObjectStoreOriginObserved: (repoId, origins) => observed.push([repoId, origins]) });
+    await transport.getObject({ repo_id: REPO, path });
+    assert.deepEqual(observed, [[REPO, ["https://bucket.s3.amazonaws.com", "https://cdn.run402.com"]]]);
+  });
+
+  it("still fires on a 404 (a completed round trip proving the origin is reachable, even though the object itself is absent)", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const client = fakeClientWithFetchStatus({
+      requestResponses: { [`/gitvault/v1/vaults/${REPO}/object-reads`]: { reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://bucket.s3.amazonaws.com/x", stored_bytes_sha256: "x", size_bytes: "1" }] } },
+      fetchHandlers: { "https://bucket.s3.amazonaws.com/x": () => new Response(null, { status: 404 }) },
+    });
+    const observed: string[][] = [];
+    const transport = createGitvaultHttpTransport(client, { onObjectStoreOriginObserved: (_repoId, origins) => observed.push(origins) });
+    const bytes = await transport.getObject({ repo_id: REPO, path });
+    assert.equal(bytes, null);
+    assert.deepEqual(observed, [["https://bucket.s3.amazonaws.com"]]);
+  });
+
+  it("never fires for an `inline`-satisfied read — no URL was dialed", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const client = fakeClientWithFetchStatus({
+      requestResponses: { [`/gitvault/v1/vaults/${REPO}/object-reads`]: { reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://bucket.s3.amazonaws.com/x", inline: toBase64url(new Uint8Array([1, 2, 3])), stored_bytes_sha256: "x", size_bytes: "1" }] } },
+      fetchHandlers: {},
+    });
+    const observed: string[][] = [];
+    const transport = createGitvaultHttpTransport(client, { onObjectStoreOriginObserved: (_repoId, origins) => observed.push(origins) });
+    const bytes = await transport.getObject({ repo_id: REPO, path });
+    assert.deepEqual([...bytes!], [1, 2, 3]);
+    assert.deepEqual(observed, [], "inline consumption never touches an object-store origin");
+  });
+
+  it("never fires when the fetch itself THROWS (a network failure never proves an origin is reachable)", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const client = fakeClientWithFetchStatus({
+      requestResponses: { [`/gitvault/v1/vaults/${REPO}/object-reads`]: { reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://bucket.s3.amazonaws.com/x", stored_bytes_sha256: "x", size_bytes: "1" }] } },
+      fetchHandlers: {
+        "https://bucket.s3.amazonaws.com/x": () => {
+          throw new Error("ECONNRESET");
+        },
+      },
+    });
+    const observed: string[][] = [];
+    const transport = createGitvaultHttpTransport(client, { onObjectStoreOriginObserved: (_repoId, origins) => observed.push(origins) });
+    await assert.rejects(() => transport.getObject({ repo_id: REPO, path }));
+    assert.deepEqual(observed, []);
+  });
+
+  it("a caller with no hook wired at all is byte-identical to before this change", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const client = fakeClientWithFetchStatus({
+      requestResponses: { [`/gitvault/v1/vaults/${REPO}/object-reads`]: { reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://bucket.s3.amazonaws.com/x", stored_bytes_sha256: "x", size_bytes: "1" }] } },
+      fetchHandlers: { "https://bucket.s3.amazonaws.com/x": () => new Response(new Uint8Array([9]), { status: 200 }) },
+    });
+    const transport = createGitvaultHttpTransport(client);
+    const bytes = await transport.getObject({ repo_id: REPO, path });
+    assert.deepEqual([...bytes!], [9]);
+  });
+
+  it("a THROWING hook never surfaces into the caller's read — the read's own result and error shape are unaffected", async () => {
+    const path = gitvaultPaths.wal(WAL_ID);
+    const client = fakeClientWithFetchStatus({
+      requestResponses: { [`/gitvault/v1/vaults/${REPO}/object-reads`]: { reads: [{ object_kind: "wal_pack", object_id: WAL_ID, url: "https://bucket.s3.amazonaws.com/x", stored_bytes_sha256: "x", size_bytes: "1" }] } },
+      fetchHandlers: { "https://bucket.s3.amazonaws.com/x": () => new Response(new Uint8Array([9]), { status: 200 }) },
+    });
+    const transport = createGitvaultHttpTransport(client, {
+      onObjectStoreOriginObserved: () => {
+        throw new Error("persistence blew up");
+      },
+    });
+    const bytes = await transport.getObject({ repo_id: REPO, path });
+    assert.deepEqual([...bytes!], [9]);
+  });
+
+  it("fires independently per element of a batch (getObjects), and for the getState carriers, with their own repoId", async () => {
+    const walPath = gitvaultPaths.wal(WAL_ID);
+    const refsPath = gitvaultPaths.refState(REFS_ID);
+    const client = fakeClientWithFetchStatus({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/object-reads`]: {
+          reads: [
+            { object_kind: "wal_pack", object_id: WAL_ID, url: "https://bucket.s3.amazonaws.com/wal", stored_bytes_sha256: "x", size_bytes: "1" },
+            { object_kind: "ref_state", object_id: REFS_ID, url: "https://other-bucket.s3.amazonaws.com/refs", stored_bytes_sha256: "y", size_bytes: "1" },
+          ],
+        },
+      },
+      fetchHandlers: {
+        "https://bucket.s3.amazonaws.com/wal": () => new Response(new Uint8Array([1]), { status: 200 }),
+        "https://other-bucket.s3.amazonaws.com/refs": () => new Response(new Uint8Array([2]), { status: 200 }),
+      },
+    });
+    const observed: string[][] = [];
+    const transport = createGitvaultHttpTransport(client, { onObjectStoreOriginObserved: (_repoId, origins) => observed.push(origins) });
+    await transport.getObjects({ repo_id: REPO, paths: [walPath, refsPath] });
+    assert.deepEqual(
+      observed.sort(),
+      [["https://bucket.s3.amazonaws.com"], ["https://other-bucket.s3.amazonaws.com"]].sort(),
+    );
+  });
+
+  it("getState's carrier fetch reports the carrier's own origin(s), separate from getObject's", async () => {
+    const client = fakeClientWithFetchStatus({
+      requestResponses: {
+        [`/gitvault/v1/vaults/${REPO}/state`]: {
+          vault: { repo_id: REPO, project_id: "prj_1", org_id: "org_1" },
+          newest_generation: "0000000000000001",
+          head: { stored_bytes: toBase64url(new Uint8Array([9])), stored_bytes_sha256: "h" },
+          carriers: {
+            ref_state: { presigned_url: "https://bucket.s3.amazonaws.com/ref_state", edge_url: "https://cdn.run402.com/ref_state", expires_at: "2026-08-29T00:00:00.000Z" },
+            retention_roots: { inline: toBase64url(new Uint8Array([7])) },
+          },
+        },
+      },
+      fetchHandlers: { "https://cdn.run402.com/ref_state": () => new Response(new Uint8Array([3]), { status: 200 }) },
+    });
+    const observed: string[][] = [];
+    const transport = createGitvaultHttpTransport(client, { onObjectStoreOriginObserved: (_repoId, origins) => observed.push(origins) });
+    await transport.getState({ repo_id: REPO });
+    // the inline retention_roots carrier never dials anything — only ref_state does
+    assert.deepEqual(observed, [["https://bucket.s3.amazonaws.com", "https://cdn.run402.com"]]);
+  });
+});
+
 // ─── gitvault-small-object-inline design D1/D2/D3: `inline` on object-reads ──
 //
 // `inline` sits beside `url`/`edge_url` on the SAME wire response the

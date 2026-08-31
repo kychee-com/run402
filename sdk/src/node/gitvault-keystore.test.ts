@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitvaultKeystore, getGitvaultKeystoreRoot, writeFileAtomic0600 } from "./gitvault-keystore.js";
+import { GitvaultKeystore, getGitvaultKeystoreRoot, writeFileAtomic0600, GITVAULT_OBJECT_STORE_ORIGINS_CAP } from "./gitvault-keystore.js";
 import {
   GITVAULT_GENESIS_EPOCH,
   GITVAULT_TERMINAL_LOSS_STATEMENT,
@@ -142,6 +142,73 @@ describe("gitvault keystore — repo files + locks", () => {
     mkdirSync(lockDir);
     writeFileSync(join(lockDir, "owner.json"), JSON.stringify({ pid: 2 ** 22 - 1, at: "now" }));
     assert.equal(ks.withRepoLock(REPO, () => 3, { timeoutMs: 500 }), 3);
+  });
+});
+
+describe("gitvault keystore — recordObjectStoreOrigins (gitvault-object-host-predial task 1.2)", () => {
+  function freshKs() {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    ks.saveRepo({ repo_id: REPO, org_id: "o", project_id: "p", k_repo_hex: "00".repeat(32), epoch: GITVAULT_GENESIS_EPOCH, genesis_sha256: "a".repeat(64), head_pin: null, last_ref_transaction: null, provenance: "created" });
+    return ks;
+  }
+
+  it("a repo file with nothing recorded yet reads back `undefined` — byte-identical to before this field existed", () => {
+    const ks = freshKs();
+    assert.equal(ks.readRepo(REPO)!.object_store_origins, undefined);
+  });
+
+  it("persists the first observed origin(s)", () => {
+    const ks = freshKs();
+    ks.recordObjectStoreOrigins(REPO, ["https://bucket.s3.amazonaws.com", "https://edge.run402.com"]);
+    assert.deepEqual(ks.readRepo(REPO)!.object_store_origins, ["https://bucket.s3.amazonaws.com", "https://edge.run402.com"]);
+  });
+
+  it("re-observing the SAME set is a true no-op — no write, `updated_at` untouched", () => {
+    const ks = freshKs();
+    ks.recordObjectStoreOrigins(REPO, ["https://bucket.s3.amazonaws.com"]);
+    const before = ks.readRepo(REPO)!;
+    ks.recordObjectStoreOrigins(REPO, ["https://bucket.s3.amazonaws.com"]);
+    const after = ks.readRepo(REPO)!;
+    assert.deepEqual(after, before);
+    assert.equal(after.updated_at, before.updated_at);
+  });
+
+  it("a newly observed origin moves to the front; the previously-known one survives, deduped", () => {
+    const ks = freshKs();
+    ks.recordObjectStoreOrigins(REPO, ["https://old.example.com"]);
+    ks.recordObjectStoreOrigins(REPO, ["https://new.example.com"]);
+    assert.deepEqual(ks.readRepo(REPO)!.object_store_origins, ["https://new.example.com", "https://old.example.com"]);
+    // re-observing the OLD one again just re-orders — nothing is ever lost short of the cap
+    ks.recordObjectStoreOrigins(REPO, ["https://old.example.com"]);
+    assert.deepEqual(ks.readRepo(REPO)!.object_store_origins, ["https://old.example.com", "https://new.example.com"]);
+  });
+
+  it("caps at GITVAULT_OBJECT_STORE_ORIGINS_CAP, evicting the least-recently-observed", () => {
+    const ks = freshKs();
+    for (let i = 0; i < GITVAULT_OBJECT_STORE_ORIGINS_CAP + 2; i += 1) ks.recordObjectStoreOrigins(REPO, [`https://origin-${i}.example.com`]);
+    const origins = ks.readRepo(REPO)!.object_store_origins!;
+    assert.equal(origins.length, GITVAULT_OBJECT_STORE_ORIGINS_CAP);
+    // most-recently-observed survive; the earliest ones were evicted
+    assert.deepEqual(origins, [`https://origin-${GITVAULT_OBJECT_STORE_ORIGINS_CAP + 1}.example.com`, `https://origin-${GITVAULT_OBJECT_STORE_ORIGINS_CAP}.example.com`, `https://origin-${GITVAULT_OBJECT_STORE_ORIGINS_CAP - 1}.example.com`, `https://origin-${GITVAULT_OBJECT_STORE_ORIGINS_CAP - 2}.example.com`]);
+  });
+
+  it("an empty observation is a no-op", () => {
+    const ks = freshKs();
+    ks.recordObjectStoreOrigins(REPO, []);
+    assert.equal(ks.readRepo(REPO)!.object_store_origins, undefined);
+  });
+
+  it("a missing repo file is swallowed — never throws (best-effort learning, D4)", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    assert.doesNotThrow(() => ks.recordObjectStoreOrigins(REPO, ["https://bucket.s3.amazonaws.com"]));
+    assert.equal(ks.readRepo(REPO), null);
+  });
+
+  it("saveRepo/readRepo tolerate a HAND-WRITTEN repo file that already carries the field — additive-schema forward compat", () => {
+    const ks = GitvaultKeystore.open({ rootDir: root, now: fixedNow });
+    const saved = ks.saveRepo({ repo_id: REPO, org_id: "o", project_id: "p", k_repo_hex: "00".repeat(32), epoch: GITVAULT_GENESIS_EPOCH, genesis_sha256: "a".repeat(64), head_pin: null, last_ref_transaction: null, provenance: "created", object_store_origins: ["https://pre-existing.example.com"] });
+    assert.deepEqual(saved.object_store_origins, ["https://pre-existing.example.com"]);
+    assert.deepEqual(ks.readRepo(REPO)!.object_store_origins, ["https://pre-existing.example.com"]);
   });
 });
 

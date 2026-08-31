@@ -128,6 +128,22 @@ export interface GitvaultRepoFile {
    */
   checkpoint_covers_through?: string | null;
   /**
+   * gitvault-object-host-predial (design D1): the object-store ORIGINS
+   * (`scheme://host` — never a path, query, key, or credential) this
+   * checkout has observed a presigned or edge URL actually served bytes
+   * from, most-recently-observed first, deduped, capped at
+   * {@link GITVAULT_OBJECT_STORE_ORIGINS_CAP}. Same locally-learned,
+   * monotonic-in-usefulness pattern as {@link checkpoint_covers_through}:
+   * absent/`null`/`[]` means nothing is known yet (a first-ever session,
+   * byte-identical to before this field existed) and is never protocol
+   * state — it feeds the connection prewarm ONLY (`predialGitvaultObjectStore`
+   * in `gitvault-prewarm.ts`), never verification, never a source of truth
+   * for where an object actually lives. A stale entry (bucket migrated)
+   * costs at most one harmless background dial and is overwritten by the
+   * next observed fetch.
+   */
+  object_store_origins?: string[];
+  /**
    * TOFU pins for {@link GitvaultVault.reconcileEnvelopeRecipients}
    * (gitvault-human-envelopes design D4 point 3): `principal_id ->` the
    * `ek_` fingerprint this repo last wrapped a `key_envelope` for (or
@@ -226,6 +242,9 @@ const FILE_MODE = 0o600;
 
 /** The local object cache's recency window (design D3: "genesis + newest N=8 heads + newest carriers"). */
 export const GITVAULT_OBJECT_CACHE_WINDOW = 8;
+
+/** gitvault-object-host-predial (design D1): the max persisted object-store origins per repo — small on purpose, this is a predial hint, not an inventory. */
+export const GITVAULT_OBJECT_STORE_ORIGINS_CAP = 4;
 
 /** Bare hex16 generation comparison for cache eviction — deliberately NOT `generationToBigInt` (gitvault-publication.ts), which this lower-level module must not import (publication already imports FROM here). Malformed input sorts as "evict" rather than throwing: a corrupt cache entry should never block eviction of everything else. */
 function genToBigInt(generation: string): bigint {
@@ -493,7 +512,7 @@ export class GitvaultKeystore {
   }
 
   /** Update the dual pins / last ref transaction without touching key material. */
-  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys" | "known_pin_manifest" | "checkpoint_covers_through">>): GitvaultRepoFile {
+  updateRepo(repoId: string, patch: Partial<Pick<GitvaultRepoFile, "head_pin" | "materialized_pin" | "verified_prefix" | "last_ref_transaction" | "epoch" | "envelope_recipient_pins" | "k_repo_hex" | "epoch_keys" | "known_pin_manifest" | "checkpoint_covers_through" | "object_store_origins">>): GitvaultRepoFile {
     return this.withRepoLock(repoId, () => {
       const existing = this.readRepo(repoId);
       if (!existing) fail("GITVAULT_REPO_STATE_MISSING", `no repo file for ${repoId}`, "updating gitvault repo file", { repo_id: repoId });
@@ -501,6 +520,40 @@ export class GitvaultKeystore {
       writeFileAtomic0600(this.repoPath(repoId), JSON.stringify(full, null, 2));
       return full;
     });
+  }
+
+  /**
+   * gitvault-object-host-predial (design D1/D4, task 1.2): record that
+   * `origins` (already-normalized `scheme://host` strings) were observed
+   * serving THIS repo's objects — the transport's write-through-on-change
+   * hook. Most-recently-observed wins ties over anything already recorded;
+   * deduped; capped at {@link GITVAULT_OBJECT_STORE_ORIGINS_CAP}. A true
+   * no-op (no lock taken, no write, `updated_at` untouched) when the
+   * resulting set is IDENTICAL — in order — to what is already on disk, so
+   * the steady state (every session re-observes the same one or two
+   * origins) costs nothing. Best-effort by contract: a missing repo file
+   * (this call racing a not-yet-`saveRepo`'d creation) or any read/write
+   * failure is swallowed — this is a latency hint, never load-bearing, and
+   * must never surface into a caller's own object-read path.
+   */
+  recordObjectStoreOrigins(repoId: string, origins: readonly string[]): void {
+    if (origins.length === 0) return;
+    try {
+      const existing = this.readRepo(repoId);
+      if (!existing) return;
+      const current = existing.object_store_origins ?? [];
+      const next: string[] = [];
+      for (const o of origins) if (!next.includes(o)) next.push(o);
+      for (const o of current) {
+        if (next.length >= GITVAULT_OBJECT_STORE_ORIGINS_CAP) break;
+        if (!next.includes(o)) next.push(o);
+      }
+      const capped = next.slice(0, GITVAULT_OBJECT_STORE_ORIGINS_CAP);
+      if (capped.length === current.length && capped.every((o, i) => o === current[i])) return;
+      this.updateRepo(repoId, { object_store_origins: capped });
+    } catch {
+      /* best-effort learning only — never surfaces into an object read */
+    }
   }
 
   // ── local immutable-object cache (gitvault-client-round-trips design D3) ──

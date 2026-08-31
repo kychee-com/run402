@@ -1186,7 +1186,14 @@ export class Gitvault {
     const [{ GitvaultVault, createGitvaultHttpTransport }, { GitvaultKeystore }] = await Promise.all([this.#publication(), this.#keystore()]);
     const repoId = await this.#resolveRepoId(options);
     const keystore = new GitvaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
-    const transport = createGitvaultHttpTransport(this.#client);
+    // gitvault-object-host-predial (design D1, task 1.2): this is the ONE
+    // transport whose object reads back the returned handle's vault, so
+    // wiring the origin-observation hook here (and nowhere else `open()`
+    // is reached from — `openOrCreate`'s own allocation-only transport
+    // never serves object reads) covers every read path.
+    const transport = createGitvaultHttpTransport(this.#client, {
+      onObjectStoreOriginObserved: (rid, origins) => keystore.recordObjectStoreOrigins(rid, origins),
+    });
     const vault = new GitvaultVault({
       keystore,
       transport,

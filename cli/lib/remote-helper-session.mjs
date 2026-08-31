@@ -145,7 +145,7 @@ const configModP = import("./config.mjs");
 const { getSdk } = await sdkModP;
 const { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } = await walletModP;
 const { gitvaultRemoteAddressForm, gitvaultSlugReleasedInfo, parseGitvaultRemoteUrl, gitvaultDegradedReadNote } = await isoModP;
-const { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo, readGitvaultRestoreMarker, readGitvaultAutoGcThreshold } = await nodeModP;
+const { GITVAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedGitvaultRepo, pinGitvaultRepo, readGitvaultRestoreMarker, readGitvaultAutoGcThreshold, predialGitvaultObjectStore } = await nodeModP;
 const { allowanceFile, projectCredentialsFile, profileStateFile } = await configModP;
 
 /**
@@ -478,7 +478,27 @@ async function main(argv, { onBackgroundWork } = {}) {
    */
   let resolvedRepo = null;
   async function requireRepo() {
-    if (!resolvedRepo) resolvedRepo = await resolveGitInvocationRepo(process.env, process.cwd());
+    if (!resolvedRepo) {
+      resolvedRepo = await resolveGitInvocationRepo(process.env, process.cwd());
+      // gitvault-object-host-predial task 2.1 (trigger (a), the in-process
+      // fallback path — this module IS that fallback; a daemon-forwarded
+      // session reaches the same code and gets the same predial for free).
+      // The repository is now known OFFLINE (no network read, matching
+      // design D6) — fire-and-forget dial the addressed repo's persisted
+      // object-store origin(s), if the local keystore has learned any, so
+      // it overlaps the rest of this session's local work exactly like the
+      // API-origin prewarm that already raced module load above. A repo
+      // with no local pin (never opened here before) or nothing persisted
+      // yet predials nothing — never a source of a new failure mode.
+      void (async () => {
+        try {
+          const pinned = await readPinnedGitvaultRepo(resolvedRepo.repo_dir);
+          if (pinned) predialGitvaultObjectStore(pinned.repo_id);
+        } catch {
+          /* best-effort: must never surface from repository resolution */
+        }
+      })();
+    }
     return resolvedRepo.repo_dir;
   }
 

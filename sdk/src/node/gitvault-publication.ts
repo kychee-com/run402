@@ -1305,6 +1305,52 @@ export interface GitvaultVaultStateDelta {
 export interface GitvaultHttpTransportOptions {
   /** Wire shape: every vault-scoped route is `/gitvault/v1/vaults/:vault_id/...`; `vault_id` is the `repo_id` unless a mapping is supplied (D185). */
   vaultIdFor?: (repoId: string) => string;
+  /**
+   * gitvault-object-host-predial (design D1, task 1.2): called with the
+   * ORIGIN(s) (`scheme://host`) of an object-store URL this transport just
+   * completed a round trip against — the presigned `url`'s origin, and the
+   * `edge_url`'s origin too when the target carried one, regardless of
+   * which one actually served the bytes (both are worth a future predial;
+   * see `gitvault-prewarm.ts`). Fired ONLY after a completed fetch (any
+   * status, including 404 — a real "absent" response still proves the
+   * origin is reachable); NEVER fired for an `inline`-satisfied read
+   * (nothing was dialed) or a fetch that threw. This is the ONE place the
+   * transport observes origins — the caller (who holds the keystore) is
+   * expected to persist them via `GitvaultKeystore.recordObjectStoreOrigins`;
+   * the transport itself has no keystore and does no persistence. Called
+   * synchronously and never awaited — a throwing callback must never
+   * surface into the read it rode along with, so callers wrap their own
+   * persistence in their own try/catch (this transport does not).
+   */
+  onObjectStoreOriginObserved?: (repoId: string, origins: string[]) => void;
+}
+
+/**
+ * `scheme://host` for a URL string, or `null` for anything that fails to
+ * parse (never thrown) — the sole normalizer between a full presigned/edge
+ * URL (path, query, signature, everything) and the bare origin
+ * {@link GitvaultHttpTransportOptions.onObjectStoreOriginObserved} hands a
+ * caller. Deliberately NOT exported: this module is the only place that
+ * observes raw object-store URLs, so the normalizer has exactly one call
+ * site and needs no wider audience.
+ */
+function gitvaultObjectStoreOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Dedup, in order, dropping anything that failed to parse. */
+function gitvaultObjectStoreOrigins(urls: Array<string | undefined>): string[] {
+  const out: string[] = [];
+  for (const u of urls) {
+    if (!u) continue;
+    const origin = gitvaultObjectStoreOrigin(u);
+    if (origin && !out.includes(origin)) out.push(origin);
+  }
+  return out;
 }
 
 interface UploadSessionResponse {
@@ -1456,13 +1502,23 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
    * new exposure: `inline` is the SAME stored bytes, to the SAME
    * authorized caller, the entry's own `url` would have served — nothing
    * here becomes a new source of truth (design D5).
+   *
+   * gitvault-object-host-predial (task 1.2): once the fetch below
+   * COMPLETES (any status — a thrown fetch error is NOT this), reports the
+   * target's origin(s) via `options.onObjectStoreOriginObserved`. Never
+   * fired for the `inline` short-circuit above — no URL was dialed.
    */
-  async function resolveObjectReadTarget(target: ObjectReadsResponse["reads"][number], expectedSha256: string | undefined, path: string): Promise<Uint8Array | null> {
+  async function resolveObjectReadTarget(repoId: string, target: ObjectReadsResponse["reads"][number], expectedSha256: string | undefined, path: string): Promise<Uint8Array | null> {
     if (target.inline !== undefined) {
       const bytes = fromBase64url(target.inline, "reads[].inline");
       if (expectedSha256 === undefined || sha256Hex(bytes) === expectedSha256) return bytes;
     }
     const r = await fetchGitvaultObjectBytes(client, target);
+    try {
+      options.onObjectStoreOriginObserved?.(repoId, gitvaultObjectStoreOrigins([target.url, target.edge_url]));
+    } catch {
+      /* a caller's own persistence failure must never surface into this read */
+    }
     if (r.status === 404) return null;
     if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `object GET failed (HTTP ${r.status}) for ${path}`, "reading gitvault object", { path, status: r.status });
     return new Uint8Array(await r.arrayBuffer());
@@ -1501,7 +1557,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     }
     const target = presigned.reads[0];
     if (!target) return null;
-    return resolveObjectReadTarget(target, expectedSha256, path);
+    return resolveObjectReadTarget(repoId, target, expectedSha256, path);
   }
 
   /**
@@ -1520,7 +1576,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     if (!targets) return paths.map(() => null);
     return mapBounded(targets, GITVAULT_TRANSPORT_CONCURRENCY, async (target, i) => {
       if (!target) return null;
-      return resolveObjectReadTarget(target, expected?.[i], paths[i]!);
+      return resolveObjectReadTarget(repoId, target, expected?.[i], paths[i]!);
     });
   }
 
@@ -1579,7 +1635,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
             deferreds[i]!.resolve(null);
             continue;
           }
-          deferreds[i]!.resolve(await resolveObjectReadTarget(target, expected?.[i], paths[i]!));
+          deferreds[i]!.resolve(await resolveObjectReadTarget(repoId, target, expected?.[i], paths[i]!));
         } catch (e) {
           deferreds[i]!.reject(e);
         }
@@ -1640,10 +1696,15 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     }
   }
 
-  /** Resolve ONE `GET …/state` carrier arm to raw bytes — inline decode, or a plain GET on the presigned URL (preferring its `edge_url` companion, gitvault-read-edge-cache design D5), `null` on a 404 (mirrors {@link getObjectBytes}'s absent reading; both arms indistinguishable after this). */
-  async function resolveVaultStateCarrier(carrier: VaultStateCarrierWire): Promise<Uint8Array | null> {
+  /** Resolve ONE `GET …/state` carrier arm to raw bytes — inline decode, or a plain GET on the presigned URL (preferring its `edge_url` companion, gitvault-read-edge-cache design D5), `null` on a 404 (mirrors {@link getObjectBytes}'s absent reading; both arms indistinguishable after this). Origin observation (gitvault-object-host-predial task 1.2) mirrors `resolveObjectReadTarget`'s. */
+  async function resolveVaultStateCarrier(repoId: string, carrier: VaultStateCarrierWire): Promise<Uint8Array | null> {
     if ("inline" in carrier) return fromBase64url(carrier.inline, "carriers.inline");
     const r = await fetchGitvaultObjectBytes(client, { url: carrier.presigned_url, edge_url: carrier.edge_url });
+    try {
+      options.onObjectStoreOriginObserved?.(repoId, gitvaultObjectStoreOrigins([carrier.presigned_url, carrier.edge_url]));
+    } catch {
+      /* a caller's own persistence failure must never surface into this read */
+    }
     if (r.status === 404) return null;
     if (!r.ok) fail("GITVAULT_OBJECT_READ_FAILED", `vault-state carrier GET failed (HTTP ${r.status})`, "reading the gitvault vault state", { status: r.status });
     return new Uint8Array(await r.arrayBuffer());
@@ -1659,7 +1720,7 @@ export function createGitvaultHttpTransport(client: Client, options: GitvaultHtt
     const raw = await client.request<VaultStateResponse>(`${base(repoId)}/state${since ? `?since=${encodeURIComponent(since)}` : ""}`, { context: "reading the gitvault vault state" });
     const head = raw.head ? { stored_bytes: fromBase64url(raw.head.stored_bytes, "head.stored_bytes"), stored_bytes_sha256: raw.head.stored_bytes_sha256 } : null;
     const carriers = raw.carriers
-      ? { ref_state: await resolveVaultStateCarrier(raw.carriers.ref_state), retention_roots: await resolveVaultStateCarrier(raw.carriers.retention_roots) }
+      ? { ref_state: await resolveVaultStateCarrier(repoId, raw.carriers.ref_state), retention_roots: await resolveVaultStateCarrier(repoId, raw.carriers.retention_roots) }
       : null;
     // Delta decode is deliberately forgiving: a malformed entry is dropped,
     // never thrown — the delta is an accelerator and the ordinary reads own
